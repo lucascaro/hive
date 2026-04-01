@@ -3,6 +3,8 @@ package components
 import (
 	"strings"
 	"testing"
+
+	"github.com/lucascaro/hive/internal/state"
 )
 
 func TestPreviewView_EmptyContent_NoSession(t *testing.T) {
@@ -122,6 +124,136 @@ func TestSanitizePreviewContent_StripsPrivateMode(t *testing.T) {
 	out := sanitizePreviewContent(input)
 	if strings.Contains(out, "\x1b[?") {
 		t.Error("private mode sequences should be stripped")
+	}
+}
+
+// countLines returns the number of lines in s (newline-separated).
+func countLines(s string) int { return strings.Count(s, "\n") + 1 }
+
+func TestPreviewView_ExactHeight(t *testing.T) {
+	cases := []struct {
+		name    string
+		width   int
+		height  int
+		content string
+		session string
+	}{
+		{"empty-no-session", 80, 24, "", ""},
+		{"empty-with-session", 80, 24, "", "sess-1"},
+		{"three-lines", 80, 24, "line1\nline2\nline3", "sess-1"},
+		{"exact-fill", 80, 24, strings.Repeat("line\n", 20), "sess-1"},
+		{"overflow-content", 80, 24, strings.Repeat("line\n", 100), "sess-1"},
+		{"narrow", 40, 20, "hello world", "sess-1"},
+		{"tall", 120, 50, "hello", "sess-1"},
+		{"minimum", 10, 5, "hi", "sess-1"},
+		{"wide-many-lines", 160, 40, strings.Repeat("x", 200) + strings.Repeat("\n"+strings.Repeat("y", 200), 50), "sess-1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Preview{Width: tc.width, Height: tc.height, Content: tc.content}
+			out := p.View(tc.session)
+			got := countLines(out)
+			if got != tc.height {
+				t.Errorf("View() = %d lines, want exactly %d (w=%d h=%d content=%q…)",
+					got, tc.height, tc.width, tc.height, tc.content[:min(len(tc.content), 20)])
+			}
+		})
+	}
+}
+
+func TestPreviewView_ShortContent_FillsHeight(t *testing.T) {
+	// When content has fewer lines than innerH, the entire pane must still be
+	// p.Height lines so Bubble Tea overwrites all previous terminal content.
+	p := &Preview{Width: 80, Height: 24, Content: "only three lines\nof content\nhere"}
+	out := p.View("sess-1")
+	if countLines(out) != 24 {
+		t.Errorf("View() with short content = %d lines, want 24", countLines(out))
+	}
+}
+
+func TestPreviewView_SwitchSession_FillsHeight(t *testing.T) {
+	// Simulate what happens after switching sessions: content is cleared.
+	// The preview must still fill p.Height lines so old content is overwritten.
+	p := &Preview{Width: 80, Height: 24, Content: ""}
+	for _, session := range []string{"sess-1", ""} {
+		out := p.View(session)
+		if countLines(out) != 24 {
+			t.Errorf("View() with empty content (session=%q) = %d lines, want 24", session, countLines(out))
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func TestPreviewView_ExactHeight_ANSIContent(t *testing.T) {
+	// Lines with SGR color codes must not affect the rendered line count.
+	// These simulate real tmux capture-pane output after sanitization.
+	coloredLines := []string{
+		"\x1b[32mThis is green text\x1b[0m",
+		"\x1b[34;1mThis is bold blue\x1b[0m",
+		"\x1b[31mError: something failed\x1b[0m",
+		"\x1b[0;33mwarning: check your input\x1b[0m",
+		"\x1b[1;37m> \x1b[0muser prompt here",
+	}
+
+	cases := []struct {
+		name    string
+		width   int
+		height  int
+		content string
+	}{
+		{"few-colored-lines", 80, 24, strings.Join(coloredLines, "\n")},
+		{"many-colored-lines", 80, 24, strings.Repeat(strings.Join(coloredLines, "\n")+"\n", 20)},
+		{"narrow-colored", 40, 20, strings.Join(coloredLines, "\n")},
+		// Long lines with colors that might overflow width limit
+		{"long-colored-lines", 80, 24, strings.Repeat("\x1b[32m", 5) + strings.Repeat("x", 300) + "\x1b[0m\n" + "short line"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Preview{Width: tc.width, Height: tc.height, Content: tc.content}
+			out := p.View("sess-1")
+			got := countLines(out)
+			if got != tc.height {
+				t.Errorf("View() with ANSI content = %d lines, want exactly %d (w=%d h=%d)",
+					got, tc.height, tc.width, tc.height)
+			}
+		})
+	}
+}
+
+func TestStatusBarView_ExactHeight_ANSIContent(t *testing.T) {
+	// Status bar must stay exactly 2 lines even when session info contains ANSI.
+	// Agent badges and status dots inject ANSI color codes.
+	sb := &StatusBar{Width: 80}
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{
+				ID:   "p1",
+				Name: "my-project",
+				Sessions: []*state.Session{
+					{
+						ID:        "s1",
+						ProjectID: "p1",
+						Title:     "very-long-session-title-that-might-cause-wrapping-issues",
+						AgentType: state.AgentClaude,
+						Status:    state.StatusRunning,
+					},
+				},
+				Teams: []*state.Team{},
+			},
+		},
+		ActiveProjectID: "p1",
+		ActiveSessionID: "s1",
+	}
+	out := sb.View(appState, state.PaneSidebar, false, "")
+	got := strings.Count(out, "\n") + 1
+	if got != 2 {
+		t.Errorf("StatusBar.View() with ANSI content = %d lines, want exactly 2", got)
 	}
 }
 

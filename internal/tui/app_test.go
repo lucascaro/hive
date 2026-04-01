@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -196,5 +197,81 @@ func TestSchedulePollPreview_ReturnsCmdWithSession(t *testing.T) {
 	cmd := m.schedulePollPreview()
 	if cmd == nil {
 		t.Fatal("schedulePollPreview with active session should return a cmd")
+	}
+}
+
+func TestViewExactTermHeight(t *testing.T) {
+	dims := [][2]int{
+		{80, 24},
+		{120, 40},
+		{160, 50},
+		{60, 20},
+		{200, 30},
+		{55, 24}, // narrower than minTermWidth=60: sidebar collapses
+		{30, 15}, // very narrow
+	}
+	contents := []string{
+		"",
+		"one line",
+		strings.Repeat("line\n", 10),
+		strings.Repeat("line\n", 100),
+	}
+	for _, d := range dims {
+		for i, c := range contents {
+			t.Run(fmt.Sprintf("%dx%d_content%d", d[0], d[1], i), func(t *testing.T) {
+				m := testModelWithSessions()
+				m.appState.TermWidth = d[0]
+				m.appState.TermHeight = d[1]
+				m.appState.PreviewContent = c
+				out := m.View()
+				got := strings.Count(out, "\n") + 1
+				if got != d[1] {
+					t.Errorf("View() = %d lines for term %dx%d (content#%d), want exactly %d",
+						got, d[0], d[1], i, d[1])
+				}
+			})
+		}
+	}
+}
+
+func TestSessionSwitch_FrameHeightStable(t *testing.T) {
+	// Frame height must not change when switching between sessions.
+	m := testModelWithSessions()
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	m.appState.PreviewContent = strings.Repeat("line from session 1\n", 35)
+
+	view1 := m.View()
+	if strings.Count(view1, "\n")+1 != 40 {
+		t.Fatalf("before switch: View() = %d lines, want 40", strings.Count(view1, "\n")+1)
+	}
+
+	// Simulate switching to session 2 (clear content).
+	m.appState.ActiveSessionID = "sess-2"
+	m.appState.PreviewContent = ""
+
+	view2 := m.View()
+	if strings.Count(view2, "\n")+1 != 40 {
+		t.Errorf("after switch: View() = %d lines, want 40", strings.Count(view2, "\n")+1)
+	}
+}
+
+func TestSessionSwitch_PreviewClears(t *testing.T) {
+	// After switching sessions, PreviewContent must be empty so old content
+	// is not shown in the new session's preview pane.
+	m := testModelWithSessions()
+	m.appState.PreviewContent = "old session content"
+
+	// Navigate down past the project header to the second session.
+	m.sidebar.MoveDown() // to team or second session
+	m.sidebar.MoveDown()
+	prev := m.appState.ActiveSessionID
+	m.syncActiveFromSidebar()
+
+	if m.appState.ActiveSessionID != prev {
+		// Actually switched — content should be cleared.
+		if m.appState.PreviewContent != "" {
+			t.Errorf("PreviewContent = %q after session switch, want empty", m.appState.PreviewContent)
+		}
 	}
 }

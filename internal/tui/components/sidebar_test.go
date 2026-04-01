@@ -1,10 +1,63 @@
 package components
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/state"
 )
+
+func TestSidebarView_ExactHeight(t *testing.T) {
+	makeSessions := func(n int) []*state.Session {
+		sessions := make([]*state.Session, n)
+		for i := range sessions {
+			sessions[i] = &state.Session{
+				ID:        strings.Repeat("s", i+1),
+				ProjectID: "proj-1",
+				Title:     "sess",
+				AgentType: state.AgentClaude,
+				Status:    state.StatusIdle,
+			}
+		}
+		return sessions
+	}
+
+	cases := []struct {
+		name     string
+		width    int
+		height   int
+		sessions int
+	}{
+		{"no-sessions", 40, 20, 0},
+		{"few-sessions", 40, 20, 3},
+		{"many-sessions-overflow", 40, 10, 30},
+		{"wide-tall", 60, 40, 5},
+		{"exact-fill", 40, 15, 12},
+		{"minimal", 10, 5, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			appState := &state.AppState{
+				Projects: []*state.Project{
+					{
+						ID:       "proj-1",
+						Name:     "my-project",
+						Sessions: makeSessions(tc.sessions),
+						Teams:    []*state.Team{},
+					},
+				},
+			}
+			s := &Sidebar{Width: tc.width, Height: tc.height}
+			s.Rebuild(appState)
+			out := s.View("", false)
+			got := strings.Count(out, "\n") + 1
+			if got != tc.height {
+				t.Errorf("Sidebar.View() = %d lines, want exactly %d (w=%d h=%d sessions=%d)",
+					got, tc.height, tc.width, tc.height, tc.sessions)
+			}
+		})
+	}
+}
 
 func testAppState() *state.AppState {
 	return &state.AppState{
