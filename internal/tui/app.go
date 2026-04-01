@@ -468,6 +468,28 @@ func (m Model) View() string {
 		debugLog.Printf("View WARNING: JoinHorizontal height mismatch: got=%d want=%d (sidebar=%d preview=%d)",
 			mainLines, ch, sidebarLines, previewLines)
 	}
+
+	// Normalize the frame to exactly TermHeight lines so Bubble Tea's cursor
+	// bookkeeping stays accurate and ghost lines cannot accumulate.
+	// JoinVertical can append a trailing newline; trim it before counting.
+	out = strings.TrimRight(out, "\n")
+	outLines = strings.Count(out, "\n") + 1
+	switch {
+	case outLines < m.appState.TermHeight:
+		out += strings.Repeat("\n", m.appState.TermHeight-outLines)
+	case outLines > m.appState.TermHeight:
+		// Truncate at the Nth newline.
+		nl := 0
+		for i := 0; i < len(out); i++ {
+			if out[i] == '\n' {
+				nl++
+				if nl == m.appState.TermHeight {
+					out = out[:i]
+					break
+				}
+			}
+		}
+	}
 	return out
 }
 

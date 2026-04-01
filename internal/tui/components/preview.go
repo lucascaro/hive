@@ -214,11 +214,16 @@ type Preview struct {
 
 // Resize updates the preview dimensions and passes them to the internal viewport.
 // Must be called before the first View() call and whenever the terminal resizes.
+// Scrolls back to the bottom when content is present, because a height change
+// invalidates the previous YOffset.
 func (p *Preview) Resize(w, h int) {
 	p.Width = w
 	p.Height = h
 	p.vp.Width = w
 	p.vp.Height = h
+	if p.hasContent {
+		p.vp.GotoBottom()
+	}
 }
 
 // SetContent sanitizes raw tmux capture-pane output and stores it in the
@@ -270,14 +275,11 @@ func (p *Preview) View(activeSession string) string {
 	// Set the border style on the viewport so its View() wraps content in the
 	// correct border (focused or unfocused).  The viewport computes inner
 	// dimensions from Width/Height minus the style's frame size automatically.
-	// Re-apply GotoBottom() here in case Resize was called after SetContent
-	// (e.g. on the very first frame), ensuring YOffset is correct.
 	// Guard against degenerate sizes where the frame exceeds available space.
 	p.vp.Style = borderStyle
 	frameH := borderStyle.GetVerticalFrameSize()
 	frameW := borderStyle.GetHorizontalFrameSize()
 	if p.vp.Height > frameH && p.vp.Width > frameW {
-		p.vp.GotoBottom()
 		return p.vp.View()
 	}
 	// Dimensions too small to render a bordered viewport — return minimal output.
