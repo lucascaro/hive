@@ -118,6 +118,8 @@ func runStart(_ *cobra.Command, _ []string) error {
 				reconcileState(&appState)
 				// Restore cursor to the session we just detached from.
 				appState.ActiveSessionID = findSessionID(&appState, attach.TmuxSession, attach.TmuxWindow)
+				// Restore the screen the user was on before attaching.
+				appState.RestoreGridView = attach.FromGridView
 				continue
 			}
 		}
