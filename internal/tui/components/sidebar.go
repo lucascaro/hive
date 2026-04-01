@@ -41,11 +41,13 @@ type SidebarItem struct {
 	Label     string
 	Indent    int
 	// Rendered fields
-	AgentType  string
-	Status     string
-	TeamRole   string
-	Collapsed  bool
-	ProjectNum int // 1-based number for projects (0 = not a project)
+	AgentType      string
+	Status         string
+	TeamRole       string
+	Collapsed      bool
+	ProjectNum     int    // 1-based number for projects (0 = not a project)
+	IsWorktree     bool   // true if the session runs in a git worktree
+	WorktreeBranch string // branch name for worktree sessions
 }
 
 // Sidebar manages the project/team/session tree.
@@ -99,15 +101,17 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 					continue
 				}
 				s.Items = append(s.Items, SidebarItem{
-					Kind:      KindSession,
-					ProjectID: p.ID,
-					TeamID:    t.ID,
-					SessionID: sess.ID,
-					Label:     sess.Title,
-					Indent:    2,
-					AgentType: string(sess.AgentType),
-					Status:    string(sess.Status),
-					TeamRole:  string(sess.TeamRole),
+					Kind:           KindSession,
+					ProjectID:      p.ID,
+					TeamID:         t.ID,
+					SessionID:      sess.ID,
+					Label:          sess.Title,
+					Indent:         2,
+					AgentType:      string(sess.AgentType),
+					Status:         string(sess.Status),
+					TeamRole:       string(sess.TeamRole),
+					IsWorktree:     sess.WorktreePath != "",
+					WorktreeBranch: sess.WorktreeBranch,
 				})
 			}
 		}
@@ -117,14 +121,16 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 				continue
 			}
 			s.Items = append(s.Items, SidebarItem{
-				Kind:      KindSession,
-				ProjectID: p.ID,
-				SessionID: sess.ID,
-				Label:     sess.Title,
-				Indent:    1,
-				AgentType: string(sess.AgentType),
-				Status:    string(sess.Status),
-				TeamRole:  string(state.RoleStandalone),
+				Kind:           KindSession,
+				ProjectID:      p.ID,
+				SessionID:      sess.ID,
+				Label:          sess.Title,
+				Indent:         1,
+				AgentType:      string(sess.AgentType),
+				Status:         string(sess.Status),
+				TeamRole:       string(state.RoleStandalone),
+				IsWorktree:     sess.WorktreePath != "",
+				WorktreeBranch: sess.WorktreeBranch,
 			})
 		}
 	}
@@ -284,7 +290,11 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		if item.TeamRole == string(state.RoleOrchestrator) {
 			rolePrefix = styles.OrchestratorStyle.Render("★ ")
 		}
-		label = fmt.Sprintf("%s%s %s %s", rolePrefix, dot, item.Label, badge)
+		worktreeBadge := ""
+		if item.IsWorktree && item.WorktreeBranch != "" {
+			worktreeBadge = " " + styles.MutedStyle.Render("⎇ "+item.WorktreeBranch)
+		}
+		label = fmt.Sprintf("%s%s %s %s%s", rolePrefix, dot, item.Label, badge, worktreeBadge)
 		if active {
 			label += " ←"
 		}

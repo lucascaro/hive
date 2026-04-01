@@ -108,8 +108,10 @@ type Session struct {
 	TitleSource  TitleSource       `json:"title_source"`
 	AgentType    AgentType         `json:"agent_type"`
 	AgentCmd     []string          `json:"agent_cmd"`
-	WorkDir      string            `json:"work_dir"`
-	CreatedAt    time.Time         `json:"created_at"`
+	WorkDir        string            `json:"work_dir"`
+	WorktreePath   string            `json:"worktree_path,omitempty"`   // non-empty = session runs in a git worktree
+	WorktreeBranch string            `json:"worktree_branch,omitempty"` // branch name for the worktree
+	CreatedAt      time.Time         `json:"created_at"`
 	LastActiveAt time.Time         `json:"last_active_at"`
 	Meta         map[string]string `json:"meta,omitempty"`
 }

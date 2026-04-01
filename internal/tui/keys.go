@@ -7,6 +7,7 @@ import (
 
 // KeyMap holds all key bindings for the application.
 type KeyMap struct {
+	NewWorktreeSession key.Binding
 	NewProject     key.Binding
 	NewSession     key.Binding
 	NewTeam        key.Binding
@@ -36,6 +37,7 @@ type KeyMap struct {
 // NewKeyMap builds a KeyMap from the loaded config.
 func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 	return KeyMap{
+		NewWorktreeSession: key.NewBinding(key.WithKeys(kb.NewWorktreeSession), key.WithHelp(kb.NewWorktreeSession, "new worktree session")),
 		NewProject:     key.NewBinding(key.WithKeys(kb.NewProject), key.WithHelp(kb.NewProject, "new project")),
 		NewSession:     key.NewBinding(key.WithKeys(kb.NewSession), key.WithHelp(kb.NewSession, "new session")),
 		NewTeam:        key.NewBinding(key.WithKeys(kb.NewTeam), key.WithHelp(kb.NewTeam, "new team")),

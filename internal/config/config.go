@@ -38,6 +38,7 @@ type HooksConfig struct {
 
 // KeybindingsConfig maps action names to key strings.
 type KeybindingsConfig struct {
+	NewWorktreeSession string `json:"new_worktree_session"`
 	NewProject     string `json:"new_project"`
 	NewSession     string `json:"new_session"`
 	NewTeam        string `json:"new_team"`

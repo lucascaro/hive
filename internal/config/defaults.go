@@ -26,6 +26,7 @@ func DefaultConfig() Config {
 			Dir:     "~/.config/hive/hooks",
 		},
 		Keybindings: KeybindingsConfig{
+			NewWorktreeSession: "W",
 			NewProject:     "n",
 			NewSession:     "t",
 			NewTeam:        "T",

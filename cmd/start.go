@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/lucascaro/hive/internal/config"
+	"github.com/lucascaro/hive/internal/git"
 	"github.com/lucascaro/hive/internal/mux"
 	muxnative "github.com/lucascaro/hive/internal/mux/native"
 	muxtmux "github.com/lucascaro/hive/internal/mux/tmux"
@@ -147,12 +148,15 @@ func initMuxBackend(cfg config.Config) error {
 }
 
 // reconcileState removes sessions whose window no longer exists in the backend.
+// For worktree sessions, it also removes the associated git worktree.
 func reconcileState(appState *state.AppState) {
+	var dead []*state.Session
 	var deadIDs []string
 	for _, sess := range state.AllSessions(appState) {
 		windows, err := mux.ListWindows(sess.TmuxSession)
 		if err != nil {
 			// Session gone entirely — all windows in it are dead.
+			dead = append(dead, sess)
 			deadIDs = append(deadIDs, sess.ID)
 			continue
 		}
@@ -164,7 +168,16 @@ func reconcileState(appState *state.AppState) {
 			}
 		}
 		if !found {
+			dead = append(dead, sess)
 			deadIDs = append(deadIDs, sess.ID)
+		}
+	}
+	for _, sess := range dead {
+		// Clean up any git worktree owned by this session.
+		if sess.WorktreePath != "" {
+			if gitRoot, err := git.Root(sess.WorkDir); err == nil {
+				_ = git.RemoveWorktree(gitRoot, sess.WorktreePath)
+			}
 		}
 	}
 	for _, id := range deadIDs {

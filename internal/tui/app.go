@@ -17,6 +17,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/escape"
+	"github.com/lucascaro/hive/internal/git"
 	"github.com/lucascaro/hive/internal/hooks"
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
@@ -50,10 +51,14 @@ type Model struct {
 	gridView    components.GridView
 	nameInput   textinput.Model // for project name / directory input
 	// UI sub-states
-	inputMode           string // "project-name", "project-dir", "new-session", ""
+	inputMode           string // "project-name", "project-dir", "new-session", "worktree-branch", ""
 	pendingProjectName  string // name entered in step 1 of project creation
 	pendingProjectID    string
-	pendingAgentType string   // agent type awaiting install confirmation
+	pendingAgentType    string // agent type awaiting install confirmation
+	// Worktree session creation
+	pendingWorktree          bool   // true when the next session should use a worktree
+	pendingWorktreeAgentType string // agent type selected for worktree session
+	pendingWorktreeAgentCmd  []string
 	// Attach hint overlay
 	showAttachHint  bool
 	pendingAttach   *SessionAttachMsg
@@ -289,6 +294,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.teamBuilder.Hide()
 		m.nameInput.Blur()
 		m.inputMode = ""
+		m.pendingWorktree = false
+		m.pendingWorktreeAgentType = ""
+		m.pendingWorktreeAgentCmd = nil
 		return m, nil
 
 	// --- Grid view ---
@@ -331,6 +339,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Action:  "install-agent:" + agentTypeStr,
 					}
 				}
+			}
+			if m.pendingWorktree {
+				// Worktree flow: collect branch name next.
+				m.pendingWorktreeAgentType = agentTypeStr
+				m.pendingWorktreeAgentCmd = profile.Cmd
+				m.inputMode = "worktree-branch"
+				m.nameInput.Placeholder = "branch-name"
+				m.nameInput.Reset()
+				m.nameInput.SetValue(git.RandomBranchName())
+				blinkCmd := m.nameInput.Focus()
+				return m, blinkCmd
 			}
 			cmd := m.createSession(m.pendingProjectID, agentTypeStr, profile.Cmd)
 			return m, cmd
@@ -404,6 +423,9 @@ func (m Model) View() string {
 	}
 	if m.inputMode == "project-dir" {
 		return m.overlayView(m.nameInputView("New Project (2/2)", "Working directory:", "enter: create  esc: back"))
+	}
+	if m.inputMode == "worktree-branch" {
+		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
 	}
 	if m.appState.EditingTitle {
 		return m.overlayView(m.renameDialogView())
@@ -542,6 +564,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.inputMode == "project-name" || m.inputMode == "project-dir" {
 		return m.handleNameInput(msg)
 	}
+	if m.inputMode == "worktree-branch" {
+		return m.handleWorktreeBranchInput(msg)
+	}
 	if m.appState.FilterActive {
 		return m.handleFilter(msg)
 	}
@@ -627,6 +652,38 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.pendingProjectID = pid
+		m.pendingWorktree = false
+		m.inputMode = "new-session"
+		m.agentPicker.Show(m.sortedAgentItems())
+		return m, nil
+
+	case key.Matches(msg, m.keys.NewWorktreeSession):
+		sel := m.sidebar.Selected()
+		if sel == nil {
+			return m, nil
+		}
+		pid := sel.ProjectID
+		if pid == "" {
+			return m, nil
+		}
+		// Verify this project is a git repo before proceeding.
+		projDir := ""
+		for _, p := range m.appState.Projects {
+			if p.ID == pid {
+				projDir = p.Directory
+				break
+			}
+		}
+		if projDir == "" {
+			projDir, _ = os.Getwd()
+		}
+		if !git.IsGitRepo(projDir) {
+			return m, func() tea.Msg {
+				return ErrorMsg{Err: fmt.Errorf("project directory is not a git repository")}
+			}
+		}
+		m.pendingProjectID = pid
+		m.pendingWorktree = true
 		m.inputMode = "new-session"
 		m.agentPicker.Show(m.sortedAgentItems())
 		return m, nil
@@ -942,6 +999,36 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// --- Worktree branch input ---
+
+func (m Model) handleWorktreeBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		branch := strings.TrimSpace(m.nameInput.Value())
+		if branch == "" {
+			return m, nil
+		}
+		m.nameInput.Blur()
+		m.inputMode = ""
+		agentType := m.pendingWorktreeAgentType
+		agentCmd := m.pendingWorktreeAgentCmd
+		m.pendingWorktreeAgentType = ""
+		m.pendingWorktreeAgentCmd = nil
+		m.pendingWorktree = false
+		return m, m.createSessionWithWorktree(m.pendingProjectID, agentType, agentCmd, branch)
+	case "esc":
+		m.nameInput.Blur()
+		m.inputMode = ""
+		m.pendingWorktree = false
+		m.pendingWorktreeAgentType = ""
+		m.pendingWorktreeAgentCmd = nil
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.nameInput, cmd = m.nameInput.Update(msg)
+	return m, cmd
+}
+
 // --- Confirmation ---
 
 func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -989,6 +1076,42 @@ func (m Model) handleConfirmedAction(action string) tea.Cmd {
 			return AgentInstalledMsg{AgentType: agentType}
 		}
 	}
+	if strings.HasPrefix(action, "gitignore-worktrees:") {
+		// action format: "gitignore-worktrees:<projectID>:<branch>"
+		rest := strings.TrimPrefix(action, "gitignore-worktrees:")
+		colonIdx := strings.Index(rest, ":")
+		if colonIdx < 0 {
+			return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("malformed gitignore action")} }
+		}
+		projectID := rest[:colonIdx]
+		branch := rest[colonIdx+1:]
+
+		var proj *state.Project
+		for _, p := range m.appState.Projects {
+			if p.ID == projectID {
+				proj = p
+				break
+			}
+		}
+		if proj == nil {
+			return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("project not found")} }
+		}
+		projDir := proj.Directory
+		if projDir == "" {
+			projDir, _ = os.Getwd()
+		}
+		gitRoot, err := git.Root(projDir)
+		if err != nil {
+			return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("git root not found: %w", err)} }
+		}
+		_ = git.AddToGitignore(gitRoot, ".worktrees")
+		worktreePath := git.WorktreePath(gitRoot, branch)
+		agentTypeStr := m.pendingWorktreeAgentType
+		agentCmd := m.pendingWorktreeAgentCmd
+		m.pendingWorktreeAgentType = ""
+		m.pendingWorktreeAgentCmd = nil
+		return m.spawnWorktreeSession(proj, agentTypeStr, agentCmd, branch, gitRoot, worktreePath)
+	}
 	return nil
 }
 
@@ -1005,6 +1128,107 @@ func (m *Model) createProject(name, directory string) tea.Cmd {
 		WorkDir:     proj.Directory,
 	})
 	return func() tea.Msg { return ProjectCreatedMsg{Project: proj} }
+}
+
+func (m *Model) createSessionWithWorktree(projectID, agentTypeStr string, agentCmd []string, branch string) tea.Cmd {
+	// Find project directory.
+	var proj *state.Project
+	for _, p := range m.appState.Projects {
+		if p.ID == projectID {
+			proj = p
+			break
+		}
+	}
+	if proj == nil {
+		return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("project not found")} }
+	}
+	projDir := proj.Directory
+	if projDir == "" {
+		projDir, _ = os.Getwd()
+	}
+
+	// Resolve git root.
+	gitRoot, err := git.Root(projDir)
+	if err != nil {
+		return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("not a git repository: %w", err)} }
+	}
+
+	worktreePath := git.WorktreePath(gitRoot, branch)
+
+	// If .worktrees is not yet in .gitignore, ask the user first.
+	if !git.IsInGitignore(gitRoot, ".worktrees") {
+		// Stash branch/agent info so the confirm handler can retrieve them.
+		m.pendingWorktreeAgentType = agentTypeStr
+		m.pendingWorktreeAgentCmd = agentCmd
+		return func() tea.Msg {
+			return ConfirmActionMsg{
+				Message: "Add \".worktrees\" to .gitignore?\n\n(Recommended to keep worktrees out of git history)",
+				Action:  "gitignore-worktrees:" + projectID + ":" + branch,
+			}
+		}
+	}
+
+	return m.spawnWorktreeSession(proj, agentTypeStr, agentCmd, branch, gitRoot, worktreePath)
+}
+
+func (m *Model) spawnWorktreeSession(proj *state.Project, agentTypeStr string, agentCmd []string, branch, gitRoot, worktreePath string) tea.Cmd {
+	agentType := state.AgentType(agentTypeStr)
+	if len(agentCmd) == 0 {
+		if profile, ok := m.cfg.Agents[agentTypeStr]; ok {
+			agentCmd = profile.Cmd
+		} else {
+			agentCmd = []string{agentTypeStr}
+		}
+	}
+
+	// Create the worktree first so the agent starts in an existing directory.
+	if err := git.CreateWorktree(gitRoot, branch, worktreePath); err != nil {
+		return func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("worktree creation failed: %w", err)} }
+	}
+
+	muxSess := mux.SessionName(proj.ID)
+	proj.SessionCounter++
+	sessionTitle := fmt.Sprintf("session-%d", proj.SessionCounter)
+
+	var windowIdx int
+	var err error
+	if !mux.SessionExists(muxSess) {
+		winName := mux.WindowName(sessionTitle)
+		if err = mux.CreateSession(muxSess, winName, worktreePath, agentCmd); err != nil {
+			_ = git.RemoveWorktree(gitRoot, worktreePath)
+			return func() tea.Msg { return ErrorMsg{Err: err} }
+		}
+		windowIdx = 0
+	} else {
+		winName := mux.WindowName(sessionTitle)
+		windowIdx, err = mux.CreateWindow(muxSess, winName, worktreePath, agentCmd)
+		if err != nil {
+			_ = git.RemoveWorktree(gitRoot, worktreePath)
+			return func() tea.Msg { return ErrorMsg{Err: err} }
+		}
+	}
+
+	_, sess := state.CreateSession(&m.appState, proj.ID, sessionTitle, agentType, agentCmd, worktreePath, muxSess, windowIdx)
+	sess.WorktreePath = worktreePath
+	sess.WorktreeBranch = branch
+	state.RecordAgentUsage(&m.appState, agentTypeStr)
+	m.sidebar.Rebuild(&m.appState)
+	m.persist()
+
+	m.fireHook(state.HookEvent{
+		Name:         state.EventSessionCreate,
+		ProjectID:    proj.ID,
+		ProjectName:  proj.Name,
+		SessionID:    sess.ID,
+		SessionTitle: sess.Title,
+		AgentType:    agentType,
+		AgentCmd:     agentCmd,
+		TmuxSession:  muxSess,
+		TmuxWindow:   windowIdx,
+		WorkDir:      worktreePath,
+	})
+
+	return func() tea.Msg { return SessionCreatedMsg{Session: sess} }
 }
 
 func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string) tea.Cmd {
@@ -1183,13 +1407,20 @@ func (m *Model) killSession(sessionID string) tea.Cmd {
 		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 		_ = mux.KillWindow(target)
 		m.fireHook(state.HookEvent{
-			Name:        state.EventSessionKill,
-			SessionID:   sess.ID,
+			Name:         state.EventSessionKill,
+			SessionID:    sess.ID,
 			SessionTitle: sess.Title,
-			AgentType:   sess.AgentType,
-			TmuxSession: sess.TmuxSession,
-			TmuxWindow:  sess.TmuxWindow,
+			AgentType:    sess.AgentType,
+			TmuxSession:  sess.TmuxSession,
+			TmuxWindow:   sess.TmuxWindow,
 		})
+		// Clean up git worktree if this session owns one.
+		if sess.WorktreePath != "" {
+			repoDir := sess.WorkDir
+			if gitRoot, err := git.Root(repoDir); err == nil {
+				_ = git.RemoveWorktree(gitRoot, sess.WorktreePath)
+			}
+		}
 	}
 	m.appState = *state.RemoveSession(&m.appState, sessionID)
 	m.sidebar.Rebuild(&m.appState)
@@ -1522,6 +1753,7 @@ func (m Model) helpView() string {
 		{"space", "toggle collapse project/team"},
 		{"n", "new project"},
 		{"t", "new session (agent picker)"},
+		{"W", "new worktree session"},
 		{"T", "new agent team (wizard)"},
 		{"r", "rename session or team"},
 		{"x/d", "kill session"},
