@@ -3,12 +3,12 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/spf13/cobra"
 
+	"github.com/lucascaro/hive/internal/config"
+	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
-	"github.com/lucascaro/hive/internal/tmux"
 	"github.com/lucascaro/hive/internal/tui"
 )
 
@@ -20,8 +20,15 @@ var attachCmd = &cobra.Command{
 }
 
 func runAttach(_ *cobra.Command, args []string) error {
-	if !tmux.IsAvailable() {
-		return fmt.Errorf("tmux is required but not found in PATH")
+	if err := config.Ensure(); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if err := initMuxBackend(config.Migrate(cfg)); err != nil {
+		return err
 	}
 
 	projects, err := tui.LoadState()
@@ -59,12 +66,7 @@ func runAttach(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("session not found")
 	}
 
-	tmuxTarget := tmux.Target(target.TmuxSession, target.TmuxWindow)
-	fmt.Fprintf(os.Stderr, "Attaching to %s (%s)…\n", target.Title, tmuxTarget)
-
-	cmd := exec.Command("tmux", "attach-session", "-t", tmuxTarget)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	muxTarget := mux.Target(target.TmuxSession, target.TmuxWindow)
+	fmt.Fprintf(os.Stderr, "Attaching to %s (%s)…\n", target.Title, muxTarget)
+	return mux.Attach(muxTarget)
 }

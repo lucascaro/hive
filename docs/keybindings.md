@@ -44,6 +44,17 @@
 | `G` | Switch to all-projects view (while grid is open) |
 | `g` / `Esc` / `q` | Exit grid view |
 
+## Status Indicator
+
+Hive shows session state with a colored dot in the sidebar, team rows, and grid tiles:
+
+- `○` gray: idle
+- `●` green: working
+- `◉` amber: waiting
+- `✕` red: dead
+
+The legend is visible in the main status bar and in the grid footer.
+
 ## Search & Navigation
 
 | Key | Action |

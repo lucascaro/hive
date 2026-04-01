@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucascaro/hive/internal/state"
-	"github.com/lucascaro/hive/internal/tmux"
+	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
@@ -32,8 +32,8 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd
 			if sess.TmuxSession == "" {
 				continue
 			}
-			target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-			content, err := tmux.CapturePane(target, 200)
+			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+			content, err := mux.CapturePane(target, 200)
 			if err == nil {
 				contents[sess.ID] = sanitizePreviewContent(content)
 			}
@@ -142,7 +142,7 @@ func (gv *GridView) View() string {
 
 	cols := gridColumns(gv.Width, gv.Height, n)
 	rows := (n + cols - 1) / cols
-	hintH := 1
+	hintH := 2
 	cellW := gv.Width / cols
 	cellH := (gv.Height - hintH) / rows
 	if cellH < 5 {
@@ -164,7 +164,11 @@ func (gv *GridView) View() string {
 	}
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
-	hint := styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit")
+	hint := lipgloss.JoinVertical(
+		lipgloss.Left,
+		styles.MutedStyle.Render(styles.StatusLegend()),
+		styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"),
+	)
 	return lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 }
 
@@ -188,19 +192,18 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		innerH = 1
 	}
 
-	// Title line
+	// Title line — measure the prefix display width so that wide-char or
+	// emoji session titles don't overflow the cell.
 	dot := styles.StatusDot(string(sess.Status))
 	badge := styles.AgentBadge(string(sess.AgentType))
-	titleText := sess.Title
-	maxTitleLen := innerW - 12
-	if maxTitleLen > 0 {
-		runes := []rune(titleText)
-		if len(runes) > maxTitleLen {
-			titleText = string(runes[:maxTitleLen]) + "…"
-		}
+	prefix := dot + " " + badge + " "
+	maxTitleW := innerW - ansi.StringWidth(prefix)
+	if maxTitleW < 0 {
+		maxTitleW = 0
 	}
+	titleText := ansi.Truncate(sess.Title, maxTitleW, "…")
 	titleLine := lipgloss.NewStyle().Width(innerW).Bold(selected).
-		Render(dot + " " + badge + " " + titleText)
+		Render(prefix + titleText)
 
 	// Content preview
 	var contentStr string

@@ -7,6 +7,10 @@ type Config struct {
 	PreviewRefreshMs            int                       `json:"preview_refresh_ms"`
 	AgentTitleOverridesUserTitle bool                     `json:"agent_title_overrides_user_title"`
 	HideAttachHint              bool                      `json:"hide_attach_hint,omitempty"`
+	// Multiplexer selects the backend for managing terminal sessions.
+	// "tmux" (default) uses the external tmux binary.
+	// "native" uses Go's built-in PTY daemon; no external binary needed.
+	Multiplexer                 string                    `json:"multiplexer,omitempty"`
 	Agents                      map[string]AgentProfile   `json:"agents"`
 	TeamDefaults                TeamDefaultsConfig        `json:"team_defaults"`
 	Hooks                       HooksConfig               `json:"hooks"`

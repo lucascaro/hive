@@ -6,11 +6,19 @@ An **agent team** is a coordinated group of AI agents working on the same goal. 
 
 Teams are shown in the sidebar with a three-level hierarchy:
 ```
-▼ [team] feature-x  [3 agents: 1 waiting, 2 idle]
-  ★ orchestrator [claude] [waiting]
-  ○ worker-1     [claude] [idle]
-  ○ worker-2     [codex]  [idle]
+▼ [team] feature-x ◉
+  ◉ ★ orchestrator [claude]
+  ○ worker-1     [claude]
+  ○ worker-2     [codex]
 ```
+
+Each session row keeps the status inline as a colored dot:
+- `○` gray: idle
+- `●` green: working
+- `◉` amber: waiting
+- `✕` red: dead
+
+Hive shows a status legend in the main status bar and in the grid view footer so the color meanings are always visible.
 
 ## Creating a Team
 
@@ -44,7 +52,7 @@ Claude natively supports multi-agent orchestration. A typical Claude team setup:
 
 Team status in the sidebar is derived from member statuses:
 - If any member is `waiting` → team shows as `waiting`
-- If any member is `running` → team shows as `running`
+- If any member is `running` → team shows as `working`
 - If all members are `idle` → team shows as `idle`
 - If all members are `dead` → team shows as `dead`
 

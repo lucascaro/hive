@@ -26,4 +26,5 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(attachCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(muxDaemonCmd)
 }

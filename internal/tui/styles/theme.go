@@ -121,3 +121,16 @@ func StatusDot(status string) string {
 		return DotIdle
 	}
 }
+
+// StatusLegend renders a compact inline legend for session status colors.
+func StatusLegend() string {
+	return lipgloss.JoinHorizontal(lipgloss.Left,
+		StatusDot("idle")+" idle",
+		"  ",
+		StatusDot("running")+" working",
+		"  ",
+		StatusDot("waiting")+" waiting",
+		"  ",
+		StatusDot("dead")+" dead",
+	)
+}

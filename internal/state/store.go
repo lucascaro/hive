@@ -252,6 +252,11 @@ func AllSessions(state *AppState) []*Session {
 	return out
 }
 
+// FindSession returns the session with the given ID, or nil if not found.
+func FindSession(state *AppState, sessionID string) *Session {
+	return findSession(state, sessionID)
+}
+
 // SessionLabel returns a short display string for a session.
 func SessionLabel(s *Session) string {
 	role := ""

@@ -7,6 +7,7 @@ func DefaultConfig() Config {
 		Theme:                       "dark",
 		PreviewRefreshMs:            500,
 		AgentTitleOverridesUserTitle: false,
+		Multiplexer:                 "tmux",
 		Agents: map[string]AgentProfile{
 			"claude":   {Cmd: []string{"claude"}, InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"}},
 			"codex":    {Cmd: []string{"codex"}, InstallCmd: []string{"npm", "install", "-g", "@openai/codex"}},

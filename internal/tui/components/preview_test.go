@@ -127,6 +127,99 @@ func TestSanitizePreviewContent_StripsPrivateMode(t *testing.T) {
 	}
 }
 
+func TestSanitizePreviewContent_ExpandsTabs(t *testing.T) {
+	// Tabs must be expanded to spaces. ansi.StringWidth counts \t as zero
+	// width, so an unexpanded tab bypasses ansi.Truncate and then renders
+	// wider than the box, causing lines to wrap and corrupt the layout.
+	cases := []struct {
+		name     string
+		input    string
+		wantNone string // must NOT appear in output
+		wantSome string // must appear in output
+	}{
+		{
+			name:     "single tab at start",
+			input:    "\thello",
+			wantNone: "\t",
+			wantSome: "        hello", // 8 spaces to first tab stop
+		},
+		{
+			name:     "tab after 4 chars reaches next 8-stop",
+			input:    "abcd\tef",
+			wantNone: "\t",
+			wantSome: "abcd    ef", // 4 spaces to column 8
+		},
+		{
+			name:     "two tabs from column 0",
+			input:    "\t\tcode",
+			wantNone: "\t",
+			wantSome: "                code", // 16 spaces
+		},
+		{
+			name:     "tab after newline resets column",
+			input:    "line1\n\tline2",
+			wantNone: "\t",
+			wantSome: "line1\n        line2",
+		},
+		{
+			name:     "no tabs unchanged",
+			input:    "hello world",
+			wantSome: "hello world",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := sanitizePreviewContent(tc.input)
+			if tc.wantNone != "" && strings.Contains(out, tc.wantNone) {
+				t.Errorf("output contains %q; got %q", tc.wantNone, out)
+			}
+			if tc.wantSome != "" && !strings.Contains(out, tc.wantSome) {
+				t.Errorf("output missing %q; got %q", tc.wantSome, out)
+			}
+		})
+	}
+}
+
+func TestExpandTabs(t *testing.T) {
+	// expandTabs correctness: verify column-based expansion.
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"\t", "        "},           // col 0 → 8 spaces
+		{"a\t", "a       "},          // col 1 → 7 spaces to col 8
+		{"abcdefg\t", "abcdefg "},    // col 7 → 1 space to col 8
+		{"abcdefgh\t", "abcdefgh        "}, // col 8 → 8 spaces to col 16
+		{"\t\t", "                "}, // 8+8 = 16 spaces
+		{"hi\n\tbye", "hi\n        bye"},
+		{"no tabs here", "no tabs here"},
+	}
+	for _, tc := range cases {
+		got := expandTabs(tc.input)
+		if got != tc.want {
+			t.Errorf("expandTabs(%q) = %q; want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestPreviewView_TabContent_HeightInvariant(t *testing.T) {
+	// Tab-indented content (common in code panes) must not break the height
+	// invariant.  Before the fix, a tab-containing line was truncated to
+	// innerW columns by ansi.Truncate (which counts \t as width 0), then
+	// rendered wider than the box because the terminal expanded the tab,
+	// causing the line to wrap and add an extra row.
+	tabContent := "\t\tvar x = someFunction(\n\t\t\targument1,\n\t\t\targument2,\n\t\t)\n"
+	tabContent += strings.Repeat("\tsome line of code\n", 20)
+	for _, h := range []int{10, 20, 30} {
+		p := &Preview{Width: 80, Height: h, Content: tabContent}
+		out := p.View("sess-1")
+		got := countLines(out)
+		if got != h {
+			t.Errorf("height=%d: got %d lines\n%s", h, got, out)
+		}
+	}
+}
+
 // countLines returns the number of lines in s (newline-separated).
 func countLines(s string) int { return strings.Count(s, "\n") + 1 }
 

@@ -45,7 +45,106 @@ func sanitizePreviewContent(s string) string {
 	// Strip bare carriage returns and vertical-movement control chars that
 	// could shift the cursor unexpectedly outside of ANSI sequences.
 	s = strings.NewReplacer("\r", "", "\v", "", "\f", "").Replace(s)
+	// Expand tab characters to spaces.  ansi.StringWidth counts \t as
+	// zero-width, so ansi.Truncate does not account for the 1-8 display
+	// columns a tab consumes when the terminal renders it to the next
+	// 8-column tab stop.  Left unexpanded, a tab-indented line like
+	// "\t\tcode..." passes Truncate but then wraps inside the preview box,
+	// corrupting the layout.  We expand each tab to its correct number of
+	// spaces relative to the current column position so the display width
+	// matches what the terminal would show.
+	s = expandTabs(s)
 	return s
+}
+
+// expandTabs replaces each horizontal tab with the number of spaces needed to
+// reach the next 8-column tab stop, tracking the current column position
+// across the full string (resetting to 0 at each newline).  ANSI escape
+// sequences are treated as zero-width so they do not advance the column.
+func expandTabs(s string) string {
+	if !strings.ContainsRune(s, '\t') {
+		return s
+	}
+	var buf strings.Builder
+	buf.Grow(len(s))
+	col := 0
+	i := 0
+	for i < len(s) {
+		b := s[i]
+		switch {
+		case b == '\n':
+			buf.WriteByte('\n')
+			col = 0
+			i++
+		case b == '\t':
+			// Advance to next multiple of 8.
+			spaces := 8 - col%8
+			for k := 0; k < spaces; k++ {
+				buf.WriteByte(' ')
+			}
+			col += spaces
+			i++
+		case b == '\x1b':
+			// Pass ANSI escape sequences through unchanged, contributing
+			// zero to column width.
+			j := i + 1
+			if j < len(s) && s[j] == '[' {
+				// CSI: read until a byte in the range 0x40–0x7E.
+				j++
+				for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
+					j++
+				}
+				if j < len(s) {
+					j++ // include final byte
+				}
+			} else if j < len(s) {
+				j++ // other 2-byte escape
+			}
+			buf.WriteString(s[i:j])
+			i = j
+		default:
+			// Regular UTF-8 character: write the full rune and advance col.
+			r, size := rune(b), 1
+			if b >= 0x80 {
+				// Decode the full rune.
+				var rr rune
+				rr, size = decodeRune(s[i:])
+				r = rr
+			}
+			buf.WriteString(s[i : i+size])
+			w := runeDisplayWidth(r)
+			col += w
+			i += size
+		}
+	}
+	return buf.String()
+}
+
+// decodeRune decodes the first UTF-8 rune from s.
+func decodeRune(s string) (rune, int) {
+	r := rune(s[0])
+	if r < 0x80 {
+		return r, 1
+	}
+	// Count leading 1-bits to determine sequence length.
+	size := 1
+	for size < len(s) && size < 4 && (s[size]&0xc0) == 0x80 {
+		size++
+	}
+	// Use the standard library via a quick conversion.
+	for _, r2 := range s[:size] {
+		return r2, size
+	}
+	return r, size
+}
+
+// runeDisplayWidth returns the terminal display width of r (0 for control
+// chars, 1 for normal chars, 2 for wide East Asian chars).
+func runeDisplayWidth(r rune) int {
+	if r < 0x20 || (r >= 0x7f && r < 0xa0) {
+		return 0 // control character
+	}
+	return ansi.StringWidth(string(r))
 }
 
 var previewLog *log.Logger

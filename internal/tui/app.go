@@ -18,8 +18,8 @@ import (
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/escape"
 	"github.com/lucascaro/hive/internal/hooks"
+	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
-	"github.com/lucascaro/hive/internal/tmux"
 	"github.com/lucascaro/hive/internal/tui/components"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
@@ -65,6 +65,9 @@ type Model struct {
 	// which lets stale concurrent poll goroutines die off naturally instead of
 	// accumulating and causing rapid-fire re-renders.
 	previewPollGen uint64
+	// contentSnapshots holds the last captured pane content for each session,
+	// used by the status watcher to detect activity via content diffing.
+	contentSnapshots map[string]string
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -79,13 +82,14 @@ func New(cfg config.Config, appState state.AppState) Model {
 	ni.Placeholder = "Project name"
 
 	m := Model{
-		cfg:         cfg,
-		appState:    appState,
-		keys:        km,
-		titleEditor: components.NewTitleEditor(),
-		agentPicker: components.NewAgentPicker(),
-		teamBuilder: components.NewTeamBuilder(),
-		nameInput:   ni,
+		cfg:              cfg,
+		appState:         appState,
+		keys:             km,
+		titleEditor:      components.NewTitleEditor(),
+		agentPicker:      components.NewAgentPicker(),
+		teamBuilder:      components.NewTeamBuilder(),
+		nameInput:        ni,
+		contentSnapshots: make(map[string]string),
 	}
 	m.sidebar.Rebuild(&m.appState)
 	// Sync sidebar cursor to the active session (set by caller on re-entry after detach),
@@ -115,6 +119,7 @@ func (m Model) Init() tea.Cmd {
 		tea.SetWindowTitle("hive"),
 		m.schedulePollPreview(),
 		m.scheduleWatchTitles(),
+		m.scheduleWatchStatuses(),
 	)
 }
 
@@ -168,6 +173,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.scheduleWatchTitles()
 
+	// --- Status watcher ---
+	case escape.StatusesDetectedMsg:
+		// Always update content snapshots so the next diff is accurate.
+		for sessionID, content := range msg.Contents {
+			m.contentSnapshots[sessionID] = content
+		}
+		changed := false
+		for sessionID, status := range msg.Statuses {
+			sess := state.FindSession(&m.appState, sessionID)
+			if sess != nil && sess.Status != status {
+				m.appState = *state.UpdateSessionStatus(&m.appState, sessionID, status)
+				changed = true
+			}
+		}
+		if changed {
+			m.sidebar.Rebuild(&m.appState)
+		}
+		return m, m.scheduleWatchStatuses()
+
 	// --- Session lifecycle ---
 	case SessionCreatedMsg:
 		m.appState = *state.UpdateSessionStatus(&m.appState, msg.Session.ID, state.StatusRunning)
@@ -190,8 +214,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Rename tmux window too
 		sess := m.appState.ActiveSession()
 		if sess != nil {
-			target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-			_ = tmux.RenameWindow(target, msg.Title)
+			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+			_ = mux.RenameWindow(target, msg.Title)
 			m.fireHook(state.HookEvent{
 				Name:         state.EventSessionTitleChange,
 				SessionID:    sess.ID,
@@ -987,35 +1011,29 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 	if workDir == "" {
 		workDir, _ = os.Getwd()
 	}
-	tmuxSess := tmux.SessionName(projectID)
+	muxSess := mux.SessionName(projectID)
 	// Use a monotonically incrementing counter so names stay unique even
 	// after sessions are deleted (avoids "session-1" reappearing).
 	proj.SessionCounter++
 	sessionTitle := fmt.Sprintf("session-%d", proj.SessionCounter)
 
-	// Wrap the agent command in a non-interactive shell so:
-	//   1. No shell prompt is shown (sh is not interactive).
-	//   2. `tmux detach-client` runs when the agent exits, returning the user
-	//      to hive instead of switching to another tmux window.
-	launchCmd := []string{"sh", "-c", strings.Join(agentCmd, " ") + "; tmux detach-client"}
-
 	var windowIdx int
 	var err error
-	if !tmux.SessionExists(tmuxSess) {
-		winName := tmux.WindowName(sessionTitle)
-		if err = tmux.CreateSession(tmuxSess, winName, workDir, launchCmd); err != nil {
+	if !mux.SessionExists(muxSess) {
+		winName := mux.WindowName(sessionTitle)
+		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := tmux.WindowName(sessionTitle)
-		windowIdx, err = tmux.CreateWindow(tmuxSess, winName, workDir, launchCmd)
+		winName := mux.WindowName(sessionTitle)
+		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 	}
 
-	_, sess := state.CreateSession(&m.appState, projectID, sessionTitle, agentType, agentCmd, workDir, tmuxSess, windowIdx)
+	_, sess := state.CreateSession(&m.appState, projectID, sessionTitle, agentType, agentCmd, workDir, muxSess, windowIdx)
 	state.RecordAgentUsage(&m.appState, agentTypeStr)
 	m.sidebar.Rebuild(&m.appState)
 	m.persist()
@@ -1028,7 +1046,7 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 		SessionTitle: sess.Title,
 		AgentType:   agentType,
 		AgentCmd:    agentCmd,
-		TmuxSession: tmuxSess,
+		TmuxSession: muxSess,
 		TmuxWindow:  windowIdx,
 		WorkDir:     workDir,
 	})
@@ -1058,18 +1076,18 @@ func (m *Model) createTeam(spec components.TeamSpec) tea.Cmd {
 		WorkDir:     spec.SharedWorkDir,
 	})
 
-	tmuxSess := tmux.SessionName(projectID)
+	muxSess := mux.SessionName(projectID)
 
 	// Create orchestrator session.
 	var cmds []tea.Cmd
 	orchCmd := m.agentCmd(string(spec.OrchestratorAgent))
-	cmds = append(cmds, m.addTeamSession(proj, team, state.RoleOrchestrator, "orchestrator", spec.OrchestratorAgent, orchCmd, spec.SharedWorkDir, tmuxSess))
+	cmds = append(cmds, m.addTeamSession(proj, team, state.RoleOrchestrator, "orchestrator", spec.OrchestratorAgent, orchCmd, spec.SharedWorkDir, muxSess))
 
 	// Create worker sessions.
 	for i, agentType := range spec.Workers {
 		workerCmd := m.agentCmd(string(agentType))
 		title := fmt.Sprintf("worker-%d", i+1)
-		cmds = append(cmds, m.addTeamSession(proj, team, state.RoleWorker, title, agentType, workerCmd, spec.SharedWorkDir, tmuxSess))
+		cmds = append(cmds, m.addTeamSession(proj, team, state.RoleWorker, title, agentType, workerCmd, spec.SharedWorkDir, muxSess))
 	}
 
 	m.sidebar.Rebuild(&m.appState)
@@ -1077,26 +1095,24 @@ func (m *Model) createTeam(spec components.TeamSpec) tea.Cmd {
 	return tea.Batch(append(cmds, func() tea.Msg { return TeamCreatedMsg{Team: team} })...)
 }
 
-func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state.TeamRole, title string, agentType state.AgentType, agentCmd []string, workDir, tmuxSess string) tea.Cmd {
-	launchCmd := []string{"sh", "-c", strings.Join(agentCmd, " ") + "; tmux detach-client"}
-
+func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state.TeamRole, title string, agentType state.AgentType, agentCmd []string, workDir, muxSess string) tea.Cmd {
 	var windowIdx int
 	var err error
-	if !tmux.SessionExists(tmuxSess) {
-		winName := tmux.WindowName(title)
-		if err = tmux.CreateSession(tmuxSess, winName, workDir, launchCmd); err != nil {
+	if !mux.SessionExists(muxSess) {
+		winName := mux.WindowName(title)
+		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := tmux.WindowName(title)
-		windowIdx, err = tmux.CreateWindow(tmuxSess, winName, workDir, launchCmd)
+		winName := mux.WindowName(title)
+		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 	}
 
-	_, sess := state.AddTeamSession(&m.appState, proj.ID, team.ID, role, title, agentType, agentCmd, workDir, tmuxSess, windowIdx)
+	_, sess := state.AddTeamSession(&m.appState, proj.ID, team.ID, role, title, agentType, agentCmd, workDir, muxSess, windowIdx)
 	state.RecordAgentUsage(&m.appState, string(agentType))
 	m.fireHook(state.HookEvent{
 		Name:        state.EventTeamMemberAdd,
@@ -1109,7 +1125,7 @@ func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state
 		TeamRole:    role,
 		AgentType:   agentType,
 		AgentCmd:    agentCmd,
-		TmuxSession: tmuxSess,
+		TmuxSession: muxSess,
 		TmuxWindow:  windowIdx,
 		WorkDir:     workDir,
 	})
@@ -1142,8 +1158,8 @@ func (m *Model) attachActiveSession() tea.Cmd {
 func (m *Model) killSession(sessionID string) tea.Cmd {
 	sess := m.activeSessionByID(sessionID)
 	if sess != nil {
-		target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-		_ = tmux.KillWindow(target)
+		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+		_ = mux.KillWindow(target)
 		m.fireHook(state.HookEvent{
 			Name:        state.EventSessionKill,
 			SessionID:   sess.ID,
@@ -1165,8 +1181,8 @@ func (m *Model) killTeam(teamID string) tea.Cmd {
 		for _, t := range p.Teams {
 			if t.ID == teamID {
 				for _, sess := range t.Sessions {
-					target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-					_ = tmux.KillWindow(target)
+					target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+					_ = mux.KillWindow(target)
 				}
 				m.fireHook(state.HookEvent{
 					Name:   state.EventTeamKill,
@@ -1185,17 +1201,17 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 	for _, p := range m.appState.Projects {
 		if p.ID == projectID {
 			for _, sess := range p.Sessions {
-				target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-				_ = tmux.KillWindow(target)
+				target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+				_ = mux.KillWindow(target)
 			}
 			for _, t := range p.Teams {
 				for _, sess := range t.Sessions {
-					target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-					_ = tmux.KillWindow(target)
+					target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+					_ = mux.KillWindow(target)
 				}
 			}
-			// Kill tmux session if still around.
-			_ = tmux.KillSession(tmux.SessionName(projectID))
+			// Kill session if still around.
+			_ = mux.KillSession(mux.SessionName(projectID))
 			m.fireHook(state.HookEvent{
 				Name:      state.EventProjectKill,
 				ProjectID: p.ID, ProjectName: p.Name,
@@ -1210,8 +1226,8 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 
 func (m *Model) killAllSessions() {
 	for _, sess := range state.AllSessions(&m.appState) {
-		target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-		_ = tmux.KillWindow(target)
+		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+		_ = mux.KillWindow(target)
 	}
 }
 
@@ -1325,14 +1341,14 @@ func (m Model) attachHintView() string {
 		Padding(1, 3).
 		Render(
 			styles.TitleStyle.Render("Attaching to session") + "\n\n" +
-				"You are about to enter a tmux session.\n" +
+				"You are about to attach to a running agent session.\n" +
 				"The Hive TUI will be suspended while you work.\n\n" +
 				lipgloss.NewStyle().Bold(true).Render("To return to Hive:") + "  press  " +
 				lipgloss.NewStyle().
 					Foreground(styles.ColorAccent).
 					Bold(true).
-					Render("Ctrl+B D") +
-				"  (tmux detach)\n\n" +
+					Render(mux.DetachKey()) +
+				"\n\n" +
 				styles.MutedStyle.Render("enter: proceed  d: don't show again  esc: cancel"),
 		)
 }
@@ -1400,7 +1416,7 @@ func (m *Model) scheduleWatchTitles() tea.Cmd {
 	targets := make(map[string]string)
 	for _, sess := range state.AllSessions(&m.appState) {
 		if sess.Status != state.StatusDead {
-			targets[sess.ID] = tmux.Target(sess.TmuxSession, sess.TmuxWindow)
+			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
 		}
 	}
 	if len(targets) == 0 {
@@ -1408,6 +1424,20 @@ func (m *Model) scheduleWatchTitles() tea.Cmd {
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
 	return escape.WatchTitles(targets, interval)
+}
+
+func (m *Model) scheduleWatchStatuses() tea.Cmd {
+	targets := make(map[string]string)
+	for _, sess := range state.AllSessions(&m.appState) {
+		if sess.Status != state.StatusDead {
+			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
+		}
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
+	return escape.WatchStatuses(targets, m.contentSnapshots, interval)
 }
 
 // --- View helpers ---
@@ -1508,7 +1538,7 @@ func (m Model) helpView() string {
 func (m Model) tmuxHelpView() string {
 	type binding struct{ key, desc string }
 	bindings := []binding{
-		{"ctrl+b d", "detach from session (return to hive)"},
+		{mux.DetachKey(), "detach from session (return to hive)"},
 		{"ctrl+b c", "create a new window"},
 		{"ctrl+b n / p", "next / previous window"},
 		{"ctrl+b 0-9", "switch to window by number"},
@@ -1546,13 +1576,9 @@ func (m Model) tmuxHelpView() string {
 	)
 }
 
-// Run handles the attach flow: exits TUI, runs tmux attach, relaunches TUI.
+// RunAttach handles the attach flow: exits TUI, attaches to the session, relaunches TUI.
 // This is called by cmd/start.go after tea.Program.Run returns with a SessionAttachMsg.
 func RunAttach(sess SessionAttachMsg) error {
-	target := tmux.Target(sess.TmuxSession, sess.TmuxWindow)
-	cmd := exec.Command("tmux", "attach-session", "-t", target)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+	return mux.Attach(target)
 }

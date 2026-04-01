@@ -20,10 +20,11 @@ A terminal TUI for managing multiple AI coding agent sessions across projects �
 ## Features
 
 - **Multiple projects** — organize work into named projects with color coding
-- **Multiple sessions per project** — each session runs in a persistent tmux window
+- **Multiple sessions per project** — each session runs in a persistent terminal pane
+- **Session persistence** — sessions keep running after the TUI closes; reconnect with `hive start`
 - **Agent teams** — native Claude multi-agent teams with orchestrator + worker layout
 - **Easy switching** — vim-style navigation (`j/k/J/K`), numbered project jumps (`1`–`9`)
-- **Live preview** — 500ms capture-pane refresh with ANSI color passthrough
+- **Live preview** — 500ms refresh with ANSI color passthrough
 - **Session title editing** — press `r` to rename inline, or let the agent set it via escape sequence
 - **Extensible hooks** — shell scripts fired on 11 lifecycle events with rich `HIVE_*` env vars
 - **Responsive** — adapts to any terminal width, sidebar collapses on narrow terminals
@@ -32,7 +33,9 @@ A terminal TUI for managing multiple AI coding agent sessions across projects �
 ## Requirements
 
 - **Go 1.25+** (to build from source)
-- **tmux** — Hive uses tmux as its terminal backend; sessions persist even after Hive exits
+- No other runtime dependencies — the native multiplexer backend is built in
+
+> **tmux users:** Hive can optionally use tmux as its backend. Set `"multiplexer": "tmux"` in `config.json`.
 
 ## Installation
 
@@ -59,7 +62,7 @@ hive version
 hive start
 ```
 
-On first launch, Hive creates `~/.config/hive/` with a default `config.json`.
+On first launch, Hive creates `~/.config/hive/` with a default `config.json` and starts the background multiplexer daemon.
 
 ### 2. Create a project
 
@@ -85,7 +88,7 @@ enter: select  esc: cancel
 
 ### 4. Attach to a session
 
-Select a session with `j/k` and press `a` or `Enter`. The chosen agent launches in a tmux window. Return to Hive by detaching from tmux: `Ctrl+B D`.
+Select a session with `j/k` and press `a` or `Enter`. The TUI suspends and you interact with the agent directly. Press **Ctrl+Q** to detach and return to Hive.
 
 ### 5. Create an agent team
 
@@ -101,10 +104,18 @@ Teams appear in the sidebar with the orchestrator marked `★`:
 
 ```
 ▼ [team] feature-x
-  ★ orchestrator [claude] [waiting]
-  ○ worker-1     [claude] [idle]
-  ○ worker-2     [codex]  [idle]
+  ◉ ★ orchestrator [claude]
+  ○ worker-1     [claude]
+  ○ worker-2     [codex]
 ```
+
+Session status is shown with a colored dot in both the sidebar and grid view:
+- `○` gray: idle
+- `●` green: working
+- `◉` amber: waiting
+- `✕` red: dead
+
+The status legend is always visible in the main status bar and in the grid view footer.
 
 ## Navigation
 
@@ -130,13 +141,13 @@ Teams appear in the sidebar with the orchestrator marked `★`:
 | `G` | Grid view — all projects |
 | `/` | Filter sessions by name |
 | `?` | Toggle help overlay |
-| `H` | Toggle tmux keybinding reference |
-| `q` | Quit (tmux sessions keep running) |
+| `H` | Toggle session keybinding reference |
+| `q` | Quit (sessions keep running) |
 | `Q` | Quit and kill all managed sessions |
 
 ## Grid View
 
-Press `g` to open a tiled overview of all sessions in the current project. Press `G` to see all sessions across every project. Each tile shows a live preview of the session's pane output.
+Press `g` to open a tiled overview of all sessions in the current project. Press `G` to see all sessions across every project. Each tile shows a live preview of the session's output.
 
 ```
 ╭─────────────────╮  ╭─────────────────╮
@@ -147,6 +158,7 @@ Press `g` to open a tiled overview of all sessions in the current project. Press
 │ ○ [gemini] docs │
 │ Generating API… │
 ╰─────────────────╯
+○ idle  ● working  ◉ waiting  ✕ dead
 ←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit
 ```
 
@@ -163,7 +175,7 @@ Press `g` to open a tiled overview of all sessions in the current project. Press
 
 ### Set manually
 
-Select a session and press `r`. Type the new title and press `Enter`. The title updates in the sidebar and the tmux window is renamed.
+Select a session and press `r`. Type the new title and press `Enter`.
 
 ### Set by the agent
 
@@ -189,6 +201,7 @@ Config file: `~/.config/hive/config.json`
   "theme": "dark",
   "preview_refresh_ms": 500,
   "agent_title_overrides_user_title": false,
+  "multiplexer": "native",
   "agents": {
     "claude":   { "cmd": ["claude"] },
     "codex":    { "cmd": ["codex"] },
@@ -226,6 +239,13 @@ Config file: `~/.config/hive/config.json`
   }
 }
 ```
+
+### Multiplexer backends
+
+| Value | Description |
+|-------|-------------|
+| `"native"` (default) | Built-in Go PTY backend. No external dependencies. A background daemon (`hive mux-daemon`) keeps sessions alive after the TUI exits. |
+| `"tmux"` | Uses the external `tmux` binary. Requires tmux to be installed. Detach from a session with **Ctrl+B D**. |
 
 ### Custom agents
 
@@ -314,11 +334,9 @@ hive attach session-1
 hive attach <session-id>
 ```
 
-Useful for shell aliases or tmux key bindings.
-
 ## Session Persistence
 
-Hive sessions live in tmux. Closing the TUI (`q`) does **not** stop your agents — they keep running. Re-open Hive with `hive start` to reconnect. State is persisted to `~/.config/hive/state.json`.
+Closing the TUI (`q`) does **not** stop your agents. With the native backend, a lightweight background daemon (`hive mux-daemon`) keeps all agent processes running. Re-open Hive with `hive start` to reconnect — your sessions are exactly where you left them.
 
 To kill everything on exit, use `Q` instead of `q`.
 
@@ -328,6 +346,8 @@ To kill everything on exit, use `Q` instead of `q`.
 |------|----------|
 | `~/.config/hive/config.json` | User configuration |
 | `~/.config/hive/state.json` | Projects, teams, sessions |
+| `~/.config/hive/mux.sock` | Native multiplexer daemon socket |
+| `~/.config/hive/mux-daemon.log` | Native multiplexer daemon log |
 | `~/.config/hive/hooks/` | Lifecycle hook scripts |
 | `~/.config/hive/hive.log` | Error and hook output log |
 
@@ -338,24 +358,27 @@ Hive is built with:
 - **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** — Elm-inspired MVU TUI framework
 - **[Lip Gloss](https://github.com/charmbracelet/lipgloss)** — terminal styling and layout
 - **[Bubbles](https://github.com/charmbracelet/bubbles)** — text input, list, key binding components
-- **[tmux](https://github.com/tmux/tmux)** — terminal backend (sessions persist across TUI restarts)
+- **[creack/pty](https://github.com/creack/pty)** — PTY allocation for the native multiplexer
 - **[Cobra](https://github.com/spf13/cobra)** — CLI subcommands
 
-Session state flows: TUI (Bubble Tea) → state reducers → tmux CRUD commands → tmux server. The TUI never embeds a terminal emulator — it delegates to tmux, which provides battle-tested VT100 emulation.
-
-## Contributing
-
-Bug reports and pull requests welcome. The codebase is organized as:
+The native multiplexer runs as a background daemon (`hive mux-daemon`) that owns all PTY master file descriptors. The TUI communicates with it over a Unix domain socket using a length-prefixed JSON protocol. Session state flows: TUI → state reducers → mux backend (daemon client) → daemon process → PTY processes.
 
 ```
 internal/
 ├── tui/        # Bubble Tea model and all UI components
-├── tmux/       # tmux command wrappers
+├── mux/        # multiplexer abstraction
+│   ├── native/ # built-in PTY backend (daemon + client)
+│   └── tmux/   # tmux backend wrapper
+├── tmux/       # tmux CLI wrappers (used by mux/tmux backend)
 ├── state/      # data model and reducer functions
 ├── config/     # configuration loading and defaults
 ├── escape/     # OSC 2 title sequence parser
 └── hooks/      # shell hook runner
 ```
+
+## Contributing
+
+Bug reports and pull requests welcome.
 
 ## License
 
