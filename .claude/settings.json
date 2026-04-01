@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(go list:*)",
+      "Bash(go test:*)",
+      "Bash(go install:*)",
+      "Bash(bash build.sh)",
+      "Bash(./hive version:*)",
+      "Bash(./hive --help)",
+      "Bash(grep:*)"
+    ]
+  }
+}
