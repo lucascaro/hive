@@ -116,6 +116,8 @@ Teams appear in the sidebar with the orchestrator marked `★`:
 | `K` | Jump to previous project |
 | `1`–`9` | Jump to project by number |
 | `Space` | Toggle collapse/expand project or team |
+| `←` | Collapse project/team; on a session, collapses its parent |
+| `→` | Expand project or team |
 | `Tab` | Switch focus between sidebar and preview |
 | `a` / `Enter` | Attach to selected session |
 | `r` | Rename session or team inline |
@@ -124,10 +126,38 @@ Teams appear in the sidebar with the orchestrator marked `★`:
 | `n` | New project |
 | `x` / `d` | Kill selected session |
 | `D` | Kill entire team |
+| `g` | Grid view — current project only |
+| `G` | Grid view — all projects |
 | `/` | Filter sessions by name |
 | `?` | Toggle help overlay |
+| `H` | Toggle tmux keybinding reference |
 | `q` | Quit (tmux sessions keep running) |
 | `Q` | Quit and kill all managed sessions |
+
+## Grid View
+
+Press `g` to open a tiled overview of all sessions in the current project. Press `G` to see all sessions across every project. Each tile shows a live preview of the session's pane output.
+
+```
+╭─────────────────╮  ╭─────────────────╮
+│ ● [claude] auth │  │ ● [codex] tests  │
+│ Working on JWT… │  │ Writing unit…    │
+╰─────────────────╯  ╰─────────────────╯
+╭─────────────────╮
+│ ○ [gemini] docs │
+│ Generating API… │
+╰─────────────────╯
+←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit
+```
+
+| Key | Action |
+|-----|--------|
+| Arrow keys / `hjkl` | Navigate tiles |
+| `Enter` / `a` | Attach to selected session |
+| `x` | Kill selected session |
+| `r` | Rename selected session |
+| `G` | Switch to all-projects view |
+| `g` / `Esc` / `q` | Exit grid |
 
 ## Session Titles
 

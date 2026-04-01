@@ -4,7 +4,7 @@
 
 **Hive** is a terminal TUI application for managing multiple AI coding agent sessions (Claude, Codex, Gemini, Copilot, Aider, OpenCode, custom) across projects, with native support for Claude agent teams (orchestrator + workers).
 
-**Stack:** Go 1.24 + Bubble Tea + Lip Gloss + tmux backend
+**Stack:** Go 1.25 + Bubble Tea + Lip Gloss + tmux backend
 **Module:** `github.com/lucascaro/hive`
 **Config:** `~/.config/hive/`
 
@@ -42,13 +42,13 @@ hive/
 │   │       ├── sidebar.go           # 3-level tree
 │   │       ├── preview.go           # capture-pane refresh
 │   │       ├── statusbar.go         # breadcrumb + hints
+│   │       ├── gridview.go          # tiled grid overview (g/G)
 │   │       ├── titleedit.go         # textinput inline editor
 │   │       ├── agentpicker.go       # agent type menu
 │   │       ├── teambuilder.go       # team creation wizard
 │   │       └── confirm.go           # yes/no dialog
 │   │   └── styles/
-│   │       ├── theme.go
-│   │       └── adaptive.go
+│   │       └── theme.go
 │   ├── tmux/
 │   │   ├── client.go     # Exec() wrapper
 │   │   ├── session.go    # CreateSession, KillSession, ListSessions
@@ -109,6 +109,8 @@ hive/
 |-----|---------|--------|
 | `j`/`k` | Sidebar | Navigate up/down |
 | `J`/`K` | Sidebar | Jump between projects |
+| `←` | Sidebar | Collapse project/team; on session: collapse parent |
+| `→` | Sidebar | Expand project/team |
 | `Tab` | Any | Toggle sidebar/preview focus |
 | `Enter`/`a` | Session | Attach to session |
 | `Space` | Project/Team | Toggle collapse |
@@ -118,12 +120,26 @@ hive/
 | `r` | Session/Team | Inline title/goal edit |
 | `d`/`x` | Session | Kill session (confirm) |
 | `D` | Team | Kill entire team |
+| `g` | Any | Grid view — current project |
+| `G` | Any | Grid view — all projects |
 | `Ctrl+P` | Any | Command palette (fuzzy) |
 | `/` | Sidebar | Filter by name |
 | `1`-`9` | Any | Jump to project by index |
 | `?` | Any | Help overlay |
+| `H` | Any | tmux keybinding reference |
 | `q` | Any | Quit (sessions persist) |
 | `Q` | Any | Quit + kill all sessions |
+
+### Grid view keys
+
+| Key | Action |
+|-----|--------|
+| Arrow keys / `hjkl` | Navigate tiles |
+| `Enter`/`a` | Attach to selected session |
+| `x` | Kill selected session |
+| `r` | Rename selected session |
+| `G` | Switch to all-projects view |
+| `g`/`Esc`/`q` | Exit grid |
 
 ---
 
@@ -184,30 +200,32 @@ Scripts in `~/.config/hive/hooks/on-{event}` or `on-{event}.d/` dir.
 
 ## Implementation Phases
 
-| Phase | Scope |
-|-------|-------|
-| 1 | Skeleton: go mod, cobra, config load/save, minimal Bubble Tea model |
-| 2 | tmux CRUD, state store, startup reconciliation, persistence |
-| 3 | Full TUI: sidebar + preview + status bar + key map + attach/detach |
-| 4 | Agent types: picker, AgentType field, badges, config profiles |
-| 5 | Agent teams: Team model, wizard, 3-level sidebar, team hooks |
-| 6 | Title system: inline editor, OSC 2 parser, watcher |
-| 7 | Hook system: discovery, runner, env injection |
-| 8 | Polish: command palette, filter, help overlay, confirmations |
-| 9 | Docs + release: README, docs/, goreleaser |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | Skeleton: go mod, cobra, config load/save, minimal Bubble Tea model | ✅ |
+| 2 | tmux CRUD, state store, startup reconciliation, persistence | ✅ |
+| 3 | Full TUI: sidebar + preview + status bar + key map + attach/detach | ✅ |
+| 4 | Agent types: picker, AgentType field, badges, config profiles | ✅ |
+| 5 | Agent teams: Team model, wizard, 3-level sidebar, team hooks | ✅ |
+| 6 | Title system: inline editor, OSC 2 parser, watcher | ✅ |
+| 7 | Hook system: discovery, runner, env injection | ✅ |
+| 8 | Polish: command palette, filter, help overlay, confirmations, grid view | ✅ |
+| 9 | Docs + release: README, docs/, goreleaser | ✅ |
 
 ---
 
 ## Verification Checklist
 
-- [ ] `go build ./...` — clean, no CGO
-- [ ] `hive start` — TUI renders with empty state
-- [ ] New project → `tmux ls` shows `hive-{id}`
-- [ ] New session → agent picker → session badge shown
-- [ ] New team → 3 sessions in tree with `★` orchestrator
-- [ ] Attach → agent CLI appears, detach → TUI resumes
-- [ ] Preview refreshes every ~500ms
-- [ ] Rename → sidebar + `tmux list-windows` updated
-- [ ] Agent OSC 2 output → title auto-updates
-- [ ] Hook fires on session creation
-- [ ] `go test ./...` passes
+- [x] `go build ./...` — clean, no CGO
+- [x] `hive start` — TUI renders with empty state
+- [x] New project → `tmux ls` shows `hive-{id}`
+- [x] New session → agent picker → session badge shown
+- [x] New team → 3 sessions in tree with `★` orchestrator
+- [x] Attach → agent CLI appears, detach → TUI resumes (returns to same session)
+- [x] Preview refreshes every ~500ms
+- [x] Rename → sidebar + `tmux list-windows` updated
+- [x] Agent OSC 2 output → title auto-updates
+- [x] Hook fires on session creation
+- [x] `go test ./...` passes
+- [x] Grid view (`g`/`G`) shows live tile previews
+- [x] `←` on session collapses parent project/team

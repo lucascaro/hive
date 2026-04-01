@@ -88,7 +88,8 @@ func New(cfg config.Config, appState state.AppState) Model {
 		nameInput:   ni,
 	}
 	m.sidebar.Rebuild(&m.appState)
-	// Auto-select the first available session so the preview poll starts immediately.
+	// Sync sidebar cursor to the active session (set by caller on re-entry after detach),
+	// or auto-select the first available session on fresh start.
 	if m.appState.ActiveSessionID == "" {
 		for i, item := range m.sidebar.Items {
 			if item.Kind == components.KindSession {
@@ -99,6 +100,9 @@ func New(cfg config.Config, appState state.AppState) Model {
 				break
 			}
 		}
+	} else {
+		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
+		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
 	}
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
@@ -450,6 +454,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.gridView.Active {
 		m.gridView.Width = m.appState.TermWidth
 		m.gridView.Height = m.appState.TermHeight
+		switch msg.String() {
+		case "G":
+			// Switch to all-projects view without closing.
+			m.gridView.Show(m.liveSessions())
+			return m, nil
+		case "x":
+			if sess := m.gridView.Selected(); sess != nil {
+				m.gridView.Hide()
+				s := sess
+				return m, func() tea.Msg {
+					return ConfirmActionMsg{
+						Message: fmt.Sprintf("Kill session %q?", s.Title),
+						Action:  "kill-session:" + s.ID,
+					}
+				}
+			}
+		case "r":
+			if sess := m.gridView.Selected(); sess != nil {
+				m.gridView.Hide()
+				m.sidebar.SyncActiveSession(sess.ID)
+				m.appState.ActiveSessionID = sess.ID
+				return m, m.startRename()
+			}
+		}
 		cmd, _ := m.gridView.Update(msg)
 		return m, cmd
 	}
@@ -518,8 +546,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.GridOverview):
-		sessions := m.liveSessions()
+		// g shows only current project; G (handled above in the active-grid block,
+		// or via msg.String()=="G" below) shows all.
+		var sessions []*state.Session
+		for _, sess := range m.liveSessions() {
+			if m.appState.ActiveProjectID == "" || sess.ProjectID == m.appState.ActiveProjectID {
+				sessions = append(sessions, sess)
+			}
+		}
+		if len(sessions) == 0 {
+			sessions = m.liveSessions()
+		}
 		m.gridView.Show(sessions)
+		return m, m.scheduleGridPoll()
+
+	case msg.String() == "G":
+		m.gridView.Show(m.liveSessions())
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.NewProject):
@@ -622,7 +664,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.CollapseItem):
 		sel := m.sidebar.Selected()
-		if sel != nil && !sel.Collapsed {
+		if sel == nil {
+			return m, nil
+		}
+		if sel.Kind == components.KindSession {
+			// Left on a session collapses the immediate parent (team or project).
+			if sel.TeamID != "" {
+				m.appState = *state.ToggleTeamCollapsed(&m.appState, sel.TeamID)
+			} else {
+				m.appState = *state.ToggleProjectCollapsed(&m.appState, sel.ProjectID)
+			}
+			m.sidebar.Rebuild(&m.appState)
+			// Move cursor to the parent item.
+			for i, item := range m.sidebar.Items {
+				if sel.TeamID != "" && item.Kind == components.KindTeam && item.TeamID == sel.TeamID {
+					m.sidebar.Cursor = i
+					break
+				} else if sel.TeamID == "" && item.Kind == components.KindProject && item.ProjectID == sel.ProjectID {
+					m.sidebar.Cursor = i
+					break
+				}
+			}
+		} else if !sel.Collapsed {
 			if sel.Kind == components.KindProject {
 				m.appState = *state.ToggleProjectCollapsed(&m.appState, sel.ProjectID)
 				m.sidebar.Rebuild(&m.appState)

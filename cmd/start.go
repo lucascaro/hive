@@ -13,6 +13,16 @@ import (
 	"github.com/lucascaro/hive/internal/tui"
 )
 
+// findSessionID returns the session ID matching the given tmux session/window, or "".
+func findSessionID(appState *state.AppState, tmuxSession string, tmuxWindow int) string {
+	for _, sess := range state.AllSessions(appState) {
+		if sess.TmuxSession == tmuxSession && sess.TmuxWindow == tmuxWindow {
+			return sess.ID
+		}
+	}
+	return ""
+}
+
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start the Hive TUI",
@@ -87,6 +97,9 @@ func runStart(_ *cobra.Command, _ []string) error {
 				// Reconcile again: the agent may have exited while attached,
 				// closing its window; mark those sessions dead before re-entering TUI.
 				reconcileState(&appState)
+				// Restore the cursor to the session we just detached from so the
+				// TUI re-opens with that session selected rather than the first one.
+				appState.ActiveSessionID = findSessionID(&appState, attach.TmuxSession, attach.TmuxWindow)
 				continue
 			}
 		}

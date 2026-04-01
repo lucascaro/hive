@@ -10,6 +10,8 @@
 | `K` | Jump to previous project |
 | `1`–`9` | Jump to project by index |
 | `Space` | Toggle collapse/expand project or team |
+| `←` | Collapse current project or team; if on a session, collapse its parent |
+| `→` | Expand current project or team |
 
 ## Session Management
 
@@ -29,6 +31,19 @@
 |-----|--------|
 | `Tab` | Toggle between sidebar and preview focus |
 
+## Grid View
+
+| Key | Action |
+|-----|--------|
+| `g` | Open grid view for the current project |
+| `G` | Open grid view for all projects |
+| `←`/`→`/`↑`/`↓` or `h`/`l`/`k`/`j` | Navigate grid cells |
+| `Enter` / `a` | Attach to selected session |
+| `x` | Kill selected session (with confirmation) |
+| `r` | Rename selected session |
+| `G` | Switch to all-projects view (while grid is open) |
+| `g` / `Esc` / `q` | Exit grid view |
+
 ## Search & Navigation
 
 | Key | Action |
@@ -42,6 +57,7 @@
 | Key | Action |
 |-----|--------|
 | `?` | Toggle help overlay |
+| `H` | Toggle tmux keybinding reference |
 | `q` | Quit (tmux sessions persist) |
 | `Q` | Quit and kill all managed sessions |
 | `Ctrl+C` | Force quit |
@@ -55,7 +71,7 @@
 
 ## Customization
 
-All key bindings can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
+All key bindings (except `G` and grid-internal keys) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
 
 ```json
 {
@@ -72,8 +88,10 @@ All key bindings can be overridden in `~/.config/hive/config.json` under the `ke
     "nav_project_up": "K",
     "nav_project_down": "J",
     "filter": "/",
+    "grid_overview": "g",
     "palette": "ctrl+p",
     "help": "?",
+    "tmux_help": "H",
     "quit": "q",
     "quit_kill": "Q"
   }

@@ -164,7 +164,7 @@ func (gv *GridView) View() string {
 	}
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
-	hint := styles.MutedStyle.Render("←→↑↓ / hjkl / WASD: navigate   enter/a: attach   esc/g/q: exit grid")
+	hint := styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit")
 	return lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 }
 

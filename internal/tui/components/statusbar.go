@@ -126,19 +126,20 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 
 	if focused == state.PaneSidebar {
 		hints = []hint{
+			{"?", "help"},
 			{"n", "new project"},
 			{"t", "new session"},
 			{"T", "new team"},
 			{"a/↵", "attach"},
-			{"g", "grid view"},
+			{"g/G", "grid view"},
 			{"r", "rename"},
 			{"x", "kill"},
 			{"tab", "preview"},
-			{"?", "help"},
 			{"q", "quit"},
 		}
 	} else {
 		hints = []hint{
+			{"?", "help"},
 			{"tab", "sidebar"},
 			{"a", "attach"},
 			{"ctrl+r", "refresh"},

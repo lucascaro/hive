@@ -145,10 +145,8 @@ func (p *Preview) View(activeSession string) string {
 		// Truncate to fit. Use ansi.Truncate so we never cut through an
 		// ANSI escape sequence — a raw byte slice would leave the terminal
 		// in a broken color/state that corrupts all subsequent rendering.
-		// Trim trailing newline first: tmux capture-pane always ends with \n,
-		// which produces a spurious empty element from Split and causes the
-		// rendered height to be one line too tall, shifting the layout.
 		lines := strings.Split(strings.TrimRight(p.Content, "\n"), "\n")
+		rawLineCount := len(lines)
 		if len(lines) > innerH {
 			lines = lines[len(lines)-innerH:]
 		}
@@ -156,6 +154,11 @@ func (p *Preview) View(activeSession string) string {
 			lines[i] = ansi.Truncate(l, innerW, "")
 		}
 		content = strings.Join(lines, "\n")
+		contentLineCount := strings.Count(content, "\n") + 1
+		if rawLineCount != contentLineCount || contentLineCount != innerH {
+			previewLog.Printf("View LINES: rawLines=%d afterTruncate=%d innerH=%d contentLines=%d",
+				rawLineCount, len(lines), innerH, contentLineCount)
+		}
 	}
 
 	rendered := borderStyle.Width(p.Width - 2).Height(p.Height - 2).Render(content)
