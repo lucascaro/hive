@@ -70,6 +70,10 @@ type Model struct {
 	// which lets stale concurrent poll goroutines die off naturally instead of
 	// accumulating and causing rapid-fire re-renders.
 	previewPollGen uint64
+	// pendingPreviewClear is set when we switch sessions (or create/detach).
+	// The PreviewUpdatedMsg handler issues tea.ClearScreen on the first fresh
+	// update after a switch to eliminate any rendering artifacts.
+	pendingPreviewClear bool
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
@@ -154,6 +158,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			debugLog.Printf("preview msg ignored: msg.session=%s active=%s gen=%d", msg.SessionID, m.appState.ActiveSessionID, msg.Generation)
 		}
+		// On the first fresh update after a session switch, clear the screen so
+		// any rendering artifacts from the previous session are fully erased.
+		if m.pendingPreviewClear {
+			m.pendingPreviewClear = false
+			return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+		}
 		return m, m.schedulePollPreview()
 
 	// --- Window gone (agent exited, tmux window auto-closed) ---
@@ -165,7 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch to whichever session the sidebar now has selected.
 		m.syncActiveFromSidebar()
 		m.previewPollGen++ // invalidate any in-flight polls for the removed session
-		return m, m.schedulePollPreview()
+		m.pendingPreviewClear = true
+		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 
 	// --- Title watcher ---
 	case escape.TitleDetectedMsg:
@@ -214,7 +225,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar.SyncActiveSession(msg.Session.ID)
 		m.persist()
 		m.previewPollGen++ // new session, start fresh poll chain
-		return m, m.schedulePollPreview()
+		m.pendingPreviewClear = true
+		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 
 	case SessionKilledMsg:
 		m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
@@ -250,7 +262,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SessionDetachedMsg:
 		m.previewPollGen++ // returning from tmux, start fresh poll chain
-		return m, m.schedulePollPreview()
+		m.pendingPreviewClear = true
+		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 
 	// --- Team lifecycle ---
 	case TeamCreatedMsg:
@@ -827,7 +840,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++ // switched to a different session, start fresh poll
-				return m, m.schedulePollPreview()
+				m.pendingPreviewClear = true
+				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 			}
 		}
 		return m, nil
@@ -841,7 +855,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++ // switched to a different session, start fresh poll
-				return m, m.schedulePollPreview()
+				m.pendingPreviewClear = true
+				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 			}
 		}
 		return m, nil
@@ -855,7 +870,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++
-				return m, m.schedulePollPreview()
+				m.pendingPreviewClear = true
+				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 			}
 		}
 		return m, nil
@@ -869,7 +885,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++
-				return m, m.schedulePollPreview()
+				m.pendingPreviewClear = true
+				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
 			}
 		}
 		return m, nil
