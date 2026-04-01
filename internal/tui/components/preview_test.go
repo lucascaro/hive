@@ -7,8 +7,15 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 )
 
+func newPreview(w, h int, content string) *Preview {
+	p := &Preview{}
+	p.Resize(w, h)
+	p.SetContent(content)
+	return p
+}
+
 func TestPreviewView_EmptyContent_NoSession(t *testing.T) {
-	p := &Preview{Width: 80, Height: 24, Content: ""}
+	p := newPreview(80, 24, "")
 	out := p.View("")
 	if !strings.Contains(out, "No active session") {
 		t.Error("empty content + no session should show 'No active session'")
@@ -16,7 +23,7 @@ func TestPreviewView_EmptyContent_NoSession(t *testing.T) {
 }
 
 func TestPreviewView_EmptyContent_WithSession(t *testing.T) {
-	p := &Preview{Width: 80, Height: 24, Content: ""}
+	p := newPreview(80, 24, "")
 	out := p.View("sess-1")
 	if !strings.Contains(out, "Waiting for output") {
 		t.Error("empty content + session should show 'Waiting for output…'")
@@ -24,7 +31,7 @@ func TestPreviewView_EmptyContent_WithSession(t *testing.T) {
 }
 
 func TestPreviewView_WithContent(t *testing.T) {
-	p := &Preview{Width: 80, Height: 24, Content: "Hello, world!"}
+	p := newPreview(80, 24, "Hello, world!")
 	out := p.View("sess-1")
 	if !strings.Contains(out, "Hello, world!") {
 		t.Error("content should be rendered")
@@ -42,7 +49,7 @@ func TestPreviewView_ContentTruncation(t *testing.T) {
 	}
 	content := strings.Join(lines, "\n")
 
-	p := &Preview{Width: 80, Height: 10, Content: content}
+	p := newPreview(80, 10, content)
 	out := p.View("sess-1")
 
 	// Output should be bounded by height
@@ -54,7 +61,7 @@ func TestPreviewView_ContentTruncation(t *testing.T) {
 
 func TestPreviewView_MinDimensions(t *testing.T) {
 	// Very small dimensions should not panic
-	p := &Preview{Width: 1, Height: 1, Content: "test"}
+	p := newPreview(1, 1, "test")
 	out := p.View("sess-1")
 	if out == "" {
 		t.Error("should produce output even with tiny dimensions")
@@ -63,7 +70,7 @@ func TestPreviewView_MinDimensions(t *testing.T) {
 
 func TestPreviewView_ZeroDimensions(t *testing.T) {
 	// Zero dimensions should not panic
-	p := &Preview{Width: 0, Height: 0, Content: "test"}
+	p := newPreview(0, 0, "test")
 	out := p.View("sess-1")
 	if out == "" {
 		t.Error("should produce output even with zero dimensions")
@@ -71,15 +78,11 @@ func TestPreviewView_ZeroDimensions(t *testing.T) {
 }
 
 func TestPreviewView_CaptureErrorContent(t *testing.T) {
-	// When CapturePane fails, PollPreview now returns an error message
-	errContent := "[capture error: tmux capture-pane: exit status 1]"
-	p := &Preview{Width: 80, Height: 24, Content: errContent}
+	// When CapturePane fails, an empty content is now returned (error is logged).
+	p := newPreview(80, 24, "")
 	out := p.View("sess-1")
-	if !strings.Contains(out, "capture error") {
-		t.Error("capture error content should be displayed")
-	}
-	if strings.Contains(out, "Waiting for output") {
-		t.Error("should NOT show waiting when there's error content")
+	if strings.Contains(out, "capture error") {
+		t.Error("empty content should NOT show capture error text")
 	}
 }
 
@@ -203,15 +206,10 @@ func TestExpandTabs(t *testing.T) {
 }
 
 func TestPreviewView_TabContent_HeightInvariant(t *testing.T) {
-	// Tab-indented content (common in code panes) must not break the height
-	// invariant.  Before the fix, a tab-containing line was truncated to
-	// innerW columns by ansi.Truncate (which counts \t as width 0), then
-	// rendered wider than the box because the terminal expanded the tab,
-	// causing the line to wrap and add an extra row.
 	tabContent := "\t\tvar x = someFunction(\n\t\t\targument1,\n\t\t\targument2,\n\t\t)\n"
 	tabContent += strings.Repeat("\tsome line of code\n", 20)
 	for _, h := range []int{10, 20, 30} {
-		p := &Preview{Width: 80, Height: h, Content: tabContent}
+		p := newPreview(80, h, tabContent)
 		out := p.View("sess-1")
 		got := countLines(out)
 		if got != h {
@@ -243,7 +241,7 @@ func TestPreviewView_ExactHeight(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &Preview{Width: tc.width, Height: tc.height, Content: tc.content}
+			p := newPreview(tc.width, tc.height, tc.content)
 			out := p.View(tc.session)
 			got := countLines(out)
 			if got != tc.height {
@@ -257,7 +255,7 @@ func TestPreviewView_ExactHeight(t *testing.T) {
 func TestPreviewView_ShortContent_FillsHeight(t *testing.T) {
 	// When content has fewer lines than innerH, the entire pane must still be
 	// p.Height lines so Bubble Tea overwrites all previous terminal content.
-	p := &Preview{Width: 80, Height: 24, Content: "only three lines\nof content\nhere"}
+	p := newPreview(80, 24, "only three lines\nof content\nhere")
 	out := p.View("sess-1")
 	if countLines(out) != 24 {
 		t.Errorf("View() with short content = %d lines, want 24", countLines(out))
@@ -267,7 +265,7 @@ func TestPreviewView_ShortContent_FillsHeight(t *testing.T) {
 func TestPreviewView_SwitchSession_FillsHeight(t *testing.T) {
 	// Simulate what happens after switching sessions: content is cleared.
 	// The preview must still fill p.Height lines so old content is overwritten.
-	p := &Preview{Width: 80, Height: 24, Content: ""}
+	p := newPreview(80, 24, "")
 	for _, session := range []string{"sess-1", ""} {
 		out := p.View(session)
 		if countLines(out) != 24 {
@@ -308,7 +306,7 @@ func TestPreviewView_ExactHeight_ANSIContent(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := &Preview{Width: tc.width, Height: tc.height, Content: tc.content}
+			p := newPreview(tc.width, tc.height, tc.content)
 			out := p.View("sess-1")
 			got := countLines(out)
 			if got != tc.height {

@@ -144,6 +144,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.SessionID == m.appState.ActiveSessionID {
 			m.appState.PreviewContent = msg.Content
+			m.preview.SetContent(msg.Content)
 			debugLog.Printf("preview updated: session=%s contentLen=%d gen=%d", msg.SessionID, len(msg.Content), msg.Generation)
 		} else {
 			debugLog.Printf("preview msg ignored: msg.session=%s active=%s gen=%d", msg.SessionID, m.appState.ActiveSessionID, msg.Generation)
@@ -197,6 +198,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appState = *state.UpdateSessionStatus(&m.appState, msg.Session.ID, state.StatusRunning)
 		m.appState.ActiveSessionID = msg.Session.ID
 		m.appState.PreviewContent = ""
+		m.preview.SetContent("")
 		m.sidebar.Rebuild(&m.appState)
 		m.sidebar.SyncActiveSession(msg.Session.ID)
 		m.persist()
@@ -410,11 +412,9 @@ func (m Model) View() string {
 	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
 	m.sidebar.Width = sw
 	m.sidebar.Height = ch
-	m.preview.Width = pw
-	m.preview.Height = ch
+	m.preview.Resize(pw, ch)
 	m.statusBar.Width = m.appState.TermWidth
 
-	m.preview.Content = m.appState.PreviewContent
 	sidebarView := m.sidebar.View(m.appState.ActiveSessionID, m.appState.FocusedPane == state.PaneSidebar)
 	previewView := m.preview.View(m.appState.ActiveSessionID)
 	statusView := m.statusBar.View(&m.appState, m.appState.FocusedPane, m.appState.FilterActive, m.appState.FilterQuery)
@@ -427,19 +427,6 @@ func (m Model) View() string {
 	mainLines := strings.Count(main, "\n") + 1
 	out := lipgloss.JoinVertical(lipgloss.Left, main, statusView)
 	outLines := strings.Count(out, "\n") + 1
-
-	// Hard-clamp the frame to exactly TermHeight lines.  If any component
-	// produced the wrong number of lines (a bug), clamping here prevents
-	// Bubble Tea from scrolling the terminal (too many lines) or leaving
-	// stale content at the bottom (too few lines).
-	if outLines < m.appState.TermHeight {
-		out += strings.Repeat("\n"+strings.Repeat(" ", m.appState.TermWidth), m.appState.TermHeight-outLines)
-		outLines = m.appState.TermHeight
-	} else if outLines > m.appState.TermHeight {
-		parts := strings.SplitN(out, "\n", m.appState.TermHeight+1)
-		out = strings.Join(parts[:m.appState.TermHeight], "\n")
-		outLines = m.appState.TermHeight
-	}
 
 	// Log a WARNING when the total frame height doesn't match the terminal height,
 	// since this causes terminal scroll and visual corruption.
@@ -1258,6 +1245,7 @@ func (m *Model) syncActiveFromSidebar() {
 		// Only clear cached preview content when switching to a different session.
 		m.appState.ActiveSessionID = sel.SessionID
 		m.appState.PreviewContent = ""
+		m.preview.SetContent("")
 	}
 	if sel.ProjectID != "" {
 		m.appState.ActiveProjectID = sel.ProjectID
@@ -1370,8 +1358,7 @@ func (m *Model) recomputeLayout() {
 	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
 	m.sidebar.Width = sw
 	m.sidebar.Height = ch
-	m.preview.Width = pw
-	m.preview.Height = ch
+	m.preview.Resize(pw, ch)
 	m.statusBar.Width = m.appState.TermWidth
 }
 

@@ -170,15 +170,12 @@ func (gv *GridView) View() string {
 		styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"),
 	)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
-
-	// Hard-clamp to exactly gv.Height lines so that integer-division
-	// remainder in cellH never leaves the grid 1..N lines short (which
-	// causes old terminal content to show through at the bottom).
+	// Clamp to exactly gv.Height lines: integer-division of cellH can leave
+	// the grid 1 line short or long. Hard-clamping here is the safety net.
 	outLines := strings.Count(out, "\n") + 1
 	if outLines < gv.Height {
 		out += strings.Repeat("\n"+strings.Repeat(" ", gv.Width), gv.Height-outLines)
 	} else if outLines > gv.Height {
-		// Trim excess lines from the bottom.
 		parts := strings.SplitN(out, "\n", gv.Height+1)
 		out = strings.Join(parts[:gv.Height], "\n")
 	}
@@ -218,23 +215,18 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	titleLine := lipgloss.NewStyle().Width(innerW).Bold(selected).
 		Render(prefix + titleText)
 
-	// Content preview
+	// Content preview — use MaxWidth+MaxHeight to guarantee exact dimensions
+	// without manual line split/truncate/pad loops.
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
-		lines := strings.Split(content, "\n")
-		if len(lines) > innerH {
-			lines = lines[len(lines)-innerH:]
-		}
-		for i, l := range lines {
-			lines[i] = ansi.Truncate(l, innerW, "")
-		}
-		for len(lines) < innerH {
-			lines = append(lines, "")
-		}
-		contentStr = strings.Join(lines, "\n")
+		contentStr = lipgloss.NewStyle().
+			Width(innerW).Height(innerH).
+			MaxWidth(innerW).MaxHeight(innerH).
+			Render(content)
 	} else {
 		contentStr = lipgloss.NewStyle().
 			Width(innerW).Height(innerH).
+			MaxWidth(innerW).MaxHeight(innerH).
 			Foreground(styles.ColorMuted).
 			Render("…")
 	}
@@ -269,7 +261,7 @@ func gridColumns(w, h, n int) int {
 	const (
 		minCellW    = 24  // minimum usable cell width in chars
 		minCellH    = 6   // minimum usable cell height in chars
-		hintH       = 1   // hint bar at bottom
+		hintH       = 2   // hint bar at bottom (must match View's hintH)
 		targetRatio = 2.5 // ideal cellW/cellH for content-friendly cells
 	)
 

@@ -125,6 +125,7 @@ func TestViewRendersPreviewContent(t *testing.T) {
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	m.appState.PreviewContent = "Hello preview content!"
+	m.preview.SetContent("Hello preview content!")
 
 	view := m.View()
 	if !strings.Contains(view, "Hello preview content!") {
@@ -223,6 +224,7 @@ func TestViewExactTermHeight(t *testing.T) {
 				m.appState.TermWidth = d[0]
 				m.appState.TermHeight = d[1]
 				m.appState.PreviewContent = c
+				m.preview.SetContent(c)
 				out := m.View()
 				got := strings.Count(out, "\n") + 1
 				if got != d[1] {
@@ -240,6 +242,7 @@ func TestSessionSwitch_FrameHeightStable(t *testing.T) {
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	m.appState.PreviewContent = strings.Repeat("line from session 1\n", 35)
+	m.preview.SetContent(strings.Repeat("line from session 1\n", 35))
 
 	view1 := m.View()
 	if strings.Count(view1, "\n")+1 != 40 {
@@ -249,6 +252,7 @@ func TestSessionSwitch_FrameHeightStable(t *testing.T) {
 	// Simulate switching to session 2 (clear content).
 	m.appState.ActiveSessionID = "sess-2"
 	m.appState.PreviewContent = ""
+	m.preview.SetContent("")
 
 	view2 := m.View()
 	if strings.Count(view2, "\n")+1 != 40 {
@@ -261,6 +265,7 @@ func TestSessionSwitch_PreviewClears(t *testing.T) {
 	// is not shown in the new session's preview pane.
 	m := testModelWithSessions()
 	m.appState.PreviewContent = "old session content"
+	m.preview.SetContent("old session content")
 
 	// Navigate down past the project header to the second session.
 	m.sidebar.MoveDown() // to team or second session
