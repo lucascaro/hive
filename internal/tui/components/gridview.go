@@ -169,7 +169,20 @@ func (gv *GridView) View() string {
 		styles.MutedStyle.Render(styles.StatusLegend()),
 		styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"),
 	)
-	return lipgloss.JoinVertical(lipgloss.Left, grid, hint)
+	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
+
+	// Hard-clamp to exactly gv.Height lines so that integer-division
+	// remainder in cellH never leaves the grid 1..N lines short (which
+	// causes old terminal content to show through at the bottom).
+	outLines := strings.Count(out, "\n") + 1
+	if outLines < gv.Height {
+		out += strings.Repeat("\n"+strings.Repeat(" ", gv.Width), gv.Height-outLines)
+	} else if outLines > gv.Height {
+		// Trim excess lines from the bottom.
+		parts := strings.SplitN(out, "\n", gv.Height+1)
+		out = strings.Join(parts[:gv.Height], "\n")
+	}
+	return out
 }
 
 func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) string {

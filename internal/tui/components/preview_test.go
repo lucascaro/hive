@@ -350,6 +350,67 @@ func TestStatusBarView_ExactHeight_ANSIContent(t *testing.T) {
 	}
 }
 
+func TestSanitizePreviewContent_StripNonSGRVariants(t *testing.T) {
+	// The ECMA-48 CSI grammar covers parameter bytes in \x30-\x3f.
+	// Old regex only matched [0-9;?!], missing :, <, =, >.
+	// Non-SGR sequences ending in 'm' but with non-SGR params (e.g. >4m)
+	// must also be stripped so they can't move the cursor.
+	cases := []struct {
+		name    string
+		input   string
+		wantIn  string // must appear in output
+		wantOut string // must NOT appear in output
+	}{
+		{
+			name:    "colon-separated 24-bit color kept",
+			input:   "hi\x1b[38:2:255:128:0mcolor\x1b[0m",
+			wantIn:  "color",
+			wantOut: "", // colon SGR should be kept as a color
+		},
+		{
+			name:    "greater-than mode stripped",
+			input:   "before\x1b[>4mafter",
+			wantIn:  "beforeafter",
+			wantOut: "\x1b[>4m",
+		},
+		{
+			name:    "less-than sequence stripped",
+			input:   "before\x1b[<0mafter",
+			wantIn:  "beforeafter",
+			wantOut: "\x1b[<",
+		},
+		{
+			name:    "equals sequence stripped",
+			input:   "before\x1b[=1mafter",
+			wantIn:  "beforeafter",
+			wantOut: "\x1b[=",
+		},
+		{
+			name:    "intermediate byte sequence stripped",
+			input:   "before\x1b[ @after",
+			wantIn:  "beforeafter",
+			wantOut: "\x1b[",
+		},
+		{
+			name:    "colon SGR color codes kept and terminal-safe",
+			input:   "\x1b[38:2:0:128:255mblue\x1b[0m text",
+			wantIn:  "blue",
+			wantOut: "\x1b[>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := sanitizePreviewContent(tc.input)
+			if tc.wantIn != "" && !strings.Contains(out, tc.wantIn) {
+				t.Errorf("output missing %q; got %q", tc.wantIn, out)
+			}
+			if tc.wantOut != "" && strings.Contains(out, tc.wantOut) {
+				t.Errorf("output still contains %q; got %q", tc.wantOut, out)
+			}
+		})
+	}
+}
+
 func TestPreviewUpdatedMsg_Fields(t *testing.T) {
 	msg := PreviewUpdatedMsg{
 		SessionID:  "sess-123",

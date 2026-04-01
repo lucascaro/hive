@@ -16,13 +16,22 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-// allAnsiSeq matches any ANSI/VT escape sequence.
+// allAnsiSeq matches any ANSI/VT escape sequence using the full ECMA-48 CSI
+// grammar so that sequences with non-digit parameters (e.g. \x1b[>4m,
+// \x1b[38:2:R:G:Bm, \x1b[=…, \x1b[<…) are also captured.
+//
+// ECMA-48 CSI structure:
+//   \x1b[  — introducer
+//   [\x30-\x3f]*  — parameter bytes (0-9 : ; < = > ?)
+//   [\x20-\x2f]*  — intermediate bytes (space ! " # $ % & ' ( ) * + , - . /)
+//   [@-~]         — final byte (one byte, 0x40–0x7E)
+//
 // We use ReplaceAllStringFunc to keep only SGR (color/style) codes and
 // strip everything else — cursor movement, screen-clear, mode changes, OSC,
 // DCS, etc. — so they cannot corrupt Bubble Tea's cursor-based renderer.
 var allAnsiSeq = regexp.MustCompile(
 	`\x1b(?:` +
-		`\[[0-9;?!]*[@-~]` + // CSI sequences  (\033[ params final)
+		`\[[\x30-\x3f]*[\x20-\x2f]*[@-~]` + // CSI (full ECMA-48 param range)
 		`|\][^\x07\x1b]*(?:\x07|\x1b\\)` + // OSC sequences (\033]...\007 or ST)
 		`|P[^\x1b]*\x1b\\` + // DCS sequences  (\033P...\033\)
 		`|[^[\]P]` + // Other single-char escapes
@@ -36,11 +45,19 @@ var allAnsiSeq = regexp.MustCompile(
 // move the cursor mid-render in Bubble Tea, visually corrupting the layout.
 func sanitizePreviewContent(s string) string {
 	s = allAnsiSeq.ReplaceAllStringFunc(s, func(match string) string {
-		// Keep only CSI sequences that end with 'm' (SGR).
-		if len(match) >= 3 && match[1] == '[' && match[len(match)-1] == 'm' {
-			return match
+		// Keep only CSI sequences that are pure SGR: must start with \x1b[,
+		// end with 'm', and have only digit/semicolon/colon parameter bytes
+		// (no intermediate bytes, no < > = ? or other non-SGR chars).
+		if len(match) < 3 || match[1] != '[' || match[len(match)-1] != 'm' {
+			return ""
 		}
-		return ""
+		for i := 2; i < len(match)-1; i++ {
+			c := match[i]
+			if c != ';' && c != ':' && (c < '0' || c > '9') {
+				return "" // not a valid SGR parameter byte
+			}
+		}
+		return match
 	})
 	// Strip bare carriage returns and vertical-movement control chars that
 	// could shift the cursor unexpectedly outside of ANSI sequences.

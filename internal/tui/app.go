@@ -428,6 +428,19 @@ func (m Model) View() string {
 	out := lipgloss.JoinVertical(lipgloss.Left, main, statusView)
 	outLines := strings.Count(out, "\n") + 1
 
+	// Hard-clamp the frame to exactly TermHeight lines.  If any component
+	// produced the wrong number of lines (a bug), clamping here prevents
+	// Bubble Tea from scrolling the terminal (too many lines) or leaving
+	// stale content at the bottom (too few lines).
+	if outLines < m.appState.TermHeight {
+		out += strings.Repeat("\n"+strings.Repeat(" ", m.appState.TermWidth), m.appState.TermHeight-outLines)
+		outLines = m.appState.TermHeight
+	} else if outLines > m.appState.TermHeight {
+		parts := strings.SplitN(out, "\n", m.appState.TermHeight+1)
+		out = strings.Join(parts[:m.appState.TermHeight], "\n")
+		outLines = m.appState.TermHeight
+	}
+
 	// Log a WARNING when the total frame height doesn't match the terminal height,
 	// since this causes terminal scroll and visual corruption.
 	sidebarW := strings.IndexByte(sidebarView, '\n')
