@@ -41,6 +41,7 @@ func findScripts(hooksDir, eventName string) []string {
 	dotD := flat + ".d"
 	entries, err := os.ReadDir(dotD)
 	if err == nil {
+		startIdx := len(scripts)
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
@@ -50,7 +51,7 @@ func findScripts(hooksDir, eventName string) []string {
 				scripts = append(scripts, p)
 			}
 		}
-		sort.Strings(scripts[len(scripts)-len(entries):]) // sort .d/ entries
+		sort.Strings(scripts[startIdx:]) // sort only the newly-added .d/ entries
 	}
 	return scripts
 }
