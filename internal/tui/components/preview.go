@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucascaro/hive/internal/config"
-	"github.com/lucascaro/hive/internal/tmux"
+	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
@@ -82,12 +82,12 @@ func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Du
 			previewLog.Printf("PollPreview: empty tmuxSession for %s gen=%d", sessionID, gen)
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}
 		}
-		target := tmux.Target(tmuxSession, tmuxWindow)
-		content, err := tmux.CapturePane(target, 500)
+		target := mux.Target(tmuxSession, tmuxWindow)
+		content, err := mux.CapturePane(target, 500)
 		if err != nil {
 			// Window may have been closed by the agent exiting — check before
 			// reporting a generic error so the TUI can remove the dead session.
-			if !tmux.WindowExists(target) {
+			if !mux.WindowExists(target) {
 				previewLog.Printf("PollPreview: window gone for session=%s target=%s gen=%d", sessionID, target, gen)
 				return SessionWindowGoneMsg{SessionID: sessionID}
 			}
@@ -151,11 +151,27 @@ func (p *Preview) View(activeSession string) string {
 			lines = lines[len(lines)-innerH:]
 		}
 		for i, l := range lines {
+			// ansi.Truncate properly closes any open color sequences at the
+			// truncation point, preventing color bleed into subsequent lines.
 			lines[i] = ansi.Truncate(l, innerW, "")
+		}
+		// Pad to exactly innerH lines.  Lipgloss will also pad via Height(),
+		// but explicit blank lines ensure every row in the content area is
+		// written to the terminal even when switching to a session with
+		// shorter output.  Without this, Bubble Tea's renderer may skip
+		// writing blank terminal rows, leaving old session content visible.
+		for len(lines) < innerH {
+			lines = append(lines, "")
+		}
+		// Append a hard ANSI reset after the last real content line so that
+		// any open color sequences from the captured pane do not bleed into
+		// the blank padding rows that follow.
+		if rawLineCount > 0 && rawLineCount <= innerH {
+			lines[rawLineCount-1] += "\x1b[m"
 		}
 		content = strings.Join(lines, "\n")
 		contentLineCount := strings.Count(content, "\n") + 1
-		if rawLineCount != contentLineCount || contentLineCount != innerH {
+		if contentLineCount != innerH {
 			previewLog.Printf("View LINES: rawLines=%d afterTruncate=%d innerH=%d contentLines=%d",
 				rawLineCount, len(lines), innerH, contentLineCount)
 		}

@@ -39,7 +39,12 @@ func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterAc
 	// Truncate content to the inner content area so it never wraps
 	// and adds an extra line, which would make the frame taller than
 	// the terminal and trigger an unwanted terminal scroll.
-	innerW := w - 2
+	// We subtract an extra column as a safety margin: some Unicode
+	// symbols (status dots ●/◉, spinners ⟳, ellipsis …) are measured
+	// as 1-wide by ansi.StringWidth but rendered as 2-wide in certain
+	// terminals/fonts.  The 1-column margin prevents accidental line
+	// wrap when that mismatch occurs.
+	innerW := w - 3
 	if innerW < 1 {
 		innerW = 1
 	}
@@ -151,5 +156,6 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 	for _, h := range hints {
 		parts = append(parts, styles.HelpKeyStyle.Render(h.key)+":"+styles.HelpDescStyle.Render(h.desc))
 	}
+	parts = append(parts, styles.MutedStyle.Render(styles.StatusLegend()))
 	return strings.Join(parts, "  ")
 }
