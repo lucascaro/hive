@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lucascaro/hive/internal/config"
+	"github.com/lucascaro/hive/internal/escape"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
@@ -261,11 +262,13 @@ func TestSessionSwitch_FrameHeightStable(t *testing.T) {
 }
 
 func TestSessionSwitch_PreviewClears(t *testing.T) {
-	// After switching sessions, PreviewContent must be empty so old content
-	// is not shown in the new session's preview pane.
+	// When no cached snapshot exists for the target session, PreviewContent must
+	// be empty after switching so old session content is not shown.
 	m := testModelWithSessions()
 	m.appState.PreviewContent = "old session content"
 	m.preview.SetContent("old session content")
+	// Ensure no snapshot is stored for sess-2 (the target session).
+	delete(m.contentSnapshots, "sess-2")
 
 	// Navigate down past the project header to the second session.
 	m.sidebar.MoveDown() // to team or second session
@@ -274,9 +277,79 @@ func TestSessionSwitch_PreviewClears(t *testing.T) {
 	m.syncActiveFromSidebar()
 
 	if m.appState.ActiveSessionID != prev {
-		// Actually switched — content should be cleared.
+		// Actually switched — no cache means content should be empty.
 		if m.appState.PreviewContent != "" {
-			t.Errorf("PreviewContent = %q after session switch, want empty", m.appState.PreviewContent)
+			t.Errorf("PreviewContent = %q after session switch with no cache, want empty", m.appState.PreviewContent)
 		}
+	}
+}
+
+func TestSessionSwitch_PreviewShowsCachedContent(t *testing.T) {
+	// When a cached snapshot exists for the target session, it should be shown
+	// immediately after switching instead of an empty pane.
+	m := testModelWithSessions()
+	m.appState.PreviewContent = "old session content"
+	m.preview.SetContent("old session content")
+
+	const cachedContent = "cached output for sess-2"
+	m.contentSnapshots["sess-2"] = cachedContent
+
+	// Navigate down past the project header to the second session.
+	m.sidebar.MoveDown()
+	m.sidebar.MoveDown()
+	prev := m.appState.ActiveSessionID
+	m.syncActiveFromSidebar()
+
+	if m.appState.ActiveSessionID != prev {
+		// Actually switched — cached content should be shown immediately.
+		if m.appState.PreviewContent != cachedContent {
+			t.Errorf("PreviewContent = %q after session switch with cache, want %q", m.appState.PreviewContent, cachedContent)
+		}
+	}
+}
+
+func TestStatusesDetectedMsg_UpdatesActivePreview(t *testing.T) {
+	// When StatusesDetectedMsg carries content for the active session, the
+	// preview must be updated immediately without waiting for the next PollPreview tick.
+	m := testModelWithSessions()
+
+	const freshContent = "fresh output from status watcher"
+	msg := escape.StatusesDetectedMsg{
+		Statuses: map[string]state.SessionStatus{
+			"sess-1": state.StatusRunning,
+		},
+		Contents: map[string]string{
+			"sess-1": freshContent,
+		},
+	}
+	result, _ := m.Update(msg)
+	updated := result.(Model)
+
+	if updated.appState.PreviewContent != freshContent {
+		t.Errorf("PreviewContent = %q after StatusesDetectedMsg, want %q", updated.appState.PreviewContent, freshContent)
+	}
+}
+
+func TestStatusesDetectedMsg_IgnoresBackgroundPreview(t *testing.T) {
+	// StatusesDetectedMsg content for a background session must not overwrite
+	// the active session's preview content.
+	m := testModelWithSessions()
+	// sess-1 is active; give it some existing preview content.
+	m.appState.PreviewContent = "active session output"
+	m.preview.SetContent("active session output")
+
+	msg := escape.StatusesDetectedMsg{
+		Statuses: map[string]state.SessionStatus{
+			"sess-2": state.StatusRunning,
+		},
+		Contents: map[string]string{
+			"sess-2": "background session output",
+		},
+	}
+	result, _ := m.Update(msg)
+	updated := result.(Model)
+
+	if updated.appState.PreviewContent != "active session output" {
+		t.Errorf("PreviewContent = %q, want active session content unchanged", updated.appState.PreviewContent)
 	}
 }

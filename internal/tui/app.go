@@ -185,6 +185,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for sessionID, content := range msg.Contents {
 			m.contentSnapshots[sessionID] = content
 		}
+		// If the status watcher captured new content for the active session, update
+		// the preview immediately rather than waiting for the next PollPreview tick.
+		if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
+			m.appState.PreviewContent = content
+			m.preview.SetContent(content)
+		}
 		changed := false
 		for sessionID, status := range msg.Statuses {
 			sess := state.FindSession(&m.appState, sessionID)
@@ -1495,10 +1501,13 @@ func (m *Model) syncActiveFromSidebar() {
 	prevSession := m.appState.ActiveSessionID
 	prevProject := m.appState.ActiveProjectID
 	if sel.SessionID != "" && sel.SessionID != m.appState.ActiveSessionID {
-		// Only clear cached preview content when switching to a different session.
+		// Switch to the new session. Restore any cached preview content so the
+		// pane shows something immediately; the fresh PollPreview tick will
+		// replace it with up-to-date output shortly after.
 		m.appState.ActiveSessionID = sel.SessionID
-		m.appState.PreviewContent = ""
-		m.preview.SetContent("")
+		cached := m.contentSnapshots[sel.SessionID]
+		m.appState.PreviewContent = cached
+		m.preview.SetContent(cached)
 	}
 	if sel.ProjectID != "" {
 		m.appState.ActiveProjectID = sel.ProjectID
