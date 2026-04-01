@@ -378,8 +378,16 @@ internal/
 
 ## Contributing
 
-Bug reports and pull requests welcome.
+Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing, and submission guidelines.
+
+## Architecture
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a detailed description of every package and how they interact.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security policy and known considerations for multi-user systems.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)

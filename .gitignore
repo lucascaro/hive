@@ -1,1 +1,20 @@
+# Build output
 /hive
+
+# Go test artifacts
+*.test
+coverage.out
+coverage.html
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude IDE local settings
+.claude/settings.local.json

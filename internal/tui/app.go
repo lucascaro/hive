@@ -28,7 +28,7 @@ import (
 var debugLog *log.Logger
 
 func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		debugLog = log.New(os.Stderr, "[hive] ", log.Ltime)
 		return

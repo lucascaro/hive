@@ -28,7 +28,7 @@ func SockPath() string {
 func RunDaemon(sockPath string, logPath string) error {
 	// Redirect log output to a file if provided.
 	if logPath != "" {
-		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err == nil {
 			log.SetOutput(f)
 		}
@@ -43,6 +43,11 @@ func RunDaemon(sockPath string, logPath string) error {
 	}
 	defer l.Close()
 	defer os.Remove(sockPath)
+
+	// Restrict socket access to the owner only (prevent other local users from connecting).
+	if err := os.Chmod(sockPath, 0o600); err != nil {
+		log.Printf("warning: failed to set socket permissions: %v", err)
+	}
 
 	log.Printf("hive mux-daemon: listening on %s", sockPath)
 
