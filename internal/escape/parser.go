@@ -1,0 +1,29 @@
+package escape
+
+import "regexp"
+
+// oscTitleRE matches OSC 2 window title sequences: ESC ] 2 ; <title> BEL
+var oscTitleRE = regexp.MustCompile(`\x1b\]2;([^\x07\x1b]*)\x07`)
+
+// nullMarkerRE matches the custom null-byte marker: \x00HIVE_TITLE:{title}\x00
+var nullMarkerRE = regexp.MustCompile(`\x00HIVE_TITLE:([^\x00]+)\x00`)
+
+// ExtractTitle returns the last title set in raw pane output, or "" if none found.
+// It checks both the OSC 2 sequence and the custom null-byte marker.
+func ExtractTitle(raw string) string {
+	// Prefer null-byte marker (explicit, agent-agnostic)
+	if matches := nullMarkerRE.FindAllStringSubmatch(raw, -1); len(matches) > 0 {
+		last := matches[len(matches)-1]
+		if len(last) > 1 {
+			return last[1]
+		}
+	}
+	// Fall back to OSC 2
+	if matches := oscTitleRE.FindAllStringSubmatch(raw, -1); len(matches) > 0 {
+		last := matches[len(matches)-1]
+		if len(last) > 1 {
+			return last[1]
+		}
+	}
+	return ""
+}
