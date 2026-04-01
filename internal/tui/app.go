@@ -114,12 +114,46 @@ func New(cfg config.Config, appState state.AppState) Model {
 			}
 		}
 	} else {
+		// Ensure the active session's parent project/team is expanded so SyncActiveSession
+		// can locate it in the sidebar item list (collapsed parents hide their children).
+		expandForActiveSession(&m.appState, m.appState.ActiveSessionID)
+		m.sidebar.Rebuild(&m.appState)
 		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
+	}
+	// Restore the grid view if the user detached from a grid-initiated session.
+	if m.appState.RestoreGridView {
+		m.appState.RestoreGridView = false
+		m.gridView.Show(m.liveSessions())
 	}
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
 	return m
+}
+
+// expandForActiveSession un-collapses any parent project or team that contains
+// the given session, so the sidebar can include it in its item list.
+func expandForActiveSession(appState *state.AppState, sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	for _, p := range appState.Projects {
+		for _, sess := range p.Sessions {
+			if sess.ID == sessionID {
+				p.Collapsed = false
+				return
+			}
+		}
+		for _, t := range p.Teams {
+			for _, sess := range t.Sessions {
+				if sess.ID == sessionID {
+					p.Collapsed = false
+					t.Collapsed = false
+					return
+				}
+			}
+		}
+	}
 }
 
 // Init returns the initial commands.
@@ -327,7 +361,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case components.GridSessionSelectedMsg:
-		attach := &SessionAttachMsg{TmuxSession: msg.TmuxSession, TmuxWindow: msg.TmuxWindow}
+		attach := &SessionAttachMsg{TmuxSession: msg.TmuxSession, TmuxWindow: msg.TmuxWindow, FromGridView: true}
 		if !m.cfg.HideAttachHint {
 			m.pendingAttach = attach
 			m.showAttachHint = true

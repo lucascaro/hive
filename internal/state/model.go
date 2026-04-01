@@ -142,6 +142,9 @@ type AppState struct {
 	AgentUsage      map[string]AgentUsageRecord
 	// InstallingAgent holds the agent type currently being installed (empty = none).
 	InstallingAgent string
+	// RestoreGridView is transient: when true, New() opens the grid view on startup.
+	// Set by cmd/start.go after the user detaches from a grid-initiated session.
+	RestoreGridView bool
 }
 
 // TeamStatus derives an aggregate status from all team member statuses.
