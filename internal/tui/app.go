@@ -232,9 +232,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// If the status watcher captured new content for the active session, update
 		// the preview immediately rather than waiting for the next PollPreview tick.
+		needsClear := false
 		if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
 			m.appState.PreviewContent = content
 			m.preview.SetContent(content)
+			// If we're in the post-switch grace period, pair the content update with a
+			// full screen clear so that the placeholder → content transition is rendered
+			// cleanly rather than as an incremental diff (which can leave visual artifacts).
+			if m.pendingPreviewClear {
+				m.pendingPreviewClear = false
+				needsClear = true
+			}
 		}
 		changed := false
 		for sessionID, status := range msg.Statuses {
@@ -246,6 +254,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if changed {
 			m.sidebar.Rebuild(&m.appState)
+		}
+		if needsClear {
+			return m, tea.Batch(m.scheduleWatchStatuses(), tea.ClearScreen)
 		}
 		return m, m.scheduleWatchStatuses()
 
