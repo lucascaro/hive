@@ -9,7 +9,8 @@
       "Bash(go list:*)",
       "Bash(go test:*)",
       "Bash(go install:*)",
-      "Bash(bash build.sh)"
+      "Bash(bash build.sh)",
+      "Bash(grep:*)"
     ]
   }
 }
