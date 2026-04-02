@@ -24,6 +24,10 @@ type SessionAttachMsg struct {
 	TmuxSession     string
 	TmuxWindow      int
 	RestoreGridMode state.GridRestoreMode
+	// Display metadata used to set the terminal window title while attached.
+	SessionTitle string
+	AgentType    state.AgentType
+	ProjectName  string
 }
 
 // SessionDetachedMsg is sent when the user returns from a tmux session.

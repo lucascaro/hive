@@ -387,10 +387,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case components.GridSessionSelectedMsg:
+		var sessionTitle string
+		var agentType state.AgentType
+		var projectName string
+		if s := m.sessionByTmux(msg.TmuxSession, msg.TmuxWindow); s != nil {
+			sessionTitle = s.Title
+			agentType = s.AgentType
+			projectName = m.projectNameByID(s.ProjectID)
+		}
 		attach := &SessionAttachMsg{
 			TmuxSession:     msg.TmuxSession,
 			TmuxWindow:      msg.TmuxWindow,
 			RestoreGridMode: m.gridView.Mode,
+			SessionTitle:    sessionTitle,
+			AgentType:       agentType,
+			ProjectName:     projectName,
 		}
 		if !m.cfg.HideAttachHint {
 			m.pendingAttach = attach
@@ -1738,6 +1749,9 @@ func (m *Model) attachActiveSession() tea.Cmd {
 			TmuxSession:     sess.TmuxSession,
 			TmuxWindow:      sess.TmuxWindow,
 			RestoreGridMode: state.GridRestoreNone,
+			SessionTitle:    sess.Title,
+			AgentType:       sess.AgentType,
+			ProjectName:     m.projectNameByID(sess.ProjectID),
 		}
 	}
 }
@@ -1944,6 +1958,9 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 		TmuxSession:     sess.TmuxSession,
 		TmuxWindow:      sess.TmuxWindow,
 		RestoreGridMode: state.GridRestoreNone,
+		SessionTitle:    sess.Title,
+		AgentType:       sess.AgentType,
+		ProjectName:     m.projectNameByID(sess.ProjectID),
 	}
 }
 
@@ -2079,6 +2096,28 @@ func (m *Model) gridProjectNames() map[string]string {
 		names[p.ID] = p.Name
 	}
 	return names
+}
+
+// projectNameByID returns the display name for a project ID, or "" if not found.
+func (m *Model) projectNameByID(id string) string {
+	for _, p := range m.appState.Projects {
+		if p.ID == id {
+			return p.Name
+		}
+	}
+	return ""
+}
+
+// sessionByTmux returns the session matching the given tmux session + window, or nil.
+func (m *Model) sessionByTmux(tmuxSession string, tmuxWindow int) *state.Session {
+	for _, p := range m.appState.Projects {
+		for _, s := range p.Sessions {
+			if s.TmuxSession == tmuxSession && s.TmuxWindow == tmuxWindow {
+				return s
+			}
+		}
+	}
+	return nil
 }
 
 func (m *Model) scheduleGridPoll() tea.Cmd {
@@ -2287,6 +2326,29 @@ func (m Model) tmuxHelpView() string {
 // RunAttach handles the attach flow: exits TUI, attaches to the session, relaunches TUI.
 // This is called by cmd/start.go after tea.Program.Run returns with a SessionAttachMsg.
 func RunAttach(sess SessionAttachMsg) error {
+	// Set the terminal window/tab title so the user always knows which session
+	// they are in, even when the attached app redraws the entire screen.
+	// ESC[22;0t pushes the current title onto xterm's internal stack.
+	// ESC]0;...\a sets a new title. ESC[23;0t (deferred) pops and restores it.
+	fmt.Print("\033[22;0t")
+	fmt.Printf("\033]0;%s\007", buildAttachTitle(sess))
+	defer fmt.Print("\033[23;0t")
+
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 	return mux.Attach(target)
+}
+
+// buildAttachTitle returns a terminal window title string for the attached session.
+func buildAttachTitle(sess SessionAttachMsg) string {
+	agent := string(sess.AgentType)
+	if sess.ProjectName != "" && sess.SessionTitle != "" {
+		return fmt.Sprintf("Hive | %s / %s (%s)", sess.ProjectName, sess.SessionTitle, agent)
+	}
+	if sess.SessionTitle != "" {
+		return fmt.Sprintf("Hive | %s (%s)", sess.SessionTitle, agent)
+	}
+	if sess.ProjectName != "" {
+		return fmt.Sprintf("Hive | %s (%s)", sess.ProjectName, agent)
+	}
+	return "Hive"
 }
