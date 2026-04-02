@@ -15,7 +15,7 @@ func TestGridViewView_ShowsStatusLegend(t *testing.T) {
 	}
 	gv.Show([]*state.Session{
 		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
-	})
+	}, state.GridRestoreProject)
 
 	out := gv.View()
 	for _, want := range []string{"idle", "working", "waiting", "dead"} {
@@ -41,7 +41,7 @@ func TestGridView_ExactHeight(t *testing.T) {
 	}
 	for _, d := range dims {
 		gv := &GridView{Active: true, Width: d.w, Height: d.h}
-		gv.Show(sessions)
+		gv.Show(sessions, state.GridRestoreProject)
 		out := gv.View()
 		got := strings.Count(out, "\n") + 1
 		if got != d.h {
@@ -63,7 +63,7 @@ func TestGridView_ExactHeight_VariousCounts(t *testing.T) {
 	for n := 1; n <= 9; n++ {
 		for _, h := range []int{24, 30, 40, 50, 62} {
 			gv := &GridView{Active: true, Width: 160, Height: h}
-			gv.Show(allSessions[:n])
+			gv.Show(allSessions[:n], state.GridRestoreProject)
 			out := gv.View()
 			got := strings.Count(out, "\n") + 1
 			if got != h {
@@ -73,4 +73,3 @@ func TestGridView_ExactHeight_VariousCounts(t *testing.T) {
 		}
 	}
 }
-

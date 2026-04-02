@@ -21,9 +21,9 @@ type SessionKilledMsg struct {
 
 // SessionAttachMsg triggers attaching to a session (suspends TUI).
 type SessionAttachMsg struct {
-	TmuxSession  string
-	TmuxWindow   int
-	FromGridView bool // true when the user attached from the grid view
+	TmuxSession     string
+	TmuxWindow      int
+	RestoreGridMode state.GridRestoreMode
 }
 
 // SessionDetachedMsg is sent when the user returns from a tmux session.

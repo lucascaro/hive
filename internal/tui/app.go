@@ -38,32 +38,32 @@ func init() {
 
 // Model is the root Bubble Tea model.
 type Model struct {
-	cfg         config.Config
-	appState    state.AppState
-	keys        KeyMap
-	sidebar     components.Sidebar
-	preview     components.Preview
-	statusBar   components.StatusBar
-	titleEditor components.TitleEditor
-	agentPicker components.AgentPicker
-	teamBuilder components.TeamBuilder
-	confirm     components.Confirm
-	gridView    components.GridView
+	cfg          config.Config
+	appState     state.AppState
+	keys         KeyMap
+	sidebar      components.Sidebar
+	preview      components.Preview
+	statusBar    components.StatusBar
+	titleEditor  components.TitleEditor
+	agentPicker  components.AgentPicker
+	teamBuilder  components.TeamBuilder
+	confirm      components.Confirm
+	gridView     components.GridView
 	orphanPicker components.OrphanPicker
-	settings    components.SettingsView
-	nameInput   textinput.Model // for project name / directory input
+	settings     components.SettingsView
+	nameInput    textinput.Model // for project name / directory input
 	// UI sub-states
-	inputMode           string // "project-name", "project-dir", "new-session", "worktree-branch", ""
-	pendingProjectName  string // name entered in step 1 of project creation
-	pendingProjectID    string
-	pendingAgentType    string // agent type awaiting install confirmation
+	inputMode          string // "project-name", "project-dir", "new-session", "worktree-branch", ""
+	pendingProjectName string // name entered in step 1 of project creation
+	pendingProjectID   string
+	pendingAgentType   string // agent type awaiting install confirmation
 	// Worktree session creation
 	pendingWorktree          bool   // true when the next session should use a worktree
 	pendingWorktreeAgentType string // agent type selected for worktree session
 	pendingWorktreeAgentCmd  []string
 	// Attach hint overlay
-	showAttachHint  bool
-	pendingAttach   *SessionAttachMsg
+	showAttachHint bool
+	pendingAttach  *SessionAttachMsg
 	// Attach flow: set before tea.Quit so cmd/start.go can act on it.
 	attachPending *SessionAttachMsg
 	// previewPollGen is incremented each time we intentionally start a fresh
@@ -128,9 +128,12 @@ func New(cfg config.Config, appState state.AppState) Model {
 		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
 	}
 	// Restore the grid view if the user detached from a grid-initiated session.
-	if m.appState.RestoreGridView {
-		m.appState.RestoreGridView = false
-		m.gridView.Show(m.liveSessions())
+	if m.appState.RestoreGridMode != state.GridRestoreNone {
+		mode := m.appState.RestoreGridMode
+		m.appState.RestoreGridMode = state.GridRestoreNone
+		sessions := m.gridSessions(mode)
+		m.gridView.Show(sessions, mode)
+		m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
 	}
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
@@ -164,12 +167,16 @@ func expandForActiveSession(appState *state.AppState, sessionID string) {
 
 // Init returns the initial commands.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		tea.SetWindowTitle("hive"),
 		m.schedulePollPreview(),
 		m.scheduleWatchTitles(),
 		m.scheduleWatchStatuses(),
-	)
+	}
+	if m.gridView.Active {
+		cmds = append(cmds, m.scheduleGridPoll())
+	}
+	return tea.Batch(cmds...)
 }
 
 // Update handles all messages.
@@ -378,7 +385,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case components.GridSessionSelectedMsg:
-		attach := &SessionAttachMsg{TmuxSession: msg.TmuxSession, TmuxWindow: msg.TmuxWindow, FromGridView: true}
+		attach := &SessionAttachMsg{
+			TmuxSession:     msg.TmuxSession,
+			TmuxWindow:      msg.TmuxWindow,
+			RestoreGridMode: m.gridView.Mode,
+		}
 		if !m.cfg.HideAttachHint {
 			m.pendingAttach = attach
 			m.showAttachHint = true
@@ -637,8 +648,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "G":
 			// Switch to all-projects view without closing.
-			m.gridView.Show(m.liveSessions())
-			return m, nil
+			m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
+			return m, m.scheduleGridPoll()
 		case "x":
 			if sess := m.gridView.Selected(); sess != nil {
 				m.gridView.Hide()
@@ -747,20 +758,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.GridOverview):
 		// g shows only current project; G (handled above in the active-grid block,
 		// or via msg.String()=="G" below) shows all.
-		var sessions []*state.Session
-		for _, sess := range m.liveSessions() {
-			if m.appState.ActiveProjectID == "" || sess.ProjectID == m.appState.ActiveProjectID {
-				sessions = append(sessions, sess)
-			}
-		}
-		if len(sessions) == 0 {
-			sessions = m.liveSessions()
-		}
-		m.gridView.Show(sessions)
+		sessions := m.gridSessions(state.GridRestoreProject)
+		m.gridView.Show(sessions, state.GridRestoreProject)
 		return m, m.scheduleGridPoll()
 
 	case msg.String() == "G":
-		m.gridView.Show(m.liveSessions())
+		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.NewProject):
@@ -1422,16 +1425,16 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 	m.persist()
 
 	m.fireHook(state.HookEvent{
-		Name:        state.EventSessionCreate,
-		ProjectID:   projectID,
-		ProjectName: proj.Name,
-		SessionID:   sess.ID,
+		Name:         state.EventSessionCreate,
+		ProjectID:    projectID,
+		ProjectName:  proj.Name,
+		SessionID:    sess.ID,
 		SessionTitle: sess.Title,
-		AgentType:   agentType,
-		AgentCmd:    agentCmd,
-		TmuxSession: muxSess,
-		TmuxWindow:  windowIdx,
-		WorkDir:     workDir,
+		AgentType:    agentType,
+		AgentCmd:     agentCmd,
+		TmuxSession:  muxSess,
+		TmuxWindow:   windowIdx,
+		WorkDir:      workDir,
 	})
 	return func() tea.Msg { return SessionCreatedMsg{Session: sess} }
 }
@@ -1498,19 +1501,19 @@ func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state
 	_, sess := state.AddTeamSession(&m.appState, proj.ID, team.ID, role, title, agentType, agentCmd, workDir, muxSess, windowIdx)
 	state.RecordAgentUsage(&m.appState, string(agentType))
 	m.fireHook(state.HookEvent{
-		Name:        state.EventTeamMemberAdd,
-		ProjectID:   proj.ID,
-		ProjectName: proj.Name,
-		SessionID:   sess.ID,
+		Name:         state.EventTeamMemberAdd,
+		ProjectID:    proj.ID,
+		ProjectName:  proj.Name,
+		SessionID:    sess.ID,
 		SessionTitle: title,
-		TeamID:      team.ID,
-		TeamName:    team.Name,
-		TeamRole:    role,
-		AgentType:   agentType,
-		AgentCmd:    agentCmd,
-		TmuxSession: muxSess,
-		TmuxWindow:  windowIdx,
-		WorkDir:     workDir,
+		TeamID:       team.ID,
+		TeamName:     team.Name,
+		TeamRole:     role,
+		AgentType:    agentType,
+		AgentCmd:     agentCmd,
+		TmuxSession:  muxSess,
+		TmuxWindow:   windowIdx,
+		WorkDir:      workDir,
 	})
 	return func() tea.Msg { return SessionCreatedMsg{Session: sess} }
 }
@@ -1525,16 +1528,20 @@ func (m *Model) attachActiveSession() tea.Cmd {
 		return nil
 	}
 	m.fireHook(state.HookEvent{
-		Name:        state.EventSessionAttach,
-		SessionID:   sess.ID,
+		Name:         state.EventSessionAttach,
+		SessionID:    sess.ID,
 		SessionTitle: sess.Title,
-		AgentType:   sess.AgentType,
-		TmuxSession: sess.TmuxSession,
-		TmuxWindow:  sess.TmuxWindow,
-		WorkDir:     sess.WorkDir,
+		AgentType:    sess.AgentType,
+		TmuxSession:  sess.TmuxSession,
+		TmuxWindow:   sess.TmuxWindow,
+		WorkDir:      sess.WorkDir,
 	})
 	return func() tea.Msg {
-		return SessionAttachMsg{TmuxSession: sess.TmuxSession, TmuxWindow: sess.TmuxWindow}
+		return SessionAttachMsg{
+			TmuxSession:     sess.TmuxSession,
+			TmuxWindow:      sess.TmuxWindow,
+			RestoreGridMode: state.GridRestoreNone,
+		}
 	}
 }
 
@@ -1736,7 +1743,11 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 	if sess == nil {
 		return nil
 	}
-	return &SessionAttachMsg{TmuxSession: sess.TmuxSession, TmuxWindow: sess.TmuxWindow}
+	return &SessionAttachMsg{
+		TmuxSession:     sess.TmuxSession,
+		TmuxWindow:      sess.TmuxWindow,
+		RestoreGridMode: state.GridRestoreNone,
+	}
 }
 
 // handleAttachHint handles key input while the attach hint overlay is shown.
@@ -1827,8 +1838,41 @@ func (m *Model) liveSessions() []*state.Session {
 	return out
 }
 
+func (m *Model) gridSessions(mode state.GridRestoreMode) []*state.Session {
+	switch mode {
+	case state.GridRestoreAll:
+		return m.liveSessions()
+	case state.GridRestoreProject:
+		var sessions []*state.Session
+		for _, sess := range m.liveSessions() {
+			if m.appState.ActiveProjectID == "" || sess.ProjectID == m.appState.ActiveProjectID {
+				sessions = append(sessions, sess)
+			}
+		}
+		if len(sessions) == 0 {
+			return m.liveSessions()
+		}
+		return sessions
+	default:
+		return nil
+	}
+}
+
+func (m *Model) gridContentsFromSnapshots(sessions []*state.Session) map[string]string {
+	if len(sessions) == 0 {
+		return nil
+	}
+	contents := make(map[string]string, len(sessions))
+	for _, sess := range sessions {
+		if content := m.contentSnapshots[sess.ID]; content != "" {
+			contents[sess.ID] = content
+		}
+	}
+	return contents
+}
+
 func (m *Model) scheduleGridPoll() tea.Cmd {
-	sessions := m.liveSessions()
+	sessions := m.gridSessions(m.gridView.Mode)
 	if len(sessions) == 0 {
 		return nil
 	}
