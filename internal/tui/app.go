@@ -49,6 +49,7 @@ type Model struct {
 	teamBuilder components.TeamBuilder
 	confirm     components.Confirm
 	gridView    components.GridView
+	orphanPicker components.OrphanPicker
 	nameInput   textinput.Model // for project name / directory input
 	// UI sub-states
 	inputMode           string // "project-name", "project-dir", "new-session", "worktree-branch", ""
@@ -97,9 +98,12 @@ func New(cfg config.Config, appState state.AppState) Model {
 		titleEditor:      components.NewTitleEditor(),
 		agentPicker:      components.NewAgentPicker(),
 		teamBuilder:      components.NewTeamBuilder(),
+		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
 		nameInput:        ni,
 		contentSnapshots: make(map[string]string),
 	}
+	// Clear the transient field now that the picker owns the list.
+	m.appState.OrphanSessions = nil
 	m.sidebar.Rebuild(&m.appState)
 	// Sync sidebar cursor to the active session (set by caller on re-entry after detach),
 	// or auto-select the first available session on fresh start.
@@ -428,6 +432,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingAgentType = ""
 		return m, cmd
 
+	// --- Orphan cleanup result ---
+	case components.OrphanPickerDoneMsg:
+		for _, name := range msg.Selected {
+			_ = mux.KillSession(name)
+		}
+		return m, nil
+
 	// --- Team builder result ---
 	case components.TeamBuiltMsg:
 		cmd := m.createTeam(msg.Spec)
@@ -475,6 +486,11 @@ func (m Model) View() string {
 	}
 	if m.appState.ShowConfirm {
 		return m.overlayView(m.confirm.View())
+	}
+	if m.orphanPicker.Active {
+		m.orphanPicker.Width = m.appState.TermWidth
+		m.orphanPicker.Height = m.appState.TermHeight
+		return m.overlayView(m.orphanPicker.View())
 	}
 	if m.agentPicker.Active {
 		return m.overlayView(m.agentPicker.View())
@@ -617,6 +633,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.appState.EditingTitle {
 		return m.handleTitleEdit(msg)
 	}
+	if m.orphanPicker.Active {
+		updated, cmd := m.orphanPicker.Update(msg)
+		m.orphanPicker = updated
+		return m, cmd
+	}
 	if m.agentPicker.Active {
 		cmd, _ := m.agentPicker.Update(msg)
 		return m, cmd
@@ -650,7 +671,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case key.Matches(msg, m.keys.QuitKill):
-		return m, func() tea.Msg { return QuitAndKillMsg{} }
+		return m, func() tea.Msg {
+			return ConfirmActionMsg{
+				Message: "Quit and kill ALL sessions?",
+				Action:  "quit-kill",
+			}
+		}
 
 	case key.Matches(msg, m.keys.Help):
 		m.appState.ShowHelp = !m.appState.ShowHelp
@@ -1180,6 +1206,10 @@ func (m Model) handleConfirmedAction(action string) tea.Cmd {
 		m.pendingWorktreeAgentCmd = nil
 		return m.spawnWorktreeSession(proj, agentTypeStr, agentCmd, branch, gitRoot, worktreePath)
 	}
+	if action == "quit-kill" {
+		m.killAllSessions()
+		return tea.Quit
+	}
 	return nil
 }
 
@@ -1471,7 +1501,9 @@ func (m *Model) attachActiveSession() tea.Cmd {
 
 func (m *Model) killSession(sessionID string) tea.Cmd {
 	sess := m.activeSessionByID(sessionID)
+	var tmuxSess string
 	if sess != nil {
+		tmuxSess = sess.TmuxSession
 		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 		_ = mux.KillWindow(target)
 		m.fireHook(state.HookEvent{
@@ -1491,6 +1523,10 @@ func (m *Model) killSession(sessionID string) tea.Cmd {
 		}
 	}
 	m.appState = *state.RemoveSession(&m.appState, sessionID)
+	// If this was the last window in the tmux session, clean up the container.
+	if tmuxSess != "" {
+		killTmuxSessionIfEmpty(&m.appState, tmuxSess)
+	}
 	m.sidebar.Rebuild(&m.appState)
 	m.persist()
 	return func() tea.Msg { return SessionKilledMsg{SessionID: sessionID} }
@@ -1498,10 +1534,12 @@ func (m *Model) killSession(sessionID string) tea.Cmd {
 
 func (m *Model) killTeam(teamID string) tea.Cmd {
 	// Kill all sessions in the team.
+	var teamTmuxSessions []string
 	for _, p := range m.appState.Projects {
 		for _, t := range p.Teams {
 			if t.ID == teamID {
 				for _, sess := range t.Sessions {
+					teamTmuxSessions = append(teamTmuxSessions, sess.TmuxSession)
 					target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 					_ = mux.KillWindow(target)
 				}
@@ -1513,6 +1551,10 @@ func (m *Model) killTeam(teamID string) tea.Cmd {
 		}
 	}
 	m.appState = *state.RemoveTeam(&m.appState, teamID)
+	// Clean up any now-empty tmux session containers.
+	for _, s := range teamTmuxSessions {
+		killTmuxSessionIfEmpty(&m.appState, s)
+	}
 	m.sidebar.Rebuild(&m.appState)
 	m.persist()
 	return func() tea.Msg { return TeamKilledMsg{TeamID: teamID} }
@@ -1546,13 +1588,44 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 }
 
 func (m *Model) killAllSessions() {
+	// Collect unique tmux session containers before we start killing windows.
+	tmuxSessions := uniqueTmuxSessionNames(&m.appState)
 	for _, sess := range state.AllSessions(&m.appState) {
 		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 		_ = mux.KillWindow(target)
 	}
+	// All windows are gone — kill the now-empty session containers.
+	for _, s := range tmuxSessions {
+		_ = mux.KillSession(s)
+	}
 }
 
 // --- Helpers ---
+
+// uniqueTmuxSessionNames returns the set of distinct tmux session names used
+// by all hive sessions currently in appState.
+func uniqueTmuxSessionNames(appState *state.AppState) []string {
+	seen := make(map[string]struct{})
+	for _, sess := range state.AllSessions(appState) {
+		seen[sess.TmuxSession] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
+	}
+	return names
+}
+
+// killTmuxSessionIfEmpty kills the tmux session container named tmuxSess if no
+// remaining hive sessions in appState still reference it.
+func killTmuxSessionIfEmpty(appState *state.AppState, tmuxSess string) {
+	for _, sess := range state.AllSessions(appState) {
+		if sess.TmuxSession == tmuxSess {
+			return // still in use
+		}
+	}
+	_ = mux.KillSession(tmuxSess)
+}
 
 func (m *Model) syncActiveFromSidebar() {
 	sel := m.sidebar.Selected()

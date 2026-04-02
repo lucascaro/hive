@@ -90,5 +90,11 @@ type QuitAndKillMsg struct{}
 // AgentInstalledMsg is sent after a successful agent installation.
 type AgentInstalledMsg struct{ AgentType string }
 
+// CleanOrphansMsg is sent when the user confirms orphaned tmux session cleanup.
+// Sessions holds the tmux session names (e.g. "hive-abc12345") to kill.
+type CleanOrphansMsg struct {
+	Sessions []string
+}
+
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}

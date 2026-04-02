@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -151,6 +152,9 @@ func initMuxBackend(cfg config.Config) error {
 
 // reconcileState removes sessions whose window no longer exists in the backend.
 // For worktree sessions, it also removes the associated git worktree.
+// It also detects orphaned hive-* tmux session containers (no project in state,
+// no windows) and stores their names in appState.OrphanSessions for the TUI to
+// present to the user.
 func reconcileState(appState *state.AppState) {
 	var dead []*state.Session
 	var deadIDs []string
@@ -185,4 +189,39 @@ func reconcileState(appState *state.AppState) {
 	for _, id := range deadIDs {
 		appState = state.RemoveSession(appState, id)
 	}
+
+	// Detect orphaned hive-* tmux session containers: present in tmux but have
+	// no corresponding project in state AND contain no windows (empty shells).
+	appState.OrphanSessions = detectOrphanContainers(appState)
+}
+
+// detectOrphanContainers returns hive-* tmux session names that have no
+// matching project in state and have no windows (truly empty orphans).
+func detectOrphanContainers(appState *state.AppState) []string {
+	allNames, err := mux.ListSessionNames()
+	if err != nil || len(allNames) == 0 {
+		return nil
+	}
+
+	// Build set of tmux session names currently referenced by state.
+	knownSessions := make(map[string]struct{})
+	for _, sess := range state.AllSessions(appState) {
+		knownSessions[sess.TmuxSession] = struct{}{}
+	}
+
+	var orphans []string
+	for _, name := range allNames {
+		if !strings.HasPrefix(name, "hive-") {
+			continue
+		}
+		if _, known := knownSessions[name]; known {
+			continue
+		}
+		// Only flag containers that are actually empty (no windows).
+		windows, err := mux.ListWindows(name)
+		if err != nil || len(windows) == 0 {
+			orphans = append(orphans, name)
+		}
+	}
+	return orphans
 }

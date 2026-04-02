@@ -145,6 +145,10 @@ type AppState struct {
 	// RestoreGridView is transient: when true, New() opens the grid view on startup.
 	// Set by cmd/start.go after the user detaches from a grid-initiated session.
 	RestoreGridView bool
+	// OrphanSessions is transient: when non-empty, the TUI shows an orphan-cleanup
+	// overlay on startup listing hive-* tmux sessions with no matching project.
+	// Set by cmd/start.go after reconcileState detects orphaned containers.
+	OrphanSessions []string
 }
 
 // TeamStatus derives an aggregate status from all team member statuses.
