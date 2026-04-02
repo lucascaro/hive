@@ -50,6 +50,7 @@ func CreateSession(state *AppState, projectID string, title string, agentType Ag
 	sess := newSession(projectID, "", RoleStandalone, title, agentType, agentCmd, workDir, tmuxSession, tmuxWindow)
 	for _, p := range state.Projects {
 		if p.ID == projectID {
+			p.SessionCounter++
 			p.Sessions = append(p.Sessions, sess)
 			break
 		}
@@ -87,6 +88,7 @@ func AddTeamSession(state *AppState, projectID, teamID string, role TeamRole, ti
 		if p.ID != projectID {
 			continue
 		}
+		p.SessionCounter++
 		for _, t := range p.Teams {
 			if t.ID != teamID {
 				continue

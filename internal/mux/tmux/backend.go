@@ -77,6 +77,16 @@ func (b *Backend) Attach(target string) error {
 
 // wrapCmd wraps an agent command in a shell so "tmux detach-client" runs when
 // the agent exits, returning the user to hive.
+// Each argument is single-quote-escaped to prevent shell injection.
 func (b *Backend) wrapCmd(cmd []string) []string {
-	return []string{"sh", "-c", strings.Join(cmd, " ") + "; tmux detach-client"}
+	quoted := make([]string, len(cmd))
+	for i, arg := range cmd {
+		quoted[i] = shellQuote(arg)
+	}
+	return []string{"sh", "-c", strings.Join(quoted, " ") + "; tmux detach-client"}
+}
+
+// shellQuote wraps s in POSIX single quotes, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

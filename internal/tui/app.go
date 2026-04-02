@@ -1810,8 +1810,12 @@ func (m *Model) recomputeLayout() {
 }
 
 func (m *Model) persist() {
-	_ = saveState(&m.appState)
-	_ = saveUsage(m.appState.AgentUsage)
+	if err := saveState(&m.appState); err != nil {
+		log.Printf("hive: failed to save state: %v", err)
+	}
+	if err := saveUsage(m.appState.AgentUsage); err != nil {
+		log.Printf("hive: failed to save usage: %v", err)
+	}
 }
 
 func (m *Model) fireHook(event state.HookEvent) {

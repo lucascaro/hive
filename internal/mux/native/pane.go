@@ -93,12 +93,14 @@ func (p *pane) isDead() bool {
 	return p.dead
 }
 
-// kill terminates the process.
+// kill terminates the process and closes the PTY master.
 func (p *pane) kill() {
-	if p.cmd.Process != nil {
-		p.cmd.Process.Kill() //nolint:errcheck
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
 	}
-	p.ptm.Close() //nolint:errcheck
+	if p.ptm != nil {
+		_ = p.ptm.Close()
+	}
 }
 
 // resize sets the PTY window size.

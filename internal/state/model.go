@@ -14,6 +14,9 @@ type AgentUsageRecord struct {
 // Score returns a combined recency+frequency score (higher = prefer first).
 func (r AgentUsageRecord) Score() float64 {
 	hoursSince := time.Since(r.LastUsed).Hours()
+	if hoursSince < 0 {
+		hoursSince = 0 // guard against future timestamps (clock skew)
+	}
 	return math.Log(float64(r.Count)+1) + 1.0/math.Log(hoursSince+math.E)
 }
 

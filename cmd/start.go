@@ -182,7 +182,17 @@ func reconcileState(appState *state.AppState) {
 		// Clean up any git worktree owned by this session.
 		if sess.WorktreePath != "" {
 			if gitRoot, err := git.Root(sess.WorkDir); err == nil {
-				_ = git.RemoveWorktree(gitRoot, sess.WorktreePath)
+				if rmErr := git.RemoveWorktree(gitRoot, sess.WorktreePath); rmErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to remove worktree %s: %v\n", sess.WorktreePath, rmErr)
+				}
+			} else {
+				// WorkDir is gone or not a git repo; try a direct remove as a fallback.
+				fmt.Fprintf(os.Stderr, "warning: cannot locate git root for session %s (%v); attempting direct worktree removal\n", sess.ID, err)
+				if _, statErr := os.Stat(sess.WorktreePath); statErr == nil {
+					if rmErr := os.RemoveAll(sess.WorktreePath); rmErr != nil {
+						fmt.Fprintf(os.Stderr, "warning: failed to remove worktree directory %s: %v\n", sess.WorktreePath, rmErr)
+					}
+				}
 			}
 		}
 	}

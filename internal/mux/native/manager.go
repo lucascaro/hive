@@ -97,9 +97,9 @@ func (m *manager) listSessionNames() []string {
 // --- window operations --------------------------------------------------------
 
 func (m *manager) createWindow(sessionName, windowName, workDir string, args []string) (int, error) {
-	m.mu.Lock()
+	m.mu.RLock()
 	sess, ok := m.sessions[sessionName]
-	m.mu.Unlock()
+	m.mu.RUnlock()
 	if !ok {
 		return 0, fmt.Errorf("session not found: %s", sessionName)
 	}
@@ -107,6 +107,17 @@ func (m *manager) createWindow(sessionName, windowName, workDir string, args []s
 	p, err := startPane(windowName, workDir, args)
 	if err != nil {
 		return 0, fmt.Errorf("start pane: %w", err)
+	}
+
+	// Re-validate the session still exists. killSession() may have run while
+	// startPane() was blocked (forking a process). If it's gone, clean up the
+	// orphaned pane and return an error rather than storing it on a dead session.
+	m.mu.RLock()
+	_, stillExists := m.sessions[sessionName]
+	m.mu.RUnlock()
+	if !stillExists {
+		p.kill()
+		return 0, fmt.Errorf("session was deleted while starting pane: %s", sessionName)
 	}
 
 	sess.mu.Lock()

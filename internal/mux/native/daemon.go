@@ -75,80 +75,88 @@ func handleConn(conn net.Conn) {
 
 	switch req.Op {
 	case "ping":
-		writeMsg(conn, okResp()) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, okResp()))
 
 	case "create_session":
 		err := mgr.createSession(req.Session, req.WindowName, req.WorkDir, req.Cmd)
 		if err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
-		writeMsg(conn, okResp()) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, okResp()))
 
 	case "session_exists":
-		writeMsg(conn, Response{OK: true, Bool: mgr.sessionExists(req.Session)}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Bool: mgr.sessionExists(req.Session)}))
 
 	case "kill_session":
 		if err := mgr.killSession(req.Session); err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
-		writeMsg(conn, okResp()) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, okResp()))
 
 	case "list_session_names":
-		writeMsg(conn, Response{OK: true, Strings: mgr.listSessionNames()}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Strings: mgr.listSessionNames()}))
 
 	case "create_window":
 		idx, err := mgr.createWindow(req.Session, req.WindowName, req.WorkDir, req.Cmd)
 		if err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
-		writeMsg(conn, Response{OK: true, Int: idx}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Int: idx}))
 
 	case "window_exists":
-		writeMsg(conn, Response{OK: true, Bool: mgr.windowExists(req.Target)}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Bool: mgr.windowExists(req.Target)}))
 
 	case "kill_window":
 		if err := mgr.killWindow(req.Target); err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
-		writeMsg(conn, okResp()) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, okResp()))
 
 	case "rename_window":
 		if err := mgr.renameWindow(req.Target, req.NewName); err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
-		writeMsg(conn, okResp()) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, okResp()))
 
 	case "list_windows":
 		entries, err := mgr.listWindows(req.Session)
 		if err != nil {
-			writeMsg(conn, errResp(err.Error())) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
 			return
 		}
 		wins := make([]WindowInfo, len(entries))
 		for i, e := range entries {
 			wins[i] = WindowInfo{Index: e.idx, Name: e.name}
 		}
-		writeMsg(conn, Response{OK: true, Windows: wins}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Windows: wins}))
 
 	case "capture_pane", "capture_pane_raw":
 		p := mgr.paneByTarget(req.Target)
 		if p == nil || p.isDead() {
-			writeMsg(conn, errResp("pane not found: "+req.Target)) //nolint:errcheck
+			logWriteErr(conn, writeMsg(conn, errResp("pane not found: "+req.Target)))
 			return
 		}
 		content := p.capture(req.Lines)
-		writeMsg(conn, Response{OK: true, Content: content}) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, Response{OK: true, Content: content}))
 
 	case "attach":
 		handleAttach(conn, req.Target)
 
 	default:
-		writeMsg(conn, errResp("unknown op: "+req.Op)) //nolint:errcheck
+		logWriteErr(conn, writeMsg(conn, errResp("unknown op: "+req.Op)))
+	}
+}
+
+// logWriteErr logs a protocol write error. The connection will be closed by the
+// deferred conn.Close() in handleConn, so this is informational only.
+func logWriteErr(conn net.Conn, err error) {
+	if err != nil {
+		log.Printf("daemon: write to %s failed: %v", conn.RemoteAddr(), err)
 	}
 }
 
