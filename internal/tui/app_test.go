@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/escape"
 	"github.com/lucascaro/hive/internal/state"
@@ -16,8 +17,8 @@ func testModelWithSessions() Model {
 	appState := state.AppState{
 		Projects: []*state.Project{
 			{
-				ID:   "proj-1",
-				Name: "test-project",
+				ID:    "proj-1",
+				Name:  "test-project",
 				Teams: []*state.Team{},
 				Sessions: []*state.Session{
 					{
@@ -48,6 +49,50 @@ func testModelWithSessions() Model {
 	return New(cfg, appState)
 }
 
+func testAppStateWithTwoProjects() state.AppState {
+	return state.AppState{
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-1",
+		Projects: []*state.Project{
+			{
+				ID:    "proj-1",
+				Name:  "test-project-1",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{
+						ID:          "sess-1",
+						ProjectID:   "proj-1",
+						Title:       "session-1",
+						TmuxSession: "hive-proj1234",
+						TmuxWindow:  0,
+						Status:      state.StatusRunning,
+						AgentType:   state.AgentClaude,
+						AgentCmd:    []string{"claude"},
+					},
+				},
+			},
+			{
+				ID:    "proj-2",
+				Name:  "test-project-2",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{
+						ID:          "sess-2",
+						ProjectID:   "proj-2",
+						Title:       "session-2",
+						TmuxSession: "hive-proj5678",
+						TmuxWindow:  0,
+						Status:      state.StatusRunning,
+						AgentType:   state.AgentCodex,
+						AgentCmd:    []string{"codex"},
+					},
+				},
+			},
+		},
+		AgentUsage: make(map[string]state.AgentUsageRecord),
+	}
+}
+
 func TestNewAutoSelectsFirstSession(t *testing.T) {
 	m := testModelWithSessions()
 
@@ -72,6 +117,66 @@ func TestNewAutoSelectsFirstSession_Empty(t *testing.T) {
 
 	if m.appState.ActiveSessionID != "" {
 		t.Fatalf("New() with no sessions should leave ActiveSessionID empty, got %q", m.appState.ActiveSessionID)
+	}
+}
+
+func TestNew_RestoresProjectGridMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	appState := testAppStateWithTwoProjects()
+	appState.RestoreGridMode = state.GridRestoreProject
+
+	m := New(cfg, appState)
+
+	if !m.gridView.Active {
+		t.Fatal("grid view should be active after restore")
+	}
+	if m.gridView.Mode != state.GridRestoreProject {
+		t.Fatalf("grid mode = %q, want %q", m.gridView.Mode, state.GridRestoreProject)
+	}
+	sessions := m.gridSessions(m.gridView.Mode)
+	if len(sessions) != 1 {
+		t.Fatalf("restored project grid should show 1 session, got %d", len(sessions))
+	}
+	if sessions[0].ProjectID != "proj-1" {
+		t.Fatalf("restored project grid session project = %q, want proj-1", sessions[0].ProjectID)
+	}
+}
+
+func TestNew_RestoresAllProjectsGridMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	appState := testAppStateWithTwoProjects()
+	appState.RestoreGridMode = state.GridRestoreAll
+
+	m := New(cfg, appState)
+
+	if !m.gridView.Active {
+		t.Fatal("grid view should be active after restore")
+	}
+	if m.gridView.Mode != state.GridRestoreAll {
+		t.Fatalf("grid mode = %q, want %q", m.gridView.Mode, state.GridRestoreAll)
+	}
+	if got := len(m.gridSessions(m.gridView.Mode)); got != 2 {
+		t.Fatalf("restored all-projects grid should show 2 sessions, got %d", got)
+	}
+}
+
+func TestInit_IncludesGridPollWhenGridRestored(t *testing.T) {
+	cfg := config.DefaultConfig()
+	appState := testAppStateWithTwoProjects()
+	appState.RestoreGridMode = state.GridRestoreProject
+
+	m := New(cfg, appState)
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("Init() should return a batch command")
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("Init() msg type = %T, want tea.BatchMsg", msg)
+	}
+	if len(batch) != 5 {
+		t.Fatalf("Init() batch length = %d, want 5 including grid poll", len(batch))
 	}
 }
 
@@ -404,5 +509,47 @@ func TestStatusesDetectedMsg_IgnoresBackgroundPreview(t *testing.T) {
 
 	if updated.appState.PreviewContent != "active session output" {
 		t.Errorf("PreviewContent = %q, want active session content unchanged", updated.appState.PreviewContent)
+	}
+}
+
+func TestGridSessionSelectedMsg_PreservesProjectGridRestoreMode(t *testing.T) {
+	m := testModelWithSessions()
+	m.gridView.Show(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject)
+
+	result, _ := m.Update(components.GridSessionSelectedMsg{
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  0,
+	})
+	updated := result.(Model)
+
+	if updated.pendingAttach == nil {
+		t.Fatal("pendingAttach should be set when attach hint is shown")
+	}
+	if updated.pendingAttach.RestoreGridMode != state.GridRestoreProject {
+		t.Fatalf("RestoreGridMode = %q, want %q", updated.pendingAttach.RestoreGridMode, state.GridRestoreProject)
+	}
+}
+
+func TestGridSessionSelectedMsg_PreservesAllProjectsGridRestoreMode(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	appState := testAppStateWithTwoProjects()
+	m := New(cfg, appState)
+	m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
+
+	result, cmd := m.Update(components.GridSessionSelectedMsg{
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  0,
+	})
+	updated := result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected quit command when attach hint is disabled")
+	}
+	if updated.attachPending == nil {
+		t.Fatal("attachPending should be set")
+	}
+	if updated.attachPending.RestoreGridMode != state.GridRestoreAll {
+		t.Fatalf("RestoreGridMode = %q, want %q", updated.attachPending.RestoreGridMode, state.GridRestoreAll)
 	}
 }

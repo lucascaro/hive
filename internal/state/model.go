@@ -66,6 +66,15 @@ const (
 	PanePreview
 )
 
+// GridRestoreMode identifies which grid scope should be restored after attach.
+type GridRestoreMode string
+
+const (
+	GridRestoreNone    GridRestoreMode = ""
+	GridRestoreProject GridRestoreMode = "project"
+	GridRestoreAll     GridRestoreMode = "all"
+)
+
 // Project groups related AI agent sessions.
 type Project struct {
 	ID             string            `json:"id"`
@@ -97,23 +106,23 @@ type Team struct {
 
 // Session maps 1:1 to a tmux window.
 type Session struct {
-	ID           string            `json:"id"`
-	ProjectID    string            `json:"project_id"`
-	TeamID       string            `json:"team_id,omitempty"`
-	TeamRole     TeamRole          `json:"team_role"`
-	Title        string            `json:"title"`
-	TmuxSession  string            `json:"tmux_session"`
-	TmuxWindow   int               `json:"tmux_window"`
-	Status       SessionStatus     `json:"status"`
-	TitleSource  TitleSource       `json:"title_source"`
-	AgentType    AgentType         `json:"agent_type"`
-	AgentCmd     []string          `json:"agent_cmd"`
+	ID             string            `json:"id"`
+	ProjectID      string            `json:"project_id"`
+	TeamID         string            `json:"team_id,omitempty"`
+	TeamRole       TeamRole          `json:"team_role"`
+	Title          string            `json:"title"`
+	TmuxSession    string            `json:"tmux_session"`
+	TmuxWindow     int               `json:"tmux_window"`
+	Status         SessionStatus     `json:"status"`
+	TitleSource    TitleSource       `json:"title_source"`
+	AgentType      AgentType         `json:"agent_type"`
+	AgentCmd       []string          `json:"agent_cmd"`
 	WorkDir        string            `json:"work_dir"`
 	WorktreePath   string            `json:"worktree_path,omitempty"`   // non-empty = session runs in a git worktree
 	WorktreeBranch string            `json:"worktree_branch,omitempty"` // branch name for the worktree
 	CreatedAt      time.Time         `json:"created_at"`
-	LastActiveAt time.Time         `json:"last_active_at"`
-	Meta         map[string]string `json:"meta,omitempty"`
+	LastActiveAt   time.Time         `json:"last_active_at"`
+	Meta           map[string]string `json:"meta,omitempty"`
 }
 
 // AppState is the single source of truth for the TUI.
@@ -131,20 +140,21 @@ type AppState struct {
 	TermHeight      int
 	LastError       string
 	// UI overlay states
-	ShowHelp        bool
-	ShowTmuxHelp    bool
-	ShowConfirm     bool
-	ConfirmMsg      string
-	ConfirmAction   string // opaque action identifier
-	FilterQuery     string
-	FilterActive    bool
+	ShowHelp      bool
+	ShowTmuxHelp  bool
+	ShowConfirm   bool
+	ConfirmMsg    string
+	ConfirmAction string // opaque action identifier
+	FilterQuery   string
+	FilterActive  bool
 	// Agent usage tracking (persisted separately in usage.json)
-	AgentUsage      map[string]AgentUsageRecord
+	AgentUsage map[string]AgentUsageRecord
 	// InstallingAgent holds the agent type currently being installed (empty = none).
 	InstallingAgent string
-	// RestoreGridView is transient: when true, New() opens the grid view on startup.
-	// Set by cmd/start.go after the user detaches from a grid-initiated session.
-	RestoreGridView bool
+	// RestoreGridMode is transient: when non-empty, New() opens the grid view on
+	// startup using the matching scope. Set by cmd/start.go after the user
+	// detaches from a grid-initiated session.
+	RestoreGridMode GridRestoreMode
 	// OrphanSessions is transient: when non-empty, the TUI shows an orphan-cleanup
 	// overlay on startup listing hive-* tmux sessions with no matching project.
 	// Set by cmd/start.go after reconcileState detects orphaned containers.

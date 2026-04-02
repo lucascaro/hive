@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/mux"
+	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
@@ -48,13 +48,15 @@ type GridView struct {
 	Cursor   int
 	Width    int
 	Height   int
+	Mode     state.GridRestoreMode
 	sessions []*state.Session
 	contents map[string]string
 }
 
 // Show activates the grid with the given sessions.
-func (gv *GridView) Show(sessions []*state.Session) {
+func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) {
 	gv.Active = true
+	gv.Mode = mode
 	gv.sessions = sessions
 	if gv.Cursor >= len(sessions) {
 		gv.Cursor = 0
@@ -240,14 +242,14 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 //
 // Scoring (lower is better, evaluated for each candidate column count):
 //
-//	score = waste×5  +  |cols−rows|×2  +  ratioDiff
+//		score = waste×5  +  |cols−rows|×2  +  ratioDiff
 //
-//   • waste      — wasted cells (cols×rows − n); strongly penalised.
-//   • |cols−rows| — prefer grids whose shape is close to square
-//                   (e.g. 2×2 beats 4×1 for n=4, 3×3 beats 9×1 for n=9).
-//   • ratioDiff  — prefer cells whose char-unit aspect ratio (cellW/cellH)
-//                  is close to 2.5, which is visually square given that a
-//                  terminal glyph is roughly twice as tall as wide in pixels.
+//	  • waste      — wasted cells (cols×rows − n); strongly penalised.
+//	  • |cols−rows| — prefer grids whose shape is close to square
+//	                  (e.g. 2×2 beats 4×1 for n=4, 3×3 beats 9×1 for n=9).
+//	  • ratioDiff  — prefer cells whose char-unit aspect ratio (cellW/cellH)
+//	                 is close to 2.5, which is visually square given that a
+//	                 terminal glyph is roughly twice as tall as wide in pixels.
 //
 // Typical results (w=160, h=50):
 //
