@@ -130,6 +130,10 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 	var hints []hint
 
 	if focused == state.PaneSidebar {
+		killHint := hint{"x", "kill"}
+		if s.ActiveTeamID != "" {
+			killHint = hint{"x/D", "kill session/team"}
+		}
 		hints = []hint{
 			{"?", "help"},
 			{"n", "new project"},
@@ -138,7 +142,7 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 			{"a/↵", "attach"},
 			{"g/G", "grid view"},
 			{"r", "rename"},
-			{"x", "kill"},
+			killHint,
 			{"S", "settings"},
 			{"tab", "preview"},
 			{"q", "quit"},

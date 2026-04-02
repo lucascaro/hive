@@ -218,7 +218,7 @@ func (tb *TeamBuilder) View() string {
 	case stepOrchestrator:
 		title = "New Team — Step 3/5"
 		prompt = "Choosing orchestrator agent…"
-		hint = ""
+		hint = "↑/↓: navigate  enter: select  esc: cancel"
 	case stepWorkerCount:
 		title = "New Team — Step 4/5"
 		prompt = fmt.Sprintf("Number of worker agents (1-10), default %d:", tb.workerCount)

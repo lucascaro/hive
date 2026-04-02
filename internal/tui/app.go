@@ -413,6 +413,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Agent picker result ---
 	case components.AgentPickedMsg:
+		// Team builder owns agent selection while it is active.
+		if m.teamBuilder.Active {
+			cmd := m.teamBuilder.Update(msg)
+			return m, cmd
+		}
 		if m.inputMode == "new-session" {
 			agentTypeStr := string(msg.AgentType)
 			profile := m.cfg.Agents[agentTypeStr]
@@ -908,9 +913,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.KillTeam):
 		sel := m.sidebar.Selected()
 		if sel != nil && sel.TeamID != "" {
+			teamName := m.teamNameByID(sel.TeamID)
 			return m, func() tea.Msg {
 				return ConfirmActionMsg{
-					Message: fmt.Sprintf("Kill team %q and all its sessions?", sel.Label),
+					Message: fmt.Sprintf("Kill team %q and all its sessions?", teamName),
 					Action:  "kill-team:" + sel.TeamID,
 				}
 			}
@@ -2106,6 +2112,17 @@ func (m *Model) projectNameByID(id string) string {
 		}
 	}
 	return ""
+}
+
+func (m *Model) teamNameByID(id string) string {
+	for _, p := range m.appState.Projects {
+		for _, t := range p.Teams {
+			if t.ID == id {
+				return t.Name
+			}
+		}
+	}
+	return id
 }
 
 // sessionByTmux returns the session matching the given tmux session + window, or nil.
