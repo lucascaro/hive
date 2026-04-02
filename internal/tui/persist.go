@@ -21,7 +21,7 @@ func saveUsage(usage map[string]state.AgentUsageRecord) error {
 		return err
 	}
 	tmp := usagePath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, usagePath())
@@ -46,7 +46,7 @@ func saveState(appState *state.AppState) error {
 	}
 	path := config.StatePath()
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

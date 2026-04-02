@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -25,12 +26,36 @@ func LogPath() string { return filepath.Join(Dir(), logFileName) }
 // HooksPath returns the hooks directory path.
 func HooksPath() string { return filepath.Join(Dir(), hooksDir) }
 
-// Ensure creates the config directory and all subdirectories if they don't exist.
+// Ensure creates the config directory and all subdirectories if they don't exist,
+// then tightens permissions on any sensitive files that may have been created with
+// overly-broad modes by older versions.
 func Ensure() error {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return err
 	}
-	return os.MkdirAll(HooksPath(), 0o755)
+	if err := os.MkdirAll(HooksPath(), 0o755); err != nil {
+		return err
+	}
+	return FixPermissions()
+}
+
+// FixPermissions chmods sensitive config files to 0o600 (owner read/write only).
+// It is idempotent and skips files that do not yet exist.
+func FixPermissions() error {
+	sensitive := []string{
+		StatePath(),
+		filepath.Join(Dir(), "usage.json"),
+		LogPath(),
+	}
+	for _, path := range sensitive {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		if err := os.Chmod(path, 0o600); err != nil {
+			return fmt.Errorf("fix permissions on %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 // Load reads the config file, returning defaults if it doesn't exist.

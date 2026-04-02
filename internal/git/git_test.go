@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -106,6 +107,9 @@ func TestRoot(t *testing.T) {
 }
 
 func TestWorktreePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test uses Unix-style absolute paths (/repo); path format is OS-dependent")
+	}
 	cases := []struct {
 		gitRoot string
 		branch  string
@@ -141,7 +145,12 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 		// Verify it shows up in worktree list.
 		cmd := exec.Command("git", "-C", repoDir, "worktree", "list")
 		out, _ := cmd.Output()
-		if !strings.Contains(string(out), wtPath) {
+		// git outputs forward slashes; also resolve any OS short-names (Windows 8.3 paths).
+		wtPathNorm := wtPath
+		if resolved, err := filepath.EvalSymlinks(wtPath); err == nil {
+			wtPathNorm = resolved
+		}
+		if !strings.Contains(filepath.ToSlash(string(out)), filepath.ToSlash(wtPathNorm)) {
 			t.Errorf("worktree %q not in `git worktree list` output:\n%s", wtPath, out)
 		}
 	})

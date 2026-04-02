@@ -153,7 +153,7 @@ func runeDisplayWidth(r rune) int {
 var previewLog *log.Logger
 
 func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		previewLog = log.New(os.Stderr, "[preview] ", log.Ltime)
 		return

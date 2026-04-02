@@ -2,24 +2,28 @@ package tui
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
 )
 
-// setHome overrides $HOME for the duration of the test so config.Dir() and
-// config.StatePath() point into the temp dir.
+// setHomePersist overrides $HOME and HIVE_CONFIG_DIR for the duration of the
+// test so config.Dir() points into the temp dir on all platforms.
 func setHomePersist(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("HOME", dir)
+	// HIVE_CONFIG_DIR is the universal override checked first on all platforms,
+	// so also set it to avoid picking up %APPDATA% on Windows.
+	t.Setenv("HIVE_CONFIG_DIR", filepath.Join(dir, ".config", "hive"))
 }
 
 func ensureConfigDir(t *testing.T) {
 	t.Helper()
-	home := os.Getenv("HOME")
-	if err := os.MkdirAll(home+"/.config/hive", 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
+	if err := config.Ensure(); err != nil {
+		t.Fatalf("config.Ensure(): %v", err)
 	}
 }
 

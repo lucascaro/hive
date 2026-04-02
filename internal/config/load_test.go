@@ -13,6 +13,9 @@ func setHome(t *testing.T, dir string) {
 	t.Helper()
 	orig := os.Getenv("HOME")
 	t.Setenv("HOME", dir)
+	// HIVE_CONFIG_DIR is the universal config-dir override (checked first on all
+	// platforms), so also set it so Windows tests aren't affected by %APPDATA%.
+	t.Setenv("HIVE_CONFIG_DIR", filepath.Join(dir, ".config", "hive"))
 	_ = orig
 }
 

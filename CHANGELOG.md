@@ -41,9 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numbered ones, making it easier to identify sessions at a glance.
 
 ### Fixed
-- **Grid view cursor memory**: when reopening the grid view (`g`/`G`) or returning
-  to it after detaching from a session, the cursor now restores to the previously
-  selected session instead of always resetting to the first cell.
+- **Insecure file permissions hardened**: `state.json`, `usage.json`, and `hive.log`
+  are now written with mode `0o600` (owner read/write only) instead of `0o644`.
+  Additionally, `config.Ensure()` — called at every startup — now runs
+  `FixPermissions()` to retroactively tighten permissions on any of these files that
+  were created with overly-broad modes by an older version of Hive. This prevents
+  other OS users on shared machines from reading project metadata.
 - `Q` (quit + kill all) now shows a confirmation dialog before executing, consistent
   with the behaviour of all other destructive actions.
 - After killing a session, team, or all sessions, the corresponding tmux session
