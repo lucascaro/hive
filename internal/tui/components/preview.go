@@ -233,8 +233,13 @@ func (p *Preview) Resize(w, h int) {
 		// Without this the zero-value style (no border) produces a YOffset that is
 		// off by borderVerticalFrameSize, hiding the last few lines of content.
 		// Guard against tiny viewports where the frame exceeds the height.
+		// Always update vp.Style — if a previously-set style is left in place
+		// on a now-tiny viewport, GotoBottom will compute maxYOffset using the
+		// old frame size and scroll past the end of the content.
 		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
 			p.vp.Style = styles.PreviewStyle
+		} else {
+			p.vp.Style = lipgloss.Style{}
 		}
 		p.vp.GotoBottom()
 	}
@@ -264,11 +269,13 @@ func (p *Preview) SetContent(content string) {
 			}
 			sanitized = strings.Join(lines, "\n")
 		}
-		// Set style before GotoBottom so maxYOffset uses the correct frame size.
-		// Only when dimensions are large enough to accommodate the border frame;
-		// otherwise the zero-value style keeps GotoBottom safe on tiny viewports.
+		// Always update vp.Style before SetContent/GotoBottom so maxYOffset
+		// uses the correct frame size.  Leaving a previously-set style in place
+		// on a now-tiny viewport would compute a wrong YOffset.
 		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
 			p.vp.Style = styles.PreviewStyle
+		} else {
+			p.vp.Style = lipgloss.Style{}
 		}
 		p.vp.SetContent(sanitized)
 		p.vp.GotoBottom()

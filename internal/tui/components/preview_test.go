@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
 func newPreview(w, h int, content string) *Preview {
@@ -291,10 +292,9 @@ func TestPreviewView_WideLineTruncation(t *testing.T) {
 	// total frame exceeds the terminal width, each row wraps into extra physical
 	// lines, and the TUI scrolls ("screen corruption when switching sessions").
 	const w, h = 80, 10
-	// Inner width for a rounded-border + padding(0,1) style is w-4 = 76.
-	// Use a separator bar that is substantially wider than allowed.
-	const innerW = w - 4
-	wide := strings.Repeat("─", innerW+50) // 126 chars vs allowed 76
+	// Inner width is determined by the preview style's horizontal frame size.
+	innerW := w - styles.PreviewStyle.GetHorizontalFrameSize()
+	wide := strings.Repeat("─", innerW+50) // substantially wider than allowed
 	p := newPreview(w, h, wide)
 	out := p.View("sess-1")
 
