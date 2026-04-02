@@ -40,7 +40,7 @@ A terminal TUI for managing multiple AI coding agent sessions across projects â€
 
 ## Installation
 
-### Build from source
+### Build from source (Linux / macOS)
 
 ```bash
 git clone https://github.com/lucascaro/hive
@@ -48,6 +48,38 @@ cd hive
 go build -o hive .
 sudo mv hive /usr/local/bin/   # or any directory on your PATH
 ```
+
+Or use the helper script:
+
+```bash
+./build.sh
+```
+
+### Build from source (Windows)
+
+> **Note:** The native PTY backend is not available on Windows. Hive will use the `tmux` backend instead â€” install tmux via [MSYS2](https://www.msys2.org/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/), or [Chocolatey](https://chocolatey.org/) (`choco install msys2`).
+
+```powershell
+git clone https://github.com/lucascaro/hive
+cd hive
+.\build.ps1          # builds hive.exe and installs it (run as Administrator to install system-wide)
+```
+
+Or build manually:
+
+```powershell
+go build -o hive.exe .
+```
+
+After building, add `hive.exe` to a directory on your `PATH`.
+
+**Config directory on Windows:** `%APPDATA%\hive\` (e.g. `C:\Users\You\AppData\Roaming\hive\`)
+
+**Using the tmux backend on Windows:**
+
+1. Install tmux (via WSL, MSYS2, or Chocolatey).
+2. Edit `%APPDATA%\hive\config.json` and set `"multiplexer": "tmux"`.
+3. Run `hive start` from a terminal that has `tmux` on its `PATH` (e.g. Git Bash, MSYS2 terminal, or WSL).
 
 ### Verify
 
@@ -63,7 +95,7 @@ hive version
 hive start
 ```
 
-On first launch, Hive creates `~/.config/hive/` with a default `config.json` and starts the background multiplexer daemon.
+On first launch, Hive creates the config directory (`~/.config/hive/` on Linux/macOS, `%APPDATA%\hive\` on Windows) with a default `config.json` and starts the background multiplexer daemon.
 
 ### 2. Create a project
 

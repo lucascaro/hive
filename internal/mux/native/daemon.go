@@ -1,3 +1,5 @@
+//go:build !windows
+
 package muxnative
 
 import (
@@ -9,16 +11,13 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/lucascaro/hive/internal/config"
 )
 
 // SockPath returns the Unix socket path for the daemon.
 func SockPath() string {
-	dir := os.Getenv("HIVE_CONFIG_DIR")
-	if dir == "" {
-		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, ".config", "hive")
-	}
-	return filepath.Join(dir, "mux.sock")
+	return filepath.Join(config.Dir(), "mux.sock")
 }
 
 // RunDaemon starts the mux daemon: creates the Unix socket, starts the manager,

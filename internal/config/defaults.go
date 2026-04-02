@@ -23,7 +23,7 @@ func DefaultConfig() Config {
 		},
 		Hooks: HooksConfig{
 			Enabled: true,
-			Dir:     "~/.config/hive/hooks",
+			Dir:     HooksPath(),
 		},
 		Keybindings: KeybindingsConfig{
 			NewWorktreeSession: "W",

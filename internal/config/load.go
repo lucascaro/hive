@@ -13,12 +13,6 @@ const (
 	hooksDir       = "hooks"
 )
 
-// Dir returns the hive config directory, expanding ~ if needed.
-func Dir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "hive")
-}
-
 // ConfigPath returns the full path to config.json.
 func ConfigPath() string { return filepath.Join(Dir(), configFileName) }
 

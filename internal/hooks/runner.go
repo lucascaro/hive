@@ -56,14 +56,6 @@ func findScripts(hooksDir, eventName string) []string {
 	return scripts
 }
 
-func isExecutable(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return !info.IsDir() && info.Mode()&0o111 != 0
-}
-
 func runScript(path string, extraEnv []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
 	defer cancel()

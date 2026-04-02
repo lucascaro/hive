@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package muxnative implements the mux.Backend interface using native Go PTY
 // management via a persistent background daemon. No external tmux binary is required.
 //
