@@ -21,3 +21,4 @@ Thumbs.db
 
 # hive worktrees
 .worktrees
+.claude/settings.local.json
