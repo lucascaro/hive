@@ -59,6 +59,7 @@ type KeybindingsConfig struct {
 	Palette        string `json:"palette"`
 	Help           string `json:"help"`
 	TmuxHelp       string `json:"tmux_help"`
+	Settings       string `json:"settings"`
 	Quit           string `json:"quit"`
 	QuitKill       string `json:"quit_kill"`
 }

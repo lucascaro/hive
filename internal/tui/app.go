@@ -50,6 +50,7 @@ type Model struct {
 	confirm     components.Confirm
 	gridView    components.GridView
 	orphanPicker components.OrphanPicker
+	settings    components.SettingsView
 	nameInput   textinput.Model // for project name / directory input
 	// UI sub-states
 	inputMode           string // "project-name", "project-dir", "new-session", "worktree-branch", ""
@@ -98,6 +99,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		titleEditor:      components.NewTitleEditor(),
 		agentPicker:      components.NewAgentPicker(),
 		teamBuilder:      components.NewTeamBuilder(),
+		settings:         components.NewSettingsView(),
 		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
 		nameInput:        ni,
 		contentSnapshots: make(map[string]string),
@@ -459,6 +461,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.killAllSessions()
 		return m, tea.Quit
 
+	// --- Settings ---
+	case components.SettingsSaveRequestMsg:
+		newCfg := msg.Config
+		if err := config.Save(newCfg); err != nil {
+			return m, func() tea.Msg {
+				return ErrorMsg{Err: fmt.Errorf("save settings: %w", err)}
+			}
+		}
+		m.cfg = newCfg
+		m.keys = NewKeyMap(newCfg.Keybindings)
+		return m, func() tea.Msg { return ConfigSavedMsg{Config: newCfg} }
+
+	case components.SettingsClosedMsg:
+		m.settings.Close()
+
+	case ConfigSavedMsg:
+		m.appState.LastError = "" // clear any previous error
+
 	// --- Key events ---
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -468,6 +488,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the full UI.
 func (m Model) View() string {
+	// Settings screen fills the full terminal.
+	if m.settings.Active {
+		m.settings.Width = m.appState.TermWidth
+		m.settings.Height = m.appState.TermHeight
+		return m.settings.View()
+	}
 	// Grid overview fills the full terminal.
 	if m.gridView.Active {
 		m.gridView.Width = m.appState.TermWidth
@@ -597,7 +623,13 @@ func (m Model) View() string {
 
 // --- Key handler ---
 
+// handleKey handles keyboard events.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Settings screen consumes all keys while active.
+	if m.settings.Active {
+		cmd, _ := m.settings.Update(msg)
+		return m, cmd
+	}
 	// Grid overview consumes all keys while active.
 	if m.gridView.Active {
 		m.gridView.Width = m.appState.TermWidth
@@ -681,6 +713,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Help):
 		m.appState.ShowHelp = !m.appState.ShowHelp
 		m.appState.ShowTmuxHelp = false
+		return m, nil
+
+	case key.Matches(msg, m.keys.Settings):
+		m.settings.Width = m.appState.TermWidth
+		m.settings.Height = m.appState.TermHeight
+		m.settings.Open(m.cfg)
 		return m, nil
 
 	case key.Matches(msg, m.keys.TmuxHelp):
@@ -1907,6 +1945,7 @@ func (m Model) helpView() string {
 		{"ctrl+p", "command palette"},
 		{"g", "grid overview (all sessions)"},
 		{"1-9", "jump to project by number"},
+		{"S", "open settings"},
 		{"?", "toggle this help"},
 		{"H", "tmux shortcuts reference"},
 		{"q", "quit (sessions persist in tmux)"},

@@ -46,6 +46,7 @@ func DefaultConfig() Config {
 			Palette:        "ctrl+p",
 			Help:           "?",
 			TmuxHelp:       "H",
+			Settings:       "S",
 			Quit:           "q",
 			QuitKill:       "Q",
 		},

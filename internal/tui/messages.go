@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
 )
 
@@ -94,6 +95,11 @@ type AgentInstalledMsg struct{ AgentType string }
 // Sessions holds the tmux session names (e.g. "hive-abc12345") to kill.
 type CleanOrphansMsg struct {
 	Sessions []string
+}
+
+// ConfigSavedMsg is sent after config changes are successfully written to disk.
+type ConfigSavedMsg struct {
+	Config config.Config
 }
 
 // Ensure tea.Msg interface satisfaction (compile-time checks).
