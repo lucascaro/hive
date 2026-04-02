@@ -53,7 +53,7 @@ type Model struct {
 	settings     components.SettingsView
 	nameInput    textinput.Model // for project name / directory input
 	// UI sub-states
-	inputMode          string // "project-name", "project-dir", "new-session", "worktree-branch", ""
+	inputMode          string // "project-name", "project-dir", "project-dir-confirm", "new-session", "worktree-branch", ""
 	pendingProjectName string // name entered in step 1 of project creation
 	pendingProjectID   string
 	pendingAgentType   string // agent type awaiting install confirmation
@@ -539,7 +539,10 @@ func (m Model) View() string {
 		return m.overlayView(m.nameInputView("New Project (1/2)", "Project name:", "enter: next  esc: cancel"))
 	}
 	if m.inputMode == "project-dir" {
-		return m.overlayView(m.nameInputView("New Project (2/2)", "Working directory:", "enter: create  esc: back"))
+		return m.overlayView(m.nameInputView("New Project (2/2)", "Working directory:", "enter: next  esc: back"))
+	}
+	if m.inputMode == "project-dir-confirm" {
+		return m.overlayView(m.dirConfirmView())
 	}
 	if m.inputMode == "worktree-branch" {
 		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
@@ -691,6 +694,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.inputMode == "project-name" || m.inputMode == "project-dir" {
 		return m.handleNameInput(msg)
+	}
+	if m.inputMode == "project-dir-confirm" {
+		return m.handleDirConfirm(msg)
 	}
 	if m.inputMode == "worktree-branch" {
 		return m.handleWorktreeBranchInput(msg)
@@ -1109,8 +1115,14 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.nameInput.SetValue(cwd)
 			return m, nil
 		}
-		// Step 2: directory confirmed → create project
+		// Step 2: directory confirmed → check existence then create project
 		dir := val
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			// Directory doesn't exist — ask for confirmation before creating
+			m.inputMode = "project-dir-confirm"
+			m.nameInput.Blur()
+			return m, nil
+		}
 		m.nameInput.Blur()
 		m.inputMode = ""
 		cmd := m.createProject(m.pendingProjectName, dir)
@@ -1132,6 +1144,30 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.nameInput, cmd = m.nameInput.Update(msg)
 	return m, cmd
+}
+
+// --- Directory creation confirmation ---
+
+func (m Model) handleDirConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y", "Y", "enter":
+		dir := strings.TrimSpace(m.nameInput.Value())
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			m.inputMode = ""
+			m.pendingProjectName = ""
+			return m, func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("create directory: %w", err)} }
+		}
+		m.inputMode = ""
+		cmd := m.createProject(m.pendingProjectName, dir)
+		m.pendingProjectName = ""
+		return m, cmd
+	case "n", "N", "esc":
+		// Return to directory input so user can correct the path
+		m.inputMode = "project-dir"
+		m.nameInput.Focus()
+		return m, nil
+	}
+	return m, nil
 }
 
 // --- Worktree branch input ---
@@ -1971,6 +2007,22 @@ func (m Model) nameInputView(title, prompt, hint string) string {
 				prompt + "\n" +
 				m.nameInput.View() + "\n\n" +
 				styles.MutedStyle.Render(hint),
+		)
+}
+
+func (m Model) dirConfirmView() string {
+	dir := strings.TrimSpace(m.nameInput.Value())
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 2).
+		Width(56).
+		Render(
+			styles.TitleStyle.Render("New Project (2/2)") + "\n\n" +
+				"Directory does not exist:\n" +
+				styles.MutedStyle.Render(dir) + "\n\n" +
+				"Create it?" + "\n\n" +
+				styles.MutedStyle.Render("y/enter: create  n/esc: back"),
 		)
 }
 
