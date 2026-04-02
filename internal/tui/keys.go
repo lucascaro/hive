@@ -28,6 +28,7 @@ type KeyMap struct {
 	Palette        key.Binding
 	Help           key.Binding
 	TmuxHelp       key.Binding
+	Settings       key.Binding
 	Quit           key.Binding
 	QuitKill       key.Binding
 	Confirm        key.Binding
@@ -58,6 +59,7 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Palette:        key.NewBinding(key.WithKeys(kb.Palette), key.WithHelp(kb.Palette, "palette")),
 		Help:           key.NewBinding(key.WithKeys(kb.Help), key.WithHelp(kb.Help, "help")),
 		TmuxHelp:       key.NewBinding(key.WithKeys(kb.TmuxHelp), key.WithHelp(kb.TmuxHelp, "tmux shortcuts")),
+		Settings:       key.NewBinding(key.WithKeys(kb.Settings), key.WithHelp(kb.Settings, "settings")),
 		Quit:           key.NewBinding(key.WithKeys(kb.Quit), key.WithHelp(kb.Quit, "quit")),
 		QuitKill:       key.NewBinding(key.WithKeys(kb.QuitKill), key.WithHelp(kb.QuitKill, "quit+kill")),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),

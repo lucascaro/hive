@@ -44,7 +44,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a full description of every package a
 1. **Fork** the repository and create a branch from `main`.
 2. Make your changes.
 3. Ensure `go test ./...` and `go vet ./...` pass.
-4. Open a pull request with a clear description of the problem and solution.
+4. **Update `CHANGELOG.md`** — add an entry under `[Unreleased]` for every user-visible change (`Added`, `Changed`, `Fixed`, `Removed`, or `Security`).
+5. **Update `ARCHITECTURE.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
+6. Update any relevant files in `docs/` if the subsystem they describe has changed.
+7. Open a pull request with a clear description of the problem and solution.
 
 ### Commit Style
 
