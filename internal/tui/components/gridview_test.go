@@ -73,3 +73,44 @@ func TestGridView_ExactHeight_VariousCounts(t *testing.T) {
 		}
 	}
 }
+
+func TestGridView_SyncCursor(t *testing.T) {
+	sessions := []*state.Session{
+		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s2", Title: "beta", AgentType: state.AgentClaude, Status: state.StatusIdle},
+		{ID: "s3", Title: "gamma", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	gv := &GridView{Active: true, Width: 160, Height: 30}
+	gv.Show(sessions, state.GridRestoreProject)
+
+	t.Run("moves cursor to matching session", func(t *testing.T) {
+		gv.SyncCursor("s3")
+		if gv.Cursor != 2 {
+			t.Errorf("Cursor = %d, want 2", gv.Cursor)
+		}
+	})
+
+	t.Run("no-op for unknown session ID", func(t *testing.T) {
+		gv.Cursor = 1
+		gv.SyncCursor("unknown-id")
+		if gv.Cursor != 1 {
+			t.Errorf("Cursor = %d, want 1 (unchanged)", gv.Cursor)
+		}
+	})
+
+	t.Run("no-op for empty session ID", func(t *testing.T) {
+		gv.Cursor = 2
+		gv.SyncCursor("")
+		if gv.Cursor != 2 {
+			t.Errorf("Cursor = %d, want 2 (unchanged)", gv.Cursor)
+		}
+	})
+
+	t.Run("syncs to first session", func(t *testing.T) {
+		gv.Cursor = 2
+		gv.SyncCursor("s1")
+		if gv.Cursor != 0 {
+			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+}

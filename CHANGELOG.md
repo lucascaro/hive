@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numbered ones, making it easier to identify sessions at a glance.
 
 ### Fixed
+- **Grid view cursor memory**: when reopening the grid view (`g`/`G`) or returning
+  to it after detaching from a session, the cursor now restores to the previously
+  selected session instead of always resetting to the first cell.
 - `Q` (quit + kill all) now shows a confirmation dialog before executing, consistent
   with the behaviour of all other destructive actions.
 - After killing a session, team, or all sessions, the corresponding tmux session
