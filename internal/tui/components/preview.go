@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/mux"
@@ -228,6 +229,18 @@ func (p *Preview) Resize(w, h int) {
 	p.vp.Width = w
 	p.vp.Height = h
 	if p.hasContent {
+		// Set style before GotoBottom so maxYOffset uses the correct frame size.
+		// Without this the zero-value style (no border) produces a YOffset that is
+		// off by borderVerticalFrameSize, hiding the last few lines of content.
+		// Guard against tiny viewports where the frame exceeds the height.
+		// Always update vp.Style — if a previously-set style is left in place
+		// on a now-tiny viewport, GotoBottom will compute maxYOffset using the
+		// old frame size and scroll past the end of the content.
+		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
+			p.vp.Style = styles.PreviewStyle
+		} else {
+			p.vp.Style = lipgloss.Style{}
+		}
 		p.vp.GotoBottom()
 	}
 }
@@ -238,7 +251,33 @@ func (p *Preview) Resize(w, h int) {
 func (p *Preview) SetContent(content string) {
 	p.hasContent = content != ""
 	if p.hasContent {
-		p.vp.SetContent(sanitizePreviewContent(content))
+		sanitized := sanitizePreviewContent(content)
+		// Truncate lines to the inner viewport width.
+		//
+		// Content captured from wide tmux panes (e.g. 245-column) routinely
+		// contains full-width separator bars and status lines that are exactly
+		// the pane width.  When the preview inner width is narrower (typically
+		// ~193 columns), those lines overflow the bordered box, making the
+		// rendered preview wider than the terminal.  In a real terminal each
+		// overlong row wraps into extra physical lines, which pushes the total
+		// frame height over TermHeight and causes the terminal to scroll —
+		// the "screen corruption" seen when switching sessions.
+		if innerW := p.Width - styles.PreviewStyle.GetHorizontalFrameSize(); innerW > 0 {
+			lines := strings.Split(sanitized, "\n")
+			for i, l := range lines {
+				lines[i] = xansi.Truncate(l, innerW, "")
+			}
+			sanitized = strings.Join(lines, "\n")
+		}
+		// Always update vp.Style before SetContent/GotoBottom so maxYOffset
+		// uses the correct frame size.  Leaving a previously-set style in place
+		// on a now-tiny viewport would compute a wrong YOffset.
+		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
+			p.vp.Style = styles.PreviewStyle
+		} else {
+			p.vp.Style = lipgloss.Style{}
+		}
+		p.vp.SetContent(sanitized)
 		p.vp.GotoBottom()
 	} else {
 		p.vp.SetContent("")

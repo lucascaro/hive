@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
 func newPreview(w, h int, content string) *Preview {
@@ -279,6 +281,32 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestPreviewView_WideLineTruncation(t *testing.T) {
+	// Lines wider than the preview inner width (w - horizontalFrame) must be
+	// truncated so the bordered viewport cannot render wider than p.Width.
+	// Without truncation, full-width separator bars from wide tmux panes
+	// (e.g. 245-column) overflow the 193-column inner area, making the
+	// rendered preview box ~249 columns wide.  Combined with the sidebar the
+	// total frame exceeds the terminal width, each row wraps into extra physical
+	// lines, and the TUI scrolls ("screen corruption when switching sessions").
+	const w, h = 80, 10
+	// Inner width is determined by the preview style's horizontal frame size.
+	innerW := w - styles.PreviewStyle.GetHorizontalFrameSize()
+	wide := strings.Repeat("─", innerW+50) // substantially wider than allowed
+	p := newPreview(w, h, wide)
+	out := p.View("sess-1")
+
+	if got := countLines(out); got != h {
+		t.Errorf("height = %d, want %d", got, h)
+	}
+	// Every rendered line must fit within p.Width display columns.
+	for i, line := range strings.Split(out, "\n") {
+		if lw := lipgloss.Width(line); lw > w {
+			t.Errorf("line[%d] width=%d exceeds preview width %d", i, lw, w)
+		}
+	}
 }
 
 func TestPreviewView_ExactHeight_ANSIContent(t *testing.T) {

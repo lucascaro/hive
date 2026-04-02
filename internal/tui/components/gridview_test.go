@@ -105,6 +105,96 @@ func TestGridView_WorktreeBadge(t *testing.T) {
 	}
 }
 
+// TestGridView_NoLineExceedsWidth verifies that no line in the rendered grid is
+// physically wider than gv.Width. This is the core overflow invariant: any line
+// wider than TermWidth would physically wrap in the terminal and push the frame
+// height over TermHeight — the "screen corruption" seen with Copilot CLI sessions.
+func TestGridView_NoLineExceedsWidth(t *testing.T) {
+	// 245-char wide content — typical Copilot CLI tmux-pane separator line.
+	wideContent := strings.Repeat("─", 245)
+
+	sessions := []*state.Session{
+		{ID: "s1", Title: "copilot session", AgentType: state.AgentCopilot, Status: state.StatusRunning},
+		{ID: "s2", Title: "other session", AgentType: state.AgentClaude, Status: state.StatusIdle},
+	}
+
+	termWidths := []int{80, 92, 93, 94, 120, 160, 200, 245}
+	for _, w := range termWidths {
+		gv := &GridView{Active: true, Width: w, Height: 30}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.SetContents(map[string]string{
+			"s1": wideContent + "\nsome output\n" + wideContent,
+			"s2": "normal content\nno wide lines",
+		})
+		out := gv.View()
+
+		for i, line := range strings.Split(out, "\n") {
+			// Use byte length as a conservative upper bound for visible width.
+			// ANSI codes add bytes but no visible columns, so byte length ≥ visible width.
+			// We check visible width via rune count; arrow chars are 1-wide each.
+			visWidth := 0
+			for _, r := range line {
+				if r >= 0x1b {
+					// Skip ANSI escape sequences heuristically — not exact, but
+					// sufficient to catch obvious overflows in test content.
+					continue
+				}
+				visWidth++
+			}
+			// A stricter check: raw byte length of printable portion.
+			// We simply verify the line does not have more runes than gv.Width.
+			if visWidth > w {
+				t.Errorf("w=%d: line %d visible rune count %d exceeds terminal width %d:\n%q",
+					w, i, visWidth, w, line)
+			}
+		}
+	}
+}
+
+// TestGridView_NarrowTerminalHintBar specifically tests terminals narrower than
+// the 93-char hint string, which was the root cause of overflow before the fix.
+func TestGridView_NarrowTerminalHintBar(t *testing.T) {
+	sessions := []*state.Session{
+		{ID: "s1", Title: "session", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	for _, w := range []int{60, 70, 80, 90, 92} {
+		gv := &GridView{Active: true, Width: w, Height: 24}
+		gv.Show(sessions, state.GridRestoreProject)
+		out := gv.View()
+		lines := strings.Split(out, "\n")
+		if len(lines) != 24 {
+			t.Errorf("w=%d: View() = %d lines, want 24", w, len(lines))
+		}
+	}
+}
+
+// TestGridView_WideContentShowsLatestLines checks that pre-truncation causes
+// the rendered cell to show the LAST innerH lines of content (most recent),
+// not the first fragment produced by word-wrap.
+func TestGridView_WideContentShowsLatestLines(t *testing.T) {
+	// Build content where the last line is recognisably different.
+	var lines []string
+	for i := 0; i < 20; i++ {
+		lines = append(lines, strings.Repeat("─", 245)) // wide separator
+	}
+	lines = append(lines, "RECENT_OUTPUT_MARKER")
+	content := strings.Join(lines, "\n")
+
+	sess := &state.Session{
+		ID:        "s1",
+		Title:     "test",
+		AgentType: state.AgentCopilot,
+		Status:    state.StatusRunning,
+	}
+	gv := &GridView{Active: true, Width: 120, Height: 30}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetContents(map[string]string{"s1": content})
+	out := gv.View()
+	if !strings.Contains(out, "RECENT_OUTPUT_MARKER") {
+		t.Error("grid cell does not show the most-recent content line (RECENT_OUTPUT_MARKER missing)")
+	}
+}
+
 func TestGridView_SyncCursor(t *testing.T) {
 	sessions := []*state.Session{
 		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},

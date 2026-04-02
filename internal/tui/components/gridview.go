@@ -186,11 +186,14 @@ func (gv *GridView) View() string {
 	}
 
 	grid := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
-	hint := lipgloss.JoinVertical(
-		lipgloss.Left,
-		styles.MutedStyle.Render(styles.StatusLegend()),
-		styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"),
-	)
+	// Truncate hint lines to gv.Width before joining with the grid.
+	// Without this, JoinVertical computes maxWidth = max(grid_width, hint_width).
+	// When hint_width (93 display chars) exceeds gv.Width (narrow terminals,
+	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
+	// physical terminal line-wrap even though logical line count is correct.
+	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
+	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"), gv.Width, "")
+	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave
 	// the grid 1 line short or long. Hard-clamping here is the safety net.
@@ -262,14 +265,21 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	headerLine := lipgloss.NewStyle().Width(innerW).Render(prefixStr + titlePart + suffixPart)
 
 	// Content preview — show the last innerH lines so the most recent output
-	// is visible (oldest-first capture-pane output would otherwise be clipped
-	// from the bottom by MaxHeight, hiding the latest content).
+	// is visible. Pre-truncate each line to innerW before passing to lipgloss:
+	// without this, Width(innerW) word-wraps a 245-char tmux line into several
+	// short lines and MaxHeight then discards the most-recent content, keeping
+	// only the oldest wrapped fragment.  Pre-truncation also prevents
+	// cellbuf.Wrap from unexpectedly expanding line count in edge cases.
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
+		rawLines := strings.Split(lastNLines(content, innerH), "\n")
+		for i, l := range rawLines {
+			rawLines[i] = ansi.Truncate(l, innerW, "")
+		}
 		contentStr = lipgloss.NewStyle().
 			Width(innerW).Height(innerH).
 			MaxWidth(innerW).MaxHeight(innerH).
-			Render(lastNLines(content, innerH))
+			Render(strings.Join(rawLines, "\n"))
 	} else {
 		contentStr = lipgloss.NewStyle().
 			Width(innerW).Height(innerH).
@@ -279,7 +289,10 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	}
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, headerLine, contentStr)
-	return borderStyle.Width(w - 2).Height(h - 2).Render(inner)
+	// MaxHeight(h) is a safety net: alignTextVertical (Height) only pads — it
+	// never truncates.  If inner somehow exceeds h-2 lines, the bordered output
+	// would be h+k lines.  MaxHeight(h) caps the final bordered cell at h lines.
+	return borderStyle.Width(w - 2).Height(h - 2).MaxHeight(h).Render(inner)
 }
 
 // lastNLines returns the last n lines of s (split on '\n').
