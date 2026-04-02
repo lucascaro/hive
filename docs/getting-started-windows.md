@@ -93,21 +93,11 @@ hive version
 ## Configure the tmux Backend
 
 On first launch, Hive creates its config directory at `%APPDATA%\hive\`
-(e.g. `C:\Users\You\AppData\Roaming\hive\`) with a default `config.json`.
+(e.g. `C:\Users\You\AppData\Roaming\hive\`) with a default `config.json` that already
+uses the tmux backend. No manual configuration change is required.
 
-**You must set the multiplexer to `tmux`** before Hive will work on Windows:
-
-1. Open `%APPDATA%\hive\config.json` in a text editor.
-2. Set `"multiplexer": "tmux"`:
-
-```json
-{
-  "multiplexer": "tmux"
-}
-```
-
-> **Tip:** Run `hive start` once (it will fail or warn), then edit the config, and restart.
-> Alternatively create `%APPDATA%\hive\config.json` with the content above before the first launch.
+> **Tip:** If you need to customise other settings, open `%APPDATA%\hive\config.json` in a text editor.
+> The default config already contains `"multiplexer": "tmux"` — do not remove it.
 
 ## First Launch
 

@@ -24,6 +24,20 @@ Download from [go.dev/dl](https://go.dev/dl/) and follow the macOS installer ins
 go version   # should print go1.25 or higher
 ```
 
+### tmux
+
+Hive uses tmux as its default (and recommended) backend for managing terminal sessions.
+
+```bash
+brew install tmux
+```
+
+**Verify:**
+
+```bash
+tmux -V   # should print tmux 3.x or higher
+```
+
 ## Install Hive
 
 ```bash
@@ -56,7 +70,7 @@ hive start
 On first launch Hive:
 - Creates its config directory at `~/.config/hive/`
 - Writes a default `config.json`
-- Starts the background multiplexer daemon
+- Connects to tmux (starting the tmux server if it isn't already running)
 
 The TUI appears in your terminal. You are now in the Hive session manager.
 
@@ -113,14 +127,13 @@ The config file lives at `~/.config/hive/config.json`. Common settings:
 {
   "theme": "dark",
   "preview_refresh_ms": 500,
-  "multiplexer": "native"
+  "multiplexer": "tmux"
 }
 ```
 
-The `"native"` multiplexer is the default on macOS and requires no additional software.
+Hive uses tmux as the default backend. Detach from sessions with **Ctrl+B D** when inside a tmux session.
 
-> **tmux users:** Set `"multiplexer": "tmux"` to use tmux as the backend instead.
-> Detach from sessions with **Ctrl+B D** when using tmux.
+> **Native backend (alpha):** Hive includes an experimental built-in PTY backend that requires no external dependencies. It is **not recommended** for general use. To try it: set `"multiplexer": "native"` in `config.json` or pass `--native` to `hive start`.
 
 ## Notifications (optional)
 

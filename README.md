@@ -38,9 +38,9 @@ A terminal TUI for managing multiple AI coding agent sessions across projects �
 ## Requirements
 
 - **Go 1.25+** (to build from source)
-- No other runtime dependencies — the native multiplexer backend is built in
+- **[tmux](https://github.com/tmux/tmux)** — the default and recommended backend for managing terminal sessions
 
-> **tmux users:** Hive can optionally use tmux as its backend. Set `"multiplexer": "tmux"` in `config.json`.
+> **Native backend (alpha):** Hive includes an experimental built-in PTY backend that requires no external dependencies. It is not recommended for general use. Enable it with `hive start --native` or by setting `"multiplexer": "native"` in `config.json`.
 
 ## Installation
 
@@ -61,7 +61,7 @@ Or use the helper script:
 
 ### Build from source (Windows)
 
-> **Note:** The native PTY backend is not available on Windows. Hive will use the `tmux` backend instead — install tmux via [MSYS2](https://www.msys2.org/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/), or [Chocolatey](https://chocolatey.org/) (`choco install msys2`).
+> **Note:** The native PTY backend is not available on Windows. Hive uses the `tmux` backend on Windows — install tmux via [MSYS2](https://www.msys2.org/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/), or [Chocolatey](https://chocolatey.org/) (`choco install msys2`).
 
 ```powershell
 git clone https://github.com/lucascaro/hive
@@ -79,11 +79,12 @@ After building, add `hive.exe` to a directory on your `PATH`.
 
 **Config directory on Windows:** `%APPDATA%\hive\` (e.g. `C:\Users\You\AppData\Roaming\hive\`)
 
-**Using the tmux backend on Windows:**
+**Using Hive on Windows:**
 
 1. Install tmux (via WSL, MSYS2, or Chocolatey).
-2. Edit `%APPDATA%\hive\config.json` and set `"multiplexer": "tmux"`.
-3. Run `hive start` from a terminal that has `tmux` on its `PATH` (e.g. Git Bash, MSYS2 terminal, or WSL).
+2. Run `hive start` from a terminal that has `tmux` on its `PATH` (e.g. Git Bash, MSYS2 terminal, or WSL).
+
+No manual config change is needed — tmux is already the default backend.
 
 ### Verify
 
@@ -246,7 +247,7 @@ Config file: `~/.config/hive/config.json`
   "theme": "dark",
   "preview_refresh_ms": 500,
   "agent_title_overrides_user_title": false,
-  "multiplexer": "native",
+  "multiplexer": "tmux",
   "agents": {
     "claude":   { "cmd": ["claude"] },
     "codex":    { "cmd": ["codex"] },
@@ -289,8 +290,8 @@ Config file: `~/.config/hive/config.json`
 
 | Value | Description |
 |-------|-------------|
-| `"native"` (default) | Built-in Go PTY backend. No external dependencies. A background daemon (`hive mux-daemon`) keeps sessions alive after the TUI exits. |
-| `"tmux"` | Uses the external `tmux` binary. Requires tmux to be installed. Detach from a session with **Ctrl+B D**. |
+| `"tmux"` (default) | Uses the external `tmux` binary. Battle-tested and recommended. Requires tmux to be installed. Detach from a session with **Ctrl+B D**. |
+| `"native"` ⚠️ alpha | Built-in Go PTY backend. No external dependencies, but not recommended for general use. A background daemon (`hive mux-daemon`) keeps sessions alive after the TUI exits. Enable with `hive start --native`. |
 
 ### Custom agents
 
@@ -381,7 +382,7 @@ hive attach <session-id>
 
 ## Session Persistence
 
-Closing the TUI (`q`) does **not** stop your agents. With the native backend, a lightweight background daemon (`hive mux-daemon`) keeps all agent processes running. Re-open Hive with `hive start` to reconnect — your sessions are exactly where you left them.
+Closing the TUI (`q`) does **not** stop your agents. With the tmux backend, sessions live inside a tmux server and keep running after the TUI exits. Re-open Hive with `hive start` to reconnect — your sessions are exactly where you left them. You can also attach to any session directly with `tmux attach -t <session>`.
 
 To kill everything on exit, use `Q` instead of `q`.
 
@@ -391,8 +392,8 @@ To kill everything on exit, use `Q` instead of `q`.
 |------|----------|
 | `~/.config/hive/config.json` | User configuration |
 | `~/.config/hive/state.json` | Projects, teams, sessions |
-| `~/.config/hive/mux.sock` | Native multiplexer daemon socket |
-| `~/.config/hive/mux-daemon.log` | Native multiplexer daemon log |
+| `~/.config/hive/mux.sock` | Native backend daemon socket (alpha only) |
+| `~/.config/hive/mux-daemon.log` | Native backend daemon log (alpha only) |
 | `~/.config/hive/hooks/` | Lifecycle hook scripts |
 | `~/.config/hive/hive.log` | Error and hook output log |
 
@@ -403,10 +404,10 @@ Hive is built with:
 - **[Bubble Tea](https://github.com/charmbracelet/bubbletea)** — Elm-inspired MVU TUI framework
 - **[Lip Gloss](https://github.com/charmbracelet/lipgloss)** — terminal styling and layout
 - **[Bubbles](https://github.com/charmbracelet/bubbles)** — text input, list, key binding components
-- **[creack/pty](https://github.com/creack/pty)** — PTY allocation for the native multiplexer
+- **[creack/pty](https://github.com/creack/pty)** — PTY allocation for the native (alpha) multiplexer backend
 - **[Cobra](https://github.com/spf13/cobra)** — CLI subcommands
 
-The native multiplexer runs as a background daemon (`hive mux-daemon`) that owns all PTY master file descriptors. The TUI communicates with it over a Unix domain socket using a length-prefixed JSON protocol. Session state flows: TUI → state reducers → mux backend (daemon client) → daemon process → PTY processes.
+The tmux backend delegates to the `tmux` binary for all session management. The experimental native backend runs as a background daemon (`hive mux-daemon`) that owns all PTY master file descriptors and communicates with the TUI over a Unix domain socket.
 
 ```
 internal/
