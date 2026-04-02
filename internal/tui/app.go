@@ -1255,8 +1255,7 @@ func (m *Model) spawnWorktreeSession(proj *state.Project, agentTypeStr string, a
 	}
 
 	muxSess := mux.SessionName(proj.ID)
-	proj.SessionCounter++
-	sessionTitle := fmt.Sprintf("session-%d", proj.SessionCounter)
+	sessionTitle := branch
 
 	var windowIdx int
 	var err error
@@ -1326,10 +1325,12 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 		workDir, _ = os.Getwd()
 	}
 	muxSess := mux.SessionName(projectID)
-	// Use a monotonically incrementing counter so names stay unique even
-	// after sessions are deleted (avoids "session-1" reappearing).
-	proj.SessionCounter++
-	sessionTitle := fmt.Sprintf("session-%d", proj.SessionCounter)
+	sessionTitle := git.RandomBranchName()
+	for _, s := range proj.Sessions {
+		if s.Title == sessionTitle {
+			sessionTitle = git.RandomBranchName()
+		}
+	}
 
 	var windowIdx int
 	var err error
