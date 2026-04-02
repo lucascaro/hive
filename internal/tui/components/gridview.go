@@ -44,13 +44,14 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd
 
 // GridView renders all sessions as a tiled grid with live previews.
 type GridView struct {
-	Active   bool
-	Cursor   int
-	Width    int
-	Height   int
-	Mode     state.GridRestoreMode
-	sessions []*state.Session
-	contents map[string]string
+	Active       bool
+	Cursor       int
+	Width        int
+	Height       int
+	Mode         state.GridRestoreMode
+	sessions     []*state.Session
+	contents     map[string]string
+	projectNames map[string]string // projectID → display name
 }
 
 // Show activates the grid with the given sessions.
@@ -74,12 +75,31 @@ func (gv *GridView) SetContents(contents map[string]string) {
 	gv.contents = contents
 }
 
+// SetProjectNames provides a projectID→name lookup used in cell headers.
+func (gv *GridView) SetProjectNames(names map[string]string) {
+	gv.projectNames = names
+}
+
 // Selected returns the currently focused session, or nil.
 func (gv *GridView) Selected() *state.Session {
 	if !gv.Active || gv.Cursor < 0 || gv.Cursor >= len(gv.sessions) {
 		return nil
 	}
 	return gv.sessions[gv.Cursor]
+}
+
+// SyncCursor moves the cursor to the session matching sessionID.
+// No-op if sessionID is empty or not found in the current sessions slice.
+func (gv *GridView) SyncCursor(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	for i, sess := range gv.sessions {
+		if sess.ID == sessionID {
+			gv.Cursor = i
+			return
+		}
+	}
 }
 
 // Update handles key events for the grid view.
@@ -194,9 +214,9 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		BorderForeground(borderColor)
 
 	// border=2cols, padding left+right=2 → inner width = w-4
-	// border top+bottom=2rows + title row → inner content height = h-3
+	// border top+bottom=2rows + title row + subtitle row → inner content height = h-4
 	innerW := w - 4
-	innerH := h - 3
+	innerH := h - 4
 	if innerW < 4 {
 		innerW = 4
 	}
@@ -217,6 +237,11 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	titleLine := lipgloss.NewStyle().Width(innerW).Bold(selected).
 		Render(prefix + titleText)
 
+	// Subtitle line — project name (muted), truncated to fit.
+	projName := gv.projectNames[sess.ProjectID]
+	subtitleLine := styles.MutedStyle.Width(innerW).
+		Render(ansi.Truncate(projName, innerW, "…"))
+
 	// Content preview — show the last innerH lines so the most recent output
 	// is visible (oldest-first capture-pane output would otherwise be clipped
 	// from the bottom by MaxHeight, hiding the latest content).
@@ -234,7 +259,7 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 			Render("…")
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, titleLine, contentStr)
+	inner := lipgloss.JoinVertical(lipgloss.Left, titleLine, subtitleLine, contentStr)
 	return borderStyle.Width(w - 2).Height(h - 2).Render(inner)
 }
 

@@ -133,7 +133,9 @@ func New(cfg config.Config, appState state.AppState) Model {
 		m.appState.RestoreGridMode = state.GridRestoreNone
 		sessions := m.gridSessions(mode)
 		m.gridView.Show(sessions, mode)
+		m.gridView.SetProjectNames(m.gridProjectNames())
 		m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
+		m.gridView.SyncCursor(m.appState.ActiveSessionID)
 	}
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
@@ -655,7 +657,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "G":
 			// Switch to all-projects view without closing.
+			prevID := ""
+			if s := m.gridView.Selected(); s != nil {
+				prevID = s.ID
+			}
 			m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
+			m.gridView.SetProjectNames(m.gridProjectNames())
+			m.gridView.SyncCursor(prevID)
 			return m, m.scheduleGridPoll()
 		case "x":
 			if sess := m.gridView.Selected(); sess != nil {
@@ -770,10 +778,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// or via msg.String()=="G" below) shows all.
 		sessions := m.gridSessions(state.GridRestoreProject)
 		m.gridView.Show(sessions, state.GridRestoreProject)
+		m.gridView.SetProjectNames(m.gridProjectNames())
+		m.gridView.SyncCursor(m.appState.ActiveSessionID)
 		return m, m.scheduleGridPoll()
 
 	case msg.String() == "G":
 		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
+		m.gridView.SetProjectNames(m.gridProjectNames())
+		m.gridView.SyncCursor(m.appState.ActiveSessionID)
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.NewProject):
@@ -2058,6 +2070,15 @@ func (m *Model) gridContentsFromSnapshots(sessions []*state.Session) map[string]
 		}
 	}
 	return contents
+}
+
+// gridProjectNames builds a projectID→name map from the current app state.
+func (m *Model) gridProjectNames() map[string]string {
+	names := make(map[string]string, len(m.appState.Projects))
+	for _, p := range m.appState.Projects {
+		names[p.ID] = p.Name
+	}
+	return names
 }
 
 func (m *Model) scheduleGridPoll() tea.Cmd {
