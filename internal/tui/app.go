@@ -464,12 +464,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// --- Settings ---
 	case components.SettingsSaveRequestMsg:
 		newCfg := msg.Config
-		m.cfg = newCfg
 		if err := config.Save(newCfg); err != nil {
 			return m, func() tea.Msg {
 				return ErrorMsg{Err: fmt.Errorf("save settings: %w", err)}
 			}
 		}
+		m.cfg = newCfg
+		m.keys = NewKeyMap(newCfg.Keybindings)
 		return m, func() tea.Msg { return ConfigSavedMsg{Config: newCfg} }
 
 	case components.SettingsClosedMsg:

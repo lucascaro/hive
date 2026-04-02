@@ -1,7 +1,6 @@
 package components
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
@@ -61,6 +61,7 @@ type SettingsView struct {
 
 	cursor       int // index into fieldIdxs
 	scrollOffset int // lines to skip from top
+	dirty        bool // true when cfg differs from original
 
 	editing        bool
 	editInput      textinput.Model
@@ -84,6 +85,7 @@ func (sv *SettingsView) Open(cfg config.Config) {
 	sv.original = cfg
 	sv.cursor = 0
 	sv.scrollOffset = 0
+	sv.dirty = false
 	sv.editing = false
 	sv.editErr = ""
 	sv.pendingDiscard = false
@@ -98,14 +100,11 @@ func (sv *SettingsView) Close() {
 	sv.editInput.Blur()
 	sv.pendingDiscard = false
 	sv.pendingSave = false
+	sv.dirty = false
 }
 
 // IsDirty returns true if any setting has been changed from the original.
-func (sv *SettingsView) IsDirty() bool {
-	a, _ := json.Marshal(sv.cfg)
-	b, _ := json.Marshal(sv.original)
-	return string(a) != string(b)
-}
+func (sv *SettingsView) IsDirty() bool { return sv.dirty }
 
 // GetConfig returns the current (possibly modified) working config.
 func (sv *SettingsView) GetConfig() config.Config { return sv.cfg }
@@ -183,6 +182,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			} else {
 				_ = f.set(&sv.cfg, "true")
 			}
+			sv.dirty = true
 		case fieldSelect:
 			cur := f.get(sv.cfg)
 			matched := false
@@ -196,6 +196,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			if !matched && len(f.options) > 0 {
 				_ = f.set(&sv.cfg, f.options[0])
 			}
+			sv.dirty = true
 		case fieldString, fieldInt:
 			sv.startEditing(f)
 		}
@@ -214,6 +215,7 @@ func (sv *SettingsView) handleEditKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 				sv.editErr = err.Error()
 				return nil, true
 			}
+			sv.dirty = true
 		}
 		sv.editing = false
 		sv.editInput.Blur()
@@ -254,19 +256,20 @@ func (sv *SettingsView) View() string {
 	}
 	innerW := w - 4
 
-	// Header bar
+	// Header bar — truncate to avoid wrapping on narrow terminals.
 	configPath := styles.MutedStyle.Render(config.ConfigPath())
+	rawHeader := styles.TitleStyle.Render("⚙  Settings") + "  " + configPath
 	header := lipgloss.NewStyle().
 		Background(lipgloss.Color("#1F2937")).
 		Width(w).
 		Padding(0, 1).
-		Render(styles.TitleStyle.Render("⚙  Settings") + "  " + configPath)
+		Render(ansi.Truncate(rawHeader, w-2, "…"))
 
-	// Footer hints
+	// Footer hints — build content then truncate before styling.
 	var footerParts []string
 	if sv.pendingSave {
 		footerParts = []string{
-			lipgloss.NewStyle().Foreground(styles.ColorWarning).Bold(true).Render("Save changes to " + config.ConfigPath() + "?"),
+			lipgloss.NewStyle().Foreground(styles.ColorWarning).Bold(true).Render("Save to " + config.ConfigPath() + "?"),
 			styles.HelpKeyStyle.Render("y/enter") + ":" + styles.HelpDescStyle.Render("confirm"),
 			styles.HelpKeyStyle.Render("any other key") + ":" + styles.HelpDescStyle.Render("cancel"),
 		}
@@ -301,7 +304,7 @@ func (sv *SettingsView) View() string {
 			}()),
 		)
 	}
-	footer := styles.StatusBarStyle.Width(w).Render(strings.Join(footerParts, "  "))
+	footer := styles.StatusBarStyle.Width(w).Render(ansi.Truncate(strings.Join(footerParts, "  "), w, "…"))
 
 	// Content area height (header=1 line + footer=1 line)
 	contentH := h - 2
@@ -385,10 +388,12 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 		}
 		label := prefix + f.label
 
-		// Use fixed widths: label fills left, value aligns right
-		valW := lipgloss.Width(valDisplay)
+		// Use fixed widths: label fills left, value aligns right.
+		// Truncate valDisplay to at most innerW-4 visible chars to prevent wrapping.
+		valW := ansi.StringWidth(valDisplay)
 		if valW > innerW-4 {
 			valW = innerW - 4
+			valDisplay = ansi.Truncate(valDisplay, valW, "…")
 		}
 		labelW := innerW - valW - 1
 		if labelW < 0 {
@@ -421,7 +426,9 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 				switch f.kind {
 				case fieldSelect:
 					optsStr := strings.Join(f.options, " · ")
-					lines = append(lines, styles.MutedStyle.Render("    Options: "+optsStr))
+					for _, oline := range wrapText("Options: "+optsStr, innerW-4) {
+						lines = append(lines, styles.MutedStyle.Render("    "+oline))
+					}
 				case fieldBool:
 					lines = append(lines, styles.MutedStyle.Render("    [enter/space] to toggle"))
 				case fieldString, fieldInt:
@@ -650,6 +657,10 @@ func buildSettingEntries() []settingEntry {
 
 		// ── Keybindings ───────────────────────────────────────────────────────
 		{isHeader: true, header: "  Keybindings"},
+		{field: keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) string { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v string) { c.Keybindings.ToggleCollapse = v })},
+		{field: keybindField("Focus Preview", "Move focus to the preview pane.", func(c config.Config) string { return c.Keybindings.FocusPreview }, func(c *config.Config, v string) { c.Keybindings.FocusPreview = v })},
+		{field: keybindField("Focus Sidebar", "Move focus back to the sidebar.", func(c config.Config) string { return c.Keybindings.FocusSidebar }, func(c *config.Config, v string) { c.Keybindings.FocusSidebar = v })},
+		{field: keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) string { return c.Keybindings.JumpProject1 }, func(c *config.Config, v string) { c.Keybindings.JumpProject1 = v })},
 		{field: keybindField("New Project", "Create a new project.", func(c config.Config) string { return c.Keybindings.NewProject }, func(c *config.Config, v string) { c.Keybindings.NewProject = v })},
 		{field: keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) string { return c.Keybindings.NewSession }, func(c *config.Config, v string) { c.Keybindings.NewSession = v })},
 		{field: keybindField("New Team", "Open the team builder wizard.", func(c config.Config) string { return c.Keybindings.NewTeam }, func(c *config.Config, v string) { c.Keybindings.NewTeam = v })},
@@ -669,6 +680,7 @@ func buildSettingEntries() []settingEntry {
 		{field: keybindField("Tmux Help", "Toggle the tmux shortcuts reference.", func(c config.Config) string { return c.Keybindings.TmuxHelp }, func(c *config.Config, v string) { c.Keybindings.TmuxHelp = v })},
 		{field: keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) string { return c.Keybindings.Quit }, func(c *config.Config, v string) { c.Keybindings.Quit = v })},
 		{field: keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) string { return c.Keybindings.QuitKill }, func(c *config.Config, v string) { c.Keybindings.QuitKill = v })},
+		{field: keybindField("Open Settings", "Open this settings screen.", func(c config.Config) string { return c.Keybindings.Settings }, func(c *config.Config, v string) { c.Keybindings.Settings = v })},
 	}
 }
 
