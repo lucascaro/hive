@@ -24,8 +24,10 @@ This file tracks features that are already implemented in Hive. New ideas should
 - Filter sessions by name and jump across projects with numbered shortcuts.
 - Toggle focus between the sidebar and the preview pane.
 - Open a grid view for the current project or for all projects.
-- Show live session previews with ANSI color passthrough and periodic tmux capture refresh.
+- Show live session previews with ANSI color passthrough and periodic refresh; previews always show the most-recent output (bottom of scrollback).
 - Display help and tmux keybinding reference overlays from the main interface.
+- Full mouse support: left-click sidebar items to select sessions or toggle project/team collapse; left-click the preview pane to focus it and activate the session; left-click a grid cell to move the cursor; scroll wheel scrolls the sidebar, preview, and grid.
+- Grid cells show project name, session name, and agent type in each tile so sessions can be identified without consulting the sidebar.
 
 ## Titles, Status, And Hooks
 

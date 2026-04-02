@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mouse support**: left-click any sidebar item to select it (session) or toggle
+  collapse (project/team); left-click the preview pane to focus it and activate the
+  displayed session; left-click a grid cell to move the cursor to that cell; scroll
+  wheel navigates the sidebar, scrolls the preview, and moves the grid cursor.
+- **Grid preview newest content**: grid cell previews now show the most-recent
+  output (bottom of scrollback) instead of the oldest lines from the top, matching
+  the behaviour of the single-session preview pane.
+- **Grid cell project label**: each grid cell now shows a muted subtitle line with
+  the project name, so every tile displays project name + session name + agent type
+  without needing to consult the sidebar.
 - **Agent context documentation**: added `docs/developer-guide.md` with a full
   package-by-package reference, key data flows, testing conventions, and common
   change patterns so AI agents and new contributors can understand the codebase

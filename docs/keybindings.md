@@ -73,6 +73,18 @@ The legend is visible in the main status bar and in the grid footer.
 | `Q` | Quit and kill all managed sessions |
 | `Ctrl+C` | Force quit |
 
+## Mouse
+
+| Interaction | Action |
+|-------------|--------|
+| Left-click sidebar session | Select session (updates preview) |
+| Left-click sidebar project or team | Toggle collapse / expand |
+| Left-click preview pane | Focus preview and activate the displayed session |
+| Left-click grid cell | Move grid cursor to that cell |
+| Scroll wheel in sidebar | Move cursor up / down |
+| Scroll wheel in preview | Scroll preview content up / down |
+| Scroll wheel in grid | Move grid cursor up / down |
+
 ## Confirmation Dialogs
 
 | Key | Action |
