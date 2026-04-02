@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Getting-started guides**: added `docs/getting-started-macos.md` and
+  `docs/getting-started-windows.md` — self-contained, platform-specific guides
+  that walk new users from installing prerequisites through their first agent session.
+  README "Getting Started" section now links to both guides.
 - **Mouse support**: left-click any sidebar item to select it (session) or toggle
   collapse (project/team); left-click the preview pane to focus it and activate the
   displayed session; left-click a grid cell to move the cursor to that cell; scroll

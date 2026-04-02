@@ -1,5 +1,9 @@
 # Hive
 
+[![CI (macOS)](https://github.com/lucascaro/hive/actions/workflows/build-macos.yml/badge.svg)](https://github.com/lucascaro/hive/actions/workflows/build-macos.yml)
+[![CI (Windows)](https://github.com/lucascaro/hive/actions/workflows/build-windows.yml/badge.svg)](https://github.com/lucascaro/hive/actions/workflows/build-windows.yml)
+[![CI (Linux)](https://github.com/lucascaro/hive/actions/workflows/build-linux.yml/badge.svg)](https://github.com/lucascaro/hive/actions/workflows/build-linux.yml)
+
 A terminal TUI for managing multiple AI coding agent sessions across projects — Claude, Codex, Gemini, GitHub Copilot, Aider, OpenCode, and more. Native support for Claude agent teams (orchestrator + workers).
 
 ```
@@ -88,6 +92,10 @@ hive version
 ```
 
 ## Getting Started
+
+> **Platform-specific guides:**
+> - [Getting Started on macOS](docs/getting-started-macos.md)
+> - [Getting Started on Windows](docs/getting-started-windows.md)
 
 ### 1. Launch Hive
 
