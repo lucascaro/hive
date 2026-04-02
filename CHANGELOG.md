@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Grid cell worktree indicator**: grid cells now show an inline `⎇` badge when a
+  session runs in a git worktree; if the branch name differs from the session title the
+  full branch name is displayed (e.g. `⎇ feat/my-branch`).
+
+### Changed
+- **Grid cell single-line header**: the two-line header (title row + project subtitle
+  row) has been merged into one line — status dot, agent badge, session title, project
+  name, and worktree badge all appear on a single header line, giving each cell one
+  extra row of terminal-output preview.
+
+### Added
 - **Getting-started guides**: added `docs/getting-started-macos.md` and
   `docs/getting-started-windows.md` — self-contained, platform-specific guides
   that walk new users from installing prerequisites through their first agent session.

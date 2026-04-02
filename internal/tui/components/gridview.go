@@ -214,9 +214,9 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		BorderForeground(borderColor)
 
 	// border=2cols, padding left+right=2 → inner width = w-4
-	// border top+bottom=2rows + title row + subtitle row → inner content height = h-4
+	// border top+bottom=2rows + header row → inner content height = h-3
 	innerW := w - 4
-	innerH := h - 4
+	innerH := h - 3
 	if innerW < 4 {
 		innerW = 4
 	}
@@ -224,23 +224,42 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		innerH = 1
 	}
 
-	// Title line — measure the prefix display width so that wide-char or
-	// emoji session titles don't overflow the cell.
+	// Header line — single line: status dot, agent badge, session title,
+	// project name (muted, inline), and optional worktree badge (⎇).
 	dot := styles.StatusDot(string(sess.Status))
 	badge := styles.AgentBadge(string(sess.AgentType))
-	prefix := dot + " " + badge + " "
-	maxTitleW := innerW - ansi.StringWidth(prefix)
-	if maxTitleW < 0 {
-		maxTitleW = 0
-	}
-	titleText := ansi.Truncate(sess.Title, maxTitleW, "…")
-	titleLine := lipgloss.NewStyle().Width(innerW).Bold(selected).
-		Render(prefix + titleText)
+	prefixStr := dot + " " + badge + " "
+	prefixW := ansi.StringWidth(prefixStr)
 
-	// Subtitle line — project name (muted), truncated to fit.
+	// Build the optional suffix (project + worktree) as plain text for width calc.
 	projName := gv.projectNames[sess.ProjectID]
-	subtitleLine := styles.MutedStyle.Width(innerW).
-		Render(ansi.Truncate(projName, innerW, "…"))
+	suffixPlain := ""
+	if projName != "" {
+		suffixPlain = " · " + projName
+	}
+	if sess.WorktreePath != "" {
+		if sess.WorktreeBranch != "" && sess.WorktreeBranch != sess.Title {
+			suffixPlain += " ⎇ " + sess.WorktreeBranch
+		} else {
+			suffixPlain += " ⎇"
+		}
+	}
+
+	// Give the title whatever space remains; drop suffix if it won't fit.
+	const minTitleW = 4
+	availW := innerW - prefixW
+	suffixW := ansi.StringWidth(suffixPlain)
+	var titleStr, suffix string
+	if suffixW > 0 && availW-suffixW >= minTitleW {
+		titleStr = ansi.Truncate(sess.Title, availW-suffixW, "…")
+		suffix = suffixPlain
+	} else {
+		titleStr = ansi.Truncate(sess.Title, availW, "…")
+	}
+
+	titlePart := lipgloss.NewStyle().Bold(selected).Render(titleStr)
+	suffixPart := styles.MutedStyle.Render(suffix)
+	headerLine := lipgloss.NewStyle().Width(innerW).Render(prefixStr + titlePart + suffixPart)
 
 	// Content preview — show the last innerH lines so the most recent output
 	// is visible (oldest-first capture-pane output would otherwise be clipped
@@ -259,7 +278,7 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 			Render("…")
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, titleLine, subtitleLine, contentStr)
+	inner := lipgloss.JoinVertical(lipgloss.Left, headerLine, contentStr)
 	return borderStyle.Width(w - 2).Height(h - 2).Render(inner)
 }
 

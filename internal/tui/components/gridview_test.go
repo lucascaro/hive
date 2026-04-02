@@ -74,6 +74,37 @@ func TestGridView_ExactHeight_VariousCounts(t *testing.T) {
 	}
 }
 
+// TestGridView_WorktreeBadge verifies that worktree sessions show the ⎇ badge
+// and that the branch name appears only when it differs from the session title.
+func TestGridView_WorktreeBadge(t *testing.T) {
+	sessions := []*state.Session{
+		{
+			ID: "s1", Title: "my-feature", AgentType: state.AgentClaude, Status: state.StatusRunning,
+			WorktreePath:   "/repo/.worktrees/my-feature",
+			WorktreeBranch: "my-feature", // same as title → badge only
+		},
+		{
+			ID: "s2", Title: "backend", AgentType: state.AgentClaude, Status: state.StatusRunning,
+			WorktreePath:   "/repo/.worktrees/feat/backend-refactor",
+			WorktreeBranch: "feat/backend-refactor", // differs → show branch name
+		},
+		{
+			ID: "s3", Title: "no-worktree", AgentType: state.AgentClaude, Status: state.StatusIdle,
+			// no WorktreePath → no badge
+		},
+	}
+	gv := &GridView{Active: true, Width: 160, Height: 30}
+	gv.Show(sessions, state.GridRestoreProject)
+	out := gv.View()
+
+	if !strings.Contains(out, "⎇") {
+		t.Error("expected worktree badge ⎇ for worktree sessions, not found")
+	}
+	if !strings.Contains(out, "feat/backend-refactor") {
+		t.Error("expected branch name 'feat/backend-refactor' for session with different branch")
+	}
+}
+
 func TestGridView_SyncCursor(t *testing.T) {
 	sessions := []*state.Session{
 		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
