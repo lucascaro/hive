@@ -212,6 +212,12 @@ type Preview struct {
 	hasContent bool
 }
 
+// ScrollUp scrolls the preview viewport up by n lines.
+func (p *Preview) ScrollUp(n int) { p.vp.LineUp(n) }
+
+// ScrollDown scrolls the preview viewport down by n lines.
+func (p *Preview) ScrollDown(n int) { p.vp.LineDown(n) }
+
 // Resize updates the preview dimensions and passes them to the internal viewport.
 // Must be called before the first View() call and whenever the terminal resizes.
 // Scrolls back to the bottom when content is present, because a height change

@@ -493,6 +493,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// --- Key events ---
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	// --- Mouse events ---
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	}
 	return m, nil
 }
@@ -1068,6 +1072,151 @@ func (m Model) handleTitleEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // --- Filter ---
+
+// --- Mouse handler ---
+
+// handleMouse routes mouse press and scroll-wheel events to the appropriate
+// component. Motion and release events are silently ignored.
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Only act on press events and wheel scrolls.
+	if msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+
+	// Settings screen: ignore mouse (keyboard-only).
+	if m.settings.Active {
+		return m, nil
+	}
+
+	// Grid view: cell selection and attach.
+	if m.gridView.Active {
+		m.gridView.Width = m.appState.TermWidth
+		m.gridView.Height = m.appState.TermHeight
+		switch msg.Button {
+		case tea.MouseButtonLeft:
+			if idx, ok := m.gridView.CellAt(msg.X, msg.Y); ok {
+				m.gridView.Cursor = idx
+				// Clicking a grid cell activates (attaches) that session.
+				if sess := m.gridView.Selected(); sess != nil {
+					m.gridView.Hide()
+					s := sess
+					return m, func() tea.Msg {
+						return components.GridSessionSelectedMsg{
+							TmuxSession: s.TmuxSession,
+							TmuxWindow:  s.TmuxWindow,
+						}
+					}
+				}
+			}
+		case tea.MouseButtonWheelUp:
+			m.gridView.MoveUp()
+		case tea.MouseButtonWheelDown:
+			m.gridView.MoveDown()
+		}
+		return m, nil
+	}
+
+	// Ignore mouse when any modal overlay is active.
+	if m.appState.ShowHelp || m.appState.ShowTmuxHelp || m.appState.ShowConfirm ||
+		m.showAttachHint || m.orphanPicker.Active || m.agentPicker.Active ||
+		m.teamBuilder.Active || m.appState.EditingTitle ||
+		m.inputMode != "" {
+		return m, nil
+	}
+
+	sw, _, _ := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
+	inSidebar := msg.X < sw
+
+	switch msg.Button {
+	case tea.MouseButtonLeft:
+		if inSidebar {
+			return m.handleSidebarClick(msg.Y)
+		}
+		// Click in preview area: attach the active session (same as pressing 'a').
+		if !m.cfg.HideAttachHint {
+			attach := m.pendingAttachDetails()
+			if attach != nil {
+				m.pendingAttach = attach
+				m.showAttachHint = true
+				return m, nil
+			}
+		}
+		return m, m.attachActiveSession()
+
+	case tea.MouseButtonWheelUp:
+		if inSidebar {
+			prev := m.sidebar.Cursor
+			prevSession := m.appState.ActiveSessionID
+			m.sidebar.MoveUp()
+			if m.sidebar.Cursor != prev {
+				m.syncActiveFromSidebar()
+				if m.appState.ActiveSessionID != prevSession {
+					m.previewPollGen++
+					m.pendingPreviewClear = true
+					return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				}
+			}
+		} else {
+			m.preview.ScrollUp(3)
+		}
+
+	case tea.MouseButtonWheelDown:
+		if inSidebar {
+			prev := m.sidebar.Cursor
+			prevSession := m.appState.ActiveSessionID
+			m.sidebar.MoveDown()
+			if m.sidebar.Cursor != prev {
+				m.syncActiveFromSidebar()
+				if m.appState.ActiveSessionID != prevSession {
+					m.previewPollGen++
+					m.pendingPreviewClear = true
+					return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				}
+			}
+		} else {
+			m.preview.ScrollDown(3)
+		}
+	}
+	return m, nil
+}
+
+// handleSidebarClick processes a left-click at sidebar row y.
+func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
+	idx := m.sidebar.ItemAtRow(y)
+	if idx < 0 {
+		return m, nil
+	}
+	prev := m.sidebar.Cursor
+	prevSession := m.appState.ActiveSessionID
+	m.sidebar.Cursor = idx
+	m.sidebar.EnsureCursorVisible(m.sidebar.Height)
+	sel := m.sidebar.Selected()
+	if sel == nil {
+		return m, nil
+	}
+	switch sel.Kind {
+	case components.KindProject:
+		m.appState = *state.ToggleProjectCollapsed(&m.appState, sel.ProjectID)
+		m.sidebar.Rebuild(&m.appState)
+		m.persist()
+		return m, nil
+	case components.KindTeam:
+		m.appState = *state.ToggleTeamCollapsed(&m.appState, sel.TeamID)
+		m.sidebar.Rebuild(&m.appState)
+		m.persist()
+		return m, nil
+	case components.KindSession:
+		if m.sidebar.Cursor != prev {
+			m.syncActiveFromSidebar()
+			if m.appState.ActiveSessionID != prevSession {
+				m.previewPollGen++
+				m.pendingPreviewClear = true
+				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+			}
+		}
+	}
+	return m, nil
+}
 
 func (m Model) handleFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {

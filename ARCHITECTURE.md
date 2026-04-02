@@ -138,3 +138,63 @@ Two sources update a session title:
 | tmux session | `hive-{projectID[:8]}` |
 | tmux window | `{sessionID[:8]}` |
 | Window title | `{Title} [{agentType}]` |
+
+## Key Message Types (`internal/tui/messages.go`)
+
+All inter-component communication in the TUI flows through `tea.Msg` values routed by `app.go`'s `Update()`.
+
+| Message | Direction | Purpose |
+|---------|-----------|---------|
+| `SessionCreatedMsg` | mux → Update | Session spawned in multiplexer |
+| `SessionKilledMsg` | mux → Update | Session window removed |
+| `SessionAttachMsg` | Update → runtime | Suspend TUI, connect terminal to pane |
+| `SessionDetachedMsg` | runtime → Update | User returned from attached session |
+| `SessionTitleChangedMsg` | escape.Watcher → Update | Title changed (user or agent) |
+| `SessionStatusChangedMsg` | Update → Update | Session status changed |
+| `TeamCreatedMsg` | mux → Update | Team + sessions created |
+| `TeamKilledMsg` | mux → Update | Team removed |
+| `ProjectCreatedMsg` | input → Update | Project created |
+| `ProjectKilledMsg` | mux → Update | Project removed |
+| `ErrorMsg` | any → Update | Non-fatal error for status bar |
+| `ConfirmActionMsg` | Update → Update | Requests yes/no dialog |
+| `ConfirmedMsg` | Confirm → Update | User confirmed action |
+| `PersistMsg` | Update → Update | Trigger state write to disk |
+| `QuitAndKillMsg` | Update → runtime | Quit + kill all sessions |
+| `ConfigSavedMsg` | settings → Update | Config written to disk |
+
+## State Mutation Rules
+
+1. `AppState` is only ever mutated inside `tui/app.go`'s `Update()`.
+2. Every mutation goes through a reducer function in `internal/state/store.go`.
+3. Reducers are pure functions: `func Foo(s *AppState, ...) *AppState` — no I/O.
+4. After a mutation, `Update()` returns a `PersistMsg` command to write state to disk.
+5. No goroutine other than the Bubble Tea runtime touches `AppState`.
+
+## Backend Selection
+
+`cmd/start.go` selects the backend at startup:
+
+```
+--native flag present  →  mux/native backend
+config.Multiplexer == "native"  →  mux/native backend
+otherwise  →  mux/tmux backend (default)
+```
+
+The selected backend is registered with `mux.SetBackend(backend)` before
+the TUI starts. All subsequent `mux.*` calls in the TUI delegate to it.
+
+## Native Daemon Protocol
+
+When using the native backend, a background daemon process (`hive mux-daemon`) owns all PTY file descriptors.
+
+**Socket:** `~/.config/hive/mux.sock` (mode 0600, owner-only access)
+
+**Framing:** 4-byte big-endian uint32 length prefix followed by JSON body. Max message size: 4 MiB.
+
+**Request ops:** `create-session`, `session-exists`, `kill-session`, `list-sessions`, `create-window`, `window-exists`, `kill-window`, `rename-window`, `list-windows`, `capture-pane`, `capture-pane-raw`
+
+**Daemon lifecycle:**
+- Spawned by `cmd/start.go` via `os/exec` + `setsid` (fully detached)
+- If daemon is already running (socket exists and responds to ping), reuse it
+- Daemon exits when its socket is removed or a fatal error occurs
+- Log: `~/.config/hive/hive.log`

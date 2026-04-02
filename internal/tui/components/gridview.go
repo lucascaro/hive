@@ -217,14 +217,15 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	titleLine := lipgloss.NewStyle().Width(innerW).Bold(selected).
 		Render(prefix + titleText)
 
-	// Content preview — use MaxWidth+MaxHeight to guarantee exact dimensions
-	// without manual line split/truncate/pad loops.
+	// Content preview — show the last innerH lines so the most recent output
+	// is visible (oldest-first capture-pane output would otherwise be clipped
+	// from the bottom by MaxHeight, hiding the latest content).
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
 		contentStr = lipgloss.NewStyle().
 			Width(innerW).Height(innerH).
 			MaxWidth(innerW).MaxHeight(innerH).
-			Render(content)
+			Render(lastNLines(content, innerH))
 	} else {
 		contentStr = lipgloss.NewStyle().
 			Width(innerW).Height(innerH).
@@ -235,6 +236,68 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, titleLine, contentStr)
 	return borderStyle.Width(w - 2).Height(h - 2).Render(inner)
+}
+
+// lastNLines returns the last n lines of s (split on '\n').
+// If s has fewer than n lines, the full string is returned unchanged.
+func lastNLines(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
+// MoveUp moves the grid cursor up by one row.
+func (gv *GridView) MoveUp() {
+	cols := gridColumns(gv.Width, gv.Height, len(gv.sessions))
+	if gv.Cursor >= cols {
+		gv.Cursor -= cols
+	}
+}
+
+// MoveDown moves the grid cursor down by one row.
+func (gv *GridView) MoveDown() {
+	n := len(gv.sessions)
+	cols := gridColumns(gv.Width, gv.Height, n)
+	if gv.Cursor+cols < n {
+		gv.Cursor += cols
+	}
+}
+
+// CellAt maps a mouse click at terminal position (x, y) to a session index.
+// Returns (idx, true) if the click lands on a valid session cell, or (-1, false)
+// if it hits the hint bar, an empty padding cell, or is otherwise out of range.
+func (gv *GridView) CellAt(x, y int) (idx int, ok bool) {
+	n := len(gv.sessions)
+	if n == 0 {
+		return -1, false
+	}
+	cols := gridColumns(gv.Width, gv.Height, n)
+	rows := (n + cols - 1) / cols
+	const hintH = 2
+	cellW := gv.Width / cols
+	cellH := (gv.Height - hintH) / rows
+	if cellH < 5 {
+		cellH = 5
+	}
+	// Clicks in the hint bar at the bottom are ignored.
+	if y >= gv.Height-hintH {
+		return -1, false
+	}
+	col := x / cellW
+	row := y / cellH
+	if col >= cols || row >= rows {
+		return -1, false
+	}
+	i := row*cols + col
+	if i >= n {
+		return -1, false
+	}
+	return i, true
 }
 
 // gridColumns computes the number of columns that best tiles n sessions inside

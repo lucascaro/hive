@@ -1,5 +1,126 @@
 # Hive – AI Coding Guidelines
 
+## Codebase Quick Reference
+
+### Module & Build
+
+```
+module: github.com/lucascaro/hive
+build:  go build ./...
+test:   go test ./...
+binary: hive
+```
+
+### Package Map
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `main` | `main.go` | Entry point; calls `cmd.Execute()` |
+| `cmd` | `cmd/` | Cobra CLI commands (`start`, `attach`, `mux-daemon`, `version`) |
+| `tui` | `internal/tui/` | Bubble Tea root model (`Model`), Elm Update/View loop |
+| `tui/components` | `internal/tui/components/` | All UI components (sidebar, preview, statusbar, etc.) |
+| `tui/styles` | `internal/tui/styles/` | Lip Gloss colour theme and shared styles |
+| `state` | `internal/state/` | Pure data model + reducer functions; no I/O |
+| `config` | `internal/config/` | Load/save `~/.config/hive/config.json`; atomic writes |
+| `mux` | `internal/mux/` | `Backend` interface + package-level forwarding functions |
+| `mux/native` | `internal/mux/native/` | Built-in PTY daemon (Unix socket, JSON protocol) |
+| `mux/tmux` | `internal/mux/tmux/` | tmux binary backend |
+| `tmux` | `internal/tmux/` | Low-level tmux CLI wrappers |
+| `hooks` | `internal/hooks/` | Shell hook runner (`~/.config/hive/hooks/on-{event}`) |
+| `escape` | `internal/escape/` | OSC 2 / Hive title marker parser + background watcher |
+| `git` | `internal/git/` | Git worktree helpers |
+
+### Key Types
+
+```go
+// internal/state/model.go
+AppState          // single source of truth for the TUI (no external locking needed)
+Project           // groups sessions; has ID, Name, Teams, Sessions
+Team              // orchestrator + workers; has OrchestratorID, Sessions, SharedWorkDir
+Session           // maps 1:1 to a mux window; has AgentType, Status, TmuxSession, TmuxWindow
+AgentType         // string enum: "claude", "codex", "gemini", "copilot", "aider", "opencode", "custom"
+SessionStatus     // string enum: "running", "idle", "waiting", "dead"
+TeamRole          // string enum: "orchestrator", "worker", "standalone"
+TitleSource       // string enum: "auto", "user", "agent"
+
+// internal/config/config.go
+Config            // user config: Agents map, Keybindings, TeamDefaults, Hooks, Multiplexer
+AgentProfile      // Cmd []string, InstallCmd []string
+
+// internal/mux/interface.go
+Backend           // interface: CreateSession, CreateWindow, CapturePane, Attach, …
+
+// internal/tui/app.go
+Model             // root Bubble Tea model; holds AppState + all components
+```
+
+### Key Data Flows
+
+**Session creation (keypress → tmux/PTY)**
+```
+User presses `t`
+  → AgentPicker component returns selected agent
+  → tui/app.go creates Session in state (state.CreateSession)
+  → calls mux.CreateWindow(tmuxSession, windowName, workDir, agentCmd)
+  → fires hooks.Run("session-create", event)
+  → dispatches SessionCreatedMsg back to Update()
+```
+
+**Preview refresh (ticker → screen)**
+```
+tea.Tick(500ms)
+  → mux.CapturePane(target, lines)
+  → AppState.PreviewContent updated
+  → components/preview.go View() renders ANSI content
+```
+
+**Title change (agent escape → sidebar)**
+```
+escape.Watcher polls CapturePaneRaw every 500ms
+  → detects OSC 2 (\033]2;title\007) or \x00HIVE_TITLE:...\x00
+  → dispatches SessionTitleChangedMsg{SessionID, Title, Source}
+  → app.go Update() calls state.UpdateSessionTitle
+  → sidebar re-renders with new title
+```
+
+### Common Change Patterns
+
+**Add a new `tea.Msg` type:**
+1. Define the struct in `internal/tui/messages.go`
+2. Add a `var _ tea.Msg = MyMsg{}` compile-time check at the bottom
+3. Handle it in `internal/tui/app.go` `Update()` switch
+
+**Add a new TUI component:**
+1. Create `internal/tui/components/mycomp.go` with a struct implementing `Update(tea.Msg) (MyComp, tea.Cmd)` and `View() string`
+2. Add it as a field on `tui.Model` in `app.go`
+3. Route messages to it in `app.go`'s `Update()`
+4. Call `View()` in `app.go`'s `View()`
+
+**Add a new CLI subcommand:**
+1. Create `cmd/mycmd.go` with a `cobra.Command`
+2. Call `mux.SetBackend(...)` in `RunE` if the command needs terminal sessions
+3. Register with `rootCmd.AddCommand(myCmd)` in `cmd/root.go`
+
+**Add a state mutation:**
+1. Add a reducer function to `internal/state/store.go` — takes `*AppState` + params, mutates and returns `*AppState`
+2. Call it from `tui/app.go`'s `Update()` (only place state should be mutated)
+
+**Add a hook event:**
+1. Add a constant to `internal/state/events.go`
+2. Call `hooks.Run(cfg.Hooks.Dir, state.HookEvent{...})` in the relevant app.go handler
+3. Document the new event in `docs/hooks.md`
+
+### Testing Conventions
+
+- **`internal/state/`** — pure unit tests, no I/O mocking needed
+- **`internal/config/`** — tests use `t.TempDir()` for isolation
+- **`internal/tui/`** — component tests use `tea.NewProgram` with a fake model or direct `Update()` calls
+- Run all tests: `go test ./...`
+- Tests live alongside source (e.g., `model_test.go` next to `model.go`)
+
+---
+
+
 ## UX Best Practices
 
 Always apply these principles when adding or modifying UI elements in the TUI:

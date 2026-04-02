@@ -52,11 +52,12 @@ type SidebarItem struct {
 
 // Sidebar manages the project/team/session tree.
 type Sidebar struct {
-	Items       []SidebarItem
-	Cursor      int
-	Width       int
-	Height      int
-	FilterQuery string
+	Items        []SidebarItem
+	Cursor       int
+	Width        int
+	Height       int
+	FilterQuery  string
+	ScrollOffset int // index of first visible item (for scrolling)
 }
 
 // Rebuild recomputes the flat item list from state, applying filter.
@@ -149,11 +150,50 @@ func (s *Sidebar) Selected() *SidebarItem {
 	return &item
 }
 
+// EnsureCursorVisible adjusts ScrollOffset so the cursor row is within the
+// visible window. h is the total sidebar height (including the 2-row header).
+func (s *Sidebar) EnsureCursorVisible(h int) {
+	visible := h - 2 // rows available for items (minus title + blank line)
+	if visible < 1 {
+		visible = 1
+	}
+	if s.Cursor < s.ScrollOffset {
+		s.ScrollOffset = s.Cursor
+	} else if s.Cursor >= s.ScrollOffset+visible {
+		s.ScrollOffset = s.Cursor - visible + 1
+	}
+	maxOffset := len(s.Items) - visible
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if s.ScrollOffset > maxOffset {
+		s.ScrollOffset = maxOffset
+	}
+	if s.ScrollOffset < 0 {
+		s.ScrollOffset = 0
+	}
+}
+
+// ItemAtRow returns the item index that corresponds to a click at terminal row y.
+// Returns -1 if the row does not map to a valid item (e.g. header or out of range).
+func (s *Sidebar) ItemAtRow(y int) int {
+	const headerRows = 2 // title + blank line
+	if y < headerRows {
+		return -1
+	}
+	idx := s.ScrollOffset + (y - headerRows)
+	if idx < 0 || idx >= len(s.Items) {
+		return -1
+	}
+	return idx
+}
+
 // MoveUp moves the cursor up one item.
 func (s *Sidebar) MoveUp() {
 	if s.Cursor > 0 {
 		s.Cursor--
 	}
+	s.EnsureCursorVisible(s.Height)
 }
 
 // MoveDown moves the cursor down one item.
@@ -161,6 +201,7 @@ func (s *Sidebar) MoveDown() {
 	if s.Cursor < len(s.Items)-1 {
 		s.Cursor++
 	}
+	s.EnsureCursorVisible(s.Height)
 }
 
 // JumpPrevProject moves cursor to the previous project row.
@@ -203,12 +244,26 @@ func (s *Sidebar) View(activeSessionID string, focused bool) string {
 		innerW = 1
 	}
 
+	// Ensure scroll offset is in sync with current state before rendering.
+	s.EnsureCursorVisible(s.Height)
+
 	// Title header
 	titleLine := styles.TitleStyle.Render(" hive")
 	rows := []string{titleLine, ""}
 
-	for i, item := range s.Items {
-		rows = append(rows, s.renderItem(item, i == s.Cursor, item.SessionID == activeSessionID, innerW))
+	// Only render the visible window of items (from ScrollOffset).
+	visible := s.Height - 2
+	if visible < 1 {
+		visible = 1
+	}
+	end := s.ScrollOffset + visible
+	if end > len(s.Items) {
+		end = len(s.Items)
+	}
+	visibleItems := s.Items[s.ScrollOffset:end]
+
+	for i, item := range visibleItems {
+		rows = append(rows, s.renderItem(item, i+s.ScrollOffset == s.Cursor, item.SessionID == activeSessionID, innerW))
 	}
 	if len(s.Items) == 0 {
 		rows = append(rows, styles.MutedStyle.Render("  No sessions yet"))
@@ -235,8 +290,8 @@ func (s *Sidebar) View(activeSessionID string, focused bool) string {
 		Height(s.Height).
 		Render(content)
 	renderedLines := strings.Count(rendered, "\n") + 1
-	sidebarLog.Printf("View: w=%d h=%d innerW=%d items=%d cursor=%d rawContentLines=%d afterTruncate=%d rendered=%d%s",
-		s.Width, s.Height, innerW, len(s.Items), s.Cursor,
+	sidebarLog.Printf("View: w=%d h=%d innerW=%d items=%d cursor=%d scrollOffset=%d rawContentLines=%d afterTruncate=%d rendered=%d%s",
+		s.Width, s.Height, innerW, len(s.Items), s.Cursor, s.ScrollOffset,
 		rawLines, len(lines), renderedLines,
 		func() string {
 			if renderedLines != s.Height {

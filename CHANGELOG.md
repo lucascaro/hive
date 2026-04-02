@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Agent context documentation**: added `docs/developer-guide.md` with a full
+  package-by-package reference, key data flows, testing conventions, and common
+  change patterns so AI agents and new contributors can understand the codebase
+  without reading every source file.
+- **`doc.go` package comments**: added `doc.go` files to all 12 internal packages
+  (`state`, `config`, `mux`, `mux/native`, `mux/tmux`, `tmux`, `tui`,
+  `tui/components`, `tui/styles`, `hooks`, `escape`, `git`) describing each
+  package's purpose, key types, and relationships.
+- **`AGENTS.md` codebase reference**: added a "Codebase Quick Reference" section
+  to `AGENTS.md` covering the module path, package map, key types, key data flows,
+  and common change patterns (add a message, component, command, state mutation, hook).
+- **`ARCHITECTURE.md` enhancements**: added sections for key message types, state
+  mutation rules, backend selection logic, and the native daemon Unix socket protocol.
 - **Orphan session cleanup**: on startup, hive now detects `hive-*` tmux session
   containers that have no matching project in state and no active windows (empty
   orphans from crashes or prior unclean exits). An interactive multi-select overlay
