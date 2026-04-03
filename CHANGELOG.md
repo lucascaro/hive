@@ -8,15 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Interactive directory picker**: new project creation now uses a full-screen directory
-  browser (`bubbles/filepicker`) instead of a plain text input. Navigate with `↑/↓` or
-  `j/k`, open directories with `enter`/`→`, go up with `h`/`←`, confirm the current
-  directory with `.`, and cancel with `esc`.
+- **Interactive directory picker**: new project creation uses a full-screen directory
+  browser (`bubbles/list`) instead of a plain text input. Navigate with `↑/↓` or `j/k`,
+  descend into a directory with `enter`, go up with `h`/`←`, confirm the current directory
+  with `.`, and cancel with `esc`. Type any characters to fuzzy-search/filter the listed
+  subdirectories; press `esc` to clear the filter.
 
 ### Fixed
-- **Directory picker selection**: replaced the unreliable `DidSelectFile` heuristic with
-  a `fp.Path` diff to reliably detect when the user selects a directory, regardless of
-  whether the async `readDir` result has landed yet.
+- **Directory picker shows only directories**: the picker now filters to subdirectories
+  only at read time — no files or grayed-out entries appear in the list.
+- **Directory picker height**: the list now fills the available overlay height instead of
+  defaulting to zero rows.
 - **Preview border alignment**: fixed inconsistent border alignment in preview and grid
   views caused by zero-width Unicode characters (e.g. `U+200B` ZERO WIDTH SPACE) in
   captured terminal content. These characters have zero display width but occupy real
