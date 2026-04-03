@@ -578,6 +578,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	}
+
+	// Forward non-key, non-handled messages to active modals that need
+	// internal ticks (e.g. cursor blink, filter debounce in charmbracelet/list).
+	if m.dirPicker.Active {
+		m.dirPicker.Update(msg)
+	}
+
 	return m, nil
 }
 
