@@ -295,7 +295,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case SessionAttachMsg:
-		return m, m.doAttach(msg)
+		cmd := m.doAttach(msg)
+		return m, cmd
 
 	case AttachDoneMsg:
 		if msg.Err != nil {
@@ -392,7 +393,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAttachHint = true
 			return m, nil
 		}
-		return m, m.doAttach(*attach)
+		cmd := m.doAttach(*attach)
+		return m, cmd
 
 	// --- Agent picker result ---
 	case components.AgentPickedMsg:
@@ -1956,7 +1958,8 @@ func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if attach == nil {
 			return m, nil
 		}
-		return m, m.doAttach(*attach)
+		cmd := m.doAttach(*attach)
+		return m, cmd
 	case "d":
 		// Don't show again: save to config.
 		m.showAttachHint = false
@@ -1967,7 +1970,8 @@ func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if attach == nil {
 			return m, nil
 		}
-		return m, m.doAttach(*attach)
+		cmd := m.doAttach(*attach)
+		return m, cmd
 	case "esc", "q":
 		m.showAttachHint = false
 		m.pendingAttach = nil
@@ -2338,22 +2342,19 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	if mux.SupportsPopup() {
 		// Floating popup overlay — TUI stays alive underneath.
 		cmd = exec.Command("tmux", "display-popup",
-			"-E",       // close popup when command exits
+			"-E",        // close popup when command exits
 			"-w", "95%",
 			"-h", "90%",
 			"--",
 			"tmux", "attach-session", "-t", target,
 		)
 	} else {
-		// Full-screen attach wrapped in a shell that pushes/pops the terminal
-		// window title so the user can see which session they are in.
-		title := buildAttachTitle(sess)
-		script := fmt.Sprintf(
-			`printf '\033[22;0t\033]0;%s\007'; tmux attach-session -t '%s'; printf '\033[23;0t'`,
-			strings.ReplaceAll(title, "'", `'\''`),
-			strings.ReplaceAll(target, "'", `'\''`),
-		)
-		cmd = exec.Command("sh", "-c", script)
+		// Full-screen attach. Run tmux directly without a shell wrapper.
+		// The terminal title is set by the native RunAttach path only (that
+		// path has an opportunity to write escapes between TUI exit and
+		// attach); for the ExecProcess path the tmux status bar provides
+		// sufficient session context.
+		cmd = exec.Command("tmux", "attach-session", "-t", target)
 	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
