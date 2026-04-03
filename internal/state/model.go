@@ -78,6 +78,16 @@ const (
 	GridRestoreAll     GridRestoreMode = "all"
 )
 
+// RecoverableSession is a tmux window found in an orphaned hive-* session that
+// has live content. It is transient — set by cmd/start.go and consumed by the TUI.
+type RecoverableSession struct {
+	TmuxSession       string    // e.g. "hive-a1b2c3d4"
+	WindowIndex       int       // tmux window index
+	WindowName        string    // tmux window name
+	DetectedAgentType AgentType // empty = unknown / not detected
+	PanePreview       string    // last ~10 lines of visible pane content
+}
+
 // Project groups related AI agent sessions.
 type Project struct {
 	ID             string            `json:"id"`
@@ -162,6 +172,13 @@ type AppState struct {
 	// overlay on startup listing hive-* tmux sessions with no matching project.
 	// Set by cmd/start.go after reconcileState detects orphaned containers.
 	OrphanSessions []string
+	// RecoverableSessions is transient: windows in orphaned hive-* sessions that
+	// have live content and can be re-adopted into state.
+	// Set by cmd/start.go; cleared after the TUI recovery picker consumes it.
+	RecoverableSessions []RecoverableSession
+	// RecoveryWorkDir is the working directory to assign to the "Recovered Sessions"
+	// project. Set to cwd at startup; never persisted.
+	RecoveryWorkDir string
 }
 
 // TeamStatus derives an aggregate status from all team member statuses.

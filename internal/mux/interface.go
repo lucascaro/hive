@@ -48,6 +48,8 @@ type Backend interface {
 	// CapturePaneRaw returns content with all escape sequences preserved
 	// (used by the title watcher to detect OSC title sequences).
 	CapturePaneRaw(target string, lines int) (string, error)
+	// GetCurrentCommand returns the name of the foreground process in the pane.
+	GetCurrentCommand(target string) (string, error)
 
 	// Attach takes over the current terminal and connects it to the window
 	// at target, allowing the user to interact with the running process.
@@ -157,6 +159,11 @@ func CapturePane(target string, lines int) (string, error) {
 // CapturePaneRaw returns pane content with all escape sequences preserved.
 func CapturePaneRaw(target string, lines int) (string, error) {
 	return active.CapturePaneRaw(target, lines)
+}
+
+// GetCurrentCommand returns the name of the foreground process in the pane.
+func GetCurrentCommand(target string) (string, error) {
+	return active.GetCurrentCommand(target)
 }
 
 // Attach connects the current terminal to the window at target.

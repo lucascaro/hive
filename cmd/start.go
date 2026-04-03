@@ -75,9 +75,12 @@ func runStart(_ *cobra.Command, _ []string) error {
 		projects = nil
 	}
 
+	cwd, _ := os.Getwd()
+
 	appState := state.AppState{
-		Projects:   projects,
-		AgentUsage: tui.LoadUsage(),
+		Projects:        projects,
+		AgentUsage:      tui.LoadUsage(),
+		RecoveryWorkDir: cwd,
 	}
 	if appState.Projects == nil {
 		appState.Projects = []*state.Project{}
@@ -200,17 +203,22 @@ func reconcileState(appState *state.AppState) {
 		appState = state.RemoveSession(appState, id)
 	}
 
-	// Detect orphaned hive-* tmux session containers: present in tmux but have
-	// no corresponding project in state AND contain no windows (empty shells).
-	appState.OrphanSessions = detectOrphanContainers(appState)
+	// Detect orphaned hive-* tmux session containers:
+	//   - empty (no windows): offer to kill
+	//   - with windows but no state entry: offer to recover
+	orphans, recoverable := detectOrphanContainers(appState)
+	appState.OrphanSessions = orphans
+	appState.RecoverableSessions = recoverable
 }
 
-// detectOrphanContainers returns hive-* tmux session names that have no
-// matching project in state and have no windows (truly empty orphans).
-func detectOrphanContainers(appState *state.AppState) []string {
+// detectOrphanContainers returns hive-* tmux session names/windows that have no
+// matching project in state.
+//   - orphans: sessions with no windows (empty shells, offer to kill)
+//   - recoverable: individual windows in sessions not tracked by state
+func detectOrphanContainers(appState *state.AppState) (orphans []string, recoverable []state.RecoverableSession) {
 	allNames, err := mux.ListSessionNames()
 	if err != nil || len(allNames) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Build set of tmux session names currently referenced by state.
@@ -219,7 +227,6 @@ func detectOrphanContainers(appState *state.AppState) []string {
 		knownSessions[sess.TmuxSession] = struct{}{}
 	}
 
-	var orphans []string
 	for _, name := range allNames {
 		if !strings.HasPrefix(name, "hive-") {
 			continue
@@ -227,11 +234,57 @@ func detectOrphanContainers(appState *state.AppState) []string {
 		if _, known := knownSessions[name]; known {
 			continue
 		}
-		// Only flag containers that are actually empty (no windows).
 		windows, err := mux.ListWindows(name)
 		if err != nil || len(windows) == 0 {
 			orphans = append(orphans, name)
+			continue
+		}
+		for _, w := range windows {
+			target := fmt.Sprintf("%s:%d", name, w.Index)
+			agentType := detectAgentType(target)
+			preview, _ := mux.CapturePane(target, 10)
+			recoverable = append(recoverable, state.RecoverableSession{
+				TmuxSession:       name,
+				WindowIndex:       w.Index,
+				WindowName:        w.Name,
+				DetectedAgentType: agentType,
+				PanePreview:       preview,
+			})
 		}
 	}
-	return orphans
+	return orphans, recoverable
+}
+
+// knownAgents maps process/command names to their AgentType.
+var knownAgents = map[string]state.AgentType{
+	"claude":    state.AgentClaude,
+	"codex":     state.AgentCodex,
+	"gemini":    state.AgentGemini,
+	"copilot":   state.AgentCopilot,
+	"aider":     state.AgentAider,
+	"opencode":  state.AgentOpenCode,
+}
+
+// detectAgentType tries to determine the agent type from the running process
+// name, falling back to scanning pane content for known keywords.
+func detectAgentType(target string) state.AgentType {
+	// Primary: check the foreground process name.
+	if cmd, err := mux.GetCurrentCommand(target); err == nil {
+		cmd = strings.TrimSpace(strings.ToLower(cmd))
+		if at, ok := knownAgents[cmd]; ok {
+			return at
+		}
+	}
+	// Fallback: scan visible pane content for agent-specific keywords.
+	content, err := mux.CapturePane(target, 30)
+	if err != nil {
+		return ""
+	}
+	lower := strings.ToLower(content)
+	for keyword, at := range knownAgents {
+		if strings.Contains(lower, keyword) {
+			return at
+		}
+	}
+	return ""
 }

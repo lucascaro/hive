@@ -61,6 +61,10 @@ func (b *Backend) CapturePaneRaw(target string, lines int) (string, error) {
 	return tmux.CapturePaneRaw(target, lines)
 }
 
+func (b *Backend) GetCurrentCommand(target string) (string, error) {
+	return tmux.GetCurrentCommand(target)
+}
+
 // DetachKey returns the tmux detach key description.
 func (b *Backend) DetachKey() string { return "Ctrl+B D" }
 

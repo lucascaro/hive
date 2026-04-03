@@ -49,7 +49,8 @@ type Model struct {
 	teamBuilder  components.TeamBuilder
 	confirm      components.Confirm
 	gridView     components.GridView
-	orphanPicker components.OrphanPicker
+	orphanPicker    components.OrphanPicker
+	recoveryPicker  components.RecoveryPicker
 	settings     components.SettingsView
 	dirPicker    components.DirPicker
 	nameInput    textinput.Model // for project name / directory input
@@ -100,11 +101,13 @@ func New(cfg config.Config, appState state.AppState) Model {
 		settings:         components.NewSettingsView(),
 		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
 		dirPicker:        components.NewDirPicker(),
+		recoveryPicker:   components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:        ni,
 		contentSnapshots: make(map[string]string),
 	}
-	// Clear the transient field now that the picker owns the list.
+	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
+	m.appState.RecoverableSessions = nil
 	m.sidebar.Rebuild(&m.appState)
 	// Sync sidebar cursor to the active session (set by caller on re-entry after detach),
 	// or auto-select the first available session on fresh start.
@@ -495,6 +498,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingAgentType = ""
 		return m, cmd
 
+	// --- Orphan recovery result ---
+	case components.RecoveryPickerDoneMsg:
+		if len(msg.Selected) > 0 {
+			m.recoverSessions(msg.Selected)
+		}
+		return m, nil
+
 	// --- Orphan cleanup result ---
 	case components.OrphanPickerDoneMsg:
 		for _, name := range msg.Selected {
@@ -577,6 +587,11 @@ func (m Model) View() string {
 	}
 	if m.appState.ShowConfirm {
 		return m.overlayView(m.confirm.View())
+	}
+	if m.recoveryPicker.Active {
+		m.recoveryPicker.Width = m.appState.TermWidth
+		m.recoveryPicker.Height = m.appState.TermHeight
+		return m.overlayView(m.recoveryPicker.View())
 	}
 	if m.orphanPicker.Active {
 		m.orphanPicker.Width = m.appState.TermWidth
@@ -738,6 +753,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Route to active sub-component first.
 	if m.appState.EditingTitle {
 		return m.handleTitleEdit(msg)
+	}
+	if m.recoveryPicker.Active {
+		updated, cmd := m.recoveryPicker.Update(msg)
+		m.recoveryPicker = updated
+		return m, cmd
 	}
 	if m.orphanPicker.Active {
 		updated, cmd := m.orphanPicker.Update(msg)
@@ -1175,7 +1195,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	// Ignore mouse when any modal overlay is active.
 	if m.appState.ShowHelp || m.appState.ShowTmuxHelp || m.appState.ShowConfirm ||
-		m.showAttachHint || m.orphanPicker.Active || m.agentPicker.Active ||
+		m.showAttachHint || m.recoveryPicker.Active || m.orphanPicker.Active || m.agentPicker.Active ||
 		m.teamBuilder.Active || m.appState.EditingTitle ||
 		m.inputMode != "" || m.dirPicker.Active {
 		return m, nil
@@ -2041,6 +2061,51 @@ func (m *Model) persist() {
 	if err := saveUsage(m.appState.AgentUsage); err != nil {
 		log.Printf("hive: failed to save usage: %v", err)
 	}
+}
+
+// recoverSessions creates a "Recovered Sessions" project (if it doesn't already
+// exist) and adds each selected RecoverableSession as a state Session pointing
+// at the existing tmux window.
+func (m *Model) recoverSessions(sessions []state.RecoverableSession) {
+	workDir := m.appState.RecoveryWorkDir
+
+	// Find or create the recovery project.
+	var proj *state.Project
+	for _, p := range m.appState.Projects {
+		if p.Name == "Recovered Sessions" {
+			proj = p
+			break
+		}
+	}
+	if proj == nil {
+		var newProj *state.Project
+		_, newProj = state.CreateProject(&m.appState, "Recovered Sessions", "", "#6B7280", workDir)
+		proj = newProj
+	}
+
+	for _, rs := range sessions {
+		agentType := rs.DetectedAgentType
+		if agentType == "" {
+			agentType = state.AgentCustom
+		}
+		title := rs.WindowName
+		if title == "" {
+			title = fmt.Sprintf("%s:%d", rs.TmuxSession, rs.WindowIndex)
+		}
+		state.CreateSession(
+			&m.appState,
+			proj.ID,
+			title,
+			agentType,
+			nil,
+			workDir,
+			rs.TmuxSession,
+			rs.WindowIndex,
+		)
+	}
+
+	m.sidebar.Rebuild(&m.appState)
+	m.persist()
 }
 
 func (m *Model) fireHook(event state.HookEvent) {

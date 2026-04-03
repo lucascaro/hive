@@ -27,6 +27,11 @@ func CapturePaneRaw(target string, lines int) (string, error) {
 	return Exec(args...)
 }
 
+// GetCurrentCommand returns the name of the foreground process running in the pane.
+func GetCurrentCommand(target string) (string, error) {
+	return Exec("display-message", "-p", "-t", target, "#{pane_current_command}")
+}
+
 // GetPaneActivity returns the time of the last output received by a pane.
 // tmux's #{pane_activity} is a Unix timestamp (seconds) that is always tracked
 // regardless of monitor-activity settings.
