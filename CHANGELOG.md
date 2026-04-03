@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Preview border alignment**: fixed inconsistent border alignment in preview and grid
+  views caused by zero-width Unicode characters (e.g. `U+200B` ZERO WIDTH SPACE) in
+  captured terminal content. These characters have zero display width but occupy real
+  byte space, causing lipgloss padding to produce inconsistent line widths. The fix
+  strips these characters during preview sanitization.
+
 ### Added
 - **Grid cell worktree indicator**: grid cells now show an inline `⎇` badge when a
   session runs in a git worktree; if the branch name differs from the session title the

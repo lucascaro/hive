@@ -207,6 +207,109 @@ func TestExpandTabs(t *testing.T) {
 	}
 }
 
+func TestSanitizePreviewContent_StripsZeroWidthChars(t *testing.T) {
+	// Zero-width characters have 0 display width but occupy real byte space.
+	// lipgloss.Width() padding uses display width, so lines with zero-width
+	// chars end up physically longer, causing misaligned borders.
+	cases := []struct {
+		name     string
+		input    string
+		wantNone string // must NOT appear in output
+		wantSome string // must appear in output
+	}{
+		{
+			name:     "zero-width space stripped",
+			input:    "hello\u200Bworld",
+			wantNone: "\u200B",
+			wantSome: "helloworld",
+		},
+		{
+			name:     "zero-width non-joiner stripped",
+			input:    "test\u200Cvalue",
+			wantNone: "\u200C",
+			wantSome: "testvalue",
+		},
+		{
+			name:     "zero-width joiner stripped",
+			input:    "a\u200Db",
+			wantNone: "\u200D",
+			wantSome: "ab",
+		},
+		{
+			name:     "BOM stripped",
+			input:    "\uFEFFstart of line",
+			wantNone: "\uFEFF",
+			wantSome: "start of line",
+		},
+		{
+			name:     "word joiner stripped",
+			input:    "word\u2060joiner",
+			wantNone: "\u2060",
+			wantSome: "wordjoiner",
+		},
+		{
+			name:     "soft hyphen stripped",
+			input:    "hyphe\u00ADnated",
+			wantNone: "\u00AD",
+			wantSome: "hyphenated",
+		},
+		{
+			name:     "multiple zero-width chars stripped",
+			input:    "a\u200Bb\u200Cc\u200Dd",
+			wantNone: "\u200B",
+			wantSome: "abcd",
+		},
+		{
+			name:     "no zero-width chars unchanged",
+			input:    "hello world",
+			wantSome: "hello world",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := sanitizePreviewContent(tc.input)
+			if tc.wantNone != "" && strings.Contains(out, tc.wantNone) {
+				t.Errorf("output contains %q; got %q", tc.wantNone, out)
+			}
+			if tc.wantSome != "" && !strings.Contains(out, tc.wantSome) {
+				t.Errorf("output missing %q; got %q", tc.wantSome, out)
+			}
+		})
+	}
+}
+
+func TestPreviewView_ZeroWidthChars_HeightInvariant(t *testing.T) {
+	// Content with zero-width chars must render to exact height.
+	// The ZWSP (U+200B) was causing misaligned borders in production.
+	zwspContent := "line1\u200B\nline2\u200Bwith zwsp\nline3\n"
+	zwspContent += strings.Repeat("normal line\u200B\n", 20)
+	for _, h := range []int{10, 20, 30} {
+		p := newPreview(80, h, zwspContent)
+		out := p.View("sess-1")
+		got := countLines(out)
+		if got != h {
+			t.Errorf("height=%d: got %d lines", h, got)
+		}
+	}
+}
+
+func TestPreviewView_ZeroWidthChars_WidthInvariant(t *testing.T) {
+	// Lines with zero-width chars must have consistent display widths.
+	// This test ensures the viewport renders uniformly without ZWSP causing
+	// some lines to be physically longer.
+	const w, h = 80, 10
+	content := "normal line\nline with\u200Bzwsp\nanother\u200C\u200Dline\n"
+	p := newPreview(w, h, content)
+	out := p.View("sess-1")
+
+	// Every rendered line must fit within p.Width display columns.
+	for i, line := range strings.Split(out, "\n") {
+		if lw := lipgloss.Width(line); lw > w {
+			t.Errorf("line[%d] width=%d exceeds preview width %d", i, lw, w)
+		}
+	}
+}
+
 func TestPreviewView_TabContent_HeightInvariant(t *testing.T) {
 	tabContent := "\t\tvar x = someFunction(\n\t\t\targument1,\n\t\t\targument2,\n\t\t)\n"
 	tabContent += strings.Repeat("\tsome line of code\n", 20)

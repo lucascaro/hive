@@ -61,7 +61,25 @@ func sanitizePreviewContent(s string) string {
 	})
 	s = strings.NewReplacer("\r", "", "\v", "", "\f", "").Replace(s)
 	s = expandTabs(s)
+	s = stripZeroWidthChars(s)
 	return s
+}
+
+// stripZeroWidthChars removes Unicode zero-width characters that cause
+// inconsistent line widths. These characters have 0 display width according
+// to ansi.StringWidth/lipgloss.Width, but occupy real byte space. When
+// lipgloss applies Width() padding, it pads based on display width, leaving
+// lines with different physical lengths. This causes misaligned borders when
+// the terminal renders the content.
+func stripZeroWidthChars(s string) string {
+	return strings.NewReplacer(
+		"\u200B", "", // ZERO WIDTH SPACE
+		"\u200C", "", // ZERO WIDTH NON-JOINER
+		"\u200D", "", // ZERO WIDTH JOINER
+		"\uFEFF", "", // ZERO WIDTH NO-BREAK SPACE (BOM)
+		"\u2060", "", // WORD JOINER
+		"\u00AD", "", // SOFT HYPHEN
+	).Replace(s)
 }
 
 // expandTabs replaces each horizontal tab with the number of spaces needed to
