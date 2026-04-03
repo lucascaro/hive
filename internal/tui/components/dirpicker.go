@@ -17,6 +17,10 @@ type DirPickedMsg struct{ Dir string }
 // DirPickerCancelMsg is sent when the user cancels the directory picker.
 type DirPickerCancelMsg struct{}
 
+// overlayOverhead is the number of terminal lines consumed by the overlay
+// chrome (borders, padding, header, path line, separator, footer).
+const overlayOverhead = 10
+
 // DirPicker wraps bubbles/filepicker to provide a directory-only modal
 // picker that integrates with the hive theme and message protocol.
 //
@@ -31,6 +35,16 @@ type DirPicker struct {
 	fp     filepicker.Model
 }
 
+// SetHeight tells the picker how tall the terminal is so it can size the
+// file list to fill as much of the overlay as possible.
+func (dp *DirPicker) SetHeight(termHeight int) {
+	listHeight := termHeight - overlayOverhead
+	if listHeight < 5 {
+		listHeight = 5
+	}
+	dp.fp.Height = listHeight
+}
+
 // NewDirPicker creates a DirPicker with hive-themed styles.
 func NewDirPicker() DirPicker {
 	fp := filepicker.New()
@@ -39,7 +53,8 @@ func NewDirPicker() DirPicker {
 	fp.ShowPermissions = false
 	fp.ShowSize = false
 	fp.ShowHidden = false
-	fp.AutoHeight = true
+	fp.AutoHeight = false
+	fp.Height = 15 // default until first WindowSizeMsg
 	fp.Cursor = "▸"
 
 	// Remove esc from Back so we can intercept it as cancel.

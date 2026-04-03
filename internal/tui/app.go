@@ -51,9 +51,10 @@ type Model struct {
 	gridView     components.GridView
 	orphanPicker components.OrphanPicker
 	settings     components.SettingsView
+	dirPicker    components.DirPicker
 	nameInput    textinput.Model // for project name / directory input
 	// UI sub-states
-	inputMode          string // "project-name", "project-dir", "project-dir-confirm", "new-session", "worktree-branch", ""
+	inputMode          string // "project-name", "project-dir-confirm", "new-session", "worktree-branch", ""
 	pendingProjectName string // name entered in step 1 of project creation
 	pendingProjectID   string
 	pendingAgentType   string // agent type awaiting install confirmation
@@ -97,6 +98,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		teamBuilder:      components.NewTeamBuilder(),
 		settings:         components.NewSettingsView(),
 		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
+		dirPicker:        components.NewDirPicker(),
 		nameInput:        ni,
 		contentSnapshots: make(map[string]string),
 	}
@@ -179,11 +181,22 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles all messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// The directory picker needs all message types (including internal readDirMsg),
+	// so route to it before the type switch, except for window resize which must
+	// always be processed.
+	if m.dirPicker.Active {
+		if _, ok := msg.(tea.WindowSizeMsg); !ok {
+			cmd, _ := m.dirPicker.Update(msg)
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	// --- Window resize ---
 	case tea.WindowSizeMsg:
 		m.appState.TermWidth = msg.Width
 		m.appState.TermHeight = msg.Height
+		m.dirPicker.SetHeight(msg.Height)
 		m.recomputeLayout()
 		return m, nil
 
@@ -326,6 +339,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar.Rebuild(&m.appState)
 		m.persist()
 		return m, nil
+
+	// --- Directory picker result ---
+	case components.DirPickedMsg:
+		dir := msg.Dir
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			// Directory doesn't exist — ask for confirmation before creating.
+			m.nameInput.SetValue(dir)
+			m.inputMode = "project-dir-confirm"
+			return m, nil
+		}
+		name := m.pendingProjectName
+		m.pendingProjectName = ""
+		m.inputMode = ""
+		return m, m.createProject(name, dir)
+
+	case components.DirPickerCancelMsg:
+		// Return to the project name step.
+		m.inputMode = "project-name"
+		m.nameInput.Reset()
+		m.nameInput.SetValue(m.pendingProjectName)
+		return m, m.nameInput.Focus()
 
 	// --- Confirmation ---
 	case ConfirmActionMsg:
@@ -536,8 +570,8 @@ func (m Model) View() string {
 	if m.inputMode == "project-name" {
 		return m.overlayView(m.nameInputView("New Project (1/2)", "Project name:", "enter: next  esc: cancel"))
 	}
-	if m.inputMode == "project-dir" {
-		return m.overlayView(m.nameInputView("New Project (2/2)", "Working directory:", "enter: next  esc: back"))
+	if m.dirPicker.Active {
+		return m.overlayView(m.dirPicker.View())
 	}
 	if m.inputMode == "project-dir-confirm" {
 		return m.overlayView(m.dirConfirmView())
@@ -696,7 +730,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.teamBuilder.Update(msg)
 		return m, cmd
 	}
-	if m.inputMode == "project-name" || m.inputMode == "project-dir" {
+	if m.inputMode == "project-name" {
 		return m.handleNameInput(msg)
 	}
 	if m.inputMode == "project-dir-confirm" {
@@ -1253,36 +1287,15 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.inputMode == "project-name" {
-			// Step 1 done: move to directory selection
+			// Step 1 done: open the interactive directory picker.
 			m.pendingProjectName = val
-			m.inputMode = "project-dir"
-			cwd, _ := os.Getwd()
-			m.nameInput.Placeholder = "/path/to/project"
-			m.nameInput.Reset()
-			m.nameInput.SetValue(cwd)
-			return m, nil
-		}
-		// Step 2: directory confirmed → check existence then create project
-		dir := val
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			// Directory doesn't exist — ask for confirmation before creating
-			m.inputMode = "project-dir-confirm"
+			m.inputMode = ""
 			m.nameInput.Blur()
-			return m, nil
+			cwd, _ := os.Getwd()
+			initCmd := m.dirPicker.Show(cwd)
+			return m, initCmd
 		}
-		m.nameInput.Blur()
-		m.inputMode = ""
-		cmd := m.createProject(m.pendingProjectName, dir)
-		m.pendingProjectName = ""
-		return m, cmd
 	case "esc":
-		if m.inputMode == "project-dir" {
-			// Go back to name step
-			m.inputMode = "project-name"
-			m.nameInput.Reset()
-			m.nameInput.SetValue(m.pendingProjectName)
-			return m, nil
-		}
 		m.nameInput.Blur()
 		m.inputMode = ""
 		m.pendingProjectName = ""
@@ -1309,10 +1322,11 @@ func (m Model) handleDirConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingProjectName = ""
 		return m, cmd
 	case "n", "N", "esc":
-		// Return to directory input so user can correct the path
-		m.inputMode = "project-dir"
-		m.nameInput.Focus()
-		return m, nil
+		// Return to directory picker so user can choose a different path.
+		m.inputMode = ""
+		dir := strings.TrimSpace(m.nameInput.Value())
+		initCmd := m.dirPicker.Show(dir)
+		return m, initCmd
 	}
 	return m, nil
 }
