@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Interactive directory picker**: new project creation uses a full-screen directory
+  browser (`bubbles/list`) instead of a plain text input. Navigate with `↑/↓` or `j/k`,
+  descend into a directory with `enter`, go up with `h`/`←`, confirm the current directory
+  with `.`, and cancel with `esc`. Press `/` to enter filter mode, then type to fuzzy-search
+  subdirectories; press `esc` to clear the filter.
+
 ### Fixed
+- **Directory picker shows only directories**: the picker now filters to subdirectories
+  only at read time — no files or grayed-out entries appear in the list.
+- **Directory picker height**: the list now fills the available overlay height instead of
+  defaulting to zero rows.
 - **Preview border alignment**: fixed inconsistent border alignment in preview and grid
   views caused by zero-width Unicode characters (e.g. `U+200B` ZERO WIDTH SPACE) in
   captured terminal content. These characters have zero display width but occupy real
@@ -24,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full branch name is displayed (e.g. `⎇ feat/my-branch`).
 
 ### Changed
+- **Directory picker for new projects**: migrated from a plain text input to a custom
+  `DirPicker` built on `bubbles/list`. The working-directory step uses a full-screen
+  directory browser — navigate with `↑/↓`, open directories with `enter`, go up with
+  `h`/`←`/`backspace`, confirm the current directory with `.`, press `/` to filter,
+  and cancel with `esc`. Styled to match the hive accent colour theme.
 - **Grid cell single-line header**: the two-line header (title row + project subtitle
   row) has been merged into one line — status dot, agent badge, session title, project
   name, and worktree badge all appear on a single header line, giving each cell one

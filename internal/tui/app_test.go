@@ -500,3 +500,109 @@ func TestGridSessionSelectedMsg_PreservesAllProjectsGridRestoreMode(t *testing.T
 		t.Fatalf("RestoreGridMode = %q, want %q", updated.attachPending.RestoreGridMode, state.GridRestoreAll)
 	}
 }
+
+// --- DirPicker flow tests ---
+
+func TestNewProject_PressN_OpensDirPickerAfterName(t *testing.T) {
+	m := testModelWithSessions()
+
+	// Press "n" to start new-project flow.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = result.(Model)
+	if m.inputMode != "project-name" {
+		t.Fatalf("inputMode = %q after pressing n, want %q", m.inputMode, "project-name")
+	}
+
+	// Type a project name then press enter.
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("myproject")})
+	m = result.(Model)
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = result.(Model)
+
+	// After confirming a name, inputMode should be cleared and dirPicker should be active.
+	if m.inputMode != "" {
+		t.Errorf("inputMode = %q after name confirm, want %q", m.inputMode, "")
+	}
+	if !m.dirPicker.Active {
+		t.Error("dirPicker.Active = false after name confirm, want true")
+	}
+	if m.pendingProjectName != "myproject" {
+		t.Errorf("pendingProjectName = %q, want %q", m.pendingProjectName, "myproject")
+	}
+}
+
+func TestDirPickedMsg_ExistingDir_CreatesProject(t *testing.T) {
+	m := testModelWithSessions()
+	m.pendingProjectName = "myproject"
+	m.dirPicker.Active = true
+
+	dir := t.TempDir()
+	result, cmd := m.Update(components.DirPickedMsg{Dir: dir})
+	updated := result.(Model)
+
+	// inputMode should be cleared and a create command returned.
+	if updated.inputMode != "" {
+		t.Errorf("inputMode = %q after DirPickedMsg with existing dir, want %q", updated.inputMode, "")
+	}
+	if updated.dirPicker.Active {
+		t.Error("dirPicker.Active = true after pick, want false")
+	}
+	if cmd == nil {
+		t.Error("expected a command (createProject) to be returned")
+	}
+}
+
+func TestDirPickedMsg_NonExistentDir_AsksConfirmation(t *testing.T) {
+	m := testModelWithSessions()
+	m.pendingProjectName = "myproject"
+	m.dirPicker.Active = true
+
+	nonexistent := t.TempDir() + "/does-not-exist"
+	result, _ := m.Update(components.DirPickedMsg{Dir: nonexistent})
+	updated := result.(Model)
+
+	if updated.inputMode != "project-dir-confirm" {
+		t.Errorf("inputMode = %q after DirPickedMsg with new dir, want %q", updated.inputMode, "project-dir-confirm")
+	}
+}
+
+func TestDirPickerCancelMsg_ReturnsToNameStep(t *testing.T) {
+	m := testModelWithSessions()
+	m.pendingProjectName = "myproject"
+	m.dirPicker.Active = true
+
+	result, _ := m.Update(components.DirPickerCancelMsg{})
+	updated := result.(Model)
+
+	if updated.inputMode != "project-name" {
+		t.Errorf("inputMode = %q after DirPickerCancelMsg, want %q", updated.inputMode, "project-name")
+	}
+	if updated.dirPicker.Active {
+		t.Error("dirPicker.Active = true after cancel, want false")
+	}
+	// The pending name must be preserved so the user doesn't have to re-type it.
+	if updated.pendingProjectName != "myproject" {
+		t.Errorf("pendingProjectName = %q after cancel, want %q", updated.pendingProjectName, "myproject")
+	}
+}
+
+func TestDirPicker_BackgroundMessages_NotDroppedWhileActive(t *testing.T) {
+	m := testModelWithSessions()
+	m.dirPicker.Active = true
+
+	// A preview update should still be processed while the picker is open.
+	m.previewPollGen = 1
+	m.appState.ActiveSessionID = "sess-1"
+	previewMsg := components.PreviewUpdatedMsg{
+		SessionID:  "sess-1",
+		Content:    "background update",
+		Generation: 1,
+	}
+	result, _ := m.Update(previewMsg)
+	updated := result.(Model)
+
+	if updated.appState.PreviewContent != "background update" {
+		t.Errorf("PreviewContent = %q, want %q after background msg while dirPicker active",
+			updated.appState.PreviewContent, "background update")
+	}
+}
