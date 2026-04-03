@@ -13,8 +13,12 @@ func testDirPicker(t *testing.T) DirPicker {
 	dp := NewDirPicker()
 	dir := t.TempDir()
 	// Create a couple of sub-directories for navigation tests.
-	os.MkdirAll(filepath.Join(dir, "aaa"), 0755)
-	os.MkdirAll(filepath.Join(dir, "bbb"), 0755)
+	if err := os.MkdirAll(filepath.Join(dir, "aaa"), 0755); err != nil {
+		t.Fatalf("create test dir aaa: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "bbb"), 0755); err != nil {
+		t.Fatalf("create test dir bbb: %v", err)
+	}
 	dp.Show(dir)
 	return dp
 }
@@ -88,8 +92,8 @@ func TestDirPicker_EscCancels(t *testing.T) {
 	if !consumed {
 		t.Fatal("esc should be consumed")
 	}
-	if !dp.Active {
-		// The picker sets Active=false itself.
+	if dp.Active {
+		t.Fatal("esc should deactivate the picker")
 	}
 	if cmd == nil {
 		t.Fatal("esc should return a cmd")

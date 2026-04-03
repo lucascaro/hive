@@ -111,8 +111,9 @@ func TestDispatchKey_ReturnsHandlerCmd(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("cmd should not be nil")
 	}
-	if _, ok := cmd().(testMsg); !ok {
-		t.Fatalf("cmd returned %T, want testMsg", cmd())
+	result := cmd()
+	if _, ok := result.(testMsg); !ok {
+		t.Fatalf("cmd returned %T, want testMsg", result)
 	}
 }
 

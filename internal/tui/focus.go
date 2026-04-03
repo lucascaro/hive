@@ -21,7 +21,7 @@ type componentHandler struct {
 	handle  func(tea.KeyMsg) tea.Cmd
 }
 
-func (c componentHandler) Focused() bool                  { return c.focused() }
+func (c componentHandler) Focused() bool                    { return c.focused() }
 func (c componentHandler) HandleKey(msg tea.KeyMsg) tea.Cmd { return c.handle(msg) }
 
 // dispatchKey walks handlers in priority order and routes msg to the first
