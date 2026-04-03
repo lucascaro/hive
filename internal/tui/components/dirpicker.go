@@ -42,6 +42,7 @@ const overlayOverhead = 10
 type DirPicker struct {
 	Active     bool
 	currentDir string
+	readErr    error // set when the last loadDir call failed; shown in View
 	list       list.Model
 	delegate   list.DefaultDelegate
 	height     int
@@ -113,9 +114,14 @@ func (dp *DirPicker) Show(initialDir string) tea.Cmd {
 // loadDir builds a fresh list populated with the subdirectories of dir.
 // Recreating the list on each navigation avoids stale cursor/filter state.
 func (dp *DirPicker) loadDir(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Keep the previous directory so the user can navigate away.
+		dp.readErr = err
+		return
+	}
+	dp.readErr = nil
 	dp.currentDir = dir
-
-	entries, _ := os.ReadDir(dir)
 	items := make([]list.Item, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
@@ -181,8 +187,14 @@ func (dp *DirPicker) View() string {
 		"↑/↓: navigate  enter: open  ←: up  /: search  .: here  esc: cancel",
 	)
 
+	listView := dp.list.View()
+	if dp.readErr != nil {
+		listView = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).
+			Render("Error: " + dp.readErr.Error())
+	}
+
 	body := header + "\n" +
-		dp.list.View() + "\n" +
+		listView + "\n" +
 		footer
 
 	return lipgloss.NewStyle().

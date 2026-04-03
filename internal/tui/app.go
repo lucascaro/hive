@@ -181,13 +181,17 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles all messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// The directory picker needs all message types (including internal readDirMsg),
-	// so route to it before the type switch, except for window resize which must
-	// always be processed.
+	// While the directory picker is active, let it handle non-resize messages
+	// before the main update switch. Window size messages still need to be
+	// processed here so the app's dimensions and layout stay in sync.
+	// Only short-circuit when the picker actually consumes the message so that
+	// background messages (preview polls, title/status watchers) continue to run.
 	if m.dirPicker.Active {
 		if _, ok := msg.(tea.WindowSizeMsg); !ok {
-			cmd, _ := m.dirPicker.Update(msg)
-			return m, cmd
+			cmd, consumed := m.dirPicker.Update(msg)
+			if consumed {
+				return m, cmd
+			}
 		}
 	}
 
@@ -342,12 +346,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Directory picker result ---
 	case components.DirPickedMsg:
+		m.dirPicker.Active = false
 		dir := msg.Dir
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			// Directory doesn't exist — ask for confirmation before creating.
-			m.nameInput.SetValue(dir)
-			m.inputMode = "project-dir-confirm"
-			return m, nil
+		if _, err := os.Stat(dir); err != nil {
+			if os.IsNotExist(err) {
+				// Directory doesn't exist — ask for confirmation before creating.
+				m.nameInput.SetValue(dir)
+				m.inputMode = "project-dir-confirm"
+				return m, nil
+			}
+			// Unexpected error (e.g. permission denied) — surface it and abort.
+			m.inputMode = ""
+			return m, func() tea.Msg {
+				return ErrorMsg{Err: fmt.Errorf("check directory: %w", err)}
+			}
 		}
 		name := m.pendingProjectName
 		m.pendingProjectName = ""
@@ -355,6 +367,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.createProject(name, dir)
 
 	case components.DirPickerCancelMsg:
+		m.dirPicker.Active = false
 		// Return to the project name step.
 		m.inputMode = "project-name"
 		m.nameInput.Reset()
@@ -1155,7 +1168,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.appState.ShowHelp || m.appState.ShowTmuxHelp || m.appState.ShowConfirm ||
 		m.showAttachHint || m.orphanPicker.Active || m.agentPicker.Active ||
 		m.teamBuilder.Active || m.appState.EditingTitle ||
-		m.inputMode != "" {
+		m.inputMode != "" || m.dirPicker.Active {
 		return m, nil
 	}
 
