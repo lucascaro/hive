@@ -48,6 +48,7 @@ type SidebarItem struct {
 	ProjectNum     int    // 1-based number for projects (0 = not a project)
 	IsWorktree     bool   // true if the session runs in a git worktree
 	WorktreeBranch string // branch name for worktree sessions
+	Bell           bool   // true if session has an unacknowledged bell
 }
 
 // Sidebar manages the project/team/session tree.
@@ -113,6 +114,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 					TeamRole:       string(sess.TeamRole),
 					IsWorktree:     sess.WorktreePath != "",
 					WorktreeBranch: sess.WorktreeBranch,
+					Bell:           sess.BellPending,
 				})
 			}
 		}
@@ -132,6 +134,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 				TeamRole:       string(state.RoleStandalone),
 				IsWorktree:     sess.WorktreePath != "",
 				WorktreeBranch: sess.WorktreeBranch,
+				Bell:           sess.BellPending,
 			})
 		}
 	}
@@ -349,7 +352,11 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		if item.IsWorktree && item.WorktreeBranch != "" {
 			worktreeBadge = " " + styles.MutedStyle.Render("⎇ "+item.WorktreeBranch)
 		}
-		label = fmt.Sprintf("%s%s %s %s%s", rolePrefix, dot, item.Label, badge, worktreeBadge)
+		bellBadge := ""
+		if item.Bell {
+			bellBadge = " " + styles.BellStyle.Render("!")
+		}
+		label = fmt.Sprintf("%s%s %s %s%s%s", rolePrefix, dot, item.Label, badge, worktreeBadge, bellBadge)
 		if active {
 			label += " ←"
 		}

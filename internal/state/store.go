@@ -147,6 +147,15 @@ func UpdateSessionTitle(state *AppState, sessionID, title string, src TitleSourc
 	return state
 }
 
+// SetSessionBell sets or clears the BellPending flag on a session.
+func SetSessionBell(state *AppState, sessionID string, pending bool) *AppState {
+	sess := findSession(state, sessionID)
+	if sess != nil {
+		sess.BellPending = pending
+	}
+	return state
+}
+
 // UpdateSessionStatus updates the status of a session.
 func UpdateSessionStatus(state *AppState, sessionID string, status SessionStatus) *AppState {
 	sess := findSession(state, sessionID)

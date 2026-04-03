@@ -75,6 +75,9 @@ type Model struct {
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
+	// rawSnapshots holds the last raw pane output for each session,
+	// used by the status watcher to detect new bell characters.
+	rawSnapshots map[string]string
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -99,6 +102,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
 		nameInput:        ni,
 		contentSnapshots: make(map[string]string),
+		rawSnapshots:     make(map[string]string),
 	}
 	// Clear the transient field now that the picker owns the list.
 	m.appState.OrphanSessions = nil
@@ -234,6 +238,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for sessionID, content := range msg.Contents {
 			m.contentSnapshots[sessionID] = content
 		}
+		for sessionID, raw := range msg.RawContents {
+			m.rawSnapshots[sessionID] = raw
+		}
 		// If the status watcher captured new content for the active session, update
 		// the preview immediately rather than waiting for the next PollPreview tick.
 		if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
@@ -248,10 +255,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				changed = true
 			}
 		}
+		var bellCmds []tea.Cmd
+		for sessionID, hasBell := range msg.Bells {
+			if hasBell {
+				m.appState = *state.SetSessionBell(&m.appState, sessionID, true)
+				changed = true
+				bellCmds = append(bellCmds, soundBellCmd())
+			}
+		}
 		if changed {
 			m.sidebar.Rebuild(&m.appState)
 		}
-		return m, m.scheduleWatchStatuses()
+		return m, tea.Batch(append(bellCmds, m.scheduleWatchStatuses())...)
 
 	// --- Session lifecycle ---
 	case SessionCreatedMsg:
@@ -1875,6 +1890,8 @@ func (m *Model) syncActiveFromSidebar() {
 		cached := m.contentSnapshots[sel.SessionID]
 		m.appState.PreviewContent = cached
 		m.preview.SetContent(cached)
+		// Clear any pending bell notification for the session now being viewed.
+		m.appState = *state.SetSessionBell(&m.appState, sel.SessionID, false)
 	}
 	if sel.ProjectID != "" {
 		m.appState.ActiveProjectID = sel.ProjectID
@@ -2141,6 +2158,14 @@ func (m *Model) scheduleWatchTitles() tea.Cmd {
 	return escape.WatchTitles(targets, interval)
 }
 
+// soundBellCmd returns a command that writes the BEL character to the host terminal.
+func soundBellCmd() tea.Cmd {
+	return func() tea.Msg {
+		fmt.Fprint(os.Stdout, "\a")
+		return nil
+	}
+}
+
 func (m *Model) scheduleWatchStatuses() tea.Cmd {
 	targets := make(map[string]string)
 	for _, sess := range state.AllSessions(&m.appState) {
@@ -2152,7 +2177,7 @@ func (m *Model) scheduleWatchStatuses() tea.Cmd {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
-	return escape.WatchStatuses(targets, m.contentSnapshots, interval)
+	return escape.WatchStatuses(targets, m.contentSnapshots, m.rawSnapshots, interval)
 }
 
 // --- View helpers ---

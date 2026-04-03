@@ -1,9 +1,22 @@
 package escape
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // oscTitleRE matches OSC 2 window title sequences: ESC ] 2 ; <title> BEL
 var oscTitleRE = regexp.MustCompile(`\x1b\]2;([^\x07\x1b]*)\x07`)
+
+// oscSeqRE matches any OSC sequence (used to strip them before bell detection).
+var oscSeqRE = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
+// DetectBell reports whether raw pane output contains a standalone BEL character
+// (i.e. one that is not the terminator of an OSC sequence).
+func DetectBell(raw string) bool {
+	stripped := oscSeqRE.ReplaceAllString(raw, "")
+	return strings.ContainsRune(stripped, '\x07')
+}
 
 // nullMarkerRE matches the custom null-byte marker: \x00HIVE_TITLE:{title}\x00
 var nullMarkerRE = regexp.MustCompile(`\x00HIVE_TITLE:([^\x00]+)\x00`)
