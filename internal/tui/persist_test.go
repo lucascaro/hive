@@ -52,7 +52,7 @@ func TestSaveStateLoadState_Roundtrip(t *testing.T) {
 	}
 	appState := &state.AppState{Projects: projects}
 
-	if err := saveState(appState); err != nil {
+	if _, err := saveState(appState); err != nil {
 		t.Fatalf("saveState() error: %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestLoadState_EnsuresNonNilSlices(t *testing.T) {
 			{ID: "p1", Name: "proj", Teams: nil, Sessions: nil},
 		},
 	}
-	if err := saveState(appState); err != nil {
+	if _, err := saveState(appState); err != nil {
 		t.Fatalf("saveState() error: %v", err)
 	}
 

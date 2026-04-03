@@ -50,6 +50,48 @@ Claude supports multi-agent orchestration via its API/SDK where one Claude insta
 
 In Hive, this is exposed as a **Team**: orchestrator session + N worker sessions, all in the same project, sharing a work directory. The TUI reflects the team hierarchy visually.
 
+## Multi-Instance State Synchronisation
+
+**Problem**: users often run hive in several terminal tabs or tmux splits at once.
+With a single JSON file and no coordination, two simultaneous saves would result
+in one instance silently overwriting the other's changes.
+
+**Decision: advisory flock + mtime polling (no fsnotify, no server process)**
+
+Three mechanisms working together:
+
+1. **Exclusive advisory lock** (`syscall.Flock(LOCK_EX)`) on `state.json.lock`
+   during every write.  The lock file is separate from the data file so the
+   atomic rename used for writes is not interfered with.  Holding the lock for
+   only the milliseconds of the write minimises contention.
+
+2. **Atomic rename** (`write tmp → os.Rename`) means readers always see a
+   complete file.  No shared or reader lock is needed.
+
+3. **mtime polling** every 500 ms inside the running TUI (`watcher.go`).  When
+   the modification time of `state.json` advances past the value stamped after
+   our last `persist()` call, we reload from disk, reconcile dead tmux windows,
+   and refresh the sidebar — all without restarting the process.
+
+**Why polling instead of `fsnotify`?**
+`fsnotify` requires a new dependency and adds OS-specific complexity (kqueue/
+inotify/ReadDirectoryChangesW). A 500 ms poll is imperceptible to humans, is
+rock-solid on NFS/network volumes, and needs zero extra dependencies.
+
+**Why not a central server/daemon?**
+A daemon adds a single point of failure, a crash recovery problem, and IPC
+complexity. The stateless polling approach degrades gracefully: if one instance
+crashes mid-write, the lock is released by the OS and the atomic rename ensures
+the file is either fully written or not at all.
+
+**Trade-off accepted**: in the unlikely event that two instances each create a
+brand-new project within the same 500 ms polling window, one creation may not
+appear in the other's view until the next poll.  There is no silent data loss —
+both creations are persisted atomically under the exclusive lock — but one
+instance may not see the other's new entry until its next reload cycle.
+
+---
+
 ## Go Dependencies Selected
 
 ```

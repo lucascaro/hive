@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-instance support**: multiple hive windows can now run simultaneously
+  against the same config directory without corrupting each other's state.
+  Each running instance polls `state.json` every 500 ms and reloads automatically
+  when another instance makes a change — new projects and sessions appear in all
+  windows within half a second. Writes are serialised with an exclusive advisory
+  lock (`state.json.lock`) so concurrent saves never produce a torn file.
+  Dead sessions discovered during reload are reconciled against the live tmux
+  backend, and any associated git worktrees are cleaned up exactly once.
+
+### Security
+- **State file lock permissions**: the advisory lock file (`state.json.lock`) is
+  created with mode 0600 (owner read/write only), consistent with `state.json`.
 - **Interactive directory picker**: new project creation uses a full-screen directory
   browser (`bubbles/list`) instead of a plain text input. Navigate with `↑/↓` or `j/k`,
   descend into a directory with `enter`, go up with `h`/`←`, confirm the current directory
