@@ -11,6 +11,8 @@
 package muxnative
 
 import (
+	"errors"
+
 	"github.com/lucascaro/hive/internal/mux"
 )
 
@@ -123,3 +125,17 @@ func (b *Backend) Attach(target string) error {
 
 // DetachKey returns the native backend detach key description.
 func (b *Backend) DetachKey() string { return "Ctrl+Q" }
+
+// UseExecAttach returns false: the native backend attaches via Go-level socket
+// I/O, not an external command, so tea.ExecProcess is not applicable.
+func (b *Backend) UseExecAttach() bool { return false }
+
+// SupportsPopup always returns false for the native backend.
+// The native backend uses its own PTY daemon; tmux display-popup is not applicable.
+func (b *Backend) SupportsPopup() bool { return false }
+
+// PopupAttach is not implemented for the native backend.
+// Always returns an error; callers must check SupportsPopup first.
+func (b *Backend) PopupAttach(_ string) error {
+	return errors.New("popup attach is not supported by the native PTY backend")
+}

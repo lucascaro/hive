@@ -31,7 +31,16 @@ type SessionAttachMsg struct {
 }
 
 // SessionDetachedMsg is sent when the user returns from a tmux session.
+// Deprecated: use AttachDoneMsg which carries an error and is returned by
+// the tea.ExecProcess callback in the new in-process attach flow.
 type SessionDetachedMsg struct{}
+
+// AttachDoneMsg is returned by the tea.ExecProcess callback when the user
+// detaches from (or the process running in) an attached or popup session.
+type AttachDoneMsg struct {
+	Err             error
+	RestoreGridMode state.GridRestoreMode
+}
 
 // SessionTitleChangedMsg carries a new title for a session.
 type SessionTitleChangedMsg struct {
@@ -108,3 +117,4 @@ type ConfigSavedMsg struct {
 
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}
+var _ tea.Msg = AttachDoneMsg{}

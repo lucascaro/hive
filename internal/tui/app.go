@@ -64,7 +64,8 @@ type Model struct {
 	// Attach hint overlay
 	showAttachHint bool
 	pendingAttach  *SessionAttachMsg
-	// Attach flow: set before tea.Quit so cmd/start.go can act on it.
+	// attachPending is set before tea.Quit so cmd/start.go can handle the
+	// attach when the native backend is active (which cannot use tea.ExecProcess).
 	attachPending *SessionAttachMsg
 	// previewPollGen is incremented each time we intentionally start a fresh
 	// polling cycle (session switch, new session, detach).  PreviewUpdatedMsg
@@ -294,11 +295,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case SessionAttachMsg:
-		m.attachPending = &msg
-		return m, tea.Quit
+		return m, m.doAttach(msg)
+
+	case AttachDoneMsg:
+		if msg.Err != nil {
+			return m, func() tea.Msg { return ErrorMsg{Err: msg.Err} }
+		}
+		m.appState.RestoreGridMode = msg.RestoreGridMode
+		m.previewPollGen++
+		return m, m.schedulePollPreview()
 
 	case SessionDetachedMsg:
-		m.previewPollGen++ // returning from tmux, start fresh poll chain
+		m.previewPollGen++ // returning from native attach; start fresh poll chain
 		return m, m.schedulePollPreview()
 
 	// --- Team lifecycle ---
@@ -384,8 +392,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showAttachHint = true
 			return m, nil
 		}
-		m.attachPending = attach
-		return m, tea.Quit
+		return m, m.doAttach(*attach)
 
 	// --- Agent picker result ---
 	case components.AgentPickedMsg:
@@ -1949,8 +1956,7 @@ func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if attach == nil {
 			return m, nil
 		}
-		m.attachPending = attach
-		return m, tea.Quit
+		return m, m.doAttach(*attach)
 	case "d":
 		// Don't show again: save to config.
 		m.showAttachHint = false
@@ -1961,8 +1967,7 @@ func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if attach == nil {
 			return m, nil
 		}
-		m.attachPending = attach
-		return m, tea.Quit
+		return m, m.doAttach(*attach)
 	case "esc", "q":
 		m.showAttachHint = false
 		m.pendingAttach = nil
@@ -2309,8 +2314,59 @@ func (m Model) tmuxHelpView() string {
 	)
 }
 
-// RunAttach handles the attach flow: exits TUI, attaches to the session, relaunches TUI.
-// This is called by cmd/start.go after tea.Program.Run returns with a SessionAttachMsg.
+// doAttach returns the tea.Cmd that performs session attachment.
+//
+// For the tmux backend (UseExecAttach = true) it uses tea.ExecProcess so the
+// TUI is merely suspended during the attach — no restart, no state reload.
+//   - If the backend supports display-popup (tmux ≥ 3.2, running inside tmux)
+//     the session opens as a floating overlay over the TUI.
+//   - Otherwise a plain full-screen tmux attach-session is used.
+//
+// For the native backend (UseExecAttach = false) it falls back to setting
+// attachPending and calling tea.Quit; cmd/start.go handles the restart.
+func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
+	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+	restoreMode := sess.RestoreGridMode
+
+	if !mux.UseExecAttach() {
+		// Native backend: use the classic quit+restart path.
+		m.attachPending = &sess
+		return tea.Quit
+	}
+
+	var cmd *exec.Cmd
+	if mux.SupportsPopup() {
+		// Floating popup overlay — TUI stays alive underneath.
+		cmd = exec.Command("tmux", "display-popup",
+			"-E",       // close popup when command exits
+			"-w", "95%",
+			"-h", "90%",
+			"--",
+			"tmux", "attach-session", "-t", target,
+		)
+	} else {
+		// Full-screen attach wrapped in a shell that pushes/pops the terminal
+		// window title so the user can see which session they are in.
+		title := buildAttachTitle(sess)
+		script := fmt.Sprintf(
+			`printf '\033[22;0t\033]0;%s\007'; tmux attach-session -t '%s'; printf '\033[23;0t'`,
+			strings.ReplaceAll(title, "'", `'\''`),
+			strings.ReplaceAll(target, "'", `'\''`),
+		)
+		cmd = exec.Command("sh", "-c", script)
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode}
+	})
+}
+
+// RunAttach handles the attach flow for the native backend: called by cmd/start.go
+// after tea.Program.Run returns with a non-nil LastAttach(). Not used when the
+// tmux backend is active (which uses tea.ExecProcess internally).
 func RunAttach(sess SessionAttachMsg) error {
 	// Set the terminal window/tab title so the user always knows which session
 	// they are in, even when the attached app redraws the entire screen.

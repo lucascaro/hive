@@ -55,6 +55,22 @@ type Backend interface {
 	// process exits.
 	Attach(target string) error
 
+	// SupportsPopup reports whether the backend can open an in-UI floating
+	// popup overlay for a session (requires tmux ≥ 3.2 and running inside tmux).
+	// If false, callers must fall back to a full-screen Attach.
+	SupportsPopup() bool
+
+	// PopupAttach opens a floating popup overlay connected to the window at
+	// target. Only valid to call when SupportsPopup() returns true.
+	// Returns when the popup closes (user detaches or process exits).
+	PopupAttach(target string) error
+
+	// UseExecAttach reports whether the TUI should use tea.ExecProcess to run
+	// an external attach command rather than quitting and restarting.
+	// True for the tmux backend (exec "tmux …"). False for the native backend
+	// (which performs attach via Go I/O and requires the quit+restart loop).
+	UseExecAttach() bool
+
 	// DetachKey returns a human-readable description of the key sequence used
 	// to return to hive from an attached session (e.g. "Ctrl+Q" or "Ctrl+B D").
 	DetachKey() string
@@ -145,6 +161,29 @@ func CapturePaneRaw(target string, lines int) (string, error) {
 
 // Attach connects the current terminal to the window at target.
 func Attach(target string) error { return active.Attach(target) }
+
+// SupportsPopup reports whether the active backend can show an in-UI popup overlay.
+// Returns false if no backend has been set (e.g. in tests).
+func SupportsPopup() bool {
+	if active == nil {
+		return false
+	}
+	return active.SupportsPopup()
+}
+
+// PopupAttach opens a floating popup overlay for the window at target.
+// Only call when SupportsPopup() returns true.
+func PopupAttach(target string) error { return active.PopupAttach(target) }
+
+// UseExecAttach reports whether the TUI should use tea.ExecProcess for attach.
+// Returns false if no backend has been set (e.g. in tests), causing the TUI to
+// fall back to the quit+restart path.
+func UseExecAttach() bool {
+	if active == nil {
+		return false
+	}
+	return active.UseExecAttach()
+}
 
 // DetachKey returns a description of the key sequence used to return to hive.
 func DetachKey() string { return active.DetachKey() }

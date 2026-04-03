@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   row) has been merged into one line — status dot, agent badge, session title, project
   name, and worktree badge all appear on a single header line, giving each cell one
   extra row of terminal-output preview.
+- **Session attach via in-process overlay**: when using the tmux backend, pressing
+  Enter on a session no longer quits and restarts the TUI. Instead the TUI suspends
+  in place using `tea.ExecProcess` while the session is attached. When you detach,
+  the TUI resumes immediately with all state intact — no disk reload, no flicker.
+  - On **tmux ≥ 3.2** the session opens as a floating `tmux display-popup` overlay
+    (95 % width, 90 % height) that sits on top of the TUI. Closing the popup (or the
+    agent exiting) returns you directly to the TUI without any full-screen switch.
+  - On older tmux or when running outside a tmux session, a plain full-screen
+    `tmux attach-session` is used, still with the no-restart improvement.
+  - The **native PTY backend** is unaffected and continues to use the existing
+    quit+restart flow.
 
 ### Added
 - **Getting-started guides**: added `docs/getting-started-macos.md` and
