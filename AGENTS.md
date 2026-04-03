@@ -34,7 +34,7 @@ binary: hive
 
 ```go
 // internal/state/model.go
-AppState          // single source of truth for the TUI (no external locking needed)
+AppState          // single source of truth for the TUI; in-process no lock needed (BubbleTea is single-threaded); cross-process safety via state.json.lock + mtime watcher
 Project           // groups sessions; has ID, Name, Teams, Sessions
 Team              // orchestrator + workers; has OrchestratorID, Sessions, SharedWorkDir
 Session           // maps 1:1 to a mux window; has AgentType, Status, TmuxSession, TmuxWindow

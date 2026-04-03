@@ -78,6 +78,10 @@ type Model struct {
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
+	// stateLastKnownMtime is the modification time of state.json as of our most
+	// recent write or reload.  The background watcher compares against this to
+	// detect writes made by other hive instances.
+	stateLastKnownMtime time.Time
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -91,19 +95,28 @@ func New(cfg config.Config, appState state.AppState) Model {
 	ni.Width = 48
 	ni.Placeholder = "Project name"
 
+	// Snapshot the current mtime of state.json so the watcher can detect
+	// writes made by other hive instances without treating our own writes
+	// as external changes.
+	var initialStateMtime time.Time
+	if info, err := os.Stat(config.StatePath()); err == nil {
+		initialStateMtime = info.ModTime()
+	}
+
 	m := Model{
-		cfg:              cfg,
-		appState:         appState,
-		keys:             km,
-		titleEditor:      components.NewTitleEditor(),
-		agentPicker:      components.NewAgentPicker(),
-		teamBuilder:      components.NewTeamBuilder(),
-		settings:         components.NewSettingsView(),
-		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
-		dirPicker:        components.NewDirPicker(),
-		recoveryPicker:   components.NewRecoveryPicker(appState.RecoverableSessions),
-		nameInput:        ni,
-		contentSnapshots: make(map[string]string),
+		cfg:                 cfg,
+		appState:            appState,
+		keys:                km,
+		stateLastKnownMtime: initialStateMtime,
+		titleEditor:         components.NewTitleEditor(),
+		agentPicker:         components.NewAgentPicker(),
+		teamBuilder:         components.NewTeamBuilder(),
+		settings:            components.NewSettingsView(),
+		orphanPicker:        components.NewOrphanPicker(appState.OrphanSessions),
+		dirPicker:           components.NewDirPicker(),
+		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
+		nameInput:           ni,
+		contentSnapshots:    make(map[string]string),
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
@@ -176,6 +189,7 @@ func (m Model) Init() tea.Cmd {
 		m.schedulePollPreview(),
 		m.scheduleWatchTitles(),
 		m.scheduleWatchStatuses(),
+		scheduleWatchState(m.stateLastKnownMtime),
 	}
 	if m.gridView.Active {
 		cmds = append(cmds, m.scheduleGridPoll())
@@ -526,6 +540,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case PersistMsg:
 		m.persist()
 		return m, nil
+
+	// --- Multi-instance state watcher ---
+	case stateWatchMsg:
+		if !msg.mtime.Equal(m.stateLastKnownMtime) {
+			debugLog.Printf("stateWatchMsg: external change detected (mtime=%v), reloading", msg.mtime)
+			m.stateLastKnownMtime = msg.mtime
+			m.reloadStateFromDisk()
+			// Only restart the preview poll (which uses previewPollGen for
+			// dedup).  Title and status watchers are already running and will
+			// pick up the new session list on their next self-reschedule.
+			return m, tea.Batch(
+				scheduleWatchState(m.stateLastKnownMtime),
+				m.schedulePollPreview(),
+			)
+		}
+		return m, scheduleWatchState(m.stateLastKnownMtime)
 
 	// --- Quit and kill ---
 	case QuitAndKillMsg:
@@ -2055,12 +2085,120 @@ func (m *Model) recomputeLayout() {
 }
 
 func (m *Model) persist() {
-	if err := saveState(&m.appState); err != nil {
+	// saveState returns the mtime of the file it just wrote; capture it so the
+	// state watcher doesn't mistake our own write for an external change.
+	if mtime, err := saveState(&m.appState); err != nil {
 		log.Printf("hive: failed to save state: %v", err)
+	} else {
+		m.stateLastKnownMtime = mtime
 	}
 	if err := saveUsage(m.appState.AgentUsage); err != nil {
 		log.Printf("hive: failed to save usage: %v", err)
 	}
+}
+
+// reloadStateFromDisk reads the current state.json written by another hive
+// instance, reconciles it against the live tmux backend (removing sessions
+// whose windows are gone), and merges the result into the running TUI.
+// Active session/project selections are preserved when they still exist.
+func (m *Model) reloadStateFromDisk() {
+	projects, err := LoadState()
+	if err != nil {
+		debugLog.Printf("reloadStateFromDisk: LoadState error: %v", err)
+		return
+	}
+	if projects == nil {
+		projects = []*state.Project{}
+	}
+
+	// Build a throwaway AppState to reconcile against the tmux backend.
+	tmp := &state.AppState{Projects: projects}
+
+	// Cache ListWindows results by tmux session name to avoid one subprocess
+	// call per hive session when multiple sessions share a tmux session.
+	type windowSet = map[int]struct{}
+	windowCache := make(map[string]windowSet) // tmuxSession → set of live window indices
+	windowsFor := func(tmuxSess string) (windowSet, bool) {
+		if ws, ok := windowCache[tmuxSess]; ok {
+			return ws, true
+		}
+		windows, err := mux.ListWindows(tmuxSess)
+		if err != nil {
+			windowCache[tmuxSess] = nil // nil = session gone
+			return nil, false
+		}
+		ws := make(windowSet, len(windows))
+		for _, w := range windows {
+			ws[w.Index] = struct{}{}
+		}
+		windowCache[tmuxSess] = ws
+		return ws, true
+	}
+
+	type worktreeRef struct{ workDir, worktreePath string }
+	var deadWorktrees []worktreeRef
+	var deadIDs []string
+	for _, sess := range state.AllSessions(tmp) {
+		ws, ok := windowsFor(sess.TmuxSession)
+		if !ok {
+			deadIDs = append(deadIDs, sess.ID)
+			if sess.WorktreePath != "" {
+				deadWorktrees = append(deadWorktrees, worktreeRef{sess.WorkDir, sess.WorktreePath})
+			}
+			continue
+		}
+		if _, found := ws[sess.TmuxWindow]; !found {
+			deadIDs = append(deadIDs, sess.ID)
+			if sess.WorktreePath != "" {
+				deadWorktrees = append(deadWorktrees, worktreeRef{sess.WorkDir, sess.WorktreePath})
+			}
+		}
+	}
+
+	for _, wt := range deadWorktrees {
+		if gitRoot, gerr := git.Root(wt.workDir); gerr == nil {
+			if rmErr := git.RemoveWorktree(gitRoot, wt.worktreePath); rmErr != nil {
+				debugLog.Printf("reloadStateFromDisk: remove worktree %s: %v", wt.worktreePath, rmErr)
+			}
+		} else {
+			// WorkDir is gone or not a git repo; fall back to direct removal
+			// (matches the startup reconciliation in cmd/start.go).
+			debugLog.Printf("reloadStateFromDisk: git root for %s: %v; removing worktree directory directly", wt.workDir, gerr)
+			if rmErr := os.RemoveAll(wt.worktreePath); rmErr != nil {
+				debugLog.Printf("reloadStateFromDisk: remove worktree directory %s: %v", wt.worktreePath, rmErr)
+			}
+		}
+	}
+	for _, id := range deadIDs {
+		tmp = state.RemoveSession(tmp, id)
+	}
+
+	// Swap in the reconciled projects, preserving active selections when still valid.
+	m.appState.Projects = tmp.Projects
+	if m.appState.ActiveSessionID != "" {
+		if state.FindSession(&m.appState, m.appState.ActiveSessionID) == nil {
+			debugLog.Printf("reloadStateFromDisk: active session %s no longer exists, clearing", m.appState.ActiveSessionID)
+			m.appState.ActiveSessionID = ""
+			m.appState.ActiveProjectID = ""
+			m.appState.ActiveTeamID = ""
+		}
+	}
+
+	// Persist the reconciled state so other instances don't repeat the same
+	// dead-session cleanup and worktree removal on their next reload.
+	if len(deadIDs) > 0 {
+		m.persist()
+	}
+
+	m.sidebar.Rebuild(&m.appState)
+	if m.appState.ActiveSessionID == "" {
+		m.syncActiveFromSidebar()
+	} else {
+		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
+	}
+	m.previewPollGen++ // restart preview chain for the (potentially new) active session
+	debugLog.Printf("reloadStateFromDisk: done — %d projects, %d dead sessions removed, activeSession=%s",
+		len(m.appState.Projects), len(deadIDs), m.appState.ActiveSessionID)
 }
 
 // recoverSessions creates a "Recovered Sessions" project (if it doesn't already

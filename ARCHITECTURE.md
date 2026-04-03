@@ -49,7 +49,9 @@ Key components:
 | `keys.go` | Key map, loaded from config |
 | `messages.go` | All `tea.Msg` types used across the app |
 | `layout.go` | Terminal size tracking and pane sizing |
-| `persist.go` | Saving/restoring TUI state across sessions |
+| `persist.go` | Atomic state reads/writes with exclusive file lock |
+| `watcher.go` | Background mtime poller for multi-instance live reload |
+| `lock_unix.go` / `lock_windows.go` | Platform-specific advisory lock helpers |
 | `components/sidebar.go` | Three-level collapsible project/team/session tree |
 | `components/preview.go` | Live session output preview (ANSI passthrough) |
 | `components/statusbar.go` | Breadcrumb and contextual key hints |
@@ -161,13 +163,30 @@ All inter-component communication in the TUI flows through `tea.Msg` values rout
 | `PersistMsg` | Update → Update | Trigger state write to disk |
 | `QuitAndKillMsg` | Update → runtime | Quit + kill all sessions |
 | `ConfigSavedMsg` | settings → Update | Config written to disk |
+| `stateWatchMsg` | watcher goroutine → Update | Periodic mtime check; triggers reload when changed by another instance |
+
+## Multi-Instance Safety
+
+Multiple hive processes may run against the same `~/.config/hive/` directory.
+Three mechanisms keep them consistent:
+
+| Mechanism | Where | Purpose |
+|-----------|-------|---------|
+| Exclusive advisory lock | `internal/tui/lock_unix.go` | Serialises concurrent writes to `state.json` via `syscall.Flock` on a companion `.lock` file; prevents bit-level corruption when two instances save simultaneously |
+| Atomic rename | `internal/tui/persist.go` | Write to `state.json.tmp`, then `os.Rename` — readers always see a complete file even during a write |
+| State file watcher | `internal/tui/watcher.go` | Each running TUI polls `state.json` mtime every 500 ms; when another instance writes, the TUI reloads, reconciles dead tmux windows, and refreshes the sidebar without restarting |
+
+The watcher distinguishes its own writes from external ones by updating
+`Model.stateLastKnownMtime` after each `persist()` call. Only a mtime that
+advances past the last known value (and was not caused by ourselves) triggers a
+reload.
 
 ## State Mutation Rules
 
 1. `AppState` is only ever mutated inside `tui/app.go`'s `Update()`.
 2. Every mutation goes through a reducer function in `internal/state/store.go`.
 3. Reducers are pure functions: `func Foo(s *AppState, ...) *AppState` — no I/O.
-4. After a mutation, `Update()` returns a `PersistMsg` command to write state to disk.
+4. After a mutation, `Update()` calls `persist()` which writes `state.json` under an exclusive lock.
 5. No goroutine other than the Bubble Tea runtime touches `AppState`.
 
 ## Backend Selection
