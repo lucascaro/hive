@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Interactive directory picker**: new project creation now uses a full-screen directory
+  browser (`bubbles/filepicker`) instead of a plain text input. Navigate with `↑/↓` or
+  `j/k`, open directories with `enter`/`→`, go up with `h`/`←`, confirm the current
+  directory with `.`, and cancel with `esc`.
+
 ### Fixed
+- **Directory picker selection**: replaced the unreliable `DidSelectFile` heuristic with
+  a `fp.Path` diff to reliably detect when the user selects a directory, regardless of
+  whether the async `readDir` result has landed yet.
 - **Preview border alignment**: fixed inconsistent border alignment in preview and grid
   views caused by zero-width Unicode characters (e.g. `U+200B` ZERO WIDTH SPACE) in
   captured terminal content. These characters have zero display width but occupy real
@@ -24,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full branch name is displayed (e.g. `⎇ feat/my-branch`).
 
 ### Changed
+- **Directory picker for new projects**: migrated from a custom fuzzy-search picker to
+  `charmbracelet/bubbles/filepicker`. The working-directory step uses a standard
+  filesystem browser — navigate with `↑/↓`, open directories with `enter`/`→`/`l`,
+  go up with `h`/`←`/`backspace`, confirm the current directory with `.`, and cancel
+  with `esc`. Styled to match the hive accent colour theme.
 - **Grid cell single-line header**: the two-line header (title row + project subtitle
   row) has been merged into one line — status dot, agent badge, session title, project
   name, and worktree badge all appear on a single header line, giving each cell one
