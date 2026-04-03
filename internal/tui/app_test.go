@@ -608,3 +608,119 @@ func TestDirPicker_BackgroundMessages_NotDroppedWhileActive(t *testing.T) {
 			updated.appState.PreviewContent, "background update")
 	}
 }
+
+// --- Key isolation tests ---
+
+func TestHandleKey_DirPickerActive_BlocksGlobalKeys(t *testing.T) {
+	m := testModelWithSessions()
+	m.dirPicker.Active = true
+
+	// Press "/" which is the Filter key — should NOT activate global filter.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := result.(Model)
+
+	if updated.appState.FilterActive {
+		t.Error("FilterActive=true while DirPicker is open — key leaked to global bindings")
+	}
+}
+
+func TestHandleKey_DirPickerActive_BlocksQuit(t *testing.T) {
+	m := testModelWithSessions()
+	m.dirPicker.Active = true
+
+	// Press "q" which is the Quit key — should NOT quit.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+
+	// tea.Quit returns a special command; if cmd is non-nil and produces
+	// a QuitMsg, the key leaked.
+	if cmd != nil {
+		msg := cmd()
+		if _, ok := msg.(tea.QuitMsg); ok {
+			t.Error("quit key fired while DirPicker is open — key leaked to global bindings")
+		}
+	}
+}
+
+func TestHandleKey_AgentPickerActive_BlocksGlobalKeys(t *testing.T) {
+	m := testModelWithSessions()
+	m.agentPicker.Show(components.DefaultAgentItems)
+
+	// Press "/" (Filter key) — should not activate global filter.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := result.(Model)
+
+	if updated.appState.FilterActive {
+		t.Error("FilterActive=true while AgentPicker is open — key leaked to global bindings")
+	}
+}
+
+func TestHandleKey_FilterActive_BlocksGlobalKeys(t *testing.T) {
+	m := testModelWithSessions()
+	m.appState.FilterActive = true
+
+	// Press "n" which is the NewProject key — should add to filter, not open new project.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	updated := result.(Model)
+
+	if updated.inputMode == "project-name" {
+		t.Error("NewProject triggered while filter is active — key leaked to global bindings")
+	}
+	if updated.appState.FilterQuery != "n" {
+		t.Errorf("FilterQuery=%q, want %q", updated.appState.FilterQuery, "n")
+	}
+}
+
+func TestHandleKey_NoOverlay_GlobalKeysWork(t *testing.T) {
+	m := testModelWithSessions()
+
+	// Press "/" to activate filter — should work when no overlay is active.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	updated := result.(Model)
+
+	if !updated.appState.FilterActive {
+		t.Error("FilterActive=false after pressing / with no overlay — global keys broken")
+	}
+}
+
+func TestHandleKey_SettingsActive_BlocksAll(t *testing.T) {
+	m := testModelWithSessions()
+	m.settings.Active = true
+
+	// Press "n" (NewProject) — should be swallowed by settings.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	updated := result.(Model)
+
+	if updated.inputMode == "project-name" {
+		t.Error("NewProject triggered while Settings is open — key leaked to global bindings")
+	}
+}
+
+func TestHandleKey_ConfirmActive_BlocksAll(t *testing.T) {
+	m := testModelWithSessions()
+	m.appState.ShowConfirm = true
+	m.appState.ConfirmAction = "test-action"
+	m.confirm.Message = "Are you sure?"
+
+	// Press "n" (NewProject key) — should be handled by confirm (treated as cancel/no-op).
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	updated := result.(Model)
+
+	if updated.inputMode == "project-name" {
+		t.Error("NewProject triggered while Confirm is open — key leaked to global bindings")
+	}
+}
+
+func TestHandleKey_CtrlC_AlwaysQuits(t *testing.T) {
+	m := testModelWithSessions()
+	m.dirPicker.Active = true
+
+	// ctrl+c should always quit, even with an overlay active.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c should return a quit command")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("ctrl+c cmd returned %T, want tea.QuitMsg", msg)
+	}
+}

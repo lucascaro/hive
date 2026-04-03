@@ -169,7 +169,10 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 
 	var cmd tea.Cmd
 	dp.list, cmd = dp.list.Update(msg)
-	return cmd, false
+	// When the picker is active, always consume key messages so they never
+	// leak to global bindings (e.g. while the list's built-in filter is open).
+	_, isKey := msg.(tea.KeyMsg)
+	return cmd, isKey
 }
 
 // View renders the picker as a styled modal overlay. Returns empty when inactive.

@@ -199,20 +199,6 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles all messages.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// While the directory picker is active, let it handle non-resize messages
-	// before the main update switch. Window size messages still need to be
-	// processed here so the app's dimensions and layout stay in sync.
-	// Only short-circuit when the picker actually consumes the message so that
-	// background messages (preview polls, title/status watchers) continue to run.
-	if m.dirPicker.Active {
-		if _, ok := msg.(tea.WindowSizeMsg); !ok {
-			cmd, consumed := m.dirPicker.Update(msg)
-			if consumed {
-				return m, cmd
-			}
-		}
-	}
-
 	switch msg := msg.(type) {
 	// --- Window resize ---
 	case tea.WindowSizeMsg:
@@ -592,6 +578,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	}
+
+	// Forward non-key, non-handled messages to active modals that need
+	// internal ticks (e.g. cursor blink, filter debounce in charmbracelet/list).
+	if m.dirPicker.Active {
+		m.dirPicker.Update(msg)
+	}
+
 	return m, nil
 }
 
@@ -740,96 +733,190 @@ func (m Model) View() string {
 
 // --- Key handler ---
 
-// handleKey handles keyboard events.
+// handleKey handles keyboard events. It uses a priority-ordered list of
+// KeyHandler adapters: the first focused handler exclusively receives the key
+// event, preventing leakage to lower-priority handlers or global bindings.
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Settings screen consumes all keys while active.
-	if m.settings.Active {
-		cmd, _ := m.settings.Update(msg)
+	// ctrl+c always quits, regardless of focus.
+	if msg.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+
+	if cmd, handled := dispatchKey(m.buildKeyHandlers(), msg); handled {
 		return m, cmd
 	}
-	// Grid overview consumes all keys while active.
-	if m.gridView.Active {
-		m.gridView.Width = m.appState.TermWidth
-		m.gridView.Height = m.appState.TermHeight
-		switch msg.String() {
-		case "G":
-			// Switch to all-projects view without closing.
-			prevID := ""
-			if s := m.gridView.Selected(); s != nil {
-				prevID = s.ID
-			}
-			m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
-			m.gridView.SetProjectNames(m.gridProjectNames())
-			m.gridView.SyncCursor(prevID)
-			return m, m.scheduleGridPoll()
-		case "x":
-			if sess := m.gridView.Selected(); sess != nil {
-				m.gridView.Hide()
-				s := sess
-				return m, func() tea.Msg {
-					return ConfirmActionMsg{
-						Message: fmt.Sprintf("Kill session %q?", s.Title),
-						Action:  "kill-session:" + s.ID,
-					}
+
+	return m.handleGlobalKey(msg)
+}
+
+// buildKeyHandlers returns KeyHandler adapters in priority order. The first
+// handler whose Focused() returns true wins exclusive key input. Adding a new
+// modal is as simple as adding an entry here.
+func (m *Model) buildKeyHandlers() []KeyHandler {
+	return []KeyHandler{
+		// Full-screen overlays
+		componentHandler{
+			focused: func() bool { return m.settings.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				cmd, _ := m.settings.Update(msg)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.gridView.Active },
+			handle:  func(msg tea.KeyMsg) tea.Cmd { return m.handleGridKey(msg) },
+		},
+
+		// Help overlays — esc closes, everything else is swallowed.
+		componentHandler{
+			focused: func() bool { return m.appState.ShowHelp || m.appState.ShowTmuxHelp },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				if msg.String() == "esc" {
+					m.appState.ShowHelp = false
+					m.appState.ShowTmuxHelp = false
+				}
+				return nil
+			},
+		},
+
+		// Modal dialogs and pickers
+		componentHandler{
+			focused: func() bool { return m.showAttachHint },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleAttachHint(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.appState.ShowConfirm },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleConfirm(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.recoveryPicker.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				updated, cmd := m.recoveryPicker.Update(msg)
+				m.recoveryPicker = updated
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.orphanPicker.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				updated, cmd := m.orphanPicker.Update(msg)
+				m.orphanPicker = updated
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.agentPicker.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				cmd, _ := m.agentPicker.Update(msg)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.teamBuilder.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				return m.teamBuilder.Update(msg)
+			},
+		},
+
+		// Inline editors and text inputs
+		componentHandler{
+			focused: func() bool { return m.appState.EditingTitle },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleTitleEdit(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.inputMode == "project-name" },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleNameInput(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.dirPicker.Active },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				cmd, _ := m.dirPicker.Update(msg)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.inputMode == "project-dir-confirm" },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleDirConfirm(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.inputMode == "worktree-branch" },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleWorktreeBranchInput(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.appState.FilterActive },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleFilter(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+	}
+}
+
+// handleGridKey handles keys when the grid overview is active.
+func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
+	m.gridView.Width = m.appState.TermWidth
+	m.gridView.Height = m.appState.TermHeight
+	switch msg.String() {
+	case "G":
+		prevID := ""
+		if s := m.gridView.Selected(); s != nil {
+			prevID = s.ID
+		}
+		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
+		m.gridView.SetProjectNames(m.gridProjectNames())
+		m.gridView.SyncCursor(prevID)
+		return m.scheduleGridPoll()
+	case "x":
+		if sess := m.gridView.Selected(); sess != nil {
+			m.gridView.Hide()
+			s := sess
+			return func() tea.Msg {
+				return ConfirmActionMsg{
+					Message: fmt.Sprintf("Kill session %q?", s.Title),
+					Action:  "kill-session:" + s.ID,
 				}
 			}
-		case "r":
-			if sess := m.gridView.Selected(); sess != nil {
-				m.gridView.Hide()
-				m.sidebar.SyncActiveSession(sess.ID)
-				m.appState.ActiveSessionID = sess.ID
-				return m, m.startRename()
-			}
 		}
-		cmd, _ := m.gridView.Update(msg)
-		return m, cmd
+	case "r":
+		if sess := m.gridView.Selected(); sess != nil {
+			m.gridView.Hide()
+			m.sidebar.SyncActiveSession(sess.ID)
+			m.appState.ActiveSessionID = sess.ID
+			return m.startRename()
+		}
 	}
-	// Route to active sub-component first.
-	if m.appState.EditingTitle {
-		return m.handleTitleEdit(msg)
-	}
-	if m.recoveryPicker.Active {
-		updated, cmd := m.recoveryPicker.Update(msg)
-		m.recoveryPicker = updated
-		return m, cmd
-	}
-	if m.orphanPicker.Active {
-		updated, cmd := m.orphanPicker.Update(msg)
-		m.orphanPicker = updated
-		return m, cmd
-	}
-	if m.agentPicker.Active {
-		cmd, _ := m.agentPicker.Update(msg)
-		return m, cmd
-	}
-	if m.teamBuilder.Active {
-		cmd := m.teamBuilder.Update(msg)
-		return m, cmd
-	}
-	if m.inputMode == "project-name" {
-		return m.handleNameInput(msg)
-	}
-	if m.inputMode == "project-dir-confirm" {
-		return m.handleDirConfirm(msg)
-	}
-	if m.inputMode == "worktree-branch" {
-		return m.handleWorktreeBranchInput(msg)
-	}
-	if m.appState.FilterActive {
-		return m.handleFilter(msg)
-	}
-	if m.showAttachHint {
-		return m.handleAttachHint(msg)
-	}
-	if m.appState.ShowConfirm {
-		return m.handleConfirm(msg)
-	}
+	cmd, _ := m.gridView.Update(msg)
+	return cmd
+}
 
-	// Global keys
+// handleGlobalKey handles keys when no overlay or modal has focus.
+func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case msg.String() == "ctrl+c":
-		return m, tea.Quit
-
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
 
@@ -857,11 +944,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.appState.ShowHelp = false
 		return m, nil
 
-	case msg.String() == "esc" && (m.appState.ShowHelp || m.appState.ShowTmuxHelp):
-		m.appState.ShowHelp = false
-		m.appState.ShowTmuxHelp = false
-		return m, nil
-
 	case key.Matches(msg, m.keys.FocusToggle):
 		if m.appState.FocusedPane == state.PaneSidebar {
 			m.appState.FocusedPane = state.PanePreview
@@ -876,8 +958,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.GridOverview):
-		// g shows only current project; G (handled above in the active-grid block,
-		// or via msg.String()=="G" below) shows all.
 		sessions := m.gridSessions(state.GridRestoreProject)
 		m.gridView.Show(sessions, state.GridRestoreProject)
 		m.gridView.SetProjectNames(m.gridProjectNames())
