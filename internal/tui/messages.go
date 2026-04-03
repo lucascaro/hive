@@ -30,9 +30,11 @@ type SessionAttachMsg struct {
 	ProjectName  string
 }
 
-// SessionDetachedMsg is sent when the user returns from a tmux session.
-// Deprecated: use AttachDoneMsg which carries an error and is returned by
-// the tea.ExecProcess callback in the new in-process attach flow.
+// SessionDetachedMsg is retained for the legacy native-backend attach/restart
+// path. When the native backend is active, cmd/start.go calls mux.Attach
+// directly and sends this message to the TUI on return so the preview poll
+// chain is reset. It is not used by the tmux backend (which handles detach
+// via the AttachDoneMsg callback from tea.ExecProcess).
 type SessionDetachedMsg struct{}
 
 // AttachDoneMsg is returned by the tea.ExecProcess callback when the user
