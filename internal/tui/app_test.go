@@ -435,59 +435,6 @@ func TestStatusesDetectedMsg_UpdatesActivePreview(t *testing.T) {
 	}
 }
 
-func TestStatusesDetectedMsg_ClearsScreenDuringPendingClear(t *testing.T) {
-	// When pendingPreviewClear is set (e.g. just after a session switch) and
-	// StatusesDetectedMsg delivers content for the active session, the handler
-	// must issue a ClearScreen to avoid incremental-render artifacts from the
-	// placeholder → content transition, and must reset pendingPreviewClear.
-	m := testModelWithSessions()
-	m.pendingPreviewClear = true
-
-	const freshContent = "first output after session switch"
-	msg := escape.StatusesDetectedMsg{
-		Statuses: map[string]state.SessionStatus{
-			"sess-1": state.StatusRunning,
-		},
-		Contents: map[string]string{
-			"sess-1": freshContent,
-		},
-	}
-	result, cmd := m.Update(msg)
-	updated := result.(Model)
-
-	if updated.appState.PreviewContent != freshContent {
-		t.Errorf("PreviewContent = %q, want %q", updated.appState.PreviewContent, freshContent)
-	}
-	if updated.pendingPreviewClear {
-		t.Error("pendingPreviewClear should be cleared after ClearScreen was issued")
-	}
-	if cmd == nil {
-		t.Error("StatusesDetectedMsg with pendingPreviewClear=true should return a cmd (ClearScreen+reschedule)")
-	}
-}
-
-func TestStatusesDetectedMsg_NoClearWhenNoPendingClear(t *testing.T) {
-	// When pendingPreviewClear is false, StatusesDetectedMsg must NOT alter it
-	// (i.e., no extra clear is issued during normal polling).
-	m := testModelWithSessions()
-	// pendingPreviewClear is false by default after New()
-
-	msg := escape.StatusesDetectedMsg{
-		Statuses: map[string]state.SessionStatus{
-			"sess-1": state.StatusRunning,
-		},
-		Contents: map[string]string{
-			"sess-1": "some content",
-		},
-	}
-	result, _ := m.Update(msg)
-	updated := result.(Model)
-
-	if updated.pendingPreviewClear {
-		t.Error("pendingPreviewClear should remain false when it was already false")
-	}
-}
-
 func TestStatusesDetectedMsg_IgnoresBackgroundPreview(t *testing.T) {
 	// StatusesDetectedMsg content for a background session must not overwrite
 	// the active session's preview content.

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   captured terminal content. These characters have zero display width but occupy real
   byte space, causing lipgloss padding to produce inconsistent line widths. The fix
   strips these characters during preview sanitization.
+- **Screen flicker**: removed unnecessary `tea.ClearScreen` calls and the associated
+  `pendingPreviewClear` flag that were added as defensive measures against the
+  (now fixed) border alignment bug. Bubble Tea's incremental renderer handles
+  redraws correctly without explicit clears.
 
 ### Added
 - **Grid cell worktree indicator**: grid cells now show an inline `⎇` badge when a

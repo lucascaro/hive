@@ -72,10 +72,6 @@ type Model struct {
 	// which lets stale concurrent poll goroutines die off naturally instead of
 	// accumulating and causing rapid-fire re-renders.
 	previewPollGen uint64
-	// pendingPreviewClear is set when we switch sessions (or create/detach).
-	// The PreviewUpdatedMsg handler issues tea.ClearScreen on the first fresh
-	// update after a switch to eliminate any rendering artifacts.
-	pendingPreviewClear bool
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
@@ -207,12 +203,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			debugLog.Printf("preview msg ignored: msg.session=%s active=%s gen=%d", msg.SessionID, m.appState.ActiveSessionID, msg.Generation)
 		}
-		// On the first fresh update after a session switch, clear the screen so
-		// any rendering artifacts from the previous session are fully erased.
-		if m.pendingPreviewClear {
-			m.pendingPreviewClear = false
-			return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
-		}
 		return m, m.schedulePollPreview()
 
 	// --- Window gone (agent exited, tmux window auto-closed) ---
@@ -224,8 +214,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Switch to whichever session the sidebar now has selected.
 		m.syncActiveFromSidebar()
 		m.previewPollGen++ // invalidate any in-flight polls for the removed session
-		m.pendingPreviewClear = true
-		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+		return m, m.schedulePollPreview()
 
 	// --- Title watcher ---
 	case escape.TitleDetectedMsg:
@@ -247,17 +236,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// If the status watcher captured new content for the active session, update
 		// the preview immediately rather than waiting for the next PollPreview tick.
-		needsClear := false
 		if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
 			m.appState.PreviewContent = content
 			m.preview.SetContent(content)
-			// If we're in the post-switch grace period, pair the content update with a
-			// full screen clear so that the placeholder → content transition is rendered
-			// cleanly rather than as an incremental diff (which can leave visual artifacts).
-			if m.pendingPreviewClear {
-				m.pendingPreviewClear = false
-				needsClear = true
-			}
 		}
 		changed := false
 		for sessionID, status := range msg.Statuses {
@@ -269,9 +250,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if changed {
 			m.sidebar.Rebuild(&m.appState)
-		}
-		if needsClear {
-			return m, tea.Batch(m.scheduleWatchStatuses(), tea.ClearScreen)
 		}
 		return m, m.scheduleWatchStatuses()
 
@@ -285,8 +263,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sidebar.SyncActiveSession(msg.Session.ID)
 		m.persist()
 		m.previewPollGen++ // new session, start fresh poll chain
-		m.pendingPreviewClear = true
-		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+		return m, m.schedulePollPreview()
 
 	case SessionKilledMsg:
 		m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
@@ -322,8 +299,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SessionDetachedMsg:
 		m.previewPollGen++ // returning from tmux, start fresh poll chain
-		m.pendingPreviewClear = true
-		return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+		return m, m.schedulePollPreview()
 
 	// --- Team lifecycle ---
 	case TeamCreatedMsg:
@@ -991,8 +967,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++ // switched to a different session, start fresh poll
-				m.pendingPreviewClear = true
-				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				return m, m.schedulePollPreview()
 			}
 		}
 		return m, nil
@@ -1006,8 +981,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++ // switched to a different session, start fresh poll
-				m.pendingPreviewClear = true
-				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				return m, m.schedulePollPreview()
 			}
 		}
 		return m, nil
@@ -1021,8 +995,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++
-				m.pendingPreviewClear = true
-				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				return m, m.schedulePollPreview()
 			}
 		}
 		return m, nil
@@ -1036,8 +1009,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++
-				m.pendingPreviewClear = true
-				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				return m, m.schedulePollPreview()
 			}
 		}
 		return m, nil
@@ -1181,8 +1153,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.syncActiveFromSidebar()
 				if m.appState.ActiveSessionID != prevSession {
 					m.previewPollGen++
-					m.pendingPreviewClear = true
-					return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+					return m, m.schedulePollPreview()
 				}
 			}
 		} else {
@@ -1198,8 +1169,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.syncActiveFromSidebar()
 				if m.appState.ActiveSessionID != prevSession {
 					m.previewPollGen++
-					m.pendingPreviewClear = true
-					return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+					return m, m.schedulePollPreview()
 				}
 			}
 		} else {
@@ -1239,8 +1209,7 @@ func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
 				m.previewPollGen++
-				m.pendingPreviewClear = true
-				return m, tea.Batch(m.schedulePollPreview(), tea.ClearScreen)
+				return m, m.schedulePollPreview()
 			}
 		}
 	}
