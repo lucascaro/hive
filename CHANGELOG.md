@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   windows within half a second. Writes are serialised with an exclusive advisory
   lock (`state.json.lock`) so concurrent saves never produce a torn file.
   Dead sessions discovered during reload are reconciled against the live tmux
-  backend, and any associated git worktrees are cleaned up exactly once.
+  backend, and any associated git worktrees are cleaned up automatically.
   The advisory lock file (`state.json.lock`) is created with mode 0600
   (owner read/write only), consistent with `state.json`.
 - **Interactive directory picker**: new project creation uses a full-screen directory

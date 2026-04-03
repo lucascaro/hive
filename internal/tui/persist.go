@@ -75,10 +75,11 @@ func saveState(appState *state.AppState) (time.Time, error) {
 	}
 	// Stat the file we just wrote so the caller has a precise mtime baseline
 	// without needing a second syscall outside this function.
-	if info, err := os.Stat(path); err == nil {
-		return info.ModTime(), nil
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("stat after write: %w", err)
 	}
-	return time.Now(), nil
+	return info.ModTime(), nil
 }
 
 // LoadState reads saved projects from state.json.

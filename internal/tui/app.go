@@ -543,15 +543,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Multi-instance state watcher ---
 	case stateWatchMsg:
-		if msg.mtime.After(m.stateLastKnownMtime) {
+		if !msg.mtime.Equal(m.stateLastKnownMtime) {
 			debugLog.Printf("stateWatchMsg: external change detected (mtime=%v), reloading", msg.mtime)
 			m.stateLastKnownMtime = msg.mtime
 			m.reloadStateFromDisk()
+			// Only restart the preview poll (which uses previewPollGen for
+			// dedup).  Title and status watchers are already running and will
+			// pick up the new session list on their next self-reschedule.
 			return m, tea.Batch(
 				scheduleWatchState(m.stateLastKnownMtime),
 				m.schedulePollPreview(),
-				m.scheduleWatchTitles(),
-				m.scheduleWatchStatuses(),
 			)
 		}
 		return m, scheduleWatchState(m.stateLastKnownMtime)
@@ -2174,6 +2175,12 @@ func (m *Model) reloadStateFromDisk() {
 			m.appState.ActiveProjectID = ""
 			m.appState.ActiveTeamID = ""
 		}
+	}
+
+	// Persist the reconciled state so other instances don't repeat the same
+	// dead-session cleanup and worktree removal on their next reload.
+	if len(deadIDs) > 0 {
+		m.persist()
 	}
 
 	m.sidebar.Rebuild(&m.appState)
