@@ -35,47 +35,43 @@ func TestWindowName(t *testing.T) {
 		projectName string
 		agentType   string
 		title       string
-		wantPrefix  string
-		wantContain string
+		want        string
 	}{
 		{
 			name:        "short names",
 			projectName: "myproj",
 			agentType:   "claude",
 			title:       "main",
-			wantPrefix:  "myproj-claude-main",
+			want:        "myproj-claude-main",
 		},
 		{
 			name:        "long project truncated",
 			projectName: "very-long-project-name",
 			agentType:   "codex",
 			title:       "feature",
-			wantPrefix:  "very-lon-codex-feature",
+			want:        "very-lon-codex-feature",
 		},
 		{
 			name:        "long title truncated",
 			projectName: "proj",
 			agentType:   "gemini",
 			title:       "a-very-long-feature-branch-name",
-			wantPrefix:  "proj-gemini-a-very-long-",
+			want:        "proj-gemini-a-very-long-",
 		},
 		{
 			name:        "team worker",
 			projectName: "api",
 			agentType:   "claude",
 			title:       "worker-1",
-			wantPrefix:  "api-claude-worker-1",
+			want:        "api-claude-worker-1",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := WindowName(tc.projectName, tc.agentType, tc.title)
-			if !strings.HasPrefix(got, tc.wantPrefix) {
-				t.Errorf("WindowName(%q, %q, %q) = %q, want prefix %q", tc.projectName, tc.agentType, tc.title, got, tc.wantPrefix)
-			}
-			if !strings.Contains(got, tc.agentType) {
-				t.Errorf("WindowName(%q, %q, %q) = %q, want agent type in name", tc.projectName, tc.agentType, tc.title, got)
+			if got != tc.want {
+				t.Errorf("WindowName(%q, %q, %q) = %q, want %q", tc.projectName, tc.agentType, tc.title, got, tc.want)
 			}
 		})
 	}

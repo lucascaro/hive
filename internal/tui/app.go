@@ -273,11 +273,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SessionTitleChangedMsg:
 		m.appState = *state.UpdateSessionTitle(&m.appState, msg.SessionID, msg.Title, msg.Source)
-		// Rename tmux window too
+		// Rename tmux window keeping the structured {proj}-{agent}-{title} format.
 		sess := m.appState.ActiveSession()
 		if sess != nil {
+			projName := ""
+			if proj := m.appState.ActiveProject(); proj != nil {
+				projName = proj.Name
+			}
 			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			_ = mux.RenameWindow(target, msg.Title)
+			_ = mux.RenameWindow(target, mux.WindowName(projName, string(sess.AgentType), msg.Title))
 			m.fireHook(state.HookEvent{
 				Name:         state.EventSessionTitleChange,
 				SessionID:    sess.ID,
@@ -1805,8 +1809,12 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 					_ = mux.KillWindow(target)
 				}
 			}
-			// Kill session if still around.
-			_ = mux.KillSession(mux.SessionName(projectID))
+			// Kill per-project session if it's not the shared container.
+			// Old persisted sessions may still reference a per-project tmux
+			// session name; the shared HiveSession must never be killed here.
+			if sess := mux.SessionName(projectID); sess != mux.HiveSession {
+				_ = mux.KillSession(sess)
+			}
 			m.fireHook(state.HookEvent{
 				Name:      state.EventProjectKill,
 				ProjectID: p.ID, ProjectName: p.Name,

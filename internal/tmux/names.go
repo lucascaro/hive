@@ -3,7 +3,6 @@ package tmux
 import "fmt"
 
 const (
-	shortIDLen  = 8
 	projMaxLen  = 8
 	titleMaxLen = 12
 
