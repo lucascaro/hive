@@ -84,11 +84,15 @@ complexity. The stateless polling approach degrades gracefully: if one instance
 crashes mid-write, the lock is released by the OS and the atomic rename ensures
 the file is either fully written or not at all.
 
-**Trade-off accepted**: in the unlikely event that two instances each create a
-brand-new project within the same 500 ms polling window, one creation may not
-appear in the other's view until the next poll.  There is no silent data loss —
-both creations are persisted atomically under the exclusive lock — but one
-instance may not see the other's new entry until its next reload cycle.
+**Trade-off accepted**: the exclusive lock and atomic rename prevent file
+corruption and partial writes, but they do not prevent lost updates by
+themselves — each instance writes its in-memory snapshot without re-reading
+under the lock, so a stale instance can overwrite another's recent changes
+(last-writer-wins).  The mtime watcher mitigates this: within 500 ms the
+"losing" instance reloads the winner's state from disk.  In practice the
+window for conflict is small (two users mutating different instances within
+the same poll tick), and no data is silently corrupted — the losing write
+is simply superseded.
 
 ---
 

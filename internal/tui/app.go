@@ -2160,6 +2160,13 @@ func (m *Model) reloadStateFromDisk() {
 			if rmErr := git.RemoveWorktree(gitRoot, wt.worktreePath); rmErr != nil {
 				debugLog.Printf("reloadStateFromDisk: remove worktree %s: %v", wt.worktreePath, rmErr)
 			}
+		} else {
+			// WorkDir is gone or not a git repo; fall back to direct removal
+			// (matches the startup reconciliation in cmd/start.go).
+			debugLog.Printf("reloadStateFromDisk: git root for %s: %v; removing worktree directory directly", wt.workDir, gerr)
+			if rmErr := os.RemoveAll(wt.worktreePath); rmErr != nil {
+				debugLog.Printf("reloadStateFromDisk: remove worktree directory %s: %v", wt.worktreePath, rmErr)
+			}
 		}
 	}
 	for _, id := range deadIDs {
