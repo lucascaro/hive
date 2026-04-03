@@ -1292,8 +1292,8 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.inputMode = ""
 			m.nameInput.Blur()
 			cwd, _ := os.Getwd()
-			initCmd := m.dirPicker.Show(cwd)
-			return m, initCmd
+			m.dirPicker.Show(cwd)
+			return m, nil
 		}
 	case "esc":
 		m.nameInput.Blur()
@@ -1325,8 +1325,8 @@ func (m Model) handleDirConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Return to directory picker so user can choose a different path.
 		m.inputMode = ""
 		dir := strings.TrimSpace(m.nameInput.Value())
-		initCmd := m.dirPicker.Show(dir)
-		return m, initCmd
+		m.dirPicker.Show(dir)
+		return m, nil
 	}
 	return m, nil
 }

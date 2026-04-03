@@ -33,16 +33,18 @@ const overlayOverhead = 10
 // It wraps bubbles/list so only directories appear; files are never shown.
 //
 // Keys:
-//   - ↑/↓ / j/k      — navigate list
-//   - enter           — descend into highlighted directory (and select it)
-//   - h / ← / backspace — go up one level
-//   - / or type        — filter as you type (fuzzy search)
-//   - esc             — cancel filter if active, otherwise cancel picker
-//   - .               — confirm current directory without descending
+//   - ↑/↓ / j/k         — navigate list
+//   - enter              — descend into highlighted directory (and select it)
+//   - h / ← / backspace  — go up one level
+//   - /                  — open search / filter as you type
+//   - esc                — cancel filter if active, otherwise cancel picker
+//   - .                  — confirm current directory without descending
 type DirPicker struct {
 	Active     bool
 	currentDir string
 	list       list.Model
+	delegate   list.DefaultDelegate
+	height     int
 }
 
 // NewDirPicker creates a DirPicker with hive-themed styles.
@@ -57,7 +59,19 @@ func NewDirPicker() DirPicker {
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
 		Foreground(styles.ColorText)
 
-	l := list.New(nil, delegate, 58, 15)
+	const defaultHeight = 15
+	dp := DirPicker{
+		delegate: delegate,
+		height:   defaultHeight,
+	}
+	dp.list = dp.buildList(nil)
+	return dp
+}
+
+// buildList creates a fresh list.Model with the current delegate and height.
+// Called on construction and on every directory change to avoid stale state.
+func (dp *DirPicker) buildList(items []list.Item) list.Model {
+	l := list.New(items, dp.delegate, 58, dp.height)
 	l.SetShowTitle(false)
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
@@ -71,18 +85,18 @@ func NewDirPicker() DirPicker {
 		key.WithHelp("pgup", "prev page"),
 	)
 	l.KeyMap = km
-
-	return DirPicker{list: l}
+	return l
 }
 
 // SetHeight tells the picker how tall the terminal is so it can size the
 // file list to fill as much of the overlay as possible.
 func (dp *DirPicker) SetHeight(termHeight int) {
-	listHeight := termHeight - overlayOverhead
-	if listHeight < 5 {
-		listHeight = 5
+	h := termHeight - overlayOverhead
+	if h < 5 {
+		h = 5
 	}
-	dp.list.SetHeight(listHeight)
+	dp.height = h
+	dp.list.SetHeight(h)
 }
 
 // Show activates the picker rooted at initialDir.
@@ -92,28 +106,24 @@ func (dp *DirPicker) Show(initialDir string) tea.Cmd {
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
-	return dp.loadDir(dir)
+	dp.loadDir(dir)
+	return nil
 }
 
-// loadDir reads subdirectories of dir and resets the list.
-func (dp *DirPicker) loadDir(dir string) tea.Cmd {
+// loadDir builds a fresh list populated with the subdirectories of dir.
+// Recreating the list on each navigation avoids stale cursor/filter state.
+func (dp *DirPicker) loadDir(dir string) {
 	dp.currentDir = dir
-	dp.list.ResetFilter()
 
-	entries, err := os.ReadDir(dir)
+	entries, _ := os.ReadDir(dir)
 	items := make([]list.Item, 0, len(entries))
-	if err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			if strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			items = append(items, dirItem{name: e.Name()})
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
 		}
+		items = append(items, dirItem{name: e.Name()})
 	}
-	return dp.list.SetItems(items)
+	dp.list = dp.buildList(items)
 }
 
 // Update handles all tea.Msg events.
@@ -138,22 +148,17 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 			case "h", "left", "backspace":
 				parent := filepath.Dir(dp.currentDir)
 				if parent != dp.currentDir {
-					cmd := dp.loadDir(parent)
-					return cmd, true
+					dp.loadDir(parent)
 				}
 				return nil, true
 			case "enter":
 				if item, ok := dp.list.SelectedItem().(dirItem); ok {
-					newDir := filepath.Join(dp.currentDir, item.name)
-					cmd := dp.loadDir(newDir)
-					return cmd, true
+					dp.loadDir(filepath.Join(dp.currentDir, item.name))
 				}
 				return nil, true
 			}
-		} else {
-			// While filtering, esc exits filter mode (handled by list).
-			// We never emit DirPickerCancelMsg from inside the filter.
 		}
+		// While filtering, all keys (including esc to clear) go to the list.
 	}
 
 	var cmd tea.Cmd
