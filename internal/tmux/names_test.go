@@ -9,35 +9,18 @@ func TestSessionName(t *testing.T) {
 	cases := []struct {
 		name      string
 		projectID string
-		want      string
 	}{
-		{
-			name:      "short id not truncated",
-			projectID: "abc",
-			want:      "hive-abc",
-		},
-		{
-			name:      "exactly 8 chars",
-			projectID: "12345678",
-			want:      "hive-12345678",
-		},
-		{
-			name:      "longer than 8 chars gets truncated",
-			projectID: "123456789abcdef",
-			want:      "hive-12345678",
-		},
-		{
-			name:      "empty id",
-			projectID: "",
-			want:      "hive-",
-		},
+		{name: "short id", projectID: "abc"},
+		{name: "exactly 8 chars", projectID: "12345678"},
+		{name: "longer than 8 chars", projectID: "123456789abcdef"},
+		{name: "empty id", projectID: ""},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := SessionName(tc.projectID)
-			if got != tc.want {
-				t.Errorf("SessionName(%q) = %q, want %q", tc.projectID, got, tc.want)
+			if got != HiveSession {
+				t.Errorf("SessionName(%q) = %q, want %q", tc.projectID, got, HiveSession)
 			}
 			if !strings.HasPrefix(got, "hive-") {
 				t.Errorf("SessionName(%q) = %q, want hive- prefix", tc.projectID, got)
@@ -48,37 +31,51 @@ func TestSessionName(t *testing.T) {
 
 func TestWindowName(t *testing.T) {
 	cases := []struct {
-		name      string
-		sessionID string
-		want      string
+		name        string
+		projectName string
+		agentType   string
+		title       string
+		wantPrefix  string
+		wantContain string
 	}{
 		{
-			name:      "short id not truncated",
-			sessionID: "abc",
-			want:      "abc",
+			name:        "short names",
+			projectName: "myproj",
+			agentType:   "claude",
+			title:       "main",
+			wantPrefix:  "myproj-claude-main",
 		},
 		{
-			name:      "exactly 8 chars",
-			sessionID: "12345678",
-			want:      "12345678",
+			name:        "long project truncated",
+			projectName: "very-long-project-name",
+			agentType:   "codex",
+			title:       "feature",
+			wantPrefix:  "very-lon-codex-feature",
 		},
 		{
-			name:      "longer than 8 chars gets truncated",
-			sessionID: "123456789abcdef",
-			want:      "12345678",
+			name:        "long title truncated",
+			projectName: "proj",
+			agentType:   "gemini",
+			title:       "a-very-long-feature-branch-name",
+			wantPrefix:  "proj-gemini-a-very-long-",
 		},
 		{
-			name:      "empty id",
-			sessionID: "",
-			want:      "",
+			name:        "team worker",
+			projectName: "api",
+			agentType:   "claude",
+			title:       "worker-1",
+			wantPrefix:  "api-claude-worker-1",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := WindowName(tc.sessionID)
-			if got != tc.want {
-				t.Errorf("WindowName(%q) = %q, want %q", tc.sessionID, got, tc.want)
+			got := WindowName(tc.projectName, tc.agentType, tc.title)
+			if !strings.HasPrefix(got, tc.wantPrefix) {
+				t.Errorf("WindowName(%q, %q, %q) = %q, want prefix %q", tc.projectName, tc.agentType, tc.title, got, tc.wantPrefix)
+			}
+			if !strings.Contains(got, tc.agentType) {
+				t.Errorf("WindowName(%q, %q, %q) = %q, want agent type in name", tc.projectName, tc.agentType, tc.title, got)
 			}
 		})
 	}
@@ -93,15 +90,15 @@ func TestTarget(t *testing.T) {
 	}{
 		{
 			name:        "basic target",
-			tmuxSession: "hive-abc",
+			tmuxSession: "hive-sessions",
 			windowIdx:   0,
-			want:        "hive-abc:0",
+			want:        "hive-sessions:0",
 		},
 		{
 			name:        "window index 5",
-			tmuxSession: "hive-proj",
+			tmuxSession: "hive-sessions",
 			windowIdx:   5,
-			want:        "hive-proj:5",
+			want:        "hive-sessions:5",
 		},
 		{
 			name:        "empty session",

@@ -1514,14 +1514,14 @@ func (m *Model) spawnWorktreeSession(proj *state.Project, agentTypeStr string, a
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		if err = mux.CreateSession(muxSess, winName, worktreePath, agentCmd); err != nil {
 			_ = git.RemoveWorktree(gitRoot, worktreePath)
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, worktreePath, agentCmd)
 		if err != nil {
 			_ = git.RemoveWorktree(gitRoot, worktreePath)
@@ -1589,13 +1589,13 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
@@ -1668,13 +1668,13 @@ func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(title)
+		winName := mux.WindowName(proj.Name, string(agentType), title)
 		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(title)
+		winName := mux.WindowName(proj.Name, string(agentType), title)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
