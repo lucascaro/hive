@@ -111,12 +111,12 @@ func New(cfg config.Config, appState state.AppState) Model {
 		titleEditor:         components.NewTitleEditor(),
 		agentPicker:         components.NewAgentPicker(),
 		teamBuilder:         components.NewTeamBuilder(),
-		settings:         components.NewSettingsView(),
-		orphanPicker:     components.NewOrphanPicker(appState.OrphanSessions),
-		dirPicker:        components.NewDirPicker(),
-		recoveryPicker:   components.NewRecoveryPicker(appState.RecoverableSessions),
-		nameInput:        ni,
-		contentSnapshots: make(map[string]string),
+		settings:            components.NewSettingsView(),
+		orphanPicker:        components.NewOrphanPicker(appState.OrphanSessions),
+		dirPicker:           components.NewDirPicker(),
+		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
+		nameInput:           ni,
+		contentSnapshots:    make(map[string]string),
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
@@ -554,8 +554,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.scheduleWatchStatuses(),
 			)
 		}
-		m.stateLastKnownMtime = msg.mtime
-		return m, scheduleWatchState(msg.mtime)
+		return m, scheduleWatchState(m.stateLastKnownMtime)
 
 	// --- Quit and kill ---
 	case QuitAndKillMsg:

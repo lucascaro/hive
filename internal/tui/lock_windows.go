@@ -2,12 +2,34 @@
 
 package tui
 
-import "os"
+import (
+	"os"
 
-// lockExclusive is a no-op on Windows.
-// The OS-level atomic rename used for state writes provides sufficient
-// protection; a proper LockFileEx implementation can be added later.
-func lockExclusive(_ *os.File) error { return nil }
+	"golang.org/x/sys/windows"
+)
 
-// unlockFile is a no-op on Windows.
-func unlockFile(_ *os.File) error { return nil }
+// lockExclusive acquires an exclusive (write) advisory lock on f.
+// It blocks until the lock is available.
+func lockExclusive(f *os.File) error {
+	// LockFileEx with LOCKFILE_EXCLUSIVE_LOCK and no LOCKFILE_FAIL_IMMEDIATELY
+	// blocks until the lock is acquired.
+	ol := new(windows.Overlapped)
+	return windows.LockFileEx(
+		windows.Handle(f.Fd()),
+		windows.LOCKFILE_EXCLUSIVE_LOCK,
+		0,           // reserved
+		1, 0,        // lock 1 byte
+		ol,
+	)
+}
+
+// unlockFile releases the advisory lock on f.
+func unlockFile(f *os.File) error {
+	ol := new(windows.Overlapped)
+	return windows.UnlockFileEx(
+		windows.Handle(f.Fd()),
+		0,        // reserved
+		1, 0,     // unlock 1 byte
+		ol,
+	)
+}

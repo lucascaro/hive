@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -151,6 +153,55 @@ func TestLoadUsage_MissingFileReturnsNil(t *testing.T) {
 	got := LoadUsage()
 	if got != nil {
 		t.Errorf("LoadUsage() on missing file = %v, want nil", got)
+	}
+}
+
+func TestSaveState_ConcurrentWritesNoCorruption(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+
+	const goroutines = 10
+	const writesPerGoroutine = 20
+
+	var wg sync.WaitGroup
+	errs := make(chan error, goroutines*writesPerGoroutine)
+
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < writesPerGoroutine; i++ {
+				appState := &state.AppState{
+					Projects: []*state.Project{
+						{
+							ID:       fmt.Sprintf("p-%d-%d", id, i),
+							Name:     fmt.Sprintf("project-%d-%d", id, i),
+							Teams:    []*state.Team{},
+							Sessions: []*state.Session{},
+						},
+					},
+				}
+				if _, err := saveState(appState); err != nil {
+					errs <- fmt.Errorf("goroutine %d write %d: %w", id, i, err)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Error(err)
+	}
+
+	// The file must be valid JSON after all concurrent writes.
+	loaded, err := LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() after concurrent writes: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("LoadState() returned %d projects, want 1 (last writer wins)", len(loaded))
 	}
 }
 
