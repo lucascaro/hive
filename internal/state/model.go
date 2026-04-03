@@ -126,6 +126,7 @@ type Session struct {
 	CreatedAt      time.Time         `json:"created_at"`
 	LastActiveAt   time.Time         `json:"last_active_at"`
 	Meta           map[string]string `json:"meta,omitempty"`
+	BellPending    bool              `json:"-"` // transient: unacknowledged bell from this session
 }
 
 // AppState is the single source of truth for the TUI.

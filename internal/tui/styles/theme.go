@@ -93,6 +93,8 @@ var (
 	ErrorStyle = lipgloss.NewStyle().Foreground(ColorError)
 
 	MutedStyle = lipgloss.NewStyle().Foreground(ColorMuted)
+
+	BellStyle = lipgloss.NewStyle().Foreground(ColorWarning).Bold(true)
 )
 
 // AgentBadge returns a styled agent type badge.
