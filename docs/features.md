@@ -6,7 +6,10 @@ This file tracks features that are already implemented in Hive. New ideas should
 
 - Organize work into multiple named projects.
 - Create multiple persistent sessions per project, each backed by a tmux window.
-- Attach to the selected session from the TUI and return later without losing session state.
+- Attach to the selected session from the TUI and return without losing session state.
+  When using the tmux backend (≥ 3.2) the session opens as a floating popup overlay
+  so you never leave the TUI; on older tmux the terminal is taken over full-screen.
+  Either way the TUI resumes in place after you detach — no restart required.
 - Create new projects and sessions directly from the keyboard-driven interface.
 - Kill individual sessions or quit the app while keeping tmux sessions running.
 

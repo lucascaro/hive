@@ -89,7 +89,10 @@ func runStart(_ *cobra.Command, _ []string) error {
 	// Reconcile: mark sessions dead if their window is gone.
 	reconcileState(&appState)
 
-	// Run the TUI loop (re-enter after attach/detach).
+	// Run the TUI loop. For the native backend the loop re-enters after each
+	// attach/detach cycle (tea.Quit is used because native attach cannot use
+	// tea.ExecProcess). For the tmux backend the TUI handles attach internally
+	// via tea.ExecProcess and never sets LastAttach(); the loop runs only once.
 	for {
 		model := tui.New(cfg, appState)
 		p := tea.NewProgram(model,
@@ -101,26 +104,23 @@ func runStart(_ *cobra.Command, _ []string) error {
 			return fmt.Errorf("TUI error: %w", err)
 		}
 
-		// Check if we need to attach to a session.
+		// Native backend attach: re-enter TUI after detaching from the session.
 		if fm, ok := finalModel.(interface{ LastAttach() *tui.SessionAttachMsg }); ok {
-			if attach := fm.LastAttach(); attach != nil {
-				if err := tui.RunAttach(*attach); err != nil {
+			if a := fm.LastAttach(); a != nil {
+				if err := tui.RunAttach(*a); err != nil {
 					fmt.Fprintf(os.Stderr, "attach failed: %v\n", err)
 				}
-				// Reload config so preferences saved during TUI run take effect.
+				// Reload config and state so any changes made during the session
+				// (or by the agent) are reflected when the TUI restarts.
 				if reloadedCfg, loadErr := config.Load(); loadErr == nil {
 					cfg = config.Migrate(reloadedCfg)
 				}
-				// Reload state after returning from the attached session.
 				if reloaded, err := tui.LoadState(); err == nil && reloaded != nil {
 					appState.Projects = reloaded
 				}
-				// Reconcile again: the agent may have exited while attached.
 				reconcileState(&appState)
-				// Restore cursor to the session we just detached from.
-				appState.ActiveSessionID = findSessionID(&appState, attach.TmuxSession, attach.TmuxWindow)
-				// Restore the screen the user was on before attaching.
-				appState.RestoreGridMode = attach.RestoreGridMode
+				appState.ActiveSessionID = findSessionID(&appState, a.TmuxSession, a.TmuxWindow)
+				appState.RestoreGridMode = a.RestoreGridMode
 				continue
 			}
 		}

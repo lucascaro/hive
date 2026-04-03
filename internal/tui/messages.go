@@ -30,8 +30,19 @@ type SessionAttachMsg struct {
 	ProjectName  string
 }
 
-// SessionDetachedMsg is sent when the user returns from a tmux session.
+// SessionDetachedMsg is retained for the legacy native-backend attach/restart
+// path. When the native backend is active, cmd/start.go calls mux.Attach
+// directly and sends this message to the TUI on return so the preview poll
+// chain is reset. It is not used by the tmux backend (which handles detach
+// via the AttachDoneMsg callback from tea.ExecProcess).
 type SessionDetachedMsg struct{}
+
+// AttachDoneMsg is returned by the tea.ExecProcess callback when the user
+// detaches from (or the process running in) an attached or popup session.
+type AttachDoneMsg struct {
+	Err             error
+	RestoreGridMode state.GridRestoreMode
+}
 
 // SessionTitleChangedMsg carries a new title for a session.
 type SessionTitleChangedMsg struct {
@@ -108,3 +119,4 @@ type ConfigSavedMsg struct {
 
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}
+var _ tea.Msg = AttachDoneMsg{}
