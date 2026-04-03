@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,6 +12,22 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
+
+// TestMain sets HIVE_CONFIG_DIR to a temporary directory so that no test in this
+// package (including helpers like New() that stat config.StatePath()) ever
+// resolves against the real ~/.config/hive.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "hive-tui-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot create temp dir: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HIVE_CONFIG_DIR", dir)
+	os.MkdirAll(dir, 0o755)
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func testModelWithSessions() Model {
 	cfg := config.DefaultConfig()

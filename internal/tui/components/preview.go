@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -169,15 +170,21 @@ func runeDisplayWidth(r rune) int {
 	}
 }
 
-var previewLog *log.Logger
+var (
+	previewLog     = log.New(os.Stderr, "[preview] ", log.Ltime)
+	previewLogOnce sync.Once
+)
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		previewLog = log.New(os.Stderr, "[preview] ", log.Ltime)
-		return
-	}
-	previewLog = log.New(f, "[preview] ", log.Ltime|log.Lmicroseconds)
+// InitPreviewLog upgrades the preview logger from stderr to the hive log file.
+// Called once from tui.New() so the log path is resolved after env overrides.
+func InitPreviewLog() {
+	previewLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return
+		}
+		previewLog = log.New(f, "[preview] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // PreviewUpdatedMsg is sent when capture-pane returns new content.
