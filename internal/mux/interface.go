@@ -5,7 +5,13 @@ package mux
 
 import "fmt"
 
-const shortIDLen = 8
+const (
+	projMaxLen  = 8
+	titleMaxLen = 12
+
+	// HiveSession is the single shared tmux session used for all hive windows.
+	HiveSession = "hive-sessions"
+)
 
 // WindowInfo holds information about a window within a session.
 type WindowInfo struct {
@@ -90,21 +96,24 @@ func SetBackend(b Backend) {
 
 // ---- Utility functions (backend-independent) --------------------------------
 
-// SessionName returns the session name for a project.
-func SessionName(projectID string) string {
-	short := projectID
-	if len(short) > shortIDLen {
-		short = short[:shortIDLen]
-	}
-	return fmt.Sprintf("hive-%s", short)
-}
+// SessionName returns the shared tmux session name. All hive windows live in
+// one session so they are easy to find and recover. The projectID argument is
+// ignored; it is kept for call-site compatibility.
+func SessionName(_ string) string { return HiveSession }
 
-// WindowName returns the window name for a session.
-func WindowName(sessionID string) string {
-	if len(sessionID) > shortIDLen {
-		return sessionID[:shortIDLen]
+// WindowName returns a descriptive window name encoding the project, agent
+// type, and session title so windows are identifiable in `tmux list-windows`.
+// Format: {project[:8]}-{agentType}-{title[:12]}
+func WindowName(projectName, agentType, sessionTitle string) string {
+	proj := projectName
+	if len(proj) > projMaxLen {
+		proj = proj[:projMaxLen]
 	}
-	return sessionID
+	title := sessionTitle
+	if len(title) > titleMaxLen {
+		title = title[:titleMaxLen]
+	}
+	return fmt.Sprintf("%s-%s-%s", proj, agentType, title)
 }
 
 // Target returns the target string "session:window" used to address a pane.

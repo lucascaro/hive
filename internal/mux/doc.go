@@ -18,9 +18,9 @@
 //
 // Sessions and windows are addressed by string targets:
 //
-//	session  = mux.SessionName(projectID)   // "hive-{projectID[:8]}"
-//	window   = mux.WindowName(sessionID)    // sessionID[:8]
-//	target   = mux.Target(session, index)   // "session:index"
+//	session  = mux.SessionName(projectID)              // always "hive-sessions"
+//	window   = mux.WindowName(projName, agent, title)  // "{proj[:8]}-{agent}-{title[:12]}"
+//	target   = mux.Target(session, index)              // "hive-sessions:index"
 //
 // # Thread safety
 //

@@ -308,11 +308,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SessionTitleChangedMsg:
 		m.appState = *state.UpdateSessionTitle(&m.appState, msg.SessionID, msg.Title, msg.Source)
-		// Rename tmux window too
+		// Rename tmux window keeping the structured {proj}-{agent}-{title} format.
 		sess := m.appState.ActiveSession()
 		if sess != nil {
+			projName := ""
+			if proj := m.appState.ActiveProject(); proj != nil {
+				projName = proj.Name
+			}
 			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			_ = mux.RenameWindow(target, msg.Title)
+			_ = mux.RenameWindow(target, mux.WindowName(projName, string(sess.AgentType), msg.Title))
 			m.fireHook(state.HookEvent{
 				Name:         state.EventSessionTitleChange,
 				SessionID:    sess.ID,
@@ -1600,14 +1604,14 @@ func (m *Model) spawnWorktreeSession(proj *state.Project, agentTypeStr string, a
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		if err = mux.CreateSession(muxSess, winName, worktreePath, agentCmd); err != nil {
 			_ = git.RemoveWorktree(gitRoot, worktreePath)
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, worktreePath, agentCmd)
 		if err != nil {
 			_ = git.RemoveWorktree(gitRoot, worktreePath)
@@ -1675,13 +1679,13 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(sessionTitle)
+		winName := mux.WindowName(proj.Name, agentTypeStr, sessionTitle)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
@@ -1754,13 +1758,13 @@ func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state
 	var windowIdx int
 	var err error
 	if !mux.SessionExists(muxSess) {
-		winName := mux.WindowName(title)
+		winName := mux.WindowName(proj.Name, string(agentType), title)
 		if err = mux.CreateSession(muxSess, winName, workDir, agentCmd); err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
 		}
 		windowIdx = 0
 	} else {
-		winName := mux.WindowName(title)
+		winName := mux.WindowName(proj.Name, string(agentType), title)
 		windowIdx, err = mux.CreateWindow(muxSess, winName, workDir, agentCmd)
 		if err != nil {
 			return func() tea.Msg { return ErrorMsg{Err: err} }
@@ -1891,8 +1895,12 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 					_ = mux.KillWindow(target)
 				}
 			}
-			// Kill session if still around.
-			_ = mux.KillSession(mux.SessionName(projectID))
+			// Kill per-project session if it's not the shared container.
+			// Old persisted sessions may still reference a per-project tmux
+			// session name; the shared HiveSession must never be killed here.
+			if sess := mux.SessionName(projectID); sess != mux.HiveSession {
+				_ = mux.KillSession(sess)
+			}
 			m.fireHook(state.HookEvent{
 				Name:      state.EventProjectKill,
 				ProjectID: p.ID, ProjectName: p.Name,
