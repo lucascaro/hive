@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-04-04
+
 ### Fixed
 - **Selected session persists across views**: the active session now stays
   selected when switching between sidebar, grid view, and after attach/detach.
@@ -205,6 +207,7 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/lucascaro/hive/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/lucascaro/hive/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lucascaro/hive/releases/tag/v0.1.0
