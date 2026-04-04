@@ -274,6 +274,43 @@ func TestSidebarMoveDown(t *testing.T) {
 	}
 }
 
+func TestSidebar_WorktreeBadge(t *testing.T) {
+	s := &Sidebar{Width: 80}
+
+	// title == branch → badge only, no duplicate branch name
+	sameBranch := SidebarItem{
+		Kind: KindSession, Label: "my-feature", AgentType: "claude",
+		IsWorktree: true, WorktreeBranch: "my-feature",
+	}
+	out := s.renderItem(sameBranch, false, false, 80)
+	if !strings.Contains(out, "⎇") {
+		t.Error("expected ⎇ badge for worktree session with matching branch")
+	}
+	// The branch name should appear exactly once (in the label), not again after ⎇
+	if strings.Contains(out, "⎇ my-feature") {
+		t.Error("branch name should be suppressed when it matches the session title")
+	}
+
+	// title != branch → badge + branch name
+	diffBranch := SidebarItem{
+		Kind: KindSession, Label: "backend", AgentType: "claude",
+		IsWorktree: true, WorktreeBranch: "feat/backend-refactor",
+	}
+	out = s.renderItem(diffBranch, false, false, 80)
+	if !strings.Contains(out, "⎇ feat/backend-refactor") {
+		t.Error("expected branch name 'feat/backend-refactor' when it differs from title")
+	}
+
+	// non-worktree → no badge
+	noWorktree := SidebarItem{
+		Kind: KindSession, Label: "plain", AgentType: "claude",
+	}
+	out = s.renderItem(noWorktree, false, false, 80)
+	if strings.Contains(out, "⎇") {
+		t.Error("expected no ⎇ badge for non-worktree session")
+	}
+}
+
 func TestMatchesSessionFilter(t *testing.T) {
 	sess := &state.Session{
 		Title:     "my-worker",
