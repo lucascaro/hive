@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **No more duplicate branch name in sidebar**: worktree sessions whose title
+  matches the branch name now show just the `⎇` badge instead of
+  "my-branch ⎇ my-branch".
 - **Grid mode restored after tmux detach**: when attaching to a session from the
   grid view using the tmux backend, detaching now correctly returns to the grid
   instead of falling back to the main sidebar view.

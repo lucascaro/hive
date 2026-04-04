@@ -1,7 +1,7 @@
 # Feature: Remove redundant session title when worktree and session name match
 
 - **GitHub Issue:** #26
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
@@ -25,19 +25,20 @@ When a worktree session's title matches the worktree branch name, the sidebar sh
 
 ## Plan
 
-<Filled during PLAN stage.>
-
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+1. `internal/tui/components/sidebar.go:355-358` — Add condition to suppress branch name when it matches `item.Label`, mirroring the grid view pattern. Show bare `⎇` when title==branch, `⎇ <branch>` when they differ.
+2. `internal/tui/components/sidebar_test.go` — Add `TestSidebar_WorktreeBadge` test verifying badge-only when title matches branch, badge+name when they differ, no badge for non-worktree sessions.
 
 ### Test Strategy
-- <how to verify>
+- Unit test modeled on `TestGridView_WorktreeBadge`
+- Manual: create worktree session where title matches branch, confirm sidebar shows just `⎇`
 
 ### Risks
-- <what could go wrong>
+- Minimal. Display-only change with proven pattern in grid view.
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- No deviations from plan. The fix mirrors the existing grid view pattern exactly.
+- Added `TestSidebar_WorktreeBadge` with three cases: same branch, different branch, no worktree.
 
 - **PR:** —
