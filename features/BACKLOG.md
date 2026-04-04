@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #22 | Grid mode not restored after attach → detach | RESEARCH | S |
+| 1 | #22 | Grid mode not restored after attach → detach | IMPLEMENT | S |
 | 2 | #15 | Branch info | RESEARCH | S |
 
 ## Completed
