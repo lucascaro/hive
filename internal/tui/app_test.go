@@ -744,3 +744,111 @@ func TestHandleKey_CtrlC_AlwaysQuits(t *testing.T) {
 		t.Fatalf("ctrl+c cmd returned %T, want tea.QuitMsg", msg)
 	}
 }
+
+func TestBuildPopupTitle(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  SessionAttachMsg
+		want string
+	}{
+		{
+			name: "all fields",
+			msg: SessionAttachMsg{
+				SessionTitle:   "fix-bug",
+				AgentType:      "claude",
+				ProjectName:    "myproj",
+				Status:         "running",
+				WorktreePath:   "/tmp/wt",
+				WorktreeBranch: "feat-branch",
+			},
+			want: "● [claude] fix-bug · myproj ⎇ feat-branch",
+		},
+		{
+			name: "no project",
+			msg: SessionAttachMsg{
+				SessionTitle: "task1",
+				AgentType:    "codex",
+				Status:       "idle",
+			},
+			want: "○ [codex] task1",
+		},
+		{
+			name: "worktree branch matches title",
+			msg: SessionAttachMsg{
+				SessionTitle:   "feat-x",
+				AgentType:      "gemini",
+				ProjectName:    "proj",
+				Status:         "waiting",
+				WorktreePath:   "/tmp/wt",
+				WorktreeBranch: "feat-x",
+			},
+			want: "◉ [gemini] feat-x · proj ⎇",
+		},
+		{
+			name: "dead status no worktree",
+			msg: SessionAttachMsg{
+				SessionTitle: "done",
+				AgentType:    "aider",
+				ProjectName:  "p",
+				Status:       "dead",
+			},
+			want: "✕ [aider] done · p",
+		},
+		{
+			name: "worktree with empty branch",
+			msg: SessionAttachMsg{
+				SessionTitle: "s",
+				AgentType:    "claude",
+				Status:       "running",
+				WorktreePath: "/tmp/wt",
+			},
+			want: "● [claude] s ⎇",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildPopupTitle(tt.msg)
+			if got != tt.want {
+				t.Errorf("buildPopupTitle() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildAttachScript(t *testing.T) {
+	script := buildAttachScript("hive-sessions", "hive-sessions:3", "● [claude] my-task · myproj ⎇ feat", "Ctrl+B D")
+	if !strings.Contains(script, "status-position top") {
+		t.Error("script should set status-position top")
+	}
+	if !strings.Contains(script, "tmux attach-session -t 'hive-sessions:3'") {
+		t.Error("script should attach to the correct target")
+	}
+	if !strings.Contains(script, "● [claude] my-task · myproj ⎇ feat") {
+		t.Error("script should contain the title text")
+	}
+	if !strings.Contains(script, "Ctrl+B D: detach") {
+		t.Error("script should show detach key hint")
+	}
+	// Verify restore section exists
+	lines := strings.Split(script, "\n")
+	hasRestore := false
+	for _, l := range lines {
+		if strings.Contains(l, "set-option -u") {
+			hasRestore = true
+			break
+		}
+	}
+	if !hasRestore {
+		t.Error("script should restore status settings")
+	}
+}
+
+func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {
+	script := buildAttachScript("hive's-sess", "hive's-sess:0", "it's a test", "Ctrl+B D")
+	if strings.Contains(script, "hive's-sess") {
+		t.Error("unescaped single quotes in session name")
+	}
+	if !strings.Contains(script, "tmux attach-session") {
+		t.Error("script should contain attach command")
+	}
+}

@@ -47,7 +47,7 @@ func (b *Backend) GetCurrentCommand(_ string) (string, error)             { retu
 func (b *Backend) Attach(_ string) error                                   { return errNotSupported }
 func (b *Backend) DetachKey() string                                       { return "" }
 func (b *Backend) SupportsPopup() bool                                     { return false }
-func (b *Backend) PopupAttach(_ string) error                              { return errNotSupported }
+func (b *Backend) PopupAttach(_, _ string) error                           { return errNotSupported }
 func (b *Backend) UseExecAttach() bool                                     { return false }
 
 // SockPath returns an empty string on Windows (no socket used).

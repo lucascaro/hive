@@ -438,10 +438,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var sessionTitle string
 		var agentType state.AgentType
 		var projectName string
+		var status state.SessionStatus
+		var worktreeBranch, worktreePath string
 		if s := m.sessionByTmux(msg.TmuxSession, msg.TmuxWindow); s != nil {
 			sessionTitle = s.Title
 			agentType = s.AgentType
 			projectName = m.projectNameByID(s.ProjectID)
+			status = s.Status
+			worktreeBranch = s.WorktreeBranch
+			worktreePath = s.WorktreePath
 		}
 		attach := &SessionAttachMsg{
 			TmuxSession:     msg.TmuxSession,
@@ -450,6 +455,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			SessionTitle:    sessionTitle,
 			AgentType:       agentType,
 			ProjectName:     projectName,
+			Status:          status,
+			WorktreeBranch:  worktreeBranch,
+			WorktreePath:    worktreePath,
 		}
 		if !m.cfg.HideAttachHint {
 			m.pendingAttach = attach
@@ -1906,6 +1914,9 @@ func (m *Model) attachActiveSession() tea.Cmd {
 			SessionTitle:    sess.Title,
 			AgentType:       sess.AgentType,
 			ProjectName:     m.projectNameByID(sess.ProjectID),
+			Status:          sess.Status,
+			WorktreeBranch:  sess.WorktreeBranch,
+			WorktreePath:    sess.WorktreePath,
 		}
 	}
 }
@@ -2119,6 +2130,9 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 		SessionTitle:    sess.Title,
 		AgentType:       sess.AgentType,
 		ProjectName:     m.projectNameByID(sess.ProjectID),
+		Status:          sess.Status,
+		WorktreeBranch:  sess.WorktreeBranch,
+		WorktreePath:    sess.WorktreePath,
 	}
 }
 
@@ -2665,24 +2679,12 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 		return tea.Quit
 	}
 
-	var cmd *exec.Cmd
-	if mux.SupportsPopup() {
-		// Floating popup overlay — TUI stays alive underneath.
-		cmd = exec.Command("tmux", "display-popup",
-			"-E",        // close popup when command exits
-			"-w", "95%",
-			"-h", "90%",
-			"--",
-			"tmux", "attach-session", "-t", target,
-		)
-	} else {
-		// Full-screen attach. Run tmux directly without a shell wrapper.
-		// The terminal title is set by the native RunAttach path only (that
-		// path has an opportunity to write escapes between TUI exit and
-		// attach); for the ExecProcess path the tmux status bar provides
-		// sufficient session context.
-		cmd = exec.Command("tmux", "attach-session", "-t", target)
-	}
+	// Full-screen attach with tmux status bars showing session info at top
+	// and key hints at bottom. The shell script saves/restores the original
+	// tmux status configuration around the attach.
+	header := buildPopupTitle(sess)
+	script := buildAttachScript(sess.TmuxSession, target, header, mux.DetachKey())
+	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -2706,6 +2708,88 @@ func RunAttach(sess SessionAttachMsg) error {
 
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 	return mux.Attach(target)
+}
+
+// statusBarOpts lists the tmux session options we override for the attach status bar.
+var statusBarOpts = []string{
+	"status",
+	"status-position",
+	"status-style",
+	"status-left",
+	"status-right",
+	"status-left-length",
+	"status-right-length",
+}
+
+// buildAttachScript returns a shell script that configures a tmux top status bar
+// with session info and detach hint, attaches to the target, and restores the
+// original status bar settings on detach.
+func buildAttachScript(tmuxSession, target, title, detachKey string) string {
+	sq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	s := sq(tmuxSession)
+	t := sq(target)
+
+	var lines []string
+
+	// Save current status settings
+	for _, opt := range statusBarOpts {
+		lines = append(lines,
+			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null)",
+				strings.ReplaceAll(opt, "-", "_"), s, opt))
+	}
+
+	// Configure top status bar: session info on the left, detach hint on the right
+	lines = append(lines,
+		"tmux set-option -t "+s+" status on",
+		"tmux set-option -t "+s+" status-position top",
+		"tmux set-option -t "+s+" status-style 'bg=#1F2937,fg=#F9FAFB'",
+		"tmux set-option -t "+s+" status-left "+sq(" "+title+" "),
+		"tmux set-option -t "+s+" status-left-length 200",
+		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
+		"tmux set-option -t "+s+" status-right-length 40",
+	)
+
+	// Attach (blocks until user detaches)
+	lines = append(lines, "tmux attach-session -t "+t)
+
+	// Restore original settings; unset if the option had no session-level override
+	for _, opt := range statusBarOpts {
+		varName := "old_" + strings.ReplaceAll(opt, "-", "_")
+		lines = append(lines,
+			fmt.Sprintf(`if [ -n "$%s" ]; then tmux set-option -t %s %s "$%s"; else tmux set-option -u -t %s %s; fi`,
+				varName, s, opt, varName, s, opt))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// buildPopupTitle returns a plain-text title for the tmux popup border.
+// Format mirrors the grid cell header: status dot, agent badge, title, project, worktree.
+func buildPopupTitle(sess SessionAttachMsg) string {
+	var dot string
+	switch string(sess.Status) {
+	case "running":
+		dot = "●"
+	case "waiting":
+		dot = "◉"
+	case "dead":
+		dot = "✕"
+	default:
+		dot = "○"
+	}
+
+	title := fmt.Sprintf("%s [%s] %s", dot, sess.AgentType, sess.SessionTitle)
+	if sess.ProjectName != "" {
+		title += " · " + sess.ProjectName
+	}
+	if sess.WorktreePath != "" {
+		if sess.WorktreeBranch != "" && sess.WorktreeBranch != sess.SessionTitle {
+			title += " ⎇ " + sess.WorktreeBranch
+		} else {
+			title += " ⎇"
+		}
+	}
+	return title
 }
 
 // buildAttachTitle returns a terminal window title string for the attached session.
