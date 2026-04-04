@@ -88,4 +88,4 @@ On detach return (both tmux and native backends), clear preview content immediat
 
 No deviations from the plan. Added two lines (`PreviewContent = ""` and `preview.SetContent("")`) to both `AttachDoneMsg` and `SessionDetachedMsg` handlers. Two unit tests added following existing `testModelWithSessions()` pattern.
 
-- **PR:** —
+- **PR:** #20
