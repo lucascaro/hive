@@ -1,7 +1,7 @@
 # Feature: Stale preview on exit back to main view
 
 - **GitHub Issue:** #16
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
