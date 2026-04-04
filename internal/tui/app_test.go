@@ -745,7 +745,7 @@ func TestHandleKey_CtrlC_AlwaysQuits(t *testing.T) {
 	}
 }
 
-func TestBuildPopupTitle(t *testing.T) {
+func TestBuildSessionHeader(t *testing.T) {
 	tests := []struct {
 		name string
 		msg  SessionAttachMsg
@@ -807,9 +807,9 @@ func TestBuildPopupTitle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildPopupTitle(tt.msg)
+			got := buildSessionHeader(tt.msg)
 			if got != tt.want {
-				t.Errorf("buildPopupTitle() = %q, want %q", got, tt.want)
+				t.Errorf("buildSessionHeader() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -829,17 +829,12 @@ func TestBuildAttachScript(t *testing.T) {
 	if !strings.Contains(script, "Ctrl+B D: detach") {
 		t.Error("script should show detach key hint")
 	}
-	// Verify restore section exists
-	lines := strings.Split(script, "\n")
-	hasRestore := false
-	for _, l := range lines {
-		if strings.Contains(l, "set-option -u") {
-			hasRestore = true
-			break
-		}
+	// Verify restore uses had_* flag (not string emptiness) for correctness
+	if !strings.Contains(script, `had_status" = 1`) {
+		t.Error("script should use had_* flag for restore decisions")
 	}
-	if !hasRestore {
-		t.Error("script should restore status settings")
+	if !strings.Contains(script, "set-option -u") {
+		t.Error("script should restore/unset status settings")
 	}
 }
 
@@ -850,5 +845,20 @@ func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {
 	}
 	if !strings.Contains(script, "tmux attach-session") {
 		t.Error("script should contain attach command")
+	}
+}
+
+func TestBuildSessionHeader_EscapesHash(t *testing.T) {
+	got := buildSessionHeader(SessionAttachMsg{
+		SessionTitle: "fix #123",
+		AgentType:    "claude",
+		ProjectName:  "my#proj",
+		Status:       "running",
+	})
+	if strings.Contains(got, "fix #1") && !strings.Contains(got, "fix ##1") {
+		t.Errorf("expected '#' to be escaped to '##', got %q", got)
+	}
+	if strings.Contains(got, "my#p") && !strings.Contains(got, "my##p") {
+		t.Errorf("expected '#' in project name to be escaped, got %q", got)
 	}
 }

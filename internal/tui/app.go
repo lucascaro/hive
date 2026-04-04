@@ -2679,10 +2679,10 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 		return tea.Quit
 	}
 
-	// Full-screen attach with tmux status bars showing session info at top
-	// and key hints at bottom. The shell script saves/restores the original
-	// tmux status configuration around the attach.
-	header := buildPopupTitle(sess)
+	// Full-screen attach with a tmux top status bar: session info on the
+	// left, detach key hint on the right. The shell script saves/restores
+	// the original tmux status configuration around the attach.
+	header := buildSessionHeader(sess)
 	script := buildAttachScript(sess.TmuxSession, target, header, mux.DetachKey())
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
@@ -2731,11 +2731,14 @@ func buildAttachScript(tmuxSession, target, title, detachKey string) string {
 
 	var lines []string
 
-	// Save current status settings
+	// Save current status settings. We track both the value and whether the
+	// option had a session-level override (exit code) so we can distinguish
+	// "set to empty string" from "not set at all" during restore.
 	for _, opt := range statusBarOpts {
+		v := strings.ReplaceAll(opt, "-", "_")
 		lines = append(lines,
-			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null)",
-				strings.ReplaceAll(opt, "-", "_"), s, opt))
+			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null) && had_%s=1 || had_%s=0",
+				v, s, opt, v, v))
 	}
 
 	// Configure top status bar: session info on the left, detach hint on the right
@@ -2752,20 +2755,24 @@ func buildAttachScript(tmuxSession, target, title, detachKey string) string {
 	// Attach (blocks until user detaches)
 	lines = append(lines, "tmux attach-session -t "+t)
 
-	// Restore original settings; unset if the option had no session-level override
+	// Restore original settings; unset if the option had no session-level override.
+	// We use the had_* flag (not string emptiness) so intentionally-empty values
+	// like status-left '' are correctly restored.
 	for _, opt := range statusBarOpts {
-		varName := "old_" + strings.ReplaceAll(opt, "-", "_")
+		v := strings.ReplaceAll(opt, "-", "_")
 		lines = append(lines,
-			fmt.Sprintf(`if [ -n "$%s" ]; then tmux set-option -t %s %s "$%s"; else tmux set-option -u -t %s %s; fi`,
-				varName, s, opt, varName, s, opt))
+			fmt.Sprintf(`if [ "$had_%s" = 1 ]; then tmux set-option -t %s %s "$old_%s"; else tmux set-option -u -t %s %s; fi`,
+				v, s, opt, v, s, opt))
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-// buildPopupTitle returns a plain-text title for the tmux popup border.
-// Format mirrors the grid cell header: status dot, agent badge, title, project, worktree.
-func buildPopupTitle(sess SessionAttachMsg) string {
+// buildSessionHeader returns a plain-text session summary used as the tmux
+// status-bar left content and popup border title. Format mirrors the grid cell
+// header: status dot, agent badge, title, project, worktree.
+// '#' is escaped to '##' so tmux does not interpret format sequences like #(cmd).
+func buildSessionHeader(sess SessionAttachMsg) string {
 	var dot string
 	switch string(sess.Status) {
 	case "running":
@@ -2778,13 +2785,17 @@ func buildPopupTitle(sess SessionAttachMsg) string {
 		dot = "○"
 	}
 
-	title := fmt.Sprintf("%s [%s] %s", dot, sess.AgentType, sess.SessionTitle)
+	// Escape '#' in user-controlled fields so tmux does not interpret
+	// format sequences like #(cmd) which would execute shell commands.
+	esc := func(s string) string { return strings.ReplaceAll(s, "#", "##") }
+
+	title := fmt.Sprintf("%s [%s] %s", dot, esc(string(sess.AgentType)), esc(sess.SessionTitle))
 	if sess.ProjectName != "" {
-		title += " · " + sess.ProjectName
+		title += " · " + esc(sess.ProjectName)
 	}
 	if sess.WorktreePath != "" {
 		if sess.WorktreeBranch != "" && sess.WorktreeBranch != sess.SessionTitle {
-			title += " ⎇ " + sess.WorktreeBranch
+			title += " ⎇ " + esc(sess.WorktreeBranch)
 		} else {
 			title += " ⎇"
 		}
