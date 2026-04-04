@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grid mode restored after tmux detach**: when attaching to a session from the
+  grid view using the tmux backend, detaching now correctly returns to the grid
+  instead of falling back to the main sidebar view.
+
 ### Changed
 - **Mouse enabled by default**: tmux sessions now have mouse support turned on
   at creation time, allowing scrolling through output with the mouse wheel.

@@ -314,3 +314,55 @@ func TestFlow_GridAttachWithHint(t *testing.T) {
 	}
 }
 
+// TestFlow_GridAttachDoneRestoresGrid tests the tmux backend path:
+// AttachDoneMsg with RestoreGridMode set should restore the grid without
+// going through New() (the TUI continues in the same Model instance).
+func TestFlow_GridAttachDoneRestoresGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Grid should not be active initially.
+	f.AssertGridActive(false)
+
+	// Simulate returning from tmux attach with RestoreGridMode = Project.
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreProject})
+
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreProject)
+	f.ViewContains("session-1")
+	f.Snapshot("01-attach-done-grid-restored-project")
+}
+
+// TestFlow_GridAttachDoneRestoresAllGrid tests the tmux backend path with
+// RestoreGridMode = All (all-projects grid).
+func TestFlow_GridAttachDoneRestoresAllGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.AssertGridActive(false)
+
+	// Simulate returning from tmux attach with RestoreGridMode = All.
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreAll})
+
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+	f.ViewContains("session-1")
+	f.ViewContains("session-2")
+	f.Snapshot("02-attach-done-grid-restored-all")
+}
+
+// TestFlow_GridAttachDoneNoRestoreWhenNone tests that AttachDoneMsg with
+// RestoreGridMode = None does NOT activate the grid.
+func TestFlow_GridAttachDoneNoRestoreWhenNone(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.AssertGridActive(false)
+
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreNone})
+
+	f.AssertGridActive(false)
+	f.ViewContains("test-project-1")
+	f.Snapshot("03-attach-done-no-grid")
+}
+
