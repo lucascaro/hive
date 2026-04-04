@@ -8,7 +8,8 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | 1 | #28 | Grid view previews not updating after detach/reattach | IMPLEMENT | S |
-| 2 | #27 | Purple/green full-screen styling | RESEARCH | S |
+| 2 | #27 | Purple/green full-screen styling | IMPLEMENT | S |
+| — | #30 | Terminal flashes previous content when attaching/detaching sessions | TRIAGE | — |
 
 ## Completed
 
