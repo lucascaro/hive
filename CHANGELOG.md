@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Grid previews resume after detach**: returning from a full-screen attached
+  session to the grid view now correctly restarts preview polling, so tiles
+  show live output instead of stale content.
 - **No more duplicate branch name in sidebar**: worktree sessions whose title
   matches the branch name now show just the `⎇` badge instead of
   "my-branch ⎇ my-branch".

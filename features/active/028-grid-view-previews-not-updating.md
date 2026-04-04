@@ -1,7 +1,7 @@
 # Feature: Grid view previews not updating after detach/reattach
 
 - **GitHub Issue:** #28
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
@@ -46,19 +46,20 @@ This was a gap in the #22 fix (commit 2388766) which added `restoreGrid()` but f
 
 ## Plan
 
-<Filled during PLAN stage.>
-
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+1. `internal/tui/app.go:349` — Add `m.scheduleGridPoll()` to the `tea.Batch` in the `AttachDoneMsg` handler, conditioned on `m.gridView.Active`.
+2. `internal/tui/flow_grid_test.go` — Add/extend test to verify `AttachDoneMsg` with grid restore returns a command batch that includes grid polling (produces `GridPreviewsUpdatedMsg`).
 
 ### Test Strategy
-- <how to verify>
+- Unit test: verify returned `tea.Cmd` from `AttachDoneMsg` produces a `GridPreviewsUpdatedMsg`
+- Manual: attach from grid, detach, confirm previews resume updating
 
 ### Risks
-- <what could go wrong>
+- Minimal. Same pattern used in `Init()` and "g" key handler.
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- No deviations from plan. Added `scheduleGridPoll()` to the `AttachDoneMsg` handler's `tea.Batch`, guarded by `gridView.Active`.
+- Test executes the `tea.BatchMsg` sub-commands and verifies one produces `GridPreviewsUpdatedMsg`.
 
 - **PR:** —

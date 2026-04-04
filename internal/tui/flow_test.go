@@ -173,6 +173,7 @@ func testFlowModel(t *testing.T) (Model, *muxtest.MockBackend) {
 
 	cfg := config.DefaultConfig()
 	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1 // near-zero tick interval to keep tests fast
 
 	appState := testAppStateWithTwoProjects()
 	appState.TermWidth = 120
@@ -203,6 +204,7 @@ func testFlowModelWithHint(t *testing.T) (Model, *muxtest.MockBackend) {
 
 	cfg := config.DefaultConfig()
 	cfg.HideAttachHint = false
+	cfg.PreviewRefreshMs = 1 // near-zero tick interval to keep tests fast
 
 	appState := testAppStateWithTwoProjects()
 	appState.TermWidth = 120

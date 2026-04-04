@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/components"
 )
 
 // TestFlow_GridAttachDetachRestoresGrid tests the full grid → attach → detach → grid restore flow.
@@ -364,5 +365,42 @@ func TestFlow_GridAttachDoneNoRestoreWhenNone(t *testing.T) {
 	f.AssertGridActive(false)
 	f.ViewContains("test-project-1")
 	f.Snapshot("03-attach-done-no-grid")
+}
+
+// TestFlow_GridAttachDoneSchedulesGridPoll verifies that returning from
+// tmux attach to the grid view restarts the grid preview polling chain.
+func TestFlow_GridAttachDoneSchedulesGridPoll(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Simulate returning from tmux attach with grid restore.
+	cmd := f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreProject})
+	f.AssertGridActive(true)
+
+	// The returned cmd should be a tea.Batch. Execute all sub-commands and
+	// check that at least one produces a GridPreviewsUpdatedMsg.
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd from AttachDoneMsg")
+	}
+	batchMsg := cmd()
+	batch, ok := batchMsg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("expected tea.BatchMsg, got %T", batchMsg)
+	}
+
+	foundGridPoll := false
+	for _, sub := range batch {
+		if sub == nil {
+			continue
+		}
+		msg := sub()
+		if _, ok := msg.(components.GridPreviewsUpdatedMsg); ok {
+			foundGridPoll = true
+			break
+		}
+	}
+	if !foundGridPoll {
+		t.Error("AttachDoneMsg with grid restore should schedule grid preview polling")
+	}
 }
 
