@@ -346,7 +346,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.previewPollGen++
 		m.appState.PreviewContent = ""
 		m.preview.SetContent("")
-		return m, tea.Batch(tea.EnableMouseCellMotion, m.schedulePollPreview())
+		cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
+		if m.gridView.Active {
+			cmds = append(cmds, m.scheduleGridPoll())
+		}
+		return m, tea.Batch(cmds...)
 
 	case SessionDetachedMsg:
 		m.previewPollGen++ // returning from native attach; start fresh poll chain

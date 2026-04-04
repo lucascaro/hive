@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #28 | Grid view previews not updating after detach/reattach | PLAN | S |
+| 1 | #28 | Grid view previews not updating after detach/reattach | IMPLEMENT | S |
 | 2 | #27 | Purple/green full-screen styling | RESEARCH | S |
 
 ## Completed
