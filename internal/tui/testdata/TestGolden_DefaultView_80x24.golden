@@ -1,0 +1,24 @@
+ hive                          │╭──────────────────────────────────────────────╮
+                               ││                                              │
+▼ [1] test-project-1           ││                                              │
+  ● session-1 [claude] ←       ││                                              │
+▼ [2] test-project-2           ││                                              │
+  ● session-2 [codex]          ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││             Waiting for output…              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               ││                                              │
+                               │╰──────────────────────────────────────────────╯
+ hive / test-project-1 / session-1 [claude] ● [running]                         
+ ?:help  n:new project  t:new session  T:new team  a/↵:attach  g/G:grid view    

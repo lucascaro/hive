@@ -2,9 +2,11 @@ package components
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/config"
@@ -12,15 +14,18 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var sidebarLog *log.Logger
+var sidebarLog = log.New(io.Discard, "", 0)
+var sidebarLogOnce sync.Once
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		sidebarLog = log.New(os.Stderr, "[sidebar] ", log.Ltime)
-		return
-	}
-	sidebarLog = log.New(f, "[sidebar] ", log.Ltime|log.Lmicroseconds)
+func initSidebarLog() {
+	sidebarLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			sidebarLog = log.New(os.Stderr, "[sidebar] ", log.Ltime)
+			return
+		}
+		sidebarLog = log.New(f, "[sidebar] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // ItemKind identifies the type of a sidebar row.
@@ -236,6 +241,7 @@ func (s *Sidebar) SyncActiveSession(activeSessionID string) {
 
 // View renders the sidebar content.
 func (s *Sidebar) View(activeSessionID string, focused bool) string {
+	initSidebarLog()
 	if s.Width <= 0 {
 		return ""
 	}

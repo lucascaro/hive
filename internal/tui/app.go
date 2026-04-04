@@ -2,11 +2,13 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -25,15 +27,21 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var debugLog *log.Logger
+// debugLog is the package-level logger. It starts as a discard logger and is
+// upgraded to file-backed on the first New() call. This avoids touching the
+// real config directory during init(), which would interfere with tests.
+var debugLog = log.New(io.Discard, "", 0)
+var debugLogOnce sync.Once
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		debugLog = log.New(os.Stderr, "[hive] ", log.Ltime)
-		return
-	}
-	debugLog = log.New(f, "[hive] ", log.Ltime|log.Lmicroseconds)
+func initDebugLog() {
+	debugLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			debugLog = log.New(os.Stderr, "[hive] ", log.Ltime)
+			return
+		}
+		debugLog = log.New(f, "[hive] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // Model is the root Bubble Tea model.
@@ -89,6 +97,7 @@ func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 
 // New creates the root model.
 func New(cfg config.Config, appState state.AppState) Model {
+	initDebugLog()
 	km := NewKeyMap(cfg.Keybindings)
 	ni := textinput.New()
 	ni.CharLimit = 256

@@ -1,10 +1,12 @@
 package components
 
 import (
+	"io"
 	"log"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -169,15 +171,18 @@ func runeDisplayWidth(r rune) int {
 	}
 }
 
-var previewLog *log.Logger
+var previewLog = log.New(io.Discard, "", 0)
+var previewLogOnce sync.Once
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		previewLog = log.New(os.Stderr, "[preview] ", log.Ltime)
-		return
-	}
-	previewLog = log.New(f, "[preview] ", log.Ltime|log.Lmicroseconds)
+func initPreviewLog() {
+	previewLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			previewLog = log.New(os.Stderr, "[preview] ", log.Ltime)
+			return
+		}
+		previewLog = log.New(f, "[preview] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // PreviewUpdatedMsg is sent when capture-pane returns new content.
@@ -197,6 +202,7 @@ type SessionWindowGoneMsg struct {
 // gen is a monotonically increasing generation counter incremented whenever
 // the active session changes, so stale in-flight results can be discarded.
 func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Duration, gen uint64) tea.Cmd {
+	initPreviewLog()
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		if tmuxSession == "" {
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}

@@ -2,9 +2,11 @@ package components
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -13,15 +15,18 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var statusLog *log.Logger
+var statusLog = log.New(io.Discard, "", 0)
+var statusLogOnce sync.Once
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		statusLog = log.New(os.Stderr, "[status] ", log.Ltime)
-		return
-	}
-	statusLog = log.New(f, "[status] ", log.Ltime|log.Lmicroseconds)
+func initStatusLog() {
+	statusLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			statusLog = log.New(os.Stderr, "[status] ", log.Ltime)
+			return
+		}
+		statusLog = log.New(f, "[status] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // StatusBar renders the two-line status bar at the bottom.
@@ -31,6 +36,7 @@ type StatusBar struct {
 
 // View renders the status bar given the current app state and key hints.
 func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterActive bool, filterQuery string) string {
+	initStatusLog()
 	w := sb.Width
 	if w <= 0 {
 		w = 80

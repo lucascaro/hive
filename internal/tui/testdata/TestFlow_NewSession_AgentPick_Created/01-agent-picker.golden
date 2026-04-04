@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                              ╭─────────────────────────────────────────────────────────╮                               
+                              │ Select Agent                                            │                               
+                              │ │ [claude] Claude (Anthropic)                           │                               
+                              │ │                                                       │                               
+                              │   [codex] Codex (OpenAI)                                │                               
+                              │                                                         │                               
+                              │   [gemini] Gemini (Google)                              │                               
+                              │                                                         │                               
+                              │   [copilot] GitHub Copilot CLI                          │                               
+                              │                                                         │                               
+                              │   [aider] Aider                                         │                               
+                              │                                                         │                               
+                              │   [opencode] OpenCode                                   │                               
+                              │                                                         │                               
+                              │   [custom] Custom command                               │                               
+                              │                                                         │                               
+                              │                                                         │                               
+                              │ ↑/↓: navigate  type: search  enter: select  esc: cancel │                               
+                              ╰─────────────────────────────────────────────────────────╯                               
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
