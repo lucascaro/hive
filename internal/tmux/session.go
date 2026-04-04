@@ -29,6 +29,11 @@ func KillSession(tmuxSession string) error {
 	return ExecSilent("kill-session", "-t", tmuxSession)
 }
 
+// SetOption sets a tmux session-level option (e.g. "mouse", "on").
+func SetOption(tmuxSession, key, value string) error {
+	return ExecSilent("set-option", "-t", tmuxSession, key, value)
+}
+
 // ListSessionNames returns the names of all live tmux sessions.
 func ListSessionNames() ([]string, error) {
 	out, err := Exec("list-sessions", "-F", "#{session_name}")

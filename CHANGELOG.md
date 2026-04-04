@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Mouse enabled by default**: tmux sessions now have mouse support turned on
+  at creation time, allowing scrolling through output with the mouse wheel.
+  Hold Shift to select text for copy-paste.
+
 ### Added
 - **Multi-instance support**: multiple hive windows can now run simultaneously
   against the same config directory without corrupting each other's state.
