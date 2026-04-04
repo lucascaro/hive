@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subdirectories; press `esc` to clear the filter.
 
 ### Fixed
+- **Mouse clicks broken after detach**: returning from an attached tmux session no
+  longer disables mouse support in the TUI. The bubbletea `RestoreTerminal()` path
+  does not re-enable mouse after `ExecProcess`; the fix explicitly re-enables mouse
+  cell motion when the attach completes.
 - **Stale preview after detach**: returning from an attached session no longer briefly
   shows outdated preview content from a different session. The preview pane clears
   immediately and shows a placeholder until fresh content arrives.

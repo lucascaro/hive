@@ -339,7 +339,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.previewPollGen++
 		m.appState.PreviewContent = ""
 		m.preview.SetContent("")
-		return m, m.schedulePollPreview()
+		return m, tea.Batch(tea.EnableMouseCellMotion, m.schedulePollPreview())
 
 	case SessionDetachedMsg:
 		m.previewPollGen++ // returning from native attach; start fresh poll chain
