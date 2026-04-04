@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/golden"
@@ -73,6 +74,46 @@ func (f *flowRunner) SendAndExec(msg tea.Msg) tea.Cmd {
 		return cmd
 	}
 	return f.Send(resultMsg)
+}
+
+// ExecCmdChain executes a cmd and feeds results back through Update,
+// handling tea.BatchMsg by dispatching each sub-cmd. Skips cmds that
+// block (e.g. tea.Tick). Stops at tea.QuitMsg or when all cmds are
+// exhausted. Max 50 iterations to prevent infinite loops.
+func (f *flowRunner) ExecCmdChain(cmd tea.Cmd) {
+	f.t.Helper()
+	queue := []tea.Cmd{cmd}
+	for i := 0; i < 50 && len(queue) > 0; i++ {
+		c := queue[0]
+		queue = queue[1:]
+		if c == nil {
+			continue
+		}
+		// Execute with a short timeout to skip blocking cmds (tea.Tick).
+		ch := make(chan tea.Msg, 1)
+		go func() { ch <- c() }()
+		select {
+		case msg := <-ch:
+			if msg == nil {
+				continue
+			}
+			if _, ok := msg.(tea.QuitMsg); ok {
+				return
+			}
+			if batch, ok := msg.(tea.BatchMsg); ok {
+				for _, sub := range batch {
+					queue = append(queue, sub)
+				}
+				continue
+			}
+			next := f.Send(msg)
+			if next != nil {
+				queue = append(queue, next)
+			}
+		case <-time.After(10 * time.Millisecond):
+			// Cmd blocked (likely a tick/timer) — skip it.
+		}
+	}
 }
 
 // Model returns the current Model state for custom assertions.

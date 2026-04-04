@@ -343,6 +343,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.appState.RestoreGridMode = msg.RestoreGridMode
 		m.restoreGrid()
+		m.sidebar.Rebuild(&m.appState)
+		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 		m.previewPollGen++
 		m.appState.PreviewContent = ""
 		m.preview.SetContent("")
@@ -456,6 +458,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var status state.SessionStatus
 		var worktreeBranch, worktreePath string
 		if s := m.sessionByTmux(msg.TmuxSession, msg.TmuxWindow); s != nil {
+			m.appState.ActiveSessionID = s.ID
+			if s.ProjectID != "" {
+				m.appState.ActiveProjectID = s.ProjectID
+			}
+			if s.TeamID != "" {
+				m.appState.ActiveTeamID = s.TeamID
+			}
 			sessionTitle = s.Title
 			agentType = s.AgentType
 			projectName = m.projectNameByID(s.ProjectID)
@@ -961,7 +970,21 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			return m.startRename()
 		}
 	}
+	wasActive := m.gridView.Active
+	prevSel := m.gridView.Selected()
 	cmd, _ := m.gridView.Update(msg)
+	if wasActive && !m.gridView.Active && prevSel != nil {
+		m.appState.ActiveSessionID = prevSel.ID
+		if prevSel.ProjectID != "" {
+			m.appState.ActiveProjectID = prevSel.ProjectID
+		}
+		if prevSel.TeamID != "" {
+			m.appState.ActiveTeamID = prevSel.TeamID
+		}
+		m.sidebar.SyncActiveSession(prevSel.ID)
+		m.previewPollGen++
+		return tea.Batch(cmd, m.schedulePollPreview())
+	}
 	return cmd
 }
 

@@ -37,16 +37,7 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	f.AssertGridActive(false)
 
 	// Execute the cmd chain: grid cmd → GridSessionSelectedMsg → doAttach → tea.Quit.
-	for cmd != nil {
-		msg := cmd()
-		if msg == nil {
-			break
-		}
-		if _, ok := msg.(tea.QuitMsg); ok {
-			break
-		}
-		cmd = f.Send(msg)
-	}
+	f.ExecCmdChain(cmd)
 
 	// attachPending should be set with RestoreGridMode.
 	updated := f.Model()
@@ -99,16 +90,7 @@ func TestFlow_GridAllProjectsRestores(t *testing.T) {
 	f.AssertGridActive(false)
 
 	// Execute cmd chain to completion.
-	for cmd != nil {
-		msg := cmd()
-		if msg == nil {
-			break
-		}
-		if _, ok := msg.(tea.QuitMsg); ok {
-			break
-		}
-		cmd = f.Send(msg)
-	}
+	f.ExecCmdChain(cmd)
 
 	updated := f.Model()
 	if updated.attachPending == nil {
@@ -283,13 +265,7 @@ func TestFlow_GridAttachWithHint(t *testing.T) {
 	f.AssertGridActive(false)
 
 	// Execute cmd chain: GridSessionSelectedMsg → app handler shows hint.
-	for cmd != nil {
-		msg := cmd()
-		if msg == nil {
-			break
-		}
-		cmd = f.Send(msg)
-	}
+	f.ExecCmdChain(cmd)
 
 	updated := f.Model()
 	if !updated.showAttachHint {
@@ -401,6 +377,227 @@ func TestFlow_GridAttachDoneSchedulesGridPoll(t *testing.T) {
 	}
 	if !foundGridPoll {
 		t.Error("AttachDoneMsg with grid restore should schedule grid preview polling")
+	}
+}
+
+// TestFlow_GridExitSyncsSidebar tests that exiting the grid (esc) syncs
+// ActiveSessionID and sidebar cursor to the grid's selected session.
+func TestFlow_GridExitSyncsSidebar(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Initial active session is sess-1.
+	f.AssertActiveSession("sess-1")
+
+	// Open all-projects grid (shows sess-1 and sess-2).
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.AssertGridActive(true)
+
+	// Navigate right to second session (sess-2).
+	f.SendKey("l")
+
+	// Exit grid with esc.
+	f.SendSpecialKey(tea.KeyEscape)
+	f.AssertGridActive(false)
+
+	// ActiveSessionID should now be sess-2.
+	f.AssertActiveSession("sess-2")
+
+	// Sidebar cursor should also point to sess-2.
+	model := f.Model()
+	sel := model.sidebar.Selected()
+	if sel == nil || sel.SessionID != "sess-2" {
+		t.Errorf("sidebar cursor should be on sess-2, got %v", sel)
+	}
+}
+
+// TestFlow_GridAttachSetsActiveSessionID tests that selecting a session in the
+// grid (GridSessionSelectedMsg) updates ActiveSessionID before attach.
+func TestFlow_GridAttachSetsActiveSessionID(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Initial active session is sess-1.
+	f.AssertActiveSession("sess-1")
+
+	// Open all-projects grid and navigate to sess-2.
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.SendKey("l")
+
+	// Press enter to select — grid emits GridSessionSelectedMsg via cmd.
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.AssertGridActive(false)
+
+	// Execute the cmd chain to deliver GridSessionSelectedMsg.
+	f.ExecCmdChain(cmd)
+
+	// ActiveSessionID should be sess-2 (the one we selected in the grid).
+	f.AssertActiveSession("sess-2")
+}
+
+// TestFlow_AttachDoneSyncsSidebar tests that returning from attach
+// (AttachDoneMsg) rebuilds the sidebar and syncs it to ActiveSessionID.
+func TestFlow_AttachDoneSyncsSidebar(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Set active session to sess-2 (as if we just attached to it).
+	f.Send(components.GridSessionSelectedMsg{
+		TmuxSession: "hive-proj5678",
+		TmuxWindow:  0,
+	})
+
+	// Simulate detach returning.
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreNone})
+
+	// Sidebar should now point to sess-2.
+	model := f.Model()
+	sel := model.sidebar.Selected()
+	if sel == nil || sel.SessionID != "sess-2" {
+		t.Errorf("sidebar cursor should be on sess-2 after AttachDoneMsg, got %v", sel)
+	}
+}
+
+// TestFlow_GridSelectAttachDetachRoundTrip tests the full round trip:
+// grid cursor on sess-2 → GridSessionSelectedMsg → AttachDoneMsg → both
+// cursors should be on sess-2.
+func TestFlow_GridSelectAttachDetachRoundTrip(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.AssertActiveSession("sess-1")
+
+	// Open all-projects grid and navigate to sess-2.
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.SendKey("l")
+
+	// Select sess-2 via enter.
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+	f.AssertActiveSession("sess-2")
+
+	// Simulate detach returning (tmux backend path, grid restore).
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreAll})
+
+	// Both grid and sidebar should be on sess-2.
+	f.AssertActiveSession("sess-2")
+
+	model := f.Model()
+	gridSel := model.gridView.Selected()
+	if gridSel == nil || gridSel.ID != "sess-2" {
+		t.Errorf("grid cursor should be on sess-2, got %v", gridSel)
+	}
+
+	sidebarSel := model.sidebar.Selected()
+	if sidebarSel == nil || sidebarSel.SessionID != "sess-2" {
+		t.Errorf("sidebar cursor should be on sess-2, got %v", sidebarSel)
+	}
+}
+
+// TestFlow_GridExitSyncsActiveProjectID verifies that exiting the all-projects
+// grid after navigating to a session in a different project updates
+// ActiveProjectID so the next project-scoped grid shows the right project.
+func TestFlow_GridExitSyncsActiveProjectID(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Initial state: active project is proj-1.
+	if f.Model().appState.ActiveProjectID != "proj-1" {
+		t.Fatalf("initial ActiveProjectID = %q, want proj-1", f.Model().appState.ActiveProjectID)
+	}
+
+	// Open all-projects grid (shows sess-1 from proj-1 and sess-2 from proj-2).
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.AssertGridActive(true)
+
+	// Navigate right to sess-2 (proj-2).
+	f.SendKey("l")
+
+	// Exit grid with esc.
+	f.ExecCmdChain(f.SendSpecialKey(tea.KeyEscape))
+	f.AssertGridActive(false)
+
+	// ActiveProjectID should now be proj-2.
+	if f.Model().appState.ActiveProjectID != "proj-2" {
+		t.Errorf("ActiveProjectID = %q, want proj-2", f.Model().appState.ActiveProjectID)
+	}
+}
+
+// TestFlow_GridAttachSyncsActiveProjectID verifies that selecting a session
+// from a different project in the grid updates ActiveProjectID.
+func TestFlow_GridAttachSyncsActiveProjectID(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	if f.Model().appState.ActiveProjectID != "proj-1" {
+		t.Fatalf("initial ActiveProjectID = %q, want proj-1", f.Model().appState.ActiveProjectID)
+	}
+
+	// Open all-projects grid and navigate to sess-2 (proj-2).
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.SendKey("l")
+
+	// Press enter to select → attach.
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+
+	// ActiveProjectID should be proj-2.
+	if f.Model().appState.ActiveProjectID != "proj-2" {
+		t.Errorf("ActiveProjectID = %q after grid attach, want proj-2", f.Model().appState.ActiveProjectID)
+	}
+}
+
+// TestFlow_GridExitStartsPreviewPoll verifies that exiting the grid with a
+// different active session bumps the preview poll generation so the preview
+// switches to the new session's content.
+func TestFlow_GridExitStartsPreviewPoll(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	genBefore := f.Model().previewPollGen
+
+	// Open all-projects grid and navigate to sess-2.
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.SendKey("l")
+
+	// Exit grid with esc.
+	f.ExecCmdChain(f.SendSpecialKey(tea.KeyEscape))
+
+	genAfter := f.Model().previewPollGen
+	if genAfter <= genBefore {
+		t.Errorf("previewPollGen should increase on grid exit with session change: before=%d after=%d", genBefore, genAfter)
+	}
+}
+
+// TestFlow_BackgroundRebuildDoesNotStealCursor verifies that a background
+// sidebar rebuild (e.g. from a status change) does not move the cursor away
+// from a project/team row the user is navigating.
+func TestFlow_BackgroundRebuildDoesNotStealCursor(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Initial cursor is on sess-1 (index varies, but sidebar should have items).
+	// Move cursor to the project row (index 0).
+	model := f.Model()
+	model.sidebar.Cursor = 0
+	model.appState.ActiveSessionID = "sess-1"
+
+	// Verify cursor is on a project row.
+	sel := model.sidebar.Selected()
+	if sel == nil || sel.Kind != components.KindProject {
+		t.Fatalf("expected cursor on project row, got %v", sel)
+	}
+
+	// Simulate a background status change that triggers Rebuild.
+	model.sidebar.Rebuild(&model.appState)
+
+	// Cursor should still be on the project row, not stolen to sess-1.
+	sel = model.sidebar.Selected()
+	if sel == nil || sel.Kind != components.KindProject {
+		t.Errorf("cursor should stay on project row after background rebuild, got kind=%d", sel.Kind)
+	}
+	if model.sidebar.Cursor != 0 {
+		t.Errorf("cursor moved from 0 to %d during background rebuild", model.sidebar.Cursor)
 	}
 }
 

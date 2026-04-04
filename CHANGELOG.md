@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Selected session persists across views**: the active session now stays
+  selected when switching between sidebar, grid view, and after attach/detach.
+  Previously the sidebar cursor would reset on view transitions.
+- **Active project syncs on grid selection**: selecting a session from a
+  different project in the all-projects grid now updates `ActiveProjectID`,
+  so the next project-scoped grid shows the correct project.
+- **Preview updates on grid exit**: switching sessions via grid exit now
+  restarts preview polling for the newly selected session.
+- **Background rebuilds don't steal cursor**: sidebar rebuilds from
+  background events (title/status watchers) no longer forcibly move the
+  cursor away from project or team rows the user is navigating.
+
 ## [0.2.0] — 2026-04-04
 
 ### Fixed

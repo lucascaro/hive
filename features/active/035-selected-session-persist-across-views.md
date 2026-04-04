@@ -1,11 +1,11 @@
 # Feature: Selected session should persist across views and attach/detach
 
 - **GitHub Issue:** #35
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P2
-- **Branch:** —
+- **Branch:** feature/35-selected-session-persist-across-views
 
 ## Description
 
@@ -68,19 +68,39 @@ is the canonical source of truth, but synchronization between components is inco
 
 ## Plan
 
-<Filled during PLAN stage.>
-
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+1. `internal/tui/app.go:452` — Set `ActiveSessionID` in `GridSessionSelectedMsg` handler before building attach msg (Gap 4)
+2. `internal/tui/app.go:340` — Add `sidebar.Rebuild()` in `AttachDoneMsg` handler (Gap 2)
+3. `internal/tui/app.go:931` — Capture grid selection before `gridView.Update()`, sync sidebar + `ActiveSessionID` on grid exit (Gap 1)
+4. `internal/tui/components/sidebar.go:145` — Replace clamp-only with clamp + `SyncActiveSession(ActiveSessionID)` in `Rebuild()` (Gap 3)
 
 ### Test Strategy
-- <how to verify>
+
+**Unit tests:**
+- `Sidebar.Rebuild()` positions cursor at `ActiveSessionID` (not just clamped)
+- `SyncActiveSession()` with valid/invalid IDs
+
+**Functional tests (Bubble Tea Update loop):**
+1. Grid exit syncs sidebar: grid active with cursor on session B, sidebar on A → send `esc` → verify `ActiveSessionID` == B and sidebar cursor on B
+2. Grid attach sets ActiveSessionID: grid active, cursor on B → `GridSessionSelectedMsg` → verify `ActiveSessionID` == B
+3. AttachDoneMsg syncs sidebar: `ActiveSessionID` = B, sidebar on A → `AttachDoneMsg` → verify sidebar cursor on B
+4. Round-trip grid select → attach → detach: grid cursor on B → `GridSessionSelectedMsg` → `AttachDoneMsg` → verify both cursors on B
 
 ### Risks
-- <what could go wrong>
+- Sidebar rebuild perf: negligible — items lists are small (tens of items)
+- ActiveSessionID not in sidebar (filtered/collapsed): `SyncActiveSession` is a no-op, cursor stays clamped — acceptable
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+All four gaps identified in research were fixed as planned:
 
-- **PR:** —
+1. **Gap 4 — Grid attach sets ActiveSessionID:** Added `m.appState.ActiveSessionID = s.ID` in `GridSessionSelectedMsg` handler before building the attach message.
+2. **Gap 2 — AttachDoneMsg syncs sidebar:** Added `sidebar.Rebuild()` + `sidebar.SyncActiveSession()` in `AttachDoneMsg` handler.
+3. **Gap 1 — Grid exit syncs sidebar:** Capture grid selection before `gridView.Update()`, then sync `ActiveSessionID` and sidebar cursor if the grid was hidden.
+4. **Gap 3 — Rebuild syncs to active session:** After clamping cursor bounds, `Rebuild()` now calls `SyncActiveSession(ActiveSessionID)`.
+
+No deviations from the plan. Tests added:
+- 4 unit tests for sidebar sync behavior (sidebar_test.go)
+- 4 functional flow tests covering grid exit, grid attach, attach-done, and full round-trip (flow_grid_test.go)
+
+- **PR:** https://github.com/lucascaro/hive/pull/42
