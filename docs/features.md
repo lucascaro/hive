@@ -1,6 +1,6 @@
 # Features
 
-This file tracks features that are already implemented in Hive. New ideas should go in `FEATURE_REQUESTS.md` until they are built.
+This file tracks features that are already implemented in Hive. For the feature pipeline (requests, backlog, work-in-progress), see `features/BACKLOG.md`.
 
 ## Projects And Sessions
 

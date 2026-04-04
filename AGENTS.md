@@ -183,3 +183,40 @@ Minor changes (bug fixes, adding a field to an existing struct, small refactors)
   - `docs/features.md` — high-level feature descriptions
   - `docs/design-decisions.md` — only when a significant architectural decision is made
 - If a doc file becomes incorrect after your change, fix it in the same commit.
+
+## Feature Pipeline
+
+Hive uses a local feature tracking system in `features/` linked to GitHub issues. Features are managed via slash commands (skills) that guide each stage.
+
+### Slash Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/feature-next` | Show pipeline status and recommend next action |
+| `/feature-ingest <issue>` | Ingest a GitHub issue into the pipeline |
+| `/feature-triage [issue]` | Classify, estimate complexity, set priority |
+| `/feature-research [issue]` | Explore codebase, document findings |
+| `/feature-plan [issue]` | Write implementation plan |
+| `/feature-implement [issue]` | Code, test, open PR |
+
+### Working on Features
+
+1. **Find the next feature:** Run `/feature-next` or read `features/BACKLOG.md`. The top row in the Active table is the highest priority.
+2. **Advance the stage:** Run the appropriate `/feature-*` command. It will update the feature file, BACKLOG.md, and GitHub labels.
+3. **One feature at a time.** Finish the current stage before moving to the next. Do not skip stages.
+
+### Stage Workflow
+
+- **TRIAGE** — Classify (bug/enhancement), set complexity (S/M/L), accept or reject, set priority in BACKLOG.md.
+- **RESEARCH** — Explore relevant code, document findings in the feature file's Research section. For deep dives, create `research/<slug>/RESEARCH.md`.
+- **PLAN** — Write implementation steps, files to change, test strategy, risks. Get user approval before advancing.
+- **IMPLEMENT** — Create branch, code, test, update CHANGELOG.md and docs per the Documentation Maintenance rules above, open PR referencing `Fixes #<number>`.
+- **DONE** — After PR merge, move file to `features/completed/`, update BACKLOG.md (remove from Active, add to Completed).
+
+### GitHub Labels
+
+Each stage has a corresponding label applied to the GitHub issue: `triaged`, `researching`, `planned`, `implementing`. The `/feature-*` commands manage these automatically.
+
+### Ingesting New Issues
+
+Run `/feature-ingest <issue-number>` or manually create a feature file from the template at `features/templates/FEATURE.md`. Always set initial stage to TRIAGE.
