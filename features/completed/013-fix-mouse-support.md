@@ -1,7 +1,7 @@
 # Feature: Fix mouse support
 
 - **GitHub Issue:** #13
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
