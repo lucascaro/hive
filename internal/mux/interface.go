@@ -56,6 +56,8 @@ type Backend interface {
 	CapturePaneRaw(target string, lines int) (string, error)
 	// GetCurrentCommand returns the name of the foreground process in the pane.
 	GetCurrentCommand(target string) (string, error)
+	// IsPaneDead reports whether the pane's process has exited.
+	IsPaneDead(target string) bool
 
 	// Attach takes over the current terminal and connects it to the window
 	// at target, allowing the user to interact with the running process.
@@ -174,6 +176,9 @@ func CapturePaneRaw(target string, lines int) (string, error) {
 func GetCurrentCommand(target string) (string, error) {
 	return active.GetCurrentCommand(target)
 }
+
+// IsPaneDead reports whether the pane's process has exited.
+func IsPaneDead(target string) bool { return active.IsPaneDead(target) }
 
 // Attach connects the current terminal to the window at target.
 func Attach(target string) error { return active.Attach(target) }
