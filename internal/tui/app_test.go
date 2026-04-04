@@ -481,6 +481,36 @@ func TestStatusesDetectedMsg_IgnoresBackgroundPreview(t *testing.T) {
 	}
 }
 
+func TestAttachDoneMsg_ClearsPreview(t *testing.T) {
+	// When returning from a tmux attach, stale preview content must be cleared
+	// so the user sees a "Waiting for output…" placeholder until fresh content arrives.
+	m := testModelWithSessions()
+	m.appState.PreviewContent = "stale content from before attach"
+	m.preview.SetContent("stale content from before attach")
+
+	result, _ := m.Update(AttachDoneMsg{})
+	updated := result.(Model)
+
+	if updated.appState.PreviewContent != "" {
+		t.Errorf("PreviewContent = %q after AttachDoneMsg, want empty", updated.appState.PreviewContent)
+	}
+}
+
+func TestSessionDetachedMsg_ClearsPreview(t *testing.T) {
+	// When returning from a native backend attach, stale preview content must
+	// be cleared so the user sees a placeholder until fresh content arrives.
+	m := testModelWithSessions()
+	m.appState.PreviewContent = "stale content from before attach"
+	m.preview.SetContent("stale content from before attach")
+
+	result, _ := m.Update(SessionDetachedMsg{})
+	updated := result.(Model)
+
+	if updated.appState.PreviewContent != "" {
+		t.Errorf("PreviewContent = %q after SessionDetachedMsg, want empty", updated.appState.PreviewContent)
+	}
+}
+
 func TestGridSessionSelectedMsg_PreservesProjectGridRestoreMode(t *testing.T) {
 	m := testModelWithSessions()
 	m.gridView.Show(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject)

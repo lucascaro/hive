@@ -337,10 +337,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.appState.RestoreGridMode = msg.RestoreGridMode
 		m.previewPollGen++
+		m.appState.PreviewContent = ""
+		m.preview.SetContent("")
 		return m, m.schedulePollPreview()
 
 	case SessionDetachedMsg:
 		m.previewPollGen++ // returning from native attach; start fresh poll chain
+		m.appState.PreviewContent = ""
+		m.preview.SetContent("")
 		return m, m.schedulePollPreview()
 
 	// --- Team lifecycle ---
