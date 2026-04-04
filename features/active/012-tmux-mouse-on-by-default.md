@@ -5,7 +5,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P5
-- **Branch:** —
+- **Branch:** feature/12-tmux-mouse-on
 
 ## Description
 
@@ -53,4 +53,4 @@ Enable `mouse on` for every tmux session Hive creates, scoped to the session (no
 - `SetOption` is a generic helper (takes key/value) so it can be reused for future tmux session options.
 - Mouse enable failure is silently ignored (`_ = tmux.SetOption(...)`) to keep session creation robust.
 
-- **PR:** —
+- **PR:** #23
