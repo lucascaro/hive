@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -14,14 +13,17 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var sidebarLog = log.New(io.Discard, "", 0)
-var sidebarLogOnce sync.Once
+var (
+	sidebarLog     = log.New(os.Stderr, "[sidebar] ", log.Ltime)
+	sidebarLogOnce sync.Once
+)
 
-func initSidebarLog() {
+// InitSidebarLog upgrades the sidebar logger from stderr to the hive log file.
+// Called once from tui.New() so the log path is resolved after env overrides.
+func InitSidebarLog() {
 	sidebarLogOnce.Do(func() {
 		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			sidebarLog = log.New(os.Stderr, "[sidebar] ", log.Ltime)
 			return
 		}
 		sidebarLog = log.New(f, "[sidebar] ", log.Ltime|log.Lmicroseconds)
@@ -241,7 +243,6 @@ func (s *Sidebar) SyncActiveSession(activeSessionID string) {
 
 // View renders the sidebar content.
 func (s *Sidebar) View(activeSessionID string, focused bool) string {
-	initSidebarLog()
 	if s.Width <= 0 {
 		return ""
 	}

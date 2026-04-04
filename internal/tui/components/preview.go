@@ -1,7 +1,6 @@
 package components
 
 import (
-	"io"
 	"log"
 	"os"
 	"regexp"
@@ -171,14 +170,17 @@ func runeDisplayWidth(r rune) int {
 	}
 }
 
-var previewLog = log.New(io.Discard, "", 0)
-var previewLogOnce sync.Once
+var (
+	previewLog     = log.New(os.Stderr, "[preview] ", log.Ltime)
+	previewLogOnce sync.Once
+)
 
-func initPreviewLog() {
+// InitPreviewLog upgrades the preview logger from stderr to the hive log file.
+// Called once from tui.New() so the log path is resolved after env overrides.
+func InitPreviewLog() {
 	previewLogOnce.Do(func() {
 		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			previewLog = log.New(os.Stderr, "[preview] ", log.Ltime)
 			return
 		}
 		previewLog = log.New(f, "[preview] ", log.Ltime|log.Lmicroseconds)
@@ -202,7 +204,6 @@ type SessionWindowGoneMsg struct {
 // gen is a monotonically increasing generation counter incremented whenever
 // the active session changes, so stale in-flight results can be discarded.
 func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Duration, gen uint64) tea.Cmd {
-	initPreviewLog()
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		if tmuxSession == "" {
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}
@@ -216,6 +217,12 @@ func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Du
 			}
 			previewLog.Printf("PollPreview: CapturePane(%s) error: %v gen=%d", target, err, gen)
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}
+		}
+		// Pane process exited but window still exists (e.g. remain-on-exit).
+		// Treat as gone so hive cleans up the session.
+		if mux.IsPaneDead(target) {
+			previewLog.Printf("PollPreview: pane dead session=%s target=%s gen=%d", sessionID, target, gen)
+			return SessionWindowGoneMsg{SessionID: sessionID}
 		}
 		previewLog.Printf("PollPreview: session=%s contentLen=%d gen=%d", sessionID, len(content), gen)
 		return PreviewUpdatedMsg{SessionID: sessionID, Content: content, Generation: gen}

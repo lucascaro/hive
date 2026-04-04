@@ -205,6 +205,13 @@ func (m *MockBackend) CapturePaneRaw(target string, lines int) (string, error) {
 	return m.paneContents[target], nil
 }
 
+func (m *MockBackend) IsPaneDead(target string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.record("IsPaneDead")
+	return false
+}
+
 func (m *MockBackend) GetCurrentCommand(target string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -227,7 +234,7 @@ func (m *MockBackend) SupportsPopup() bool {
 	return false
 }
 
-func (m *MockBackend) PopupAttach(target string) error {
+func (m *MockBackend) PopupAttach(target, title string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.record("PopupAttach")

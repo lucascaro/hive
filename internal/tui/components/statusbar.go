@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -15,14 +14,17 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var statusLog = log.New(io.Discard, "", 0)
-var statusLogOnce sync.Once
+var (
+	statusLog     = log.New(os.Stderr, "[status] ", log.Ltime)
+	statusLogOnce sync.Once
+)
 
-func initStatusLog() {
+// InitStatusLog upgrades the status logger from stderr to the hive log file.
+// Called once from tui.New() so the log path is resolved after env overrides.
+func InitStatusLog() {
 	statusLogOnce.Do(func() {
 		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			statusLog = log.New(os.Stderr, "[status] ", log.Ltime)
 			return
 		}
 		statusLog = log.New(f, "[status] ", log.Ltime|log.Lmicroseconds)
@@ -36,7 +38,6 @@ type StatusBar struct {
 
 // View renders the status bar given the current app state and key hints.
 func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterActive bool, filterQuery string) string {
-	initStatusLog()
 	w := sb.Width
 	if w <= 0 {
 		w = 80

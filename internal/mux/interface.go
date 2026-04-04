@@ -56,6 +56,8 @@ type Backend interface {
 	CapturePaneRaw(target string, lines int) (string, error)
 	// GetCurrentCommand returns the name of the foreground process in the pane.
 	GetCurrentCommand(target string) (string, error)
+	// IsPaneDead reports whether the pane's process has exited.
+	IsPaneDead(target string) bool
 
 	// Attach takes over the current terminal and connects it to the window
 	// at target, allowing the user to interact with the running process.
@@ -70,8 +72,9 @@ type Backend interface {
 
 	// PopupAttach opens a floating popup overlay connected to the window at
 	// target. Only valid to call when SupportsPopup() returns true.
+	// If title is non-empty it is shown in the popup border.
 	// Returns when the popup closes (user detaches or process exits).
-	PopupAttach(target string) error
+	PopupAttach(target, title string) error
 
 	// UseExecAttach reports whether the TUI should use tea.ExecProcess to run
 	// an external attach command rather than quitting and restarting.
@@ -175,6 +178,9 @@ func GetCurrentCommand(target string) (string, error) {
 	return active.GetCurrentCommand(target)
 }
 
+// IsPaneDead reports whether the pane's process has exited.
+func IsPaneDead(target string) bool { return active.IsPaneDead(target) }
+
 // Attach connects the current terminal to the window at target.
 func Attach(target string) error { return active.Attach(target) }
 
@@ -189,7 +195,7 @@ func SupportsPopup() bool {
 
 // PopupAttach opens a floating popup overlay for the window at target.
 // Only call when SupportsPopup() returns true.
-func PopupAttach(target string) error { return active.PopupAttach(target) }
+func PopupAttach(target, title string) error { return active.PopupAttach(target, title) }
 
 // UseExecAttach reports whether the TUI should use tea.ExecProcess for attach.
 // Returns false if no backend has been set (e.g. in tests), causing the TUI to

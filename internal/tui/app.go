@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -27,17 +26,15 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-// debugLog is the package-level logger. It starts as a discard logger and is
-// upgraded to file-backed on the first New() call. This avoids touching the
-// real config directory during init(), which would interfere with tests.
-var debugLog = log.New(io.Discard, "", 0)
-var debugLogOnce sync.Once
+var (
+	debugLog     = log.New(os.Stderr, "[hive] ", log.Ltime)
+	debugLogOnce sync.Once
+)
 
 func initDebugLog() {
 	debugLogOnce.Do(func() {
 		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			debugLog = log.New(os.Stderr, "[hive] ", log.Ltime)
 			return
 		}
 		debugLog = log.New(f, "[hive] ", log.Ltime|log.Lmicroseconds)
@@ -98,6 +95,9 @@ func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 // New creates the root model.
 func New(cfg config.Config, appState state.AppState) Model {
 	initDebugLog()
+	components.InitSidebarLog()
+	components.InitStatusLog()
+	components.InitPreviewLog()
 	km := NewKeyMap(cfg.Keybindings)
 	ni := textinput.New()
 	ni.CharLimit = 256
@@ -438,10 +438,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var sessionTitle string
 		var agentType state.AgentType
 		var projectName string
+		var status state.SessionStatus
+		var worktreeBranch, worktreePath string
 		if s := m.sessionByTmux(msg.TmuxSession, msg.TmuxWindow); s != nil {
 			sessionTitle = s.Title
 			agentType = s.AgentType
 			projectName = m.projectNameByID(s.ProjectID)
+			status = s.Status
+			worktreeBranch = s.WorktreeBranch
+			worktreePath = s.WorktreePath
 		}
 		attach := &SessionAttachMsg{
 			TmuxSession:     msg.TmuxSession,
@@ -450,6 +455,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			SessionTitle:    sessionTitle,
 			AgentType:       agentType,
 			ProjectName:     projectName,
+			Status:          status,
+			WorktreeBranch:  worktreeBranch,
+			WorktreePath:    worktreePath,
 		}
 		if !m.cfg.HideAttachHint {
 			m.pendingAttach = attach
@@ -468,6 +476,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.inputMode == "new-session" {
 			agentTypeStr := string(msg.AgentType)
+			// Custom command: prompt user for the command to run.
+			if msg.AgentType == state.AgentCustom {
+				m.inputMode = "custom-command"
+				m.nameInput.Placeholder = "command (empty = default shell)"
+				m.nameInput.Reset()
+				blinkCmd := m.nameInput.Focus()
+				return m, blinkCmd
+			}
 			profile := m.cfg.Agents[agentTypeStr]
 			agentBin := agentTypeStr
 			if len(profile.Cmd) > 0 {
@@ -648,6 +664,9 @@ func (m Model) View() string {
 	}
 	if m.inputMode == "project-dir-confirm" {
 		return m.overlayView(m.dirConfirmView())
+	}
+	if m.inputMode == "custom-command" {
+		return m.overlayView(m.nameInputView("Custom Command", "Command to run:", "enter: create  esc: cancel"))
 	}
 	if m.inputMode == "worktree-branch" {
 		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
@@ -863,6 +882,14 @@ func (m *Model) buildKeyHandlers() []KeyHandler {
 			focused: func() bool { return m.inputMode == "project-dir-confirm" },
 			handle: func(msg tea.KeyMsg) tea.Cmd {
 				result, cmd := m.handleDirConfirm(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.inputMode == "custom-command" },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleCustomCommandInput(msg)
 				*m = result.(Model)
 				return cmd
 			},
@@ -1526,6 +1553,52 @@ func (m Model) handleWorktreeBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// --- Custom command input ---
+
+func defaultShell() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		return sh
+	}
+	return "/bin/sh"
+}
+
+func (m Model) handleCustomCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		raw := strings.TrimSpace(m.nameInput.Value())
+		m.nameInput.Blur()
+		m.inputMode = ""
+
+		var agentCmd []string
+		if raw == "" {
+			agentCmd = []string{defaultShell()}
+		} else {
+			agentCmd = []string{raw}
+		}
+
+		if m.pendingWorktree {
+			// Chain to worktree branch input.
+			m.pendingWorktreeAgentType = "custom"
+			m.pendingWorktreeAgentCmd = agentCmd
+			m.inputMode = "worktree-branch"
+			m.nameInput.Placeholder = "branch-name"
+			m.nameInput.Reset()
+			m.nameInput.SetValue(git.RandomBranchName())
+			blinkCmd := m.nameInput.Focus()
+			return m, blinkCmd
+		}
+		return m, m.createSession(m.pendingProjectID, "custom", agentCmd)
+	case "esc":
+		m.nameInput.Blur()
+		m.inputMode = ""
+		m.pendingWorktree = false
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.nameInput, cmd = m.nameInput.Update(msg)
+	return m, cmd
+}
+
 // --- Confirmation ---
 
 func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1906,6 +1979,9 @@ func (m *Model) attachActiveSession() tea.Cmd {
 			SessionTitle:    sess.Title,
 			AgentType:       sess.AgentType,
 			ProjectName:     m.projectNameByID(sess.ProjectID),
+			Status:          sess.Status,
+			WorktreeBranch:  sess.WorktreeBranch,
+			WorktreePath:    sess.WorktreePath,
 		}
 	}
 }
@@ -2119,6 +2195,9 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 		SessionTitle:    sess.Title,
 		AgentType:       sess.AgentType,
 		ProjectName:     m.projectNameByID(sess.ProjectID),
+		Status:          sess.Status,
+		WorktreeBranch:  sess.WorktreeBranch,
+		WorktreePath:    sess.WorktreePath,
 	}
 }
 
@@ -2665,24 +2744,12 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 		return tea.Quit
 	}
 
-	var cmd *exec.Cmd
-	if mux.SupportsPopup() {
-		// Floating popup overlay — TUI stays alive underneath.
-		cmd = exec.Command("tmux", "display-popup",
-			"-E",        // close popup when command exits
-			"-w", "95%",
-			"-h", "90%",
-			"--",
-			"tmux", "attach-session", "-t", target,
-		)
-	} else {
-		// Full-screen attach. Run tmux directly without a shell wrapper.
-		// The terminal title is set by the native RunAttach path only (that
-		// path has an opportunity to write escapes between TUI exit and
-		// attach); for the ExecProcess path the tmux status bar provides
-		// sufficient session context.
-		cmd = exec.Command("tmux", "attach-session", "-t", target)
-	}
+	// Full-screen attach with a tmux top status bar: session info on the
+	// left, detach key hint on the right. The shell script saves/restores
+	// the original tmux status configuration around the attach.
+	header := buildSessionHeader(sess)
+	script := buildAttachScript(sess.TmuxSession, target, header, mux.DetachKey())
+	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -2706,6 +2773,99 @@ func RunAttach(sess SessionAttachMsg) error {
 
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 	return mux.Attach(target)
+}
+
+// statusBarOpts lists the tmux session options we override for the attach status bar.
+var statusBarOpts = []string{
+	"status",
+	"status-position",
+	"status-style",
+	"status-left",
+	"status-right",
+	"status-left-length",
+	"status-right-length",
+}
+
+// buildAttachScript returns a shell script that configures a tmux top status bar
+// with session info and detach hint, attaches to the target, and restores the
+// original status bar settings on detach.
+func buildAttachScript(tmuxSession, target, title, detachKey string) string {
+	sq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	s := sq(tmuxSession)
+	t := sq(target)
+
+	var lines []string
+
+	// Save current status settings. We track both the value and whether the
+	// option had a session-level override (exit code) so we can distinguish
+	// "set to empty string" from "not set at all" during restore.
+	for _, opt := range statusBarOpts {
+		v := strings.ReplaceAll(opt, "-", "_")
+		lines = append(lines,
+			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null) && had_%s=1 || had_%s=0",
+				v, s, opt, v, v))
+	}
+
+	// Configure top status bar: session info on the left, detach hint on the right
+	lines = append(lines,
+		"tmux set-option -t "+s+" status on",
+		"tmux set-option -t "+s+" status-position top",
+		"tmux set-option -t "+s+" status-style 'bg=#1F2937,fg=#F9FAFB'",
+		"tmux set-option -t "+s+" status-left "+sq(" "+title+" "),
+		"tmux set-option -t "+s+" status-left-length 200",
+		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
+		"tmux set-option -t "+s+" status-right-length 40",
+	)
+
+	// Attach (blocks until user detaches)
+	lines = append(lines, "tmux attach-session -t "+t)
+
+	// Restore original settings; unset if the option had no session-level override.
+	// We use the had_* flag (not string emptiness) so intentionally-empty values
+	// like status-left '' are correctly restored.
+	for _, opt := range statusBarOpts {
+		v := strings.ReplaceAll(opt, "-", "_")
+		lines = append(lines,
+			fmt.Sprintf(`if [ "$had_%s" = 1 ]; then tmux set-option -t %s %s "$old_%s"; else tmux set-option -u -t %s %s; fi`,
+				v, s, opt, v, s, opt))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// buildSessionHeader returns a plain-text session summary used as the tmux
+// status-bar left content and popup border title. Format mirrors the grid cell
+// header: status dot, agent badge, title, project, worktree.
+// '#' is escaped to '##' so tmux does not interpret format sequences like #(cmd).
+func buildSessionHeader(sess SessionAttachMsg) string {
+	var dot string
+	switch string(sess.Status) {
+	case "running":
+		dot = "●"
+	case "waiting":
+		dot = "◉"
+	case "dead":
+		dot = "✕"
+	default:
+		dot = "○"
+	}
+
+	// Escape '#' in user-controlled fields so tmux does not interpret
+	// format sequences like #(cmd) which would execute shell commands.
+	esc := func(s string) string { return strings.ReplaceAll(s, "#", "##") }
+
+	title := fmt.Sprintf("%s [%s] %s", dot, esc(string(sess.AgentType)), esc(sess.SessionTitle))
+	if sess.ProjectName != "" {
+		title += " · " + esc(sess.ProjectName)
+	}
+	if sess.WorktreePath != "" {
+		if sess.WorktreeBranch != "" && sess.WorktreeBranch != sess.SessionTitle {
+			title += " ⎇ " + esc(sess.WorktreeBranch)
+		} else {
+			title += " ⎇"
+		}
+	}
+	return title
 }
 
 // buildAttachTitle returns a terminal window title string for the attached session.

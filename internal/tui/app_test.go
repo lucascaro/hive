@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,6 +12,25 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
+
+// TestMain sets HIVE_CONFIG_DIR to a temporary directory so that no test in this
+// package (including helpers like New() that stat config.StatePath()) ever
+// resolves against the real ~/.config/hive.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "hive-tui-test-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot create temp dir: %v\n", err)
+		os.Exit(1)
+	}
+	if err := os.Setenv("HIVE_CONFIG_DIR", dir); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot set HIVE_CONFIG_DIR: %v\n", err)
+		os.RemoveAll(dir)
+		os.Exit(1)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 func testModelWithSessions() Model {
 	cfg := config.DefaultConfig()
@@ -722,5 +742,123 @@ func TestHandleKey_CtrlC_AlwaysQuits(t *testing.T) {
 	msg := cmd()
 	if _, ok := msg.(tea.QuitMsg); !ok {
 		t.Fatalf("ctrl+c cmd returned %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestBuildSessionHeader(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  SessionAttachMsg
+		want string
+	}{
+		{
+			name: "all fields",
+			msg: SessionAttachMsg{
+				SessionTitle:   "fix-bug",
+				AgentType:      "claude",
+				ProjectName:    "myproj",
+				Status:         "running",
+				WorktreePath:   "/tmp/wt",
+				WorktreeBranch: "feat-branch",
+			},
+			want: "● [claude] fix-bug · myproj ⎇ feat-branch",
+		},
+		{
+			name: "no project",
+			msg: SessionAttachMsg{
+				SessionTitle: "task1",
+				AgentType:    "codex",
+				Status:       "idle",
+			},
+			want: "○ [codex] task1",
+		},
+		{
+			name: "worktree branch matches title",
+			msg: SessionAttachMsg{
+				SessionTitle:   "feat-x",
+				AgentType:      "gemini",
+				ProjectName:    "proj",
+				Status:         "waiting",
+				WorktreePath:   "/tmp/wt",
+				WorktreeBranch: "feat-x",
+			},
+			want: "◉ [gemini] feat-x · proj ⎇",
+		},
+		{
+			name: "dead status no worktree",
+			msg: SessionAttachMsg{
+				SessionTitle: "done",
+				AgentType:    "aider",
+				ProjectName:  "p",
+				Status:       "dead",
+			},
+			want: "✕ [aider] done · p",
+		},
+		{
+			name: "worktree with empty branch",
+			msg: SessionAttachMsg{
+				SessionTitle: "s",
+				AgentType:    "claude",
+				Status:       "running",
+				WorktreePath: "/tmp/wt",
+			},
+			want: "● [claude] s ⎇",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildSessionHeader(tt.msg)
+			if got != tt.want {
+				t.Errorf("buildSessionHeader() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildAttachScript(t *testing.T) {
+	script := buildAttachScript("hive-sessions", "hive-sessions:3", "● [claude] my-task · myproj ⎇ feat", "Ctrl+B D")
+	if !strings.Contains(script, "status-position top") {
+		t.Error("script should set status-position top")
+	}
+	if !strings.Contains(script, "tmux attach-session -t 'hive-sessions:3'") {
+		t.Error("script should attach to the correct target")
+	}
+	if !strings.Contains(script, "● [claude] my-task · myproj ⎇ feat") {
+		t.Error("script should contain the title text")
+	}
+	if !strings.Contains(script, "Ctrl+B D: detach") {
+		t.Error("script should show detach key hint")
+	}
+	// Verify restore uses had_* flag (not string emptiness) for correctness
+	if !strings.Contains(script, `had_status" = 1`) {
+		t.Error("script should use had_* flag for restore decisions")
+	}
+	if !strings.Contains(script, "set-option -u") {
+		t.Error("script should restore/unset status settings")
+	}
+}
+
+func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {
+	script := buildAttachScript("hive's-sess", "hive's-sess:0", "it's a test", "Ctrl+B D")
+	if strings.Contains(script, "hive's-sess") {
+		t.Error("unescaped single quotes in session name")
+	}
+	if !strings.Contains(script, "tmux attach-session") {
+		t.Error("script should contain attach command")
+	}
+}
+
+func TestBuildSessionHeader_EscapesHash(t *testing.T) {
+	got := buildSessionHeader(SessionAttachMsg{
+		SessionTitle: "fix #123",
+		AgentType:    "claude",
+		ProjectName:  "my#proj",
+		Status:       "running",
+	})
+	if strings.Contains(got, "fix #1") && !strings.Contains(got, "fix ##1") {
+		t.Errorf("expected '#' to be escaped to '##', got %q", got)
+	}
+	if strings.Contains(got, "my#p") && !strings.Contains(got, "my##p") {
+		t.Errorf("expected '#' in project name to be escaped, got %q", got)
 	}
 }

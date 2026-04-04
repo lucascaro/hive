@@ -25,9 +25,12 @@ type SessionAttachMsg struct {
 	TmuxWindow      int
 	RestoreGridMode state.GridRestoreMode
 	// Display metadata used to set the terminal window title while attached.
-	SessionTitle string
-	AgentType    state.AgentType
-	ProjectName  string
+	SessionTitle   string
+	AgentType      state.AgentType
+	ProjectName    string
+	Status         state.SessionStatus
+	WorktreeBranch string
+	WorktreePath   string
 }
 
 // SessionDetachedMsg is retained for the legacy native-backend attach/restart

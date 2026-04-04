@@ -124,6 +124,8 @@ func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 	return "", nil
 }
 
+func (b *Backend) IsPaneDead(_ string) bool { return false }
+
 func (b *Backend) Attach(target string) error {
 	return clientAttach(b.client, target)
 }
@@ -141,6 +143,6 @@ func (b *Backend) SupportsPopup() bool { return false }
 
 // PopupAttach is not implemented for the native backend.
 // Always returns an error; callers must check SupportsPopup first.
-func (b *Backend) PopupAttach(_ string) error {
+func (b *Backend) PopupAttach(_, _ string) error {
 	return errors.New("popup attach is not supported by the native PTY backend")
 }
