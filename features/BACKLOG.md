@@ -7,8 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #22 | Grid mode not restored after attach → detach | IMPLEMENT | S |
-| 2 | #15 | Branch info | RESEARCH | S |
+| 1 | #15 | Branch info | RESEARCH | S |
 
 ## Completed
 
@@ -17,3 +16,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #13 | Fix mouse support | #24 | 2026-04-03 |
 | #12 | tmux mouse on by default | #23 | 2026-04-03 |
 | #16 | Stale preview on exit back to main view | #20 | 2026-04-04 |
+| #22 | Grid mode not restored after attach → detach | #25 | 2026-04-04 |
