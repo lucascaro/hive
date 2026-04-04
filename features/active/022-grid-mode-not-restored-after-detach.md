@@ -62,4 +62,4 @@ Add grid restoration logic to the `AttachDoneMsg` handler, mirroring what `New()
 - No deviations from plan; fix was exactly as described
 - Added three tests covering: project grid restore, all-projects grid restore, and no-restore-when-none
 
-- **PR:** —
+- **PR:** https://github.com/lucascaro/hive/pull/25
