@@ -22,8 +22,11 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "cannot create temp dir: %v\n", err)
 		os.Exit(1)
 	}
-	os.Setenv("HIVE_CONFIG_DIR", dir)
-	os.MkdirAll(dir, 0o755)
+	if err := os.Setenv("HIVE_CONFIG_DIR", dir); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot set HIVE_CONFIG_DIR: %v\n", err)
+		os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
