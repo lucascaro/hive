@@ -142,12 +142,14 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 			})
 		}
 	}
-	// Clamp cursor, then sync to active session if possible.
+	// Clamp cursor. Only sync to the active session when the cursor was out of
+	// bounds (e.g. a session was removed), so background rebuilds don't steal
+	// focus from project/team rows the user is navigating.
 	if s.Cursor >= len(s.Items) {
 		s.Cursor = max(0, len(s.Items)-1)
-	}
-	if appState.ActiveSessionID != "" {
-		s.SyncActiveSession(appState.ActiveSessionID)
+		if appState.ActiveSessionID != "" {
+			s.SyncActiveSession(appState.ActiveSessionID)
+		}
 	}
 }
 

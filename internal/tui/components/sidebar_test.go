@@ -311,11 +311,12 @@ func TestSidebar_WorktreeBadge(t *testing.T) {
 	}
 }
 
-func TestSidebarRebuild_SyncsToActiveSession(t *testing.T) {
+func TestSidebarRebuild_SyncsOnClamp(t *testing.T) {
 	appState := testAppState()
 	appState.ActiveSessionID = "s3" // solo-session
 
-	s := &Sidebar{}
+	// Cursor starts out of bounds — Rebuild should clamp and sync to active session.
+	s := &Sidebar{Cursor: 999}
 	s.Rebuild(appState)
 
 	sel := s.Selected()
@@ -323,7 +324,20 @@ func TestSidebarRebuild_SyncsToActiveSession(t *testing.T) {
 		t.Fatal("Selected() returned nil")
 	}
 	if sel.SessionID != "s3" {
-		t.Errorf("cursor should be on active session s3, got %q", sel.SessionID)
+		t.Errorf("cursor should sync to active session s3 after clamp, got %q", sel.SessionID)
+	}
+}
+
+func TestSidebarRebuild_NoSyncWhenInBounds(t *testing.T) {
+	appState := testAppState()
+	appState.ActiveSessionID = "s3" // solo-session is at index 4
+
+	// Cursor starts at 0 (project row), in bounds — Rebuild should NOT move it.
+	s := &Sidebar{Cursor: 0}
+	s.Rebuild(appState)
+
+	if s.Cursor != 0 {
+		t.Errorf("cursor should stay at 0 (project row) during in-bounds rebuild, got %d", s.Cursor)
 	}
 }
 
