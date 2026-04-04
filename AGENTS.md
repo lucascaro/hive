@@ -185,6 +185,20 @@ Minor changes (bug fixes, adding a field to an existing struct, small refactors)
   - `docs/design-decisions.md` — only when a significant architectural decision is made
 - If a doc file becomes incorrect after your change, fix it in the same commit.
 
+## Releasing
+
+Use the release script to publish a new version:
+
+```bash
+./scripts/release.sh <version>    # e.g. ./scripts/release.sh 0.3.0
+```
+
+The script handles everything: version bump (`cmd/version.go`), changelog stamp, commit, tag, cross-compilation (darwin arm64/amd64, linux amd64/arm64, windows amd64), GitHub release with attached binaries, and push.
+
+**Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]` section in CHANGELOG.md.
+
+**Version scheme:** [Semantic Versioning](https://semver.org/) — bump minor for new features, patch for bug fixes.
+
 ## Feature Pipeline
 
 Hive uses a local feature tracking system in `features/` linked to GitHub issues. Features are managed via slash commands (skills) that guide each stage.
