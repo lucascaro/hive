@@ -7,7 +7,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #28 | Grid view previews not updating after detach/reattach | IMPLEMENT | S |
 | — | #34 | Terminal bell does not produce audible sound | TRIAGE | — |
 | — | #35 | Selected session should persist across views and attach/detach | TRIAGE | — |
 | — | #36 | Add missing tests | TRIAGE | — |
@@ -28,3 +27,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #26 | Remove redundant worktree title | #29 | 2026-04-04 |
 | #27 | Purple/green full-screen styling | #32 | 2026-04-04 |
 | #30 | Terminal flashes previous content on attach/detach | #33 | 2026-04-04 |
+| #28 | Grid view previews not updating after detach/reattach | #31 | 2026-04-04 |
