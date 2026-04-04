@@ -344,7 +344,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appState.RestoreGridMode = msg.RestoreGridMode
 		m.restoreGrid()
 		m.sidebar.Rebuild(&m.appState)
-		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 		m.previewPollGen++
 		m.appState.PreviewContent = ""
 		m.preview.SetContent("")
