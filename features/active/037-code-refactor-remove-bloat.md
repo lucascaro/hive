@@ -1,10 +1,10 @@
 # Feature: Code refactor: remove bloat
 
 - **GitHub Issue:** #37
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** L
+- **Priority:** P5
 - **Branch:** —
 
 ## Description

@@ -1,10 +1,10 @@
 # Feature: Simplify detach shortcut to a single key combo
 
 - **GitHub Issue:** #41
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** S
+- **Priority:** P3
 - **Branch:** —
 
 ## Description

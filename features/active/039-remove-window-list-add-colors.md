@@ -1,10 +1,10 @@
 # Feature: Remove window list from title bar and add more text colors
 
 - **GitHub Issue:** #39
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** S
+- **Priority:** P3
 - **Branch:** —
 
 ## Description

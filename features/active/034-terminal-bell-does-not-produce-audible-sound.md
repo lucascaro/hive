@@ -1,10 +1,10 @@
 # Feature: Terminal bell does not produce audible sound
 
 - **GitHub Issue:** #34
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** bug
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** S
+- **Priority:** P4
 - **Branch:** —
 
 ## Description

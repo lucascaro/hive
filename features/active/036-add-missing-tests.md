@@ -1,10 +1,10 @@
 # Feature: Add missing tests
 
 - **GitHub Issue:** #36
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** L
+- **Priority:** P3
 - **Branch:** —
 
 ## Description

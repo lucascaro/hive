@@ -1,10 +1,10 @@
 # Feature: Selected session should persist across views and attach/detach
 
 - **GitHub Issue:** #35
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** bug
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** M
+- **Priority:** P2
 - **Branch:** —
 
 ## Description

@@ -1,10 +1,10 @@
 # Feature: Ability to reorder sessions within a project
 
 - **GitHub Issue:** #40
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** L
+- **Priority:** P4
 - **Branch:** —
 
 ## Description
