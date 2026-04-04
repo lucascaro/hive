@@ -2769,6 +2769,12 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Clear the main screen buffer (behind alt screen) so that when Bubble
+	// Tea's RestoreTerminal() exits the alt screen to run the exec, the user
+	// sees a blank screen instead of pre-hive terminal content. This is a
+	// single synchronous write: exit alt screen → clear → re-enter alt screen.
+	os.Stdout.WriteString("\033[?1049l\033[2J\033[H\033[?1049h")
+
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode}
 	})
@@ -2810,6 +2816,15 @@ func buildAttachScript(tmuxSession, target, title, detachKey string) string {
 	t := sq(target)
 
 	var lines []string
+
+	// Enter an alternate screen buffer so the main terminal content (whatever
+	// was visible before hive started) is hidden during the Bubble Tea
+	// RestoreTerminal → tmux attach transition. The EXIT trap ensures we leave
+	// the alt screen even if tmux attach fails.
+	lines = append(lines,
+		`printf '\033[?1049h\033[2J'`,
+		`trap "printf '\\033[?1049l'" EXIT`,
+	)
 
 	// Save current status settings. We track both the value and whether the
 	// option had a session-level override (exit code) so we can distinguish
