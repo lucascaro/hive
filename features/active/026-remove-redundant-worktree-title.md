@@ -41,4 +41,4 @@ When a worktree session's title matches the worktree branch name, the sidebar sh
 - No deviations from plan. The fix mirrors the existing grid view pattern exactly.
 - Added `TestSidebar_WorktreeBadge` with three cases: same branch, different branch, no worktree.
 
-- **PR:** —
+- **PR:** #29
