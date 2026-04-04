@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -13,15 +14,21 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var statusLog *log.Logger
+var (
+	statusLog     = log.New(os.Stderr, "[status] ", log.Ltime)
+	statusLogOnce sync.Once
+)
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		statusLog = log.New(os.Stderr, "[status] ", log.Ltime)
-		return
-	}
-	statusLog = log.New(f, "[status] ", log.Ltime|log.Lmicroseconds)
+// InitStatusLog upgrades the status logger from stderr to the hive log file.
+// Called once from tui.New() so the log path is resolved after env overrides.
+func InitStatusLog() {
+	statusLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return
+		}
+		statusLog = log.New(f, "[status] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // StatusBar renders the two-line status bar at the bottom.

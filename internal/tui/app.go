@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -25,15 +26,19 @@ import (
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
-var debugLog *log.Logger
+var (
+	debugLog     = log.New(os.Stderr, "[hive] ", log.Ltime)
+	debugLogOnce sync.Once
+)
 
-func init() {
-	f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		debugLog = log.New(os.Stderr, "[hive] ", log.Ltime)
-		return
-	}
-	debugLog = log.New(f, "[hive] ", log.Ltime|log.Lmicroseconds)
+func initDebugLog() {
+	debugLogOnce.Do(func() {
+		f, err := os.OpenFile(config.LogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return
+		}
+		debugLog = log.New(f, "[hive] ", log.Ltime|log.Lmicroseconds)
+	})
 }
 
 // Model is the root Bubble Tea model.
@@ -89,6 +94,10 @@ func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 
 // New creates the root model.
 func New(cfg config.Config, appState state.AppState) Model {
+	initDebugLog()
+	components.InitSidebarLog()
+	components.InitStatusLog()
+	components.InitPreviewLog()
 	km := NewKeyMap(cfg.Keybindings)
 	ni := textinput.New()
 	ni.CharLimit = 256

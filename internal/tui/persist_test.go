@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -202,6 +203,26 @@ func TestSaveState_ConcurrentWritesNoCorruption(t *testing.T) {
 	}
 	if len(loaded) != 1 {
 		t.Fatalf("LoadState() returned %d projects, want 1 (last writer wins)", len(loaded))
+	}
+}
+
+func TestSaveState_NilProjectsWritesEmptyArray(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+
+	appState := &state.AppState{Projects: nil}
+	if _, err := saveState(appState); err != nil {
+		t.Fatalf("saveState() error: %v", err)
+	}
+
+	data, err := os.ReadFile(config.StatePath())
+	if err != nil {
+		t.Fatalf("read state file: %v", err)
+	}
+	got := strings.TrimSpace(string(data))
+	if got != "[]" {
+		t.Errorf("state file content = %q, want %q", got, "[]")
 	}
 }
 

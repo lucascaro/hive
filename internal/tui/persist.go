@@ -61,7 +61,11 @@ func saveState(appState *state.AppState) (time.Time, error) {
 		}
 	}()
 
-	data, err := json.MarshalIndent(appState.Projects, "", "  ")
+	projects := appState.Projects
+	if projects == nil {
+		projects = []*state.Project{}
+	}
+	data, err := json.MarshalIndent(projects, "", "  ")
 	if err != nil {
 		return time.Time{}, err
 	}
