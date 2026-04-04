@@ -7,7 +7,9 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #15 | Branch info | RESEARCH | S |
+| 1 | #15 | Branch info | PLAN | S |
+| 2 | #26 | Remove redundant worktree title | PLAN | S |
+| 3 | #27 | Purple/green full-screen styling | RESEARCH | S |
 
 ## Completed
 
