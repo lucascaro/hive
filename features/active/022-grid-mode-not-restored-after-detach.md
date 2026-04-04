@@ -5,7 +5,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Branch:** —
+- **Branch:** feature/22-grid-mode-restore-after-detach
 
 ## Description
 
@@ -57,6 +57,9 @@ Add grid restoration logic to the `AttachDoneMsg` handler, mirroring what `New()
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- Extracted grid restoration logic from `New()` into `restoreGrid()` method on `*Model`
+- Called `restoreGrid()` from both `New()` (native backend path) and `AttachDoneMsg` handler (tmux backend path)
+- No deviations from plan; fix was exactly as described
+- Added three tests covering: project grid restore, all-projects grid restore, and no-restore-when-none
 
 - **PR:** —

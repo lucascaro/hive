@@ -152,18 +152,24 @@ func New(cfg config.Config, appState state.AppState) Model {
 		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
 	}
 	// Restore the grid view if the user detached from a grid-initiated session.
-	if m.appState.RestoreGridMode != state.GridRestoreNone {
-		mode := m.appState.RestoreGridMode
-		m.appState.RestoreGridMode = state.GridRestoreNone
-		sessions := m.gridSessions(mode)
-		m.gridView.Show(sessions, mode)
-		m.gridView.SetProjectNames(m.gridProjectNames())
-		m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
-		m.gridView.SyncCursor(m.appState.ActiveSessionID)
-	}
+	m.restoreGrid()
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
 	return m
+}
+
+// restoreGrid re-opens the grid view if RestoreGridMode is set, then clears the flag.
+func (m *Model) restoreGrid() {
+	if m.appState.RestoreGridMode == state.GridRestoreNone {
+		return
+	}
+	mode := m.appState.RestoreGridMode
+	m.appState.RestoreGridMode = state.GridRestoreNone
+	sessions := m.gridSessions(mode)
+	m.gridView.Show(sessions, mode)
+	m.gridView.SetProjectNames(m.gridProjectNames())
+	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
+	m.gridView.SyncCursor(m.appState.ActiveSessionID)
 }
 
 // expandForActiveSession un-collapses any parent project or team that contains
@@ -336,6 +342,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, func() tea.Msg { return ErrorMsg{Err: msg.Err} }
 		}
 		m.appState.RestoreGridMode = msg.RestoreGridMode
+		m.restoreGrid()
 		m.previewPollGen++
 		m.appState.PreviewContent = ""
 		m.preview.SetContent("")
