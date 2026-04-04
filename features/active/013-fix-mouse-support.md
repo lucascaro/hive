@@ -76,4 +76,4 @@ Re-enable mouse cell motion after `tea.ExecProcess` returns by batching `tea.Ena
 - Test uses `fmt.Sprintf("%T")` to check for unexported `tea.enableMouseCellMotionMsg` in the batch, since bubbletea doesn't export the msg type
 - All checks pass: `go build`, `go vet`, `go test ./...`
 
-- **PR:** —
+- **PR:** #24
