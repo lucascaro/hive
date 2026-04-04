@@ -27,6 +27,12 @@ func CapturePaneRaw(target string, lines int) (string, error) {
 	return Exec(args...)
 }
 
+// IsPaneDead reports whether the pane's process has exited.
+func IsPaneDead(target string) bool {
+	out, err := Exec("display-message", "-p", "-t", target, "#{pane_dead}")
+	return err == nil && out == "1"
+}
+
 // GetCurrentCommand returns the name of the foreground process running in the pane.
 func GetCurrentCommand(target string) (string, error) {
 	return Exec("display-message", "-p", "-t", target, "#{pane_current_command}")

@@ -68,6 +68,8 @@ type Model struct {
 	pendingWorktree          bool   // true when the next session should use a worktree
 	pendingWorktreeAgentType string // agent type selected for worktree session
 	pendingWorktreeAgentCmd  []string
+	// Custom command session creation
+	pendingCustomCmd []string // custom command parsed from user input
 	// Attach hint overlay
 	showAttachHint bool
 	pendingAttach  *SessionAttachMsg
@@ -468,6 +470,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.inputMode == "new-session" {
 			agentTypeStr := string(msg.AgentType)
+			// Custom command: prompt user for the command to run.
+			if msg.AgentType == state.AgentCustom {
+				m.inputMode = "custom-command"
+				m.nameInput.Placeholder = "command (empty = default shell)"
+				m.nameInput.Reset()
+				blinkCmd := m.nameInput.Focus()
+				return m, blinkCmd
+			}
 			profile := m.cfg.Agents[agentTypeStr]
 			agentBin := agentTypeStr
 			if len(profile.Cmd) > 0 {
@@ -648,6 +658,9 @@ func (m Model) View() string {
 	}
 	if m.inputMode == "project-dir-confirm" {
 		return m.overlayView(m.dirConfirmView())
+	}
+	if m.inputMode == "custom-command" {
+		return m.overlayView(m.nameInputView("Custom Command", "Command to run:", "enter: create  esc: cancel"))
 	}
 	if m.inputMode == "worktree-branch" {
 		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
@@ -863,6 +876,14 @@ func (m *Model) buildKeyHandlers() []KeyHandler {
 			focused: func() bool { return m.inputMode == "project-dir-confirm" },
 			handle: func(msg tea.KeyMsg) tea.Cmd {
 				result, cmd := m.handleDirConfirm(msg)
+				*m = result.(Model)
+				return cmd
+			},
+		},
+		componentHandler{
+			focused: func() bool { return m.inputMode == "custom-command" },
+			handle: func(msg tea.KeyMsg) tea.Cmd {
+				result, cmd := m.handleCustomCommandInput(msg)
 				*m = result.(Model)
 				return cmd
 			},
@@ -1519,6 +1540,52 @@ func (m Model) handleWorktreeBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pendingWorktree = false
 		m.pendingWorktreeAgentType = ""
 		m.pendingWorktreeAgentCmd = nil
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.nameInput, cmd = m.nameInput.Update(msg)
+	return m, cmd
+}
+
+// --- Custom command input ---
+
+func defaultShell() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		return sh
+	}
+	return "/bin/sh"
+}
+
+func (m Model) handleCustomCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		raw := strings.TrimSpace(m.nameInput.Value())
+		m.nameInput.Blur()
+		m.inputMode = ""
+
+		var agentCmd []string
+		if raw == "" {
+			agentCmd = []string{defaultShell()}
+		} else {
+			agentCmd = strings.Fields(raw)
+		}
+
+		if m.pendingWorktree {
+			// Chain to worktree branch input.
+			m.pendingWorktreeAgentType = "custom"
+			m.pendingWorktreeAgentCmd = agentCmd
+			m.inputMode = "worktree-branch"
+			m.nameInput.Placeholder = "branch-name"
+			m.nameInput.Reset()
+			m.nameInput.SetValue(git.RandomBranchName())
+			blinkCmd := m.nameInput.Focus()
+			return m, blinkCmd
+		}
+		return m, m.createSession(m.pendingProjectID, "custom", agentCmd)
+	case "esc":
+		m.nameInput.Blur()
+		m.inputMode = ""
+		m.pendingWorktree = false
 		return m, nil
 	}
 	var cmd tea.Cmd

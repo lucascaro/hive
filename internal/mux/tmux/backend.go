@@ -65,6 +65,8 @@ func (b *Backend) GetCurrentCommand(target string) (string, error) {
 	return tmux.GetCurrentCommand(target)
 }
 
+func (b *Backend) IsPaneDead(target string) bool { return tmux.IsPaneDead(target) }
+
 // DetachKey returns the tmux detach key description.
 func (b *Backend) DetachKey() string { return "Ctrl+B D" }
 

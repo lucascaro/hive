@@ -44,6 +44,7 @@ func (b *Backend) ListWindows(_ string) ([]mux.WindowInfo, error)         { retu
 func (b *Backend) CapturePane(_ string, _ int) (string, error)            { return "", errNotSupported }
 func (b *Backend) CapturePaneRaw(_ string, _ int) (string, error)         { return "", errNotSupported }
 func (b *Backend) GetCurrentCommand(_ string) (string, error)             { return "", errNotSupported }
+func (b *Backend) IsPaneDead(_ string) bool                                { return false }
 func (b *Backend) Attach(_ string) error                                   { return errNotSupported }
 func (b *Backend) DetachKey() string                                       { return "" }
 func (b *Backend) SupportsPopup() bool                                     { return false }

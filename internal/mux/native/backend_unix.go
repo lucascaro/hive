@@ -124,6 +124,8 @@ func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 	return "", nil
 }
 
+func (b *Backend) IsPaneDead(_ string) bool { return false }
+
 func (b *Backend) Attach(target string) error {
 	return clientAttach(b.client, target)
 }

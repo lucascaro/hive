@@ -218,6 +218,12 @@ func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Du
 			previewLog.Printf("PollPreview: CapturePane(%s) error: %v gen=%d", target, err, gen)
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}
 		}
+		// Pane process exited but window still exists (e.g. remain-on-exit).
+		// Treat as gone so hive cleans up the session.
+		if mux.IsPaneDead(target) {
+			previewLog.Printf("PollPreview: pane dead session=%s target=%s gen=%d", sessionID, target, gen)
+			return SessionWindowGoneMsg{SessionID: sessionID}
+		}
 		previewLog.Printf("PollPreview: session=%s contentLen=%d gen=%d", sessionID, len(content), gen)
 		return PreviewUpdatedMsg{SessionID: sessionID, Content: content, Generation: gen}
 	})
