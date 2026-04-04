@@ -81,15 +81,19 @@ func (b *Backend) SupportsPopup() bool {
 
 // PopupAttach opens a floating tmux popup overlay connected to the window at
 // target. The popup fills 95 % of the terminal width and 90 % of its height.
+// If title is non-empty it is displayed in the popup border via -T.
 // It closes automatically when the attached session detaches or the process exits.
-func (b *Backend) PopupAttach(target string) error {
-	cmd := exec.Command("tmux", "display-popup",
-		"-E",           // close popup when command exits
+func (b *Backend) PopupAttach(target, title string) error {
+	args := []string{"display-popup",
+		"-E", // close popup when command exits
 		"-w", "95%",
 		"-h", "90%",
-		"--",
-		"tmux", "attach-session", "-t", target,
-	)
+	}
+	if title != "" {
+		args = append(args, "-T", " "+title+" ")
+	}
+	args = append(args, "--", "tmux", "attach-session", "-t", target)
+	cmd := exec.Command("tmux", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
