@@ -57,6 +57,11 @@ is the canonical source of truth, but synchronization between components is inco
 - `internal/tui/app.go:1011-1022` — grid toggle: correctly syncs grid on entry, no sidebar sync on exit
 - `internal/tui/app.go:964` — `handleGridKey` processes grid exit but doesn't sync sidebar
 
+4. **Grid attach doesn't update ActiveSessionID:** The `GridSessionSelectedMsg` handler
+   (app.go:452-483) looks up the session to populate the attach message but **never sets
+   `ActiveSessionID`**. After detach, `restoreGrid()` syncs the grid cursor to the old
+   `ActiveSessionID`, not the session the user actually attached from.
+
 ### Constraints / Dependencies
 - Sidebar cursor is an index into a flattened item list (projects + teams + sessions), not a direct session index — syncing by ID requires `SyncActiveSession()`
 - `ActiveSessionID` must be updated when the grid cursor changes (e.g., user navigates in grid then attaches)
