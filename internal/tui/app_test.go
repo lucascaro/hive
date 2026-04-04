@@ -898,6 +898,13 @@ func TestBuildAttachScript(t *testing.T) {
 	if !strings.Contains(script, "set-option -u") {
 		t.Error("script should restore/unset status settings")
 	}
+	// Verify alt screen wrapper to prevent terminal flash
+	if !strings.Contains(script, `\033[?1049h`) {
+		t.Error("script should enter alt screen buffer before attach")
+	}
+	if !strings.Contains(script, `trap`) && !strings.Contains(script, `\033[?1049l`) {
+		t.Error("script should have EXIT trap to leave alt screen")
+	}
 }
 
 func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {

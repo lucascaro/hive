@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **No terminal flash on attach/detach**: transitioning between grid view and
+  full-screen session no longer briefly flashes the pre-hive terminal content.
+  The attach script now uses its own alternate screen buffer to hide the main
+  terminal during the transition.
 - **Grid previews resume after detach**: returning from a full-screen attached
   session to the grid view now correctly restarts preview polling, so tiles
   show live output instead of stale content.
