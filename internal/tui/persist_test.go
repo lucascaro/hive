@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -219,8 +220,9 @@ func TestSaveState_NilProjectsWritesEmptyArray(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read state file: %v", err)
 	}
-	if string(data) != "[]" {
-		t.Errorf("state file content = %q, want %q", string(data), "[]")
+	got := strings.TrimSpace(string(data))
+	if got != "[]" {
+		t.Errorf("state file content = %q, want %q", got, "[]")
 	}
 }
 
