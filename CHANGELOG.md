@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Selected session persists across views**: the active session now stays
+  selected when switching between sidebar, grid view, and after attach/detach.
+  Previously the sidebar cursor would reset on view transitions.
+
 ## [0.2.0] — 2026-04-04
 
 ### Fixed

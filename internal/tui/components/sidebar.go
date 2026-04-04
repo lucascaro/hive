@@ -142,9 +142,12 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 			})
 		}
 	}
-	// Clamp cursor.
+	// Clamp cursor, then sync to active session if possible.
 	if s.Cursor >= len(s.Items) {
 		s.Cursor = max(0, len(s.Items)-1)
+	}
+	if appState.ActiveSessionID != "" {
+		s.SyncActiveSession(appState.ActiveSessionID)
 	}
 }
 

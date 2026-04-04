@@ -311,6 +311,59 @@ func TestSidebar_WorktreeBadge(t *testing.T) {
 	}
 }
 
+func TestSidebarRebuild_SyncsToActiveSession(t *testing.T) {
+	appState := testAppState()
+	appState.ActiveSessionID = "s3" // solo-session
+
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	sel := s.Selected()
+	if sel == nil {
+		t.Fatal("Selected() returned nil")
+	}
+	if sel.SessionID != "s3" {
+		t.Errorf("cursor should be on active session s3, got %q", sel.SessionID)
+	}
+}
+
+func TestSidebarRebuild_ClampsWhenActiveNotFound(t *testing.T) {
+	appState := testAppState()
+	appState.ActiveSessionID = "nonexistent"
+
+	s := &Sidebar{Cursor: 999}
+	s.Rebuild(appState)
+
+	// Should clamp to valid range, not crash
+	if s.Cursor < 0 || s.Cursor >= len(s.Items) {
+		t.Errorf("cursor %d out of range [0, %d)", s.Cursor, len(s.Items))
+	}
+}
+
+func TestSyncActiveSession_ValidID(t *testing.T) {
+	appState := testAppState()
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	s.SyncActiveSession("s4")
+	sel := s.Selected()
+	if sel == nil || sel.SessionID != "s4" {
+		t.Errorf("SyncActiveSession(s4): got %v", sel)
+	}
+}
+
+func TestSyncActiveSession_InvalidID(t *testing.T) {
+	appState := testAppState()
+	s := &Sidebar{}
+	s.Rebuild(appState)
+	origCursor := s.Cursor
+
+	s.SyncActiveSession("nonexistent")
+	if s.Cursor != origCursor {
+		t.Errorf("SyncActiveSession with invalid ID changed cursor from %d to %d", origCursor, s.Cursor)
+	}
+}
+
 func TestMatchesSessionFilter(t *testing.T) {
 	sess := &state.Session{
 		Title:     "my-worker",
