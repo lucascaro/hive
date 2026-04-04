@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #26 | Remove redundant worktree title | IMPLEMENT | S |
+| 1 | #28 | Grid view previews not updating after detach/reattach | PLAN | S |
 | 2 | #27 | Purple/green full-screen styling | RESEARCH | S |
 
 ## Completed
@@ -18,3 +18,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #12 | tmux mouse on by default | #23 | 2026-04-03 |
 | #16 | Stale preview on exit back to main view | #20 | 2026-04-04 |
 | #22 | Grid mode not restored after attach → detach | #25 | 2026-04-04 |
+| #26 | Remove redundant worktree title | #29 | 2026-04-04 |
