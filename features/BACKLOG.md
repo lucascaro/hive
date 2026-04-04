@@ -8,7 +8,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | 1 | #28 | Grid view previews not updating after detach/reattach | IMPLEMENT | S |
-| 3 | #30 | Terminal flashes previous content when attaching/detaching sessions | IMPLEMENT | M |
 
 ## Completed
 
@@ -20,3 +19,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #22 | Grid mode not restored after attach → detach | #25 | 2026-04-04 |
 | #26 | Remove redundant worktree title | #29 | 2026-04-04 |
 | #27 | Purple/green full-screen styling | #32 | 2026-04-04 |
+| #30 | Terminal flashes previous content on attach/detach | #33 | 2026-04-04 |
