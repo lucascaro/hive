@@ -62,4 +62,4 @@ This was a gap in the #22 fix (commit 2388766) which added `restoreGrid()` but f
 - No deviations from plan. Added `scheduleGridPoll()` to the `AttachDoneMsg` handler's `tea.Batch`, guarded by `gridView.Active`.
 - Test executes the `tea.BatchMsg` sub-commands and verifies one produces `GridPreviewsUpdatedMsg`.
 
-- **PR:** —
+- **PR:** #31
