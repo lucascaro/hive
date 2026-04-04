@@ -2825,7 +2825,7 @@ func buildAttachScript(tmuxSession, target, title, detachKey string) string {
 	lines = append(lines,
 		"tmux set-option -t "+s+" status on",
 		"tmux set-option -t "+s+" status-position top",
-		"tmux set-option -t "+s+" status-style 'bg=#1F2937,fg=#F9FAFB'",
+		"tmux set-option -t "+s+" status-style 'bg=#7C3AED,fg=#F9FAFB'",
 		"tmux set-option -t "+s+" status-left "+sq(" "+title+" "),
 		"tmux set-option -t "+s+" status-left-length 200",
 		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
