@@ -115,6 +115,7 @@ escape.Watcher polls CapturePaneRaw every 500ms
 - **`internal/state/`** — pure unit tests, no I/O mocking needed
 - **`internal/config/`** — tests use `t.TempDir()` for isolation
 - **`internal/tui/`** — component tests use `tea.NewProgram` with a fake model or direct `Update()` calls
+- **`internal/tui/` tick intervals** — always set `cfg.PreviewRefreshMs = 1` in test helpers to avoid blocking on real-time `tea.Tick` intervals (default 500ms). Tests should verify behaviour, not wait on timers.
 - Run all tests: `go test ./...`
 - Tests live alongside source (e.g., `model_test.go` next to `model.go`)
 
