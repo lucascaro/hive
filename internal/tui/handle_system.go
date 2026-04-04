@@ -1,0 +1,176 @@
+package tui
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucascaro/hive/internal/config"
+	"github.com/lucascaro/hive/internal/git"
+	"github.com/lucascaro/hive/internal/mux"
+	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/components"
+)
+
+func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
+	m.appState.TermWidth = msg.Width
+	m.appState.TermHeight = msg.Height
+	m.dirPicker.SetHeight(msg.Height)
+	m.recomputeLayout()
+	return m, nil
+}
+
+func (m Model) handleStateWatch(msg stateWatchMsg) (tea.Model, tea.Cmd) {
+	if !msg.mtime.Equal(m.stateLastKnownMtime) {
+		debugLog.Printf("stateWatchMsg: external change detected (mtime=%v), reloading", msg.mtime)
+		m.stateLastKnownMtime = msg.mtime
+		m.reloadStateFromDisk()
+		return m, tea.Batch(
+			scheduleWatchState(m.stateLastKnownMtime),
+			m.schedulePollPreview(),
+		)
+	}
+	return m, scheduleWatchState(m.stateLastKnownMtime)
+}
+
+func (m Model) handleSettingsSaveRequest(msg components.SettingsSaveRequestMsg) (tea.Model, tea.Cmd) {
+	newCfg := msg.Config
+	if err := config.Save(newCfg); err != nil {
+		return m, func() tea.Msg {
+			return ErrorMsg{Err: fmt.Errorf("save settings: %w", err)}
+		}
+	}
+	m.cfg = newCfg
+	m.keys = NewKeyMap(newCfg.Keybindings)
+	return m, func() tea.Msg { return ConfigSavedMsg{Config: newCfg} }
+}
+
+func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
+	m.settings.Close()
+	return m, nil
+}
+
+func (m Model) handleConfigSaved() (tea.Model, tea.Cmd) {
+	m.appState.LastError = "" // clear any previous error
+	return m, nil
+}
+
+func (m Model) handleError(msg ErrorMsg) (tea.Model, tea.Cmd) {
+	m.appState.LastError = msg.Err.Error()
+	return m, nil
+}
+
+func (m Model) handlePersist() (tea.Model, tea.Cmd) {
+	m.persist()
+	return m, nil
+}
+
+func (m Model) handleQuitAndKill() (tea.Model, tea.Cmd) {
+	m.killAllSessions()
+	return m, tea.Quit
+}
+
+func (m Model) handleConfirmAction(msg ConfirmActionMsg) (tea.Model, tea.Cmd) {
+	m.appState.ShowConfirm = true
+	m.appState.ConfirmMsg = msg.Message
+	m.appState.ConfirmAction = msg.Action
+	m.confirm.Message = msg.Message
+	m.confirm.Action = msg.Action
+	return m, nil
+}
+
+func (m Model) handleConfirmed(msg ConfirmedMsg) (tea.Model, tea.Cmd) {
+	m.appState.ShowConfirm = false
+	m.confirm.Message = ""
+	return m, m.handleConfirmedAction(msg.Action)
+}
+
+func (m Model) handleCancelled() (tea.Model, tea.Cmd) {
+	m.appState.ShowConfirm = false
+	m.appState.EditingTitle = false
+	m.titleEditor.Stop()
+	m.agentPicker.Hide()
+	m.teamBuilder.Hide()
+	m.nameInput.Blur()
+	m.inputMode = ""
+	m.pendingWorktree = false
+	m.pendingWorktreeAgentType = ""
+	m.pendingWorktreeAgentCmd = nil
+	return m, nil
+}
+
+func (m Model) handleAgentPicked(msg components.AgentPickedMsg) (tea.Model, tea.Cmd) {
+	// Team builder owns agent selection while it is active.
+	if m.teamBuilder.Active {
+		cmd := m.teamBuilder.Update(msg)
+		return m, cmd
+	}
+	if m.inputMode == "new-session" {
+		agentTypeStr := string(msg.AgentType)
+		// Custom command: prompt user for the command to run.
+		if msg.AgentType == state.AgentCustom {
+			m.inputMode = "custom-command"
+			m.nameInput.Placeholder = "command (empty = default shell)"
+			m.nameInput.Reset()
+			blinkCmd := m.nameInput.Focus()
+			return m, blinkCmd
+		}
+		profile := m.cfg.Agents[agentTypeStr]
+		agentBin := agentTypeStr
+		if len(profile.Cmd) > 0 {
+			agentBin = profile.Cmd[0]
+		}
+		if _, err := exec.LookPath(agentBin); err != nil {
+			// Binary not found — prompt to install.
+			m.pendingAgentType = agentTypeStr
+			installInfo := ""
+			if len(profile.InstallCmd) > 0 {
+				installInfo = "\n\nInstall with: " + strings.Join(profile.InstallCmd, " ")
+			}
+			return m, func() tea.Msg {
+				return ConfirmActionMsg{
+					Message: fmt.Sprintf("%q not found in PATH.%s\n\nInstall now?", agentBin, installInfo),
+					Action:  "install-agent:" + agentTypeStr,
+				}
+			}
+		}
+		if m.pendingWorktree {
+			// Worktree flow: collect branch name next.
+			m.pendingWorktreeAgentType = agentTypeStr
+			m.pendingWorktreeAgentCmd = profile.Cmd
+			m.inputMode = "worktree-branch"
+			m.nameInput.Placeholder = "branch-name"
+			m.nameInput.Reset()
+			m.nameInput.SetValue(git.RandomBranchName())
+			blinkCmd := m.nameInput.Focus()
+			return m, blinkCmd
+		}
+		cmd := m.createSession(m.pendingProjectID, agentTypeStr, profile.Cmd)
+		return m, cmd
+	}
+	return m, nil
+}
+
+func (m Model) handleAgentInstalled(msg AgentInstalledMsg) (tea.Model, tea.Cmd) {
+	m.appState.LastError = ""
+	m.appState.InstallingAgent = ""
+	cmd := m.createSession(m.pendingProjectID, msg.AgentType, m.cfg.Agents[msg.AgentType].Cmd)
+	m.pendingAgentType = ""
+	return m, cmd
+}
+
+func (m Model) handleRecoveryPickerDone(msg components.RecoveryPickerDoneMsg) (tea.Model, tea.Cmd) {
+	if len(msg.Selected) > 0 {
+		m.recoverSessions(msg.Selected)
+	}
+	return m, nil
+}
+
+func (m Model) handleOrphanPickerDone(msg components.OrphanPickerDoneMsg) (tea.Model, tea.Cmd) {
+	for _, name := range msg.Selected {
+		_ = mux.KillSession(name)
+	}
+	return m, nil
+}

@@ -1,0 +1,316 @@
+package tui
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lucascaro/hive/internal/mux"
+	"github.com/lucascaro/hive/internal/tui/styles"
+)
+
+func (m Model) overlayView(overlay string) string {
+	w := m.appState.TermWidth
+	h := m.appState.TermHeight
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+	// Place overlay centered over a dark background filling the terminal.
+	return lipgloss.Place(w, h,
+		lipgloss.Center, lipgloss.Center,
+		overlay,
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("#111827")),
+	)
+}
+
+func (m Model) renameDialogView() string {
+	title := "Rename Session"
+	if m.titleEditor.TeamID != "" {
+		title = "Rename Team"
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 2).
+		Width(50).
+		Render(
+			styles.TitleStyle.Render(title) + "\n\n" +
+				m.titleEditor.View() + "\n\n" +
+				styles.MutedStyle.Render("enter: save  esc: cancel  ctrl+u: clear"),
+		)
+}
+
+func (m Model) nameInputView(title, prompt, hint string) string {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 2).
+		Width(56).
+		Render(
+			styles.TitleStyle.Render(title) + "\n\n" +
+				prompt + "\n" +
+				m.nameInput.View() + "\n\n" +
+				styles.MutedStyle.Render(hint),
+		)
+}
+
+func (m Model) dirConfirmView() string {
+	dir := strings.TrimSpace(m.nameInput.Value())
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 2).
+		Width(56).
+		Render(
+			styles.TitleStyle.Render("New Project (2/2)") + "\n\n" +
+				"Directory does not exist:\n" +
+				styles.MutedStyle.Render(dir) + "\n\n" +
+				"Create it?" + "\n\n" +
+				styles.MutedStyle.Render("y/enter: create  n/esc: back"),
+		)
+}
+
+func (m Model) helpView() string {
+	type binding struct{ key, desc string }
+	bindings := []binding{
+		{"j/k ↑↓", "navigate sessions"},
+		{"J/K", "navigate projects"},
+		{"tab", "toggle sidebar/preview focus"},
+		{"enter/a", "attach to session"},
+		{"space", "toggle collapse project/team"},
+		{"n", "new project"},
+		{"t", "new session (agent picker)"},
+		{"W", "new worktree session"},
+		{"T", "new agent team (wizard)"},
+		{"r", "rename session or team"},
+		{"x/d", "kill session"},
+		{"D", "kill entire team"},
+		{"/", "filter sessions"},
+		{"ctrl+p", "command palette"},
+		{"g", "grid overview (all sessions)"},
+		{"1-9", "jump to project by number"},
+		{"S", "open settings"},
+		{"?", "toggle this help"},
+		{"H", "tmux shortcuts reference"},
+		{"q", "quit (sessions persist in tmux)"},
+		{"Q", "quit and kill all sessions"},
+	}
+	var rows []string
+	for _, b := range bindings {
+		row := fmt.Sprintf("  %s  %s",
+			styles.HelpKeyStyle.Width(14).Render(b.key),
+			styles.HelpDescStyle.Render(b.desc),
+		)
+		rows = append(rows, row)
+	}
+	content := styles.TitleStyle.Render("Hive — Keyboard Shortcuts") + "\n\n" +
+		strings.Join(rows, "\n") + "\n\n" +
+		styles.MutedStyle.Render("Press ? or esc to close")
+
+	return lipgloss.Place(m.appState.TermWidth, m.appState.TermHeight,
+		lipgloss.Center, lipgloss.Center,
+		lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(styles.ColorAccent).
+			Padding(1, 3).
+			Render(content),
+	)
+}
+
+func (m Model) tmuxHelpView() string {
+	type binding struct{ key, desc string }
+	bindings := []binding{
+		{mux.DetachKey(), "detach from session (return to hive)"},
+		{"ctrl+b c", "create a new window"},
+		{"ctrl+b n / p", "next / previous window"},
+		{"ctrl+b 0-9", "switch to window by number"},
+		{"ctrl+b ,", "rename current window"},
+		{"ctrl+b %", "split pane vertically"},
+		{"ctrl+b \"", "split pane horizontally"},
+		{"ctrl+b arrow", "navigate between panes"},
+		{"ctrl+b z", "zoom/unzoom current pane"},
+		{"ctrl+b x", "kill current pane"},
+		{"ctrl+b [", "enter scroll/copy mode (q to exit)"},
+		{"ctrl+b ]", "paste from tmux buffer"},
+		{"ctrl+b ?", "show all tmux key bindings"},
+		{"ctrl+b t", "show clock"},
+		{"ctrl+b $", "rename current session"},
+	}
+	var rows []string
+	for _, b := range bindings {
+		row := fmt.Sprintf("  %s  %s",
+			styles.HelpKeyStyle.Width(18).Render(b.key),
+			styles.HelpDescStyle.Render(b.desc),
+		)
+		rows = append(rows, row)
+	}
+	content := styles.TitleStyle.Render("tmux Shortcuts Reference") + "\n\n" +
+		strings.Join(rows, "\n") + "\n\n" +
+		styles.MutedStyle.Render("Press H or esc to close")
+
+	return lipgloss.Place(m.appState.TermWidth, m.appState.TermHeight,
+		lipgloss.Center, lipgloss.Center,
+		lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(styles.ColorAccent).
+			Padding(1, 3).
+			Render(content),
+	)
+}
+
+// attachHintView renders the attach hint dialog content.
+func (m Model) attachHintView() string {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 3).
+		Render(
+			styles.TitleStyle.Render("Attaching to session") + "\n\n" +
+				"You are about to attach to a running agent session.\n" +
+				"The Hive TUI will be suspended while you work.\n\n" +
+				lipgloss.NewStyle().Bold(true).Render("To return to Hive:") + "  press  " +
+				lipgloss.NewStyle().
+					Foreground(styles.ColorAccent).
+					Bold(true).
+					Render(mux.DetachKey()) +
+				"\n\n" +
+				styles.MutedStyle.Render("enter: proceed  d: don't show again  esc: cancel"),
+		)
+}
+
+// doAttach returns the tea.Cmd that performs session attachment.
+func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
+	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+	restoreMode := sess.RestoreGridMode
+
+	if !mux.UseExecAttach() {
+		// Native backend: use the classic quit+restart path.
+		m.attachPending = &sess
+		return tea.Quit
+	}
+
+	header := buildSessionHeader(sess)
+	script := buildAttachScript(sess.TmuxSession, target, header, mux.DetachKey())
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	os.Stdout.WriteString("\033[?1049l\033[2J\033[H\033[?1049h")
+
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode}
+	})
+}
+
+// RunAttach handles the attach flow for the native backend.
+func RunAttach(sess SessionAttachMsg) error {
+	fmt.Print("\033[22;0t")
+	fmt.Printf("\033]0;%s\007", buildAttachTitle(sess))
+	defer fmt.Print("\033[23;0t")
+
+	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+	return mux.Attach(target)
+}
+
+// statusBarOpts lists the tmux session options we override for the attach status bar.
+var statusBarOpts = []string{
+	"status",
+	"status-position",
+	"status-style",
+	"status-left",
+	"status-right",
+	"status-left-length",
+	"status-right-length",
+}
+
+func buildAttachScript(tmuxSession, target, title, detachKey string) string {
+	sq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	s := sq(tmuxSession)
+	t := sq(target)
+
+	var lines []string
+
+	lines = append(lines,
+		`printf '\033[?1049h\033[2J'`,
+		`trap "printf '\\033[?1049l'" EXIT`,
+	)
+
+	for _, opt := range statusBarOpts {
+		v := strings.ReplaceAll(opt, "-", "_")
+		lines = append(lines,
+			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null) && had_%s=1 || had_%s=0",
+				v, s, opt, v, v))
+	}
+
+	lines = append(lines,
+		"tmux set-option -t "+s+" status on",
+		"tmux set-option -t "+s+" status-position top",
+		"tmux set-option -t "+s+" status-style 'bg=#7C3AED,fg=#F9FAFB'",
+		"tmux set-option -t "+s+" status-left "+sq(" "+title+" "),
+		"tmux set-option -t "+s+" status-left-length 200",
+		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
+		"tmux set-option -t "+s+" status-right-length 40",
+	)
+
+	lines = append(lines, "tmux attach-session -t "+t)
+
+	for _, opt := range statusBarOpts {
+		v := strings.ReplaceAll(opt, "-", "_")
+		lines = append(lines,
+			fmt.Sprintf(`if [ "$had_%s" = 1 ]; then tmux set-option -t %s %s "$old_%s"; else tmux set-option -u -t %s %s; fi`,
+				v, s, opt, v, s, opt))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func buildSessionHeader(sess SessionAttachMsg) string {
+	var dot string
+	switch string(sess.Status) {
+	case "running":
+		dot = "●"
+	case "waiting":
+		dot = "◉"
+	case "dead":
+		dot = "✕"
+	default:
+		dot = "○"
+	}
+
+	esc := func(s string) string { return strings.ReplaceAll(s, "#", "##") }
+
+	title := fmt.Sprintf("%s [%s] %s", dot, esc(string(sess.AgentType)), esc(sess.SessionTitle))
+	if sess.ProjectName != "" {
+		title += " · " + esc(sess.ProjectName)
+	}
+	if sess.WorktreePath != "" {
+		if sess.WorktreeBranch != "" && sess.WorktreeBranch != sess.SessionTitle {
+			title += " ⎇ " + esc(sess.WorktreeBranch)
+		} else {
+			title += " ⎇"
+		}
+	}
+	return title
+}
+
+func buildAttachTitle(sess SessionAttachMsg) string {
+	agent := string(sess.AgentType)
+	if sess.ProjectName != "" && sess.SessionTitle != "" {
+		return fmt.Sprintf("Hive | %s / %s (%s)", sess.ProjectName, sess.SessionTitle, agent)
+	}
+	if sess.SessionTitle != "" {
+		return fmt.Sprintf("Hive | %s (%s)", sess.SessionTitle, agent)
+	}
+	if sess.ProjectName != "" {
+		return fmt.Sprintf("Hive | %s (%s)", sess.ProjectName, agent)
+	}
+	return "Hive"
+}
