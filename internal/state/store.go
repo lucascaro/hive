@@ -259,6 +259,47 @@ func FindSession(state *AppState, sessionID string) *Session {
 	return findSession(state, sessionID)
 }
 
+// FindProject returns the project with the given ID, or nil if not found.
+func FindProject(state *AppState, projectID string) *Project {
+	for _, p := range state.Projects {
+		if p.ID == projectID {
+			return p
+		}
+	}
+	return nil
+}
+
+// FindTeam returns the team with the given ID, or nil if not found.
+func FindTeam(state *AppState, teamID string) *Team {
+	for _, p := range state.Projects {
+		for _, t := range p.Teams {
+			if t.ID == teamID {
+				return t
+			}
+		}
+	}
+	return nil
+}
+
+// FindSessionByTmux returns the session matching the given tmux session and window index, or nil.
+func FindSessionByTmux(state *AppState, tmuxSession string, tmuxWindow int) *Session {
+	for _, p := range state.Projects {
+		for _, s := range p.Sessions {
+			if s.TmuxSession == tmuxSession && s.TmuxWindow == tmuxWindow {
+				return s
+			}
+		}
+		for _, t := range p.Teams {
+			for _, s := range t.Sessions {
+				if s.TmuxSession == tmuxSession && s.TmuxWindow == tmuxWindow {
+					return s
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // SessionLabel returns a short display string for a session.
 func SessionLabel(s *Session) string {
 	role := ""
