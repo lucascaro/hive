@@ -8,6 +8,14 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | 1 | #28 | Grid view previews not updating after detach/reattach | IMPLEMENT | S |
+| — | #34 | Terminal bell does not produce audible sound | TRIAGE | — |
+| — | #35 | Selected session should persist across views and attach/detach | TRIAGE | — |
+| — | #36 | Add missing tests | TRIAGE | — |
+| — | #37 | Code refactor: remove bloat | TRIAGE | — |
+| — | #38 | Session status does not detect "Waiting for input" state | TRIAGE | — |
+| — | #39 | Remove window list from title bar and add more text colors | TRIAGE | — |
+| — | #40 | Ability to reorder sessions within a project | TRIAGE | — |
+| — | #41 | Simplify detach shortcut to a single key combo | TRIAGE | — |
 
 ## Completed
 
