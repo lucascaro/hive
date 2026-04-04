@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #16 | Stale preview on exit back to main view | RESEARCH | S |
+| 1 | #16 | Stale preview on exit back to main view | IMPLEMENT | S |
 | 2 | #13 | Fix mouse support | RESEARCH | S |
 | 3 | #15 | Branch info | RESEARCH | S |
 | 4 | #12 | tmux mouse on by default | RESEARCH | S |

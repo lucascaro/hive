@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subdirectories; press `esc` to clear the filter.
 
 ### Fixed
+- **Stale preview after detach**: returning from an attached session no longer briefly
+  shows outdated preview content from a different session. The preview pane clears
+  immediately and shows a placeholder until fresh content arrives.
 - **Directory picker shows only directories**: the picker now filters to subdirectories
   only at read time — no files or grayed-out entries appear in the list.
 - **Directory picker height**: the list now fills the available overlay height instead of
