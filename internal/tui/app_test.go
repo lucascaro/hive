@@ -496,6 +496,38 @@ func TestAttachDoneMsg_ClearsPreview(t *testing.T) {
 	}
 }
 
+func TestAttachDoneMsg_ReenablesMouseCellMotion(t *testing.T) {
+	// After returning from a tmux attach, mouse cell motion must be re-enabled
+	// because bubbletea's RestoreTerminal() does not restore mouse state.
+	m := testModelWithSessions()
+
+	_, cmd := m.Update(AttachDoneMsg{})
+	if cmd == nil {
+		t.Fatal("AttachDoneMsg returned nil cmd, want batch with EnableMouseCellMotion")
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("AttachDoneMsg cmd returned %T, want tea.BatchMsg", msg)
+	}
+
+	// Look for enableMouseCellMotionMsg in the batch.
+	found := false
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		m := c()
+		if fmt.Sprintf("%T", m) == "tea.enableMouseCellMotionMsg" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("AttachDoneMsg batch does not contain EnableMouseCellMotion cmd")
+	}
+}
+
 func TestSessionDetachedMsg_ClearsPreview(t *testing.T) {
 	// When returning from a native backend attach, stale preview content must
 	// be cleared so the user sees a placeholder until fresh content arrives.
