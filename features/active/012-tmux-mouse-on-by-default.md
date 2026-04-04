@@ -1,7 +1,7 @@
 # Feature: tmux mouse on by default
 
 - **GitHub Issue:** #12
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P5
@@ -31,19 +31,26 @@ Enable mouse support in tmux by default so users can easily scroll through outpu
 
 ## Plan
 
-<Filled during PLAN stage.>
+Enable `mouse on` for every tmux session Hive creates, scoped to the session (not global). Add a low-level helper in the tmux package and call it from the tmux backend after session creation.
 
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+1. `internal/tmux/session.go` — Add `SetOption(session, key, value string) error` function that runs `tmux set-option -t <session> <key> <value>`. Generic helper so it can be reused for future session options.
+2. `internal/mux/tmux/backend.go` — In `Backend.CreateSession()`, after `tmux.CreateSession()` succeeds, call `tmux.SetOption(session, "mouse", "on")`. If SetOption fails, log/ignore — don't fail session creation over a cosmetic option.
+3. `CHANGELOG.md` — Add entry under `[Unreleased]` → `Changed`: "Enable mouse support by default in tmux sessions"
 
 ### Test Strategy
-- <how to verify>
+- Add a unit test in `internal/tmux/session_test.go` for `SetOption` that verifies the correct tmux arguments are constructed (mock or skip if tmux not available)
+- Manual verification: start Hive, create a session, confirm `tmux show-options -t <session> mouse` returns `on`
+- Verify scrolling works in an attached session with the mouse
 
 ### Risks
-- <what could go wrong>
+- **Low:** `SetOption` failure after session creation — mitigated by not failing the whole creation flow
+- **Low:** Mouse mode interferes with terminal text selection (users must hold Shift) — acceptable for v1, can add a config toggle later if requested
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- Implemented exactly as planned — no deviations needed.
+- `SetOption` is a generic helper (takes key/value) so it can be reused for future tmux session options.
+- Mouse enable failure is silently ignored (`_ = tmux.SetOption(...)`) to keep session creation robust.
 
 - **PR:** —

@@ -22,7 +22,13 @@ func (b *Backend) IsServerRunning() bool { return tmux.IsServerRunning() }
 // so that "tmux detach-client" runs when the process exits, returning the user
 // to hive automatically.
 func (b *Backend) CreateSession(session, windowName, workDir string, cmd []string) error {
-	return tmux.CreateSession(session, windowName, workDir, b.wrapCmd(cmd))
+	if err := tmux.CreateSession(session, windowName, workDir, b.wrapCmd(cmd)); err != nil {
+		return err
+	}
+	// Enable mouse support so users can scroll through output.
+	// Non-fatal: don't fail session creation over a cosmetic option.
+	_ = tmux.SetOption(session, "mouse", "on")
+	return nil
 }
 
 func (b *Backend) SessionExists(session string) bool { return tmux.SessionExists(session) }
