@@ -1,0 +1,40 @@
+ hive                           │╭─────────────────────────────────────────────────────────────────────────────────────╮
+                                ││                                                                                     │
+  No sessions yet               ││                                                                                     │
+  Press n to create a project   ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                  No active session                                  │
+                                ││                                                                                     │
+                                ││                      Select a session and press 'a' to attach                       │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                ││                                                                                     │
+                                │╰─────────────────────────────────────────────────────────────────────────────────────╯
+ hive                                                                                                                   
+ ?:help  n:new project  t:new session  T:new team  a/↵:attach  g/G:grid view  r:rename  x:kill  S:settings  tab:previe  

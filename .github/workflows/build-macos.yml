@@ -29,3 +29,5 @@ jobs:
 
       - name: Test
         run: go test ./...
+        env:
+          TERM: dumb  # deterministic golden file output (no ANSI colors)

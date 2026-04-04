@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                               ╭───────────────────────────────────────────────────────╮                                
+                               │                                                       │                                
+                               │   Hive — Keyboard Shortcuts                           │                                
+                               │                                                       │                                
+                               │     j/k ↑↓          navigate sessions                 │                                
+                               │     J/K             navigate projects                 │                                
+                               │     tab             toggle sidebar/preview focus      │                                
+                               │     enter/a         attach to session                 │                                
+                               │     space           toggle collapse project/team      │                                
+                               │     n               new project                       │                                
+                               │     t               new session (agent picker)        │                                
+                               │     W               new worktree session              │                                
+                               │     T               new agent team (wizard)           │                                
+                               │     r               rename session or team            │                                
+                               │     x/d             kill session                      │                                
+                               │     D               kill entire team                  │                                
+                               │     /               filter sessions                   │                                
+                               │     ctrl+p          command palette                   │                                
+                               │     g               grid overview (all sessions)      │                                
+                               │     1-9             jump to project by number         │                                
+                               │     S               open settings                     │                                
+                               │     ?               toggle this help                  │                                
+                               │     H               tmux shortcuts reference          │                                
+                               │     q               quit (sessions persist in tmux)   │                                
+                               │     Q               quit and kill all sessions        │                                
+                               │                                                       │                                
+                               │   Press ? or esc to close                             │                                
+                               │                                                       │                                
+                               ╰───────────────────────────────────────────────────────╯                                
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
