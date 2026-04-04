@@ -9,7 +9,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 |---|-------|-------|-------|------------|
 | 1 | #13 | Fix mouse support | RESEARCH | S |
 | 2 | #15 | Branch info | RESEARCH | S |
-| 3 | #12 | tmux mouse on by default | RESEARCH | S |
+| 3 | #12 | tmux mouse on by default | PLAN | S |
 
 ## Completed
 
