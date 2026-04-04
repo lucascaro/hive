@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-04
+
 ### Fixed
 - **No terminal flash on attach/detach**: transitioning between grid view and
   full-screen session no longer briefly flashes the pre-hive terminal content.
@@ -190,5 +192,6 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/lucascaro/hive/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lucascaro/hive/releases/tag/v0.1.0

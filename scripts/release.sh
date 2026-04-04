@@ -112,7 +112,7 @@ done
 echo "Creating GitHub release ${TAG}..."
 
 # Extract the changelog section for this version (between ## [version] and the next ## [)
-NOTES=$(awk "/^## \[${VERSION}\]/,/^## \[/" CHANGELOG.md | head -n -1 | tail -n +2)
+NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found" CHANGELOG.md)
 
 gh release create "$TAG" \
     --title "$TAG" \
