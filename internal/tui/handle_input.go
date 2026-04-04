@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -90,7 +91,7 @@ func (m Model) handleDirConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			m.inputMode = ""
 			m.pendingProjectName = ""
-			return m, func() tea.Msg { return ErrorMsg{Err: err} }
+			return m, func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("create directory: %w", err)} }
 		}
 		m.inputMode = ""
 		cmd := m.createProject(m.pendingProjectName, dir)
