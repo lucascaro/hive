@@ -107,6 +107,11 @@ for platform in "${PLATFORMS[@]}"; do
     GOOS="$GOOS" GOARCH="$GOARCH" go build -ldflags="-s -w" -o "$output" .
 done
 
+# --- Push -----------------------------------------------------------------
+
+echo "Pushing to origin..."
+git push origin main "$TAG"
+
 # --- GitHub release -------------------------------------------------------
 
 echo "Creating GitHub release ${TAG}..."
@@ -118,11 +123,6 @@ gh release create "$TAG" \
     --title "$TAG" \
     --notes "$NOTES" \
     dist/*
-
-# --- Push -----------------------------------------------------------------
-
-echo "Pushing to origin..."
-git push origin main "$TAG"
 
 # --- Cleanup --------------------------------------------------------------
 
