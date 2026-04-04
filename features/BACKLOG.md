@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #35 | Selected session should persist across views and attach/detach | RESEARCH | M |
+| 1 | #35 | Selected session should persist across views and attach/detach | PLAN | M |
 | 2 | #38 | Session status does not detect "Waiting for input" state | RESEARCH | M |
 | 3 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
 | 4 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
