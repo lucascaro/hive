@@ -68,8 +68,6 @@ type Model struct {
 	pendingWorktree          bool   // true when the next session should use a worktree
 	pendingWorktreeAgentType string // agent type selected for worktree session
 	pendingWorktreeAgentCmd  []string
-	// Custom command session creation
-	pendingCustomCmd []string // custom command parsed from user input
 	// Attach hint overlay
 	showAttachHint bool
 	pendingAttach  *SessionAttachMsg
