@@ -1565,7 +1565,7 @@ func (m Model) handleCustomCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if raw == "" {
 			agentCmd = []string{defaultShell()}
 		} else {
-			agentCmd = strings.Fields(raw)
+			agentCmd = []string{raw}
 		}
 
 		if m.pendingWorktree {
