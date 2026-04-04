@@ -31,7 +31,8 @@ func TestFlow_NewProject_NameDirAgent(t *testing.T) {
 		t.Fatalf("pendingProjectName = %q, want %q",
 			f.Model().pendingProjectName, "my-new-project")
 	}
-	f.Snapshot("02-dir-picker")
+	// Don't snapshot dir picker — it renders os.Getwd() which is machine-specific.
+	f.ViewContains("Select Directory")
 
 	// Step 3: Pick an existing directory.
 	dir := t.TempDir()
@@ -75,7 +76,8 @@ func TestFlow_NewProject_DirPickerCancel_BackToName(t *testing.T) {
 	if !f.Model().dirPicker.Active {
 		t.Fatal("dirPicker should be active")
 	}
-	f.Snapshot("01-dir-picker-open")
+	// Don't snapshot dir picker — it renders os.Getwd() which is machine-specific.
+	f.ViewContains("Select Directory")
 
 	// Cancel the dir picker.
 	f.Send(components.DirPickerCancelMsg{})

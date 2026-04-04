@@ -26,8 +26,10 @@ func TestFlow_NewSession_AgentPick_Created(t *testing.T) {
 	f.AssertInputMode("new-session")
 	f.Snapshot("01-agent-picker")
 
-	// Step 2: Pick an agent. In real flow, the picker's own Update() hides
-	// itself and emits AgentPickedMsg. We simulate both steps.
+	// Step 2: Pick an agent. In the real flow, pressing Enter in the picker
+	// triggers the picker's own Update() which calls Hide() and emits
+	// AgentPickedMsg. We can't easily simulate the picker's internal key
+	// handling, so we manually hide it and send the message directly.
 	{
 		m := f.Model()
 		m.agentPicker.Hide()
@@ -151,7 +153,7 @@ func TestFlow_SessionSwitch_PreviewClearAndCache(t *testing.T) {
 	}
 
 	if f.Model().appState.ActiveSessionID != "sess-2" {
-		t.Skipf("could not navigate to sess-2, active = %q", f.Model().appState.ActiveSessionID)
+		t.Fatalf("could not navigate to sess-2, active = %q", f.Model().appState.ActiveSessionID)
 	}
 
 	// Preview should show "Waiting" since there's no cached content for session-2.

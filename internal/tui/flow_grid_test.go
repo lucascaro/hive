@@ -30,7 +30,7 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	// The grid's Update hides the grid and returns a cmd that produces
 	// GridSessionSelectedMsg. The app handler then calls doAttach which
 	// (with UseExecAttach=false) sets attachPending and returns tea.Quit.
-	cmd := f.SendKey("enter")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 
 	// Grid should be hidden after selection (gridView.Update calls Hide).
 	f.AssertGridActive(false)
@@ -94,7 +94,7 @@ func TestFlow_GridAllProjectsRestores(t *testing.T) {
 	f.Snapshot("01-all-projects-grid")
 
 	// Press enter to select session → attach.
-	cmd := f.SendKey("enter")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 	f.AssertGridActive(false)
 
 	// Execute cmd chain to completion.
@@ -278,7 +278,7 @@ func TestFlow_GridAttachWithHint(t *testing.T) {
 	f.AssertGridActive(true)
 
 	// Press enter to select session — grid hides and emits GridSessionSelectedMsg.
-	cmd := f.SendKey("enter")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 	f.AssertGridActive(false)
 
 	// Execute cmd chain: GridSessionSelectedMsg → app handler shows hint.

@@ -35,7 +35,8 @@ func New() *MockBackend {
 	}
 }
 
-// SetError configures the mock to return err on the next call to method.
+// SetError configures the mock to return err on all subsequent calls to method.
+// Call SetError(method, nil) to clear.
 func (m *MockBackend) SetError(method string, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -56,6 +57,7 @@ func (m *MockBackend) CallCount(method string) int {
 	return m.calls[method]
 }
 
+// record must be called with m.mu held.
 func (m *MockBackend) record(method string) error {
 	m.calls[method]++
 	return m.errors[method]

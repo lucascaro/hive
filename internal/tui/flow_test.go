@@ -35,10 +35,15 @@ func (f *flowRunner) Send(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-// SendKey sends a single key press (rune key).
+// SendKey sends a single rune key press. For special keys (Enter, Esc, etc.)
+// use SendSpecialKey instead.
 func (f *flowRunner) SendKey(key string) tea.Cmd {
 	f.t.Helper()
-	return f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+	runes := []rune(key)
+	if len(runes) != 1 {
+		f.t.Fatalf("SendKey expects a single rune, got %q; use SendSpecialKey for Enter/Esc/etc", key)
+	}
+	return f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: runes})
 }
 
 // SendSpecialKey sends a special key (Enter, Esc, etc.).
@@ -49,7 +54,9 @@ func (f *flowRunner) SendSpecialKey(key tea.KeyType) tea.Cmd {
 
 // SendAndExec dispatches msg, executes the returned cmd (if non-nil),
 // and feeds the result back through Update. Returns the final cmd.
-// Skips execution if the cmd returns a tea.BatchMsg or tick (could block).
+// Skips feeding back tea.BatchMsg (would recurse). Note: does NOT guard
+// against tick/timer cmds — avoid calling this when the returned cmd
+// could be a tea.Tick (use Send + manual cmd execution instead).
 func (f *flowRunner) SendAndExec(msg tea.Msg) tea.Cmd {
 	f.t.Helper()
 	cmd := f.Send(msg)
