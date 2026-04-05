@@ -283,6 +283,47 @@ func TestDirPicker_CreateModeEmptyNameIgnored(t *testing.T) {
 	}
 }
 
+func TestDirPicker_CreateModeRejectsPathSeparator(t *testing.T) {
+	dp := testDirPicker(t)
+	origDir := dp.currentDir
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// Type a name containing a path separator.
+	for _, r := range "../../evil" {
+		dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if !dp.creating {
+		t.Fatal("path with separator should keep create mode active")
+	}
+	if dp.currentDir != origDir {
+		t.Errorf("currentDir changed to %q, want %q", dp.currentDir, origDir)
+	}
+}
+
+func TestDirPicker_CreateModeShowsError(t *testing.T) {
+	dp := NewDirPicker()
+	// Point at a non-existent base directory so MkdirAll fails.
+	dp.Active = true
+	dp.currentDir = "/dev/null/impossible"
+
+	dp.creating = true
+	dp.createInput.Focus()
+	dp.createInput.SetValue("test")
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if !dp.creating {
+		t.Fatal("failed create should keep create mode active")
+	}
+	if dp.createErr == nil {
+		t.Fatal("expected createErr to be set after failed MkdirAll")
+	}
+}
+
 func TestDirPicker_CreateModeConsumesAllKeys(t *testing.T) {
 	dp := testDirPicker(t)
 
