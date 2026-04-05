@@ -49,6 +49,7 @@ func (m Model) handleSettingsSaveRequest(msg components.SettingsSaveRequestMsg) 
 
 func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
 	m.settings.Close()
+	m.PopView()
 	return m, nil
 }
 
@@ -73,28 +74,36 @@ func (m Model) handleQuitAndKill() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleConfirmAction(msg ConfirmActionMsg) (tea.Model, tea.Cmd) {
-	m.appState.ShowConfirm = true
 	m.appState.ConfirmMsg = msg.Message
 	m.appState.ConfirmAction = msg.Action
 	m.confirm.Message = msg.Message
 	m.confirm.Action = msg.Action
+	m.PushView(ViewConfirm)
 	return m, nil
 }
 
 func (m Model) handleConfirmed(msg ConfirmedMsg) (tea.Model, tea.Cmd) {
-	m.appState.ShowConfirm = false
 	m.confirm.Message = ""
 	return m, m.handleConfirmedAction(msg.Action)
 }
 
 func (m Model) handleCancelled() (tea.Model, tea.Cmd) {
-	m.appState.ShowConfirm = false
-	m.appState.EditingTitle = false
-	m.titleEditor.Stop()
-	m.agentPicker.Hide()
-	m.teamBuilder.Hide()
-	m.nameInput.Blur()
-	m.inputMode = ""
+	popped := m.PopView()
+	// Clean up component state for the popped view.
+	switch popped {
+	case ViewRename:
+		m.titleEditor.Stop()
+	case ViewAgentPicker:
+		m.agentPicker.Hide()
+	case ViewTeamBuilder:
+		m.teamBuilder.Hide()
+	case ViewProjectName, ViewCustomCmd, ViewWorktreeBranch:
+		m.nameInput.Blur()
+	case ViewDirPicker:
+		m.dirPicker.Active = false
+	case ViewDirConfirm:
+		m.nameInput.Blur()
+	}
 	m.pendingWorktree = false
 	m.pendingWorktreeAgentType = ""
 	m.pendingWorktreeAgentCmd = nil
@@ -103,54 +112,53 @@ func (m Model) handleCancelled() (tea.Model, tea.Cmd) {
 
 func (m Model) handleAgentPicked(msg components.AgentPickedMsg) (tea.Model, tea.Cmd) {
 	// Team builder owns agent selection while it is active.
-	if m.teamBuilder.Active {
+	if m.HasView(ViewTeamBuilder) {
 		cmd := m.teamBuilder.Update(msg)
 		return m, cmd
 	}
-	if m.inputMode == "new-session" {
-		agentTypeStr := string(msg.AgentType)
-		// Custom command: prompt user for the command to run.
-		if msg.AgentType == state.AgentCustom {
-			m.inputMode = "custom-command"
-			m.nameInput.Placeholder = "command (empty = default shell)"
-			m.nameInput.Reset()
-			blinkCmd := m.nameInput.Focus()
-			return m, blinkCmd
-		}
-		profile := m.cfg.Agents[agentTypeStr]
-		agentBin := agentTypeStr
-		if len(profile.Cmd) > 0 {
-			agentBin = profile.Cmd[0]
-		}
-		if _, err := exec.LookPath(agentBin); err != nil {
-			// Binary not found — prompt to install.
-			m.pendingAgentType = agentTypeStr
-			installInfo := ""
-			if len(profile.InstallCmd) > 0 {
-				installInfo = "\n\nInstall with: " + strings.Join(profile.InstallCmd, " ")
-			}
-			return m, func() tea.Msg {
-				return ConfirmActionMsg{
-					Message: fmt.Sprintf("%q not found in PATH.%s\n\nInstall now?", agentBin, installInfo),
-					Action:  "install-agent:" + agentTypeStr,
-				}
-			}
-		}
-		if m.pendingWorktree {
-			// Worktree flow: collect branch name next.
-			m.pendingWorktreeAgentType = agentTypeStr
-			m.pendingWorktreeAgentCmd = profile.Cmd
-			m.inputMode = "worktree-branch"
-			m.nameInput.Placeholder = "branch-name"
-			m.nameInput.Reset()
-			m.nameInput.SetValue(git.RandomBranchName())
-			blinkCmd := m.nameInput.Focus()
-			return m, blinkCmd
-		}
-		cmd := m.createSession(m.pendingProjectID, agentTypeStr, profile.Cmd)
-		return m, cmd
+	agentTypeStr := string(msg.AgentType)
+	// Custom command: prompt user for the command to run.
+	if msg.AgentType == state.AgentCustom {
+		m.nameInput.Placeholder = "command (empty = default shell)"
+		m.nameInput.Reset()
+		m.ReplaceTop(ViewCustomCmd)
+		blinkCmd := m.nameInput.Focus()
+		return m, blinkCmd
 	}
-	return m, nil
+	profile := m.cfg.Agents[agentTypeStr]
+	agentBin := agentTypeStr
+	if len(profile.Cmd) > 0 {
+		agentBin = profile.Cmd[0]
+	}
+	if _, err := exec.LookPath(agentBin); err != nil {
+		// Binary not found — prompt to install.
+		m.pendingAgentType = agentTypeStr
+		m.PopView() // pop agent picker before confirm is pushed via message
+		installInfo := ""
+		if len(profile.InstallCmd) > 0 {
+			installInfo = "\n\nInstall with: " + strings.Join(profile.InstallCmd, " ")
+		}
+		return m, func() tea.Msg {
+			return ConfirmActionMsg{
+				Message: fmt.Sprintf("%q not found in PATH.%s\n\nInstall now?", agentBin, installInfo),
+				Action:  "install-agent:" + agentTypeStr,
+			}
+		}
+	}
+	if m.pendingWorktree {
+		// Worktree flow: collect branch name next.
+		m.pendingWorktreeAgentType = agentTypeStr
+		m.pendingWorktreeAgentCmd = profile.Cmd
+		m.nameInput.Placeholder = "branch-name"
+		m.nameInput.Reset()
+		m.nameInput.SetValue(git.RandomBranchName())
+		m.ReplaceTop(ViewWorktreeBranch)
+		blinkCmd := m.nameInput.Focus()
+		return m, blinkCmd
+	}
+	m.PopView() // pop agent picker
+	cmd := m.createSession(m.pendingProjectID, agentTypeStr, profile.Cmd)
+	return m, cmd
 }
 
 func (m Model) handleAgentInstalled(msg AgentInstalledMsg) (tea.Model, tea.Cmd) {
@@ -162,6 +170,7 @@ func (m Model) handleAgentInstalled(msg AgentInstalledMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) handleRecoveryPickerDone(msg components.RecoveryPickerDoneMsg) (tea.Model, tea.Cmd) {
+	m.PopView()
 	if len(msg.Selected) > 0 {
 		m.recoverSessions(msg.Selected)
 	}
@@ -169,6 +178,7 @@ func (m Model) handleRecoveryPickerDone(msg components.RecoveryPickerDoneMsg) (t
 }
 
 func (m Model) handleOrphanPickerDone(msg components.OrphanPickerDoneMsg) (tea.Model, tea.Cmd) {
+	m.PopView()
 	for _, name := range msg.Selected {
 		_ = mux.KillSession(name)
 	}

@@ -20,6 +20,7 @@ func (m Model) handleTeamKilled(msg TeamKilledMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleTeamBuilt(msg components.TeamBuiltMsg) (tea.Model, tea.Cmd) {
+	m.PopView() // pop team builder
 	cmd := m.createTeam(msg.Spec)
 	return m, cmd
 }

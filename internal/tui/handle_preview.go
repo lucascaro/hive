@@ -31,7 +31,7 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 
 func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) (tea.Model, tea.Cmd) {
 	m.gridView.SetContents(msg.Contents)
-	if m.gridView.Active {
+	if m.HasView(ViewGrid) {
 		return m, m.scheduleGridPoll()
 	}
 	return m, nil
@@ -71,7 +71,7 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 	}
 	if !m.cfg.HideAttachHint {
 		m.pendingAttach = attach
-		m.showAttachHint = true
+		m.PushView(ViewAttachHint)
 		return m, nil
 	}
 	cmd := m.doAttach(*attach)

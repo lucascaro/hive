@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **View stack replaces flag-based view dispatch**: the TUI now uses a view
+  stack (`PushView`/`PopView`) instead of scattered boolean flags to track
+  which overlay is active. This fixes dialogs opened from grid view (rename,
+  kill, new session) incorrectly returning to the main view instead of back
+  to the grid (#46).
+
 ### Added
 - **Create directories in dir picker**: press `n` or `+` in the directory picker
   to create a new subdirectory without leaving hive (#45).

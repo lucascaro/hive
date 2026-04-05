@@ -23,32 +23,30 @@ func (m Model) handleProjectKilled(msg ProjectKilledMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleDirPicked(msg components.DirPickedMsg) (tea.Model, tea.Cmd) {
-	m.dirPicker.Active = false
 	dir := msg.Dir
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			// Directory doesn't exist — ask for confirmation before creating.
 			m.nameInput.SetValue(dir)
-			m.inputMode = "project-dir-confirm"
+			m.ReplaceTop(ViewDirConfirm)
 			return m, nil
 		}
 		// Unexpected error (e.g. permission denied) — surface it and abort.
-		m.inputMode = ""
+		m.PopView()
 		return m, func() tea.Msg {
 			return ErrorMsg{Err: fmt.Errorf("check directory: %w", err)}
 		}
 	}
 	name := m.pendingProjectName
 	m.pendingProjectName = ""
-	m.inputMode = ""
+	m.PopView()
 	return m, m.createProject(name, dir)
 }
 
 func (m Model) handleDirPickerCancel() (tea.Model, tea.Cmd) {
-	m.dirPicker.Active = false
 	// Return to the project name step.
-	m.inputMode = "project-name"
 	m.nameInput.Reset()
 	m.nameInput.SetValue(m.pendingProjectName)
+	m.ReplaceTop(ViewProjectName)
 	return m, m.nameInput.Focus()
 }

@@ -39,6 +39,8 @@
 | `G` | Open grid view for all projects |
 | `←`/`→`/`↑`/`↓` or `h`/`l`/`k`/`j` | Navigate grid cells |
 | `Enter` / `a` | Attach to selected session |
+| `t` | New session in the selected session's project |
+| `W` | New worktree session in the selected session's project |
 | `x` | Kill selected session (with confirmation) |
 | `r` | Rename selected session |
 | `G` | Switch to all-projects view (while grid is open) |

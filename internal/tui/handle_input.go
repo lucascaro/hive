@@ -18,8 +18,8 @@ func (m *Model) startRename() tea.Cmd {
 		return nil
 	}
 	current := sel.Label
-	m.appState.EditingTitle = true
 	m.titleEditor.Start(sel.SessionID, sel.TeamID, current)
+	m.PushView(ViewRename)
 	return m.titleEditor.Update(nil)
 }
 
@@ -33,7 +33,7 @@ func defaultShell() string {
 func (m Model) handleFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "enter":
-		m.appState.FilterActive = false
+		m.PopView()
 		if msg.String() == "esc" {
 			m.appState.FilterQuery = ""
 			m.sidebar.FilterQuery = ""
@@ -64,18 +64,16 @@ func (m Model) handleNameInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if val == "" {
 			return m, nil
 		}
-		if m.inputMode == "project-name" {
-			// Step 1 done: open the interactive directory picker.
-			m.pendingProjectName = val
-			m.inputMode = ""
-			m.nameInput.Blur()
-			cwd, _ := os.Getwd()
-			m.dirPicker.Show(cwd)
-			return m, nil
-		}
+		// Step 1 done: open the interactive directory picker.
+		m.pendingProjectName = val
+		m.nameInput.Blur()
+		cwd, _ := os.Getwd()
+		m.dirPicker.Show(cwd)
+		m.ReplaceTop(ViewDirPicker)
+		return m, nil
 	case "esc":
 		m.nameInput.Blur()
-		m.inputMode = ""
+		m.PopView()
 		m.pendingProjectName = ""
 		return m, nil
 	}
@@ -89,19 +87,19 @@ func (m Model) handleDirConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y", "Y", "enter":
 		dir := strings.TrimSpace(m.nameInput.Value())
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			m.inputMode = ""
+			m.PopView()
 			m.pendingProjectName = ""
 			return m, func() tea.Msg { return ErrorMsg{Err: fmt.Errorf("create directory: %w", err)} }
 		}
-		m.inputMode = ""
+		m.PopView()
 		cmd := m.createProject(m.pendingProjectName, dir)
 		m.pendingProjectName = ""
 		return m, cmd
 	case "n", "N", "esc":
 		// Return to directory picker so user can choose a different path.
-		m.inputMode = ""
 		dir := strings.TrimSpace(m.nameInput.Value())
 		m.dirPicker.Show(dir)
+		m.ReplaceTop(ViewDirPicker)
 		return m, nil
 	}
 	return m, nil
@@ -115,7 +113,7 @@ func (m Model) handleWorktreeBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.nameInput.Blur()
-		m.inputMode = ""
+		m.PopView()
 		agentType := m.pendingWorktreeAgentType
 		agentCmd := m.pendingWorktreeAgentCmd
 		m.pendingWorktreeAgentType = ""
@@ -124,7 +122,7 @@ func (m Model) handleWorktreeBranchInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.createSessionWithWorktree(m.pendingProjectID, agentType, agentCmd, branch)
 	case "esc":
 		m.nameInput.Blur()
-		m.inputMode = ""
+		m.PopView()
 		m.pendingWorktree = false
 		m.pendingWorktreeAgentType = ""
 		m.pendingWorktreeAgentCmd = nil
@@ -140,7 +138,6 @@ func (m Model) handleCustomCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		raw := strings.TrimSpace(m.nameInput.Value())
 		m.nameInput.Blur()
-		m.inputMode = ""
 
 		var agentCmd []string
 		if raw == "" {
@@ -153,17 +150,18 @@ func (m Model) handleCustomCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Chain to worktree branch input.
 			m.pendingWorktreeAgentType = "custom"
 			m.pendingWorktreeAgentCmd = agentCmd
-			m.inputMode = "worktree-branch"
 			m.nameInput.Placeholder = "branch-name"
 			m.nameInput.Reset()
 			m.nameInput.SetValue(git.RandomBranchName())
+			m.ReplaceTop(ViewWorktreeBranch)
 			blinkCmd := m.nameInput.Focus()
 			return m, blinkCmd
 		}
+		m.PopView()
 		return m, m.createSession(m.pendingProjectID, "custom", agentCmd)
 	case "esc":
 		m.nameInput.Blur()
-		m.inputMode = ""
+		m.PopView()
 		m.pendingWorktree = false
 		return m, nil
 	}
@@ -178,7 +176,7 @@ func (m Model) handleTitleEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		newTitle := m.titleEditor.Value()
 		sessionID := m.titleEditor.SessionID
 		m.titleEditor.Stop()
-		m.appState.EditingTitle = false
+		m.PopView()
 		if newTitle != "" && sessionID != "" {
 			return m, func() tea.Msg {
 				return SessionTitleChangedMsg{
@@ -191,7 +189,7 @@ func (m Model) handleTitleEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "esc":
 		m.titleEditor.Stop()
-		m.appState.EditingTitle = false
+		m.PopView()
 		return m, nil
 	}
 	cmd := m.titleEditor.Update(msg)
@@ -201,12 +199,12 @@ func (m Model) handleTitleEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Confirm) {
 		action := m.appState.ConfirmAction
-		m.appState.ShowConfirm = false
+		m.PopView()
 		m.confirm.Message = ""
 		return m, func() tea.Msg { return ConfirmedMsg{Action: action} }
 	}
 	if key.Matches(msg, m.keys.Cancel) {
-		m.appState.ShowConfirm = false
+		m.PopView()
 		m.confirm.Message = ""
 		return m, nil
 	}
