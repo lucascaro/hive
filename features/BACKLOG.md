@@ -13,7 +13,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 | 4 | #36 | Add missing tests | RESEARCH | L |
 | 5 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
 | 6 | #46 | Rework dialog system to use a view stack | RESEARCH | M |
-| 7 | #48 | Allow creating new sessions from grid view | RESEARCH | S |
+| 7 | #48 | Allow creating new sessions from grid view | IMPLEMENT | S |
 | 8 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
 | 9 | #37 | Code refactor: remove bloat | RESEARCH | L |
 

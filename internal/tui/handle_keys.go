@@ -197,6 +197,34 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.appState.ActiveSessionID = sess.ID
 			return m.startRename()
 		}
+	case "t":
+		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
+			m.pendingProjectID = sess.ProjectID
+			m.pendingWorktree = false
+			m.inputMode = "new-session"
+			m.agentPicker.Show(m.sortedAgentItems())
+			return nil
+		}
+	case "W":
+		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
+			projDir := ""
+			if proj := state.FindProject(&m.appState, sess.ProjectID); proj != nil {
+				projDir = proj.Directory
+			}
+			if projDir == "" {
+				projDir, _ = os.Getwd()
+			}
+			if !git.IsGitRepo(projDir) {
+				return func() tea.Msg {
+					return ErrorMsg{Err: fmt.Errorf("project directory is not a git repository")}
+				}
+			}
+			m.pendingProjectID = sess.ProjectID
+			m.pendingWorktree = true
+			m.inputMode = "new-session"
+			m.agentPicker.Show(m.sortedAgentItems())
+			return nil
+		}
 	}
 	wasActive := m.gridView.Active
 	prevSel := m.gridView.Selected()

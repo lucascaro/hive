@@ -16,6 +16,12 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 	m.preview.SetContent("")
 	m.sidebar.Rebuild(&m.appState)
 	m.sidebar.SyncActiveSession(msg.Session.ID)
+	if m.gridView.Active {
+		prevID := msg.Session.ID
+		m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
+		m.gridView.SetProjectNames(m.gridProjectNames())
+		m.gridView.SyncCursor(prevID)
+	}
 	m.persist()
 	m.previewPollGen++ // new session, start fresh poll chain
 	return m, m.schedulePollPreview()
