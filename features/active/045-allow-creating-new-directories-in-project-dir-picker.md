@@ -52,7 +52,7 @@ Add a create-directory mode directly inside the DirPicker component. Press `n` o
    - Test `esc` in create mode cancels without creating
    - Test `enter` in create mode creates the directory (using `t.TempDir()`)
    - Test creating a dir with an empty name is rejected
-   - Test creating a dir that already exists shows an error
+   - Test creating a dir that already exists is accepted by `os.MkdirAll` and navigates into it
 
 ### Test Strategy
 - Unit tests in `dirpicker_test.go` covering the new key flows (uses `t.TempDir()` for filesystem isolation)

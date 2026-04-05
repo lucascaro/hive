@@ -150,9 +150,10 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 		return nil, false
 	}
 
-	if km, ok := msg.(tea.KeyMsg); ok {
-		// Handle create-directory mode separately.
-		if dp.creating {
+	// Handle create-directory mode: forward all messages (including non-key
+	// messages like cursor blink ticks) to the text input.
+	if dp.creating {
+		if km, ok := msg.(tea.KeyMsg); ok {
 			switch km.Type {
 			case tea.KeyEscape:
 				dp.creating = false
@@ -177,11 +178,14 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 				dp.loadDir(newDir)
 				return nil, true
 			}
-			var cmd tea.Cmd
-			dp.createInput, cmd = dp.createInput.Update(msg)
-			return cmd, true
 		}
+		var cmd tea.Cmd
+		dp.createInput, cmd = dp.createInput.Update(msg)
+		_, isKey := msg.(tea.KeyMsg)
+		return cmd, isKey
+	}
 
+	if km, ok := msg.(tea.KeyMsg); ok {
 		filtering := dp.list.SettingFilter()
 
 		if !filtering {
