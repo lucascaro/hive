@@ -187,3 +187,119 @@ func TestDirPicker_HKeyGoesUp(t *testing.T) {
 		t.Errorf("after h: currentDir=%q, want %q", dp.currentDir, origDir)
 	}
 }
+
+func TestDirPicker_NEntersCreateMode(t *testing.T) {
+	dp := testDirPicker(t)
+
+	_, consumed := dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if !consumed {
+		t.Fatal("n should be consumed")
+	}
+	if !dp.creating {
+		t.Fatal("n should activate create mode")
+	}
+}
+
+func TestDirPicker_PlusEntersCreateMode(t *testing.T) {
+	dp := testDirPicker(t)
+
+	_, consumed := dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
+	if !consumed {
+		t.Fatal("+ should be consumed")
+	}
+	if !dp.creating {
+		t.Fatal("+ should activate create mode")
+	}
+}
+
+func TestDirPicker_CreateModeEscCancels(t *testing.T) {
+	dp := testDirPicker(t)
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if !dp.creating {
+		t.Fatal("expected create mode")
+	}
+
+	_, consumed := dp.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	if !consumed {
+		t.Fatal("esc in create mode should be consumed")
+	}
+	if dp.creating {
+		t.Fatal("esc should exit create mode")
+	}
+	if dp.Active != true {
+		t.Fatal("esc in create mode should not deactivate the picker")
+	}
+}
+
+func TestDirPicker_CreateModeEnterCreatesDir(t *testing.T) {
+	dp := testDirPicker(t)
+	origDir := dp.currentDir
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// Type a directory name.
+	for _, r := range "newdir" {
+		dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	_, consumed := dp.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !consumed {
+		t.Fatal("enter should be consumed")
+	}
+	if dp.creating {
+		t.Fatal("enter should exit create mode")
+	}
+
+	expected := filepath.Join(origDir, "newdir")
+	if dp.currentDir != expected {
+		t.Errorf("after create: currentDir=%q, want %q", dp.currentDir, expected)
+	}
+
+	// Verify the directory was actually created on disk.
+	info, err := os.Stat(expected)
+	if err != nil {
+		t.Fatalf("created dir does not exist: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("created path is not a directory")
+	}
+}
+
+func TestDirPicker_CreateModeEmptyNameIgnored(t *testing.T) {
+	dp := testDirPicker(t)
+	origDir := dp.currentDir
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// Press enter with empty input.
+	dp.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if !dp.creating {
+		t.Fatal("empty name should keep create mode active")
+	}
+	if dp.currentDir != origDir {
+		t.Errorf("currentDir changed to %q, want %q", dp.currentDir, origDir)
+	}
+}
+
+func TestDirPicker_CreateModeConsumesAllKeys(t *testing.T) {
+	dp := testDirPicker(t)
+
+	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+
+	// All key messages should be consumed while in create mode.
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune{'a'}},
+		{Type: tea.KeyRunes, Runes: []rune{'.'}},
+		{Type: tea.KeyRunes, Runes: []rune{'h'}},
+		{Type: tea.KeyUp},
+		{Type: tea.KeyDown},
+	}
+	for _, k := range keys {
+		_, consumed := dp.Update(k)
+		if !consumed {
+			t.Errorf("key %q in create mode: consumed=false, want true", k.String())
+		}
+	}
+}

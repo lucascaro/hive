@@ -7,13 +7,14 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #38 | Session status does not detect "Waiting for input" state | RESEARCH | M |
-| 2 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
-| 3 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
-| 4 | #36 | Add missing tests | RESEARCH | L |
-| 5 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 6 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 7 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #45 | Allow creating new directories in the project dir picker | IMPLEMENT | S |
+| 2 | #38 | Session status does not detect "Waiting for input" state | RESEARCH | M |
+| 3 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
+| 4 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
+| 5 | #36 | Add missing tests | RESEARCH | L |
+| 6 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 7 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 8 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 
