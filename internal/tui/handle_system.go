@@ -129,6 +129,7 @@ func (m Model) handleAgentPicked(msg components.AgentPickedMsg) (tea.Model, tea.
 	if _, err := exec.LookPath(agentBin); err != nil {
 		// Binary not found — prompt to install.
 		m.pendingAgentType = agentTypeStr
+		m.inputMode = ""
 		m.PopView() // pop agent picker before confirm is pushed via message
 		installInfo := ""
 		if len(profile.InstallCmd) > 0 {
@@ -152,6 +153,7 @@ func (m Model) handleAgentPicked(msg components.AgentPickedMsg) (tea.Model, tea.
 		blinkCmd := m.nameInput.Focus()
 		return m, blinkCmd
 	}
+	m.inputMode = ""
 	m.PopView() // pop agent picker
 	cmd := m.createSession(m.pendingProjectID, agentTypeStr, profile.Cmd)
 	return m, cmd
