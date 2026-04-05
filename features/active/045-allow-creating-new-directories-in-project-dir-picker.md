@@ -71,4 +71,4 @@ No deviations from plan. All changes self-contained in `dirpicker.go`:
 - View swaps list for text input prompt when in create mode
 - Footer hints updated to show `n/+: new dir`
 
-- **PR:** —
+- **PR:** #47
