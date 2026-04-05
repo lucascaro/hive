@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/tui/styles"
@@ -46,6 +47,10 @@ type DirPicker struct {
 	list       list.Model
 	delegate   list.DefaultDelegate
 	height     int
+
+	creating    bool            // true when the "new directory" text input is shown
+	createInput textinput.Model // inline text input for the new directory name
+	createErr   error           // set when os.MkdirAll fails; shown in View
 }
 
 // NewDirPicker creates a DirPicker with hive-themed styles.
@@ -60,10 +65,16 @@ func NewDirPicker() DirPicker {
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
 		Foreground(styles.ColorText)
 
+	ti := textinput.New()
+	ti.CharLimit = 255
+	ti.Width = 50
+	ti.Placeholder = "directory name"
+
 	const defaultHeight = 15
 	dp := DirPicker{
-		delegate: delegate,
-		height:   defaultHeight,
+		delegate:    delegate,
+		height:      defaultHeight,
+		createInput: ti,
 	}
 	dp.list = dp.buildList(nil)
 	return dp
@@ -139,6 +150,41 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 		return nil, false
 	}
 
+	// Handle create-directory mode: forward all messages (including non-key
+	// messages like cursor blink ticks) to the text input.
+	if dp.creating {
+		if km, ok := msg.(tea.KeyMsg); ok {
+			switch km.Type {
+			case tea.KeyEscape:
+				dp.creating = false
+				dp.createInput.Blur()
+				dp.createInput.SetValue("")
+				dp.createErr = nil
+				return nil, true
+			case tea.KeyEnter:
+				name := strings.TrimSpace(dp.createInput.Value())
+				if name == "" || strings.Contains(name, string(filepath.Separator)) {
+					return nil, true
+				}
+				newDir := filepath.Join(dp.currentDir, name)
+				if err := os.MkdirAll(newDir, 0755); err != nil {
+					dp.createErr = err
+					return nil, true
+				}
+				dp.creating = false
+				dp.createInput.Blur()
+				dp.createInput.SetValue("")
+				dp.createErr = nil
+				dp.loadDir(newDir)
+				return nil, true
+			}
+		}
+		var cmd tea.Cmd
+		dp.createInput, cmd = dp.createInput.Update(msg)
+		_, isKey := msg.(tea.KeyMsg)
+		return cmd, isKey
+	}
+
 	if km, ok := msg.(tea.KeyMsg); ok {
 		filtering := dp.list.SettingFilter()
 
@@ -161,6 +207,12 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 				if item, ok := dp.list.SelectedItem().(dirItem); ok {
 					dp.loadDir(filepath.Join(dp.currentDir, item.name))
 				}
+				return nil, true
+			case "n", "+":
+				dp.creating = true
+				dp.createErr = nil
+				dp.createInput.SetValue("")
+				dp.createInput.Focus()
 				return nil, true
 			}
 		}
@@ -186,18 +238,31 @@ func (dp *DirPicker) View() string {
 		styles.MutedStyle.Render(displayPath) + "\n" +
 		strings.Repeat("─", 54)
 
-	footer := styles.MutedStyle.Render(
-		"↑/↓: navigate  enter: open  ←: up  /: search  .: here  esc: cancel",
-	)
+	var content string
+	var footer string
 
-	listView := dp.list.View()
-	if dp.readErr != nil {
-		listView = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).
-			Render("Error: " + dp.readErr.Error())
+	if dp.creating {
+		prompt := styles.MutedStyle.Render("New directory name:")
+		errLine := ""
+		if dp.createErr != nil {
+			errLine = "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("9")).
+				Render("Error: "+dp.createErr.Error())
+		}
+		content = prompt + "\n" + dp.createInput.View() + errLine
+		footer = styles.MutedStyle.Render("enter: create  esc: cancel")
+	} else {
+		content = dp.list.View()
+		if dp.readErr != nil {
+			content = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).
+				Render("Error: " + dp.readErr.Error())
+		}
+		footer = styles.MutedStyle.Render(
+			"↑/↓: navigate  enter: open  ←: up  /: search  n/+: new dir  .: here  esc: cancel",
+		)
 	}
 
 	body := header + "\n" +
-		listView + "\n" +
+		content + "\n" +
 		footer
 
 	return lipgloss.NewStyle().

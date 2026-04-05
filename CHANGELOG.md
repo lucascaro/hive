@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Create directories in dir picker**: press `n` or `+` in the directory picker
+  to create a new subdirectory without leaving hive (#45).
+
 ## [0.2.1] — 2026-04-04
 
 ### Fixed
