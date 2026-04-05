@@ -163,7 +163,7 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 				return nil, true
 			case tea.KeyEnter:
 				name := strings.TrimSpace(dp.createInput.Value())
-				if name == "" || strings.Contains(name, string(filepath.Separator)) {
+				if name == "" || strings.ContainsAny(name, `/\`) {
 					return nil, true
 				}
 				newDir := filepath.Join(dp.currentDir, name)

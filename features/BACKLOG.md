@@ -9,13 +9,14 @@ See `features/templates/FEATURE.md` for the feature file template.
 |---|-------|-------|-------|------------|
 | 1 | #38 | Session status does not detect "Waiting for input" state | RESEARCH | M |
 | 2 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
-| 3 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
-| 4 | #36 | Add missing tests | RESEARCH | L |
-| 5 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 6 | #46 | Rework dialog system to use a view stack | RESEARCH | M |
-| 7 | #48 | Allow creating new sessions from grid view | IMPLEMENT | S |
-| 8 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 9 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 3 | #49 | Bug: Renaming projects doesn't update the project name | RESEARCH | S |
+| 4 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
+| 5 | #36 | Add missing tests | RESEARCH | L |
+| 6 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 7 | #46 | Rework dialog system to use a view stack | IMPLEMENT | M |
+| 8 | #48 | Allow creating new sessions from grid view | IMPLEMENT | S |
+| 9 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 10 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 

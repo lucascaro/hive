@@ -618,7 +618,7 @@ func TestNewProject_PressN_OpensDirPickerAfterName(t *testing.T) {
 func TestDirPickedMsg_ExistingDir_CreatesProject(t *testing.T) {
 	m := testModelWithSessions()
 	m.pendingProjectName = "myproject"
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	dir := t.TempDir()
 	result, cmd := m.Update(components.DirPickedMsg{Dir: dir})
@@ -639,7 +639,7 @@ func TestDirPickedMsg_ExistingDir_CreatesProject(t *testing.T) {
 func TestDirPickedMsg_NonExistentDir_AsksConfirmation(t *testing.T) {
 	m := testModelWithSessions()
 	m.pendingProjectName = "myproject"
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	nonexistent := t.TempDir() + "/does-not-exist"
 	result, _ := m.Update(components.DirPickedMsg{Dir: nonexistent})
@@ -653,7 +653,7 @@ func TestDirPickedMsg_NonExistentDir_AsksConfirmation(t *testing.T) {
 func TestDirPickerCancelMsg_ReturnsToNameStep(t *testing.T) {
 	m := testModelWithSessions()
 	m.pendingProjectName = "myproject"
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	result, _ := m.Update(components.DirPickerCancelMsg{})
 	updated := result.(Model)
@@ -672,7 +672,7 @@ func TestDirPickerCancelMsg_ReturnsToNameStep(t *testing.T) {
 
 func TestDirPicker_BackgroundMessages_NotDroppedWhileActive(t *testing.T) {
 	m := testModelWithSessions()
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	// A preview update should still be processed while the picker is open.
 	m.previewPollGen = 1
@@ -695,7 +695,7 @@ func TestDirPicker_BackgroundMessages_NotDroppedWhileActive(t *testing.T) {
 
 func TestHandleKey_DirPickerActive_BlocksGlobalKeys(t *testing.T) {
 	m := testModelWithSessions()
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	// Press "/" which is the Filter key — should NOT activate global filter.
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
@@ -708,7 +708,7 @@ func TestHandleKey_DirPickerActive_BlocksGlobalKeys(t *testing.T) {
 
 func TestHandleKey_DirPickerActive_BlocksQuit(t *testing.T) {
 	m := testModelWithSessions()
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	// Press "q" which is the Quit key — should NOT quit.
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -726,6 +726,7 @@ func TestHandleKey_DirPickerActive_BlocksQuit(t *testing.T) {
 func TestHandleKey_AgentPickerActive_BlocksGlobalKeys(t *testing.T) {
 	m := testModelWithSessions()
 	m.agentPicker.Show(components.DefaultAgentItems)
+	m.PushView(ViewAgentPicker)
 
 	// Press "/" (Filter key) — should not activate global filter.
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
@@ -738,7 +739,7 @@ func TestHandleKey_AgentPickerActive_BlocksGlobalKeys(t *testing.T) {
 
 func TestHandleKey_FilterActive_BlocksGlobalKeys(t *testing.T) {
 	m := testModelWithSessions()
-	m.appState.FilterActive = true
+	m.PushView(ViewFilter)
 
 	// Press "n" which is the NewProject key — should add to filter, not open new project.
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
@@ -766,7 +767,7 @@ func TestHandleKey_NoOverlay_GlobalKeysWork(t *testing.T) {
 
 func TestHandleKey_SettingsActive_BlocksAll(t *testing.T) {
 	m := testModelWithSessions()
-	m.settings.Active = true
+	m.PushView(ViewSettings)
 
 	// Press "n" (NewProject) — should be swallowed by settings.
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
@@ -779,9 +780,9 @@ func TestHandleKey_SettingsActive_BlocksAll(t *testing.T) {
 
 func TestHandleKey_ConfirmActive_BlocksAll(t *testing.T) {
 	m := testModelWithSessions()
-	m.appState.ShowConfirm = true
 	m.appState.ConfirmAction = "test-action"
 	m.confirm.Message = "Are you sure?"
+	m.PushView(ViewConfirm)
 
 	// Press "n" (NewProject key) — should be handled by confirm (treated as cancel/no-op).
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
@@ -794,7 +795,7 @@ func TestHandleKey_ConfirmActive_BlocksAll(t *testing.T) {
 
 func TestHandleKey_CtrlC_AlwaysQuits(t *testing.T) {
 	m := testModelWithSessions()
-	m.dirPicker.Active = true
+	m.PushView(ViewDirPicker)
 
 	// ctrl+c should always quit, even with an overlay active.
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})

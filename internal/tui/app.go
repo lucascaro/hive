@@ -81,6 +81,9 @@ type Model struct {
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
 	stateLastKnownMtime time.Time
+	// viewStack tracks the active view layers. ViewMain is always at the bottom.
+	// Push to open a view, pop to close it. TopView() drives View() and key dispatch.
+	viewStack []ViewID
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -120,6 +123,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:           ni,
 		contentSnapshots:    make(map[string]string),
+		viewStack:           []ViewID{ViewMain},
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
@@ -145,6 +149,13 @@ func New(cfg config.Config, appState state.AppState) Model {
 		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
 	}
+	// Push startup overlays onto the view stack if they were activated by constructors.
+	if m.recoveryPicker.Active {
+		m.PushView(ViewRecovery)
+	}
+	if m.orphanPicker.Active {
+		m.PushView(ViewOrphan)
+	}
 	// Restore the grid view if the user detached from a grid-initiated session.
 	m.restoreGrid()
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
@@ -164,6 +175,7 @@ func (m *Model) restoreGrid() {
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
 	m.gridView.SyncCursor(m.appState.ActiveSessionID)
+	m.PushView(ViewGrid)
 }
 
 // expandForActiveSession un-collapses any parent project or team that contains
@@ -200,7 +212,7 @@ func (m Model) Init() tea.Cmd {
 		m.scheduleWatchStatuses(),
 		scheduleWatchState(m.stateLastKnownMtime),
 	}
-	if m.gridView.Active {
+	if m.HasView(ViewGrid) {
 		cmds = append(cmds, m.scheduleGridPoll())
 	}
 	return tea.Batch(cmds...)
@@ -285,73 +297,58 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Forward non-key, non-handled messages to active modals that need
 	// internal ticks (e.g. cursor blink, filter debounce in charmbracelet/list).
-	if m.dirPicker.Active {
+	if m.HasView(ViewDirPicker) {
 		m.dirPicker.Update(msg)
 	}
 
 	return m, nil
 }
 
-// View renders the full UI.
+// View renders the full UI based on the top of the view stack.
 func (m Model) View() string {
-	// Settings screen fills the full terminal.
-	if m.settings.Active {
+	switch m.TopView() {
+	case ViewSettings:
 		m.settings.Width = m.appState.TermWidth
 		m.settings.Height = m.appState.TermHeight
 		return m.settings.View()
-	}
-	// Grid overview fills the full terminal.
-	if m.gridView.Active {
+	case ViewGrid:
 		m.gridView.Width = m.appState.TermWidth
 		m.gridView.Height = m.appState.TermHeight
 		return m.gridView.View()
-	}
-	// Show overlays first.
-	if m.appState.ShowHelp {
+	case ViewHelp:
 		return m.helpView()
-	}
-	if m.appState.ShowTmuxHelp {
+	case ViewTmuxHelp:
 		return m.tmuxHelpView()
-	}
-	if m.showAttachHint {
+	case ViewAttachHint:
 		return m.overlayView(m.attachHintView())
-	}
-	if m.appState.ShowConfirm {
+	case ViewConfirm:
 		return m.overlayView(m.confirm.View())
-	}
-	if m.recoveryPicker.Active {
+	case ViewRecovery:
 		m.recoveryPicker.Width = m.appState.TermWidth
 		m.recoveryPicker.Height = m.appState.TermHeight
 		return m.overlayView(m.recoveryPicker.View())
-	}
-	if m.orphanPicker.Active {
+	case ViewOrphan:
 		m.orphanPicker.Width = m.appState.TermWidth
 		m.orphanPicker.Height = m.appState.TermHeight
 		return m.overlayView(m.orphanPicker.View())
-	}
-	if m.agentPicker.Active {
+	case ViewAgentPicker:
 		return m.overlayView(m.agentPicker.View())
-	}
-	if m.teamBuilder.Active {
+	case ViewTeamBuilder:
 		return m.overlayView(m.teamBuilder.View())
-	}
-	if m.inputMode == "project-name" {
+	case ViewProjectName:
 		return m.overlayView(m.nameInputView("New Project (1/2)", "Project name:", "enter: next  esc: cancel"))
-	}
-	if m.dirPicker.Active {
+	case ViewDirPicker:
 		return m.overlayView(m.dirPicker.View())
-	}
-	if m.inputMode == "project-dir-confirm" {
+	case ViewDirConfirm:
 		return m.overlayView(m.dirConfirmView())
-	}
-	if m.inputMode == "custom-command" {
+	case ViewCustomCmd:
 		return m.overlayView(m.nameInputView("Custom Command", "Command to run:", "enter: create  esc: cancel"))
-	}
-	if m.inputMode == "worktree-branch" {
+	case ViewWorktreeBranch:
 		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
-	}
-	if m.appState.EditingTitle {
+	case ViewRename:
 		return m.overlayView(m.renameDialogView())
+	case ViewFilter:
+		// Filter is an inline mode — fall through to main layout rendering.
 	}
 
 	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight)

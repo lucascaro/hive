@@ -59,6 +59,7 @@ func TestGolden_GridView_ProjectScope(t *testing.T) {
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.Width = 120
 	m.gridView.Height = 40
+	m.PushView(ViewGrid)
 	golden.RequireEqual(t, m.View())
 }
 
@@ -73,6 +74,7 @@ func TestGolden_GridView_AllProjects(t *testing.T) {
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.Width = 120
 	m.gridView.Height = 40
+	m.PushView(ViewGrid)
 	golden.RequireEqual(t, m.View())
 }
 
@@ -94,7 +96,7 @@ func TestGolden_FilterActive(t *testing.T) {
 	appState.FilterActive = true
 	appState.FilterQuery = "sess"
 	m := goldenModel(t, appState)
-	m.appState.FilterActive = true
+	m.PushView(ViewFilter)
 	m.appState.FilterQuery = "sess"
 	m.sidebar.FilterQuery = "sess"
 	m.sidebar.Rebuild(&m.appState)
@@ -106,7 +108,7 @@ func TestGolden_HelpOverlay(t *testing.T) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 	m := goldenModel(t, appState)
-	m.appState.ShowHelp = true
+	m.PushView(ViewHelp)
 	golden.RequireEqual(t, m.View())
 }
 
@@ -115,11 +117,11 @@ func TestGolden_ConfirmDialog(t *testing.T) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 	m := goldenModel(t, appState)
-	m.appState.ShowConfirm = true
 	m.appState.ConfirmMsg = "Kill session \"session-1\"?"
 	m.appState.ConfirmAction = "kill-session:sess-1"
 	m.confirm.Message = "Kill session \"session-1\"?"
 	m.confirm.Action = "kill-session:sess-1"
+	m.PushView(ViewConfirm)
 	golden.RequireEqual(t, m.View())
 }
 

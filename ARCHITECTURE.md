@@ -41,11 +41,17 @@ The Bubble Tea root model (`app.go`) wires together all components. The UI
 follows the Elm architecture: messages flow in, the model updates, and `View()`
 renders the current state.
 
+View navigation uses a **view stack** (`viewstack.go`): `PushView()` to open a
+dialog/overlay, `PopView()` to close it and return to whatever was underneath.
+`View()` and key dispatch both use `TopView()` to determine which view is active.
+This replaces the earlier priority-ordered boolean flag cascade.
+
 Key components:
 
 | File | Responsibility |
 |------|---------------|
 | `app.go` | Root model — update loop, message routing |
+| `viewstack.go` | View stack: ViewID enum, push/pop/top/has, legacy flag sync |
 | `keys.go` | Key map, loaded from config |
 | `messages.go` | All `tea.Msg` types used across the app |
 | `layout.go` | Terminal size tracking and pane sizing |

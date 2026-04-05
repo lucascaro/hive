@@ -16,12 +16,7 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 	m.preview.SetContent("")
 	m.sidebar.Rebuild(&m.appState)
 	m.sidebar.SyncActiveSession(msg.Session.ID)
-	if m.gridView.Active {
-		prevID := msg.Session.ID
-		m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-		m.gridView.SetProjectNames(m.gridProjectNames())
-		m.gridView.SyncCursor(prevID)
-	}
+	m.refreshGrid()
 	m.persist()
 	m.previewPollGen++ // new session, start fresh poll chain
 	return m, m.schedulePollPreview()
@@ -29,6 +24,8 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 
 func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
 	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
+	m.sidebar.Rebuild(&m.appState)
+	m.refreshGrid()
 	m.commitState()
 	return m, nil
 }
@@ -55,6 +52,7 @@ func (m Model) handleSessionTitleChanged(msg SessionTitleChangedMsg) (tea.Model,
 			WorkDir:      sess.WorkDir,
 		})
 	}
+	m.refreshGrid()
 	m.commitState()
 	return m, nil
 }
@@ -76,7 +74,7 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.appState.PreviewContent = ""
 	m.preview.SetContent("")
 	cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
-	if m.gridView.Active {
+	if m.HasView(ViewGrid) {
 		cmds = append(cmds, m.scheduleGridPoll())
 	}
 	return m, tea.Batch(cmds...)

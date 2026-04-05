@@ -290,7 +290,7 @@ func TestDirPicker_CreateModeRejectsPathSeparator(t *testing.T) {
 	dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 
 	// Type a name containing a path separator.
-	for _, r := range "../../evil" {
+	for _, r := range ".." + string(filepath.Separator) + "evil" {
 		dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 
@@ -306,9 +306,10 @@ func TestDirPicker_CreateModeRejectsPathSeparator(t *testing.T) {
 
 func TestDirPicker_CreateModeShowsError(t *testing.T) {
 	dp := NewDirPicker()
-	// Point at a non-existent base directory so MkdirAll fails.
+	// Point at a path nested under a file (not a directory) so MkdirAll fails.
+	// os.DevNull is /dev/null on Unix and NUL on Windows — both are files.
 	dp.Active = true
-	dp.currentDir = "/dev/null/impossible"
+	dp.currentDir = filepath.Join(os.DevNull, "impossible")
 
 	dp.creating = true
 	dp.createInput.Focus()
