@@ -3,6 +3,8 @@ package tui
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
 )
@@ -257,14 +259,91 @@ func TestRefreshGrid_NoopWhenGridNotInStack(t *testing.T) {
 	m.refreshGrid()
 }
 
-func TestPopViewTo(t *testing.T) {
-	m := testModelForStack()
-	m.PushView(ViewGrid)
-	m.PushView(ViewAgentPicker)
-	m.PushView(ViewCustomCmd)
+// Integration tests that exercise the actual Update() pipeline.
 
-	m.popViewTo(ViewGrid)
+func TestIntegration_GridRename_Esc_ReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	// Open grid.
+	m.openGrid(state.GridRestoreProject)
+
 	if m.TopView() != ViewGrid {
-		t.Fatalf("popViewTo(ViewGrid): top = %q, want ViewGrid", m.TopView())
+		t.Fatalf("after opening grid, top = %q, want ViewGrid", m.TopView())
+	}
+
+	// Press "r" to rename from grid.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = result.(Model)
+
+	if m.TopView() != ViewRename {
+		t.Fatalf("after pressing r in grid, top = %q, want ViewRename", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should still be in stack under rename")
+	}
+
+	// Press esc to cancel rename.
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = result.(Model)
+
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after esc from rename, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+func TestIntegration_GridKill_Cancel_ReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	// Open grid.
+	m.openGrid(state.GridRestoreProject)
+
+	// Press "x" to kill from grid.
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = result.(Model)
+
+	// The "x" handler returns a func that produces ConfirmActionMsg.
+	// Process it to push the confirm dialog.
+	if cmd != nil {
+		msg := cmd()
+		result, _ = m.Update(msg)
+		m = result.(Model)
+	}
+
+	if m.TopView() != ViewConfirm {
+		t.Fatalf("after x+confirm, top = %q, want ViewConfirm", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should still be in stack under confirm")
+	}
+
+	// Press esc to cancel the confirm.
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = result.(Model)
+
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after cancelling confirm, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+func TestIntegration_GridRename_Enter_ReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	// Open grid.
+	m.openGrid(state.GridRestoreProject)
+
+	// Press "r" to rename from grid.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = result.(Model)
+
+	// Type a new title.
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'A'}})
+	m = result.(Model)
+
+	// Press enter to confirm rename.
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = result.(Model)
+
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after enter from rename, top = %q, want ViewGrid", m.TopView())
 	}
 }

@@ -28,6 +28,14 @@ const (
 
 // PushView pushes a view onto the stack and syncs legacy flags.
 func (m *Model) PushView(id ViewID) {
+	if debugLog != nil {
+		for _, v := range m.viewStack {
+			if v == id {
+				debugLog.Printf("WARNING: PushView(%s) duplicates existing stack entry", id)
+				break
+			}
+		}
+	}
 	m.viewStack = append(m.viewStack, id)
 	m.syncLegacyFlags(id, true)
 }
@@ -155,15 +163,6 @@ func (m *Model) refreshGrid() {
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	if prevID != "" {
 		m.gridView.SyncCursor(prevID)
-	}
-}
-
-// popViewTo pops views from the stack until the top is the target view
-// or the stack only has ViewMain. Used by flows that need to unwind
-// multiple views (e.g., completing a wizard from grid context).
-func (m *Model) popViewTo(target ViewID) {
-	for len(m.viewStack) > 1 && m.TopView() != target {
-		m.PopView()
 	}
 }
 

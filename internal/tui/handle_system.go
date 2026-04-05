@@ -97,11 +97,7 @@ func (m Model) handleCancelled() (tea.Model, tea.Cmd) {
 		m.agentPicker.Hide()
 	case ViewTeamBuilder:
 		m.teamBuilder.Hide()
-	case ViewProjectName, ViewCustomCmd, ViewWorktreeBranch:
-		m.nameInput.Blur()
-	case ViewDirPicker:
-		m.dirPicker.Active = false
-	case ViewDirConfirm:
+	case ViewProjectName, ViewCustomCmd, ViewWorktreeBranch, ViewDirConfirm:
 		m.nameInput.Blur()
 	}
 	m.pendingWorktree = false
