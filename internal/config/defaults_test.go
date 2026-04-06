@@ -71,6 +71,8 @@ func TestDefaultConfig_KeybindingsPopulated(t *testing.T) {
 		"Filter":         kb.Filter,
 		"GridOverview":   kb.GridOverview,
 		"Help":           kb.Help,
+		"ColorNext":      kb.ColorNext,
+		"ColorPrev":      kb.ColorPrev,
 	}
 	for name, val := range bindings {
 		if val == "" {

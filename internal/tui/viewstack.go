@@ -161,6 +161,7 @@ func (m *Model) refreshGrid() {
 	}
 	m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
 	m.gridView.SetProjectNames(m.gridProjectNames())
+	m.gridView.SetProjectColors(m.gridProjectColors())
 	if prevID != "" {
 		m.gridView.SyncCursor(prevID)
 	}
@@ -171,6 +172,7 @@ func (m *Model) openGrid(mode state.GridRestoreMode) {
 	sessions := m.gridSessions(mode)
 	m.gridView.Show(sessions, mode)
 	m.gridView.SetProjectNames(m.gridProjectNames())
+	m.gridView.SetProjectColors(m.gridProjectColors())
 	m.gridView.SyncCursor(m.appState.ActiveSessionID)
 	m.PushView(ViewGrid)
 }

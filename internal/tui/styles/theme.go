@@ -1,6 +1,13 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
 	// Base colors
@@ -95,6 +102,131 @@ var (
 	MutedStyle = lipgloss.NewStyle().Foreground(ColorMuted)
 )
 
+// ProjectPalette is a curated set of visually distinct colors for projects.
+// These are chosen to be distinguishable on dark backgrounds.
+var ProjectPalette = []string{
+	"#7C3AED", // violet
+	"#3B82F6", // blue
+	"#10B981", // emerald
+	"#F59E0B", // amber
+	"#EF4444", // red
+	"#EC4899", // pink
+	"#06B6D4", // cyan
+	"#F97316", // orange
+	"#8B5CF6", // purple
+	"#14B8A6", // teal
+}
+
+// NextProjectColor returns a palette color for the given index, cycling.
+func NextProjectColor(index int) string {
+	return ProjectPalette[index%len(ProjectPalette)]
+}
+
+// NextFreeColor returns the first palette color not present in usedColors.
+// If all palette colors are used, it falls back to cycling by count.
+func NextFreeColor(usedColors []string) string {
+	used := make(map[string]bool, len(usedColors))
+	for _, c := range usedColors {
+		used[strings.ToUpper(c)] = true
+	}
+	for _, c := range ProjectPalette {
+		if !used[strings.ToUpper(c)] {
+			return c
+		}
+	}
+	return NextProjectColor(len(usedColors))
+}
+
+// CycleColor returns the next (direction=+1) or previous (direction=-1) palette
+// color relative to the current color, skipping colors in usedByOthers.
+func CycleColor(current string, direction int, usedByOthers []string) string {
+	used := make(map[string]bool, len(usedByOthers))
+	for _, c := range usedByOthers {
+		used[strings.ToUpper(c)] = true
+	}
+
+	// Find current index in palette.
+	startIdx := 0
+	upper := strings.ToUpper(current)
+	for i, c := range ProjectPalette {
+		if strings.ToUpper(c) == upper {
+			startIdx = i
+			break
+		}
+	}
+
+	n := len(ProjectPalette)
+	for step := 1; step < n; step++ {
+		idx := ((startIdx + direction*step) % n + n) % n
+		if !used[strings.ToUpper(ProjectPalette[idx])] {
+			return ProjectPalette[idx]
+		}
+	}
+	// All colors used by others — just cycle without skipping.
+	idx := ((startIdx + direction) % n + n) % n
+	return ProjectPalette[idx]
+}
+
+// ContrastForeground returns a light or dark foreground color that contrasts
+// well with the given hex background color (e.g. "#7C3AED").
+// It picks whichever foreground yields the higher WCAG contrast ratio.
+func ContrastForeground(hexBg string) lipgloss.Color {
+	bgLum := relativeLuminance(hexBg)
+	lightLum := relativeLuminance("#F9FAFB")
+	darkLum := relativeLuminance("#1F2937")
+	if contrastRatio(lightLum, bgLum) >= contrastRatio(darkLum, bgLum) {
+		return lipgloss.Color("#F9FAFB") // light text on dark bg
+	}
+	return lipgloss.Color("#1F2937") // dark text on light bg
+}
+
+// contrastRatio computes the WCAG 2.0 contrast ratio between two luminances.
+func contrastRatio(l1, l2 float64) float64 {
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+// relativeLuminance computes sRGB relative luminance from a hex color string.
+func relativeLuminance(hex string) float64 {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0 // dark fallback
+	}
+	r, err1 := strconv.ParseUint(hex[0:2], 16, 8)
+	g, err2 := strconv.ParseUint(hex[2:4], 16, 8)
+	b, err3 := strconv.ParseUint(hex[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0
+	}
+	return 0.2126*linearize(float64(r)/255) +
+		0.7152*linearize(float64(g)/255) +
+		0.0722*linearize(float64(b)/255)
+}
+
+func linearize(c float64) float64 {
+	if c <= 0.04045 {
+		return c / 12.92
+	}
+	return math.Pow((c+0.055)/1.055, 2.4)
+}
+
+// ProjectColorBar returns a 1-char-wide colored bar string for use in the sidebar.
+func ProjectColorBar(hexColor string) string {
+	return lipgloss.NewStyle().
+		Background(lipgloss.Color(hexColor)).
+		Render(" ")
+}
+
+// ProjectColorOrDefault returns the given color, or ColorAccent hex if empty.
+func ProjectColorOrDefault(color string) string {
+	if color == "" {
+		return fmt.Sprintf("%s", ColorAccent)
+	}
+	return color
+}
+
 // AgentBadge returns a styled agent type badge.
 func AgentBadge(agentType string) string {
 	color, ok := AgentColors[agentType]
@@ -104,6 +236,42 @@ func AgentBadge(agentType string) string {
 	return lipgloss.NewStyle().
 		Foreground(color).
 		Render("[" + agentType + "]")
+}
+
+// AgentBadgeOnBg returns a styled agent type badge with an explicit background.
+func AgentBadgeOnBg(agentType string, bg lipgloss.Color) string {
+	color, ok := AgentColors[agentType]
+	if !ok {
+		color = AgentColors["custom"]
+	}
+	return lipgloss.NewStyle().
+		Foreground(color).
+		Background(bg).
+		Render("[" + agentType + "]")
+}
+
+// StatusDotOnBg returns a styled status dot with an explicit background.
+func StatusDotOnBg(status string, bg lipgloss.Color) string {
+	var fg lipgloss.Color
+	var glyph string
+	switch status {
+	case "running":
+		fg = ColorSuccess
+		glyph = "●"
+	case "idle":
+		fg = ColorMuted
+		glyph = "○"
+	case "waiting":
+		fg = ColorWarning
+		glyph = "◉"
+	case "dead":
+		fg = ColorError
+		glyph = "✕"
+	default:
+		fg = ColorMuted
+		glyph = "○"
+	}
+	return lipgloss.NewStyle().Foreground(fg).Background(bg).Render(glyph)
 }
 
 // StatusDot returns the styled status indicator for a session status.

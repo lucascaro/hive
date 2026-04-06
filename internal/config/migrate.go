@@ -25,6 +25,12 @@ func Migrate(cfg Config) Config {
 	if cfg.Keybindings.GridOverview == "" {
 		cfg.Keybindings.GridOverview = defaults.Keybindings.GridOverview
 	}
+	if cfg.Keybindings.ColorNext == "" {
+		cfg.Keybindings.ColorNext = defaults.Keybindings.ColorNext
+	}
+	if cfg.Keybindings.ColorPrev == "" {
+		cfg.Keybindings.ColorPrev = defaults.Keybindings.ColorPrev
+	}
 
 	return cfg
 }

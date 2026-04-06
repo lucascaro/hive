@@ -31,6 +31,8 @@ type KeyMap struct {
 	Settings       key.Binding
 	Quit           key.Binding
 	QuitKill       key.Binding
+	ColorNext      key.Binding
+	ColorPrev      key.Binding
 	Confirm        key.Binding
 	Cancel         key.Binding
 }
@@ -62,6 +64,8 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Settings:       key.NewBinding(key.WithKeys(kb.Settings), key.WithHelp(kb.Settings, "settings")),
 		Quit:           key.NewBinding(key.WithKeys(kb.Quit), key.WithHelp(kb.Quit, "quit")),
 		QuitKill:       key.NewBinding(key.WithKeys(kb.QuitKill), key.WithHelp(kb.QuitKill, "quit+kill")),
+		ColorNext:      key.NewBinding(key.WithKeys(kb.ColorNext), key.WithHelp(kb.ColorNext, "next color")),
+		ColorPrev:      key.NewBinding(key.WithKeys(kb.ColorPrev), key.WithHelp(kb.ColorPrev, "prev color")),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
 	}

@@ -55,6 +55,7 @@ type SidebarItem struct {
 	ProjectNum     int    // 1-based number for projects (0 = not a project)
 	IsWorktree     bool   // true if the session runs in a git worktree
 	WorktreeBranch string // branch name for worktree sessions
+	ProjectColor   string // hex color of the parent project
 }
 
 // Sidebar manages the project/team/session tree.
@@ -81,11 +82,12 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 		projectNum++
 		collapsed := p.Collapsed
 		s.Items = append(s.Items, SidebarItem{
-			Kind:       KindProject,
-			ProjectID:  p.ID,
-			Label:      p.Name,
-			Collapsed:  collapsed,
-			ProjectNum: projectNum,
+			Kind:         KindProject,
+			ProjectID:    p.ID,
+			Label:        p.Name,
+			Collapsed:    collapsed,
+			ProjectNum:   projectNum,
+			ProjectColor: p.Color,
 		})
 		if collapsed {
 			continue
@@ -93,13 +95,14 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 		// Teams
 		for _, t := range p.Teams {
 			s.Items = append(s.Items, SidebarItem{
-				Kind:      KindTeam,
-				ProjectID: p.ID,
-				TeamID:    t.ID,
-				Label:     t.Name,
-				Indent:    1,
-				Collapsed: t.Collapsed,
-				Status:    string(t.TeamStatus()),
+				Kind:         KindTeam,
+				ProjectID:    p.ID,
+				TeamID:       t.ID,
+				Label:        t.Name,
+				Indent:       1,
+				Collapsed:    t.Collapsed,
+				Status:       string(t.TeamStatus()),
+				ProjectColor: p.Color,
 			})
 			if t.Collapsed {
 				continue
@@ -120,6 +123,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 					TeamRole:       string(sess.TeamRole),
 					IsWorktree:     sess.WorktreePath != "",
 					WorktreeBranch: sess.WorktreeBranch,
+					ProjectColor:   p.Color,
 				})
 			}
 		}
@@ -139,6 +143,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 				TeamRole:       string(state.RoleStandalone),
 				IsWorktree:     sess.WorktreePath != "",
 				WorktreeBranch: sess.WorktreeBranch,
+				ProjectColor:   p.Color,
 			})
 		}
 	}
@@ -318,6 +323,7 @@ func (s *Sidebar) View(activeSessionID string, focused bool) string {
 func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int) string {
 	indent := strings.Repeat("  ", item.Indent)
 	var prefix, label string
+	pcolor := styles.ProjectColorOrDefault(item.ProjectColor)
 
 	switch item.Kind {
 	case KindProject:
@@ -332,9 +338,13 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		prefix = arrow + " "
 		label = numHint + item.Label
 		if selected {
-			return styles.ProjectSelectedStyle.Width(width).Render(indent + prefix + label)
+			return styles.ProjectSelectedStyle.
+				Foreground(lipgloss.Color(pcolor)).
+				Width(width).Render(indent + prefix + label)
 		}
-		return styles.ProjectStyle.Width(width).Render(indent + prefix + label)
+		return styles.ProjectStyle.
+			Foreground(lipgloss.Color(pcolor)).
+			Width(width).Render(indent + prefix + label)
 
 	case KindTeam:
 		arrow := "▶"
@@ -348,7 +358,8 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		if selected {
 			st = st.Background(styles.ColorSelected)
 		}
-		return st.Width(width).Render(indent + prefix + label)
+		bar := styles.ProjectColorBar(pcolor)
+		return bar + st.Width(width-1).Render(indent + prefix + label)
 
 	case KindSession:
 		dot := styles.StatusDot(item.Status)
@@ -369,10 +380,11 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		if active {
 			label += " ←"
 		}
+		bar := styles.ProjectColorBar(pcolor)
 		if selected {
-			return styles.SessionSelectedStyle.Width(width).Render(indent + label)
+			return bar + styles.SessionSelectedStyle.Width(width-1).Render(indent + label)
 		}
-		return styles.SessionStyle.Width(width).Render(indent + label)
+		return bar + styles.SessionStyle.Width(width-1).Render(indent + label)
 	}
 	return ""
 }

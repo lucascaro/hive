@@ -378,6 +378,141 @@ func TestSyncActiveSession_InvalidID(t *testing.T) {
 	}
 }
 
+func TestSidebarRebuild_ProjectColorPropagated(t *testing.T) {
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{
+				ID:    "proj-1",
+				Name:  "colored-project",
+				Color: "#EF4444",
+				Teams: []*state.Team{
+					{
+						ID:        "team-1",
+						ProjectID: "proj-1",
+						Name:      "red-team",
+						Sessions: []*state.Session{
+							{ID: "s1", ProjectID: "proj-1", TeamID: "team-1", Title: "worker", AgentType: state.AgentClaude, Status: state.StatusRunning},
+						},
+					},
+				},
+				Sessions: []*state.Session{
+					{ID: "s2", ProjectID: "proj-1", Title: "standalone", AgentType: state.AgentCodex, Status: state.StatusIdle},
+				},
+			},
+		},
+	}
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	for _, item := range s.Items {
+		if item.ProjectColor != "#EF4444" {
+			t.Errorf("item %q (kind=%d) has ProjectColor=%q, want #EF4444", item.Label, item.Kind, item.ProjectColor)
+		}
+	}
+}
+
+func TestSidebarRebuild_MultipleProjectColors(t *testing.T) {
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{
+				ID: "p1", Name: "alpha", Color: "#FF0000",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s1", ProjectID: "p1", Title: "s1", AgentType: state.AgentClaude, Status: state.StatusRunning},
+				},
+			},
+			{
+				ID: "p2", Name: "beta", Color: "#00FF00",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s2", ProjectID: "p2", Title: "s2", AgentType: state.AgentCodex, Status: state.StatusIdle},
+				},
+			},
+		},
+	}
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	for _, item := range s.Items {
+		var wantColor string
+		switch item.ProjectID {
+		case "p1":
+			wantColor = "#FF0000"
+		case "p2":
+			wantColor = "#00FF00"
+		}
+		if item.ProjectColor != wantColor {
+			t.Errorf("item %q (project=%s) has ProjectColor=%q, want %q",
+				item.Label, item.ProjectID, item.ProjectColor, wantColor)
+		}
+	}
+}
+
+func TestSidebarRenderItem_SessionHasColorBar(t *testing.T) {
+	s := &Sidebar{Width: 60}
+	item := SidebarItem{
+		Kind:         KindSession,
+		Label:        "test-session",
+		AgentType:    "claude",
+		Status:       "running",
+		Indent:       1,
+		ProjectColor: "#EF4444",
+	}
+	out := s.renderItem(item, false, false, 60)
+	if out == "" {
+		t.Fatal("renderItem returned empty string")
+	}
+	// The session should contain the session title.
+	if !strings.Contains(out, "test-session") {
+		t.Error("renderItem session output missing session title")
+	}
+}
+
+func TestSidebarRenderItem_ProjectUsesColor(t *testing.T) {
+	s := &Sidebar{Width: 60}
+	item := SidebarItem{
+		Kind:         KindProject,
+		Label:        "my-project",
+		ProjectNum:   1,
+		ProjectColor: "#3B82F6",
+	}
+	out := s.renderItem(item, false, false, 60)
+	if !strings.Contains(out, "my-project") {
+		t.Error("renderItem project output missing project name")
+	}
+}
+
+func TestSidebarRenderItem_TeamHasColorBar(t *testing.T) {
+	s := &Sidebar{Width: 60}
+	item := SidebarItem{
+		Kind:         KindTeam,
+		Label:        "my-team",
+		Indent:       1,
+		Status:       "running",
+		ProjectColor: "#10B981",
+	}
+	out := s.renderItem(item, false, false, 60)
+	if !strings.Contains(out, "my-team") {
+		t.Error("renderItem team output missing team name")
+	}
+}
+
+func TestSidebarRenderItem_EmptyColorFallback(t *testing.T) {
+	s := &Sidebar{Width: 60}
+	item := SidebarItem{
+		Kind:         KindSession,
+		Label:        "test",
+		AgentType:    "claude",
+		Status:       "idle",
+		Indent:       1,
+		ProjectColor: "", // empty — should not panic
+	}
+	out := s.renderItem(item, false, false, 60)
+	if out == "" {
+		t.Error("renderItem with empty ProjectColor returned empty string")
+	}
+}
+
 func TestMatchesSessionFilter(t *testing.T) {
 	sess := &state.Session{
 		Title:     "my-worker",

@@ -139,6 +139,15 @@ func (m *Model) gridProjectNames() map[string]string {
 	return names
 }
 
+// gridProjectColors builds a projectID→hex color map from the current app state.
+func (m *Model) gridProjectColors() map[string]string {
+	colors := make(map[string]string, len(m.appState.Projects))
+	for _, p := range m.appState.Projects {
+		colors[p.ID] = p.Color
+	}
+	return colors
+}
+
 // projectNameByID returns the display name for a project ID, or "" if not found.
 func (m *Model) projectNameByID(id string) string {
 	if p := state.FindProject(&m.appState, id); p != nil {

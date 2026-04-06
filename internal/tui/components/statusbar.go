@@ -149,6 +149,7 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 			{"a/↵", "attach"},
 			{"g/G", "grid view"},
 			{"r", "rename"},
+			{"c/C", "color"},
 			killHint,
 			{"S", "settings"},
 			{"tab", "preview"},

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
 func usagePath() string     { return filepath.Join(config.Dir(), "usage.json") }
@@ -99,6 +100,9 @@ func LoadState() ([]*state.Project, error) {
 	if err := json.Unmarshal(data, &projects); err != nil {
 		return nil, err
 	}
+	// Migrate projects with default/empty color to distinct palette colors.
+	migrateProjectColors(projects)
+
 	// Ensure non-nil slices.
 	for _, p := range projects {
 		if p.Teams == nil {
@@ -114,4 +118,15 @@ func LoadState() ([]*state.Project, error) {
 		}
 	}
 	return projects, nil
+}
+
+// migrateProjectColors assigns distinct palette colors to projects that still
+// have the old default "#7C3AED" or an empty color.
+func migrateProjectColors(projects []*state.Project) {
+	const oldDefault = "#7C3AED"
+	for i, p := range projects {
+		if p.Color == "" || p.Color == oldDefault {
+			p.Color = styles.NextProjectColor(i)
+		}
+	}
 }

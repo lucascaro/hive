@@ -49,9 +49,10 @@ type GridView struct {
 	Width        int
 	Height       int
 	Mode         state.GridRestoreMode
-	sessions     []*state.Session
-	contents     map[string]string
-	projectNames map[string]string // projectID → display name
+	sessions      []*state.Session
+	contents      map[string]string
+	projectNames  map[string]string // projectID → display name
+	projectColors map[string]string // projectID → hex color
 }
 
 // Show activates the grid with the given sessions.
@@ -78,6 +79,11 @@ func (gv *GridView) SetContents(contents map[string]string) {
 // SetProjectNames provides a projectID→name lookup used in cell headers.
 func (gv *GridView) SetProjectNames(names map[string]string) {
 	gv.projectNames = names
+}
+
+// SetProjectColors provides a projectID→hex color lookup used in cell headers.
+func (gv *GridView) SetProjectColors(colors map[string]string) {
+	gv.projectColors = colors
 }
 
 // Selected returns the currently focused session, or nil.
@@ -192,7 +198,7 @@ func (gv *GridView) View() string {
 	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
 	// physical terminal line-wrap even though logical line count is correct.
 	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
-	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit"), gv.Width, "")
+	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   c/C: color   G: all projects   esc/g/q: exit"), gv.Width, "")
 	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave
@@ -216,9 +222,9 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor)
 
-	// border=2cols, padding left+right=2 → inner width = w-4
+	// border=2cols → inner width = w-2
 	// border top+bottom=2rows + header row → inner content height = h-3
-	innerW := w - 4
+	innerW := w - 2
 	innerH := h - 3
 	if innerW < 4 {
 		innerW = 4
@@ -229,9 +235,20 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 
 	// Header line — single line: status dot, agent badge, session title,
 	// project name (muted, inline), and optional worktree badge (⎇).
-	dot := styles.StatusDot(string(sess.Status))
-	badge := styles.AgentBadge(string(sess.AgentType))
-	prefixStr := dot + " " + badge + " "
+	// All parts are rendered with the project background to avoid ANSI resets
+	// breaking the background color.
+	projColor := styles.ProjectColorOrDefault(gv.projectColors[sess.ProjectID])
+	bg := lipgloss.Color(projColor)
+	fg := styles.ContrastForeground(projColor)
+
+	// Keep the status dot and agent badge on a dark background so their
+	// bright foreground colors remain legible regardless of project color.
+	darkBg := lipgloss.Color(styles.ColorBg)
+	dot := styles.StatusDotOnBg(string(sess.Status), darkBg)
+	badge := styles.AgentBadgeOnBg(string(sess.AgentType), darkBg)
+	darkSp := lipgloss.NewStyle().Background(darkBg).Render(" ")
+	bgSp := lipgloss.NewStyle().Background(bg).Foreground(fg).Render(" ")
+	prefixStr := dot + darkSp + badge + bgSp
 	prefixW := ansi.StringWidth(prefixStr)
 
 	// Build the optional suffix (project + worktree) as plain text for width calc.
@@ -260,9 +277,17 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		titleStr = ansi.Truncate(sess.Title, availW, "…")
 	}
 
-	titlePart := lipgloss.NewStyle().Bold(selected).Render(titleStr)
-	suffixPart := styles.MutedStyle.Render(suffix)
-	headerLine := lipgloss.NewStyle().Width(innerW).Render(prefixStr + titlePart + suffixPart)
+	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
+	titlePart := bgStyle.Bold(selected).Render(titleStr)
+	suffixPart := bgStyle.Render(suffix)
+	content := prefixStr + titlePart + suffixPart
+	// Pad with project-colored spaces to fill the full width, ensuring the
+	// background extends to the right edge even if inner ANSI resets it.
+	contentW := ansi.StringWidth(content)
+	if pad := innerW - contentW; pad > 0 {
+		content += bgStyle.Render(strings.Repeat(" ", pad))
+	}
+	headerLine := content
 
 	// Content preview — show the last innerH lines so the most recent output
 	// is visible. Pre-truncate each line to innerW before passing to lipgloss:

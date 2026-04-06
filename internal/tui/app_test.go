@@ -77,6 +77,7 @@ func testAppStateWithTwoProjects() state.AppState {
 			{
 				ID:    "proj-1",
 				Name:  "test-project-1",
+				Color: "#7C3AED",
 				Teams: []*state.Team{},
 				Sessions: []*state.Session{
 					{
@@ -94,6 +95,7 @@ func testAppStateWithTwoProjects() state.AppState {
 			{
 				ID:    "proj-2",
 				Name:  "test-project-2",
+				Color: "#3B82F6",
 				Teams: []*state.Team{},
 				Sessions: []*state.Session{
 					{

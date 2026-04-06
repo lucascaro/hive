@@ -226,6 +226,78 @@ func TestSaveState_NilProjectsWritesEmptyArray(t *testing.T) {
 	}
 }
 
+func TestMigrateProjectColors_AssignsDistinctColors(t *testing.T) {
+	projects := []*state.Project{
+		{ID: "p1", Name: "a", Color: "#7C3AED"},
+		{ID: "p2", Name: "b", Color: "#7C3AED"},
+		{ID: "p3", Name: "c", Color: ""},
+	}
+	migrateProjectColors(projects)
+
+	seen := make(map[string]bool)
+	for _, p := range projects {
+		if p.Color == "" {
+			t.Errorf("project %s has empty color after migration", p.ID)
+		}
+		if p.Color == "#7C3AED" && p.ID != "p1" {
+			// p1 gets palette[0] which happens to be #7C3AED, but p2/p3 should differ.
+		}
+		seen[p.Color] = true
+	}
+	if len(seen) < 3 {
+		t.Errorf("expected 3 distinct colors, got %d: %v", len(seen), seen)
+	}
+}
+
+func TestMigrateProjectColors_PreservesCustomColors(t *testing.T) {
+	projects := []*state.Project{
+		{ID: "p1", Name: "a", Color: "#CUSTOM1"},
+		{ID: "p2", Name: "b", Color: "#7C3AED"}, // default — should be migrated
+	}
+	migrateProjectColors(projects)
+
+	if projects[0].Color != "#CUSTOM1" {
+		t.Errorf("custom color was changed: got %q, want #CUSTOM1", projects[0].Color)
+	}
+	if projects[1].Color == "#7C3AED" {
+		t.Error("default color should have been migrated")
+	}
+}
+
+func TestMigrateProjectColors_EmptySlice(t *testing.T) {
+	// Should not panic on empty input.
+	migrateProjectColors(nil)
+	migrateProjectColors([]*state.Project{})
+}
+
+func TestLoadState_MigratesProjectColors(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+
+	// Write state with two projects that have the old default color.
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{ID: "p1", Name: "a", Color: "#7C3AED", Teams: []*state.Team{}, Sessions: []*state.Session{}},
+			{ID: "p2", Name: "b", Color: "#7C3AED", Teams: []*state.Team{}, Sessions: []*state.Session{}},
+		},
+	}
+	if _, err := saveState(appState); err != nil {
+		t.Fatalf("saveState() error: %v", err)
+	}
+
+	loaded, err := LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() error: %v", err)
+	}
+	if len(loaded) != 2 {
+		t.Fatalf("LoadState() returned %d projects, want 2", len(loaded))
+	}
+	if loaded[0].Color == loaded[1].Color {
+		t.Errorf("LoadState() should migrate to distinct colors, both are %q", loaded[0].Color)
+	}
+}
+
 func TestSaveUsage_EmptyMapNoOp(t *testing.T) {
 	tmp := t.TempDir()
 	setHomePersist(t, tmp)

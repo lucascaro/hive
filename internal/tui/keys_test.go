@@ -25,6 +25,8 @@ func TestNewKeyMap_BindingsMatchConfig(t *testing.T) {
 		{"Help", km.Help.Keys()[0], cfg.Keybindings.Help},
 		{"Quit", km.Quit.Keys()[0], cfg.Keybindings.Quit},
 		{"QuitKill", km.QuitKill.Keys()[0], cfg.Keybindings.QuitKill},
+		{"ColorNext", km.ColorNext.Keys()[0], cfg.Keybindings.ColorNext},
+		{"ColorPrev", km.ColorPrev.Keys()[0], cfg.Keybindings.ColorPrev},
 	}
 
 	for _, tc := range cases {

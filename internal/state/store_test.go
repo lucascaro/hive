@@ -229,6 +229,30 @@ func TestUpdateSessionStatus(t *testing.T) {
 	}
 }
 
+// --- SetProjectColor ---
+
+func TestSetProjectColor(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "#FF0000", "")
+	if p.Color != "#FF0000" {
+		t.Fatalf("initial color = %q, want #FF0000", p.Color)
+	}
+	s = SetProjectColor(s, p.ID, "#00FF00")
+	if p.Color != "#00FF00" {
+		t.Errorf("after SetProjectColor: color = %q, want #00FF00", p.Color)
+	}
+}
+
+func TestSetProjectColor_UnknownID(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "p", "", "#FF0000", "")
+	// Should not panic on unknown ID.
+	s = SetProjectColor(s, "nonexistent", "#00FF00")
+	if s.Projects[0].Color != "#FF0000" {
+		t.Error("SetProjectColor with unknown ID should not modify existing projects")
+	}
+}
+
 // --- ToggleProjectCollapsed ---
 
 func TestToggleProjectCollapsed(t *testing.T) {

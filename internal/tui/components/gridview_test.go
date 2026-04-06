@@ -195,6 +195,69 @@ func TestGridView_WideContentShowsLatestLines(t *testing.T) {
 	}
 }
 
+func TestGridView_SetProjectColors(t *testing.T) {
+	gv := &GridView{}
+	colors := map[string]string{"p1": "#FF0000", "p2": "#00FF00"}
+	gv.SetProjectColors(colors)
+	if gv.projectColors["p1"] != "#FF0000" {
+		t.Errorf("projectColors[p1] = %q, want #FF0000", gv.projectColors["p1"])
+	}
+	if gv.projectColors["p2"] != "#00FF00" {
+		t.Errorf("projectColors[p2] = %q, want #00FF00", gv.projectColors["p2"])
+	}
+}
+
+func TestGridView_CellRendersWithProjectColor(t *testing.T) {
+	sessions := []*state.Session{
+		{ID: "s1", ProjectID: "p1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s2", ProjectID: "p2", Title: "beta", AgentType: state.AgentCodex, Status: state.StatusIdle},
+	}
+	gv := &GridView{Active: true, Width: 120, Height: 30}
+	gv.Show(sessions, state.GridRestoreAll)
+	gv.SetProjectNames(map[string]string{"p1": "project-one", "p2": "project-two"})
+	gv.SetProjectColors(map[string]string{"p1": "#EF4444", "p2": "#3B82F6"})
+	out := gv.View()
+
+	if !strings.Contains(out, "alpha") {
+		t.Error("grid view missing session title 'alpha'")
+	}
+	if !strings.Contains(out, "beta") {
+		t.Error("grid view missing session title 'beta'")
+	}
+}
+
+func TestGridView_CellRendersWithEmptyProjectColor(t *testing.T) {
+	sessions := []*state.Session{
+		{ID: "s1", ProjectID: "p1", Title: "test", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	gv := &GridView{Active: true, Width: 100, Height: 20}
+	gv.Show(sessions, state.GridRestoreProject)
+	// No SetProjectColors — should use fallback without panic.
+	out := gv.View()
+	if !strings.Contains(out, "test") {
+		t.Error("grid view missing session title with nil projectColors")
+	}
+}
+
+func TestGridView_CellRendersAllStatuses(t *testing.T) {
+	// Ensure renderCell works for all status types with project colors.
+	statuses := []state.SessionStatus{
+		state.StatusRunning, state.StatusIdle, state.StatusWaiting, state.StatusDead,
+	}
+	for _, status := range statuses {
+		sessions := []*state.Session{
+			{ID: "s1", ProjectID: "p1", Title: "test", AgentType: state.AgentClaude, Status: status},
+		}
+		gv := &GridView{Active: true, Width: 80, Height: 20}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.SetProjectColors(map[string]string{"p1": "#F59E0B"})
+		out := gv.View()
+		if out == "" {
+			t.Errorf("grid view returned empty for status %q", status)
+		}
+	}
+}
+
 func TestGridView_SyncCursor(t *testing.T) {
 	sessions := []*state.Session{
 		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},

@@ -49,6 +49,8 @@ func DefaultConfig() Config {
 			Settings:       "S",
 			Quit:           "q",
 			QuitKill:       "Q",
+			ColorNext:      "c",
+			ColorPrev:      "C",
 		},
 	}
 }

@@ -37,4 +37,4 @@
                                 ││                                                                                     │
                                 │╰─────────────────────────────────────────────────────────────────────────────────────╯
  hive                                                                                                                   
- ?:help  n:new project  t:new session  T:new team  a/↵:attach  g/G:grid view  r:rename  x:kill  S:settings  tab:previe  
+ ?:help  n:new project  t:new session  T:new team  a/↵:attach  g/G:grid view  r:rename  c/C:color  x:kill  S:settings   

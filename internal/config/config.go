@@ -62,4 +62,6 @@ type KeybindingsConfig struct {
 	Settings       string `json:"settings"`
 	Quit           string `json:"quit"`
 	QuitKill       string `json:"quit_kill"`
+	ColorNext      string `json:"color_next"`
+	ColorPrev      string `json:"color_prev"`
 }

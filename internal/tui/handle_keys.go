@@ -82,6 +82,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
 		m.gridView.SetProjectNames(m.gridProjectNames())
+		m.gridView.SetProjectColors(m.gridProjectColors())
 		m.gridView.SyncCursor(prevID)
 		return m.scheduleGridPoll()
 	case "x":
@@ -111,6 +112,16 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.PushView(ViewAgentPicker)
 			return nil
 		}
+	case "c", "C":
+		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
+			dir := +1
+			if msg.String() == "C" {
+				dir = -1
+			}
+			m.cycleProjectColor(sess.ProjectID, dir)
+			m.gridView.SetProjectColors(m.gridProjectColors())
+		}
+		return nil
 	case "W":
 		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
 			projDir := ""
@@ -286,6 +297,22 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Rename):
 		return m, m.startRename()
+
+	case key.Matches(msg, m.keys.ColorNext), key.Matches(msg, m.keys.ColorPrev):
+		sel := m.sidebar.Selected()
+		if sel == nil {
+			return m, nil
+		}
+		projectID := sel.ProjectID
+		if projectID == "" {
+			return m, nil
+		}
+		dir := +1
+		if key.Matches(msg, m.keys.ColorPrev) {
+			dir = -1
+		}
+		m.cycleProjectColor(projectID, dir)
+		return m, nil
 
 	case key.Matches(msg, m.keys.KillSession):
 		sel := m.sidebar.Selected()

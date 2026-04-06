@@ -37,4 +37,4 @@
 │                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ○ idle  ● working  ◉ waiting  ✕ dead                                                                                    
-←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   G: all projects   esc/g/q: exit                           
+←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   c/C: color   G: all projects   esc/g/q: exit              

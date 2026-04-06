@@ -681,6 +681,8 @@ func buildSettingEntries() []settingEntry {
 		{field: keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) string { return c.Keybindings.Quit }, func(c *config.Config, v string) { c.Keybindings.Quit = v })},
 		{field: keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) string { return c.Keybindings.QuitKill }, func(c *config.Config, v string) { c.Keybindings.QuitKill = v })},
 		{field: keybindField("Open Settings", "Open this settings screen.", func(c config.Config) string { return c.Keybindings.Settings }, func(c *config.Config, v string) { c.Keybindings.Settings = v })},
+		{field: keybindField("Next Color", "Cycle the selected project to the next color.", func(c config.Config) string { return c.Keybindings.ColorNext }, func(c *config.Config, v string) { c.Keybindings.ColorNext = v })},
+		{field: keybindField("Previous Color", "Cycle the selected project to the previous color.", func(c config.Config) string { return c.Keybindings.ColorPrev }, func(c *config.Config, v string) { c.Keybindings.ColorPrev = v })},
 	}
 }
 

@@ -90,6 +90,7 @@ func (m Model) helpView() string {
 		{"W", "new worktree session"},
 		{"T", "new agent team (wizard)"},
 		{"r", "rename session or team"},
+		{"c/C", "cycle project color next/prev"},
 		{"x/d", "kill session"},
 		{"D", "kill entire team"},
 		{"/", "filter sessions"},

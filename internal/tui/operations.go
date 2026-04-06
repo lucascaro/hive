@@ -12,10 +12,15 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
+	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
 func (m *Model) createProject(name, directory string) tea.Cmd {
-	_, proj := state.CreateProject(&m.appState, name, "", "#7C3AED", directory)
+	usedColors := make([]string, 0, len(m.appState.Projects))
+	for _, p := range m.appState.Projects {
+		usedColors = append(usedColors, p.Color)
+	}
+	_, proj := state.CreateProject(&m.appState, name, "", styles.NextFreeColor(usedColors), directory)
 	m.commitState()
 	m.fireHook(state.HookEvent{
 		Name:        state.EventProjectCreate,
@@ -24,6 +29,25 @@ func (m *Model) createProject(name, directory string) tea.Cmd {
 		WorkDir:     proj.Directory,
 	})
 	return func() tea.Msg { return ProjectCreatedMsg{Project: proj} }
+}
+
+// cycleProjectColor changes a project's color to the next/prev free palette color.
+func (m *Model) cycleProjectColor(projectID string, direction int) {
+	proj := state.FindProject(&m.appState, projectID)
+	if proj == nil {
+		return
+	}
+	// Collect colors used by other projects.
+	usedByOthers := make([]string, 0, len(m.appState.Projects))
+	for _, p := range m.appState.Projects {
+		if p.ID != projectID {
+			usedByOthers = append(usedByOthers, p.Color)
+		}
+	}
+	newColor := styles.CycleColor(proj.Color, direction, usedByOthers)
+	state.SetProjectColor(&m.appState, projectID, newColor)
+	m.commitState()
+	m.sidebar.Rebuild(&m.appState)
 }
 
 func (m *Model) createSessionWithWorktree(projectID, agentTypeStr string, agentCmd []string, branch string) tea.Cmd {
