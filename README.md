@@ -6,20 +6,7 @@
 
 A terminal TUI for managing multiple AI coding agent sessions across projects — Claude, Codex, Gemini, GitHub Copilot, Aider, OpenCode, and more. Native support for Claude agent teams (orchestrator + workers).
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ ▼ project-alpha             │ ╔══════ preview ════════════════╗ │
-│   ▼ [team] feature-x        │ ║                               ║ │
-│     ★ orchestrator [claude] │ ║  > implement the auth module  ║ │
-│     ○ worker-1 [claude]     │ ║  Working on JWT validation…   ║ │
-│     ○ worker-2 [codex]      │ ║                               ║ │
-│   ○ solo-session [gemini]   │ ╚═══════════════════════════════╝ │
-│ ▶ project-beta              │                                   │
-├─────────────────────────────┴───────────────────────────────────┤
-│ project-alpha / feature-x / orchestrator [claude] [waiting]      │
-│ q:quit  r:rename  a:attach  t:new  T:new-team  ?:help           │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Hive TUI](screenshot.gif)
 
 ## Features
 
