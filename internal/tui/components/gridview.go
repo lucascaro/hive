@@ -118,7 +118,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	cols := gridColumns(gv.Width, gv.Height, n)
 
 	switch msg.String() {
-	case "esc", "g", "q":
+	case "esc", "q":
 		gv.Hide()
 	case "enter", "a":
 		if sess := gv.Selected(); sess != nil {

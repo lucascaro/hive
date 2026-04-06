@@ -75,7 +75,27 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Width = m.appState.TermWidth
 	m.gridView.Height = m.appState.TermHeight
 	switch msg.String() {
+	case "g":
+		if m.gridView.Mode == state.GridRestoreAll {
+			// All-grid → switch to project grid.
+			prevID := ""
+			if s := m.gridView.Selected(); s != nil {
+				prevID = s.ID
+			}
+			m.gridView.Show(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject)
+			m.gridView.SetProjectNames(m.gridProjectNames())
+			m.gridView.SetProjectColors(m.gridProjectColors())
+			m.gridView.SyncCursor(prevID)
+			return m.scheduleGridPoll()
+		}
+		// Already in project grid — close grid and return to main.
+		return m.closeGrid()
 	case "G":
+		if m.gridView.Mode == state.GridRestoreAll {
+			// Already in all-grid — close grid and return to main.
+			return m.closeGrid()
+		}
+		// Project grid → switch to all-grid.
 		prevID := ""
 		if s := m.gridView.Selected(); s != nil {
 			prevID = s.ID
@@ -149,20 +169,37 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	// gridView.Update may set Active=false (esc/q/enter). Detect that and
 	// pop the grid from the stack, syncing state to the selected session.
 	if !m.gridView.Active && prevSel != nil {
-		// Grid closed itself — pop it from the stack.
-		m.PopView()
-		m.appState.ActiveSessionID = prevSel.ID
-		if prevSel.ProjectID != "" {
-			m.appState.ActiveProjectID = prevSel.ProjectID
-		}
-		if prevSel.TeamID != "" {
-			m.appState.ActiveTeamID = prevSel.TeamID
-		}
-		m.sidebar.SyncActiveSession(prevSel.ID)
-		m.previewPollGen++
+		m.popGridState(prevSel)
 		return tea.Batch(cmd, m.schedulePollPreview())
 	}
 	return cmd
+}
+
+// closeGrid hides the grid, syncs state to the selected session, and pops the view.
+func (m *Model) closeGrid() tea.Cmd {
+	sel := m.gridView.Selected()
+	m.gridView.Hide()
+	if sel != nil {
+		m.popGridState(sel)
+	} else {
+		m.PopView()
+	}
+	m.previewPollGen++
+	return m.schedulePollPreview()
+}
+
+// popGridState pops the grid from the view stack and syncs the selected session.
+func (m *Model) popGridState(sel *state.Session) {
+	m.PopView()
+	m.appState.ActiveSessionID = sel.ID
+	if sel.ProjectID != "" {
+		m.appState.ActiveProjectID = sel.ProjectID
+	}
+	if sel.TeamID != "" {
+		m.appState.ActiveTeamID = sel.TeamID
+	}
+	m.sidebar.SyncActiveSession(sel.ID)
+	m.previewPollGen++
 }
 
 // handleGlobalKey handles keys when no overlay or modal has focus.
