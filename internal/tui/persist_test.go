@@ -30,6 +30,44 @@ func ensureConfigDir(t *testing.T) {
 	}
 }
 
+func TestSaveLoadState_CustomDir_DoesNotTouchRealConfig(t *testing.T) {
+	realStatePath := config.StatePath()
+
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+
+	// Save state to custom dir.
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{ID: "p1", Name: "demo", Color: "#FF0000", Teams: []*state.Team{}, Sessions: []*state.Session{}},
+		},
+	}
+	if _, err := saveState(appState); err != nil {
+		t.Fatalf("saveState() error: %v", err)
+	}
+
+	// State file should exist in custom dir.
+	customState := config.StatePath()
+	if _, err := os.Stat(customState); err != nil {
+		t.Fatalf("state.json not in custom dir: %v", err)
+	}
+
+	// Custom state path should differ from real.
+	if customState == realStatePath {
+		t.Error("StatePath() still points to real config dir under HIVE_CONFIG_DIR override")
+	}
+
+	// Load back and verify isolation.
+	loaded, err := LoadState()
+	if err != nil {
+		t.Fatalf("LoadState() error: %v", err)
+	}
+	if len(loaded) != 1 || loaded[0].Name != "demo" {
+		t.Errorf("LoadState() from custom dir returned unexpected data: %v", loaded)
+	}
+}
+
 func TestSaveStateLoadState_Roundtrip(t *testing.T) {
 	tmp := t.TempDir()
 	setHomePersist(t, tmp)

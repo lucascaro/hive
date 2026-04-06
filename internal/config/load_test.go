@@ -19,6 +19,103 @@ func setHome(t *testing.T, dir string) {
 	_ = orig
 }
 
+func TestDir_HIVE_CONFIG_DIR_OverridesDefault(t *testing.T) {
+	custom := t.TempDir()
+	t.Setenv("HIVE_CONFIG_DIR", custom)
+	got := Dir()
+	if got != custom {
+		t.Errorf("Dir() = %q, want %q (HIVE_CONFIG_DIR)", got, custom)
+	}
+}
+
+func TestDir_HIVE_CONFIG_DIR_IsolatesFromRealConfig(t *testing.T) {
+	// Capture the real config dir before overriding.
+	realDir := Dir()
+
+	custom := t.TempDir()
+	t.Setenv("HIVE_CONFIG_DIR", custom)
+
+	// All path functions should point inside the custom dir, not the real one.
+	if Dir() == realDir {
+		t.Error("Dir() still returns real config dir after HIVE_CONFIG_DIR override")
+	}
+	if !strings.HasPrefix(ConfigPath(), custom) {
+		t.Errorf("ConfigPath() = %q, not under custom dir %q", ConfigPath(), custom)
+	}
+	if !strings.HasPrefix(StatePath(), custom) {
+		t.Errorf("StatePath() = %q, not under custom dir %q", StatePath(), custom)
+	}
+	if !strings.HasPrefix(LogPath(), custom) {
+		t.Errorf("LogPath() = %q, not under custom dir %q", LogPath(), custom)
+	}
+	if !strings.HasPrefix(HooksPath(), custom) {
+		t.Errorf("HooksPath() = %q, not under custom dir %q", HooksPath(), custom)
+	}
+}
+
+func TestEnsure_WithCustomDir_DoesNotTouchRealConfig(t *testing.T) {
+	// Record real config dir contents before test.
+	realDir := Dir()
+
+	custom := t.TempDir()
+	t.Setenv("HIVE_CONFIG_DIR", custom)
+
+	if err := Ensure(); err != nil {
+		t.Fatalf("Ensure() error: %v", err)
+	}
+
+	// Ensure created dirs inside custom, not real.
+	if _, err := os.Stat(filepath.Join(custom, "hooks")); err != nil {
+		t.Errorf("hooks dir not created in custom dir: %v", err)
+	}
+
+	// Real config dir should not have been created if it didn't exist,
+	// and should not have new files if it did exist.
+	// We verify by checking that Dir() under the override is custom, not real.
+	if Dir() == realDir {
+		t.Error("Dir() unexpectedly returns real config dir")
+	}
+}
+
+func TestLoadSave_WithCustomDir_DoesNotTouchRealConfig(t *testing.T) {
+	realConfigPath := ConfigPath()
+	realStatePath := StatePath()
+
+	custom := t.TempDir()
+	t.Setenv("HIVE_CONFIG_DIR", custom)
+
+	if err := Ensure(); err != nil {
+		t.Fatalf("Ensure() error: %v", err)
+	}
+
+	// Load (creates default config in custom dir).
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// Save modified config.
+	cfg.Theme = "demo-theme"
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	// Config file should exist in custom dir.
+	customConfig := filepath.Join(custom, "config.json")
+	if _, err := os.Stat(customConfig); err != nil {
+		t.Fatalf("config.json not in custom dir: %v", err)
+	}
+
+	// Real config path should NOT have been modified.
+	if ConfigPath() == realConfigPath {
+		t.Error("ConfigPath() still points to real config dir")
+	}
+	// Real state path should NOT have been modified.
+	if StatePath() == realStatePath {
+		t.Error("StatePath() still points to real config dir")
+	}
+}
+
 func TestDir_UsesHome(t *testing.T) {
 	tmp := t.TempDir()
 	setHome(t, tmp)

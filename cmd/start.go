@@ -206,9 +206,13 @@ func reconcileState(appState *state.AppState) {
 	// Detect orphaned hive-* tmux session containers:
 	//   - empty (no windows): offer to kill
 	//   - with windows but no state entry: offer to recover
-	orphans, recoverable := detectOrphanContainers(appState)
-	appState.OrphanSessions = orphans
-	appState.RecoverableSessions = recoverable
+	// Skip when using a custom config dir (e.g. demos) — tmux sessions from
+	// the real instance would appear as false-positive orphans.
+	if os.Getenv("HIVE_CONFIG_DIR") == "" {
+		orphans, recoverable := detectOrphanContainers(appState)
+		appState.OrphanSessions = orphans
+		appState.RecoverableSessions = recoverable
+	}
 }
 
 // detectOrphanContainers returns hive-* tmux session names/windows that have no
