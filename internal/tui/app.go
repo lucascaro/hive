@@ -238,6 +238,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSessionKilled(msg)
 	case SessionTitleChangedMsg:
 		return m.handleSessionTitleChanged(msg)
+	case ProjectNameChangedMsg:
+		m.appState = *state.UpdateProjectName(&m.appState, msg.ProjectID, msg.Name)
+		m.commitState()
+		return m, nil
+	case TeamNameChangedMsg:
+		m.appState = *state.UpdateTeamName(&m.appState, msg.TeamID, msg.Name)
+		m.commitState()
+		return m, nil
 	case SessionAttachMsg:
 		return m.handleSessionAttach(msg)
 	case AttachDoneMsg:

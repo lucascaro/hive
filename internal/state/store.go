@@ -137,6 +137,30 @@ func RemoveTeam(state *AppState, teamID string) *AppState {
 	return state
 }
 
+// UpdateProjectName updates a project's name.
+func UpdateProjectName(state *AppState, projectID, name string) *AppState {
+	for _, p := range state.Projects {
+		if p.ID == projectID {
+			p.Name = name
+			break
+		}
+	}
+	return state
+}
+
+// UpdateTeamName updates a team's name.
+func UpdateTeamName(state *AppState, teamID, name string) *AppState {
+	for _, p := range state.Projects {
+		for _, t := range p.Teams {
+			if t.ID == teamID {
+				t.Name = name
+				return state
+			}
+		}
+	}
+	return state
+}
+
 // UpdateSessionTitle updates a session's title and title source.
 func UpdateSessionTitle(state *AppState, sessionID, title string, src TitleSource) *AppState {
 	sess := findSession(state, sessionID)

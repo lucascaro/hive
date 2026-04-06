@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Renaming projects and teams now works**: pressing `r` on a project or team in the sidebar previously accepted input but silently discarded it. The rename now persists correctly (#49).
+
 ## [0.3.0] — 2026-04-05
 
 ### Changed

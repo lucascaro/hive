@@ -335,6 +335,48 @@ func TestSessionLabel_StandaloneNoStar(t *testing.T) {
 	}
 }
 
+// --- UpdateProjectName ---
+
+func TestUpdateProjectName_UpdatesName(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "old-name", "", "", "/work")
+	s = UpdateProjectName(s, p.ID, "new-name")
+	if s.Projects[0].Name != "new-name" {
+		t.Errorf("Name = %q, want %q", s.Projects[0].Name, "new-name")
+	}
+}
+
+func TestUpdateProjectName_UnknownID(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "orig", "", "", "/work")
+	s = UpdateProjectName(s, "nonexistent", "new")
+	if s.Projects[0].Name != "orig" {
+		t.Errorf("Name = %q, want %q", s.Projects[0].Name, "orig")
+	}
+}
+
+// --- UpdateTeamName ---
+
+func TestUpdateTeamName_UpdatesName(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "proj", "", "", "/work")
+	s, team := CreateTeam(s, s.Projects[0].ID, "old-team", "", "/work")
+	s = UpdateTeamName(s, team.ID, "new-team")
+	if s.Projects[0].Teams[0].Name != "new-team" {
+		t.Errorf("Name = %q, want %q", s.Projects[0].Teams[0].Name, "new-team")
+	}
+}
+
+func TestUpdateTeamName_UnknownID(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "proj", "", "", "/work")
+	s, _ = CreateTeam(s, s.Projects[0].ID, "orig", "", "/work")
+	s = UpdateTeamName(s, "nonexistent", "new")
+	if s.Projects[0].Teams[0].Name != "orig" {
+		t.Errorf("Name = %q, want %q", s.Projects[0].Teams[0].Name, "orig")
+	}
+}
+
 func TestSessionLabel_OrchestratorHasStar(t *testing.T) {
 	sess := &Session{Title: "orch", AgentType: AgentClaude, TeamRole: RoleOrchestrator}
 	label := SessionLabel(sess)

@@ -84,6 +84,18 @@ type ProjectKilledMsg struct {
 	ProjectID string
 }
 
+// ProjectNameChangedMsg carries a new name for a project.
+type ProjectNameChangedMsg struct {
+	ProjectID string
+	Name      string
+}
+
+// TeamNameChangedMsg carries a new name for a team.
+type TeamNameChangedMsg struct {
+	TeamID string
+	Name   string
+}
+
 // --- UI ---
 
 // ErrorMsg carries a non-fatal error message to display in the status bar.
@@ -123,3 +135,5 @@ type ConfigSavedMsg struct {
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}
 var _ tea.Msg = AttachDoneMsg{}
+var _ tea.Msg = ProjectNameChangedMsg{}
+var _ tea.Msg = TeamNameChangedMsg{}

@@ -18,7 +18,7 @@ func (m *Model) startRename() tea.Cmd {
 		return nil
 	}
 	current := sel.Label
-	m.titleEditor.Start(sel.SessionID, sel.TeamID, current)
+	m.titleEditor.Start(sel.SessionID, sel.TeamID, sel.ProjectID, current)
 	m.PushView(ViewRename)
 	return m.titleEditor.Update(nil)
 }
@@ -175,15 +175,30 @@ func (m Model) handleTitleEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		newTitle := m.titleEditor.Value()
 		sessionID := m.titleEditor.SessionID
+		teamID := m.titleEditor.TeamID
+		projectID := m.titleEditor.ProjectID
 		m.titleEditor.Stop()
 		m.PopView()
-		if newTitle != "" && sessionID != "" {
+		if newTitle == "" {
+			return m, nil
+		}
+		if sessionID != "" {
 			return m, func() tea.Msg {
 				return SessionTitleChangedMsg{
 					SessionID: sessionID,
 					Title:     newTitle,
 					Source:    state.TitleSourceUser,
 				}
+			}
+		}
+		if teamID != "" {
+			return m, func() tea.Msg {
+				return TeamNameChangedMsg{TeamID: teamID, Name: newTitle}
+			}
+		}
+		if projectID != "" {
+			return m, func() tea.Msg {
+				return ProjectNameChangedMsg{ProjectID: projectID, Name: newTitle}
 			}
 		}
 		return m, nil
