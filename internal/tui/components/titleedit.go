@@ -5,11 +5,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// TitleEditor wraps a textinput for inline session/team title editing.
+// TitleEditor wraps a textinput for inline session/team/project title editing.
 type TitleEditor struct {
 	input     textinput.Model
 	SessionID string
 	TeamID    string
+	ProjectID string
 	Active    bool
 }
 
@@ -22,9 +23,10 @@ func NewTitleEditor() TitleEditor {
 }
 
 // Start begins editing with the given initial value.
-func (te *TitleEditor) Start(sessionID, teamID, current string) {
+func (te *TitleEditor) Start(sessionID, teamID, projectID, current string) {
 	te.SessionID = sessionID
 	te.TeamID = teamID
+	te.ProjectID = projectID
 	te.input.SetValue(current)
 	te.input.CursorEnd()
 	te.input.Focus()
@@ -37,6 +39,7 @@ func (te *TitleEditor) Stop() {
 	te.Active = false
 	te.SessionID = ""
 	te.TeamID = ""
+	te.ProjectID = ""
 }
 
 // Value returns the current text.

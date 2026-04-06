@@ -17,7 +17,7 @@ func TestNewTitleEditor_InitialState(t *testing.T) {
 
 func TestTitleEditor_Start(t *testing.T) {
 	te := NewTitleEditor()
-	te.Start("sess-1", "", "old title")
+	te.Start("sess-1", "", "", "old title")
 	if !te.Active {
 		t.Error("TitleEditor should be Active after Start()")
 	}
@@ -31,15 +31,26 @@ func TestTitleEditor_Start(t *testing.T) {
 
 func TestTitleEditor_StartWithTeam(t *testing.T) {
 	te := NewTitleEditor()
-	te.Start("", "team-1", "team name")
+	te.Start("", "team-1", "", "team name")
 	if te.TeamID != "team-1" {
 		t.Errorf("TeamID = %q, want %q", te.TeamID, "team-1")
 	}
 }
 
+func TestTitleEditor_StartWithProject(t *testing.T) {
+	te := NewTitleEditor()
+	te.Start("", "", "proj-1", "project name")
+	if te.ProjectID != "proj-1" {
+		t.Errorf("ProjectID = %q, want %q", te.ProjectID, "proj-1")
+	}
+	if te.Value() != "project name" {
+		t.Errorf("Value() = %q, want %q", te.Value(), "project name")
+	}
+}
+
 func TestTitleEditor_Stop(t *testing.T) {
 	te := NewTitleEditor()
-	te.Start("sess-1", "", "title")
+	te.Start("sess-1", "", "", "title")
 	te.Stop()
 	if te.Active {
 		t.Error("TitleEditor should not be Active after Stop()")
@@ -49,6 +60,9 @@ func TestTitleEditor_Stop(t *testing.T) {
 	}
 	if te.TeamID != "" {
 		t.Errorf("TeamID = %q after Stop(), want empty", te.TeamID)
+	}
+	if te.ProjectID != "" {
+		t.Errorf("ProjectID = %q after Stop(), want empty", te.ProjectID)
 	}
 }
 

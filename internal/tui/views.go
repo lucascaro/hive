@@ -32,7 +32,9 @@ func (m Model) overlayView(overlay string) string {
 
 func (m Model) renameDialogView() string {
 	title := "Rename Session"
-	if m.titleEditor.TeamID != "" {
+	if m.titleEditor.ProjectID != "" {
+		title = "Rename Project"
+	} else if m.titleEditor.TeamID != "" {
 		title = "Rename Team"
 	}
 	return lipgloss.NewStyle().
