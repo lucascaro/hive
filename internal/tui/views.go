@@ -31,9 +31,9 @@ func (m Model) overlayView(overlay string) string {
 }
 
 func (m Model) renameDialogView() string {
-	title := "Rename Session"
-	if m.titleEditor.ProjectID != "" {
-		title = "Rename Project"
+	title := "Rename Project"
+	if m.titleEditor.SessionID != "" {
+		title = "Rename Session"
 	} else if m.titleEditor.TeamID != "" {
 		title = "Rename Team"
 	}
