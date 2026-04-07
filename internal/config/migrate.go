@@ -20,7 +20,7 @@ func Migrate(cfg Config) Config {
 				changed = true
 			}
 		}
-		if profile.Status.StableTicks == 0 {
+		if profile.Status == (StatusDetection{}) {
 			if def, ok := defaults.Agents[name]; ok {
 				profile.Status = def.Status
 				changed = true

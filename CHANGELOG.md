@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **"Waiting for input" status detection**: sessions now detect when an agent is waiting for user input (e.g. asking a question) and show an amber status dot. For Claude, uses the `>` prompt to distinguish idle (at prompt) from waiting (agent stopped but not at prompt — likely asking a question). Also uses pane title spinner detection for running state. Detection patterns are configurable per agent via the `status` field in agent profiles (#38).
+- **Session status detection infrastructure**: adds configurable two-tier status detection for agent sessions. For Claude, uses pane title spinner detection (Braille spinner = running) with content-diff + debounce fallback. Detection patterns (`run_title`, `wait_title`, `wait_prompt`, `idle_prompt`, `stable_ticks`) are configurable per agent via the `status` field in agent profiles. Full "waiting for input" detection deferred — Claude Code uses the same pane title for both idle and asking-a-question states (#38).
 
 ### Fixed
 - **Renaming projects and teams now works**: pressing `r` on a project or team in the sidebar previously accepted input but silently discarded it. The rename now persists correctly (#49).

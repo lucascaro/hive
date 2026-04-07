@@ -114,7 +114,12 @@ func (m Model) handleTitleDetected(msg escape.TitleDetectedMsg) (tea.Model, tea.
 
 func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model, tea.Cmd) {
 	// Update content snapshots and stable counts so the next diff is accurate.
+	// Skip sessions that no longer exist in appState — a late tick from a
+	// previously scheduled WatchStatuses can deliver data for killed sessions.
 	for sessionID, content := range msg.Contents {
+		if state.FindSession(&m.appState, sessionID) == nil {
+			continue
+		}
 		prev := m.contentSnapshots[sessionID]
 		m.contentSnapshots[sessionID] = content
 		if content != prev {

@@ -49,7 +49,6 @@ type SessionDetectionCtx struct {
 type StatusesDetectedMsg struct {
 	Statuses map[string]state.SessionStatus // sessionID → detected status
 	Contents map[string]string              // sessionID → captured pane content (for next diff)
-	Titles   map[string]string              // sessionID → pane title (for UI display)
 }
 
 // WatchStatuses returns a tea.Cmd that captures pane content for all active sessions
@@ -80,7 +79,6 @@ func WatchStatuses(
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		statuses := make(map[string]state.SessionStatus, len(sessionTargets))
 		contents := make(map[string]string, len(sessionTargets))
-		titleResults := make(map[string]string, len(sessionTargets))
 		for sessionID, target := range sessionTargets {
 			content, err := mux.CapturePane(target, 50)
 			if err != nil {
@@ -90,7 +88,6 @@ func WatchStatuses(
 
 			det, hasDet := detection[sessionID]
 			title := titles[target]
-			titleResults[sessionID] = title
 
 			// Always check content diff first — content changes are real-time
 			// and override potentially stale pane titles.
@@ -143,7 +140,7 @@ func WatchStatuses(
 
 			statuses[sessionID] = state.StatusIdle
 		}
-		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titleResults}
+		return StatusesDetectedMsg{Statuses: statuses, Contents: contents}
 	})
 }
 
@@ -174,7 +171,7 @@ func lastNonEmptyLine(content string) string {
 }
 
 // ansiRe matches ANSI escape sequences (CSI and OSC).
-var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b\[[0-9;]*m`)
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07`)
 
 // stripANSI removes ANSI escape sequences from s.
 func stripANSI(s string) string {

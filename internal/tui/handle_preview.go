@@ -130,8 +130,11 @@ func (m *Model) scheduleWatchStatuses() tea.Cmd {
 		return nil
 	}
 	// Batch-read pane titles for all windows in the shared hive session.
-	titles, _ := mux.GetPaneTitles(mux.HiveSession)
-	if titles == nil {
+	titles, err := mux.GetPaneTitles(mux.HiveSession)
+	if err != nil {
+		debugLog.Printf("scheduleWatchStatuses: GetPaneTitles(%s): %v", mux.HiveSession, err)
+		titles = make(map[string]string)
+	} else if titles == nil {
 		titles = make(map[string]string)
 	}
 	// Snapshot maps to avoid concurrent reads in the tick goroutine
