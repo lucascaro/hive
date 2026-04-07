@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #38 | Session status does not detect "Waiting for input" state | PLAN | M |
+| 1 | #38 | Session status does not detect "Waiting for input" state | IMPLEMENT | M |
 | 2 | #52 | Focus management: auto-focus on session create and smart fallback on delete | RESEARCH | S |
 | 3 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
 | 4 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |

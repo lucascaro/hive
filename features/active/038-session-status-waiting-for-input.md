@@ -1,7 +1,7 @@
 # Feature: Session status does not detect "Waiting for input" state
 
 - **GitHub Issue:** #38
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P2
