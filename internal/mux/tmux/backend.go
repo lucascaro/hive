@@ -59,6 +59,10 @@ func (b *Backend) ListWindows(session string) ([]mux.WindowInfo, error) {
 	return out, nil
 }
 
+func (b *Backend) GetPaneTitles(session string) (map[string]string, error) {
+	return tmux.GetPaneTitles(session)
+}
+
 func (b *Backend) CapturePane(target string, lines int) (string, error) {
 	return tmux.CapturePane(target, lines)
 }

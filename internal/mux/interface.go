@@ -48,6 +48,10 @@ type Backend interface {
 	// ListWindows returns all windows in a session.
 	ListWindows(session string) ([]WindowInfo, error)
 
+	// GetPaneTitles returns pane titles for all windows in a session.
+	// Returns a map of "session:windowIndex" → pane title.
+	GetPaneTitles(session string) (map[string]string, error)
+
 	// CapturePane returns the rendered visible content of a window pane.
 	// lines specifies scrollback depth (0 = visible only).
 	CapturePane(target string, lines int) (string, error)
@@ -162,6 +166,15 @@ func RenameWindow(target, newName string) error { return active.RenameWindow(tar
 
 // ListWindows returns all windows in a session.
 func ListWindows(session string) ([]WindowInfo, error) { return active.ListWindows(session) }
+
+// GetPaneTitles returns pane titles for all windows in a session.
+// Returns nil, nil if no backend has been set (e.g. in tests).
+func GetPaneTitles(session string) (map[string]string, error) {
+	if active == nil {
+		return nil, nil
+	}
+	return active.GetPaneTitles(session)
+}
 
 // CapturePane returns the rendered visible content of a pane.
 func CapturePane(target string, lines int) (string, error) {

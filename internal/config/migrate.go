@@ -11,13 +11,23 @@ func Migrate(cfg Config) Config {
 
 	defaults := DefaultConfig()
 
-	// Fill in missing install_cmd fields from defaults.
+	// Fill in missing install_cmd and status detection fields from defaults.
 	for name, profile := range cfg.Agents {
+		changed := false
 		if len(profile.InstallCmd) == 0 {
 			if def, ok := defaults.Agents[name]; ok {
 				profile.InstallCmd = def.InstallCmd
-				cfg.Agents[name] = profile
+				changed = true
 			}
+		}
+		if profile.Status.StableTicks == 0 {
+			if def, ok := defaults.Agents[name]; ok {
+				profile.Status = def.Status
+				changed = true
+			}
+		}
+		if changed {
+			cfg.Agents[name] = profile
 		}
 	}
 

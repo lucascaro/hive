@@ -9,12 +9,39 @@ func DefaultConfig() Config {
 		AgentTitleOverridesUserTitle: false,
 		Multiplexer:                 "tmux",
 		Agents: map[string]AgentProfile{
-			"claude":   {Cmd: []string{"claude"}, InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"}},
-			"codex":    {Cmd: []string{"codex"}, InstallCmd: []string{"npm", "install", "-g", "@openai/codex"}},
-			"gemini":   {Cmd: []string{"gemini"}, InstallCmd: []string{"npm", "install", "-g", "@google/gemini-cli"}},
-			"copilot":  {Cmd: []string{"copilot"}, InstallCmd: []string{"npm", "install", "-g", "@github/copilot"}},
-			"aider":    {Cmd: []string{"aider"}, InstallCmd: []string{"pip", "install", "aider-chat"}},
-			"opencode": {Cmd: []string{"opencode"}, InstallCmd: []string{"npm", "install", "-g", "opencode"}},
+			"claude": {
+				Cmd:        []string{"claude"},
+				InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+				Status: StatusDetection{
+					RunTitle:    `^[⠁-⠿]`,
+					StableTicks: 2,
+				},
+			},
+			"codex": {
+				Cmd:        []string{"codex"},
+				InstallCmd: []string{"npm", "install", "-g", "@openai/codex"},
+				Status:     StatusDetection{StableTicks: 3},
+			},
+			"gemini": {
+				Cmd:        []string{"gemini"},
+				InstallCmd: []string{"npm", "install", "-g", "@google/gemini-cli"},
+				Status:     StatusDetection{StableTicks: 3},
+			},
+			"copilot": {
+				Cmd:        []string{"copilot"},
+				InstallCmd: []string{"npm", "install", "-g", "@github/copilot"},
+				Status:     StatusDetection{StableTicks: 3},
+			},
+			"aider": {
+				Cmd:        []string{"aider"},
+				InstallCmd: []string{"pip", "install", "aider-chat"},
+				Status:     StatusDetection{StableTicks: 3},
+			},
+			"opencode": {
+				Cmd:        []string{"opencode"},
+				InstallCmd: []string{"npm", "install", "-g", "opencode"},
+				Status:     StatusDetection{StableTicks: 3},
+			},
 		},
 		TeamDefaults: TeamDefaultsConfig{
 			Orchestrator: "claude",

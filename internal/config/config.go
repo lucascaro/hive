@@ -19,8 +19,20 @@ type Config struct {
 
 // AgentProfile defines how to launch a specific agent type.
 type AgentProfile struct {
-	Cmd        []string `json:"cmd"`
-	InstallCmd []string `json:"install_cmd,omitempty"`
+	Cmd        []string        `json:"cmd"`
+	InstallCmd []string        `json:"install_cmd,omitempty"`
+	Status     StatusDetection `json:"status,omitempty"`
+}
+
+// StatusDetection configures how hive detects whether a session is running,
+// waiting for input, or idle. Regex patterns are matched against pane titles
+// or last-line content.
+type StatusDetection struct {
+	WaitTitle   string `json:"wait_title,omitempty"`   // regex on pane title → waiting
+	RunTitle    string `json:"run_title,omitempty"`     // regex on pane title → running
+	WaitPrompt  string `json:"wait_prompt,omitempty"`  // regex on last non-empty line → waiting
+	IdlePrompt  string `json:"idle_prompt,omitempty"`  // regex on last non-empty line → idle (if configured but not matched → waiting)
+	StableTicks int    `json:"stable_ticks,omitempty"` // polls before running→idle/waiting (default 2)
 }
 
 // TeamDefaultsConfig specifies defaults when creating a new team.

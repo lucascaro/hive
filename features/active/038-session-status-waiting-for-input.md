@@ -171,6 +171,15 @@ Two-tier detection: pane title matching (fast, reliable for Claude) with a combi
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- Deviated from plan on detection priority: content diff runs FIRST (always accurate, real-time), then debounce, then title regex, then prompt patterns. The plan had title regex first, but titles are read at schedule time and can be stale, causing false "waiting" when an agent transitions from idle→running.
+- Deviated from plan on `WaitTitle`: removed `^✳` as Claude's WaitTitle. The ✳ title means "at the prompt" which is idle, not waiting. Instead added `IdlePrompt` field (`^> `) — if the last line matches the agent's rest prompt → idle; if it doesn't match → waiting (agent stopped but isn't at its prompt, likely asking a question).
+- Cursor position heuristic deferred to a follow-up — idle prompt + title spinner provides good coverage.
+- `lastNonEmptyLine` returns the original line (not trimmed) so prompt patterns with trailing spaces match correctly. ANSI codes are stripped separately before regex matching.
+- `GetPaneTitles` added to `Backend` interface with a nil-guard on the package-level forwarding function to avoid panics in tests where no backend is set.
+- `stableCounts` tracking lives in `handleStatusesDetected` in the TUI layer so counts persist across poll cycles.
+- Migration backfills `StatusDetection` for existing configs when `StableTicks == 0` (zero-value indicates unset).
+- Fixed bug: `lastNonEmptyLine` now strips ANSI before checking emptiness — tmux emits ANSI reset codes (`\x1b[0m`) on blank lines below content, which fooled the old `TrimSpace`-only check into returning those lines instead of the actual prompt.
+- Fixed data race: `contentSnapshots` and `stableCounts` maps are snapshot-copied before passing to the `tea.Tick` goroutine, preventing concurrent read/write between the tick and `handleStatusesDetected`.
+- Fixed memory leak: `stableCounts` and `contentSnapshots` entries are now cleaned up in `handleSessionKilled` and `handleSessionWindowGone`.
 
 - **PR:** —

@@ -77,6 +77,43 @@ func TestMigrate_PreservesExistingGridOverview(t *testing.T) {
 	}
 }
 
+func TestMigrate_FillsMissingStatusDetection(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: currentSchemaVersion,
+		Agents: map[string]AgentProfile{
+			"claude": {Cmd: []string{"claude"}}, // no Status
+		},
+	}
+	got := Migrate(cfg)
+	profile := got.Agents["claude"]
+	if profile.Status.StableTicks == 0 {
+		t.Error("Migrate should fill missing StatusDetection from defaults")
+	}
+	if profile.Status.RunTitle == "" {
+		t.Error("Migrate should fill RunTitle for claude")
+	}
+}
+
+func TestMigrate_PreservesExistingStatusDetection(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: currentSchemaVersion,
+		Agents: map[string]AgentProfile{
+			"claude": {
+				Cmd:    []string{"claude"},
+				Status: StatusDetection{WaitTitle: "custom", StableTicks: 5},
+			},
+		},
+	}
+	got := Migrate(cfg)
+	profile := got.Agents["claude"]
+	if profile.Status.WaitTitle != "custom" {
+		t.Errorf("WaitTitle = %q, want %q", profile.Status.WaitTitle, "custom")
+	}
+	if profile.Status.StableTicks != 5 {
+		t.Errorf("StableTicks = %d, want 5", profile.Status.StableTicks)
+	}
+}
+
 func TestMigrate_UnknownAgentInstallCmdNotFilled(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: currentSchemaVersion,
