@@ -119,6 +119,10 @@ func (b *Backend) CapturePaneRaw(target string, lines int) (string, error) {
 	return resp.Content, nil
 }
 
+func (b *Backend) GetPaneTitles(_ string) (map[string]string, error) {
+	return nil, nil
+}
+
 func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 	// Native backend does not expose pane process names.
 	return "", nil

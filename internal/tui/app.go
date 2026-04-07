@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -77,6 +78,12 @@ type Model struct {
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
+	// stableCounts tracks consecutive polls where content was unchanged per session,
+	// used for debounce before transitioning running→idle/waiting.
+	stableCounts map[string]int
+	// detectionCtxs holds compiled status detection regexes per agent type,
+	// built once at startup from config.StatusDetection.
+	detectionCtxs map[string]escape.SessionDetectionCtx
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -123,6 +130,8 @@ func New(cfg config.Config, appState state.AppState) Model {
 		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:           ni,
 		contentSnapshots:    make(map[string]string),
+		stableCounts:        make(map[string]int),
+		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
 	}
 	// Clear the transient fields now that the pickers own their lists.
@@ -556,4 +565,45 @@ func (m *Model) reloadStateFromDisk() {
 	m.previewPollGen++
 	debugLog.Printf("reloadStateFromDisk: done — %d projects, %d dead sessions removed, activeSession=%s",
 		len(m.appState.Projects), len(deadIDs), m.appState.ActiveSessionID)
+}
+
+// buildDetectionCtxs compiles status detection regexes from config once at startup.
+// Returns a map keyed by agent type name (e.g. "claude").
+func buildDetectionCtxs(agents map[string]config.AgentProfile) map[string]escape.SessionDetectionCtx {
+	ctxs := make(map[string]escape.SessionDetectionCtx, len(agents))
+	for name, profile := range agents {
+		ctx := escape.SessionDetectionCtx{
+			StableTicks: profile.Status.StableTicks,
+		}
+		if profile.Status.WaitTitle != "" {
+			if re, err := regexp.Compile(profile.Status.WaitTitle); err == nil {
+				ctx.WaitTitleRe = re
+			} else {
+				debugLog.Printf("bad wait_title regex for %s: %v", name, err)
+			}
+		}
+		if profile.Status.RunTitle != "" {
+			if re, err := regexp.Compile(profile.Status.RunTitle); err == nil {
+				ctx.RunTitleRe = re
+			} else {
+				debugLog.Printf("bad run_title regex for %s: %v", name, err)
+			}
+		}
+		if profile.Status.WaitPrompt != "" {
+			if re, err := regexp.Compile(profile.Status.WaitPrompt); err == nil {
+				ctx.WaitPromptRe = re
+			} else {
+				debugLog.Printf("bad wait_prompt regex for %s: %v", name, err)
+			}
+		}
+		if profile.Status.IdlePrompt != "" {
+			if re, err := regexp.Compile(profile.Status.IdlePrompt); err == nil {
+				ctx.IdlePromptRe = re
+			} else {
+				debugLog.Printf("bad idle_prompt regex for %s: %v", name, err)
+			}
+		}
+		ctxs[name] = ctx
+	}
+	return ctxs
 }

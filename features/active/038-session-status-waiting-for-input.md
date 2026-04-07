@@ -171,6 +171,13 @@ Two-tier detection: pane title matching (fast, reliable for Claude) with a combi
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- Deviated from plan on detection priority: content diff runs FIRST (always accurate, real-time), then debounce, then title regex, then prompt patterns. The plan had title regex first, but titles are read at schedule time and can be stale.
+- Deviated from plan on Claude detection: removed `WaitTitle: ^✳` — live testing showed ✳ is used for both idle-at-prompt AND asking-a-question states, so it cannot distinguish them. Also removed `IdlePrompt: ^> ` — Claude Code is a full TUI; there is no bare `>` prompt in captured pane content (it's status bars, ASCII art, box-drawing characters). Final Claude config: `RunTitle: ^[⠁-⠿]` (spinner = running) + content-diff fallback.
+- Waiting detection for Claude deferred — requires either Claude Code to expose distinct title prefixes per state, or robust content pattern matching against Claude's rich TUI output.
+- Added `IdlePrompt` field to `StatusDetection` for agents that DO have identifiable rest prompts (not used by Claude, but available for custom agents).
+- `GetPaneTitles` added to `Backend` interface with nil-guard for tests.
+- Fixed data race: snapshot-copy maps before passing to `tea.Tick` goroutine.
+- Fixed memory leak: clean up `stableCounts`/`contentSnapshots` on session kill.
+- Fixed ANSI handling: `lastNonEmptyLine` strips ANSI before emptiness check.
 
-- **PR:** —
+- **PR:** [#56](https://github.com/lucascaro/hive/pull/56)

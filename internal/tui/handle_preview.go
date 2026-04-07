@@ -117,14 +117,36 @@ func (m *Model) scheduleWatchTitles() tea.Cmd {
 
 func (m *Model) scheduleWatchStatuses() tea.Cmd {
 	targets := make(map[string]string)
+	detection := make(map[string]escape.SessionDetectionCtx)
 	for _, sess := range state.AllSessions(&m.appState) {
 		if sess.Status != state.StatusDead {
 			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
+			if ctx, ok := m.detectionCtxs[string(sess.AgentType)]; ok {
+				detection[sess.ID] = ctx
+			}
 		}
 	}
 	if len(targets) == 0 {
 		return nil
 	}
+	// Batch-read pane titles for all windows in the shared hive session.
+	titles, err := mux.GetPaneTitles(mux.HiveSession)
+	if err != nil {
+		debugLog.Printf("scheduleWatchStatuses: GetPaneTitles(%s): %v", mux.HiveSession, err)
+		titles = make(map[string]string)
+	} else if titles == nil {
+		titles = make(map[string]string)
+	}
+	// Snapshot maps to avoid concurrent reads in the tick goroutine
+	// while handleStatusesDetected writes on the main goroutine.
+	prevContents := make(map[string]string, len(m.contentSnapshots))
+	for k, v := range m.contentSnapshots {
+		prevContents[k] = v
+	}
+	stableCounts := make(map[string]int, len(m.stableCounts))
+	for k, v := range m.stableCounts {
+		stableCounts[k] = v
+	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
-	return escape.WatchStatuses(targets, m.contentSnapshots, interval)
+	return escape.WatchStatuses(targets, prevContents, stableCounts, detection, titles, interval)
 }

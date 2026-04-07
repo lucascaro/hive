@@ -24,6 +24,8 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 
 func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
 	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
+	delete(m.stableCounts, msg.SessionID)
+	delete(m.contentSnapshots, msg.SessionID)
 	m.sidebar.Rebuild(&m.appState)
 	m.refreshGrid()
 	m.commitState()
@@ -90,6 +92,8 @@ func (m Model) handleSessionDetached() (tea.Model, tea.Cmd) {
 func (m Model) handleSessionWindowGone(msg components.SessionWindowGoneMsg) (tea.Model, tea.Cmd) {
 	debugLog.Printf("session window gone: %s", msg.SessionID)
 	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
+	delete(m.stableCounts, msg.SessionID)
+	delete(m.contentSnapshots, msg.SessionID)
 	m.commitState()
 	// Switch to whichever session the sidebar now has selected.
 	m.syncActiveFromSidebar()
@@ -109,9 +113,20 @@ func (m Model) handleTitleDetected(msg escape.TitleDetectedMsg) (tea.Model, tea.
 }
 
 func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model, tea.Cmd) {
-	// Always update content snapshots so the next diff is accurate.
+	// Update content snapshots and stable counts so the next diff is accurate.
+	// Skip sessions that no longer exist in appState — a late tick from a
+	// previously scheduled WatchStatuses can deliver data for killed sessions.
 	for sessionID, content := range msg.Contents {
+		if state.FindSession(&m.appState, sessionID) == nil {
+			continue
+		}
+		prev := m.contentSnapshots[sessionID]
 		m.contentSnapshots[sessionID] = content
+		if content != prev {
+			m.stableCounts[sessionID] = 0 // content changed, reset debounce
+		} else {
+			m.stableCounts[sessionID]++ // content unchanged, increment
+		}
 	}
 	// If the status watcher captured new content for the active session, update
 	// the preview immediately rather than waiting for the next PollPreview tick.

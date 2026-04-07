@@ -3,6 +3,7 @@ package tmux
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,6 +37,34 @@ func IsPaneDead(target string) bool {
 // GetCurrentCommand returns the name of the foreground process running in the pane.
 func GetCurrentCommand(target string) (string, error) {
 	return Exec("display-message", "-p", "-t", target, "#{pane_current_command}")
+}
+
+// GetPaneTitles returns pane titles for all windows in a tmux session.
+// It executes a single `list-windows` call and returns a map of
+// "session:windowIndex" → pane title.
+func GetPaneTitles(tmuxSession string) (map[string]string, error) {
+	out, err := Exec("list-windows", "-t", tmuxSession, "-F", "#{window_index}\t#{pane_title}")
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	for _, line := range splitLines(out) {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		target := fmt.Sprintf("%s:%s", tmuxSession, parts[0])
+		result[target] = parts[1]
+	}
+	return result, nil
+}
+
+// splitLines splits s by newline, handling empty trailing lines.
+func splitLines(s string) []string {
+	return strings.Split(strings.TrimRight(s, "\n"), "\n")
 }
 
 // GetPaneActivity returns the time of the last output received by a pane.

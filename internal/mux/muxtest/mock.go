@@ -16,6 +16,7 @@ type MockBackend struct {
 	windows       map[string]string            // "session:idx" → window name
 	nextWindowIdx map[string]int               // session → next window index
 	paneContents  map[string]string            // "session:idx" → capture content
+	paneTitles    map[string]string            // "session:idx" → pane title
 	calls         map[string]int               // method name → call count
 	errors        map[string]error             // method name → error to return
 }
@@ -30,6 +31,7 @@ func New() *MockBackend {
 		windows:       make(map[string]string),
 		nextWindowIdx: make(map[string]int),
 		paneContents:  make(map[string]string),
+		paneTitles:    make(map[string]string),
 		calls:         make(map[string]int),
 		errors:        make(map[string]error),
 	}
@@ -48,6 +50,13 @@ func (m *MockBackend) SetPaneContent(target, content string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.paneContents[target] = content
+}
+
+// SetPaneTitle sets the title returned by GetPaneTitles for target.
+func (m *MockBackend) SetPaneTitle(target, title string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.paneTitles[target] = title
 }
 
 // CallCount returns how many times method was called.
@@ -187,6 +196,22 @@ func (m *MockBackend) ListWindows(session string) ([]mux.WindowInfo, error) {
 		}
 	}
 	return windows, nil
+}
+
+func (m *MockBackend) GetPaneTitles(session string) (map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.record("GetPaneTitles"); err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	prefix := session + ":"
+	for target, title := range m.paneTitles {
+		if len(target) > len(prefix) && target[:len(prefix)] == prefix {
+			result[target] = title
+		}
+	}
+	return result, nil
 }
 
 func (m *MockBackend) CapturePane(target string, lines int) (string, error) {

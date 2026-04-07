@@ -1,6 +1,8 @@
 package escape
 
 import (
+	"regexp"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,6 +34,16 @@ func WatchTitles(sessionTargets map[string]string, interval time.Duration) tea.C
 	})
 }
 
+// SessionDetectionCtx holds compiled regexes and config for a single session's
+// status detection. Built once at startup from config.StatusDetection.
+type SessionDetectionCtx struct {
+	WaitTitleRe  *regexp.Regexp
+	RunTitleRe   *regexp.Regexp
+	WaitPromptRe *regexp.Regexp
+	IdlePromptRe *regexp.Regexp // if set and NOT matched on stable content → waiting
+	StableTicks  int
+}
+
 // StatusesDetectedMsg carries fresh status readings and updated content snapshots
 // for all polled sessions.
 type StatusesDetectedMsg struct {
@@ -40,11 +52,30 @@ type StatusesDetectedMsg struct {
 }
 
 // WatchStatuses returns a tea.Cmd that captures pane content for all active sessions
-// and derives running/idle status by comparing against prevContents.
-// A session whose content changed since prevContents is StatusRunning; one whose
-// content is unchanged is StatusIdle. prevContents maps sessionID → last content.
-// sessionTargets maps sessionID → "tmuxSession:windowIdx".
-func WatchStatuses(sessionTargets map[string]string, prevContents map[string]string, interval time.Duration) tea.Cmd {
+// and derives running/idle/waiting status using combined heuristics:
+//
+//  1. Content changed → always StatusRunning (real-time, overrides stale titles).
+//  2. Content stable for fewer than StableTicks → StatusRunning (debounce).
+//  3. Pane title regex match → StatusWaiting or StatusRunning.
+//  4. WaitPrompt matches last content line → StatusWaiting.
+//  5. IdlePrompt configured: match → StatusIdle, no match → StatusWaiting
+//     (agent stopped but isn't at its rest prompt, likely asking a question).
+//  6. Fallback → StatusIdle.
+//
+// Parameters:
+//   - sessionTargets: sessionID → "tmuxSession:windowIdx"
+//   - prevContents: sessionID → last captured content (for diff)
+//   - stableCounts: sessionID → consecutive stable polls (for debounce)
+//   - detection: sessionID → compiled detection context
+//   - titles: "tmuxSession:windowIdx" → pane title (from GetPaneTitles)
+func WatchStatuses(
+	sessionTargets map[string]string,
+	prevContents map[string]string,
+	stableCounts map[string]int,
+	detection map[string]SessionDetectionCtx,
+	titles map[string]string,
+	interval time.Duration,
+) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		statuses := make(map[string]state.SessionStatus, len(sessionTargets))
 		contents := make(map[string]string, len(sessionTargets))
@@ -54,12 +85,95 @@ func WatchStatuses(sessionTargets map[string]string, prevContents map[string]str
 				continue
 			}
 			contents[sessionID] = content
-			if content != prevContents[sessionID] {
+
+			det, hasDet := detection[sessionID]
+			title := titles[target]
+
+			// Always check content diff first — content changes are real-time
+			// and override potentially stale pane titles.
+			contentChanged := content != prevContents[sessionID]
+			if contentChanged {
 				statuses[sessionID] = state.StatusRunning
-			} else {
-				statuses[sessionID] = state.StatusIdle
+				continue
 			}
+
+			// Content is stable. Check debounce window before any idle/waiting decision.
+			stableCount := stableCounts[sessionID] + 1
+			stableTicks := 2 // default
+			if hasDet && det.StableTicks > 0 {
+				stableTicks = det.StableTicks
+			}
+			if stableCount < stableTicks {
+				statuses[sessionID] = state.StatusRunning
+				continue
+			}
+
+			// Content stable past debounce. Now check pane title (tier 1).
+			if hasDet && title != "" {
+				if det.WaitTitleRe != nil && det.WaitTitleRe.MatchString(title) {
+					statuses[sessionID] = state.StatusWaiting
+					continue
+				}
+				if det.RunTitleRe != nil && det.RunTitleRe.MatchString(title) {
+					statuses[sessionID] = state.StatusRunning
+					continue
+				}
+			}
+
+			// Tier 2: prompt pattern on last line.
+			if hasDet && det.WaitPromptRe != nil && matchesLastLine(content, det.WaitPromptRe) {
+				statuses[sessionID] = state.StatusWaiting
+				continue
+			}
+
+			// IdlePrompt: if configured, the agent's rest prompt (e.g. "> ").
+			// Match → idle (at prompt). No match → waiting (agent stopped but
+			// isn't at its prompt, likely asking a question).
+			if hasDet && det.IdlePromptRe != nil {
+				if matchesLastLine(content, det.IdlePromptRe) {
+					statuses[sessionID] = state.StatusIdle
+				} else {
+					statuses[sessionID] = state.StatusWaiting
+				}
+				continue
+			}
+
+			statuses[sessionID] = state.StatusIdle
 		}
 		return StatusesDetectedMsg{Statuses: statuses, Contents: contents}
 	})
+}
+
+// matchesLastLine tests re against the last non-empty line of content.
+func matchesLastLine(content string, re *regexp.Regexp) bool {
+	line := lastNonEmptyLine(content)
+	if line == "" {
+		return false
+	}
+	// Strip ANSI escape sequences before matching.
+	line = stripANSI(line)
+	return re.MatchString(line)
+}
+
+// lastNonEmptyLine returns the last line from content that has visible text
+// (after stripping ANSI codes and whitespace). The original line is returned
+// intact so the caller can strip ANSI separately for regex matching.
+// This correctly skips lines that contain only ANSI reset sequences (e.g.
+// \x1b[0m) which tmux emits on blank lines below visible content.
+func lastNonEmptyLine(content string) string {
+	lines := strings.Split(content, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(stripANSI(lines[i])) != "" {
+			return lines[i]
+		}
+	}
+	return ""
+}
+
+// ansiRe matches ANSI escape sequences (CSI and OSC).
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07`)
+
+// stripANSI removes ANSI escape sequences from s.
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
 }
