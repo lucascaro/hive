@@ -7,14 +7,17 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #38 | Session status does not detect "Waiting for input" state | RESEARCH | M |
-| 2 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
-| 3 | #49 | Bug: Renaming projects doesn't update the project name | RESEARCH | S |
-| 4 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
-| 5 | #36 | Add missing tests | RESEARCH | L |
-| 6 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 7 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 8 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #38 | Session status does not detect "Waiting for input" state | PLAN | M |
+| 2 | #52 | Focus management: auto-focus on session create and smart fallback on delete | RESEARCH | S |
+| 3 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
+| 4 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |
+| 5 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
+| 6 | #36 | Add missing tests | RESEARCH | L |
+| 7 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 8 | #55 | Reorder sessions via keyboard | RESEARCH | M |
+| 9 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 10 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 11 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 
@@ -32,3 +35,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #45 | Allow creating new directories in the project dir picker | #47 | 2026-04-05 |
 | #46 | Rework dialog system to use a view stack | #50 | 2026-04-05 |
 | #48 | Allow creating new sessions from grid view | #48 | 2026-04-05 |
+| #49 | Bug: Renaming projects doesn't update the project name | #51 | 2026-04-06 |
