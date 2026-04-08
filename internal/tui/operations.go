@@ -303,13 +303,9 @@ func (m *Model) killSession(sessionID string) tea.Cmd {
 			}
 		}
 	}
-	m.appState = *state.RemoveSession(&m.appState, sessionID)
-	// If this was the last window in the tmux session, clean up the container.
-	if tmuxSess != "" {
-		killTmuxSessionIfEmpty(&m.appState, tmuxSess)
-	}
-	m.commitState()
-	return func() tea.Msg { return SessionKilledMsg{SessionID: sessionID} }
+	// State removal and focus fallback happen in handleSessionKilled to
+	// avoid mutating shared Project pointers from a discarded Model copy.
+	return func() tea.Msg { return SessionKilledMsg{SessionID: sessionID, TmuxSession: tmuxSess} }
 }
 
 func (m *Model) killTeam(teamID string) tea.Cmd {

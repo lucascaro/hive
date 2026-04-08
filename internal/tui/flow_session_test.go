@@ -3,7 +3,10 @@ package tui
 import (
 	"testing"
 
+	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/escape"
+	"github.com/lucascaro/hive/internal/mux"
+	"github.com/lucascaro/hive/internal/mux/muxtest"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
@@ -218,6 +221,294 @@ func countLines(s string) int {
 		}
 	}
 	return n
+}
+
+// testFlowModelThreeSessions creates a model with one project and 3 sessions
+// (sess-1, sess-2, sess-3) for focus management tests.
+func testFlowModelThreeSessions(t *testing.T) (Model, *muxtest.MockBackend) {
+	t.Helper()
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	mock.SetPaneContent("hive-proj:0", "$ claude\nSession 1.")
+	mock.SetPaneContent("hive-proj:1", "$ claude\nSession 2.")
+	mock.SetPaneContent("hive-proj:2", "$ claude\nSession 3.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+
+	appState := state.AppState{
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-2", // start focused on middle session
+		Projects: []*state.Project{
+			{
+				ID:    "proj-1",
+				Name:  "test-project",
+				Color: "#7C3AED",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{
+						ID:          "sess-1",
+						ProjectID:   "proj-1",
+						Title:       "session-1",
+						TmuxSession: "hive-proj",
+						TmuxWindow:  0,
+						Status:      state.StatusRunning,
+						AgentType:   state.AgentClaude,
+						AgentCmd:    []string{"claude"},
+					},
+					{
+						ID:          "sess-2",
+						ProjectID:   "proj-1",
+						Title:       "session-2",
+						TmuxSession: "hive-proj",
+						TmuxWindow:  1,
+						Status:      state.StatusRunning,
+						AgentType:   state.AgentClaude,
+						AgentCmd:    []string{"claude"},
+					},
+					{
+						ID:          "sess-3",
+						ProjectID:   "proj-1",
+						Title:       "session-3",
+						TmuxSession: "hive-proj",
+						TmuxWindow:  2,
+						Status:      state.StatusRunning,
+						AgentType:   state.AgentClaude,
+						AgentCmd:    []string{"claude"},
+					},
+				},
+			},
+		},
+		AgentUsage: make(map[string]state.AgentUsageRecord),
+		TermWidth:  120,
+		TermHeight: 40,
+	}
+
+	m := New(cfg, appState)
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	return m, mock
+}
+
+// killActiveSession drives the kill-session confirm flow and returns
+// after the session is removed. Requires the active session to be set.
+func killActiveSession(t *testing.T, f *flowRunner) {
+	t.Helper()
+	// Press "x" → returns cmd that produces ConfirmActionMsg.
+	cmd := f.SendKey("x")
+	if cmd == nil {
+		t.Fatal("expected ConfirmActionMsg command from kill key")
+	}
+	f.ExecCmdChain(cmd)
+	// Confirm dialog should be visible.
+	if !f.Model().appState.ShowConfirm {
+		t.Fatal("ShowConfirm should be true after ConfirmActionMsg")
+	}
+	// Press "y" to confirm → drives through ConfirmedMsg → killSession → SessionKilledMsg.
+	cmd = f.SendKey("y")
+	if cmd != nil {
+		f.ExecCmdChain(cmd)
+	}
+}
+
+// gridSelected returns the grid view's currently selected session from the
+// flow runner. Works around Selected() having a pointer receiver.
+func gridSelected(f *flowRunner) *state.Session {
+	return f.model.gridView.Selected()
+}
+
+// --- Focus management flow tests ---
+
+// TestFlow_CreateSession_FocusSidebar verifies that creating a session
+// in sidebar view sets focus to the new session.
+func TestFlow_CreateSession_FocusSidebar(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-1")
+
+	// Simulate a session being created (bypass the agent picker).
+	newSess := &state.Session{
+		ID:          "sess-new",
+		ProjectID:   "proj-1",
+		Title:       "new-session",
+		TmuxSession: "hive-new",
+		TmuxWindow:  0,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	f.Send(SessionCreatedMsg{Session: newSess})
+
+	f.AssertActiveSession("sess-new")
+}
+
+// TestFlow_CreateSession_FocusGrid verifies that creating a session
+// while grid view is open sets the grid cursor to the new session.
+func TestFlow_CreateSession_FocusGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-1")
+
+	// Open all-sessions grid (Shift+G from sidebar).
+	f.SendKey("G")
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+
+	// Simulate session creation.
+	newSess := &state.Session{
+		ID:          "sess-new",
+		ProjectID:   "proj-1",
+		Title:       "new-session",
+		TmuxSession: "hive-new",
+		TmuxWindow:  0,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	f.Send(SessionCreatedMsg{Session: newSess})
+
+	f.AssertActiveSession("sess-new")
+	sel := gridSelected(f)
+	if sel == nil || sel.ID != "sess-new" {
+		selID := ""
+		if sel != nil {
+			selID = sel.ID
+		}
+		t.Errorf("gridView.Selected() = %q, want %q", selID, "sess-new")
+	}
+}
+
+// TestFlow_CreateSession_FocusProjectGrid verifies grid focus on create
+// when showing project-scoped grid.
+func TestFlow_CreateSession_FocusProjectGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-1")
+
+	// Open project-scoped grid (g from sidebar).
+	f.SendKey("g")
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreProject)
+
+	// Simulate session creation in same project.
+	newSess := &state.Session{
+		ID:          "sess-new",
+		ProjectID:   "proj-1",
+		Title:       "new-session",
+		TmuxSession: "hive-new",
+		TmuxWindow:  0,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	f.Send(SessionCreatedMsg{Session: newSess})
+
+	f.AssertActiveSession("sess-new")
+	sel := gridSelected(f)
+	if sel == nil || sel.ID != "sess-new" {
+		selID := ""
+		if sel != nil {
+			selID = sel.ID
+		}
+		t.Errorf("gridView.Selected() = %q, want %q", selID, "sess-new")
+	}
+}
+
+// TestFlow_KillSession_FocusSidebar verifies that killing the middle session
+// in sidebar view moves focus to the next session in the same group.
+func TestFlow_KillSession_FocusSidebar(t *testing.T) {
+	m, mock := testFlowModelThreeSessions(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-2")
+
+	killActiveSession(t, f)
+
+	// Focus should move to sess-3 (next in group).
+	f.AssertActiveSession("sess-3")
+}
+
+// TestFlow_KillSession_FocusGrid verifies that killing a session in
+// all-sessions grid view moves focus to the next session.
+func TestFlow_KillSession_FocusGrid(t *testing.T) {
+	m, mock := testFlowModelThreeSessions(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-2")
+
+	// Open all-sessions grid (Shift+G).
+	f.SendKey("G")
+	f.AssertGridActive(true)
+
+	killActiveSession(t, f)
+
+	f.AssertActiveSession("sess-3")
+	sel := gridSelected(f)
+	if sel == nil || sel.ID != "sess-3" {
+		selID := ""
+		if sel != nil {
+			selID = sel.ID
+		}
+		t.Errorf("gridView.Selected() = %q, want %q", selID, "sess-3")
+	}
+}
+
+// TestFlow_KillSession_FocusProjectGrid verifies that killing a session in
+// project-scoped grid moves focus to the next session in the same project.
+func TestFlow_KillSession_FocusProjectGrid(t *testing.T) {
+	m, mock := testFlowModelThreeSessions(t)
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-2")
+
+	// Open project grid (g).
+	f.SendKey("g")
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreProject)
+
+	killActiveSession(t, f)
+
+	f.AssertActiveSession("sess-3")
+	sel := gridSelected(f)
+	if sel == nil || sel.ID != "sess-3" {
+		selID := ""
+		if sel != nil {
+			selID = sel.ID
+		}
+		t.Errorf("gridView.Selected() = %q, want %q", selID, "sess-3")
+	}
+}
+
+// TestFlow_KillSession_LastInGroup verifies fallback when killing the last
+// session in a group — should move to previous.
+func TestFlow_KillSession_LastInGroup(t *testing.T) {
+	m, mock := testFlowModelThreeSessions(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Navigate to sess-3 (last session).
+	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-3"; i++ {
+		f.SendKey("j")
+	}
+	f.AssertActiveSession("sess-3")
+
+	killActiveSession(t, f)
+
+	// Focus should move to sess-2 (previous in group).
+	f.AssertActiveSession("sess-2")
 }
 
 // TestFlow_StatusUpdate_UpdatesPreview tests that StatusesDetectedMsg

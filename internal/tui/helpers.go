@@ -61,6 +61,27 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 	}
 }
 
+// focusSession is the single path for changing which session is focused.
+// It updates ActiveSessionID, syncs the sidebar cursor, syncs the grid
+// cursor, and refreshes the preview pane.
+func (m *Model) focusSession(sessionID string) {
+	m.appState.ActiveSessionID = sessionID
+	m.sidebar.SyncActiveSession(sessionID)
+	m.gridView.SyncCursor(sessionID)
+	if sessionID != "" {
+		if cached, ok := m.contentSnapshots[sessionID]; ok {
+			m.appState.PreviewContent = cached
+			m.preview.SetContent(cached)
+		} else {
+			m.appState.PreviewContent = ""
+			m.preview.SetContent("")
+		}
+	} else {
+		m.appState.PreviewContent = ""
+		m.preview.SetContent("")
+	}
+}
+
 func (m *Model) syncActiveFromSidebar() {
 	sel := m.sidebar.Selected()
 	if sel == nil {

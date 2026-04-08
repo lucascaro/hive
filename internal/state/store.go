@@ -216,6 +216,72 @@ func ToggleTeamCollapsed(state *AppState, teamID string) *AppState {
 	return state
 }
 
+// NextSessionAfterRemoval returns the session ID that should receive focus
+// after sessionID is removed. Must be called BEFORE RemoveSession.
+// Priority: next in group → prev in group → next overall → prev overall → "".
+func NextSessionAfterRemoval(state *AppState, sessionID string) string {
+	// Find the group (slice) the session belongs to and its index.
+	var group []*Session
+	var idx int
+	found := false
+	for _, p := range state.Projects {
+		for ti, t := range p.Teams {
+			for si, s := range t.Sessions {
+				if s.ID == sessionID {
+					group = p.Teams[ti].Sessions
+					idx = si
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if found {
+			break
+		}
+		for si, s := range p.Sessions {
+			if s.ID == sessionID {
+				group = p.Sessions
+				idx = si
+				found = true
+				break
+			}
+		}
+		if found {
+			break
+		}
+	}
+	if !found {
+		return ""
+	}
+
+	// Next in group.
+	if idx+1 < len(group) {
+		return group[idx+1].ID
+	}
+	// Prev in group.
+	if idx-1 >= 0 {
+		return group[idx-1].ID
+	}
+
+	// Fallback: next/prev overall (all sessions flattened).
+	all := AllSessions(state)
+	for i, s := range all {
+		if s.ID == sessionID {
+			if i+1 < len(all) {
+				return all[i+1].ID
+			}
+			if i-1 >= 0 {
+				return all[i-1].ID
+			}
+			break
+		}
+	}
+	return ""
+}
+
 // --- helpers ---
 
 func newSession(projectID, teamID string, role TeamRole, title string, agentType AgentType, agentCmd []string, workDir, tmuxSession string, tmuxWindow int) *Session {
