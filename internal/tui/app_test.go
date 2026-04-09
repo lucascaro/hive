@@ -931,6 +931,12 @@ func TestBuildAttachScript(t *testing.T) {
 	if got := strings.Count(script, "#{pane_title}"); got != 1 {
 		t.Errorf("expected exactly one #{pane_title} token in script, got %d", got)
 	}
+	// Verify the conditional wrapper that hides the " · " separator when
+	// pane_title is empty (otherwise sessions without an OSC title render a
+	// dangling separator).  Caught in code review of #58.
+	if !strings.Contains(script, "#{?pane_title,") {
+		t.Error("status-left should wrap pane_title in a #{?pane_title,…,} conditional so the separator only renders when the title is non-empty")
+	}
 }
 
 func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {

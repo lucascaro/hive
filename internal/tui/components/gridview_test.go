@@ -298,3 +298,40 @@ func TestGridView_SyncCursor(t *testing.T) {
 		}
 	})
 }
+
+// TestSanitizePaneTitle covers the sanitizer used to scrub untrusted OSC 0/2
+// payloads before rendering them inside grid cells.  Pane titles can contain
+// arbitrary ANSI escape sequences and control characters; lipgloss does not
+// sanitize, so this function is the only thing standing between agent output
+// and the visible UI.
+func TestSanitizePaneTitle(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"plain ascii", "claude: working", "claude: working"},
+		{"trailing whitespace trimmed", "  pre post  ", "pre post"},
+		{"sgr color stripped", "\x1b[1;31mred\x1b[0m", "red"},
+		// Private-mode CSI sequences (parameter byte '?') were not stripped
+		// by the original [0-9;]*[a-zA-Z] pattern — caught in PR #58 review.
+		{"private mode CSI stripped", "\x1b[?25lhidden\x1b[?25h", "hidden"},
+		{"alt screen toggle stripped", "\x1b[?1049hfoo\x1b[?1049l", "foo"},
+		// CSI with intermediate byte (DECSCUSR cursor shape).
+		{"intermediate byte CSI stripped", "\x1b[1 qfoo", "foo"},
+		{"osc bel terminated stripped", "\x1b]2;title\x07after", "after"},
+		{"osc st terminated stripped", "\x1b]2;title\x1b\\after", "after"},
+		{"control chars only", "\x00\x01\x07", ""},
+		{"mixed control + visible", "a\x00b\x01c", "abc"},
+		{"del char stripped", "before\x7fafter", "beforeafter"},
+		{"unicode preserved", "⠋ Working on task", "⠋ Working on task"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sanitizePaneTitle(tc.in); got != tc.want {
+				t.Errorf("sanitizePaneTitle(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

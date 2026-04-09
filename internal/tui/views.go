@@ -260,7 +260,10 @@ func buildAttachScript(tmuxSession, target, title, detachKey string) string {
 		"tmux set-option -t "+s+" status on",
 		"tmux set-option -t "+s+" status-position top",
 		"tmux set-option -t "+s+" status-style 'bg=#7C3AED,fg=#F9FAFB'",
-		"tmux set-option -t "+s+" status-left "+sq(" "+title+" · #{pane_title} "),
+		// The "{?pane_title, · …,}" conditional makes the separator and live
+		// title disappear cleanly when the pane has no title set, instead of
+		// rendering a dangling " · " after the static session header.
+		"tmux set-option -t "+s+" status-left "+sq(" "+title+"#{?pane_title, · #{pane_title},} "),
 		"tmux set-option -t "+s+" status-left-length 200",
 		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
 		"tmux set-option -t "+s+" status-right-length 40",

@@ -5,7 +5,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P3
-- **Branch:** —
+- **Branch:** feature/39-window-list-colors-pane-title
 
 ## Description
 
@@ -352,4 +352,4 @@ Implemented all three slices in a single PR following the plan exactly.  No devi
 - CHANGELOG.md updated under `[Unreleased]` with three Added entries and one Changed entry per Documentation Maintenance rules
 - No README/docs/ updates needed: changes are visual (colors, hidden window list, subtitle row) and don't introduce new keybindings, CLI flags, config options, or hook events
 
-- **PR:** —
+- **PR:** #58

@@ -357,11 +357,13 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 }
 
 // paneTitleSanitizeRe matches anything we want to strip from a raw pane title
-// before rendering it inside a grid cell: ANSI CSI sequences, ANSI OSC
+// before rendering it inside a grid cell: ANSI CSI sequences (full ECMA-48
+// shape: parameter bytes 0x30-0x3F, intermediate bytes 0x20-0x2F, final byte
+// 0x40-0x7E — covers private-mode sequences like \x1b[?25l), ANSI OSC
 // sequences (BEL- or ST-terminated), and any C0/DEL control characters.
 // Pane titles come from agent OSC 0/2 escapes — untrusted input that lipgloss
 // does not sanitize.
-var paneTitleSanitizeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x1f\x7f]`)
+var paneTitleSanitizeRe = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x1f\x7f]`)
 
 // sanitizePaneTitle strips ANSI escapes and control characters from a raw pane
 // title and trims surrounding whitespace.  Returns "" if nothing useful remains.
