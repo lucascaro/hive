@@ -11,6 +11,14 @@ type Config struct {
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.
 	Multiplexer                 string                    `json:"multiplexer,omitempty"`
+	// DetachKey is the single-key combination that returns the user from an
+	// attached session back to the Hive TUI. Accepted form is
+	// "ctrl+<lowercase-letter>" (e.g. "ctrl+q", "ctrl+d"). Defaults to
+	// "ctrl+q". The key is enforced by the active multiplexer backend
+	// (tmux installs a server-side bind-key; the native backend intercepts
+	// the matching control byte on stdin), so it is not part of the
+	// in-TUI Keybindings struct.
+	DetachKey                   string                    `json:"detach_key,omitempty"`
 	Agents                      map[string]AgentProfile   `json:"agents"`
 	TeamDefaults                TeamDefaultsConfig        `json:"team_defaults"`
 	Hooks                       HooksConfig               `json:"hooks"`

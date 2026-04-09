@@ -222,3 +222,20 @@ func UseExecAttach() bool {
 
 // DetachKey returns a description of the key sequence used to return to hive.
 func DetachKey() string { return active.DetachKey() }
+
+// AttachScript returns the shell script the active backend uses to attach to
+// target with title shown in the status bar. Only the tmux backend produces
+// a script (the native backend uses the quit+restart path); for any other
+// backend AttachScript returns an empty string. Callers must check
+// UseExecAttach() first if they need a non-empty script.
+//
+// The script is exposed via type-assertion rather than the Backend interface
+// to keep the interface free of tmux-specific concerns.
+func AttachScript(target, title string) string {
+	if as, ok := active.(interface {
+		AttachScript(target, title string) string
+	}); ok {
+		return as.AttachScript(target, title)
+	}
+	return ""
+}

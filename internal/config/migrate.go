@@ -1,5 +1,7 @@
 package config
 
+import "github.com/lucascaro/hive/internal/mux"
+
 const currentSchemaVersion = 1
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
@@ -40,6 +42,14 @@ func Migrate(cfg Config) Config {
 	}
 	if cfg.Keybindings.ColorPrev == "" {
 		cfg.Keybindings.ColorPrev = defaults.Keybindings.ColorPrev
+	}
+
+	// Default the detach key when missing. Invalid values are reported and
+	// fall back to the default in cmd/start.go's initMuxBackend so the user
+	// sees a clear stderr warning at startup; we deliberately don't silently
+	// rewrite the value here.
+	if cfg.DetachKey == "" {
+		cfg.DetachKey = mux.DefaultDetachKey
 	}
 
 	return cfg

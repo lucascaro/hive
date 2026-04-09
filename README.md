@@ -117,7 +117,7 @@ enter: select  esc: cancel
 
 ### 4. Attach to a session
 
-Select a session with `j/k` and press `a` or `Enter`. The TUI suspends and you interact with the agent directly. Press **Ctrl+Q** to detach and return to Hive.
+Select a session with `j/k` and press `a` or `Enter`. The TUI suspends and you interact with the agent directly. Press **Ctrl+Q** to detach and return to Hive (configurable via `detach_key` — see [docs/keybindings.md](docs/keybindings.md)).
 
 ### 5. Create an agent team
 
@@ -277,7 +277,7 @@ Config file: `~/.config/hive/config.json`
 
 | Value | Description |
 |-------|-------------|
-| `"tmux"` (default) | Uses the external `tmux` binary. Battle-tested and recommended. Requires tmux to be installed. Detach from a session with **Ctrl+B D**. |
+| `"tmux"` (default) | Uses the external `tmux` binary. Battle-tested and recommended. Requires tmux to be installed. Detach from a session with **Ctrl+Q** (single key, configurable via `detach_key`). The standard tmux `Ctrl+B D` also still works. |
 | `"native"` ⚠️ alpha | Built-in Go PTY backend. No external dependencies, but not recommended for general use. A background daemon (`hive mux-daemon`) keeps sessions alive after the TUI exits. Enable with `hive start --native`. |
 
 ### Custom agents

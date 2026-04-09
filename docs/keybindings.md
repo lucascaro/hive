@@ -94,6 +94,29 @@ The legend is visible in the main status bar and in the grid footer.
 | `y` / `Enter` | Confirm |
 | `n` / `Esc` | Cancel |
 
+## Detach from an attached session
+
+When you attach to a session (`a` / `Enter`), Hive's TUI suspends and you interact with the agent directly. To return to Hive, press the **detach key**:
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Q` | Detach and return to Hive (default; configurable) |
+| `Ctrl+B D` | tmux's standard detach sequence — still works as a fallback when using the tmux backend |
+
+The detach key is set via the top-level `detach_key` field in `~/.config/hive/config.json` (not the `keybindings` block — see note below):
+
+```json
+{
+  "detach_key": "ctrl+q"
+}
+```
+
+**Accepted syntax:** `ctrl+<lowercase-letter>` only (e.g. `ctrl+q`, `ctrl+d`, `ctrl+x`). Alt-modifier and function keys are not supported. An invalid value falls back to `ctrl+q` with a warning printed to stderr at startup.
+
+**Why a top-level field, not under `keybindings`?** The detach key is enforced by the multiplexer backend (the tmux backend installs a `bind-key -n` on the server before each attach; the native PTY backend intercepts the matching control byte on stdin). The `keybindings` block is processed by the in-TUI Bubble Tea key handler and never sees keystrokes during attach.
+
+> ⚠️ **`ctrl+q` collides with terminal flow control (XOFF) on systems that have `ixon` enabled.** Most modern terminals disable it by default; if yours doesn't, set `detach_key` to a different `ctrl+<letter>` combination.
+
 ## Customization
 
 All key bindings (except `G` and grid-internal keys) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:

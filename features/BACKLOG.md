@@ -8,7 +8,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | 1 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |
-| 2 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
+| 2 | #41 | Simplify detach shortcut to a single key combo | IMPLEMENT | S |
 | 3 | #36 | Add missing tests | RESEARCH | L |
 | 4 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
 | 5 | #55 | Reorder sessions via keyboard | RESEARCH | M |
