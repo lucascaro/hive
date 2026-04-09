@@ -27,10 +27,13 @@ func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
 	}
 	delete(m.stableCounts, msg.SessionID)
 	delete(m.contentSnapshots, msg.SessionID)
+	// Rebuild sidebar before focusSession so its SyncActiveSession can
+	// locate the fallback in the new items list. Use persist() instead of
+	// commitState() to avoid a second redundant rebuild.
 	m.sidebar.Rebuild(&m.appState)
 	m.refreshGrid()
 	m.focusSession(fallback)
-	m.commitState()
+	m.persist()
 	m.previewPollGen++
 	return m, m.schedulePollPreview()
 }

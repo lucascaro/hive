@@ -266,8 +266,10 @@ func NextSessionAfterRemoval(state *AppState, sessionID string) string {
 		return group[idx-1].ID
 	}
 
-	// Fallback: next/prev overall (all sessions flattened).
-	all := AllSessions(state)
+	// Fallback: next/prev overall, in sidebar/UI traversal order (teams
+	// before standalone sessions within a project) — so the fallback
+	// matches what the user sees.
+	all := allSessionsUIOrder(state)
 	for i, s := range all {
 		if s.ID == sessionID {
 			if i+1 < len(all) {
@@ -280,6 +282,20 @@ func NextSessionAfterRemoval(state *AppState, sessionID string) string {
 		}
 	}
 	return ""
+}
+
+// allSessionsUIOrder flattens all sessions in the order the sidebar renders
+// them: per project, teams (with their sessions) first, then standalone
+// sessions. Used by focus-fallback logic so "next overall" matches the UI.
+func allSessionsUIOrder(state *AppState) []*Session {
+	var out []*Session
+	for _, p := range state.Projects {
+		for _, t := range p.Teams {
+			out = append(out, t.Sessions...)
+		}
+		out = append(out, p.Sessions...)
+	}
+	return out
 }
 
 // --- helpers ---

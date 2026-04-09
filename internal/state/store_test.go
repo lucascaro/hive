@@ -472,6 +472,26 @@ func TestNextSessionAfterRemoval_OnlySessionInTeam_FallsBackOverall(t *testing.T
 	}
 }
 
+// TestNextSessionAfterRemoval_OverallUsesUIOrder verifies that the overall
+// fallback walks sessions in sidebar render order (teams before standalones
+// within a project), not in AllSessions flattening order.
+func TestNextSessionAfterRemoval_OverallUsesUIOrder(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	// Standalone comes before team in append order, but sidebar renders team first.
+	s, standalone := CreateSession(s, p.ID, "standalone", AgentClaude, nil, "", "h", 0)
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 1)
+
+	// Remove standalone (only session in its group). Next in UI order after
+	// standalone is... nothing (standalones render last). Prev in UI order
+	// is t1 (team session rendered before standalone). Expect t1.
+	got := NextSessionAfterRemoval(s, standalone.ID)
+	if got != t1.ID {
+		t.Errorf("got %q, want %q (prev in UI order should be team session)", got, t1.ID)
+	}
+}
+
 func TestSessionLabel_OrchestratorHasStar(t *testing.T) {
 	sess := &Session{Title: "orch", AgentType: AgentClaude, TeamRole: RoleOrchestrator}
 	label := SessionLabel(sess)

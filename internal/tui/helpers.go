@@ -65,20 +65,26 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 // startup bootstrap in New() where components are not yet initialized).
 // It updates ActiveSessionID, syncs the owning project/team, syncs the
 // sidebar and grid cursors, and refreshes the preview pane.
+//
+// If sessionID is "" or cannot be resolved in the current state, all
+// focus fields are cleared — callers need not worry about partial state.
 func (m *Model) focusSession(sessionID string) {
-	m.appState.ActiveSessionID = sessionID
+	var sess *state.Session
 	if sessionID != "" {
-		if sess := state.FindSession(&m.appState, sessionID); sess != nil {
-			m.appState.ActiveProjectID = sess.ProjectID
-			m.appState.ActiveTeamID = sess.TeamID
-		}
-	} else {
+		sess = state.FindSession(&m.appState, sessionID)
+	}
+	if sess == nil {
+		m.appState.ActiveSessionID = ""
 		m.appState.ActiveProjectID = ""
 		m.appState.ActiveTeamID = ""
+	} else {
+		m.appState.ActiveSessionID = sess.ID
+		m.appState.ActiveProjectID = sess.ProjectID
+		m.appState.ActiveTeamID = sess.TeamID
 	}
-	m.sidebar.SyncActiveSession(sessionID)
-	m.gridView.SyncCursor(sessionID)
-	cached := m.contentSnapshots[sessionID] // "" for missing or empty sessionID
+	m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
+	m.gridView.SyncCursor(m.appState.ActiveSessionID)
+	cached := m.contentSnapshots[m.appState.ActiveSessionID] // "" for missing or empty
 	m.appState.PreviewContent = cached
 	m.preview.SetContent(cached)
 }
