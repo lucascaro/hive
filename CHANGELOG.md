@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Session status detection infrastructure**: adds configurable two-tier status detection for agent sessions. For Claude, uses pane title spinner detection (Braille spinner = running) with content-diff + debounce fallback. Detection patterns (`run_title`, `wait_title`, `wait_prompt`, `idle_prompt`, `stable_ticks`) are configurable per agent via the `status` field in agent profiles. Full "waiting for input" detection deferred — Claude Code uses the same pane title for both idle and asking-a-question states (#38).
+- **Live agent terminal title in attached view**: the tmux status bar now shows the running agent's terminal title (set by Claude/Codex/etc. via OSC 0/2) next to the static session header, updating in real time as the agent works (#39).
+- **Live agent terminal title in grid view**: each grid cell now shows a one-line italic subtitle with the agent's current terminal title when the cell has enough room (≥ 8 rows). Untrusted OSC content is sanitized before rendering (#39).
+- **Colorful UI accents**: breadcrumb separators, status-bar hint descriptions, and the worktree `⎇` badge now use the project palette for better visual differentiation (#39).
+
+### Changed
+- **Cleaner attach status bar**: the tmux status bar no longer shows the default window list when attached to a session — only the custom title and detach hint remain (#39).
 
 ### Fixed
 - **Renaming projects and teams now works**: pressing `r` on a project or team in the sidebar previously accepted input but silently discarded it. The rename now persists correctly (#49).

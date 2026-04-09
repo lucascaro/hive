@@ -2,6 +2,7 @@ package components
 
 import (
 	"math"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ type GridView struct {
 	contents      map[string]string
 	projectNames  map[string]string // projectID → display name
 	projectColors map[string]string // projectID → hex color
+	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
 }
 
 // Show activates the grid with the given sessions.
@@ -84,6 +86,13 @@ func (gv *GridView) SetProjectNames(names map[string]string) {
 // SetProjectColors provides a projectID→hex color lookup used in cell headers.
 func (gv *GridView) SetProjectColors(colors map[string]string) {
 	gv.projectColors = colors
+}
+
+// SetPaneTitles provides a target→live pane title lookup used to render an
+// optional subtitle row inside each cell.  Keyed by tmux target string
+// (mux.Target output) to match how titles arrive from the status watcher.
+func (gv *GridView) SetPaneTitles(titles map[string]string) {
+	gv.paneTitles = titles
 }
 
 // Selected returns the currently focused session, or nil.
@@ -289,6 +298,28 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	}
 	headerLine := content
 
+	// Optional pane-title subtitle: only render when the cell is tall enough
+	// to spare a row without crushing the content preview, and when the agent
+	// has actually set a title via OSC 0/2.  Pre-strip control characters —
+	// pane titles are untrusted OSC payload and lipgloss does not sanitize.
+	var subtitleLine string
+	showSubtitle := false
+	if h >= 8 {
+		if t := sanitizePaneTitle(gv.paneTitles[mux.Target(sess.TmuxSession, sess.TmuxWindow)]); t != "" {
+			trunc := ansi.Truncate(t, innerW, "…")
+			subtitleLine = lipgloss.NewStyle().
+				Foreground(styles.ColorMuted).
+				Italic(true).
+				Width(innerW).MaxWidth(innerW).
+				Render(trunc)
+			showSubtitle = true
+			innerH-- // give the row back from the content area
+			if innerH < 1 {
+				innerH = 1
+			}
+		}
+	}
+
 	// Content preview — show the last innerH lines so the most recent output
 	// is visible. Pre-truncate each line to innerW before passing to lipgloss:
 	// without this, Width(innerW) word-wraps a 245-char tmux line into several
@@ -313,11 +344,32 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 			Render("…")
 	}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, headerLine, contentStr)
+	parts := []string{headerLine}
+	if showSubtitle {
+		parts = append(parts, subtitleLine)
+	}
+	parts = append(parts, contentStr)
+	inner := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	// MaxHeight(h) is a safety net: alignTextVertical (Height) only pads — it
 	// never truncates.  If inner somehow exceeds h-2 lines, the bordered output
 	// would be h+k lines.  MaxHeight(h) caps the final bordered cell at h lines.
 	return borderStyle.Width(w - 2).Height(h - 2).MaxHeight(h).Render(inner)
+}
+
+// paneTitleSanitizeRe matches anything we want to strip from a raw pane title
+// before rendering it inside a grid cell: ANSI CSI sequences, ANSI OSC
+// sequences (BEL- or ST-terminated), and any C0/DEL control characters.
+// Pane titles come from agent OSC 0/2 escapes — untrusted input that lipgloss
+// does not sanitize.
+var paneTitleSanitizeRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x1f\x7f]`)
+
+// sanitizePaneTitle strips ANSI escapes and control characters from a raw pane
+// title and trims surrounding whitespace.  Returns "" if nothing useful remains.
+func sanitizePaneTitle(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.TrimSpace(paneTitleSanitizeRe.ReplaceAllString(s, ""))
 }
 
 // lastNLines returns the last n lines of s (split on '\n').

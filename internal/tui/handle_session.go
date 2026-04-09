@@ -134,6 +134,15 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 			m.stableCounts[sessionID]++ // content unchanged, increment
 		}
 	}
+	// Wholesale-replace the pane titles map.  Dead-session entries naturally
+	// fall out without explicit cleanup, and the grid renders from this map
+	// directly when its subtitle row is enabled.
+	if msg.Titles != nil {
+		m.paneTitles = msg.Titles
+		if m.HasView(ViewGrid) {
+			m.gridView.SetPaneTitles(m.paneTitles)
+		}
+	}
 	// If the status watcher captured new content for the active session, update
 	// the preview immediately rather than waiting for the next PollPreview tick.
 	if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
