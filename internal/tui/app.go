@@ -81,6 +81,11 @@ type Model struct {
 	// stableCounts tracks consecutive polls where content was unchanged per session,
 	// used for debounce before transitioning running→idle/waiting.
 	stableCounts map[string]int
+	// paneTitles holds the most recent pane title (set by agents via OSC 0/2)
+	// for each tmux target ("hive:N"), refreshed every status poll.  Keyed
+	// by target rather than sessionID to match GetPaneTitles' shape and the
+	// grid lookup.  Strictly transient — never persisted to disk.
+	paneTitles map[string]string
 	// detectionCtxs holds compiled status detection regexes per agent type,
 	// built once at startup from config.StatusDetection.
 	detectionCtxs map[string]escape.SessionDetectionCtx
@@ -131,6 +136,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		nameInput:           ni,
 		contentSnapshots:    make(map[string]string),
 		stableCounts:        make(map[string]int),
+		paneTitles:          make(map[string]string),
 		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
 	}
@@ -183,6 +189,7 @@ func (m *Model) restoreGrid() {
 	m.gridView.Show(sessions, mode)
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.SetProjectColors(m.gridProjectColors())
+	m.gridView.SetPaneTitles(m.paneTitles)
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
 	m.gridView.SyncCursor(m.appState.ActiveSessionID)
 	m.PushView(ViewGrid)

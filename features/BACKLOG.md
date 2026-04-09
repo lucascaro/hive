@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
+| 1 | #39 | Remove window list from title bar and add more text colors | IMPLEMENT | S |
 | 2 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |
 | 3 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
 | 4 | #36 | Add missing tests | RESEARCH | L |

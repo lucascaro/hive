@@ -371,9 +371,9 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		worktreeBadge := ""
 		if item.IsWorktree && item.WorktreeBranch != "" {
 			if item.WorktreeBranch != item.Label {
-				worktreeBadge = " " + styles.MutedStyle.Render("⎇ "+item.WorktreeBranch)
+				worktreeBadge = " " + styles.WorktreeBadgeStyle.Render("⎇ "+item.WorktreeBranch)
 			} else {
-				worktreeBadge = " " + styles.MutedStyle.Render("⎇")
+				worktreeBadge = " " + styles.WorktreeBadgeStyle.Render("⎇")
 			}
 		}
 		label = fmt.Sprintf("%s%s %s %s%s", rolePrefix, dot, item.Label, badge, worktreeBadge)

@@ -110,14 +110,15 @@ func buildBreadcrumb(s *state.AppState) string {
 			sess.Title, styles.AgentBadge(string(sess.AgentType)), statusDot, sess.Status))
 	}
 
+	sep := " " + styles.BreadcrumbSeparatorStyle.Render("/") + " "
 	if s.InstallingAgent != "" {
 		spinner := lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("⟳ Installing " + s.InstallingAgent + "…")
-		return spinner + "  " + strings.Join(parts, " / ")
+		return spinner + "  " + strings.Join(parts, sep)
 	}
 	if s.LastError != "" {
-		return styles.ErrorStyle.Render("Error: "+s.LastError) + "  " + strings.Join(parts, " / ")
+		return styles.ErrorStyle.Render("Error: "+s.LastError) + "  " + strings.Join(parts, sep)
 	}
-	return strings.Join(parts, " / ")
+	return strings.Join(parts, sep)
 }
 
 func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filterQuery string) string {
@@ -166,8 +167,12 @@ func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filter
 	}
 
 	var parts []string
-	for _, h := range hints {
-		parts = append(parts, styles.HelpKeyStyle.Render(h.key)+":"+styles.HelpDescStyle.Render(h.desc))
+	for i, h := range hints {
+		// Cycle hint description colors through the project palette so the
+		// hint row reads as a colored sequence rather than monochrome muted
+		// text.  Keys remain accent purple as a visual anchor.
+		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(styles.NextProjectColor(i)))
+		parts = append(parts, styles.HelpKeyStyle.Render(h.key)+":"+descStyle.Render(h.desc))
 	}
 	parts = append(parts, styles.MutedStyle.Render(styles.StatusLegend()))
 	return strings.Join(parts, "  ")

@@ -100,6 +100,16 @@ var (
 	ErrorStyle = lipgloss.NewStyle().Foreground(ColorError)
 
 	MutedStyle = lipgloss.NewStyle().Foreground(ColorMuted)
+
+	// BreadcrumbSeparatorStyle styles the "/" between breadcrumb segments in
+	// the status bar.  Accent color makes the path visually parse-able at a
+	// glance instead of reading as one undifferentiated muted string.
+	BreadcrumbSeparatorStyle = lipgloss.NewStyle().Foreground(ColorAccent)
+
+	// WorktreeBadgeStyle is a touch brighter than MutedStyle so worktree
+	// sessions get a subtle visual lift in the sidebar without competing
+	// with the status dot or agent badge.
+	WorktreeBadgeStyle = lipgloss.NewStyle().Foreground(ColorSubtext)
 )
 
 // ProjectPalette is a curated set of visually distinct colors for projects.

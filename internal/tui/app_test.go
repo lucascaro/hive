@@ -908,6 +908,35 @@ func TestBuildAttachScript(t *testing.T) {
 	if !strings.Contains(script, `trap`) || !strings.Contains(script, `\033[?1049l`) {
 		t.Error("script should have EXIT trap to leave alt screen")
 	}
+	// Verify the tmux window list is hidden — we only want our custom title.
+	if !strings.Contains(script, "window-status-format ''") {
+		t.Error("script should hide window list via empty window-status-format")
+	}
+	if !strings.Contains(script, "window-status-current-format ''") {
+		t.Error("script should hide active window via empty window-status-current-format")
+	}
+	if !strings.Contains(script, "window-status-separator ''") {
+		t.Error("script should suppress window separator via empty window-status-separator")
+	}
+	// Verify the new options are picked up by the save/restore loop (which
+	// derives variable names by replacing '-' with '_' in option names).
+	if !strings.Contains(script, `had_window_status_format" = 1`) {
+		t.Error("script should save/restore window-status-format via had_* flag")
+	}
+	// Verify the literal #{pane_title} token is injected for tmux to interpolate
+	// the live agent terminal title alongside our static session header.
+	if !strings.Contains(script, "#{pane_title}") {
+		t.Error("script should inject literal #{pane_title} into status-left for tmux interpolation")
+	}
+	if got := strings.Count(script, "#{pane_title}"); got != 1 {
+		t.Errorf("expected exactly one #{pane_title} token in script, got %d", got)
+	}
+	// Verify the conditional wrapper that hides the " · " separator when
+	// pane_title is empty (otherwise sessions without an OSC title render a
+	// dangling separator).  Caught in code review of #58.
+	if !strings.Contains(script, "#{?pane_title,") {
+		t.Error("status-left should wrap pane_title in a #{?pane_title,…,} conditional so the separator only renders when the title is non-empty")
+	}
 }
 
 func TestBuildAttachScript_QuotesSingleQuotes(t *testing.T) {

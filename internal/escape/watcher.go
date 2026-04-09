@@ -49,6 +49,12 @@ type SessionDetectionCtx struct {
 type StatusesDetectedMsg struct {
 	Statuses map[string]state.SessionStatus // sessionID → detected status
 	Contents map[string]string              // sessionID → captured pane content (for next diff)
+	// Titles is a pass-through of the per-target pane title map captured at
+	// schedule time and used for tier-1 status detection.  Keyed by target
+	// ("tmuxSession:windowIdx") to match GetPaneTitles' return shape — not by
+	// sessionID like the other fields.  Forwarded so the TUI can surface live
+	// agent titles in the grid view.
+	Titles map[string]string
 }
 
 // WatchStatuses returns a tea.Cmd that captures pane content for all active sessions
@@ -140,7 +146,7 @@ func WatchStatuses(
 
 			statuses[sessionID] = state.StatusIdle
 		}
-		return StatusesDetectedMsg{Statuses: statuses, Contents: contents}
+		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titles}
 	})
 }
 
