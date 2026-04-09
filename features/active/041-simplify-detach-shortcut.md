@@ -155,6 +155,8 @@ Full implementation plan: `~/.claude/plans/abundant-stirring-puddle.md`
 
 7. **Migrate fills empty `detach_key` with the default; invalid values are deferred.** `Migrate` doesn't try to validate the parser-level syntax — that happens in `cmd/start.go`'s `initMuxBackend`, which prints a clear stderr warning and falls back to `ctrl+q`. Keeps the migration layer purely structural.
 
+8. **Schema bumped to v2 with one-shot `HideAttachHint` reset.** Existing users who previously dismissed the pre-attach splash would otherwise never discover the new `Ctrl+Q` shortcut. The 1→2 migration in `internal/config/migrate.go` clears `HideAttachHint` so they see it once on first startup after upgrade. The reset is persisted via a new `MigrateAndPersist(cfg)` helper called from `cmd/start.go` (Save fires only when the schema version actually advances). `cmd/attach.go` keeps using `Migrate` directly so a non-interactive `hive attach <id>` does not silently rewrite the user's config file.
+
 **Files added:**
 - `internal/mux/detachkey.go` — `DetachKeySpec`, `ParseDetachKey`, `DefaultDetachKey`
 - `internal/mux/detachkey_test.go` — parser table tests (valid + invalid)

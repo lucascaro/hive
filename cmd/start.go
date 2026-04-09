@@ -51,7 +51,13 @@ func runStart(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	cfg = config.Migrate(cfg)
+	// MigrateAndPersist (vs. Migrate) so one-shot upgrade side effects —
+	// e.g. resetting hide_attach_hint after the detach key changed in v2 —
+	// are written back to disk and only fire once per user.
+	cfg, err = config.MigrateAndPersist(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to persist migrated config: %v\n", err)
+	}
 
 	// --native flag overrides config.
 	if startNative {

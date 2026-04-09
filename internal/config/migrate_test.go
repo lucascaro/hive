@@ -114,6 +114,34 @@ func TestMigrate_PreservesExistingStatusDetection(t *testing.T) {
 	}
 }
 
+// TestMigrate_V1ToV2_ResetsHideAttachHint verifies that upgrading a config
+// from schema v1 to v2 clears HideAttachHint so existing users see the
+// re-shown pre-attach splash and learn the new single-key detach shortcut
+// (#41). The reset is one-shot: after the user dismisses the hint again,
+// the new value is saved alongside SchemaVersion=2 and not reset on
+// subsequent startups.
+func TestMigrate_V1ToV2_ResetsHideAttachHint(t *testing.T) {
+	cfg := Config{SchemaVersion: 1, HideAttachHint: true}
+	got := Migrate(cfg)
+	if got.HideAttachHint {
+		t.Error("Migrate v1→v2 should reset HideAttachHint to false so users see the new detach key splash")
+	}
+	if got.SchemaVersion != currentSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", got.SchemaVersion, currentSchemaVersion)
+	}
+}
+
+// TestMigrate_AlreadyV2_PreservesHideAttachHint verifies the v1→v2 reset
+// only fires once. Users who have already upgraded and dismissed the splash
+// should keep their preference on subsequent startups.
+func TestMigrate_AlreadyV2_PreservesHideAttachHint(t *testing.T) {
+	cfg := Config{SchemaVersion: 2, HideAttachHint: true}
+	got := Migrate(cfg)
+	if !got.HideAttachHint {
+		t.Error("Migrate should preserve HideAttachHint=true when SchemaVersion is already 2")
+	}
+}
+
 func TestMigrate_UnknownAgentInstallCmdNotFilled(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: currentSchemaVersion,
