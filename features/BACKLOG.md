@@ -7,16 +7,15 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #52 | Focus management: auto-focus on session create and smart fallback on delete | IMPLEMENT | S |
-| 2 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
-| 3 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |
-| 4 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
-| 5 | #36 | Add missing tests | RESEARCH | L |
-| 6 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 7 | #55 | Reorder sessions via keyboard | RESEARCH | M |
-| 8 | #54 | Per-session color for grid cells | RESEARCH | S |
-| 9 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 10 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #39 | Remove window list from title bar and add more text colors | RESEARCH | S |
+| 2 | #53 | Grid view: arrow keys should wrap between rows | RESEARCH | S |
+| 3 | #41 | Simplify detach shortcut to a single key combo | RESEARCH | S |
+| 4 | #36 | Add missing tests | RESEARCH | L |
+| 5 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 6 | #55 | Reorder sessions via keyboard | RESEARCH | M |
+| 7 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 8 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 9 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 
@@ -36,3 +35,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #48 | Allow creating new sessions from grid view | #48 | 2026-04-05 |
 | #49 | Bug: Renaming projects doesn't update the project name | #51 | 2026-04-06 |
 | #38 | Session status does not detect "Waiting for input" state | #56 | 2026-04-07 |
+| #52 | Focus management: auto-focus on session create and smart fallback on delete | #57 | 2026-04-09 |
