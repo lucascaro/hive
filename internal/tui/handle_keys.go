@@ -118,8 +118,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "r":
 		if sess := m.gridView.Selected(); sess != nil {
-			m.sidebar.SyncActiveSession(sess.ID)
-			m.appState.ActiveSessionID = sess.ID
+			m.focusSession(sess.ID)
 			// Grid stays in the stack; rename dialog is pushed on top.
 			return m.startRename()
 		}
@@ -191,14 +190,7 @@ func (m *Model) closeGrid() tea.Cmd {
 // popGridState pops the grid from the view stack and syncs the selected session.
 func (m *Model) popGridState(sel *state.Session) {
 	m.PopView()
-	m.appState.ActiveSessionID = sel.ID
-	if sel.ProjectID != "" {
-		m.appState.ActiveProjectID = sel.ProjectID
-	}
-	if sel.TeamID != "" {
-		m.appState.ActiveTeamID = sel.TeamID
-	}
-	m.sidebar.SyncActiveSession(sel.ID)
+	m.focusSession(sel.ID)
 	m.previewPollGen++
 }
 

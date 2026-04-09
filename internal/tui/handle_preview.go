@@ -44,13 +44,7 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 	var status state.SessionStatus
 	var worktreeBranch, worktreePath string
 	if s := m.sessionByTmux(msg.TmuxSession, msg.TmuxWindow); s != nil {
-		m.appState.ActiveSessionID = s.ID
-		if s.ProjectID != "" {
-			m.appState.ActiveProjectID = s.ProjectID
-		}
-		if s.TeamID != "" {
-			m.appState.ActiveTeamID = s.TeamID
-		}
+		m.focusSession(s.ID)
 		sessionTitle = s.Title
 		agentType = s.AgentType
 		projectName = m.projectNameByID(s.ProjectID)

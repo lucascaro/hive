@@ -493,6 +493,26 @@ func TestFlow_KillSession_FocusProjectGrid(t *testing.T) {
 	}
 }
 
+// TestFlow_KillSession_CrossProjectFocusSync verifies that when the only
+// session in a project is killed, focus (including ActiveProjectID) moves
+// to a session in another project — breadcrumb must update.
+func TestFlow_KillSession_CrossProjectFocusSync(t *testing.T) {
+	m, mock := testFlowModel(t) // 2 projects, 1 session each, active = sess-1 in proj-1
+	f := newFlowRunner(t, m, mock)
+	f.AssertActiveSession("sess-1")
+	if f.Model().appState.ActiveProjectID != "proj-1" {
+		t.Fatalf("ActiveProjectID = %q, want %q", f.Model().appState.ActiveProjectID, "proj-1")
+	}
+
+	killActiveSession(t, f)
+
+	// Focus should fall back to sess-2 in proj-2.
+	f.AssertActiveSession("sess-2")
+	if f.Model().appState.ActiveProjectID != "proj-2" {
+		t.Errorf("ActiveProjectID = %q, want %q (should follow focused session)", f.Model().appState.ActiveProjectID, "proj-2")
+	}
+}
+
 // TestFlow_KillSession_LastInGroup verifies fallback when killing the last
 // session in a group — should move to previous.
 func TestFlow_KillSession_LastInGroup(t *testing.T) {

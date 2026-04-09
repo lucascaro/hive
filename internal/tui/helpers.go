@@ -61,25 +61,26 @@ func (m *Model) pendingAttachDetails() *SessionAttachMsg {
 	}
 }
 
-// focusSession is the single path for changing which session is focused.
-// It updates ActiveSessionID, syncs the sidebar cursor, syncs the grid
-// cursor, and refreshes the preview pane.
+// focusSession is the single path for session focus changes (except for
+// startup bootstrap in New() where components are not yet initialized).
+// It updates ActiveSessionID, syncs the owning project/team, syncs the
+// sidebar and grid cursors, and refreshes the preview pane.
 func (m *Model) focusSession(sessionID string) {
 	m.appState.ActiveSessionID = sessionID
-	m.sidebar.SyncActiveSession(sessionID)
-	m.gridView.SyncCursor(sessionID)
 	if sessionID != "" {
-		if cached, ok := m.contentSnapshots[sessionID]; ok {
-			m.appState.PreviewContent = cached
-			m.preview.SetContent(cached)
-		} else {
-			m.appState.PreviewContent = ""
-			m.preview.SetContent("")
+		if sess := state.FindSession(&m.appState, sessionID); sess != nil {
+			m.appState.ActiveProjectID = sess.ProjectID
+			m.appState.ActiveTeamID = sess.TeamID
 		}
 	} else {
-		m.appState.PreviewContent = ""
-		m.preview.SetContent("")
+		m.appState.ActiveProjectID = ""
+		m.appState.ActiveTeamID = ""
 	}
+	m.sidebar.SyncActiveSession(sessionID)
+	m.gridView.SyncCursor(sessionID)
+	cached := m.contentSnapshots[sessionID] // "" for missing or empty sessionID
+	m.appState.PreviewContent = cached
+	m.preview.SetContent(cached)
 }
 
 func (m *Model) syncActiveFromSidebar() {
@@ -90,17 +91,20 @@ func (m *Model) syncActiveFromSidebar() {
 	}
 	prevSession := m.appState.ActiveSessionID
 	prevProject := m.appState.ActiveProjectID
-	if sel.SessionID != "" && sel.SessionID != m.appState.ActiveSessionID {
-		m.appState.ActiveSessionID = sel.SessionID
-		cached := m.contentSnapshots[sel.SessionID]
-		m.appState.PreviewContent = cached
-		m.preview.SetContent(cached)
-	}
-	if sel.ProjectID != "" {
-		m.appState.ActiveProjectID = sel.ProjectID
-	}
-	if sel.TeamID != "" {
-		m.appState.ActiveTeamID = sel.TeamID
+	if sel.SessionID != "" {
+		// Session row: delegate to the unified focus path (handles project/team
+		// sync, grid cursor, preview).
+		if sel.SessionID != m.appState.ActiveSessionID {
+			m.focusSession(sel.SessionID)
+		}
+	} else {
+		// Project or team row: sync those fields only, session stays put.
+		if sel.ProjectID != "" {
+			m.appState.ActiveProjectID = sel.ProjectID
+		}
+		if sel.TeamID != "" {
+			m.appState.ActiveTeamID = sel.TeamID
+		}
 	}
 	debugLog.Printf("syncActiveFromSidebar: cursor=%d kind=%d sess=%s->%s proj=%s->%s",
 		m.sidebar.Cursor, sel.Kind,

@@ -546,9 +546,7 @@ func (m *Model) reloadStateFromDisk() {
 	if m.appState.ActiveSessionID != "" {
 		if state.FindSession(&m.appState, m.appState.ActiveSessionID) == nil {
 			debugLog.Printf("reloadStateFromDisk: active session %s no longer exists, clearing", m.appState.ActiveSessionID)
-			m.appState.ActiveSessionID = ""
-			m.appState.ActiveProjectID = ""
-			m.appState.ActiveTeamID = ""
+			m.focusSession("")
 		}
 	}
 
