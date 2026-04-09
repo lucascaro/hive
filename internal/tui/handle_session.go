@@ -11,25 +11,31 @@ import (
 
 func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) {
 	m.appState = *state.UpdateSessionStatus(&m.appState, msg.Session.ID, state.StatusRunning)
-	m.appState.ActiveSessionID = msg.Session.ID
-	m.appState.PreviewContent = ""
-	m.preview.SetContent("")
 	m.sidebar.Rebuild(&m.appState)
-	m.sidebar.SyncActiveSession(msg.Session.ID)
 	m.refreshGrid()
+	m.focusSession(msg.Session.ID)
 	m.persist()
 	m.previewPollGen++ // new session, start fresh poll chain
 	return m, m.schedulePollPreview()
 }
 
 func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
+	fallback := state.NextSessionAfterRemoval(&m.appState, msg.SessionID)
 	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
+	if msg.TmuxSession != "" {
+		killTmuxSessionIfEmpty(&m.appState, msg.TmuxSession)
+	}
 	delete(m.stableCounts, msg.SessionID)
 	delete(m.contentSnapshots, msg.SessionID)
+	// Rebuild sidebar before focusSession so its SyncActiveSession can
+	// locate the fallback in the new items list. Use persist() instead of
+	// commitState() to avoid a second redundant rebuild.
 	m.sidebar.Rebuild(&m.appState)
 	m.refreshGrid()
-	m.commitState()
-	return m, nil
+	m.focusSession(fallback)
+	m.persist()
+	m.previewPollGen++
+	return m, m.schedulePollPreview()
 }
 
 func (m Model) handleSessionTitleChanged(msg SessionTitleChangedMsg) (tea.Model, tea.Cmd) {

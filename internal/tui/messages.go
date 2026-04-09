@@ -16,7 +16,8 @@ type SessionCreatedMsg struct {
 
 // SessionKilledMsg is sent after a session's tmux window is removed.
 type SessionKilledMsg struct {
-	SessionID string
+	SessionID   string
+	TmuxSession string // needed to clean up empty tmux session containers
 }
 
 // SessionAttachMsg triggers attaching to a session (suspends TUI).

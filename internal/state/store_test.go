@@ -377,6 +377,121 @@ func TestUpdateTeamName_UnknownID(t *testing.T) {
 	}
 }
 
+// --- NextSessionAfterRemoval ---
+
+func TestNextSessionAfterRemoval_NextStandalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	s, _ = CreateSession(s, p.ID, "s3", AgentClaude, nil, "", "h", 2)
+	// Removing s1 → next in group is s2
+	got := NextSessionAfterRemoval(s, s1.ID)
+	if got != s2.ID {
+		t.Errorf("got %q, want %q (next in group)", got, s2.ID)
+	}
+}
+
+func TestNextSessionAfterRemoval_PrevStandalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	// Removing s2 (last) → prev in group is s1
+	got := NextSessionAfterRemoval(s, s2.ID)
+	if got != s1.ID {
+		t.Errorf("got %q, want %q (prev in group)", got, s1.ID)
+	}
+}
+
+func TestNextSessionAfterRemoval_NextInTeam(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 0)
+	s, t2 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t2", AgentClaude, nil, "", "h", 1)
+	got := NextSessionAfterRemoval(s, t1.ID)
+	if got != t2.ID {
+		t.Errorf("got %q, want %q (next in team)", got, t2.ID)
+	}
+}
+
+func TestNextSessionAfterRemoval_PrevInTeam(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 0)
+	s, t2 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t2", AgentClaude, nil, "", "h", 1)
+	got := NextSessionAfterRemoval(s, t2.ID)
+	if got != t1.ID {
+		t.Errorf("got %q, want %q (prev in team)", got, t1.ID)
+	}
+}
+
+func TestNextSessionAfterRemoval_CrossProjectFallback(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, s1 := CreateSession(s, p1.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, s2 := CreateSession(s, p2.ID, "s2", AgentClaude, nil, "", "h", 1)
+	// s1 is only session in p1 → no group neighbor → falls back to overall next = s2
+	got := NextSessionAfterRemoval(s, s1.ID)
+	if got != s2.ID {
+		t.Errorf("got %q, want %q (cross-project fallback)", got, s2.ID)
+	}
+}
+
+func TestNextSessionAfterRemoval_SingleSessionGlobally(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, sess := CreateSession(s, p.ID, "s", AgentClaude, nil, "", "h", 0)
+	got := NextSessionAfterRemoval(s, sess.ID)
+	if got != "" {
+		t.Errorf("got %q, want empty (single session)", got)
+	}
+}
+
+func TestNextSessionAfterRemoval_NoSessions(t *testing.T) {
+	s := emptyState()
+	got := NextSessionAfterRemoval(s, "nonexistent")
+	if got != "" {
+		t.Errorf("got %q, want empty (no sessions)", got)
+	}
+}
+
+func TestNextSessionAfterRemoval_OnlySessionInTeam_FallsBackOverall(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 0)
+	s, standalone := CreateSession(s, p.ID, "standalone", AgentClaude, nil, "", "h", 1)
+	// t1 is only session in team → no group neighbor → falls back to overall
+	got := NextSessionAfterRemoval(s, t1.ID)
+	if got != standalone.ID {
+		t.Errorf("got %q, want %q (fallback from team to overall)", got, standalone.ID)
+	}
+}
+
+// TestNextSessionAfterRemoval_OverallUsesUIOrder verifies that the overall
+// fallback walks sessions in sidebar render order (teams before standalones
+// within a project), not in AllSessions flattening order.
+func TestNextSessionAfterRemoval_OverallUsesUIOrder(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	// Standalone comes before team in append order, but sidebar renders team first.
+	s, standalone := CreateSession(s, p.ID, "standalone", AgentClaude, nil, "", "h", 0)
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 1)
+
+	// Remove standalone (only session in its group). Next in UI order after
+	// standalone is... nothing (standalones render last). Prev in UI order
+	// is t1 (team session rendered before standalone). Expect t1.
+	got := NextSessionAfterRemoval(s, standalone.ID)
+	if got != t1.ID {
+		t.Errorf("got %q, want %q (prev in UI order should be team session)", got, t1.ID)
+	}
+}
+
 func TestSessionLabel_OrchestratorHasStar(t *testing.T) {
 	sess := &Session{Title: "orch", AgentType: AgentClaude, TeamRole: RoleOrchestrator}
 	label := SessionLabel(sess)
