@@ -143,3 +143,18 @@ No deviations from plan. Many state functions (`NextSessionAfterRemoval`, `Sessi
 PRs 2 and 3 (TUI components, config/hooks I/O) remain for follow-up.
 
 - **PR:** #61 (PR 1 of 3)
+
+### PRs 2 & 3: TUI components + config/hooks I/O tests
+Combined into a single PR since PR 3 tests already existed and only needed minor additions.
+
+**PR 2 — TUI component tests (new files):**
+- `orphanpicker_test.go`: 9 tests — empty/active init, cursor nav (j/k/up/down + clamping), space toggle on/off, toggle-all (none→all, all→none, partial→all), enter returns selected, enter with none, esc/q returns nil.
+- `recoverypicker_test.go`: 12 tests — same patterns as orphan picker plus agent-type cycling (left/right/h/l with wrap), `agentTypeIndex` for known/unknown types, enter returns modified agent type.
+- `teambuilder_test.go`: 11 tests — start/hide, empty name rejected, step progression (name→goal→orchestrator→workerCount→workDir→confirm), worker count parsing (invalid/boundary/valid), esc at all steps, confirm emits TeamBuiltMsg, inactive noop.
+- `settings_test.go`: 16 tests — open/close, inactive consumed=false, cursor nav, bool toggle, select cycle with wrap, int validation (49 rejected, 100 ok, 30001 rejected), empty keybinding/hooks-dir rejected, dirty tracking, esc clean/dirty (double-esc), pending discard cleared by other key, save flow (s→y), save cancel, s-clean-closes, edit-esc-cancels.
+
+**PR 3 additions to existing test files:**
+- `config/load_test.go`: added `TestSave_FilePermissions` (verifies 0o600) and `TestWriteAtomic_TempFileCleanedUp`.
+- `hooks/runner_test.go`: added `TestFindScripts_DotDSortedAlphabetically` (verifies sort order with reverse-created files).
+
+**Deviation from plan:** PRs 2 and 3 were combined into one PR since the config/hooks test files already had comprehensive coverage from PR 1 — only 3 additional tests were needed. Helper functions `keyPress`/`keyType` were used instead of `key`/`specialKey` to avoid a name collision with the imported `bubbles/key` package.

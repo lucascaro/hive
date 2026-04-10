@@ -68,6 +68,29 @@ func TestFindScripts_DotDDirScripts(t *testing.T) {
 	}
 }
 
+func TestFindScripts_DotDSortedAlphabetically(t *testing.T) {
+	dir := t.TempDir()
+	dotD := filepath.Join(dir, "on-session-create.d")
+	if err := os.MkdirAll(dotD, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Create in reverse order to verify sorting
+	s3 := filepath.Join(dotD, "30-third")
+	s1 := filepath.Join(dotD, "10-first")
+	s2 := filepath.Join(dotD, "20-second")
+	makeExecutable(t, s3, "#!/bin/sh\n")
+	makeExecutable(t, s1, "#!/bin/sh\n")
+	makeExecutable(t, s2, "#!/bin/sh\n")
+
+	got := findScripts(dir, "session-create")
+	if len(got) != 3 {
+		t.Fatalf("findScripts() len = %d, want 3; got %v", len(got), got)
+	}
+	if got[0] != s1 || got[1] != s2 || got[2] != s3 {
+		t.Errorf("findScripts() not sorted: %v", got)
+	}
+}
+
 func TestFindScripts_FlatAndDotD(t *testing.T) {
 	dir := t.TempDir()
 	flat := filepath.Join(dir, "on-session-create")
