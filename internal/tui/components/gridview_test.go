@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucascaro/hive/internal/state"
 )
 
@@ -293,6 +294,110 @@ func TestGridView_SyncCursor(t *testing.T) {
 	t.Run("syncs to first session", func(t *testing.T) {
 		gv.Cursor = 2
 		gv.SyncCursor("s1")
+		if gv.Cursor != 0 {
+			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+}
+
+// TestGridView_CursorWrap tests horizontal arrow-key wrapping between rows.
+// Uses 5 sessions at 160×50 which yields a 3×2 grid (row0=[0,1,2], row1=[3,4]).
+func TestGridView_CursorWrap(t *testing.T) {
+	sessions := make([]*state.Session, 5)
+	for i := range sessions {
+		sessions[i] = &state.Session{
+			ID: "s" + string(rune('1'+i)), Title: "sess",
+			AgentType: state.AgentClaude, Status: state.StatusRunning,
+		}
+	}
+
+	makeGV := func(cursor int) *GridView {
+		gv := &GridView{Active: true, Width: 160, Height: 50}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.Cursor = cursor
+		return gv
+	}
+
+	key := func(s string) tea.KeyMsg {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+
+	tests := []struct {
+		name      string
+		cursor    int
+		key       tea.KeyMsg
+		wantCursor int
+	}{
+		// Normal movement within a row
+		{"right within row", 0, key("l"), 1},
+		{"left within row", 1, key("h"), 0},
+		// Wrapping across rows
+		{"right wraps to next row", 2, key("l"), 3},
+		{"left wraps to prev row", 3, key("h"), 2},
+		// No wrap at boundaries
+		{"right at last session stays", 4, key("l"), 4},
+		{"left at index 0 stays", 0, key("h"), 0},
+		// Arrow keys work too
+		{"arrow right wraps", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
+		{"arrow left wraps", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
+		// "d" alias for right
+		{"d key wraps to next row", 2, key("d"), 3},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gv := makeGV(tc.cursor)
+			gv.Update(tc.key)
+			if gv.Cursor != tc.wantCursor {
+				t.Errorf("Cursor = %d, want %d", gv.Cursor, tc.wantCursor)
+			}
+		})
+	}
+}
+
+// TestGridView_CursorWrap_SingleColumn verifies wrapping in a 1-column grid.
+// With 1 column each cell is both first and last in its row, so left/right
+// should wrap to the adjacent row (since each row has exactly one cell).
+func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
+	// 2 sessions at 40×50 → gridColumns returns 1 (too narrow for 2 cols).
+	sessions := []*state.Session{
+		{ID: "s1", Title: "a", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s2", Title: "b", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	makeGV := func(cursor int) *GridView {
+		gv := &GridView{Active: true, Width: 40, Height: 50}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.Cursor = cursor
+		return gv
+	}
+	key := func(s string) tea.KeyMsg {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+
+	t.Run("right wraps to next row", func(t *testing.T) {
+		gv := makeGV(0)
+		gv.Update(key("l"))
+		if gv.Cursor != 1 {
+			t.Errorf("Cursor = %d, want 1", gv.Cursor)
+		}
+	})
+	t.Run("left wraps to prev row", func(t *testing.T) {
+		gv := makeGV(1)
+		gv.Update(key("h"))
+		if gv.Cursor != 0 {
+			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+	t.Run("right at last stays", func(t *testing.T) {
+		gv := makeGV(1)
+		gv.Update(key("l"))
+		if gv.Cursor != 1 {
+			t.Errorf("Cursor = %d, want 1", gv.Cursor)
+		}
+	})
+	t.Run("left at first stays", func(t *testing.T) {
+		gv := makeGV(0)
+		gv.Update(key("h"))
 		if gv.Cursor != 0 {
 			t.Errorf("Cursor = %d, want 0", gv.Cursor)
 		}

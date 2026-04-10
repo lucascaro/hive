@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #53 | Grid view: arrow keys should wrap between rows | PLAN | S |
+| 1 | #53 | Grid view: arrow keys should wrap between rows | IMPLEMENT | S |
 | 2 | #36 | Add missing tests | RESEARCH | L |
 | 3 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
 | 4 | #55 | Reorder sessions via keyboard | RESEARCH | M |
