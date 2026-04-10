@@ -81,14 +81,16 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// status-bar options. EXIT covers normal exit; INT/TERM/HUP cover the
 	// case where tea.ExecProcess (or the user's terminal) forwards a signal
 	// from a hive shutdown so the binding does not leak on the tmux server.
+	//
+	// Every entry in restoreLines MUST be a complete one-line shell statement.
+	// We join them with "; " before embedding in the trap body, and a split
+	// `if / then / else / fi` across multiple entries would produce `; then;`
+	// — parseable as a string by `sh -n` but a runtime syntax error when the
+	// trap actually fires (the inner if-block is only re-parsed at exit).
 	var restoreLines []string
 	restoreLines = append(restoreLines, `printf "\033[?1049l"`)
 	restoreLines = append(restoreLines,
-		`if [ -n "$old_detach" ]; then`,
-		`  eval "tmux $old_detach"`,
-		`else`,
-		fmt.Sprintf(`  tmux unbind-key -n %s`, spec.Tmux),
-		`fi`,
+		fmt.Sprintf(`if [ -n "$old_detach" ]; then eval "tmux $old_detach"; else tmux unbind-key -n %s; fi`, spec.Tmux),
 	)
 	for _, opt := range statusBarOpts {
 		v := strings.ReplaceAll(opt, "-", "_")

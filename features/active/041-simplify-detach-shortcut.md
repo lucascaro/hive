@@ -5,7 +5,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P3
-- **Branch:** —
+- **Branch:** `feature/41-simplify-detach-shortcut`
 
 ## Description
 
@@ -194,4 +194,4 @@ Full implementation plan: `~/.claude/plans/abundant-stirring-puddle.md`
 - [ ] User-binding preservation: `bind -n C-q some-cmd` in `~/.tmux.conf` → restored after detach
 - [ ] Bad config: `"detach_key": "alt+d"` → stderr warning, falls back to `ctrl+q`
 
-- **PR:** —
+- **PR:** lucascaro/hive#59
