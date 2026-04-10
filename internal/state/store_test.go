@@ -499,3 +499,248 @@ func TestSessionLabel_OrchestratorHasStar(t *testing.T) {
 		t.Errorf("SessionLabel for orchestrator = %q, want ★ prefix", label)
 	}
 }
+
+func TestSessionLabel_ContainsAgentType(t *testing.T) {
+	sess := &Session{Title: "test", AgentType: AgentCodex, TeamRole: RoleStandalone}
+	label := SessionLabel(sess)
+	if !strings.Contains(label, "[codex]") {
+		t.Errorf("SessionLabel = %q, want to contain [codex]", label)
+	}
+}
+
+func TestSessionLabel_WorkerNoStar(t *testing.T) {
+	sess := &Session{Title: "worker", AgentType: AgentClaude, TeamRole: RoleWorker}
+	label := SessionLabel(sess)
+	if strings.HasPrefix(label, "★") {
+		t.Errorf("SessionLabel for worker = %q, should not start with ★", label)
+	}
+}
+
+// --- FindSession ---
+
+func TestFindSession_Standalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, sess := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "hive-abc", 0)
+	found := FindSession(s, sess.ID)
+	if found == nil {
+		t.Fatal("FindSession returned nil, want session")
+	}
+	if found.ID != sess.ID {
+		t.Errorf("found.ID = %q, want %q", found.ID, sess.ID)
+	}
+}
+
+func TestFindSession_InTeam(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, sess := AddTeamSession(s, p.ID, team.ID, RoleWorker, "w", AgentClaude, nil, "", "hive-abc", 0)
+	found := FindSession(s, sess.ID)
+	if found == nil {
+		t.Fatal("FindSession returned nil for team session")
+	}
+	if found.ID != sess.ID {
+		t.Errorf("found.ID = %q, want %q", found.ID, sess.ID)
+	}
+}
+
+func TestFindSession_NotFound(t *testing.T) {
+	s := emptyState()
+	if FindSession(s, "nonexistent") != nil {
+		t.Error("FindSession should return nil for unknown ID")
+	}
+}
+
+func TestFindSession_EmptyState(t *testing.T) {
+	s := &AppState{}
+	if FindSession(s, "any") != nil {
+		t.Error("FindSession should return nil on empty state")
+	}
+}
+
+// --- FindProject ---
+
+func TestFindProject_Found(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "proj", "", "", "")
+	found := FindProject(s, p.ID)
+	if found == nil {
+		t.Fatal("FindProject returned nil")
+	}
+	if found.Name != "proj" {
+		t.Errorf("found.Name = %q, want %q", found.Name, "proj")
+	}
+}
+
+func TestFindProject_NotFound(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "proj", "", "", "")
+	if FindProject(s, "nonexistent") != nil {
+		t.Error("FindProject should return nil for unknown ID")
+	}
+}
+
+func TestFindProject_EmptyState(t *testing.T) {
+	s := emptyState()
+	if FindProject(s, "any") != nil {
+		t.Error("FindProject should return nil on empty state")
+	}
+}
+
+// --- FindTeam ---
+
+func TestFindTeam_Found(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "my-team", "", "")
+	found := FindTeam(s, team.ID)
+	if found == nil {
+		t.Fatal("FindTeam returned nil")
+	}
+	if found.Name != "my-team" {
+		t.Errorf("found.Name = %q, want %q", found.Name, "my-team")
+	}
+}
+
+func TestFindTeam_NotFound(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateTeam(s, p.ID, "team", "", "")
+	if FindTeam(s, "nonexistent") != nil {
+		t.Error("FindTeam should return nil for unknown ID")
+	}
+}
+
+func TestFindTeam_EmptyState(t *testing.T) {
+	s := emptyState()
+	if FindTeam(s, "any") != nil {
+		t.Error("FindTeam should return nil on empty state")
+	}
+}
+
+func TestFindTeam_MultipleProjects(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, _ = CreateTeam(s, p1.ID, "team-a", "", "")
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, teamB := CreateTeam(s, p2.ID, "team-b", "", "")
+	found := FindTeam(s, teamB.ID)
+	if found == nil {
+		t.Fatal("FindTeam returned nil for team in second project")
+	}
+	if found.Name != "team-b" {
+		t.Errorf("found.Name = %q, want %q", found.Name, "team-b")
+	}
+}
+
+// --- FindSessionByTmux ---
+
+func TestFindSessionByTmux_Found(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, sess := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "hive-abc", 3)
+	found := FindSessionByTmux(s, "hive-abc", 3)
+	if found == nil {
+		t.Fatal("FindSessionByTmux returned nil")
+	}
+	if found.ID != sess.ID {
+		t.Errorf("found.ID = %q, want %q", found.ID, sess.ID)
+	}
+}
+
+func TestFindSessionByTmux_WrongWindow(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "hive-abc", 3)
+	if FindSessionByTmux(s, "hive-abc", 99) != nil {
+		t.Error("FindSessionByTmux should return nil when window doesn't match")
+	}
+}
+
+func TestFindSessionByTmux_WrongSession(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "hive-abc", 3)
+	if FindSessionByTmux(s, "hive-xyz", 3) != nil {
+		t.Error("FindSessionByTmux should return nil when session doesn't match")
+	}
+}
+
+func TestFindSessionByTmux_InTeam(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, sess := AddTeamSession(s, p.ID, team.ID, RoleWorker, "w", AgentClaude, nil, "", "hive-abc", 5)
+	found := FindSessionByTmux(s, "hive-abc", 5)
+	if found == nil {
+		t.Fatal("FindSessionByTmux returned nil for team session")
+	}
+	if found.ID != sess.ID {
+		t.Errorf("found.ID = %q, want %q", found.ID, sess.ID)
+	}
+}
+
+func TestFindSessionByTmux_NotFound(t *testing.T) {
+	s := emptyState()
+	if FindSessionByTmux(s, "hive-abc", 0) != nil {
+		t.Error("FindSessionByTmux should return nil on empty state")
+	}
+}
+
+// --- AllSessions (additional) ---
+
+func TestAllSessions_EmptyState(t *testing.T) {
+	s := emptyState()
+	all := AllSessions(s)
+	if len(all) != 0 {
+		t.Errorf("AllSessions on empty state: len = %d, want 0", len(all))
+	}
+}
+
+func TestAllSessions_StandaloneOnly(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "hive-abc", 0)
+	s, _ = CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "hive-abc", 1)
+	all := AllSessions(s)
+	if len(all) != 2 {
+		t.Errorf("AllSessions len = %d, want 2", len(all))
+	}
+}
+
+func TestAllSessions_TeamOnly(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, _ = AddTeamSession(s, p.ID, team.ID, RoleOrchestrator, "o", AgentClaude, nil, "", "hive-abc", 0)
+	s, _ = AddTeamSession(s, p.ID, team.ID, RoleWorker, "w", AgentClaude, nil, "", "hive-abc", 1)
+	all := AllSessions(s)
+	if len(all) != 2 {
+		t.Errorf("AllSessions len = %d, want 2", len(all))
+	}
+}
+
+// --- RecordAgentUsage (additional) ---
+
+func TestRecordAgentUsage_MultipleAgents(t *testing.T) {
+	s := emptyState()
+	RecordAgentUsage(s, "claude")
+	RecordAgentUsage(s, "codex")
+	RecordAgentUsage(s, "claude")
+	if s.AgentUsage["claude"].Count != 2 {
+		t.Errorf("claude Count = %d, want 2", s.AgentUsage["claude"].Count)
+	}
+	if s.AgentUsage["codex"].Count != 1 {
+		t.Errorf("codex Count = %d, want 1", s.AgentUsage["codex"].Count)
+	}
+}
+
+func TestRecordAgentUsage_SetsLastUsed(t *testing.T) {
+	s := emptyState()
+	RecordAgentUsage(s, "claude")
+	rec := s.AgentUsage["claude"]
+	if rec.LastUsed.IsZero() {
+		t.Error("LastUsed should not be zero")
+	}
+}

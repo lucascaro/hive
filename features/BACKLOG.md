@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #36 | Add missing tests | RESEARCH | L |
+| 1 | #36 | Add missing tests | IMPLEMENT | L |
 | 2 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
 | 3 | #55 | Reorder sessions via keyboard | RESEARCH | M |
 | 4 | #54 | Per-session color for grid cells | RESEARCH | S |
