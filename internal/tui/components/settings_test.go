@@ -87,6 +87,9 @@ func TestSettingsView_BoolToggle(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		sv.Update(keyPress("j"))
 	}
+	if f := sv.selectedField(); f == nil || f.label != "Hide Attach Hint" {
+		t.Fatalf("expected field 'Hide Attach Hint', got %q", f.label)
+	}
 
 	// Toggle on
 	sv.Update(keyType(tea.KeyEnter))
@@ -129,6 +132,9 @@ func TestSettingsView_IntValidation(t *testing.T) {
 	// Navigate to PreviewRefreshMs (index 2)
 	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
+	if f := sv.selectedField(); f == nil || f.label != "Preview Refresh (ms)" {
+		t.Fatalf("expected field 'Preview Refresh (ms)', got %q", f.label)
+	}
 
 	// Start editing
 	sv.Update(keyType(tea.KeyEnter))
@@ -179,6 +185,9 @@ func TestSettingsView_StringValidation_EmptyKeybinding(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		sv.Update(keyPress("j"))
 	}
+	if f := sv.selectedField(); f == nil || f.label != "Toggle Collapse" {
+		t.Fatalf("expected field 'Toggle Collapse', got %q", sv.selectedField().label)
+	}
 
 	// Start editing
 	sv.Update(keyType(tea.KeyEnter))
@@ -196,6 +205,9 @@ func TestSettingsView_StringValidation_EmptyHooksDir(t *testing.T) {
 	// Navigate to HooksDir (index 9)
 	for i := 0; i < 9; i++ {
 		sv.Update(keyPress("j"))
+	}
+	if f := sv.selectedField(); f == nil || f.label != "Hooks Directory" {
+		t.Fatalf("expected field 'Hooks Directory', got %q", sv.selectedField().label)
 	}
 
 	sv.Update(keyType(tea.KeyEnter))
@@ -328,7 +340,7 @@ func TestSettingsView_SaveCancelledByOtherKey(t *testing.T) {
 	sv.Open(testConfig())
 
 	sv.Update(keyType(tea.KeyEnter)) // make dirty
-	sv.Update(keyPress("s"))                 // pending save
+	sv.Update(keyPress("s"))         // pending save
 
 	sv.Update(keyPress("n")) // cancel save
 	if sv.pendingSave {
@@ -354,6 +366,30 @@ func TestSettingsView_SCleanCloses(t *testing.T) {
 	msg := cmd()
 	if _, ok := msg.(SettingsClosedMsg); !ok {
 		t.Errorf("expected SettingsClosedMsg, got %T", msg)
+	}
+}
+
+func TestSettingsView_SaveConfirmedWithEnter(t *testing.T) {
+	sv := NewSettingsView()
+	sv.Open(testConfig())
+
+	sv.Update(keyType(tea.KeyEnter)) // toggle theme → dirty
+	sv.Update(keyPress("s"))         // pending save
+
+	// Confirm with enter (source also accepts "y")
+	cmd, consumed := sv.Update(keyType(tea.KeyEnter))
+	if !consumed {
+		t.Error("expected consumed=true")
+	}
+	if sv.Active {
+		t.Error("expected Active=false after enter-confirm")
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+	msg := cmd()
+	if _, ok := msg.(SettingsSaveRequestMsg); !ok {
+		t.Fatalf("expected SettingsSaveRequestMsg, got %T", msg)
 	}
 }
 

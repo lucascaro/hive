@@ -197,6 +197,83 @@ func TestTeamBuilder_ConfirmEmitsTeamBuiltMsg(t *testing.T) {
 	}
 }
 
+func TestTeamBuilder_WorkerPickingLoop(t *testing.T) {
+	tb := NewTeamBuilder()
+	tb.Start("/tmp/work")
+
+	// Advance to worker count step
+	tb.step = stepWorkerCount
+	tb.workerCount = 2
+	tb.input.SetValue("3")
+	tb.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Should have 3 worker slots and picker showing for worker 0
+	if tb.workerCount != 3 {
+		t.Fatalf("expected workerCount=3, got %d", tb.workerCount)
+	}
+	if tb.pickerStep != "worker0" {
+		t.Errorf("expected pickerStep=worker0, got %s", tb.pickerStep)
+	}
+
+	// Pick worker 0 → should auto-advance to worker 1
+	tb.agentPicker.Hide()
+	tb.Update(AgentPickedMsg{AgentType: state.AgentCodex})
+	if tb.workerIdx != 1 {
+		t.Errorf("expected workerIdx=1, got %d", tb.workerIdx)
+	}
+	if tb.workerAgents[0] != state.AgentCodex {
+		t.Errorf("worker 0: expected codex, got %s", tb.workerAgents[0])
+	}
+	if tb.pickerStep != "worker1" {
+		t.Errorf("expected pickerStep=worker1, got %s", tb.pickerStep)
+	}
+
+	// Pick worker 1 → should auto-advance to worker 2
+	tb.agentPicker.Hide()
+	tb.Update(AgentPickedMsg{AgentType: state.AgentGemini})
+	if tb.workerIdx != 2 {
+		t.Errorf("expected workerIdx=2, got %d", tb.workerIdx)
+	}
+	if tb.workerAgents[1] != state.AgentGemini {
+		t.Errorf("worker 1: expected gemini, got %s", tb.workerAgents[1])
+	}
+
+	// Pick worker 2 (last) → should advance to stepWorkDir
+	tb.agentPicker.Hide()
+	tb.Update(AgentPickedMsg{AgentType: state.AgentAider})
+	if tb.step != stepWorkDir {
+		t.Errorf("expected step=stepWorkDir after last worker, got %d", tb.step)
+	}
+	if tb.workerAgents[2] != state.AgentAider {
+		t.Errorf("worker 2: expected aider, got %s", tb.workerAgents[2])
+	}
+}
+
+func TestTeamBuilder_CancelFromOrchestratorStep(t *testing.T) {
+	tb := NewTeamBuilder()
+	tb.Start("/tmp/work")
+
+	// Advance to orchestrator step
+	tb.input.SetValue("team1")
+	tb.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	tb.input.SetValue("")
+	tb.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if tb.step != stepOrchestrator {
+		t.Fatalf("precondition: expected step=stepOrchestrator, got %d", tb.step)
+	}
+
+	// Simulate cancel from agent picker
+	tb.agentPicker.Hide()
+	cmd := tb.Update(CancelledMsg{})
+	if tb.Active {
+		t.Error("expected Active=false after CancelledMsg")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd from CancelledMsg handler")
+	}
+}
+
 func TestTeamBuilder_InactiveUpdateIsNoop(t *testing.T) {
 	tb := NewTeamBuilder()
 	cmd := tb.Update(tea.KeyMsg{Type: tea.KeyEnter})

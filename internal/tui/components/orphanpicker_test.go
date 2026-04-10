@@ -6,14 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func keyPress(k string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
-}
-
-func keyType(t tea.KeyType) tea.KeyMsg {
-	return tea.KeyMsg{Type: t}
-}
-
 func TestOrphanPicker_NewEmptySessions(t *testing.T) {
 	op := NewOrphanPicker(nil)
 	if op.Active {

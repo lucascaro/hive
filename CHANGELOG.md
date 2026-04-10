@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Test coverage for TUI components**: added tests for orphan picker, recovery picker, team builder wizard, and settings view — covering navigation, selection, validation, and lifecycle (#36).
-- **Test coverage for config/hooks I/O**: added file permissions and atomic write tests for config, and sort-order verification for hook script discovery (#36).
-
 ### Changed
 - **Grid view arrow keys wrap between rows**: pressing right on the last cell of a row now moves to the first cell of the next row, and left on the first cell wraps to the last cell of the previous row (#53).
 
