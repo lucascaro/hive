@@ -7,7 +7,7 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 )
 
-func TestBuildAttachScript_BindKeySaveAndRestore(t *testing.T) {
+func TestBuildAttachScript_BindKeyInstall(t *testing.T) {
 	spec, err := mux.ParseDetachKey("ctrl+q")
 	if err != nil {
 		t.Fatalf("ParseDetachKey: %v", err)
@@ -15,16 +15,10 @@ func TestBuildAttachScript_BindKeySaveAndRestore(t *testing.T) {
 	script := buildAttachScript("hive-sessions", "hive-sessions:0", "demo · claude", spec)
 
 	wantSubstrings := []string{
-		// Save prior root binding in re-executable form so we can restore it.
-		`old_detach=$(tmux list-keys -T root -aN 'C-q' 2>/dev/null)`,
-		// Install our binding.
+		// Install our binding (idempotent; persists for tmux server lifetime).
 		`tmux bind-key -n C-q detach-client`,
-		// Trap restores prior binding (eval) or unbinds (when none existed),
-		// covering EXIT and signal-driven shutdowns so the binding does not
-		// leak on the tmux server if hive is killed.
-		`if [ -n "$old_detach" ]; then`,
-		`eval "tmux $old_detach"`,
-		`tmux unbind-key -n C-q`,
+		// Trap covers EXIT and signal-driven shutdowns so the alt screen and
+		// status bar are restored even if hive is killed mid-attach.
 		`' EXIT INT TERM HUP`,
 		// The detach-key display string is shown on the right of the status bar.
 		`Ctrl+Q: detach`,
@@ -34,6 +28,21 @@ func TestBuildAttachScript_BindKeySaveAndRestore(t *testing.T) {
 	for _, want := range wantSubstrings {
 		if !strings.Contains(script, want) {
 			t.Errorf("attach script missing substring %q\n--- script ---\n%s", want, script)
+		}
+	}
+
+	// The binding is intentionally not saved/restored on detach — see
+	// AttachScript doc comment. Guard against re-introducing the per-detach
+	// save/unbind logic, which would resurrect the trap-syntax bug class
+	// and the racy attach/detach binding lifecycle.
+	unwantedSubstrings := []string{
+		`old_detach=`,            // no save of prior binding
+		`tmux unbind-key -n C-q`, // no unbind in trap
+		`list-keys -T root`,      // no save query
+	}
+	for _, unwanted := range unwantedSubstrings {
+		if strings.Contains(script, unwanted) {
+			t.Errorf("attach script must not contain %q (per-detach binding restore was removed)\n--- script ---\n%s", unwanted, script)
 		}
 	}
 }

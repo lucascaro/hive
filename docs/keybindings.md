@@ -115,6 +115,8 @@ The detach key is set via the top-level `detach_key` field in `~/.config/hive/co
 
 **Why a top-level field, not under `keybindings`?** The detach key is enforced by the multiplexer backend (the tmux backend installs a `bind-key -n` on the server before each attach; the native PTY backend intercepts the matching control byte on stdin). The `keybindings` block is processed by the in-TUI Bubble Tea key handler and never sees keystrokes during attach.
 
+**Lifetime of the tmux binding.** On the tmux backend, Hive installs the binding via `bind-key -n` and intentionally leaves it in place across attach/detach cycles — the binding persists for the lifetime of the tmux server (or until you change `detach_key` and restart, or someone overwrites it). This is faster (no per-detach restore round-trip) and avoids a class of trap-restore fragility, at the cost of clobbering any user-defined `bind -n <key> ...` you may have in `~/.tmux.conf`. If you have such a binding you want to keep, set `detach_key` to a different `ctrl+<letter>`.
+
 > ⚠️ **`ctrl+q` collides with terminal flow control (XOFF) on systems that have `ixon` enabled.** Most modern terminals disable it by default; if yours doesn't, set `detach_key` to a different `ctrl+<letter>` combination.
 
 ## Customization

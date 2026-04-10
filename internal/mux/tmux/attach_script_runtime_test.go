@@ -16,11 +16,11 @@ import (
 // We cannot run the real attach script end-to-end (it shells out to tmux),
 // but we can isolate the trap body and run it directly to prove every
 // statement inside it is a valid complete shell command. The specific
-// failure this catches: splitting `if / then / else / fi` across multiple
-// entries in the restore-lines slice, which produces `; then;` after
-// `strings.Join(..., "; ")`. That was a P0 bug caught during review —
-// without this test, `go test ./...` was green but detach would have left
-// the terminal in alt-screen and leaked the tmux root-table bind-key.
+// failure class this catches: splitting `if / then / else / fi` across
+// multiple entries in the restore-lines slice, which produces `; then;`
+// after `strings.Join(..., "; ")` — parseable as a string at script entry
+// (so `sh -n` and substring tests passed) but a runtime syntax error when
+// the trap actually fires (the inner if-block is only re-parsed at exit).
 func TestAttachScript_TrapBodyIsExecutable(t *testing.T) {
 	spec, err := mux.ParseDetachKey("ctrl+q")
 	if err != nil {
@@ -43,13 +43,12 @@ func TestAttachScript_TrapBodyIsExecutable(t *testing.T) {
 	body := rest[:j]
 
 	// Replace external tmux calls with no-op `:` so the body runs in a
-	// sandbox without touching a real tmux server. We also set the
-	// referenced variables to plausible values so the if/then branches
-	// actually execute rather than short-circuit.
+	// sandbox without touching a real tmux server. We also pre-set the
+	// had_* flags so the status-bar restore branches actually execute
+	// rather than short-circuit on undefined variables.
 	harness := `
 set -e
 tmux() { :; }
-old_detach=""
 had_status=0
 had_status_position=0
 had_status_style=0

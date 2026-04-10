@@ -25,14 +25,20 @@ var statusBarOpts = []string{
 
 // AttachScript returns a shell script that:
 //
-//  1. Saves the prior root-table binding for the configured detach key
-//     and installs a `bind-key -n <key> detach-client` so a single keystroke
-//     returns the user to Hive.
+//  1. Installs a `bind-key -n <key> detach-client` so a single keystroke
+//     returns the user to Hive. The binding is intentionally left in place
+//     across attach/detach cycles — it is re-installed idempotently on
+//     every attach, persists for the lifetime of the tmux server, and is
+//     not cleaned up on detach. This keeps the trap body tiny and removes
+//     a whole class of per-detach save/restore fragility. The trade-off
+//     is that a user-defined `bind -n C-q ...` in `~/.tmux.conf` will
+//     stay clobbered while (and after) hive runs; users who need to keep
+//     their own binding should set `detach_key` to a different `ctrl+<letter>`.
 //  2. Saves and overrides the tmux status-bar options to render the custom
 //     Hive header (project, agent, live pane title, detach hint).
 //  3. Runs `tmux attach-session -t <target>`.
-//  4. On exit (including signals), restores the prior bindings and status
-//     bar options via a shell `trap`.
+//  4. On exit (including signals), restores the alternate screen and the
+//     status-bar options via a shell `trap`.
 //
 // The script is intentionally a single shell pipeline so it composes with
 // `tea.ExecProcess` (TUI attach), `sh -c` (headless `hive attach` CLI), and
@@ -51,8 +57,7 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	sq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	s := sq(tmuxSession)
 	t := sq(target)
-	tmuxKey := sq(spec.Tmux)            // e.g. 'C-q'
-	displayKey := spec.Display          // e.g. Ctrl+Q
+	displayKey := spec.Display // e.g. Ctrl+Q
 
 	var lines []string
 
@@ -69,29 +74,28 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 		lines = append(lines, fmt.Sprintf("had_%s=0", v))
 	}
 
-	// Capture the prior root-table binding for the detach key (if any) in
-	// re-executable form so we can restore it cleanly. `list-keys -aN`
-	// produces an empty string when no binding exists.
+	// Install the detach key binding. Idempotent and intentionally left in
+	// place after detach — see the AttachScript doc comment for the
+	// rationale (no per-detach save/restore, persists for the lifetime of
+	// the tmux server). The tmux key spec is shell-safe (`C-<letter>`).
 	lines = append(lines,
-		fmt.Sprintf("old_detach=$(tmux list-keys -T root -aN %s 2>/dev/null)", tmuxKey),
-		fmt.Sprintf("tmux bind-key -n %s detach-client", spec.Tmux), // tmux key spec is shell-safe (single letter)
+		fmt.Sprintf("tmux bind-key -n %s detach-client", spec.Tmux),
 	)
 
-	// trap restores the alternate screen, the prior detach binding, and the
-	// status-bar options. EXIT covers normal exit; INT/TERM/HUP cover the
-	// case where tea.ExecProcess (or the user's terminal) forwards a signal
-	// from a hive shutdown so the binding does not leak on the tmux server.
+	// trap restores the alternate screen and the status-bar options on
+	// exit. EXIT covers normal exit; INT/TERM/HUP cover the case where
+	// tea.ExecProcess (or the user's terminal) forwards a signal from a
+	// hive shutdown so the status bar does not stay flipped to Hive's
+	// theme on the user's tmux session. The detach key binding is NOT
+	// restored here — it stays installed for the tmux server's lifetime.
 	//
 	// Every entry in restoreLines MUST be a complete one-line shell statement.
-	// We join them with "; " before embedding in the trap body, and a split
+	// We join them with "; " before embedding in the trap body; a split
 	// `if / then / else / fi` across multiple entries would produce `; then;`
 	// — parseable as a string by `sh -n` but a runtime syntax error when the
 	// trap actually fires (the inner if-block is only re-parsed at exit).
 	var restoreLines []string
 	restoreLines = append(restoreLines, `printf "\033[?1049l"`)
-	restoreLines = append(restoreLines,
-		fmt.Sprintf(`if [ -n "$old_detach" ]; then eval "tmux $old_detach"; else tmux unbind-key -n %s; fi`, spec.Tmux),
-	)
 	for _, opt := range statusBarOpts {
 		v := strings.ReplaceAll(opt, "-", "_")
 		restoreLines = append(restoreLines,
