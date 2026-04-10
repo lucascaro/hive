@@ -7,12 +7,11 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #36 | Add missing tests | IMPLEMENT | L |
-| 2 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 3 | #55 | Reorder sessions via keyboard | RESEARCH | M |
-| 4 | #54 | Per-session color for grid cells | RESEARCH | S |
-| 5 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 6 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 2 | #55 | Reorder sessions via keyboard | RESEARCH | M |
+| 3 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 4 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 5 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 
@@ -36,3 +35,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #39 | Remove window list from title bar and add more text colors | #58 | 2026-04-09 |
 | #41 | Simplify detach shortcut to a single key combo | #59 | 2026-04-09 |
 | #53 | Grid view: arrow keys should wrap between rows | #60 | 2026-04-10 |
+| #36 | Add missing tests | #61, #62 | 2026-04-10 |
