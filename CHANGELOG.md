@@ -7,9 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Test coverage for state, mux, and protocol packages**: added tests for `FindSession`, `FindProject`, `FindTeam`, `FindSessionByTmux`, `AllSessions`, `SessionLabel`, `RecordAgentUsage`, `WindowName`, `Target`, and the native mux protocol wire format (#36).
-
 ### Changed
 - **Grid view arrow keys wrap between rows**: pressing right on the last cell of a row now moves to the first cell of the next row, and left on the first cell wraps to the last cell of the previous row (#53).
 
