@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucascaro/hive/internal/state"
 )
 
@@ -304,6 +305,59 @@ func TestGridView_SyncCursor(t *testing.T) {
 // arbitrary ANSI escape sequences and control characters; lipgloss does not
 // sanitize, so this function is the only thing standing between agent output
 // and the visible UI.
+// TestGridView_CursorWrap tests horizontal arrow-key wrapping between rows.
+// Uses 5 sessions at 160×50 which yields a 3×2 grid (row0=[0,1,2], row1=[3,4]).
+func TestGridView_CursorWrap(t *testing.T) {
+	sessions := make([]*state.Session, 5)
+	for i := range sessions {
+		sessions[i] = &state.Session{
+			ID: "s" + string(rune('1'+i)), Title: "sess",
+			AgentType: state.AgentClaude, Status: state.StatusRunning,
+		}
+	}
+
+	makeGV := func(cursor int) *GridView {
+		gv := &GridView{Active: true, Width: 160, Height: 50}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.Cursor = cursor
+		return gv
+	}
+
+	key := func(s string) tea.KeyMsg {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+
+	tests := []struct {
+		name      string
+		cursor    int
+		key       tea.KeyMsg
+		wantCursor int
+	}{
+		// Normal movement within a row
+		{"right within row", 0, key("l"), 1},
+		{"left within row", 1, key("h"), 0},
+		// Wrapping across rows
+		{"right wraps to next row", 2, key("l"), 3},
+		{"left wraps to prev row", 3, key("h"), 2},
+		// No wrap at boundaries
+		{"right at last session stays", 4, key("l"), 4},
+		{"left at index 0 stays", 0, key("h"), 0},
+		// Arrow keys work too
+		{"arrow right wraps", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
+		{"arrow left wraps", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gv := makeGV(tc.cursor)
+			gv.Update(tc.key)
+			if gv.Cursor != tc.wantCursor {
+				t.Errorf("Cursor = %d, want %d", gv.Cursor, tc.wantCursor)
+			}
+		})
+	}
+}
+
 func TestSanitizePaneTitle(t *testing.T) {
 	cases := []struct {
 		name string

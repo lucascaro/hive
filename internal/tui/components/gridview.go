@@ -141,6 +141,8 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		rowStart := (gv.Cursor / cols) * cols
 		if gv.Cursor > rowStart {
 			gv.Cursor--
+		} else if gv.Cursor > 0 {
+			gv.Cursor-- // wrap to last cell of previous row
 		}
 	case "right", "l", "d":
 		rowEnd := (gv.Cursor/cols)*cols + cols - 1
@@ -149,6 +151,8 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		if gv.Cursor < rowEnd {
 			gv.Cursor++
+		} else if gv.Cursor < n-1 {
+			gv.Cursor++ // wrap to first cell of next row
 		}
 	case "up", "k", "w":
 		if gv.Cursor >= cols {

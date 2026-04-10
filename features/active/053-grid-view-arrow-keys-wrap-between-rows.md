@@ -1,7 +1,7 @@
 # Feature: Grid view: arrow keys should wrap between rows
 
 - **GitHub Issue:** #53
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P3
@@ -40,19 +40,21 @@ Single-file fix. The grid cursor is a flat integer index into a sessions slice. 
 
 ## Plan
 
-<Filled during PLAN stage.>
+Single-file logic change plus new tests. The cursor is a flat index; we add `else` clauses to the left/right branches so they cross row boundaries instead of clamping.
 
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+1. `internal/tui/components/gridview.go:140-152` — Modify left/right `case` branches: if at row edge and an adjacent row exists, wrap cursor to it instead of clamping.
+2. `internal/tui/components/gridview_test.go` — Add table-driven unit tests for cursor movement: wrap right end-of-row → next row, wrap left start-of-row → prev row, no-wrap at index 0 and index n-1, partial last row, normal intra-row movement.
 
 ### Test Strategy
-- <how to verify>
+- Table-driven tests in `gridview_test.go` exercising all wrapping and non-wrapping scenarios
+- Run `go test ./internal/tui/components/...` to verify
 
 ### Risks
-- <what could go wrong>
+- Low risk. Two small `else` clauses in existing branches. Partial last row is safe since wrapping always lands on a valid index.
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+No deviations from plan. Added `else` clauses to both left and right key branches in `GridView.Update()`. Added 8 table-driven test cases covering normal movement, wrapping, and boundary clamping with both vim keys and arrow keys.
 
 - **PR:** —
