@@ -156,11 +156,11 @@ func TestBuildAttachScript_BatchedCommands(t *testing.T) {
 	spec, _ := mux.ParseDetachKey("ctrl+q")
 	script := buildAttachScript("hive-sessions", "hive-sessions:0", "title", spec)
 
-	// Count lines starting with "tmux " — should be exactly 4:
+	// Count lines starting with "tmux " — should be exactly 3:
 	// 1. bind-key
 	// 2. set-option chain (override)
 	// 3. attach-session
-	// Plus 1 tmux invocation inside the trap body.
+	// The trap body contains 1 more tmux invocation but it's inline.
 	tmuxCount := 0
 	for _, line := range strings.Split(script, "\n") {
 		line = strings.TrimSpace(line)

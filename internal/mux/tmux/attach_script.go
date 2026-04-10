@@ -73,6 +73,11 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 		fmt.Sprintf("tmux bind-key -n %s detach-client", spec.Tmux),
 	)
 
+	// Store the session name in a shell variable so the trap body does not
+	// need to embed single-quoted strings (which would break the trap's own
+	// single-quoted delimiters for session names containing special chars).
+	lines = append(lines, "_hive_s="+s)
+
 	// trap restores the alternate screen and unsets the status-bar option
 	// overrides on exit. Hive owns the hive-* session, so there are no
 	// user-customized values to preserve — `set-option -u` returns each
@@ -88,7 +93,7 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// minimize process-spawn overhead on detach.
 	var unsetParts []string
 	for _, opt := range statusBarOpts {
-		unsetParts = append(unsetParts, fmt.Sprintf("set-option -u -t %s %s", s, opt))
+		unsetParts = append(unsetParts, fmt.Sprintf(`set-option -u -t "$_hive_s" %s`, opt))
 	}
 	trapBody := fmt.Sprintf(`printf "\033[?1049l"; tmux %s 2>/dev/null`, strings.Join(unsetParts, ` \; `))
 	lines = append(lines,
