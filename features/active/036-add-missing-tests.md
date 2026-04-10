@@ -142,4 +142,4 @@ No deviations from plan. Many state functions (`NextSessionAfterRemoval`, `Sessi
 
 PRs 2 and 3 (TUI components, config/hooks I/O) remain for follow-up.
 
-- **PR:** —
+- **PR:** #61 (PR 1 of 3)
