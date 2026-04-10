@@ -1,7 +1,7 @@
 # Feature: Attach/detach delay can exceed one second
 
 - **GitHub Issue:** #63
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
@@ -46,16 +46,61 @@ The 1+ second delay is caused by **sequential tmux command execution** in the at
 
 ## Plan
 
-<Filled during PLAN stage.>
+Eliminate the save phase entirely and batch remaining tmux commands using `\;` chaining. Hive owns the `hive-*` session, so there are no user-customized status bar values to preserve — on detach, simply `set-option -u` (unset) all overrides to return to server defaults.
+
+This reduces 23 tmux process invocations to 4, and greatly simplifies the script.
+
+### Approach
+
+**Drop the save phase entirely.** The 10 `tmux show-option` calls (and the `had_*`/`old_*` shell variables) exist to restore user values on detach. But Hive creates and owns the `hive-*` session — the user never customizes its status bar. On detach, we can simply unset the overrides with `set-option -u`, which returns them to the server/global defaults from `~/.tmux.conf`.
+
+**Chain the override phase into 1 invocation.** Replace 11 separate `tmux set-option` calls with:
+```
+tmux set-option -t S status on \; set-option -t S status-position top \; ...
+```
+
+**Chain the restore (trap) into 1 invocation.** Replace 10 conditional if/else restores with:
+```
+tmux set-option -u -t S status \; set-option -u -t S status-position \; ...
+```
+No conditionals needed — just unset everything.
+
+**Result: 4 tmux invocations total** (was 23):
+1. `tmux bind-key` (detach key)
+2. `tmux set-option \; set-option \; ...` (apply theme — 1 process)
+3. `tmux attach-session` (enter session)
+4. Trap: `tmux set-option -u \; set-option -u \; ...` (unset theme — 1 process)
 
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+
+1. `internal/mux/tmux/attach_script.go` — Rewrite `buildAttachScript()`:
+   - **Remove** the `had_*` flag initialization loop (lines 72-75)
+   - **Remove** the save phase `show-option` loop (lines 110-115)
+   - **Replace** the 11 individual `set-option` lines (lines 118-135) with a single chained `tmux` command using `\;`
+   - **Simplify** the trap handler (lines 97-107): replace 10 conditional if/else restores with a single chained `tmux set-option -u` command — no shell variables needed
+   - Keep: bind-key (line 82), attach-session (line 137), alt-screen printf (line 66)
+
+2. `internal/mux/tmux/attach_script_test.go` — Update tests:
+   - Remove assertions about `had_status` flags (no longer generated)
+   - Update `TestBuildAttachScript_StatusBarShape` to check for chained `\;` format
+   - Add a test counting tmux invocations (expect 4)
+   - Keep: bind-key ordering, quoting, detach hint, alt-screen assertions
 
 ### Test Strategy
-- <how to verify>
+
+- **Unit tests:** Update `attach_script_test.go` to verify:
+  - Script contains exactly 4 lines starting with `tmux` (bind-key, chained set-option, attach-session) + 1 chained `set-option -u` in the trap
+  - The chained set-option contains all 10 status bar options
+  - No `show-option`, `had_*`, or `old_*` in the script (save phase removed)
+  - Existing quoting/ordering tests still pass (adjusted for new format)
+- **Existing runtime test:** `attach_script_runtime_test.go` provides end-to-end coverage
+- **Manual testing:** Attach/detach, verify status bar themes correctly and returns to defaults on detach
 
 ### Risks
-- <what could go wrong>
+
+- **tmux version compatibility:** `\;` chaining works in tmux 2.6+ (2017). The project already assumes modern tmux.
+- **`set-option -u` behavior:** Unsetting options returns them to the global/server default from `~/.tmux.conf`. If a user has customized status bar options at the server level, they will be correctly restored. If they had session-level overrides on the `hive-*` session (unlikely since Hive creates it), those would be lost. Acceptable.
+- **Partial failure:** If the chained set-option fails partway, some options may be applied and others not. Acceptable — the status bar is cosmetic and the next attach will re-apply.
 
 ## Implementation Notes
 
