@@ -232,6 +232,50 @@ func TestSaveLoad_Roundtrip(t *testing.T) {
 	}
 }
 
+func TestSave_FilePermissions(t *testing.T) {
+	tmp := t.TempDir()
+	setHome(t, tmp)
+	if err := Ensure(); err != nil {
+		t.Fatalf("Ensure() error: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	info, err := os.Stat(ConfigPath())
+	if err != nil {
+		t.Fatalf("Stat() error: %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("config file permissions = %o, want 0600", perm)
+	}
+}
+
+func TestWriteAtomic_TempFileCleanedUp(t *testing.T) {
+	tmp := t.TempDir()
+	setHome(t, tmp)
+	if err := Ensure(); err != nil {
+		t.Fatalf("Ensure() error: %v", err)
+	}
+
+	target := filepath.Join(Dir(), "test-atomic.json")
+	if err := writeAtomic(target, []byte(`{"test":true}`)); err != nil {
+		t.Fatalf("writeAtomic() error: %v", err)
+	}
+
+	// Target file should exist
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("target file not created: %v", err)
+	}
+	// Temp file should not exist
+	if _, err := os.Stat(target + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("temp file should be cleaned up, got err: %v", err)
+	}
+}
+
 func TestSave_WritesValidJSON(t *testing.T) {
 	tmp := t.TempDir()
 	setHome(t, tmp)
