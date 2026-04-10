@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-09
+
 ### Added
 - **Single-key detach shortcut**: a single key combo (default **Ctrl+Q**) now detaches from an attached session and returns you to Hive, on both the tmux and native backends. The key is configurable via the new top-level `detach_key` field in `~/.config/hive/config.json` (e.g. `"detach_key": "ctrl+x"`). On the tmux backend the standard `Ctrl+B D` sequence still works as a fallback. Existing users will see the pre-attach splash one more time on first startup so they discover the new shortcut, even if they had previously dismissed it (#41).
 - **Session status detection infrastructure**: adds configurable two-tier status detection for agent sessions. For Claude, uses pane title spinner detection (Braille spinner = running) with content-diff + debounce fallback. Detection patterns (`run_title`, `wait_title`, `wait_prompt`, `idle_prompt`, `stable_ticks`) are configurable per agent via the `status` field in agent profiles. Full "waiting for input" detection deferred — Claude Code uses the same pane title for both idle and asking-a-question states (#38).
@@ -233,7 +235,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/lucascaro/hive/compare/v0.4.0...v0.5.0
 [0.3.0]: https://github.com/lucascaro/hive/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/lucascaro/hive/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/lucascaro/hive/compare/v0.1.0...v0.2.0
