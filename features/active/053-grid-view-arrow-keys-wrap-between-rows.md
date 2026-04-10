@@ -57,4 +57,4 @@ Single-file logic change plus new tests. The cursor is a flat index; we add `els
 
 No deviations from plan. Added `else` clauses to both left and right key branches in `GridView.Update()`. Added 8 table-driven test cases covering normal movement, wrapping, and boundary clamping with both vim keys and arrow keys.
 
-- **PR:** —
+- **PR:** #60
