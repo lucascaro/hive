@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-04-10
+
 ### Fixed
 - **Faster attach/detach transitions**: reduced tmux process spawns from 23 to 4 by batching status-bar commands with `\;` chaining and eliminating the save/restore phase. Attach latency drops from ~1-2s to ~200-400ms (#63).
 
@@ -241,7 +243,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/lucascaro/hive/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/lucascaro/hive/compare/v0.4.0...v0.5.0
 [0.3.0]: https://github.com/lucascaro/hive/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/lucascaro/hive/compare/v0.2.0...v0.2.1
