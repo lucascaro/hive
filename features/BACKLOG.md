@@ -7,13 +7,12 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #53 | Grid view: arrow keys should wrap between rows | IMPLEMENT | S |
-| 2 | #36 | Add missing tests | RESEARCH | L |
-| 3 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 4 | #55 | Reorder sessions via keyboard | RESEARCH | M |
-| 5 | #54 | Per-session color for grid cells | RESEARCH | S |
-| 6 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 7 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #36 | Add missing tests | RESEARCH | L |
+| 2 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 3 | #55 | Reorder sessions via keyboard | RESEARCH | M |
+| 4 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 5 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 6 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 
@@ -36,3 +35,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #52 | Focus management: auto-focus on session create and smart fallback on delete | #57 | 2026-04-09 |
 | #39 | Remove window list from title bar and add more text colors | #58 | 2026-04-09 |
 | #41 | Simplify detach shortcut to a single key combo | #59 | 2026-04-09 |
+| #53 | Grid view: arrow keys should wrap between rows | #60 | 2026-04-10 |
