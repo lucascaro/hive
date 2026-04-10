@@ -7,12 +7,12 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
-| 2 | #55 | Reorder sessions via keyboard | RESEARCH | M |
-| 3 | #54 | Per-session color for grid cells | RESEARCH | S |
-| 4 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 5 | #37 | Code refactor: remove bloat | RESEARCH | L |
-| 6 | #63 | Attach/detach delay can exceed one second | TRIAGE | — |
+| 1 | #63 | Attach/detach delay can exceed one second | RESEARCH | M |
+| 2 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
+| 3 | #55 | Reorder sessions via keyboard | RESEARCH | M |
+| 4 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 5 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 6 | #37 | Code refactor: remove bloat | RESEARCH | L |
 
 ## Completed
 

@@ -1,10 +1,10 @@
 # Feature: Attach/detach delay can exceed one second
 
 - **GitHub Issue:** #63
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** bug
-- **Complexity:** —
-- **Priority:** —
+- **Complexity:** M
+- **Priority:** P1
 - **Branch:** —
 
 ## Description
