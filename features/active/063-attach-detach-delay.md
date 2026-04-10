@@ -104,6 +104,6 @@ No conditionals needed — just unset everything.
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+No deviations from plan. The save phase (10 `show-option` calls + `had_*`/`old_*` variables) was removed entirely. The override phase (11 `set-option` calls) was collapsed into a single chained `tmux` invocation using `\;`. The restore trap was simplified from 10 conditional if/else blocks to a single chained `set-option -u` invocation. The runtime test harness was simplified to remove the `had_*` variable pre-setting that is no longer needed.
 
 - **PR:** —

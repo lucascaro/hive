@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Faster attach/detach transitions**: reduced tmux process spawns from 23 to 4 by batching status-bar commands with `\;` chaining and eliminating the save/restore phase. Attach latency drops from ~1-2s to ~200-400ms (#63).
+
 ### Changed
 - **Grid view arrow keys wrap between rows**: pressing right on the last cell of a row now moves to the first cell of the next row, and left on the first cell wraps to the last cell of the previous row (#53).
 

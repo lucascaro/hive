@@ -65,15 +65,6 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// of the user's scrollback.
 	lines = append(lines, `printf '\033[?1049h\033[2J'`)
 
-	// Initialize had_* flags to 0 so the trap below has well-defined values
-	// if it fires before the save loop runs (e.g. tmux is killed mid-setup).
-	// Without this, an early-crash trap would treat unset variables as "no
-	// prior value" and stomp on user-customized status-bar options.
-	for _, opt := range statusBarOpts {
-		v := strings.ReplaceAll(opt, "-", "_")
-		lines = append(lines, fmt.Sprintf("had_%s=0", v))
-	}
-
 	// Install the detach key binding. Idempotent and intentionally left in
 	// place after detach — see the AttachScript doc comment for the
 	// rationale (no per-detach save/restore, persists for the lifetime of
@@ -82,57 +73,56 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 		fmt.Sprintf("tmux bind-key -n %s detach-client", spec.Tmux),
 	)
 
-	// trap restores the alternate screen and the status-bar options on
-	// exit. EXIT covers normal exit; INT/TERM/HUP cover the case where
+	// Store the session name in a shell variable so the trap body does not
+	// need to embed single-quoted strings (which would break the trap's own
+	// single-quoted delimiters for session names containing special chars).
+	lines = append(lines, "_hive_s="+s)
+
+	// trap restores the alternate screen and unsets the status-bar option
+	// overrides on exit. Hive owns the hive-* session, so there are no
+	// user-customized values to preserve — `set-option -u` returns each
+	// option to its server/global default from ~/.tmux.conf.
+	//
+	// EXIT covers normal exit; INT/TERM/HUP cover the case where
 	// tea.ExecProcess (or the user's terminal) forwards a signal from a
 	// hive shutdown so the status bar does not stay flipped to Hive's
-	// theme on the user's tmux session. The detach key binding is NOT
-	// restored here — it stays installed for the tmux server's lifetime.
+	// theme. The detach key binding is NOT restored here — it stays
+	// installed for the tmux server's lifetime.
 	//
-	// Every entry in restoreLines MUST be a complete one-line shell statement.
-	// We join them with "; " before embedding in the trap body; a split
-	// `if / then / else / fi` across multiple entries would produce `; then;`
-	// — parseable as a string by `sh -n` but a runtime syntax error when the
-	// trap actually fires (the inner if-block is only re-parsed at exit).
-	var restoreLines []string
-	restoreLines = append(restoreLines, `printf "\033[?1049l"`)
+	// All unsets are batched into a single tmux invocation via \; to
+	// minimize process-spawn overhead on detach.
+	var unsetParts []string
 	for _, opt := range statusBarOpts {
-		v := strings.ReplaceAll(opt, "-", "_")
-		restoreLines = append(restoreLines,
-			fmt.Sprintf(`if [ "$had_%s" = 1 ]; then tmux set-option -t %s %s "$old_%s"; else tmux set-option -u -t %s %s 2>/dev/null; fi`,
-				v, s, opt, v, s, opt))
+		unsetParts = append(unsetParts, fmt.Sprintf(`set-option -u -t "$_hive_s" %s`, opt))
 	}
+	trapBody := fmt.Sprintf(`printf "\033[?1049l"; tmux %s 2>/dev/null`, strings.Join(unsetParts, ` \; `))
 	lines = append(lines,
-		"trap '"+strings.Join(restoreLines, "; ")+"' EXIT INT TERM HUP",
+		"trap '"+trapBody+"' EXIT INT TERM HUP",
 	)
 
-	// Save existing status-bar option values so the trap can restore them.
-	for _, opt := range statusBarOpts {
-		v := strings.ReplaceAll(opt, "-", "_")
-		lines = append(lines,
-			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null) && had_%s=1 || had_%s=0",
-				v, s, opt, v, v))
-	}
-
-	// Override status-bar options with the Hive look.
-	lines = append(lines,
-		"tmux set-option -t "+s+" status on",
-		"tmux set-option -t "+s+" status-position top",
-		"tmux set-option -t "+s+" status-style 'bg=#7C3AED,fg=#F9FAFB'",
-		// The "{?pane_title, · …,}" conditional makes the separator and live
-		// title disappear cleanly when the pane has no title set, instead of
-		// rendering a dangling " · " after the static session header.
-		"tmux set-option -t "+s+" status-left "+sq(" "+title+"#{?pane_title, · #{pane_title},} "),
-		"tmux set-option -t "+s+" status-left-length 200",
-		"tmux set-option -t "+s+" status-right "+sq(" "+displayKey+": detach "),
-		"tmux set-option -t "+s+" status-right-length 40",
+	// Override status-bar options with the Hive look. All options are
+	// batched into a single tmux invocation via \; chaining to minimize
+	// process-spawn overhead (was 11 separate invocations).
+	//
+	// The "{?pane_title, · …,}" conditional makes the separator and live
+	// title disappear cleanly when the pane has no title set, instead of
+	// rendering a dangling " · " after the static session header.
+	setOpts := []string{
+		"set-option -t " + s + " status on",
+		"set-option -t " + s + " status-position top",
+		"set-option -t " + s + " status-style 'bg=#7C3AED,fg=#F9FAFB'",
+		"set-option -t " + s + " status-left " + sq(" "+title+"#{?pane_title, · #{pane_title},} "),
+		"set-option -t " + s + " status-left-length 200",
+		"set-option -t " + s + " status-right " + sq(" "+displayKey+": detach "),
+		"set-option -t " + s + " status-right-length 40",
 		// Hide tmux's default window list — we only want our custom title and
 		// the live #{pane_title} above.  Empty formats collapse the entries;
 		// the empty separator is belt-and-suspenders for tmux 2.x.
-		"tmux set-option -t "+s+" window-status-format ''",
-		"tmux set-option -t "+s+" window-status-current-format ''",
-		"tmux set-option -t "+s+" window-status-separator ''",
-	)
+		"set-option -t " + s + " window-status-format ''",
+		"set-option -t " + s + " window-status-current-format ''",
+		"set-option -t " + s + " window-status-separator ''",
+	}
+	lines = append(lines, "tmux "+strings.Join(setOpts, ` \; `))
 
 	lines = append(lines, "tmux attach-session -t "+t)
 

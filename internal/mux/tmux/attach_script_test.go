@@ -101,11 +101,6 @@ func TestBuildAttachScript_QuotesSessionWithSingleQuote(t *testing.T) {
 	}
 }
 
-// TestBuildAttachScript_StatusBarShape mirrors the assertions from the old
-// internal/tui TestBuildAttachScript which used to live next to the function
-// before #41. The status-bar-style coverage moved here together with the
-// implementation; the new bind-key save/restore assertions are in the
-// dedicated tests above.
 func TestBuildAttachScript_StatusBarShape(t *testing.T) {
 	spec, _ := mux.ParseDetachKey("ctrl+q")
 	script := buildAttachScript(
@@ -116,20 +111,18 @@ func TestBuildAttachScript_StatusBarShape(t *testing.T) {
 	)
 
 	wants := map[string]string{
-		"sets status-position top":                 "status-position top",
-		"attaches to the correct target":           "tmux attach-session -t 'hive-sessions:3'",
-		"contains the title text":                  "● [claude] my-task · myproj ⎇ feat",
-		"shows the detach hint with display key":   "Ctrl+Q: detach",
-		"uses had_status flag for restore":         `had_status" = 1`,
-		"restores via -u when option was unset":    "set-option -u",
-		"enters alt screen before attach":          `\033[?1049h`,
-		"trap leaves alt screen":                   `\033[?1049l`,
-		"hides window list (status-format)":        "window-status-format ''",
-		"hides window list (current-format)":       "window-status-current-format ''",
-		"hides window list (separator)":            "window-status-separator ''",
-		"saves window-status-format via had_*":     `had_window_status_format" = 1`,
-		"injects literal #{pane_title} for tmux":   "#{pane_title}",
-		"wraps pane_title in #{?pane_title,…,}":    "#{?pane_title,",
+		"sets status-position top":               "status-position top",
+		"attaches to the correct target":         "tmux attach-session -t 'hive-sessions:3'",
+		"contains the title text":                "● [claude] my-task · myproj ⎇ feat",
+		"shows the detach hint with display key": "Ctrl+Q: detach",
+		"restores via -u in trap":                "set-option -u",
+		"enters alt screen before attach":        `\033[?1049h`,
+		"trap leaves alt screen":                 `\033[?1049l`,
+		"hides window list (status-format)":      "window-status-format ''",
+		"hides window list (current-format)":     "window-status-current-format ''",
+		"hides window list (separator)":          "window-status-separator ''",
+		"injects literal #{pane_title} for tmux": "#{pane_title}",
+		"wraps pane_title in #{?pane_title,…,}":  "#{?pane_title,",
 	}
 	for desc, want := range wants {
 		if !strings.Contains(script, want) {
@@ -138,5 +131,80 @@ func TestBuildAttachScript_StatusBarShape(t *testing.T) {
 	}
 	if got := strings.Count(script, "#{pane_title}"); got != 1 {
 		t.Errorf("expected exactly one #{pane_title} token, got %d", got)
+	}
+}
+
+func TestBuildAttachScript_NoSavePhase(t *testing.T) {
+	spec, _ := mux.ParseDetachKey("ctrl+q")
+	script := buildAttachScript("hive-sessions", "hive-sessions:0", "title", spec)
+
+	// The save phase (show-option, had_*, old_*) was removed — Hive owns the
+	// session so there are no user values to preserve.
+	unwanted := []string{
+		"show-option",
+		"had_",
+		"old_",
+	}
+	for _, u := range unwanted {
+		if strings.Contains(script, u) {
+			t.Errorf("script must not contain %q (save phase was removed)\n--- script ---\n%s", u, script)
+		}
+	}
+}
+
+func TestBuildAttachScript_BatchedCommands(t *testing.T) {
+	spec, _ := mux.ParseDetachKey("ctrl+q")
+	script := buildAttachScript("hive-sessions", "hive-sessions:0", "title", spec)
+
+	// Count lines starting with "tmux " — should be exactly 3:
+	// 1. bind-key
+	// 2. set-option chain (override)
+	// 3. attach-session
+	// The trap body contains 1 more tmux invocation but it's inline.
+	tmuxCount := 0
+	for _, line := range strings.Split(script, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "tmux ") {
+			tmuxCount++
+		}
+	}
+	// 3 top-level tmux lines (bind-key, set-option chain, attach-session)
+	// The trap body contains 1 more tmux invocation but it's inline, not a separate line.
+	if tmuxCount != 3 {
+		t.Errorf("expected 3 top-level tmux invocations, got %d\n--- script ---\n%s", tmuxCount, script)
+	}
+
+	// The override set-option must use \; chaining.
+	setLine := ""
+	for _, line := range strings.Split(script, "\n") {
+		if strings.Contains(line, "set-option") && strings.Contains(line, `\;`) && !strings.Contains(line, "trap") {
+			setLine = line
+			break
+		}
+	}
+	if setLine == "" {
+		t.Fatalf("expected a chained set-option line with \\;\n--- script ---\n%s", script)
+	}
+
+	// All 10 status bar options must appear in the chained set-option line.
+	for _, opt := range statusBarOpts {
+		if !strings.Contains(setLine, opt) {
+			t.Errorf("chained set-option missing option %q\n--- line ---\n%s", opt, setLine)
+		}
+	}
+
+	// The trap body must also use \; chaining for unsets.
+	trapIdx := strings.Index(script, "trap '")
+	if trapIdx < 0 {
+		t.Fatalf("trap not found in script")
+	}
+	trapLine := script[trapIdx:]
+	if endIdx := strings.Index(trapLine, "' EXIT"); endIdx > 0 {
+		trapLine = trapLine[:endIdx]
+	}
+	for _, opt := range statusBarOpts {
+		if !strings.Contains(trapLine, "set-option -u") || !strings.Contains(trapLine, opt) {
+			t.Errorf("trap missing unset for option %q\n--- trap ---\n%s", opt, trapLine)
+		}
 	}
 }

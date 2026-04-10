@@ -43,22 +43,12 @@ func TestAttachScript_TrapBodyIsExecutable(t *testing.T) {
 	body := rest[:j]
 
 	// Replace external tmux calls with no-op `:` so the body runs in a
-	// sandbox without touching a real tmux server. We also pre-set the
-	// had_* flags so the status-bar restore branches actually execute
-	// rather than short-circuit on undefined variables.
+	// sandbox without touching a real tmux server. The trap body is now
+	// a simple printf + a single chained tmux set-option -u invocation,
+	// so no shell variables need pre-setting.
 	harness := `
 set -e
 tmux() { :; }
-had_status=0
-had_status_position=0
-had_status_style=0
-had_status_left=0
-had_status_right=0
-had_status_left_length=0
-had_status_right_length=0
-had_window_status_format=0
-had_window_status_current_format=0
-had_window_status_separator=0
 ` + body
 
 	out, err := exec.Command("sh", "-c", harness).CombinedOutput()
