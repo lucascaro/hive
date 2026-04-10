@@ -300,11 +300,6 @@ func TestGridView_SyncCursor(t *testing.T) {
 	})
 }
 
-// TestSanitizePaneTitle covers the sanitizer used to scrub untrusted OSC 0/2
-// payloads before rendering them inside grid cells.  Pane titles can contain
-// arbitrary ANSI escape sequences and control characters; lipgloss does not
-// sanitize, so this function is the only thing standing between agent output
-// and the visible UI.
 // TestGridView_CursorWrap tests horizontal arrow-key wrapping between rows.
 // Uses 5 sessions at 160×50 which yields a 3×2 grid (row0=[0,1,2], row1=[3,4]).
 func TestGridView_CursorWrap(t *testing.T) {
@@ -345,6 +340,8 @@ func TestGridView_CursorWrap(t *testing.T) {
 		// Arrow keys work too
 		{"arrow right wraps", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
 		{"arrow left wraps", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
+		// "d" alias for right
+		{"d key wraps to next row", 2, key("d"), 3},
 	}
 
 	for _, tc := range tests {
@@ -358,6 +355,60 @@ func TestGridView_CursorWrap(t *testing.T) {
 	}
 }
 
+// TestGridView_CursorWrap_SingleColumn verifies wrapping in a 1-column grid.
+// With 1 column each cell is both first and last in its row, so left/right
+// should wrap to the adjacent row (since each row has exactly one cell).
+func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
+	// 2 sessions at 40×50 → gridColumns returns 1 (too narrow for 2 cols).
+	sessions := []*state.Session{
+		{ID: "s1", Title: "a", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s2", Title: "b", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	makeGV := func(cursor int) *GridView {
+		gv := &GridView{Active: true, Width: 40, Height: 50}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.Cursor = cursor
+		return gv
+	}
+	key := func(s string) tea.KeyMsg {
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+
+	t.Run("right wraps to next row", func(t *testing.T) {
+		gv := makeGV(0)
+		gv.Update(key("l"))
+		if gv.Cursor != 1 {
+			t.Errorf("Cursor = %d, want 1", gv.Cursor)
+		}
+	})
+	t.Run("left wraps to prev row", func(t *testing.T) {
+		gv := makeGV(1)
+		gv.Update(key("h"))
+		if gv.Cursor != 0 {
+			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+	t.Run("right at last stays", func(t *testing.T) {
+		gv := makeGV(1)
+		gv.Update(key("l"))
+		if gv.Cursor != 1 {
+			t.Errorf("Cursor = %d, want 1", gv.Cursor)
+		}
+	})
+	t.Run("left at first stays", func(t *testing.T) {
+		gv := makeGV(0)
+		gv.Update(key("h"))
+		if gv.Cursor != 0 {
+			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+}
+
+// TestSanitizePaneTitle covers the sanitizer used to scrub untrusted OSC 0/2
+// payloads before rendering them inside grid cells.  Pane titles can contain
+// arbitrary ANSI escape sequences and control characters; lipgloss does not
+// sanitize, so this function is the only thing standing between agent output
+// and the visible UI.
 func TestSanitizePaneTitle(t *testing.T) {
 	cases := []struct {
 		name string
