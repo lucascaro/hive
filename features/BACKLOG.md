@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #63 | Attach/detach delay can exceed one second | RESEARCH | M |
+| 1 | #63 | Attach/detach delay can exceed one second | PLAN | M |
 | 2 | #34 | Terminal bell does not produce audible sound | RESEARCH | S |
 | 3 | #55 | Reorder sessions via keyboard | RESEARCH | M |
 | 4 | #54 | Per-session color for grid cells | RESEARCH | S |
