@@ -1,11 +1,20 @@
 package config
 
-const currentSchemaVersion = 1
+import "github.com/lucascaro/hive/internal/mux"
+
+const currentSchemaVersion = 2
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
+	if cfg.SchemaVersion < 2 {
+		// 1 → 2: the detach shortcut changed from tmux's two-step `Ctrl+B D`
+		// to a single-key combo (default `Ctrl+Q`, see #41). Re-show the
+		// pre-attach splash so existing users discover the new shortcut.
+		// This only fires once per user — the bumped SchemaVersion is
+		// persisted by MigrateAndPersist after this call.
+		cfg.HideAttachHint = false
+	}
 	if cfg.SchemaVersion < currentSchemaVersion {
-		// Future: case-by-case migration logic goes here.
 		cfg.SchemaVersion = currentSchemaVersion
 	}
 
@@ -42,5 +51,32 @@ func Migrate(cfg Config) Config {
 		cfg.Keybindings.ColorPrev = defaults.Keybindings.ColorPrev
 	}
 
+	// Default the detach key when missing. Invalid values are reported and
+	// fall back to the default in cmd/start.go's initMuxBackend so the user
+	// sees a clear stderr warning at startup; we deliberately don't silently
+	// rewrite the value here.
+	if cfg.DetachKey == "" {
+		cfg.DetachKey = mux.DefaultDetachKey
+	}
+
 	return cfg
+}
+
+// MigrateAndPersist runs Migrate and writes the result back to disk if a
+// schema upgrade was applied. This is the right entry point for interactive
+// commands (like `hive start`) that want one-shot migration side effects —
+// e.g. resetting `hide_attach_hint` after the detach key changed in v2 — to
+// be remembered across runs.
+//
+// Non-interactive one-shot commands (like `hive attach`) should call Migrate
+// directly so they don't write to the user's config file as a side effect.
+func MigrateAndPersist(cfg Config) (Config, error) {
+	needsSave := cfg.SchemaVersion < currentSchemaVersion
+	cfg = Migrate(cfg)
+	if needsSave {
+		if err := Save(cfg); err != nil {
+			return cfg, err
+		}
+	}
+	return cfg, nil
 }

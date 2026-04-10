@@ -12,20 +12,21 @@ import (
 	"golang.org/x/term"
 )
 
-// detachKey is Ctrl+Q (0x11). Pressing it while attached returns to the TUI
-// without terminating the running process.
-const detachKey = 0x11
-
 // clientAttach connects to the daemon, requests an attach for target, then
 // proxies stdin/stdout between the current terminal and the daemon.
 //
 // Protocol after the initial JSON handshake:
-//   - client → daemon: raw stdin bytes (Ctrl+Q is intercepted and not forwarded)
+//   - client → daemon: raw stdin bytes (the configured detach byte is
+//     intercepted and not forwarded)
 //   - daemon → client: raw PTY output bytes
+//
+// detachByte is the ASCII control byte that triggers detach (e.g. 0x11 for
+// Ctrl+Q). Resolved from config in cmd/start.go and threaded through the
+// backend.
 //
 // The client signals detach by half-closing its write side of the socket.
 // The daemon drains any remaining PTY output and then closes the connection.
-func clientAttach(c *daemonClient, target string) error {
+func clientAttach(c *daemonClient, target string, detachByte byte) error {
 	conn, err := c.dialRaw()
 	if err != nil {
 		return err
@@ -82,7 +83,7 @@ func clientAttach(c *daemonClient, target string) error {
 				return
 			}
 			for i := 0; i < n; i++ {
-				if buf[i] == detachKey {
+				if buf[i] == detachByte {
 					uc.CloseWrite() //nolint:errcheck
 					return
 				}

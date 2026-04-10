@@ -200,7 +200,7 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	}
 
 	header := buildSessionHeader(sess)
-	script := buildAttachScript(sess.TmuxSession, target, header, mux.DetachKey())
+	script := mux.AttachScript(target, header)
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -221,70 +221,6 @@ func RunAttach(sess SessionAttachMsg) error {
 
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 	return mux.Attach(target)
-}
-
-// statusBarOpts lists the tmux session options we override for the attach status bar.
-var statusBarOpts = []string{
-	"status",
-	"status-position",
-	"status-style",
-	"status-left",
-	"status-right",
-	"status-left-length",
-	"status-right-length",
-	"window-status-format",
-	"window-status-current-format",
-	"window-status-separator",
-}
-
-func buildAttachScript(tmuxSession, target, title, detachKey string) string {
-	sq := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
-	s := sq(tmuxSession)
-	t := sq(target)
-
-	var lines []string
-
-	lines = append(lines,
-		`printf '\033[?1049h\033[2J'`,
-		`trap "printf '\\033[?1049l'" EXIT`,
-	)
-
-	for _, opt := range statusBarOpts {
-		v := strings.ReplaceAll(opt, "-", "_")
-		lines = append(lines,
-			fmt.Sprintf("old_%s=$(tmux show-option -t %s -v %s 2>/dev/null) && had_%s=1 || had_%s=0",
-				v, s, opt, v, v))
-	}
-
-	lines = append(lines,
-		"tmux set-option -t "+s+" status on",
-		"tmux set-option -t "+s+" status-position top",
-		"tmux set-option -t "+s+" status-style 'bg=#7C3AED,fg=#F9FAFB'",
-		// The "{?pane_title, · …,}" conditional makes the separator and live
-		// title disappear cleanly when the pane has no title set, instead of
-		// rendering a dangling " · " after the static session header.
-		"tmux set-option -t "+s+" status-left "+sq(" "+title+"#{?pane_title, · #{pane_title},} "),
-		"tmux set-option -t "+s+" status-left-length 200",
-		"tmux set-option -t "+s+" status-right "+sq(" "+detachKey+": detach "),
-		"tmux set-option -t "+s+" status-right-length 40",
-		// Hide tmux's default window list — we only want our custom title and
-		// the live #{pane_title} above.  Empty formats collapse the entries;
-		// the empty separator is belt-and-suspenders for tmux 2.x.
-		"tmux set-option -t "+s+" window-status-format ''",
-		"tmux set-option -t "+s+" window-status-current-format ''",
-		"tmux set-option -t "+s+" window-status-separator ''",
-	)
-
-	lines = append(lines, "tmux attach-session -t "+t)
-
-	for _, opt := range statusBarOpts {
-		v := strings.ReplaceAll(opt, "-", "_")
-		lines = append(lines,
-			fmt.Sprintf(`if [ "$had_%s" = 1 ]; then tmux set-option -t %s %s "$old_%s"; else tmux set-option -u -t %s %s; fi`,
-				v, s, opt, v, s, opt))
-	}
-
-	return strings.Join(lines, "\n")
 }
 
 func buildSessionHeader(sess SessionAttachMsg) string {

@@ -24,7 +24,9 @@ var errNotSupported = errors.New(
 type Backend struct{}
 
 // NewBackend returns a Backend stub. EnsureRunning need not be called on Windows.
-func NewBackend(_ string) *Backend { return &Backend{} }
+// The DetachKeySpec is accepted for cross-platform call-site compatibility but
+// is unused — the native backend is not available on Windows.
+func NewBackend(_ string, _ mux.DetachKeySpec) *Backend { return &Backend{} }
 
 // IsAvailable always returns false on Windows.
 func (b *Backend) IsAvailable() bool { return false }

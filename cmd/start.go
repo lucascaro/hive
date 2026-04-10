@@ -51,7 +51,13 @@ func runStart(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	cfg = config.Migrate(cfg)
+	// MigrateAndPersist (vs. Migrate) so one-shot upgrade side effects —
+	// e.g. resetting hide_attach_hint after the detach key changed in v2 —
+	// are written back to disk and only fire once per user.
+	cfg, err = config.MigrateAndPersist(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to persist migrated config: %v\n", err)
+	}
 
 	// --native flag overrides config.
 	if startNative {
@@ -139,6 +145,14 @@ func runStart(_ *cobra.Command, _ []string) error {
 // For the native backend, this also ensures the daemon is running before
 // creating the backend client.
 func initMuxBackend(cfg config.Config) error {
+	spec, err := mux.ParseDetachKey(cfg.DetachKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"warning: invalid detach_key %q (%v); falling back to default %q\n",
+			cfg.DetachKey, err, mux.DefaultDetachKey)
+		spec, _ = mux.ParseDetachKey(mux.DefaultDetachKey)
+	}
+
 	switch cfg.Multiplexer {
 	case "native":
 		sockPath := muxnative.SockPath()
@@ -146,9 +160,9 @@ func initMuxBackend(cfg config.Config) error {
 		if err := muxnative.EnsureRunning(sockPath, logPath); err != nil {
 			return fmt.Errorf("start native mux daemon: %w", err)
 		}
-		mux.SetBackend(muxnative.NewBackend(sockPath))
+		mux.SetBackend(muxnative.NewBackend(sockPath, spec))
 	default:
-		mux.SetBackend(muxtmux.NewBackend())
+		mux.SetBackend(muxtmux.NewBackend(spec))
 	}
 	return nil
 }

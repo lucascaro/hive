@@ -10,10 +10,13 @@ import (
 	"github.com/lucascaro/hive/internal/tmux"
 )
 // Backend wraps the tmux CLI to implement mux.Backend.
-type Backend struct{}
+type Backend struct {
+	spec mux.DetachKeySpec
+}
 
-// NewBackend returns a new tmux-based Backend.
-func NewBackend() *Backend { return &Backend{} }
+// NewBackend returns a new tmux-based Backend that installs spec as the
+// in-attach detach binding via `bind-key -n` (set up by AttachScript).
+func NewBackend(spec mux.DetachKeySpec) *Backend { return &Backend{spec: spec} }
 
 func (b *Backend) IsAvailable() bool    { return tmux.IsAvailable() }
 func (b *Backend) IsServerRunning() bool { return tmux.IsServerRunning() }
@@ -77,8 +80,9 @@ func (b *Backend) GetCurrentCommand(target string) (string, error) {
 
 func (b *Backend) IsPaneDead(target string) bool { return tmux.IsPaneDead(target) }
 
-// DetachKey returns the tmux detach key description.
-func (b *Backend) DetachKey() string { return "Ctrl+B D" }
+// DetachKey returns the configured detach key in human-readable form
+// (e.g. "Ctrl+Q"). The actual binding is installed by AttachScript.
+func (b *Backend) DetachKey() string { return b.spec.Display }
 
 // UseExecAttach returns true: the tmux backend attaches by running an external
 // tmux command, which is suitable for tea.ExecProcess.
@@ -93,7 +97,12 @@ func (b *Backend) SupportsPopup() bool {
 // target. The popup fills 95 % of the terminal width and 90 % of its height.
 // If title is non-empty it is displayed in the popup border via -T.
 // It closes automatically when the attached session detaches or the process exits.
+//
+// The popup runs the shared attach script (via `sh -c`) so it picks up the
+// configured single-key detach binding and the custom Hive status bar.
 func (b *Backend) PopupAttach(target, title string) error {
+	script := b.AttachScript(target, title)
+
 	args := []string{"display-popup",
 		"-E", // close popup when command exits
 		"-w", "95%",
@@ -102,7 +111,7 @@ func (b *Backend) PopupAttach(target, title string) error {
 	if title != "" {
 		args = append(args, "-T", " "+title+" ")
 	}
-	args = append(args, "--", "tmux", "attach-session", "-t", target)
+	args = append(args, "--", "sh", "-c", script)
 	cmd := exec.Command("tmux", args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -110,14 +119,28 @@ func (b *Backend) PopupAttach(target, title string) error {
 	return cmd.Run()
 }
 
-// Attach runs "tmux attach-session -t target", giving the user direct access
-// to the tmux window. The user detaches with Ctrl+B D.
+// Attach runs the shared attach script so the headless `hive attach` CLI
+// honors the same single-key detach binding as the TUI's attach path.
+// The user detaches with the configured key (default Ctrl+Q); tmux's own
+// `Ctrl+B D` continues to work as a fallback because we add a binding
+// rather than replacing the prefix.
 func (b *Backend) Attach(target string) error {
-	cmd := exec.Command("tmux", "attach-session", "-t", target)
+	script := b.AttachScript(target, "")
+	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// sessionFromTarget extracts the session name from a tmux target string of
+// the form "session:window". When the target has no colon (already a bare
+// session name) it is returned unchanged.
+func sessionFromTarget(target string) string {
+	if i := strings.IndexByte(target, ':'); i >= 0 {
+		return target[:i]
+	}
+	return target
 }
 
 // wrapCmd wraps an agent command in a shell so "tmux detach-client" runs when

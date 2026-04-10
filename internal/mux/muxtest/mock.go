@@ -278,5 +278,5 @@ func (m *MockBackend) DetachKey() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.record("DetachKey")
-	return "Ctrl+D"
+	return "Ctrl+Q"
 }

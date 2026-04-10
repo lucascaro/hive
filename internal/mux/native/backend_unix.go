@@ -19,12 +19,17 @@ import (
 // Backend implements mux.Backend by delegating all operations to the mux daemon.
 type Backend struct {
 	client *daemonClient
+	spec   mux.DetachKeySpec
 }
 
 // NewBackend returns a new native PTY Backend connected to the daemon at sockPath.
 // Call EnsureRunning first to guarantee the daemon is up.
-func NewBackend(sockPath string) *Backend {
-	return &Backend{client: newDaemonClient(sockPath)}
+//
+// spec is the configured detach key; the matching control byte is intercepted
+// in the stdin reader (see clientAttach in attach_unix.go), and spec.Display
+// is returned from DetachKey() for help screens and the splash overlay.
+func NewBackend(sockPath string, spec mux.DetachKeySpec) *Backend {
+	return &Backend{client: newDaemonClient(sockPath), spec: spec}
 }
 
 // IsAvailable always returns true — no external binary needed.
@@ -131,11 +136,11 @@ func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 func (b *Backend) IsPaneDead(_ string) bool { return false }
 
 func (b *Backend) Attach(target string) error {
-	return clientAttach(b.client, target)
+	return clientAttach(b.client, target, b.spec.Byte)
 }
 
-// DetachKey returns the native backend detach key description.
-func (b *Backend) DetachKey() string { return "Ctrl+Q" }
+// DetachKey returns the configured detach key description (e.g. "Ctrl+Q").
+func (b *Backend) DetachKey() string { return b.spec.Display }
 
 // UseExecAttach returns false: the native backend attaches via Go-level socket
 // I/O, not an external command, so tea.ExecProcess is not applicable.
