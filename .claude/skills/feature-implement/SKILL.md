@@ -27,18 +27,19 @@ Implement feature **#$ARGUMENTS** (or the next feature in IMPLEMENT stage if no 
 7. **Fill in Implementation Notes** in the feature file:
    - Any deviations from the plan and why
    - Decisions made during coding
-8. **Commit** with a descriptive message referencing `Fixes #<issue-number>`
-9. **Offer to open a PR:** Ask the user if they want to push and create a PR. If yes:
-   - `git push -u origin <branch>`
-   - Create PR with `gh pr create` referencing the issue
-   - Update the feature file with the PR link
-   - Update GitHub labels: `gh issue edit <number> --remove-label planned --add-label implementing`
+8. **Mark feature as done** (these changes go in the PR so they land in main on merge):
+   - Set Stage to `DONE` in the feature file
+   - Move feature file from `features/active/` to `features/completed/`
+   - Update `features/BACKLOG.md`: remove the feature row from the Active table, renumber remaining rows sequentially, and add it to the Completed table with PR link and merge date
+9. **Commit** with a descriptive message referencing `Fixes #<issue-number>`
+10. **Offer to open a PR:** Ask the user if they want to push and create a PR. If yes:
+    - `git push -u origin <branch>`
+    - Create PR with `gh pr create` referencing the issue
+    - Update GitHub labels: `gh issue edit <number> --remove-label planned --add-label implementing`
 
-## After PR Merge (run manually or remind the user)
+## Already-Merged Detection
 
-1. Move feature file from `features/active/` to `features/completed/`
-2. Update `features/BACKLOG.md`: remove from Active table, add to Completed table with PR link and merge date
-3. The GitHub issue will auto-close if the PR used `Fixes #<number>`
+Before starting implementation, check if the feature already has a PR link in its file. If it does, check if that PR is merged (`gh pr view <number> --json state`). If merged, run step 8 on the current branch (main), commit, and skip the rest.
 
 ## Rules
 - Do not skip tests — all checks must pass before committing

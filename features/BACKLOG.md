@@ -7,10 +7,9 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #68 | Improve selected session visibility in grid view | IMPLEMENT | S |
-| 2 | #69 | Display changelog since last version on open | RESEARCH | M |
-| 3 | #37 | Code refactor: remove bloat | RESEARCH | L |
-| 4 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
+| 1 | #69 | Display changelog since last version on open | RESEARCH | M |
+| 2 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 3 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
 ## Completed
 
@@ -40,3 +39,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #55 | Reorder sessions via keyboard | #67 | 2026-04-11 |
 | #40 | Ability to reorder sessions within a project | — | 2026-04-11 (dup of #55) |
 | #54 | Per-session color for grid cells | #70 | 2026-04-11 |
+| #68 | Improve selected session visibility in grid view | #71 | 2026-04-11 |
