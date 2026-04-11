@@ -26,6 +26,8 @@
 | `r` | Rename selected session or team |
 | `x` / `d` | Kill selected session (with confirmation) |
 | `D` | Kill entire team (with confirmation) |
+| `c` / `C` | Cycle project color forward / backward |
+| `v` / `V` | Cycle session color forward / backward |
 
 ## Pane Focus
 

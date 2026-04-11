@@ -56,6 +56,7 @@ type SidebarItem struct {
 	IsWorktree     bool   // true if the session runs in a git worktree
 	WorktreeBranch string // branch name for worktree sessions
 	ProjectColor   string // hex color of the parent project
+	SessionColor   string // hex color of the session (empty = inherit project)
 }
 
 // Sidebar manages the project/team/session tree.
@@ -130,6 +131,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 					IsWorktree:     sess.WorktreePath != "",
 					WorktreeBranch: sess.WorktreeBranch,
 					ProjectColor:   p.Color,
+					SessionColor:   sess.Color,
 				})
 			}
 		}
@@ -150,6 +152,7 @@ func (s *Sidebar) Rebuild(appState *state.AppState) {
 				IsWorktree:     sess.WorktreePath != "",
 				WorktreeBranch: sess.WorktreeBranch,
 				ProjectColor:   p.Color,
+				SessionColor:   sess.Color,
 			})
 		}
 	}
@@ -386,11 +389,29 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		if s.bellPending[item.SessionID] {
 			bellBadge = " " + styles.BellBadge
 		}
-		label = fmt.Sprintf("%s%s %s %s%s%s", rolePrefix, dot, item.Label, badge, worktreeBadge, bellBadge)
+		// When the session has its own color, render the title with a
+		// gradient foreground (project → session color) so it's always
+		// visible, even when selected.
+		titlePart := item.Label
+		if item.SessionColor != "" && item.SessionColor != pcolor {
+			if selected {
+				titlePart = styles.GradientFg(item.Label, pcolor, item.SessionColor, styles.ColorSelected, true, false)
+			} else {
+				titlePart = styles.GradientFg(item.Label, pcolor, item.SessionColor, lipgloss.Color(""), false, false)
+			}
+		}
+		label = fmt.Sprintf("%s%s %s %s%s%s", rolePrefix, dot, titlePart, badge, worktreeBadge, bellBadge)
 		if active {
 			label += " ←"
 		}
 		bar := styles.ProjectColorBar(pcolor)
+		if item.SessionColor != "" && item.SessionColor != pcolor {
+			// Title already has gradient styling; render rest with base style.
+			if selected {
+				return bar + styles.SessionSelectedStyle.Width(width-1).Render(indent + label)
+			}
+			return bar + styles.SessionStyle.Width(width-1).Render(indent + label)
+		}
 		if selected {
 			return bar + styles.SessionSelectedStyle.Width(width-1).Render(indent + label)
 		}

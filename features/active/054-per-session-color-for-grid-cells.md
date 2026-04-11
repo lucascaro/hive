@@ -128,4 +128,4 @@ Implemented exactly as planned (Option A). No deviations.
 - Session color is used as the border color for unselected grid cells; selected cells keep the purple accent border.
 - Golden files updated for the new hint line in the grid footer.
 
-- **PR:** —
+- **PR:** #70

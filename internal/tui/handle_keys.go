@@ -385,6 +385,18 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cycleProjectColor(projectID, dir)
 		return m, nil
 
+	case msg.String() == "v", msg.String() == "V":
+		sel := m.sidebar.Selected()
+		if sel == nil || sel.SessionID == "" {
+			return m, nil
+		}
+		dir := +1
+		if msg.String() == "V" {
+			dir = -1
+		}
+		m.cycleSessionColor(sel.SessionID, dir)
+		return m, nil
+
 	case key.Matches(msg, m.keys.KillSession):
 		sel := m.sidebar.Selected()
 		if sel != nil && sel.Kind == components.KindProject {

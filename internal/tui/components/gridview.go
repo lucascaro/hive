@@ -234,9 +234,6 @@ func (gv *GridView) View() string {
 
 func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) string {
 	borderColor := styles.ColorBorder
-	if sc, ok := gv.sessionColors[sess.ID]; ok && sc != "" {
-		borderColor = lipgloss.Color(sc)
-	}
 	if selected {
 		borderColor = styles.ColorAccent
 	}
@@ -300,16 +297,30 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	}
 
 	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	titlePart := bgStyle.Bold(selected).Render(titleStr)
-	suffixPart := bgStyle.Render(suffix)
-	content := prefixStr + titlePart + suffixPart
-	// Pad with project-colored spaces to fill the full width, ensuring the
-	// background extends to the right edge even if inner ANSI resets it.
-	contentW := ansi.StringWidth(content)
-	if pad := innerW - contentW; pad > 0 {
-		content += bgStyle.Render(strings.Repeat(" ", pad))
+	// Build the text portion (title + suffix + padding) that follows the prefix.
+	textPortion := titleStr + suffix
+	textPortionW := ansi.StringWidth(prefixStr) // already measured
+	actualTextW := ansi.StringWidth(textPortion)
+	remainW := innerW - textPortionW
+	if pad := remainW - actualTextW; pad > 0 {
+		textPortion += strings.Repeat(" ", pad)
 	}
-	headerLine := content
+	// Render with gradient if the session has its own color; flat otherwise.
+	sessColor := gv.sessionColors[sess.ID]
+	var headerContent string
+	if sessColor != "" && sessColor != projColor {
+		headerContent = prefixStr + styles.GradientBg(textPortion, projColor, sessColor, selected)
+	} else {
+		titlePart := bgStyle.Bold(selected).Render(titleStr)
+		suffixPart := bgStyle.Render(suffix)
+		flat := titlePart + suffixPart
+		flatW := ansi.StringWidth(prefixStr + flat)
+		if pad := innerW - flatW; pad > 0 {
+			flat += bgStyle.Render(strings.Repeat(" ", pad))
+		}
+		headerContent = prefixStr + flat
+	}
+	headerLine := headerContent
 
 	// Optional pane-title subtitle: only render when the cell is tall enough
 	// to spare a row without crushing the content preview, and when the agent

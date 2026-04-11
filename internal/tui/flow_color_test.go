@@ -135,6 +135,30 @@ func TestFlow_ProjectColorCycle_UnchangedInGrid(t *testing.T) {
 	}
 }
 
+// TestFlow_SessionColorCycle_Sidebar tests pressing "v" in sidebar view.
+func TestFlow_SessionColorCycle_Sidebar(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Focus a session in the sidebar (sess-1 is active by default).
+	sess := state.FindSession(&f.model.appState, "sess-1")
+	if sess == nil {
+		t.Fatal("session sess-1 not found")
+	}
+	initialColor := sess.Color
+
+	// Press "v" to cycle session color in sidebar.
+	f.SendKey("v")
+
+	sess = state.FindSession(&f.model.appState, "sess-1")
+	if sess.Color == initialColor {
+		t.Error("pressing 'v' in sidebar should change the session color")
+	}
+	if sess.Color == "" {
+		t.Error("session color should not be empty after cycling")
+	}
+}
+
 // TestFlow_ColorCycle_GridView tests color cycling in grid view.
 func TestFlow_ColorCycle_GridView(t *testing.T) {
 	m, mock := testFlowModel(t)

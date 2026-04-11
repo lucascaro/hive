@@ -219,6 +219,95 @@ func contrastRatio(l1, l2 float64) float64 {
 	return (l1 + 0.05) / (l2 + 0.05)
 }
 
+// parseHexRGB extracts r, g, b components (0–255) from a "#RRGGBB" string.
+func parseHexRGB(hex string) (uint8, uint8, uint8, bool) {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0, 0, 0, false
+	}
+	r, err1 := strconv.ParseUint(hex[0:2], 16, 8)
+	g, err2 := strconv.ParseUint(hex[2:4], 16, 8)
+	b, err3 := strconv.ParseUint(hex[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return 0, 0, 0, false
+	}
+	return uint8(r), uint8(g), uint8(b), true
+}
+
+// lerpColor linearly interpolates between two hex colors at t ∈ [0,1].
+func lerpColor(from, to string, t float64) string {
+	r1, g1, b1, ok1 := parseHexRGB(from)
+	r2, g2, b2, ok2 := parseHexRGB(to)
+	if !ok1 || !ok2 {
+		return from
+	}
+	lerp := func(a, b uint8) uint8 {
+		return uint8(float64(a) + t*(float64(b)-float64(a)) + 0.5)
+	}
+	return fmt.Sprintf("#%02X%02X%02X", lerp(r1, r2), lerp(g1, g2), lerp(b1, b2))
+}
+
+// GradientBg renders text with a background that transitions from colorA to
+// colorB across the string width. Each rune gets an interpolated background
+// and the appropriate contrast foreground. If both colors are the same or the
+// string is empty, falls back to a flat background.
+func GradientBg(text, colorA, colorB string, bold bool) string {
+	if colorA == colorB || text == "" {
+		fg := ContrastForeground(colorA)
+		return lipgloss.NewStyle().
+			Background(lipgloss.Color(colorA)).
+			Foreground(fg).
+			Bold(bold).
+			Render(text)
+	}
+	runes := []rune(text)
+	n := len(runes)
+	var sb strings.Builder
+	for i, r := range runes {
+		t := 0.0
+		if n > 1 {
+			t = float64(i) / float64(n-1)
+		}
+		bg := lerpColor(colorA, colorB, t)
+		fg := ContrastForeground(bg)
+		sb.WriteString(lipgloss.NewStyle().
+			Background(lipgloss.Color(bg)).
+			Foreground(fg).
+			Bold(bold).
+			Render(string(r)))
+	}
+	return sb.String()
+}
+
+// GradientFg renders text with a foreground color gradient from colorA to
+// colorB. Optionally applies a background color. If both colors are the same,
+// falls back to flat foreground.
+func GradientFg(text, colorA, colorB string, bg lipgloss.Color, hasBg, bold bool) string {
+	if colorA == colorB || text == "" {
+		st := lipgloss.NewStyle().Foreground(lipgloss.Color(colorA)).Bold(bold)
+		if hasBg {
+			st = st.Background(bg)
+		}
+		return st.Render(text)
+	}
+	runes := []rune(text)
+	n := len(runes)
+	var sb strings.Builder
+	for i, r := range runes {
+		t := 0.0
+		if n > 1 {
+			t = float64(i) / float64(n-1)
+		}
+		fg := lerpColor(colorA, colorB, t)
+		st := lipgloss.NewStyle().Foreground(lipgloss.Color(fg)).Bold(bold)
+		if hasBg {
+			st = st.Background(bg)
+		}
+		sb.WriteString(st.Render(string(r)))
+	}
+	return sb.String()
+}
+
 // relativeLuminance computes sRGB relative luminance from a hex color string.
 func relativeLuminance(hex string) float64 {
 	hex = strings.TrimPrefix(hex, "#")
