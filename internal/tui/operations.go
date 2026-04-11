@@ -50,6 +50,62 @@ func (m *Model) cycleProjectColor(projectID string, direction int) {
 	m.sidebar.Rebuild(&m.appState)
 }
 
+// cycleSessionColor changes a session's color to the next/prev free palette color,
+// skipping colors used by sibling sessions in the same project.
+func (m *Model) cycleSessionColor(sessionID string, direction int) {
+	sess := state.FindSession(&m.appState, sessionID)
+	if sess == nil {
+		return
+	}
+	proj := state.FindProject(&m.appState, sess.ProjectID)
+	if proj == nil {
+		return
+	}
+	usedByOthers := m.siblingSessionColors(sess.ProjectID, sessionID)
+	// Also exclude the project color so cycling never lands on it.
+	usedByOthers = append(usedByOthers, proj.Color)
+	current := sess.Color
+	if current == "" {
+		current = proj.Color
+	}
+	newColor := styles.CycleColor(current, direction, usedByOthers)
+	state.SetSessionColor(&m.appState, sessionID, newColor)
+	m.commitState()
+	m.sidebar.Rebuild(&m.appState)
+}
+
+// siblingSessionColors collects colors used by other sessions in the same project.
+func (m *Model) siblingSessionColors(projectID, excludeSessionID string) []string {
+	proj := state.FindProject(&m.appState, projectID)
+	if proj == nil {
+		return nil
+	}
+	var colors []string
+	for _, s := range proj.Sessions {
+		if s.ID != excludeSessionID && s.Color != "" {
+			colors = append(colors, s.Color)
+		}
+	}
+	for _, t := range proj.Teams {
+		for _, s := range t.Sessions {
+			if s.ID != excludeSessionID && s.Color != "" {
+				colors = append(colors, s.Color)
+			}
+		}
+	}
+	return colors
+}
+
+// autoAssignSessionColor assigns a color to a newly created session.
+func (m *Model) autoAssignSessionColor(sess *state.Session) {
+	proj := state.FindProject(&m.appState, sess.ProjectID)
+	if proj == nil {
+		return
+	}
+	usedColors := m.siblingSessionColors(sess.ProjectID, sess.ID)
+	sess.Color = styles.NextFreeSessionColor(proj.Color, usedColors)
+}
+
 func (m *Model) createSessionWithWorktree(projectID, agentTypeStr string, agentCmd []string, branch string) tea.Cmd {
 	// Find project directory.
 	proj := state.FindProject(&m.appState, projectID)
@@ -113,6 +169,7 @@ func (m *Model) spawnWorktreeSession(proj *state.Project, agentTypeStr string, a
 	_, sess := state.CreateSession(&m.appState, proj.ID, sessionTitle, agentType, agentCmd, worktreePath, muxSess, windowIdx)
 	sess.WorktreePath = worktreePath
 	sess.WorktreeBranch = branch
+	m.autoAssignSessionColor(sess)
 	state.RecordAgentUsage(&m.appState, agentTypeStr)
 	m.commitState()
 
@@ -167,6 +224,7 @@ func (m *Model) createSession(projectID, agentTypeStr string, agentCmd []string)
 	}
 
 	_, sess := state.CreateSession(&m.appState, projectID, sessionTitle, agentType, agentCmd, workDir, muxSess, windowIdx)
+	m.autoAssignSessionColor(sess)
 	state.RecordAgentUsage(&m.appState, agentTypeStr)
 	m.commitState()
 
@@ -228,6 +286,7 @@ func (m *Model) addTeamSession(proj *state.Project, team *state.Team, role state
 	}
 
 	_, sess := state.AddTeamSession(&m.appState, proj.ID, team.ID, role, title, agentType, agentCmd, workDir, muxSess, windowIdx)
+	m.autoAssignSessionColor(sess)
 	state.RecordAgentUsage(&m.appState, string(agentType))
 	m.fireHook(state.HookEvent{
 		Name:         state.EventTeamMemberAdd,

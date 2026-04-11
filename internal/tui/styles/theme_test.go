@@ -3,6 +3,8 @@ package styles
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestNextProjectColor_Cycles(t *testing.T) {
@@ -28,6 +30,98 @@ func TestNextFreeColor_AllUsedFallback(t *testing.T) {
 	got := NextFreeColor(ProjectPalette)
 	if got == "" {
 		t.Error("NextFreeColor with all used returned empty")
+	}
+}
+
+func TestNextFreeSessionColor_SkipsProjectAndUsed(t *testing.T) {
+	projColor := ProjectPalette[0]
+	usedColors := []string{ProjectPalette[1]}
+	got := NextFreeSessionColor(projColor, usedColors)
+	if got == projColor {
+		t.Errorf("NextFreeSessionColor should skip project color %q, got %q", projColor, got)
+	}
+	if got == ProjectPalette[1] {
+		t.Errorf("NextFreeSessionColor should skip used color %q, got %q", ProjectPalette[1], got)
+	}
+	if got != ProjectPalette[2] {
+		t.Errorf("NextFreeSessionColor = %q, want %q", got, ProjectPalette[2])
+	}
+}
+
+func TestNextFreeSessionColor_AllUsedFallback(t *testing.T) {
+	got := NextFreeSessionColor(ProjectPalette[0], ProjectPalette[1:])
+	if got == "" {
+		t.Error("NextFreeSessionColor with all used should still return a color")
+	}
+}
+
+func TestNextFreeSessionColor_EmptyUsed(t *testing.T) {
+	projColor := ProjectPalette[0]
+	got := NextFreeSessionColor(projColor, nil)
+	// Should return first palette color that isn't the project color.
+	if got == projColor {
+		t.Errorf("NextFreeSessionColor should skip project color, got %q", got)
+	}
+	if got != ProjectPalette[1] {
+		t.Errorf("NextFreeSessionColor = %q, want %q", got, ProjectPalette[1])
+	}
+}
+
+func TestLerpColor_Midpoint(t *testing.T) {
+	// Lerp between black and white at t=0.5 should be gray.
+	got := lerpColor("#000000", "#FFFFFF", 0.5)
+	if got != "#808080" {
+		t.Errorf("lerpColor midpoint = %q, want #808080", got)
+	}
+}
+
+func TestLerpColor_Endpoints(t *testing.T) {
+	got0 := lerpColor("#FF0000", "#0000FF", 0.0)
+	if got0 != "#FF0000" {
+		t.Errorf("lerpColor t=0 = %q, want #FF0000", got0)
+	}
+	got1 := lerpColor("#FF0000", "#0000FF", 1.0)
+	if got1 != "#0000FF" {
+		t.Errorf("lerpColor t=1 = %q, want #0000FF", got1)
+	}
+}
+
+func TestGradientBg_SameColor(t *testing.T) {
+	got := GradientBg("abc", "#FF0000", "#FF0000", false)
+	if got == "" {
+		t.Error("GradientBg with same color returned empty")
+	}
+}
+
+func TestGradientBg_DifferentColors(t *testing.T) {
+	got := GradientBg("abc", "#FF0000", "#0000FF", false)
+	if got == "" {
+		t.Error("GradientBg returned empty")
+	}
+	// Should contain the text characters.
+	if !strings.Contains(got, "a") || !strings.Contains(got, "c") {
+		t.Errorf("GradientBg output should contain text characters, got %q", got)
+	}
+}
+
+func TestGradientBg_Empty(t *testing.T) {
+	got := GradientBg("", "#FF0000", "#0000FF", false)
+	if got != "" {
+		t.Errorf("GradientBg with empty text should return empty, got %q", got)
+	}
+}
+
+func TestGradientFg_SameColor(t *testing.T) {
+	got := GradientFg("abc", "#FF0000", "#FF0000", lipgloss.Color(""), false, false)
+	if got == "" {
+		t.Error("GradientFg with same color returned empty")
+	}
+}
+
+func TestGradientFg_DifferentColors(t *testing.T) {
+	got := GradientFg("abc", "#FF0000", "#0000FF", lipgloss.Color(""), false, false)
+	if got == "" {
+		t.Error("GradientFg returned empty")
 	}
 }
 

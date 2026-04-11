@@ -119,6 +119,13 @@ Use Option A from research: project color stays as the header background, sessio
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+Implemented exactly as planned (Option A). No deviations.
 
-- **PR:** —
+- Session `Color` field added to the `Session` struct with `json:"color,omitempty"` for backward compatibility.
+- `NextFreeSessionColor` skips both the project color and sibling session colors.
+- `v`/`V` keybinds cycle session color forward/backward in grid view; `c`/`C` continues to cycle project color (unchanged).
+- Auto-assign happens in `createSession`, `createSessionWithWorktree`, and `addTeamSession`.
+- Session color is used as the border color for unselected grid cells; selected cells keep the purple accent border.
+- Golden files updated for the new hint line in the grid footer.
+
+- **PR:** #70

@@ -179,6 +179,27 @@ func (m *Model) gridProjectColors() map[string]string {
 	return colors
 }
 
+// gridSessionColors builds a sessionID→hex color map from sessions that have
+// a non-empty Color field.
+func (m *Model) gridSessionColors() map[string]string {
+	colors := make(map[string]string)
+	for _, p := range m.appState.Projects {
+		for _, s := range p.Sessions {
+			if s.Color != "" {
+				colors[s.ID] = s.Color
+			}
+		}
+		for _, t := range p.Teams {
+			for _, s := range t.Sessions {
+				if s.Color != "" {
+					colors[s.ID] = s.Color
+				}
+			}
+		}
+	}
+	return colors
+}
+
 // projectNameByID returns the display name for a project ID, or "" if not found.
 func (m *Model) projectNameByID(id string) string {
 	if p := state.FindProject(&m.appState, id); p != nil {

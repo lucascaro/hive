@@ -130,6 +130,7 @@ type Session struct {
 	TitleSource    TitleSource       `json:"title_source"`
 	AgentType      AgentType         `json:"agent_type"`
 	AgentCmd       []string          `json:"agent_cmd"`
+	Color          string            `json:"color,omitempty"`
 	WorkDir        string            `json:"work_dir"`
 	WorktreePath   string            `json:"worktree_path,omitempty"`   // non-empty = session runs in a git worktree
 	WorktreeBranch string            `json:"worktree_branch,omitempty"` // branch name for the worktree

@@ -37,4 +37,4 @@
 │                                                          ││                                                          │
 ╰──────────────────────────────────────────────────────────╯╰──────────────────────────────────────────────────────────╯
 ○ idle  ● working  ◉ waiting  ✕ dead                                                                                    
-←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   G: all   esc/g/q: exit      
+←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   v/V: session color   G: all 

@@ -54,6 +54,7 @@ type GridView struct {
 	contents      map[string]string
 	projectNames  map[string]string // projectID → display name
 	projectColors map[string]string // projectID → hex color
+	sessionColors map[string]string // sessionID → hex color
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
 }
 
@@ -86,6 +87,11 @@ func (gv *GridView) SetProjectNames(names map[string]string) {
 // SetProjectColors provides a projectID→hex color lookup used in cell headers.
 func (gv *GridView) SetProjectColors(colors map[string]string) {
 	gv.projectColors = colors
+}
+
+// SetSessionColors provides a sessionID→hex color lookup used for cell borders.
+func (gv *GridView) SetSessionColors(colors map[string]string) {
+	gv.sessionColors = colors
 }
 
 // SetPaneTitles provides a target→live pane title lookup used to render an
@@ -211,7 +217,7 @@ func (gv *GridView) View() string {
 	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
 	// physical terminal line-wrap even though logical line count is correct.
 	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
-	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   G: all   esc/g/q: exit"), gv.Width, "")
+	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   v/V: session color   G: all   esc/g/q: exit"), gv.Width, "")
 	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave
@@ -291,16 +297,30 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	}
 
 	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	titlePart := bgStyle.Bold(selected).Render(titleStr)
-	suffixPart := bgStyle.Render(suffix)
-	content := prefixStr + titlePart + suffixPart
-	// Pad with project-colored spaces to fill the full width, ensuring the
-	// background extends to the right edge even if inner ANSI resets it.
-	contentW := ansi.StringWidth(content)
-	if pad := innerW - contentW; pad > 0 {
-		content += bgStyle.Render(strings.Repeat(" ", pad))
+	// Build the text portion (title + suffix + padding) that follows the prefix.
+	textPortion := titleStr + suffix
+	textPortionW := ansi.StringWidth(prefixStr) // already measured
+	actualTextW := ansi.StringWidth(textPortion)
+	remainW := innerW - textPortionW
+	if pad := remainW - actualTextW; pad > 0 {
+		textPortion += strings.Repeat(" ", pad)
 	}
-	headerLine := content
+	// Render with gradient if the session has its own color; flat otherwise.
+	sessColor := gv.sessionColors[sess.ID]
+	var headerContent string
+	if sessColor != "" && sessColor != projColor {
+		headerContent = prefixStr + styles.GradientBg(textPortion, projColor, sessColor, selected)
+	} else {
+		titlePart := bgStyle.Bold(selected).Render(titleStr)
+		suffixPart := bgStyle.Render(suffix)
+		flat := titlePart + suffixPart
+		flatW := ansi.StringWidth(prefixStr + flat)
+		if pad := innerW - flatW; pad > 0 {
+			flat += bgStyle.Render(strings.Repeat(" ", pad))
+		}
+		headerContent = prefixStr + flat
+	}
+	headerLine := headerContent
 
 	// Optional pane-title subtitle: only render when the cell is tall enough
 	// to spare a row without crushing the content preview, and when the agent
