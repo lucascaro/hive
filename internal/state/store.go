@@ -192,6 +192,15 @@ func SetProjectColor(state *AppState, projectID, color string) *AppState {
 	return state
 }
 
+// SetSessionColor sets the color of a session (standalone or team).
+func SetSessionColor(state *AppState, sessionID, color string) *AppState {
+	sess := findSession(state, sessionID)
+	if sess != nil {
+		sess.Color = color
+	}
+	return state
+}
+
 // ToggleProjectCollapsed toggles the collapsed state of a project in the sidebar.
 func ToggleProjectCollapsed(state *AppState, projectID string) *AppState {
 	for _, p := range state.Projects {

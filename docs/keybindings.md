@@ -45,6 +45,8 @@
 | `W` | New worktree session in the selected session's project |
 | `x` | Kill selected session (with confirmation) |
 | `r` | Rename selected session |
+| `c` / `C` | Cycle project color forward / backward |
+| `v` / `V` | Cycle session color forward / backward |
 | `G` | Switch to all-projects view (while grid is open) |
 | `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
 | `Shift+→` / `Shift+↓` | Move selected session right (later) in its group |

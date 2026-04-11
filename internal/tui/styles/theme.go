@@ -150,6 +150,24 @@ func NextFreeColor(usedColors []string) string {
 	return NextProjectColor(len(usedColors))
 }
 
+// NextFreeSessionColor returns the first palette color not in usedColors and
+// not equal to projectColor. This ensures session colors differ from each other
+// and from their parent project's color.
+func NextFreeSessionColor(projectColor string, usedColors []string) string {
+	used := make(map[string]bool, len(usedColors)+1)
+	used[strings.ToUpper(projectColor)] = true
+	for _, c := range usedColors {
+		used[strings.ToUpper(c)] = true
+	}
+	for _, c := range ProjectPalette {
+		if !used[strings.ToUpper(c)] {
+			return c
+		}
+	}
+	// All palette colors are taken; fall back to cycling by count.
+	return NextProjectColor(len(usedColors))
+}
+
 // CycleColor returns the next (direction=+1) or previous (direction=-1) palette
 // color relative to the current color, skipping colors in usedByOthers.
 func CycleColor(current string, direction int, usedByOthers []string) string {

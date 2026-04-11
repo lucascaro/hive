@@ -58,6 +58,83 @@ func TestFlow_ColorCycle_SkipsOtherProjectColors(t *testing.T) {
 	}
 }
 
+// TestFlow_SessionColorCycle_GridView tests pressing "v" to cycle a session's color.
+func TestFlow_SessionColorCycle_GridView(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Open grid view.
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	sess := f.model.gridView.Selected()
+	if sess == nil {
+		t.Fatal("no session selected in grid")
+	}
+	initialColor := sess.Color
+
+	// Press "v" to cycle session color.
+	f.SendKey("v")
+
+	sess = state.FindSession(&f.model.appState, sess.ID)
+	if sess.Color == initialColor {
+		t.Error("pressing 'v' should change the session color")
+	}
+	if sess.Color == "" {
+		t.Error("session color should not be empty after cycling")
+	}
+}
+
+// TestFlow_SessionColorCyclePrev_GridView tests pressing "V" to cycle backward.
+func TestFlow_SessionColorCyclePrev_GridView(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Open grid view.
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	sess := f.model.gridView.Selected()
+	if sess == nil {
+		t.Fatal("no session selected in grid")
+	}
+
+	// Press "v" then "V" — should cycle forward then backward back to the same color.
+	f.SendKey("v")
+	colorAfterForward := state.FindSession(&f.model.appState, sess.ID).Color
+
+	f.SendKey("V")
+	colorAfterBackward := state.FindSession(&f.model.appState, sess.ID).Color
+
+	if colorAfterBackward == colorAfterForward {
+		t.Error("pressing 'V' should change color from the forward-cycled value")
+	}
+}
+
+// TestFlow_ProjectColorCycle_UnchangedInGrid tests that "c" still cycles project color.
+func TestFlow_ProjectColorCycle_UnchangedInGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	sess := f.model.gridView.Selected()
+	if sess == nil {
+		t.Fatal("no session selected in grid")
+	}
+	proj := state.FindProject(&f.model.appState, sess.ProjectID)
+	initialProjColor := proj.Color
+
+	// Press "c" — should cycle project color, not session color.
+	f.SendKey("c")
+
+	proj = state.FindProject(&f.model.appState, sess.ProjectID)
+	if proj.Color == initialProjColor {
+		t.Error("pressing 'c' in grid view should still change the project color")
+	}
+}
+
 // TestFlow_ColorCycle_GridView tests color cycling in grid view.
 func TestFlow_ColorCycle_GridView(t *testing.T) {
 	m, mock := testFlowModel(t)

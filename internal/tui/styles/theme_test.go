@@ -31,6 +31,40 @@ func TestNextFreeColor_AllUsedFallback(t *testing.T) {
 	}
 }
 
+func TestNextFreeSessionColor_SkipsProjectAndUsed(t *testing.T) {
+	projColor := ProjectPalette[0]
+	usedColors := []string{ProjectPalette[1]}
+	got := NextFreeSessionColor(projColor, usedColors)
+	if got == projColor {
+		t.Errorf("NextFreeSessionColor should skip project color %q, got %q", projColor, got)
+	}
+	if got == ProjectPalette[1] {
+		t.Errorf("NextFreeSessionColor should skip used color %q, got %q", ProjectPalette[1], got)
+	}
+	if got != ProjectPalette[2] {
+		t.Errorf("NextFreeSessionColor = %q, want %q", got, ProjectPalette[2])
+	}
+}
+
+func TestNextFreeSessionColor_AllUsedFallback(t *testing.T) {
+	got := NextFreeSessionColor(ProjectPalette[0], ProjectPalette[1:])
+	if got == "" {
+		t.Error("NextFreeSessionColor with all used should still return a color")
+	}
+}
+
+func TestNextFreeSessionColor_EmptyUsed(t *testing.T) {
+	projColor := ProjectPalette[0]
+	got := NextFreeSessionColor(projColor, nil)
+	// Should return first palette color that isn't the project color.
+	if got == projColor {
+		t.Errorf("NextFreeSessionColor should skip project color, got %q", got)
+	}
+	if got != ProjectPalette[1] {
+		t.Errorf("NextFreeSessionColor = %q, want %q", got, ProjectPalette[1])
+	}
+}
+
 func TestCycleColor_Forward(t *testing.T) {
 	got := CycleColor(ProjectPalette[0], +1, nil)
 	if got != ProjectPalette[1] {

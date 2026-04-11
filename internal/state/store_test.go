@@ -253,6 +253,43 @@ func TestSetProjectColor_UnknownID(t *testing.T) {
 	}
 }
 
+// --- SetSessionColor ---
+
+func TestSetSessionColor_Standalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "#FF0000", "")
+	s, sess := CreateSession(s, p.ID, "s1", AgentClaude, nil, "/work", "tmux", 0)
+	if sess.Color != "" {
+		t.Fatalf("initial session color = %q, want empty", sess.Color)
+	}
+	s = SetSessionColor(s, sess.ID, "#00FF00")
+	if sess.Color != "#00FF00" {
+		t.Errorf("after SetSessionColor: color = %q, want #00FF00", sess.Color)
+	}
+}
+
+func TestSetSessionColor_TeamSession(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "#FF0000", "")
+	s, team := CreateTeam(s, p.ID, "team1", "goal", "/work")
+	s, sess := AddTeamSession(s, p.ID, team.ID, RoleWorker, "w1", AgentClaude, nil, "/work", "tmux", 0)
+	s = SetSessionColor(s, sess.ID, "#0000FF")
+	if sess.Color != "#0000FF" {
+		t.Errorf("team session color = %q, want #0000FF", sess.Color)
+	}
+}
+
+func TestSetSessionColor_UnknownID(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "#FF0000", "")
+	s, sess := CreateSession(s, p.ID, "s1", AgentClaude, nil, "/work", "tmux", 0)
+	// Should not panic on unknown ID.
+	s = SetSessionColor(s, "nonexistent", "#00FF00")
+	if sess.Color != "" {
+		t.Error("SetSessionColor with unknown ID should not modify existing sessions")
+	}
+}
+
 // --- ToggleProjectCollapsed ---
 
 func TestToggleProjectCollapsed(t *testing.T) {

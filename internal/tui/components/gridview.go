@@ -54,6 +54,7 @@ type GridView struct {
 	contents      map[string]string
 	projectNames  map[string]string // projectID → display name
 	projectColors map[string]string // projectID → hex color
+	sessionColors map[string]string // sessionID → hex color
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
 }
 
@@ -86,6 +87,11 @@ func (gv *GridView) SetProjectNames(names map[string]string) {
 // SetProjectColors provides a projectID→hex color lookup used in cell headers.
 func (gv *GridView) SetProjectColors(colors map[string]string) {
 	gv.projectColors = colors
+}
+
+// SetSessionColors provides a sessionID→hex color lookup used for cell borders.
+func (gv *GridView) SetSessionColors(colors map[string]string) {
+	gv.sessionColors = colors
 }
 
 // SetPaneTitles provides a target→live pane title lookup used to render an
@@ -211,7 +217,7 @@ func (gv *GridView) View() string {
 	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
 	// physical terminal line-wrap even though logical line count is correct.
 	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
-	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   G: all   esc/g/q: exit"), gv.Width, "")
+	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   v/V: session color   G: all   esc/g/q: exit"), gv.Width, "")
 	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave
@@ -228,6 +234,9 @@ func (gv *GridView) View() string {
 
 func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) string {
 	borderColor := styles.ColorBorder
+	if sc, ok := gv.sessionColors[sess.ID]; ok && sc != "" {
+		borderColor = lipgloss.Color(sc)
+	}
 	if selected {
 		borderColor = styles.ColorAccent
 	}

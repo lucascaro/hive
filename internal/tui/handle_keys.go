@@ -84,6 +84,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
 				m.gridView.SetProjectNames(m.gridProjectNames())
 				m.gridView.SetProjectColors(m.gridProjectColors())
+				m.gridView.SetSessionColors(m.gridSessionColors())
 				m.gridView.SyncCursor(sess.ID)
 			}
 		}
@@ -96,6 +97,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
 				m.gridView.SetProjectNames(m.gridProjectNames())
 				m.gridView.SetProjectColors(m.gridProjectColors())
+				m.gridView.SetSessionColors(m.gridSessionColors())
 				m.gridView.SyncCursor(sess.ID)
 			}
 		}
@@ -113,6 +115,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.gridView.Show(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject)
 			m.gridView.SetProjectNames(m.gridProjectNames())
 			m.gridView.SetProjectColors(m.gridProjectColors())
+			m.gridView.SetSessionColors(m.gridSessionColors())
 			m.gridView.SyncCursor(prevID)
 			return m.scheduleGridPoll()
 		}
@@ -167,6 +170,16 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			}
 			m.cycleProjectColor(sess.ProjectID, dir)
 			m.gridView.SetProjectColors(m.gridProjectColors())
+		}
+		return nil
+	case "v", "V":
+		if sess := m.gridView.Selected(); sess != nil {
+			dir := +1
+			if msg.String() == "V" {
+				dir = -1
+			}
+			m.cycleSessionColor(sess.ID, dir)
+			m.gridView.SetSessionColors(m.gridSessionColors())
 		}
 		return nil
 	case "W":

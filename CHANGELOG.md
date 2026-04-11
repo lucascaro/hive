@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-session color for grid cells**: each session gets its own border color in grid view, making sessions within the same project visually distinguishable. Colors are auto-assigned on creation and can be cycled with `v`/`V` in grid view (#54).
+
 ## [0.6.0] — 2026-04-11
 
 ### Added
