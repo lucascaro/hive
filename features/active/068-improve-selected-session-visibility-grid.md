@@ -22,7 +22,7 @@ Improve the selected cell's visual treatment to make it stand out more clearly. 
 - `internal/tui/styles/theme.go:12-23` — Color constants. Key values:
   - `ColorAccent` (#7C3AED) — selected border
   - `ColorBorder` (#374151) — unselected border
-  - `ColorGridSelected` (#151520) — used in sidebar for row background but **not used in grid view at all**
+  - `ColorGridSelected` (#151520) — near-black purple tint used for selected grid cell content background
   - `ColorBg` (#111827) — base background
 - `internal/tui/styles/theme.go:47-50` — `PreviewFocusedStyle` shows the pattern for focused border (accent color on rounded border) — grid cells follow the same pattern.
 - `internal/tui/styles/theme.go:79-81` — `SessionSelectedStyle` uses `ColorSelected` background in sidebar. Grid view does not use this.
@@ -49,8 +49,8 @@ Add a `ColorGridSelected` (#151520 — near-black with slight purple lean) backg
 ### Test Strategy
 
 **Unit tests** in `internal/tui/components/gridview_test.go`:
-1. `TestGridView_SelectedCellHasBackground` — Render a 2-session grid, verify the selected cell's output contains the ANSI escape for `ColorGridSelected` (#151520) background, and the unselected cell does not.
-2. `TestGridView_SelectedCellSubtitleHasBackground` — Render a selected cell with a tall enough height (≥8) and a pane title set, verify the subtitle line includes the `ColorSelected` background.
+1. `TestGridView_SelectedCellHasBackground` — Render a grid cell selected vs unselected, verify the selected cell's output contains the `GridSelectedBgEsc` escape (derived from `ColorGridSelected`) and the unselected cell does not.
+2. `TestGridView_SelectedCellSubtitleHasBackground` — Render a selected cell with a tall enough height (≥8) and a pane title set, verify the subtitle line includes the `ColorGridSelected` background escape and the unselected subtitle does not.
 
 **Golden tests** in `internal/tui/golden_test.go`:
 3. Update golden snapshots — the existing `TestGolden_GridView_ProjectScope` and `TestGolden_GridView_AllProjects` will need their `.golden` files regenerated since the selected cell rendering changes.

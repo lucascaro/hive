@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/styles"
 	"github.com/muesli/termenv"
 )
 
@@ -406,9 +407,8 @@ func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
 	})
 }
 
-// TestGridView_SelectedCellHasBackground verifies that renderCell produces
-// different output for selected vs unselected cells (the selected cell gets
-// a ColorGridSelected background tint on the content area).
+// TestGridView_SelectedCellHasBackground verifies that the selected cell
+// contains the ColorGridSelected background escape and the unselected does not.
 func TestGridView_SelectedCellHasBackground(t *testing.T) {
 	prev := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -424,13 +424,21 @@ func TestGridView_SelectedCellHasBackground(t *testing.T) {
 
 	selected := gv.renderCell(sess, 40, 15, true)
 	unselected := gv.renderCell(sess, 40, 15, false)
-	if selected == unselected {
-		t.Error("selected and unselected cells should render differently")
+
+	bgEsc := styles.GridSelectedBgEsc
+	if bgEsc == "" {
+		t.Fatal("GridSelectedBgEsc is empty — cannot verify background")
+	}
+	if !strings.Contains(selected, bgEsc) {
+		t.Errorf("selected cell missing GridSelectedBgEsc %q", bgEsc)
+	}
+	if strings.Contains(unselected, bgEsc) {
+		t.Errorf("unselected cell should not contain GridSelectedBgEsc %q", bgEsc)
 	}
 }
 
 // TestGridView_SelectedCellSubtitleHasBackground verifies that the subtitle
-// line renders differently when the cell is selected (background tint applied).
+// line in the selected cell contains the ColorGridSelected background escape.
 func TestGridView_SelectedCellSubtitleHasBackground(t *testing.T) {
 	prev := lipgloss.ColorProfile()
 	lipgloss.SetColorProfile(termenv.TrueColor)
@@ -447,14 +455,31 @@ func TestGridView_SelectedCellSubtitleHasBackground(t *testing.T) {
 
 	selected := gv.renderCell(sess, 40, 15, true)
 	unselected := gv.renderCell(sess, 40, 15, false)
-	if !strings.Contains(selected, "Working on task") {
-		t.Error("subtitle text missing from selected cell")
+
+	findSubtitleLine := func(rendered string) string {
+		for _, line := range strings.Split(rendered, "\n") {
+			if strings.Contains(line, "Working on task") {
+				return line
+			}
+		}
+		return ""
 	}
-	if !strings.Contains(unselected, "Working on task") {
-		t.Error("subtitle text missing from unselected cell")
+
+	selSub := findSubtitleLine(selected)
+	unselSub := findSubtitleLine(unselected)
+	if selSub == "" {
+		t.Fatal("subtitle text missing from selected cell")
 	}
-	if selected == unselected {
-		t.Error("selected and unselected cells with subtitle should render differently")
+	if unselSub == "" {
+		t.Fatal("subtitle text missing from unselected cell")
+	}
+
+	bgEsc := styles.GridSelectedBgEsc
+	if !strings.Contains(selSub, bgEsc) {
+		t.Errorf("selected subtitle missing GridSelectedBgEsc %q: %q", bgEsc, selSub)
+	}
+	if strings.Contains(unselSub, bgEsc) {
+		t.Errorf("unselected subtitle should not contain GridSelectedBgEsc %q: %q", bgEsc, unselSub)
 	}
 }
 

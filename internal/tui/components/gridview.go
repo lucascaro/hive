@@ -366,11 +366,13 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 			rawLines[i] = ansi.Truncate(l, innerW, "")
 		}
 		joined := strings.Join(rawLines, "\n")
-		// Re-apply the selected background after every ANSI SGR reset
-		// (\033[0m) in the captured content, so the tint persists through
-		// reset sequences emitted by the terminal session.
+		// Re-apply the selected background after ANSI SGR resets in the
+		// captured content so the tint persists through reset sequences
+		// emitted by the terminal session. Handles both \033[0m and the
+		// shorthand \033[m variant.
 		if selected {
 			joined = strings.ReplaceAll(joined, "\033[0m", "\033[0m"+styles.GridSelectedBgEsc)
+			joined = strings.ReplaceAll(joined, "\033[m", "\033[m"+styles.GridSelectedBgEsc)
 		}
 		contentStr = contentStyle.Render(joined)
 	} else {
