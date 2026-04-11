@@ -58,6 +58,7 @@ func TestGolden_GridView_ProjectScope(t *testing.T) {
 	m.gridView.Show(sessions, state.GridRestoreProject)
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.SetProjectColors(m.gridProjectColors())
+	m.gridView.SetSessionColors(m.gridSessionColors())
 	m.gridView.Width = 120
 	m.gridView.Height = 40
 	m.PushView(ViewGrid)
@@ -74,6 +75,7 @@ func TestGolden_GridView_AllProjects(t *testing.T) {
 	m.gridView.Show(sessions, state.GridRestoreAll)
 	m.gridView.SetProjectNames(m.gridProjectNames())
 	m.gridView.SetProjectColors(m.gridProjectColors())
+	m.gridView.SetSessionColors(m.gridSessionColors())
 	m.gridView.Width = 120
 	m.gridView.Height = 40
 	m.PushView(ViewGrid)

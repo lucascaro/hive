@@ -134,6 +134,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
 		m.gridView.SetProjectNames(m.gridProjectNames())
 		m.gridView.SetProjectColors(m.gridProjectColors())
+		m.gridView.SetSessionColors(m.gridSessionColors())
 		m.gridView.SyncCursor(prevID)
 		return m.scheduleGridPoll()
 	case "x":
