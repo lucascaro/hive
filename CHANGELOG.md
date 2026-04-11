@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Per-session color**: each session gets its own color, shown as a gradient in the grid cell header and sidebar title (project color → session color). Colors are auto-assigned on creation and can be cycled with `v`/`V` in both sidebar and grid view (#54).
 
+### Changed
+- **Improved grid selection visibility**: the selected cell now has a subtle dark background tint on the content preview area, making it easier to identify at a glance alongside the existing accent border (#68).
+
 ## [0.6.0] — 2026-04-11
 
 ### Added

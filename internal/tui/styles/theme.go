@@ -19,8 +19,12 @@ var (
 	ColorText     = lipgloss.Color("#F9FAFB")
 	ColorSubtext  = lipgloss.Color("#9CA3AF")
 	ColorBorder   = lipgloss.Color("#374151")
-	ColorSelected = lipgloss.Color("#1E3A5F")
-	ColorBg       = lipgloss.Color("#111827")
+	ColorSelected     = lipgloss.Color("#1E3A5F")
+	ColorGridSelected = lipgloss.Color("#151520") // near-black purple tint for grid cell selection
+	// GridSelectedBgEsc is the raw ANSI escape to re-apply ColorGridSelected
+	// background after SGR resets in captured terminal content.
+	GridSelectedBgEsc = "\033[48;2;21;21;32m"
+	ColorBg           = lipgloss.Color("#111827")
 
 	// Agent type colors
 	AgentColors = map[string]lipgloss.Color{

@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #68 | Improve selected session visibility in grid view | RESEARCH | S |
+| 1 | #68 | Improve selected session visibility in grid view | IMPLEMENT | S |
 | 2 | #69 | Display changelog since last version on open | RESEARCH | M |
 | 3 | #37 | Code refactor: remove bloat | RESEARCH | L |
 | 4 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |

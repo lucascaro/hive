@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/muesli/termenv"
 )
 
 func TestGridViewView_ShowsStatusLegend(t *testing.T) {
@@ -402,6 +404,58 @@ func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
 			t.Errorf("Cursor = %d, want 0", gv.Cursor)
 		}
 	})
+}
+
+// TestGridView_SelectedCellHasBackground verifies that renderCell produces
+// different output for selected vs unselected cells (the selected cell gets
+// a ColorGridSelected background tint on the content area).
+func TestGridView_SelectedCellHasBackground(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+	sess := &state.Session{
+		ID: "s1", ProjectID: "p1", Title: "test-sess",
+		AgentType: state.AgentClaude, Status: state.StatusRunning,
+	}
+	gv := &GridView{Active: true, Width: 80, Height: 20}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
+	gv.SetContents(map[string]string{"s1": "hello world"})
+
+	selected := gv.renderCell(sess, 40, 15, true)
+	unselected := gv.renderCell(sess, 40, 15, false)
+	if selected == unselected {
+		t.Error("selected and unselected cells should render differently")
+	}
+}
+
+// TestGridView_SelectedCellSubtitleHasBackground verifies that the subtitle
+// line renders differently when the cell is selected (background tint applied).
+func TestGridView_SelectedCellSubtitleHasBackground(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+	sess := &state.Session{
+		ID: "s1", ProjectID: "p1", Title: "test",
+		AgentType: state.AgentClaude, Status: state.StatusRunning,
+		TmuxSession: "sess", TmuxWindow: 0,
+	}
+	gv := &GridView{Active: true, Width: 80, Height: 30}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
+	gv.SetPaneTitles(map[string]string{"sess:0": "Working on task"})
+
+	selected := gv.renderCell(sess, 40, 15, true)
+	unselected := gv.renderCell(sess, 40, 15, false)
+	if !strings.Contains(selected, "Working on task") {
+		t.Error("subtitle text missing from selected cell")
+	}
+	if !strings.Contains(unselected, "Working on task") {
+		t.Error("subtitle text missing from unselected cell")
+	}
+	if selected == unselected {
+		t.Error("selected and unselected cells with subtitle should render differently")
+	}
 }
 
 // TestSanitizePaneTitle covers the sanitizer used to scrub untrusted OSC 0/2

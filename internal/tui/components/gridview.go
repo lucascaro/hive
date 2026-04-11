@@ -331,11 +331,14 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	if h >= 8 {
 		if t := sanitizePaneTitle(gv.paneTitles[mux.Target(sess.TmuxSession, sess.TmuxWindow)]); t != "" {
 			trunc := ansi.Truncate(t, innerW, "…")
-			subtitleLine = lipgloss.NewStyle().
+			subtitleStyle := lipgloss.NewStyle().
 				Foreground(styles.ColorMuted).
 				Italic(true).
-				Width(innerW).MaxWidth(innerW).
-				Render(trunc)
+				Width(innerW).MaxWidth(innerW)
+			if selected {
+				subtitleStyle = subtitleStyle.Background(styles.ColorGridSelected)
+			}
+			subtitleLine = subtitleStyle.Render(trunc)
 			showSubtitle = true
 			innerH-- // give the row back from the content area
 			if innerH < 1 {
@@ -350,20 +353,28 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	// short lines and MaxHeight then discards the most-recent content, keeping
 	// only the oldest wrapped fragment.  Pre-truncation also prevents
 	// cellbuf.Wrap from unexpectedly expanding line count in edge cases.
+	contentStyle := lipgloss.NewStyle().
+		Width(innerW).Height(innerH).
+		MaxWidth(innerW).MaxHeight(innerH)
+	if selected {
+		contentStyle = contentStyle.Background(styles.ColorGridSelected)
+	}
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
 		rawLines := strings.Split(lastNLines(content, innerH), "\n")
 		for i, l := range rawLines {
 			rawLines[i] = ansi.Truncate(l, innerW, "")
 		}
-		contentStr = lipgloss.NewStyle().
-			Width(innerW).Height(innerH).
-			MaxWidth(innerW).MaxHeight(innerH).
-			Render(strings.Join(rawLines, "\n"))
+		joined := strings.Join(rawLines, "\n")
+		// Re-apply the selected background after every ANSI SGR reset
+		// (\033[0m) in the captured content, so the tint persists through
+		// reset sequences emitted by the terminal session.
+		if selected {
+			joined = strings.ReplaceAll(joined, "\033[0m", "\033[0m"+styles.GridSelectedBgEsc)
+		}
+		contentStr = contentStyle.Render(joined)
 	} else {
-		contentStr = lipgloss.NewStyle().
-			Width(innerW).Height(innerH).
-			MaxWidth(innerW).MaxHeight(innerH).
+		contentStr = contentStyle.
 			Foreground(styles.ColorMuted).
 			Render("…")
 	}
