@@ -33,7 +33,7 @@ func TestDetectStatus_TitleWaitMatch(t *testing.T) {
 	}
 	titles := map[string]string{"hive:0": "waiting for confirmation"}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm, ok := msg.(StatusesDetectedMsg)
 	if !ok {
@@ -59,7 +59,7 @@ func TestDetectStatus_TitleRunMatch(t *testing.T) {
 	}
 	titles := map[string]string{"hive:0": "⠋ Working on task"}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusRunning {
@@ -83,7 +83,7 @@ func TestDetectStatus_ContentChangedOverridesStaleTitle(t *testing.T) {
 	// Title says waiting (stale), but content is changing.
 	titles := map[string]string{"hive:0": "waiting for something"}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusRunning {
@@ -106,7 +106,7 @@ func TestDetectStatus_IdlePromptMatch_Idle(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusIdle {
@@ -129,7 +129,7 @@ func TestDetectStatus_IdlePromptNotMatch_Waiting(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusWaiting {
@@ -147,7 +147,7 @@ func TestDetectStatus_ContentChanged(t *testing.T) {
 	det := map[string]SessionDetectionCtx{}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusRunning {
@@ -170,7 +170,7 @@ func TestDetectStatus_StablePromptMatch(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusWaiting {
@@ -190,7 +190,7 @@ func TestDetectStatus_StableNoSignals_Idle(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusIdle {
@@ -210,7 +210,7 @@ func TestDetectStatus_Debounce(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusRunning {
@@ -234,7 +234,7 @@ func TestDetectStatus_IdlePromptWithANSITrailingLines(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusIdle {
@@ -258,11 +258,48 @@ func TestDetectStatus_WaitingWithANSITrailingLines(t *testing.T) {
 	}
 	titles := map[string]string{}
 
-	cmd := WatchStatuses(targets, prev, stable, det, titles, 0)
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
 	msg := cmd()
 	sdm := msg.(StatusesDetectedMsg)
 	if sdm.Statuses["s1"] != state.StatusWaiting {
 		t.Errorf("question with ANSI trailing lines should be waiting: expected StatusWaiting, got %q", sdm.Statuses["s1"])
+	}
+}
+
+func TestDetectStatus_BellsPassedThrough(t *testing.T) {
+	mb := setupMockBackend(t)
+	mb.SetPaneContent("hive:0", "content")
+
+	targets := map[string]string{"s1": "hive:0"}
+	prev := map[string]string{"s1": "content"}
+	stable := map[string]int{"s1": 5}
+	det := map[string]SessionDetectionCtx{}
+	titles := map[string]string{}
+	bells := map[string]bool{"hive:0": true}
+
+	cmd := WatchStatuses(targets, prev, stable, det, titles, bells, 0)
+	msg := cmd()
+	sdm := msg.(StatusesDetectedMsg)
+	if !sdm.Bells["hive:0"] {
+		t.Error("expected bell flag to be passed through in StatusesDetectedMsg")
+	}
+}
+
+func TestDetectStatus_NoBells(t *testing.T) {
+	mb := setupMockBackend(t)
+	mb.SetPaneContent("hive:0", "content")
+
+	targets := map[string]string{"s1": "hive:0"}
+	prev := map[string]string{"s1": "content"}
+	stable := map[string]int{"s1": 5}
+	det := map[string]SessionDetectionCtx{}
+	titles := map[string]string{}
+
+	cmd := WatchStatuses(targets, prev, stable, det, titles, nil, 0)
+	msg := cmd()
+	sdm := msg.(StatusesDetectedMsg)
+	if len(sdm.Bells) != 0 {
+		t.Errorf("expected no bells, got %v", sdm.Bells)
 	}
 }
 

@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"os"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucascaro/hive/internal/escape"
@@ -149,6 +152,30 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		m.appState.PreviewContent = content
 		m.preview.SetContent(content)
 	}
+	// Forward terminal bell when any target transitions bell flag 0→1.
+	if msg.Bells != nil {
+		newBell := false
+		for target, bell := range msg.Bells {
+			if bell && !m.bellSeen[target] {
+				newBell = true
+			}
+		}
+		// Update edge-tracking state: copy current bell flags, clear targets
+		// whose flag returned to 0.
+		next := make(map[string]bool, len(msg.Bells))
+		for target, bell := range msg.Bells {
+			if bell {
+				next[target] = true
+			}
+		}
+		m.bellSeen = next
+
+		if newBell && time.Since(m.lastBellTime) > 500*time.Millisecond {
+			os.Stdout.Write([]byte("\a"))
+			m.lastBellTime = time.Now()
+		}
+	}
+
 	changed := false
 	for sessionID, status := range msg.Statuses {
 		sess := state.FindSession(&m.appState, sessionID)

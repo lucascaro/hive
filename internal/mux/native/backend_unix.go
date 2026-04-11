@@ -124,8 +124,8 @@ func (b *Backend) CapturePaneRaw(target string, lines int) (string, error) {
 	return resp.Content, nil
 }
 
-func (b *Backend) GetPaneTitles(_ string) (map[string]string, error) {
-	return nil, nil
+func (b *Backend) GetPaneTitles(_ string) (map[string]string, map[string]bool, error) {
+	return nil, nil, nil
 }
 
 func (b *Backend) GetCurrentCommand(_ string) (string, error) {

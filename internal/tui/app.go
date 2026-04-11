@@ -89,6 +89,12 @@ type Model struct {
 	// detectionCtxs holds compiled status detection regexes per agent type,
 	// built once at startup from config.StatusDetection.
 	detectionCtxs map[string]escape.SessionDetectionCtx
+	// lastBellTime is the time the last audible bell was forwarded to the
+	// user's terminal. Used for 500ms debounce to prevent rapid-fire bells.
+	lastBellTime time.Time
+	// bellSeen tracks which targets had their bell flag set on the previous
+	// poll, so we only fire on 0→1 transitions (edge-triggered).
+	bellSeen map[string]bool
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -137,6 +143,7 @@ func New(cfg config.Config, appState state.AppState) Model {
 		contentSnapshots:    make(map[string]string),
 		stableCounts:        make(map[string]int),
 		paneTitles:          make(map[string]string),
+		bellSeen:            make(map[string]bool),
 		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
 	}

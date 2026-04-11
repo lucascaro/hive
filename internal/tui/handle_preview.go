@@ -123,13 +123,19 @@ func (m *Model) scheduleWatchStatuses() tea.Cmd {
 	if len(targets) == 0 {
 		return nil
 	}
-	// Batch-read pane titles for all windows in the shared hive session.
-	titles, err := mux.GetPaneTitles(mux.HiveSession)
+	// Batch-read pane titles and bell flags for all windows in the shared hive session.
+	titles, bells, err := mux.GetPaneTitles(mux.HiveSession)
 	if err != nil {
 		debugLog.Printf("scheduleWatchStatuses: GetPaneTitles(%s): %v", mux.HiveSession, err)
 		titles = make(map[string]string)
-	} else if titles == nil {
-		titles = make(map[string]string)
+		bells = make(map[string]bool)
+	} else {
+		if titles == nil {
+			titles = make(map[string]string)
+		}
+		if bells == nil {
+			bells = make(map[string]bool)
+		}
 	}
 	// Snapshot maps to avoid concurrent reads in the tick goroutine
 	// while handleStatusesDetected writes on the main goroutine.
@@ -142,5 +148,5 @@ func (m *Model) scheduleWatchStatuses() tea.Cmd {
 		stableCounts[k] = v
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
-	return escape.WatchStatuses(targets, prevContents, stableCounts, detection, titles, interval)
+	return escape.WatchStatuses(targets, prevContents, stableCounts, detection, titles, bells, interval)
 }

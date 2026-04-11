@@ -123,6 +123,17 @@ func TestSanitizePreviewContent_StripsOSC(t *testing.T) {
 	}
 }
 
+func TestSanitizePreviewContent_StripsBEL(t *testing.T) {
+	input := "before\aafter"
+	out := sanitizePreviewContent(input)
+	if strings.Contains(out, "\a") {
+		t.Error("BEL character should be stripped")
+	}
+	if !strings.Contains(out, "beforeafter") {
+		t.Errorf("text should be preserved, got %q", out)
+	}
+}
+
 func TestSanitizePreviewContent_StripsPrivateMode(t *testing.T) {
 	// Private mode sequences like \033[?1049h (alt screen), \033[?25l (hide cursor)
 	input := "before\x1b[?1049hafter\x1b[?25l"

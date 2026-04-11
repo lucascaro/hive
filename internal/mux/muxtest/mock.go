@@ -17,6 +17,7 @@ type MockBackend struct {
 	nextWindowIdx map[string]int               // session → next window index
 	paneContents  map[string]string            // "session:idx" → capture content
 	paneTitles    map[string]string            // "session:idx" → pane title
+	paneBells     map[string]bool              // "session:idx" → bell flag
 	calls         map[string]int               // method name → call count
 	errors        map[string]error             // method name → error to return
 }
@@ -32,6 +33,7 @@ func New() *MockBackend {
 		nextWindowIdx: make(map[string]int),
 		paneContents:  make(map[string]string),
 		paneTitles:    make(map[string]string),
+		paneBells:     make(map[string]bool),
 		calls:         make(map[string]int),
 		errors:        make(map[string]error),
 	}
@@ -57,6 +59,13 @@ func (m *MockBackend) SetPaneTitle(target, title string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.paneTitles[target] = title
+}
+
+// SetPaneBell sets the bell flag returned by GetPaneTitles for target.
+func (m *MockBackend) SetPaneBell(target string, bell bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.paneBells[target] = bell
 }
 
 // CallCount returns how many times method was called.
@@ -198,20 +207,26 @@ func (m *MockBackend) ListWindows(session string) ([]mux.WindowInfo, error) {
 	return windows, nil
 }
 
-func (m *MockBackend) GetPaneTitles(session string) (map[string]string, error) {
+func (m *MockBackend) GetPaneTitles(session string) (map[string]string, map[string]bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.record("GetPaneTitles"); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	result := make(map[string]string)
+	titles := make(map[string]string)
+	bells := make(map[string]bool)
 	prefix := session + ":"
 	for target, title := range m.paneTitles {
 		if len(target) > len(prefix) && target[:len(prefix)] == prefix {
-			result[target] = title
+			titles[target] = title
 		}
 	}
-	return result, nil
+	for target, bell := range m.paneBells {
+		if len(target) > len(prefix) && target[:len(prefix)] == prefix && bell {
+			bells[target] = true
+		}
+	}
+	return titles, bells, nil
 }
 
 func (m *MockBackend) CapturePane(target string, lines int) (string, error) {

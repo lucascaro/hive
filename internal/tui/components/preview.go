@@ -60,7 +60,7 @@ func sanitizePreviewContent(s string) string {
 		}
 		return match
 	})
-	s = strings.NewReplacer("\r", "", "\v", "", "\f", "").Replace(s)
+	s = strings.NewReplacer("\r", "", "\v", "", "\f", "", "\a", "").Replace(s)
 	s = expandTabs(s)
 	s = stripZeroWidthChars(s)
 	return s
