@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Terminal bell forwarding**: bells from sessions are now forwarded to the user's terminal with debounce to prevent bell storms. Sessions with pending bells show a `♪` badge in the sidebar until attached (#34).
+
 ## [0.5.1] — 2026-04-10
 
 ### Fixed

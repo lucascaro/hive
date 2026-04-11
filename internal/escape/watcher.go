@@ -55,6 +55,9 @@ type StatusesDetectedMsg struct {
 	// sessionID like the other fields.  Forwarded so the TUI can surface live
 	// agent titles in the grid view.
 	Titles map[string]string
+	// Bells carries per-target bell flags from tmux's #{window_bell_flag}.
+	// Keyed by target ("tmuxSession:windowIdx"), true when a bell has fired.
+	Bells map[string]bool
 }
 
 // WatchStatuses returns a tea.Cmd that captures pane content for all active sessions
@@ -74,12 +77,14 @@ type StatusesDetectedMsg struct {
 //   - stableCounts: sessionID → consecutive stable polls (for debounce)
 //   - detection: sessionID → compiled detection context
 //   - titles: "tmuxSession:windowIdx" → pane title (from GetPaneTitles)
+//   - bells: "tmuxSession:windowIdx" → true when bell flag set (from GetPaneTitles)
 func WatchStatuses(
 	sessionTargets map[string]string,
 	prevContents map[string]string,
 	stableCounts map[string]int,
 	detection map[string]SessionDetectionCtx,
 	titles map[string]string,
+	bells map[string]bool,
 	interval time.Duration,
 ) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
@@ -146,7 +151,7 @@ func WatchStatuses(
 
 			statuses[sessionID] = state.StatusIdle
 		}
-		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titles}
+		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titles, Bells: bells}
 	})
 }
 

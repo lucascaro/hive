@@ -66,6 +66,12 @@ type Sidebar struct {
 	Height       int
 	FilterQuery  string
 	ScrollOffset int // index of first visible item (for scrolling)
+	bellPending  map[string]bool // sessionID → true when a bell has fired and user hasn't attached yet
+}
+
+// SetBellPending updates the set of sessions with pending bell indicators.
+func (s *Sidebar) SetBellPending(bells map[string]bool) {
+	s.bellPending = bells
 }
 
 // Rebuild recomputes the flat item list from state, applying filter.
@@ -376,7 +382,11 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 				worktreeBadge = " " + styles.WorktreeBadgeStyle.Render("⎇")
 			}
 		}
-		label = fmt.Sprintf("%s%s %s %s%s", rolePrefix, dot, item.Label, badge, worktreeBadge)
+		bellBadge := ""
+		if s.bellPending[item.SessionID] {
+			bellBadge = " " + styles.BellBadge
+		}
+		label = fmt.Sprintf("%s%s %s %s%s%s", rolePrefix, dot, item.Label, badge, worktreeBadge, bellBadge)
 		if active {
 			label += " ←"
 		}
