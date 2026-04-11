@@ -118,4 +118,4 @@ Implemented as planned with no deviations. Key decisions:
 - **Defensive BEL strip in preview:** Added `\a` to `sanitizePreviewContent`'s `strings.NewReplacer` even though `capture-pane` shouldn't contain BEL.
 - **All backends updated:** tmux, native (unix + windows), and mock backends all updated to new `GetPaneTitles` 3-return signature.
 
-- **PR:** —
+- **PR:** #65
