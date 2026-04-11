@@ -61,7 +61,7 @@ This covers **all sessions** — active, background, unfocused — because `Watc
 
 ### Constraints / Dependencies
 
-- `#{window_bell_flag}` is reset by tmux after it's read (when `monitor-bell` is on, which is the default). Need to verify the flag auto-clears or if we need to clear it manually.
+- `#{window_bell_flag}` is **sticky** — it stays set until the window becomes "current" (i.e., a tmux client switches to it). It does NOT auto-reset when read. The implementation uses edge-tracking (`bellPending` map) to emit only on 0→1 transitions, and clears when the user attaches to the session.
 - Writing `\a` to stdout while Bubble Tea owns the terminal needs testing — should work since BEL doesn't affect cursor position, but must verify no rendering corruption.
 - Need debounce to prevent the same bell from firing repeatedly across polling cycles.
 

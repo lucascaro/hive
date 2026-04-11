@@ -44,17 +44,28 @@ func GetCurrentCommand(target string) (string, error) {
 //   - titles: "session:windowIndex" → pane title
 //   - bells:  "session:windowIndex" → true when a bell has fired in that window
 func GetPaneTitles(tmuxSession string) (map[string]string, map[string]bool, error) {
-	out, err := Exec("list-windows", "-t", tmuxSession, "-F", "#{window_index}\t#{pane_title}\t#{window_bell_flag}")
+	out, err := Exec("list-windows", "-t", tmuxSession, "-F",
+		"#{window_index}"+paneSep+"#{pane_title}"+paneSep+"#{window_bell_flag}")
 	if err != nil {
 		return nil, nil, err
 	}
+	return parsePaneTitles(tmuxSession, out)
+}
+
+// paneSep is the delimiter used between fields in list-windows output.
+// ASCII unit separator (0x1F) — pane titles can contain tabs, so \t is not safe.
+const paneSep = "\x1f"
+
+// parsePaneTitles parses the raw output of a list-windows call into title and
+// bell maps keyed by "session:windowIndex".
+func parsePaneTitles(tmuxSession, out string) (map[string]string, map[string]bool, error) {
 	titles := make(map[string]string)
 	bells := make(map[string]bool)
 	for _, line := range splitLines(out) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 3)
+		parts := strings.SplitN(line, paneSep, 3)
 		if len(parts) < 2 {
 			continue
 		}

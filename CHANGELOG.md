@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **Terminal bell forwarding**: audible bell (`\a` / BEL) characters emitted by sessions are now forwarded to the user's terminal. Uses tmux's `#{window_bell_flag}` for reliable detection across all sessions (active, background, unfocused) with debounce to prevent bell storms. Sessions with pending bells show a `♪` badge in the sidebar until attached (#34).
+- **Terminal bell forwarding**: bells from sessions are now forwarded to the user's terminal with debounce to prevent bell storms. Sessions with pending bells show a `♪` badge in the sidebar until attached (#34).
 
 ## [0.5.1] — 2026-04-10
 
