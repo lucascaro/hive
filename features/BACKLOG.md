@@ -7,11 +7,10 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #55 | Reorder sessions via keyboard | IMPLEMENT | M |
-| 2 | #54 | Per-session color for grid cells | RESEARCH | S |
-| 3 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
-| 4 | #37 | Code refactor: remove bloat | RESEARCH | L |
-| 5 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
+| 1 | #54 | Per-session color for grid cells | RESEARCH | S |
+| 2 | #40 | Ability to reorder sessions within a project | RESEARCH | L |
+| 3 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 4 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
 ## Completed
 
@@ -38,3 +37,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #36 | Add missing tests | #61, #62 | 2026-04-10 |
 | #63 | Attach/detach delay can exceed one second | #64 | 2026-04-10 |
 | #34 | Terminal bell does not produce audible sound | #65 | 2026-04-11 |
+| #55 | Reorder sessions via keyboard | #67 | 2026-04-11 |
