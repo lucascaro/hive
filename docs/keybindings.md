@@ -12,6 +12,8 @@
 | `Space` | Toggle collapse/expand project or team |
 | `←` | Collapse current project or team; if on a session, collapse its parent |
 | `→` | Expand current project or team |
+| `Shift+↑` | Move selected item (session, team, or project) up |
+| `Shift+↓` | Move selected item (session, team, or project) down |
 
 ## Session Management
 
@@ -44,6 +46,8 @@
 | `x` | Kill selected session (with confirmation) |
 | `r` | Rename selected session |
 | `G` | Switch to all-projects view (while grid is open) |
+| `Shift+↑` | Move selected session up in its group |
+| `Shift+↓` | Move selected session down in its group |
 | `g` / `Esc` / `q` | Exit grid view |
 
 ## Status Indicator
@@ -143,7 +147,9 @@ All key bindings (except `G` and grid-internal keys) can be overridden in `~/.co
     "help": "?",
     "tmux_help": "H",
     "quit": "q",
-    "quit_kill": "Q"
+    "quit_kill": "Q",
+    "move_up": "shift+up",
+    "move_down": "shift+down"
   }
 }
 ```

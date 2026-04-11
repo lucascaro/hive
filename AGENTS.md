@@ -112,9 +112,11 @@ escape.Watcher polls CapturePaneRaw every 500ms
 
 ### Testing Conventions
 
+- **All changes require both unit tests and functional tests.** Unit tests verify pure logic (state reducers, helpers). Functional tests verify end-to-end behaviour through the TUI using the `flowRunner` pattern in `internal/tui/flow_test.go`.
 - **`internal/state/`** — pure unit tests, no I/O mocking needed
 - **`internal/config/`** — tests use `t.TempDir()` for isolation
 - **`internal/tui/`** — component tests use `tea.NewProgram` with a fake model or direct `Update()` calls
+- **`internal/tui/` functional tests** — use `flowRunner` from `flow_test.go`: `testFlowModel()` creates an isolated Model with mock backend; `SendKey()`/`SendSpecialKey()` simulate input; assertion helpers like `ViewContains()`, `AssertActiveSession()`, `AssertGridActive()` verify outcomes. New features must include flow tests covering the golden path and key edge cases.
 - **`internal/tui/` tick intervals** — always set `cfg.PreviewRefreshMs = 1` in test helpers to avoid blocking on real-time `tea.Tick` intervals (default 500ms). Tests should verify behaviour, not wait on timers.
 - Run all tests: `go test ./...`
 - Tests live alongside source (e.g., `model_test.go` next to `model.go`)
