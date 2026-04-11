@@ -7,6 +7,8 @@ type Config struct {
 	PreviewRefreshMs            int                       `json:"preview_refresh_ms"`
 	AgentTitleOverridesUserTitle bool                     `json:"agent_title_overrides_user_title"`
 	HideAttachHint              bool                      `json:"hide_attach_hint,omitempty"`
+	HideWhatsNew                bool                      `json:"hide_whats_new,omitempty"`
+	LastSeenVersion             string                    `json:"last_seen_version,omitempty"`
 	// Multiplexer selects the backend for managing terminal sessions.
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.

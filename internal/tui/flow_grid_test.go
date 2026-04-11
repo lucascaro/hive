@@ -58,7 +58,7 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreProject
 
-	m2 := New(cfg, appState)
+	m2 := New(cfg, appState, "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)
@@ -109,7 +109,7 @@ func TestFlow_GridAllProjectsRestores(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreAll
 
-	m2 := New(cfg, appState)
+	m2 := New(cfg, appState, "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)
@@ -158,7 +158,7 @@ func TestFlow_SidebarAttachDoesNotRestoreGrid(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreNone
 
-	m2 := New(cfg, appState)
+	m2 := New(cfg, appState, "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)

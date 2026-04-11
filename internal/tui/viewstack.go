@@ -24,6 +24,7 @@ const (
 	ViewCustomCmd      ViewID = "custom-command"
 	ViewWorktreeBranch ViewID = "worktree-branch"
 	ViewFilter         ViewID = "filter"
+	ViewWhatsNew       ViewID = "whats-new"
 )
 
 // PushView pushes a view onto the stack and syncs legacy flags.
@@ -146,6 +147,8 @@ func (m *Model) syncLegacyFlags(id ViewID, active bool) {
 		}
 	case ViewFilter:
 		m.appState.FilterActive = active
+	case ViewWhatsNew:
+		// No legacy flag needed.
 	}
 }
 

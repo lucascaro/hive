@@ -180,9 +180,9 @@ func TestSettingsView_StringValidation_EmptyKeybinding(t *testing.T) {
 	// Navigate to a keybinding field. Keybindings start after the headers and
 	// earlier fields. Let's find "Toggle Collapse" which is the first keybinding.
 	// Fields: Theme(0), Mux(1), Refresh(2), AgentTitle(3), HideAttach(4),
-	// Orch(5), WorkerCount(6), WorkerAgent(7), HooksEnabled(8), HooksDir(9),
-	// ToggleCollapse(10)
-	for i := 0; i < 10; i++ {
+	// HideWhatsNew(5), Orch(6), WorkerCount(7), WorkerAgent(8),
+	// HooksEnabled(9), HooksDir(10), ToggleCollapse(11)
+	for i := 0; i < 11; i++ {
 		sv.Update(keyPress("j"))
 	}
 	if f := sv.selectedField(); f == nil || f.label != "Toggle Collapse" {
@@ -202,8 +202,8 @@ func TestSettingsView_StringValidation_EmptyHooksDir(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	// Navigate to HooksDir (index 9)
-	for i := 0; i < 9; i++ {
+	// Navigate to HooksDir (index 10)
+	for i := 0; i < 10; i++ {
 		sv.Update(keyPress("j"))
 	}
 	if f := sv.selectedField(); f == nil || f.label != "Hooks Directory" {
@@ -390,6 +390,40 @@ func TestSettingsView_SaveConfirmedWithEnter(t *testing.T) {
 	msg := cmd()
 	if _, ok := msg.(SettingsSaveRequestMsg); !ok {
 		t.Fatalf("expected SettingsSaveRequestMsg, got %T", msg)
+	}
+}
+
+func TestSettings_HideWhatsNewToggle(t *testing.T) {
+	sv := NewSettingsView()
+	cfg := testConfig()
+	cfg.HideWhatsNew = false
+	sv.Open(cfg)
+
+	// Navigate to Hide What's New (field index 5).
+	for i := 0; i < 5; i++ {
+		sv.Update(keyPress("j"))
+	}
+
+	// Verify we're on the right field.
+	f := sv.selectedField()
+	if f == nil || f.label != "Hide What's New" {
+		label := ""
+		if f != nil {
+			label = f.label
+		}
+		t.Fatalf("expected 'Hide What's New' field, got %q", label)
+	}
+
+	// Toggle on.
+	sv.Update(keyType(tea.KeyEnter))
+	if !sv.GetConfig().HideWhatsNew {
+		t.Error("expected HideWhatsNew=true after toggle")
+	}
+
+	// Toggle off.
+	sv.Update(keyType(tea.KeyEnter))
+	if sv.GetConfig().HideWhatsNew {
+		t.Error("expected HideWhatsNew=false after second toggle")
 	}
 }
 

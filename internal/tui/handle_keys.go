@@ -32,6 +32,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.PopView()
 		}
 		return m, nil
+	case ViewWhatsNew:
+		return m.handleWhatsNew(msg)
 	case ViewAttachHint:
 		return m.handleAttachHint(msg)
 	case ViewConfirm:
@@ -764,6 +766,22 @@ func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
 }
 
 // handleAttachHint handles key input while the attach hint overlay is shown.
+func (m Model) handleWhatsNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "esc", "q", " ":
+		m.PopView()
+	case "d":
+		m.PopView()
+		m.cfg.HideWhatsNew = true
+		_ = config.Save(m.cfg)
+	case "j", "down":
+		m.whatsNewViewport.LineDown(1)
+	case "k", "up":
+		m.whatsNewViewport.LineUp(1)
+	}
+	return m, nil
+}
+
 func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter", "y", " ":

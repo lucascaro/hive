@@ -14,6 +14,9 @@ var rootCmd = &cobra.Command{
 	RunE:  runStart,
 }
 
+// EmbeddedChangelog holds the contents of CHANGELOG.md, set by main.go via go:embed.
+var EmbeddedChangelog string
+
 // Execute runs the root command.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {

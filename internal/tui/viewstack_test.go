@@ -32,7 +32,7 @@ func testModelForStack() Model {
 		TermWidth:       120,
 		TermHeight:      40,
 	}
-	return New(cfg, appState)
+	return New(cfg, appState, "")
 }
 
 func TestPushView_AddsToStack(t *testing.T) {
