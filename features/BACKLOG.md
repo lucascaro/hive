@@ -7,8 +7,8 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #54 | Per-session color for grid cells | IMPLEMENT | S |
-| 2 | #68 | Improve selected session visibility in grid view | RESEARCH | S |
+| 1 | #68 | Improve selected session visibility in grid view | RESEARCH | S |
+| 2 | #69 | Display changelog since last version on open | RESEARCH | M |
 | 3 | #37 | Code refactor: remove bloat | RESEARCH | L |
 | 4 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
@@ -39,3 +39,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #34 | Terminal bell does not produce audible sound | #65 | 2026-04-11 |
 | #55 | Reorder sessions via keyboard | #67 | 2026-04-11 |
 | #40 | Ability to reorder sessions within a project | — | 2026-04-11 (dup of #55) |
+| #54 | Per-session color for grid cells | #70 | 2026-04-11 |
