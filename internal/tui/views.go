@@ -93,6 +93,7 @@ func (m Model) helpView() string {
 		{"T", "new agent team (wizard)"},
 		{"r", "rename session or team"},
 		{"c/C", "cycle project color next/prev"},
+		{"S-↑/↓", "reorder item (S-←/→ in grid)"},
 		{"x/d", "kill session"},
 		{"D", "kill entire team"},
 		{"/", "filter sessions"},

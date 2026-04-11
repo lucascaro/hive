@@ -12,6 +12,8 @@
 | `Space` | Toggle collapse/expand project or team |
 | `←` | Collapse current project or team; if on a session, collapse its parent |
 | `→` | Expand current project or team |
+| `Shift+↑` | Move selected item (session, team, or project) up |
+| `Shift+↓` | Move selected item (session, team, or project) down |
 
 ## Session Management
 
@@ -44,6 +46,8 @@
 | `x` | Kill selected session (with confirmation) |
 | `r` | Rename selected session |
 | `G` | Switch to all-projects view (while grid is open) |
+| `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
+| `Shift+→` / `Shift+↓` | Move selected session right (later) in its group |
 | `g` / `Esc` / `q` | Exit grid view |
 
 ## Status Indicator
@@ -121,7 +125,7 @@ The detach key is set via the top-level `detach_key` field in `~/.config/hive/co
 
 ## Customization
 
-All key bindings (except `G` and grid-internal keys) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
+All key bindings (except `G` and hardcoded grid navigation keys like `h`/`j`/`k`/`l`/arrows) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
 
 ```json
 {
@@ -143,7 +147,11 @@ All key bindings (except `G` and grid-internal keys) can be overridden in `~/.co
     "help": "?",
     "tmux_help": "H",
     "quit": "q",
-    "quit_kill": "Q"
+    "quit_kill": "Q",
+    "move_up": "shift+up",
+    "move_down": "shift+down",
+    "move_left": "shift+left",
+    "move_right": "shift+right"
   }
 }
 ```

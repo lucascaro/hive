@@ -744,3 +744,212 @@ func TestRecordAgentUsage_SetsLastUsed(t *testing.T) {
 		t.Error("LastUsed should not be zero")
 	}
 }
+
+// --- MoveSessionUp / MoveSessionDown ---
+
+func TestMoveSessionDown_MiddleStandalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	s, s3 := CreateSession(s, p.ID, "s3", AgentClaude, nil, "", "h", 2)
+	s, _ = MoveSessionDown(s, s1.ID)
+	if p.Sessions[0].ID != s2.ID || p.Sessions[1].ID != s1.ID || p.Sessions[2].ID != s3.ID {
+		t.Errorf("order after MoveSessionDown(s1): got [%s,%s,%s] want [%s,%s,%s]",
+			p.Sessions[0].Title, p.Sessions[1].Title, p.Sessions[2].Title,
+			s2.Title, s1.Title, s3.Title)
+	}
+}
+
+func TestMoveSessionUp_MiddleStandalone(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	s, s3 := CreateSession(s, p.ID, "s3", AgentClaude, nil, "", "h", 2)
+	s, _ = MoveSessionUp(s, s3.ID)
+	if p.Sessions[0].ID != s1.ID || p.Sessions[1].ID != s3.ID || p.Sessions[2].ID != s2.ID {
+		t.Errorf("order after MoveSessionUp(s3): got [%s,%s,%s] want [%s,%s,%s]",
+			p.Sessions[0].Title, p.Sessions[1].Title, p.Sessions[2].Title,
+			s1.Title, s3.Title, s2.Title)
+	}
+}
+
+func TestMoveSessionDown_LastIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	s, _ = MoveSessionDown(s, s2.ID)
+	if p.Sessions[0].ID != s1.ID || p.Sessions[1].ID != s2.ID {
+		t.Error("MoveSessionDown on last session should be no-op")
+	}
+}
+
+func TestMoveSessionUp_FirstIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, s1 := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, s2 := CreateSession(s, p.ID, "s2", AgentClaude, nil, "", "h", 1)
+	s, _ = MoveSessionUp(s, s1.ID)
+	if p.Sessions[0].ID != s1.ID || p.Sessions[1].ID != s2.ID {
+		t.Error("MoveSessionUp on first session should be no-op")
+	}
+}
+
+func TestMoveSessionDown_SingleIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, sess := CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, _ = MoveSessionDown(s, sess.ID)
+	if len(p.Sessions) != 1 || p.Sessions[0].ID != sess.ID {
+		t.Error("MoveSessionDown on single session should be no-op")
+	}
+}
+
+func TestMoveSessionUp_TeamSession(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, t1 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t1", AgentClaude, nil, "", "h", 0)
+	s, t2 := AddTeamSession(s, p.ID, team.ID, RoleWorker, "t2", AgentClaude, nil, "", "h", 1)
+	s, _ = MoveSessionUp(s, t2.ID)
+	if team.Sessions[0].ID != t2.ID || team.Sessions[1].ID != t1.ID {
+		t.Errorf("order after MoveSessionUp(t2): got [%s,%s] want [%s,%s]",
+			team.Sessions[0].Title, team.Sessions[1].Title, t2.Title, t1.Title)
+	}
+}
+
+func TestMoveSessionDown_NotFoundIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateSession(s, p.ID, "s1", AgentClaude, nil, "", "h", 0)
+	s, _ = MoveSessionDown(s, "nonexistent")
+	if len(p.Sessions) != 1 {
+		t.Error("MoveSessionDown with unknown ID should be no-op")
+	}
+}
+
+// --- MoveTeamUp / MoveTeamDown ---
+
+func TestMoveTeamDown_SwapsTeams(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team1 := CreateTeam(s, p.ID, "team1", "", "")
+	s, team2 := CreateTeam(s, p.ID, "team2", "", "")
+	s, _ = MoveTeamDown(s, team1.ID)
+	if p.Teams[0].ID != team2.ID || p.Teams[1].ID != team1.ID {
+		t.Errorf("order after MoveTeamDown(team1): got [%s,%s] want [%s,%s]",
+			p.Teams[0].Name, p.Teams[1].Name, team2.Name, team1.Name)
+	}
+}
+
+func TestMoveTeamUp_SwapsTeams(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team1 := CreateTeam(s, p.ID, "team1", "", "")
+	s, team2 := CreateTeam(s, p.ID, "team2", "", "")
+	s, _ = MoveTeamUp(s, team2.ID)
+	if p.Teams[0].ID != team2.ID || p.Teams[1].ID != team1.ID {
+		t.Errorf("order after MoveTeamUp(team2): got [%s,%s] want [%s,%s]",
+			p.Teams[0].Name, p.Teams[1].Name, team2.Name, team1.Name)
+	}
+}
+
+func TestMoveTeamDown_LastIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = CreateTeam(s, p.ID, "team1", "", "")
+	s, team2 := CreateTeam(s, p.ID, "team2", "", "")
+	s, _ = MoveTeamDown(s, team2.ID)
+	if p.Teams[1].Name != "team2" {
+		t.Error("MoveTeamDown on last team should be no-op")
+	}
+}
+
+func TestMoveTeamUp_FirstIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team1 := CreateTeam(s, p.ID, "team1", "", "")
+	s, _ = CreateTeam(s, p.ID, "team2", "", "")
+	s, _ = MoveTeamUp(s, team1.ID)
+	if p.Teams[0].Name != "team1" {
+		t.Error("MoveTeamUp on first team should be no-op")
+	}
+}
+
+func TestMoveTeamDown_SingleIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, team := CreateTeam(s, p.ID, "team", "", "")
+	s, _ = MoveTeamDown(s, team.ID)
+	if len(p.Teams) != 1 || p.Teams[0].ID != team.ID {
+		t.Error("MoveTeamDown on single team should be no-op")
+	}
+}
+
+// --- MoveProjectUp / MoveProjectDown ---
+
+func TestMoveProjectDown_SwapsProjects(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, _ = MoveProjectDown(s, p1.ID)
+	if s.Projects[0].ID != p2.ID || s.Projects[1].ID != p1.ID {
+		t.Errorf("order after MoveProjectDown(p1): got [%s,%s] want [%s,%s]",
+			s.Projects[0].Name, s.Projects[1].Name, p2.Name, p1.Name)
+	}
+}
+
+func TestMoveProjectUp_SwapsProjects(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, _ = MoveProjectUp(s, p2.ID)
+	if s.Projects[0].ID != p2.ID || s.Projects[1].ID != p1.ID {
+		t.Errorf("order after MoveProjectUp(p2): got [%s,%s] want [%s,%s]",
+			s.Projects[0].Name, s.Projects[1].Name, p2.Name, p1.Name)
+	}
+}
+
+func TestMoveProjectDown_LastIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, _ = CreateProject(s, "p1", "", "", "")
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, _ = MoveProjectDown(s, p2.ID)
+	if s.Projects[1].Name != "p2" {
+		t.Error("MoveProjectDown on last project should be no-op")
+	}
+}
+
+func TestMoveProjectUp_FirstIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, _ = CreateProject(s, "p2", "", "", "")
+	s, _ = MoveProjectUp(s, p1.ID)
+	if s.Projects[0].Name != "p1" {
+		t.Error("MoveProjectUp on first project should be no-op")
+	}
+}
+
+func TestMoveProjectDown_SingleIsNoOp(t *testing.T) {
+	s := emptyState()
+	s, p := CreateProject(s, "p", "", "", "")
+	s, _ = MoveProjectDown(s, p.ID)
+	if len(s.Projects) != 1 || s.Projects[0].ID != p.ID {
+		t.Error("MoveProjectDown on single project should be no-op")
+	}
+}
+
+func TestMoveProjectUp_ThreeProjects_MiddleMovesUp(t *testing.T) {
+	s := emptyState()
+	s, p1 := CreateProject(s, "p1", "", "", "")
+	s, p2 := CreateProject(s, "p2", "", "", "")
+	s, p3 := CreateProject(s, "p3", "", "", "")
+	s, _ = MoveProjectUp(s, p2.ID)
+	if s.Projects[0].ID != p2.ID || s.Projects[1].ID != p1.ID || s.Projects[2].ID != p3.ID {
+		t.Errorf("order after MoveProjectUp(p2): got [%s,%s,%s] want [%s,%s,%s]",
+			s.Projects[0].Name, s.Projects[1].Name, s.Projects[2].Name,
+			p2.Name, p1.Name, p3.Name)
+	}
+}

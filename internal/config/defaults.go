@@ -81,6 +81,10 @@ func DefaultConfig() Config {
 			QuitKill:       "Q",
 			ColorNext:      "c",
 			ColorPrev:      "C",
+			MoveUp:         "shift+up",
+			MoveDown:       "shift+down",
+			MoveLeft:       "shift+left",
+			MoveRight:      "shift+right",
 		},
 	}
 }

@@ -211,7 +211,7 @@ func (gv *GridView) View() string {
 	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
 	// physical terminal line-wrap even though logical line count is correct.
 	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
-	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   enter/a: attach   x: kill   r: rename   c/C: color   G: all projects   esc/g/q: exit"), gv.Width, "")
+	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   G: all   esc/g/q: exit"), gv.Width, "")
 	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave

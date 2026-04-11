@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Reorder items via keyboard**: `Shift+Up`/`Down` reorders sessions, teams, and projects in the sidebar; `Shift+Left`/`Right` reorders in grid view. Order persists across restarts (#55).
+
 ### Fixed
 - **Terminal bell forwarding**: bells from sessions are now forwarded to the user's terminal with debounce to prevent bell storms. Sessions with pending bells show a `♪` badge in the sidebar until attached (#34).
 
