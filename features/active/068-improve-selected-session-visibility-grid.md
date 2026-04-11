@@ -71,4 +71,4 @@ Add a `ColorGridSelected` (#151520 — near-black with slight purple lean) backg
 - Golden tests unaffected (use `TERM=dumb` which strips all color)
 - No deviations from plan
 
-- **PR:** —
+- **PR:** #71
