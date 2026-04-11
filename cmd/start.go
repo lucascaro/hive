@@ -63,7 +63,10 @@ func runStart(_ *cobra.Command, _ []string) error {
 	// Compute "What's New" content if version changed.
 	var whatsNewContent string
 	if cfg.LastSeenVersion != Version && !cfg.HideWhatsNew {
-		whatsNewContent = changelog.ParseSince(EmbeddedChangelog, cfg.LastSeenVersion)
+		raw := changelog.ParseSince(EmbeddedChangelog, cfg.LastSeenVersion)
+		if raw != "" {
+			whatsNewContent = changelog.Render(raw, 60)
+		}
 	}
 	// Always update last seen version.
 	if cfg.LastSeenVersion != Version {

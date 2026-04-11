@@ -3,6 +3,8 @@ package changelog
 import (
 	"regexp"
 	"strings"
+
+	"github.com/charmbracelet/glamour"
 )
 
 // versionHeader matches lines like "## [0.6.0] — 2026-04-11" or "## [Unreleased]".
@@ -75,4 +77,22 @@ func ParseSince(changelog, lastVersion string) string {
 	}
 
 	return strings.Join(out, "\n\n")
+}
+
+// Render converts raw changelog markdown to styled terminal output.
+// width sets the wrap width for the rendered output.
+// Falls back to the raw text if rendering fails.
+func Render(markdown string, width int) string {
+	r, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		return markdown
+	}
+	rendered, err := r.Render(markdown)
+	if err != nil {
+		return markdown
+	}
+	return strings.TrimRight(rendered, "\n")
 }
