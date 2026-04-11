@@ -67,25 +67,6 @@ func GetPaneTitles(tmuxSession string) (map[string]string, map[string]bool, erro
 	return titles, bells, nil
 }
 
-// ClearBellFlags resets the bell flag for the given targets by selecting each
-// window. In tmux, selecting a window clears its alert flags (including bell).
-// Since hive never attaches a client to the shared session, this has no visible
-// side effects.
-func ClearBellFlags(targets []string) {
-	if len(targets) == 0 {
-		return
-	}
-	// Batch all select-window commands into a single tmux exec using \;.
-	args := make([]string, 0, len(targets)*4)
-	for i, target := range targets {
-		if i > 0 {
-			args = append(args, ";")
-		}
-		args = append(args, "select-window", "-t", target)
-	}
-	_ = ExecSilent(args...)
-}
-
 // splitLines splits s by newline, handling empty trailing lines.
 func splitLines(s string) []string {
 	return strings.Split(strings.TrimRight(s, "\n"), "\n")

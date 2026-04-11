@@ -68,10 +68,6 @@ func (b *Backend) GetPaneTitles(session string) (map[string]string, map[string]b
 	return tmux.GetPaneTitles(session)
 }
 
-func (b *Backend) ClearBellFlags(targets []string) {
-	tmux.ClearBellFlags(targets)
-}
-
 func (b *Backend) CapturePane(target string, lines int) (string, error) {
 	return tmux.CapturePane(target, lines)
 }

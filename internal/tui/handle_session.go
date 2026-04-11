@@ -155,8 +155,9 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		m.preview.SetContent(content)
 	}
 	// Forward terminal bell and mark sessions with pending bell indicator.
-	// Bell flags are cleared by scheduleWatchStatuses after reading, so any
-	// flag seen here is a fresh bell since the last poll — no edge tracking needed.
+	// The tmux bell flag stays set until the window is selected, so we use
+	// bellPending as edge tracking: only emit \a for sessions that aren't
+	// already marked as pending.  bellPending is cleared on attach.
 	changed := false
 	if len(msg.Bells) > 0 {
 		// Build reverse map: target → sessionID for visual indicator.
@@ -164,16 +165,22 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		for _, sess := range state.AllSessions(&m.appState) {
 			targetToSession[mux.Target(sess.TmuxSession, sess.TmuxWindow)] = sess.ID
 		}
+		newBell := false
 		for target := range msg.Bells {
 			if sid, ok := targetToSession[target]; ok {
-				m.bellPending[sid] = true
+				if !m.bellPending[sid] {
+					newBell = true
+					m.bellPending[sid] = true
+				}
 			}
 		}
-		if time.Since(m.lastBellTime) > 500*time.Millisecond {
+		if newBell && time.Since(m.lastBellTime) > 500*time.Millisecond {
 			os.Stdout.Write([]byte("\a"))
 			m.lastBellTime = time.Now()
 		}
-		changed = true // sidebar needs to show bell badges
+		if newBell {
+			changed = true // sidebar needs to show bell badges
+		}
 	}
 
 	for sessionID, status := range msg.Statuses {

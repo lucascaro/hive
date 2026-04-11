@@ -111,13 +111,13 @@ Fold bell flag detection into the existing `GetPaneTitles` tmux query (zero extr
 
 ## Implementation Notes
 
-Implemented with one deviation from plan: replaced edge-tracking (`bellSeen`) with flag-clearing approach. Key decisions:
+Key decisions and deviations from plan:
 
-- **Flag clearing instead of edge tracking:** The original plan used `bellSeen` to detect 0→1 transitions, but `#{window_bell_flag}` stays set indefinitely since hive never attaches a tmux client. Instead, added `ClearBellFlags()` that runs `tmux select-window` (batched with `\;`) to reset flags after reading. This means every flag=1 is a fresh bell.
+- **No flag clearing — `bellPending` as edge tracker:** `#{window_bell_flag}` stays set until the window becomes "current" (i.e., the user attaches). `bellPending map[string]bool` on Model tracks which sessions we've already seen bells for — only emit `\a` for NEW bells (flag=1 and `bellPending[sid]` is false). Cleared on attach. The tmux flag also clears naturally on attach because `attach-session -t target` makes that window current.
+- **Bell flag only works for non-current windows:** tmux's `#{window_bell_flag}` is only set when the bell fires in a window that is NOT the client's current window. The most-recently-attached window won't flag. Acceptable trade-off — all other sessions are covered.
 - **Explicit `monitor-bell on`:** Set on the hive session at creation time to ensure the flag is tracked regardless of user's tmux config.
-- **Visual bell indicator:** Sessions with pending bells show a `♪` badge (orange, via `styles.BellBadge`) in the sidebar. `bellPending map[string]bool` on Model tracks which sessions have unacknowledged bells, cleared on attach.
-- **ClearBellFlags added to Backend interface:** All backends implement it (tmux does `select-window`, native/mock are no-ops).
-- **SplitN increased to 3:** The `GetPaneTitles` parser now splits on 3 fields. Lines with only 2 fields (older tmux versions) still parse correctly.
+- **Visual bell indicator:** Sessions with pending bells show a `♪` badge (orange, via `styles.BellBadge`) in the sidebar.
+- **Verified with live tmux session:** Manually confirmed that `printf '\007'` in a background hive-sessions window sets `window_bell_flag=1`, and that `GetPaneTitles` format string correctly parses it.
 - **Defensive BEL strip in preview:** Added `\a` to `sanitizePreviewContent`'s `strings.NewReplacer`.
 
 - **PR:** #65

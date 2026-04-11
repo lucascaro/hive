@@ -52,9 +52,6 @@ type Backend interface {
 	// Returns titles ("session:windowIndex" → pane title) and bells (true when set).
 	GetPaneTitles(session string) (map[string]string, map[string]bool, error)
 
-	// ClearBellFlags resets the bell flag for the given targets so that
-	// subsequent bells can be detected via GetPaneTitles.
-	ClearBellFlags(targets []string)
 
 	// CapturePane returns the rendered visible content of a window pane.
 	// lines specifies scrollback depth (0 = visible only).
@@ -178,15 +175,6 @@ func GetPaneTitles(session string) (map[string]string, map[string]bool, error) {
 		return nil, nil, nil
 	}
 	return active.GetPaneTitles(session)
-}
-
-// ClearBellFlags resets the bell flag for the given targets.
-// No-op if no backend has been set (e.g. in tests).
-func ClearBellFlags(targets []string) {
-	if active == nil {
-		return
-	}
-	active.ClearBellFlags(targets)
 }
 
 // CapturePane returns the rendered visible content of a pane.

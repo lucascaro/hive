@@ -229,15 +229,6 @@ func (m *MockBackend) GetPaneTitles(session string) (map[string]string, map[stri
 	return titles, bells, nil
 }
 
-func (m *MockBackend) ClearBellFlags(targets []string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.record("ClearBellFlags")
-	for _, target := range targets {
-		delete(m.paneBells, target)
-	}
-}
-
 func (m *MockBackend) CapturePane(target string, lines int) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

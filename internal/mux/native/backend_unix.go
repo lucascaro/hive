@@ -128,8 +128,6 @@ func (b *Backend) GetPaneTitles(_ string) (map[string]string, map[string]bool, e
 	return nil, nil, nil
 }
 
-func (b *Backend) ClearBellFlags(_ []string) {}
-
 func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 	// Native backend does not expose pane process names.
 	return "", nil
