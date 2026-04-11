@@ -89,4 +89,4 @@ Works in both sidebar and grid views (grid only moves sessions). Cursor follows 
 - Sidebar cursor sync after move uses different strategies per item kind: `SyncActiveSession` for sessions, manual item search for teams and projects
 - No deviations from the plan; all six reducer functions, key wiring, and tests implemented as specified
 
-- **PR:** —
+- **PR:** #67
