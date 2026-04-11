@@ -79,23 +79,25 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	// Also accept Shift+Up/Down as aliases for consistency.
 	if key.Matches(msg, m.keys.MoveLeft) || key.Matches(msg, m.keys.MoveUp) {
 		if sess := m.gridView.Selected(); sess != nil {
-			m.appState = *state.MoveSessionUp(&m.appState, sess.ID)
-			m.commitState()
-			m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-			m.gridView.SetProjectNames(m.gridProjectNames())
-			m.gridView.SetProjectColors(m.gridProjectColors())
-			m.gridView.SyncCursor(sess.ID)
+			if _, changed := state.MoveSessionUp(&m.appState, sess.ID); changed {
+				m.commitState()
+				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
+				m.gridView.SetProjectNames(m.gridProjectNames())
+				m.gridView.SetProjectColors(m.gridProjectColors())
+				m.gridView.SyncCursor(sess.ID)
+			}
 		}
 		return nil
 	}
 	if key.Matches(msg, m.keys.MoveRight) || key.Matches(msg, m.keys.MoveDown) {
 		if sess := m.gridView.Selected(); sess != nil {
-			m.appState = *state.MoveSessionDown(&m.appState, sess.ID)
-			m.commitState()
-			m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-			m.gridView.SetProjectNames(m.gridProjectNames())
-			m.gridView.SetProjectColors(m.gridProjectColors())
-			m.gridView.SyncCursor(sess.ID)
+			if _, changed := state.MoveSessionDown(&m.appState, sess.ID); changed {
+				m.commitState()
+				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
+				m.gridView.SetProjectNames(m.gridProjectNames())
+				m.gridView.SetProjectColors(m.gridProjectColors())
+				m.gridView.SyncCursor(sess.ID)
+			}
 		}
 		return nil
 	}
@@ -544,35 +546,39 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // moveItem moves the currently selected sidebar item up (dir=-1) or down (dir=+1)
 // within its group. Dispatches to the appropriate state reducer based on item kind.
+// Skips persist and rebuild when nothing moved (boundary no-ops).
 func (m Model) moveItem(dir int) (tea.Model, tea.Cmd) {
 	sel := m.sidebar.Selected()
 	if sel == nil {
 		return m, nil
 	}
+	var changed bool
 	switch sel.Kind {
 	case components.KindSession:
 		if dir < 0 {
-			m.appState = *state.MoveSessionUp(&m.appState, sel.SessionID)
+			_, changed = state.MoveSessionUp(&m.appState, sel.SessionID)
 		} else {
-			m.appState = *state.MoveSessionDown(&m.appState, sel.SessionID)
+			_, changed = state.MoveSessionDown(&m.appState, sel.SessionID)
 		}
 	case components.KindTeam:
 		if dir < 0 {
-			m.appState = *state.MoveTeamUp(&m.appState, sel.TeamID)
+			_, changed = state.MoveTeamUp(&m.appState, sel.TeamID)
 		} else {
-			m.appState = *state.MoveTeamDown(&m.appState, sel.TeamID)
+			_, changed = state.MoveTeamDown(&m.appState, sel.TeamID)
 		}
 	case components.KindProject:
 		if dir < 0 {
-			m.appState = *state.MoveProjectUp(&m.appState, sel.ProjectID)
+			_, changed = state.MoveProjectUp(&m.appState, sel.ProjectID)
 		} else {
-			m.appState = *state.MoveProjectDown(&m.appState, sel.ProjectID)
+			_, changed = state.MoveProjectDown(&m.appState, sel.ProjectID)
 		}
 	default:
 		return m, nil
 	}
-	m.commitState()
-	m.sidebar.Rebuild(&m.appState)
+	if !changed {
+		return m, nil
+	}
+	m.commitState() // also rebuilds sidebar
 	// Re-sync cursor to the moved item.
 	switch sel.Kind {
 	case components.KindSession:

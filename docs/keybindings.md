@@ -125,7 +125,7 @@ The detach key is set via the top-level `detach_key` field in `~/.config/hive/co
 
 ## Customization
 
-All key bindings (except `G` and grid-internal keys) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
+All key bindings (except `G` and hardcoded grid navigation keys like `h`/`j`/`k`/`l`/arrows) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
 
 ```json
 {

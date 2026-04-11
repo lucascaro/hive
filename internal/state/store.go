@@ -299,99 +299,103 @@ func allSessionsUIOrder(state *AppState) []*Session {
 }
 
 // MoveSessionUp swaps a session with the one before it in its containing slice.
-// No-op if the session is already first or not found.
-func MoveSessionUp(state *AppState, sessionID string) *AppState {
+// Returns true if a swap occurred, false if the session is already first or not found.
+func MoveSessionUp(state *AppState, sessionID string) (*AppState, bool) {
 	for _, p := range state.Projects {
 		if i := sessionIndex(p.Sessions, sessionID); i > 0 {
 			p.Sessions[i], p.Sessions[i-1] = p.Sessions[i-1], p.Sessions[i]
-			return state
+			return state, true
 		}
 		for _, t := range p.Teams {
 			if i := sessionIndex(t.Sessions, sessionID); i > 0 {
 				t.Sessions[i], t.Sessions[i-1] = t.Sessions[i-1], t.Sessions[i]
-				return state
+				return state, true
 			}
 		}
 	}
-	return state
+	return state, false
 }
 
 // MoveSessionDown swaps a session with the one after it in its containing slice.
-// No-op if the session is already last or not found.
-func MoveSessionDown(state *AppState, sessionID string) *AppState {
+// Returns true if a swap occurred, false if the session is already last or not found.
+func MoveSessionDown(state *AppState, sessionID string) (*AppState, bool) {
 	for _, p := range state.Projects {
 		if i := sessionIndex(p.Sessions, sessionID); i >= 0 && i < len(p.Sessions)-1 {
 			p.Sessions[i], p.Sessions[i+1] = p.Sessions[i+1], p.Sessions[i]
-			return state
+			return state, true
 		}
 		for _, t := range p.Teams {
 			if i := sessionIndex(t.Sessions, sessionID); i >= 0 && i < len(t.Sessions)-1 {
 				t.Sessions[i], t.Sessions[i+1] = t.Sessions[i+1], t.Sessions[i]
-				return state
+				return state, true
 			}
 		}
 	}
-	return state
+	return state, false
 }
 
 // MoveTeamUp swaps a team with the one before it in its project's Teams slice.
-// No-op if the team is already first or not found.
-func MoveTeamUp(state *AppState, teamID string) *AppState {
+// Returns true if a swap occurred, false if the team is already first or not found.
+func MoveTeamUp(state *AppState, teamID string) (*AppState, bool) {
 	for _, p := range state.Projects {
 		for i, t := range p.Teams {
 			if t.ID == teamID {
 				if i > 0 {
 					p.Teams[i], p.Teams[i-1] = p.Teams[i-1], p.Teams[i]
+					return state, true
 				}
-				return state
+				return state, false
 			}
 		}
 	}
-	return state
+	return state, false
 }
 
 // MoveTeamDown swaps a team with the one after it in its project's Teams slice.
-// No-op if the team is already last or not found.
-func MoveTeamDown(state *AppState, teamID string) *AppState {
+// Returns true if a swap occurred, false if the team is already last or not found.
+func MoveTeamDown(state *AppState, teamID string) (*AppState, bool) {
 	for _, p := range state.Projects {
 		for i, t := range p.Teams {
 			if t.ID == teamID {
 				if i < len(p.Teams)-1 {
 					p.Teams[i], p.Teams[i+1] = p.Teams[i+1], p.Teams[i]
+					return state, true
 				}
-				return state
+				return state, false
 			}
 		}
 	}
-	return state
+	return state, false
 }
 
 // MoveProjectUp swaps a project with the one before it in the Projects slice.
-// No-op if the project is already first or not found.
-func MoveProjectUp(state *AppState, projectID string) *AppState {
+// Returns true if a swap occurred, false if the project is already first or not found.
+func MoveProjectUp(state *AppState, projectID string) (*AppState, bool) {
 	for i, p := range state.Projects {
 		if p.ID == projectID {
 			if i > 0 {
 				state.Projects[i], state.Projects[i-1] = state.Projects[i-1], state.Projects[i]
+				return state, true
 			}
-			return state
+			return state, false
 		}
 	}
-	return state
+	return state, false
 }
 
 // MoveProjectDown swaps a project with the one after it in the Projects slice.
-// No-op if the project is already last or not found.
-func MoveProjectDown(state *AppState, projectID string) *AppState {
+// Returns true if a swap occurred, false if the project is already last or not found.
+func MoveProjectDown(state *AppState, projectID string) (*AppState, bool) {
 	for i, p := range state.Projects {
 		if p.ID == projectID {
 			if i < len(state.Projects)-1 {
 				state.Projects[i], state.Projects[i+1] = state.Projects[i+1], state.Projects[i]
+				return state, true
 			}
-			return state
+			return state, false
 		}
 	}
-	return state
+	return state, false
 }
 
 // --- helpers ---
