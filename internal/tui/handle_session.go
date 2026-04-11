@@ -69,6 +69,8 @@ func (m Model) handleSessionTitleChanged(msg SessionTitleChangedMsg) (tea.Model,
 }
 
 func (m Model) handleSessionAttach(msg SessionAttachMsg) (tea.Model, tea.Cmd) {
+	// Clear visual bell indicator — the user is now looking at this session.
+	delete(m.bellPending, m.appState.ActiveSessionID)
 	cmd := m.doAttach(msg)
 	return m, cmd
 }
@@ -152,31 +154,28 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		m.appState.PreviewContent = content
 		m.preview.SetContent(content)
 	}
-	// Forward terminal bell when any target transitions bell flag 0→1.
-	if msg.Bells != nil {
-		newBell := false
-		for target, bell := range msg.Bells {
-			if bell && !m.bellSeen[target] {
-				newBell = true
+	// Forward terminal bell and mark sessions with pending bell indicator.
+	// Bell flags are cleared by scheduleWatchStatuses after reading, so any
+	// flag seen here is a fresh bell since the last poll — no edge tracking needed.
+	changed := false
+	if len(msg.Bells) > 0 {
+		// Build reverse map: target → sessionID for visual indicator.
+		targetToSession := make(map[string]string, len(m.contentSnapshots))
+		for _, sess := range state.AllSessions(&m.appState) {
+			targetToSession[mux.Target(sess.TmuxSession, sess.TmuxWindow)] = sess.ID
+		}
+		for target := range msg.Bells {
+			if sid, ok := targetToSession[target]; ok {
+				m.bellPending[sid] = true
 			}
 		}
-		// Update edge-tracking state: copy current bell flags, clear targets
-		// whose flag returned to 0.
-		next := make(map[string]bool, len(msg.Bells))
-		for target, bell := range msg.Bells {
-			if bell {
-				next[target] = true
-			}
-		}
-		m.bellSeen = next
-
-		if newBell && time.Since(m.lastBellTime) > 500*time.Millisecond {
+		if time.Since(m.lastBellTime) > 500*time.Millisecond {
 			os.Stdout.Write([]byte("\a"))
 			m.lastBellTime = time.Now()
 		}
+		changed = true // sidebar needs to show bell badges
 	}
 
-	changed := false
 	for sessionID, status := range msg.Statuses {
 		sess := state.FindSession(&m.appState, sessionID)
 		if sess != nil && sess.Status != status {
@@ -186,6 +185,7 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 	}
 	if changed {
 		m.sidebar.Rebuild(&m.appState)
+		m.sidebar.SetBellPending(m.bellPending)
 	}
 	return m, m.scheduleWatchStatuses()
 }

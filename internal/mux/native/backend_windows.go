@@ -44,6 +44,7 @@ func (b *Backend) KillWindow(_ string) error                               { ret
 func (b *Backend) RenameWindow(_, _ string) error                          { return errNotSupported }
 func (b *Backend) ListWindows(_ string) ([]mux.WindowInfo, error)         { return nil, errNotSupported }
 func (b *Backend) GetPaneTitles(_ string) (map[string]string, map[string]bool, error) { return nil, nil, errNotSupported }
+func (b *Backend) ClearBellFlags(_ []string)                                          {}
 func (b *Backend) CapturePane(_ string, _ int) (string, error)            { return "", errNotSupported }
 func (b *Backend) CapturePaneRaw(_ string, _ int) (string, error)         { return "", errNotSupported }
 func (b *Backend) GetCurrentCommand(_ string) (string, error)             { return "", errNotSupported }

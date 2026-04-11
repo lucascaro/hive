@@ -31,6 +31,8 @@ func (b *Backend) CreateSession(session, windowName, workDir string, cmd []strin
 	// Enable mouse support so users can scroll through output.
 	// Non-fatal: don't fail session creation over a cosmetic option.
 	_ = tmux.SetOption(session, "mouse", "on")
+	// Ensure bell monitoring is on so #{window_bell_flag} tracks bells.
+	_ = tmux.SetOption(session, "monitor-bell", "on")
 	return nil
 }
 
@@ -64,6 +66,10 @@ func (b *Backend) ListWindows(session string) ([]mux.WindowInfo, error) {
 
 func (b *Backend) GetPaneTitles(session string) (map[string]string, map[string]bool, error) {
 	return tmux.GetPaneTitles(session)
+}
+
+func (b *Backend) ClearBellFlags(targets []string) {
+	tmux.ClearBellFlags(targets)
 }
 
 func (b *Backend) CapturePane(target string, lines int) (string, error) {

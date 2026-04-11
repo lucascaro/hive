@@ -137,6 +137,16 @@ func (m *Model) scheduleWatchStatuses() tea.Cmd {
 			bells = make(map[string]bool)
 		}
 	}
+	// Clear bell flags in tmux so the next poll starts fresh.  Without this,
+	// flags stay set indefinitely (hive never attaches a tmux client) and
+	// subsequent bells would be invisible.
+	if len(bells) > 0 {
+		bellTargets := make([]string, 0, len(bells))
+		for target := range bells {
+			bellTargets = append(bellTargets, target)
+		}
+		mux.ClearBellFlags(bellTargets)
+	}
 	// Snapshot maps to avoid concurrent reads in the tick goroutine
 	// while handleStatusesDetected writes on the main goroutine.
 	prevContents := make(map[string]string, len(m.contentSnapshots))

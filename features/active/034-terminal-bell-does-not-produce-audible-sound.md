@@ -111,11 +111,13 @@ Fold bell flag detection into the existing `GetPaneTitles` tmux query (zero extr
 
 ## Implementation Notes
 
-Implemented as planned with no deviations. Key decisions:
+Implemented with one deviation from plan: replaced edge-tracking (`bellSeen`) with flag-clearing approach. Key decisions:
 
-- **Edge-triggered bell detection:** `bellSeen map[string]bool` on Model tracks which targets had bell=1 on the previous poll. Only fires `\a` on 0→1 transitions per target. The `bellSeen` map is rebuilt from scratch each poll (not merged) so targets whose flag clears naturally drop out.
-- **SplitN increased to 3:** The `GetPaneTitles` parser now splits on 3 fields (`index\ttitle\tbell_flag`). Lines with only 2 fields (older tmux versions) still parse correctly for titles — bell flag defaults to false.
-- **Defensive BEL strip in preview:** Added `\a` to `sanitizePreviewContent`'s `strings.NewReplacer` even though `capture-pane` shouldn't contain BEL.
-- **All backends updated:** tmux, native (unix + windows), and mock backends all updated to new `GetPaneTitles` 3-return signature.
+- **Flag clearing instead of edge tracking:** The original plan used `bellSeen` to detect 0→1 transitions, but `#{window_bell_flag}` stays set indefinitely since hive never attaches a tmux client. Instead, added `ClearBellFlags()` that runs `tmux select-window` (batched with `\;`) to reset flags after reading. This means every flag=1 is a fresh bell.
+- **Explicit `monitor-bell on`:** Set on the hive session at creation time to ensure the flag is tracked regardless of user's tmux config.
+- **Visual bell indicator:** Sessions with pending bells show a `♪` badge (orange, via `styles.BellBadge`) in the sidebar. `bellPending map[string]bool` on Model tracks which sessions have unacknowledged bells, cleared on attach.
+- **ClearBellFlags added to Backend interface:** All backends implement it (tmux does `select-window`, native/mock are no-ops).
+- **SplitN increased to 3:** The `GetPaneTitles` parser now splits on 3 fields. Lines with only 2 fields (older tmux versions) still parse correctly.
+- **Defensive BEL strip in preview:** Added `\a` to `sanitizePreviewContent`'s `strings.NewReplacer`.
 
 - **PR:** #65

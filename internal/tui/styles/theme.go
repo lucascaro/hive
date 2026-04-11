@@ -89,6 +89,9 @@ var (
 	DotWaiting = lipgloss.NewStyle().Foreground(ColorWarning).Render("◉")
 	DotDead    = lipgloss.NewStyle().Foreground(ColorError).Render("✕")
 
+	// Bell badge shown when a session has an unacknowledged bell.
+	BellBadge = lipgloss.NewStyle().Foreground(ColorWarning).Render("♪")
+
 	// Misc
 	TitleStyle = lipgloss.NewStyle().
 			Foreground(ColorAccent).
