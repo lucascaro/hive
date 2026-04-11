@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-11
+
 ### Added
 - **Reorder items via keyboard**: `Shift+Up`/`Down` reorders sessions, teams, and projects in the sidebar; `Shift+Left`/`Right` reorders in grid view. Order persists across restarts (#55).
 
@@ -249,7 +251,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/lucascaro/hive/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/lucascaro/hive/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/lucascaro/hive/compare/v0.4.0...v0.5.0
 [0.3.0]: https://github.com/lucascaro/hive/compare/v0.2.1...v0.3.0
