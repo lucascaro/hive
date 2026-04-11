@@ -62,6 +62,8 @@ func (m *Model) cycleSessionColor(sessionID string, direction int) {
 		return
 	}
 	usedByOthers := m.siblingSessionColors(sess.ProjectID, sessionID)
+	// Also exclude the project color so cycling never lands on it.
+	usedByOthers = append(usedByOthers, proj.Color)
 	current := sess.Color
 	if current == "" {
 		current = proj.Color
