@@ -165,9 +165,9 @@ func TestFlow_MoveProjectDown_Sidebar(t *testing.T) {
 
 // --- Grid reorder flow tests ---
 
-// TestFlow_MoveSession_GridView verifies Shift+Down in grid view moves
-// the selected session and grid cursor follows.
-func TestFlow_MoveSession_GridView(t *testing.T) {
+// TestFlow_MoveSession_GridView_ShiftRight verifies Shift+Right in grid view
+// moves the selected session forward and grid cursor follows.
+func TestFlow_MoveSession_GridView_ShiftRight(t *testing.T) {
 	m, mock := testFlowModelThreeSessions(t)
 	f := newFlowRunner(t, m, mock)
 
@@ -187,13 +187,13 @@ func TestFlow_MoveSession_GridView(t *testing.T) {
 		t.Fatal("grid cursor should be on sess-1")
 	}
 
-	// Press Shift+Down.
-	f.SendSpecialKey(tea.KeyShiftDown)
+	// Press Shift+Right to move session-1 forward (right).
+	f.SendSpecialKey(tea.KeyShiftRight)
 
 	// Verify state order changed.
 	proj := f.Model().appState.Projects[0]
 	if proj.Sessions[0].ID != "sess-2" || proj.Sessions[1].ID != "sess-1" {
-		t.Errorf("grid: order after MoveDown: got [%s,%s,...] want [session-2,session-1,...]",
+		t.Errorf("grid: order after MoveRight: got [%s,%s,...] want [session-2,session-1,...]",
 			proj.Sessions[0].Title, proj.Sessions[1].Title)
 	}
 
@@ -205,6 +205,45 @@ func TestFlow_MoveSession_GridView(t *testing.T) {
 			selID = sel.ID
 		}
 		t.Errorf("grid cursor after move = %q, want %q", selID, "sess-1")
+	}
+}
+
+// TestFlow_MoveSession_GridView_ShiftLeft verifies Shift+Left in grid view
+// moves the selected session backward and grid cursor follows.
+func TestFlow_MoveSession_GridView_ShiftLeft(t *testing.T) {
+	m, mock := testFlowModelThreeSessions(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Start on session-2 (the default active session in three-session model).
+	f.AssertActiveSession("sess-2")
+
+	// Open project grid.
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	sel := gridSelected(f)
+	if sel == nil || sel.ID != "sess-2" {
+		t.Fatal("grid cursor should be on sess-2")
+	}
+
+	// Press Shift+Left to move session-2 backward (left).
+	f.SendSpecialKey(tea.KeyShiftLeft)
+
+	// Verify state order changed: session-2 should now be first.
+	proj := f.Model().appState.Projects[0]
+	if proj.Sessions[0].ID != "sess-2" || proj.Sessions[1].ID != "sess-1" {
+		t.Errorf("grid: order after MoveLeft: got [%s,%s,...] want [session-2,session-1,...]",
+			proj.Sessions[0].Title, proj.Sessions[1].Title)
+	}
+
+	// Grid cursor should follow session-2.
+	sel = gridSelected(f)
+	if sel == nil || sel.ID != "sess-2" {
+		selID := ""
+		if sel != nil {
+			selID = sel.ID
+		}
+		t.Errorf("grid cursor after move = %q, want %q", selID, "sess-2")
 	}
 }
 

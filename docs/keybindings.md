@@ -46,8 +46,8 @@
 | `x` | Kill selected session (with confirmation) |
 | `r` | Rename selected session |
 | `G` | Switch to all-projects view (while grid is open) |
-| `Shift+↑` | Move selected session up in its group |
-| `Shift+↓` | Move selected session down in its group |
+| `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
+| `Shift+→` / `Shift+↓` | Move selected session right (later) in its group |
 | `g` / `Esc` / `q` | Exit grid view |
 
 ## Status Indicator
@@ -149,7 +149,9 @@ All key bindings (except `G` and grid-internal keys) can be overridden in `~/.co
     "quit": "q",
     "quit_kill": "Q",
     "move_up": "shift+up",
-    "move_down": "shift+down"
+    "move_down": "shift+down",
+    "move_left": "shift+left",
+    "move_right": "shift+right"
   }
 }
 ```

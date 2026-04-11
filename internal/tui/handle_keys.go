@@ -75,9 +75,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Width = m.appState.TermWidth
 	m.gridView.Height = m.appState.TermHeight
 
-	// Move keys checked via key.Matches before the string switch so they
-	// respect configurable bindings and don't conflict with navigation keys.
-	if key.Matches(msg, m.keys.MoveUp) {
+	// Grid uses Shift+Left/Right for reorder (horizontal layout is more natural).
+	// Also accept Shift+Up/Down as aliases for consistency.
+	if key.Matches(msg, m.keys.MoveLeft) || key.Matches(msg, m.keys.MoveUp) {
 		if sess := m.gridView.Selected(); sess != nil {
 			m.appState = *state.MoveSessionUp(&m.appState, sess.ID)
 			m.commitState()
@@ -88,7 +88,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if key.Matches(msg, m.keys.MoveDown) {
+	if key.Matches(msg, m.keys.MoveRight) || key.Matches(msg, m.keys.MoveDown) {
 		if sess := m.gridView.Selected(); sess != nil {
 			m.appState = *state.MoveSessionDown(&m.appState, sess.ID)
 			m.commitState()

@@ -83,6 +83,8 @@ func DefaultConfig() Config {
 			ColorPrev:      "C",
 			MoveUp:         "shift+up",
 			MoveDown:       "shift+down",
+			MoveLeft:       "shift+left",
+			MoveRight:      "shift+right",
 		},
 	}
 }

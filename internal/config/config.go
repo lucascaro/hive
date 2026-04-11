@@ -86,4 +86,6 @@ type KeybindingsConfig struct {
 	ColorPrev      string `json:"color_prev"`
 	MoveUp         string `json:"move_up"`
 	MoveDown       string `json:"move_down"`
+	MoveLeft       string `json:"move_left"`
+	MoveRight      string `json:"move_right"`
 }
