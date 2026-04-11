@@ -79,9 +79,12 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		return m, func() tea.Msg { return ErrorMsg{Err: msg.Err} }
 	}
+	// Clear bell indicator for the session the user just visited.
+	delete(m.bellPending, m.appState.ActiveSessionID)
 	m.appState.RestoreGridMode = msg.RestoreGridMode
 	m.restoreGrid()
 	m.sidebar.Rebuild(&m.appState)
+	m.sidebar.SetBellPending(m.bellPending)
 	m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 	m.previewPollGen++
 	m.appState.PreviewContent = ""
