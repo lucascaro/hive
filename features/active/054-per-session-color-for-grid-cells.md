@@ -1,7 +1,7 @@
 # Feature: Per-session color for grid cells
 
 - **GitHub Issue:** #54
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P5
@@ -70,16 +70,52 @@ Sessions currently inherit color from their parent project. The `Session` struct
 
 ## Plan
 
-<Filled during PLAN stage.>
+Use Option A from research: project color stays as the header background, session color becomes the cell border for unselected cells. Selected cells keep the purple accent border. Auto-assign session colors on creation. Keybinds: `c`/`C` continues to cycle project color forward/backward (unchanged). `v`/`V` cycles session color forward/backward in grid view (new keybind, mnemonic: "visual" color). Both support forward and backward cycling so users can return to a previous color.
 
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+
+1. **`internal/state/model.go`** — Add `Color string \`json:"color,omitempty"\`` field to `Session` struct (after `AgentCmd` field, line ~132). Empty string = inherit project color for border.
+
+2. **`internal/state/store.go`** — Add `SetSessionColor(state *AppState, sessionID, color string) *AppState` function (mirrors `SetProjectColor` at line 184). Walks all projects' sessions and team sessions to find and set the color.
+
+3. **`internal/tui/styles/theme.go`** — Add `NextFreeSessionColor(projectColor string, usedColors []string) string` that picks the first palette color not in `usedColors` and not equal to `projectColor`. This ensures session colors differ from each other and from the project color.
+
+4. **`internal/tui/operations.go`** — Add `cycleSessionColor(sessionID string, direction int)` method on `Model`. Collects colors used by sibling sessions in the same project, calls `styles.CycleColor()`, calls `state.SetSessionColor()`, then `commitState()`.
+
+5. **`internal/tui/helpers.go`** — Add `gridSessionColors() map[string]string` that builds a `sessionID→hex color` map from all sessions across all projects (include team sessions). Return only sessions that have a non-empty `Color`.
+
+6. **`internal/tui/components/gridview.go`**:
+   - Add `sessionColors map[string]string` field to `GridView` struct (line ~57).
+   - Add `SetSessionColors(colors map[string]string)` method (mirrors `SetProjectColors`).
+   - In `renderCell()` (line 230): look up `gv.sessionColors[sess.ID]`. If non-empty, use it as `borderColor` for unselected cells (instead of `styles.ColorBorder`). Selected cells keep `styles.ColorAccent`.
+
+7. **`internal/tui/viewstack.go`** — In `refreshGrid()` (line ~164) and `openGrid()` (line ~176), add `m.gridView.SetSessionColors(m.gridSessionColors())` after the existing `SetProjectColors` call.
+
+8. **`internal/tui/handle_keys.go`** — Add a new `"v", "V"` case in `handleGridKey` (after the existing `"c", "C"` case at line 162):
+   - `v` → `m.cycleSessionColor(sess.ID, +1)` (forward)
+   - `V` → `m.cycleSessionColor(sess.ID, -1)` (backward)
+   - After cycling, call `m.gridView.SetSessionColors(m.gridSessionColors())`.
+   - Also add `SetSessionColors` after reorder moves (lines 86, 98) and in all other places that call `SetProjectColors`.
+
+9. **`internal/tui/operations.go`** — In `createSession()` (line 169) and `spawnWorktreeSession()` (line 113) and `addTeamSession()` (line 230): after `CreateSession`/`AddTeamSession`, auto-assign a session color by collecting sibling session colors and calling `styles.NextFreeSessionColor(proj.Color, usedColors)`, then setting `sess.Color`.
 
 ### Test Strategy
-- <how to verify>
+
+**Unit tests:**
+- **`internal/tui/styles/theme_test.go`** — `TestNextFreeSessionColor`: verify it returns a palette color that is not the project color and not in the used list. `TestNextFreeSessionColor_AllUsed`: verify it still returns a color when all palette slots are taken.
+- **`internal/state/store_test.go`** — `TestSetSessionColor_Standalone`: verify setting color on a standalone session. `TestSetSessionColor_TeamSession`: verify setting color on a session inside a team.
+- **`internal/tui/components/gridview_test.go`** — `TestGridView_SetSessionColors`: verify session colors are stored and retrievable. `TestGridView_RenderCell_SessionColorBorder`: render an unselected cell with a session color and verify the border uses that color, not the default gray. `TestGridView_RenderCell_SelectedOverridesSessionColor`: render a selected cell with a session color and verify the border uses the accent color, not the session color.
+
+**Functional (flow) tests** (using the `flowRunner` pattern in `internal/tui/flow_color_test.go`):
+- **`TestFlow_SessionColorCycle_GridView`**: open grid, press `v`, verify the selected session's `Color` field changed from its initial value.
+- **`TestFlow_SessionColorCyclePrev_GridView`**: open grid, press `v` then `V`, verify cycling backward returns to the initial color.
+- **`TestFlow_SessionColorCycle_SkipsSiblingColors`**: create a project with 3 sessions with pre-assigned colors, cycle one — verify it skips colors already used by siblings.
+- **`TestFlow_SessionColor_AutoAssignedOnCreate`**: create a new session via the grid `t` key flow, verify the new session has a non-empty `Color` field that differs from existing sibling session colors.
+- **`TestFlow_ProjectColorCycle_UnchangedInGrid`**: open grid, press `c`, verify project color still cycles (existing behavior not broken).
 
 ### Risks
-- <what could go wrong>
+- With 10 palette colors and many sessions, colors will repeat — acceptable.
+- `v`/`V` is a new keybind — users need to discover it. Will be shown in the grid footer hints.
 
 ## Implementation Notes
 

@@ -18,7 +18,7 @@ Create an implementation plan for feature **#$ARGUMENTS** (or the next feature i
 4. **For complex features (M/L):** Use Plan agents to design the approach, considering trade-offs.
 5. **Write the Plan section** in the feature file:
    - **Files to Change:** Numbered list with file paths and what to change in each
-   - **Test Strategy:** How to verify the changes work (unit tests, manual testing, specific scenarios)
+   - **Test Strategy:** Concrete, named test functions covering both unit tests and functional (flow) tests — AGENTS.md requires both for all changes. List each test with its file path, function name, and what it verifies. Follow existing patterns (e.g. `flowRunner` for flow tests in `internal/tui/flow_*_test.go`, direct `Update()` calls for component tests). Do not leave this section vague — every behavioral change must have a corresponding test.
    - **Risks:** What could go wrong, edge cases to watch for
 6. **Present the plan to the user.** Walk through the key decisions and ask for approval before advancing.
 7. **On approval:**
@@ -30,5 +30,7 @@ Create an implementation plan for feature **#$ARGUMENTS** (or the next feature i
 ## Rules
 - The plan must be specific enough that someone (human or AI) could implement it without re-reading the research
 - Include file paths for every file that will be changed
+- **Tests are mandatory.** AGENTS.md requires both unit tests and functional tests for all changes. The Test Strategy section must list concrete test function names, not vague descriptions. If a plan lacks tests, it is incomplete.
+- **Keep the codebase clean.** Reuse existing functions, patterns, and helpers — do not duplicate logic. If a new abstraction is needed, check whether an existing one can be extended. Prefer small, focused changes over sprawling ones. Flag any dead code or unused imports the plan would introduce.
 - Always get user approval before advancing to IMPLEMENT
 - Follow the project's existing patterns — check AGENTS.md for conventions

@@ -7,9 +7,10 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #54 | Per-session color for grid cells | PLAN | S |
-| 2 | #37 | Code refactor: remove bloat | RESEARCH | L |
-| 3 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
+| 1 | #54 | Per-session color for grid cells | IMPLEMENT | S |
+| 2 | #68 | Improve selected session visibility in grid view | RESEARCH | S |
+| 3 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 4 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
 ## Completed
 
