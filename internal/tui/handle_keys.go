@@ -671,6 +671,17 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// What's New overlay: scroll with mouse wheel.
+	if m.TopView() == ViewWhatsNew {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.whatsNewViewport.LineUp(3)
+		case tea.MouseButtonWheelDown:
+			m.whatsNewViewport.LineDown(3)
+		}
+		return m, nil
+	}
+
 	// Ignore mouse when any modal overlay is active.
 	if m.TopView() != ViewMain && m.TopView() != ViewFilter {
 		return m, nil
