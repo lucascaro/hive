@@ -17,8 +17,6 @@ func sidebarSelected(f *flowRunner) *components.SidebarItem {
 	return f.model.sidebar.Selected()
 }
 
-// --- Session reorder flow tests ---
-
 // TestFlow_MoveSessionDown_Sidebar verifies Shift+Down moves a session down
 // in the sidebar and cursor follows.
 func TestFlow_MoveSessionDown_Sidebar(t *testing.T) {
@@ -113,8 +111,6 @@ func TestFlow_MoveSession_BoundaryNoop(t *testing.T) {
 	}
 }
 
-// --- Project reorder flow tests ---
-
 // TestFlow_MoveProjectDown_Sidebar verifies Shift+Down on a project row
 // swaps it with the next project.
 func TestFlow_MoveProjectDown_Sidebar(t *testing.T) {
@@ -162,8 +158,6 @@ func TestFlow_MoveProjectDown_Sidebar(t *testing.T) {
 		t.Errorf("sidebar selection project = %q, want %q", selID, "proj-1")
 	}
 }
-
-// --- Grid reorder flow tests ---
 
 // TestFlow_MoveSession_GridView_ShiftRight verifies Shift+Right in grid view
 // moves the selected session forward and grid cursor follows.
@@ -246,8 +240,6 @@ func TestFlow_MoveSession_GridView_ShiftLeft(t *testing.T) {
 		t.Errorf("grid cursor after move = %q, want %q", selID, "sess-2")
 	}
 }
-
-// --- Team reorder flow tests ---
 
 // TestFlow_MoveTeamDown_Sidebar verifies Shift+Down on a team row swaps it
 // with the next team.

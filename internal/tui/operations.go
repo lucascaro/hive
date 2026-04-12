@@ -47,7 +47,6 @@ func (m *Model) cycleProjectColor(projectID string, direction int) {
 	newColor := styles.CycleColor(proj.Color, direction, usedByOthers)
 	state.SetProjectColor(&m.appState, projectID, newColor)
 	m.commitState()
-	m.sidebar.Rebuild(&m.appState)
 }
 
 // cycleSessionColor changes a session's color to the next/prev free palette color,
@@ -71,7 +70,6 @@ func (m *Model) cycleSessionColor(sessionID string, direction int) {
 	newColor := styles.CycleColor(current, direction, usedByOthers)
 	state.SetSessionColor(&m.appState, sessionID, newColor)
 	m.commitState()
-	m.sidebar.Rebuild(&m.appState)
 }
 
 // siblingSessionColors collects colors used by other sessions in the same project.

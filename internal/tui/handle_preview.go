@@ -72,8 +72,6 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 	return m, cmd
 }
 
-// --- Scheduling helpers ---
-
 func (m *Model) scheduleGridPoll() tea.Cmd {
 	sessions := m.gridSessions(m.gridView.Mode)
 	if len(sessions) == 0 {

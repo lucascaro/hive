@@ -303,8 +303,6 @@ func TestDetectStatus_NoBells(t *testing.T) {
 	}
 }
 
-// --- matchesLastLine tests ---
-
 func TestMatchesLastLine_SimpleMatch(t *testing.T) {
 	re := regexp.MustCompile(`^>>> `)
 	if !matchesLastLine("output\n>>> ", re) {

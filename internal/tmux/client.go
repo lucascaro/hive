@@ -31,7 +31,6 @@ func IsAvailable() bool {
 	return err == nil
 }
 
-// IsServerRunning checks whether a tmux server is running.
 func IsServerRunning() bool {
 	err := ExecSilent("info")
 	return err == nil

@@ -211,7 +211,6 @@ func (t *Team) TeamStatus() SessionStatus {
 	return StatusIdle
 }
 
-// ActiveSession returns the active session from AppState, or nil.
 func (s *AppState) ActiveSession() *Session {
 	for _, p := range s.Projects {
 		for _, sess := range p.Sessions {
@@ -230,7 +229,6 @@ func (s *AppState) ActiveSession() *Session {
 	return nil
 }
 
-// ActiveProject returns the active project, or nil.
 func (s *AppState) ActiveProject() *Project {
 	for _, p := range s.Projects {
 		if p.ID == s.ActiveProjectID {

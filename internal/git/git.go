@@ -58,7 +58,6 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	return nil
 }
 
-// RemoveWorktree removes the git worktree at worktreePath.
 func RemoveWorktree(repoDir, worktreePath string) error {
 	// Use --force to remove even if the worktree has modified files.
 	cmd := exec.Command("git", "-C", repoDir, "worktree", "remove", "--force", worktreePath)
@@ -115,8 +114,6 @@ func sanitizeBranch(branch string) string {
 	r := strings.NewReplacer("/", "-", "\\", "-", ":", "-", " ", "-")
 	return r.Replace(branch)
 }
-
-// ---- word lists ---------------------------------------------------------------
 
 var adjectives = []string{
 	"amber", "ancient", "arctic", "autumn", "azure",

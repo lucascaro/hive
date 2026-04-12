@@ -1,7 +1,7 @@
 # Feature: Code refactor: remove bloat
 
 - **GitHub Issue:** #37
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P5
@@ -155,6 +155,31 @@ This is a pure refactor — **existing tests + PR 0's new tests are the primary 
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+All 5 planned PRs were combined into a single PR for simplicity since changes are interdependent.
+
+**PR 0 (test safety net):** Committed as-is from prior planning stage.
+
+**PR 1 (dead code + AI slop):**
+- Deleted `GetPaneActivity`, `SendKeys`, `SessionLabel` and their tests
+- Removed unused imports (`time`, `strconv`, `fmt`, `strings`) from affected files
+- Removed ~53 section separator comments across 15 files
+- Removed ~41 redundant doc comments across 9 files
+- Simplified boolean toggle in settings.go using `strconv.FormatBool`
+- Fixed redundant `sidebar.Rebuild` calls after `commitState` (which already rebuilds)
+
+**PR 2 (duplication consolidation):**
+- Added `GridView.SyncState()` that combines `Show` + set names/colors + `SyncCursor`
+- Added `Model.syncGridState()` convenience wrapper
+- Replaced 8+ repetitions of the 5-line grid sync block across handle_keys.go, viewstack.go, app.go, golden_test.go
+- Extracted `navigateSidebar(moveFn)` to deduplicate 4 NavUp/Down/ProjectUp/Down cases + 2 mouse scroll cases. Uses `func(*Sidebar)` signature to avoid value-receiver copy issues.
+- Extracted `initWorktreeSession(projectID)` to deduplicate grid-W and sidebar-W handlers
+- Skipped color cycling consolidation — the two functions have different enough logic that a generic helper would reduce clarity
+
+**PR 3 (state store dedup):**
+- Added generic `swapAdjacent[T any]` helper using Go generics
+- Consolidated 6 Move*Up/Down functions into 3 directional wrappers (`moveSession`, `moveTeam`, `moveProject`)
+
+**PR 4 (else cleanup):**
+- Investigated all 47 `else` blocks in production code — none qualify for removal. All are symmetric if/else, scoped assignments, or else-if chains. The original 52-count estimate was over-counted.
 
 - **PR:** —

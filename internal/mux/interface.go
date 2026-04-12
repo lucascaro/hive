@@ -102,8 +102,6 @@ func SetBackend(b Backend) {
 	active = b
 }
 
-// ---- Utility functions (backend-independent) --------------------------------
-
 // SessionName returns the shared tmux session name. All hive windows live in
 // one session so they are easy to find and recover. The projectID argument is
 // ignored; it is kept for call-site compatibility.
@@ -129,43 +127,31 @@ func Target(session string, windowIdx int) string {
 	return fmt.Sprintf("%s:%d", session, windowIdx)
 }
 
-// ---- Package-level forwarding functions ------------------------------------
-
-// IsAvailable reports whether the active backend is available.
 func IsAvailable() bool { return active.IsAvailable() }
 
-// IsServerRunning reports whether the active backend's server is running.
 func IsServerRunning() bool { return active.IsServerRunning() }
 
-// CreateSession creates a new session with a first window running cmd.
 func CreateSession(session, windowName, workDir string, cmd []string) error {
 	return active.CreateSession(session, windowName, workDir, cmd)
 }
 
-// SessionExists reports whether a session with the given name exists.
 func SessionExists(session string) bool { return active.SessionExists(session) }
 
 // KillSession destroys a session and all its windows.
 func KillSession(session string) error { return active.KillSession(session) }
 
-// ListSessionNames returns the names of all live sessions.
 func ListSessionNames() ([]string, error) { return active.ListSessionNames() }
 
-// CreateWindow adds a window to an existing session and returns its index.
 func CreateWindow(session, windowName, workDir string, cmd []string) (int, error) {
 	return active.CreateWindow(session, windowName, workDir, cmd)
 }
 
-// WindowExists reports whether target ("session:index") exists.
 func WindowExists(target string) bool { return active.WindowExists(target) }
 
-// KillWindow removes the window at the given target.
 func KillWindow(target string) error { return active.KillWindow(target) }
 
-// RenameWindow changes the name of the window at target.
 func RenameWindow(target, newName string) error { return active.RenameWindow(target, newName) }
 
-// ListWindows returns all windows in a session.
 func ListWindows(session string) ([]WindowInfo, error) { return active.ListWindows(session) }
 
 // GetPaneTitles returns pane titles and bell flags for all windows in a session.
@@ -177,7 +163,6 @@ func GetPaneTitles(session string) (map[string]string, map[string]bool, error) {
 	return active.GetPaneTitles(session)
 }
 
-// CapturePane returns the rendered visible content of a pane.
 func CapturePane(target string, lines int) (string, error) {
 	return active.CapturePane(target, lines)
 }
@@ -195,7 +180,6 @@ func GetCurrentCommand(target string) (string, error) {
 // IsPaneDead reports whether the pane's process has exited.
 func IsPaneDead(target string) bool { return active.IsPaneDead(target) }
 
-// Attach connects the current terminal to the window at target.
 func Attach(target string) error { return active.Attach(target) }
 
 // SupportsPopup reports whether the active backend can show an in-UI popup overlay.
@@ -221,7 +205,6 @@ func UseExecAttach() bool {
 	return active.UseExecAttach()
 }
 
-// DetachKey returns a description of the key sequence used to return to hive.
 func DetachKey() string { return active.DetachKey() }
 
 // AttachScript returns the shell script the active backend uses to attach to

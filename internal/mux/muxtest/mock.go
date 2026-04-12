@@ -81,8 +81,6 @@ func (m *MockBackend) record(method string) error {
 	return m.errors[method]
 }
 
-// --- mux.Backend implementation ---
-
 func (m *MockBackend) IsAvailable() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

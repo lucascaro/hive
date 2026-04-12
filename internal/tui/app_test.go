@@ -587,8 +587,6 @@ func TestGridSessionSelectedMsg_PreservesAllProjectsGridRestoreMode(t *testing.T
 	}
 }
 
-// --- DirPicker flow tests ---
-
 func TestNewProject_PressN_OpensDirPickerAfterName(t *testing.T) {
 	m := testModelWithSessions()
 
@@ -692,8 +690,6 @@ func TestDirPicker_BackgroundMessages_NotDroppedWhileActive(t *testing.T) {
 			updated.appState.PreviewContent, "background update")
 	}
 }
-
-// --- Key isolation tests ---
 
 func TestHandleKey_DirPickerActive_BlocksGlobalKeys(t *testing.T) {
 	m := testModelWithSessions()

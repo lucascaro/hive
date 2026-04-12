@@ -327,8 +327,6 @@ func gridSelected(f *flowRunner) *state.Session {
 	return f.model.gridView.Selected()
 }
 
-// --- Focus management flow tests ---
-
 // TestFlow_CreateSession_FocusSidebar verifies that creating a session
 // in sidebar view sets focus to the new session.
 func TestFlow_CreateSession_FocusSidebar(t *testing.T) {

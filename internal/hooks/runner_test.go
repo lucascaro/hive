@@ -27,8 +27,6 @@ func makeNonExecutable(t *testing.T, path, content string) {
 	}
 }
 
-// --- findScripts ---
-
 func TestFindScripts_FlatFileFound(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "on-session-create")
@@ -128,8 +126,6 @@ func TestFindScripts_DirectoriesInDotDSkipped(t *testing.T) {
 		t.Errorf("findScripts() = %v, directories should be skipped", got)
 	}
 }
-
-// --- Run ---
 
 func TestRun_ExecutesScript(t *testing.T) {
 	dir := t.TempDir()

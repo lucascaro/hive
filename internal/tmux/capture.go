@@ -2,9 +2,7 @@ package tmux
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // CapturePane returns the visible content of a tmux pane.
@@ -83,17 +81,3 @@ func splitLines(s string) []string {
 	return strings.Split(strings.TrimRight(s, "\n"), "\n")
 }
 
-// GetPaneActivity returns the time of the last output received by a pane.
-// tmux's #{pane_activity} is a Unix timestamp (seconds) that is always tracked
-// regardless of monitor-activity settings.
-func GetPaneActivity(target string) (time.Time, error) {
-	out, err := Exec("display-message", "-p", "-t", target, "#{pane_activity}")
-	if err != nil {
-		return time.Time{}, err
-	}
-	secs, err := strconv.ParseInt(out, 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse pane_activity %q: %w", out, err)
-	}
-	return time.Unix(secs, 0), nil
-}

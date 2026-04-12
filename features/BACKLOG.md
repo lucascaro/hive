@@ -7,8 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #37 | Code refactor: remove bloat | IMPLEMENT | L |
-| 2 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
+| 1 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
 ## Completed
 
@@ -40,3 +39,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #54 | Per-session color for grid cells | #70 | 2026-04-11 |
 | #68 | Improve selected session visibility in grid view | #71 | 2026-04-11 |
 | #69 | Display changelog since last version on open | — | 2026-04-11 |
+| #37 | Code refactor: remove bloat | — | 2026-04-11 |

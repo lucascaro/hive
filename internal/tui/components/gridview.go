@@ -109,8 +109,18 @@ func (gv *GridView) Selected() *state.Session {
 	return gv.sessions[gv.Cursor]
 }
 
+// SyncState refreshes the grid's sessions, metadata maps, and cursor position
+// in a single call. Use this after any operation that changes session order,
+// project/session colors, or the active session set.
+func (gv *GridView) SyncState(sessions []*state.Session, mode state.GridRestoreMode, projectNames, projectColors, sessionColors map[string]string, cursorSessionID string) {
+	gv.Show(sessions, mode)
+	gv.projectNames = projectNames
+	gv.projectColors = projectColors
+	gv.sessionColors = sessionColors
+	gv.SyncCursor(cursorSessionID)
+}
+
 // SyncCursor moves the cursor to the session matching sessionID.
-// No-op if sessionID is empty or not found in the current sessions slice.
 func (gv *GridView) SyncCursor(sessionID string) {
 	if sessionID == "" {
 		return
