@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-11
+
 ### Added
 - **Per-session color**: each session gets its own color, shown as a gradient in the grid cell header and sidebar title (project color → session color). Colors are auto-assigned on creation and can be cycled with `v`/`V` in both sidebar and grid view (#54).
 
@@ -259,7 +261,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/lucascaro/hive/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lucascaro/hive/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/lucascaro/hive/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/lucascaro/hive/compare/v0.4.0...v0.5.0
