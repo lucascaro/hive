@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| P1 | #75 | Add custom terminal bell sounds with settings option | RESEARCH | L |
 
 ## Rejected
 
