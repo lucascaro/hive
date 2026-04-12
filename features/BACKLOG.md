@@ -7,8 +7,10 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| P1 | #76 | Organize settings into tabbed categories | RESEARCH | M |
+| P1 | #80 | Preserve selected project and session when toggling between grid views (g/G) | RESEARCH | S |
 | P2 | #75 | Add custom terminal bell sounds with settings option | RESEARCH | L |
+| P3 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | RESEARCH | M |
+| — | #78 | Persist user preferences (e.g. start in grid mode) | TRIAGE | — |
 
 ## Rejected
 
@@ -48,3 +50,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #69 | Display changelog since last version on open | — | 2026-04-11 |
 | #37 | Code refactor: remove bloat | — | 2026-04-11 |
 | #74 | Windows install docs could better highlight WSL path and Go 1.25+ requirement | — | 2026-04-12 |
+| #76 | Organize settings into tabbed categories | — | 2026-04-12 |

@@ -47,3 +47,4 @@ This file tracks features that are already implemented in Hive. For the feature 
 - Customize keybindings through the config file.
 - Configure team defaults such as orchestrator type, worker count, and default worker agent.
 - Configure preview refresh behavior, hook settings, and title precedence behavior.
+- The in-app Settings screen (`S`) is organized into tabs — General, Team Defaults, Hooks, Keybindings. Switch tabs with `←`/`→` or `h`/`l`; `j`/`k` navigates fields within a tab.
