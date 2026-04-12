@@ -43,22 +43,15 @@ func WindowExists(target string) bool {
 	return err == nil
 }
 
-// KillWindow removes a tmux window by target (session:index).
 func KillWindow(target string) error {
 	return ExecSilent("kill-window", "-t", target)
 }
 
-// RenameWindow sets a new name for a tmux window.
 func RenameWindow(target, newName string) error {
 	return ExecSilent("rename-window", "-t", target, newName)
 }
 
-// SendKeys sends a command string + Enter to a tmux target.
-func SendKeys(target, command string) error {
-	return ExecSilent("send-keys", "-t", target, command, "Enter")
-}
 
-// ListWindows returns all windows in a tmux session.
 func ListWindows(tmuxSession string) ([]WindowInfo, error) {
 	out, err := Exec(
 		"list-windows",

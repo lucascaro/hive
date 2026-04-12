@@ -15,8 +15,6 @@ func newTestManager() *manager {
 	return &manager{sessions: make(map[string]*muxSession)}
 }
 
-// --- createSession / sessionExists / killSession ----------------------------
-
 func TestCreateAndExistsSession(t *testing.T) {
 	mgr := newTestManager()
 	err := mgr.createSession("sess1", "win1", t.TempDir(), []string{"sh", "-c", "sleep 60"})
@@ -60,8 +58,6 @@ func TestKillSessionNotFound(t *testing.T) {
 		t.Fatal("expected error killing non-existent session")
 	}
 }
-
-// --- createWindow -----------------------------------------------------------
 
 func TestCreateWindow(t *testing.T) {
 	mgr := newTestManager()
@@ -121,8 +117,6 @@ func TestCreateWindowRace(t *testing.T) {
 	}
 }
 
-// --- listSessionNames -------------------------------------------------------
-
 func TestListSessionNames(t *testing.T) {
 	mgr := newTestManager()
 	dir := t.TempDir()
@@ -136,8 +130,6 @@ func TestListSessionNames(t *testing.T) {
 		t.Fatalf("expected 3 sessions, got %d", len(names))
 	}
 }
-
-// --- windowExists / killWindow / renameWindow -------------------------------
 
 func TestWindowExists(t *testing.T) {
 	mgr := newTestManager()
@@ -180,15 +172,11 @@ func TestRenameWindow(t *testing.T) {
 	}
 }
 
-// --- pane.kill nil-safety --------------------------------------------------
-
 func TestPaneKillNilSafe(t *testing.T) {
 	// A zero-value pane should not panic when killed.
 	p := &pane{}
 	p.kill() // must not panic
 }
-
-// --- parseTarget -----------------------------------------------------------
 
 func TestParseTarget(t *testing.T) {
 	cases := []struct {
@@ -220,8 +208,6 @@ func TestParseTarget(t *testing.T) {
 	}
 }
 
-// --- lastLines helper -------------------------------------------------------
-
 func TestLastLines(t *testing.T) {
 	input := "a\nb\nc\nd\ne"
 	if got := lastLines(input, 3); got != "c\nd\ne" {
@@ -234,8 +220,6 @@ func TestLastLines(t *testing.T) {
 		t.Errorf("lastLines(100) = %q", got)
 	}
 }
-
-// --- capture ----------------------------------------------------------------
 
 func TestPaneCapture(t *testing.T) {
 	mgr := newTestManager()

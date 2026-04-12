@@ -9,7 +9,6 @@ import (
 
 const version = "0.1.0"
 
-// BuildEnv returns the environment variable slice to inject into hook processes.
 func BuildEnv(event state.HookEvent) []string {
 	return []string{
 		"HIVE_VERSION=" + version,

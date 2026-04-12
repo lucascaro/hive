@@ -208,13 +208,9 @@ func (m *Model) restoreGrid() {
 	mode := m.appState.RestoreGridMode
 	m.appState.RestoreGridMode = state.GridRestoreNone
 	sessions := m.gridSessions(mode)
-	m.gridView.Show(sessions, mode)
-	m.gridView.SetProjectNames(m.gridProjectNames())
-	m.gridView.SetProjectColors(m.gridProjectColors())
-	m.gridView.SetSessionColors(m.gridSessionColors())
+	m.gridView.SyncState(sessions, mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
 	m.gridView.SetPaneTitles(m.paneTitles)
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
-	m.gridView.SyncCursor(m.appState.ActiveSessionID)
 	m.PushView(ViewGrid)
 }
 

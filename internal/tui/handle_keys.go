@@ -83,11 +83,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		if sess := m.gridView.Selected(); sess != nil {
 			if _, changed := state.MoveSessionUp(&m.appState, sess.ID); changed {
 				m.commitState()
-				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-				m.gridView.SetProjectNames(m.gridProjectNames())
-				m.gridView.SetProjectColors(m.gridProjectColors())
-				m.gridView.SetSessionColors(m.gridSessionColors())
-				m.gridView.SyncCursor(sess.ID)
+				m.syncGridState(sess.ID)
 			}
 		}
 		return nil
@@ -96,11 +92,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		if sess := m.gridView.Selected(); sess != nil {
 			if _, changed := state.MoveSessionDown(&m.appState, sess.ID); changed {
 				m.commitState()
-				m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-				m.gridView.SetProjectNames(m.gridProjectNames())
-				m.gridView.SetProjectColors(m.gridProjectColors())
-				m.gridView.SetSessionColors(m.gridSessionColors())
-				m.gridView.SyncCursor(sess.ID)
+				m.syncGridState(sess.ID)
 			}
 		}
 		return nil
@@ -114,11 +106,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			if s := m.gridView.Selected(); s != nil {
 				prevID = s.ID
 			}
-			m.gridView.Show(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject)
-			m.gridView.SetProjectNames(m.gridProjectNames())
-			m.gridView.SetProjectColors(m.gridProjectColors())
-			m.gridView.SetSessionColors(m.gridSessionColors())
-			m.gridView.SyncCursor(prevID)
+			m.gridView.SyncState(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 			return m.scheduleGridPoll()
 		}
 		// Already in project grid — close grid and return to main.
@@ -133,11 +121,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		if s := m.gridView.Selected(); s != nil {
 			prevID = s.ID
 		}
-		m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
-		m.gridView.SetProjectNames(m.gridProjectNames())
-		m.gridView.SetProjectColors(m.gridProjectColors())
-		m.gridView.SetSessionColors(m.gridSessionColors())
-		m.gridView.SyncCursor(prevID)
+		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 		return m.scheduleGridPoll()
 	case "x":
 		if sess := m.gridView.Selected(); sess != nil {
@@ -187,23 +171,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "W":
 		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
-			projDir := ""
-			if proj := state.FindProject(&m.appState, sess.ProjectID); proj != nil {
-				projDir = proj.Directory
+			if cmd := m.initWorktreeSession(sess.ProjectID); cmd != nil {
+				return cmd
 			}
-			if projDir == "" {
-				projDir, _ = os.Getwd()
-			}
-			if !git.IsGitRepo(projDir) {
-				return func() tea.Msg {
-					return ErrorMsg{Err: fmt.Errorf("project directory is not a git repository")}
-				}
-			}
-			m.pendingProjectID = sess.ProjectID
-			m.pendingWorktree = true
-			m.inputMode = "new-session"
-			m.agentPicker.Show(m.sortedAgentItems())
-			m.PushView(ViewAgentPicker)
 			return nil
 		}
 	}
@@ -320,24 +290,9 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if pid == "" {
 			return m, nil
 		}
-		// Verify this project is a git repo before proceeding.
-		projDir := ""
-		if proj := state.FindProject(&m.appState, pid); proj != nil {
-			projDir = proj.Directory
+		if cmd := m.initWorktreeSession(pid); cmd != nil {
+			return m, cmd
 		}
-		if projDir == "" {
-			projDir, _ = os.Getwd()
-		}
-		if !git.IsGitRepo(projDir) {
-			return m, func() tea.Msg {
-				return ErrorMsg{Err: fmt.Errorf("project directory is not a git repository")}
-			}
-		}
-		m.pendingProjectID = pid
-		m.pendingWorktree = true
-		m.inputMode = "new-session"
-		m.agentPicker.Show(m.sortedAgentItems())
-		m.PushView(ViewAgentPicker)
 		return m, nil
 
 	case key.Matches(msg, m.keys.NewTeam):
@@ -492,60 +447,16 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.NavUp):
-		prev := m.sidebar.Cursor
-		prevSession := m.appState.ActiveSessionID
-		m.sidebar.MoveUp()
-		debugLog.Printf("NavUp: cursor %d->%d activeSession=%s", prev, m.sidebar.Cursor, m.appState.ActiveSessionID)
-		if m.sidebar.Cursor != prev {
-			m.syncActiveFromSidebar()
-			if m.appState.ActiveSessionID != prevSession {
-				m.previewPollGen++ // switched to a different session, start fresh poll
-				return m, m.schedulePollPreview()
-			}
-		}
-		return m, nil
+		return m.navigateSidebar((*components.Sidebar).MoveUp)
 
 	case key.Matches(msg, m.keys.NavDown):
-		prev := m.sidebar.Cursor
-		prevSession := m.appState.ActiveSessionID
-		m.sidebar.MoveDown()
-		debugLog.Printf("NavDown: cursor %d->%d activeSession=%s", prev, m.sidebar.Cursor, m.appState.ActiveSessionID)
-		if m.sidebar.Cursor != prev {
-			m.syncActiveFromSidebar()
-			if m.appState.ActiveSessionID != prevSession {
-				m.previewPollGen++ // switched to a different session, start fresh poll
-				return m, m.schedulePollPreview()
-			}
-		}
-		return m, nil
+		return m.navigateSidebar((*components.Sidebar).MoveDown)
 
 	case key.Matches(msg, m.keys.NavProjectUp):
-		prev := m.sidebar.Cursor
-		prevSession := m.appState.ActiveSessionID
-		m.sidebar.JumpPrevProject()
-		debugLog.Printf("NavProjectUp: cursor %d->%d", prev, m.sidebar.Cursor)
-		if m.sidebar.Cursor != prev {
-			m.syncActiveFromSidebar()
-			if m.appState.ActiveSessionID != prevSession {
-				m.previewPollGen++
-				return m, m.schedulePollPreview()
-			}
-		}
-		return m, nil
+		return m.navigateSidebar((*components.Sidebar).JumpPrevProject)
 
 	case key.Matches(msg, m.keys.NavProjectDown):
-		prev := m.sidebar.Cursor
-		prevSession := m.appState.ActiveSessionID
-		m.sidebar.JumpNextProject()
-		debugLog.Printf("NavProjectDown: cursor %d->%d", prev, m.sidebar.Cursor)
-		if m.sidebar.Cursor != prev {
-			m.syncActiveFromSidebar()
-			if m.appState.ActiveSessionID != prevSession {
-				m.previewPollGen++
-				return m, m.schedulePollPreview()
-			}
-		}
-		return m, nil
+		return m.navigateSidebar((*components.Sidebar).JumpNextProject)
 
 	case key.Matches(msg, m.keys.MoveUp):
 		return m.moveItem(-1)
@@ -630,6 +541,48 @@ func (m Model) moveItem(dir int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// initWorktreeSession verifies the project is a git repo and opens the agent
+// picker in worktree mode. Returns an error tea.Cmd if the project is not a
+// git repo; returns nil on success (agent picker is now open, caller should
+// return nil to its own caller).
+func (m *Model) initWorktreeSession(projectID string) tea.Cmd {
+	projDir := ""
+	if proj := state.FindProject(&m.appState, projectID); proj != nil {
+		projDir = proj.Directory
+	}
+	if projDir == "" {
+		projDir, _ = os.Getwd()
+	}
+	if !git.IsGitRepo(projDir) {
+		return func() tea.Msg {
+			return ErrorMsg{Err: fmt.Errorf("project directory is not a git repository")}
+		}
+	}
+	m.pendingProjectID = projectID
+	m.pendingWorktree = true
+	m.inputMode = "new-session"
+	m.agentPicker.Show(m.sortedAgentItems())
+	m.PushView(ViewAgentPicker)
+	return nil
+}
+
+// navigateSidebar calls moveFn on the Model's own sidebar to move the cursor,
+// then syncs active session state and starts a preview poll if the session changed.
+// moveFn receives a pointer to the sidebar so it operates on the correct copy.
+func (m Model) navigateSidebar(moveFn func(*components.Sidebar)) (tea.Model, tea.Cmd) {
+	prev := m.sidebar.Cursor
+	prevSession := m.appState.ActiveSessionID
+	moveFn(&m.sidebar)
+	if m.sidebar.Cursor != prev {
+		m.syncActiveFromSidebar()
+		if m.appState.ActiveSessionID != prevSession {
+			m.previewPollGen++
+			return m, m.schedulePollPreview()
+		}
+	}
+	return m, nil
+}
+
 // handleMouse routes mouse press and scroll-wheel events to the appropriate
 // component. Motion and release events are silently ignored.
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -708,35 +661,15 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseButtonWheelUp:
 		if inSidebar {
-			prev := m.sidebar.Cursor
-			prevSession := m.appState.ActiveSessionID
-			m.sidebar.MoveUp()
-			if m.sidebar.Cursor != prev {
-				m.syncActiveFromSidebar()
-				if m.appState.ActiveSessionID != prevSession {
-					m.previewPollGen++
-					return m, m.schedulePollPreview()
-				}
-			}
-		} else {
-			m.preview.ScrollUp(3)
+			return m.navigateSidebar((*components.Sidebar).MoveUp)
 		}
+		m.preview.ScrollUp(3)
 
 	case tea.MouseButtonWheelDown:
 		if inSidebar {
-			prev := m.sidebar.Cursor
-			prevSession := m.appState.ActiveSessionID
-			m.sidebar.MoveDown()
-			if m.sidebar.Cursor != prev {
-				m.syncActiveFromSidebar()
-				if m.appState.ActiveSessionID != prevSession {
-					m.previewPollGen++
-					return m, m.schedulePollPreview()
-				}
-			}
-		} else {
-			m.preview.ScrollDown(3)
+			return m.navigateSidebar((*components.Sidebar).MoveDown)
 		}
+		m.preview.ScrollDown(3)
 	}
 	return m, nil
 }

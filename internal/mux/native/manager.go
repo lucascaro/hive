@@ -26,8 +26,6 @@ var defaultMgr = &manager{
 	sessions: make(map[string]*muxSession),
 }
 
-// --- session operations -------------------------------------------------------
-
 func (m *manager) createSession(sessionName, windowName, workDir string, args []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -93,8 +91,6 @@ func (m *manager) listSessionNames() []string {
 	}
 	return names
 }
-
-// --- window operations --------------------------------------------------------
 
 func (m *manager) createWindow(sessionName, windowName, workDir string, args []string) (int, error) {
 	m.mu.RLock()
@@ -198,8 +194,6 @@ type windowEntry struct {
 	idx  int
 	name string
 }
-
-// --- helpers -----------------------------------------------------------------
 
 // paneByTarget returns the pane for "session:index", or nil if not found.
 func (m *manager) paneByTarget(target string) *pane {

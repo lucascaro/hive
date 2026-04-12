@@ -1,7 +1,6 @@
 package state
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -11,8 +10,6 @@ func emptyState() *AppState {
 		AgentUsage: make(map[string]AgentUsageRecord),
 	}
 }
-
-// --- CreateProject ---
 
 func TestCreateProject_AddsProject(t *testing.T) {
 	s := emptyState()
@@ -41,8 +38,6 @@ func TestCreateProject_NonNilSlices(t *testing.T) {
 		t.Error("Sessions should not be nil")
 	}
 }
-
-// --- RemoveProject ---
 
 func TestRemoveProject_RemovesProject(t *testing.T) {
 	s := emptyState()
@@ -81,8 +76,6 @@ func TestRemoveProject_OtherProjectsUnaffected(t *testing.T) {
 	}
 }
 
-// --- CreateSession ---
-
 func TestCreateSession_AddsToProject(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -98,8 +91,6 @@ func TestCreateSession_AddsToProject(t *testing.T) {
 	}
 }
 
-// --- CreateTeam ---
-
 func TestCreateTeam_AddsToProject(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -114,8 +105,6 @@ func TestCreateTeam_AddsToProject(t *testing.T) {
 		t.Errorf("ActiveTeamID = %q, want %q", s.ActiveTeamID, team.ID)
 	}
 }
-
-// --- AddTeamSession ---
 
 func TestAddTeamSession_AddsToTeam(t *testing.T) {
 	s := emptyState()
@@ -152,8 +141,6 @@ func TestAddTeamSession_WorkerDoesNotSetOrchestratorID(t *testing.T) {
 	}
 }
 
-// --- RemoveSession ---
-
 func TestRemoveSession_FromProject(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -178,8 +165,6 @@ func TestRemoveSession_FromTeam(t *testing.T) {
 	}
 }
 
-// --- RemoveTeam ---
-
 func TestRemoveTeam_RemovesTeam(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -192,8 +177,6 @@ func TestRemoveTeam_RemovesTeam(t *testing.T) {
 		t.Errorf("ActiveTeamID = %q after remove, want empty", s.ActiveTeamID)
 	}
 }
-
-// --- UpdateSessionTitle ---
 
 func TestUpdateSessionTitle(t *testing.T) {
 	s := emptyState()
@@ -216,8 +199,6 @@ func TestUpdateSessionTitle_UnknownIDNoOp(t *testing.T) {
 	_ = s
 }
 
-// --- UpdateSessionStatus ---
-
 func TestUpdateSessionStatus(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -228,8 +209,6 @@ func TestUpdateSessionStatus(t *testing.T) {
 		t.Errorf("Status = %q, want %q", updated.Status, StatusIdle)
 	}
 }
-
-// --- SetProjectColor ---
 
 func TestSetProjectColor(t *testing.T) {
 	s := emptyState()
@@ -252,8 +231,6 @@ func TestSetProjectColor_UnknownID(t *testing.T) {
 		t.Error("SetProjectColor with unknown ID should not modify existing projects")
 	}
 }
-
-// --- SetSessionColor ---
 
 func TestSetSessionColor_Standalone(t *testing.T) {
 	s := emptyState()
@@ -290,8 +267,6 @@ func TestSetSessionColor_UnknownID(t *testing.T) {
 	}
 }
 
-// --- ToggleProjectCollapsed ---
-
 func TestToggleProjectCollapsed(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -308,8 +283,6 @@ func TestToggleProjectCollapsed(t *testing.T) {
 	}
 }
 
-// --- ToggleTeamCollapsed ---
-
 func TestToggleTeamCollapsed(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -324,8 +297,6 @@ func TestToggleTeamCollapsed(t *testing.T) {
 	}
 }
 
-// --- AllSessions ---
-
 func TestAllSessions(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -337,8 +308,6 @@ func TestAllSessions(t *testing.T) {
 		t.Errorf("AllSessions() len = %d, want 2", len(all))
 	}
 }
-
-// --- RecordAgentUsage ---
 
 func TestRecordAgentUsage_IncreasesCount(t *testing.T) {
 	s := emptyState()
@@ -358,21 +327,6 @@ func TestRecordAgentUsage_NilMapInitialized(t *testing.T) {
 	}
 }
 
-// --- SessionLabel ---
-
-func TestSessionLabel_StandaloneNoStar(t *testing.T) {
-	sess := &Session{Title: "my-session", AgentType: AgentClaude, TeamRole: RoleStandalone}
-	label := SessionLabel(sess)
-	if label == "" {
-		t.Error("SessionLabel should not be empty")
-	}
-	// Standalone should not have the star prefix
-	if strings.HasPrefix(label, "★") {
-		t.Errorf("SessionLabel for standalone = %q, should not start with ★", label)
-	}
-}
-
-// --- UpdateProjectName ---
 
 func TestUpdateProjectName_UpdatesName(t *testing.T) {
 	s := emptyState()
@@ -391,8 +345,6 @@ func TestUpdateProjectName_UnknownID(t *testing.T) {
 		t.Errorf("Name = %q, want %q", s.Projects[0].Name, "orig")
 	}
 }
-
-// --- UpdateTeamName ---
 
 func TestUpdateTeamName_UpdatesName(t *testing.T) {
 	s := emptyState()
@@ -414,7 +366,6 @@ func TestUpdateTeamName_UnknownID(t *testing.T) {
 	}
 }
 
-// --- NextSessionAfterRemoval ---
 
 func TestNextSessionAfterRemoval_NextStandalone(t *testing.T) {
 	s := emptyState()
@@ -529,31 +480,6 @@ func TestNextSessionAfterRemoval_OverallUsesUIOrder(t *testing.T) {
 	}
 }
 
-func TestSessionLabel_OrchestratorHasStar(t *testing.T) {
-	sess := &Session{Title: "orch", AgentType: AgentClaude, TeamRole: RoleOrchestrator}
-	label := SessionLabel(sess)
-	if !strings.HasPrefix(label, "★ ") {
-		t.Errorf("SessionLabel for orchestrator = %q, want ★ prefix", label)
-	}
-}
-
-func TestSessionLabel_ContainsAgentType(t *testing.T) {
-	sess := &Session{Title: "test", AgentType: AgentCodex, TeamRole: RoleStandalone}
-	label := SessionLabel(sess)
-	if !strings.Contains(label, "[codex]") {
-		t.Errorf("SessionLabel = %q, want to contain [codex]", label)
-	}
-}
-
-func TestSessionLabel_WorkerNoStar(t *testing.T) {
-	sess := &Session{Title: "worker", AgentType: AgentClaude, TeamRole: RoleWorker}
-	label := SessionLabel(sess)
-	if strings.HasPrefix(label, "★") {
-		t.Errorf("SessionLabel for worker = %q, should not start with ★", label)
-	}
-}
-
-// --- FindSession ---
 
 func TestFindSession_Standalone(t *testing.T) {
 	s := emptyState()
@@ -596,8 +522,6 @@ func TestFindSession_EmptyState(t *testing.T) {
 	}
 }
 
-// --- FindProject ---
-
 func TestFindProject_Found(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "proj", "", "", "")
@@ -624,8 +548,6 @@ func TestFindProject_EmptyState(t *testing.T) {
 		t.Error("FindProject should return nil on empty state")
 	}
 }
-
-// --- FindTeam ---
 
 func TestFindTeam_Found(t *testing.T) {
 	s := emptyState()
@@ -670,8 +592,6 @@ func TestFindTeam_MultipleProjects(t *testing.T) {
 		t.Errorf("found.Name = %q, want %q", found.Name, "team-b")
 	}
 }
-
-// --- FindSessionByTmux ---
 
 func TestFindSessionByTmux_Found(t *testing.T) {
 	s := emptyState()
@@ -725,8 +645,6 @@ func TestFindSessionByTmux_NotFound(t *testing.T) {
 	}
 }
 
-// --- AllSessions (additional) ---
-
 func TestAllSessions_EmptyState(t *testing.T) {
 	s := emptyState()
 	all := AllSessions(s)
@@ -758,8 +676,6 @@ func TestAllSessions_TeamOnly(t *testing.T) {
 	}
 }
 
-// --- RecordAgentUsage (additional) ---
-
 func TestRecordAgentUsage_MultipleAgents(t *testing.T) {
 	s := emptyState()
 	RecordAgentUsage(s, "claude")
@@ -781,8 +697,6 @@ func TestRecordAgentUsage_SetsLastUsed(t *testing.T) {
 		t.Error("LastUsed should not be zero")
 	}
 }
-
-// --- MoveSessionUp / MoveSessionDown ---
 
 func TestMoveSessionDown_MiddleStandalone(t *testing.T) {
 	s := emptyState()
@@ -867,8 +781,6 @@ func TestMoveSessionDown_NotFoundIsNoOp(t *testing.T) {
 	}
 }
 
-// --- MoveTeamUp / MoveTeamDown ---
-
 func TestMoveTeamDown_SwapsTeams(t *testing.T) {
 	s := emptyState()
 	s, p := CreateProject(s, "p", "", "", "")
@@ -924,8 +836,6 @@ func TestMoveTeamDown_SingleIsNoOp(t *testing.T) {
 		t.Error("MoveTeamDown on single team should be no-op")
 	}
 }
-
-// --- MoveProjectUp / MoveProjectDown ---
 
 func TestMoveProjectDown_SwapsProjects(t *testing.T) {
 	s := emptyState()

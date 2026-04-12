@@ -14,16 +14,12 @@ const (
 	hooksDir       = "hooks"
 )
 
-// ConfigPath returns the full path to config.json.
 func ConfigPath() string { return filepath.Join(Dir(), configFileName) }
 
-// StatePath returns the full path to state.json.
 func StatePath() string { return filepath.Join(Dir(), stateFileName) }
 
-// LogPath returns the full path to hive.log.
 func LogPath() string { return filepath.Join(Dir(), logFileName) }
 
-// HooksPath returns the hooks directory path.
 func HooksPath() string { return filepath.Join(Dir(), hooksDir) }
 
 // Ensure creates the config directory and all subdirectories if they don't exist,

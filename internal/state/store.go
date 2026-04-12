@@ -1,7 +1,6 @@
 package state
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,7 +9,6 @@ import (
 // Store holds the persisted state and provides reducer-style mutation methods.
 // All mutation methods return a new state snapshot; callers replace the old state.
 
-// CreateProject adds a new project.
 func CreateProject(state *AppState, name, description, color, directory string) (*AppState, *Project) {
 	p := &Project{
 		ID:          uuid.New().String(),
@@ -28,7 +26,6 @@ func CreateProject(state *AppState, name, description, color, directory string) 
 	return state, p
 }
 
-// RemoveProject removes a project by ID.
 func RemoveProject(state *AppState, projectID string) *AppState {
 	out := make([]*Project, 0, len(state.Projects))
 	for _, p := range state.Projects {
@@ -59,7 +56,6 @@ func CreateSession(state *AppState, projectID string, title string, agentType Ag
 	return state, sess
 }
 
-// CreateTeam adds a new team to a project.
 func CreateTeam(state *AppState, projectID, name, goal, sharedWorkDir string) (*AppState, *Team) {
 	t := &Team{
 		ID:            uuid.New().String(),
@@ -81,7 +77,6 @@ func CreateTeam(state *AppState, projectID, name, goal, sharedWorkDir string) (*
 	return state, t
 }
 
-// AddTeamSession adds a session to an existing team.
 func AddTeamSession(state *AppState, projectID, teamID string, role TeamRole, title string, agentType AgentType, agentCmd []string, workDir, tmuxSession string, tmuxWindow int) (*AppState, *Session) {
 	sess := newSession(projectID, teamID, role, title, agentType, agentCmd, workDir, tmuxSession, tmuxWindow)
 	for _, p := range state.Projects {
@@ -137,7 +132,6 @@ func RemoveTeam(state *AppState, teamID string) *AppState {
 	return state
 }
 
-// UpdateProjectName updates a project's name.
 func UpdateProjectName(state *AppState, projectID, name string) *AppState {
 	for _, p := range state.Projects {
 		if p.ID == projectID {
@@ -148,7 +142,6 @@ func UpdateProjectName(state *AppState, projectID, name string) *AppState {
 	return state
 }
 
-// UpdateTeamName updates a team's name.
 func UpdateTeamName(state *AppState, teamID, name string) *AppState {
 	for _, p := range state.Projects {
 		for _, t := range p.Teams {
@@ -171,7 +164,6 @@ func UpdateSessionTitle(state *AppState, sessionID, title string, src TitleSourc
 	return state
 }
 
-// UpdateSessionStatus updates the status of a session.
 func UpdateSessionStatus(state *AppState, sessionID string, status SessionStatus) *AppState {
 	sess := findSession(state, sessionID)
 	if sess != nil {
@@ -181,7 +173,6 @@ func UpdateSessionStatus(state *AppState, sessionID string, status SessionStatus
 	return state
 }
 
-// SetProjectColor sets the color of a project.
 func SetProjectColor(state *AppState, projectID, color string) *AppState {
 	for _, p := range state.Projects {
 		if p.ID == projectID {
@@ -201,7 +192,6 @@ func SetSessionColor(state *AppState, sessionID, color string) *AppState {
 	return state
 }
 
-// ToggleProjectCollapsed toggles the collapsed state of a project in the sidebar.
 func ToggleProjectCollapsed(state *AppState, projectID string) *AppState {
 	for _, p := range state.Projects {
 		if p.ID == projectID {
@@ -212,7 +202,6 @@ func ToggleProjectCollapsed(state *AppState, projectID string) *AppState {
 	return state
 }
 
-// ToggleTeamCollapsed toggles the collapsed state of a team in the sidebar.
 func ToggleTeamCollapsed(state *AppState, teamID string) *AppState {
 	for _, p := range state.Projects {
 		for _, t := range p.Teams {
@@ -307,35 +296,40 @@ func allSessionsUIOrder(state *AppState) []*Session {
 	return out
 }
 
-// MoveSessionUp swaps a session with the one before it in its containing slice.
-// Returns true if a swap occurred, false if the session is already first or not found.
+// swapAdjacent finds an element by ID in a slice and swaps it with its
+// neighbor in the given direction (-1 = up/before, +1 = down/after).
+// Returns true if a swap occurred.
+func swapAdjacent[T any](slice []T, idFn func(T) string, targetID string, dir int) bool {
+	for i, item := range slice {
+		if idFn(item) != targetID {
+			continue
+		}
+		j := i + dir
+		if j < 0 || j >= len(slice) {
+			return false
+		}
+		slice[i], slice[j] = slice[j], slice[i]
+		return true
+	}
+	return false
+}
+
 func MoveSessionUp(state *AppState, sessionID string) (*AppState, bool) {
-	for _, p := range state.Projects {
-		if i := sessionIndex(p.Sessions, sessionID); i > 0 {
-			p.Sessions[i], p.Sessions[i-1] = p.Sessions[i-1], p.Sessions[i]
-			return state, true
-		}
-		for _, t := range p.Teams {
-			if i := sessionIndex(t.Sessions, sessionID); i > 0 {
-				t.Sessions[i], t.Sessions[i-1] = t.Sessions[i-1], t.Sessions[i]
-				return state, true
-			}
-		}
-	}
-	return state, false
+	return moveSession(state, sessionID, -1)
 }
 
-// MoveSessionDown swaps a session with the one after it in its containing slice.
-// Returns true if a swap occurred, false if the session is already last or not found.
 func MoveSessionDown(state *AppState, sessionID string) (*AppState, bool) {
+	return moveSession(state, sessionID, +1)
+}
+
+func moveSession(state *AppState, sessionID string, dir int) (*AppState, bool) {
+	idFn := func(s *Session) string { return s.ID }
 	for _, p := range state.Projects {
-		if i := sessionIndex(p.Sessions, sessionID); i >= 0 && i < len(p.Sessions)-1 {
-			p.Sessions[i], p.Sessions[i+1] = p.Sessions[i+1], p.Sessions[i]
+		if swapAdjacent(p.Sessions, idFn, sessionID, dir) {
 			return state, true
 		}
 		for _, t := range p.Teams {
-			if i := sessionIndex(t.Sessions, sessionID); i >= 0 && i < len(t.Sessions)-1 {
-				t.Sessions[i], t.Sessions[i+1] = t.Sessions[i+1], t.Sessions[i]
+			if swapAdjacent(t.Sessions, idFn, sessionID, dir) {
 				return state, true
 			}
 		}
@@ -343,71 +337,39 @@ func MoveSessionDown(state *AppState, sessionID string) (*AppState, bool) {
 	return state, false
 }
 
-// MoveTeamUp swaps a team with the one before it in its project's Teams slice.
-// Returns true if a swap occurred, false if the team is already first or not found.
 func MoveTeamUp(state *AppState, teamID string) (*AppState, bool) {
-	for _, p := range state.Projects {
-		for i, t := range p.Teams {
-			if t.ID == teamID {
-				if i > 0 {
-					p.Teams[i], p.Teams[i-1] = p.Teams[i-1], p.Teams[i]
-					return state, true
-				}
-				return state, false
-			}
-		}
-	}
-	return state, false
+	return moveTeam(state, teamID, -1)
 }
 
-// MoveTeamDown swaps a team with the one after it in its project's Teams slice.
-// Returns true if a swap occurred, false if the team is already last or not found.
 func MoveTeamDown(state *AppState, teamID string) (*AppState, bool) {
+	return moveTeam(state, teamID, +1)
+}
+
+func moveTeam(state *AppState, teamID string, dir int) (*AppState, bool) {
+	idFn := func(t *Team) string { return t.ID }
 	for _, p := range state.Projects {
-		for i, t := range p.Teams {
-			if t.ID == teamID {
-				if i < len(p.Teams)-1 {
-					p.Teams[i], p.Teams[i+1] = p.Teams[i+1], p.Teams[i]
-					return state, true
-				}
-				return state, false
-			}
+		if swapAdjacent(p.Teams, idFn, teamID, dir) {
+			return state, true
 		}
 	}
 	return state, false
 }
 
-// MoveProjectUp swaps a project with the one before it in the Projects slice.
-// Returns true if a swap occurred, false if the project is already first or not found.
 func MoveProjectUp(state *AppState, projectID string) (*AppState, bool) {
-	for i, p := range state.Projects {
-		if p.ID == projectID {
-			if i > 0 {
-				state.Projects[i], state.Projects[i-1] = state.Projects[i-1], state.Projects[i]
-				return state, true
-			}
-			return state, false
-		}
-	}
-	return state, false
+	return moveProject(state, projectID, -1)
 }
 
-// MoveProjectDown swaps a project with the one after it in the Projects slice.
-// Returns true if a swap occurred, false if the project is already last or not found.
 func MoveProjectDown(state *AppState, projectID string) (*AppState, bool) {
-	for i, p := range state.Projects {
-		if p.ID == projectID {
-			if i < len(state.Projects)-1 {
-				state.Projects[i], state.Projects[i+1] = state.Projects[i+1], state.Projects[i]
-				return state, true
-			}
-			return state, false
-		}
+	return moveProject(state, projectID, +1)
+}
+
+func moveProject(state *AppState, projectID string, dir int) (*AppState, bool) {
+	idFn := func(p *Project) string { return p.ID }
+	if swapAdjacent(state.Projects, idFn, projectID, dir) {
+		return state, true
 	}
 	return state, false
 }
-
-// --- helpers ---
 
 func sessionIndex(sessions []*Session, id string) int {
 	for i, s := range sessions {
@@ -477,7 +439,6 @@ func RecordAgentUsage(s *AppState, agentType string) {
 	s.AgentUsage[agentType] = rec
 }
 
-// AllSessions returns every session in the state flattened.
 func AllSessions(state *AppState) []*Session {
 	var out []*Session
 	for _, p := range state.Projects {
@@ -489,12 +450,10 @@ func AllSessions(state *AppState) []*Session {
 	return out
 }
 
-// FindSession returns the session with the given ID, or nil if not found.
 func FindSession(state *AppState, sessionID string) *Session {
 	return findSession(state, sessionID)
 }
 
-// FindProject returns the project with the given ID, or nil if not found.
 func FindProject(state *AppState, projectID string) *Project {
 	for _, p := range state.Projects {
 		if p.ID == projectID {
@@ -504,7 +463,6 @@ func FindProject(state *AppState, projectID string) *Project {
 	return nil
 }
 
-// FindTeam returns the team with the given ID, or nil if not found.
 func FindTeam(state *AppState, teamID string) *Team {
 	for _, p := range state.Projects {
 		for _, t := range p.Teams {
@@ -535,11 +493,3 @@ func FindSessionByTmux(state *AppState, tmuxSession string, tmuxWindow int) *Ses
 	return nil
 }
 
-// SessionLabel returns a short display string for a session.
-func SessionLabel(s *Session) string {
-	role := ""
-	if s.TeamRole == RoleOrchestrator {
-		role = "★ "
-	}
-	return fmt.Sprintf("%s%s [%s]", role, s.Title, s.AgentType)
-}

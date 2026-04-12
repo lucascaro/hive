@@ -18,7 +18,6 @@ func CreateSession(tmuxSession, firstWindowName, workDir string, startCmd []stri
 	return ExecSilent(args...)
 }
 
-// SessionExists reports whether a tmux session with the given name exists.
 func SessionExists(tmuxSession string) bool {
 	_, err := Exec("has-session", "-t", tmuxSession)
 	return err == nil
@@ -34,7 +33,6 @@ func SetOption(tmuxSession, key, value string) error {
 	return ExecSilent("set-option", "-t", tmuxSession, key, value)
 }
 
-// ListSessionNames returns the names of all live tmux sessions.
 func ListSessionNames() ([]string, error) {
 	out, err := Exec("list-sessions", "-F", "#{session_name}")
 	if err != nil {

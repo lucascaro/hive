@@ -176,12 +176,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		switch f.kind {
 		case fieldBool:
-			cur := f.get(sv.cfg)
-			if cur == "true" {
-				_ = f.set(&sv.cfg, "false")
-			} else {
-				_ = f.set(&sv.cfg, "true")
-			}
+			_ = f.set(&sv.cfg, strconv.FormatBool(f.get(sv.cfg) != "true"))
 			sv.dirty = true
 		case fieldSelect:
 			cur := f.get(sv.cfg)
@@ -443,8 +438,6 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 	return lines
 }
 
-// --- Helpers ---
-
 func (sv *SettingsView) rebuildFieldIdxs() {
 	sv.fieldIdxs = nil
 	for i, e := range sv.entries {
@@ -511,8 +504,6 @@ func wrapText(s string, maxW int) []string {
 	}
 	return lines
 }
-
-// --- Field definitions ---
 
 func buildSettingEntries() []settingEntry {
 	return []settingEntry{

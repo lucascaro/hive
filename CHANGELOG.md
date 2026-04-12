@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Code refactor**: removed dead code (`GetPaneActivity`, `SendKeys`, `SessionLabel`), ~50 section separator comments, and ~40 redundant doc comments. Consolidated duplicated grid sync, sidebar navigation, and worktree setup patterns into shared helpers. Deduplicated 6 `Move*Up/Down` state reducers using a generic `swapAdjacent` helper. Removed redundant `sidebar.Rebuild` calls after `commitState` (#37).
+
 ## [0.7.0] — 2026-04-11
 
 ### Added

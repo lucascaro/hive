@@ -161,6 +161,18 @@ func (m *Model) gridContentsFromSnapshots(sessions []*state.Session) map[string]
 	return contents
 }
 
+// syncGridState refreshes the grid view's sessions, colors, and cursor in one call.
+func (m *Model) syncGridState(cursorSessionID string) {
+	m.gridView.SyncState(
+		m.gridSessions(m.gridView.Mode),
+		m.gridView.Mode,
+		m.gridProjectNames(),
+		m.gridProjectColors(),
+		m.gridSessionColors(),
+		cursorSessionID,
+	)
+}
+
 // gridProjectNames builds a projectID→name map from the current app state.
 func (m *Model) gridProjectNames() map[string]string {
 	names := make(map[string]string, len(m.appState.Projects))

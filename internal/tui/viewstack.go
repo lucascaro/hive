@@ -162,24 +162,13 @@ func (m *Model) refreshGrid() {
 	if s := m.gridView.Selected(); s != nil {
 		prevID = s.ID
 	}
-	m.gridView.Show(m.gridSessions(m.gridView.Mode), m.gridView.Mode)
-	m.gridView.SetProjectNames(m.gridProjectNames())
-	m.gridView.SetProjectColors(m.gridProjectColors())
-	m.gridView.SetSessionColors(m.gridSessionColors())
+	m.syncGridState(prevID)
 	m.gridView.SetPaneTitles(m.paneTitles)
-	if prevID != "" {
-		m.gridView.SyncCursor(prevID)
-	}
 }
 
 // openGrid is a helper that pushes the grid view and sets up grid state.
 func (m *Model) openGrid(mode state.GridRestoreMode) {
-	sessions := m.gridSessions(mode)
-	m.gridView.Show(sessions, mode)
-	m.gridView.SetProjectNames(m.gridProjectNames())
-	m.gridView.SetProjectColors(m.gridProjectColors())
-	m.gridView.SetSessionColors(m.gridSessionColors())
+	m.gridView.SyncState(m.gridSessions(mode), mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
 	m.gridView.SetPaneTitles(m.paneTitles)
-	m.gridView.SyncCursor(m.appState.ActiveSessionID)
 	m.PushView(ViewGrid)
 }

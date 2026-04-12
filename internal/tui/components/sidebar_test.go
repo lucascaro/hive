@@ -274,6 +274,108 @@ func TestSidebarMoveDown(t *testing.T) {
 	}
 }
 
+func TestSidebarMoveUp(t *testing.T) {
+	appState := testAppState()
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	// Move to a known position first.
+	s.MoveDown() // → team
+	s.MoveDown() // → team session (s1)
+	if sel := s.Selected(); sel == nil || sel.SessionID != "s1" {
+		t.Fatalf("setup: expected cursor on s1, got %v", s.Selected())
+	}
+
+	s.MoveUp()
+	sel := s.Selected()
+	if sel == nil || sel.Kind != KindTeam {
+		t.Fatalf("after MoveUp from s1: kind=%v, want KindTeam", sel)
+	}
+
+	// MoveUp at top should be a no-op.
+	s.Cursor = 0
+	s.MoveUp()
+	if s.Cursor != 0 {
+		t.Fatalf("MoveUp at top: cursor=%d, want 0", s.Cursor)
+	}
+}
+
+func TestSidebarJumpPrevProject(t *testing.T) {
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{
+				ID: "p1", Name: "alpha", Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s1", ProjectID: "p1", Title: "a1", AgentType: state.AgentClaude, Status: state.StatusRunning},
+				},
+			},
+			{
+				ID: "p2", Name: "beta", Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s2", ProjectID: "p2", Title: "b1", AgentType: state.AgentCodex, Status: state.StatusIdle},
+				},
+			},
+		},
+	}
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	// Items: [p1(0), s1(1), p2(2), s2(3)]
+	// Start on s2 (index 3), jump prev should land on p2 (index 2).
+	s.Cursor = 3
+	s.JumpPrevProject()
+	if s.Cursor != 2 {
+		t.Fatalf("JumpPrevProject from s2: cursor=%d, want 2 (p2)", s.Cursor)
+	}
+
+	// Jump prev again should land on p1 (index 0).
+	s.JumpPrevProject()
+	if s.Cursor != 0 {
+		t.Fatalf("JumpPrevProject from p2: cursor=%d, want 0 (p1)", s.Cursor)
+	}
+
+	// At p1 (first project), jump prev should be a no-op.
+	s.JumpPrevProject()
+	if s.Cursor != 0 {
+		t.Fatalf("JumpPrevProject at first project: cursor=%d, want 0", s.Cursor)
+	}
+}
+
+func TestSidebarJumpNextProject(t *testing.T) {
+	appState := &state.AppState{
+		Projects: []*state.Project{
+			{
+				ID: "p1", Name: "alpha", Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s1", ProjectID: "p1", Title: "a1", AgentType: state.AgentClaude, Status: state.StatusRunning},
+				},
+			},
+			{
+				ID: "p2", Name: "beta", Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "s2", ProjectID: "p2", Title: "b1", AgentType: state.AgentCodex, Status: state.StatusIdle},
+				},
+			},
+		},
+	}
+	s := &Sidebar{}
+	s.Rebuild(appState)
+
+	// Items: [p1(0), s1(1), p2(2), s2(3)]
+	// Start on p1 (index 0), jump next should land on p2 (index 2).
+	s.Cursor = 0
+	s.JumpNextProject()
+	if s.Cursor != 2 {
+		t.Fatalf("JumpNextProject from p1: cursor=%d, want 2 (p2)", s.Cursor)
+	}
+
+	// At p2 (last project), jump next should be a no-op.
+	s.JumpNextProject()
+	if s.Cursor != 2 {
+		t.Fatalf("JumpNextProject at last project: cursor=%d, want 2", s.Cursor)
+	}
+}
+
 func TestSidebar_WorktreeBadge(t *testing.T) {
 	s := &Sidebar{Width: 80}
 

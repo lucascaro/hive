@@ -7,8 +7,6 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 )
 
-// --- Session lifecycle ---
-
 // SessionCreatedMsg is sent after a new session is spawned in tmux.
 type SessionCreatedMsg struct {
 	Session *state.Session
@@ -61,8 +59,6 @@ type SessionStatusChangedMsg struct {
 	Status    state.SessionStatus
 }
 
-// --- Team lifecycle ---
-
 // TeamCreatedMsg is sent after a new team (and its sessions) are created.
 type TeamCreatedMsg struct {
 	Team *state.Team
@@ -72,8 +68,6 @@ type TeamCreatedMsg struct {
 type TeamKilledMsg struct {
 	TeamID string
 }
-
-// --- Project lifecycle ---
 
 // ProjectCreatedMsg is sent after a new project is created.
 type ProjectCreatedMsg struct {
@@ -96,8 +90,6 @@ type TeamNameChangedMsg struct {
 	TeamID string
 	Name   string
 }
-
-// --- UI ---
 
 // ErrorMsg carries a non-fatal error message to display in the status bar.
 type ErrorMsg struct{ Err error }
