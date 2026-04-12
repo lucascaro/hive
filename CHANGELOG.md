@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Install docs overhaul**: README and Windows getting-started guide now lead with prebuilt binaries from the Releases page (no Go toolchain required). Go 1.25+ is now called out as a build-time-only requirement. Windows tmux guidance now recommends WSL first — sessions survive terminal close and reboots, PTY semantics match Linux, and AI agent CLIs run as their native Linux builds. MSYS2 and Chocolatey remain as documented alternatives (#74).
+
 ## [0.7.1] — 2026-04-11
 
 ### Changed
