@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
+| 1 | #66 | Hive mode: hexagonal honeycomb grid layout | PLAN | L |
 
 ## Completed
 
