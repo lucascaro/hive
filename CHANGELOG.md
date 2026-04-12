@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-04-12
+
 ### Changed
-- **Settings organized into tabs**: the Settings screen (`S`) now groups options into tabs — General, Team Defaults, Hooks, Keybindings. Switch tabs with `←`/`→` or `h`/`l`; `j`/`k` navigation, `enter/space` edit/toggle, and `s`/`esc` save/close are unchanged. Each tab remembers its own cursor and scroll position (#76).
+- **Settings organized into tabs**: the Settings screen (`S`) now groups options into tabs — General, Team Defaults, Hooks, Keybindings. Switch tabs with `←`/`→` or `h`/`l`; `j`/`k` navigation, `enter/space` edit/toggle, and `s`/`esc` save/close are unchanged. Each tab remembers its own cursor and scroll position. The tab bar uses a raised-capsule design with the active tab seated into a notched baseline, so selection reads as topology rather than just color (#76).
 - **Windows install docs rewrite**: restructured README and Windows getting-started guide into a single, step-by-step WSL-based walkthrough (install WSL → install tmux → download `hive-linux-amd64` → run). Removed the incoherent `hive-windows-amd64.exe` + WSL-tmux recommendation from the earlier pass. MSYS2 / Chocolatey + `hive-windows-amd64.exe` remain documented as a clearly-separated "native Windows alternative" with an explicit session-persistence caveat (follow-up to #74).
 
 ## [0.7.2] — 2026-04-12
