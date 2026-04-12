@@ -7,7 +7,8 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| P1 | #75 | Add custom terminal bell sounds with settings option | RESEARCH | L |
+| P1 | #76 | Organize settings into tabbed categories | RESEARCH | M |
+| P2 | #75 | Add custom terminal bell sounds with settings option | RESEARCH | L |
 
 ## Rejected
 
@@ -46,3 +47,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #68 | Improve selected session visibility in grid view | #71 | 2026-04-11 |
 | #69 | Display changelog since last version on open | — | 2026-04-11 |
 | #37 | Code refactor: remove bloat | — | 2026-04-11 |
+| #74 | Windows install docs could better highlight WSL path and Go 1.25+ requirement | — | 2026-04-12 |

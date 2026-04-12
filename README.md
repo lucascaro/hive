@@ -24,14 +24,51 @@ A terminal TUI for managing multiple AI coding agent sessions across projects �
 
 ## Requirements
 
-- **Go 1.25+** (to build from source)
-- **[tmux](https://github.com/tmux/tmux)** — the default and recommended backend for managing terminal sessions
+**Runtime (for the prebuilt binary):**
+- **[tmux](https://github.com/tmux/tmux)** — the default and recommended backend for managing terminal sessions.
+
+**Build-time only (if compiling from source):**
+- **Go 1.25+**. Verify with `go version`; if missing or older, download from [go.dev/dl](https://go.dev/dl/).
 
 > **Native backend (alpha):** Hive includes an experimental built-in PTY backend that requires no external dependencies. It is not recommended for general use. Enable it with `hive start --native` or by setting `"multiplexer": "native"` in `config.json`.
 
 ## Installation
 
-### Build from source (Linux / macOS)
+### Install a prebuilt binary (recommended)
+
+Download the binary for your platform from the [latest release](https://github.com/lucascaro/hive/releases/latest):
+
+| Platform | Asset |
+|----------|-------|
+| macOS, Apple Silicon | `hive-darwin-arm64` |
+| macOS, Intel | `hive-darwin-amd64` |
+| Linux, x86_64 | `hive-linux-amd64` |
+| Linux, arm64 | `hive-linux-arm64` |
+| Windows, x86_64 | `hive-windows-amd64.exe` |
+
+**macOS / Linux:**
+
+```bash
+# Replace the asset name with the one matching your platform.
+curl -L -o hive https://github.com/lucascaro/hive/releases/latest/download/hive-darwin-arm64
+chmod +x hive
+sudo mv hive /usr/local/bin/   # or any directory on your PATH
+```
+
+**Windows (PowerShell):**
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/lucascaro/hive/releases/latest/download/hive-windows-amd64.exe" -OutFile "hive.exe"
+# Move hive.exe to any directory already on your PATH.
+```
+
+Then install tmux — see [Windows: install tmux](#windows-install-tmux) below.
+
+### Build from source
+
+> Only needed if you want the latest unreleased changes or are on a platform without a prebuilt binary. Requires **Go 1.25+** — check with `go version`. Get it from [go.dev/dl](https://go.dev/dl/).
+
+**Linux / macOS:**
 
 ```bash
 git clone https://github.com/lucascaro/hive
@@ -40,15 +77,15 @@ go build -o hive .
 sudo mv hive /usr/local/bin/   # or any directory on your PATH
 ```
 
-Or use the helper script:
+Or use the helper script: `./build.sh`.
+
+Alternatively, let Go fetch and build in one step:
 
 ```bash
-./build.sh
+go install github.com/lucascaro/hive@latest
 ```
 
-### Build from source (Windows)
-
-> **Note:** The native PTY backend is not available on Windows. Hive uses the `tmux` backend on Windows — install tmux via [MSYS2](https://www.msys2.org/), [WSL](https://learn.microsoft.com/en-us/windows/wsl/), or [Chocolatey](https://chocolatey.org/) (`choco install msys2`).
+**Windows:**
 
 ```powershell
 git clone https://github.com/lucascaro/hive
@@ -56,22 +93,28 @@ cd hive
 .\build.ps1          # builds hive.exe and installs it (run as Administrator to install system-wide)
 ```
 
-Or build manually:
+Or build manually: `go build -o hive.exe .`, then add `hive.exe` to a directory on your `PATH`.
 
-```powershell
-go build -o hive.exe .
-```
+### Windows: install tmux
 
-After building, add `hive.exe` to a directory on your `PATH`.
+Hive on Windows uses the `tmux` backend (the native PTY backend is Unix-only). Pick **one** of the following.
 
-**Config directory on Windows:** `%APPDATA%\hive\` (e.g. `C:\Users\You\AppData\Roaming\hive\`)
+> **Recommended: WSL.** WSL gives hive the same behaviour it has on Linux/macOS:
+> - Sessions survive closing the terminal and reboots (MSYS2 tmux dies with its terminal).
+> - Real Linux PTYs — OSC 2 title updates, mouse reporting, and alt-screen behave exactly as on Linux.
+> - AI agent CLIs (Claude, Codex, Gemini, Copilot, Aider, OpenCode) are Linux-first; WSL runs their native builds directly.
+> - Single toolchain (`apt install` + native Linux Go), no Win32/MSYS boundary crossings.
+>
+> Install with `wsl --install` (run PowerShell as Administrator), then inside the WSL shell: `sudo apt install tmux`.
 
-**Using Hive on Windows:**
+**Alternatives** (work, but with caveats — session persistence does not survive closing the terminal):
 
-1. Install tmux (via WSL, MSYS2, or Chocolatey).
-2. Run `hive start` from a terminal that has `tmux` on its `PATH` (e.g. Git Bash, MSYS2 terminal, or WSL).
+- **MSYS2:** install [MSYS2](https://www.msys2.org/), then `pacman -S tmux` in the MSYS2 terminal.
+- **Chocolatey:** `choco install msys2`, then install tmux via MSYS2 as above.
 
-No manual config change is needed — tmux is already the default backend.
+Then run `hive start` from a terminal that has `tmux` on its `PATH` (WSL shell, or MSYS2 terminal / Git Bash if you chose an alternative).
+
+**Config directory on Windows:** `%APPDATA%\hive\` (e.g. `C:\Users\You\AppData\Roaming\hive\`). No manual config change is needed — tmux is already the default backend.
 
 ### Verify
 
