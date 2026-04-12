@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
+	"github.com/lucascaro/hive/internal/changelog"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/git"
 	"github.com/lucascaro/hive/internal/mux"
@@ -59,6 +60,22 @@ func runStart(_ *cobra.Command, _ []string) error {
 		fmt.Fprintf(os.Stderr, "warning: failed to persist migrated config: %v\n", err)
 	}
 
+	// Compute "What's New" content if version changed.
+	var whatsNewContent string
+	if cfg.LastSeenVersion != Version && !cfg.HideWhatsNew {
+		raw := changelog.ParseSince(EmbeddedChangelog, cfg.LastSeenVersion)
+		if raw != "" {
+			whatsNewContent = changelog.Render(raw, 60)
+		}
+	}
+	// Always update last seen version.
+	if cfg.LastSeenVersion != Version {
+		cfg.LastSeenVersion = Version
+		if err := config.Save(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to persist last seen version: %v\n", err)
+		}
+	}
+
 	// --native flag overrides config.
 	if startNative {
 		cfg.Multiplexer = "native"
@@ -103,7 +120,8 @@ func runStart(_ *cobra.Command, _ []string) error {
 	// tea.ExecProcess). For the tmux backend the TUI handles attach internally
 	// via tea.ExecProcess and never sets LastAttach(); the loop runs only once.
 	for {
-		model := tui.New(cfg, appState)
+		model := tui.New(cfg, appState, whatsNewContent)
+		whatsNewContent = "" // only show on first loop iteration
 		p := tea.NewProgram(model,
 			tea.WithAltScreen(),
 			tea.WithMouseCellMotion(),

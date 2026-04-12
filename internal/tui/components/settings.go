@@ -584,6 +584,20 @@ func buildSettingEntries() []settingEntry {
 				return nil
 			},
 		}},
+		{field: &settingField{
+			label:       "Hide What's New",
+			description: "When enabled, skip the changelog dialog shown after updates. Disable to see it again on the next version change.",
+			kind:        fieldBool,
+			get:         func(c config.Config) string { return strconv.FormatBool(c.HideWhatsNew) },
+			set: func(c *config.Config, v string) error {
+				b, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.HideWhatsNew = b
+				return nil
+			},
+		}},
 
 		// ── Team Defaults ─────────────────────────────────────────────────────
 		{isHeader: true, header: "  Team Defaults"},

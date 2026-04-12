@@ -32,6 +32,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.PopView()
 		}
 		return m, nil
+	case ViewWhatsNew:
+		return m.handleWhatsNew(msg)
 	case ViewAttachHint:
 		return m.handleAttachHint(msg)
 	case ViewConfirm:
@@ -669,6 +671,17 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// What's New overlay: scroll with mouse wheel.
+	if m.TopView() == ViewWhatsNew {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.whatsNewViewport.LineUp(3)
+		case tea.MouseButtonWheelDown:
+			m.whatsNewViewport.LineDown(3)
+		}
+		return m, nil
+	}
+
 	// Ignore mouse when any modal overlay is active.
 	if m.TopView() != ViewMain && m.TopView() != ViewFilter {
 		return m, nil
@@ -763,7 +776,23 @@ func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleAttachHint handles key input while the attach hint overlay is shown.
+// handleWhatsNew handles key input while the What's New overlay is shown.
+func (m Model) handleWhatsNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "esc", "q", " ":
+		m.PopView()
+	case "d":
+		m.PopView()
+		m.cfg.HideWhatsNew = true
+		_ = config.Save(m.cfg)
+	case "j", "down":
+		m.whatsNewViewport.LineDown(1)
+	case "k", "up":
+		m.whatsNewViewport.LineUp(1)
+	}
+	return m, nil
+}
+
 func (m Model) handleAttachHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter", "y", " ":

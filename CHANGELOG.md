@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Per-session color**: each session gets its own color, shown as a gradient in the grid cell header and sidebar title (project color → session color). Colors are auto-assigned on creation and can be cycled with `v`/`V` in both sidebar and grid view (#54).
 
+- **"What's New" changelog on update**: when Hive detects a version change on startup, it shows a scrollable overlay with the changelog entries since the last version. Press `d` to permanently suppress it, or re-enable via the "Hide What's New" toggle in Settings (#69).
+
 ### Changed
 - **Improved grid selection visibility**: the selected cell now has a subtle dark background tint on the content preview area, making it easier to identify at a glance alongside the existing accent border (#68).
 

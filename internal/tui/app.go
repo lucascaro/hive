@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -100,6 +101,9 @@ type Model struct {
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
 	stateLastKnownMtime time.Time
+	// whatsNewContent holds the parsed changelog text for the "What's New" overlay.
+	whatsNewContent  string
+	whatsNewViewport viewport.Model
 	// viewStack tracks the active view layers. ViewMain is always at the bottom.
 	// Push to open a view, pop to close it. TopView() drives View() and key dispatch.
 	viewStack []ViewID
@@ -108,8 +112,9 @@ type Model struct {
 // LastAttach returns the pending attach request after the TUI exits, or nil.
 func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 
-// New creates the root model.
-func New(cfg config.Config, appState state.AppState) Model {
+// New creates the root model. whatsNewContent, if non-empty, triggers the
+// "What's New" overlay on first render.
+func New(cfg config.Config, appState state.AppState, whatsNewContent string) Model {
 	initDebugLog()
 	components.InitSidebarLog()
 	components.InitStatusLog()
@@ -181,6 +186,15 @@ func New(cfg config.Config, appState state.AppState) Model {
 	}
 	// Restore the grid view if the user detached from a grid-initiated session.
 	m.restoreGrid()
+	// Show "What's New" overlay if there's changelog content.
+	// Pushed last so it appears on top of any restored grid or recovery overlays.
+	if whatsNewContent != "" {
+		m.whatsNewContent = whatsNewContent
+		vp := viewport.New(60, 20)
+		vp.SetContent(whatsNewContent)
+		m.whatsNewViewport = vp
+		m.PushView(ViewWhatsNew)
+	}
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
 	return m
@@ -381,6 +395,8 @@ func (m Model) View() string {
 		return m.overlayView(m.nameInputView("New Worktree Session", "Branch name:", "enter: create  esc: cancel"))
 	case ViewRename:
 		return m.overlayView(m.renameDialogView())
+	case ViewWhatsNew:
+		return m.whatsNewView()
 	case ViewFilter:
 		// Filter is an inline mode — fall through to main layout rendering.
 	}

@@ -292,7 +292,7 @@ func testFlowModelThreeSessions(t *testing.T) (Model, *muxtest.MockBackend) {
 		TermHeight: 40,
 	}
 
-	m := New(cfg, appState)
+	m := New(cfg, appState, "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	return m, mock

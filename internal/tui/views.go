@@ -189,6 +189,54 @@ func (m Model) attachHintView() string {
 		)
 }
 
+// whatsNewView renders the "What's New" changelog overlay.
+func (m Model) whatsNewView() string {
+	w := m.appState.TermWidth
+	h := m.appState.TermHeight
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+
+	// Size the dialog to fit comfortably.
+	dialogW := w - 10
+	if dialogW > 70 {
+		dialogW = 70
+	}
+	if dialogW < 20 {
+		dialogW = 20
+	}
+	dialogH := h - 8
+	if dialogH > 30 {
+		dialogH = 30
+	}
+	if dialogH < 5 {
+		dialogH = 5
+	}
+
+	title := styles.TitleStyle.Render("What's New in Hive")
+	hint := styles.MutedStyle.Render("enter/esc: close  d: don't show again  j/k ↑↓: scroll")
+	body := m.whatsNewViewport.View()
+
+	content := title + "\n\n" + body + "\n\n" + hint
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 2).
+		Width(dialogW).
+		Height(dialogH).
+		Render(content)
+
+	return lipgloss.Place(w, h,
+		lipgloss.Center, lipgloss.Center,
+		box,
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("#111827")),
+	)
+}
+
 // doAttach returns the tea.Cmd that performs session attachment.
 func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)

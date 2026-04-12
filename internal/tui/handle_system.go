@@ -18,6 +18,24 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.appState.TermWidth = msg.Width
 	m.appState.TermHeight = msg.Height
 	m.dirPicker.SetHeight(msg.Height)
+	if m.whatsNewContent != "" {
+		vpW := msg.Width - 16 // account for border + padding
+		if vpW > 64 {
+			vpW = 64
+		}
+		if vpW < 10 {
+			vpW = 10
+		}
+		vpH := msg.Height - 14 // account for border + padding + title + hints
+		if vpH > 24 {
+			vpH = 24
+		}
+		if vpH < 3 {
+			vpH = 3
+		}
+		m.whatsNewViewport.Width = vpW
+		m.whatsNewViewport.Height = vpH
+	}
 	m.recomputeLayout()
 	return m, nil
 }
