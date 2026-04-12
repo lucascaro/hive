@@ -174,6 +174,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			if cmd := m.initWorktreeSession(sess.ProjectID); cmd != nil {
 				return cmd
 			}
+			return nil
 		}
 	}
 	prevSel := m.gridView.Selected()
@@ -541,8 +542,9 @@ func (m Model) moveItem(dir int) (tea.Model, tea.Cmd) {
 }
 
 // initWorktreeSession verifies the project is a git repo and opens the agent
-// picker in worktree mode. Returns a tea.Cmd (error or nil) for the caller to
-// return; nil means success (agent picker is now open).
+// picker in worktree mode. Returns an error tea.Cmd if the project is not a
+// git repo; returns nil on success (agent picker is now open, caller should
+// return nil to its own caller).
 func (m *Model) initWorktreeSession(projectID string) tea.Cmd {
 	projDir := ""
 	if proj := state.FindProject(&m.appState, projectID); proj != nil {
