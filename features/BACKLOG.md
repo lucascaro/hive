@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #37 | Code refactor: remove bloat | RESEARCH | L |
+| 1 | #37 | Code refactor: remove bloat | IMPLEMENT | L |
 | 2 | #66 | Hive mode: hexagonal honeycomb grid layout | RESEARCH | L |
 
 ## Completed

@@ -303,7 +303,96 @@ func TestFlow_MoveTeamDown_Sidebar(t *testing.T) {
 	}
 }
 
-// --- Test helper: model with teams ---
+// TestFlow_NavProjectDown_JumpsToNextProject verifies that pressing "J"
+// (NavProjectDown) moves the sidebar cursor to the next project header.
+func TestFlow_NavProjectDown_JumpsToNextProject(t *testing.T) {
+	m, mock := testFlowModel(t) // 2 projects: proj-1, proj-2
+	f := newFlowRunner(t, m, mock)
+
+	// Cursor starts on sess-1 in proj-1. Move up to the project row.
+	f.SendKey("k")
+	sel := sidebarSelected(f)
+	if sel == nil || sel.Kind != components.KindProject || sel.ProjectID != "proj-1" {
+		t.Fatalf("setup: expected cursor on proj-1, got kind=%v id=%v",
+			sel.Kind, sel.ProjectID)
+	}
+
+	// Press "J" (NavProjectDown) to jump to proj-2.
+	f.SendKey("J")
+	sel = sidebarSelected(f)
+	if sel == nil || sel.Kind != components.KindProject {
+		t.Fatalf("after NavProjectDown: expected KindProject, got %v", sel)
+	}
+	if sel.ProjectID != "proj-2" {
+		t.Errorf("after NavProjectDown: projectID = %q, want %q", sel.ProjectID, "proj-2")
+	}
+}
+
+// TestFlow_NavProjectUp_JumpsToPrevProject verifies that pressing "K"
+// (NavProjectUp) moves the sidebar cursor to the previous project header.
+func TestFlow_NavProjectUp_JumpsToPrevProject(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Navigate to proj-2 first: up to proj-1, then J to proj-2.
+	f.SendKey("k")
+	f.SendKey("J")
+	sel := sidebarSelected(f)
+	if sel == nil || sel.ProjectID != "proj-2" {
+		t.Fatalf("setup: expected cursor on proj-2, got %v", sel)
+	}
+
+	// Press "K" (NavProjectUp) to jump back to proj-1.
+	f.SendKey("K")
+	sel = sidebarSelected(f)
+	if sel == nil || sel.Kind != components.KindProject {
+		t.Fatalf("after NavProjectUp: expected KindProject, got %v", sel)
+	}
+	if sel.ProjectID != "proj-1" {
+		t.Errorf("after NavProjectUp: projectID = %q, want %q", sel.ProjectID, "proj-1")
+	}
+}
+
+// TestFlow_NavProjectDown_NoOp_AtLastProject verifies that "J" at the last
+// project is a no-op (cursor stays put).
+func TestFlow_NavProjectDown_NoOp_AtLastProject(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Navigate to proj-2 header.
+	f.SendKey("k")
+	f.SendKey("J")
+	sel := sidebarSelected(f)
+	if sel == nil || sel.ProjectID != "proj-2" {
+		t.Fatalf("setup: expected cursor on proj-2, got %v", sel)
+	}
+
+	// Press "J" again — should stay on proj-2.
+	f.SendKey("J")
+	sel = sidebarSelected(f)
+	if sel == nil || sel.ProjectID != "proj-2" {
+		t.Errorf("NavProjectDown at last project: projectID = %q, want %q", sel.ProjectID, "proj-2")
+	}
+}
+
+func TestFlow_NavProjectUp_NoOp_AtFirstProject(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Navigate to proj-1 header.
+	f.SendKey("k")
+	sel := sidebarSelected(f)
+	if sel == nil || sel.ProjectID != "proj-1" {
+		t.Fatalf("setup: expected cursor on proj-1, got %v", sel)
+	}
+
+	// Press "K" — should stay on proj-1.
+	f.SendKey("K")
+	sel = sidebarSelected(f)
+	if sel == nil || sel.ProjectID != "proj-1" {
+		t.Errorf("NavProjectUp at first project: projectID = %q, want %q", sel.ProjectID, "proj-1")
+	}
+}
 
 func testFlowModelWithTeams(t *testing.T) (Model, *muxtest.MockBackend) {
 	t.Helper()
