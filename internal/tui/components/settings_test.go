@@ -613,11 +613,16 @@ func TestSettingsView_RenderTabStrip_FitsNarrowWidth(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	for _, width := range []int{80, 40, 20, 10} {
-		out := sv.renderTabStrip(width)
-		if ansi.StringWidth(out) > width {
-			t.Errorf("width=%d: tab strip width %d exceeds limit\n%q",
-				width, ansi.StringWidth(out), out)
+	for _, width := range []int{120, 80, 60, 40, 20, 10} {
+		top, mid, base := sv.renderTabStrip(width)
+		if got := ansi.StringWidth(top); got > width {
+			t.Errorf("width=%d: top row width %d exceeds limit\n%q", width, got, top)
+		}
+		if got := ansi.StringWidth(mid); got > width {
+			t.Errorf("width=%d: labels row width %d exceeds limit\n%q", width, got, mid)
+		}
+		if got := ansi.StringWidth(base); got > width {
+			t.Errorf("width=%d: baseline row width %d exceeds limit\n%q", width, got, base)
 		}
 	}
 }
