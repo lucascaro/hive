@@ -7,7 +7,12 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #66 | Hive mode: hexagonal honeycomb grid layout | PLAN | L |
+
+## Rejected
+
+| Issue | Title | Reason |
+|-------|-------|--------|
+| #66 | Hive mode: hexagonal honeycomb grid layout | Tessellation cannot read as a convincing honeycomb on a char grid while preserving usable content area (2026-04-11) |
 
 ## Completed
 

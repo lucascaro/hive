@@ -1,7 +1,9 @@
 # Feature: Hive mode — hexagonal honeycomb grid layout
 
 - **GitHub Issue:** #66
-- **Stage:** PLAN
+- **Stage:** REJECTED
+- **Rejected:** 2026-04-11
+- **Reason:** Implementation explored (pointy-top and flat-top variants, multiple tessellation attempts, variable slope sizing). Cannot produce a visually convincing honeycomb on a character grid while also preserving usable content area per cell and reasonable layout density. The 1:2 glyph aspect and limited diagonal char palette (`╱` `╲` only) fight each other — cells end up either too tall with empty interiors, or too short to read as hexagons. Branch: `feature/66-hex-grid-honeycomb` (not merged; discarded).
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P5
