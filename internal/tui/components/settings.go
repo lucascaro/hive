@@ -40,34 +40,32 @@ type settingField struct {
 	set         func(*config.Config, string) error
 }
 
-// settingEntry is either a non-selectable category header or a selectable field.
-type settingEntry struct {
-	isHeader bool
-	header   string
-	field    *settingField
+// settingTab groups a set of fields under a single tab title.
+type settingTab struct {
+	title  string
+	fields []*settingField
 }
 
 // SettingsView is a full-screen interactive settings overlay.
 type SettingsView struct {
-	Active  bool
-	Width   int
-	Height  int
+	Active bool
+	Width  int
+	Height int
 
 	cfg      config.Config
 	original config.Config
 
-	entries   []settingEntry
-	fieldIdxs []int // indices of non-header entries within entries
-
-	cursor       int // index into fieldIdxs
-	scrollOffset int // lines to skip from top
-	dirty        bool // true when cfg differs from original
+	tabs             []settingTab
+	activeTab        int
+	tabCursors       []int // per-tab cursor into tabs[i].fields
+	tabScrollOffsets []int // per-tab top-line scroll offset
+	dirty            bool
 
 	editing        bool
 	editInput      textinput.Model
 	editErr        string
-	pendingDiscard bool // true after first esc with dirty state
-	pendingSave    bool // true when waiting for save confirmation
+	pendingDiscard bool
+	pendingSave    bool
 }
 
 // NewSettingsView creates a SettingsView.
@@ -83,14 +81,15 @@ func (sv *SettingsView) Open(cfg config.Config) {
 	sv.Active = true
 	sv.cfg = cfg
 	sv.original = cfg
-	sv.cursor = 0
-	sv.scrollOffset = 0
 	sv.dirty = false
 	sv.editing = false
 	sv.editErr = ""
 	sv.pendingDiscard = false
-	sv.entries = buildSettingEntries()
-	sv.rebuildFieldIdxs()
+	sv.pendingSave = false
+	sv.tabs = buildSettingTabs()
+	sv.activeTab = 0
+	sv.tabCursors = make([]int, len(sv.tabs))
+	sv.tabScrollOffsets = make([]int, len(sv.tabs))
 }
 
 // Close deactivates the settings view.
@@ -108,6 +107,74 @@ func (sv *SettingsView) IsDirty() bool { return sv.dirty }
 
 // GetConfig returns the current (possibly modified) working config.
 func (sv *SettingsView) GetConfig() config.Config { return sv.cfg }
+
+// ActiveTab returns the index of the currently selected tab.
+func (sv *SettingsView) ActiveTab() int { return sv.activeTab }
+
+// TabCursor returns the cursor position within the given tab.
+func (sv *SettingsView) TabCursor(tab int) int {
+	if tab < 0 || tab >= len(sv.tabCursors) {
+		return 0
+	}
+	return sv.tabCursors[tab]
+}
+
+// IsEditing reports whether a field is currently being edited.
+func (sv *SettingsView) IsEditing() bool { return sv.editing }
+
+// IsPendingSave reports whether the save-confirmation prompt is active.
+func (sv *SettingsView) IsPendingSave() bool { return sv.pendingSave }
+
+func (sv *SettingsView) currentFields() []*settingField {
+	if len(sv.tabs) == 0 {
+		return nil
+	}
+	return sv.tabs[sv.activeTab].fields
+}
+
+func (sv *SettingsView) cursor() int {
+	if len(sv.tabCursors) == 0 {
+		return 0
+	}
+	return sv.tabCursors[sv.activeTab]
+}
+
+func (sv *SettingsView) setCursor(n int) {
+	if len(sv.tabCursors) == 0 {
+		return
+	}
+	sv.tabCursors[sv.activeTab] = n
+}
+
+func (sv *SettingsView) scrollOffset() int {
+	if len(sv.tabScrollOffsets) == 0 {
+		return 0
+	}
+	return sv.tabScrollOffsets[sv.activeTab]
+}
+
+func (sv *SettingsView) setScrollOffset(n int) {
+	if len(sv.tabScrollOffsets) == 0 {
+		return
+	}
+	sv.tabScrollOffsets[sv.activeTab] = n
+}
+
+func (sv *SettingsView) selectedField() *settingField {
+	fields := sv.currentFields()
+	if len(fields) == 0 {
+		return nil
+	}
+	c := sv.cursor()
+	if c >= len(fields) {
+		c = len(fields) - 1
+		sv.setCursor(c)
+	}
+	if c < 0 {
+		return nil
+	}
+	return fields[c]
+}
 
 // Update handles key messages. Returns (cmd, consumed).
 func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
@@ -159,14 +226,24 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		sv.pendingSave = true
 		return nil, true
 
+	case "left", "h":
+		if sv.activeTab > 0 {
+			sv.activeTab--
+		}
+
+	case "right", "l":
+		if sv.activeTab < len(sv.tabs)-1 {
+			sv.activeTab++
+		}
+
 	case "j", "down":
-		if sv.cursor < len(sv.fieldIdxs)-1 {
-			sv.cursor++
+		if sv.cursor() < len(sv.currentFields())-1 {
+			sv.setCursor(sv.cursor() + 1)
 		}
 
 	case "k", "up":
-		if sv.cursor > 0 {
-			sv.cursor--
+		if sv.cursor() > 0 {
+			sv.setCursor(sv.cursor() - 1)
 		}
 
 	case "enter", " ":
@@ -260,6 +337,13 @@ func (sv *SettingsView) View() string {
 		Padding(0, 1).
 		Render(ansi.Truncate(rawHeader, w-2, "…"))
 
+	// Tab strip sits directly under the header.
+	tabStrip := lipgloss.NewStyle().
+		Background(styles.ColorBg).
+		Width(w).
+		Padding(0, 2).
+		Render(sv.renderTabStrip(innerW))
+
 	// Footer hints — build content then truncate before styling.
 	var footerParts []string
 	if sv.pendingSave {
@@ -283,6 +367,7 @@ func (sv *SettingsView) View() string {
 			)
 		}
 		footerParts = append(footerParts,
+			hint("←/→", "tab"),
 			hint("j/k", "navigate"),
 			hint("enter/space", "edit/toggle"),
 			hint("s", func() string {
@@ -301,38 +386,40 @@ func (sv *SettingsView) View() string {
 	}
 	footer := styles.StatusBarStyle.Width(w).Render(ansi.Truncate(strings.Join(footerParts, "  "), w, "…"))
 
-	// Content area height (header=1 line + footer=1 line)
-	contentH := h - 2
+	// Content area height (header=1 + tab strip=1 + footer=1)
+	contentH := h - 3
 	if contentH < 1 {
 		contentH = 1
 	}
 
-	// Render all entry lines and track anchor for scrolling.
+	// Render active-tab lines and track anchor for scrolling.
 	anchorLine := 0
 	lines := sv.renderLines(innerW, &anchorLine)
 
 	// Scroll so the selected entry is always visible.
-	// The selected block can be up to ~4 lines tall; keep it fully visible.
+	// The selected block can be up to ~5 lines tall; keep it fully visible.
 	const selectedBlockMaxH = 5
-	if anchorLine < sv.scrollOffset {
-		sv.scrollOffset = anchorLine
+	off := sv.scrollOffset()
+	if anchorLine < off {
+		off = anchorLine
 	}
-	if anchorLine+selectedBlockMaxH > sv.scrollOffset+contentH {
-		sv.scrollOffset = anchorLine + selectedBlockMaxH - contentH
+	if anchorLine+selectedBlockMaxH > off+contentH {
+		off = anchorLine + selectedBlockMaxH - contentH
 	}
-	if sv.scrollOffset < 0 {
-		sv.scrollOffset = 0
+	if off < 0 {
+		off = 0
 	}
 	maxOff := len(lines) - contentH
 	if maxOff < 0 {
 		maxOff = 0
 	}
-	if sv.scrollOffset > maxOff {
-		sv.scrollOffset = maxOff
+	if off > maxOff {
+		off = maxOff
 	}
+	sv.setScrollOffset(off)
 
 	// Window into lines.
-	start := sv.scrollOffset
+	start := off
 	end := start + contentH
 	if end > len(lines) {
 		end = len(lines)
@@ -349,31 +436,96 @@ func (sv *SettingsView) View() string {
 		Padding(0, 2).
 		Render(strings.Join(visible, "\n"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer)
 }
 
-// renderLines produces a flat []string of display lines and sets *anchorLine
-// to the line index where the currently selected field begins.
+// renderTabStrip renders the horizontal tab bar, degrading gracefully
+// on narrow terminals (full labels → truncated → first-letter).
+func (sv *SettingsView) renderTabStrip(innerW int) string {
+	if len(sv.tabs) == 0 || innerW <= 0 {
+		return ""
+	}
+	titles := make([]string, len(sv.tabs))
+	for i, t := range sv.tabs {
+		titles[i] = strings.TrimSpace(t.title)
+	}
+
+	const sep = "  "
+	fits := func(labels []string) bool {
+		total := 0
+		for i, l := range labels {
+			total += ansi.StringWidth(" " + l + " ")
+			if i < len(labels)-1 {
+				total += ansi.StringWidth(sep)
+			}
+		}
+		return total <= innerW
+	}
+
+	labels := titles
+	if !fits(labels) {
+		// Truncate each label evenly.
+		for w := 10; w >= 2 && !fits(labels); w-- {
+			labels = make([]string, len(titles))
+			for i, t := range titles {
+				if ansi.StringWidth(t) > w {
+					labels[i] = ansi.Truncate(t, w, "…")
+				} else {
+					labels[i] = t
+				}
+			}
+		}
+	}
+	if !fits(labels) {
+		// Fall back to first letter of each title.
+		labels = make([]string, len(titles))
+		for i, t := range titles {
+			if t == "" {
+				labels[i] = "?"
+			} else {
+				runes := []rune(t)
+				labels[i] = string(runes[0])
+			}
+		}
+	}
+
+	active := lipgloss.NewStyle().
+		Foreground(styles.ColorBg).
+		Background(styles.ColorAccent).
+		Bold(true).
+		Padding(0, 1)
+	inactive := lipgloss.NewStyle().
+		Foreground(styles.ColorMuted).
+		Padding(0, 1)
+
+	var parts []string
+	for i, l := range labels {
+		if i == sv.activeTab {
+			parts = append(parts, active.Render(l))
+		} else {
+			parts = append(parts, inactive.Render(l))
+		}
+	}
+	row := strings.Join(parts, sep)
+	if ansi.StringWidth(row) > innerW {
+		row = ansi.Truncate(row, innerW, "…")
+	}
+	return row
+}
+
+// renderLines produces a flat []string of display lines for the active tab
+// and sets *anchorLine to the line index where the selected field begins.
 func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 	var lines []string
-	selectedEntryIdx := sv.selectedEntryIdx()
+	fields := sv.currentFields()
+	sel := sv.cursor()
 
-	for entryIdx, entry := range sv.entries {
-		if entry.isHeader {
-			lines = append(lines, "")
-			lines = append(lines, styles.TitleStyle.Render(entry.header))
-			lines = append(lines, styles.MutedStyle.Render(strings.Repeat("─", innerW)))
-			continue
-		}
-
-		if entryIdx == selectedEntryIdx {
+	for i, f := range fields {
+		isSelected := i == sel
+		if isSelected {
 			*anchorLine = len(lines)
 		}
 
-		f := entry.field
-		isSelected := entryIdx == selectedEntryIdx
-
-		// Build label + value row
 		val := f.get(sv.cfg)
 		valDisplay := renderFieldValue(f, val)
 
@@ -383,8 +535,6 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 		}
 		label := prefix + f.label
 
-		// Use fixed widths: label fills left, value aligns right.
-		// Truncate valDisplay to at most innerW-4 visible chars to prevent wrapping.
 		valW := ansi.StringWidth(valDisplay)
 		if valW > innerW-4 {
 			valW = innerW - 4
@@ -413,7 +563,6 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 				}
 			} else {
 				if f.description != "" {
-					// Word-wrap description to innerW-4
 					for _, dline := range wrapText(f.description, innerW-4) {
 						lines = append(lines, styles.MutedStyle.Render("    "+dline))
 					}
@@ -436,33 +585,6 @@ func (sv *SettingsView) renderLines(innerW int, anchorLine *int) []string {
 	}
 
 	return lines
-}
-
-func (sv *SettingsView) rebuildFieldIdxs() {
-	sv.fieldIdxs = nil
-	for i, e := range sv.entries {
-		if !e.isHeader {
-			sv.fieldIdxs = append(sv.fieldIdxs, i)
-		}
-	}
-}
-
-func (sv *SettingsView) selectedEntryIdx() int {
-	if len(sv.fieldIdxs) == 0 {
-		return -1
-	}
-	if sv.cursor >= len(sv.fieldIdxs) {
-		sv.cursor = len(sv.fieldIdxs) - 1
-	}
-	return sv.fieldIdxs[sv.cursor]
-}
-
-func (sv *SettingsView) selectedField() *settingField {
-	idx := sv.selectedEntryIdx()
-	if idx < 0 {
-		return nil
-	}
-	return sv.entries[idx].field
 }
 
 func renderFieldValue(f *settingField, val string) string {
@@ -505,189 +627,198 @@ func wrapText(s string, maxW int) []string {
 	return lines
 }
 
-func buildSettingEntries() []settingEntry {
-	return []settingEntry{
-		// ── General ──────────────────────────────────────────────────────────
-		{isHeader: true, header: "  General"},
-		{field: &settingField{
-			label:       "Theme",
-			description: "Color scheme for the UI.",
-			kind:        fieldSelect,
-			options:     []string{"dark", "light"},
-			get:         func(c config.Config) string { return c.Theme },
-			set: func(c *config.Config, v string) error {
-				c.Theme = v
-				return nil
+func buildSettingTabs() []settingTab {
+	return []settingTab{
+		{
+			title: "General",
+			fields: []*settingField{
+				{
+					label:       "Theme",
+					description: "Color scheme for the UI.",
+					kind:        fieldSelect,
+					options:     []string{"dark", "light"},
+					get:         func(c config.Config) string { return c.Theme },
+					set: func(c *config.Config, v string) error {
+						c.Theme = v
+						return nil
+					},
+				},
+				{
+					label:       "Multiplexer",
+					description: "Backend for managing terminal sessions. 'tmux' uses the external tmux binary. 'native' uses a built-in PTY daemon (no external binary needed).",
+					kind:        fieldSelect,
+					options:     []string{"tmux", "native"},
+					get:         func(c config.Config) string { return c.Multiplexer },
+					set: func(c *config.Config, v string) error {
+						c.Multiplexer = v
+						return nil
+					},
+				},
+				{
+					label:       "Preview Refresh (ms)",
+					description: "How often the session preview pane refreshes, in milliseconds. Lower values feel more responsive but use more CPU.",
+					kind:        fieldInt,
+					get:         func(c config.Config) string { return strconv.Itoa(c.PreviewRefreshMs) },
+					set: func(c *config.Config, v string) error {
+						n, err := strconv.Atoi(strings.TrimSpace(v))
+						if err != nil || n < 50 || n > 30000 {
+							return fmt.Errorf("must be a number between 50 and 30000")
+						}
+						c.PreviewRefreshMs = n
+						return nil
+					},
+				},
+				{
+					label:       "Agent Title Overrides User Title",
+					description: "When enabled, agent-detected session titles overwrite titles you set manually.",
+					kind:        fieldBool,
+					get: func(c config.Config) string {
+						return strconv.FormatBool(c.AgentTitleOverridesUserTitle)
+					},
+					set: func(c *config.Config, v string) error {
+						b, err := strconv.ParseBool(v)
+						if err != nil {
+							return fmt.Errorf("must be true or false")
+						}
+						c.AgentTitleOverridesUserTitle = b
+						return nil
+					},
+				},
+				{
+					label:       "Hide Attach Hint",
+					description: "When enabled, skip the informational dialog shown before attaching to a session.",
+					kind:        fieldBool,
+					get:         func(c config.Config) string { return strconv.FormatBool(c.HideAttachHint) },
+					set: func(c *config.Config, v string) error {
+						b, err := strconv.ParseBool(v)
+						if err != nil {
+							return fmt.Errorf("must be true or false")
+						}
+						c.HideAttachHint = b
+						return nil
+					},
+				},
+				{
+					label:       "Hide What's New",
+					description: "When enabled, skip the changelog dialog shown after updates. Disable to see it again on the next version change.",
+					kind:        fieldBool,
+					get:         func(c config.Config) string { return strconv.FormatBool(c.HideWhatsNew) },
+					set: func(c *config.Config, v string) error {
+						b, err := strconv.ParseBool(v)
+						if err != nil {
+							return fmt.Errorf("must be true or false")
+						}
+						c.HideWhatsNew = b
+						return nil
+					},
+				},
 			},
-		}},
-		{field: &settingField{
-			label:       "Multiplexer",
-			description: "Backend for managing terminal sessions. 'tmux' uses the external tmux binary. 'native' uses a built-in PTY daemon (no external binary needed).",
-			kind:        fieldSelect,
-			options:     []string{"tmux", "native"},
-			get:         func(c config.Config) string { return c.Multiplexer },
-			set: func(c *config.Config, v string) error {
-				c.Multiplexer = v
-				return nil
+		},
+		{
+			title: "Team Defaults",
+			fields: []*settingField{
+				{
+					label:       "Orchestrator Agent",
+					description: "Default agent type for the orchestrator role when creating a new team.",
+					kind:        fieldSelect,
+					options:     []string{"claude", "codex", "gemini", "copilot", "aider", "opencode"},
+					get:         func(c config.Config) string { return c.TeamDefaults.Orchestrator },
+					set: func(c *config.Config, v string) error {
+						c.TeamDefaults.Orchestrator = v
+						return nil
+					},
+				},
+				{
+					label:       "Default Worker Count",
+					description: "Number of worker sessions created when spawning a new team.",
+					kind:        fieldInt,
+					get:         func(c config.Config) string { return strconv.Itoa(c.TeamDefaults.WorkerCount) },
+					set: func(c *config.Config, v string) error {
+						n, err := strconv.Atoi(strings.TrimSpace(v))
+						if err != nil || n < 1 || n > 20 {
+							return fmt.Errorf("must be a number between 1 and 20")
+						}
+						c.TeamDefaults.WorkerCount = n
+						return nil
+					},
+				},
+				{
+					label:       "Default Worker Agent",
+					description: "Default agent type for worker sessions in a new team.",
+					kind:        fieldSelect,
+					options:     []string{"claude", "codex", "gemini", "copilot", "aider", "opencode"},
+					get:         func(c config.Config) string { return c.TeamDefaults.WorkerAgent },
+					set: func(c *config.Config, v string) error {
+						c.TeamDefaults.WorkerAgent = v
+						return nil
+					},
+				},
 			},
-		}},
-		{field: &settingField{
-			label:       "Preview Refresh (ms)",
-			description: "How often the session preview pane refreshes, in milliseconds. Lower values feel more responsive but use more CPU.",
-			kind:        fieldInt,
-			get:         func(c config.Config) string { return strconv.Itoa(c.PreviewRefreshMs) },
-			set: func(c *config.Config, v string) error {
-				n, err := strconv.Atoi(strings.TrimSpace(v))
-				if err != nil || n < 50 || n > 30000 {
-					return fmt.Errorf("must be a number between 50 and 30000")
-				}
-				c.PreviewRefreshMs = n
-				return nil
+		},
+		{
+			title: "Hooks",
+			fields: []*settingField{
+				{
+					label:       "Hooks Enabled",
+					description: "When enabled, shell scripts in the hooks directory are executed on lifecycle events (session create, kill, attach, etc.).",
+					kind:        fieldBool,
+					get:         func(c config.Config) string { return strconv.FormatBool(c.Hooks.Enabled) },
+					set: func(c *config.Config, v string) error {
+						b, err := strconv.ParseBool(v)
+						if err != nil {
+							return fmt.Errorf("must be true or false")
+						}
+						c.Hooks.Enabled = b
+						return nil
+					},
+				},
+				{
+					label:       "Hooks Directory",
+					description: "Directory containing hook scripts. Supports ~ for home directory.",
+					kind:        fieldString,
+					get:         func(c config.Config) string { return c.Hooks.Dir },
+					set: func(c *config.Config, v string) error {
+						v = strings.TrimSpace(v)
+						if v == "" {
+							return fmt.Errorf("directory cannot be empty")
+						}
+						c.Hooks.Dir = v
+						return nil
+					},
+				},
 			},
-		}},
-		{field: &settingField{
-			label:       "Agent Title Overrides User Title",
-			description: "When enabled, agent-detected session titles overwrite titles you set manually.",
-			kind:        fieldBool,
-			get: func(c config.Config) string {
-				return strconv.FormatBool(c.AgentTitleOverridesUserTitle)
+		},
+		{
+			title: "Keybindings",
+			fields: []*settingField{
+				keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) string { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v string) { c.Keybindings.ToggleCollapse = v }),
+				keybindField("Focus Preview", "Move focus to the preview pane.", func(c config.Config) string { return c.Keybindings.FocusPreview }, func(c *config.Config, v string) { c.Keybindings.FocusPreview = v }),
+				keybindField("Focus Sidebar", "Move focus back to the sidebar.", func(c config.Config) string { return c.Keybindings.FocusSidebar }, func(c *config.Config, v string) { c.Keybindings.FocusSidebar = v }),
+				keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) string { return c.Keybindings.JumpProject1 }, func(c *config.Config, v string) { c.Keybindings.JumpProject1 = v }),
+				keybindField("New Project", "Create a new project.", func(c config.Config) string { return c.Keybindings.NewProject }, func(c *config.Config, v string) { c.Keybindings.NewProject = v }),
+				keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) string { return c.Keybindings.NewSession }, func(c *config.Config, v string) { c.Keybindings.NewSession = v }),
+				keybindField("New Team", "Open the team builder wizard.", func(c config.Config) string { return c.Keybindings.NewTeam }, func(c *config.Config, v string) { c.Keybindings.NewTeam = v }),
+				keybindField("New Worktree Session", "Create a session in a new git worktree.", func(c config.Config) string { return c.Keybindings.NewWorktreeSession }, func(c *config.Config, v string) { c.Keybindings.NewWorktreeSession = v }),
+				keybindField("Attach to Session", "Attach to the selected session.", func(c config.Config) string { return c.Keybindings.Attach }, func(c *config.Config, v string) { c.Keybindings.Attach = v }),
+				keybindField("Kill Session", "Kill the selected session or project.", func(c config.Config) string { return c.Keybindings.KillSession }, func(c *config.Config, v string) { c.Keybindings.KillSession = v }),
+				keybindField("Kill Team", "Kill the selected team and all its sessions.", func(c config.Config) string { return c.Keybindings.KillTeam }, func(c *config.Config, v string) { c.Keybindings.KillTeam = v }),
+				keybindField("Rename", "Rename the selected session or team.", func(c config.Config) string { return c.Keybindings.Rename }, func(c *config.Config, v string) { c.Keybindings.Rename = v }),
+				keybindField("Navigate Up", "Move cursor up in the sidebar.", func(c config.Config) string { return c.Keybindings.NavUp }, func(c *config.Config, v string) { c.Keybindings.NavUp = v }),
+				keybindField("Navigate Down", "Move cursor down in the sidebar.", func(c config.Config) string { return c.Keybindings.NavDown }, func(c *config.Config, v string) { c.Keybindings.NavDown = v }),
+				keybindField("Previous Project", "Jump to the previous project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectUp }, func(c *config.Config, v string) { c.Keybindings.NavProjectUp = v }),
+				keybindField("Next Project", "Jump to the next project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectDown }, func(c *config.Config, v string) { c.Keybindings.NavProjectDown = v }),
+				keybindField("Filter", "Open the session filter.", func(c config.Config) string { return c.Keybindings.Filter }, func(c *config.Config, v string) { c.Keybindings.Filter = v }),
+				keybindField("Grid Overview", "Switch to grid view (current project).", func(c config.Config) string { return c.Keybindings.GridOverview }, func(c *config.Config, v string) { c.Keybindings.GridOverview = v }),
+				keybindField("Command Palette", "Open the command palette.", func(c config.Config) string { return c.Keybindings.Palette }, func(c *config.Config, v string) { c.Keybindings.Palette = v }),
+				keybindField("Help", "Toggle the keyboard shortcuts overlay.", func(c config.Config) string { return c.Keybindings.Help }, func(c *config.Config, v string) { c.Keybindings.Help = v }),
+				keybindField("Tmux Help", "Toggle the tmux shortcuts reference.", func(c config.Config) string { return c.Keybindings.TmuxHelp }, func(c *config.Config, v string) { c.Keybindings.TmuxHelp = v }),
+				keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) string { return c.Keybindings.Quit }, func(c *config.Config, v string) { c.Keybindings.Quit = v }),
+				keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) string { return c.Keybindings.QuitKill }, func(c *config.Config, v string) { c.Keybindings.QuitKill = v }),
+				keybindField("Open Settings", "Open this settings screen.", func(c config.Config) string { return c.Keybindings.Settings }, func(c *config.Config, v string) { c.Keybindings.Settings = v }),
+				keybindField("Next Color", "Cycle the selected project to the next color.", func(c config.Config) string { return c.Keybindings.ColorNext }, func(c *config.Config, v string) { c.Keybindings.ColorNext = v }),
+				keybindField("Previous Color", "Cycle the selected project to the previous color.", func(c config.Config) string { return c.Keybindings.ColorPrev }, func(c *config.Config, v string) { c.Keybindings.ColorPrev = v }),
 			},
-			set: func(c *config.Config, v string) error {
-				b, err := strconv.ParseBool(v)
-				if err != nil {
-					return fmt.Errorf("must be true or false")
-				}
-				c.AgentTitleOverridesUserTitle = b
-				return nil
-			},
-		}},
-		{field: &settingField{
-			label:       "Hide Attach Hint",
-			description: "When enabled, skip the informational dialog shown before attaching to a session.",
-			kind:        fieldBool,
-			get:         func(c config.Config) string { return strconv.FormatBool(c.HideAttachHint) },
-			set: func(c *config.Config, v string) error {
-				b, err := strconv.ParseBool(v)
-				if err != nil {
-					return fmt.Errorf("must be true or false")
-				}
-				c.HideAttachHint = b
-				return nil
-			},
-		}},
-		{field: &settingField{
-			label:       "Hide What's New",
-			description: "When enabled, skip the changelog dialog shown after updates. Disable to see it again on the next version change.",
-			kind:        fieldBool,
-			get:         func(c config.Config) string { return strconv.FormatBool(c.HideWhatsNew) },
-			set: func(c *config.Config, v string) error {
-				b, err := strconv.ParseBool(v)
-				if err != nil {
-					return fmt.Errorf("must be true or false")
-				}
-				c.HideWhatsNew = b
-				return nil
-			},
-		}},
-
-		// ── Team Defaults ─────────────────────────────────────────────────────
-		{isHeader: true, header: "  Team Defaults"},
-		{field: &settingField{
-			label:       "Orchestrator Agent",
-			description: "Default agent type for the orchestrator role when creating a new team.",
-			kind:        fieldSelect,
-			options:     []string{"claude", "codex", "gemini", "copilot", "aider", "opencode"},
-			get:         func(c config.Config) string { return c.TeamDefaults.Orchestrator },
-			set: func(c *config.Config, v string) error {
-				c.TeamDefaults.Orchestrator = v
-				return nil
-			},
-		}},
-		{field: &settingField{
-			label:       "Default Worker Count",
-			description: "Number of worker sessions created when spawning a new team.",
-			kind:        fieldInt,
-			get:         func(c config.Config) string { return strconv.Itoa(c.TeamDefaults.WorkerCount) },
-			set: func(c *config.Config, v string) error {
-				n, err := strconv.Atoi(strings.TrimSpace(v))
-				if err != nil || n < 1 || n > 20 {
-					return fmt.Errorf("must be a number between 1 and 20")
-				}
-				c.TeamDefaults.WorkerCount = n
-				return nil
-			},
-		}},
-		{field: &settingField{
-			label:       "Default Worker Agent",
-			description: "Default agent type for worker sessions in a new team.",
-			kind:        fieldSelect,
-			options:     []string{"claude", "codex", "gemini", "copilot", "aider", "opencode"},
-			get:         func(c config.Config) string { return c.TeamDefaults.WorkerAgent },
-			set: func(c *config.Config, v string) error {
-				c.TeamDefaults.WorkerAgent = v
-				return nil
-			},
-		}},
-
-		// ── Hooks ─────────────────────────────────────────────────────────────
-		{isHeader: true, header: "  Hooks"},
-		{field: &settingField{
-			label:       "Hooks Enabled",
-			description: "When enabled, shell scripts in the hooks directory are executed on lifecycle events (session create, kill, attach, etc.).",
-			kind:        fieldBool,
-			get:         func(c config.Config) string { return strconv.FormatBool(c.Hooks.Enabled) },
-			set: func(c *config.Config, v string) error {
-				b, err := strconv.ParseBool(v)
-				if err != nil {
-					return fmt.Errorf("must be true or false")
-				}
-				c.Hooks.Enabled = b
-				return nil
-			},
-		}},
-		{field: &settingField{
-			label:       "Hooks Directory",
-			description: "Directory containing hook scripts. Supports ~ for home directory.",
-			kind:        fieldString,
-			get:         func(c config.Config) string { return c.Hooks.Dir },
-			set: func(c *config.Config, v string) error {
-				v = strings.TrimSpace(v)
-				if v == "" {
-					return fmt.Errorf("directory cannot be empty")
-				}
-				c.Hooks.Dir = v
-				return nil
-			},
-		}},
-
-		// ── Keybindings ───────────────────────────────────────────────────────
-		{isHeader: true, header: "  Keybindings"},
-		{field: keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) string { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v string) { c.Keybindings.ToggleCollapse = v })},
-		{field: keybindField("Focus Preview", "Move focus to the preview pane.", func(c config.Config) string { return c.Keybindings.FocusPreview }, func(c *config.Config, v string) { c.Keybindings.FocusPreview = v })},
-		{field: keybindField("Focus Sidebar", "Move focus back to the sidebar.", func(c config.Config) string { return c.Keybindings.FocusSidebar }, func(c *config.Config, v string) { c.Keybindings.FocusSidebar = v })},
-		{field: keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) string { return c.Keybindings.JumpProject1 }, func(c *config.Config, v string) { c.Keybindings.JumpProject1 = v })},
-		{field: keybindField("New Project", "Create a new project.", func(c config.Config) string { return c.Keybindings.NewProject }, func(c *config.Config, v string) { c.Keybindings.NewProject = v })},
-		{field: keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) string { return c.Keybindings.NewSession }, func(c *config.Config, v string) { c.Keybindings.NewSession = v })},
-		{field: keybindField("New Team", "Open the team builder wizard.", func(c config.Config) string { return c.Keybindings.NewTeam }, func(c *config.Config, v string) { c.Keybindings.NewTeam = v })},
-		{field: keybindField("New Worktree Session", "Create a session in a new git worktree.", func(c config.Config) string { return c.Keybindings.NewWorktreeSession }, func(c *config.Config, v string) { c.Keybindings.NewWorktreeSession = v })},
-		{field: keybindField("Attach to Session", "Attach to the selected session.", func(c config.Config) string { return c.Keybindings.Attach }, func(c *config.Config, v string) { c.Keybindings.Attach = v })},
-		{field: keybindField("Kill Session", "Kill the selected session or project.", func(c config.Config) string { return c.Keybindings.KillSession }, func(c *config.Config, v string) { c.Keybindings.KillSession = v })},
-		{field: keybindField("Kill Team", "Kill the selected team and all its sessions.", func(c config.Config) string { return c.Keybindings.KillTeam }, func(c *config.Config, v string) { c.Keybindings.KillTeam = v })},
-		{field: keybindField("Rename", "Rename the selected session or team.", func(c config.Config) string { return c.Keybindings.Rename }, func(c *config.Config, v string) { c.Keybindings.Rename = v })},
-		{field: keybindField("Navigate Up", "Move cursor up in the sidebar.", func(c config.Config) string { return c.Keybindings.NavUp }, func(c *config.Config, v string) { c.Keybindings.NavUp = v })},
-		{field: keybindField("Navigate Down", "Move cursor down in the sidebar.", func(c config.Config) string { return c.Keybindings.NavDown }, func(c *config.Config, v string) { c.Keybindings.NavDown = v })},
-		{field: keybindField("Previous Project", "Jump to the previous project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectUp }, func(c *config.Config, v string) { c.Keybindings.NavProjectUp = v })},
-		{field: keybindField("Next Project", "Jump to the next project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectDown }, func(c *config.Config, v string) { c.Keybindings.NavProjectDown = v })},
-		{field: keybindField("Filter", "Open the session filter.", func(c config.Config) string { return c.Keybindings.Filter }, func(c *config.Config, v string) { c.Keybindings.Filter = v })},
-		{field: keybindField("Grid Overview", "Switch to grid view (current project).", func(c config.Config) string { return c.Keybindings.GridOverview }, func(c *config.Config, v string) { c.Keybindings.GridOverview = v })},
-		{field: keybindField("Command Palette", "Open the command palette.", func(c config.Config) string { return c.Keybindings.Palette }, func(c *config.Config, v string) { c.Keybindings.Palette = v })},
-		{field: keybindField("Help", "Toggle the keyboard shortcuts overlay.", func(c config.Config) string { return c.Keybindings.Help }, func(c *config.Config, v string) { c.Keybindings.Help = v })},
-		{field: keybindField("Tmux Help", "Toggle the tmux shortcuts reference.", func(c config.Config) string { return c.Keybindings.TmuxHelp }, func(c *config.Config, v string) { c.Keybindings.TmuxHelp = v })},
-		{field: keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) string { return c.Keybindings.Quit }, func(c *config.Config, v string) { c.Keybindings.Quit = v })},
-		{field: keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) string { return c.Keybindings.QuitKill }, func(c *config.Config, v string) { c.Keybindings.QuitKill = v })},
-		{field: keybindField("Open Settings", "Open this settings screen.", func(c config.Config) string { return c.Keybindings.Settings }, func(c *config.Config, v string) { c.Keybindings.Settings = v })},
-		{field: keybindField("Next Color", "Cycle the selected project to the next color.", func(c config.Config) string { return c.Keybindings.ColorNext }, func(c *config.Config, v string) { c.Keybindings.ColorNext = v })},
-		{field: keybindField("Previous Color", "Cycle the selected project to the previous color.", func(c config.Config) string { return c.Keybindings.ColorPrev }, func(c *config.Config, v string) { c.Keybindings.ColorPrev = v })},
+		},
 	}
 }
 
