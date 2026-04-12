@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-04-12
+
 ### Changed
 - **Install docs overhaul**: README and Windows getting-started guide now lead with prebuilt binaries from the Releases page (no Go toolchain required). Go 1.25+ is now called out as a build-time-only requirement. Windows tmux guidance now recommends WSL first — sessions survive terminal close and reboots, PTY semantics match Linux, and AI agent CLIs run as their native Linux builds. MSYS2 and Chocolatey remain as documented alternatives (#74).
 
@@ -269,7 +271,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/lucascaro/hive/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/lucascaro/hive/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/lucascaro/hive/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lucascaro/hive/compare/v0.5.1...v0.6.0
