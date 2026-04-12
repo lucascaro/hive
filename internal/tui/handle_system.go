@@ -23,6 +23,9 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		if vpW > 64 {
 			vpW = 64
 		}
+		if vpW < 10 {
+			vpW = 10
+		}
 		vpH := msg.Height - 14 // account for border + padding + title + hints
 		if vpH > 24 {
 			vpH = 24

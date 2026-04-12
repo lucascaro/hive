@@ -776,7 +776,7 @@ func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleAttachHint handles key input while the attach hint overlay is shown.
+// handleWhatsNew handles key input while the What's New overlay is shown.
 func (m Model) handleWhatsNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter", "esc", "q", " ":

@@ -184,7 +184,10 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 	if m.orphanPicker.Active {
 		m.PushView(ViewOrphan)
 	}
+	// Restore the grid view if the user detached from a grid-initiated session.
+	m.restoreGrid()
 	// Show "What's New" overlay if there's changelog content.
+	// Pushed last so it appears on top of any restored grid or recovery overlays.
 	if whatsNewContent != "" {
 		m.whatsNewContent = whatsNewContent
 		vp := viewport.New(60, 20)
@@ -192,8 +195,6 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		m.whatsNewViewport = vp
 		m.PushView(ViewWhatsNew)
 	}
-	// Restore the grid view if the user detached from a grid-initiated session.
-	m.restoreGrid()
 	debugLog.Printf("New() done: ActiveSessionID=%q, %d projects, %d sidebar items",
 		m.appState.ActiveSessionID, len(m.appState.Projects), len(m.sidebar.Items))
 	return m

@@ -71,7 +71,9 @@ func runStart(_ *cobra.Command, _ []string) error {
 	// Always update last seen version.
 	if cfg.LastSeenVersion != Version {
 		cfg.LastSeenVersion = Version
-		_ = config.Save(cfg)
+		if err := config.Save(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to persist last seen version: %v\n", err)
+		}
 	}
 
 	// --native flag overrides config.

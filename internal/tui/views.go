@@ -205,6 +205,9 @@ func (m Model) whatsNewView() string {
 	if dialogW > 70 {
 		dialogW = 70
 	}
+	if dialogW < 20 {
+		dialogW = 20
+	}
 	dialogH := h - 8
 	if dialogH > 30 {
 		dialogH = 30
