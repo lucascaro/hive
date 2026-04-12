@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Windows install docs rewrite**: restructured README and Windows getting-started guide into a single, step-by-step WSL-based walkthrough (install WSL → install tmux → download `hive-linux-amd64` → run). Removed the incoherent `hive-windows-amd64.exe` + WSL-tmux recommendation from the earlier pass. MSYS2 / Chocolatey + `hive-windows-amd64.exe` remain documented as a clearly-separated "native Windows alternative" with an explicit session-persistence caveat (follow-up to #74).
+
 ## [0.7.2] — 2026-04-12
 
 ### Changed

@@ -1,130 +1,143 @@
 # Getting Started with Hive on Windows
 
-This guide walks you from a fresh Windows machine to running your first AI agent session in Hive.
+This guide walks you from a fresh Windows 11 machine to running your first AI agent session in Hive.
 
-> **Important:** The built-in PTY multiplexer backend is not available on Windows.
-> Hive on Windows uses **tmux** as its backend. You must install tmux before running Hive.
+> **Hive on Windows runs inside WSL (Windows Subsystem for Linux).** WSL gives hive the same behaviour it has on Linux/macOS — sessions persist across terminal close and reboots, real Linux PTYs, and AI agent CLIs run as their native Linux builds. See [Why WSL?](#why-wsl) below for the full rationale.
 
-## Install Hive
+## Install Hive (WSL path, recommended)
 
-### Option A — Prebuilt binary (recommended)
+This flow uses PowerShell exactly once, to bootstrap WSL. Every subsequent step runs in the WSL shell.
 
-No Go toolchain required.
+### 1. Install WSL
 
-```powershell
-Invoke-WebRequest -Uri "https://github.com/lucascaro/hive/releases/latest/download/hive-windows-amd64.exe" -OutFile "hive.exe"
-```
-
-Move `hive.exe` to any directory already on your `PATH` (or create one, e.g. `C:\Tools\hive\`, and add it to your user `PATH` via **System Properties → Environment Variables**).
-
-Then install tmux — see [Install tmux](#install-tmux) below.
-
-### Option B — Build from source
-
-Only needed if you want the latest unreleased changes.
-
-1. Install **Go 1.25+** — download the Windows installer from [go.dev/dl](https://go.dev/dl/) and run it. The installer adds `go` to your `PATH` automatically. Verify in PowerShell:
-   ```powershell
-   go version   # should print go1.25 or higher
-   ```
-2. Install **Git** from [git-scm.com](https://git-scm.com/download/win) if you don't already have it.
-3. Clone and build:
-   ```powershell
-   git clone https://github.com/lucascaro/hive
-   cd hive
-   .\build.ps1
-   ```
-
-`build.ps1` compiles `hive.exe` and installs it to `%ProgramFiles%\hive\`.
-Run the script from an **elevated (Administrator) PowerShell** window to install system-wide.
-It also adds the install directory to your user `PATH` automatically.
-
-**Or build manually:**
+Open **PowerShell as Administrator** (right-click Start → *Terminal (Admin)* on Windows 11) and run:
 
 ```powershell
-go build -o hive.exe .
+wsl --install
 ```
 
-Then copy `hive.exe` to any directory already on your `PATH`.
+This enables the WSL feature and installs Ubuntu (the default distro). Reboot if prompted.
 
-## Install tmux
+On first launch, WSL will ask for a Linux username and password. These are independent of your Windows account — pick anything memorable; the password is used for `sudo`.
 
-Hive on Windows uses the `tmux` backend. Pick **one** of the following.
-
-### Recommended: WSL (Windows Subsystem for Linux)
-
-WSL gives hive the same behaviour it has on Linux/macOS:
-
-- Sessions survive closing the terminal and reboots (tmux under MSYS2 dies with its terminal).
-- Real Linux PTYs — OSC 2 title updates, mouse reporting, and alt-screen behave exactly as on Linux.
-- AI agent CLIs (Claude, Codex, Gemini, Copilot, Aider, OpenCode) are Linux-first; WSL runs their native builds directly.
-- Single toolchain (`apt` + native Linux Go), no Win32/MSYS boundary crossings.
-
-1. Enable WSL from PowerShell (run as Administrator):
-   ```powershell
-   wsl --install
-   ```
-2. Inside the WSL terminal:
-   ```bash
-   sudo apt install tmux   # Ubuntu/Debian
-   ```
-
-### Alternative: MSYS2
-
-Works, but tmux sessions do not survive closing the MSYS2 terminal or rebooting.
-
-1. Download and install [MSYS2](https://www.msys2.org/).
-2. Open the MSYS2 terminal and run:
-   ```bash
-   pacman -S tmux
-   ```
-
-### Alternative: Chocolatey
-
-Same caveats as MSYS2.
+**Verify:**
 
 ```powershell
-choco install msys2
+wsl --status
 ```
 
-Then open the MSYS2 terminal and install tmux: `pacman -S tmux`.
+You should see a default distribution (e.g. `Ubuntu`) listed.
 
-### Verify
+### 2. Launch the WSL shell
 
-From the terminal you plan to use:
+You now have a real Linux shell. Any of the following opens it:
+
+- Open **Ubuntu** from the Start menu.
+- Open **Windows Terminal** and choose the *Ubuntu* tab from the dropdown.
+- Run `wsl` in any PowerShell or Command Prompt window.
+
+**Everything from here on runs inside the WSL (Linux) shell.** If a prompt in this guide looks like `$`, you're in WSL.
+
+### 3. Install tmux
+
+Inside the WSL shell:
+
+```bash
+sudo apt update && sudo apt install -y tmux curl
+```
+
+**Verify:**
 
 ```bash
 tmux -V
 ```
 
-## Verify the Installation
+You should see a version string like `tmux 3.x`.
 
-Open a new terminal (to pick up the updated `PATH`) and run:
+### 4. Download the hive binary
 
-```powershell
+Still inside WSL. Use the **Linux** binary — not the Windows `.exe`:
+
+```bash
+curl -L -o hive https://github.com/lucascaro/hive/releases/latest/download/hive-linux-amd64
+chmod +x hive
+sudo mv hive /usr/local/bin/
+```
+
+**Verify:**
+
+```bash
 hive version
 ```
 
-## Configure the tmux Backend
+### 5. Launch Hive
 
-On first launch, Hive creates its config directory at `%APPDATA%\hive\`
-(e.g. `C:\Users\You\AppData\Roaming\hive\`) with a default `config.json` that already
-uses the tmux backend. No manual configuration change is required.
-
-> **Tip:** If you need to customise other settings, open `%APPDATA%\hive\config.json` in a text editor.
-> The default config already contains `"multiplexer": "tmux"` — do not remove it.
-
-## First Launch
-
-Open the terminal that has `tmux` on its `PATH` (WSL shell, or MSYS2 / Git Bash if you chose an alternative) and run:
+Still inside WSL:
 
 ```bash
 hive start
 ```
 
-The TUI appears. You are now in the Hive session manager.
+The TUI appears. You're done with the install — [skip to Basic Workflow](#basic-workflow).
+
+**Config directory (WSL path):** `~/.config/hive/` inside WSL (e.g. `/home/you/.config/hive/`), exactly like Linux.
+
+## Why WSL?
+
+- **Sessions survive** closing the terminal and reboots (tmux under MSYS2 dies with its terminal).
+- **Real Linux PTYs** — OSC 2 title updates, mouse reporting, and alt-screen behave exactly as on Linux.
+- **AI agent CLIs** (Claude, Codex, Gemini, Copilot, Aider, OpenCode) are Linux-first; WSL runs their native builds directly.
+- **Single toolchain** (`apt install` + native Linux Go), no Win32/MSYS boundary crossings.
+
+## Native Windows alternative (MSYS2)
+
+> ⚠️ **Caveat:** tmux sessions under MSYS2 **do not survive closing the MSYS2 terminal or rebooting**. Session persistence is hive's core value prop — use this path only if you genuinely can't run WSL.
+
+### 1. Install tmux via MSYS2
+
+Download and install [MSYS2](https://www.msys2.org/), then in the MSYS2 terminal:
+
+```bash
+pacman -S tmux
+```
+
+Alternatively, via Chocolatey in PowerShell: `choco install msys2`, then open the MSYS2 terminal and run `pacman -S tmux` as above.
+
+**Verify** (from the MSYS2 terminal): `tmux -V`.
+
+### 2. Install Hive
+
+**Option A — Prebuilt binary.** In PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/lucascaro/hive/releases/latest/download/hive-windows-amd64.exe" -OutFile "hive.exe"
+```
+
+Move `hive.exe` to a directory already on your `PATH` (or create one, e.g. `C:\Tools\hive\`, and add it to your user `PATH` via **System Properties → Environment Variables**).
+
+**Option B — Build from source.** Requires **Go 1.25+** from [go.dev/dl](https://go.dev/dl/) and **Git** from [git-scm.com](https://git-scm.com/download/win).
+
+```powershell
+git clone https://github.com/lucascaro/hive
+cd hive
+.\build.ps1          # builds hive.exe and installs to %ProgramFiles%\hive\ (run as Administrator)
+```
+
+Or build manually: `go build -o hive.exe .`, then move `hive.exe` onto your `PATH`.
+
+### 3. Launch Hive
+
+Open the **MSYS2 terminal** (or any shell that has `tmux` on `PATH`, such as Git Bash when MSYS2's `bin` is on `PATH`) and run:
+
+```bash
+hive start
+```
+
+**Config directory (native Windows path):** `%APPDATA%\hive\` (e.g. `C:\Users\You\AppData\Roaming\hive\`). No manual config change is needed — tmux is already the default backend.
 
 ## Basic Workflow
+
+Once Hive is running, the workflow is identical across platforms.
 
 ### 1. Create a project
 
@@ -173,7 +186,10 @@ Run `hive start` at any time to reconnect to your running sessions.
 
 ## Configuration Reference
 
-Config file: `%APPDATA%\hive\config.json`
+Config file:
+
+- **WSL path:** `~/.config/hive/config.json` (inside WSL)
+- **Native Windows path:** `%APPDATA%\hive\config.json`
 
 ```json
 {
@@ -193,6 +209,17 @@ Config file: `%APPDATA%\hive\config.json`
 ```
 
 ## Data Storage
+
+### WSL path (recommended)
+
+| Path | Contents |
+|------|----------|
+| `~/.config/hive/config.json` | User configuration |
+| `~/.config/hive/state.json` | Projects, teams, sessions |
+| `~/.config/hive/hooks/` | Lifecycle hook scripts |
+| `~/.config/hive/hive.log` | Error and hook output log |
+
+### Native Windows path
 
 | Path | Contents |
 |------|----------|
