@@ -567,6 +567,114 @@ func TestPreviewView_EscapeOnlyContent_ShowsPlaceholder(t *testing.T) {
 }
 
 
+func TestPreviewSetContent_TrailingBlanksScrollToContent(t *testing.T) {
+	// capture-pane pads output with blank rows below the cursor.
+	// After SetContent the viewport should show the last real line, not blanks.
+	const h = 10
+	p := &Preview{}
+	p.Resize(80, h)
+
+	// 3 content lines followed by 20 blank rows (simulating capture-pane padding).
+	content := "line1\nline2\nline3" + strings.Repeat("\n", 20)
+	p.SetContent(content)
+
+	// The visible window starts at lastNonBlankIdx - (innerH-1).
+	// With lastNonBlankIdx=2 (0-indexed) and innerH=h-frameH,
+	// the offset should be ≤ 2 so that line3 is visible.
+	// We verify by checking that the rendered output contains the last content line.
+	out := p.View("sess-1")
+	if !strings.Contains(out, "line3") {
+		t.Errorf("preview should show last content line after SetContent with trailing blanks; got:\n%s", out)
+	}
+}
+
+func TestPreviewSetContent_HighWaterMark_SmallDrop(t *testing.T) {
+	// High-water-mark: a small backward movement in lastNonBlankIdx (e.g. from
+	// cursor oscillation in a TUI spinner) should NOT reset the position —
+	// it should stay at the previous high-water mark.
+	p := &Preview{}
+	p.Resize(80, 20)
+
+	// First update: 100 content lines.
+	first := strings.Repeat("content\n", 100)
+	p.SetContent(first)
+	high := p.lastNonBlankIdx // should be ~99
+
+	// Second update: slightly fewer content lines (cursor moved up 3).
+	second := strings.Repeat("content\n", 97) + strings.Repeat("\n", 3)
+	p.SetContent(second)
+
+	if p.lastNonBlankIdx != high {
+		t.Errorf("small backward movement: lastNonBlankIdx changed from %d to %d; high-water-mark should hold",
+			high, p.lastNonBlankIdx)
+	}
+}
+
+func TestPreviewSetContent_HighWaterMark_LargeDrop(t *testing.T) {
+	// High-water-mark: a large drop (> resetThreshold=50 lines) IS a genuine
+	// screen clear and must reset lastNonBlankIdx to the new position.
+	p := &Preview{}
+	p.Resize(80, 20)
+
+	// Start at 200 content lines.
+	first := strings.Repeat("content\n", 200)
+	p.SetContent(first)
+	high := p.lastNonBlankIdx
+
+	// After a screen clear: only 5 content lines.
+	second := strings.Repeat("fresh\n", 5) + strings.Repeat("\n", 195)
+	p.SetContent(second)
+
+	if p.lastNonBlankIdx >= high-50 {
+		t.Errorf("large drop: lastNonBlankIdx=%d should have reset far below high=%d",
+			p.lastNonBlankIdx, high)
+	}
+	if p.lastNonBlankIdx > 10 {
+		t.Errorf("large drop: lastNonBlankIdx=%d should be ~4 after reset", p.lastNonBlankIdx)
+	}
+}
+
+func TestPreviewSetContent_ClearsUserScrolled(t *testing.T) {
+	// After the user scrolls up, new content must reset userScrolled so the
+	// next resize re-applies scrollToLastContent.
+	p := &Preview{}
+	p.Resize(80, 20)
+	p.SetContent(strings.Repeat("line\n", 50))
+	p.ScrollUp(5)
+
+	if !p.userScrolled {
+		t.Fatal("ScrollUp should set userScrolled=true")
+	}
+
+	// New content clears the flag.
+	p.SetContent(strings.Repeat("new\n", 50))
+	if p.userScrolled {
+		t.Error("SetContent should clear userScrolled")
+	}
+}
+
+func TestPreviewResize_PreservesUserScroll(t *testing.T) {
+	// When the user has scrolled up, Resize must not snap back to last content.
+	p := &Preview{}
+	p.Resize(80, 20)
+	p.SetContent(strings.Repeat("line\n", 100))
+
+	p.ScrollUp(10)
+	offsetAfterScroll := p.vp.YOffset
+
+	// Terminal resize: height changes.
+	p.Resize(80, 25)
+
+	// The offset may be adjusted by the viewport itself (due to height change),
+	// but it should NOT have been reset to scrollToLastContent's value (which
+	// would be lastNonBlankIdx - innerH + 1, a large positive value).
+	// Concretely: it should remain close to offsetAfterScroll, not jump to ~75+.
+	if p.vp.YOffset > offsetAfterScroll+5 {
+		t.Errorf("Resize with userScrolled: YOffset jumped to %d after scroll at %d; should preserve user position",
+			p.vp.YOffset, offsetAfterScroll)
+	}
+}
+
 func TestPreviewUpdatedMsg_Fields(t *testing.T) {
 	msg := PreviewUpdatedMsg{
 		SessionID:  "sess-123",

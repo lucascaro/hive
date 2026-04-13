@@ -647,3 +647,75 @@ func TestGridView_CellAt_ExtendedCell(t *testing.T) {
 		}
 	}
 }
+
+func TestLastNContentLines(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		n     int
+		want  string
+	}{
+		{
+			name:  "n=0 returns empty",
+			input: "line1\nline2",
+			n:     0,
+			want:  "",
+		},
+		{
+			name:  "all blank returns empty",
+			input: "\n\n\n",
+			n:     3,
+			want:  "",
+		},
+		{
+			name:  "trailing blank rows stripped",
+			input: "line1\nline2\n\n\n",
+			n:     5,
+			want:  "line1\nline2",
+		},
+		{
+			name:  "last n lines before trailing blanks",
+			input: "a\nb\nc\nd\n\n\n",
+			n:     2,
+			want:  "c\nd",
+		},
+		{
+			name:  "fewer content lines than n returns all",
+			input: "only\n\n\n",
+			n:     10,
+			want:  "only",
+		},
+		{
+			name:  "no trailing blanks returns last n",
+			input: "x\ny\nz",
+			n:     2,
+			want:  "y\nz",
+		},
+		{
+			name:  "exactly n content lines returns all",
+			input: "a\nb\n\n",
+			n:     2,
+			want:  "a\nb",
+		},
+		{
+			name:  "single content line",
+			input: "hello\n\n\n",
+			n:     1,
+			want:  "hello",
+		},
+		{
+			name:  "empty input",
+			input: "",
+			n:     5,
+			want:  "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := lastNContentLines(tc.input, tc.n)
+			if got != tc.want {
+				t.Errorf("lastNContentLines(%q, %d) = %q; want %q", tc.input, tc.n, got, tc.want)
+			}
+		})
+	}
+}

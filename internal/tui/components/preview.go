@@ -240,40 +240,67 @@ type Preview struct {
 	Width   int
 	Height  int
 	Focused bool
-	vp         viewport.Model
-	hasContent bool
+	vp              viewport.Model
+	hasContent      bool
+	// lastNonBlankIdx is the index of the last line in the viewport content
+	// that contains visible text (after sanitization).  Stored so Resize can
+	// re-apply the same scroll position without re-scanning the content.
+	lastNonBlankIdx int
+	// userScrolled is set when the user manually scrolls up, and cleared when
+	// new content arrives via SetContent.  While true, Resize preserves the
+	// user's scroll position instead of snapping back to the last content line.
+	userScrolled bool
 }
 
 // ScrollUp scrolls the preview viewport up by n lines.
-func (p *Preview) ScrollUp(n int) { p.vp.LineUp(n) }
+func (p *Preview) ScrollUp(n int) {
+	p.vp.LineUp(n)
+	p.userScrolled = true
+}
 
 // ScrollDown scrolls the preview viewport down by n lines.
 func (p *Preview) ScrollDown(n int) { p.vp.LineDown(n) }
 
 // Resize updates the preview dimensions and passes them to the internal viewport.
 // Must be called before the first View() call and whenever the terminal resizes.
-// Scrolls back to the bottom when content is present, because a height change
-// invalidates the previous YOffset.
+// Re-applies the last-content scroll position (invalidated by the height change).
 func (p *Preview) Resize(w, h int) {
 	p.Width = w
 	p.Height = h
 	p.vp.Width = w
 	p.vp.Height = h
 	if p.hasContent {
-		// Set style before GotoBottom so maxYOffset uses the correct frame size.
-		// Without this the zero-value style (no border) produces a YOffset that is
-		// off by borderVerticalFrameSize, hiding the last few lines of content.
-		// Guard against tiny viewports where the frame exceeds the height.
 		// Always update vp.Style — if a previously-set style is left in place
-		// on a now-tiny viewport, GotoBottom will compute maxYOffset using the
-		// old frame size and scroll past the end of the content.
+		// on a now-tiny viewport, scrollToLastContent will compute a wrong offset.
 		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
 			p.vp.Style = styles.PreviewStyle
 		} else {
 			p.vp.Style = lipgloss.Style{}
 		}
-		p.vp.GotoBottom()
+		// Don't override the user's manual scroll position on resize — only
+		// snap to last content when the user hasn't scrolled up themselves.
+		if !p.userScrolled {
+			p.scrollToLastContent()
+		}
 	}
+}
+
+// scrollToLastContent positions the viewport so that lastNonBlankIdx is the
+// last visible line.  This keeps the display stable across polls: the cursor
+// position in the tmux pane (and therefore the number of trailing blank rows
+// in capture-pane output) fluctuates, but as long as the last line of actual
+// content doesn't change, the scroll offset stays the same.
+func (p *Preview) scrollToLastContent() {
+	frameH := p.vp.Style.GetVerticalFrameSize()
+	innerH := p.vp.Height - frameH
+	if innerH < 1 {
+		innerH = 1
+	}
+	offset := p.lastNonBlankIdx - innerH + 1
+	if offset < 0 {
+		offset = 0
+	}
+	p.vp.SetYOffset(offset)
 }
 
 // SetContent sanitizes raw tmux capture-pane output and stores it in the
@@ -299,24 +326,55 @@ func (p *Preview) SetContent(content string) {
 		// overlong row wraps into extra physical lines, which pushes the total
 		// frame height over TermHeight and causes the terminal to scroll —
 		// the "screen corruption" seen when switching sessions.
+		lines := strings.Split(sanitized, "\n")
 		if innerW := p.Width - styles.PreviewStyle.GetHorizontalFrameSize(); innerW > 0 {
-			lines := strings.Split(sanitized, "\n")
 			for i, l := range lines {
 				lines[i] = xansi.Truncate(l, innerW, "")
 			}
-			sanitized = strings.Join(lines, "\n")
 		}
-		// Always update vp.Style before SetContent/GotoBottom so maxYOffset
-		// uses the correct frame size.  Leaving a previously-set style in place
-		// on a now-tiny viewport would compute a wrong YOffset.
+		sanitized = strings.Join(lines, "\n")
+
+		// Find the last line with visible text.  capture-pane pads the terminal
+		// height with blank rows below the cursor; GotoBottom() would scroll to
+		// those blank rows, making the preview appear almost empty.  Instead,
+		// store the index of the last non-blank line and use it for scrolling.
+		// We do NOT trim the content because the blank count fluctuates each poll
+		// (the cursor moves as output is written), which would cause the viewport
+		// to jump on every update.
+		//
+		// To prevent jumping from cursor oscillation (TUI apps move the cursor a
+		// few lines up/down as they redraw spinners and status lines), we apply a
+		// high-water-mark strategy: only advance lastNonBlankIdx forward, or reset
+		// it downward when it drops by more than resetThreshold lines (indicating a
+		// genuine clear/reset rather than normal cursor movement).
+		newLast := 0
+		for i := len(lines) - 1; i >= 0; i-- {
+			if strings.TrimSpace(lines[i]) != "" {
+				newLast = i
+				break
+			}
+		}
+		const resetThreshold = 50
+		if newLast >= p.lastNonBlankIdx || p.lastNonBlankIdx-newLast > resetThreshold {
+			p.lastNonBlankIdx = newLast
+		}
+		// else: small backward movement from cursor oscillation — keep current position
+
+		// Always update vp.Style before setting content/offset so the frame size
+		// used by scrollToLastContent is correct.
 		if p.vp.Height > styles.PreviewStyle.GetVerticalFrameSize() {
 			p.vp.Style = styles.PreviewStyle
 		} else {
 			p.vp.Style = lipgloss.Style{}
 		}
 		p.vp.SetContent(sanitized)
-		p.vp.GotoBottom()
+		// New content arrived — release any manual scroll hold so the viewport
+		// snaps back to the last content line (showing the most recent output).
+		p.userScrolled = false
+		p.scrollToLastContent()
 	} else {
+		p.lastNonBlankIdx = 0
+		p.userScrolled = false
 		p.vp.SetContent("")
 	}
 }

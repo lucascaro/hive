@@ -531,8 +531,11 @@ func TestFlow_KillSession_LastInGroup(t *testing.T) {
 	f.AssertActiveSession("sess-2")
 }
 
-// TestFlow_StatusUpdate_UpdatesPreview tests that StatusesDetectedMsg
-// updates the preview for the active session.
+// TestFlow_StatusUpdate_UpdatesPreview tests that the preview is updated by
+// PreviewUpdatedMsg (PollPreview), not by StatusesDetectedMsg.
+// StatusesDetectedMsg updates the content snapshot for the grid / session-switch
+// cache, but must not update the live preview to avoid scroll jumps caused by
+// alternating 50-line (WatchStatuses) and 500-line (PollPreview) content.
 func TestFlow_StatusUpdate_UpdatesPreview(t *testing.T) {
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
@@ -540,7 +543,7 @@ func TestFlow_StatusUpdate_UpdatesPreview(t *testing.T) {
 	// Initially no content.
 	f.ViewContains("Waiting for output")
 
-	// Send status update with content for active session.
+	// StatusesDetectedMsg must NOT update the preview — preview stays "Waiting".
 	f.Send(escape.StatusesDetectedMsg{
 		Statuses: map[string]state.SessionStatus{
 			"sess-1": state.StatusRunning,
@@ -549,7 +552,15 @@ func TestFlow_StatusUpdate_UpdatesPreview(t *testing.T) {
 			"sess-1": "Fresh output from agent",
 		},
 	})
+	f.ViewContains("Waiting for output")
 
+	// PreviewUpdatedMsg (from PollPreview) IS the authoritative preview source.
+	gen := f.Model().previewPollGen
+	f.Send(components.PreviewUpdatedMsg{
+		SessionID:  "sess-1",
+		Content:    "Fresh output from agent",
+		Generation: gen,
+	})
 	f.ViewContains("Fresh output from agent")
 	f.Snapshot("01-status-updated")
 }
