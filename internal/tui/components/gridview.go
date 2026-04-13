@@ -225,38 +225,46 @@ func (gv *GridView) View() string {
 	if cellH < 5 {
 		cellH = 5
 	}
-	// Last row gets the remaining height so cells fill the full screen.
+	// Remaining height after all full-height rows: used to extend the last
+	// content cell in each column so nothing is wasted.
 	lastCellH := totalH - (rows-1)*cellH
 	if lastCellH < 5 {
 		lastCellH = 5
 	}
 
-	var rowViews []string
-	for r := 0; r < rows; r++ {
-		h := cellH
-		if r == rows-1 {
-			h = lastCellH
-		}
+	// Render column-by-column so that columns whose last row is empty can
+	// extend the cell above into the unused space.
+	//   n%cols == 0  → every column has content in the last row (no empties)
+	//   c >= n%cols  → this column has no content in the last row
+	var colViews []string
+	for c := 0; c < cols; c++ {
+		emptyInLastRow := n%cols != 0 && c >= n%cols
 		var cellViews []string
-		for c := 0; c < cols; c++ {
+		for r := 0; r < rows; r++ {
 			idx := r*cols + c
 			if idx >= n {
-				// Last row: skip empty cells — the real cells above already fill the space.
-				if r == rows-1 {
-					continue
-				}
-				cellViews = append(cellViews, lipgloss.NewStyle().Width(cellW).Height(h).Render(""))
+				// Empty slot — skip; the cell above is already extended.
 				continue
+			}
+			var h int
+			switch {
+			case emptyInLastRow && r == rows-2:
+				// Last content cell in this column: absorb the empty row below.
+				h = cellH + lastCellH
+			case r == rows-1:
+				// Last row of a fully-occupied column: use remaining height.
+				h = lastCellH
+			default:
+				h = cellH
 			}
 			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, h, idx == gv.Cursor))
 		}
-		if len(cellViews) == 0 {
-			continue
+		if len(cellViews) > 0 {
+			colViews = append(colViews, lipgloss.JoinVertical(lipgloss.Left, cellViews...))
 		}
-		rowViews = append(rowViews, lipgloss.JoinHorizontal(lipgloss.Top, cellViews...))
 	}
 
-	grid := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
+	grid := lipgloss.JoinHorizontal(lipgloss.Top, colViews...)
 	// Truncate hint lines to gv.Width before joining with the grid.
 	// Without this, JoinVertical computes maxWidth = max(grid_width, hint_width).
 	// When hint_width (93 display chars) exceeds gv.Width (narrow terminals,
