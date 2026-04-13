@@ -73,6 +73,10 @@ func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
 
 func (m Model) handleConfigSaved() (tea.Model, tea.Cmd) {
 	m.appState.LastError = "" // clear any previous error
+	if m.TopView() == ViewSettings {
+		m.settings.Close()
+		m.PopView()
+	}
 	return m, nil
 }
 

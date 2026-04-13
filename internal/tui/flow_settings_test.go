@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -115,9 +116,16 @@ func TestFlow_Settings_SaveStillWorks(t *testing.T) {
 	if !f.model.settings.IsPendingSave() {
 		t.Fatal("precondition: expected pendingSave=true")
 	}
-	f.SendKey("y") // confirm
+	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}) // confirm
+	f.ExecCmdChain(cmd)                                                // run save + ConfigSavedMsg
 
 	if f.model.settings.Active {
 		t.Error("expected settings closed after save confirm")
+	}
+	if got := f.model.TopView(); got != ViewMain {
+		t.Errorf("expected TopView=ViewMain after save, got %v", got)
+	}
+	if strings.TrimSpace(f.View()) == "" {
+		t.Error("expected non-empty main view render after save, got blank")
 	}
 }
