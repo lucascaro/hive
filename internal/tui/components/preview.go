@@ -246,10 +246,17 @@ type Preview struct {
 	// that contains visible text (after sanitization).  Stored so Resize can
 	// re-apply the same scroll position without re-scanning the content.
 	lastNonBlankIdx int
+	// userScrolled is set when the user manually scrolls up, and cleared when
+	// new content arrives via SetContent.  While true, Resize preserves the
+	// user's scroll position instead of snapping back to the last content line.
+	userScrolled bool
 }
 
 // ScrollUp scrolls the preview viewport up by n lines.
-func (p *Preview) ScrollUp(n int) { p.vp.LineUp(n) }
+func (p *Preview) ScrollUp(n int) {
+	p.vp.LineUp(n)
+	p.userScrolled = true
+}
 
 // ScrollDown scrolls the preview viewport down by n lines.
 func (p *Preview) ScrollDown(n int) { p.vp.LineDown(n) }
@@ -270,7 +277,11 @@ func (p *Preview) Resize(w, h int) {
 		} else {
 			p.vp.Style = lipgloss.Style{}
 		}
-		p.scrollToLastContent()
+		// Don't override the user's manual scroll position on resize — only
+		// snap to last content when the user hasn't scrolled up themselves.
+		if !p.userScrolled {
+			p.scrollToLastContent()
+		}
 	}
 }
 
@@ -357,9 +368,13 @@ func (p *Preview) SetContent(content string) {
 			p.vp.Style = lipgloss.Style{}
 		}
 		p.vp.SetContent(sanitized)
+		// New content arrived — release any manual scroll hold so the viewport
+		// snaps back to the last content line (showing the most recent output).
+		p.userScrolled = false
 		p.scrollToLastContent()
 	} else {
 		p.lastNonBlankIdx = 0
+		p.userScrolled = false
 		p.vp.SetContent("")
 	}
 }
