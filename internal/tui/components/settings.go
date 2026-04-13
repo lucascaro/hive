@@ -330,6 +330,10 @@ func (sv *SettingsView) View() string {
 		return ""
 	}
 
+	// fullW is captured before the zero-guard so it always reflects the real
+	// terminal width. When sv.Width is 0 (invalid), fullW=0 and w is corrected
+	// to 80; fullW > w is false, so lipgloss.Place is skipped — the panel
+	// renders at the fallback width without centering, which is fine.
 	fullW := sv.Width
 	w := sv.Width
 	h := sv.Height

@@ -742,8 +742,10 @@ func TestSettingsViewMaxWidth(t *testing.T) {
 		t.Errorf("outer width = %d, want 200", outerW)
 	}
 
-	// After trimming the centering whitespace, no panel content line should
-	// exceed maxSettingsWidth.
+	// TrimSpace removes the space-padding that lipgloss.Place adds on each side
+	// to center the panel. ANSI escape sequences are not whitespace, so
+	// TrimSpace leaves them intact. ansi.StringWidth then measures only visible
+	// characters (ignoring escape sequences), giving the true content width.
 	for i, line := range strings.Split(view, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
