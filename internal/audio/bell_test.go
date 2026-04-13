@@ -120,14 +120,13 @@ func TestExtractOnce_CachesPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first extractOnce: %v", err)
 	}
-	info1, err := os.Stat(p1)
-	if err != nil {
+	if _, err := os.Stat(p1); err != nil {
 		t.Fatalf("stat after first extract: %v", err)
 	}
 	// Overwrite the extracted file with different content to prove the
 	// second call does NOT re-extract (it would restore the original bytes).
 	sentinel := []byte("TEST-SENTINEL")
-	if err := os.WriteFile(p1, sentinel, 0o644); err != nil {
+	if err := os.WriteFile(p1, sentinel, 0o600); err != nil {
 		t.Fatalf("overwrite extracted file: %v", err)
 	}
 
@@ -148,7 +147,6 @@ func TestExtractOnce_CachesPath(t *testing.T) {
 	if !strings.HasPrefix(p1, dir) {
 		t.Errorf("extracted path %q is not under test temp dir %q", p1, dir)
 	}
-	_ = info1 // reference to quiet linters
 }
 
 func TestBellsConstantCoversAllOptions(t *testing.T) {
@@ -173,5 +171,40 @@ func TestExtractOnce_UnknownSoundReturnsError(t *testing.T) {
 	withTempDir(t)
 	if _, err := extractOnce("does-not-exist"); err == nil {
 		t.Error("extractOnce returned nil error for unknown sound")
+	}
+}
+
+// TestExtractOnce_Concurrent verifies that N goroutines racing on a cold
+// cache all observe the same path and only one file write occurs. Guards
+// the sync.Once wrapper inside extractOnce.
+func TestExtractOnce_Concurrent(t *testing.T) {
+	withTempDir(t)
+
+	const n = 20
+	var wg sync.WaitGroup
+	paths := make([]string, n)
+	errs := make([]error, n)
+
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			paths[i], errs[i] = extractOnce(BellBee)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: %v", i, err)
+		}
+	}
+	for i := 1; i < n; i++ {
+		if paths[i] != paths[0] {
+			t.Errorf("paths[%d] = %q, want %q (all goroutines must share the cache)", i, paths[i], paths[0])
+		}
 	}
 }

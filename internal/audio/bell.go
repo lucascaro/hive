@@ -30,6 +30,10 @@ var soundsFS embed.FS
 // Package-level hooks let tests intercept playback without touching real
 // audio devices. Tests may swap these and restore them with t.Cleanup, or
 // use SetTestHooks from outside this package.
+//
+// These are plain globals, not guarded by a mutex. Tests that touch them
+// must NOT use t.Parallel() — the current test suite relies on sequential
+// execution within the audio package and within cross-package consumers.
 var (
 	playWAV   = playWAVReal
 	writeBell = writeBellReal
@@ -37,7 +41,9 @@ var (
 
 // SyncForTest, when true, causes Play to run synchronously instead of
 // spawning a goroutine. Tests set this to make playback assertions
-// deterministic. Production code must leave it false.
+// deterministic. Production code must leave it false. Like the hooks
+// above, this global is not guarded — tests that flip it must not use
+// t.Parallel().
 var SyncForTest bool
 
 // Play dispatches the configured bell sound in a goroutine so callers
@@ -93,28 +99,40 @@ func writeBellReal() {
 	_, _ = os.Stdout.Write([]byte("\a"))
 }
 
-// extractCache maps sound name → extracted temp-file path. Populated lazily
-// by extractOnce; survives for the lifetime of the process.
+// cachedExtract memoizes a single sound's extract result so concurrent
+// callers share one read+write and see the same error/path.
+type cachedExtract struct {
+	once sync.Once
+	path string
+	err  error
+}
+
+// extractCache maps sound name → *cachedExtract. Populated lazily by
+// extractOnce; survives for the lifetime of the process.
 var extractCache sync.Map
 
 // extractOnce copies the embedded WAV for the given sound to the OS temp
 // directory and returns the path. Subsequent calls return the cached path
-// without touching the filesystem. Returns an error for unknown sounds or
-// write failures.
+// without touching the filesystem. Concurrent first-callers share the same
+// extract (via sync.Once) so the file is read+written at most once per
+// sound per process. Returns an error for unknown sounds or write failures.
 func extractOnce(sound string) (string, error) {
-	if v, ok := extractCache.Load(sound); ok {
-		return v.(string), nil
-	}
-	data, err := soundsFS.ReadFile("sounds/" + sound + ".wav")
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(tempDir(), "hive-bell-"+sound+".wav")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return "", err
-	}
-	extractCache.Store(sound, path)
-	return path, nil
+	v, _ := extractCache.LoadOrStore(sound, &cachedExtract{})
+	ce := v.(*cachedExtract)
+	ce.once.Do(func() {
+		data, err := soundsFS.ReadFile("sounds/" + sound + ".wav")
+		if err != nil {
+			ce.err = err
+			return
+		}
+		path := filepath.Join(tempDir(), "hive-bell-"+sound+".wav")
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			ce.err = err
+			return
+		}
+		ce.path = path
+	})
+	return ce.path, ce.err
 }
 
 // tempDir is indirected so tests can redirect the extract target.

@@ -123,6 +123,17 @@ func (sv *SettingsView) TabCursor(tab int) int {
 // IsEditing reports whether a field is currently being edited.
 func (sv *SettingsView) IsEditing() bool { return sv.editing }
 
+// SelectedFieldLabel returns the label of the currently-highlighted field
+// in the active tab, or "" if no field is selectable. Intended for tests
+// that want to locate a field by label rather than hard-coded index.
+func (sv *SettingsView) SelectedFieldLabel() string {
+	f := sv.selectedField()
+	if f == nil {
+		return ""
+	}
+	return f.label
+}
+
 // IsPendingSave reports whether the save-confirmation prompt is active.
 func (sv *SettingsView) IsPendingSave() bool { return sv.pendingSave }
 

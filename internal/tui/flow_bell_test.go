@@ -44,14 +44,22 @@ func TestFlow_BellSoundInSettings(t *testing.T) {
 
 	openSettings(t, f)
 
-	// The General tab has 7 fields; Bell Sound is the last (index 6).
-	// Field order: Theme, Multiplexer, Preview Refresh, Agent Title
-	// Overrides User Title, Hide Attach Hint, Hide What's New, Bell Sound.
-	for i := 0; i < 6; i++ {
+	// Navigate to Bell Sound by label so the test doesn't break if new
+	// General-tab fields are inserted above it. Bounded by the field count
+	// so a missing field fails loudly instead of looping forever.
+	const wantLabel = "Bell Sound"
+	for i := 0; i < 32; i++ {
+		if f.model.settings.SelectedFieldLabel() == wantLabel {
+			break
+		}
+		prev := f.model.settings.TabCursor(0)
 		f.SendKey("j")
+		if f.model.settings.TabCursor(0) == prev {
+			t.Fatalf("reached end of General tab without finding %q field", wantLabel)
+		}
 	}
-	if got := f.model.settings.TabCursor(0); got != 6 {
-		t.Fatalf("cursor = %d, want 6 (Bell Sound row)", got)
+	if got := f.model.settings.SelectedFieldLabel(); got != wantLabel {
+		t.Fatalf("selected field = %q, want %q", got, wantLabel)
 	}
 
 	// Enter cycles to the next option. Default is "normal" (index 0), so
