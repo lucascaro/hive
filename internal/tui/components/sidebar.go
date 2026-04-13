@@ -68,11 +68,17 @@ type Sidebar struct {
 	FilterQuery  string
 	ScrollOffset int // index of first visible item (for scrolling)
 	bellPending  map[string]bool // sessionID → true when a bell has fired and user hasn't attached yet
+	bellBlinkOn  bool            // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 }
 
 // SetBellPending updates the set of sessions with pending bell indicators.
 func (s *Sidebar) SetBellPending(bells map[string]bool) {
 	s.bellPending = bells
+}
+
+// SetBellBlink updates the animated on/off state for the bell badge.
+func (s *Sidebar) SetBellBlink(on bool) {
+	s.bellBlinkOn = on
 }
 
 // Rebuild recomputes the flat item list from state, applying filter.
@@ -371,7 +377,13 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		return bar + st.Width(width-1).Render(indent + prefix + label)
 
 	case KindSession:
+		// Bell badge replaces the status pip when a bell is pending. The badge
+		// is toggled on/off by bellBlinkOn (driven by a tea.Tick in the Model)
+		// to create a software blink effect independent of terminal ANSI blink.
 		dot := styles.StatusDot(item.Status)
+		if s.bellPending[item.SessionID] && s.bellBlinkOn {
+			dot = styles.BellBadge()
+		}
 		badge := styles.AgentBadge(item.AgentType)
 		rolePrefix := ""
 		if item.TeamRole == string(state.RoleOrchestrator) {
@@ -385,10 +397,6 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 				worktreeBadge = " " + styles.WorktreeBadgeStyle.Render("⎇")
 			}
 		}
-		bellBadge := ""
-		if s.bellPending[item.SessionID] {
-			bellBadge = " " + styles.BellBadge
-		}
 		// When the session has its own color, render the title with a
 		// gradient foreground (project → session color) so it's always
 		// visible, even when selected.
@@ -400,7 +408,7 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 				titlePart = styles.GradientFg(item.Label, pcolor, item.SessionColor, lipgloss.Color(""), false, false)
 			}
 		}
-		label = fmt.Sprintf("%s%s %s %s%s%s", rolePrefix, dot, titlePart, badge, worktreeBadge, bellBadge)
+		label = fmt.Sprintf("%s%s %s %s%s", rolePrefix, dot, titlePart, badge, worktreeBadge)
 		if active {
 			label += " ←"
 		}

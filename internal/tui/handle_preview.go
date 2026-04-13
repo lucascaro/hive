@@ -72,6 +72,15 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 	return m, cmd
 }
 
+// scheduleBellBlink returns a tea.Cmd that fires bellBlinkMsg after 600 ms.
+// The Model reschedules it on every tick, producing a continuous toggle animation
+// independent of terminal ANSI blink support.
+func (m *Model) scheduleBellBlink() tea.Cmd {
+	return tea.Tick(600*time.Millisecond, func(_ time.Time) tea.Msg {
+		return bellBlinkMsg{}
+	})
+}
+
 func (m *Model) scheduleGridPoll() tea.Cmd {
 	sessions := m.gridSessions(m.gridView.Mode)
 	if len(sessions) == 0 {

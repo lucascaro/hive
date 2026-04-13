@@ -137,6 +137,67 @@ func TestFlow_BellDebounceStillApplies(t *testing.T) {
 	}
 }
 
+// TestFlow_BellDuringAttachRestoresBadge verifies that NewBells carried by
+// AttachDoneMsg is merged into bellPending so the sidebar badge appears when
+// the user returns from an attached session.
+func TestFlow_BellDuringAttachRestoresBadge(t *testing.T) {
+	m, mock := testFlowModel(t)
+	rec := installBellRecorder(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Simulate returning from an attached session where sess-2 rang.
+	f.Send(AttachDoneMsg{
+		NewBells: map[string]bool{"sess-2": true},
+	})
+
+	// The watcher already played the sound; handleAttachDone must NOT re-play.
+	if got := rec.playCalls.Load(); got != 0 {
+		t.Errorf("playWAV calls after AttachDoneMsg = %d, want 0 (watcher plays, not TUI resume)", got)
+	}
+	// The badge must appear for sess-2.
+	if !f.model.bellPending["sess-2"] {
+		t.Error("bellPending[sess-2] = false, want true after AttachDoneMsg.NewBells")
+	}
+	// The active session (sess-1) must be cleared.
+	if f.model.bellPending["sess-1"] {
+		t.Error("bellPending[sess-1] = true, want false (active session cleared on attach)")
+	}
+}
+
+// TestFlow_BellDuringAttachActiveSessionNotReAdded verifies that if the active
+// session somehow appears in NewBells (it shouldn't in practice, but as a
+// safety guard), it is NOT re-added to bellPending after the delete.
+func TestFlow_BellDuringAttachActiveSessionNotReAdded(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Active session is sess-1; send it as a NewBell to test the guard.
+	f.Send(AttachDoneMsg{
+		NewBells: map[string]bool{"sess-1": true},
+	})
+
+	// The delete at handleAttachDone must take precedence: sess-1 was just
+	// visited so its badge must be cleared, not re-added.
+	if f.model.bellPending["sess-1"] {
+		t.Error("bellPending[sess-1] = true: active session was re-added by NewBells merge, want false")
+	}
+}
+
+// TestFlow_BellDuringAttachUpdatesGridBadge verifies that the grid view's
+// bell pending state is updated when the TUI resumes from an attached session.
+func TestFlow_BellDuringAttachUpdatesGridBadge(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.Send(AttachDoneMsg{
+		NewBells: map[string]bool{"sess-2": true},
+	})
+
+	if !f.model.gridView.BellPendingForTest("sess-2") {
+		t.Error("gridView bell pending for sess-2 = false, want true after AttachDoneMsg")
+	}
+}
+
 // TestFlow_CustomBellPlays sanity-checks the golden path: with a non-silent
 // non-normal sound, a bell event produces exactly one playWAV call.
 func TestFlow_CustomBellPlays(t *testing.T) {

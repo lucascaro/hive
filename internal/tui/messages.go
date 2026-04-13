@@ -44,6 +44,9 @@ type SessionDetachedMsg struct{}
 type AttachDoneMsg struct {
 	Err             error
 	RestoreGridMode state.GridRestoreMode
+	// NewBells holds sessionIDs that rang while the TUI was suspended during
+	// attachment. Populated by the attachBellWatcher goroutine; may be nil.
+	NewBells map[string]bool
 }
 
 // SessionTitleChangedMsg carries a new title for a session.
@@ -124,6 +127,10 @@ type CleanOrphansMsg struct {
 type ConfigSavedMsg struct {
 	Config config.Config
 }
+
+// bellBlinkMsg is sent by the bell-blink ticker to toggle the animated bell
+// badge on/off in the sidebar and grid view.
+type bellBlinkMsg struct{}
 
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}

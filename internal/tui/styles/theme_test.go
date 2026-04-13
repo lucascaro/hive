@@ -258,6 +258,20 @@ func TestProjectColorOrDefault_NonEmpty(t *testing.T) {
 	}
 }
 
+func TestBellBadge_ContainsGlyph(t *testing.T) {
+	got := BellBadge()
+	if !strings.Contains(got, "♪") {
+		t.Errorf("BellBadge() = %q, expected to contain ♪", got)
+	}
+}
+
+func TestBellBadgeOnBg_ContainsGlyph(t *testing.T) {
+	got := BellBadgeOnBg("#000000")
+	if !strings.Contains(got, "♪") {
+		t.Errorf("BellBadgeOnBg = %q, expected to contain ♪", got)
+	}
+}
+
 func TestAgentBadgeOnBg_ContainsAgentName(t *testing.T) {
 	got := AgentBadgeOnBg("claude", "#000000")
 	if !strings.Contains(got, "claude") {

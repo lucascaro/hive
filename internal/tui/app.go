@@ -97,6 +97,10 @@ type Model struct {
 	// attached to them. Used for the visual bell indicator in the sidebar.
 	// Keyed by sessionID, cleared on attach.
 	bellPending map[string]bool
+	// bellBlinkOn is toggled every ~600 ms by the bell-blink ticker so the
+	// bell badge animates on/off in software (ANSI terminal blink is unreliable
+	// in modern terminals like iTerm2 which disable it by default).
+	bellBlinkOn bool
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -247,6 +251,7 @@ func (m Model) Init() tea.Cmd {
 		m.scheduleWatchTitles(),
 		m.scheduleWatchStatuses(),
 		scheduleWatchState(m.stateLastKnownMtime),
+		m.scheduleBellBlink(),
 	}
 	if m.HasView(ViewGrid) {
 		cmds = append(cmds, m.scheduleGridPoll())
@@ -333,6 +338,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSettingsClosed()
 	case ConfigSavedMsg:
 		return m.handleConfigSaved()
+	case bellBlinkMsg:
+		m.bellBlinkOn = !m.bellBlinkOn
+		m.sidebar.SetBellBlink(m.bellBlinkOn)
+		m.gridView.SetBellBlink(m.bellBlinkOn)
+		return m, m.scheduleBellBlink()
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	case tea.MouseMsg:

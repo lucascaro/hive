@@ -56,6 +56,8 @@ type GridView struct {
 	projectColors map[string]string // projectID → hex color
 	sessionColors map[string]string // sessionID → hex color
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
+	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
+	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 }
 
 // Show activates the grid with the given sessions.
@@ -99,6 +101,23 @@ func (gv *GridView) SetSessionColors(colors map[string]string) {
 // (mux.Target output) to match how titles arrive from the status watcher.
 func (gv *GridView) SetPaneTitles(titles map[string]string) {
 	gv.paneTitles = titles
+}
+
+// SetBellPending updates the set of sessions with an unacknowledged bell.
+// Keyed by sessionID; cells with a pending bell display a ♪ badge.
+func (gv *GridView) SetBellPending(bells map[string]bool) {
+	gv.bellPending = bells
+}
+
+// SetBellBlink updates the animated on/off state for the bell badge.
+func (gv *GridView) SetBellBlink(on bool) {
+	gv.bellBlinkOn = on
+}
+
+// BellPendingForTest reports whether the given sessionID has a pending bell.
+// For use in tests only — not part of the production API.
+func (gv *GridView) BellPendingForTest(sessionID string) bool {
+	return gv.bellPending[sessionID]
 }
 
 // Selected returns the currently focused session, or nil.
@@ -273,11 +292,19 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	// Keep the status dot and agent badge on a dark background so their
 	// bright foreground colors remain legible regardless of project color.
 	darkBg := lipgloss.Color(styles.ColorBg)
-	dot := styles.StatusDotOnBg(string(sess.Status), darkBg)
+	// Bell badge replaces the status dot when a bell is pending. The badge is
+	// toggled on/off by bellBlinkOn (driven by a tea.Tick in the Model) to
+	// create a software blink effect independent of terminal ANSI blink.
+	var dotOrBell string
+	if gv.bellPending[sess.ID] && gv.bellBlinkOn {
+		dotOrBell = styles.BellBadgeOnBg(darkBg)
+	} else {
+		dotOrBell = styles.StatusDotOnBg(string(sess.Status), darkBg)
+	}
 	badge := styles.AgentBadgeOnBg(string(sess.AgentType), darkBg)
 	darkSp := lipgloss.NewStyle().Background(darkBg).Render(" ")
 	bgSp := lipgloss.NewStyle().Background(bg).Foreground(fg).Render(" ")
-	prefixStr := dot + darkSp + badge + bgSp
+	prefixStr := dotOrBell + darkSp + badge + bgSp
 	prefixW := ansi.StringWidth(prefixStr)
 
 	// Build the optional suffix (project + worktree) as plain text for width calc.
@@ -308,11 +335,10 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 
 	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
 	// Build the text portion (title + suffix + padding) that follows the prefix.
+	// Pad to fill availW so the cell background extends to the right edge.
 	textPortion := titleStr + suffix
-	textPortionW := ansi.StringWidth(prefixStr) // already measured
 	actualTextW := ansi.StringWidth(textPortion)
-	remainW := innerW - textPortionW
-	if pad := remainW - actualTextW; pad > 0 {
+	if pad := availW - actualTextW; pad > 0 {
 		textPortion += strings.Repeat(" ", pad)
 	}
 	// Render with gradient if the session has its own color; flat otherwise.
