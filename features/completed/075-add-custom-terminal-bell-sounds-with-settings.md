@@ -138,7 +138,7 @@ Implemented on branch `feature/75-custom-bell-sounds`.
 
 - **`SyncForTest` flag added to `audio`**: the plan said `Play` should always dispatch in a goroutine. In practice, the cross-package flow tests need synchronous dispatch to make assertions deterministic without `time.Sleep` polling. Added `audio.SyncForTest` (off in production, flipped on in flow tests) and `audio.SetTestHooks()` (exported so the `tui` package test code can swap the internal `writeBell`/`playWAV` hooks). The goroutine dispatch is preserved for real use.
 - **`normal.wav` omitted**: kept `normal` as the `\a` short-circuit path (no embedded WAV needed), matching the planned v1 scope.
-- **Placeholder WAVs**: the four embedded files (`bee.wav`, `chime.wav`, `ping.wav`, `knock.wav`) are 44-byte silent PCM placeholders so `//go:embed` compiles. `internal/audio/sounds/LICENSE.md` tracks this and lists the substitution task as a pre-release blocker. The code path is fully wired — the only remaining work is swapping the bytes.
+- **Real CC0 / public-domain WAVs shipped**: placeholder silent WAVs were swapped for real sounds in a follow-up commit. Sources: `chime.wav` and `ping.wav` from Kenney Interface Sounds (CC0); `bee.wav` (Hummel_bee.ogg) and `knock.wav` (Knocking_on_wood_or_door.ogg) from Wikimedia Commons (public domain via PDsounds.org). All four normalized to 16-bit mono PCM at 22050 Hz, total embedded size ~100 KB. Attribution tracked in `internal/audio/sounds/LICENSE.md`.
 
 ### Decisions
 
