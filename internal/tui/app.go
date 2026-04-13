@@ -122,6 +122,19 @@ type Model struct {
 // LastAttach returns the pending attach request after the TUI exits, or nil.
 func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 
+// newStyledHelp returns a help.Model pre-configured with Hive's color palette.
+func newStyledHelp() help.Model {
+	h := help.New()
+	h.Styles.ShortKey = styles.HelpKeyStyle
+	h.Styles.ShortDesc = styles.HelpDescStyle
+	h.Styles.ShortSeparator = styles.MutedStyle
+	h.Styles.FullKey = styles.HelpKeyStyle
+	h.Styles.FullDesc = styles.HelpDescStyle
+	h.Styles.FullSeparator = styles.MutedStyle
+	h.Styles.Ellipsis = styles.MutedStyle
+	return h
+}
+
 // New creates the root model. whatsNewContent, if non-empty, triggers the
 // "What's New" overlay on first render.
 func New(cfg config.Config, appState state.AppState, whatsNewContent string) Model {
@@ -162,8 +175,8 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		bellPending:         make(map[string]bool),
 		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
-		helpModel:           help.New(),
-		gridHelpModel:       help.New(),
+		helpModel:           newStyledHelp(),
+		gridHelpModel:       newStyledHelp(),
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
