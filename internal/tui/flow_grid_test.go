@@ -244,6 +244,86 @@ func TestFlow_GridToggleBetweenModes(t *testing.T) {
 	f.ViewContains("session-1")
 	f.ViewContains("session-2")
 	f.Snapshot("01-all-projects-after-toggle")
+
+	// Selection should round-trip back to project grid with the same session.
+	before := f.Model()
+	initialSel := before.gridView.Selected()
+	if initialSel == nil {
+		t.Fatal("precondition: expected selection after toggle")
+	}
+	f.SendKey("g")
+	f.AssertGridMode(state.GridRestoreProject)
+	after := f.Model()
+	sel := after.gridView.Selected()
+	if sel == nil || sel.ID != initialSel.ID {
+		t.Errorf("selection lost across G→g roundtrip: got %v, want %v", sel, initialSel)
+	}
+}
+
+// TestFlow_GridAllToProject_PreservesSession is the regression test for #80:
+// toggling g while a different-project session is selected in the all-projects
+// grid must scope the project grid to that session's project, not to the stale
+// ActiveProjectID captured when the grid was opened.
+func TestFlow_GridAllToProject_PreservesSession(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Open all-projects grid and navigate to sess-2 (proj-2, not the default).
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+	f.SendKey("l")
+
+	pre := f.Model()
+	if preSel := pre.gridView.Selected(); preSel == nil || preSel.ID != "sess-2" {
+		t.Fatalf("precondition: expected sess-2 selected, got %+v", preSel)
+	}
+
+	// Press g → switch to project grid. Without the fix, this would filter by
+	// stale ActiveProjectID=proj-1 and drop sess-2.
+	f.SendKey("g")
+	f.AssertGridMode(state.GridRestoreProject)
+
+	post := f.Model()
+	if got := post.appState.ActiveProjectID; got != "proj-2" {
+		t.Errorf("ActiveProjectID = %q, want proj-2", got)
+	}
+	sel := post.gridView.Selected()
+	if sel == nil || sel.ID != "sess-2" {
+		t.Errorf("selected session = %+v, want sess-2", sel)
+	}
+	f.ViewContains("session-2")
+	f.ViewNotContains("session-1")
+}
+
+// TestFlow_GridProjectToAll_PreservesSession covers the symmetric case:
+// switching from project grid to all-projects grid must keep the selected
+// session and sync ActiveProjectID from it.
+func TestFlow_GridProjectToAll_PreservesSession(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridMode(state.GridRestoreProject)
+
+	before := f.Model()
+	initialSel := before.gridView.Selected()
+	if initialSel == nil {
+		t.Fatal("precondition: expected a selected session in project grid")
+	}
+
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.AssertGridMode(state.GridRestoreAll)
+
+	after := f.Model()
+	sel := after.gridView.Selected()
+	if sel == nil || sel.ID != initialSel.ID {
+		t.Errorf("selected session after G = %+v, want %+v", sel, initialSel)
+	}
+	if sel != nil && after.appState.ActiveProjectID != sel.ProjectID {
+		t.Errorf("ActiveProjectID = %q, want %q",
+			after.appState.ActiveProjectID, sel.ProjectID)
+	}
 }
 
 // TestFlow_GridAttachWithHint tests grid → attach with the attach hint enabled.

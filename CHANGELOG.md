@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grid mode toggle preserves selection**: pressing `g` while in the all-projects grid (or `G` while in a single-project grid) now keeps the currently-selected session and its project, instead of resetting to a different project's first session (#80).
+
 ## [0.8.0] — 2026-04-12
 
 ### Changed
