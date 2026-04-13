@@ -39,10 +39,11 @@ type settingField struct {
 	options     []string // for fieldSelect
 	get         func(config.Config) string
 	set         func(*config.Config, string) error
-	// onChange is called with the new value immediately after set succeeds for
-	// fieldSelect and fieldBool fields. Used to provide real-time feedback
-	// (e.g. playing a preview of the selected bell sound).
-	onChange func(newVal string)
+	// onChange is called with the updated config immediately after set succeeds
+	// for fieldSelect and fieldBool fields. Used to provide real-time feedback
+	// (e.g. playing a preview of the selected bell sound at the current volume).
+	// The config passed in already reflects the newly applied value.
+	onChange func(cfg config.Config)
 }
 
 // settingTab groups a set of fields under a single tab title.
@@ -279,7 +280,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 					next := f.options[(i+1)%len(f.options)]
 					_ = f.set(&sv.cfg, next)
 					if f.onChange != nil {
-						f.onChange(next)
+						f.onChange(sv.cfg)
 					}
 					matched = true
 					break
@@ -288,7 +289,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			if !matched && len(f.options) > 0 {
 				_ = f.set(&sv.cfg, f.options[0])
 				if f.onChange != nil {
-					f.onChange(f.options[0])
+					f.onChange(sv.cfg)
 				}
 			}
 			sv.dirty = true
@@ -850,7 +851,7 @@ func buildSettingTabs() []settingTab {
 						c.BellSound = v
 						return nil
 					},
-					onChange: func(v string) { audio.Play(v, 100) },
+					onChange: func(cfg config.Config) { audio.Play(cfg.BellSound, cfg.BellVolume) },
 				},
 				{
 					label:       "Bell Volume",
@@ -871,6 +872,7 @@ func buildSettingTabs() []settingTab {
 						c.BellVolume = n
 						return nil
 					},
+					onChange: func(cfg config.Config) { audio.Play(cfg.BellSound, cfg.BellVolume) },
 				},
 			},
 		},
