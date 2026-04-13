@@ -9,10 +9,12 @@
 | `K` | Jump to previous project |
 | `1`–`9` | Jump to project by index |
 | `Space` | Toggle collapse/expand project or team |
-| `←` | Collapse current project or team; if on a session, collapse its parent |
-| `→` | Expand current project or team |
+| `←` / `h` | Collapse current project or team; if on a session, collapse its parent |
+| `→` / `l` | Expand current project or team |
 | `Shift+↑` | Move selected item (session, team, or project) up |
 | `Shift+↓` | Move selected item (session, team, or project) down |
+
+> **Vim-style aliases:** `↑`/`↓` are the default navigation keys. If your config sets `"nav_up": "k"` / `"nav_down": "j"` (the default before v0.8), those keys still work — arrow keys are always active as permanent aliases. `h` and `l` are built-in aliases for collapse (`←`) and expand (`→`) respectively.
 
 ## Session Management
 
@@ -32,6 +34,7 @@
 
 | Key | Action |
 |-----|--------|
+| `s` | Switch to sidebar view (focus sidebar; exits grid if open) |
 | `Tab` | Toggle between sidebar and preview focus |
 
 ## Grid View
@@ -48,6 +51,7 @@
 | `r` | Rename selected session |
 | `c` / `C` | Cycle project color forward / backward |
 | `v` / `V` | Cycle session color forward / backward |
+| `s` | Focus sidebar (closes grid and returns to sidebar view) |
 | `g` | Switch to project-scoped view (while all-grid is open) |
 | `G` | Switch to all-projects view (while project grid is open) |
 | `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
@@ -150,6 +154,7 @@ All key bindings can be overridden in `~/.config/hive/config.json` under the `ke
     "nav_project_up": "K",
     "nav_project_down": "J",
     "filter": "/",
+    "sidebar_view": "s",
     "grid_overview": "g",
     "palette": "ctrl+p",
     "help": "?",
@@ -164,4 +169,7 @@ All key bindings can be overridden in `~/.config/hive/config.json` under the `ke
 }
 ```
 
-> **Note:** Users who prefer vim-style navigation (`j`/`k` for up/down) can set `"nav_up": "k"` and `"nav_down": "j"` in their config. Arrow keys remain the default.
+> **Note:** Users who prefer vim-style navigation (`j`/`k` for up/down) can set `"nav_up": "k"` and `"nav_down": "j"` in their config. Arrow keys (`↑`/`↓`) are permanently available as aliases regardless of the configured key, so switching to vim-style config does not break arrow key navigation.
+
+> **Reset to defaults:** Open Settings (`S`) and press `R` to reset all keybindings to their defaults. The change takes effect after you save (`s` → confirm).
+

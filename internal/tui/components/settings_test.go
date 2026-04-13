@@ -1,10 +1,12 @@
 package components
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucascaro/hive/internal/audio"
 	"github.com/lucascaro/hive/internal/config"
@@ -717,8 +719,88 @@ func TestSettingsView_View_ShowsActiveTabContent(t *testing.T) {
 	}
 }
 
+// TestSettingsView_ResetKeybindings verifies that pressing "R" resets
+// cfg.Keybindings to DefaultConfig values and marks the view dirty.
+func TestSettingsView_ResetKeybindings(t *testing.T) {
+	sv := NewSettingsView()
+	cfg := config.DefaultConfig()
+	// Simulate an old user config with vim-style nav keys.
+	cfg.Keybindings.NavUp = "k"
+	cfg.Keybindings.NavDown = "j"
+	sv.Open(cfg)
+
+	if sv.IsDirty() {
+		t.Fatal("precondition: not dirty after Open")
+	}
+
+	sv.Update(keyPress("R"))
+
+	if !sv.IsDirty() {
+		t.Error("expected dirty=true after R (reset keybindings)")
+	}
+	got := sv.GetConfig().Keybindings.NavUp
+	want := config.DefaultConfig().Keybindings.NavUp
+	if got != want {
+		t.Errorf("NavUp after reset = %q, want %q", got, want)
+	}
+	got = sv.GetConfig().Keybindings.NavDown
+	want = config.DefaultConfig().Keybindings.NavDown
+	if got != want {
+		t.Errorf("NavDown after reset = %q, want %q", got, want)
+	}
+}
+
+// TestSettingsView_ResetKeybindings_HintVisible verifies that the "R: reset keys"
+// hint appears in the settings footer.
+func TestSettingsView_ResetKeybindings_HintVisible(t *testing.T) {
+	sv := NewSettingsView()
+	sv.Width = 120
+	sv.Height = 24
+	sv.Open(config.DefaultConfig())
+
+	v := sv.View()
+	if !contains(v, "reset keys") {
+		t.Errorf("expected 'reset keys' hint in settings footer, view:\n%s", v)
+	}
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
+}
+
+func TestSettingsViewMaxWidth(t *testing.T) {
+	sv := NewSettingsView()
+	sv.Width = 200
+	sv.Height = 40
+	sv.Open(testConfig())
+
+	view := sv.View()
+	if view == "" {
+		t.Fatal("expected non-empty view")
+	}
+
+	// lipgloss.Place centers the panel within the full terminal width by adding
+	// spaces on each side. The outer line width should be the full terminal width.
+	firstLine := strings.SplitN(view, "\n", 2)[0]
+	outerW := lipgloss.Width(firstLine)
+	if outerW != 200 {
+		t.Errorf("outer width = %d, want 200", outerW)
+	}
+
+	// TrimSpace removes the space-padding that lipgloss.Place adds on each side
+	// to center the panel. ANSI escape sequences are not whitespace, so
+	// TrimSpace leaves them intact. ansi.StringWidth then measures only visible
+	// characters (ignoring escape sequences), giving the true content width.
+	for i, line := range strings.Split(view, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lw := ansi.StringWidth(trimmed)
+		if lw > maxSettingsWidth {
+			t.Errorf("line %d content width = %d, exceeds maxSettingsWidth %d", i, lw, maxSettingsWidth)
+		}
+	}
 }
 
 func indexOf(s, sub string) int {

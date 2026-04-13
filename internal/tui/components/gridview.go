@@ -477,7 +477,7 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	}
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
-		rawLines := strings.Split(lastNLines(content, innerH), "\n")
+		rawLines := strings.Split(lastNContentLines(content, innerH), "\n")
 		for i, l := range rawLines {
 			rawLines[i] = ansi.Truncate(l, innerW, "")
 		}
@@ -538,6 +538,30 @@ func lastNLines(s string, n int) string {
 		return s
 	}
 	return strings.Join(lines[len(lines)-n:], "\n")
+}
+
+// lastNContentLines returns the last n lines of s before any trailing blank
+// rows.  capture-pane pads the terminal height with empty rows below the
+// cursor; taking the raw last-n lines would show those blank rows instead of
+// real content.  This mirrors the sidebar's lastNonBlankIdx approach.
+func lastNContentLines(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	// Find the last line with visible text.
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if end == 0 {
+		return ""
+	}
+	start := end - n
+	if start < 0 {
+		start = 0
+	}
+	return strings.Join(lines[start:end], "\n")
 }
 
 // MoveUp moves the grid cursor up by one row.

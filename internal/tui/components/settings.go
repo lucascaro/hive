@@ -239,15 +239,19 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			sv.activeTab++
 		}
 
-	case "down":
+	case "down", "j":
 		if sv.cursor() < len(sv.currentFields())-1 {
 			sv.setCursor(sv.cursor() + 1)
 		}
 
-	case "up":
+	case "up", "k":
 		if sv.cursor() > 0 {
 			sv.setCursor(sv.cursor() - 1)
 		}
+
+	case "R":
+		sv.cfg.Keybindings = config.DefaultConfig().Keybindings
+		sv.dirty = true
 
 	case "enter", " ":
 		f := sv.selectedField()
@@ -320,16 +324,28 @@ func (sv *SettingsView) startEditing(f *settingField) {
 	sv.editInput.Focus()
 }
 
+// maxSettingsWidth is the maximum width the settings panel will occupy.
+// On wider terminals the panel is centered within the full terminal width.
+const maxSettingsWidth = 100
+
 // View renders the full-screen settings panel.
 func (sv *SettingsView) View() string {
 	if !sv.Active {
 		return ""
 	}
 
+	// fullW is captured before the zero-guard so it always reflects the real
+	// terminal width. When sv.Width is 0 (invalid), fullW=0 and w is corrected
+	// to 80; fullW > w is false, so lipgloss.Place is skipped — the panel
+	// renders at the fallback width without centering, which is fine.
+	fullW := sv.Width
 	w := sv.Width
 	h := sv.Height
 	if w <= 0 {
 		w = 80
+	}
+	if w > maxSettingsWidth {
+		w = maxSettingsWidth
 	}
 	if h <= 0 {
 		h = 24
@@ -378,8 +394,9 @@ func (sv *SettingsView) View() string {
 		}
 		footerParts = append(footerParts,
 			hint("←/→", "tab"),
-			hint("j/k", "navigate"),
+			hint("↑/↓/j/k", "navigate"),
 			hint("enter/space", "edit/toggle"),
+			hint("R", "reset keys"),
 			hint("s", func() string {
 				if sv.IsDirty() {
 					return "save"
@@ -446,7 +463,11 @@ func (sv *SettingsView) View() string {
 		Padding(0, 2).
 		Render(strings.Join(visible, "\n"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer)
+	panel := lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer)
+	if fullW > w {
+		return lipgloss.Place(fullW, h, lipgloss.Center, lipgloss.Top, panel)
+	}
+	return panel
 }
 
 // tabActiveBg matches StatusBarStyle's background so the active tab reads
