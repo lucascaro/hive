@@ -32,15 +32,15 @@ func TestAttachBellWatcher_PlaysOnNewBell(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
 	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
-	t.Cleanup(func() { restore(); audio.SyncForTest = false })
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
 	fn, _ := tickingBellFn(2, "hive-sessions:0") // bell fires on 2nd poll
 	w.getPaneTitlesFn = fn
 	w.start(audio.BellChime, makeTargetMap())
 
-	// Give the goroutine time to poll twice (500ms each).
-	time.Sleep(1200 * time.Millisecond)
+	// Give the goroutine time to poll twice (500ms each) with generous margin.
+	time.Sleep(1600 * time.Millisecond)
 	w.stop()
 
 	if got := playCalls.Load(); got != 1 {
@@ -52,7 +52,7 @@ func TestAttachBellWatcher_NoPlayOnAlreadyPending(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
 	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
-	t.Cleanup(func() { restore(); audio.SyncForTest = false })
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
 	target := "hive-sessions:0"
@@ -73,7 +73,7 @@ func TestAttachBellWatcher_NoPlayOnAlreadyPending(t *testing.T) {
 func TestAttachBellWatcher_AccumulatesNewBells(t *testing.T) {
 	audio.SyncForTest = true
 	restore := audio.SetTestHooks(nil, func(string) error { return nil })
-	t.Cleanup(func() { restore(); audio.SyncForTest = false })
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
 	target := "hive-sessions:0"
@@ -81,7 +81,7 @@ func TestAttachBellWatcher_AccumulatesNewBells(t *testing.T) {
 	w.getPaneTitlesFn = fn
 	w.start(audio.BellChime, makeTargetMap())
 
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(1600 * time.Millisecond)
 	newBells := w.stop()
 
 	if !newBells["sess-1"] {
@@ -93,11 +93,13 @@ func TestAttachBellWatcher_Debounce(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
 	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
-	t.Cleanup(func() { restore(); audio.SyncForTest = false })
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	target := "hive-sessions:0"
-	// Both poll 2 and 3 fire a new bell (toggling via absent on odd calls so
-	// alreadyRinging is cleared between polls 2→3).
+	// Polls 2 and 4 fire a bell; polls 1, 3, 5 are silent.
+	// Silent polls clear alreadyRinging so the next bell is a fresh edge.
+	// Poll 2 (≈500ms) triggers play. Poll 4 (≈1500ms) is >500ms later so
+	// debounce allows a second play. Total expected: 2.
 	var callCount atomic.Int32
 	w := newAttachBellWatcher()
 	w.getPaneTitlesFn = func(_ string) (map[string]string, map[string]bool, error) {
@@ -105,19 +107,16 @@ func TestAttachBellWatcher_Debounce(t *testing.T) {
 		switch n {
 		case 2, 4: // bell present
 			return nil, map[string]bool{target: true}, nil
-		default: // bell absent (clears alreadyRinging so next presence is a new edge)
+		default: // bell absent — clears alreadyRinging so next presence is a new edge
 			return nil, nil, nil
 		}
 	}
 	w.start(audio.BellChime, makeTargetMap())
 
-	// 4 polls at 500ms each = ~2000ms; both edges would fire but debounce
-	// prevents the second within the 500ms window.
-	time.Sleep(2200 * time.Millisecond)
+	// 4 polls at 500ms each = ~2000ms; add 800ms margin for CI jitter.
+	time.Sleep(2800 * time.Millisecond)
 	w.stop()
 
-	// Poll 2 triggers play. Poll 4 is at ~1500ms, which is >500ms after poll 2
-	// (~500ms), so it fires too. We want exactly 2 plays total.
 	if got := playCalls.Load(); got != 2 {
 		t.Errorf("playWAV calls = %d, want 2 (two edges separated by >500ms)", got)
 	}

@@ -109,7 +109,7 @@ func (gv *GridView) SetBellPending(bells map[string]bool) {
 }
 
 // BellPendingForTest reports whether the given sessionID has a pending bell.
-// Intended for use in tests only.
+// For use in tests only — not part of the production API.
 func (gv *GridView) BellPendingForTest(sessionID string) bool {
 	return gv.bellPending[sessionID]
 }
@@ -328,11 +328,10 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 
 	bgStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
 	// Build the text portion (title + suffix + padding) that follows the prefix.
+	// Pad to fill availW so the cell background extends to the right edge.
 	textPortion := titleStr + suffix
-	textPortionW := ansi.StringWidth(prefixStr) // already measured
 	actualTextW := ansi.StringWidth(textPortion)
-	remainW := innerW - textPortionW
-	if pad := remainW - actualTextW; pad > 0 {
+	if pad := availW - actualTextW; pad > 0 {
 		textPortion += strings.Repeat(" ", pad)
 	}
 	// Render with gradient if the session has its own color; flat otherwise.

@@ -82,8 +82,12 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	// Clear bell indicator for the session the user just visited.
 	delete(m.bellPending, m.appState.ActiveSessionID)
 	// Merge bells that fired on other sessions while the TUI was suspended.
+	// Skip the active session: the user just saw it, so its badge stays cleared
+	// even if the watcher recorded a bell for it.
 	for sid := range msg.NewBells {
-		m.bellPending[sid] = true
+		if sid != m.appState.ActiveSessionID {
+			m.bellPending[sid] = true
+		}
 	}
 	m.appState.RestoreGridMode = msg.RestoreGridMode
 	m.restoreGrid()

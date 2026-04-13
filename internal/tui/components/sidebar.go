@@ -376,7 +376,7 @@ func (s *Sidebar) renderItem(item SidebarItem, selected, active bool, width int)
 		// undisturbed.
 		dot := styles.StatusDot(item.Status)
 		if s.bellPending[item.SessionID] {
-			dot = styles.BellBadge
+			dot = styles.BellBadge()
 		}
 		badge := styles.AgentBadge(item.AgentType)
 		rolePrefix := ""

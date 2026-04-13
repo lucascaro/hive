@@ -164,6 +164,25 @@ func TestFlow_BellDuringAttachRestoresBadge(t *testing.T) {
 	}
 }
 
+// TestFlow_BellDuringAttachActiveSessionNotReAdded verifies that if the active
+// session somehow appears in NewBells (it shouldn't in practice, but as a
+// safety guard), it is NOT re-added to bellPending after the delete.
+func TestFlow_BellDuringAttachActiveSessionNotReAdded(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Active session is sess-1; send it as a NewBell to test the guard.
+	f.Send(AttachDoneMsg{
+		NewBells: map[string]bool{"sess-1": true},
+	})
+
+	// The delete at handleAttachDone must take precedence: sess-1 was just
+	// visited so its badge must be cleared, not re-added.
+	if f.model.bellPending["sess-1"] {
+		t.Error("bellPending[sess-1] = true: active session was re-added by NewBells merge, want false")
+	}
+}
+
 // TestFlow_BellDuringAttachUpdatesGridBadge verifies that the grid view's
 // bell pending state is updated when the TUI resumes from an attached session.
 func TestFlow_BellDuringAttachUpdatesGridBadge(t *testing.T) {
