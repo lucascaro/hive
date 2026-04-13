@@ -162,7 +162,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	cols := gridColumns(gv.Width, gv.Height, n)
 
 	switch msg.String() {
-	case "esc", "q":
+	case "esc":
 		gv.Hide()
 	case "enter", "a":
 		if sess := gv.Selected(); sess != nil {
@@ -172,14 +172,14 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				return GridSessionSelectedMsg{TmuxSession: s.TmuxSession, TmuxWindow: s.TmuxWindow}
 			}, true
 		}
-	case "left", "h":
+	case "left":
 		rowStart := (gv.Cursor / cols) * cols
 		if gv.Cursor > rowStart {
 			gv.Cursor--
 		} else if gv.Cursor > 0 {
 			gv.Cursor-- // wrap to last cell of previous row
 		}
-	case "right", "l", "d":
+	case "right":
 		rowEnd := (gv.Cursor/cols)*cols + cols - 1
 		if rowEnd >= n {
 			rowEnd = n - 1
@@ -189,11 +189,11 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		} else if gv.Cursor < n-1 {
 			gv.Cursor++ // wrap to first cell of next row
 		}
-	case "up", "k", "w":
+	case "up":
 		if gv.Cursor >= cols {
 			gv.Cursor -= cols
 		}
-	case "down", "j", "s":
+	case "down":
 		if gv.Cursor+cols < n {
 			gv.Cursor += cols
 		}
@@ -202,7 +202,8 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 // View renders the full-screen grid.
-func (gv *GridView) View() string {
+// hints is a pre-computed one-line hint string rendered by the caller.
+func (gv *GridView) View(hints string) string {
 	if !gv.Active {
 		return ""
 	}
@@ -271,7 +272,7 @@ func (gv *GridView) View() string {
 	// 60–92 cols), every grid row is padded to hint_width > TermWidth, causing
 	// physical terminal line-wrap even though logical line count is correct.
 	hintLine1 := ansi.Truncate(styles.MutedStyle.Render(styles.StatusLegend()), gv.Width, "")
-	hintLine2 := ansi.Truncate(styles.MutedStyle.Render("←→↑↓/hjkl: navigate   S-←/→: reorder   enter/a: attach   x: kill   r: rename   c/C: color   v/V: session color   G: all   esc/g/q: exit"), gv.Width, "")
+	hintLine2 := ansi.Truncate(hints, gv.Width, "")
 	hint := lipgloss.JoinVertical(lipgloss.Left, hintLine1, hintLine2)
 	out := lipgloss.JoinVertical(lipgloss.Left, grid, hint)
 	// Clamp to exactly gv.Height lines: integer-division of cellH can leave

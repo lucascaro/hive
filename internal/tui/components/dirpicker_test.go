@@ -174,19 +174,6 @@ func TestDirPicker_LeftArrowGoesUp(t *testing.T) {
 	}
 }
 
-func TestDirPicker_HKeyGoesUp(t *testing.T) {
-	dp := testDirPicker(t)
-	origDir := dp.currentDir
-
-	dp.Update(tea.KeyMsg{Type: tea.KeyEnter}) // descend
-	_, consumed := dp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
-	if !consumed {
-		t.Fatal("h should be consumed")
-	}
-	if dp.currentDir != origDir {
-		t.Errorf("after h: currentDir=%q, want %q", dp.currentDir, origDir)
-	}
-}
 
 func TestDirPicker_NEntersCreateMode(t *testing.T) {
 	dp := testDirPicker(t)

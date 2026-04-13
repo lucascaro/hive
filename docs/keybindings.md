@@ -4,8 +4,7 @@
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move cursor down |
-| `k` / `↑` | Move cursor up |
+| `↑` / `↓` | Move cursor up / down |
 | `J` | Jump to next project |
 | `K` | Jump to previous project |
 | `1`–`9` | Jump to project by index |
@@ -24,7 +23,7 @@
 | `T` | New agent team (opens wizard) |
 | `a` / `Enter` | Attach to selected session |
 | `r` | Rename selected session or team |
-| `x` / `d` | Kill selected session (with confirmation) |
+| `x` | Kill selected session (with confirmation) |
 | `D` | Kill entire team (with confirmation) |
 | `c` / `C` | Cycle project color forward / backward |
 | `v` / `V` | Cycle session color forward / backward |
@@ -41,7 +40,7 @@
 |-----|--------|
 | `g` | Open grid view for the current project |
 | `G` | Open grid view for all projects |
-| `←`/`→`/`↑`/`↓` or `h`/`l`/`k`/`j` | Navigate grid cells |
+| `←` / `→` / `↑` / `↓` | Navigate grid cells (arrow keys only) |
 | `Enter` / `a` | Attach to selected session |
 | `t` | New session in the selected session's project |
 | `W` | New worktree session in the selected session's project |
@@ -49,10 +48,15 @@
 | `r` | Rename selected session |
 | `c` / `C` | Cycle project color forward / backward |
 | `v` / `V` | Cycle session color forward / backward |
-| `G` | Switch to all-projects view (while grid is open) |
+| `g` | Switch to project-scoped view (while all-grid is open) |
+| `G` | Switch to all-projects view (while project grid is open) |
 | `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
 | `Shift+→` / `Shift+↓` | Move selected session right (later) in its group |
-| `g` / `Esc` / `q` | Exit grid view |
+| `?` | Open help overlay |
+| `S` | Open settings |
+| `H` | Open tmux shortcuts reference |
+| `q` | Quit app |
+| `Esc` | Exit grid view |
 
 ## Status Indicator
 
@@ -129,7 +133,7 @@ The detach key is set via the top-level `detach_key` field in `~/.config/hive/co
 
 ## Customization
 
-All key bindings (except `G` and hardcoded grid navigation keys like `h`/`j`/`k`/`l`/arrows) can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
+All key bindings can be overridden in `~/.config/hive/config.json` under the `keybindings` key:
 
 ```json
 {
@@ -141,8 +145,8 @@ All key bindings (except `G` and hardcoded grid navigation keys like `h`/`j`/`k`
     "kill_team": "D",
     "rename": "r",
     "attach": "a",
-    "nav_up": "k",
-    "nav_down": "j",
+    "nav_up": "up",
+    "nav_down": "down",
     "nav_project_up": "K",
     "nav_project_down": "J",
     "filter": "/",
@@ -159,3 +163,5 @@ All key bindings (except `G` and hardcoded grid navigation keys like `h`/`j`/`k`
   }
 }
 ```
+
+> **Note:** Users who prefer vim-style navigation (`j`/`k` for up/down) can set `"nav_up": "k"` and `"nav_down": "j"` in their config. Arrow keys remain the default.

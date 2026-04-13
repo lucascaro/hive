@@ -27,7 +27,7 @@ func TestOrphanPicker_CursorNavigation(t *testing.T) {
 	op := NewOrphanPicker([]string{"a", "b", "c"})
 
 	// Down
-	op, _ = op.Update(keyPress("j"))
+	op, _ = op.Update(keyType(tea.KeyDown))
 	if op.cursor != 1 {
 		t.Errorf("after j: cursor=%d, want 1", op.cursor)
 	}
@@ -36,13 +36,13 @@ func TestOrphanPicker_CursorNavigation(t *testing.T) {
 		t.Errorf("after down: cursor=%d, want 2", op.cursor)
 	}
 	// Clamp at bottom
-	op, _ = op.Update(keyPress("j"))
+	op, _ = op.Update(keyType(tea.KeyDown))
 	if op.cursor != 2 {
 		t.Errorf("should clamp at bottom: cursor=%d, want 2", op.cursor)
 	}
 
 	// Up
-	op, _ = op.Update(keyPress("k"))
+	op, _ = op.Update(keyType(tea.KeyUp))
 	if op.cursor != 1 {
 		t.Errorf("after k: cursor=%d, want 1", op.cursor)
 	}
@@ -51,7 +51,7 @@ func TestOrphanPicker_CursorNavigation(t *testing.T) {
 		t.Errorf("after up: cursor=%d, want 0", op.cursor)
 	}
 	// Clamp at top
-	op, _ = op.Update(keyPress("k"))
+	op, _ = op.Update(keyType(tea.KeyUp))
 	if op.cursor != 0 {
 		t.Errorf("should clamp at top: cursor=%d, want 0", op.cursor)
 	}

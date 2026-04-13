@@ -70,11 +70,11 @@ func agentTypeIndex(at state.AgentType) int {
 func (r RecoveryPicker) Update(msg tea.KeyMsg) (RecoveryPicker, tea.Cmd) {
 	n := len(r.sessions)
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		if r.cursor > 0 {
 			r.cursor--
 		}
-	case "down", "j":
+	case "down":
 		if r.cursor < n-1 {
 			r.cursor++
 		}
@@ -93,14 +93,14 @@ func (r RecoveryPicker) Update(msg tea.KeyMsg) (RecoveryPicker, tea.Cmd) {
 		for i := range r.selected {
 			r.selected[i] = anyUnselected
 		}
-	case "left", "h":
+	case "left":
 		if n > 0 {
 			idx := r.typeIdx[r.cursor]
 			idx = (idx - 1 + len(allAgentTypes)) % len(allAgentTypes)
 			r.typeIdx[r.cursor] = idx
 			r.sessions[r.cursor].DetectedAgentType = allAgentTypes[idx]
 		}
-	case "right", "l":
+	case "right":
 		if n > 0 {
 			idx := r.typeIdx[r.cursor]
 			idx = (idx + 1) % len(allAgentTypes)

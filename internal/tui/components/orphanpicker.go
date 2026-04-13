@@ -38,11 +38,11 @@ func NewOrphanPicker(sessions []string) OrphanPicker {
 // Update handles keyboard navigation and selection.
 func (o OrphanPicker) Update(msg tea.KeyMsg) (OrphanPicker, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
+	case "up":
 		if o.cursor > 0 {
 			o.cursor--
 		}
-	case "down", "j":
+	case "down":
 		if o.cursor < len(o.sessions)-1 {
 			o.cursor++
 		}
