@@ -62,6 +62,7 @@ type Model struct {
 	pendingProjectName string // name entered in step 1 of project creation
 	pendingProjectID   string
 	pendingAgentType   string // agent type awaiting install confirmation
+	pendingSaveConfig  config.Config // config staged for save while confirm dialog is open
 	// Worktree session creation
 	pendingWorktree          bool   // true when the next session should use a worktree
 	pendingWorktreeAgentType string // agent type selected for worktree session
@@ -340,6 +341,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDirPicked(msg)
 	case components.DirPickerCancelMsg:
 		return m.handleDirPickerCancel()
+	case components.SettingsSaveConfirmMsg:
+		return m.handleSettingsSaveConfirm(msg)
 	case ConfirmActionMsg:
 		return m.handleConfirmAction(msg)
 	case ConfirmedMsg:

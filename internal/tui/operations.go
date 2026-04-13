@@ -434,6 +434,10 @@ func (m *Model) killAllSessions() {
 }
 
 func (m Model) handleConfirmedAction(action string) tea.Cmd {
+	if action == "save-settings" {
+		cfg := m.pendingSaveConfig
+		return func() tea.Msg { return components.SettingsSaveRequestMsg{Config: cfg} }
+	}
 	if strings.HasPrefix(action, "kill-session:") {
 		sessionID := strings.TrimPrefix(action, "kill-session:")
 		return m.killSession(sessionID)
