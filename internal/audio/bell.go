@@ -62,6 +62,9 @@ var SyncForTest bool
 // (the TUI render loop) never block on exec or file IO. Unknown sound
 // names and playback errors fall back to writing \a.
 // volume is a percentage (1–100); 0 is treated as 100 for backwards compatibility.
+// Each call spawns an independent goroutine — rapid consecutive calls (e.g. from
+// the settings preview onChange) may produce overlapping audio. This is intentional:
+// the goroutines are stateless and do not interact.
 func Play(sound string, volume int) {
 	if SyncForTest {
 		playSync(sound, volume)

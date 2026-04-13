@@ -278,8 +278,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			for i, opt := range f.options {
 				if opt == cur {
 					next := f.options[(i+1)%len(f.options)]
-					_ = f.set(&sv.cfg, next)
-					if f.onChange != nil {
+					if err := f.set(&sv.cfg, next); err == nil && f.onChange != nil {
 						f.onChange(sv.cfg)
 					}
 					matched = true
@@ -287,8 +286,7 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				}
 			}
 			if !matched && len(f.options) > 0 {
-				_ = f.set(&sv.cfg, f.options[0])
-				if f.onChange != nil {
+				if err := f.set(&sv.cfg, f.options[0]); err == nil && f.onChange != nil {
 					f.onChange(sv.cfg)
 				}
 			}

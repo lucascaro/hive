@@ -64,7 +64,7 @@ Add two improvements: (1) play the selected bell sound immediately when the user
 
 ## Implementation Notes
 
-- Added `onChange func(newVal string)` to `settingField` struct; triggered in the `fieldSelect` cycle handler. Only Bell Sound wires it (to `audio.Play(v, 100)` for a full-volume preview).
+- Added `onChange func(cfg config.Config)` to `settingField` struct; triggered in the `fieldSelect` cycle handler after a successful `set()` call. Both Bell Sound and Bell Volume wire it to `audio.Play(cfg.BellSound, cfg.BellVolume)` so each preview reflects the current combination of sound and volume.
 - `audio.Play` signature changed to `Play(sound string, volume int)`; `effectiveVolume()` maps 0→100 for backwards compatibility with existing configs.
 - Unix: `afplay` gets `-v <float>`, `paplay` gets `--volume=<int>` (65536 scale); `aplay` ignores volume (no flag support).
 - Windows: `playWAVReal` accepts volume param but ignores it; documented in a comment.

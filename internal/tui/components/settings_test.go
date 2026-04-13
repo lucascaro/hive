@@ -1,10 +1,12 @@
 package components
 
 import (
+	"sync/atomic"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucascaro/hive/internal/audio"
 	"github.com/lucascaro/hive/internal/config"
 )
 
@@ -173,6 +175,73 @@ func TestSettingsView_IntValidation(t *testing.T) {
 	sv.Update(keyType(tea.KeyEnter))
 	if sv.editErr == "" {
 		t.Error("expected validation error for 30001")
+	}
+}
+
+// navigateToField presses "j" n times to reach field at index n.
+func navigateToField(sv *SettingsView, n int) {
+	for i := 0; i < n; i++ {
+		sv.Update(keyPress("j"))
+	}
+}
+
+func TestSettingsView_BellSoundOnChange_CallsAudioPlay(t *testing.T) {
+	// Suppress real audio; count how many times Play is invoked.
+	prev := audio.SyncForTest
+	audio.SyncForTest = true
+	var playCalls atomic.Int32
+	restore := audio.SetTestHooks(nil, func(string, int) error { playCalls.Add(1); return nil })
+	t.Cleanup(func() { audio.SyncForTest = prev; restore() })
+
+	sv := NewSettingsView()
+	cfg := testConfig()
+	cfg.BellSound = "normal"
+	cfg.BellVolume = 50
+	sv.Open(cfg)
+
+	// Bell Sound is field index 7 on the General tab.
+	navigateToField(&sv, 7)
+	if f := sv.selectedField(); f == nil || f.label != "Bell Sound" {
+		t.Fatalf("expected field 'Bell Sound', got %v", f)
+	}
+
+	before := playCalls.Load()
+	sv.Update(keyType(tea.KeyEnter)) // cycle: normal → bee
+	after := playCalls.Load()
+
+	if after-before != 1 {
+		t.Errorf("onChange: playCalls delta = %d, want 1", after-before)
+	}
+	if sv.GetConfig().BellSound != "bee" {
+		t.Errorf("BellSound = %q after cycle, want %q", sv.GetConfig().BellSound, "bee")
+	}
+}
+
+func TestSettingsView_BellVolumeOnChange_CallsAudioPlay(t *testing.T) {
+	prev := audio.SyncForTest
+	audio.SyncForTest = true
+	var lastVol atomic.Int32
+	restore := audio.SetTestHooks(nil, func(_ string, vol int) error { lastVol.Store(int32(vol)); return nil })
+	t.Cleanup(func() { audio.SyncForTest = prev; restore() })
+
+	sv := NewSettingsView()
+	cfg := testConfig()
+	cfg.BellSound = "bee"
+	cfg.BellVolume = 50
+	sv.Open(cfg)
+
+	// Bell Volume is field index 8 on the General tab.
+	navigateToField(&sv, 8)
+	if f := sv.selectedField(); f == nil || f.label != "Bell Volume" {
+		t.Fatalf("expected field 'Bell Volume', got %v", f)
+	}
+
+	sv.Update(keyType(tea.KeyEnter)) // cycle: 50 → 75
+	if got := sv.GetConfig().BellVolume; got != 75 {
+		t.Errorf("BellVolume = %d after cycle, want 75", got)
+	}
+	if got := lastVol.Load(); got != 75 {
+		t.Errorf("audio.Play received volume=%d, want 75", got)
 	}
 }
 

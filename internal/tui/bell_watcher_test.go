@@ -142,6 +142,28 @@ func TestAttachBellWatcher_StopIsClean(t *testing.T) {
 	}
 }
 
+func TestAttachBellWatcher_VolumePassedToPlay(t *testing.T) {
+	audio.SyncForTest = true
+	var lastVol atomic.Int32
+	restore := audio.SetTestHooks(nil, func(_ string, vol int) error {
+		lastVol.Store(int32(vol))
+		return nil
+	})
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
+
+	w := newAttachBellWatcher()
+	fn, _ := tickingBellFn(2, "hive-sessions:0") // bell fires on 2nd poll
+	w.getPaneTitlesFn = fn
+	w.start(audio.BellChime, 75, makeTargetMap())
+
+	time.Sleep(1600 * time.Millisecond)
+	w.stop()
+
+	if got := lastVol.Load(); got != 75 {
+		t.Errorf("audio.Play received volume=%d, want 75", got)
+	}
+}
+
 func TestBuildSessionTargets_ExcludesDead(t *testing.T) {
 	appState := testAppStateWithTwoProjects()
 	targets := buildSessionTargets(&appState)
