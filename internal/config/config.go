@@ -9,6 +9,10 @@ type Config struct {
 	HideAttachHint              bool                      `json:"hide_attach_hint,omitempty"`
 	HideWhatsNew                bool                      `json:"hide_whats_new,omitempty"`
 	LastSeenVersion             string                    `json:"last_seen_version,omitempty"`
+	// BellSound selects the audio played when a background session rings
+	// its terminal bell. See internal/audio for the accepted identifiers
+	// (normal, bee, chime, ping, knock, silent).
+	BellSound                   string                    `json:"bell_sound,omitempty"`
 	// Multiplexer selects the backend for managing terminal sessions.
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.

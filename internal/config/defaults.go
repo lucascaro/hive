@@ -1,6 +1,9 @@
 package config
 
-import "github.com/lucascaro/hive/internal/mux"
+import (
+	"github.com/lucascaro/hive/internal/audio"
+	"github.com/lucascaro/hive/internal/mux"
+)
 
 // DefaultConfig returns a Config populated with sensible defaults.
 func DefaultConfig() Config {
@@ -11,6 +14,7 @@ func DefaultConfig() Config {
 		AgentTitleOverridesUserTitle: false,
 		Multiplexer:                 "tmux",
 		DetachKey:                   mux.DefaultDetachKey,
+		BellSound:                   audio.BellNormal,
 		Agents: map[string]AgentProfile{
 			"claude": {
 				Cmd:        []string{"claude"},

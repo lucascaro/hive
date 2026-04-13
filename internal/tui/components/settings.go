@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/lucascaro/hive/internal/audio"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
@@ -803,6 +804,17 @@ func buildSettingTabs() []settingTab {
 							return fmt.Errorf("must be true or false")
 						}
 						c.HideWhatsNew = b
+						return nil
+					},
+				},
+				{
+					label:       "Bell Sound",
+					description: "Sound played when a background session rings its terminal bell. 'normal' emits the terminal's default bell (\\a); 'silent' disables audio notifications entirely; the other options play short embedded sounds.",
+					kind:        fieldSelect,
+					options:     audio.Bells,
+					get:         func(c config.Config) string { return c.BellSound },
+					set: func(c *config.Config, v string) error {
+						c.BellSound = v
 						return nil
 					},
 				},

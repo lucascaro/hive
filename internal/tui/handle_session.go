@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucascaro/hive/internal/audio"
 	"github.com/lucascaro/hive/internal/escape"
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
@@ -178,7 +178,7 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 			}
 		}
 		if newBell && time.Since(m.lastBellTime) > 500*time.Millisecond {
-			os.Stdout.Write([]byte("\a"))
+			audio.Play(m.cfg.BellSound)
 			m.lastBellTime = time.Now()
 		}
 		if newBell {

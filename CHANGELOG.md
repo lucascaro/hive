@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Custom terminal bell sounds**: Settings → General → Bell Sound now offers six options — `normal` (current `\a` default), `bee`, `chime`, `ping`, `knock`, and `silent`. Non-default sounds are played via the platform's audio tool (`afplay` / `paplay` / `aplay` on macOS/Linux, PowerShell `SoundPlayer` on Windows) with a graceful fallback to `\a` when no player is available. `silent` suppresses audio entirely while still showing the sidebar bell indicator. Configurable per install; persisted in `~/.config/hive/config.json` (#75).
+
 ### Fixed
 - **Grid mode toggle preserves selection**: pressing `g` while in the all-projects grid (or `G` while in a single-project grid) now keeps the currently-selected session and its project, instead of resetting to a different project's first session (#80).
 

@@ -142,6 +142,34 @@ func TestMigrate_AlreadyV2_PreservesHideAttachHint(t *testing.T) {
 	}
 }
 
+// TestMigrate_V2ToV3_FillsBellSound verifies that upgrading from schema v2
+// to v3 populates the newly introduced BellSound field with the default so
+// existing users preserve today's audible `\a` behavior (#75).
+func TestMigrate_V2ToV3_FillsBellSound(t *testing.T) {
+	cfg := Config{SchemaVersion: 2, BellSound: ""}
+	got := Migrate(cfg)
+	if got.BellSound == "" {
+		t.Error("Migrate v2→v3 should fill empty BellSound from defaults")
+	}
+	if want := DefaultConfig().BellSound; got.BellSound != want {
+		t.Errorf("BellSound = %q, want default %q", got.BellSound, want)
+	}
+	if got.SchemaVersion != currentSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", got.SchemaVersion, currentSchemaVersion)
+	}
+}
+
+// TestMigrate_PreservesUserBellChoice ensures the v2→v3 fill does not
+// clobber a user who has already picked a custom bell sound (e.g., via a
+// hand-edited config.json on a pre-release build).
+func TestMigrate_PreservesUserBellChoice(t *testing.T) {
+	cfg := Config{SchemaVersion: 2, BellSound: "chime"}
+	got := Migrate(cfg)
+	if got.BellSound != "chime" {
+		t.Errorf("BellSound = %q, want %q (user choice must be preserved)", got.BellSound, "chime")
+	}
+}
+
 func TestMigrate_UnknownAgentInstallCmdNotFilled(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: currentSchemaVersion,
