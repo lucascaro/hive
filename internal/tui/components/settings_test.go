@@ -11,6 +11,7 @@ import (
 func testConfig() config.Config {
 	return config.Config{
 		Theme:            "dark",
+		StartupView:      "sidebar",
 		Multiplexer:      "tmux",
 		PreviewRefreshMs: 500,
 		Hooks: config.HooksConfig{

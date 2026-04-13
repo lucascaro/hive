@@ -199,10 +199,10 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 			m.openGrid(state.GridRestoreProject)
 		case "grid-all":
 			m.openGrid(state.GridRestoreAll)
+		case "sidebar", "":
+			// no-op: normal sidebar startup
 		default:
-			if m.cfg.StartupView != "" && m.cfg.StartupView != "sidebar" {
-				debugLog.Printf("unknown StartupView %q, defaulting to sidebar", m.cfg.StartupView)
-			}
+			debugLog.Printf("unknown StartupView %q, defaulting to sidebar", m.cfg.StartupView)
 		}
 	}
 	// Show "What's New" overlay if there's changelog content.
