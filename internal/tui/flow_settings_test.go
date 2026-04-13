@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -135,6 +136,9 @@ func TestFlow_Settings_SaveStillWorks(t *testing.T) {
 }
 
 func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory perms don't block writes on Windows")
+	}
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
 
