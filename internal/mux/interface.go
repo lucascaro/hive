@@ -146,7 +146,12 @@ func CreateWindow(session, windowName, workDir string, cmd []string) (int, error
 	return active.CreateWindow(session, windowName, workDir, cmd)
 }
 
-func WindowExists(target string) bool { return active.WindowExists(target) }
+func WindowExists(target string) bool {
+	if active == nil {
+		return false
+	}
+	return active.WindowExists(target)
+}
 
 func KillWindow(target string) error { return active.KillWindow(target) }
 
@@ -164,11 +169,17 @@ func GetPaneTitles(session string) (map[string]string, map[string]bool, error) {
 }
 
 func CapturePane(target string, lines int) (string, error) {
+	if active == nil {
+		return "", nil
+	}
 	return active.CapturePane(target, lines)
 }
 
 // CapturePaneRaw returns pane content with all escape sequences preserved.
 func CapturePaneRaw(target string, lines int) (string, error) {
+	if active == nil {
+		return "", nil
+	}
 	return active.CapturePaneRaw(target, lines)
 }
 
@@ -178,7 +189,13 @@ func GetCurrentCommand(target string) (string, error) {
 }
 
 // IsPaneDead reports whether the pane's process has exited.
-func IsPaneDead(target string) bool { return active.IsPaneDead(target) }
+// Returns false if no backend has been set (e.g. in tests).
+func IsPaneDead(target string) bool {
+	if active == nil {
+		return false
+	}
+	return active.IsPaneDead(target)
+}
 
 func Attach(target string) error { return active.Attach(target) }
 
