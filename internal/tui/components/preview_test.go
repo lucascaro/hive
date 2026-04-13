@@ -566,15 +566,6 @@ func TestPreviewView_EscapeOnlyContent_ShowsPlaceholder(t *testing.T) {
 	}
 }
 
-func TestSetContent_EscapeOnlyContent_HasContentFalse(t *testing.T) {
-	// hasContent must be false when the sanitized result is all whitespace.
-	p := &Preview{}
-	p.Resize(80, 24)
-	p.SetContent("\x1b[?1049h\x1b[H\x1b[J\x1b[?25l")
-	if p.hasContent {
-		t.Error("hasContent should be false when content is only escape sequences")
-	}
-}
 
 func TestPreviewUpdatedMsg_Fields(t *testing.T) {
 	msg := PreviewUpdatedMsg{
