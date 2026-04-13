@@ -257,8 +257,14 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 
 	os.Stdout.WriteString("\033[?1049l\033[2J\033[H\033[?1049h")
 
+	// Start background bell watcher so custom audio plays and bell badges are
+	// tracked while the BubbleTea event loop is suspended.
+	watcher := newAttachBellWatcher()
+	watcher.start(m.cfg.BellSound, buildSessionTargets(&m.appState))
+
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode}
+		newBells := watcher.stop()
+		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode, NewBells: newBells}
 	})
 }
 

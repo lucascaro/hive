@@ -56,6 +56,7 @@ type GridView struct {
 	projectColors map[string]string // projectID → hex color
 	sessionColors map[string]string // sessionID → hex color
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
+	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 }
 
 // Show activates the grid with the given sessions.
@@ -99,6 +100,18 @@ func (gv *GridView) SetSessionColors(colors map[string]string) {
 // (mux.Target output) to match how titles arrive from the status watcher.
 func (gv *GridView) SetPaneTitles(titles map[string]string) {
 	gv.paneTitles = titles
+}
+
+// SetBellPending updates the set of sessions with an unacknowledged bell.
+// Keyed by sessionID; cells with a pending bell display a ♪ badge.
+func (gv *GridView) SetBellPending(bells map[string]bool) {
+	gv.bellPending = bells
+}
+
+// BellPendingForTest reports whether the given sessionID has a pending bell.
+// Intended for use in tests only.
+func (gv *GridView) BellPendingForTest(sessionID string) bool {
+	return gv.bellPending[sessionID]
 }
 
 // Selected returns the currently focused session, or nil.
@@ -277,7 +290,11 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	badge := styles.AgentBadgeOnBg(string(sess.AgentType), darkBg)
 	darkSp := lipgloss.NewStyle().Background(darkBg).Render(" ")
 	bgSp := lipgloss.NewStyle().Background(bg).Foreground(fg).Render(" ")
-	prefixStr := dot + darkSp + badge + bgSp
+	prefixStr := dot + darkSp + badge
+	if gv.bellPending[sess.ID] {
+		prefixStr += darkSp + styles.BellBadgeOnBg(darkBg)
+	}
+	prefixStr += bgSp
 	prefixW := ansi.StringWidth(prefixStr)
 
 	// Build the optional suffix (project + worktree) as plain text for width calc.

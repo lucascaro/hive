@@ -44,6 +44,9 @@ type SessionDetachedMsg struct{}
 type AttachDoneMsg struct {
 	Err             error
 	RestoreGridMode state.GridRestoreMode
+	// NewBells holds sessionIDs that rang while the TUI was suspended during
+	// attachment. Populated by the attachBellWatcher goroutine; may be nil.
+	NewBells map[string]bool
 }
 
 // SessionTitleChangedMsg carries a new title for a session.

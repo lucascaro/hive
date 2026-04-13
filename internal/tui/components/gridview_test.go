@@ -11,6 +11,40 @@ import (
 	"github.com/muesli/termenv"
 )
 
+func TestGridView_BellBadgeRendered(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	gv := &GridView{
+		Active: true,
+		Width:  60,
+		Height: 10,
+	}
+	sess := &state.Session{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetBellPending(map[string]bool{"s1": true})
+
+	out := gv.View()
+	if !strings.Contains(out, "♪") {
+		t.Errorf("grid cell missing ♪ badge when bellPending=true; output:\n%s", out)
+	}
+}
+
+func TestGridView_NoBellBadgeWhenNotPending(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	gv := &GridView{
+		Active: true,
+		Width:  60,
+		Height: 10,
+	}
+	sess := &state.Session{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	// No SetBellPending call — badge must be absent.
+
+	out := gv.View()
+	if strings.Contains(out, "♪") {
+		t.Errorf("grid cell shows ♪ badge when bellPending=false; output:\n%s", out)
+	}
+}
+
 func TestGridViewView_ShowsStatusLegend(t *testing.T) {
 	gv := &GridView{
 		Active: true,

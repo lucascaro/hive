@@ -385,6 +385,12 @@ func AgentBadgeOnBg(agentType string, bg lipgloss.Color) string {
 		Render("[" + agentType + "]")
 }
 
+// BellBadgeOnBg returns the bell badge glyph (♪) with ColorWarning foreground
+// on the given background, matching the StatusDotOnBg/AgentBadgeOnBg pattern.
+func BellBadgeOnBg(bg lipgloss.Color) string {
+	return lipgloss.NewStyle().Foreground(ColorWarning).Background(bg).Render("♪")
+}
+
 // StatusDotOnBg returns a styled status dot with an explicit background.
 func StatusDotOnBg(status string, bg lipgloss.Color) string {
 	var fg lipgloss.Color
