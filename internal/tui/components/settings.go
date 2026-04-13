@@ -382,7 +382,7 @@ func (sv *SettingsView) View() string {
 		}
 		footerParts = append(footerParts,
 			hint("←/→", "tab"),
-			hint("↑/↓", "navigate"),
+			hint("↑/↓/j/k", "navigate"),
 			hint("enter/space", "edit/toggle"),
 			hint("R", "reset keys"),
 			hint("s", func() string {

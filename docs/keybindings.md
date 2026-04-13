@@ -51,6 +51,7 @@
 | `r` | Rename selected session |
 | `c` / `C` | Cycle project color forward / backward |
 | `v` / `V` | Cycle session color forward / backward |
+| `s` | Focus sidebar (closes grid and returns to sidebar view) |
 | `g` | Switch to project-scoped view (while all-grid is open) |
 | `G` | Switch to all-projects view (while project grid is open) |
 | `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |

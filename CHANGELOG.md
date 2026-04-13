@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`s` sidebar view shortcut**: pressing `s` in the main view focuses the sidebar pane; pressing `s` while in the grid closes the grid and returns to the sidebar (#100).
 - **`h`/`l` vim aliases for collapse/expand**: `h` collapses and `l` expands sidebar items (projects/teams), complementing the existing `←`/`→` arrow key bindings. These appear in the help overlay (#100).
-- **Reset keybindings to defaults**: pressing `R` in the Settings screen resets all key bindings to their defaults and marks the settings as unsaved, so they take effect after confirmation. A `reset keys` hint appears in the Settings footer (#100).
+- **Reset keybindings to defaults**: press `R` in Settings to restore all key bindings to their factory defaults. The reset is unsaved until you press `s` to confirm, so it can be discarded like any other settings change (#100).
 - **Bell sound preview**: cycling through bell sound options in Settings → General → Bell Sound now plays each sound immediately so you can audition options without leaving settings (#94).
 - **Bell volume control**: new Settings → General → Bell Volume setting lets you adjust bell playback loudness (10 / 25 / 50 / 75 / 100 %). Does not affect the `normal` system bell or `silent`; not supported on Windows (#94).
 - **`bubbles/help`-powered key hints**: the status bar, grid hint bar, and help overlay now all derive from a single `KeyMap` source of truth using `charmbracelet/bubbles/help`. Hints automatically reflect any custom key bindings set in `~/.config/hive/config.json` (#79).

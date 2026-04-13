@@ -174,7 +174,6 @@ func TestFlow_Settings_ResetKeybindings(t *testing.T) {
 
 	// Modify NavUp to a custom value to prove reset works.
 	f.model.cfg.Keybindings.NavUp = "k"
-	f.model.settings.Open(f.model.cfg)
 	openSettings(t, f)
 
 	if f.model.settings.IsDirty() {
