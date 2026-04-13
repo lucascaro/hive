@@ -26,7 +26,7 @@ func installBellRecorder(t *testing.T) *bellRecorder {
 	audio.SyncForTest = true
 	restore := audio.SetTestHooks(
 		func() { r.writeCalls.Add(1) },
-		func(path string) error { r.playCalls.Add(1); return nil },
+		func(path string, volume int) error { r.playCalls.Add(1); return nil },
 	)
 	t.Cleanup(func() {
 		restore()
@@ -40,6 +40,9 @@ func installBellRecorder(t *testing.T) *bellRecorder {
 // and asserts the confirmed save carries the new value.
 func TestFlow_BellSoundInSettings(t *testing.T) {
 	m, mock := testFlowModel(t)
+	// Install recorder so the onChange-triggered audio.Play runs synchronously
+	// and doesn't leak a goroutine into the next test's mock hook.
+	installBellRecorder(t)
 	f := newFlowRunner(t, m, mock)
 
 	openSettings(t, f)

@@ -35,7 +35,8 @@ func newAttachBellWatcher() *attachBellWatcher {
 
 // start begins polling for bell events. sessionTargets maps sessionID to tmux
 // target ("session:windowIndex"). It must be called at most once per watcher.
-func (w *attachBellWatcher) start(bellSound string, sessionTargets map[string]string) {
+// volume is the bell playback percentage (1–100; 0 is treated as 100).
+func (w *attachBellWatcher) start(bellSound string, volume int, sessionTargets map[string]string) {
 	// Build reverse map: target → sessionID.
 	targetToSession := make(map[string]string, len(sessionTargets))
 	for sid, target := range sessionTargets {
@@ -89,7 +90,7 @@ func (w *attachBellWatcher) start(bellSound string, sessionTargets map[string]st
 				}
 
 				if hasNew && time.Since(lastBellTime) > 500*time.Millisecond {
-					audio.Play(bellSound)
+					audio.Play(bellSound, volume)
 					lastBellTime = time.Now()
 				}
 			}

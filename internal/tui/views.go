@@ -229,7 +229,7 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	// Start background bell watcher so custom audio plays and bell badges are
 	// tracked while the BubbleTea event loop is suspended.
 	watcher := newAttachBellWatcher()
-	watcher.start(m.cfg.BellSound, buildSessionTargets(&m.appState))
+	watcher.start(m.cfg.BellSound, m.cfg.BellVolume, buildSessionTargets(&m.appState))
 
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		newBells := watcher.stop()

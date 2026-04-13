@@ -45,6 +45,11 @@ type settingField struct {
 	options     []string // for fieldSelect
 	get         func(config.Config) string
 	set         func(*config.Config, string) error
+	// onChange is called with the updated config immediately after set succeeds
+	// for fieldSelect and fieldBool fields. Used to provide real-time feedback
+	// (e.g. playing a preview of the selected bell sound at the current volume).
+	// The config passed in already reflects the newly applied value.
+	onChange func(cfg config.Config)
 }
 
 // settingTab groups a set of fields under a single tab title.
@@ -258,13 +263,18 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			matched := false
 			for i, opt := range f.options {
 				if opt == cur {
-					_ = f.set(&sv.cfg, f.options[(i+1)%len(f.options)])
+					next := f.options[(i+1)%len(f.options)]
+					if err := f.set(&sv.cfg, next); err == nil && f.onChange != nil {
+						f.onChange(sv.cfg)
+					}
 					matched = true
 					break
 				}
 			}
 			if !matched && len(f.options) > 0 {
-				_ = f.set(&sv.cfg, f.options[0])
+				if err := f.set(&sv.cfg, f.options[0]); err == nil && f.onChange != nil {
+					f.onChange(sv.cfg)
+				}
 			}
 			sv.dirty = true
 		case fieldString, fieldInt:
@@ -819,6 +829,28 @@ func buildSettingTabs() []settingTab {
 						c.BellSound = v
 						return nil
 					},
+					onChange: func(cfg config.Config) { audio.Play(cfg.BellSound, cfg.BellVolume) },
+				},
+				{
+					label:       "Bell Volume",
+					description: "Playback volume for bell sounds as a percentage. Does not affect the 'normal' (system bell) or 'silent' options. Volume control is not supported on Windows.",
+					kind:        fieldSelect,
+					options:     []string{"10", "25", "50", "75", "100"},
+					get: func(c config.Config) string {
+						if c.BellVolume <= 0 {
+							return "100"
+						}
+						return strconv.Itoa(c.BellVolume)
+					},
+					set: func(c *config.Config, v string) error {
+						n, err := strconv.Atoi(v)
+						if err != nil || n < 1 || n > 100 {
+							return fmt.Errorf("must be a number between 1 and 100")
+						}
+						c.BellVolume = n
+						return nil
+					},
+					onChange: func(cfg config.Config) { audio.Play(cfg.BellSound, cfg.BellVolume) },
 				},
 			},
 		},

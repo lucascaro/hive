@@ -18,6 +18,10 @@ type Config struct {
 	// its terminal bell. See internal/audio for the accepted identifiers
 	// (normal, bee, chime, ping, knock, silent).
 	BellSound                   string                    `json:"bell_sound,omitempty"`
+	// BellVolume controls playback loudness as a percentage (1–100).
+	// A value of 0 is treated as 100 (full volume) for backwards compatibility
+	// with configs written before this field existed.
+	BellVolume                  int                       `json:"bell_volume,omitempty"`
 	// Multiplexer selects the backend for managing terminal sessions.
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.

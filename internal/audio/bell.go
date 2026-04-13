@@ -39,6 +39,18 @@ var (
 	writeBell = writeBellReal
 )
 
+// effectiveVolume maps 0 → 100 so that zero-value configs (written before
+// BellVolume was added) play at full volume. Values outside 1–100 are clamped.
+func effectiveVolume(v int) int {
+	if v <= 0 {
+		return 100
+	}
+	if v > 100 {
+		return 100
+	}
+	return v
+}
+
 // SyncForTest, when true, causes Play to run synchronously instead of
 // spawning a goroutine. Tests set this to make playback assertions
 // deterministic. Production code must leave it false. Like the hooks
@@ -49,19 +61,23 @@ var SyncForTest bool
 // Play dispatches the configured bell sound in a goroutine so callers
 // (the TUI render loop) never block on exec or file IO. Unknown sound
 // names and playback errors fall back to writing \a.
-func Play(sound string) {
+// volume is a percentage (1–100); 0 is treated as 100 for backwards compatibility.
+// Each call spawns an independent goroutine — rapid consecutive calls (e.g. from
+// the settings preview onChange) may produce overlapping audio. This is intentional:
+// the goroutines are stateless and do not interact.
+func Play(sound string, volume int) {
 	if SyncForTest {
-		playSync(sound)
+		playSync(sound, volume)
 		return
 	}
-	go playSync(sound)
+	go playSync(sound, volume)
 }
 
 // SetTestHooks replaces the internal playback and bell-write callbacks with
 // the provided functions and returns a restore closure. Either argument may
 // be nil to leave that hook untouched. Intended for cross-package tests;
 // production code must not call this.
-func SetTestHooks(onBell func(), onPlayWAV func(string) error) (restore func()) {
+func SetTestHooks(onBell func(), onPlayWAV func(string, int) error) (restore func()) {
 	ow, op := writeBell, playWAV
 	if onBell != nil {
 		writeBell = onBell
@@ -77,7 +93,8 @@ func SetTestHooks(onBell func(), onPlayWAV func(string) error) (restore func()) 
 
 // playSync runs the dispatch synchronously. Exposed for tests that need
 // deterministic ordering; Play wraps this in a goroutine.
-func playSync(sound string) {
+func playSync(sound string, volume int) {
+	vol := effectiveVolume(volume)
 	switch sound {
 	case BellSilent:
 		return
@@ -90,7 +107,7 @@ func playSync(sound string) {
 		writeBell()
 		return
 	}
-	if err := playWAV(path); err != nil {
+	if err := playWAV(path, vol); err != nil {
 		writeBell()
 	}
 }

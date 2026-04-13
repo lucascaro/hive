@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bell sound preview**: cycling through bell sound options in Settings → General → Bell Sound now plays each sound immediately so you can audition options without leaving settings (#94).
+- **Bell volume control**: new Settings → General → Bell Volume setting lets you adjust bell playback loudness (10 / 25 / 50 / 75 / 100 %). Does not affect the `normal` system bell or `silent`; not supported on Windows (#94).
 - **`bubbles/help`-powered key hints**: the status bar, grid hint bar, and help overlay now all derive from a single `KeyMap` source of truth using `charmbracelet/bubbles/help`. Hints automatically reflect any custom key bindings set in `~/.config/hive/config.json` (#79).
 - **Startup View preference**: configure which view hive opens on launch — `sidebar` (default), `grid` (current-project grid), or `grid-all` (all-projects grid). Set it in Settings → General → Startup View; persisted in `~/.config/hive/config.json`. When a detach-restore is in progress (returning from an attached session), the restore takes precedence (#78).
 - **Custom terminal bell sounds**: Settings → General → Bell Sound now offers six options — `normal` (current `\a` default), `bee`, `chime`, `ping`, `knock`, and `silent`. Non-default sounds are played via the platform's audio tool (`afplay` / `paplay` / `aplay` on macOS/Linux, PowerShell `SoundPlayer` on Windows) with a graceful fallback to `\a` when no player is available. `silent` suppresses audio entirely while still showing the sidebar bell indicator. Configurable per install; persisted in `~/.config/hive/config.json` (#75).

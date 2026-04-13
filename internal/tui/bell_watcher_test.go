@@ -31,13 +31,13 @@ func tickingBellFn(bellOnCall int, target string) (fn func(string) (map[string]s
 func TestAttachBellWatcher_PlaysOnNewBell(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
-	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
+	restore := audio.SetTestHooks(nil, func(string, int) error { playCalls.Add(1); return nil })
 	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
 	fn, _ := tickingBellFn(2, "hive-sessions:0") // bell fires on 2nd poll
 	w.getPaneTitlesFn = fn
-	w.start(audio.BellChime, makeTargetMap())
+	w.start(audio.BellChime, 100, makeTargetMap())
 
 	// Give the goroutine time to poll twice (500ms each) with generous margin.
 	time.Sleep(1600 * time.Millisecond)
@@ -51,7 +51,7 @@ func TestAttachBellWatcher_PlaysOnNewBell(t *testing.T) {
 func TestAttachBellWatcher_NoPlayOnAlreadyPending(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
-	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
+	restore := audio.SetTestHooks(nil, func(string, int) error { playCalls.Add(1); return nil })
 	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
@@ -60,7 +60,7 @@ func TestAttachBellWatcher_NoPlayOnAlreadyPending(t *testing.T) {
 	w.getPaneTitlesFn = func(_ string) (map[string]string, map[string]bool, error) {
 		return nil, map[string]bool{target: true}, nil
 	}
-	w.start(audio.BellChime, makeTargetMap())
+	w.start(audio.BellChime, 100, makeTargetMap())
 
 	time.Sleep(600 * time.Millisecond)
 	w.stop()
@@ -72,14 +72,14 @@ func TestAttachBellWatcher_NoPlayOnAlreadyPending(t *testing.T) {
 
 func TestAttachBellWatcher_AccumulatesNewBells(t *testing.T) {
 	audio.SyncForTest = true
-	restore := audio.SetTestHooks(nil, func(string) error { return nil })
+	restore := audio.SetTestHooks(nil, func(string, int) error { return nil })
 	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	w := newAttachBellWatcher()
 	target := "hive-sessions:0"
 	fn, _ := tickingBellFn(2, target)
 	w.getPaneTitlesFn = fn
-	w.start(audio.BellChime, makeTargetMap())
+	w.start(audio.BellChime, 100, makeTargetMap())
 
 	time.Sleep(1600 * time.Millisecond)
 	newBells := w.stop()
@@ -92,7 +92,7 @@ func TestAttachBellWatcher_AccumulatesNewBells(t *testing.T) {
 func TestAttachBellWatcher_Debounce(t *testing.T) {
 	audio.SyncForTest = true
 	var playCalls atomic.Int32
-	restore := audio.SetTestHooks(nil, func(string) error { playCalls.Add(1); return nil })
+	restore := audio.SetTestHooks(nil, func(string, int) error { playCalls.Add(1); return nil })
 	t.Cleanup(func() { audio.SyncForTest = false; restore() })
 
 	target := "hive-sessions:0"
@@ -111,7 +111,7 @@ func TestAttachBellWatcher_Debounce(t *testing.T) {
 			return nil, nil, nil
 		}
 	}
-	w.start(audio.BellChime, makeTargetMap())
+	w.start(audio.BellChime, 100, makeTargetMap())
 
 	// 4 polls at 500ms each = ~2000ms; add 800ms margin for CI jitter.
 	time.Sleep(2800 * time.Millisecond)
@@ -127,7 +127,7 @@ func TestAttachBellWatcher_StopIsClean(t *testing.T) {
 	w.getPaneTitlesFn = func(_ string) (map[string]string, map[string]bool, error) {
 		return nil, nil, nil
 	}
-	w.start(audio.BellSilent, map[string]string{})
+	w.start(audio.BellSilent, 100, map[string]string{})
 
 	done := make(chan struct{})
 	go func() {
@@ -139,6 +139,28 @@ func TestAttachBellWatcher_StopIsClean(t *testing.T) {
 		// ok
 	case <-time.After(2 * time.Second):
 		t.Fatal("stop() did not return within 2s")
+	}
+}
+
+func TestAttachBellWatcher_VolumePassedToPlay(t *testing.T) {
+	audio.SyncForTest = true
+	var lastVol atomic.Int32
+	restore := audio.SetTestHooks(nil, func(_ string, vol int) error {
+		lastVol.Store(int32(vol))
+		return nil
+	})
+	t.Cleanup(func() { audio.SyncForTest = false; restore() })
+
+	w := newAttachBellWatcher()
+	fn, _ := tickingBellFn(2, "hive-sessions:0") // bell fires on 2nd poll
+	w.getPaneTitlesFn = fn
+	w.start(audio.BellChime, 75, makeTargetMap())
+
+	time.Sleep(1600 * time.Millisecond)
+	w.stop()
+
+	if got := lastVol.Load(); got != 75 {
+		t.Errorf("audio.Play received volume=%d, want 75", got)
 	}
 }
 
