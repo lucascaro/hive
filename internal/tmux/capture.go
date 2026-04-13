@@ -5,10 +5,31 @@ import (
 	"strings"
 )
 
+// IsAlternateScreen reports whether the given pane is currently in alternate
+// screen mode (i.e. running a TUI application like Claude Code that switches
+// to the alternate screen buffer via \e[?1049h).
+func IsAlternateScreen(target string) bool {
+	out, err := Exec("display-message", "-p", "-t", target, "#{alternate_on}")
+	return err == nil && strings.TrimSpace(out) == "1"
+}
+
 // CapturePane returns the visible content of a tmux pane.
 // target is "session:window". lines specifies how many lines to capture (0 = visible only).
 // The -e flag preserves ANSI color codes; -J joins wrapped lines.
+//
+// When the pane is in alternate screen mode (e.g. running a TUI like Claude Code),
+// the alternate screen is captured instead of the normal screen buffer. The normal
+// screen buffer only holds content from before the TUI started (usually a shell
+// prompt), so it would appear nearly empty in the preview even though the session
+// has real content visible to the user.
 func CapturePane(target string, lines int) (string, error) {
+	if IsAlternateScreen(target) {
+		// Capture the alternate screen — the current visible TUI state.
+		// No -S flag: the alternate screen has no scrollback buffer; the entire
+		// visible screen is captured as-is.
+		return Exec("capture-pane", "-a", "-p", "-e", "-J", "-t", target)
+	}
+	// Normal screen: capture with scrollback for context.
 	args := []string{"capture-pane", "-p", "-e", "-J", "-t", target}
 	if lines > 0 {
 		args = append(args, "-S", fmt.Sprintf("-%d", lines))
@@ -18,7 +39,12 @@ func CapturePane(target string, lines int) (string, error) {
 
 // CapturePaneRaw returns pane content without stripping escape sequences
 // (used by the title watcher to detect OSC sequences).
+// Like CapturePane, it captures the alternate screen when the pane is in
+// alternate screen mode so the title watcher sees the current output.
 func CapturePaneRaw(target string, lines int) (string, error) {
+	if IsAlternateScreen(target) {
+		return Exec("capture-pane", "-a", "-p", "-J", "-t", target)
+	}
 	args := []string{"capture-pane", "-p", "-J", "-t", target}
 	if lines > 0 {
 		args = append(args, "-S", fmt.Sprintf("-%d", lines))

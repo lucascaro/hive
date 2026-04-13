@@ -161,12 +161,12 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 			m.gridView.SetPaneTitles(m.paneTitles)
 		}
 	}
-	// If the status watcher captured new content for the active session, update
-	// the preview immediately rather than waiting for the next PollPreview tick.
-	if content, ok := msg.Contents[m.appState.ActiveSessionID]; ok {
-		m.appState.PreviewContent = content
-		m.preview.SetContent(content)
-	}
+	// NOTE: do NOT update m.preview from WatchStatuses content here.  WatchStatuses
+	// captures only 50 lines of scrollback while PollPreview captures 500.  Calling
+	// SetContent alternately with shallow (50-line) and deep (500-line) content causes
+	// the scroll offset to jump visibly because lastNonBlankIdx refers to completely
+	// different line indices in the two captures.  PollPreview is already running on
+	// every refresh tick and is the sole authoritative source for preview content.
 	// Forward terminal bell and mark sessions with pending bell indicator.
 	// The tmux bell flag stays set until the window is selected, so we use
 	// bellPending as edge tracking: only emit \a for sessions that aren't

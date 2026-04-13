@@ -437,9 +437,12 @@ func TestSessionSwitch_PreviewShowsCachedContent(t *testing.T) {
 	}
 }
 
-func TestStatusesDetectedMsg_UpdatesActivePreview(t *testing.T) {
-	// When StatusesDetectedMsg carries content for the active session, the
-	// preview must be updated immediately without waiting for the next PollPreview tick.
+func TestStatusesDetectedMsg_UpdatesContentSnapshot(t *testing.T) {
+	// StatusesDetectedMsg updates the content snapshot (used by the grid and
+	// session-switch cache) but must NOT update the live preview.  The preview
+	// is only updated by PollPreview (PreviewUpdatedMsg), which captures 500
+	// lines of scrollback.  Mixing 50-line WatchStatuses content with 500-line
+	// PollPreview content alternately causes the scroll position to jump.
 	m := testModelWithSessions()
 
 	const freshContent = "fresh output from status watcher"
@@ -454,8 +457,13 @@ func TestStatusesDetectedMsg_UpdatesActivePreview(t *testing.T) {
 	result, _ := m.Update(msg)
 	updated := result.(Model)
 
-	if updated.appState.PreviewContent != freshContent {
-		t.Errorf("PreviewContent = %q after StatusesDetectedMsg, want %q", updated.appState.PreviewContent, freshContent)
+	// Content snapshot must be updated for grid/session-switching.
+	if got := updated.contentSnapshots["sess-1"]; got != freshContent {
+		t.Errorf("contentSnapshot[sess-1] = %q, want %q", got, freshContent)
+	}
+	// Preview must NOT be updated — PollPreview is the sole preview source.
+	if updated.appState.PreviewContent != "" {
+		t.Errorf("PreviewContent = %q after StatusesDetectedMsg, want empty (only PollPreview updates preview)", updated.appState.PreviewContent)
 	}
 }
 
