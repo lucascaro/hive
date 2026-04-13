@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -79,6 +81,7 @@ func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
 
 func (m Model) handleConfigSaved() (tea.Model, tea.Cmd) {
 	m.appState.LastError = "" // clear any previous error
+	m.pendingSaveConfig = config.Config{}
 	if m.TopView() == ViewSettings {
 		m.settings.Close()
 		m.PopView()
@@ -103,7 +106,13 @@ func (m Model) handleQuitAndKill() (tea.Model, tea.Cmd) {
 
 func (m Model) handleSettingsSaveConfirm(msg components.SettingsSaveConfirmMsg) (tea.Model, tea.Cmd) {
 	m.pendingSaveConfig = msg.Config
-	confirmMsg := fmt.Sprintf("Save settings to %s?", config.ConfigPath())
+	path := config.ConfigPath()
+	if home, err := os.UserHomeDir(); err == nil {
+		if rel, err := filepath.Rel(home, path); err == nil && !strings.HasPrefix(rel, "..") {
+			path = "~" + string(filepath.Separator) + rel
+		}
+	}
+	confirmMsg := fmt.Sprintf("Save settings to %s?", path)
 	m.appState.ConfirmMsg = confirmMsg
 	m.appState.ConfirmAction = "save-settings"
 	m.confirm.Message = confirmMsg

@@ -25,8 +25,6 @@ type SettingsSaveConfirmMsg struct {
 	Config config.Config
 }
 
-var _ tea.Msg = SettingsSaveConfirmMsg{}
-
 // SettingsClosedMsg is sent when the settings screen is closed.
 type SettingsClosedMsg struct{}
 

@@ -593,12 +593,15 @@ func TestSettingsView_TabSwitchAfterSPress(t *testing.T) {
 	sv.Update(keyType(tea.KeyEnter)) // toggle theme → dirty
 	sv.Update(keyPress("s"))         // emits SettingsSaveConfirmMsg; settings stays active
 
+	if len(sv.tabs) < 2 {
+		t.Skip("need multiple tabs to test switch")
+	}
 	startTab := sv.activeTab
 	// After 's', settings is still active and keys work normally again
 	// (the confirm dialog is at the app layer, not here).
 	sv.Update(keyPress("l"))
 	// Tab should switch since there is no pendingSave lock here anymore.
-	if sv.activeTab == startTab && len(sv.tabs) > 1 {
+	if sv.activeTab == startTab {
 		t.Errorf("expected tab to switch after 'l', still at %d", sv.activeTab)
 	}
 }
