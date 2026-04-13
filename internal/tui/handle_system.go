@@ -56,6 +56,12 @@ func (m Model) handleStateWatch(msg stateWatchMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleSettingsSaveRequest(msg components.SettingsSaveRequestMsg) (tea.Model, tea.Cmd) {
 	newCfg := msg.Config
 	if err := config.Save(newCfg); err != nil {
+		// Pop the (already-deactivated) settings view so the main statusbar
+		// can surface the error — otherwise the user sees a black screen.
+		if m.TopView() == ViewSettings {
+			m.settings.Close()
+			m.PopView()
+		}
 		return m, func() tea.Msg {
 			return ErrorMsg{Err: fmt.Errorf("save settings: %w", err)}
 		}
@@ -73,6 +79,10 @@ func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
 
 func (m Model) handleConfigSaved() (tea.Model, tea.Cmd) {
 	m.appState.LastError = "" // clear any previous error
+	if m.TopView() == ViewSettings {
+		m.settings.Close()
+		m.PopView()
+	}
 	return m, nil
 }
 

@@ -1,9 +1,15 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucascaro/hive/internal/config"
 )
 
 // openSettings pushes the Settings view via the configured keybinding ("S").
@@ -115,9 +121,54 @@ func TestFlow_Settings_SaveStillWorks(t *testing.T) {
 	if !f.model.settings.IsPendingSave() {
 		t.Fatal("precondition: expected pendingSave=true")
 	}
-	f.SendKey("y") // confirm
+	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}) // confirm
+	f.ExecCmdChain(cmd)                                                // run save + ConfigSavedMsg
 
 	if f.model.settings.Active {
 		t.Error("expected settings closed after save confirm")
+	}
+	if got := f.model.TopView(); got != ViewMain {
+		t.Errorf("expected TopView=ViewMain after save, got %v", got)
+	}
+	if strings.TrimSpace(f.View()) == "" {
+		t.Error("expected non-empty main view render after save, got blank")
+	}
+}
+
+func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("os.Chmod directory perms don't block writes on Windows")
+	}
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	openSettings(t, f)
+	f.SendSpecialKey(tea.KeyEnter) // toggle Theme → dirty
+	if !f.model.settings.IsDirty() {
+		t.Fatal("precondition: expected dirty")
+	}
+	f.SendKey("s")
+	if !f.model.settings.IsPendingSave() {
+		t.Fatal("precondition: expected pendingSave=true")
+	}
+
+	// Make the config dir read-only so config.Save fails atomically.
+	cfgDir := filepath.Dir(config.ConfigPath())
+	if err := os.Chmod(cfgDir, 0o500); err != nil {
+		t.Fatalf("chmod config dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfgDir, 0o700) })
+
+	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	f.ExecCmdChain(cmd)
+
+	if got := f.model.TopView(); got != ViewMain {
+		t.Errorf("TopView after save error = %v, want ViewMain (so statusbar renders)", got)
+	}
+	if f.model.appState.LastError == "" {
+		t.Error("LastError should be set after save failure")
+	}
+	if strings.TrimSpace(f.View()) == "" {
+		t.Error("expected non-empty render after save error, got blank")
 	}
 }
