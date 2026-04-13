@@ -2,7 +2,7 @@ package config
 
 import "github.com/lucascaro/hive/internal/mux"
 
-const currentSchemaVersion = 3
+const currentSchemaVersion = 4
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
@@ -20,6 +20,13 @@ func Migrate(cfg Config) Config {
 		// opt into a custom sound via Settings.
 		if cfg.BellSound == "" {
 			cfg.BellSound = DefaultConfig().BellSound
+		}
+	}
+	if cfg.SchemaVersion < 4 {
+		// 3 → 4: StartupView introduced (#78). Fill in the explicit default
+		// so existing users keep the sidebar-first behavior they already have.
+		if cfg.StartupView == "" {
+			cfg.StartupView = DefaultConfig().StartupView
 		}
 	}
 	if cfg.SchemaVersion < currentSchemaVersion {

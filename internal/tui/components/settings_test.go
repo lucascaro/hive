@@ -11,6 +11,7 @@ import (
 func testConfig() config.Config {
 	return config.Config{
 		Theme:            "dark",
+		StartupView:      "sidebar",
 		Multiplexer:      "tmux",
 		PreviewRefreshMs: 500,
 		Hooks: config.HooksConfig{
@@ -84,9 +85,9 @@ func TestSettingsView_BoolToggle(t *testing.T) {
 	cfg.HideAttachHint = false
 	sv.Open(cfg)
 
-	// General tab fields: Theme(0), Multiplexer(1), PreviewRefreshMs(2),
-	// AgentTitleOverrides(3), HideAttachHint(4), HideWhatsNew(5)
-	for i := 0; i < 4; i++ {
+	// General tab fields: Theme(0), StartupView(1), Multiplexer(2), PreviewRefreshMs(3),
+	// AgentTitleOverrides(4), HideAttachHint(5), HideWhatsNew(6)
+	for i := 0; i < 5; i++ {
 		sv.Update(keyPress("j"))
 	}
 	if f := sv.selectedField(); f == nil || f.label != "Hide Attach Hint" {
@@ -130,7 +131,8 @@ func TestSettingsView_IntValidation(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	// Navigate to PreviewRefreshMs (General tab, index 2)
+	// Navigate to PreviewRefreshMs (General tab, index 3)
+	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 	if f := sv.selectedField(); f == nil || f.label != "Preview Refresh (ms)" {
@@ -396,8 +398,8 @@ func TestSettings_HideWhatsNewToggle(t *testing.T) {
 	cfg.HideWhatsNew = false
 	sv.Open(cfg)
 
-	// General tab, Hide What's New is field index 5.
-	for i := 0; i < 5; i++ {
+	// General tab, Hide What's New is field index 6.
+	for i := 0; i < 6; i++ {
 		sv.Update(keyPress("j"))
 	}
 
@@ -427,7 +429,8 @@ func TestSettingsView_EditEscCancels(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	// Navigate to PreviewRefreshMs (General tab, index 2)
+	// Navigate to PreviewRefreshMs (General tab, index 3)
+	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 
@@ -572,7 +575,8 @@ func TestSettingsView_SwitchTab_BlockedWhileEditing(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	// Navigate to PreviewRefreshMs and start editing.
+	// Navigate to PreviewRefreshMs (General tab, index 3) and start editing.
+	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 	sv.Update(keyPress("j"))
 	sv.Update(keyType(tea.KeyEnter))

@@ -9,6 +9,11 @@ type Config struct {
 	HideAttachHint              bool                      `json:"hide_attach_hint,omitempty"`
 	HideWhatsNew                bool                      `json:"hide_whats_new,omitempty"`
 	LastSeenVersion             string                    `json:"last_seen_version,omitempty"`
+	// StartupView selects the initial view shown on startup.
+	// "sidebar" (default) shows the normal session list.
+	// "grid" opens the current-project grid.
+	// "grid-all" opens the all-projects grid.
+	StartupView                 string                    `json:"startup_view,omitempty"`
 	// BellSound selects the audio played when a background session rings
 	// its terminal bell. See internal/audio for the accepted identifiers
 	// (normal, bee, chime, ping, knock, silent).
