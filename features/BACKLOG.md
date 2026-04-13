@@ -7,7 +7,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| P2 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | RESEARCH | M |
 
 ## Rejected
 
@@ -55,3 +54,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #88 | Fix empty preview when session has insufficient text | — | — |
 | #78 | Persist user preferences — Startup View setting | — | — |
 | #89 | Extend grid cells to fill empty space in grid view | — | — |
+| #79 | Consolidate hotkey definitions and display between sidebar and grid modes | — | — |

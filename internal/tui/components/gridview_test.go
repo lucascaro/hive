@@ -23,7 +23,7 @@ func TestGridView_BellBadgeRendered(t *testing.T) {
 	gv.SetBellPending(map[string]bool{"s1": true})
 	gv.SetBellBlink(true) // blink-on state required to render the ♪ badge
 
-	out := gv.View()
+	out := gv.View("")
 	if !strings.Contains(out, "♪") {
 		t.Errorf("grid cell missing ♪ badge when bellPending=true; output:\n%s", out)
 	}
@@ -40,7 +40,7 @@ func TestGridView_NoBellBadgeWhenNotPending(t *testing.T) {
 	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
 	// No SetBellPending call — badge must be absent.
 
-	out := gv.View()
+	out := gv.View("")
 	if strings.Contains(out, "♪") {
 		t.Errorf("grid cell shows ♪ badge when bellPending=false; output:\n%s", out)
 	}
@@ -56,7 +56,7 @@ func TestGridViewView_ShowsStatusLegend(t *testing.T) {
 		{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
 	}, state.GridRestoreProject)
 
-	out := gv.View()
+	out := gv.View("")
 	for _, want := range []string{"idle", "working", "waiting", "dead"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("grid legend missing %q in output: %q", want, out)
@@ -81,7 +81,7 @@ func TestGridView_ExactHeight(t *testing.T) {
 	for _, d := range dims {
 		gv := &GridView{Active: true, Width: d.w, Height: d.h}
 		gv.Show(sessions, state.GridRestoreProject)
-		out := gv.View()
+		out := gv.View("")
 		got := strings.Count(out, "\n") + 1
 		if got != d.h {
 			t.Errorf("w=%d h=%d: View() = %d lines, want exactly %d",
@@ -103,7 +103,7 @@ func TestGridView_ExactHeight_VariousCounts(t *testing.T) {
 		for _, h := range []int{24, 30, 40, 50, 62} {
 			gv := &GridView{Active: true, Width: 160, Height: h}
 			gv.Show(allSessions[:n], state.GridRestoreProject)
-			out := gv.View()
+			out := gv.View("")
 			got := strings.Count(out, "\n") + 1
 			if got != h {
 				t.Errorf("n=%d h=%d: View() = %d lines, want exactly %d",
@@ -134,7 +134,7 @@ func TestGridView_WorktreeBadge(t *testing.T) {
 	}
 	gv := &GridView{Active: true, Width: 160, Height: 30}
 	gv.Show(sessions, state.GridRestoreProject)
-	out := gv.View()
+	out := gv.View("")
 
 	if !strings.Contains(out, "⎇") {
 		t.Error("expected worktree badge ⎇ for worktree sessions, not found")
@@ -165,7 +165,7 @@ func TestGridView_NoLineExceedsWidth(t *testing.T) {
 			"s1": wideContent + "\nsome output\n" + wideContent,
 			"s2": "normal content\nno wide lines",
 		})
-		out := gv.View()
+		out := gv.View("")
 
 		for i, line := range strings.Split(out, "\n") {
 			// Use byte length as a conservative upper bound for visible width.
@@ -199,7 +199,7 @@ func TestGridView_NarrowTerminalHintBar(t *testing.T) {
 	for _, w := range []int{60, 70, 80, 90, 92} {
 		gv := &GridView{Active: true, Width: w, Height: 24}
 		gv.Show(sessions, state.GridRestoreProject)
-		out := gv.View()
+		out := gv.View("")
 		lines := strings.Split(out, "\n")
 		if len(lines) != 24 {
 			t.Errorf("w=%d: View() = %d lines, want 24", w, len(lines))
@@ -228,7 +228,7 @@ func TestGridView_WideContentShowsLatestLines(t *testing.T) {
 	gv := &GridView{Active: true, Width: 120, Height: 30}
 	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
 	gv.SetContents(map[string]string{"s1": content})
-	out := gv.View()
+	out := gv.View("")
 	if !strings.Contains(out, "RECENT_OUTPUT_MARKER") {
 		t.Error("grid cell does not show the most-recent content line (RECENT_OUTPUT_MARKER missing)")
 	}
@@ -255,7 +255,7 @@ func TestGridView_CellRendersWithProjectColor(t *testing.T) {
 	gv.Show(sessions, state.GridRestoreAll)
 	gv.SetProjectNames(map[string]string{"p1": "project-one", "p2": "project-two"})
 	gv.SetProjectColors(map[string]string{"p1": "#EF4444", "p2": "#3B82F6"})
-	out := gv.View()
+	out := gv.View("")
 
 	if !strings.Contains(out, "alpha") {
 		t.Error("grid view missing session title 'alpha'")
@@ -272,7 +272,7 @@ func TestGridView_CellRendersWithEmptyProjectColor(t *testing.T) {
 	gv := &GridView{Active: true, Width: 100, Height: 20}
 	gv.Show(sessions, state.GridRestoreProject)
 	// No SetProjectColors — should use fallback without panic.
-	out := gv.View()
+	out := gv.View("")
 	if !strings.Contains(out, "test") {
 		t.Error("grid view missing session title with nil projectColors")
 	}
@@ -290,7 +290,7 @@ func TestGridView_CellRendersAllStatuses(t *testing.T) {
 		gv := &GridView{Active: true, Width: 80, Height: 20}
 		gv.Show(sessions, state.GridRestoreProject)
 		gv.SetProjectColors(map[string]string{"p1": "#F59E0B"})
-		out := gv.View()
+		out := gv.View("")
 		if out == "" {
 			t.Errorf("grid view returned empty for status %q", status)
 		}
@@ -356,30 +356,21 @@ func TestGridView_CursorWrap(t *testing.T) {
 		return gv
 	}
 
-	key := func(s string) tea.KeyMsg {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-	}
-
 	tests := []struct {
 		name      string
 		cursor    int
 		key       tea.KeyMsg
 		wantCursor int
 	}{
-		// Normal movement within a row
-		{"right within row", 0, key("l"), 1},
-		{"left within row", 1, key("h"), 0},
+		// Normal movement within a row (arrow keys only)
+		{"right within row", 0, tea.KeyMsg{Type: tea.KeyRight}, 1},
+		{"left within row", 1, tea.KeyMsg{Type: tea.KeyLeft}, 0},
 		// Wrapping across rows
-		{"right wraps to next row", 2, key("l"), 3},
-		{"left wraps to prev row", 3, key("h"), 2},
+		{"right wraps to next row", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
+		{"left wraps to prev row", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
 		// No wrap at boundaries
-		{"right at last session stays", 4, key("l"), 4},
-		{"left at index 0 stays", 0, key("h"), 0},
-		// Arrow keys work too
-		{"arrow right wraps", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
-		{"arrow left wraps", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
-		// "d" alias for right
-		{"d key wraps to next row", 2, key("d"), 3},
+		{"right at last session stays", 4, tea.KeyMsg{Type: tea.KeyRight}, 4},
+		{"left at index 0 stays", 0, tea.KeyMsg{Type: tea.KeyLeft}, 0},
 	}
 
 	for _, tc := range tests {
@@ -408,34 +399,30 @@ func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
 		gv.Cursor = cursor
 		return gv
 	}
-	key := func(s string) tea.KeyMsg {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
-	}
-
 	t.Run("right wraps to next row", func(t *testing.T) {
 		gv := makeGV(0)
-		gv.Update(key("l"))
+		gv.Update(tea.KeyMsg{Type: tea.KeyRight})
 		if gv.Cursor != 1 {
 			t.Errorf("Cursor = %d, want 1", gv.Cursor)
 		}
 	})
 	t.Run("left wraps to prev row", func(t *testing.T) {
 		gv := makeGV(1)
-		gv.Update(key("h"))
+		gv.Update(tea.KeyMsg{Type: tea.KeyLeft})
 		if gv.Cursor != 0 {
 			t.Errorf("Cursor = %d, want 0", gv.Cursor)
 		}
 	})
 	t.Run("right at last stays", func(t *testing.T) {
 		gv := makeGV(1)
-		gv.Update(key("l"))
+		gv.Update(tea.KeyMsg{Type: tea.KeyRight})
 		if gv.Cursor != 1 {
 			t.Errorf("Cursor = %d, want 1", gv.Cursor)
 		}
 	})
 	t.Run("left at first stays", func(t *testing.T) {
 		gv := makeGV(0)
-		gv.Update(key("h"))
+		gv.Update(tea.KeyMsg{Type: tea.KeyLeft})
 		if gv.Cursor != 0 {
 			t.Errorf("Cursor = %d, want 0", gv.Cursor)
 		}
@@ -586,7 +573,7 @@ func TestGridView_LastRowFillsHeight(t *testing.T) {
 			}
 			gv := &GridView{Active: true, Width: tc.w, Height: tc.h}
 			gv.Show(sessions, state.GridRestoreProject)
-			out := gv.View()
+			out := gv.View("")
 
 			// Height invariant must hold.
 			got := strings.Count(out, "\n") + 1

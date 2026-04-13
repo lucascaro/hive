@@ -53,7 +53,7 @@ func TestFlow_BellSoundInSettings(t *testing.T) {
 			break
 		}
 		prev := f.model.settings.TabCursor(0)
-		f.SendKey("j")
+		f.SendSpecialKey(tea.KeyDown)
 		if f.model.settings.TabCursor(0) == prev {
 			t.Fatalf("reached end of General tab without finding %q field", wantLabel)
 		}

@@ -197,7 +197,7 @@ func (dp *DirPicker) Update(msg tea.Msg) (tea.Cmd, bool) {
 				dp.Active = false
 				dir := dp.currentDir
 				return func() tea.Msg { return DirPickedMsg{Dir: dir} }, true
-			case "h", "left", "backspace":
+			case "left", "backspace":
 				parent := filepath.Dir(dp.currentDir)
 				if parent != dp.currentDir {
 					dp.loadDir(parent)

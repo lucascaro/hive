@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,6 +21,7 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
+	"github.com/lucascaro/hive/internal/tui/styles"
 )
 
 var (
@@ -111,6 +113,10 @@ type Model struct {
 	// viewStack tracks the active view layers. ViewMain is always at the bottom.
 	// Push to open a view, pop to close it. TopView() drives View() and key dispatch.
 	viewStack []ViewID
+	// helpModel renders the one-line key hints in the statusbar and the full
+	// help overlay. It implements help.KeyMap via KeyMap.ShortHelp/FullHelp.
+	helpModel     help.Model
+	gridHelpModel help.Model
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -156,6 +162,8 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		bellPending:         make(map[string]bool),
 		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
+		helpModel:           help.New(),
+		gridHelpModel:       help.New(),
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
@@ -383,7 +391,9 @@ func (m Model) View() string {
 	case ViewGrid:
 		m.gridView.Width = m.appState.TermWidth
 		m.gridView.Height = m.appState.TermHeight
-		return m.gridView.View()
+		m.gridHelpModel.Width = m.appState.TermWidth
+		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
+		return m.gridView.View(gridHints)
 	case ViewHelp:
 		return m.helpView()
 	case ViewTmuxHelp:
@@ -430,7 +440,7 @@ func (m Model) View() string {
 
 	sidebarView := m.sidebar.View(m.appState.ActiveSessionID, m.appState.FocusedPane == state.PaneSidebar)
 	previewView := m.preview.View(m.appState.ActiveSessionID)
-	statusView := m.statusBar.View(&m.appState, m.appState.FocusedPane, m.appState.FilterActive, m.appState.FilterQuery)
+	statusView := m.statusBar.View(&m.appState, m.buildStatusHints())
 
 	sidebarLines := strings.Count(sidebarView, "\n") + 1
 	previewLines := strings.Count(previewView, "\n") + 1
@@ -506,6 +516,22 @@ func (m *Model) recomputeLayout() {
 	m.sidebar.Height = ch
 	m.preview.Resize(pw, ch)
 	m.statusBar.Width = m.appState.TermWidth
+}
+
+// buildStatusHints returns the pre-computed hint line for the statusbar.
+// Special-case states (filter) return custom strings; otherwise the
+// hints are rendered via bubbles/help from the key map, with the status
+// legend appended at the end.
+func (m *Model) buildStatusHints() string {
+	legend := "  " + styles.MutedStyle.Render(styles.StatusLegend())
+	if m.appState.FilterActive {
+		return fmt.Sprintf("Filter: %s  [esc: clear]", m.appState.FilterQuery+"_") + legend
+	}
+	if m.appState.FocusedPane == state.PanePreview {
+		return "?:help  tab:sidebar  a:attach  ctrl+r:refresh  q:quit" + legend
+	}
+	m.helpModel.Width = m.statusBar.Width - 3
+	return m.helpModel.View(m.keys) + legend
 }
 
 // commitState rebuilds the sidebar from the current app state and persists to disk.

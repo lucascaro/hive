@@ -50,9 +50,9 @@ func TestFlow_Settings_TabSwitchHL(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	openSettings(t, f)
-	f.SendKey("l")
-	f.SendKey("l")
-	f.SendKey("h")
+	f.SendSpecialKey(tea.KeyRight)
+	f.SendSpecialKey(tea.KeyRight)
+	f.SendSpecialKey(tea.KeyLeft)
 	if got := f.model.settings.ActiveTab(); got != 1 {
 		t.Fatalf("expected activeTab=1 after l,l,h, got %d", got)
 	}
@@ -64,19 +64,19 @@ func TestFlow_Settings_PerTabCursorPreserved(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	openSettings(t, f)
-	f.SendKey("j")
-	f.SendKey("j")
+	f.SendSpecialKey(tea.KeyDown)
+	f.SendSpecialKey(tea.KeyDown)
 	if got := f.model.settings.TabCursor(0); got != 2 {
 		t.Fatalf("tab 0 cursor after 2×j = %d, want 2", got)
 	}
 
-	f.SendKey("l")
-	f.SendKey("j")
+	f.SendSpecialKey(tea.KeyRight)
+	f.SendSpecialKey(tea.KeyDown)
 	if got := f.model.settings.TabCursor(1); got != 1 {
 		t.Fatalf("tab 1 cursor after j = %d, want 1", got)
 	}
 
-	f.SendKey("h")
+	f.SendSpecialKey(tea.KeyLeft)
 	if got := f.model.settings.TabCursor(0); got != 2 {
 		t.Errorf("tab 0 cursor after return = %d, want 2 (preserved)", got)
 	}
@@ -91,16 +91,16 @@ func TestFlow_Settings_EditBlocksTabSwitch(t *testing.T) {
 
 	openSettings(t, f)
 	// Navigate to Preview Refresh (int field, index 3) and start editing.
-	f.SendKey("j")
-	f.SendKey("j")
-	f.SendKey("j")
+	f.SendSpecialKey(tea.KeyDown)
+	f.SendSpecialKey(tea.KeyDown)
+	f.SendSpecialKey(tea.KeyDown)
 	f.SendSpecialKey(tea.KeyEnter)
 	if !f.model.settings.IsEditing() {
 		t.Fatal("precondition: expected editing=true")
 	}
 
 	before := f.model.settings.ActiveTab()
-	f.SendKey("l") // should be routed to text input, not switch tabs
+	f.SendSpecialKey(tea.KeyRight) // should be routed to text input, not switch tabs
 	if got := f.model.settings.ActiveTab(); got != before {
 		t.Errorf("activeTab changed while editing: got %d, want %d", got, before)
 	}

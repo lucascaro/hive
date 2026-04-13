@@ -48,7 +48,7 @@ func TestSettingsView_OpenAndClose(t *testing.T) {
 
 func TestSettingsView_InactiveConsumesFalse(t *testing.T) {
 	sv := NewSettingsView()
-	_, consumed := sv.Update(keyPress("j"))
+	_, consumed := sv.Update(keyType(tea.KeyDown))
 	if consumed {
 		t.Error("expected consumed=false when inactive")
 	}
@@ -62,18 +62,18 @@ func TestSettingsView_CursorNavigation(t *testing.T) {
 		t.Errorf("initial cursor=%d, want 0", sv.cursor())
 	}
 
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
 	if sv.cursor() != 1 {
 		t.Errorf("after j: cursor=%d, want 1", sv.cursor())
 	}
 
-	sv.Update(keyPress("k"))
+	sv.Update(keyType(tea.KeyUp))
 	if sv.cursor() != 0 {
 		t.Errorf("after k: cursor=%d, want 0", sv.cursor())
 	}
 
 	// Clamp at top
-	sv.Update(keyPress("k"))
+	sv.Update(keyType(tea.KeyUp))
 	if sv.cursor() != 0 {
 		t.Errorf("clamp top: cursor=%d, want 0", sv.cursor())
 	}
@@ -88,7 +88,7 @@ func TestSettingsView_BoolToggle(t *testing.T) {
 	// General tab fields: Theme(0), StartupView(1), Multiplexer(2), PreviewRefreshMs(3),
 	// AgentTitleOverrides(4), HideAttachHint(5), HideWhatsNew(6)
 	for i := 0; i < 5; i++ {
-		sv.Update(keyPress("j"))
+		sv.Update(keyType(tea.KeyDown))
 	}
 	if f := sv.selectedField(); f == nil || f.label != "Hide Attach Hint" {
 		t.Fatalf("expected field 'Hide Attach Hint', got %v", f)
@@ -132,9 +132,9 @@ func TestSettingsView_IntValidation(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Navigate to PreviewRefreshMs (General tab, index 3)
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
 	if f := sv.selectedField(); f == nil || f.label != "Preview Refresh (ms)" {
 		t.Fatalf("expected field 'Preview Refresh (ms)', got %v", f)
 	}
@@ -181,9 +181,9 @@ func TestSettingsView_StringValidation_EmptyKeybinding(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Keybindings is the 4th tab (index 3). Toggle Collapse is its first field.
-	sv.Update(keyPress("l")) // to Team Defaults
-	sv.Update(keyPress("l")) // to Hooks
-	sv.Update(keyPress("l")) // to Keybindings
+	sv.Update(keyType(tea.KeyRight)) // to Team Defaults
+	sv.Update(keyType(tea.KeyRight)) // to Hooks
+	sv.Update(keyType(tea.KeyRight)) // to Keybindings
 	if f := sv.selectedField(); f == nil || f.label != "Toggle Collapse" {
 		t.Fatalf("expected field 'Toggle Collapse', got %v", f)
 	}
@@ -202,9 +202,9 @@ func TestSettingsView_StringValidation_EmptyHooksDir(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Hooks tab (index 2), HooksDir is field index 1.
-	sv.Update(keyPress("l")) // Team Defaults
-	sv.Update(keyPress("l")) // Hooks
-	sv.Update(keyPress("j")) // to Hooks Directory
+	sv.Update(keyType(tea.KeyRight)) // Team Defaults
+	sv.Update(keyType(tea.KeyRight)) // Hooks
+	sv.Update(keyType(tea.KeyDown)) // to Hooks Directory
 	if f := sv.selectedField(); f == nil || f.label != "Hooks Directory" {
 		t.Fatalf("expected field 'Hooks Directory', got %v", f)
 	}
@@ -294,7 +294,7 @@ func TestSettingsView_PendingDiscardClearedByOtherKey(t *testing.T) {
 	}
 
 	// Another key should clear pendingDiscard
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
 	if sv.pendingDiscard {
 		t.Error("expected pendingDiscard=false after other key")
 	}
@@ -400,7 +400,7 @@ func TestSettings_HideWhatsNewToggle(t *testing.T) {
 
 	// General tab, Hide What's New is field index 6.
 	for i := 0; i < 6; i++ {
-		sv.Update(keyPress("j"))
+		sv.Update(keyType(tea.KeyDown))
 	}
 
 	f := sv.selectedField()
@@ -430,9 +430,9 @@ func TestSettingsView_EditEscCancels(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Navigate to PreviewRefreshMs (General tab, index 3)
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
 
 	// Start editing
 	sv.Update(keyType(tea.KeyEnter))
@@ -492,7 +492,7 @@ func TestSettingsView_SwitchTab_Right_ClampsAtLast(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.activeTab != 1 {
 		t.Fatalf("after l: activeTab=%d, want 1", sv.activeTab)
 	}
@@ -513,7 +513,7 @@ func TestSettingsView_SwitchTab_Left_ClampsAtZero(t *testing.T) {
 	if sv.activeTab != 0 {
 		t.Errorf("clamp zero: activeTab=%d, want 0", sv.activeTab)
 	}
-	sv.Update(keyPress("h"))
+	sv.Update(keyType(tea.KeyLeft))
 	if sv.activeTab != 0 {
 		t.Errorf("clamp zero (h): activeTab=%d, want 0", sv.activeTab)
 	}
@@ -523,12 +523,12 @@ func TestSettingsView_SwitchTab_HLMatchesArrows(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
-	sv.Update(keyPress("l"))
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.activeTab != 2 {
 		t.Errorf("l l: activeTab=%d, want 2", sv.activeTab)
 	}
-	sv.Update(keyPress("h"))
+	sv.Update(keyType(tea.KeyLeft))
 	if sv.activeTab != 1 {
 		t.Errorf("h: activeTab=%d, want 1", sv.activeTab)
 	}
@@ -539,24 +539,24 @@ func TestSettingsView_SwitchTab_PreservesPerTabCursor(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Move cursor on tab 0 (General) to index 2.
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
 	if sv.cursor() != 2 {
 		t.Fatalf("tab 0 cursor=%d, want 2", sv.cursor())
 	}
 
 	// Switch to tab 1 (Team Defaults); cursor should start at 0.
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.cursor() != 0 {
 		t.Fatalf("tab 1 initial cursor=%d, want 0", sv.cursor())
 	}
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
 	if sv.cursor() != 1 {
 		t.Fatalf("tab 1 cursor=%d, want 1", sv.cursor())
 	}
 
 	// Back to tab 0; cursor should still be 2.
-	sv.Update(keyPress("h"))
+	sv.Update(keyType(tea.KeyLeft))
 	if sv.activeTab != 0 {
 		t.Fatalf("expected activeTab=0, got %d", sv.activeTab)
 	}
@@ -565,7 +565,7 @@ func TestSettingsView_SwitchTab_PreservesPerTabCursor(t *testing.T) {
 	}
 
 	// Forward to tab 1 again; cursor should still be 1.
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.cursor() != 1 {
 		t.Errorf("tab 1 cursor after return=%d, want 1", sv.cursor())
 	}
@@ -576,9 +576,9 @@ func TestSettingsView_SwitchTab_BlockedWhileEditing(t *testing.T) {
 	sv.Open(testConfig())
 
 	// Navigate to PreviewRefreshMs (General tab, index 3) and start editing.
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
-	sv.Update(keyPress("j"))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
+	sv.Update(keyType(tea.KeyDown))
 	sv.Update(keyType(tea.KeyEnter))
 	if !sv.editing {
 		t.Fatal("precondition: expected editing=true")
@@ -586,7 +586,7 @@ func TestSettingsView_SwitchTab_BlockedWhileEditing(t *testing.T) {
 
 	startTab := sv.activeTab
 	// "l" should route to the edit input, not switch tabs.
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.activeTab != startTab {
 		t.Errorf("activeTab changed while editing: got %d, want %d", sv.activeTab, startTab)
 	}
@@ -607,7 +607,7 @@ func TestSettingsView_SwitchTab_BlockedWhilePendingSave(t *testing.T) {
 
 	startTab := sv.activeTab
 	// "l" isn't y/enter — it cancels pending save but must NOT switch tabs.
-	sv.Update(keyPress("l"))
+	sv.Update(keyType(tea.KeyRight))
 	if sv.activeTab != startTab {
 		t.Errorf("activeTab changed while pendingSave: got %d, want %d", sv.activeTab, startTab)
 	}
@@ -644,8 +644,8 @@ func TestSettingsView_View_ShowsActiveTabContent(t *testing.T) {
 	}
 
 	// Switch to Hooks.
-	sv.Update(keyPress("l")) // Team Defaults
-	sv.Update(keyPress("l")) // Hooks
+	sv.Update(keyType(tea.KeyRight)) // Team Defaults
+	sv.Update(keyType(tea.KeyRight)) // Hooks
 	v = sv.View()
 	if !contains(v, "Hooks Enabled") {
 		t.Errorf("expected Hooks tab content (Hooks Enabled) in view")

@@ -220,7 +220,7 @@ func TestFlow_GridNavigateAndSelect(t *testing.T) {
 	f.AssertGridActive(true)
 
 	// Navigate right to second session.
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Verify grid still active and renders both sessions.
 	f.AssertGridActive(true)
@@ -274,7 +274,7 @@ func TestFlow_GridAllToProject_PreservesSession(t *testing.T) {
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
 	f.AssertGridActive(true)
 	f.AssertGridMode(state.GridRestoreAll)
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	pre := f.Model()
 	if preSel := pre.gridView.Selected(); preSel == nil || preSel.ID != "sess-2" {
@@ -476,7 +476,7 @@ func TestFlow_GridExitSyncsSidebar(t *testing.T) {
 	f.AssertGridActive(true)
 
 	// Navigate right to second session (sess-2).
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Exit grid with esc.
 	f.SendSpecialKey(tea.KeyEscape)
@@ -504,7 +504,7 @@ func TestFlow_GridAttachSetsActiveSessionID(t *testing.T) {
 
 	// Open all-projects grid and navigate to sess-2.
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Press enter to select — grid emits GridSessionSelectedMsg via cmd.
 	cmd := f.SendSpecialKey(tea.KeyEnter)
@@ -551,7 +551,7 @@ func TestFlow_GridSelectAttachDetachRoundTrip(t *testing.T) {
 
 	// Open all-projects grid and navigate to sess-2.
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Select sess-2 via enter.
 	cmd := f.SendSpecialKey(tea.KeyEnter)
@@ -593,7 +593,7 @@ func TestFlow_GridExitSyncsActiveProjectID(t *testing.T) {
 	f.AssertGridActive(true)
 
 	// Navigate right to sess-2 (proj-2).
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Exit grid with esc.
 	f.ExecCmdChain(f.SendSpecialKey(tea.KeyEscape))
@@ -617,7 +617,7 @@ func TestFlow_GridAttachSyncsActiveProjectID(t *testing.T) {
 
 	// Open all-projects grid and navigate to sess-2 (proj-2).
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Press enter to select → attach.
 	cmd := f.SendSpecialKey(tea.KeyEnter)
@@ -640,7 +640,7 @@ func TestFlow_GridExitStartsPreviewPoll(t *testing.T) {
 
 	// Open all-projects grid and navigate to sess-2.
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
-	f.SendKey("l")
+	f.SendSpecialKey(tea.KeyRight)
 
 	// Exit grid with esc.
 	f.ExecCmdChain(f.SendSpecialKey(tea.KeyEscape))
@@ -895,5 +895,43 @@ func TestFlow_StartupView_DoesNotConflictWithRestoreGridMode(t *testing.T) {
 	}
 	if gridCount != 1 {
 		t.Errorf("viewStack has %d ViewGrid entries, want 1", gridCount)
+	}
+}
+
+// TestFlow_GridQuitQuitsApp verifies that pressing q while in grid view quits
+// the app (same as in sidebar view), rather than just exiting the grid.
+func TestFlow_GridQuitQuitsApp(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Open project grid.
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	// Press q — should emit tea.Quit, not just close the grid.
+	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd == nil {
+		t.Fatal("q in grid should return a non-nil Cmd (tea.Quit)")
+	}
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Errorf("q in grid produced %T, want tea.QuitMsg", msg)
+	}
+}
+
+// TestFlow_GridHelpOpensPushesViewHelp verifies that pressing ? in grid view
+// opens the help overlay (same as in sidebar view).
+func TestFlow_GridHelpOpensPushesViewHelp(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Open project grid.
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	// Press ? — should push ViewHelp on top of the stack.
+	f.SendKey("?")
+	if f.model.TopView() != ViewHelp {
+		t.Errorf("after ? in grid: TopView=%v, want ViewHelp", f.model.TopView())
 	}
 }

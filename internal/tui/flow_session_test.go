@@ -154,7 +154,7 @@ func TestFlow_SessionSwitch_PreviewClearAndCache(t *testing.T) {
 	// Navigate down to session 2.
 	// Sidebar items order: project-1 header, session-1, project-2 header, session-2.
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-2"; i++ {
-		f.SendKey("j")
+		f.SendSpecialKey(tea.KeyDown)
 	}
 
 	if f.Model().appState.ActiveSessionID != "sess-2" {
@@ -167,7 +167,7 @@ func TestFlow_SessionSwitch_PreviewClearAndCache(t *testing.T) {
 
 	// Navigate back to session 1 — cached content should be restored from contentSnapshots.
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-1"; i++ {
-		f.SendKey("k")
+		f.SendSpecialKey(tea.KeyUp)
 	}
 
 	if f.Model().appState.ActiveSessionID == "sess-1" {
@@ -521,7 +521,7 @@ func TestFlow_KillSession_LastInGroup(t *testing.T) {
 
 	// Navigate to sess-3 (last session).
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-3"; i++ {
-		f.SendKey("j")
+		f.SendSpecialKey(tea.KeyDown)
 	}
 	f.AssertActiveSession("sess-3")
 

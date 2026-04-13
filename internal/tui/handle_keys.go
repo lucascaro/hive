@@ -77,6 +77,26 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Width = m.appState.TermWidth
 	m.gridView.Height = m.appState.TermHeight
 
+	// Actions that work consistently across sidebar and grid.
+	if key.Matches(msg, m.keys.Quit) {
+		return tea.Quit
+	}
+	if key.Matches(msg, m.keys.Help) {
+		m.PushView(ViewHelp)
+		return nil
+	}
+	if key.Matches(msg, m.keys.TmuxHelp) {
+		m.PushView(ViewTmuxHelp)
+		return nil
+	}
+	if key.Matches(msg, m.keys.Settings) {
+		m.settings.Width = m.appState.TermWidth
+		m.settings.Height = m.appState.TermHeight
+		m.settings.Open(m.cfg)
+		m.PushView(ViewSettings)
+		return nil
+	}
+
 	// Grid uses Shift+Left/Right for reorder (horizontal layout is more natural).
 	// Also accept Shift+Up/Down as aliases for consistency.
 	if key.Matches(msg, m.keys.MoveLeft) || key.Matches(msg, m.keys.MoveUp) {

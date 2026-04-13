@@ -37,4 +37,4 @@
                                 ││                                                                                     │
                                 │╰─────────────────────────────────────────────────────────────────────────────────────╯
  hive / test-project-1 / session-1 [claude] ● [running]                                                                 
- Filter: sess_  [esc: clear]                                                                                            
+ Filter: sess_  [esc: clear]  ○ idle  ● working  ◉ waiting  ✕ dead                                                      
