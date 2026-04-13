@@ -212,6 +212,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	prevSel := m.gridView.Selected()
+	// Remaining keys (including h/l) are delegated to the grid component.
+	// CollapseItem/ExpandItem (h/l) are intentionally not wired here — in grid
+	// mode h/l navigate the cursor left/right, which is the expected behavior.
 	cmd, _ := m.gridView.Update(msg)
 	// gridView.Update may set Active=false (esc/q/enter). Detect that and
 	// pop the grid from the stack, syncing state to the selected session.

@@ -97,6 +97,9 @@ func TestUniqueKeys(t *testing.T) {
 		{[]string{"k", "up"}, []string{"k", "up"}},
 		{[]string{"up", "k"}, []string{"up", "k"}},
 		{[]string{"a", "b", "a"}, []string{"a", "b"}},
+		{[]string{"", "up"}, []string{"up"}},        // empty primary skipped
+		{[]string{"", ""}, []string{}},               // all-empty → no keys
+		{[]string{}, []string{}},                     // no input
 	}
 	for _, tc := range cases {
 		got := uniqueKeys(tc.in...)

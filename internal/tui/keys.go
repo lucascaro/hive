@@ -42,12 +42,12 @@ type KeyMap struct {
 	Cancel         key.Binding
 }
 
-// uniqueKeys returns keys deduplicated, preserving order.
+// uniqueKeys returns keys deduplicated, preserving order. Empty strings are skipped.
 func uniqueKeys(keys ...string) []string {
 	seen := make(map[string]bool, len(keys))
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
-		if !seen[k] {
+		if k != "" && !seen[k] {
 			seen[k] = true
 			out = append(out, k)
 		}
