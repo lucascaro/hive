@@ -57,4 +57,5 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | — | — |
 | #93 | Show confirmation dialog when saving settings | — | — |
 | #94 | Play bell sound on selection and add volume control in settings | — | — |
+| #98 | Constrain settings panel max-width on wide screens | #99 | 2026-04-12 |
 | #100 | Fix arrow key navigation in sidepanel view | #102 | — |

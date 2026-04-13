@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`d` kill-session alias removed**: sessions are killed with `x` only; the `d` alias no longer works (#79).
 - **Consistent grid actions**: `?` (help), `S` (settings), `H` (tmux reference), and `q` (quit app) now work in grid view the same as in sidebar view. Previously `q` in the grid only closed the grid; it now quits the app. Use `Esc` or `g`/`G` to exit the grid without quitting (#79).
 - **Settings save confirmation dialog**: saving settings (`s`) now opens a modal confirmation dialog instead of the inline status-bar prompt, making the action more visible and consistent with other destructive-action dialogs (#93).
+- **Settings panel max-width**: settings panel now caps at 100 columns and is centered on wider terminals, making it easier to use without stretching across the full screen (#98).
 - **Grid fills empty space**: when sessions don't evenly fill the grid layout, the last row now expands to use the remaining screen height instead of leaving a blank cell at the bottom (#89).
 
 ### Fixed
