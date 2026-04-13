@@ -21,6 +21,7 @@ func TestGridView_BellBadgeRendered(t *testing.T) {
 	sess := &state.Session{ID: "s1", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning}
 	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
 	gv.SetBellPending(map[string]bool{"s1": true})
+	gv.SetBellBlink(true) // blink-on state required to render the ♪ badge
 
 	out := gv.View()
 	if !strings.Contains(out, "♪") {

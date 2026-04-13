@@ -128,6 +128,10 @@ type ConfigSavedMsg struct {
 	Config config.Config
 }
 
+// bellBlinkMsg is sent by the bell-blink ticker to toggle the animated bell
+// badge on/off in the sidebar and grid view.
+type bellBlinkMsg struct{}
+
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}
 var _ tea.Msg = AttachDoneMsg{}

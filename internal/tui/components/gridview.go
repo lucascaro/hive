@@ -57,6 +57,7 @@ type GridView struct {
 	sessionColors map[string]string // sessionID → hex color
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
+	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 }
 
 // Show activates the grid with the given sessions.
@@ -106,6 +107,11 @@ func (gv *GridView) SetPaneTitles(titles map[string]string) {
 // Keyed by sessionID; cells with a pending bell display a ♪ badge.
 func (gv *GridView) SetBellPending(bells map[string]bool) {
 	gv.bellPending = bells
+}
+
+// SetBellBlink updates the animated on/off state for the bell badge.
+func (gv *GridView) SetBellBlink(on bool) {
+	gv.bellBlinkOn = on
 }
 
 // BellPendingForTest reports whether the given sessionID has a pending bell.
@@ -286,10 +292,11 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	// Keep the status dot and agent badge on a dark background so their
 	// bright foreground colors remain legible regardless of project color.
 	darkBg := lipgloss.Color(styles.ColorBg)
-	// Bell badge replaces the status dot when a bell is pending. Both glyphs
-	// are one character wide so the layout is undisturbed.
+	// Bell badge replaces the status dot when a bell is pending. The badge is
+	// toggled on/off by bellBlinkOn (driven by a tea.Tick in the Model) to
+	// create a software blink effect independent of terminal ANSI blink.
 	var dotOrBell string
-	if gv.bellPending[sess.ID] {
+	if gv.bellPending[sess.ID] && gv.bellBlinkOn {
 		dotOrBell = styles.BellBadgeOnBg(darkBg)
 	} else {
 		dotOrBell = styles.StatusDotOnBg(string(sess.Status), darkBg)
