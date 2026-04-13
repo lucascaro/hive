@@ -1,7 +1,7 @@
 # Feature: Fix arrow key navigation in sidepanel view
 
 - **GitHub Issue:** #100
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
@@ -61,4 +61,4 @@ Fix arrow key navigation in two parts: (1) make canonical arrow keys permanent a
 - Added `SidebarView: "s"` keybinding (configurable) that focuses sidebar pane in main view and closes grid in grid view.
 - Golden file `TestGolden_HelpOverlay.golden` updated to reflect new `←/h`, `→/l` and `s sidebar view` entries.
 
-- **PR:** —
+- **PR:** #102

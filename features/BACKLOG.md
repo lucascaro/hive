@@ -7,7 +7,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #100 | Fix arrow key navigation in sidepanel view | IMPLEMENT | S |
 
 ## Rejected
 
@@ -58,3 +57,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | — | — |
 | #93 | Show confirmation dialog when saving settings | — | — |
 | #94 | Play bell sound on selection and add volume control in settings | — | — |
+| #100 | Fix arrow key navigation in sidepanel view | #102 | — |
