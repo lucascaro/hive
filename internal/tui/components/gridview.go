@@ -514,17 +514,46 @@ func (gv *GridView) CellAt(x, y int) (idx int, ok bool) {
 	rows := (n + cols - 1) / cols
 	const hintH = 2
 	cellW := gv.Width / cols
-	cellH := (gv.Height - hintH) / rows
+	totalH := gv.Height - hintH
+	cellH := totalH / rows
 	if cellH < 5 {
 		cellH = 5
+	}
+	lastCellH := totalH - (rows-1)*cellH
+	if lastCellH < 5 {
+		lastCellH = 5
 	}
 	// Clicks in the hint bar at the bottom are ignored.
 	if y >= gv.Height-hintH {
 		return -1, false
 	}
 	col := x / cellW
-	row := y / cellH
-	if col >= cols || row >= rows {
+	if col >= cols {
+		return -1, false
+	}
+	// Determine the row accounting for variable last-row height.
+	// Columns with no content in the last row have their last real cell
+	// extended by lastCellH, so clicks in that extension belong to rows-2.
+	emptyInLastRow := n%cols != 0 && col >= n%cols
+	var row int
+	if emptyInLastRow {
+		// This column only has rows-1 cells; the last one is extended.
+		extendedCellH := cellH + lastCellH
+		if y < (rows-1)*cellH {
+			row = y / cellH
+		} else if y < (rows-1)*cellH+extendedCellH {
+			row = rows - 2
+		} else {
+			return -1, false
+		}
+	} else {
+		if y < (rows-1)*cellH {
+			row = y / cellH
+		} else {
+			row = rows - 1
+		}
+	}
+	if row >= rows {
 		return -1, false
 	}
 	i := row*cols + col
