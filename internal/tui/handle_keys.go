@@ -105,6 +105,12 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			prevID := ""
 			if s := m.gridView.Selected(); s != nil {
 				prevID = s.ID
+				// Sync active state to the selected session's project before
+				// filtering — otherwise gridSessions(GridRestoreProject) uses
+				// the stale ActiveProjectID and drops the session we want.
+				m.appState.ActiveSessionID = s.ID
+				m.appState.ActiveProjectID = s.ProjectID
+				m.appState.ActiveTeamID = s.TeamID
 			}
 			m.gridView.SyncState(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 			return m.scheduleGridPoll()
@@ -120,6 +126,11 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		prevID := ""
 		if s := m.gridView.Selected(); s != nil {
 			prevID = s.ID
+			// Keep active state in sync with the selected session so grid
+			// exit (popGridState) lands on the right project.
+			m.appState.ActiveSessionID = s.ID
+			m.appState.ActiveProjectID = s.ProjectID
+			m.appState.ActiveTeamID = s.TeamID
 		}
 		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 		return m.scheduleGridPoll()
