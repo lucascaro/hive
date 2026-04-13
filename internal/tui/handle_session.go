@@ -94,6 +94,7 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.sidebar.Rebuild(&m.appState)
 	m.sidebar.SetBellPending(m.bellPending)
 	m.gridView.SetBellPending(m.bellPending)
+	m.gridView.SetBellBlink(m.bellBlinkOn)
 	m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 	m.previewPollGen++
 	m.appState.PreviewContent = ""
