@@ -81,6 +81,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	if key.Matches(msg, m.keys.Quit) {
 		return tea.Quit
 	}
+	if key.Matches(msg, m.keys.SidebarView) {
+		return m.closeGrid()
+	}
 	if key.Matches(msg, m.keys.Help) {
 		m.PushView(ViewHelp)
 		return nil
@@ -209,6 +212,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	prevSel := m.gridView.Selected()
+	// Remaining keys (including h/l) are delegated to the grid component.
+	// CollapseItem/ExpandItem (h/l) are intentionally not wired here — in grid
+	// mode h/l navigate the cursor left/right, which is the expected behavior.
 	cmd, _ := m.gridView.Update(msg)
 	// gridView.Update may set Active=false (esc/q/enter). Detect that and
 	// pop the grid from the stack, syncing state to the selected session.
@@ -279,6 +285,10 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Filter):
 		m.appState.FilterQuery = ""
 		m.PushView(ViewFilter)
+		return m, nil
+
+	case key.Matches(msg, m.keys.SidebarView):
+		m.appState.FocusedPane = state.PaneSidebar
 		return m, nil
 
 	case key.Matches(msg, m.keys.GridOverview):

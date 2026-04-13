@@ -86,6 +86,94 @@ func TestNewKeyMap_NavUpDownDefaultArrowKeys(t *testing.T) {
 	}
 }
 
+// TestUniqueKeys verifies the helper deduplicates while preserving order.
+func TestUniqueKeys(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want []string
+	}{
+		{[]string{"up"}, []string{"up"}},
+		{[]string{"up", "up"}, []string{"up"}},
+		{[]string{"k", "up"}, []string{"k", "up"}},
+		{[]string{"up", "k"}, []string{"up", "k"}},
+		{[]string{"a", "b", "a"}, []string{"a", "b"}},
+		{[]string{"", "up"}, []string{"up"}},        // empty primary skipped
+		{[]string{"", ""}, []string{}},               // all-empty → no keys
+		{[]string{}, []string{}},                     // no input
+	}
+	for _, tc := range cases {
+		got := uniqueKeys(tc.in...)
+		if len(got) != len(tc.want) {
+			t.Errorf("uniqueKeys(%v) = %v, want %v", tc.in, got, tc.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tc.want[i] {
+				t.Errorf("uniqueKeys(%v)[%d] = %q, want %q", tc.in, i, got[i], tc.want[i])
+			}
+		}
+	}
+}
+
+// TestNewKeyMap_NavUpAlwaysIncludesArrowKey verifies that "up"/"down" are
+// always present in NavUp/NavDown bindings, even when config sets vim keys.
+func TestNewKeyMap_NavUpAlwaysIncludesArrowKey(t *testing.T) {
+	// Simulate an old config with vim-style nav keys.
+	kb := config.DefaultConfig().Keybindings
+	kb.NavUp = "k"
+	kb.NavDown = "j"
+	km := NewKeyMap(kb)
+
+	hasKey := func(b key.Binding, target string) bool {
+		for _, k := range b.Keys() {
+			if k == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasKey(km.NavUp, "up") {
+		t.Errorf("NavUp keys %v must always include 'up' (arrow alias)", km.NavUp.Keys())
+	}
+	if !hasKey(km.NavUp, "k") {
+		t.Errorf("NavUp keys %v must include configured key 'k'", km.NavUp.Keys())
+	}
+	if !hasKey(km.NavDown, "down") {
+		t.Errorf("NavDown keys %v must always include 'down' (arrow alias)", km.NavDown.Keys())
+	}
+	if !hasKey(km.NavDown, "j") {
+		t.Errorf("NavDown keys %v must include configured key 'j'", km.NavDown.Keys())
+	}
+}
+
+// TestNewKeyMap_CollapseExpandVimAliases verifies h/l are included as
+// vim-style aliases for CollapseItem/ExpandItem.
+func TestNewKeyMap_CollapseExpandVimAliases(t *testing.T) {
+	km := NewKeyMap(config.DefaultConfig().Keybindings)
+
+	hasKey := func(b key.Binding, target string) bool {
+		for _, k := range b.Keys() {
+			if k == target {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasKey(km.CollapseItem, "left") {
+		t.Error("CollapseItem must include 'left' (arrow key)")
+	}
+	if !hasKey(km.CollapseItem, "h") {
+		t.Error("CollapseItem must include 'h' (vim alias)")
+	}
+	if !hasKey(km.ExpandItem, "right") {
+		t.Error("ExpandItem must include 'right' (arrow key)")
+	}
+	if !hasKey(km.ExpandItem, "l") {
+		t.Error("ExpandItem must include 'l' (vim alias)")
+	}
+}
+
 func TestKeyMap_ShortHelp_NonEmpty(t *testing.T) {
 	cfg := config.DefaultConfig()
 	km := NewKeyMap(cfg.Keybindings)

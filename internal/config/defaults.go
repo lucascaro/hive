@@ -77,6 +77,7 @@ func DefaultConfig() Config {
 			NavProjectUp:   "K",
 			NavProjectDown: "J",
 			Filter:         "/",
+			SidebarView:    "s",
 			GridOverview:   "g",
 			Palette:        "ctrl+p",
 			Help:           "?",

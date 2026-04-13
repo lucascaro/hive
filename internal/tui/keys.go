@@ -24,6 +24,7 @@ type KeyMap struct {
 	NavProjectUp   key.Binding
 	NavProjectDown key.Binding
 	Filter         key.Binding
+	SidebarView    key.Binding
 	GridOverview   key.Binding
 	Palette        key.Binding
 	Help           key.Binding
@@ -41,6 +42,19 @@ type KeyMap struct {
 	Cancel         key.Binding
 }
 
+// uniqueKeys returns keys deduplicated, preserving order. Empty strings are skipped.
+func uniqueKeys(keys ...string) []string {
+	seen := make(map[string]bool, len(keys))
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if k != "" && !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
 // NewKeyMap builds a KeyMap from the loaded config.
 func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 	return KeyMap{
@@ -53,14 +67,15 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Rename:         key.NewBinding(key.WithKeys(kb.Rename), key.WithHelp(kb.Rename, "rename")),
 		Attach:         key.NewBinding(key.WithKeys(kb.Attach, "enter"), key.WithHelp(kb.Attach+"/enter", "attach")),
 		ToggleCollapse: key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "toggle")),
-		CollapseItem:   key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "collapse")),
-		ExpandItem:     key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "expand")),
+		CollapseItem:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "collapse")),
+		ExpandItem:     key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "expand")),
 		FocusToggle:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch pane")),
-		NavUp:          key.NewBinding(key.WithKeys(kb.NavUp), key.WithHelp("↑", "up")),
-		NavDown:        key.NewBinding(key.WithKeys(kb.NavDown), key.WithHelp("↓", "down")),
+		NavUp:          key.NewBinding(key.WithKeys(uniqueKeys(kb.NavUp, "up")...), key.WithHelp("↑", "up")),
+		NavDown:        key.NewBinding(key.WithKeys(uniqueKeys(kb.NavDown, "down")...), key.WithHelp("↓", "down")),
 		NavProjectUp:   key.NewBinding(key.WithKeys(kb.NavProjectUp), key.WithHelp(kb.NavProjectUp, "prev project")),
 		NavProjectDown: key.NewBinding(key.WithKeys(kb.NavProjectDown), key.WithHelp(kb.NavProjectDown, "next project")),
 		Filter:         key.NewBinding(key.WithKeys(kb.Filter), key.WithHelp(kb.Filter, "filter")),
+		SidebarView:    key.NewBinding(key.WithKeys(kb.SidebarView), key.WithHelp(kb.SidebarView, "sidebar view")),
 		GridOverview:   key.NewBinding(key.WithKeys(kb.GridOverview), key.WithHelp(kb.GridOverview, "grid view")),
 		Palette:        key.NewBinding(key.WithKeys(kb.Palette), key.WithHelp(kb.Palette, "palette")),
 		Help:           key.NewBinding(key.WithKeys(kb.Help), key.WithHelp(kb.Help, "help")),
@@ -103,7 +118,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
 		{km.Attach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
-		{km.ColorNext, km.ColorPrev, km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Filter, km.GridOverview},
+		{km.ColorNext, km.ColorPrev, km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Filter, km.SidebarView, km.GridOverview},
 		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.FocusToggle, km.Quit, km.QuitKill},
 	}
 }
