@@ -81,6 +81,9 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	if key.Matches(msg, m.keys.Quit) {
 		return tea.Quit
 	}
+	if key.Matches(msg, m.keys.SidebarView) {
+		return m.closeGrid()
+	}
 	if key.Matches(msg, m.keys.Help) {
 		m.PushView(ViewHelp)
 		return nil
@@ -279,6 +282,10 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Filter):
 		m.appState.FilterQuery = ""
 		m.PushView(ViewFilter)
+		return m, nil
+
+	case key.Matches(msg, m.keys.SidebarView):
+		m.appState.FocusedPane = state.PaneSidebar
 		return m, nil
 
 	case key.Matches(msg, m.keys.GridOverview):

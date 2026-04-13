@@ -90,6 +90,7 @@ type KeybindingsConfig struct {
 	NavProjectDown string `json:"nav_project_down"`
 	JumpProject1   string `json:"jump_project_1"`
 	Filter         string `json:"filter"`
+	SidebarView    string `json:"sidebar_view"`
 	GridOverview   string `json:"grid_overview"`
 	Palette        string `json:"palette"`
 	Help           string `json:"help"`

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`s` sidebar view shortcut**: pressing `s` in the main view focuses the sidebar pane; pressing `s` while in the grid closes the grid and returns to the sidebar (#100).
+- **`h`/`l` vim aliases for collapse/expand**: `h` collapses and `l` expands sidebar items (projects/teams), complementing the existing `←`/`→` arrow key bindings. These appear in the help overlay (#100).
+- **Reset keybindings to defaults**: pressing `R` in the Settings screen resets all key bindings to their defaults and marks the settings as unsaved, so they take effect after confirmation. A `reset keys` hint appears in the Settings footer (#100).
 - **Bell sound preview**: cycling through bell sound options in Settings → General → Bell Sound now plays each sound immediately so you can audition options without leaving settings (#94).
 - **Bell volume control**: new Settings → General → Bell Volume setting lets you adjust bell playback loudness (10 / 25 / 50 / 75 / 100 %). Does not affect the `normal` system bell or `silent`; not supported on Windows (#94).
 - **`bubbles/help`-powered key hints**: the status bar, grid hint bar, and help overlay now all derive from a single `KeyMap` source of truth using `charmbracelet/bubbles/help`. Hints automatically reflect any custom key bindings set in `~/.config/hive/config.json` (#79).
@@ -23,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Grid fills empty space**: when sessions don't evenly fill the grid layout, the last row now expands to use the remaining screen height instead of leaving a blank cell at the bottom (#89).
 
 ### Fixed
+- **Arrow key navigation in sidebar**: `↑`/`↓` now always navigate the sidebar regardless of the user's configured `nav_up`/`nav_down` key. Users with saved configs from before #79 (which stored vim-style `k`/`j`) had their arrow keys silently stop working; they are now permanent aliases alongside any configured key (#100).
 - **Empty preview placeholder**: preview pane now shows "Waiting for output…" instead of appearing blank when a session's captured output consists only of terminal escape sequences (e.g. cursor-reset and screen-clear codes emitted by brand-new panes) (#88).
 - **Bell sounds and badges when attached to a session**: custom bell audio now plays and the sidebar/grid bell badges are set correctly when a background session rings its bell while the user is directly attached to another session. Previously the bell was silenced because hive's event loop is suspended during attachment; a background poller now handles it (#85).
 - **Grid mode toggle preserves selection**: pressing `g` while in the all-projects grid (or `G` while in a single-project grid) now keeps the currently-selected session and its project, instead of resetting to a different project's first session (#80).

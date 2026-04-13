@@ -239,15 +239,19 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			sv.activeTab++
 		}
 
-	case "down":
+	case "down", "j":
 		if sv.cursor() < len(sv.currentFields())-1 {
 			sv.setCursor(sv.cursor() + 1)
 		}
 
-	case "up":
+	case "up", "k":
 		if sv.cursor() > 0 {
 			sv.setCursor(sv.cursor() - 1)
 		}
+
+	case "R":
+		sv.cfg.Keybindings = config.DefaultConfig().Keybindings
+		sv.dirty = true
 
 	case "enter", " ":
 		f := sv.selectedField()
@@ -378,8 +382,9 @@ func (sv *SettingsView) View() string {
 		}
 		footerParts = append(footerParts,
 			hint("←/→", "tab"),
-			hint("j/k", "navigate"),
+			hint("↑/↓", "navigate"),
 			hint("enter/space", "edit/toggle"),
+			hint("R", "reset keys"),
 			hint("s", func() string {
 				if sv.IsDirty() {
 					return "save"

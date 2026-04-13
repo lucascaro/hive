@@ -717,6 +717,51 @@ func TestSettingsView_View_ShowsActiveTabContent(t *testing.T) {
 	}
 }
 
+// TestSettingsView_ResetKeybindings verifies that pressing "R" resets
+// cfg.Keybindings to DefaultConfig values and marks the view dirty.
+func TestSettingsView_ResetKeybindings(t *testing.T) {
+	sv := NewSettingsView()
+	cfg := config.DefaultConfig()
+	// Simulate an old user config with vim-style nav keys.
+	cfg.Keybindings.NavUp = "k"
+	cfg.Keybindings.NavDown = "j"
+	sv.Open(cfg)
+
+	if sv.IsDirty() {
+		t.Fatal("precondition: not dirty after Open")
+	}
+
+	sv.Update(keyPress("R"))
+
+	if !sv.IsDirty() {
+		t.Error("expected dirty=true after R (reset keybindings)")
+	}
+	got := sv.GetConfig().Keybindings.NavUp
+	want := config.DefaultConfig().Keybindings.NavUp
+	if got != want {
+		t.Errorf("NavUp after reset = %q, want %q", got, want)
+	}
+	got = sv.GetConfig().Keybindings.NavDown
+	want = config.DefaultConfig().Keybindings.NavDown
+	if got != want {
+		t.Errorf("NavDown after reset = %q, want %q", got, want)
+	}
+}
+
+// TestSettingsView_ResetKeybindings_HintVisible verifies that the "R: reset keys"
+// hint appears in the settings footer.
+func TestSettingsView_ResetKeybindings_HintVisible(t *testing.T) {
+	sv := NewSettingsView()
+	sv.Width = 120
+	sv.Height = 24
+	sv.Open(config.DefaultConfig())
+
+	v := sv.View()
+	if !contains(v, "reset keys") {
+		t.Errorf("expected 'reset keys' hint in settings footer, view:\n%s", v)
+	}
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
 }

@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| 1 | #100 | Fix arrow key navigation in sidepanel view | IMPLEMENT | S |
 
 ## Rejected
 

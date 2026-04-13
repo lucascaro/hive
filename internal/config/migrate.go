@@ -59,6 +59,9 @@ func Migrate(cfg Config) Config {
 	if cfg.Keybindings.GridOverview == "" {
 		cfg.Keybindings.GridOverview = defaults.Keybindings.GridOverview
 	}
+	if cfg.Keybindings.SidebarView == "" {
+		cfg.Keybindings.SidebarView = defaults.Keybindings.SidebarView
+	}
 	if cfg.Keybindings.ColorNext == "" {
 		cfg.Keybindings.ColorNext = defaults.Keybindings.ColorNext
 	}
