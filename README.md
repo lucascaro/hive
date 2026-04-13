@@ -1,4 +1,8 @@
-# Hive
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.png">
+  <img alt="Hive" src="docs/logo-light.png" width="100%">
+</picture>
 
 [![CI (macOS)](https://github.com/lucascaro/hive/actions/workflows/build-macos.yml/badge.svg)](https://github.com/lucascaro/hive/actions/workflows/build-macos.yml)
 [![CI (Windows)](https://github.com/lucascaro/hive/actions/workflows/build-windows.yml/badge.svg)](https://github.com/lucascaro/hive/actions/workflows/build-windows.yml)
