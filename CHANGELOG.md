@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bell sounds and badges when attached to a session**: custom bell audio now plays and the sidebar/grid bell badges are set correctly when a background session rings its bell while the user is directly attached to another session. Previously the bell was silenced because hive's event loop is suspended during attachment; a background poller now handles it (#85).
 - **Grid mode toggle preserves selection**: pressing `g` while in the all-projects grid (or `G` while in a single-project grid) now keeps the currently-selected session and its project, instead of resetting to a different project's first session (#80).
 - **Settings save no longer blanks the screen**: confirming a settings save (`s` → `y`) now returns to the main view instead of leaving a black, unresponsive screen. The `ViewSettings` layer was being left on the view stack after the component deactivated itself, so `View()` rendered an empty string. The failure path (save error, e.g. read-only config dir) also pops the view now so the error surfaces in the statusbar instead of a black screen (#84).
+- **Grid expanded-cell navigation**: arrow keys in grid view now navigate correctly when cells are expanded. Right from the last session in the last row moves to the extended cell; left returns to the previous position (#101).
 
 ## [0.8.0] — 2026-04-12
 

@@ -162,6 +162,14 @@ func (f *flowRunner) AssertGridActive(active bool) {
 	}
 }
 
+// AssertGridCursor asserts the grid cursor index.
+func (f *flowRunner) AssertGridCursor(want int) {
+	f.t.Helper()
+	if f.model.gridView.Cursor != want {
+		f.t.Errorf("gridView.Cursor = %d, want %d", f.model.gridView.Cursor, want)
+	}
+}
+
 // AssertGridMode asserts the grid restore mode.
 func (f *flowRunner) AssertGridMode(mode state.GridRestoreMode) {
 	f.t.Helper()

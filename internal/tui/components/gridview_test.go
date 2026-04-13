@@ -368,8 +368,10 @@ func TestGridView_CursorWrap(t *testing.T) {
 		// Wrapping across rows
 		{"right wraps to next row", 2, tea.KeyMsg{Type: tea.KeyRight}, 3},
 		{"left wraps to prev row", 3, tea.KeyMsg{Type: tea.KeyLeft}, 2},
+		// Extended-cell navigation: right from last real cell in last row goes to
+		// the owner of the extended slot (idx 2, column 2 extended into row 1).
+		{"right navigates to extended cell", 4, tea.KeyMsg{Type: tea.KeyRight}, 2},
 		// No wrap at boundaries
-		{"right at last session stays", 4, tea.KeyMsg{Type: tea.KeyRight}, 4},
 		{"left at index 0 stays", 0, tea.KeyMsg{Type: tea.KeyLeft}, 0},
 	}
 
@@ -425,6 +427,95 @@ func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
 		gv.Update(tea.KeyMsg{Type: tea.KeyLeft})
 		if gv.Cursor != 0 {
 			t.Errorf("Cursor = %d, want 0", gv.Cursor)
+		}
+	})
+}
+
+// TestGridView_CursorWrap_ExtendedCell verifies keyboard navigation into and out
+// of the extended (expanded-down) portion of a sparse grid cell.
+// Uses 5 sessions at 160×50 which yields a 3×2 grid:
+//
+//	row 0: [0][1][2]
+//	row 1: [3][4][2*]  ← col 2 is extended; session idx 2 fills both rows
+func TestGridView_CursorWrap_ExtendedCell(t *testing.T) {
+	sessions := make([]*state.Session, 5)
+	for i := range sessions {
+		sessions[i] = &state.Session{
+			ID: "s" + string(rune('1'+i)), Title: "sess",
+			AgentType: state.AgentClaude, Status: state.StatusRunning,
+		}
+	}
+	makeGV := func(cursor int, atExtended bool) *GridView {
+		gv := &GridView{Active: true, Width: 160, Height: 50}
+		gv.Show(sessions, state.GridRestoreProject)
+		gv.Cursor = cursor
+		gv.atExtended = atExtended
+		return gv
+	}
+
+	t.Run("right_to_extended", func(t *testing.T) {
+		gv := makeGV(4, false)
+		gv.Update(tea.KeyMsg{Type: tea.KeyRight})
+		if gv.Cursor != 2 {
+			t.Errorf("Cursor = %d, want 2 (extended cell owner)", gv.Cursor)
+		}
+		if !gv.atExtended {
+			t.Error("atExtended = false, want true after navigating into extended slot")
+		}
+	})
+
+	t.Run("left_from_extended", func(t *testing.T) {
+		gv := makeGV(2, true) // cursor at extended session 3, atExtended=true
+		gv.Update(tea.KeyMsg{Type: tea.KeyLeft})
+		if gv.Cursor != 4 {
+			t.Errorf("Cursor = %d, want 4 (session 5, real cell to the left)", gv.Cursor)
+		}
+		if gv.atExtended {
+			t.Error("atExtended = true, want false after leaving extended slot")
+		}
+	})
+
+	t.Run("up_clears_extended", func(t *testing.T) {
+		gv := makeGV(2, true)
+		gv.Update(tea.KeyMsg{Type: tea.KeyUp})
+		if gv.atExtended {
+			t.Error("atExtended = true after up, want false")
+		}
+	})
+
+	t.Run("down_clears_extended", func(t *testing.T) {
+		gv := makeGV(4, false)
+		gv.Update(tea.KeyMsg{Type: tea.KeyDown})
+		if gv.atExtended {
+			t.Error("atExtended = true after down from last row, want false")
+		}
+		if gv.Cursor != 4 {
+			t.Errorf("Cursor = %d, want 4 (no down from last row)", gv.Cursor)
+		}
+	})
+
+	t.Run("right_extended_then_right_stays", func(t *testing.T) {
+		// From the extended rightmost col, right should not navigate further.
+		gv := makeGV(2, true) // col 2 is the rightmost, no session to the right
+		gv.Update(tea.KeyMsg{Type: tea.KeyRight})
+		if gv.Cursor != 2 {
+			t.Errorf("Cursor = %d, want 2 (no move from rightmost extended col)", gv.Cursor)
+		}
+	})
+
+	t.Run("show_resets_extended", func(t *testing.T) {
+		gv := makeGV(2, true)
+		// Simulate a new session being added: call Show with 6 sessions.
+		newSessions := make([]*state.Session, 6)
+		for i := range newSessions {
+			newSessions[i] = &state.Session{
+				ID: "s" + string(rune('1'+i)), Title: "sess",
+				AgentType: state.AgentClaude, Status: state.StatusRunning,
+			}
+		}
+		gv.Show(newSessions, state.GridRestoreProject)
+		if gv.atExtended {
+			t.Error("atExtended = true after Show, want false (layout changed)")
 		}
 	})
 }
