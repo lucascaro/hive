@@ -2,7 +2,7 @@ package config
 
 import "github.com/lucascaro/hive/internal/mux"
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
@@ -13,6 +13,14 @@ func Migrate(cfg Config) Config {
 		// This only fires once per user — the bumped SchemaVersion is
 		// persisted by MigrateAndPersist after this call.
 		cfg.HideAttachHint = false
+	}
+	if cfg.SchemaVersion < 3 {
+		// 2 → 3: BellSound was introduced (#75). Fill in the default so
+		// existing users keep today's audible `\a` behavior until they
+		// opt into a custom sound via Settings.
+		if cfg.BellSound == "" {
+			cfg.BellSound = DefaultConfig().BellSound
+		}
 	}
 	if cfg.SchemaVersion < currentSchemaVersion {
 		cfg.SchemaVersion = currentSchemaVersion

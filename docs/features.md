@@ -32,6 +32,19 @@ This file tracks features that are already implemented in Hive. For the feature 
 - Full mouse support: left-click sidebar items to select sessions or toggle project/team collapse; left-click the preview pane to focus it and activate the session; left-click a grid cell to move the cursor; scroll wheel scrolls the sidebar, preview, and grid.
 - Grid cells show project name, session name, and agent type in each tile so sessions can be identified without consulting the sidebar.
 
+## Notifications
+
+- Terminal bell from a background session is forwarded so attention-wanted
+  agents surface audibly without the user needing to look at the sidebar.
+  A 500 ms debounce prevents chatty agents from flooding the output.
+- Bell sound is configurable in Settings → General → Bell Sound. Options:
+  `normal` (the terminal's default `\a` bell), `bee`, `chime`, `ping`,
+  `knock`, and `silent`. Custom sounds play via the platform's audio
+  tool (`afplay` / `paplay` / `aplay` on macOS/Linux, PowerShell
+  `SoundPlayer` on Windows) and fall back to `\a` if no player is
+  available. Silent mode keeps the sidebar `♪` indicator but makes no
+  noise.
+
 ## Titles, Status, And Hooks
 
 - Rename sessions and teams inline from the TUI.

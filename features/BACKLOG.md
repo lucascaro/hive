@@ -7,8 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| P1 | #75 | Add custom terminal bell sounds with settings option | RESEARCH | L |
-| P2 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | RESEARCH | M |
+| P1 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | RESEARCH | M |
 | — | #78 | Persist user preferences (e.g. start in grid mode) | TRIAGE | — |
 
 ## Rejected
@@ -51,3 +50,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #74 | Windows install docs could better highlight WSL path and Go 1.25+ requirement | — | 2026-04-12 |
 | #76 | Organize settings into tabbed categories | #81 | 2026-04-12 |
 | #80 | Preserve selected project and session when toggling between grid views (g/G) | — | 2026-04-12 |
+| #75 | Add custom terminal bell sounds with settings option | #83 | 2026-04-12 |

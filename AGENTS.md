@@ -28,6 +28,7 @@ binary: hive
 | `tmux` | `internal/tmux/` | Low-level tmux CLI wrappers |
 | `hooks` | `internal/hooks/` | Shell hook runner (`~/.config/hive/hooks/on-{event}`) |
 | `escape` | `internal/escape/` | OSC 2 / Hive title marker parser + background watcher |
+| `audio` | `internal/audio/` | Terminal-bell dispatcher; embedded WAVs + platform audio-tool shell-out |
 | `git` | `internal/git/` | Git worktree helpers |
 
 ### Key Types
