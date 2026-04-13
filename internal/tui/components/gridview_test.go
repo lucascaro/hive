@@ -554,3 +554,109 @@ func TestSanitizePaneTitle(t *testing.T) {
 		})
 	}
 }
+
+// TestGridView_LastRowFillsHeight verifies that when sessions don't evenly fill
+// the grid, the last row expands to use the remaining vertical space instead of
+// leaving empty cells.
+func TestGridView_LastRowFillsHeight(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	titles := []string{"alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota"}
+	cases := []struct {
+		name string
+		n    int // number of sessions
+		w, h int
+	}{
+		{"3 sessions 2-col", 3, 80, 24},
+		{"3 sessions 2-col tall", 3, 80, 40},
+		{"5 sessions 3-col", 5, 120, 30},
+		{"7 sessions 3-col", 7, 120, 40},
+		{"1 session", 1, 80, 24},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := make([]*state.Session, tc.n)
+			for i := range sessions {
+				sessions[i] = &state.Session{
+					ID: "s" + string(rune('1'+i)), Title: titles[i],
+					AgentType: state.AgentClaude, Status: state.StatusRunning,
+				}
+			}
+			gv := &GridView{Active: true, Width: tc.w, Height: tc.h}
+			gv.Show(sessions, state.GridRestoreProject)
+			out := gv.View()
+
+			// Height invariant must hold.
+			got := strings.Count(out, "\n") + 1
+			if got != tc.h {
+				t.Errorf("View() = %d lines, want %d", got, tc.h)
+			}
+
+			// All session titles must appear in the output.
+			for _, s := range sessions {
+				if !strings.Contains(out, s.Title) {
+					t.Errorf("session %q missing from output", s.Title)
+				}
+			}
+		})
+	}
+}
+
+// TestGridView_CellAt_ExtendedCell verifies that mouse clicks in the extended
+// portion of a cell above an empty slot correctly map to that session.
+// This is the behavioral test for the column-first rendering fix: a sparse
+// column's last real cell absorbs the empty row below it, so CellAt must
+// return that session for y-coordinates in the extended area.
+func TestGridView_CellAt_ExtendedCell(t *testing.T) {
+	// 5 sessions in a 3-col grid: columns 0 and 1 have 2 sessions each,
+	// column 2 has only session[2] — its cell extends to fill the second row.
+	sessions := []*state.Session{
+		{ID: "s0", Title: "alpha", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s1", Title: "beta", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s2", Title: "gamma", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s3", Title: "delta", AgentType: state.AgentClaude, Status: state.StatusRunning},
+		{ID: "s4", Title: "epsilon", AgentType: state.AgentClaude, Status: state.StatusRunning},
+	}
+	const w, h = 120, 30
+	gv := &GridView{Active: true, Width: w, Height: h}
+	gv.Show(sessions, state.GridRestoreProject)
+
+	cols := 3
+	const hintH = 2
+	totalH := h - hintH
+	rows := 2
+	cellH := totalH / rows
+	cellW := w / cols
+
+	// Clicks in the normal region of each cell must resolve correctly.
+	for i, s := range sessions {
+		r, c := i/cols, i%cols
+		x := c*cellW + cellW/2
+		y := r*cellH + 1
+		got, ok := gv.CellAt(x, y)
+		if !ok || got != i {
+			t.Errorf("CellAt normal region session %q (%d): got idx=%d ok=%v, want idx=%d ok=true", s.Title, i, got, ok, i)
+		}
+	}
+
+	// Click in the extended area of session[2] (column 2, row 0 extended into row 1).
+	// y = cellH+2 is inside the second row's vertical range, but column 2 has no
+	// session there — CellAt must still return session index 2 (the extended cell).
+	extY := cellH + 2
+	extX := 2*cellW + cellW/2
+	got, ok := gv.CellAt(extX, extY)
+	if !ok || got != 2 {
+		t.Errorf("CellAt extended region: got idx=%d ok=%v, want idx=2 ok=true (session gamma should extend into empty slot)", got, ok)
+	}
+
+	// Clicks in columns 0 and 1 at the same y must resolve to row-1 sessions (3 and 4).
+	for c, wantIdx := range []int{3, 4} {
+		x := c*cellW + cellW/2
+		got, ok := gv.CellAt(x, extY)
+		if !ok || got != wantIdx {
+			t.Errorf("CellAt row-1 col %d at y=%d: got idx=%d ok=%v, want idx=%d ok=true", c, extY, got, ok, wantIdx)
+		}
+	}
+}

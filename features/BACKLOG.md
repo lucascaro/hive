@@ -54,3 +54,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #85 | Terminal bell sounds and grid badge during attached sessions | — | — |
 | #88 | Fix empty preview when session has insufficient text | — | — |
 | #78 | Persist user preferences — Startup View setting | — | — |
+| #89 | Extend grid cells to fill empty space in grid view | — | — |

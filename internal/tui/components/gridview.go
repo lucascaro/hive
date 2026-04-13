@@ -220,26 +220,51 @@ func (gv *GridView) View() string {
 	rows := (n + cols - 1) / cols
 	hintH := 2
 	cellW := gv.Width / cols
-	cellH := (gv.Height - hintH) / rows
+	totalH := gv.Height - hintH
+	cellH := totalH / rows
 	if cellH < 5 {
 		cellH = 5
 	}
-
-	var rowViews []string
-	for r := 0; r < rows; r++ {
-		var cellViews []string
-		for c := 0; c < cols; c++ {
-			idx := r*cols + c
-			if idx >= n {
-				cellViews = append(cellViews, lipgloss.NewStyle().Width(cellW).Height(cellH).Render(""))
-				continue
-			}
-			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, cellH, idx == gv.Cursor))
-		}
-		rowViews = append(rowViews, lipgloss.JoinHorizontal(lipgloss.Top, cellViews...))
+	// Remaining height after all full-height rows: used to extend the last
+	// content cell in each column so nothing is wasted.
+	lastCellH := totalH - (rows-1)*cellH
+	if lastCellH < 5 {
+		lastCellH = 5
 	}
 
-	grid := lipgloss.JoinVertical(lipgloss.Left, rowViews...)
+	// Render column-by-column so that columns whose last row is empty can
+	// extend the cell above into the unused space.
+	//   n%cols == 0  → every column has content in the last row (no empties)
+	//   c >= n%cols  → this column has no content in the last row
+	var colViews []string
+	for c := 0; c < cols; c++ {
+		emptyInLastRow := n%cols != 0 && c >= n%cols
+		var cellViews []string
+		for r := 0; r < rows; r++ {
+			idx := r*cols + c
+			if idx >= n {
+				// Empty slot — skip; the cell above is already extended.
+				continue
+			}
+			var h int
+			switch {
+			case emptyInLastRow && r == rows-2:
+				// Last content cell in this column: absorb the empty row below.
+				h = cellH + lastCellH
+			case r == rows-1:
+				// Last row of a fully-occupied column: use remaining height.
+				h = lastCellH
+			default:
+				h = cellH
+			}
+			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, h, idx == gv.Cursor))
+		}
+		if len(cellViews) > 0 {
+			colViews = append(colViews, lipgloss.JoinVertical(lipgloss.Left, cellViews...))
+		}
+	}
+
+	grid := lipgloss.JoinHorizontal(lipgloss.Top, colViews...)
 	// Truncate hint lines to gv.Width before joining with the grid.
 	// Without this, JoinVertical computes maxWidth = max(grid_width, hint_width).
 	// When hint_width (93 display chars) exceeds gv.Width (narrow terminals,
@@ -489,17 +514,46 @@ func (gv *GridView) CellAt(x, y int) (idx int, ok bool) {
 	rows := (n + cols - 1) / cols
 	const hintH = 2
 	cellW := gv.Width / cols
-	cellH := (gv.Height - hintH) / rows
+	totalH := gv.Height - hintH
+	cellH := totalH / rows
 	if cellH < 5 {
 		cellH = 5
+	}
+	lastCellH := totalH - (rows-1)*cellH
+	if lastCellH < 5 {
+		lastCellH = 5
 	}
 	// Clicks in the hint bar at the bottom are ignored.
 	if y >= gv.Height-hintH {
 		return -1, false
 	}
 	col := x / cellW
-	row := y / cellH
-	if col >= cols || row >= rows {
+	if col >= cols {
+		return -1, false
+	}
+	// Determine the row accounting for variable last-row height.
+	// Columns with no content in the last row have their last real cell
+	// extended by lastCellH, so clicks in that extension belong to rows-2.
+	emptyInLastRow := n%cols != 0 && col >= n%cols
+	var row int
+	if emptyInLastRow {
+		// This column only has rows-1 cells; the last one is extended.
+		extendedCellH := cellH + lastCellH
+		if y < (rows-1)*cellH {
+			row = y / cellH
+		} else if y < (rows-1)*cellH+extendedCellH {
+			row = rows - 2
+		} else {
+			return -1, false
+		}
+	} else {
+		if y < (rows-1)*cellH {
+			row = y / cellH
+		} else {
+			row = rows - 1
+		}
+	}
+	if row >= rows {
 		return -1, false
 	}
 	i := row*cols + col
