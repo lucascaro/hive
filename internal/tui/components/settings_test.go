@@ -1,10 +1,12 @@
 package components
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/lucascaro/hive/internal/audio"
 	"github.com/lucascaro/hive/internal/config"
@@ -719,6 +721,41 @@ func TestSettingsView_View_ShowsActiveTabContent(t *testing.T) {
 
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
+}
+
+func TestSettingsViewMaxWidth(t *testing.T) {
+	sv := NewSettingsView()
+	sv.Width = 200
+	sv.Height = 40
+	sv.Open(testConfig())
+
+	view := sv.View()
+	if view == "" {
+		t.Fatal("expected non-empty view")
+	}
+
+	// lipgloss.Place centers the panel within the full terminal width by adding
+	// spaces on each side. The outer line width should be the full terminal width.
+	firstLine := strings.SplitN(view, "\n", 2)[0]
+	outerW := lipgloss.Width(firstLine)
+	if outerW != 200 {
+		t.Errorf("outer width = %d, want 200", outerW)
+	}
+
+	// TrimSpace removes the space-padding that lipgloss.Place adds on each side
+	// to center the panel. ANSI escape sequences are not whitespace, so
+	// TrimSpace leaves them intact. ansi.StringWidth then measures only visible
+	// characters (ignoring escape sequences), giving the true content width.
+	for i, line := range strings.Split(view, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		lw := ansi.StringWidth(trimmed)
+		if lw > maxSettingsWidth {
+			t.Errorf("line %d content width = %d, exceeds maxSettingsWidth %d", i, lw, maxSettingsWidth)
+		}
+	}
 }
 
 func indexOf(s, sub string) int {
