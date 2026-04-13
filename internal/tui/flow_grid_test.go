@@ -822,10 +822,32 @@ func TestFlow_StartupView_GridAll_OpensAllProjectsGrid(t *testing.T) {
 	f.AssertGridMode(state.GridRestoreAll)
 }
 
-// TestFlow_StartupView_Sidebar_NoGrid verifies that StartupView="sidebar"
-// (the default) does not open any grid on startup.
+// TestFlow_StartupView_Sidebar_NoGrid verifies that an explicit StartupView="sidebar"
+// does not open any grid on startup, even if a previous state had a different mode.
 func TestFlow_StartupView_Sidebar_NoGrid(t *testing.T) {
-	m, mock := testFlowModel(t) // uses DefaultConfig → StartupView="sidebar"
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "sidebar" // explicit, not relying on DefaultConfig default
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)
 	f.AssertGridActive(false)
 }
@@ -866,7 +888,7 @@ func TestFlow_StartupView_DoesNotConflictWithRestoreGridMode(t *testing.T) {
 	f.AssertGridMode(state.GridRestoreAll)
 	// View stack should contain exactly one ViewGrid entry (not doubled).
 	gridCount := 0
-	for _, v := range m.viewStack {
+	for _, v := range f.Model().viewStack {
 		if v == ViewGrid {
 			gridCount++
 		}

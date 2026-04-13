@@ -90,7 +90,8 @@ func TestFlow_Settings_EditBlocksTabSwitch(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	openSettings(t, f)
-	// Navigate to Preview Refresh (int field, index 2) and start editing.
+	// Navigate to Preview Refresh (int field, index 3) and start editing.
+	f.SendKey("j")
 	f.SendKey("j")
 	f.SendKey("j")
 	f.SendSpecialKey(tea.KeyEnter)
