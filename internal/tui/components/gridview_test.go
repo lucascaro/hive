@@ -481,6 +481,9 @@ func TestGridView_CursorWrap_ExtendedCell(t *testing.T) {
 		if gv.atExtended {
 			t.Error("atExtended = true after up, want false")
 		}
+		if gv.Cursor != 2 {
+			t.Errorf("Cursor = %d, want 2 (row 0, no session above to move to)", gv.Cursor)
+		}
 	})
 
 	t.Run("down_clears_extended", func(t *testing.T) {

@@ -991,7 +991,7 @@ func TestFlow_GridExtendedCellNavigation(t *testing.T) {
 	f.AssertGridActive(true)
 
 	// Move cursor to idx 4 (session 5, row 1, col 1) — last real cell in last row.
-	f.model.gridView.Cursor = 4
+	f.SetGridCursor(4)
 
 	// Right from idx 4 should navigate to idx 2 (the extended cell owner, session 3).
 	f.SendSpecialKey(tea.KeyRight)

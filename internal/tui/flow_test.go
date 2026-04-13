@@ -170,6 +170,13 @@ func (f *flowRunner) AssertGridCursor(want int) {
 	}
 }
 
+// SetGridCursor directly sets the grid cursor index.
+// Use this in tests that need to position the cursor at a specific session
+// without navigating through intermediate cells.
+func (f *flowRunner) SetGridCursor(idx int) {
+	f.model.gridView.Cursor = idx
+}
+
 // AssertGridMode asserts the grid restore mode.
 func (f *flowRunner) AssertGridMode(mode state.GridRestoreMode) {
 	f.t.Helper()

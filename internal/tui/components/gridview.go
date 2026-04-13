@@ -76,6 +76,8 @@ func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) 
 }
 
 // Hide deactivates the grid.
+// atExtended is intentionally not reset here — Show() clears it on the next
+// grid open, and Update() is gated on Active so the stale value is never read.
 func (gv *GridView) Hide() { gv.Active = false }
 
 // SetContents updates the captured preview content map.
@@ -205,11 +207,10 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				}
 			}
 		} else {
-			rowStart := (gv.Cursor / cols) * cols
-			if gv.Cursor > rowStart {
+			// Both branches decrement by one: within-row move and prev-row wrap
+			// are identical operations (cursor layout is a flat index).
+			if gv.Cursor > 0 {
 				gv.Cursor--
-			} else if gv.Cursor > 0 {
-				gv.Cursor-- // wrap to last cell of previous row
 			}
 		}
 	case "right":
@@ -225,7 +226,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			// Normal move right within the same row.
 			gv.Cursor = nextIdx
 			gv.atExtended = false
-		case nextCol < cols && nextIdx >= n && n%cols != 0 && nextCol >= n%cols && row == rows-1:
+		case nextCol < cols && nextIdx >= n && n%cols != 0 && nextCol >= n%cols && row == rows-1 && rows > 1:
 			// Next slot is an extended cell — navigate to its owning session.
 			ownerIdx := (rows-2)*cols + nextCol
 			if ownerIdx >= 0 && ownerIdx < n {
