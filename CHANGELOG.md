@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Startup View preference**: configure which view hive opens on launch — `sidebar` (default), `grid` (current-project grid), or `grid-all` (all-projects grid). Set it in Settings → General → Startup View; persisted in `~/.config/hive/config.json`. When a detach-restore is in progress (returning from an attached session), the restore takes precedence (#78).
 - **Custom terminal bell sounds**: Settings → General → Bell Sound now offers six options — `normal` (current `\a` default), `bee`, `chime`, `ping`, `knock`, and `silent`. Non-default sounds are played via the platform's audio tool (`afplay` / `paplay` / `aplay` on macOS/Linux, PowerShell `SoundPlayer` on Windows) with a graceful fallback to `\a` when no player is available. `silent` suppresses audio entirely while still showing the sidebar bell indicator. Configurable per install; persisted in `~/.config/hive/config.json` (#75).
 - **Bell badge in grid view**: sessions with an unacknowledged bell now show a blinking `♪` badge replacing the status dot in the grid cell header, consistent with the existing sidebar indicator (#85).
 

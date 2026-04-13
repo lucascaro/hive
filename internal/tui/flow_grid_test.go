@@ -5,6 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucascaro/hive/internal/config"
+	"github.com/lucascaro/hive/internal/mux"
+	"github.com/lucascaro/hive/internal/mux/muxtest"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
@@ -756,3 +758,120 @@ func TestFlow_GridNewWorktreeSession(t *testing.T) {
 	// ErrorMsg was returned — that's the expected guard working correctly.
 }
 
+// TestFlow_StartupView_Grid_OpensProjectGrid verifies that StartupView="grid"
+// causes the current-project grid to open on startup without any keypress.
+func TestFlow_StartupView_Grid_OpensProjectGrid(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid"
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreProject)
+}
+
+// TestFlow_StartupView_GridAll_OpensAllProjectsGrid verifies that
+// StartupView="grid-all" causes the all-projects grid to open on startup.
+func TestFlow_StartupView_GridAll_OpensAllProjectsGrid(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid-all"
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+}
+
+// TestFlow_StartupView_Sidebar_NoGrid verifies that StartupView="sidebar"
+// (the default) does not open any grid on startup.
+func TestFlow_StartupView_Sidebar_NoGrid(t *testing.T) {
+	m, mock := testFlowModel(t) // uses DefaultConfig → StartupView="sidebar"
+	f := newFlowRunner(t, m, mock)
+	f.AssertGridActive(false)
+}
+
+// TestFlow_StartupView_DoesNotConflictWithRestoreGridMode verifies that when
+// RestoreGridMode is already set (detach-restore path), the StartupView
+// preference does not open a second grid on top of it.
+func TestFlow_StartupView_DoesNotConflictWithRestoreGridMode(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid" // preference says project grid
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+	appState.RestoreGridMode = state.GridRestoreAll // detach-restore says all-projects grid
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	// Grid must be active.
+	f.AssertGridActive(true)
+	// The detach-restore (GridRestoreAll) takes precedence; only one grid push.
+	f.AssertGridMode(state.GridRestoreAll)
+	// View stack should contain exactly one ViewGrid entry (not doubled).
+	gridCount := 0
+	for _, v := range m.viewStack {
+		if v == ViewGrid {
+			gridCount++
+		}
+	}
+	if gridCount != 1 {
+		t.Errorf("viewStack has %d ViewGrid entries, want 1", gridCount)
+	}
+}

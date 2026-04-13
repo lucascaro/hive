@@ -819,6 +819,17 @@ func buildSettingTabs() []settingTab {
 					},
 				},
 				{
+					label:       "Startup View",
+					description: "View shown on startup. 'sidebar' opens the normal session list; 'grid' opens the current-project grid; 'grid-all' opens the all-projects grid.",
+					kind:        fieldSelect,
+					options:     []string{"sidebar", "grid", "grid-all"},
+					get:         func(c config.Config) string { return c.StartupView },
+					set: func(c *config.Config, v string) error {
+						c.StartupView = v
+						return nil
+					},
+				},
+				{
 					label:       "Bell Sound",
 					description: "Sound played when a background session rings its terminal bell. 'normal' emits the terminal's default bell (\\a); 'silent' disables audio notifications entirely; the other options play short embedded sounds.",
 					kind:        fieldSelect,

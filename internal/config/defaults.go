@@ -15,6 +15,7 @@ func DefaultConfig() Config {
 		Multiplexer:                 "tmux",
 		DetachKey:                   mux.DefaultDetachKey,
 		BellSound:                   audio.BellNormal,
+		StartupView:                 "sidebar",
 		Agents: map[string]AgentProfile{
 			"claude": {
 				Cmd:        []string{"claude"},

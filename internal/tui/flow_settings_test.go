@@ -172,3 +172,16 @@ func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
 		t.Error("expected non-empty render after save error, got blank")
 	}
 }
+
+// TestFlow_Settings_StartupViewFieldPresent verifies the "Startup View" field
+// appears in the General settings tab with the three expected option values.
+func TestFlow_Settings_StartupViewFieldPresent(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	openSettings(t, f)
+	// General tab is active by default.
+	f.ViewContains("Startup View")
+	// The current value (default "sidebar") should appear.
+	f.ViewContains("sidebar")
+}

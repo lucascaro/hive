@@ -189,7 +189,18 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		m.PushView(ViewOrphan)
 	}
 	// Restore the grid view if the user detached from a grid-initiated session.
+	// Snapshot RestoreGridMode before restoreGrid() clears it.
+	hadRestoreGrid := m.appState.RestoreGridMode != state.GridRestoreNone
 	m.restoreGrid()
+	// Open the preferred startup view if no attach-restore already opened the grid.
+	if !hadRestoreGrid {
+		switch m.cfg.StartupView {
+		case "grid":
+			m.openGrid(state.GridRestoreProject)
+		case "grid-all":
+			m.openGrid(state.GridRestoreAll)
+		}
+	}
 	// Show "What's New" overlay if there's changelog content.
 	// Pushed last so it appears on top of any restored grid or recovery overlays.
 	if whatsNewContent != "" {
