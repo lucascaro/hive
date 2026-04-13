@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-04-13
+
 ### Added
 - **`s` sidebar view shortcut**: pressing `s` in the main view focuses the sidebar pane; pressing `s` while in the grid closes the grid and returns to the sidebar (#100).
 - **`h`/`l` vim aliases for collapse/expand**: `h` collapses and `l` expands sidebar items (projects/teams), complementing the existing `←`/`→` arrow key bindings. These appear in the help overlay (#100).
@@ -304,7 +306,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/lucascaro/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/lucascaro/hive/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/lucascaro/hive/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/lucascaro/hive/compare/v0.7.0...v0.7.1
