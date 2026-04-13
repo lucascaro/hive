@@ -320,16 +320,24 @@ func (sv *SettingsView) startEditing(f *settingField) {
 	sv.editInput.Focus()
 }
 
+// maxSettingsWidth is the maximum width the settings panel will occupy.
+// On wider terminals the panel is centered within the full terminal width.
+const maxSettingsWidth = 100
+
 // View renders the full-screen settings panel.
 func (sv *SettingsView) View() string {
 	if !sv.Active {
 		return ""
 	}
 
+	fullW := sv.Width
 	w := sv.Width
 	h := sv.Height
 	if w <= 0 {
 		w = 80
+	}
+	if w > maxSettingsWidth {
+		w = maxSettingsWidth
 	}
 	if h <= 0 {
 		h = 24
@@ -446,7 +454,11 @@ func (sv *SettingsView) View() string {
 		Padding(0, 2).
 		Render(strings.Join(visible, "\n"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer)
+	panel := lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer)
+	if fullW > w {
+		return lipgloss.Place(fullW, h, lipgloss.Center, lipgloss.Top, panel)
+	}
+	return panel
 }
 
 // tabActiveBg matches StatusBarStyle's background so the active tab reads
