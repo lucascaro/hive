@@ -58,6 +58,7 @@ type GridView struct {
 	paneTitles    map[string]string // target ("tmuxSession:windowIdx") → live pane title
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
+	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
 }
 
 // Show activates the grid with the given sessions.
@@ -65,6 +66,7 @@ func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) 
 	gv.Active = true
 	gv.Mode = mode
 	gv.sessions = sessions
+	gv.atExtended = false // reset when session count changes (layout may change)
 	if gv.Cursor >= len(sessions) {
 		gv.Cursor = 0
 	}
@@ -74,6 +76,8 @@ func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) 
 }
 
 // Hide deactivates the grid.
+// atExtended is intentionally not reset here — Show() clears it on the next
+// grid open, and Update() is gated on Active so the stale value is never read.
 func (gv *GridView) Hide() { gv.Active = false }
 
 // SetContents updates the captured preview content map.
@@ -120,6 +124,13 @@ func (gv *GridView) BellPendingForTest(sessionID string) bool {
 	return gv.bellPending[sessionID]
 }
 
+// AtExtendedForTest reports whether the cursor is currently at the extended
+// (visual bottom) portion of a cell.
+// For use in tests only — not part of the production API.
+func (gv *GridView) AtExtendedForTest() bool {
+	return gv.atExtended
+}
+
 // Selected returns the currently focused session, or nil.
 func (gv *GridView) Selected() *state.Session {
 	if !gv.Active || gv.Cursor < 0 || gv.Cursor >= len(gv.sessions) {
@@ -147,6 +158,7 @@ func (gv *GridView) SyncCursor(sessionID string) {
 	for i, sess := range gv.sessions {
 		if sess.ID == sessionID {
 			gv.Cursor = i
+			gv.atExtended = false
 			return
 		}
 	}
@@ -161,6 +173,8 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	n := len(gv.sessions)
 	cols := gridColumns(gv.Width, gv.Height, n)
 
+	rows := (n + cols - 1) / cols
+
 	switch msg.String() {
 	case "esc":
 		gv.Hide()
@@ -173,27 +187,67 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}, true
 		}
 	case "left":
-		rowStart := (gv.Cursor / cols) * cols
-		if gv.Cursor > rowStart {
-			gv.Cursor--
-		} else if gv.Cursor > 0 {
-			gv.Cursor-- // wrap to last cell of previous row
+		if gv.atExtended {
+			// Cursor is at the visual bottom (extended row) of its session.
+			// Navigate left within that virtual last row.
+			col := gv.Cursor % cols
+			if col > 0 {
+				virtualTarget := (rows-1)*cols + (col - 1)
+				if virtualTarget < n {
+					// Real session to the left in the last row.
+					gv.Cursor = virtualTarget
+					gv.atExtended = false
+				} else if n%cols != 0 && (col-1) >= n%cols {
+					// Another extended slot to the left; navigate to its owner.
+					ownerIdx := (rows-2)*cols + (col - 1)
+					if ownerIdx >= 0 && ownerIdx < n {
+						gv.Cursor = ownerIdx
+						// atExtended stays true
+					}
+				}
+			}
+		} else {
+			// Both branches decrement by one: within-row move and prev-row wrap
+			// are identical operations (cursor layout is a flat index).
+			if gv.Cursor > 0 {
+				gv.Cursor--
+			}
 		}
 	case "right":
-		rowEnd := (gv.Cursor/cols)*cols + cols - 1
-		if rowEnd >= n {
-			rowEnd = n - 1
+		row := gv.Cursor / cols
+		if gv.atExtended {
+			row = rows - 1 // treat cursor as being in the visual last row
 		}
-		if gv.Cursor < rowEnd {
-			gv.Cursor++
-		} else if gv.Cursor < n-1 {
-			gv.Cursor++ // wrap to first cell of next row
+		col := gv.Cursor % cols
+		nextCol := col + 1
+		nextIdx := row*cols + nextCol
+		switch {
+		case nextCol < cols && nextIdx < n:
+			// Normal move right within the same row.
+			gv.Cursor = nextIdx
+			gv.atExtended = false
+		case nextCol < cols && nextIdx >= n && n%cols != 0 && nextCol >= n%cols && row == rows-1 && rows > 1:
+			// Next slot is an extended cell — navigate to its owning session.
+			ownerIdx := (rows-2)*cols + nextCol
+			if ownerIdx >= 0 && ownerIdx < n {
+				gv.Cursor = ownerIdx
+				gv.atExtended = true
+			}
+		case row < rows-1:
+			// End of row: wrap to first cell of the next row.
+			nextRowStart := (row + 1) * cols
+			if nextRowStart < n {
+				gv.Cursor = nextRowStart
+				gv.atExtended = false
+			}
 		}
 	case "up":
+		gv.atExtended = false
 		if gv.Cursor >= cols {
 			gv.Cursor -= cols
 		}
 	case "down":
+		gv.atExtended = false
 		if gv.Cursor+cols < n {
 			gv.Cursor += cols
 		}
@@ -513,6 +567,7 @@ func lastNContentLines(s string, n int) string {
 // MoveUp moves the grid cursor up by one row.
 func (gv *GridView) MoveUp() {
 	cols := gridColumns(gv.Width, gv.Height, len(gv.sessions))
+	gv.atExtended = false
 	if gv.Cursor >= cols {
 		gv.Cursor -= cols
 	}
@@ -522,6 +577,7 @@ func (gv *GridView) MoveUp() {
 func (gv *GridView) MoveDown() {
 	n := len(gv.sessions)
 	cols := gridColumns(gv.Width, gv.Height, n)
+	gv.atExtended = false
 	if gv.Cursor+cols < n {
 		gv.Cursor += cols
 	}

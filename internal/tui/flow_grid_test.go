@@ -935,3 +935,75 @@ func TestFlow_GridHelpOpensPushesViewHelp(t *testing.T) {
 		t.Errorf("after ? in grid: TopView=%v, want ViewHelp", f.model.TopView())
 	}
 }
+
+// TestFlow_GridExtendedCellNavigation verifies that right-arrow from the last
+// real session in the last row navigates into the extended (expanded-down) cell
+// and that left-arrow returns to the previous position.
+//
+// Grid layout for 5 sessions at 120×40 (cols=3, rows=2):
+//
+//	row 0: [0][1][2]
+//	row 1: [3][4][2*]  ← col 2 is extended; session at idx 2 fills both rows
+func TestFlow_GridExtendedCellNavigation(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	appState := state.AppState{
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-1",
+		AgentUsage:      make(map[string]state.AgentUsageRecord),
+		Projects: []*state.Project{
+			{
+				ID:    "proj-1",
+				Name:  "test-project-extended",
+				Color: "#7C3AED",
+				Teams: []*state.Team{},
+				Sessions: []*state.Session{
+					{ID: "sess-1", ProjectID: "proj-1", Title: "s1", TmuxSession: "hive-t", TmuxWindow: 0, Status: state.StatusRunning, AgentType: state.AgentClaude},
+					{ID: "sess-2", ProjectID: "proj-1", Title: "s2", TmuxSession: "hive-t", TmuxWindow: 1, Status: state.StatusRunning, AgentType: state.AgentClaude},
+					{ID: "sess-3", ProjectID: "proj-1", Title: "s3", TmuxSession: "hive-t", TmuxWindow: 2, Status: state.StatusRunning, AgentType: state.AgentClaude},
+					{ID: "sess-4", ProjectID: "proj-1", Title: "s4", TmuxSession: "hive-t", TmuxWindow: 3, Status: state.StatusRunning, AgentType: state.AgentClaude},
+					{ID: "sess-5", ProjectID: "proj-1", Title: "s5", TmuxSession: "hive-t", TmuxWindow: 4, Status: state.StatusRunning, AgentType: state.AgentClaude},
+				},
+			},
+		},
+	}
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.PreviewRefreshMs = 1
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	// Open project grid (5 sessions → 3×2 layout, col 2 extended).
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	// Move cursor to idx 4 (session 5, row 1, col 1) — last real cell in last row.
+	f.SetGridCursor(4)
+
+	// Right from idx 4 should navigate to idx 2 (the extended cell owner, session 3).
+	f.SendSpecialKey(tea.KeyRight)
+	f.AssertGridCursor(2)
+	if !f.model.gridView.AtExtendedForTest() {
+		t.Error("atExtended = false after navigating into extended slot, want true")
+	}
+
+	// Left from extended idx 2 should return to idx 4 (session 5).
+	f.SendSpecialKey(tea.KeyLeft)
+	f.AssertGridCursor(4)
+	if f.model.gridView.AtExtendedForTest() {
+		t.Error("atExtended = true after leaving extended slot, want false")
+	}
+}
