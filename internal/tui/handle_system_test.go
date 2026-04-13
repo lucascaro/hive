@@ -5,8 +5,7 @@ import (
 )
 
 func TestHandleConfigSaved_PopsSettingsView(t *testing.T) {
-	m, mock := testFlowModel(t)
-	_ = mock
+	m, _ := testFlowModel(t)
 	m.appState.LastError = "prior error"
 	m.PushView(ViewSettings)
 
@@ -27,8 +26,7 @@ func TestHandleConfigSaved_PopsSettingsView(t *testing.T) {
 }
 
 func TestHandleConfigSaved_NoopWhenSettingsNotOnTop(t *testing.T) {
-	m, mock := testFlowModel(t)
-	_ = mock
+	m, _ := testFlowModel(t)
 	m.appState.LastError = "prior error"
 	// Stack stays at ViewMain; e.g. config reloaded externally.
 

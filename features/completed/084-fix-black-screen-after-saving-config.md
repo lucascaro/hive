@@ -60,6 +60,6 @@ Expected: after saving config, the UI should return to the previous screen (or m
 - Added `TopView() == ViewSettings` guard + `m.settings.Close()` + `m.PopView()` in `handleConfigSaved` (internal/tui/handle_system.go:74).
 - Updated `TestFlow_Settings_SaveStillWorks` to use `ExecCmdChain` so the SettingsSaveRequestMsg → ConfigSavedMsg chain actually runs, and added assertions for `TopView() == ViewMain` and non-empty render. Existing test silently hid the bug because it never executed the returned cmd.
 - Added unit tests in `internal/tui/handle_system_test.go` covering the pop-on-settings-top and noop-when-not-on-top cases.
-- Skipped the planned `SaveError_KeepsSettingsOpen` flow test: inducing a real `config.Save` failure requires filesystem manipulation on a per-test basis. The unit tests cover both TopView branches; the save-error path is pre-existing behavior (settings component also renders blank when Active=false after `sv.Close()` at components/settings.go:207). Surfacing save errors visibly is a separate issue worth filing.
+- Review (gstack-review) caught that the failure path of `handleSettingsSaveRequest` had the same black-screen bug — component already self-closed but view stack wasn't popped on error, so `LastError` was set but hidden. Fixed by also popping in the error branch. Added `TestFlow_Settings_SaveError_PopsViewAndShowsError` which chmods the config dir read-only to induce a real `config.Save` failure and asserts `TopView=ViewMain` + non-empty `LastError`.
 
-- **PR:** —
+- **PR:** #86
