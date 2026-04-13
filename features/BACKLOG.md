@@ -53,3 +53,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #75 | Add custom terminal bell sounds with settings option | #83 | 2026-04-12 |
 | #84 | Fix black screen after saving config with no way to continue | #86 | 2026-04-12 |
 | #85 | Terminal bell sounds and grid badge during attached sessions | — | — |
+| #89 | Extend grid cells to fill empty space in grid view | — | — |

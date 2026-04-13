@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom terminal bell sounds**: Settings → General → Bell Sound now offers six options — `normal` (current `\a` default), `bee`, `chime`, `ping`, `knock`, and `silent`. Non-default sounds are played via the platform's audio tool (`afplay` / `paplay` / `aplay` on macOS/Linux, PowerShell `SoundPlayer` on Windows) with a graceful fallback to `\a` when no player is available. `silent` suppresses audio entirely while still showing the sidebar bell indicator. Configurable per install; persisted in `~/.config/hive/config.json` (#75).
 - **Bell badge in grid view**: sessions with an unacknowledged bell now show a blinking `♪` badge replacing the status dot in the grid cell header, consistent with the existing sidebar indicator (#85).
 
+### Changed
+- **Grid fills empty space**: when sessions don't evenly fill the grid layout, the last row now expands to use the remaining screen height instead of leaving a blank cell at the bottom (#89).
+
 ### Fixed
 - **Bell sounds and badges when attached to a session**: custom bell audio now plays and the sidebar/grid bell badges are set correctly when a background session rings its bell while the user is directly attached to another session. Previously the bell was silenced because hive's event loop is suspended during attachment; a background poller now handles it (#85).
 - **Grid mode toggle preserves selection**: pressing `g` while in the all-projects grid (or `G` while in a single-project grid) now keeps the currently-selected session and its project, instead of resetting to a different project's first session (#80).

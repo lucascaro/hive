@@ -220,21 +220,38 @@ func (gv *GridView) View() string {
 	rows := (n + cols - 1) / cols
 	hintH := 2
 	cellW := gv.Width / cols
-	cellH := (gv.Height - hintH) / rows
+	totalH := gv.Height - hintH
+	cellH := totalH / rows
 	if cellH < 5 {
 		cellH = 5
+	}
+	// Last row gets the remaining height so cells fill the full screen.
+	lastCellH := totalH - (rows-1)*cellH
+	if lastCellH < 5 {
+		lastCellH = 5
 	}
 
 	var rowViews []string
 	for r := 0; r < rows; r++ {
+		h := cellH
+		if r == rows-1 {
+			h = lastCellH
+		}
 		var cellViews []string
 		for c := 0; c < cols; c++ {
 			idx := r*cols + c
 			if idx >= n {
-				cellViews = append(cellViews, lipgloss.NewStyle().Width(cellW).Height(cellH).Render(""))
+				// Last row: skip empty cells — the real cells above already fill the space.
+				if r == rows-1 {
+					continue
+				}
+				cellViews = append(cellViews, lipgloss.NewStyle().Width(cellW).Height(h).Render(""))
 				continue
 			}
-			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, cellH, idx == gv.Cursor))
+			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, h, idx == gv.Cursor))
+		}
+		if len(cellViews) == 0 {
+			continue
 		}
 		rowViews = append(rowViews, lipgloss.JoinHorizontal(lipgloss.Top, cellViews...))
 	}

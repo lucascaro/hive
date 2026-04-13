@@ -554,3 +554,48 @@ func TestSanitizePaneTitle(t *testing.T) {
 		})
 	}
 }
+
+// TestGridView_LastRowFillsHeight verifies that when sessions don't evenly fill
+// the grid, the last row expands to use the remaining vertical space instead of
+// leaving empty cells.
+func TestGridView_LastRowFillsHeight(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	cases := []struct {
+		name     string
+		n        int // number of sessions
+		w, h     int
+	}{
+		{"3 sessions 2-col", 3, 80, 24},
+		{"3 sessions 2-col tall", 3, 80, 40},
+		{"5 sessions 3-col", 5, 120, 30},
+		{"7 sessions 3-col", 7, 120, 40},
+		{"1 session", 1, 80, 24},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := make([]*state.Session, tc.n)
+			for i := range sessions {
+				sessions[i] = &state.Session{
+					ID: "s" + string(rune('1'+i)), Title: "session",
+					AgentType: state.AgentClaude, Status: state.StatusRunning,
+				}
+			}
+			gv := &GridView{Active: true, Width: tc.w, Height: tc.h}
+			gv.Show(sessions, state.GridRestoreProject)
+			out := gv.View()
+
+			// Height invariant must hold.
+			got := strings.Count(out, "\n") + 1
+			if got != tc.h {
+				t.Errorf("View() = %d lines, want %d", got, tc.h)
+			}
+
+			// The output must contain all session titles (no session was dropped).
+			for _, s := range sessions {
+				if !strings.Contains(out, s.Title) {
+					t.Errorf("session %q missing from output", s.Title)
+				}
+			}
+		})
+	}
+}
