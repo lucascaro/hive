@@ -26,7 +26,7 @@ func installBellRecorder(t *testing.T) *bellRecorder {
 	audio.SyncForTest = true
 	restore := audio.SetTestHooks(
 		func() { r.writeCalls.Add(1) },
-		func(path string) error { r.playCalls.Add(1); return nil },
+		func(path string, volume int) error { r.playCalls.Add(1); return nil },
 	)
 	t.Cleanup(func() {
 		restore()

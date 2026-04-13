@@ -7,7 +7,9 @@ import (
 	"strings"
 )
 
-func playWAVReal(path string) error {
+// playWAVReal plays the WAV at path. volume is accepted for API consistency but
+// ignored — System.Media.SoundPlayer has no volume control API on Windows.
+func playWAVReal(path string, volume int) error {
 	// Escape single quotes by doubling them — this is PowerShell's
 	// literal-string escape. Defense-in-depth: today `path` always comes
 	// from os.TempDir() + a constant basename, but escaping keeps us

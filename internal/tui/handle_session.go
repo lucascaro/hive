@@ -188,7 +188,7 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 			}
 		}
 		if newBell && time.Since(m.lastBellTime) > 500*time.Millisecond {
-			audio.Play(m.cfg.BellSound)
+			audio.Play(m.cfg.BellSound, m.cfg.BellVolume)
 			m.lastBellTime = time.Now()
 		}
 		if newBell {

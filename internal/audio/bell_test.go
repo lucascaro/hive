@@ -10,21 +10,23 @@ import (
 )
 
 // withHooks installs deterministic test doubles for writeBell and playWAV
-// and returns counters + a recorder of the last path passed to playWAV.
+// and returns counters + recorders for the last path and volume passed to playWAV.
 // Callers register cleanup via t.Cleanup.
-func withHooks(t *testing.T) (writeCalls *atomic.Int32, playCalls *atomic.Int32, lastPath *string) {
+func withHooks(t *testing.T) (writeCalls *atomic.Int32, playCalls *atomic.Int32, lastPath *string, lastVolume *int) {
 	t.Helper()
 	var wc, pc atomic.Int32
 	var lp string
+	var lv int
 	var mu sync.Mutex
 
 	origWrite := writeBell
 	origPlay := playWAV
 	writeBell = func() { wc.Add(1) }
-	playWAV = func(path string) error {
+	playWAV = func(path string, volume int) error {
 		pc.Add(1)
 		mu.Lock()
 		lp = path
+		lv = volume
 		mu.Unlock()
 		return nil
 	}
@@ -33,7 +35,7 @@ func withHooks(t *testing.T) (writeCalls *atomic.Int32, playCalls *atomic.Int32,
 		playWAV = origPlay
 	})
 
-	return &wc, &pc, &lp
+	return &wc, &pc, &lp, &lv
 }
 
 // withTempDir redirects the lazy extractOnce target to t.TempDir and resets
@@ -52,10 +54,10 @@ func withTempDir(t *testing.T) string {
 }
 
 func TestPlay_SilentIsNoop(t *testing.T) {
-	wc, pc, _ := withHooks(t)
+	wc, pc, _, _ := withHooks(t)
 	withTempDir(t)
 
-	playSync(BellSilent)
+	playSync(BellSilent, 100)
 
 	if got := wc.Load(); got != 0 {
 		t.Errorf("writeBell called %d times, want 0", got)
@@ -66,10 +68,10 @@ func TestPlay_SilentIsNoop(t *testing.T) {
 }
 
 func TestPlay_NormalWritesBellChar(t *testing.T) {
-	wc, pc, _ := withHooks(t)
+	wc, pc, _, _ := withHooks(t)
 	withTempDir(t)
 
-	playSync(BellNormal)
+	playSync(BellNormal, 100)
 
 	if got := wc.Load(); got != 1 {
 		t.Errorf("writeBell called %d times, want 1", got)
@@ -80,10 +82,10 @@ func TestPlay_NormalWritesBellChar(t *testing.T) {
 }
 
 func TestPlay_CustomSoundCallsPlayWAV(t *testing.T) {
-	wc, pc, lastPath := withHooks(t)
+	wc, pc, lastPath, _ := withHooks(t)
 	withTempDir(t)
 
-	playSync(BellBee)
+	playSync(BellBee, 100)
 
 	if got := pc.Load(); got != 1 {
 		t.Fatalf("playWAV called %d times, want 1", got)
@@ -100,10 +102,10 @@ func TestPlay_CustomSoundCallsPlayWAV(t *testing.T) {
 }
 
 func TestPlay_UnknownSoundFallsBackToBell(t *testing.T) {
-	wc, pc, _ := withHooks(t)
+	wc, pc, _, _ := withHooks(t)
 	withTempDir(t)
 
-	playSync("bogus-not-a-sound")
+	playSync("bogus-not-a-sound", 100)
 
 	if got := pc.Load(); got != 0 {
 		t.Errorf("playWAV called %d times, want 0 on unknown sound", got)
@@ -205,6 +207,47 @@ func TestExtractOnce_Concurrent(t *testing.T) {
 	for i := 1; i < n; i++ {
 		if paths[i] != paths[0] {
 			t.Errorf("paths[%d] = %q, want %q (all goroutines must share the cache)", i, paths[i], paths[0])
+		}
+	}
+}
+
+func TestPlay_VolumePassedThrough(t *testing.T) {
+	_, _, _, lastVolume := withHooks(t)
+	withTempDir(t)
+
+	playSync(BellBee, 75)
+
+	if got := *lastVolume; got != 75 {
+		t.Errorf("playWAV received volume %d, want 75", got)
+	}
+}
+
+func TestPlay_ZeroVolumeDefaultsTo100(t *testing.T) {
+	_, _, _, lastVolume := withHooks(t)
+	withTempDir(t)
+
+	playSync(BellBee, 0)
+
+	if got := *lastVolume; got != 100 {
+		t.Errorf("playWAV received volume %d, want 100 (zero should default to full volume)", got)
+	}
+}
+
+func TestEffectiveVolume(t *testing.T) {
+	tests := []struct {
+		in   int
+		want int
+	}{
+		{0, 100},
+		{-5, 100},
+		{1, 1},
+		{50, 50},
+		{100, 100},
+		{101, 100},
+	}
+	for _, tc := range tests {
+		if got := effectiveVolume(tc.in); got != tc.want {
+			t.Errorf("effectiveVolume(%d) = %d, want %d", tc.in, got, tc.want)
 		}
 	}
 }
