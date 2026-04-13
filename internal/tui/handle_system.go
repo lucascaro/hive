@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -79,6 +81,7 @@ func (m Model) handleSettingsClosed() (tea.Model, tea.Cmd) {
 
 func (m Model) handleConfigSaved() (tea.Model, tea.Cmd) {
 	m.appState.LastError = "" // clear any previous error
+	m.pendingSaveConfig = config.Config{}
 	if m.TopView() == ViewSettings {
 		m.settings.Close()
 		m.PopView()
@@ -99,6 +102,23 @@ func (m Model) handlePersist() (tea.Model, tea.Cmd) {
 func (m Model) handleQuitAndKill() (tea.Model, tea.Cmd) {
 	m.killAllSessions()
 	return m, tea.Quit
+}
+
+func (m Model) handleSettingsSaveConfirm(msg components.SettingsSaveConfirmMsg) (tea.Model, tea.Cmd) {
+	m.pendingSaveConfig = msg.Config
+	path := config.ConfigPath()
+	if home, err := os.UserHomeDir(); err == nil {
+		if rel, err := filepath.Rel(home, path); err == nil && !strings.HasPrefix(rel, "..") {
+			path = "~" + string(filepath.Separator) + rel
+		}
+	}
+	confirmMsg := fmt.Sprintf("Save settings to %s?", path)
+	m.appState.ConfirmMsg = confirmMsg
+	m.appState.ConfirmAction = "save-settings"
+	m.confirm.Message = confirmMsg
+	m.confirm.Action = "save-settings"
+	m.PushView(ViewConfirm)
+	return m, nil
 }
 
 func (m Model) handleConfirmAction(msg ConfirmActionMsg) (tea.Model, tea.Cmd) {

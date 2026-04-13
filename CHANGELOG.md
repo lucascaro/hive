@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bell badge in grid view**: sessions with an unacknowledged bell now show a blinking `♪` badge replacing the status dot in the grid cell header, consistent with the existing sidebar indicator (#85).
 
 ### Changed
+- **Settings save confirmation dialog**: saving settings (`s`) now opens a modal confirmation dialog instead of the inline status-bar prompt, making the action more visible and consistent with other destructive-action dialogs (#93).
 - **Grid fills empty space**: when sessions don't evenly fill the grid layout, the last row now expands to use the remaining screen height instead of leaving a blank cell at the bottom (#89).
 
 ### Fixed
