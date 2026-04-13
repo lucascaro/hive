@@ -104,8 +104,10 @@ var (
 	DotWaiting = lipgloss.NewStyle().Foreground(ColorWarning).Render("◉")
 	DotDead    = lipgloss.NewStyle().Foreground(ColorError).Render("✕")
 
-	// Bell badge shown when a session has an unacknowledged bell.
-	BellBadge = lipgloss.NewStyle().Foreground(ColorWarning).Render("♪")
+	// BellBadge replaces the status pip when a session has an unacknowledged
+	// bell. It blinks to draw attention and uses the same single-character
+	// width as the status dots so the layout is undisturbed.
+	BellBadge = lipgloss.NewStyle().Foreground(ColorWarning).Blink(true).Render("♪")
 
 	// Misc
 	TitleStyle = lipgloss.NewStyle().
@@ -386,9 +388,10 @@ func AgentBadgeOnBg(agentType string, bg lipgloss.Color) string {
 }
 
 // BellBadgeOnBg returns the bell badge glyph (♪) with ColorWarning foreground
-// on the given background, matching the StatusDotOnBg/AgentBadgeOnBg pattern.
+// on the given background. It blinks like BellBadge, following the
+// StatusDotOnBg/AgentBadgeOnBg pattern for the grid's dark-background prefix.
 func BellBadgeOnBg(bg lipgloss.Color) string {
-	return lipgloss.NewStyle().Foreground(ColorWarning).Background(bg).Render("♪")
+	return lipgloss.NewStyle().Foreground(ColorWarning).Background(bg).Blink(true).Render("♪")
 }
 
 // StatusDotOnBg returns a styled status dot with an explicit background.

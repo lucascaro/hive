@@ -286,15 +286,18 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	// Keep the status dot and agent badge on a dark background so their
 	// bright foreground colors remain legible regardless of project color.
 	darkBg := lipgloss.Color(styles.ColorBg)
-	dot := styles.StatusDotOnBg(string(sess.Status), darkBg)
+	// Bell badge replaces the status dot when a bell is pending. Both glyphs
+	// are one character wide so the layout is undisturbed.
+	var dotOrBell string
+	if gv.bellPending[sess.ID] {
+		dotOrBell = styles.BellBadgeOnBg(darkBg)
+	} else {
+		dotOrBell = styles.StatusDotOnBg(string(sess.Status), darkBg)
+	}
 	badge := styles.AgentBadgeOnBg(string(sess.AgentType), darkBg)
 	darkSp := lipgloss.NewStyle().Background(darkBg).Render(" ")
 	bgSp := lipgloss.NewStyle().Background(bg).Foreground(fg).Render(" ")
-	prefixStr := dot + darkSp + badge
-	if gv.bellPending[sess.ID] {
-		prefixStr += darkSp + styles.BellBadgeOnBg(darkBg)
-	}
-	prefixStr += bgSp
+	prefixStr := dotOrBell + darkSp + badge + bgSp
 	prefixW := ansi.StringWidth(prefixStr)
 
 	// Build the optional suffix (project + worktree) as plain text for width calc.
