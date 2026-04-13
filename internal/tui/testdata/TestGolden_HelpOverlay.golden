@@ -2,37 +2,37 @@
                                                                                                                         
                                                                                                                         
                                                                                                                         
-                               ╭───────────────────────────────────────────────────────╮                                
-                               │                                                       │                                
-                               │   Hive — Keyboard Shortcuts                           │                                
-                               │                                                       │                                
-                               │     j/k ↑↓          navigate sessions                 │                                
-                               │     J/K             navigate projects                 │                                
-                               │     tab             toggle sidebar/preview focus      │                                
-                               │     enter/a         attach to session                 │                                
-                               │     space           toggle collapse project/team      │                                
-                               │     n               new project                       │                                
-                               │     t               new session (agent picker)        │                                
-                               │     W               new worktree session              │                                
-                               │     T               new agent team (wizard)           │                                
-                               │     r               rename session or team            │                                
-                               │     c/C             cycle project color next/prev     │                                
-                               │     S-↑/↓           reorder item (S-←/→ in grid)      │                                
-                               │     x/d             kill session                      │                                
-                               │     D               kill entire team                  │                                
-                               │     /               filter sessions                   │                                
-                               │     ctrl+p          command palette                   │                                
-                               │     g               grid overview (all sessions)      │                                
-                               │     1-9             jump to project by number         │                                
-                               │     S               open settings                     │                                
-                               │     ?               toggle this help                  │                                
-                               │     H               tmux shortcuts reference          │                                
-                               │     q               quit (sessions persist in tmux)   │                                
-                               │     Q               quit and kill all sessions        │                                
-                               │                                                       │                                
-                               │   Press ? or esc to close                             │                                
-                               │                                                       │                                
-                               ╰───────────────────────────────────────────────────────╯                                
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+     ╭───────────────────────────────────────────────────────────────────────────────────────────────────────────╮      
+     │                                                                                                           │      
+     │   Hive — Keyboard Shortcuts                                                                               │      
+     │                                                                                                           │      
+     │   ↑     up              a/enter attach                  c           next color    ?      help             │      
+     │   ↓     down            t       new session             C           prev color    H      tmux shortcuts   │      
+     │   K     prev project    W       new worktree session    shift+up    move up       S      settings         │      
+     │   J     next project    T       new team                shift+down  move down     ctrl+p palette          │      
+     │   ←     collapse        n       new project             shift+left  move left     tab    switch pane      │      
+     │   →     expand          r       rename                  shift+right move right    q      quit             │      
+     │   space toggle          x       kill session            /           filter        Q      quit+kill        │      
+     │                         D       kill team               g           grid view                             │      
+     │                                                                                                           │      
+     │   Press ? or esc to close                                                                                 │      
+     │                                                                                                           │      
+     ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────╯      
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

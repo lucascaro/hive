@@ -25,7 +25,7 @@ func TestFlow_MoveSessionDown_Sidebar(t *testing.T) {
 
 	// Navigate to session-1.
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-1"; i++ {
-		f.SendKey("k")
+		f.SendSpecialKey(tea.KeyUp)
 	}
 	f.AssertActiveSession("sess-1")
 
@@ -57,7 +57,7 @@ func TestFlow_MoveSessionUp_Sidebar(t *testing.T) {
 
 	// Navigate to session-3 (last).
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-3"; i++ {
-		f.SendKey("j")
+		f.SendSpecialKey(tea.KeyDown)
 	}
 	f.AssertActiveSession("sess-3")
 
@@ -90,7 +90,7 @@ func TestFlow_MoveSession_BoundaryNoop(t *testing.T) {
 
 	// Navigate to session-1 (first).
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-1"; i++ {
-		f.SendKey("k")
+		f.SendSpecialKey(tea.KeyUp)
 	}
 	f.AssertActiveSession("sess-1")
 
@@ -103,7 +103,7 @@ func TestFlow_MoveSession_BoundaryNoop(t *testing.T) {
 
 	// Navigate to session-3 (last) and try Shift+Down.
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-3"; i++ {
-		f.SendKey("j")
+		f.SendSpecialKey(tea.KeyDown)
 	}
 	f.SendSpecialKey(tea.KeyShiftDown)
 	if proj.Sessions[2].ID != "sess-3" {
@@ -120,7 +120,7 @@ func TestFlow_MoveProjectDown_Sidebar(t *testing.T) {
 	// Cursor starts on session-1 in proj-1. Move to the project row.
 	// Sidebar items: [project-1, session-1, project-2, session-2]
 	// Navigate up to the project-1 header.
-	f.SendKey("k")
+	f.SendSpecialKey(tea.KeyUp)
 	sel := sidebarSelected(f)
 	if sel == nil || sel.Kind != components.KindProject || sel.ProjectID != "proj-1" {
 		t.Fatalf("expected cursor on proj-1 project row, got kind=%v id=%v",
@@ -167,7 +167,7 @@ func TestFlow_MoveSession_GridView_ShiftRight(t *testing.T) {
 
 	// Navigate to session-1.
 	for i := 0; i < 5 && f.Model().appState.ActiveSessionID != "sess-1"; i++ {
-		f.SendKey("k")
+		f.SendSpecialKey(tea.KeyUp)
 	}
 	f.AssertActiveSession("sess-1")
 
@@ -255,7 +255,7 @@ func TestFlow_MoveTeamDown_Sidebar(t *testing.T) {
 		if sel != nil && sel.Kind == components.KindTeam && sel.TeamID == "team-1" {
 			break
 		}
-		f.SendKey("k")
+		f.SendSpecialKey(tea.KeyUp)
 	}
 	sel := sidebarSelected(f)
 	if sel == nil || sel.Kind != components.KindTeam || sel.TeamID != "team-1" {
@@ -302,7 +302,7 @@ func TestFlow_NavProjectDown_JumpsToNextProject(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Cursor starts on sess-1 in proj-1. Move up to the project row.
-	f.SendKey("k")
+	f.SendSpecialKey(tea.KeyUp)
 	sel := sidebarSelected(f)
 	if sel == nil || sel.Kind != components.KindProject || sel.ProjectID != "proj-1" {
 		t.Fatalf("setup: expected cursor on proj-1, got kind=%v id=%v",
@@ -327,7 +327,7 @@ func TestFlow_NavProjectUp_JumpsToPrevProject(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Navigate to proj-2 first: up to proj-1, then J to proj-2.
-	f.SendKey("k")
+	f.SendSpecialKey(tea.KeyUp)
 	f.SendKey("J")
 	sel := sidebarSelected(f)
 	if sel == nil || sel.ProjectID != "proj-2" {
@@ -352,7 +352,7 @@ func TestFlow_NavProjectDown_NoOp_AtLastProject(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Navigate to proj-2 header.
-	f.SendKey("k")
+	f.SendSpecialKey(tea.KeyUp)
 	f.SendKey("J")
 	sel := sidebarSelected(f)
 	if sel == nil || sel.ProjectID != "proj-2" {
@@ -372,7 +372,7 @@ func TestFlow_NavProjectUp_NoOp_AtFirstProject(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Navigate to proj-1 header.
-	f.SendKey("k")
+	f.SendSpecialKey(tea.KeyUp)
 	sel := sidebarSelected(f)
 	if sel == nil || sel.ProjectID != "proj-1" {
 		t.Fatalf("setup: expected cursor on proj-1, got %v", sel)

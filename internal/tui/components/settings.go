@@ -224,22 +224,22 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		cfg := sv.cfg
 		return func() tea.Msg { return SettingsSaveConfirmMsg{Config: cfg} }, true
 
-	case "left", "h":
+	case "left":
 		if sv.activeTab > 0 {
 			sv.activeTab--
 		}
 
-	case "right", "l":
+	case "right":
 		if sv.activeTab < len(sv.tabs)-1 {
 			sv.activeTab++
 		}
 
-	case "j", "down":
+	case "down":
 		if sv.cursor() < len(sv.currentFields())-1 {
 			sv.setCursor(sv.cursor() + 1)
 		}
 
-	case "k", "up":
+	case "up":
 		if sv.cursor() > 0 {
 			sv.setCursor(sv.cursor() - 1)
 		}

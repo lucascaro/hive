@@ -36,8 +36,10 @@ type StatusBar struct {
 	Width int
 }
 
-// View renders the status bar given the current app state and key hints.
-func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterActive bool, filterQuery string) string {
+// View renders the status bar given the current app state and pre-computed hints.
+// hints is a fully-rendered hint line (from help.Model or a custom string for
+// filter/confirm states); it is truncated to fit the available width.
+func (sb *StatusBar) View(appState *state.AppState, hints string) string {
 	w := sb.Width
 	if w <= 0 {
 		w = 80
@@ -61,10 +63,9 @@ func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterAc
 	breadcrumb := ansi.Truncate(rawBreadcrumb, innerW, "")
 	line1 := styles.StatusBarStyle.Width(w).Render(breadcrumb)
 
-	// Line 2: key hints (context-sensitive)
-	rawHints := buildHints(appState, focused, filterActive, filterQuery)
-	hints := ansi.Truncate(rawHints, innerW, "")
-	line2 := styles.StatusBarStyle.Width(w).Render(hints)
+	// Line 2: key hints (pre-computed by caller)
+	truncHints := ansi.Truncate(hints, innerW, "")
+	line2 := styles.StatusBarStyle.Width(w).Render(truncHints)
 
 	joined := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
 	joinedLines := strings.Count(joined, "\n") + 1
@@ -72,7 +73,7 @@ func (sb *StatusBar) View(appState *state.AppState, focused state.Pane, filterAc
 	line2Lines := strings.Count(line2, "\n") + 1
 	statusLog.Printf("View: w=%d innerW=%d breadcrumbRawW=%d hintsRawW=%d line1=%d line2=%d total=%d%s",
 		w, innerW,
-		ansi.StringWidth(rawBreadcrumb), ansi.StringWidth(rawHints),
+		ansi.StringWidth(rawBreadcrumb), ansi.StringWidth(hints),
 		line1Lines, line2Lines, joinedLines,
 		func() string {
 			if joinedLines != 2 {
@@ -119,61 +120,4 @@ func buildBreadcrumb(s *state.AppState) string {
 		return styles.ErrorStyle.Render("Error: "+s.LastError) + "  " + strings.Join(parts, sep)
 	}
 	return strings.Join(parts, sep)
-}
-
-func buildHints(s *state.AppState, focused state.Pane, filterActive bool, filterQuery string) string {
-	if filterActive {
-		return fmt.Sprintf("Filter: %s  [esc: clear]", styles.HelpKeyStyle.Render(filterQuery+"_"))
-	}
-	if s.ShowHelp {
-		return styles.MutedStyle.Render("? close help")
-	}
-	if s.ShowConfirm {
-		return fmt.Sprintf("%s  %s",
-			styles.HelpKeyStyle.Render("y/enter: confirm"),
-			styles.HelpKeyStyle.Render("esc/n: cancel"))
-	}
-
-	type hint struct{ key, desc string }
-	var hints []hint
-
-	if focused == state.PaneSidebar {
-		killHint := hint{"x", "kill"}
-		if s.ActiveTeamID != "" {
-			killHint = hint{"x/D", "kill session/team"}
-		}
-		hints = []hint{
-			{"?", "help"},
-			{"n", "new project"},
-			{"t", "new session"},
-			{"T", "new team"},
-			{"a/↵", "attach"},
-			{"g/G", "grid view"},
-			{"r", "rename"},
-			{"c/C", "color"},
-			killHint,
-			{"S", "settings"},
-			{"tab", "preview"},
-			{"q", "quit"},
-		}
-	} else {
-		hints = []hint{
-			{"?", "help"},
-			{"tab", "sidebar"},
-			{"a", "attach"},
-			{"ctrl+r", "refresh"},
-			{"q", "quit"},
-		}
-	}
-
-	var parts []string
-	for i, h := range hints {
-		// Cycle hint description colors through the project palette so the
-		// hint row reads as a colored sequence rather than monochrome muted
-		// text.  Keys remain accent purple as a visual anchor.
-		descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(styles.NextProjectColor(i)))
-		parts = append(parts, styles.HelpKeyStyle.Render(h.key)+":"+descStyle.Render(h.desc))
-	}
-	parts = append(parts, styles.MutedStyle.Render(styles.StatusLegend()))
-	return strings.Join(parts, "  ")
 }

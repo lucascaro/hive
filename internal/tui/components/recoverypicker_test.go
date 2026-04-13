@@ -34,7 +34,7 @@ func TestRecoveryPicker_CursorNavigation(t *testing.T) {
 	}
 	rp := NewRecoveryPicker(sessions)
 
-	rp, _ = rp.Update(keyPress("j"))
+	rp, _ = rp.Update(keyType(tea.KeyDown))
 	if rp.cursor != 1 {
 		t.Errorf("after j: cursor=%d, want 1", rp.cursor)
 	}
@@ -43,12 +43,12 @@ func TestRecoveryPicker_CursorNavigation(t *testing.T) {
 		t.Errorf("after down: cursor=%d, want 2", rp.cursor)
 	}
 	// Clamp at bottom
-	rp, _ = rp.Update(keyPress("j"))
+	rp, _ = rp.Update(keyType(tea.KeyDown))
 	if rp.cursor != 2 {
 		t.Errorf("clamp bottom: cursor=%d, want 2", rp.cursor)
 	}
 
-	rp, _ = rp.Update(keyPress("k"))
+	rp, _ = rp.Update(keyType(tea.KeyUp))
 	if rp.cursor != 1 {
 		t.Errorf("after k: cursor=%d, want 1", rp.cursor)
 	}
@@ -57,7 +57,7 @@ func TestRecoveryPicker_CursorNavigation(t *testing.T) {
 		t.Errorf("after up: cursor=%d, want 0", rp.cursor)
 	}
 	// Clamp at top
-	rp, _ = rp.Update(keyPress("k"))
+	rp, _ = rp.Update(keyType(tea.KeyUp))
 	if rp.cursor != 0 {
 		t.Errorf("clamp top: cursor=%d, want 0", rp.cursor)
 	}
@@ -104,7 +104,7 @@ func TestRecoveryPicker_AgentTypeCycleRight(t *testing.T) {
 	rp := NewRecoveryPicker(sessions)
 
 	// Claude is index 0, right should move to Codex (index 1)
-	rp, _ = rp.Update(keyPress("l"))
+	rp, _ = rp.Update(keyType(tea.KeyRight))
 	if rp.sessions[0].DetectedAgentType != state.AgentCodex {
 		t.Errorf("after right: agent=%s, want codex", rp.sessions[0].DetectedAgentType)
 	}
@@ -117,7 +117,7 @@ func TestRecoveryPicker_AgentTypeCycleLeft(t *testing.T) {
 	rp := NewRecoveryPicker(sessions)
 
 	// Claude is index 0, left should wrap to Custom (last)
-	rp, _ = rp.Update(keyPress("h"))
+	rp, _ = rp.Update(keyType(tea.KeyLeft))
 	if rp.sessions[0].DetectedAgentType != state.AgentCustom {
 		t.Errorf("after left from claude: agent=%s, want custom", rp.sessions[0].DetectedAgentType)
 	}
@@ -200,7 +200,7 @@ func TestRecoveryPicker_EnterReturnsModifiedAgentType(t *testing.T) {
 	rp.selected[0] = true
 
 	// Change agent type to codex
-	rp, _ = rp.Update(keyPress("l"))
+	rp, _ = rp.Update(keyType(tea.KeyRight))
 	rp, cmd := rp.Update(keyType(tea.KeyEnter))
 	msg := cmd()
 	done := msg.(RecoveryPickerDoneMsg)

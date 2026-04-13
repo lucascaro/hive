@@ -483,7 +483,7 @@ func TestStatusBarView_ExactHeight_ANSIContent(t *testing.T) {
 		ActiveProjectID: "p1",
 		ActiveSessionID: "s1",
 	}
-	out := sb.View(appState, state.PaneSidebar, false, "")
+	out := sb.View(appState, "?:help  q:quit")
 	got := strings.Count(out, "\n") + 1
 	if got != 2 {
 		t.Errorf("StatusBar.View() with ANSI content = %d lines, want exactly 2", got)

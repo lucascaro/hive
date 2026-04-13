@@ -37,4 +37,4 @@
                                 ││                                                                                     │
                                 │╰─────────────────────────────────────────────────────────────────────────────────────╯
  hive / test-project-1 / session-1 [claude] ● [running]                                                                 
- ?:help  n:new project  t:new session  T:new team  a/↵:attach  g/G:grid view  r:rename  c/C:color  x:kill  S:settings   
+ ? help • n new project • t new session • a/enter attach • g grid view • r rename • c next color • x kill session …  ○  

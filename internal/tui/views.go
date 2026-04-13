@@ -80,42 +80,11 @@ func (m Model) dirConfirmView() string {
 }
 
 func (m Model) helpView() string {
-	type binding struct{ key, desc string }
-	bindings := []binding{
-		{"j/k ↑↓", "navigate sessions"},
-		{"J/K", "navigate projects"},
-		{"tab", "toggle sidebar/preview focus"},
-		{"enter/a", "attach to session"},
-		{"space", "toggle collapse project/team"},
-		{"n", "new project"},
-		{"t", "new session (agent picker)"},
-		{"W", "new worktree session"},
-		{"T", "new agent team (wizard)"},
-		{"r", "rename session or team"},
-		{"c/C", "cycle project color next/prev"},
-		{"S-↑/↓", "reorder item (S-←/→ in grid)"},
-		{"x/d", "kill session"},
-		{"D", "kill entire team"},
-		{"/", "filter sessions"},
-		{"ctrl+p", "command palette"},
-		{"g", "grid overview (all sessions)"},
-		{"1-9", "jump to project by number"},
-		{"S", "open settings"},
-		{"?", "toggle this help"},
-		{"H", "tmux shortcuts reference"},
-		{"q", "quit (sessions persist in tmux)"},
-		{"Q", "quit and kill all sessions"},
-	}
-	var rows []string
-	for _, b := range bindings {
-		row := fmt.Sprintf("  %s  %s",
-			styles.HelpKeyStyle.Width(14).Render(b.key),
-			styles.HelpDescStyle.Render(b.desc),
-		)
-		rows = append(rows, row)
-	}
+	m.helpModel.ShowAll = true
+	m.helpModel.Width = m.appState.TermWidth - 8 // account for border + padding
+
 	content := styles.TitleStyle.Render("Hive — Keyboard Shortcuts") + "\n\n" +
-		strings.Join(rows, "\n") + "\n\n" +
+		m.helpModel.View(m.keys) + "\n\n" +
 		styles.MutedStyle.Render("Press ? or esc to close")
 
 	return lipgloss.Place(m.appState.TermWidth, m.appState.TermHeight,
