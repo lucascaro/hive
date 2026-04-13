@@ -476,7 +476,7 @@ internal/
 
 ## Contributing
 
-Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing, and submission guidelines.
+Bug reports and pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, testing, and submission guidelines. AI-assisted development uses [hivesmith](https://github.com/lucascaro/hivesmith) skills (`/hs-feature-*`, `/hs-review-pr`, `/hs-release`) for the feature pipeline and release workflow.
 
 ## Architecture
 

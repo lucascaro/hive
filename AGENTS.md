@@ -206,21 +206,26 @@ The script handles everything: version bump (`cmd/version.go`), changelog stamp,
 
 Hive uses a local feature tracking system in `features/` linked to GitHub issues. Features are managed via slash commands (skills) that guide each stage.
 
+These skills are provided by [hivesmith](https://github.com/lucascaro/hivesmith) and installed globally as `hs-*` commands.
+
 ### Slash Commands
 
 | Command | Purpose |
 |---------|---------|
-| `/feature-next` | Show pipeline status and recommend next action |
-| `/feature-ingest <issue>` | Ingest a GitHub issue into the pipeline |
-| `/feature-triage [issue]` | Classify, estimate complexity, set priority |
-| `/feature-research [issue]` | Explore codebase, document findings |
-| `/feature-plan [issue]` | Write implementation plan |
-| `/feature-implement [issue]` | Code, test, open PR |
+| `/hs-feature-next` | Show pipeline status and recommend next action |
+| `/hs-feature-ingest <issue>` | Ingest a GitHub issue into the pipeline |
+| `/hs-feature-triage [issue]` | Classify, estimate complexity, set priority |
+| `/hs-feature-research [issue]` | Explore codebase, document findings |
+| `/hs-feature-plan [issue]` | Write implementation plan |
+| `/hs-feature-implement [issue]` | Code, test, open PR |
+| `/hs-feature-loop [issue]` | Drive a feature through the full pipeline end-to-end |
+| `/hs-review-pr` | Deep PR review (correctness, safety, UX, consistency) |
+| `/hs-release` | Cut a release with pre-flight checks and version bump |
 
 ### Working on Features
 
-1. **Find the next feature:** Run `/feature-next` or read `features/BACKLOG.md`. The top row in the Active table is the highest priority.
-2. **Advance the stage:** Run the appropriate `/feature-*` command. It will update the feature file, BACKLOG.md, and GitHub labels.
+1. **Find the next feature:** Run `/hs-feature-next` or read `features/BACKLOG.md`. The top row in the Active table is the highest priority.
+2. **Advance the stage:** Run the appropriate `/hs-feature-*` command. It will update the feature file, BACKLOG.md, and GitHub labels.
 3. **One feature at a time.** Finish the current stage before moving to the next. Do not skip stages.
 
 ### Stage Workflow
@@ -233,11 +238,11 @@ Hive uses a local feature tracking system in `features/` linked to GitHub issues
 
 ### GitHub Labels
 
-Each stage has a corresponding label applied to the GitHub issue: `triaged`, `researching`, `planned`, `implementing`. The `/feature-*` commands manage these automatically.
+Each stage has a corresponding label applied to the GitHub issue: `triaged`, `researching`, `planned`, `implementing`. The `/hs-feature-*` commands manage these automatically.
 
 ### Ingesting New Issues
 
-Run `/feature-ingest <issue-number>` or manually create a feature file from the template at `features/templates/FEATURE.md`. Always set initial stage to TRIAGE.
+Run `/hs-feature-ingest <issue-number>` or manually create a feature file from the template at `features/templates/FEATURE.md`. Always set initial stage to TRIAGE.
 
 ## Skill routing
 

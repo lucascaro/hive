@@ -79,6 +79,21 @@ When adding or modifying UI elements, follow the guidelines in [AGENTS.md](AGENT
 - Destructive actions must go through a confirmation overlay.
 - Keep status indicators (dots, badges) visible on every row.
 
+## AI-Assisted Development
+
+This project uses [hivesmith](https://github.com/lucascaro/hivesmith) skills for AI-assisted feature development. If you work with Claude Code, the following global `hs-*` skills are available:
+
+- `/hs-feature-ingest` — import a GitHub issue into the local `features/` pipeline
+- `/hs-feature-triage` — classify and prioritize
+- `/hs-feature-research` — explore the codebase and document findings
+- `/hs-feature-plan` — write an implementation plan
+- `/hs-feature-implement` — code, test, and open a PR
+- `/hs-feature-loop` — drive a feature through the entire pipeline
+- `/hs-review-pr` — deep PR review
+- `/hs-release` — cut a release
+
+See [AGENTS.md](AGENTS.md) for the full feature pipeline workflow.
+
 ## Security
 
 If you discover a security vulnerability, please open a GitHub Issue marked **[security]** or contact the maintainer directly before disclosing publicly. See [SECURITY.md](SECURITY.md) for details.
