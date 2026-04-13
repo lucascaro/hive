@@ -551,6 +551,22 @@ func TestSanitizePreviewContent_StripNonSGRVariants(t *testing.T) {
 	}
 }
 
+func TestPreviewView_EscapeOnlyContent_ShowsPlaceholder(t *testing.T) {
+	// A brand-new tmux pane emits cursor-reset and screen-clear sequences that
+	// sanitizePreviewContent strips entirely. The raw content is non-empty but
+	// the sanitized result is blank — the preview must show the placeholder.
+	escapeOnly := "\x1b[?1049h\x1b[H\x1b[J\x1b[?25l"
+	p := newPreview(80, 24, escapeOnly)
+	out := p.View("sess-1")
+	if !strings.Contains(out, "Waiting for output") {
+		t.Error("escape-only content should show 'Waiting for output…' placeholder")
+	}
+	if strings.Contains(out, "No active session") {
+		t.Error("should show 'Waiting for output…', not 'No active session'")
+	}
+}
+
+
 func TestPreviewUpdatedMsg_Fields(t *testing.T) {
 	msg := PreviewUpdatedMsg{
 		SessionID:  "sess-123",

@@ -8,7 +8,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | P2 | #79 | Consolidate hotkey definitions and display between sidebar and grid modes | RESEARCH | M |
-| — | #78 | Persist user preferences (e.g. start in grid mode) | TRIAGE | — |
 
 ## Rejected
 
@@ -53,4 +52,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #75 | Add custom terminal bell sounds with settings option | #83 | 2026-04-12 |
 | #84 | Fix black screen after saving config with no way to continue | #86 | 2026-04-12 |
 | #85 | Terminal bell sounds and grid badge during attached sessions | — | — |
+| #88 | Fix empty preview when session has insufficient text | — | — |
+| #78 | Persist user preferences — Startup View setting | — | — |
 | #89 | Extend grid cells to fill empty space in grid view | — | — |

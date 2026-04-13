@@ -280,9 +280,15 @@ func (p *Preview) Resize(w, h int) {
 // viewport, scrolled to the bottom so the most recent output is visible.
 // Pass an empty string to clear the pane (e.g. when switching sessions).
 func (p *Preview) SetContent(content string) {
-	p.hasContent = content != ""
+	// Sanitize first so that hasContent reflects visible text, not raw escape
+	// sequences.  A brand-new tmux pane emits cursor-reset / screen-clear
+	// sequences (e.g. \x1b[?1049h\x1b[H\x1b[J) that are entirely stripped by
+	// sanitizePreviewContent; checking content != "" before sanitization would
+	// leave hasContent=true while the viewport renders blank, suppressing the
+	// "Waiting for output…" placeholder.
+	sanitized := sanitizePreviewContent(content)
+	p.hasContent = strings.TrimSpace(sanitized) != ""
 	if p.hasContent {
-		sanitized := sanitizePreviewContent(content)
 		// Truncate lines to the inner viewport width.
 		//
 		// Content captured from wide tmux panes (e.g. 245-column) routinely

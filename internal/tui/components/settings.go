@@ -750,6 +750,17 @@ func buildSettingTabs() []settingTab {
 					},
 				},
 				{
+					label:       "Startup View",
+					description: "View shown on startup. 'sidebar' opens the normal session list; 'grid' opens the current-project grid; 'grid-all' opens the all-projects grid.",
+					kind:        fieldSelect,
+					options:     []string{"sidebar", "grid", "grid-all"},
+					get:         func(c config.Config) string { return c.StartupView },
+					set: func(c *config.Config, v string) error {
+						c.StartupView = v
+						return nil
+					},
+				},
+				{
 					label:       "Multiplexer",
 					description: "Backend for managing terminal sessions. 'tmux' uses the external tmux binary. 'native' uses a built-in PTY daemon (no external binary needed).",
 					kind:        fieldSelect,

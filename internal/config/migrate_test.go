@@ -184,3 +184,26 @@ func TestMigrate_UnknownAgentInstallCmdNotFilled(t *testing.T) {
 		t.Errorf("InstallCmd for unknown agent should stay empty, got %v", profile.InstallCmd)
 	}
 }
+
+// TestMigrate_V3ToV4_FillsStartupView verifies that upgrading from schema v3
+// to v4 populates the empty StartupView field with the default "sidebar" (#78).
+func TestMigrate_V3ToV4_FillsStartupView(t *testing.T) {
+	cfg := Config{SchemaVersion: 3, StartupView: ""}
+	got := Migrate(cfg)
+	if got.StartupView != "sidebar" {
+		t.Errorf("StartupView = %q, want %q", got.StartupView, "sidebar")
+	}
+	if got.SchemaVersion != currentSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", got.SchemaVersion, currentSchemaVersion)
+	}
+}
+
+// TestMigrate_V3ToV4_PreservesExistingStartupView verifies that the v3→v4
+// migration does not clobber a user who has already set StartupView.
+func TestMigrate_V3ToV4_PreservesExistingStartupView(t *testing.T) {
+	cfg := Config{SchemaVersion: 3, StartupView: "grid-all"}
+	got := Migrate(cfg)
+	if got.StartupView != "grid-all" {
+		t.Errorf("StartupView = %q, want %q (user choice must be preserved)", got.StartupView, "grid-all")
+	}
+}
