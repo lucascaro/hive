@@ -307,46 +307,37 @@ func TestSettingsView_SaveFlow(t *testing.T) {
 	// Make dirty
 	sv.Update(keyType(tea.KeyEnter)) // toggle theme
 
-	// Press s → pending save
-	sv.Update(keyPress("s"))
-	if !sv.pendingSave {
-		t.Error("expected pendingSave=true")
-	}
-
-	// Confirm with y
-	cmd, consumed := sv.Update(keyPress("y"))
+	// Press s → should emit SettingsSaveConfirmMsg (dialog handled at app level)
+	cmd, consumed := sv.Update(keyPress("s"))
 	if !consumed {
 		t.Error("expected consumed=true")
 	}
-	if sv.Active {
-		t.Error("expected Active=false after save confirm")
-	}
 	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
+		t.Fatal("expected non-nil cmd from 's' press")
+	}
+	if !sv.Active {
+		t.Error("expected settings to remain active (close happens after confirm)")
 	}
 	msg := cmd()
-	save, ok := msg.(SettingsSaveRequestMsg)
+	confirm, ok := msg.(SettingsSaveConfirmMsg)
 	if !ok {
-		t.Fatalf("expected SettingsSaveRequestMsg, got %T", msg)
+		t.Fatalf("expected SettingsSaveConfirmMsg, got %T", msg)
 	}
-	if save.Config.Theme != "light" {
-		t.Errorf("expected saved theme=light, got %s", save.Config.Theme)
+	if confirm.Config.Theme != "light" {
+		t.Errorf("confirm msg Config.Theme = %q, want \"light\"", confirm.Config.Theme)
 	}
 }
 
-func TestSettingsView_SaveCancelledByOtherKey(t *testing.T) {
+func TestSettingsView_SStillActiveAfterSPress(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
 	sv.Update(keyType(tea.KeyEnter)) // make dirty
-	sv.Update(keyPress("s"))         // pending save
+	sv.Update(keyPress("s"))         // request save → emits SettingsSaveConfirmMsg
 
-	sv.Update(keyPress("n")) // cancel save
-	if sv.pendingSave {
-		t.Error("expected pendingSave=false after cancel")
-	}
+	// Settings should still be active — cancel/confirm are handled by the dialog
 	if !sv.Active {
-		t.Error("expected still active after save cancel")
+		t.Error("expected settings still active after 's' (dialog not yet confirmed)")
 	}
 }
 
@@ -373,22 +364,22 @@ func TestSettingsView_SaveConfirmedWithEnter(t *testing.T) {
 	sv.Open(testConfig())
 
 	sv.Update(keyType(tea.KeyEnter)) // toggle theme → dirty
-	sv.Update(keyPress("s"))         // pending save
 
-	// Confirm with enter (source also accepts "y")
-	cmd, consumed := sv.Update(keyType(tea.KeyEnter))
+	// Press s — the confirmation dialog is now at the app level (ViewConfirm).
+	// Settings emits SettingsSaveConfirmMsg and stays active.
+	cmd, consumed := sv.Update(keyPress("s"))
 	if !consumed {
 		t.Error("expected consumed=true")
 	}
-	if sv.Active {
-		t.Error("expected Active=false after enter-confirm")
+	if !sv.Active {
+		t.Error("expected Active=true after 's' (dialog is at app level)")
 	}
 	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
+		t.Fatal("expected non-nil cmd from 's'")
 	}
 	msg := cmd()
-	if _, ok := msg.(SettingsSaveRequestMsg); !ok {
-		t.Fatalf("expected SettingsSaveRequestMsg, got %T", msg)
+	if _, ok := msg.(SettingsSaveConfirmMsg); !ok {
+		t.Fatalf("expected SettingsSaveConfirmMsg, got %T", msg)
 	}
 }
 
@@ -595,21 +586,20 @@ func TestSettingsView_SwitchTab_BlockedWhileEditing(t *testing.T) {
 	}
 }
 
-func TestSettingsView_SwitchTab_BlockedWhilePendingSave(t *testing.T) {
+func TestSettingsView_TabSwitchAfterSPress(t *testing.T) {
 	sv := NewSettingsView()
 	sv.Open(testConfig())
 
 	sv.Update(keyType(tea.KeyEnter)) // toggle theme → dirty
-	sv.Update(keyPress("s"))         // pendingSave
-	if !sv.pendingSave {
-		t.Fatal("precondition: pendingSave=true")
-	}
+	sv.Update(keyPress("s"))         // emits SettingsSaveConfirmMsg; settings stays active
 
 	startTab := sv.activeTab
-	// "l" isn't y/enter — it cancels pending save but must NOT switch tabs.
+	// After 's', settings is still active and keys work normally again
+	// (the confirm dialog is at the app layer, not here).
 	sv.Update(keyPress("l"))
-	if sv.activeTab != startTab {
-		t.Errorf("activeTab changed while pendingSave: got %d, want %d", sv.activeTab, startTab)
+	// Tab should switch since there is no pendingSave lock here anymore.
+	if sv.activeTab == startTab && len(sv.tabs) > 1 {
+		t.Errorf("expected tab to switch after 'l', still at %d", sv.activeTab)
 	}
 }
 

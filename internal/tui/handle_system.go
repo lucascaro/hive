@@ -101,6 +101,17 @@ func (m Model) handleQuitAndKill() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
+func (m Model) handleSettingsSaveConfirm(msg components.SettingsSaveConfirmMsg) (tea.Model, tea.Cmd) {
+	m.pendingSaveConfig = msg.Config
+	confirmMsg := fmt.Sprintf("Save settings to %s?", config.ConfigPath())
+	m.appState.ConfirmMsg = confirmMsg
+	m.appState.ConfirmAction = "save-settings"
+	m.confirm.Message = confirmMsg
+	m.confirm.Action = "save-settings"
+	m.PushView(ViewConfirm)
+	return m, nil
+}
+
 func (m Model) handleConfirmAction(msg ConfirmActionMsg) (tea.Model, tea.Cmd) {
 	m.appState.ConfirmMsg = msg.Message
 	m.appState.ConfirmAction = msg.Action

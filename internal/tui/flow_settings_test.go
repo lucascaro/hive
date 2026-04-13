@@ -118,12 +118,14 @@ func TestFlow_Settings_SaveStillWorks(t *testing.T) {
 	if !f.model.settings.IsDirty() {
 		t.Fatal("precondition: expected dirty")
 	}
-	f.SendKey("s") // pending save
-	if !f.model.settings.IsPendingSave() {
-		t.Fatal("precondition: expected pendingSave=true")
+	cmd := f.SendKey("s") // emits SettingsSaveConfirmMsg
+	f.ExecCmdChain(cmd)   // processes msg → pushes ViewConfirm
+
+	if got := f.model.TopView(); got != ViewConfirm {
+		t.Fatalf("expected ViewConfirm after 's', got %v", got)
 	}
-	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}) // confirm
-	f.ExecCmdChain(cmd)                                                // run save + ConfigSavedMsg
+	cmd = f.SendKey("y") // confirm → ConfirmedMsg → SettingsSaveRequestMsg
+	f.ExecCmdChain(cmd)  // run save + ConfigSavedMsg
 
 	if f.model.settings.Active {
 		t.Error("expected settings closed after save confirm")
@@ -148,9 +150,11 @@ func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
 	if !f.model.settings.IsDirty() {
 		t.Fatal("precondition: expected dirty")
 	}
-	f.SendKey("s")
-	if !f.model.settings.IsPendingSave() {
-		t.Fatal("precondition: expected pendingSave=true")
+	cmd := f.SendKey("s") // emits SettingsSaveConfirmMsg
+	f.ExecCmdChain(cmd)   // pushes ViewConfirm
+
+	if got := f.model.TopView(); got != ViewConfirm {
+		t.Fatalf("expected ViewConfirm after 's', got %v", got)
 	}
 
 	// Make the config dir read-only so config.Save fails atomically.
@@ -160,7 +164,7 @@ func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(cfgDir, 0o700) })
 
-	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	cmd = f.SendKey("y") // confirm → SettingsSaveRequestMsg → save fails
 	f.ExecCmdChain(cmd)
 
 	if got := f.model.TopView(); got != ViewMain {
@@ -171,6 +175,36 @@ func TestFlow_Settings_SaveError_PopsViewAndShowsError(t *testing.T) {
 	}
 	if strings.TrimSpace(f.View()) == "" {
 		t.Error("expected non-empty render after save error, got blank")
+	}
+}
+
+func TestFlow_Settings_SaveCancel(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	openSettings(t, f)
+	f.SendSpecialKey(tea.KeyEnter) // toggle Theme → dirty
+	if !f.model.settings.IsDirty() {
+		t.Fatal("precondition: expected dirty")
+	}
+	cmd := f.SendKey("s") // emits SettingsSaveConfirmMsg
+	f.ExecCmdChain(cmd)   // pushes ViewConfirm
+
+	if got := f.model.TopView(); got != ViewConfirm {
+		t.Fatalf("expected ViewConfirm after 's', got %v", got)
+	}
+
+	// Cancel the dialog
+	f.SendKey("n")
+
+	if got := f.model.TopView(); got != ViewSettings {
+		t.Errorf("expected ViewSettings after cancel, got %v", got)
+	}
+	if !f.model.settings.Active {
+		t.Error("expected settings still active after cancel")
+	}
+	if !f.model.settings.IsDirty() {
+		t.Error("expected settings still dirty after cancel")
 	}
 }
 

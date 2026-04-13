@@ -72,16 +72,26 @@ func TestFlow_BellSoundInSettings(t *testing.T) {
 		t.Errorf("BellSound after one Enter = %q, want %q", got, audio.BellBee)
 	}
 
-	// Save flow: 's' then 'y'.
-	f.SendKey("s")
-	cmd := f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
-	if cmd == nil {
-		t.Fatal("save confirm should emit a SettingsSaveRequestMsg cmd")
+	// Save flow: 's' → confirm dialog → 'y' → SettingsSaveRequestMsg.
+	cmd := f.SendKey("s") // emits SettingsSaveConfirmMsg
+	f.ExecCmdChain(cmd)   // pushes ViewConfirm
+
+	// 'y' triggers handleConfirm → ConfirmedMsg → handleConfirmedAction("save-settings")
+	// → SettingsSaveRequestMsg.
+	confirmCmd := f.SendKey("y")
+	if confirmCmd == nil {
+		t.Fatal("'y' on confirm dialog should emit a cmd")
 	}
-	msg := cmd()
-	save, ok := msg.(components.SettingsSaveRequestMsg)
+	// confirmCmd returns ConfirmedMsg; run it through Update to get SettingsSaveRequestMsg cmd.
+	confirmedMsg := confirmCmd()
+	saveCmd := f.Send(confirmedMsg)
+	if saveCmd == nil {
+		t.Fatal("ConfirmedMsg should emit a SettingsSaveRequestMsg cmd")
+	}
+	saveMsg := saveCmd()
+	save, ok := saveMsg.(components.SettingsSaveRequestMsg)
 	if !ok {
-		t.Fatalf("save cmd produced %T, want SettingsSaveRequestMsg", msg)
+		t.Fatalf("save cmd produced %T, want SettingsSaveRequestMsg", saveMsg)
 	}
 	if save.Config.BellSound != audio.BellBee {
 		t.Errorf("saved Config.BellSound = %q, want %q", save.Config.BellSound, audio.BellBee)

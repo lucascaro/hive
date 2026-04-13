@@ -19,6 +19,14 @@ type SettingsSaveRequestMsg struct {
 	Config config.Config
 }
 
+// SettingsSaveConfirmMsg is sent when the user requests to save settings,
+// triggering a confirmation dialog at the app level.
+type SettingsSaveConfirmMsg struct {
+	Config config.Config
+}
+
+var _ tea.Msg = SettingsSaveConfirmMsg{}
+
 // SettingsClosedMsg is sent when the settings screen is closed.
 type SettingsClosedMsg struct{}
 
@@ -66,7 +74,6 @@ type SettingsView struct {
 	editInput      textinput.Model
 	editErr        string
 	pendingDiscard bool
-	pendingSave    bool
 }
 
 // NewSettingsView creates a SettingsView.
@@ -86,7 +93,6 @@ func (sv *SettingsView) Open(cfg config.Config) {
 	sv.editing = false
 	sv.editErr = ""
 	sv.pendingDiscard = false
-	sv.pendingSave = false
 	sv.tabs = buildSettingTabs()
 	sv.activeTab = 0
 	sv.tabCursors = make([]int, len(sv.tabs))
@@ -99,7 +105,6 @@ func (sv *SettingsView) Close() {
 	sv.editing = false
 	sv.editInput.Blur()
 	sv.pendingDiscard = false
-	sv.pendingSave = false
 	sv.dirty = false
 }
 
@@ -133,9 +138,6 @@ func (sv *SettingsView) SelectedFieldLabel() string {
 	}
 	return f.label
 }
-
-// IsPendingSave reports whether the save-confirmation prompt is active.
-func (sv *SettingsView) IsPendingSave() bool { return sv.pendingSave }
 
 func (sv *SettingsView) currentFields() []*settingField {
 	if len(sv.tabs) == 0 {
@@ -198,20 +200,6 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return sv.handleEditKey(msg)
 	}
 
-	// Handle pending save confirmation inline (no app-level overlay needed).
-	if sv.pendingSave {
-		switch msg.String() {
-		case "y", "enter":
-			sv.pendingSave = false
-			cfg := sv.cfg
-			sv.Close()
-			return func() tea.Msg { return SettingsSaveRequestMsg{Config: cfg} }, true
-		default:
-			sv.pendingSave = false
-		}
-		return nil, true
-	}
-
 	// Any key other than esc clears the pending-discard warning.
 	if msg.String() != "esc" {
 		sv.pendingDiscard = false
@@ -235,8 +223,8 @@ func (sv *SettingsView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			sv.Close()
 			return func() tea.Msg { return SettingsClosedMsg{} }, true
 		}
-		sv.pendingSave = true
-		return nil, true
+		cfg := sv.cfg
+		return func() tea.Msg { return SettingsSaveConfirmMsg{Config: cfg} }, true
 
 	case "left", "h":
 		if sv.activeTab > 0 {
@@ -366,13 +354,7 @@ func (sv *SettingsView) View() string {
 
 	// Footer hints — build content then truncate before styling.
 	var footerParts []string
-	if sv.pendingSave {
-		footerParts = []string{
-			lipgloss.NewStyle().Foreground(styles.ColorWarning).Bold(true).Render("Save to " + config.ConfigPath() + "?"),
-			styles.HelpKeyStyle.Render("y/enter") + ":" + styles.HelpDescStyle.Render("confirm"),
-			styles.HelpKeyStyle.Render("any other key") + ":" + styles.HelpDescStyle.Render("cancel"),
-		}
-	} else if sv.pendingDiscard {
+	if sv.pendingDiscard {
 		footerParts = []string{
 			styles.ErrorStyle.Render("Unsaved changes! Press"),
 			styles.HelpKeyStyle.Render("esc"),
