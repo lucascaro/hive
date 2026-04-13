@@ -155,4 +155,4 @@ Implemented on branch `feature/75-custom-bell-sounds`.
 
 All pass: `go test ./...` green.
 
-- **PR:** (to be filled when PR is opened)
+- **PR:** #83
