@@ -31,7 +31,17 @@ type HelpPanel struct {
 }
 
 // NewHelpPanel creates a HelpPanel using the provided pre-styled help.Model.
+// All help model styles get an explicit background so the Keys tab renders
+// consistently without grey bleed from ANSI resets inside the dark panel.
 func NewHelpPanel(h help.Model) HelpPanel {
+	bg := styles.ColorBg
+	h.Styles.FullKey = h.Styles.FullKey.Background(bg)
+	h.Styles.FullDesc = h.Styles.FullDesc.Background(bg)
+	h.Styles.FullSeparator = h.Styles.FullSeparator.Background(bg)
+	h.Styles.ShortKey = h.Styles.ShortKey.Background(bg)
+	h.Styles.ShortDesc = h.Styles.ShortDesc.Background(bg)
+	h.Styles.ShortSeparator = h.Styles.ShortSeparator.Background(bg)
+	h.Styles.Ellipsis = h.Styles.Ellipsis.Background(bg)
 	return HelpPanel{helpModel: h}
 }
 
@@ -190,6 +200,11 @@ func (hp *HelpPanel) renderTabContent(km help.KeyMap, innerW int) []string {
 
 // renderTmuxTab renders the tmux key bindings reference.
 func (hp *HelpPanel) renderTmuxTab(w int) string {
+	bg := styles.ColorBg
+	keyStyle := styles.HelpKeyStyle.Background(bg).Width(18)
+	descStyle := styles.HelpDescStyle.Background(bg)
+	headerStyle := styles.MutedStyle.Background(bg)
+
 	type binding struct{ key, desc string }
 	bindings := []binding{
 		{mux.DetachKey(), "detach from session (return to Hive)"},
@@ -209,9 +224,9 @@ func (hp *HelpPanel) renderTmuxTab(w int) string {
 		{"ctrl+b $", "rename current session"},
 	}
 	var rows []string
-	rows = append(rows, styles.MutedStyle.Render("Key bindings while inside an attached tmux session.")+"\n")
+	rows = append(rows, headerStyle.Render("Key bindings while inside an attached tmux session.")+"\n")
 	for _, b := range bindings {
-		row := styles.HelpKeyStyle.Width(18).Render(b.key) + "  " + styles.HelpDescStyle.Render(b.desc)
+		row := keyStyle.Render(b.key) + "  " + descStyle.Render(b.desc)
 		rows = append(rows, row)
 	}
 	return strings.Join(rows, "\n")
@@ -219,11 +234,13 @@ func (hp *HelpPanel) renderTmuxTab(w int) string {
 
 // renderUsageTab renders the usage guide.
 func (hp *HelpPanel) renderUsageTab(_ int) string {
-	sec := func(title string) string {
-		return styles.TitleStyle.Render(title)
-	}
-	muted := styles.MutedStyle.Render
-	key := func(k string) string { return styles.HelpKeyStyle.Render(k) }
+	bg := styles.ColorBg
+	secStyle := styles.TitleStyle.Background(bg)
+	keyStyle := styles.HelpKeyStyle.Background(bg)
+	mutedStyle := styles.MutedStyle.Background(bg)
+	sec := secStyle.Render
+	muted := mutedStyle.Render
+	key := keyStyle.Render
 
 	lines := []string{
 		sec("Views"),
@@ -280,11 +297,13 @@ func (hp *HelpPanel) renderUsageTab(_ int) string {
 
 // renderFeaturesTab renders the features reference.
 func (hp *HelpPanel) renderFeaturesTab(_ int) string {
-	sec := func(title string) string {
-		return styles.TitleStyle.Render(title)
-	}
-	muted := styles.MutedStyle.Render
-	key := func(k string) string { return styles.HelpKeyStyle.Render(k) }
+	bg := styles.ColorBg
+	secStyle := styles.TitleStyle.Background(bg)
+	keyStyle := styles.HelpKeyStyle.Background(bg)
+	mutedStyle := styles.MutedStyle.Background(bg)
+	sec := secStyle.Render
+	muted := mutedStyle.Render
+	key := keyStyle.Render
 
 	lines := []string{
 		sec("Agent Types"),
