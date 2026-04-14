@@ -230,10 +230,11 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		m.popGridState(prevSel)
 		return tea.Batch(cmd, m.schedulePollPreview())
 	}
-	// If input mode was just activated, schedule a fast poll immediately so the
-	// user sees session output within 100 ms of their first keystroke.
+	// If input mode was just activated, kick off the fast focused-session poll
+	// (50 ms) so the user sees output quickly. The background poll continues
+	// at 250 ms from the existing loop.
 	if !prevInputMode && m.gridView.InputMode() {
-		return tea.Batch(cmd, m.scheduleGridPoll())
+		return tea.Batch(cmd, m.scheduleFocusedSessionPoll())
 	}
 	return cmd
 }

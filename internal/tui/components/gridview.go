@@ -21,8 +21,11 @@ type GridSessionSelectedMsg struct {
 }
 
 // GridPreviewsUpdatedMsg carries fresh capture-pane content for all sessions.
+// Fast=true indicates this is from the input-mode focused-session poll loop;
+// the handler uses this to reschedule the correct loop.
 type GridPreviewsUpdatedMsg struct {
 	Contents map[string]string
+	Fast     bool
 }
 
 // PollGridPreviews returns a tea.Cmd that captures pane content for all sessions.
@@ -40,6 +43,24 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd
 			}
 		}
 		return GridPreviewsUpdatedMsg{Contents: contents}
+	})
+}
+
+// PollFocusedGridPreview returns a tea.Cmd that captures pane content for a
+// single session at the given interval. Used for the fast poll in input mode.
+// The returned message has Fast=true so the handler reschedules this loop.
+func PollFocusedGridPreview(sess *state.Session, interval time.Duration) tea.Cmd {
+	if sess == nil || sess.TmuxSession == "" {
+		return nil
+	}
+	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+	sessID := sess.ID
+	return tea.Tick(interval, func(_ time.Time) tea.Msg {
+		contents := make(map[string]string, 1)
+		if content, err := mux.CapturePane(target, 200); err == nil {
+			contents[sessID] = sanitizePreviewContent(content)
+		}
+		return GridPreviewsUpdatedMsg{Contents: contents, Fast: true}
 	})
 }
 
