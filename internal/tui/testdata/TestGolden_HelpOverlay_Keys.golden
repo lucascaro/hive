@@ -1,40 +1,40 @@
                                                                                                                         
                                                                                                                         
-   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮   
-   │   Hive Help                                                                                                    │   
-   │  ╭──────╮                                                                                                      │   
-   │  │ Keys │ tmux   Usage   Features                                                                              │   
-   │──╯      ╰──────────────────────────────────────────────────────────────────────────────────────────────────────│   
-   │  ↑     up              a/enter attach                  c           next color      ?      help                 │   
-   │  ↓     down            t       new session             C           prev color      H      tmux shortcuts       │   
-   │  K     prev project    W       new worktree session    shift+up    move up         S      settings             │   
-   │  J     next project    T       new team                shift+down  move down       ctrl+p palette              │   
-   │  ←/h   collapse        n       new project             shift+left  move left       tab    switch pane          │   
-   │  →/l   expand          r       rename                  shift+right move right      q      quit                 │   
-   │  space toggle          x       kill session            /           filter          Q      quit+kill            │   
-   │                        D       kill team               s           sidebar view                                │   
-   │                                                        g           grid view                                   │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │ ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     │   
-   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   
+   [;m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m   
+   [;m│[0m   Hive Help                                                                                                    [;m│[0m   
+   [;m│[0m  ╭──────╮                                                                                                      [;m│[0m   
+   [;m│[0m  │ Keys │ tmux   Usage   Features                                                                              [;m│[0m   
+   [;m│[0m──╯      ╰──────────────────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
+   [;m│[0m  ↑     up              a/enter attach                  c           next color      ?      help                 [;m│[0m   
+   [;m│[0m  ↓     down            t       new session             C           prev color      H      tmux shortcuts       [;m│[0m   
+   [;m│[0m  K     prev project    W       new worktree session    shift+up    move up         S      settings             [;m│[0m   
+   [;m│[0m  J     next project    T       new team                shift+down  move down       ctrl+p palette              [;m│[0m   
+   [;m│[0m  ←/h   collapse        n       new project             shift+left  move left       tab    switch pane          [;m│[0m   
+   [;m│[0m  →/l   expand          r       rename                  shift+right move right      q      quit                 [;m│[0m   
+   [;m│[0m  space toggle          x       kill session            /           filter          Q      quit+kill            [;m│[0m   
+   [;m│[0m                        D       kill team               s           sidebar view                                [;m│[0m   
+   [;m│[0m                                                        g           grid view                                   [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
+   [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         
                                                                                                                         

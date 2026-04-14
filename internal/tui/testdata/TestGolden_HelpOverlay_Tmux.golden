@@ -1,40 +1,40 @@
                                                                                                                         
                                                                                                                         
-   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮   
-   │   Hive Help                                                                                                    │   
-   │       ╭──────╮                                                                                                 │   
-   │  Keys │ tmux │ Usage   Features                                                                                │   
-   │───────╯      ╰─────────────────────────────────────────────────────────────────────────────────────────────────│   
-   │  Key bindings while inside an attached tmux session.                                                           │   
-   │                                                                                                                │   
-   │  ctrl+q              detach from session (return to Hive)                                                      │   
-   │  ctrl+b c            create a new window                                                                       │   
-   │  ctrl+b n / p        next / previous window                                                                    │   
-   │  ctrl+b 0-9          switch to window by number                                                                │   
-   │  ctrl+b ,            rename current window                                                                     │   
-   │  ctrl+b %            split pane vertically                                                                     │   
-   │  ctrl+b "            split pane horizontally                                                                   │   
-   │  ctrl+b arrow        navigate between panes                                                                    │   
-   │  ctrl+b z            zoom/unzoom current pane                                                                  │   
-   │  ctrl+b x            kill current pane                                                                         │   
-   │  ctrl+b [            enter scroll/copy mode (q to exit)                                                        │   
-   │  ctrl+b ]            paste from tmux buffer                                                                    │   
-   │  ctrl+b ?            show all tmux key bindings                                                                │   
-   │  ctrl+b t            show clock                                                                                │   
-   │  ctrl+b $            rename current session                                                                    │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │                                                                                                                │   
-   │ ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     │   
-   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   
+   [;m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m   
+   [;m│[0m   Hive Help                                                                                                    [;m│[0m   
+   [;m│[0m       ╭──────╮                                                                                                 [;m│[0m   
+   [;m│[0m  Keys │ tmux │ Usage   Features                                                                                [;m│[0m   
+   [;m│[0m───────╯      ╰─────────────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
+   [;m│[0m  Key bindings while inside an attached tmux session.                                                           [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m  ctrl+q              detach from session (return to Hive)                                                      [;m│[0m   
+   [;m│[0m  ctrl+b c            create a new window                                                                       [;m│[0m   
+   [;m│[0m  ctrl+b n / p        next / previous window                                                                    [;m│[0m   
+   [;m│[0m  ctrl+b 0-9          switch to window by number                                                                [;m│[0m   
+   [;m│[0m  ctrl+b ,            rename current window                                                                     [;m│[0m   
+   [;m│[0m  ctrl+b %            split pane vertically                                                                     [;m│[0m   
+   [;m│[0m  ctrl+b "            split pane horizontally                                                                   [;m│[0m   
+   [;m│[0m  ctrl+b arrow        navigate between panes                                                                    [;m│[0m   
+   [;m│[0m  ctrl+b z            zoom/unzoom current pane                                                                  [;m│[0m   
+   [;m│[0m  ctrl+b x            kill current pane                                                                         [;m│[0m   
+   [;m│[0m  ctrl+b [            enter scroll/copy mode (q to exit)                                                        [;m│[0m   
+   [;m│[0m  ctrl+b ]            paste from tmux buffer                                                                    [;m│[0m   
+   [;m│[0m  ctrl+b ?            show all tmux key bindings                                                                [;m│[0m   
+   [;m│[0m  ctrl+b t            show clock                                                                                [;m│[0m   
+   [;m│[0m  ctrl+b $            rename current session                                                                    [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
+   [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         
                                                                                                                         

@@ -157,8 +157,10 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 		Render(strings.Join(visible, "\n"))
 
 	panel := lipgloss.NewStyle().
+		Background(styles.ColorBg).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.ColorAccent).
+		BorderBackground(styles.ColorBg).
 		Render(lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer))
 
 	return lipgloss.Place(w, h,
