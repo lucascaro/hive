@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-04-14
+
 ### Added
 - **Tabbed help panel**: the help overlay (`?`) now has four tabs — Keys (default), tmux, Usage guide, and Features reference. Press `H` to open directly at the tmux tab. Navigate tabs with `←`/`→`, scroll long tabs with `j`/`k` or `↑`/`↓`, and close with `?`, `q`, or `esc` (#107).
 - **In-place session input from grid view**: press `(i)` on a focused grid cell to enter input mode — keystrokes (including `Esc`, arrows, `Enter`, and common `Ctrl+` sequences) are forwarded directly to that session without a full attach. A `INPUT · C-Q` badge appears in the cell header while active. Non-focused cells dim their headers and borders to draw attention to the active session. Press `Ctrl+Q` to exit input mode and return to grid navigation. The preview refresh rate is automatically tuned in input mode: the focused session polls at 50 ms while all other sessions poll at 250 ms (2× the default 500 ms background rate), giving fast feedback without hammering inactive sessions. Can be disabled by setting `disable_grid_input: true` in `~/.config/hive/config.json`.
@@ -310,7 +312,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/lucascaro/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/lucascaro/hive/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/lucascaro/hive/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/lucascaro/hive/compare/v0.7.1...v0.7.2
