@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+   [;m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m   
+   [;m│[0m   Hive Help                                                                                                    [;m│[0m   
+   [;m│[0m                      ╭──────────╮                                                                              [;m│[0m   
+   [;m│[0m  Keys   tmux   Usage │ Features │                                                                              [;m│[0m   
+   [;m│[0m──────────────────────╯          ╰──────────────────────────────────────────────────────────────────────────────[;m│[0m   
+   [;m│[0m  [48;2;0;0;0mAgent Types[m                                                                                                   [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mHive works with multiple AI agents:[m                                                                           [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  claude    Anthropic's Claude CLI[m                                                                            [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  codex     OpenAI Codex CLI[m                                                                                  [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  gemini    Google Gemini CLI[m                                                                                 [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  copilot   GitHub Copilot CLI[m                                                                                [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  cmd       any terminal command[m                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mPress n and select an agent type when creating a new session.[m                                                 [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mSession Colors[m                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mEach session can have a color for easy identification.[m                                                        [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mColors appear as a gradient title bar in the sidebar and as a[m                                                 [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mcolored badge in grid cells.[m                                                                                  [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  v / V    cycle session color (sidebar or grid)[m                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mProject Colors[m                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  c / C    cycle project color (visible in grid header)[m                                                       [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mTerminal Bell[m                                                                                                 [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mWhen a session outputs a terminal bell, Hive:[m                                                                 [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  • plays a sound (configurable in Settings)[m                                                                  [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m  • shows a 🔔 badge on the session[m                                                                           [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/q/esc:close                                                                   [;m│[0m   
+   [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
+                                                                                                                        
+                                                                                                                        

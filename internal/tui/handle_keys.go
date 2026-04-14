@@ -27,10 +27,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewGrid:
 		cmd := m.handleGridKey(msg)
 		return m, cmd
-	case ViewHelp, ViewTmuxHelp:
-		if msg.String() == "esc" || key.Matches(msg, m.keys.Help) {
+	case ViewHelp:
+		if msg.String() == "esc" ||
+			key.Matches(msg, m.keys.Help) ||
+			key.Matches(msg, m.keys.Quit) {
 			m.PopView()
+			return m, nil
 		}
+		m.helpPanel.Width = m.appState.TermWidth
+		m.helpPanel.Height = m.appState.TermHeight
+		m.helpPanel.Update(msg, m.keys)
 		return m, nil
 	case ViewWhatsNew:
 		return m.handleWhatsNew(msg)
@@ -94,11 +100,13 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		return m.closeGrid()
 	}
 	if key.Matches(msg, m.keys.Help) {
+		m.helpPanel.Open(0)
 		m.PushView(ViewHelp)
 		return nil
 	}
 	if key.Matches(msg, m.keys.TmuxHelp) {
-		m.PushView(ViewTmuxHelp)
+		m.helpPanel.Open(1)
+		m.PushView(ViewHelp)
 		return nil
 	}
 	if key.Matches(msg, m.keys.Settings) {
@@ -280,6 +288,7 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case key.Matches(msg, m.keys.Help):
+		m.helpPanel.Open(0)
 		m.PushView(ViewHelp)
 		return m, nil
 
@@ -291,7 +300,8 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.TmuxHelp):
-		m.PushView(ViewTmuxHelp)
+		m.helpPanel.Open(1)
+		m.PushView(ViewHelp)
 		return m, nil
 
 	case key.Matches(msg, m.keys.FocusToggle):
