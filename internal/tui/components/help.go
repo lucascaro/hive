@@ -15,10 +15,15 @@ import (
 
 const helpNumTabs = 4
 
-// colorBgANSI is the ANSI SGR sequence for styles.ColorBg (#111827).
+// helpPanelBg is the pure-black background used throughout the help panel
+// interior. Defined locally so the rest of the app (which uses the slightly
+// lighter ColorBg) is unaffected.
+var helpPanelBg = lipgloss.Color("#000000")
+
+// helpPanelBgANSI is the ANSI SGR sequence for helpPanelBg (pure black).
 // Pre-computed so re-applying the background after resets is allocation-free.
-var colorBgANSI = func() string {
-	hex := strings.TrimPrefix(string(styles.ColorBg), "#")
+var helpPanelBgANSI = func() string {
+	hex := strings.TrimPrefix(string(helpPanelBg), "#")
 	if len(hex) != 6 {
 		return ""
 	}
@@ -32,10 +37,10 @@ var colorBgANSI = func() string {
 // in the line so that inner styled spans (which emit \033[0m) don't expose
 // the terminal's default background colour inside the help panel.
 func fixBgResets(line string) string {
-	repl := "\033[0m" + colorBgANSI
-	s := colorBgANSI + strings.ReplaceAll(line, "\033[0m", repl)
+	repl := "\033[0m" + helpPanelBgANSI
+	s := helpPanelBgANSI + strings.ReplaceAll(line, "\033[0m", repl)
 	// Also handle the shorter \033[m form.
-	s = strings.ReplaceAll(s, "\033[m", "\033[m"+colorBgANSI)
+	s = strings.ReplaceAll(s, "\033[m", "\033[m"+helpPanelBgANSI)
 	return s
 }
 
@@ -60,7 +65,7 @@ type HelpPanel struct {
 // All help model styles get an explicit background so the Keys tab renders
 // consistently without grey bleed from ANSI resets inside the dark panel.
 func NewHelpPanel(h help.Model) HelpPanel {
-	bg := styles.ColorBg
+	bg := helpPanelBg
 	h.Styles.FullKey = h.Styles.FullKey.Background(bg)
 	h.Styles.FullDesc = h.Styles.FullDesc.Background(bg)
 	h.Styles.FullSeparator = h.Styles.FullSeparator.Background(bg)
@@ -130,12 +135,12 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 
 	// --- Header ---
 	// Use ColorBg (black) so the entire panel interior is uniformly dark.
-	headerStyle := lipgloss.NewStyle().Background(styles.ColorBg).Width(panelW).Padding(0, 1)
-	header := headerStyle.Render(styles.TitleStyle.Background(styles.ColorBg).Render("  Hive Help"))
+	headerStyle := lipgloss.NewStyle().Background(helpPanelBg).Width(panelW).Padding(0, 1)
+	header := headerStyle.Render(styles.TitleStyle.Background(helpPanelBg).Render("  Hive Help"))
 
 	// --- Tab strip ---
 	tabTop, tabLabels, tabBaseline := hp.renderTabStrip(panelW)
-	tabWrap := lipgloss.NewStyle().Background(styles.ColorBg).Width(panelW)
+	tabWrap := lipgloss.NewStyle().Background(helpPanelBg).Width(panelW)
 	tabStrip := lipgloss.JoinVertical(
 		lipgloss.Left,
 		tabWrap.Render(tabTop),
@@ -147,11 +152,11 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 	footerHints := strings.Join([]string{
 		hint("←/→", "switch tab"),
 		hint("↑↓/j/k", "scroll"),
-		hint("?/esc", "close"),
+		hint("?/q/esc", "close"),
 	}, "  ")
 	// Use ColorBg background for footer to match the uniform dark interior.
 	footerStyle := lipgloss.NewStyle().
-		Background(styles.ColorBg).
+		Background(helpPanelBg).
 		Foreground(styles.ColorText).
 		Width(panelW).
 		Padding(0, 1)
@@ -197,17 +202,17 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 	}
 
 	body := lipgloss.NewStyle().
-		Background(styles.ColorBg).
+		Background(helpPanelBg).
 		Width(panelW).
 		Height(contentH).
 		Padding(0, 2).
 		Render(strings.Join(fixed, "\n"))
 
 	panel := lipgloss.NewStyle().
-		Background(styles.ColorBg).
+		Background(helpPanelBg).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(styles.ColorAccent).
-		BorderBackground(styles.ColorBg).
+		BorderBackground(helpPanelBg).
 		Render(lipgloss.JoinVertical(lipgloss.Left, header, tabStrip, body, footer))
 
 	return lipgloss.Place(w, h,
@@ -237,7 +242,7 @@ func (hp *HelpPanel) renderTabContent(km help.KeyMap, innerW int) []string {
 
 // renderTmuxTab renders the tmux key bindings reference.
 func (hp *HelpPanel) renderTmuxTab(w int) string {
-	bg := styles.ColorBg
+	bg := helpPanelBg
 	keyStyle := styles.HelpKeyStyle.Background(bg).Width(18)
 	descStyle := styles.HelpDescStyle.Background(bg)
 	headerStyle := styles.MutedStyle.Background(bg)
@@ -271,7 +276,7 @@ func (hp *HelpPanel) renderTmuxTab(w int) string {
 
 // renderUsageTab renders the usage guide.
 func (hp *HelpPanel) renderUsageTab(_ int) string {
-	bg := styles.ColorBg
+	bg := helpPanelBg
 	secStyle := styles.TitleStyle.Background(bg)
 	keyStyle := styles.HelpKeyStyle.Background(bg)
 	mutedStyle := styles.MutedStyle.Background(bg)
@@ -334,7 +339,7 @@ func (hp *HelpPanel) renderUsageTab(_ int) string {
 
 // renderFeaturesTab renders the features reference.
 func (hp *HelpPanel) renderFeaturesTab(_ int) string {
-	bg := styles.ColorBg
+	bg := helpPanelBg
 	secStyle := styles.TitleStyle.Background(bg)
 	keyStyle := styles.HelpKeyStyle.Background(bg)
 	mutedStyle := styles.MutedStyle.Background(bg)
@@ -471,14 +476,14 @@ func (hp *HelpPanel) renderTabStrip(w int) (string, string, string) {
 	}
 
 	// Help panel uses ColorBg (black) for the entire interior — no grey tint.
-	bgStyle := lipgloss.NewStyle().Background(styles.ColorBg)
-	baselineStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder).Background(styles.ColorBg)
-	notchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	frameOnBody := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	activeInterior := lipgloss.NewStyle().Background(styles.ColorBg)
-	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(styles.ColorBg).Bold(true)
-	inactiveLabel := lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(styles.ColorBg)
+	bgStyle := lipgloss.NewStyle().Background(helpPanelBg)
+	baselineStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder).Background(helpPanelBg)
+	notchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
+	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
+	frameOnBody := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
+	activeInterior := lipgloss.NewStyle().Background(helpPanelBg)
+	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(helpPanelBg).Bold(true)
+	inactiveLabel := lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(helpPanelBg)
 
 	var top, mid, base strings.Builder
 
