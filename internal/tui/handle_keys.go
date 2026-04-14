@@ -219,6 +219,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	prevSel := m.gridView.Selected()
+	prevInputMode := m.gridView.InputMode()
 	// Remaining keys (including h/l) are delegated to the grid component.
 	// CollapseItem/ExpandItem (h/l) are intentionally not wired here — in grid
 	// mode h/l navigate the cursor left/right, which is the expected behavior.
@@ -228,6 +229,11 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	if !m.gridView.Active && prevSel != nil {
 		m.popGridState(prevSel)
 		return tea.Batch(cmd, m.schedulePollPreview())
+	}
+	// If input mode was just activated, schedule a fast poll immediately so the
+	// user sees session output within 100 ms of their first keystroke.
+	if !prevInputMode && m.gridView.InputMode() {
+		return tea.Batch(cmd, m.scheduleGridPoll())
 	}
 	return cmd
 }

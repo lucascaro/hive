@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| — | — | [In-place session input from grid view](in-place-grid-typing.md) | RESEARCH | M |
+| — | — | [In-place session input from grid view](in-place-grid-typing.md) | IMPLEMENT | M |
 
 ## Rejected
 

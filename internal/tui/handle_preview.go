@@ -87,6 +87,16 @@ func (m *Model) scheduleGridPoll() tea.Cmd {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
+	// In input mode use a faster refresh (100 ms) so the user sees the effect
+	// of forwarded keystrokes quickly. Capped at the configured interval so
+	// tests that set PreviewRefreshMs=1 still run at their requested speed.
+	const inputModeRefreshMs = 100
+	if m.gridView.InputMode() {
+		fast := time.Duration(inputModeRefreshMs) * time.Millisecond
+		if fast < interval {
+			interval = fast
+		}
+	}
 	return components.PollGridPreviews(sessions, interval)
 }
 
