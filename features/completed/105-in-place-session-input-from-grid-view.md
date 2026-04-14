@@ -1,7 +1,8 @@
 # Feature: In-place session input from grid view
 
-- **GitHub Issue:** —
-- **Stage:** IMPLEMENT
+- **GitHub Issue:** #105
+- **Stage:** DONE
+- **PR:** #106
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** —
