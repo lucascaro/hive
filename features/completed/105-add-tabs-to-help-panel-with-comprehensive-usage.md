@@ -1,7 +1,7 @@
 # Feature: Add tabs to help panel with comprehensive usage and feature reference
 
 - **GitHub Issue:** #105
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
@@ -83,4 +83,4 @@ Unify the current `helpView()` and `tmuxHelpView()` into a single tabbed `HelpPa
 
 <Filled during IMPLEMENT stage.>
 
-- **PR:** —
+- **PR:** #107 (https://github.com/lucascaro/hive/pull/107)

@@ -8,7 +8,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | — | — | [In-place session input from grid view](in-place-grid-typing.md) | RESEARCH | M |
-| — | #105 | [Add tabs to help panel with comprehensive usage and feature reference](active/105-add-tabs-to-help-panel-with-comprehensive-usage.md) | IMPLEMENT | M |
 
 ## Rejected
 
@@ -62,3 +61,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #98 | Constrain settings panel max-width on wide screens | #99 | 2026-04-12 |
 | #100 | Fix arrow key navigation in sidepanel view | #102 | — |
 | #101 | Fix arrow key navigation when grid cells are expanded | #104 | — |
+| #105 | Add tabs to help panel with comprehensive usage and feature reference | #107 | 2026-04-14 |
