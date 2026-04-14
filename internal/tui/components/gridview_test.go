@@ -599,6 +599,68 @@ func TestGridView_SelectedCellSubtitleHasBackground(t *testing.T) {
 	}
 }
 
+// TestGridView_DimmedCellRendering verifies that a dimmed cell produces output
+// that visually differs from the normal unselected rendering in TrueColor mode.
+func TestGridView_DimmedCellRendering(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	sess := &state.Session{
+		ID: "s1", ProjectID: "p1", Title: "test-sess",
+		AgentType: state.AgentClaude, Status: state.StatusRunning,
+	}
+	gv := &GridView{Active: true, Width: 80, Height: 20}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
+	gv.SetContents(map[string]string{"s1": "hello world"})
+
+	normal := gv.renderCell(sess, 40, 15, false, false)
+	dimmed := gv.renderCell(sess, 40, 15, false, true)
+
+	// Dimmed output must differ from normal unselected output (different border
+	// and header colours produce different ANSI escape sequences).
+	if normal == dimmed {
+		t.Error("dimmed cell output is identical to normal unselected cell output")
+	}
+
+	// The dimmed border colour (#1C2333) must appear in the dimmed output and
+	// must not appear in the normal output.  With TrueColor the foreground
+	// escape for #1C2333 is \033[38;2;28;35;51m.
+	const dimmedBorderFgEsc = "\033[38;2;28;35;51m"
+	if strings.Contains(normal, dimmedBorderFgEsc) {
+		t.Error("normal cell should not contain dimmed border colour escape")
+	}
+	if !strings.Contains(dimmed, dimmedBorderFgEsc) {
+		t.Error("dimmed cell should contain dimmed border colour escape")
+	}
+}
+
+// TestGridView_DimmedCellWithSessionColor verifies that when a session has its
+// own color, both gradient endpoints are dimmed (not just the project color).
+func TestGridView_DimmedCellWithSessionColor(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	sess := &state.Session{
+		ID: "s1", ProjectID: "p1", Title: "test-sess",
+		AgentType: state.AgentClaude, Status: state.StatusRunning,
+	}
+	gv := &GridView{Active: true, Width: 80, Height: 20}
+	gv.Show([]*state.Session{sess}, state.GridRestoreProject)
+	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
+	gv.SetSessionColors(map[string]string{"s1": "#F97316"}) // bright orange session color
+
+	normalGradient := gv.renderCell(sess, 40, 15, false, false)
+	dimmedGradient := gv.renderCell(sess, 40, 15, false, true)
+
+	// Dimmed gradient must differ from the normal gradient rendering.
+	if normalGradient == dimmedGradient {
+		t.Error("dimmed gradient cell output is identical to normal gradient cell output")
+	}
+}
+
 // TestSanitizePaneTitle covers the sanitizer used to scrub untrusted OSC 0/2
 // payloads before rendering them inside grid cells.  Pane titles can contain
 // arbitrary ANSI escape sequences and control characters; lipgloss does not

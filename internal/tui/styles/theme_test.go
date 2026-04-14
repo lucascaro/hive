@@ -86,6 +86,34 @@ func TestLerpColor_Endpoints(t *testing.T) {
 	}
 }
 
+func TestDimHex_DarkensColor(t *testing.T) {
+	// A bright violet should blend toward near-black at 75%.
+	input := "#7C3AED"
+	got := DimHex(input)
+	// Result must be a valid hex color.
+	if len(got) != 7 || got[0] != '#' {
+		t.Fatalf("DimHex(%q) = %q, want #RRGGBB", input, got)
+	}
+	// Each channel should be considerably darker than the input.
+	rIn, gIn, bIn, _ := parseHexRGB(input)
+	rOut, gOut, bOut, ok := parseHexRGB(got)
+	if !ok {
+		t.Fatalf("DimHex(%q) = %q is not a valid hex color", input, got)
+	}
+	if rOut >= rIn || gOut >= gIn || bOut >= bIn {
+		t.Errorf("DimHex(%q) = %q — expected all channels to be darker; in=(%d,%d,%d) out=(%d,%d,%d)",
+			input, got, rIn, gIn, bIn, rOut, gOut, bOut)
+	}
+}
+
+func TestDimHex_InvalidInput(t *testing.T) {
+	// Invalid hex should return the original string unmodified (lerpColor fallback).
+	got := DimHex("notacolor")
+	if got != "notacolor" {
+		t.Errorf("DimHex(invalid) = %q, want original %q", got, "notacolor")
+	}
+}
+
 func TestGradientBg_SameColor(t *testing.T) {
 	got := GradientBg("abc", "#FF0000", "#FF0000", false)
 	if got == "" {

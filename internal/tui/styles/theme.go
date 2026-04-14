@@ -11,18 +11,22 @@ import (
 
 var (
 	// Base colors
-	ColorAccent   = lipgloss.Color("#7C3AED") // purple
-	ColorMuted    = lipgloss.Color("#6B7280")
-	ColorSuccess  = lipgloss.Color("#10B981")
-	ColorWarning  = lipgloss.Color("#F59E0B")
-	ColorError    = lipgloss.Color("#EF4444")
-	ColorText     = lipgloss.Color("#F9FAFB")
-	ColorSubtext  = lipgloss.Color("#9CA3AF")
-	ColorBorder   = lipgloss.Color("#374151")
-	ColorSelected = lipgloss.Color("#1E3A5F")
-	ColorGridSelected = lipgloss.Color("#151520") // near-black purple tint for grid cell selection
-	ColorBg       = lipgloss.Color("#111827")
+	ColorAccent        = lipgloss.Color("#7C3AED") // purple
+	ColorMuted         = lipgloss.Color("#6B7280")
+	ColorSuccess       = lipgloss.Color("#10B981")
+	ColorWarning       = lipgloss.Color("#F59E0B")
+	ColorError         = lipgloss.Color("#EF4444")
+	ColorText          = lipgloss.Color("#F9FAFB")
+	ColorSubtext       = lipgloss.Color("#9CA3AF")
+	ColorBorder        = lipgloss.Color("#374151")
+	ColorDimmedBorder  = lipgloss.Color("#1C2333") // near-invisible border for dimmed grid cells
+	ColorSelected      = lipgloss.Color("#1E3A5F")
+	ColorGridSelected  = lipgloss.Color("#151520") // near-black purple tint for grid cell selection
+	ColorBg            = lipgloss.Color("#111827")
 )
+
+// dimBlendTarget is the near-black hex color that DimHex blends toward.
+const dimBlendTarget = "#0D1117"
 
 // GridSelectedBgEsc is the raw ANSI escape to re-apply ColorGridSelected
 // background after SGR resets in captured terminal content.
@@ -348,7 +352,7 @@ func linearize(c float64) float64 {
 // DimHex returns a darkened version of a hex color by blending it 75% toward
 // near-black, suitable for rendering dimmed (non-focused) grid cells.
 func DimHex(color string) string {
-	return lerpColor(color, "#0D1117", 0.75)
+	return lerpColor(color, dimBlendTarget, 0.75)
 }
 
 // ProjectColorBar returns a 1-char-wide colored bar string for use in the sidebar.

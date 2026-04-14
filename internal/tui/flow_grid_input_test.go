@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/mux/muxtest"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/muesli/termenv"
 )
 
 // TestGridInputMode_EnterAndExit verifies that pressing 'i' enters input mode
@@ -247,6 +249,47 @@ func TestGridInputMode_HintDontShowAgain(t *testing.T) {
 	// Input mode should still be active.
 	if !f.model.gridView.InputMode() {
 		t.Fatal("gridView.InputMode() should remain true after dismissing hint with 'd'")
+	}
+}
+
+// TestGridInputMode_ViewChangesDimming verifies that the grid View() output
+// changes when input mode is activated and again when it is deactivated,
+// confirming that dimming (and the INPUT badge) visually alter the render.
+func TestGridInputMode_ViewChangesDimming(t *testing.T) {
+	// Use TrueColor so that colour-based dimming is reflected in the rendered
+	// output (testFlowModel sets TERM=dumb which strips colour by default).
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(prev)
+
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	// Capture the view before entering input mode.
+	viewNormal := f.model.gridView.View("")
+
+	// Enter input mode and capture the new view.
+	f.SendKey("i")
+	if !f.model.gridView.InputMode() {
+		t.Fatal("expected input mode to be active")
+	}
+	viewInputMode := f.model.gridView.View("")
+
+	if viewNormal == viewInputMode {
+		t.Error("grid View() should differ when input mode is active (dimming + INPUT badge)")
+	}
+
+	// Exit input mode — view should revert to something equal to the pre-input view.
+	f.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if f.model.gridView.InputMode() {
+		t.Fatal("expected input mode to be inactive after Ctrl+Q")
+	}
+	viewAfterExit := f.model.gridView.View("")
+	if viewAfterExit == viewInputMode {
+		t.Error("grid View() should differ after exiting input mode (dimming removed)")
 	}
 }
 

@@ -424,7 +424,7 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected, dimmed b
 	if selected {
 		borderColor = styles.ColorAccent
 	} else if dimmed {
-		borderColor = lipgloss.Color("#1C2333")
+		borderColor = styles.ColorDimmedBorder
 	}
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -505,7 +505,11 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected, dimmed b
 		textPortion += strings.Repeat(" ", pad)
 	}
 	// Render with gradient if the session has its own color; flat otherwise.
+	// Dim sessColor in sync with projColor so gradient endpoints match.
 	sessColor := gv.sessionColors[sess.ID]
+	if dimmed && sessColor != "" {
+		sessColor = styles.DimHex(sessColor)
+	}
 	var headerContent string
 	if sessColor != "" && sessColor != projColor {
 		headerContent = prefixStr + styles.GradientBg(textPortion, projColor, sessColor, selected)
@@ -575,6 +579,8 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected, dimmed b
 		MaxWidth(innerW).MaxHeight(innerH)
 	if selected {
 		contentStyle = contentStyle.Background(styles.ColorGridSelected)
+	} else if dimmed {
+		contentStyle = contentStyle.Background(styles.ColorBg).Foreground(styles.ColorMuted)
 	}
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
