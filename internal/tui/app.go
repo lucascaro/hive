@@ -412,7 +412,7 @@ func (m Model) View() string {
 		m.gridHelpModel.Width = m.appState.TermWidth
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
 		return m.gridView.View(gridHints)
-	case ViewHelp, ViewTmuxHelp:
+	case ViewHelp:
 		return m.helpView()
 	case ViewAttachHint:
 		return m.overlayView(m.attachHintView())

@@ -86,7 +86,9 @@ func (hp *HelpPanel) Open(tab int) {
 
 // Update handles key events inside the help panel.
 // Returns true if the key was consumed (caller should not close the panel).
-func (hp *HelpPanel) Update(msg tea.KeyMsg) bool {
+// km is needed so Update can measure the current tab's content length and
+// clamp ScrollOffset. Callers must set hp.Width and hp.Height first.
+func (hp *HelpPanel) Update(msg tea.KeyMsg, km help.KeyMap) bool {
 	switch msg.String() {
 	case "left":
 		if hp.ActiveTab > 0 {
@@ -101,7 +103,9 @@ func (hp *HelpPanel) Update(msg tea.KeyMsg) bool {
 		}
 		return true
 	case "j", "down":
-		hp.ScrollOffset++
+		if hp.ScrollOffset < hp.maxScrollOffset(km) {
+			hp.ScrollOffset++
+		}
 		return true
 	case "k", "up":
 		if hp.ScrollOffset > 0 {
@@ -110,6 +114,37 @@ func (hp *HelpPanel) Update(msg tea.KeyMsg) bool {
 		return true
 	}
 	return false
+}
+
+// maxScrollOffset computes the largest valid ScrollOffset for the active tab
+// at the current Width/Height. Used by Update to clamp scroll keys so
+// repeated presses past the end don't accumulate phantom offset.
+func (hp *HelpPanel) maxScrollOffset(km help.KeyMap) int {
+	w, h := hp.Width, hp.Height
+	if w <= 0 {
+		w = 80
+	}
+	if h <= 0 {
+		h = 24
+	}
+	panelW := w - 8
+	if panelW > 120 {
+		panelW = 120
+	}
+	if panelW < 30 {
+		panelW = 30
+	}
+	innerW := panelW - 4
+	contentH := h - 5 - 6
+	if contentH < 3 {
+		contentH = 3
+	}
+	lines := hp.renderTabContent(km, innerW)
+	max := len(lines) - contentH
+	if max < 0 {
+		max = 0
+	}
+	return max
 }
 
 // View renders the full help overlay.
@@ -266,9 +301,12 @@ func (hp *HelpPanel) renderTmuxTab(w int) string {
 		{"ctrl+b $", "rename current session"},
 	}
 	var rows []string
-	rows = append(rows, headerStyle.Render("Key bindings while inside an attached tmux session.")+"\n")
+	rows = append(rows, ansi.Truncate(headerStyle.Render("Key bindings while inside an attached tmux session."), w, "…")+"\n")
 	for _, b := range bindings {
 		row := keyStyle.Render(b.key) + "  " + descStyle.Render(b.desc)
+		if ansi.StringWidth(row) > w {
+			row = ansi.Truncate(row, w, "…")
+		}
 		rows = append(rows, row)
 	}
 	return strings.Join(rows, "\n")

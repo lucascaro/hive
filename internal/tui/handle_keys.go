@@ -27,13 +27,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewGrid:
 		cmd := m.handleGridKey(msg)
 		return m, cmd
-	case ViewHelp, ViewTmuxHelp:
+	case ViewHelp:
 		s := msg.String()
 		if s == "esc" || s == "q" || key.Matches(msg, m.keys.Help) {
 			m.PopView()
 			return m, nil
 		}
-		m.helpPanel.Update(msg)
+		m.helpPanel.Width = m.appState.TermWidth
+		m.helpPanel.Height = m.appState.TermHeight
+		m.helpPanel.Update(msg, m.keys)
 		return m, nil
 	case ViewWhatsNew:
 		return m.handleWhatsNew(msg)

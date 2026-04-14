@@ -155,7 +155,6 @@ type AppState struct {
 	LastError       string
 	// UI overlay states
 	ShowHelp      bool
-	ShowTmuxHelp  bool
 	ShowConfirm   bool
 	ConfirmMsg    string
 	ConfirmAction string // opaque action identifier

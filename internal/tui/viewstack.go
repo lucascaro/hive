@@ -10,7 +10,6 @@ const (
 	ViewSettings       ViewID = "settings"
 	ViewGrid           ViewID = "grid"
 	ViewHelp           ViewID = "help"
-	ViewTmuxHelp       ViewID = "tmux-help"
 	ViewAttachHint     ViewID = "attach-hint"
 	ViewConfirm        ViewID = "confirm"
 	ViewRecovery       ViewID = "recovery"
@@ -97,8 +96,6 @@ func (m *Model) syncLegacyFlags(id ViewID, active bool) {
 		m.gridView.Active = active
 	case ViewHelp:
 		m.appState.ShowHelp = active
-	case ViewTmuxHelp:
-		m.appState.ShowTmuxHelp = active
 	case ViewAttachHint:
 		m.showAttachHint = active
 	case ViewConfirm:
