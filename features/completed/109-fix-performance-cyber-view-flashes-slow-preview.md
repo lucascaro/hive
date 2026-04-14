@@ -1,7 +1,7 @@
 # Feature: Fix performance: cyber view flashes and slow preview refresh on slow machines
 
 - **GitHub Issue:** #109
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
@@ -132,4 +132,4 @@ Two root-cause fixes + two efficiency improvements.
 - Updated 4 existing flow tests to reflect new behavior (grid stays active until `ExecCmdChain` processes the message).
 - Added 4 new tests: `TestFlow_GridKeyAttachNoFlash`, `TestFlow_GridMouseAttachNoFlash`, `TestFlow_GridAttachHintCancelReturnsToSidebar`, `TestWatchTitles_BatchCollectsAllTitles`, `TestWatchTitles_NilWhenNoTitles`.
 
-- **PR:** —
+- **PR:** #110
