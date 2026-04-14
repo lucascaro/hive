@@ -390,7 +390,7 @@ func (gv *GridView) View(hints string) string {
 			default:
 				h = cellH
 			}
-			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, h, idx == gv.Cursor))
+			cellViews = append(cellViews, gv.renderCell(gv.sessions[idx], cellW, h, idx == gv.Cursor, gv.inputMode && idx != gv.Cursor))
 		}
 		if len(cellViews) > 0 {
 			colViews = append(colViews, lipgloss.JoinVertical(lipgloss.Left, cellViews...))
@@ -419,10 +419,12 @@ func (gv *GridView) View(hints string) string {
 	return out
 }
 
-func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) string {
+func (gv *GridView) renderCell(sess *state.Session, w, h int, selected, dimmed bool) string {
 	borderColor := styles.ColorBorder
 	if selected {
 		borderColor = styles.ColorAccent
+	} else if dimmed {
+		borderColor = styles.ColorDimmedBorder
 	}
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -444,6 +446,9 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 	// All parts are rendered with the project background to avoid ANSI resets
 	// breaking the background color.
 	projColor := styles.ProjectColorOrDefault(gv.projectColors[sess.ProjectID])
+	if dimmed {
+		projColor = styles.DimHex(projColor)
+	}
 	bg := lipgloss.Color(projColor)
 	fg := styles.ContrastForeground(projColor)
 
@@ -500,7 +505,11 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		textPortion += strings.Repeat(" ", pad)
 	}
 	// Render with gradient if the session has its own color; flat otherwise.
+	// Dim sessColor in sync with projColor so gradient endpoints match.
 	sessColor := gv.sessionColors[sess.ID]
+	if dimmed && sessColor != "" {
+		sessColor = styles.DimHex(sessColor)
+	}
 	var headerContent string
 	if sessColor != "" && sessColor != projColor {
 		headerContent = prefixStr + styles.GradientBg(textPortion, projColor, sessColor, selected)
@@ -570,6 +579,8 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		MaxWidth(innerW).MaxHeight(innerH)
 	if selected {
 		contentStyle = contentStyle.Background(styles.ColorGridSelected)
+	} else if dimmed {
+		contentStyle = contentStyle.Background(styles.ColorBg).Foreground(styles.ColorMuted)
 	}
 	var contentStr string
 	if content := gv.contents[sess.ID]; content != "" {
