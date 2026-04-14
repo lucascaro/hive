@@ -28,8 +28,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.handleGridKey(msg)
 		return m, cmd
 	case ViewHelp:
-		s := msg.String()
-		if s == "esc" || s == "q" || key.Matches(msg, m.keys.Help) {
+		if msg.String() == "esc" ||
+			key.Matches(msg, m.keys.Help) ||
+			key.Matches(msg, m.keys.Quit) {
 			m.PopView()
 			return m, nil
 		}

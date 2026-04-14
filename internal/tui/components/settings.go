@@ -474,160 +474,26 @@ func (sv *SettingsView) View() string {
 // as continuous with the header chrome above it ("seated" into the chrome).
 var tabActiveBg = lipgloss.Color("#1F2937")
 
-// renderTabStrip returns the three rows of the tab strip (top, labels,
-// baseline), each of printable width = w. Design: "raised capsule" —
-// the active tab is drawn as a rounded rectangle whose interior shares
-// the header's background color, with the baseline notched around it
-// to read as the seam between chrome and content. Degrades gracefully:
-// full labels → truncated → first-letter.
+// renderTabStrip renders the three rows of the tab strip via the shared
+// RenderTabStrip helper. Settings uses a two-tone palette: inactive tabs
+// sit on the body canvas (ColorBg), the active capsule interior shares the
+// chrome tint (tabActiveBg) so it reads as seated into the header.
 func (sv *SettingsView) renderTabStrip(w int) (string, string, string) {
-	if len(sv.tabs) == 0 || w <= 0 {
+	if len(sv.tabs) == 0 {
 		return "", "", ""
 	}
-
-	const leftGutter = 2
-	// sep widths: narrow next to the active capsule (its frame already
-	// provides visual separation), wider between two inactive tabs.
-	sepNextToActive := 1
-	sepBetweenInactive := 3
-
 	titles := make([]string, len(sv.tabs))
 	for i, t := range sv.tabs {
 		titles[i] = strings.TrimSpace(t.title)
 	}
-
-	cellW := func(i int, label string) int {
-		L := ansi.StringWidth(label)
-		if i == sv.activeTab {
-			return L + 4 // `│ label │`
-		}
-		return L // bare label, no padding
-	}
-	sepW := func(i int) int {
-		if i == sv.activeTab || i+1 == sv.activeTab {
-			return sepNextToActive
-		}
-		return sepBetweenInactive
-	}
-	fits := func(labels []string) bool {
-		total := leftGutter
-		for i, l := range labels {
-			total += cellW(i, l)
-			if i < len(labels)-1 {
-				total += sepW(i)
-			}
-		}
-		return total <= w
-	}
-
-	labels := titles
-	if !fits(labels) {
-		for maxLen := 14; maxLen >= 2 && !fits(labels); maxLen-- {
-			labels = make([]string, len(titles))
-			for i, t := range titles {
-				if ansi.StringWidth(t) > maxLen {
-					labels[i] = ansi.Truncate(t, maxLen, "…")
-				} else {
-					labels[i] = t
-				}
-			}
-		}
-	}
-	if !fits(labels) {
-		labels = make([]string, len(titles))
-		for i, t := range titles {
-			if t == "" {
-				labels[i] = "?"
-				continue
-			}
-			runes := []rune(t)
-			labels[i] = string(runes[0])
-		}
-	}
-
-	// Style palette.
-	bgStyle := lipgloss.NewStyle().Background(styles.ColorBg)
-	baselineStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder).Background(styles.ColorBg)
-	notchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-
-	// Capsule frame: accent fg on the active-bg tint so the frame reads
-	// as part of a raised surface rather than a floating outline.
-	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(tabActiveBg)
-	// Top edge: accent fg on the *body* bg (above the raised surface the
-	// canvas reverts to body bg so the capsule appears to rise out of it).
-	frameOnBody := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	activeInterior := lipgloss.NewStyle().Background(tabActiveBg)
-	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(tabActiveBg).Bold(true)
-	inactiveLabel := lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(styles.ColorBg)
-
-	var top, mid, base strings.Builder
-
-	spaces := func(n int) string { return strings.Repeat(" ", n) }
-	dashes := func(n int) string { return strings.Repeat("─", n) }
-
-	// Left gutter: body bg on rows 1/2, baseline dashes on row 3.
-	top.WriteString(bgStyle.Render(spaces(leftGutter)))
-	mid.WriteString(bgStyle.Render(spaces(leftGutter)))
-	base.WriteString(baselineStyle.Render(dashes(leftGutter)))
-
-	used := leftGutter
-	for i, l := range labels {
-		L := ansi.StringWidth(l)
-		if i == sv.activeTab {
-			// Row 1: ╭─...─╮ (on body bg — capsule "rises" out of the canvas).
-			top.WriteString(frameOnBody.Render("╭" + dashes(L+2) + "╮"))
-			// Row 2: │ label │ — interior on active-bg tint.
-			mid.WriteString(frameOnCapsule.Render("│"))
-			mid.WriteString(activeInterior.Render(" "))
-			mid.WriteString(activeLabel.Render(l))
-			mid.WriteString(activeInterior.Render(" "))
-			mid.WriteString(frameOnCapsule.Render("│"))
-			// Row 3: ╯…spaces…╰ — notches on body bg, interior blank so the
-			// baseline visibly "dips" around the selected capsule.
-			base.WriteString(notchStyle.Render("╯"))
-			base.WriteString(bgStyle.Render(spaces(L + 2)))
-			base.WriteString(notchStyle.Render("╰"))
-			used += L + 4
-		} else {
-			// Row 1: empty space above inactive labels.
-			top.WriteString(bgStyle.Render(spaces(L)))
-			// Row 2: bare label in muted text.
-			mid.WriteString(inactiveLabel.Render(l))
-			// Row 3: continuous baseline.
-			base.WriteString(baselineStyle.Render(dashes(L)))
-			used += L
-		}
-
-		if i < len(labels)-1 {
-			sw := sepW(i)
-			top.WriteString(bgStyle.Render(spaces(sw)))
-			mid.WriteString(bgStyle.Render(spaces(sw)))
-			base.WriteString(baselineStyle.Render(dashes(sw)))
-			used += sw
-		}
-	}
-
-	// Trailing fill to full width: body-bg spaces above, dashes on baseline.
-	if used < w {
-		remaining := w - used
-		top.WriteString(bgStyle.Render(spaces(remaining)))
-		mid.WriteString(bgStyle.Render(spaces(remaining)))
-		base.WriteString(baselineStyle.Render(dashes(remaining)))
-	}
-
-	topRow := top.String()
-	midRow := mid.String()
-	baseRow := base.String()
-	if ansi.StringWidth(topRow) > w {
-		topRow = ansi.Truncate(topRow, w, "")
-	}
-	if ansi.StringWidth(midRow) > w {
-		midRow = ansi.Truncate(midRow, w, "")
-	}
-	if ansi.StringWidth(baseRow) > w {
-		baseRow = ansi.Truncate(baseRow, w, "")
-	}
-	return topRow, midRow, baseRow
+	return RenderTabStrip(titles, sv.activeTab, w, TabStripPalette{
+		CanvasBg:     styles.ColorBg,
+		ActiveBg:     tabActiveBg,
+		Accent:       styles.ColorAccent,
+		Baseline:     styles.ColorBorder,
+		ActiveText:   styles.ColorText,
+		InactiveText: styles.ColorSubtext,
+	})
 }
 
 // renderLines produces a flat []string of display lines for the active tab

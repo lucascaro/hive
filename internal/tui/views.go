@@ -82,6 +82,8 @@ func (m Model) dirConfirmView() string {
 func (m Model) helpView() string {
 	m.helpPanel.Width = m.appState.TermWidth
 	m.helpPanel.Height = m.appState.TermHeight
+	m.helpPanel.HelpKeyLabel = m.keys.HelpKeyLabel()
+	m.helpPanel.QuitKeyLabel = m.keys.QuitKeyLabel()
 	return m.helpPanel.View(m.keys)
 }
 

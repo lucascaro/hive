@@ -57,6 +57,11 @@ type HelpPanel struct {
 	// Width and Height are the terminal dimensions (set before each View call).
 	Width  int
 	Height int
+	// HelpKeyLabel and QuitKeyLabel are the display strings shown in the
+	// footer hint. Callers set these from their KeyMap so the hint reflects
+	// the user's configured bindings. Defaults "?" and "q" are used when empty.
+	HelpKeyLabel string
+	QuitKeyLabel string
 
 	helpModel help.Model // owned help.Model pre-styled by the caller
 }
@@ -84,36 +89,30 @@ func (hp *HelpPanel) Open(tab int) {
 	hp.ScrollOffset = 0
 }
 
-// Update handles key events inside the help panel.
-// Returns true if the key was consumed (caller should not close the panel).
-// km is needed so Update can measure the current tab's content length and
-// clamp ScrollOffset. Callers must set hp.Width and hp.Height first.
-func (hp *HelpPanel) Update(msg tea.KeyMsg, km help.KeyMap) bool {
+// Update handles key events inside the help panel. km is needed so Update
+// can measure the active tab's content length and clamp ScrollOffset.
+// Callers must set hp.Width and hp.Height first.
+func (hp *HelpPanel) Update(msg tea.KeyMsg, km help.KeyMap) {
 	switch msg.String() {
 	case "left":
 		if hp.ActiveTab > 0 {
 			hp.ActiveTab--
 			hp.ScrollOffset = 0
 		}
-		return true
 	case "right":
 		if hp.ActiveTab < helpNumTabs-1 {
 			hp.ActiveTab++
 			hp.ScrollOffset = 0
 		}
-		return true
 	case "j", "down":
 		if hp.ScrollOffset < hp.maxScrollOffset(km) {
 			hp.ScrollOffset++
 		}
-		return true
 	case "k", "up":
 		if hp.ScrollOffset > 0 {
 			hp.ScrollOffset--
 		}
-		return true
 	}
-	return false
 }
 
 // maxScrollOffset computes the largest valid ScrollOffset for the active tab
@@ -184,10 +183,18 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 	)
 
 	// --- Footer ---
+	helpKey := hp.HelpKeyLabel
+	if helpKey == "" {
+		helpKey = "?"
+	}
+	quitKey := hp.QuitKeyLabel
+	if quitKey == "" {
+		quitKey = "q"
+	}
 	footerHints := strings.Join([]string{
 		hint("←/→", "switch tab"),
 		hint("↑↓/j/k", "scroll"),
-		hint("?/q/esc", "close"),
+		hint(helpKey+"/"+quitKey+"/esc", "close"),
 	}, "  ")
 	// Use ColorBg background for footer to match the uniform dark interior.
 	footerStyle := lipgloss.NewStyle().
@@ -455,131 +462,15 @@ func (hp *HelpPanel) renderFeaturesTab(_ int) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderTabStrip returns the three rows of the tab strip (top, labels, baseline).
-// Adapted from SettingsView.renderTabStrip.
+// renderTabStrip renders the three rows of the tab strip via the shared
+// RenderTabStrip helper, using a flat-black palette for the help panel.
 func (hp *HelpPanel) renderTabStrip(w int) (string, string, string) {
-	const leftGutter = 2
-	sepNextToActive := 1
-	sepBetweenInactive := 3
-
-	titles := helpTabTitles[:]
-
-	cellW := func(i int, label string) int {
-		L := ansi.StringWidth(label)
-		if i == hp.ActiveTab {
-			return L + 4
-		}
-		return L
-	}
-	sepW := func(i int) int {
-		if i == hp.ActiveTab || i+1 == hp.ActiveTab {
-			return sepNextToActive
-		}
-		return sepBetweenInactive
-	}
-	fits := func(labels []string) bool {
-		total := leftGutter
-		for i, l := range labels {
-			total += cellW(i, l)
-			if i < len(labels)-1 {
-				total += sepW(i)
-			}
-		}
-		return total <= w
-	}
-
-	labels := make([]string, len(titles))
-	copy(labels, titles)
-
-	if !fits(labels) {
-		for maxLen := 14; maxLen >= 2 && !fits(labels); maxLen-- {
-			for i, t := range titles {
-				if ansi.StringWidth(t) > maxLen {
-					labels[i] = ansi.Truncate(t, maxLen, "…")
-				} else {
-					labels[i] = t
-				}
-			}
-		}
-	}
-	if !fits(labels) {
-		for i, t := range titles {
-			runes := []rune(t)
-			if len(runes) == 0 {
-				labels[i] = "?"
-			} else {
-				labels[i] = string(runes[0])
-			}
-		}
-	}
-
-	// Help panel uses ColorBg (black) for the entire interior — no grey tint.
-	bgStyle := lipgloss.NewStyle().Background(helpPanelBg)
-	baselineStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder).Background(helpPanelBg)
-	notchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
-	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
-	frameOnBody := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(helpPanelBg)
-	activeInterior := lipgloss.NewStyle().Background(helpPanelBg)
-	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(helpPanelBg).Bold(true)
-	inactiveLabel := lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(helpPanelBg)
-
-	var top, mid, base strings.Builder
-
-	spaces := func(n int) string { return strings.Repeat(" ", n) }
-	dashes := func(n int) string { return strings.Repeat("─", n) }
-
-	top.WriteString(bgStyle.Render(spaces(leftGutter)))
-	mid.WriteString(bgStyle.Render(spaces(leftGutter)))
-	base.WriteString(baselineStyle.Render(dashes(leftGutter)))
-
-	used := leftGutter
-	for i, l := range labels {
-		L := ansi.StringWidth(l)
-		if i == hp.ActiveTab {
-			top.WriteString(frameOnBody.Render("╭" + dashes(L+2) + "╮"))
-			mid.WriteString(frameOnCapsule.Render("│"))
-			mid.WriteString(activeInterior.Render(" "))
-			mid.WriteString(activeLabel.Render(l))
-			mid.WriteString(activeInterior.Render(" "))
-			mid.WriteString(frameOnCapsule.Render("│"))
-			base.WriteString(notchStyle.Render("╯"))
-			base.WriteString(bgStyle.Render(spaces(L + 2)))
-			base.WriteString(notchStyle.Render("╰"))
-			used += L + 4
-		} else {
-			top.WriteString(bgStyle.Render(spaces(L)))
-			mid.WriteString(inactiveLabel.Render(l))
-			base.WriteString(baselineStyle.Render(dashes(L)))
-			used += L
-		}
-
-		if i < len(labels)-1 {
-			sw := sepW(i)
-			top.WriteString(bgStyle.Render(spaces(sw)))
-			mid.WriteString(bgStyle.Render(spaces(sw)))
-			base.WriteString(baselineStyle.Render(dashes(sw)))
-			used += sw
-		}
-	}
-
-	if used < w {
-		remaining := w - used
-		top.WriteString(bgStyle.Render(spaces(remaining)))
-		mid.WriteString(bgStyle.Render(spaces(remaining)))
-		base.WriteString(baselineStyle.Render(dashes(remaining)))
-	}
-
-	topRow := top.String()
-	midRow := mid.String()
-	baseRow := base.String()
-	if ansi.StringWidth(topRow) > w {
-		topRow = ansi.Truncate(topRow, w, "")
-	}
-	if ansi.StringWidth(midRow) > w {
-		midRow = ansi.Truncate(midRow, w, "")
-	}
-	if ansi.StringWidth(baseRow) > w {
-		baseRow = ansi.Truncate(baseRow, w, "")
-	}
-	return topRow, midRow, baseRow
+	return RenderTabStrip(helpTabTitles[:], hp.ActiveTab, w, TabStripPalette{
+		CanvasBg:     helpPanelBg,
+		ActiveBg:     helpPanelBg,
+		Accent:       styles.ColorAccent,
+		Baseline:     styles.ColorBorder,
+		ActiveText:   styles.ColorText,
+		InactiveText: styles.ColorSubtext,
+	})
 }

@@ -94,6 +94,13 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 	}
 }
 
+// HelpKeyLabel returns the display string for the Help key binding.
+// Used by overlays that want to render the configured key in footers.
+func (km KeyMap) HelpKeyLabel() string { return km.Help.Help().Key }
+
+// QuitKeyLabel returns the display string for the Quit key binding.
+func (km KeyMap) QuitKeyLabel() string { return km.Quit.Help().Key }
+
 // ShortHelp returns the most important sidebar bindings for the one-line status bar hint.
 // Implements help.KeyMap.
 func (km KeyMap) ShortHelp() []key.Binding {
