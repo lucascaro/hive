@@ -129,11 +129,9 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 	}
 
 	// --- Header ---
-	header := lipgloss.NewStyle().
-		Background(styles.StatusBarStyle.GetBackground()).
-		Width(panelW).
-		Padding(0, 1).
-		Render(styles.TitleStyle.Render("  Hive Help"))
+	// Use ColorBg (black) so the entire panel interior is uniformly dark.
+	headerStyle := lipgloss.NewStyle().Background(styles.ColorBg).Width(panelW).Padding(0, 1)
+	header := headerStyle.Render(styles.TitleStyle.Background(styles.ColorBg).Render("  Hive Help"))
 
 	// --- Tab strip ---
 	tabTop, tabLabels, tabBaseline := hp.renderTabStrip(panelW)
@@ -151,7 +149,13 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 		hint("↑↓/j/k", "scroll"),
 		hint("?/esc", "close"),
 	}, "  ")
-	footer := styles.StatusBarStyle.Width(panelW).Render(ansi.Truncate(footerHints, panelW, "…"))
+	// Use ColorBg background for footer to match the uniform dark interior.
+	footerStyle := lipgloss.NewStyle().
+		Background(styles.ColorBg).
+		Foreground(styles.ColorText).
+		Width(panelW).
+		Padding(0, 1)
+	footer := footerStyle.Render(ansi.Truncate(footerHints, panelW, "…"))
 
 	// --- Content area ---
 	// header(1) + tabStrip(3) + footer(1) = 5 fixed rows
@@ -466,13 +470,14 @@ func (hp *HelpPanel) renderTabStrip(w int) (string, string, string) {
 		}
 	}
 
+	// Help panel uses ColorBg (black) for the entire interior — no grey tint.
 	bgStyle := lipgloss.NewStyle().Background(styles.ColorBg)
 	baselineStyle := lipgloss.NewStyle().Foreground(styles.ColorBorder).Background(styles.ColorBg)
 	notchStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(tabActiveBg)
+	frameOnCapsule := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
 	frameOnBody := lipgloss.NewStyle().Foreground(styles.ColorAccent).Background(styles.ColorBg)
-	activeInterior := lipgloss.NewStyle().Background(tabActiveBg)
-	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(tabActiveBg).Bold(true)
+	activeInterior := lipgloss.NewStyle().Background(styles.ColorBg)
+	activeLabel := lipgloss.NewStyle().Foreground(styles.ColorText).Background(styles.ColorBg).Bold(true)
 	inactiveLabel := lipgloss.NewStyle().Foreground(styles.ColorSubtext).Background(styles.ColorBg)
 
 	var top, mid, base strings.Builder
