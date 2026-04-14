@@ -64,6 +64,11 @@ type Backend interface {
 	// IsPaneDead reports whether the pane's process has exited.
 	IsPaneDead(target string) bool
 
+	// SendKeys sends a literal string of bytes (which may include ANSI escape
+	// sequences for special keys such as arrows) to the pane at target.
+	// The bytes are written directly to the pane's stdin without interpretation.
+	SendKeys(target, keys string) error
+
 	// Attach takes over the current terminal and connects it to the window
 	// at target, allowing the user to interact with the running process.
 	// Returns when the user detaches (backend-specific detach key) or the
@@ -195,6 +200,15 @@ func IsPaneDead(target string) bool {
 		return false
 	}
 	return active.IsPaneDead(target)
+}
+
+// SendKeys sends a literal string of bytes to the pane at target.
+// Returns nil if no backend has been set (e.g. in tests).
+func SendKeys(target, keys string) error {
+	if active == nil {
+		return nil
+	}
+	return active.SendKeys(target, keys)
 }
 
 func Attach(target string) error { return active.Attach(target) }

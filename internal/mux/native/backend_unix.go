@@ -135,6 +135,11 @@ func (b *Backend) GetCurrentCommand(_ string) (string, error) {
 
 func (b *Backend) IsPaneDead(_ string) bool { return false }
 
+func (b *Backend) SendKeys(target, keys string) error {
+	_, err := b.client.do(Request{Op: "send_keys", Target: target, Keys: keys})
+	return err
+}
+
 func (b *Backend) Attach(target string) error {
 	return clientAttach(b.client, target, b.spec.Byte)
 }

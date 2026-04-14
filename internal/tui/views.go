@@ -87,6 +87,26 @@ func (m Model) helpView() string {
 	return m.helpPanel.View(m.keys)
 }
 
+// gridInputHintView renders the first-use hint for grid input mode.
+func (m Model) gridInputHintView() string {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(styles.ColorAccent).
+		Padding(1, 3).
+		Render(
+			styles.TitleStyle.Render("Grid Input Mode") + "\n\n" +
+				"Keystrokes are now forwarded to this session.\n" +
+				"The grid stays visible — you remain in overview.\n\n" +
+				lipgloss.NewStyle().Bold(true).Render("To return to navigation:") + "  press  " +
+				lipgloss.NewStyle().
+					Foreground(styles.ColorAccent).
+					Bold(true).
+					Render("Ctrl+Q") +
+				"\n\n" +
+				styles.MutedStyle.Render("enter: continue  d: don't show again  esc: cancel"),
+		)
+}
+
 // attachHintView renders the attach hint dialog content.
 func (m Model) attachHintView() string {
 	return lipgloss.NewStyle().

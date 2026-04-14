@@ -30,11 +30,24 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 }
 
 func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) (tea.Model, tea.Cmd) {
-	m.gridView.SetContents(msg.Contents)
-	if m.HasView(ViewGrid) {
-		return m, m.scheduleGridPoll()
+	if msg.Fast {
+		// Fast poll only has the focused session — merge to preserve other cells.
+		m.gridView.MergeContents(msg.Contents)
+	} else {
+		m.gridView.SetContents(msg.Contents)
 	}
-	return m, nil
+	if !m.HasView(ViewGrid) {
+		return m, nil
+	}
+	if msg.Fast {
+		// Fast-poll loop: reschedule only if still in input mode.
+		if m.gridView.InputMode() {
+			return m, m.scheduleFocusedSessionPoll()
+		}
+		return m, nil
+	}
+	// Background loop: always reschedule while grid is visible.
+	return m, m.scheduleGridPoll()
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {
@@ -81,13 +94,44 @@ func (m *Model) scheduleBellBlink() tea.Cmd {
 	})
 }
 
+// inputModeBackgroundMs is the background poll interval (all sessions) during
+// input mode — 2× faster than the default 500 ms.
+const inputModeBackgroundMs = 250
+
+// inputModeFocusedMs is the focused-session poll interval during input mode.
+const inputModeFocusedMs = 50
+
 func (m *Model) scheduleGridPoll() tea.Cmd {
 	sessions := m.gridSessions(m.gridView.Mode)
 	if len(sessions) == 0 {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
+	// In input mode use a faster background rate (250 ms, 2× the default) so
+	// non-focused sessions are also more responsive. Capped at the configured
+	// interval so tests that set PreviewRefreshMs=1 run at their requested speed.
+	if m.gridView.InputMode() {
+		fast := time.Duration(inputModeBackgroundMs) * time.Millisecond
+		if fast < interval {
+			interval = fast
+		}
+	}
 	return components.PollGridPreviews(sessions, interval)
+}
+
+// scheduleFocusedSessionPoll returns a tea.Cmd that polls just the focused
+// session at 50 ms. Used for the fast poll loop in input mode.
+func (m *Model) scheduleFocusedSessionPoll() tea.Cmd {
+	sel := m.gridView.Selected()
+	if sel == nil {
+		return nil
+	}
+	interval := time.Duration(inputModeFocusedMs) * time.Millisecond
+	// Respect the configured interval if it's already faster (e.g. tests set 1 ms).
+	if cfg := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond; cfg < interval {
+		interval = cfg
+	}
+	return components.PollFocusedGridPreview(sel, interval)
 }
 
 func (m *Model) schedulePollPreview() tea.Cmd {

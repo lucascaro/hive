@@ -181,6 +181,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		gridHelpModel:       newStyledHelp(),
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
+	m.gridView.InputEnabled = !cfg.DisableGridInput
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
 	m.appState.RecoverableSessions = nil
@@ -414,6 +415,8 @@ func (m Model) View() string {
 		return m.gridView.View(gridHints)
 	case ViewHelp:
 		return m.helpView()
+	case ViewGridInputHint:
+		return m.overlayView(m.gridInputHintView())
 	case ViewAttachHint:
 		return m.overlayView(m.attachHintView())
 	case ViewConfirm:
