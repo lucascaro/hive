@@ -15,6 +15,7 @@ func setupMockBackend(t *testing.T) *muxtest.MockBackend {
 	t.Helper()
 	mb := muxtest.New()
 	mux.SetBackend(mb)
+	t.Cleanup(func() { mux.SetBackend(nil) })
 	return mb
 }
 
