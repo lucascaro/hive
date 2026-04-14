@@ -234,7 +234,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	// CollapseItem/ExpandItem (h/l) are intentionally not wired here — in grid
 	// mode h/l navigate the cursor left/right, which is the expected behavior.
 	cmd, _ := m.gridView.Update(msg)
-	// gridView.Update may set Active=false (esc/q/enter). Detect that and
+	// gridView.Update may set Active=false (esc/q). Detect that and
 	// pop the grid from the stack, syncing state to the selected session.
 	if !m.gridView.Active && prevSel != nil {
 		m.popGridState(prevSel)
@@ -677,7 +677,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.gridView.Cursor = idx
 				// Clicking a grid cell activates (attaches) that session.
 				if sess := m.gridView.Selected(); sess != nil {
-					m.PopView() // pops ViewGrid
 					s := sess
 					return m, func() tea.Msg {
 						return components.GridSessionSelectedMsg{

@@ -62,3 +62,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #101 | Fix arrow key navigation when grid cells are expanded | #104 | — |
 | — | In-place session input from grid view | #106 | 2026-04-14 |
 | #105 | Add tabs to help panel with comprehensive usage and feature reference | #107 | 2026-04-14 |
+| #109 | Fix performance: cyber view flashes and slow preview refresh on slow machines | #110 | — |

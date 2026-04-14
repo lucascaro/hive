@@ -15,6 +15,7 @@ func setupMockBackend(t *testing.T) *muxtest.MockBackend {
 	t.Helper()
 	mb := muxtest.New()
 	mux.SetBackend(mb)
+	t.Cleanup(func() { mux.SetBackend(nil) })
 	return mb
 }
 
@@ -371,5 +372,66 @@ func TestStripANSI(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("stripANSI(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// TestWatchTitles_BatchCollectsAllTitles verifies that WatchTitles collects ALL
+// sessions with agent-set titles in a single TitlesDetectedMsg, not just the first.
+// The old implementation returned on the first match, wasting ~(N-1)/2 CapturePane
+// calls per tick and missing titles set by non-first sessions.
+func TestWatchTitles_BatchCollectsAllTitles(t *testing.T) {
+	mb := setupMockBackend(t)
+
+	// Session 1: has an OSC 2 title escape sequence.
+	mb.SetPaneContent("hive:0", "\x1b]2;Working on task A\x07\nsome output")
+	// Session 2: no title.
+	mb.SetPaneContent("hive:1", "$ prompt\noutput without title")
+	// Session 3: also has a title.
+	mb.SetPaneContent("hive:2", "\x1b]2;Reviewing code B\x07\nmore output")
+
+	targets := map[string]string{
+		"sess-1": "hive:0",
+		"sess-2": "hive:1",
+		"sess-3": "hive:2",
+	}
+
+	cmd := WatchTitles(targets, 0)
+	msg := cmd()
+
+	tdm, ok := msg.(TitlesDetectedMsg)
+	if !ok {
+		t.Fatalf("expected TitlesDetectedMsg, got %T", msg)
+	}
+	if len(tdm.Titles) != 2 {
+		t.Errorf("expected 2 titles, got %d: %v", len(tdm.Titles), tdm.Titles)
+	}
+	if tdm.Titles["sess-1"] != "Working on task A" {
+		t.Errorf("sess-1 title = %q, want %q", tdm.Titles["sess-1"], "Working on task A")
+	}
+	if tdm.Titles["sess-3"] != "Reviewing code B" {
+		t.Errorf("sess-3 title = %q, want %q", tdm.Titles["sess-3"], "Reviewing code B")
+	}
+	if _, exists := tdm.Titles["sess-2"]; exists {
+		t.Errorf("sess-2 should not be in Titles (no OSC 2 escape), got: %q", tdm.Titles["sess-2"])
+	}
+}
+
+// TestWatchTitles_NilWhenNoTitles verifies that WatchTitles returns nil when
+// no sessions have an agent-set title, avoiding unnecessary downstream processing.
+func TestWatchTitles_NilWhenNoTitles(t *testing.T) {
+	mb := setupMockBackend(t)
+	mb.SetPaneContent("hive:0", "$ prompt\nno title here")
+	mb.SetPaneContent("hive:1", "another session without title")
+
+	targets := map[string]string{
+		"sess-1": "hive:0",
+		"sess-2": "hive:1",
+	}
+
+	cmd := WatchTitles(targets, 0)
+	msg := cmd()
+
+	if msg != nil {
+		t.Errorf("expected nil when no titles found, got %T: %v", msg, msg)
 	}
 }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grid attach sidebar flash**: attaching to a session from grid view no longer produces a brief flash of the sidebar view. The grid now stays visible until the attach transition is fully initiated, eliminating the one-frame blank render that was visible on slower machines (#109).
+
+### Changed
+- **Reduced preview polling overhead**: grid preview cells now capture 100 lines of content instead of 200 (cells display at most ~40–50 lines; the extra data was discarded). Title-change detection now collects all sessions' titles per tick instead of returning on the first match, halving wasted tmux subprocess calls per poll with multiple sessions (#109).
+
 ## [0.10.0] — 2026-04-14
 
 ### Added

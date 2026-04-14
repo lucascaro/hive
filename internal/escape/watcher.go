@@ -11,26 +11,32 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 )
 
-// TitleDetectedMsg is sent when an agent sets a session title via escape sequence.
-type TitleDetectedMsg struct {
-	SessionID string
-	Title     string
+// TitlesDetectedMsg is sent when WatchTitles finds agent-set titles via escape sequences.
+// It carries all sessions with detected titles so callers can update them in one pass.
+type TitlesDetectedMsg struct {
+	Titles map[string]string // sessionID → title
 }
 
 // WatchTitles returns a tea.Cmd that polls all active sessions for title escape sequences.
+// All sessions with a detected title are returned in a single TitlesDetectedMsg to avoid
+// wasting subprocess calls on an early-exit pattern.
 // sessionTargets maps sessionID → "tmuxSession:windowIdx".
 func WatchTitles(sessionTargets map[string]string, interval time.Duration) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
+		found := make(map[string]string)
 		for sessionID, target := range sessionTargets {
 			raw, err := mux.CapturePaneRaw(target, 200)
 			if err != nil {
 				continue
 			}
 			if title := ExtractTitle(raw); title != "" {
-				return TitleDetectedMsg{SessionID: sessionID, Title: title}
+				found[sessionID] = title
 			}
 		}
-		return nil
+		if len(found) == 0 {
+			return nil
+		}
+		return TitlesDetectedMsg{Titles: found}
 	})
 }
 

@@ -308,8 +308,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handlePreviewUpdated(msg)
 	case components.SessionWindowGoneMsg:
 		return m.handleSessionWindowGone(msg)
-	case escape.TitleDetectedMsg:
-		return m.handleTitleDetected(msg)
+	case escape.TitlesDetectedMsg:
+		return m.handleTitlesDetected(msg)
 	case escape.StatusesDetectedMsg:
 		return m.handleStatusesDetected(msg)
 	case SessionCreatedMsg:
