@@ -80,62 +80,9 @@ func (m Model) dirConfirmView() string {
 }
 
 func (m Model) helpView() string {
-	m.helpModel.ShowAll = true
-	m.helpModel.Width = m.appState.TermWidth - 8 // account for border + padding
-
-	content := styles.TitleStyle.Render("Hive — Keyboard Shortcuts") + "\n\n" +
-		m.helpModel.View(m.keys) + "\n\n" +
-		styles.MutedStyle.Render("Press ? or esc to close")
-
-	return lipgloss.Place(m.appState.TermWidth, m.appState.TermHeight,
-		lipgloss.Center, lipgloss.Center,
-		lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(styles.ColorAccent).
-			Padding(1, 3).
-			Render(content),
-	)
-}
-
-func (m Model) tmuxHelpView() string {
-	type binding struct{ key, desc string }
-	bindings := []binding{
-		{mux.DetachKey(), "detach from session (return to hive)"},
-		{"ctrl+b c", "create a new window"},
-		{"ctrl+b n / p", "next / previous window"},
-		{"ctrl+b 0-9", "switch to window by number"},
-		{"ctrl+b ,", "rename current window"},
-		{"ctrl+b %", "split pane vertically"},
-		{"ctrl+b \"", "split pane horizontally"},
-		{"ctrl+b arrow", "navigate between panes"},
-		{"ctrl+b z", "zoom/unzoom current pane"},
-		{"ctrl+b x", "kill current pane"},
-		{"ctrl+b [", "enter scroll/copy mode (q to exit)"},
-		{"ctrl+b ]", "paste from tmux buffer"},
-		{"ctrl+b ?", "show all tmux key bindings"},
-		{"ctrl+b t", "show clock"},
-		{"ctrl+b $", "rename current session"},
-	}
-	var rows []string
-	for _, b := range bindings {
-		row := fmt.Sprintf("  %s  %s",
-			styles.HelpKeyStyle.Width(18).Render(b.key),
-			styles.HelpDescStyle.Render(b.desc),
-		)
-		rows = append(rows, row)
-	}
-	content := styles.TitleStyle.Render("tmux Shortcuts Reference") + "\n\n" +
-		strings.Join(rows, "\n") + "\n\n" +
-		styles.MutedStyle.Render("Press H or esc to close")
-
-	return lipgloss.Place(m.appState.TermWidth, m.appState.TermHeight,
-		lipgloss.Center, lipgloss.Center,
-		lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(styles.ColorAccent).
-			Padding(1, 3).
-			Render(content),
-	)
+	m.helpPanel.Width = m.appState.TermWidth
+	m.helpPanel.Height = m.appState.TermHeight
+	return m.helpPanel.View(m.keys)
 }
 
 // attachHintView renders the attach hint dialog content.

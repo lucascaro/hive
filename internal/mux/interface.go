@@ -222,7 +222,14 @@ func UseExecAttach() bool {
 	return active.UseExecAttach()
 }
 
-func DetachKey() string { return active.DetachKey() }
+// DetachKey returns the configured detach key display string.
+// Returns DefaultDetachKey if no backend has been set (e.g. in tests).
+func DetachKey() string {
+	if active == nil {
+		return DefaultDetachKey
+	}
+	return active.DetachKey()
+}
 
 // AttachScript returns the shell script the active backend uses to attach to
 // target with title shown in the status bar. Only the tmux backend produces

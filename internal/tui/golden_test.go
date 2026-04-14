@@ -99,11 +99,42 @@ func TestGolden_FilterActive(t *testing.T) {
 	golden.RequireEqual(t, m.View())
 }
 
-func TestGolden_HelpOverlay(t *testing.T) {
+func TestGolden_HelpOverlay_Keys(t *testing.T) {
 	appState := testAppStateWithTwoProjects()
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 	m := goldenModel(t, appState)
+	m.helpPanel.Open(0)
+	m.PushView(ViewHelp)
+	golden.RequireEqual(t, m.View())
+}
+
+func TestGolden_HelpOverlay_Tmux(t *testing.T) {
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+	m := goldenModel(t, appState)
+	m.helpPanel.Open(1)
+	m.PushView(ViewHelp)
+	golden.RequireEqual(t, m.View())
+}
+
+func TestGolden_HelpOverlay_Usage(t *testing.T) {
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+	m := goldenModel(t, appState)
+	m.helpPanel.Open(2)
+	m.PushView(ViewHelp)
+	golden.RequireEqual(t, m.View())
+}
+
+func TestGolden_HelpOverlay_Features(t *testing.T) {
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+	m := goldenModel(t, appState)
+	m.helpPanel.Open(3)
 	m.PushView(ViewHelp)
 	golden.RequireEqual(t, m.View())
 }

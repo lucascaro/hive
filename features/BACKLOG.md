@@ -8,6 +8,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | — | — | [In-place session input from grid view](in-place-grid-typing.md) | RESEARCH | M |
+| — | #105 | [Add tabs to help panel with comprehensive usage and feature reference](active/105-add-tabs-to-help-panel-with-comprehensive-usage.md) | IMPLEMENT | M |
 
 ## Rejected
 

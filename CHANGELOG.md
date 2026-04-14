@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Tabbed help panel**: the help overlay (`?`) now has four tabs — Keys (default), tmux, Usage guide, and Features reference. Press `H` to open directly at the tmux tab. Navigate tabs with `←`/`→` and scroll long tabs with `j`/`k` or `↑`/`↓` (#105).
+
 ## [0.9.0] — 2026-04-13
 
 ### Added

@@ -114,10 +114,11 @@ type Model struct {
 	// viewStack tracks the active view layers. ViewMain is always at the bottom.
 	// Push to open a view, pop to close it. TopView() drives View() and key dispatch.
 	viewStack []ViewID
-	// helpModel renders the one-line key hints in the statusbar and the full
-	// help overlay. It implements help.KeyMap via KeyMap.ShortHelp/FullHelp.
+	// helpModel renders the one-line key hints in the statusbar.
+	// helpPanel renders the full tabbed help overlay (? / H keys).
 	helpModel     help.Model
 	gridHelpModel help.Model
+	helpPanel     components.HelpPanel
 }
 
 // LastAttach returns the pending attach request after the TUI exits, or nil.
@@ -178,6 +179,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		viewStack:           []ViewID{ViewMain},
 		helpModel:           newStyledHelp(),
 		gridHelpModel:       newStyledHelp(),
+		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
@@ -410,10 +412,8 @@ func (m Model) View() string {
 		m.gridHelpModel.Width = m.appState.TermWidth
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
 		return m.gridView.View(gridHints)
-	case ViewHelp:
+	case ViewHelp, ViewTmuxHelp:
 		return m.helpView()
-	case ViewTmuxHelp:
-		return m.tmuxHelpView()
 	case ViewAttachHint:
 		return m.overlayView(m.attachHintView())
 	case ViewConfirm:

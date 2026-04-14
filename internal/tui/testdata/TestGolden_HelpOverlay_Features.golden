@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮   
+   │   Hive Help                                                                                                    │   
+   │                      ╭──────────╮                                                                              │   
+   │  Keys   tmux   Usage │ Features │                                                                              │   
+   │──────────────────────╯          ╰──────────────────────────────────────────────────────────────────────────────│   
+   │  Agent Types                                                                                                   │   
+   │                                                                                                                │   
+   │  Hive works with multiple AI agents:                                                                           │   
+   │    claude    Anthropic's Claude CLI                                                                            │   
+   │    codex     OpenAI Codex CLI                                                                                  │   
+   │    gemini    Google Gemini CLI                                                                                 │   
+   │    copilot   GitHub Copilot CLI                                                                                │   
+   │    cmd       any terminal command                                                                              │   
+   │                                                                                                                │   
+   │  Press n and select an agent type when creating a new session.                                                 │   
+   │                                                                                                                │   
+   │  Session Colors                                                                                                │   
+   │                                                                                                                │   
+   │  Each session can have a color for easy identification.                                                        │   
+   │  Colors appear as a gradient title bar in the sidebar and as a                                                 │   
+   │  colored badge in grid cells.                                                                                  │   
+   │                                                                                                                │   
+   │    v / V    cycle session color (sidebar or grid)                                                              │   
+   │                                                                                                                │   
+   │  Project Colors                                                                                                │   
+   │                                                                                                                │   
+   │    c / C    cycle project color (visible in grid header)                                                       │   
+   │                                                                                                                │   
+   │  Terminal Bell                                                                                                 │   
+   │                                                                                                                │   
+   │  When a session outputs a terminal bell, Hive:                                                                 │   
+   │    • plays a sound (configurable in Settings)                                                                  │   
+   │    • shows a 🔔 badge on the session                                                                           │   
+   │                                                                                                                │   
+   │ ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     │   
+   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   
+                                                                                                                        
+                                                                                                                        

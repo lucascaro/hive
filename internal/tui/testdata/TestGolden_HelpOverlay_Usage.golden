@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+   ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮   
+   │   Hive Help                                                                                                    │   
+   │              ╭───────╮                                                                                         │   
+   │  Keys   tmux │ Usage │ Features                                                                                │   
+   │──────────────╯       ╰─────────────────────────────────────────────────────────────────────────────────────────│   
+   │  Views                                                                                                         │   
+   │                                                                                                                │   
+   │  Hive has two main layouts:                                                                                    │   
+   │                                                                                                                │   
+   │    tab    Sidebar view — tree of projects and sessions with a live preview pane.                               │   
+   │    g     Grid view    — compact cells showing all sessions in the current project.                             │   
+   │    G     All-sessions grid — every session across all projects.                                                │   
+   │                                                                                                                │   
+   │  Navigation                                                                                                    │   
+   │                                                                                                                │   
+   │    ↑ / k        move up                                                                                        │   
+   │    ↓ / j        move down                                                                                      │   
+   │    [ / ]        jump to previous / next project                                                                │   
+   │    space         toggle project collapse                                                                       │   
+   │    ←  / →        collapse / expand project                                                                     │   
+   │    tab          switch between sidebar and preview pane                                                        │   
+   │                                                                                                                │   
+   │  Projects & Sessions                                                                                           │   
+   │                                                                                                                │   
+   │    p    new project (choose directory)                                                                         │   
+   │    n    new session in the current project                                                                     │   
+   │    W    new worktree session (new git branch + directory)                                                      │   
+   │    r    rename project or session                                                                              │   
+   │    x    kill session                                                                                           │   
+   │                                                                                                                │   
+   │  Attaching                                                                                                     │   
+   │                                                                                                                │   
+   │  Press enter or a to attach to a session.                                                                      │   
+   │                                                                                                                │   
+   │ ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     │   
+   ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯   
+                                                                                                                        
+                                                                                                                        
