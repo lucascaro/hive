@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| — | #109 | Fix performance: cyber view flashes and slow preview refresh on slow machines | IMPLEMENT | M |
 
 ## Rejected
 
