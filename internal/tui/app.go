@@ -415,6 +415,8 @@ func (m Model) View() string {
 		return m.helpView()
 	case ViewTmuxHelp:
 		return m.tmuxHelpView()
+	case ViewGridInputHint:
+		return m.overlayView(m.gridInputHintView())
 	case ViewAttachHint:
 		return m.overlayView(m.attachHintView())
 	case ViewConfirm:

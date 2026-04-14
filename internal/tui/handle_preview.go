@@ -30,7 +30,12 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 }
 
 func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) (tea.Model, tea.Cmd) {
-	m.gridView.SetContents(msg.Contents)
+	if msg.Fast {
+		// Fast poll only has the focused session — merge to preserve other cells.
+		m.gridView.MergeContents(msg.Contents)
+	} else {
+		m.gridView.SetContents(msg.Contents)
+	}
 	if !m.HasView(ViewGrid) {
 		return m, nil
 	}

@@ -205,3 +205,140 @@ func TestGridInputMode_HideExitsInputMode(t *testing.T) {
 	_ = mock // avoid "declared and not used" if mock.* not referenced
 	_ = state.GridRestoreProject // keep import used
 }
+
+// TestGridInputMode_HintShownOnFirstUse verifies that pressing 'i' shows the
+// grid-input-hint overlay when HideGridInputHint=false.
+func TestGridInputMode_HintShownOnFirstUse(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.HideGridInputHint = false // hint enabled
+	cfg.PreviewRefreshMs = 1
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	f.SendKey("i")
+	if f.model.TopView() != ViewGridInputHint {
+		t.Fatalf("expected top view to be ViewGridInputHint, got %s", f.model.TopView())
+	}
+	if !f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should be true after pressing i")
+	}
+}
+
+// TestGridInputMode_HintDontShowAgain verifies that pressing 'd' in the hint
+// dialog sets HideGridInputHint=true and dismisses the overlay.
+func TestGridInputMode_HintDontShowAgain(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.HideGridInputHint = false // hint enabled
+	cfg.PreviewRefreshMs = 1
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.SendKey("i")
+	if f.model.TopView() != ViewGridInputHint {
+		t.Fatalf("expected ViewGridInputHint, got %s", f.model.TopView())
+	}
+
+	// Press 'd' to dismiss and suppress future hints.
+	f.SendKey("d")
+	if f.model.TopView() == ViewGridInputHint {
+		t.Fatal("hint overlay should be dismissed after 'd'")
+	}
+	if !f.model.cfg.HideGridInputHint {
+		t.Fatal("cfg.HideGridInputHint should be true after 'd'")
+	}
+	// Input mode should still be active.
+	if !f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should remain true after dismissing hint with 'd'")
+	}
+}
+
+// TestGridInputMode_HintEscCancelsInputMode verifies that pressing 'esc' in the
+// hint dialog pops the overlay and also exits input mode.
+func TestGridInputMode_HintEscCancelsInputMode(t *testing.T) {
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.HideGridInputHint = false // hint enabled
+	cfg.PreviewRefreshMs = 1
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.SendKey("i")
+	if f.model.TopView() != ViewGridInputHint {
+		t.Fatalf("expected ViewGridInputHint, got %s", f.model.TopView())
+	}
+
+	// Press 'esc' to cancel — should dismiss hint AND exit input mode.
+	f.SendSpecialKey(tea.KeyEsc)
+	if f.model.TopView() == ViewGridInputHint {
+		t.Fatal("hint overlay should be dismissed after 'esc'")
+	}
+	if f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should be false after 'esc' in hint")
+	}
+	// Grid should still be active.
+	f.AssertGridActive(true)
+}

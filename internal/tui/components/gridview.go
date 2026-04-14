@@ -112,6 +112,18 @@ func (gv *GridView) SetContents(contents map[string]string) {
 	gv.contents = contents
 }
 
+// MergeContents updates only the keys present in contents, leaving other
+// sessions' content untouched. Used by the focused-session fast poll so it
+// doesn't blank out non-focused cells.
+func (gv *GridView) MergeContents(contents map[string]string) {
+	if gv.contents == nil {
+		gv.contents = make(map[string]string, len(contents))
+	}
+	for k, v := range contents {
+		gv.contents[k] = v
+	}
+}
+
 // SetProjectNames provides a projectID→name lookup used in cell headers.
 func (gv *GridView) SetProjectNames(names map[string]string) {
 	gv.projectNames = names
@@ -505,7 +517,7 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 
 	// When input mode is active on this cell, overlay a badge at the right edge.
 	if gv.inputMode && selected {
-		badge := " ·· INPUT ··"
+		badge := " INPUT · C-Q"
 		badgeStyle := lipgloss.NewStyle().
 			Background(styles.ColorAccent).
 			Foreground(lipgloss.Color("#000000")).

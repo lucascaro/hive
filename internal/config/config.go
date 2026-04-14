@@ -26,6 +26,10 @@ type Config struct {
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.
 	Multiplexer                 string                    `json:"multiplexer,omitempty"`
+	// HideGridInputHint suppresses the first-use hint shown when entering grid
+	// input mode. Set to true (via the "d" key in the hint dialog) to skip the
+	// hint on subsequent activations. Tracked independently from HideAttachHint.
+	HideGridInputHint bool `json:"hide_grid_input_hint,omitempty"`
 	// DisableGridInput disables the in-place input mode in grid view.
 	// When false (default), pressing 'i' on a focused grid cell enters input
 	// mode and forwards keystrokes to that session without a full attach.

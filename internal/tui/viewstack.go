@@ -25,6 +25,7 @@ const (
 	ViewWorktreeBranch ViewID = "worktree-branch"
 	ViewFilter         ViewID = "filter"
 	ViewWhatsNew       ViewID = "whats-new"
+	ViewGridInputHint  ViewID = "grid-input-hint"
 )
 
 // PushView pushes a view onto the stack and syncs legacy flags.
