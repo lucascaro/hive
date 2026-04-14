@@ -125,13 +125,20 @@ func (m Model) handleSessionWindowGone(msg components.SessionWindowGoneMsg) (tea
 	return m, m.schedulePollPreview()
 }
 
-func (m Model) handleTitleDetected(msg escape.TitleDetectedMsg) (tea.Model, tea.Cmd) {
-	sess := m.appState.ActiveSession()
-	if sess != nil && msg.SessionID == sess.ID {
-		if sess.TitleSource != state.TitleSourceUser || m.cfg.AgentTitleOverridesUserTitle {
-			m.appState = *state.UpdateSessionTitle(&m.appState, msg.SessionID, msg.Title, state.TitleSourceAgent)
-			m.commitState()
+func (m Model) handleTitlesDetected(msg escape.TitlesDetectedMsg) (tea.Model, tea.Cmd) {
+	changed := false
+	for _, sess := range state.AllSessions(&m.appState) {
+		title, ok := msg.Titles[sess.ID]
+		if !ok {
+			continue
 		}
+		if sess.TitleSource != state.TitleSourceUser || m.cfg.AgentTitleOverridesUserTitle {
+			m.appState = *state.UpdateSessionTitle(&m.appState, sess.ID, title, state.TitleSourceAgent)
+			changed = true
+		}
+	}
+	if changed {
+		m.commitState()
 	}
 	return m, m.scheduleWatchTitles()
 }

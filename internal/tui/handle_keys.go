@@ -677,7 +677,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				m.gridView.Cursor = idx
 				// Clicking a grid cell activates (attaches) that session.
 				if sess := m.gridView.Selected(); sess != nil {
-					m.PopView() // pops ViewGrid
 					s := sess
 					return m, func() tea.Msg {
 						return components.GridSessionSelectedMsg{

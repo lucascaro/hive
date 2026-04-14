@@ -51,6 +51,12 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {
+	// Pop the grid from the view stack here — after the message is processed —
+	// so there is no intermediate sidebar-render frame between grid close and
+	// the attach hint or doAttach transition.
+	if m.HasView(ViewGrid) {
+		m.PopView()
+	}
 	var sessionTitle string
 	var agentType state.AgentType
 	var projectName string

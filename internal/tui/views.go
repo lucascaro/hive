@@ -193,7 +193,7 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	os.Stdout.WriteString("\033[?1049l\033[2J\033[H\033[?1049h")
+	os.Stdout.WriteString("\033[2J\033[H")
 
 	// Start background bell watcher so custom audio plays and bell badges are
 	// tracked while the BubbleTea event loop is suspended.

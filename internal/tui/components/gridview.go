@@ -37,7 +37,7 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd
 				continue
 			}
 			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			content, err := mux.CapturePane(target, 200)
+			content, err := mux.CapturePane(target, 100)
 			if err == nil {
 				contents[sess.ID] = sanitizePreviewContent(content)
 			}
@@ -258,7 +258,6 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		gv.Hide()
 	case "enter", "a":
 		if sess := gv.Selected(); sess != nil {
-			gv.Hide()
 			s := sess
 			return func() tea.Msg {
 				return GridSessionSelectedMsg{TmuxSession: s.TmuxSession, TmuxWindow: s.TmuxWindow}
