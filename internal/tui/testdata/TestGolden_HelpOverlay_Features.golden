@@ -5,35 +5,35 @@
    [;m│[0m                      ╭──────────╮                                                                              [;m│[0m   
    [;m│[0m  Keys   tmux   Usage │ Features │                                                                              [;m│[0m   
    [;m│[0m──────────────────────╯          ╰──────────────────────────────────────────────────────────────────────────────[;m│[0m   
-   [;m│[0m  Agent Types                                                                                                   [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Hive works with multiple AI agents:                                                                           [;m│[0m   
-   [;m│[0m    claude    Anthropic's Claude CLI                                                                            [;m│[0m   
-   [;m│[0m    codex     OpenAI Codex CLI                                                                                  [;m│[0m   
-   [;m│[0m    gemini    Google Gemini CLI                                                                                 [;m│[0m   
-   [;m│[0m    copilot   GitHub Copilot CLI                                                                                [;m│[0m   
-   [;m│[0m    cmd       any terminal command                                                                              [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Press n and select an agent type when creating a new session.                                                 [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Session Colors                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Each session can have a color for easy identification.                                                        [;m│[0m   
-   [;m│[0m  Colors appear as a gradient title bar in the sidebar and as a                                                 [;m│[0m   
-   [;m│[0m  colored badge in grid cells.                                                                                  [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m    v / V    cycle session color (sidebar or grid)                                                              [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Project Colors                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m    c / C    cycle project color (visible in grid header)                                                       [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Terminal Bell                                                                                                 [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  When a session outputs a terminal bell, Hive:                                                                 [;m│[0m   
-   [;m│[0m    • plays a sound (configurable in Settings)                                                                  [;m│[0m   
-   [;m│[0m    • shows a 🔔 badge on the session                                                                           [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39mAgent Types[m                                                                                                   [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mHive works with multiple AI agents:[m                                                                           [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  claude    Anthropic's Claude CLI[m                                                                            [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  codex     OpenAI Codex CLI[m                                                                                  [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  gemini    Google Gemini CLI[m                                                                                 [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  copilot   GitHub Copilot CLI[m                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  cmd       any terminal command[m                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mPress n and select an agent type when creating a new session.[m                                                 [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mSession Colors[m                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mEach session can have a color for easy identification.[m                                                        [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mColors appear as a gradient title bar in the sidebar and as a[m                                                 [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mcolored badge in grid cells.[m                                                                                  [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  v / V    cycle session color (sidebar or grid)[m                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mProject Colors[m                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  c / C    cycle project color (visible in grid header)[m                                                       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mTerminal Bell[m                                                                                                 [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mWhen a session outputs a terminal bell, Hive:[m                                                                 [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  • plays a sound (configurable in Settings)[m                                                                  [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  • shows a 🔔 badge on the session[m                                                                           [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
    [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
    [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         

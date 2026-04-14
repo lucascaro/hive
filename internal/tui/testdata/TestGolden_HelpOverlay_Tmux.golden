@@ -5,35 +5,35 @@
    [;m│[0m       ╭──────╮                                                                                                 [;m│[0m   
    [;m│[0m  Keys │ tmux │ Usage   Features                                                                                [;m│[0m   
    [;m│[0m───────╯      ╰─────────────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
-   [;m│[0m  Key bindings while inside an attached tmux session.                                                           [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  ctrl+q              detach from session (return to Hive)                                                      [;m│[0m   
-   [;m│[0m  ctrl+b c            create a new window                                                                       [;m│[0m   
-   [;m│[0m  ctrl+b n / p        next / previous window                                                                    [;m│[0m   
-   [;m│[0m  ctrl+b 0-9          switch to window by number                                                                [;m│[0m   
-   [;m│[0m  ctrl+b ,            rename current window                                                                     [;m│[0m   
-   [;m│[0m  ctrl+b %            split pane vertically                                                                     [;m│[0m   
-   [;m│[0m  ctrl+b "            split pane horizontally                                                                   [;m│[0m   
-   [;m│[0m  ctrl+b arrow        navigate between panes                                                                    [;m│[0m   
-   [;m│[0m  ctrl+b z            zoom/unzoom current pane                                                                  [;m│[0m   
-   [;m│[0m  ctrl+b x            kill current pane                                                                         [;m│[0m   
-   [;m│[0m  ctrl+b [            enter scroll/copy mode (q to exit)                                                        [;m│[0m   
-   [;m│[0m  ctrl+b ]            paste from tmux buffer                                                                    [;m│[0m   
-   [;m│[0m  ctrl+b ?            show all tmux key bindings                                                                [;m│[0m   
-   [;m│[0m  ctrl+b t            show clock                                                                                [;m│[0m   
-   [;m│[0m  ctrl+b $            rename current session                                                                    [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39mKey bindings while inside an attached tmux session.[m                                                           [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+q              detach from session (return to Hive)[m                                                      [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b c            create a new window[m                                                                       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b n / p        next / previous window[m                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b 0-9          switch to window by number[m                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b ,            rename current window[m                                                                     [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b %            split pane vertically[m                                                                     [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b "            split pane horizontally[m                                                                   [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b arrow        navigate between panes[m                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b z            zoom/unzoom current pane[m                                                                  [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b x            kill current pane[m                                                                         [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b [            enter scroll/copy mode (q to exit)[m                                                        [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b ]            paste from tmux buffer[m                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b ?            show all tmux key bindings[m                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b t            show clock[m                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mctrl+b $            rename current session[m                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
    [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
    [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         

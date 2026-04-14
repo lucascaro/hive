@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -12,6 +14,30 @@ import (
 )
 
 const helpNumTabs = 4
+
+// colorBgANSI is the ANSI SGR sequence for styles.ColorBg (#111827).
+// Pre-computed so re-applying the background after resets is allocation-free.
+var colorBgANSI = func() string {
+	hex := strings.TrimPrefix(string(styles.ColorBg), "#")
+	if len(hex) != 6 {
+		return ""
+	}
+	r, _ := strconv.ParseUint(hex[0:2], 16, 8)
+	g, _ := strconv.ParseUint(hex[2:4], 16, 8)
+	b, _ := strconv.ParseUint(hex[4:6], 16, 8)
+	return fmt.Sprintf("\033[48;2;%d;%d;%dm", r, g, b)
+}()
+
+// fixBgResets re-applies the panel background after every ANSI SGR reset
+// in the line so that inner styled spans (which emit \033[0m) don't expose
+// the terminal's default background colour inside the help panel.
+func fixBgResets(line string) string {
+	repl := "\033[0m" + colorBgANSI
+	s := colorBgANSI + strings.ReplaceAll(line, "\033[0m", repl)
+	// Also handle the shorter \033[m form.
+	s = strings.ReplaceAll(s, "\033[m", "\033[m"+colorBgANSI)
+	return s
+}
 
 // helpTabTitles is the ordered list of tab labels.
 var helpTabTitles = [helpNumTabs]string{"Keys", "tmux", "Usage", "Features"}
@@ -159,12 +185,19 @@ func (hp *HelpPanel) View(km help.KeyMap) string {
 		visible = append(visible, "")
 	}
 
+	// Re-apply the panel background after every ANSI SGR reset so inner
+	// styled spans (which emit \033[0m) don't expose the terminal default.
+	fixed := make([]string, len(visible))
+	for i, l := range visible {
+		fixed[i] = fixBgResets(l)
+	}
+
 	body := lipgloss.NewStyle().
 		Background(styles.ColorBg).
 		Width(panelW).
 		Height(contentH).
 		Padding(0, 2).
-		Render(strings.Join(visible, "\n"))
+		Render(strings.Join(fixed, "\n"))
 
 	panel := lipgloss.NewStyle().
 		Background(styles.ColorBg).

@@ -5,35 +5,35 @@
    [;m│[0m              ╭───────╮                                                                                         [;m│[0m   
    [;m│[0m  Keys   tmux │ Usage │ Features                                                                                [;m│[0m   
    [;m│[0m──────────────╯       ╰─────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
-   [;m│[0m  Views                                                                                                         [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Hive has two main layouts:                                                                                    [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m    tab    Sidebar view — tree of projects and sessions with a live preview pane.                               [;m│[0m   
-   [;m│[0m    g     Grid view    — compact cells showing all sessions in the current project.                             [;m│[0m   
-   [;m│[0m    G     All-sessions grid — every session across all projects.                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Navigation                                                                                                    [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m    ↑ / k        move up                                                                                        [;m│[0m   
-   [;m│[0m    ↓ / j        move down                                                                                      [;m│[0m   
-   [;m│[0m    [ / ]        jump to previous / next project                                                                [;m│[0m   
-   [;m│[0m    space         toggle project collapse                                                                       [;m│[0m   
-   [;m│[0m    ←  / →        collapse / expand project                                                                     [;m│[0m   
-   [;m│[0m    tab          switch between sidebar and preview pane                                                        [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Projects & Sessions                                                                                           [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m    p    new project (choose directory)                                                                         [;m│[0m   
-   [;m│[0m    n    new session in the current project                                                                     [;m│[0m   
-   [;m│[0m    W    new worktree session (new git branch + directory)                                                      [;m│[0m   
-   [;m│[0m    r    rename project or session                                                                              [;m│[0m   
-   [;m│[0m    x    kill session                                                                                           [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Attaching                                                                                                     [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m  Press enter or a to attach to a session.                                                                      [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39mViews[m                                                                                                         [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mHive has two main layouts:[m                                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  tab    Sidebar view — tree of projects and sessions with a live preview pane.[m                               [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  g     Grid view    — compact cells showing all sessions in the current project.[m                             [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  G     All-sessions grid — every session across all projects.[m                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mNavigation[m                                                                                                    [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  ↑ / k        move up[m                                                                                        [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  ↓ / j        move down[m                                                                                      [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  [ / ]        jump to previous / next project[m                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  space         toggle project collapse[m                                                                       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  ←  / →        collapse / expand project[m                                                                     [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  tab          switch between sidebar and preview pane[m                                                        [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mProjects & Sessions[m                                                                                           [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  p    new project (choose directory)[m                                                                         [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  n    new session in the current project[m                                                                     [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  W    new worktree session (new git branch + directory)[m                                                      [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  r    rename project or session[m                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m  x    kill session[m                                                                                           [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mAttaching[m                                                                                                     [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mPress enter or a to attach to a session.[m                                                                      [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
    [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
    [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         

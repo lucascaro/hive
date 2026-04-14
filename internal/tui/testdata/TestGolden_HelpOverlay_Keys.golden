@@ -5,35 +5,35 @@
    [;m│[0m  ╭──────╮                                                                                                      [;m│[0m   
    [;m│[0m  │ Keys │ tmux   Usage   Features                                                                              [;m│[0m   
    [;m│[0m──╯      ╰──────────────────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
-   [;m│[0m  ↑     up              a/enter attach                  c           next color      ?      help                 [;m│[0m   
-   [;m│[0m  ↓     down            t       new session             C           prev color      H      tmux shortcuts       [;m│[0m   
-   [;m│[0m  K     prev project    W       new worktree session    shift+up    move up         S      settings             [;m│[0m   
-   [;m│[0m  J     next project    T       new team                shift+down  move down       ctrl+p palette              [;m│[0m   
-   [;m│[0m  ←/h   collapse        n       new project             shift+left  move left       tab    switch pane          [;m│[0m   
-   [;m│[0m  →/l   expand          r       rename                  shift+right move right      q      quit                 [;m│[0m   
-   [;m│[0m  space toggle          x       kill session            /           filter          Q      quit+kill            [;m│[0m   
-   [;m│[0m                        D       kill team               s           sidebar view                                [;m│[0m   
-   [;m│[0m                                                        g           grid view                                   [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
-   [;m│[0m                                                                                                                [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m↑     up              a/enter attach                  c           next color      ?      help          [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m↓     down            t       new session             C           prev color      H      tmux shortcuts[m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mK     prev project    W       new worktree session    shift+up    move up         S      settings      [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mJ     next project    T       new team                shift+down  move down       ctrl+p palette       [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m←/h   collapse        n       new project             shift+left  move left       tab    switch pane   [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m→/l   expand          r       rename                  shift+right move right      q      quit          [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39mspace toggle          x       kill session            /           filter          Q      quit+kill     [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m                      D       kill team               s           sidebar view                         [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m                                                      g           grid view                            [m       [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;17;24;39m[48;2;17;24;39m[m                                                                                                              [;m│[0m   
    [;m│[0m ←/→:switch tab  ↑↓/j/k:scroll  ?/esc:close                                                                     [;m│[0m   
    [;m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m   
                                                                                                                         
