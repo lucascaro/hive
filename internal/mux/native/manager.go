@@ -195,6 +195,15 @@ type windowEntry struct {
 	name string
 }
 
+// sendKeys writes a literal byte string to the pane at target.
+func (m *manager) sendKeys(target, keys string) error {
+	p := m.paneByTarget(target)
+	if p == nil {
+		return fmt.Errorf("window not found: %s", target)
+	}
+	return p.writeInput(keys)
+}
+
 // paneByTarget returns the pane for "session:index", or nil if not found.
 func (m *manager) paneByTarget(target string) *pane {
 	sessionName, idx, err := parseTarget(target)

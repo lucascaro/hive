@@ -82,6 +82,8 @@ func (b *Backend) GetCurrentCommand(target string) (string, error) {
 
 func (b *Backend) IsPaneDead(target string) bool { return tmux.IsPaneDead(target) }
 
+func (b *Backend) SendKeys(target, keys string) error { return tmux.SendKeys(target, keys) }
+
 // DetachKey returns the configured detach key in human-readable form
 // (e.g. "Ctrl+Q"). The actual binding is installed by AttachScript.
 func (b *Backend) DetachKey() string { return b.spec.Display }

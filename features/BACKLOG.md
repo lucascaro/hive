@@ -7,7 +7,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| — | — | [In-place session input from grid view](in-place-grid-typing.md) | RESEARCH | M |
 
 ## Rejected
 
@@ -61,3 +60,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #98 | Constrain settings panel max-width on wide screens | #99 | 2026-04-12 |
 | #100 | Fix arrow key navigation in sidepanel view | #102 | — |
 | #101 | Fix arrow key navigation when grid cells are expanded | #104 | — |
+| #105 | In-place session input from grid view | #106 | — |

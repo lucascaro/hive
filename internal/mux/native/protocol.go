@@ -21,6 +21,7 @@ type Request struct {
 	Target     string   `json:"target,omitempty"`
 	Lines      int      `json:"lines,omitempty"`
 	NewName    string   `json:"new_name,omitempty"`
+	Keys       string   `json:"keys,omitempty"`
 }
 
 // Response is the JSON envelope sent from the daemon to the client.

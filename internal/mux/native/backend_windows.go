@@ -53,6 +53,7 @@ func (b *Backend) DetachKey() string                                       { ret
 func (b *Backend) SupportsPopup() bool                                     { return false }
 func (b *Backend) PopupAttach(_, _ string) error                           { return errNotSupported }
 func (b *Backend) UseExecAttach() bool                                     { return false }
+func (b *Backend) SendKeys(_, _ string) error                              { return errNotSupported }
 
 // SockPath returns an empty string on Windows (no socket used).
 func SockPath() string { return "" }

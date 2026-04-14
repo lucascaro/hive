@@ -51,6 +51,12 @@ func RenameWindow(target, newName string) error {
 	return ExecSilent("rename-window", "-t", target, newName)
 }
 
+// SendKeys sends a literal string of bytes to the pane at target.
+// The -l flag bypasses tmux key-name interpretation so raw bytes (including
+// ANSI escape sequences) are written directly to the pane's stdin.
+func SendKeys(target, keys string) error {
+	return ExecSilent("send-keys", "-t", target, "-l", "--", keys)
+}
 
 func ListWindows(tmuxSession string) ([]WindowInfo, error) {
 	out, err := Exec(

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **In-place session input from grid view**: press `(i)` on a focused grid cell to enter input mode — keystrokes (including `Esc`, arrows, `Enter`, and common `Ctrl+` sequences) are forwarded directly to that session without a full attach. A `INPUT · C-Q` badge appears in the cell header while active. Press `Ctrl+Q` to exit input mode and return to grid navigation. The preview refresh rate is automatically tuned in input mode: the focused session polls at 50 ms while all other sessions poll at 250 ms (2× the default 500 ms background rate), giving fast feedback without hammering inactive sessions. Can be disabled by setting `disable_grid_input: true` in `~/.config/hive/config.json`.
+
 ## [0.9.0] — 2026-04-13
 
 ### Added

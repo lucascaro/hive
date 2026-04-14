@@ -138,10 +138,11 @@ type GridKeyMap struct {
 	ColorPrev key.Binding
 	SessionColorNext key.Binding
 	SessionColorPrev key.Binding
-	ExitGrid key.Binding
+	ExitGrid  key.Binding
 	ToggleAll key.Binding
-	Help     key.Binding
-	Quit     key.Binding
+	InputMode key.Binding
+	Help      key.Binding
+	Quit      key.Binding
 }
 
 // NewGridKeyMap builds a GridKeyMap from the main KeyMap.
@@ -160,10 +161,11 @@ func NewGridKeyMap(km KeyMap) GridKeyMap {
 		ColorPrev: key.NewBinding(key.WithKeys(km.ColorPrev.Keys()...), key.WithHelp("", "")),
 		SessionColorNext: key.NewBinding(key.WithKeys("v"), key.WithHelp("v/V", "session color")),
 		SessionColorPrev: key.NewBinding(key.WithKeys("V"), key.WithHelp("", "")),
-		ExitGrid: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/g/G", "exit")),
+		ExitGrid:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/g/G", "exit")),
 		ToggleAll: key.NewBinding(key.WithKeys("G"), key.WithHelp("", "")),
-		Help:     key.NewBinding(key.WithKeys(km.Help.Keys()...), key.WithHelp(km.Help.Help().Key, "help")),
-		Quit:     key.NewBinding(key.WithKeys(km.Quit.Keys()...), key.WithHelp(km.Quit.Help().Key, "quit")),
+		InputMode: key.NewBinding(key.WithKeys("i"), key.WithHelp("(i)", "input")),
+		Help:      key.NewBinding(key.WithKeys(km.Help.Keys()...), key.WithHelp(km.Help.Help().Key, "help")),
+		Quit:      key.NewBinding(key.WithKeys(km.Quit.Keys()...), key.WithHelp(km.Quit.Help().Key, "quit")),
 	}
 }
 
@@ -178,6 +180,7 @@ func (gk GridKeyMap) ShortHelp() []key.Binding {
 		gk.Rename,
 		gk.ColorNext,
 		gk.SessionColorNext,
+		gk.InputMode,
 		gk.ExitGrid,
 		gk.Help,
 		gk.Quit,

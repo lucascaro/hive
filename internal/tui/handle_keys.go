@@ -34,6 +34,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ViewWhatsNew:
 		return m.handleWhatsNew(msg)
+	case ViewGridInputHint:
+		return m.handleGridInputHint(msg)
 	case ViewAttachHint:
 		return m.handleAttachHint(msg)
 	case ViewConfirm:
@@ -76,6 +78,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Width = m.appState.TermWidth
 	m.gridView.Height = m.appState.TermHeight
+
+	// Input mode: all keys (except ctrl+c which always quits) are forwarded to
+	// the focused session. Ctrl+Q exits input mode (handled inside GridView.Update).
+	if m.gridView.InputMode() {
+		cmd, _ := m.gridView.Update(msg)
+		return cmd
+	}
 
 	// Actions that work consistently across sidebar and grid.
 	if key.Matches(msg, m.keys.Quit) {
@@ -212,6 +221,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	prevSel := m.gridView.Selected()
+	prevInputMode := m.gridView.InputMode()
 	// Remaining keys (including h/l) are delegated to the grid component.
 	// CollapseItem/ExpandItem (h/l) are intentionally not wired here — in grid
 	// mode h/l navigate the cursor left/right, which is the expected behavior.
@@ -221,6 +231,16 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	if !m.gridView.Active && prevSel != nil {
 		m.popGridState(prevSel)
 		return tea.Batch(cmd, m.schedulePollPreview())
+	}
+	// If input mode was just activated, kick off the fast focused-session poll
+	// (50 ms) so the user sees output quickly. The background poll continues
+	// at 250 ms from the existing loop. Also show the first-use hint if not
+	// suppressed.
+	if !prevInputMode && m.gridView.InputMode() {
+		if !m.cfg.HideGridInputHint {
+			m.PushView(ViewGridInputHint)
+		}
+		return tea.Batch(cmd, m.scheduleFocusedSessionPoll())
 	}
 	return cmd
 }
@@ -763,6 +783,24 @@ func (m Model) handleWhatsNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.whatsNewViewport.LineDown(1)
 	case "k", "up":
 		m.whatsNewViewport.LineUp(1)
+	}
+	return m, nil
+}
+
+func (m Model) handleGridInputHint(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter", "y", " ":
+		// Continue: dismiss overlay, stay in input mode.
+		m.PopView()
+	case "d":
+		// Don't show again: dismiss and save preference.
+		m.PopView()
+		m.cfg.HideGridInputHint = true
+		_ = config.Save(m.cfg)
+	case "esc", "q":
+		// Cancel: dismiss overlay and exit input mode.
+		m.PopView()
+		m.gridView.ExitInputMode()
 	}
 	return m, nil
 }
