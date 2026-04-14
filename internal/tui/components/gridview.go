@@ -59,6 +59,8 @@ type GridView struct {
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
+	inputMode     bool              // true when keystrokes are forwarded to the focused session
+	InputEnabled  bool              // when false, 'i' is a no-op (set from cfg.DisableGridInput)
 }
 
 // Show activates the grid with the given sessions.
@@ -78,7 +80,11 @@ func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) 
 // Hide deactivates the grid.
 // atExtended is intentionally not reset here — Show() clears it on the next
 // grid open, and Update() is gated on Active so the stale value is never read.
-func (gv *GridView) Hide() { gv.Active = false }
+// inputMode is cleared so a re-opened grid always starts in nav mode.
+func (gv *GridView) Hide() {
+	gv.Active = false
+	gv.inputMode = false
+}
 
 // SetContents updates the captured preview content map.
 func (gv *GridView) SetContents(contents map[string]string) {
@@ -131,6 +137,17 @@ func (gv *GridView) AtExtendedForTest() bool {
 	return gv.atExtended
 }
 
+// InputMode reports whether the grid is in keystroke-forwarding mode.
+func (gv GridView) InputMode() bool {
+	return gv.inputMode
+}
+
+// ExitInputMode clears input mode without any other side-effect.
+// Used externally when the grid is hidden while in input mode.
+func (gv *GridView) ExitInputMode() {
+	gv.inputMode = false
+}
+
 // Selected returns the currently focused session, or nil.
 func (gv *GridView) Selected() *state.Session {
 	if !gv.Active || gv.Cursor < 0 || gv.Cursor >= len(gv.sessions) {
@@ -170,12 +187,40 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if !gv.Active {
 		return nil, false
 	}
+
+	// Input mode: forward all keystrokes to the focused session.
+	// Ctrl+Q exits input mode; everything else (including Esc) is forwarded.
+	if gv.inputMode {
+		if msg.String() == "ctrl+q" {
+			gv.inputMode = false
+			return nil, true
+		}
+		sess := gv.Selected()
+		if sess != nil && sess.TmuxSession != "" {
+			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+			keys := keyToBytes(msg)
+			if keys != "" {
+				return func() tea.Msg {
+					mux.SendKeys(target, keys) //nolint:errcheck // best-effort
+					return nil
+				}, true
+			}
+		}
+		return nil, true
+	}
+
 	n := len(gv.sessions)
 	cols := gridColumns(gv.Width, gv.Height, n)
 
 	rows := (n + cols - 1) / cols
 
 	switch msg.String() {
+	case "i":
+		if gv.InputEnabled {
+			if sess := gv.Selected(); sess != nil && sess.TmuxSession != "" {
+				gv.inputMode = true
+			}
+		}
 	case "esc":
 		gv.Hide()
 	case "enter", "a":
@@ -436,6 +481,24 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected bool) str
 		}
 		headerContent = prefixStr + flat
 	}
+
+	// When input mode is active on this cell, overlay a badge at the right edge.
+	if gv.inputMode && selected {
+		badge := " ·· INPUT ··"
+		badgeStyle := lipgloss.NewStyle().
+			Background(styles.ColorAccent).
+			Foreground(lipgloss.Color("#000000")).
+			Bold(true)
+		badgeStr := badgeStyle.Render(badge)
+		badgeW := ansi.StringWidth(badge)
+		// Replace the last badgeW chars of the header with the badge so the
+		// total width stays constant.
+		headerW := ansi.StringWidth(headerContent)
+		if headerW > badgeW {
+			headerContent = ansi.Truncate(headerContent, headerW-badgeW, "") + badgeStr
+		}
+	}
+
 	headerLine := headerContent
 
 	// Optional pane-title subtitle: only render when the cell is tall enough
@@ -642,6 +705,85 @@ func (gv *GridView) CellAt(x, y int) (idx int, ok bool) {
 		return -1, false
 	}
 	return i, true
+}
+
+// keyToBytes converts a BubbleTea key message to the raw bytes to forward to a
+// session in input mode. Returns "" for keys that have no sensible byte
+// representation (e.g. unknown function keys).
+func keyToBytes(msg tea.KeyMsg) string {
+	switch msg.Type {
+	case tea.KeyRunes:
+		return string(msg.Runes)
+	case tea.KeyEnter:
+		return "\r"
+	case tea.KeyBackspace:
+		return "\x7f"
+	case tea.KeyDelete:
+		return "\x1b[3~"
+	case tea.KeyTab:
+		return "\t"
+	case tea.KeySpace:
+		return " "
+	case tea.KeyUp:
+		return "\033[A"
+	case tea.KeyDown:
+		return "\033[B"
+	case tea.KeyRight:
+		return "\033[C"
+	case tea.KeyLeft:
+		return "\033[D"
+	case tea.KeyEscape:
+		return "\033"
+	// Common Ctrl+letter keys.
+	case tea.KeyCtrlA:
+		return "\x01"
+	case tea.KeyCtrlB:
+		return "\x02"
+	case tea.KeyCtrlC:
+		return "\x03"
+	case tea.KeyCtrlD:
+		return "\x04"
+	case tea.KeyCtrlE:
+		return "\x05"
+	case tea.KeyCtrlF:
+		return "\x06"
+	case tea.KeyCtrlG:
+		return "\x07"
+	case tea.KeyCtrlH:
+		return "\x08"
+	case tea.KeyCtrlJ:
+		return "\x0a"
+	case tea.KeyCtrlK:
+		return "\x0b"
+	case tea.KeyCtrlL:
+		return "\x0c"
+	case tea.KeyCtrlN:
+		return "\x0e"
+	case tea.KeyCtrlO:
+		return "\x0f"
+	case tea.KeyCtrlP:
+		return "\x10"
+	case tea.KeyCtrlR:
+		return "\x12"
+	case tea.KeyCtrlS:
+		return "\x13"
+	case tea.KeyCtrlT:
+		return "\x14"
+	case tea.KeyCtrlU:
+		return "\x15"
+	case tea.KeyCtrlV:
+		return "\x16"
+	case tea.KeyCtrlW:
+		return "\x17"
+	case tea.KeyCtrlX:
+		return "\x18"
+	case tea.KeyCtrlY:
+		return "\x19"
+	case tea.KeyCtrlZ:
+		return "\x1a"
+	default:
+		return ""
+	}
 }
 
 // gridColumns computes the number of columns that best tiles n sessions inside

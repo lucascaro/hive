@@ -26,6 +26,12 @@ type Config struct {
 	// "tmux" (default) uses the external tmux binary.
 	// "native" uses Go's built-in PTY daemon; no external binary needed.
 	Multiplexer                 string                    `json:"multiplexer,omitempty"`
+	// DisableGridInput disables the in-place input mode in grid view.
+	// When false (default), pressing 'i' on a focused grid cell enters input
+	// mode and forwards keystrokes to that session without a full attach.
+	// Set to true to opt out of this feature (e.g. if 'i' is needed for
+	// another keybinding or the forwarding latency is unacceptable).
+	DisableGridInput bool `json:"disable_grid_input,omitempty"`
 	// DetachKey is the single-key combination that returns the user from an
 	// attached session back to the Hive TUI. Accepted form is
 	// "ctrl+<lowercase-letter>" (e.g. "ctrl+q", "ctrl+d"). Defaults to

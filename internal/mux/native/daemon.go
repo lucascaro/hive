@@ -143,6 +143,13 @@ func handleConn(conn net.Conn) {
 		content := p.capture(req.Lines)
 		logWriteErr(conn, writeMsg(conn, Response{OK: true, Content: content}))
 
+	case "send_keys":
+		if err := mgr.sendKeys(req.Target, req.Keys); err != nil {
+			logWriteErr(conn, writeMsg(conn, errResp(err.Error())))
+			return
+		}
+		logWriteErr(conn, writeMsg(conn, okResp()))
+
 	case "attach":
 		handleAttach(conn, req.Target)
 

@@ -61,6 +61,24 @@
 | `H` | Open tmux shortcuts reference |
 | `q` | Quit app |
 | `Esc` | Exit grid view |
+| `i` | Enter input mode on focused cell (forward keystrokes to that session) |
+
+### Grid Input Mode
+
+When input mode is active, all keystrokes — including `Esc`, arrow keys, `Enter`, and `Ctrl+` combinations — are forwarded directly to the focused session. This lets you send quick confirmations (`y`/`n`), interrupt a running command (`Ctrl+C`), or nudge an agent without leaving the grid overview.
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Q` | Exit input mode and return to grid navigation |
+| `Esc` | Forward `Esc` byte (`\033`) to the session |
+| `↑` / `↓` / `←` / `→` | Forward ANSI arrow sequences to the session |
+| `Enter` | Forward carriage return (`\r`) to the session |
+| `Ctrl+C` | Forward interrupt (`\x03`) to the session |
+| Any printable key | Forward that character to the session |
+
+> **Visual indicator:** A `·· INPUT ··` badge appears in the focused cell's header while input mode is active.
+
+> **Opt-out:** Set `disable_grid_input: true` in `~/.config/hive/config.json` to disable this feature entirely (the `i` key becomes a no-op in grid view).
 
 ## Status Indicator
 

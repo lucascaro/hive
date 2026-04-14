@@ -70,6 +70,7 @@ func (m Model) handleSettingsSaveRequest(msg components.SettingsSaveRequestMsg) 
 	}
 	m.cfg = newCfg
 	m.keys = NewKeyMap(newCfg.Keybindings)
+	m.gridView.InputEnabled = !newCfg.DisableGridInput
 	return m, func() tea.Msg { return ConfigSavedMsg{Config: newCfg} }
 }
 

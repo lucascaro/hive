@@ -108,6 +108,13 @@ func (p *pane) resize(rows, cols uint16) {
 	pty.Setsize(p.ptm, &pty.Winsize{Rows: rows, Cols: cols}) //nolint:errcheck
 }
 
+// writeInput writes a literal byte string to the PTY master (stdin of the process).
+// PTY master writes are async-safe; no mutex is required.
+func (p *pane) writeInput(keys string) error {
+	_, err := p.ptm.Write([]byte(keys))
+	return err
+}
+
 // setAttachWriter atomically updates the writer that receives new PTY output.
 // Pass nil to disable fan-out.
 func (p *pane) setAttachWriter(w io.Writer) {

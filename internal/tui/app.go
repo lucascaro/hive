@@ -179,6 +179,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		helpModel:           newStyledHelp(),
 		gridHelpModel:       newStyledHelp(),
 	}
+	m.gridView.InputEnabled = !cfg.DisableGridInput
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
 	m.appState.RecoverableSessions = nil

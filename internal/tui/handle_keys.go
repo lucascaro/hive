@@ -77,6 +77,13 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Width = m.appState.TermWidth
 	m.gridView.Height = m.appState.TermHeight
 
+	// Input mode: all keys (except ctrl+c which always quits) are forwarded to
+	// the focused session. Ctrl+Q exits input mode (handled inside GridView.Update).
+	if m.gridView.InputMode() {
+		cmd, _ := m.gridView.Update(msg)
+		return cmd
+	}
+
 	// Actions that work consistently across sidebar and grid.
 	if key.Matches(msg, m.keys.Quit) {
 		return tea.Quit

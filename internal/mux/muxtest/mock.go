@@ -20,6 +20,11 @@ type MockBackend struct {
 	paneBells     map[string]bool              // "session:idx" → bell flag
 	calls         map[string]int               // method name → call count
 	errors        map[string]error             // method name → error to return
+
+	// LastSentTarget and LastSentKeys record the most-recent SendKeys call.
+	// Exported for use in test assertions.
+	LastSentTarget string
+	LastSentKeys   string
 }
 
 // Compile-time check that MockBackend satisfies mux.Backend.
@@ -259,6 +264,17 @@ func (m *MockBackend) GetCurrentCommand(target string) (string, error) {
 		return "", err
 	}
 	return "sh", nil
+}
+
+func (m *MockBackend) SendKeys(target, keys string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.record("SendKeys"); err != nil {
+		return err
+	}
+	m.LastSentTarget = target
+	m.LastSentKeys = keys
+	return nil
 }
 
 func (m *MockBackend) Attach(target string) error {
