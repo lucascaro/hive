@@ -345,6 +345,12 @@ func linearize(c float64) float64 {
 	return math.Pow((c+0.055)/1.055, 2.4)
 }
 
+// DimHex returns a darkened version of a hex color by blending it 75% toward
+// near-black, suitable for rendering dimmed (non-focused) grid cells.
+func DimHex(color string) string {
+	return lerpColor(color, "#0D1117", 0.75)
+}
+
 // ProjectColorBar returns a 1-char-wide colored bar string for use in the sidebar.
 func ProjectColorBar(hexColor string) string {
 	return lipgloss.NewStyle().

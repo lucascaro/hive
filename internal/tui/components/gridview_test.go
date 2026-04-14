@@ -538,8 +538,8 @@ func TestGridView_SelectedCellHasBackground(t *testing.T) {
 	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
 	gv.SetContents(map[string]string{"s1": "hello world"})
 
-	selected := gv.renderCell(sess, 40, 15, true)
-	unselected := gv.renderCell(sess, 40, 15, false)
+	selected := gv.renderCell(sess, 40, 15, true, false)
+	unselected := gv.renderCell(sess, 40, 15, false, false)
 
 	bgEsc := styles.GridSelectedBgEsc
 	if bgEsc == "" {
@@ -569,8 +569,8 @@ func TestGridView_SelectedCellSubtitleHasBackground(t *testing.T) {
 	gv.SetProjectColors(map[string]string{"p1": "#7C3AED"})
 	gv.SetPaneTitles(map[string]string{"sess:0": "Working on task"})
 
-	selected := gv.renderCell(sess, 40, 15, true)
-	unselected := gv.renderCell(sess, 40, 15, false)
+	selected := gv.renderCell(sess, 40, 15, true, false)
+	unselected := gv.renderCell(sess, 40, 15, false, false)
 
 	findSubtitleLine := func(rendered string) string {
 		for _, line := range strings.Split(rendered, "\n") {
