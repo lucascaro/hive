@@ -209,30 +209,7 @@ func TestGridInputMode_HideExitsInputMode(t *testing.T) {
 // TestGridInputMode_HintShownOnFirstUse verifies that pressing 'i' shows the
 // grid-input-hint overlay when HideGridInputHint=false.
 func TestGridInputMode_HintShownOnFirstUse(t *testing.T) {
-	tmp := t.TempDir()
-	setHomePersist(t, tmp)
-	ensureConfigDir(t)
-	t.Setenv("TERM", "dumb")
-
-	mock := muxtest.New()
-	mux.SetBackend(mock)
-	t.Cleanup(func() { mux.SetBackend(nil) })
-
-	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
-	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
-
-	cfg := config.DefaultConfig()
-	cfg.HideAttachHint = true
-	cfg.HideGridInputHint = false // hint enabled
-	cfg.PreviewRefreshMs = 1
-
-	appState := testAppStateWithTwoProjects()
-	appState.TermWidth = 120
-	appState.TermHeight = 40
-
-	m := New(cfg, appState, "")
-	m.appState.TermWidth = 120
-	m.appState.TermHeight = 40
+	m, mock := testFlowModelWithGridHint(t)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -250,30 +227,7 @@ func TestGridInputMode_HintShownOnFirstUse(t *testing.T) {
 // TestGridInputMode_HintDontShowAgain verifies that pressing 'd' in the hint
 // dialog sets HideGridInputHint=true and dismisses the overlay.
 func TestGridInputMode_HintDontShowAgain(t *testing.T) {
-	tmp := t.TempDir()
-	setHomePersist(t, tmp)
-	ensureConfigDir(t)
-	t.Setenv("TERM", "dumb")
-
-	mock := muxtest.New()
-	mux.SetBackend(mock)
-	t.Cleanup(func() { mux.SetBackend(nil) })
-
-	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
-	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
-
-	cfg := config.DefaultConfig()
-	cfg.HideAttachHint = true
-	cfg.HideGridInputHint = false // hint enabled
-	cfg.PreviewRefreshMs = 1
-
-	appState := testAppStateWithTwoProjects()
-	appState.TermWidth = 120
-	appState.TermHeight = 40
-
-	m := New(cfg, appState, "")
-	m.appState.TermWidth = 120
-	m.appState.TermHeight = 40
+	m, mock := testFlowModelWithGridHint(t)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -299,30 +253,7 @@ func TestGridInputMode_HintDontShowAgain(t *testing.T) {
 // TestGridInputMode_HintEscCancelsInputMode verifies that pressing 'esc' in the
 // hint dialog pops the overlay and also exits input mode.
 func TestGridInputMode_HintEscCancelsInputMode(t *testing.T) {
-	tmp := t.TempDir()
-	setHomePersist(t, tmp)
-	ensureConfigDir(t)
-	t.Setenv("TERM", "dumb")
-
-	mock := muxtest.New()
-	mux.SetBackend(mock)
-	t.Cleanup(func() { mux.SetBackend(nil) })
-
-	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
-	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
-
-	cfg := config.DefaultConfig()
-	cfg.HideAttachHint = true
-	cfg.HideGridInputHint = false // hint enabled
-	cfg.PreviewRefreshMs = 1
-
-	appState := testAppStateWithTwoProjects()
-	appState.TermWidth = 120
-	appState.TermHeight = 40
-
-	m := New(cfg, appState, "")
-	m.appState.TermWidth = 120
-	m.appState.TermHeight = 40
+	m, mock := testFlowModelWithGridHint(t)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")

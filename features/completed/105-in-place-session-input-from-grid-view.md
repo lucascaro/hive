@@ -59,12 +59,13 @@ Preview polling continues unchanged — cell content updates within ~500ms of ea
 - `DisableGridInput bool` config field (JSON: `disable_grid_input`) added to `config.Config` for opt-out
 - `GridView.InputEnabled` field is set from config on model construction and on each settings save
 - `InputMode()` uses a value receiver so it can be called on the non-pointer `gridView` field in `Model`
-- The `·· INPUT ··` badge is overlaid at the right edge of the selected cell header, replacing the last N chars so total header width is preserved
+- The `INPUT · C-Q` badge is overlaid at the right edge of the selected cell header, replacing the last N chars so total header width is preserved
 - `keyToBytes()` handles printable runes, Enter→`\r`, Esc→`\033`, arrows→ANSI seqs, and common `Ctrl+` codes
 - Keys that have no sensible byte representation (e.g. F1) return `""` and are silently ignored
-- `scheduleGridPoll()` uses a 100 ms interval when `gridView.InputMode()` is true (vs. the configured ~500 ms default); entering input mode triggers an immediate re-poll to kick off the fast cycle
+- Dual-rate polling in input mode: focused session polls at 50 ms (`inputModeFocusedMs`), all others at 250 ms (`inputModeBackgroundMs`). `handleGridPreviewsUpdated` uses `MergeContents` for fast-poll messages to avoid blanking non-focused cells between background sweeps
 - `GridView.Hide()` now also clears `inputMode` so re-opened grids always start in nav mode
 - `(i) input` added to `GridKeyMap.ShortHelp()` for hint-bar discoverability
+- First-use hint: `ViewGridInputHint` overlay shown on first activation; `d` sets `HideGridInputHint=true`, `esc`/`q` also exits input mode
 
 ## Plan
 

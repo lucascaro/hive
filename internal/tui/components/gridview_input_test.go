@@ -64,3 +64,30 @@ func TestKeyToBytes_UnknownKeyReturnsEmpty(t *testing.T) {
 		t.Errorf("keyToBytes(F1) = %q, want empty string", got)
 	}
 }
+
+func TestMergeContents_PreservesExistingKeys(t *testing.T) {
+	gv := &GridView{}
+	// Seed with two sessions.
+	gv.SetContents(map[string]string{
+		"sess-a": "content-a",
+		"sess-b": "content-b",
+	})
+
+	// Merge only updates sess-a; sess-b must be preserved.
+	gv.MergeContents(map[string]string{"sess-a": "content-a-new"})
+
+	if got := gv.contents["sess-a"]; got != "content-a-new" {
+		t.Errorf("sess-a = %q, want %q", got, "content-a-new")
+	}
+	if got := gv.contents["sess-b"]; got != "content-b" {
+		t.Errorf("sess-b = %q, want %q (should be unchanged)", got, "content-b")
+	}
+}
+
+func TestMergeContents_NilMapInitialised(t *testing.T) {
+	gv := &GridView{} // contents is nil
+	gv.MergeContents(map[string]string{"sess-a": "hello"})
+	if got := gv.contents["sess-a"]; got != "hello" {
+		t.Errorf("contents[sess-a] = %q, want %q", got, "hello")
+	}
+}

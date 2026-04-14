@@ -243,6 +243,39 @@ func testFlowModel(t *testing.T) (Model, *muxtest.MockBackend) {
 	return m, mock
 }
 
+// testFlowModelWithGridHint is like testFlowModel but with HideGridInputHint=false,
+// so the grid input mode hint overlay is shown on first activation.
+func testFlowModelWithGridHint(t *testing.T) (Model, *muxtest.MockBackend) {
+	t.Helper()
+
+	tmp := t.TempDir()
+	setHomePersist(t, tmp)
+	ensureConfigDir(t)
+	t.Setenv("TERM", "dumb")
+
+	mock := muxtest.New()
+	mux.SetBackend(mock)
+	t.Cleanup(func() { mux.SetBackend(nil) })
+
+	mock.SetPaneContent("hive-sessions:0", "$ claude\nSession started.")
+	mock.SetPaneContent("hive-sessions:1", "$ codex\nReady.")
+
+	cfg := config.DefaultConfig()
+	cfg.HideAttachHint = true
+	cfg.HideGridInputHint = false // hint enabled — shown on first 'i'
+	cfg.PreviewRefreshMs = 1
+
+	appState := testAppStateWithTwoProjects()
+	appState.TermWidth = 120
+	appState.TermHeight = 40
+
+	m := New(cfg, appState, "")
+	m.appState.TermWidth = 120
+	m.appState.TermHeight = 40
+
+	return m, mock
+}
+
 // testFlowModelWithHint is like testFlowModel but with HideAttachHint=false.
 func testFlowModelWithHint(t *testing.T) (Model, *muxtest.MockBackend) {
 	t.Helper()

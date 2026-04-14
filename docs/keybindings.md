@@ -76,7 +76,7 @@ When input mode is active, all keystrokes — including `Esc`, arrow keys, `Ente
 | `Ctrl+C` | Forward interrupt (`\x03`) to the session |
 | Any printable key | Forward that character to the session |
 
-> **Visual indicator:** A `·· INPUT ··` badge appears in the focused cell's header while input mode is active.
+> **Visual indicator:** A `INPUT · C-Q` badge appears in the focused cell's header while input mode is active.
 
 > **Opt-out:** Set `disable_grid_input: true` in `~/.config/hive/config.json` to disable this feature entirely (the `i` key becomes a no-op in grid view).
 
