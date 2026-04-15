@@ -7,7 +7,6 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| P1 | #111 | fix(grid): sidebar view flashes during attach/detach | IMPLEMENT | S |
 
 ## Rejected
 
@@ -64,3 +63,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | — | In-place session input from grid view | #106 | 2026-04-14 |
 | #105 | Add tabs to help panel with comprehensive usage and feature reference | #107 | 2026-04-14 |
 | #109 | Fix performance: cyber view flashes and slow preview refresh on slow machines | #110 | — |
+| #111 | fix(grid): sidebar view flashes during attach/detach | #113 | 2026-04-14 |

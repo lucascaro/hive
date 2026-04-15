@@ -1,7 +1,7 @@
 # Feature: fix(grid): sidebar view flashes during attach/detach in grid mode
 
 - **GitHub Issue:** #111
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
@@ -230,4 +230,4 @@ Concrete tokens to use will be finalized during IMPLEMENT by running `go test -r
 - All 10 planned new tests added; 6 existing tests updated. Full suite (`go test ./...`) green.
 - `TestFlow_GridAttachWithHint` (line 344) and `TestFlow_GridAttachSetsActiveSessionID` (line 593) were not in the original plan list but broke under the behavior change (expected grid hidden post-attach) — updated to assert the new grid-stays-active contract.
 
-- **PR:** —
+- **PR:** #113
