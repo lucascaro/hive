@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -175,6 +176,48 @@ func (m Model) whatsNewView() string {
 	)
 }
 
+// altScreenExecCmd wraps an exec.Cmd as a tea.ExecCommand that re-enters
+// alt-screen at the very start of Run(). BubbleTea's ReleaseTerminal exits
+// alt-screen (writing \033[?1049l) and sleeps 10ms before calling Run(),
+// during which the primary terminal buffer (blank from the startup pre-clear
+// in writePrimaryBufferClear) is briefly visible. By writing
+// \033[?1049h\033[2J\033[H immediately in Run() we minimize that gap to
+// just the 10ms sleep — down from 10ms + subprocess startup latency (~50ms).
+//
+// termOut is the writer for the enter-alt-screen sequence. It is separate
+// from cmd.Stdout so it can be injected in tests without affecting the
+// subprocess's own stdout.
+type altScreenExecCmd struct {
+	cmd     *exec.Cmd
+	termOut io.Writer
+}
+
+func (e *altScreenExecCmd) Run() error {
+	// Re-enter alt-screen and clear immediately. BubbleTea's ReleaseTerminal
+	// already exited alt-screen; this write covers the primary buffer as fast
+	// as possible, before the subprocess starts.
+	fmt.Fprint(e.termOut, "\033[?1049h\033[2J\033[H")
+	return e.cmd.Run()
+}
+
+func (e *altScreenExecCmd) SetStdin(r io.Reader) {
+	if e.cmd.Stdin == nil {
+		e.cmd.Stdin = r
+	}
+}
+
+func (e *altScreenExecCmd) SetStdout(w io.Writer) {
+	if e.cmd.Stdout == nil {
+		e.cmd.Stdout = w
+	}
+}
+
+func (e *altScreenExecCmd) SetStderr(w io.Writer) {
+	if e.cmd.Stderr == nil {
+		e.cmd.Stderr = w
+	}
+}
+
 // doAttach returns the tea.Cmd that performs session attachment.
 func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
@@ -193,14 +236,15 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	os.Stdout.WriteString("\033[2J\033[H")
+	fmt.Fprint(m.attachOut, "\033[2J\033[H")
 
 	// Start background bell watcher so custom audio plays and bell badges are
 	// tracked while the BubbleTea event loop is suspended.
 	watcher := newAttachBellWatcher()
 	watcher.start(m.cfg.BellSound, m.cfg.BellVolume, buildSessionTargets(&m.appState))
 
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	execCmd := &altScreenExecCmd{cmd: cmd, termOut: os.Stdout}
+	return tea.Exec(execCmd, func(err error) tea.Msg {
 		newBells := watcher.stop()
 		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode, NewBells: newBells}
 	})

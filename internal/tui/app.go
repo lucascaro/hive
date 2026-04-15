@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -100,6 +101,10 @@ type Model struct {
 	// attached to them. Used for the visual bell indicator in the sidebar.
 	// Keyed by sessionID, cleared on attach.
 	bellPending map[string]bool
+	// attachOut is the writer used by doAttach to emit pre-attach escape
+	// sequences (e.g. the primary-buffer clear). Defaults to os.Stdout.
+	// Tests may inject a bytes.Buffer to capture and assert the output.
+	attachOut io.Writer
 	// bellBlinkOn is toggled every ~600 ms by the bell-blink ticker so the
 	// bell badge animates on/off in software (ANSI terminal blink is unreliable
 	// in modern terminals like iTerm2 which disable it by default).
@@ -163,6 +168,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		appState:            appState,
 		keys:                km,
 		stateLastKnownMtime: initialStateMtime,
+		attachOut:           os.Stdout,
 		titleEditor:         components.NewTitleEditor(),
 		agentPicker:         components.NewAgentPicker(),
 		teamBuilder:         components.NewTeamBuilder(),
