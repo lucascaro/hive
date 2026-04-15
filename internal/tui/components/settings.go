@@ -818,50 +818,76 @@ func buildSettingTabs() []settingTab {
 		{
 			title: "Keybindings",
 			fields: []*settingField{
-				keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) string { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v string) { c.Keybindings.ToggleCollapse = v }),
-				keybindField("Focus Preview", "Move focus to the preview pane.", func(c config.Config) string { return c.Keybindings.FocusPreview }, func(c *config.Config, v string) { c.Keybindings.FocusPreview = v }),
-				keybindField("Focus Sidebar", "Move focus back to the sidebar.", func(c config.Config) string { return c.Keybindings.FocusSidebar }, func(c *config.Config, v string) { c.Keybindings.FocusSidebar = v }),
-				keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) string { return c.Keybindings.JumpProject1 }, func(c *config.Config, v string) { c.Keybindings.JumpProject1 = v }),
-				keybindField("New Project", "Create a new project.", func(c config.Config) string { return c.Keybindings.NewProject }, func(c *config.Config, v string) { c.Keybindings.NewProject = v }),
-				keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) string { return c.Keybindings.NewSession }, func(c *config.Config, v string) { c.Keybindings.NewSession = v }),
-				keybindField("New Team", "Open the team builder wizard.", func(c config.Config) string { return c.Keybindings.NewTeam }, func(c *config.Config, v string) { c.Keybindings.NewTeam = v }),
-				keybindField("New Worktree Session", "Create a session in a new git worktree.", func(c config.Config) string { return c.Keybindings.NewWorktreeSession }, func(c *config.Config, v string) { c.Keybindings.NewWorktreeSession = v }),
-				keybindField("Attach to Session", "Attach to the selected session.", func(c config.Config) string { return c.Keybindings.Attach }, func(c *config.Config, v string) { c.Keybindings.Attach = v }),
-				keybindField("Kill Session", "Kill the selected session or project.", func(c config.Config) string { return c.Keybindings.KillSession }, func(c *config.Config, v string) { c.Keybindings.KillSession = v }),
-				keybindField("Kill Team", "Kill the selected team and all its sessions.", func(c config.Config) string { return c.Keybindings.KillTeam }, func(c *config.Config, v string) { c.Keybindings.KillTeam = v }),
-				keybindField("Rename", "Rename the selected session or team.", func(c config.Config) string { return c.Keybindings.Rename }, func(c *config.Config, v string) { c.Keybindings.Rename = v }),
-				keybindField("Navigate Up", "Move cursor up in the sidebar.", func(c config.Config) string { return c.Keybindings.NavUp }, func(c *config.Config, v string) { c.Keybindings.NavUp = v }),
-				keybindField("Navigate Down", "Move cursor down in the sidebar.", func(c config.Config) string { return c.Keybindings.NavDown }, func(c *config.Config, v string) { c.Keybindings.NavDown = v }),
-				keybindField("Previous Project", "Jump to the previous project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectUp }, func(c *config.Config, v string) { c.Keybindings.NavProjectUp = v }),
-				keybindField("Next Project", "Jump to the next project in the sidebar.", func(c config.Config) string { return c.Keybindings.NavProjectDown }, func(c *config.Config, v string) { c.Keybindings.NavProjectDown = v }),
-				keybindField("Filter", "Open the session filter.", func(c config.Config) string { return c.Keybindings.Filter }, func(c *config.Config, v string) { c.Keybindings.Filter = v }),
-				keybindField("Grid Overview", "Switch to grid view (current project).", func(c config.Config) string { return c.Keybindings.GridOverview }, func(c *config.Config, v string) { c.Keybindings.GridOverview = v }),
-				keybindField("Command Palette", "Open the command palette.", func(c config.Config) string { return c.Keybindings.Palette }, func(c *config.Config, v string) { c.Keybindings.Palette = v }),
-				keybindField("Help", "Toggle the keyboard shortcuts overlay.", func(c config.Config) string { return c.Keybindings.Help }, func(c *config.Config, v string) { c.Keybindings.Help = v }),
-				keybindField("Tmux Help", "Toggle the tmux shortcuts reference.", func(c config.Config) string { return c.Keybindings.TmuxHelp }, func(c *config.Config, v string) { c.Keybindings.TmuxHelp = v }),
-				keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) string { return c.Keybindings.Quit }, func(c *config.Config, v string) { c.Keybindings.Quit = v }),
-				keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) string { return c.Keybindings.QuitKill }, func(c *config.Config, v string) { c.Keybindings.QuitKill = v }),
-				keybindField("Open Settings", "Open this settings screen.", func(c config.Config) string { return c.Keybindings.Settings }, func(c *config.Config, v string) { c.Keybindings.Settings = v }),
-				keybindField("Next Color", "Cycle the selected project to the next color.", func(c config.Config) string { return c.Keybindings.ColorNext }, func(c *config.Config, v string) { c.Keybindings.ColorNext = v }),
-				keybindField("Previous Color", "Cycle the selected project to the previous color.", func(c config.Config) string { return c.Keybindings.ColorPrev }, func(c *config.Config, v string) { c.Keybindings.ColorPrev = v }),
+				keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.ToggleCollapse = v }),
+				keybindField("Focus Preview", "Move focus to the preview pane.", func(c config.Config) config.KeyBinding { return c.Keybindings.FocusPreview }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.FocusPreview = v }),
+				keybindField("Focus Sidebar", "Move focus back to the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.FocusSidebar }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.FocusSidebar = v }),
+				keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) config.KeyBinding { return c.Keybindings.JumpProject1 }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.JumpProject1 = v }),
+				keybindField("New Project", "Create a new project.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewProject }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewProject = v }),
+				keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewSession }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewSession = v }),
+				keybindField("New Team", "Open the team builder wizard.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewTeam }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewTeam = v }),
+				keybindField("New Worktree Session", "Create a session in a new git worktree.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewWorktreeSession }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewWorktreeSession = v }),
+				keybindField("Attach to Session", "Attach to the selected session.", func(c config.Config) config.KeyBinding { return c.Keybindings.Attach }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Attach = v }),
+				keybindField("Kill Session", "Kill the selected session or project.", func(c config.Config) config.KeyBinding { return c.Keybindings.KillSession }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.KillSession = v }),
+				keybindField("Kill Team", "Kill the selected team and all its sessions.", func(c config.Config) config.KeyBinding { return c.Keybindings.KillTeam }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.KillTeam = v }),
+				keybindField("Rename", "Rename the selected session or team.", func(c config.Config) config.KeyBinding { return c.Keybindings.Rename }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Rename = v }),
+				keybindField("Navigate Up", "Move cursor up in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.NavUp }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NavUp = v }),
+				keybindField("Navigate Down", "Move cursor down in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.NavDown }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NavDown = v }),
+				keybindField("Previous Project", "Jump to the previous project in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.NavProjectUp }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NavProjectUp = v }),
+				keybindField("Next Project", "Jump to the next project in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.NavProjectDown }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NavProjectDown = v }),
+				keybindField("Filter", "Open the session filter.", func(c config.Config) config.KeyBinding { return c.Keybindings.Filter }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Filter = v }),
+				keybindField("Grid Overview", "Switch to grid view (current project).", func(c config.Config) config.KeyBinding { return c.Keybindings.GridOverview }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.GridOverview = v }),
+				keybindField("Command Palette", "Open the command palette.", func(c config.Config) config.KeyBinding { return c.Keybindings.Palette }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Palette = v }),
+				keybindField("Help", "Toggle the keyboard shortcuts overlay.", func(c config.Config) config.KeyBinding { return c.Keybindings.Help }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Help = v }),
+				keybindField("Tmux Help", "Toggle the tmux shortcuts reference.", func(c config.Config) config.KeyBinding { return c.Keybindings.TmuxHelp }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.TmuxHelp = v }),
+				keybindField("Quit", "Quit hive (sessions keep running in tmux).", func(c config.Config) config.KeyBinding { return c.Keybindings.Quit }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Quit = v }),
+				keybindField("Quit and Kill All", "Quit and terminate all managed sessions.", func(c config.Config) config.KeyBinding { return c.Keybindings.QuitKill }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.QuitKill = v }),
+				keybindField("Open Settings", "Open this settings screen.", func(c config.Config) config.KeyBinding { return c.Keybindings.Settings }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.Settings = v }),
+				keybindField("Next Color", "Cycle the selected project to the next color.", func(c config.Config) config.KeyBinding { return c.Keybindings.ColorNext }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.ColorNext = v }),
+				keybindField("Previous Color", "Cycle the selected project to the previous color.", func(c config.Config) config.KeyBinding { return c.Keybindings.ColorPrev }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.ColorPrev = v }),
 			},
 		},
 	}
 }
 
-// keybindField builds a settingField for a single keybinding.
-func keybindField(label, desc string, get func(config.Config) string, set func(*config.Config, string)) *settingField {
+// keybindField builds a settingField for a single keybinding. The on-disk
+// value is a slice of keys; the UI displays them comma-separated and parses
+// the same form back. Whitespace around entries is trimmed and empty entries
+// are dropped.
+func keybindField(label, desc string, get func(config.Config) config.KeyBinding, set func(*config.Config, config.KeyBinding)) *settingField {
+	// Comma is used (not space) because individual key strings can themselves
+	// contain spaces (e.g. "ctrl+p", "space"). Surface that in the description
+	// so users don't read "up, k" as a single literal key.
+	desc = desc + " Comma-separated for multiple keys (e.g. \"up, k\")."
 	return &settingField{
 		label:       label,
 		description: desc,
 		kind:        fieldString,
-		get:         get,
+		get: func(c config.Config) string {
+			kb := get(c)
+			parts := make([]string, 0, len(kb))
+			for _, k := range kb {
+				if s := strings.TrimSpace(k); s != "" {
+					parts = append(parts, s)
+				}
+			}
+			return strings.Join(parts, ", ")
+		},
 		set: func(c *config.Config, v string) error {
-			v = strings.TrimSpace(v)
-			if v == "" {
+			parts := strings.Split(v, ",")
+			out := make(config.KeyBinding, 0, len(parts))
+			seen := map[string]bool{}
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p == "" || seen[p] {
+					continue
+				}
+				seen[p] = true
+				out = append(out, p)
+			}
+			if len(out) == 0 {
 				return fmt.Errorf("keybinding cannot be empty")
 			}
-			set(c, v)
+			set(c, out)
 			return nil
 		},
 	}

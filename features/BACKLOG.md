@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| 1 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
 
 ## Rejected
 

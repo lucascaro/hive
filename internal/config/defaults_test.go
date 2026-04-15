@@ -56,7 +56,7 @@ func TestDefaultConfig_KeybindingsPopulated(t *testing.T) {
 	cfg := DefaultConfig()
 	kb := cfg.Keybindings
 
-	bindings := map[string]string{
+	bindings := map[string]KeyBinding{
 		"NewProject":     kb.NewProject,
 		"NewSession":     kb.NewSession,
 		"NewTeam":        kb.NewTeam,
@@ -66,6 +66,10 @@ func TestDefaultConfig_KeybindingsPopulated(t *testing.T) {
 		"ToggleCollapse": kb.ToggleCollapse,
 		"NavUp":          kb.NavUp,
 		"NavDown":        kb.NavDown,
+		"CursorUp":       kb.CursorUp,
+		"CursorDown":     kb.CursorDown,
+		"Detach":         kb.Detach,
+		"InputMode":      kb.InputMode,
 		"Quit":           kb.Quit,
 		"QuitKill":       kb.QuitKill,
 		"Filter":         kb.Filter,
@@ -75,7 +79,7 @@ func TestDefaultConfig_KeybindingsPopulated(t *testing.T) {
 		"ColorPrev":      kb.ColorPrev,
 	}
 	for name, val := range bindings {
-		if val == "" {
+		if val.First() == "" {
 			t.Errorf("Keybindings.%s is empty", name)
 		}
 	}

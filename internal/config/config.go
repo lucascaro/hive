@@ -1,5 +1,87 @@
 package config
 
+import (
+	"encoding/json"
+	"strings"
+)
+
+// KeyBinding is one configurable action's set of key strings. It marshals as a
+// JSON array (the canonical form) but accepts either a string or an array on
+// unmarshal so configs written before keybindings supported multiple keys per
+// action keep loading. Empty entries and surrounding whitespace are stripped.
+type KeyBinding []string
+
+// First returns the first non-empty key, or "" if none is set. Useful for
+// rendering a single-key label (e.g. in help hints) without panicking on an
+// empty binding.
+func (kb KeyBinding) First() string {
+	for _, k := range kb {
+		if k != "" {
+			return k
+		}
+	}
+	return ""
+}
+
+// HelpKey returns a display string for the binding, joining all configured
+// keys with "/" (e.g. "up/k"). Returns "" if no keys are set.
+func (kb KeyBinding) HelpKey() string {
+	parts := make([]string, 0, len(kb))
+	for _, k := range kb {
+		if k != "" {
+			parts = append(parts, k)
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+// MarshalJSON forces the array form even when the slice is nil, so the
+// on-disk shape stays consistent (`[]` instead of `null`) regardless of how
+// the field was constructed in memory.
+func (kb KeyBinding) MarshalJSON() ([]byte, error) {
+	if kb == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal([]string(kb))
+}
+
+// UnmarshalJSON accepts either a JSON string ("a") or array (["a","f"]) and
+// normalizes to []string. This preserves backwards compatibility with configs
+// written when each KeybindingsConfig field was a single string.
+func (kb *KeyBinding) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*kb = nil
+		return nil
+	}
+	if trimmed[0] == '[' {
+		var arr []string
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		out := make([]string, 0, len(arr))
+		for _, s := range arr {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		*kb = out
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		*kb = nil
+		return nil
+	}
+	*kb = []string{s}
+	return nil
+}
+
 // Config is the user-facing configuration loaded from ~/.config/hive/config.json.
 type Config struct {
 	SchemaVersion               int                       `json:"schema_version"`
@@ -81,37 +163,51 @@ type HooksConfig struct {
 	Dir     string `json:"dir"`
 }
 
-// KeybindingsConfig maps action names to key strings.
+// KeybindingsConfig maps action names to one or more key strings. Every field
+// is a KeyBinding so users can bind multiple keys to the same action (e.g.
+// `["up", "k"]`). Existing configs that stored a single string are loaded
+// transparently via KeyBinding.UnmarshalJSON.
 type KeybindingsConfig struct {
-	NewWorktreeSession string `json:"new_worktree_session"`
-	NewProject     string `json:"new_project"`
-	NewSession     string `json:"new_session"`
-	NewTeam        string `json:"new_team"`
-	KillSession    string `json:"kill_session"`
-	KillTeam       string `json:"kill_team"`
-	Rename         string `json:"rename"`
-	Attach         string `json:"attach"`
-	ToggleCollapse string `json:"toggle_collapse"`
-	FocusPreview   string `json:"focus_preview"`
-	FocusSidebar   string `json:"focus_sidebar"`
-	NavUp          string `json:"nav_up"`
-	NavDown        string `json:"nav_down"`
-	NavProjectUp   string `json:"nav_project_up"`
-	NavProjectDown string `json:"nav_project_down"`
-	JumpProject1   string `json:"jump_project_1"`
-	Filter         string `json:"filter"`
-	SidebarView    string `json:"sidebar_view"`
-	GridOverview   string `json:"grid_overview"`
-	Palette        string `json:"palette"`
-	Help           string `json:"help"`
-	TmuxHelp       string `json:"tmux_help"`
-	Settings       string `json:"settings"`
-	Quit           string `json:"quit"`
-	QuitKill       string `json:"quit_kill"`
-	ColorNext      string `json:"color_next"`
-	ColorPrev      string `json:"color_prev"`
-	MoveUp         string `json:"move_up"`
-	MoveDown       string `json:"move_down"`
-	MoveLeft       string `json:"move_left"`
-	MoveRight      string `json:"move_right"`
+	NewWorktreeSession KeyBinding `json:"new_worktree_session"`
+	NewProject     KeyBinding `json:"new_project"`
+	NewSession     KeyBinding `json:"new_session"`
+	NewTeam        KeyBinding `json:"new_team"`
+	KillSession    KeyBinding `json:"kill_session"`
+	KillTeam       KeyBinding `json:"kill_team"`
+	Rename         KeyBinding `json:"rename"`
+	Attach         KeyBinding `json:"attach"`
+	ToggleCollapse KeyBinding `json:"toggle_collapse"`
+	CollapseItem   KeyBinding `json:"collapse_item"`
+	ExpandItem     KeyBinding `json:"expand_item"`
+	FocusPreview   KeyBinding `json:"focus_preview"`
+	FocusSidebar   KeyBinding `json:"focus_sidebar"`
+	NavUp          KeyBinding `json:"nav_up"`
+	NavDown        KeyBinding `json:"nav_down"`
+	NavProjectUp   KeyBinding `json:"nav_project_up"`
+	NavProjectDown KeyBinding `json:"nav_project_down"`
+	CursorUp       KeyBinding `json:"cursor_up"`
+	CursorDown     KeyBinding `json:"cursor_down"`
+	CursorLeft     KeyBinding `json:"cursor_left"`
+	CursorRight    KeyBinding `json:"cursor_right"`
+	JumpProject1   KeyBinding `json:"jump_project_1"`
+	Filter         KeyBinding `json:"filter"`
+	SidebarView    KeyBinding `json:"sidebar_view"`
+	GridOverview   KeyBinding `json:"grid_overview"`
+	Palette        KeyBinding `json:"palette"`
+	Help           KeyBinding `json:"help"`
+	TmuxHelp       KeyBinding `json:"tmux_help"`
+	Settings       KeyBinding `json:"settings"`
+	Quit           KeyBinding `json:"quit"`
+	QuitKill       KeyBinding `json:"quit_kill"`
+	ColorNext      KeyBinding `json:"color_next"`
+	ColorPrev      KeyBinding `json:"color_prev"`
+	SessionColorNext KeyBinding `json:"session_color_next"`
+	SessionColorPrev KeyBinding `json:"session_color_prev"`
+	MoveUp         KeyBinding `json:"move_up"`
+	MoveDown       KeyBinding `json:"move_down"`
+	MoveLeft       KeyBinding `json:"move_left"`
+	MoveRight      KeyBinding `json:"move_right"`
+	InputMode      KeyBinding `json:"input_mode"`
+	Detach         KeyBinding `json:"detach"`
+	ToggleAll      KeyBinding `json:"toggle_all"`
 }

@@ -23,8 +23,8 @@ func testConfig() config.Config {
 			Dir:     "~/.config/hive/hooks",
 		},
 		Keybindings: config.KeybindingsConfig{
-			NewSession: "t",
-			Help:       "?",
+			NewSession: config.KeyBinding{"t"},
+			Help:       config.KeyBinding{"?"},
 		},
 		TeamDefaults: config.TeamDefaultsConfig{
 			Orchestrator: "claude",
@@ -725,8 +725,8 @@ func TestSettingsView_ResetKeybindings(t *testing.T) {
 	sv := NewSettingsView()
 	cfg := config.DefaultConfig()
 	// Simulate an old user config with vim-style nav keys.
-	cfg.Keybindings.NavUp = "k"
-	cfg.Keybindings.NavDown = "j"
+	cfg.Keybindings.NavUp = config.KeyBinding{"k"}
+	cfg.Keybindings.NavDown = config.KeyBinding{"j"}
 	sv.Open(cfg)
 
 	if sv.IsDirty() {
@@ -740,13 +740,13 @@ func TestSettingsView_ResetKeybindings(t *testing.T) {
 	}
 	got := sv.GetConfig().Keybindings.NavUp
 	want := config.DefaultConfig().Keybindings.NavUp
-	if got != want {
-		t.Errorf("NavUp after reset = %q, want %q", got, want)
+	if got.First() != want.First() {
+		t.Errorf("NavUp after reset = %v, want %v", got, want)
 	}
 	got = sv.GetConfig().Keybindings.NavDown
 	want = config.DefaultConfig().Keybindings.NavDown
-	if got != want {
-		t.Errorf("NavDown after reset = %q, want %q", got, want)
+	if got.First() != want.First() {
+		t.Errorf("NavDown after reset = %v, want %v", got, want)
 	}
 }
 
