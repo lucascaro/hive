@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-04-15
+
 ### Added
 - **Preview-activity panel**: a single horizontal row at the bottom of the main and grid views shows a pip + title for every session, with the pip flashing green for ~150 ms each time hive polls that session. Makes the polling cadence directly observable so timing inconsistencies stand out at a glance.
 
@@ -331,7 +333,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/lucascaro/hive/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/lucascaro/hive/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/lucascaro/hive/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/lucascaro/hive/compare/v0.8.0...v0.9.0
