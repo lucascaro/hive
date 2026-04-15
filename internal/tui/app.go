@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -100,6 +101,10 @@ type Model struct {
 	// attached to them. Used for the visual bell indicator in the sidebar.
 	// Keyed by sessionID, cleared on attach.
 	bellPending map[string]bool
+	// attachOut is the writer used by doAttach to emit pre-attach escape
+	// sequences (e.g. the primary-buffer clear). Defaults to os.Stdout.
+	// Tests may inject a bytes.Buffer to capture and assert the output.
+	attachOut io.Writer
 	// bellBlinkOn is toggled every ~600 ms by the bell-blink ticker so the
 	// bell badge animates on/off in software (ANSI terminal blink is unreliable
 	// in modern terminals like iTerm2 which disable it by default).
@@ -163,6 +168,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		appState:            appState,
 		keys:                km,
 		stateLastKnownMtime: initialStateMtime,
+		attachOut:           os.Stdout,
 		titleEditor:         components.NewTitleEditor(),
 		agentPicker:         components.NewAgentPicker(),
 		teamBuilder:         components.NewTeamBuilder(),
@@ -245,6 +251,17 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 }
 
 // restoreGrid re-opens the grid view if RestoreGridMode is set, then clears the flag.
+//
+// SyncState/SetPaneTitles/SetContents run unconditionally — even when ViewGrid
+// is already on the stack (the #111 tmux-detach path). This is intentional:
+// after an attach the active session, pane titles, and preview snapshots may
+// have changed, so the grid must be refreshed to reflect post-attach state.
+// The side effect is that any mid-grid cursor position the user had before
+// attaching is reset to the active-session cell — acceptable trade-off because
+// the user's focus on return is the session they just attached to.
+//
+// Only the PushView is guarded by !HasView(ViewGrid) so the grid is not pushed
+// twice on detach-restore (would break the stack invariant).
 func (m *Model) restoreGrid() {
 	if m.appState.RestoreGridMode == state.GridRestoreNone {
 		return
@@ -255,7 +272,9 @@ func (m *Model) restoreGrid() {
 	m.gridView.SyncState(sessions, mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
 	m.gridView.SetPaneTitles(m.paneTitles)
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
-	m.PushView(ViewGrid)
+	if !m.HasView(ViewGrid) {
+		m.PushView(ViewGrid)
+	}
 }
 
 // expandForActiveSession un-collapses any parent project or team that contains

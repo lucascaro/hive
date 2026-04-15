@@ -25,6 +25,10 @@ type MockBackend struct {
 	// Exported for use in test assertions.
 	LastSentTarget string
 	LastSentKeys   string
+
+	// useExecAttach controls the value returned by UseExecAttach.
+	// Defaults to false (native backend behaviour). Set via SetUseExecAttach.
+	useExecAttach bool
 }
 
 // Compile-time check that MockBackend satisfies mux.Backend.
@@ -296,11 +300,19 @@ func (m *MockBackend) PopupAttach(target, title string) error {
 	return m.record("PopupAttach")
 }
 
+// SetUseExecAttach configures whether UseExecAttach reports true.
+// Call this in tests that exercise the tea.ExecProcess attach path.
+func (m *MockBackend) SetUseExecAttach(v bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.useExecAttach = v
+}
+
 func (m *MockBackend) UseExecAttach() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.record("UseExecAttach")
-	return false
+	return m.useExecAttach
 }
 
 func (m *MockBackend) DetachKey() string {

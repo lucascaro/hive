@@ -117,7 +117,10 @@ func TestBuildAttachScript_StatusBarShape(t *testing.T) {
 		"shows the detach hint with display key": "Ctrl+Q: detach",
 		"restores via -u in trap":                "set-option -u",
 		"enters alt screen before attach":        `\033[?1049h`,
-		"trap leaves alt screen":                 `\033[?1049l`,
+		// Trap clears the alt-screen content on detach; it does NOT exit
+		// alt-screen (\033[?1049l was removed to prevent the primary buffer
+		// from being exposed while tmux cleanup runs).
+		"trap clears screen on detach":           `\033[2J\033[H`,
 		"hides window list (status-format)":      "window-status-format ''",
 		"hides window list (current-format)":     "window-status-current-format ''",
 		"hides window list (separator)":          "window-status-separator ''",
@@ -128,6 +131,24 @@ func TestBuildAttachScript_StatusBarShape(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Errorf("script should %s — missing %q\n--- script ---\n%s", desc, want, script)
 		}
+	}
+
+	// The trap must NOT exit alt-screen (\033[?1049l). Exiting alt-screen in
+	// the trap would expose the primary terminal buffer while tmux cleanup
+	// runs (10-30 ms), causing a visible flash of shell history on detach.
+	if strings.Contains(script, `\033[?1049l`) {
+		t.Errorf("script must not contain \\033[?1049l (alt-screen exit in trap causes flash on detach)\n--- script ---\n%s", script)
+	}
+
+	// The trap must run tmux cleanup BEFORE the screen clear, so cleanup
+	// happens while still in alt-screen (invisible to the user).
+	trapIdx := strings.Index(script, "trap '")
+	tmuxCleanupIdx := strings.Index(script[trapIdx:], "set-option -u")
+	clearIdx := strings.Index(script[trapIdx:], `\033[2J\033[H`)
+	if tmuxCleanupIdx < 0 || clearIdx < 0 {
+		t.Errorf("trap should contain both set-option -u (cleanup) and \\033[2J\\033[H (clear)")
+	} else if tmuxCleanupIdx > clearIdx {
+		t.Errorf("trap should run tmux cleanup before screen clear (cleanup at %d, clear at %d)", tmuxCleanupIdx, clearIdx)
 	}
 	if got := strings.Count(script, "#{pane_title}"); got != 1 {
 		t.Errorf("expected exactly one #{pane_title} token, got %d", got)
