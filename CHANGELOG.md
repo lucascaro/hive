@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grid-mode attach/detach sidebar flash (regression)**: the sidebar no longer briefly renders when attaching to or detaching from a session opened from grid view. `handleGridSessionSelected` now keeps `ViewGrid` on the view stack through the attach so the render frame before `tea.Exec`/`tea.Quit` shows grid content rather than sidebar. `restoreGrid()` is idempotent so the detach-side re-push does not duplicate the grid on the stack. As a side effect, pressing `esc` on the attach hint when opened from grid now returns to grid (previously returned to sidebar) (#111).
+
 ## [0.10.1] — 2026-04-14
 
 ### Fixed

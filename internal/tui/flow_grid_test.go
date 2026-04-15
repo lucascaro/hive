@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,11 +37,18 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	cmd := f.SendSpecialKey(tea.KeyEnter)
 
 	// Execute the cmd chain: grid cmd → GridSessionSelectedMsg → doAttach → tea.Quit.
-	// The grid is hidden inside handleGridSessionSelected (after the message is processed).
+	// With the fix for #111, the grid STAYS on the view stack through attach so
+	// there is no one-frame sidebar flash before the terminal handoff.
 	f.ExecCmdChain(cmd)
 
-	// Grid should be hidden after the cmd chain completes.
-	f.AssertGridActive(false)
+	// Grid must still be active after the cmd chain — the pre-exec render frame
+	// renders grid content, not sidebar.
+	f.AssertGridActive(true)
+	mm := f.Model()
+	if top := mm.TopView(); top != ViewGrid {
+		t.Errorf("TopView = %q after ExecCmdChain, want ViewGrid", top)
+	}
+	f.ViewContains("↑↓←→ navigate") // grid-only hint line
 
 	// attachPending should be set with RestoreGridMode.
 	updated := f.Model()
@@ -91,9 +99,16 @@ func TestFlow_GridAllProjectsRestores(t *testing.T) {
 	// Press enter to select session → attach.
 	cmd := f.SendSpecialKey(tea.KeyEnter)
 
-	// Execute cmd chain to completion; grid is hidden inside handleGridSessionSelected.
+	// Execute cmd chain to completion. With the fix for #111 the grid stays on
+	// the view stack through attach so the pre-exec frame renders grid content.
 	f.ExecCmdChain(cmd)
-	f.AssertGridActive(false)
+	f.AssertGridActive(true)
+	mm := f.Model()
+	if top := mm.TopView(); top != ViewGrid {
+		t.Errorf("TopView = %q after ExecCmdChain, want ViewGrid", top)
+	}
+	f.ViewContains("session-1")
+	f.ViewContains("session-2")
 
 	updated := f.Model()
 	if updated.attachPending == nil {
@@ -347,10 +362,15 @@ func TestFlow_GridAttachWithHint(t *testing.T) {
 	// The grid stays active until handleGridSessionSelected processes the message.
 	cmd := f.SendSpecialKey(tea.KeyEnter)
 
-	// Execute cmd chain: GridSessionSelectedMsg → app handler shows hint.
-	// Grid is hidden inside handleGridSessionSelected (no intermediate sidebar flash).
+	// Execute cmd chain: GridSessionSelectedMsg → app handler pushes ViewAttachHint.
+	// With the fix for #111, ViewGrid stays on the stack under the hint so that
+	// dismissing the hint returns to grid and there is no mid-flow sidebar frame.
 	f.ExecCmdChain(cmd)
-	f.AssertGridActive(false)
+	f.AssertGridActive(true)
+	mmHint := f.Model()
+	if !mmHint.HasView(ViewGrid) {
+		t.Error("ViewGrid should remain on the stack under ViewAttachHint")
+	}
 
 	updated := f.Model()
 	if !updated.showAttachHint {
@@ -377,33 +397,37 @@ func TestFlow_GridAttachWithHint(t *testing.T) {
 }
 
 // TestFlow_GridKeyAttachNoFlash verifies that pressing Enter in grid view does NOT
-// produce an intermediate sidebar render frame before the attach transition.
-// The grid must stay active until handleGridSessionSelected processes the message.
+// produce a sidebar render frame before the attach transition. The grid must
+// stay on the view stack through handleGridSessionSelected and the returned Cmd
+// so the pre-exec frame renders grid content.
 func TestFlow_GridKeyAttachNoFlash(t *testing.T) {
-	m, mock := testFlowModel(t)
+	m, mock := testFlowModel(t) // HideAttachHint=true
 	f := newFlowRunner(t, m, mock)
 
 	// Open grid.
 	f.SendKey("g")
 	f.AssertGridActive(true)
 
-	// Press enter — grid must NOT hide in this update cycle.
-	// The old code called gv.Hide() inside gridview.Update, causing a one-frame
-	// sidebar render before the attach hint was pushed.
-	_ = f.SendSpecialKey(tea.KeyEnter)
-	f.AssertGridActive(true) // still active — no premature hide
+	// Press enter and run the full Cmd chain (key → gridview.Cmd →
+	// GridSessionSelectedMsg → handleGridSessionSelected → doAttach → tea.Quit).
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
 
-	// TopView should still be ViewGrid (not ViewMain) before the cmd is processed.
-	m2 := f.Model()
-	if top := m2.TopView(); top != ViewGrid {
-		t.Errorf("TopView = %q after Enter, want ViewGrid (no premature pop)", top)
+	// Grid must still be active after the chain resolves — this is the pre-exec
+	// render frame that previously flashed sidebar content.
+	f.AssertGridActive(true)
+	mm := f.Model()
+	if top := mm.TopView(); top != ViewGrid {
+		t.Errorf("TopView = %q after attach chain, want ViewGrid", top)
 	}
+	f.ViewContains("session-1")        // grid cell content
+	f.ViewContains("↑↓←→ navigate")    // grid-only hint line
+	f.ViewNotContains("[1] test-project-1") // sidebar-only numbered project list
 }
 
-// TestFlow_GridMouseAttachNoFlash verifies that receiving GridSessionSelectedMsg
-// does NOT produce an intermediate ViewMain (sidebar) frame before the attach
-// transition. This covers the path where the mouse handler previously popped
-// ViewGrid before sending the message.
+// TestFlow_GridMouseAttachNoFlash verifies the mouse-click path through
+// GridSessionSelectedMsg keeps the grid on the stack through attach so the
+// pre-exec render frame contains grid content, not sidebar.
 func TestFlow_GridMouseAttachNoFlash(t *testing.T) {
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
@@ -411,61 +435,59 @@ func TestFlow_GridMouseAttachNoFlash(t *testing.T) {
 	// Open grid.
 	f.SendKey("g")
 	f.AssertGridActive(true)
-	m2pre := f.Model()
-	if m2pre.TopView() != ViewGrid {
-		t.Fatalf("TopView = %q before test, want ViewGrid", m2pre.TopView())
-	}
 
-	// Send GridSessionSelectedMsg directly (as the mouse handler would after our fix:
-	// the Cmd sends the message without pre-popping ViewGrid).
-	// Before the fix, the mouse path called PopView() before returning the Cmd,
-	// so ViewMain was the top for one frame.
+	// Mouse click in grid produces GridSessionSelectedMsg (same msg as keyboard).
 	cmd := f.Send(components.GridSessionSelectedMsg{
 		TmuxSession: "hive-sessions",
 		TmuxWindow:  0,
 	})
-
-	// The message was processed by handleGridSessionSelected which pops ViewGrid
-	// itself, then (with HideAttachHint=true) calls doAttach.
-	// Stack should NOT have gone through ViewMain as the sole entry.
 	_ = cmd
-	m2 := f.Model()
-	// Grid was popped inside the handler — Active should be false now.
-	// But we must NOT have had a transient ViewMain-only state, which
-	// is ensured by the handler doing the pop (verified by no flash in practice).
-	if m2.gridView.Active {
-		t.Error("gridView.Active = true after GridSessionSelectedMsg, want false")
+
+	// Grid must still be active (view stack unchanged) so View() renders grid.
+	f.AssertGridActive(true)
+	mm := f.Model()
+	if top := mm.TopView(); top != ViewGrid {
+		t.Errorf("TopView = %q after GridSessionSelectedMsg, want ViewGrid", top)
 	}
+	f.ViewContains("session-1")
+	f.ViewNotContains("[1] test-project-1")
 }
 
-// TestFlow_GridAttachHintCancelReturnsToSidebar verifies that pressing Esc on the
-// attach hint dismisses the hint and returns to the sidebar (not back to grid).
-func TestFlow_GridAttachHintCancelReturnsToSidebar(t *testing.T) {
+// TestFlow_GridAttachHintCancel_ReturnsToGrid verifies that pressing Esc on the
+// attach hint opened from grid mode returns to grid (not sidebar). This is the
+// natural stack behaviour once handleGridSessionSelected no longer pre-pops
+// ViewGrid before pushing ViewAttachHint.
+func TestFlow_GridAttachHintCancel_ReturnsToGrid(t *testing.T) {
 	m, mock := testFlowModelWithHint(t)
 	f := newFlowRunner(t, m, mock)
 
-	// Open grid and select a session (shows attach hint).
+	// Open grid and select a session (shows attach hint over grid).
 	f.SendKey("g")
 	f.AssertGridActive(true)
 	cmd := f.SendSpecialKey(tea.KeyEnter)
-	f.ExecCmdChain(cmd) // processes GridSessionSelectedMsg → shows attach hint
-	f.AssertGridActive(false)
+	f.ExecCmdChain(cmd)
 
-	updated := f.Model()
-	if !updated.showAttachHint {
-		t.Fatal("showAttachHint should be true")
+	if !f.Model().showAttachHint {
+		t.Fatal("showAttachHint should be true after grid session select")
+	}
+	mmCancel := f.Model()
+	if !mmCancel.HasView(ViewGrid) {
+		t.Fatal("ViewGrid should remain under ViewAttachHint")
 	}
 
 	// Press Esc to cancel the hint.
 	f.SendSpecialKey(tea.KeyEsc)
 
-	updated2 := f.Model()
-	if updated2.showAttachHint {
+	if f.Model().showAttachHint {
 		t.Fatal("showAttachHint should be false after Esc")
 	}
-	// Grid is no longer active — user returns to sidebar.
-	f.AssertGridActive(false)
-	f.ViewContains("test-project-1")
+	// Grid is the next view underneath — user returns to grid, not sidebar.
+	f.AssertGridActive(true)
+	mm := f.Model()
+	if top := mm.TopView(); top != ViewGrid {
+		t.Errorf("TopView = %q after hint cancel, want ViewGrid", top)
+	}
+	f.ViewContains("↑↓←→ navigate")
 }
 
 // TestFlow_GridAttachDoneRestoresGrid tests the tmux backend path:
@@ -605,9 +627,10 @@ func TestFlow_GridAttachSetsActiveSessionID(t *testing.T) {
 	cmd := f.SendSpecialKey(tea.KeyEnter)
 
 	// Execute the cmd chain to deliver GridSessionSelectedMsg.
-	// Grid is hidden inside handleGridSessionSelected after the message is processed.
+	// With the #111 fix, grid stays on the stack through attach so the pre-exec
+	// frame renders grid, not sidebar.
 	f.ExecCmdChain(cmd)
-	f.AssertGridActive(false)
+	f.AssertGridActive(true)
 
 	// ActiveSessionID should be sess-2 (the one we selected in the grid).
 	f.AssertActiveSession("sess-2")
@@ -1101,5 +1124,315 @@ func TestFlow_GridExtendedCellNavigation(t *testing.T) {
 	f.AssertGridCursor(4)
 	if f.model.gridView.AtExtendedForTest() {
 		t.Error("atExtended = true after leaving extended slot, want false")
+	}
+}
+
+// -----------------------------------------------------------------------------
+// #111 — grid-mode sidebar-flash regression tests (tmux exec path + variants)
+// -----------------------------------------------------------------------------
+
+// TestFlow_GridKey_TmuxExec_NoFlash is the canonical regression test for the
+// tmux backend path (tea.Exec). Before the #111 fix, handleGridSessionSelected
+// popped ViewGrid before returning the Cmd — so the render frame between
+// Update() and tea.Exec's ReleaseTerminal rendered sidebar content. This test
+// exercises that exact window with SetUseExecAttach(true).
+func TestFlow_GridKey_TmuxExec_NoFlash(t *testing.T) {
+	m, mock := testFlowModel(t) // HideAttachHint=true
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+
+	mm := f.Model()
+	if mm.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after tmux-exec attach chain, want ViewGrid", mm.TopView())
+	}
+	f.AssertGridActive(true)
+	f.ViewContains("session-1")
+	f.ViewContains("↑↓←→ navigate")
+	f.ViewNotContains("[1] test-project-1") // sidebar-only token
+}
+
+// TestFlow_GridMouse_TmuxExec_NoFlash covers the mouse-click attach trigger on
+// the tmux exec backend. The mouse handler in gridview.go sends the same
+// GridSessionSelectedMsg as keyboard, so this closes the mouse × tmux coverage
+// gap called out in the research.
+func TestFlow_GridMouse_TmuxExec_NoFlash(t *testing.T) {
+	m, mock := testFlowModel(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	// Send the msg a mouse click would produce.
+	_ = f.Send(components.GridSessionSelectedMsg{
+		TmuxSession: "hive-sessions",
+		TmuxWindow:  0,
+	})
+
+	mm := f.Model()
+	if mm.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after mouse-click msg, want ViewGrid", mm.TopView())
+	}
+	f.AssertGridActive(true)
+	f.ViewContains("session-1")
+	f.ViewNotContains("[1] test-project-1")
+}
+
+// TestFlow_GridAll_TmuxExec_NoFlash covers the all-projects grid (G) on the
+// tmux exec backend. The all-projects variant uses GridRestoreAll rather than
+// GridRestoreProject, so this test guards against a mode-specific regression.
+func TestFlow_GridAll_TmuxExec_NoFlash(t *testing.T) {
+	m, mock := testFlowModel(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	// "G" opens the all-projects grid.
+	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+
+	mm := f.Model()
+	if mm.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after all-projects attach chain, want ViewGrid", mm.TopView())
+	}
+	f.AssertGridActive(true)
+	f.AssertGridMode(state.GridRestoreAll)
+	f.ViewContains("session-1")
+	f.ViewContains("session-2")
+	f.ViewNotContains("[1] test-project-1")
+}
+
+// TestFlow_GridDetach_TmuxExec_RendersGridPreAttachDone simulates the post-
+// detach frame in the tmux backend: after tea.Exec returns, BubbleTea enables
+// the renderer (and the renderer runs once) before AttachDoneMsg is delivered.
+// At that moment the grid must still be on the stack. AttachDoneMsg's
+// restoreGrid() call must be idempotent so the stack does not grow.
+func TestFlow_GridDetach_TmuxExec_RendersGridPreAttachDone(t *testing.T) {
+	m, mock := testFlowModel(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	// Open grid, attach — grid stays on stack.
+	f.SendKey("g")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+
+	mmPre := f.Model()
+	if !mmPre.HasView(ViewGrid) {
+		t.Fatal("ViewGrid should be on stack after attach chain")
+	}
+	stackLenPre := len(mmPre.viewStack)
+	f.ViewContains("session-1") // pre-AttachDone frame is grid content
+
+	// Deliver AttachDoneMsg as BubbleTea would after RestoreTerminal.
+	f.Send(AttachDoneMsg{RestoreGridMode: state.GridRestoreProject})
+
+	mmPost := f.Model()
+	f.AssertGridActive(true)
+	if mmPost.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after AttachDoneMsg, want ViewGrid", mmPost.TopView())
+	}
+	if got := len(mmPost.viewStack); got != stackLenPre {
+		t.Errorf("viewStack length = %d after AttachDoneMsg, want %d (restoreGrid must be idempotent)",
+			got, stackLenPre)
+	}
+}
+
+// TestFlow_GridHint_Confirm_TmuxExec_NoFlash covers row #6: HideAttachHint=false,
+// user opens grid, selects session, confirms hint with Enter, attach runs on
+// tmux exec. The pre-exec frame after the hint is confirmed must render grid
+// (the hint is popped → grid becomes TopView → tea.Exec fires).
+func TestFlow_GridHint_Confirm_TmuxExec_NoFlash(t *testing.T) {
+	m, mock := testFlowModelWithHint(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd) // produces the hint overlay
+	if !f.Model().showAttachHint {
+		t.Fatal("showAttachHint should be true after grid session select")
+	}
+
+	// Enter on hint: pop hint, call doAttach (tea.Exec).
+	cmd = f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+
+	mm := f.Model()
+	if mm.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after hint confirm, want ViewGrid", mm.TopView())
+	}
+	f.AssertGridActive(true)
+	f.ViewContains("session-1")
+	f.ViewNotContains("[1] test-project-1")
+}
+
+// TestFlow_GridHint_D_TmuxExec_NoFlash covers row #7: pressing "d" on the hint
+// attaches and persists HideAttachHint=true. Grid must still render pre-exec.
+func TestFlow_GridHint_D_TmuxExec_NoFlash(t *testing.T) {
+	m, mock := testFlowModelWithHint(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
+	f.ExecCmdChain(cmd)
+	if !f.Model().showAttachHint {
+		t.Fatal("showAttachHint should be true after grid session select")
+	}
+
+	// "d" on hint: pop hint, set HideAttachHint=true, call doAttach.
+	cmd = f.SendKey("d")
+	f.ExecCmdChain(cmd)
+
+	mm := f.Model()
+	if mm.TopView() != ViewGrid {
+		t.Errorf("TopView = %q after d-dismiss, want ViewGrid", mm.TopView())
+	}
+	if !mm.cfg.HideAttachHint {
+		t.Error("cfg.HideAttachHint should be true after pressing 'd'")
+	}
+	f.AssertGridActive(true)
+	f.ViewContains("session-1")
+}
+
+// TestFlow_SidebarAttachHintCancel_ReturnsToSidebar guards the sidebar-origin
+// stack semantics: esc on the hint when opened from sidebar must still leave
+// the user on the sidebar, not on any grid state. Regression guard for the
+// #111 fix to prove it didn't collaterally affect sidebar-origin flows.
+func TestFlow_SidebarAttachHintCancel_ReturnsToSidebar(t *testing.T) {
+	m, mock := testFlowModelWithHint(t)
+	f := newFlowRunner(t, m, mock)
+
+	// From sidebar, press "a" to open the attach hint (grid never opens).
+	cmd := f.SendKey("a")
+	f.ExecCmdChain(cmd)
+	mmBefore := f.Model()
+	if !mmBefore.showAttachHint {
+		t.Fatal("showAttachHint should be true after 'a' from sidebar")
+	}
+	if mmBefore.HasView(ViewGrid) {
+		t.Fatal("ViewGrid must NOT be on stack for sidebar-origin attach")
+	}
+
+	// Esc on hint → back to sidebar.
+	f.SendSpecialKey(tea.KeyEsc)
+
+	mm := f.Model()
+	if mm.TopView() != ViewMain {
+		t.Errorf("TopView = %q after esc on sidebar-origin hint, want ViewMain", mm.TopView())
+	}
+	f.AssertGridActive(false)
+	if mm.pendingAttach != nil {
+		t.Error("pendingAttach should be nil after esc")
+	}
+	f.ViewContains("[1] test-project-1") // sidebar rendered, as expected
+}
+
+// TestFlow_Sidebar_TmuxExec_NoGridRender guards against accidental grid
+// rendering on the sidebar-origin tmux attach path. If our #111 stack change
+// pushed ViewGrid anywhere in the sidebar flow, this would catch it.
+func TestFlow_Sidebar_TmuxExec_NoGridRender(t *testing.T) {
+	m, mock := testFlowModel(t)
+	mock.SetUseExecAttach(true)
+	var buf bytes.Buffer
+	m.attachOut = &buf
+	f := newFlowRunner(t, m, mock)
+
+	// From sidebar, press "a" to attach.
+	cmd := f.SendKey("a")
+	f.ExecCmdChain(cmd)
+
+	mm := f.Model()
+	if mm.TopView() != ViewMain {
+		t.Errorf("TopView = %q after sidebar attach, want ViewMain", mm.TopView())
+	}
+	if mm.HasView(ViewGrid) {
+		t.Error("ViewGrid must NOT be on stack for sidebar attach")
+	}
+	f.AssertGridActive(false)
+	f.ViewContains("[1] test-project-1")     // sidebar rendered
+	f.ViewNotContains("↑↓←→ navigate")        // grid-only hint absent
+}
+
+// TestFlow_RestoreGrid_Idempotent is a pure unit test on restoreGrid(): when
+// ViewGrid is already on the stack (tmux detach path), the function must not
+// push it again, yet SyncState and mode/consumption side effects must still run.
+func TestFlow_RestoreGrid_Idempotent(t *testing.T) {
+	m, mock := testFlowModel(t)
+	_ = mock
+
+	// Open grid in project mode, then request restore to All.
+	m.openGrid(state.GridRestoreProject)
+	if !m.HasView(ViewGrid) {
+		t.Fatal("precondition: ViewGrid should be on stack after openGrid")
+	}
+	stackLen := len(m.viewStack)
+
+	m.appState.RestoreGridMode = state.GridRestoreAll
+	m.restoreGrid()
+
+	if got := len(m.viewStack); got != stackLen {
+		t.Errorf("viewStack length = %d after restoreGrid, want %d (must be idempotent)",
+			got, stackLen)
+	}
+	if !m.HasView(ViewGrid) {
+		t.Error("ViewGrid should still be on stack")
+	}
+	if m.gridView.Mode != state.GridRestoreAll {
+		t.Errorf("gridView.Mode = %q, want GridRestoreAll (SyncState should still run)",
+			m.gridView.Mode)
+	}
+	if m.appState.RestoreGridMode != state.GridRestoreNone {
+		t.Errorf("RestoreGridMode = %q, want GridRestoreNone (should be consumed)",
+			m.appState.RestoreGridMode)
+	}
+}
+
+// TestFlow_RestoreGrid_FromEmptyStack covers the startup-restore path: when
+// ViewGrid is NOT on the stack (cmd/start.go's New() reload after native
+// detach), restoreGrid must push it.
+func TestFlow_RestoreGrid_FromEmptyStack(t *testing.T) {
+	m, _ := testFlowModel(t)
+
+	if m.HasView(ViewGrid) {
+		t.Fatal("precondition: ViewGrid should not be on stack at startup")
+	}
+	stackLen := len(m.viewStack)
+
+	m.appState.RestoreGridMode = state.GridRestoreProject
+	m.restoreGrid()
+
+	if !m.HasView(ViewGrid) {
+		t.Error("ViewGrid should be pushed when stack does not already contain it")
+	}
+	if got := len(m.viewStack); got != stackLen+1 {
+		t.Errorf("viewStack length = %d, want %d (one push)", got, stackLen+1)
+	}
+	if m.gridView.Mode != state.GridRestoreProject {
+		t.Errorf("gridView.Mode = %q, want GridRestoreProject", m.gridView.Mode)
 	}
 }

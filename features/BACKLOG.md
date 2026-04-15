@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| P1 | #111 | fix(grid): sidebar view flashes during attach/detach | IMPLEMENT | S |
 
 ## Rejected
 

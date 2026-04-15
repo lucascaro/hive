@@ -261,7 +261,9 @@ func (m *Model) restoreGrid() {
 	m.gridView.SyncState(sessions, mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
 	m.gridView.SetPaneTitles(m.paneTitles)
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
-	m.PushView(ViewGrid)
+	if !m.HasView(ViewGrid) {
+		m.PushView(ViewGrid)
+	}
 }
 
 // expandForActiveSession un-collapses any parent project or team that contains
