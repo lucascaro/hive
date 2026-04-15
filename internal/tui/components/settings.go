@@ -854,6 +854,10 @@ func buildSettingTabs() []settingTab {
 // the same form back. Whitespace around entries is trimmed and empty entries
 // are dropped.
 func keybindField(label, desc string, get func(config.Config) config.KeyBinding, set func(*config.Config, config.KeyBinding)) *settingField {
+	// Comma is used (not space) because individual key strings can themselves
+	// contain spaces (e.g. "ctrl+p", "space"). Surface that in the description
+	// so users don't read "up, k" as a single literal key.
+	desc = desc + " Comma-separated for multiple keys (e.g. \"up, k\")."
 	return &settingField{
 		label:       label,
 		description: desc,

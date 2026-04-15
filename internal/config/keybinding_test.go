@@ -54,6 +54,20 @@ func TestKeyBinding_MarshalsAsArray(t *testing.T) {
 	}
 }
 
+// TestKeyBinding_MarshalNilEmitsEmptyArray verifies that a nil KeyBinding
+// serializes as `[]` instead of `null`, keeping the on-disk shape consistent
+// regardless of how the slice was constructed in memory.
+func TestKeyBinding_MarshalNilEmitsEmptyArray(t *testing.T) {
+	var kb KeyBinding
+	b, err := json.Marshal(kb)
+	if err != nil {
+		t.Fatalf("marshal nil: %v", err)
+	}
+	if got, want := string(b), `[]`; got != want {
+		t.Errorf("Marshal(nil) = %s, want %s", got, want)
+	}
+}
+
 func TestKeyBinding_HelpKey(t *testing.T) {
 	cases := []struct {
 		in   KeyBinding

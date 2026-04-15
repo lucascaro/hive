@@ -35,6 +35,16 @@ func (kb KeyBinding) HelpKey() string {
 	return strings.Join(parts, "/")
 }
 
+// MarshalJSON forces the array form even when the slice is nil, so the
+// on-disk shape stays consistent (`[]` instead of `null`) regardless of how
+// the field was constructed in memory.
+func (kb KeyBinding) MarshalJSON() ([]byte, error) {
+	if kb == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal([]string(kb))
+}
+
 // UnmarshalJSON accepts either a JSON string ("a") or array (["a","f"]) and
 // normalizes to []string. This preserves backwards compatibility with configs
 // written when each KeybindingsConfig field was a single string.

@@ -8,6 +8,12 @@ import (
 
 // mergeKeybindingDefaults fills any empty KeyBinding fields in cur from def.
 // A field is considered empty when its KeyBinding has no non-empty entries.
+//
+// Reflection is used here (unlike the explicit per-field fills elsewhere in
+// this file) because KeybindingsConfig is additive and grows often: every new
+// action would otherwise need a matching empty-check stanza, and forgetting
+// one silently leaves users on stale defaults. Reflection makes the merge
+// self-maintaining for the common case (new field with default).
 func mergeKeybindingDefaults(cur, def KeybindingsConfig) KeybindingsConfig {
 	curV := reflect.ValueOf(&cur).Elem()
 	defV := reflect.ValueOf(def)
@@ -52,14 +58,12 @@ func Migrate(cfg Config) Config {
 			cfg.StartupView = DefaultConfig().StartupView
 		}
 	}
-	if cfg.SchemaVersion < 5 {
-		// 4 → 5: keybindings became []string per action (#112). The on-disk
-		// migration is handled transparently by KeyBinding.UnmarshalJSON
-		// (string → single-element slice). Newly added action fields
-		// (Detach, CursorUp/Down/Left/Right, SessionColorNext/Prev,
-		// ToggleAll, InputMode, CollapseItem, ExpandItem) are populated
-		// from defaults below.
-	}
+	// 4 → 5 (#112): keybindings became []string per action. The on-disk
+	// migration is handled transparently by KeyBinding.UnmarshalJSON (string
+	// → single-element slice), and newly added action fields (Detach,
+	// CursorUp/Down/Left/Right, SessionColorNext/Prev, ToggleAll, InputMode,
+	// CollapseItem, ExpandItem) get populated by mergeKeybindingDefaults
+	// below — no per-version block needed.
 	if cfg.SchemaVersion < currentSchemaVersion {
 		cfg.SchemaVersion = currentSchemaVersion
 	}

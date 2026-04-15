@@ -104,10 +104,14 @@ func defaultKeybindings() KeybindingsConfig {
 		ColorPrev:          KeyBinding{"C"},
 		SessionColorNext:   KeyBinding{"v"},
 		SessionColorPrev:   KeyBinding{"V"},
-		MoveUp:             KeyBinding{"shift+up", "K"},
-		MoveDown:           KeyBinding{"shift+down", "J"},
-		MoveLeft:           KeyBinding{"shift+left", "H"},
-		MoveRight:          KeyBinding{"shift+right", "L"},
+		// Capital-letter aliases (H/J/K/L) for Move* are deliberately deferred
+		// to chunk 2 of #112 — adding them here would silently change which
+		// action wins for those keys depending on handler case ordering, which
+		// belongs in the same change as the handler refactor.
+		MoveUp:             KeyBinding{"shift+up"},
+		MoveDown:           KeyBinding{"shift+down"},
+		MoveLeft:           KeyBinding{"shift+left"},
+		MoveRight:          KeyBinding{"shift+right"},
 		InputMode:          KeyBinding{"i"},
 		Detach:             KeyBinding{"ctrl+q"},
 		ToggleAll:          KeyBinding{"G"},
