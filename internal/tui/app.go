@@ -251,6 +251,17 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 }
 
 // restoreGrid re-opens the grid view if RestoreGridMode is set, then clears the flag.
+//
+// SyncState/SetPaneTitles/SetContents run unconditionally — even when ViewGrid
+// is already on the stack (the #111 tmux-detach path). This is intentional:
+// after an attach the active session, pane titles, and preview snapshots may
+// have changed, so the grid must be refreshed to reflect post-attach state.
+// The side effect is that any mid-grid cursor position the user had before
+// attaching is reset to the active-session cell — acceptable trade-off because
+// the user's focus on return is the session they just attached to.
+//
+// Only the PushView is guarded by !HasView(ViewGrid) so the grid is not pushed
+// twice on detach-restore (would break the stack invariant).
 func (m *Model) restoreGrid() {
 	if m.appState.RestoreGridMode == state.GridRestoreNone {
 		return

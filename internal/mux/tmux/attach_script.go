@@ -62,7 +62,13 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	var lines []string
 
 	// Enter the alternate screen first so any tmux output below stays out
-	// of the user's scrollback.
+	// of the user's scrollback. This is intentionally redundant with
+	// altScreenExecCmd.Run() in internal/tui/views.go which writes the same
+	// sequence to the terminal immediately after BubbleTea's ReleaseTerminal
+	// and before spawning this subprocess. Keeping the write here is the
+	// belt-and-suspenders guarantee that the subprocess always runs in
+	// alt-screen even if it is invoked by a caller that bypasses
+	// altScreenExecCmd (e.g. `hive attach` CLI, tmux display-popup).
 	lines = append(lines, `printf '\033[?1049h\033[2J'`)
 
 	// Install the detach key binding. Idempotent and intentionally left in

@@ -114,7 +114,7 @@ escape.Watcher polls CapturePaneRaw every 500ms
 ### Testing Conventions
 
 - **TDD — tests come with every change.** Never ship a bug fix, new feature, or behaviour change without adding or updating tests that would have caught the regression or verify the new behaviour. If you're in a hurry, write the test first.
-- **"Boil the lake" philosophy — do more now, not later.** When fixing a bug, also add the test that would have caught it. When adding a feature, cover the golden path and key edge cases. Do not defer test coverage to a follow-up. Address all code review feedback in the same PR rather than deferring to follow-ups.
+- **"Boil the lake" philosophy — do more now, not later.** When fixing a bug, also add the test that would have caught it. When adding a feature, cover the golden path and key edge cases. Do not defer test coverage to a follow-up. Address all code review feedback in the same PR rather than deferring to follow-ups. **Auto-fix every high-confidence, low-risk review finding in the same PR** — minor code-review nits (comments, constants, helper extraction, API consistency fixes that don't change behaviour) must be applied in the PR where they are raised, not left for "later." Only defer when the fix is high-risk (behaviour change, cross-cutting refactor) or low-confidence (taste, unclear improvement).
 - **All changes require both unit tests and functional tests.** Unit tests verify pure logic (state reducers, helpers). Functional tests verify end-to-end behaviour through the TUI using the `flowRunner` pattern in `internal/tui/flow_test.go`.
 - **`internal/state/`** — pure unit tests, no I/O mocking needed
 - **`internal/config/`** — tests use `t.TempDir()` for isolation

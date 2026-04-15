@@ -243,7 +243,10 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	watcher := newAttachBellWatcher()
 	watcher.start(m.cfg.BellSound, m.cfg.BellVolume, buildSessionTargets(&m.appState))
 
-	execCmd := &altScreenExecCmd{cmd: cmd, termOut: os.Stdout}
+	// Route the alt-screen enter through m.attachOut so end-to-end tests can
+	// intercept the same writer they inject for the synchronous pre-clear above.
+	// In production m.attachOut is os.Stdout (set in New()).
+	execCmd := &altScreenExecCmd{cmd: cmd, termOut: m.attachOut}
 	return tea.Exec(execCmd, func(err error) tea.Msg {
 		newBells := watcher.stop()
 		return AttachDoneMsg{Err: err, RestoreGridMode: restoreMode, NewBells: newBells}

@@ -12,6 +12,28 @@ import (
 	"github.com/lucascaro/hive/internal/tui/components"
 )
 
+// Stable substrings used to distinguish grid vs sidebar View() output in
+// flash-regression tests. If the grid nav hint or sidebar project format
+// changes in future UX tweaks, update these constants in one place rather
+// than each test call site.
+const (
+	gridNavHintToken       = "↑↓←→ navigate" // only rendered by gridview.View()
+	sidebarProjectListItem = "[1] test-project-1"
+)
+
+// enableTmuxExecFlow configures the given model + mock for flow tests that
+// exercise the tmux tea.Exec attach path. It wires the mock backend to
+// return true from UseExecAttach and injects a bytes.Buffer into m.attachOut
+// so ANSI escape writes from doAttach/altScreenExecCmd do not leak to
+// test-run stdout. The returned buffer is usually ignored by callers.
+func enableTmuxExecFlow(t *testing.T, m *Model, mock *muxtest.MockBackend) *bytes.Buffer {
+	t.Helper()
+	mock.SetUseExecAttach(true)
+	buf := &bytes.Buffer{}
+	m.attachOut = buf
+	return buf
+}
+
 // TestFlow_GridAttachDetachRestoresGrid tests the full grid → attach → detach → grid restore flow.
 // This is the exact regression test: after detaching from a session opened via the grid,
 // the grid must re-open automatically.
@@ -48,7 +70,7 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	if top := mm.TopView(); top != ViewGrid {
 		t.Errorf("TopView = %q after ExecCmdChain, want ViewGrid", top)
 	}
-	f.ViewContains("↑↓←→ navigate") // grid-only hint line
+	f.ViewContains(gridNavHintToken)
 
 	// attachPending should be set with RestoreGridMode.
 	updated := f.Model()
@@ -421,8 +443,8 @@ func TestFlow_GridKeyAttachNoFlash(t *testing.T) {
 		t.Errorf("TopView = %q after attach chain, want ViewGrid", top)
 	}
 	f.ViewContains("session-1")        // grid cell content
-	f.ViewContains("↑↓←→ navigate")    // grid-only hint line
-	f.ViewNotContains("[1] test-project-1") // sidebar-only numbered project list
+	f.ViewContains(gridNavHintToken)
+	f.ViewNotContains(sidebarProjectListItem)
 }
 
 // TestFlow_GridMouseAttachNoFlash verifies the mouse-click path through
@@ -450,7 +472,7 @@ func TestFlow_GridMouseAttachNoFlash(t *testing.T) {
 		t.Errorf("TopView = %q after GridSessionSelectedMsg, want ViewGrid", top)
 	}
 	f.ViewContains("session-1")
-	f.ViewNotContains("[1] test-project-1")
+	f.ViewNotContains(sidebarProjectListItem)
 }
 
 // TestFlow_GridAttachHintCancel_ReturnsToGrid verifies that pressing Esc on the
@@ -487,7 +509,7 @@ func TestFlow_GridAttachHintCancel_ReturnsToGrid(t *testing.T) {
 	if top := mm.TopView(); top != ViewGrid {
 		t.Errorf("TopView = %q after hint cancel, want ViewGrid", top)
 	}
-	f.ViewContains("↑↓←→ navigate")
+	f.ViewContains(gridNavHintToken)
 }
 
 // TestFlow_GridAttachDoneRestoresGrid tests the tmux backend path:
@@ -1138,9 +1160,7 @@ func TestFlow_GridExtendedCellNavigation(t *testing.T) {
 // exercises that exact window with SetUseExecAttach(true).
 func TestFlow_GridKey_TmuxExec_NoFlash(t *testing.T) {
 	m, mock := testFlowModel(t) // HideAttachHint=true
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -1155,8 +1175,8 @@ func TestFlow_GridKey_TmuxExec_NoFlash(t *testing.T) {
 	}
 	f.AssertGridActive(true)
 	f.ViewContains("session-1")
-	f.ViewContains("↑↓←→ navigate")
-	f.ViewNotContains("[1] test-project-1") // sidebar-only token
+	f.ViewContains(gridNavHintToken)
+	f.ViewNotContains(sidebarProjectListItem) // sidebar-only token
 }
 
 // TestFlow_GridMouse_TmuxExec_NoFlash covers the mouse-click attach trigger on
@@ -1165,9 +1185,7 @@ func TestFlow_GridKey_TmuxExec_NoFlash(t *testing.T) {
 // gap called out in the research.
 func TestFlow_GridMouse_TmuxExec_NoFlash(t *testing.T) {
 	m, mock := testFlowModel(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -1185,7 +1203,7 @@ func TestFlow_GridMouse_TmuxExec_NoFlash(t *testing.T) {
 	}
 	f.AssertGridActive(true)
 	f.ViewContains("session-1")
-	f.ViewNotContains("[1] test-project-1")
+	f.ViewNotContains(sidebarProjectListItem)
 }
 
 // TestFlow_GridAll_TmuxExec_NoFlash covers the all-projects grid (G) on the
@@ -1193,9 +1211,7 @@ func TestFlow_GridMouse_TmuxExec_NoFlash(t *testing.T) {
 // GridRestoreProject, so this test guards against a mode-specific regression.
 func TestFlow_GridAll_TmuxExec_NoFlash(t *testing.T) {
 	m, mock := testFlowModel(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	// "G" opens the all-projects grid.
@@ -1214,7 +1230,7 @@ func TestFlow_GridAll_TmuxExec_NoFlash(t *testing.T) {
 	f.AssertGridMode(state.GridRestoreAll)
 	f.ViewContains("session-1")
 	f.ViewContains("session-2")
-	f.ViewNotContains("[1] test-project-1")
+	f.ViewNotContains(sidebarProjectListItem)
 }
 
 // TestFlow_GridDetach_TmuxExec_RendersGridPreAttachDone simulates the post-
@@ -1224,9 +1240,7 @@ func TestFlow_GridAll_TmuxExec_NoFlash(t *testing.T) {
 // restoreGrid() call must be idempotent so the stack does not grow.
 func TestFlow_GridDetach_TmuxExec_RendersGridPreAttachDone(t *testing.T) {
 	m, mock := testFlowModel(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	// Open grid, attach — grid stays on stack.
@@ -1261,9 +1275,7 @@ func TestFlow_GridDetach_TmuxExec_RendersGridPreAttachDone(t *testing.T) {
 // (the hint is popped → grid becomes TopView → tea.Exec fires).
 func TestFlow_GridHint_Confirm_TmuxExec_NoFlash(t *testing.T) {
 	m, mock := testFlowModelWithHint(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -1285,16 +1297,14 @@ func TestFlow_GridHint_Confirm_TmuxExec_NoFlash(t *testing.T) {
 	}
 	f.AssertGridActive(true)
 	f.ViewContains("session-1")
-	f.ViewNotContains("[1] test-project-1")
+	f.ViewNotContains(sidebarProjectListItem)
 }
 
 // TestFlow_GridHint_D_TmuxExec_NoFlash covers row #7: pressing "d" on the hint
 // attaches and persists HideAttachHint=true. Grid must still render pre-exec.
 func TestFlow_GridHint_D_TmuxExec_NoFlash(t *testing.T) {
 	m, mock := testFlowModelWithHint(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	f.SendKey("g")
@@ -1349,7 +1359,7 @@ func TestFlow_SidebarAttachHintCancel_ReturnsToSidebar(t *testing.T) {
 	if mm.pendingAttach != nil {
 		t.Error("pendingAttach should be nil after esc")
 	}
-	f.ViewContains("[1] test-project-1") // sidebar rendered, as expected
+	f.ViewContains(sidebarProjectListItem) // sidebar rendered, as expected
 }
 
 // TestFlow_Sidebar_TmuxExec_NoGridRender guards against accidental grid
@@ -1357,9 +1367,7 @@ func TestFlow_SidebarAttachHintCancel_ReturnsToSidebar(t *testing.T) {
 // pushed ViewGrid anywhere in the sidebar flow, this would catch it.
 func TestFlow_Sidebar_TmuxExec_NoGridRender(t *testing.T) {
 	m, mock := testFlowModel(t)
-	mock.SetUseExecAttach(true)
-	var buf bytes.Buffer
-	m.attachOut = &buf
+	_ = enableTmuxExecFlow(t, &m, mock)
 	f := newFlowRunner(t, m, mock)
 
 	// From sidebar, press "a" to attach.
@@ -1374,8 +1382,8 @@ func TestFlow_Sidebar_TmuxExec_NoGridRender(t *testing.T) {
 		t.Error("ViewGrid must NOT be on stack for sidebar attach")
 	}
 	f.AssertGridActive(false)
-	f.ViewContains("[1] test-project-1")     // sidebar rendered
-	f.ViewNotContains("↑↓←→ navigate")        // grid-only hint absent
+	f.ViewContains(sidebarProjectListItem)
+	f.ViewNotContains(gridNavHintToken)
 }
 
 // TestFlow_RestoreGrid_Idempotent is a pure unit test on restoreGrid(): when
