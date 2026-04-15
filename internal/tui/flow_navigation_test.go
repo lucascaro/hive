@@ -34,8 +34,8 @@ func testFlowModelWithVimNav(t *testing.T) (*flowRunner, *muxtest.MockBackend) {
 	cfg.HideAttachHint = true
 	cfg.PreviewRefreshMs = 1
 	// Simulate old config: vim-style nav keys instead of arrow keys.
-	cfg.Keybindings.NavUp = "k"
-	cfg.Keybindings.NavDown = "j"
+	cfg.Keybindings.NavUp = config.KeyBinding{"k"}
+	cfg.Keybindings.NavDown = config.KeyBinding{"j"}
 
 	appState := testAppStateWithTwoProjects()
 	appState.TermWidth = 120
@@ -173,7 +173,7 @@ func TestFlow_Settings_ResetKeybindings(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Modify NavUp to a custom value to prove reset works.
-	f.model.cfg.Keybindings.NavUp = "k"
+	f.model.cfg.Keybindings.NavUp = config.KeyBinding{"k"}
 	openSettings(t, f)
 
 	if f.model.settings.IsDirty() {
@@ -187,7 +187,7 @@ func TestFlow_Settings_ResetKeybindings(t *testing.T) {
 	}
 	got := f.model.settings.GetConfig().Keybindings.NavUp
 	want := config.DefaultConfig().Keybindings.NavUp
-	if got != want {
-		t.Errorf("NavUp after reset = %q, want %q", got, want)
+	if got.First() != want.First() {
+		t.Errorf("NavUp after reset = %v, want %v", got, want)
 	}
 }

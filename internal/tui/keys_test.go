@@ -17,18 +17,18 @@ func TestNewKeyMap_BindingsMatchConfig(t *testing.T) {
 		binding string
 		want    string
 	}{
-		{"NewProject", km.NewProject.Keys()[0], cfg.Keybindings.NewProject},
-		{"NewSession", km.NewSession.Keys()[0], cfg.Keybindings.NewSession},
-		{"NewTeam", km.NewTeam.Keys()[0], cfg.Keybindings.NewTeam},
-		{"KillSession", km.KillSession.Keys()[0], cfg.Keybindings.KillSession},
-		{"KillTeam", km.KillTeam.Keys()[0], cfg.Keybindings.KillTeam},
-		{"Rename", km.Rename.Keys()[0], cfg.Keybindings.Rename},
-		{"Filter", km.Filter.Keys()[0], cfg.Keybindings.Filter},
-		{"Help", km.Help.Keys()[0], cfg.Keybindings.Help},
-		{"Quit", km.Quit.Keys()[0], cfg.Keybindings.Quit},
-		{"QuitKill", km.QuitKill.Keys()[0], cfg.Keybindings.QuitKill},
-		{"ColorNext", km.ColorNext.Keys()[0], cfg.Keybindings.ColorNext},
-		{"ColorPrev", km.ColorPrev.Keys()[0], cfg.Keybindings.ColorPrev},
+		{"NewProject", km.NewProject.Keys()[0], cfg.Keybindings.NewProject.First()},
+		{"NewSession", km.NewSession.Keys()[0], cfg.Keybindings.NewSession.First()},
+		{"NewTeam", km.NewTeam.Keys()[0], cfg.Keybindings.NewTeam.First()},
+		{"KillSession", km.KillSession.Keys()[0], cfg.Keybindings.KillSession.First()},
+		{"KillTeam", km.KillTeam.Keys()[0], cfg.Keybindings.KillTeam.First()},
+		{"Rename", km.Rename.Keys()[0], cfg.Keybindings.Rename.First()},
+		{"Filter", km.Filter.Keys()[0], cfg.Keybindings.Filter.First()},
+		{"Help", km.Help.Keys()[0], cfg.Keybindings.Help.First()},
+		{"Quit", km.Quit.Keys()[0], cfg.Keybindings.Quit.First()},
+		{"QuitKill", km.QuitKill.Keys()[0], cfg.Keybindings.QuitKill.First()},
+		{"ColorNext", km.ColorNext.Keys()[0], cfg.Keybindings.ColorNext.First()},
+		{"ColorPrev", km.ColorPrev.Keys()[0], cfg.Keybindings.ColorPrev.First()},
 	}
 
 	for _, tc := range cases {
@@ -120,8 +120,8 @@ func TestUniqueKeys(t *testing.T) {
 func TestNewKeyMap_NavUpAlwaysIncludesArrowKey(t *testing.T) {
 	// Simulate an old config with vim-style nav keys.
 	kb := config.DefaultConfig().Keybindings
-	kb.NavUp = "k"
-	kb.NavDown = "j"
+	kb.NavUp = config.KeyBinding{"k"}
+	kb.NavDown = config.KeyBinding{"j"}
 	km := NewKeyMap(kb)
 
 	hasKey := func(b key.Binding, target string) bool {

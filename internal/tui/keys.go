@@ -55,40 +55,75 @@ func uniqueKeys(keys ...string) []string {
 	return out
 }
 
+// bind builds a key.Binding from a configured KeyBinding plus optional always-on
+// extras (e.g. arrow-key aliases that must work even when the user customized
+// the action). Empty entries are skipped and duplicates removed, preserving
+// order so the help label keeps the user's primary key first.
+func bind(kb config.KeyBinding, desc string, extras ...string) key.Binding {
+	keys := uniqueKeys(append(append([]string(nil), kb...), extras...)...)
+	if len(keys) == 0 {
+		return key.NewBinding(key.WithDisabled())
+	}
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(displayKeys(keys), desc))
+}
+
+// bindLabeled is bind with an explicit display label — used when the help text
+// needs to show a stylized form (e.g. "↑" instead of "up") rather than the
+// raw configured key strings.
+func bindLabeled(kb config.KeyBinding, label, desc string, extras ...string) key.Binding {
+	keys := uniqueKeys(append(append([]string(nil), kb...), extras...)...)
+	if len(keys) == 0 {
+		return key.NewBinding(key.WithDisabled())
+	}
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp(label, desc))
+}
+
+// displayKeys joins keys for the help label. Empty input returns "".
+func displayKeys(keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	out := keys[0]
+	for _, k := range keys[1:] {
+		out += "/" + k
+	}
+	return out
+}
+
 // NewKeyMap builds a KeyMap from the loaded config.
 func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 	return KeyMap{
-		NewWorktreeSession: key.NewBinding(key.WithKeys(kb.NewWorktreeSession), key.WithHelp(kb.NewWorktreeSession, "new worktree session")),
-		NewProject:     key.NewBinding(key.WithKeys(kb.NewProject), key.WithHelp(kb.NewProject, "new project")),
-		NewSession:     key.NewBinding(key.WithKeys(kb.NewSession), key.WithHelp(kb.NewSession, "new session")),
-		NewTeam:        key.NewBinding(key.WithKeys(kb.NewTeam), key.WithHelp(kb.NewTeam, "new team")),
-		KillSession:    key.NewBinding(key.WithKeys(kb.KillSession), key.WithHelp(kb.KillSession, "kill session")),
-		KillTeam:       key.NewBinding(key.WithKeys(kb.KillTeam), key.WithHelp(kb.KillTeam, "kill team")),
-		Rename:         key.NewBinding(key.WithKeys(kb.Rename), key.WithHelp(kb.Rename, "rename")),
-		Attach:         key.NewBinding(key.WithKeys(kb.Attach, "enter"), key.WithHelp(kb.Attach+"/enter", "attach")),
-		ToggleCollapse: key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "toggle")),
-		CollapseItem:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "collapse")),
-		ExpandItem:     key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "expand")),
-		FocusToggle:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch pane")),
-		NavUp:          key.NewBinding(key.WithKeys(uniqueKeys(kb.NavUp, "up")...), key.WithHelp("↑", "up")),
-		NavDown:        key.NewBinding(key.WithKeys(uniqueKeys(kb.NavDown, "down")...), key.WithHelp("↓", "down")),
-		NavProjectUp:   key.NewBinding(key.WithKeys(kb.NavProjectUp), key.WithHelp(kb.NavProjectUp, "prev project")),
-		NavProjectDown: key.NewBinding(key.WithKeys(kb.NavProjectDown), key.WithHelp(kb.NavProjectDown, "next project")),
-		Filter:         key.NewBinding(key.WithKeys(kb.Filter), key.WithHelp(kb.Filter, "filter")),
-		SidebarView:    key.NewBinding(key.WithKeys(kb.SidebarView), key.WithHelp(kb.SidebarView, "sidebar view")),
-		GridOverview:   key.NewBinding(key.WithKeys(kb.GridOverview), key.WithHelp(kb.GridOverview, "grid view")),
-		Palette:        key.NewBinding(key.WithKeys(kb.Palette), key.WithHelp(kb.Palette, "palette")),
-		Help:           key.NewBinding(key.WithKeys(kb.Help), key.WithHelp(kb.Help, "help")),
-		TmuxHelp:       key.NewBinding(key.WithKeys(kb.TmuxHelp), key.WithHelp(kb.TmuxHelp, "tmux shortcuts")),
-		Settings:       key.NewBinding(key.WithKeys(kb.Settings), key.WithHelp(kb.Settings, "settings")),
-		Quit:           key.NewBinding(key.WithKeys(kb.Quit), key.WithHelp(kb.Quit, "quit")),
-		QuitKill:       key.NewBinding(key.WithKeys(kb.QuitKill), key.WithHelp(kb.QuitKill, "quit+kill")),
-		ColorNext:      key.NewBinding(key.WithKeys(kb.ColorNext), key.WithHelp(kb.ColorNext, "next color")),
-		ColorPrev:      key.NewBinding(key.WithKeys(kb.ColorPrev), key.WithHelp(kb.ColorPrev, "prev color")),
-		MoveUp:         key.NewBinding(key.WithKeys(kb.MoveUp), key.WithHelp(kb.MoveUp, "move up")),
-		MoveDown:       key.NewBinding(key.WithKeys(kb.MoveDown), key.WithHelp(kb.MoveDown, "move down")),
-		MoveLeft:       key.NewBinding(key.WithKeys(kb.MoveLeft), key.WithHelp(kb.MoveLeft, "move left")),
-		MoveRight:      key.NewBinding(key.WithKeys(kb.MoveRight), key.WithHelp(kb.MoveRight, "move right")),
+		NewWorktreeSession: bind(kb.NewWorktreeSession, "new worktree session"),
+		NewProject:     bind(kb.NewProject, "new project"),
+		NewSession:     bind(kb.NewSession, "new session"),
+		NewTeam:        bind(kb.NewTeam, "new team"),
+		KillSession:    bind(kb.KillSession, "kill session"),
+		KillTeam:       bind(kb.KillTeam, "kill team"),
+		Rename:         bind(kb.Rename, "rename"),
+		Attach:         bind(kb.Attach, "attach", "enter"),
+		ToggleCollapse: bindLabeled(kb.ToggleCollapse, "space", "toggle"),
+		CollapseItem:   bindLabeled(kb.CollapseItem, "←/h", "collapse"),
+		ExpandItem:     bindLabeled(kb.ExpandItem, "→/l", "expand"),
+		FocusToggle:    bindLabeled(kb.FocusPreview, "tab", "switch pane"),
+		NavUp:          bindLabeled(kb.NavUp, "↑", "up", "up"),
+		NavDown:        bindLabeled(kb.NavDown, "↓", "down", "down"),
+		NavProjectUp:   bind(kb.NavProjectUp, "prev project"),
+		NavProjectDown: bind(kb.NavProjectDown, "next project"),
+		Filter:         bind(kb.Filter, "filter"),
+		SidebarView:    bind(kb.SidebarView, "sidebar view"),
+		GridOverview:   bind(kb.GridOverview, "grid view"),
+		Palette:        bind(kb.Palette, "palette"),
+		Help:           bind(kb.Help, "help"),
+		TmuxHelp:       bind(kb.TmuxHelp, "tmux shortcuts"),
+		Settings:       bind(kb.Settings, "settings"),
+		Quit:           bind(kb.Quit, "quit"),
+		QuitKill:       bind(kb.QuitKill, "quit+kill"),
+		ColorNext:      bind(kb.ColorNext, "next color"),
+		ColorPrev:      bind(kb.ColorPrev, "prev color"),
+		MoveUp:         bindLabeled(kb.MoveUp, kb.MoveUp.First(), "move up"),
+		MoveDown:       bindLabeled(kb.MoveDown, kb.MoveDown.First(), "move down"),
+		MoveLeft:       bindLabeled(kb.MoveLeft, kb.MoveLeft.First(), "move left"),
+		MoveRight:      bindLabeled(kb.MoveRight, kb.MoveRight.First(), "move right"),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
 	}

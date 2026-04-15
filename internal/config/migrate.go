@@ -1,8 +1,31 @@
 package config
 
-import "github.com/lucascaro/hive/internal/mux"
+import (
+	"reflect"
 
-const currentSchemaVersion = 4
+	"github.com/lucascaro/hive/internal/mux"
+)
+
+// mergeKeybindingDefaults fills any empty KeyBinding fields in cur from def.
+// A field is considered empty when its KeyBinding has no non-empty entries.
+func mergeKeybindingDefaults(cur, def KeybindingsConfig) KeybindingsConfig {
+	curV := reflect.ValueOf(&cur).Elem()
+	defV := reflect.ValueOf(def)
+	kbType := reflect.TypeOf(KeyBinding(nil))
+	for i := 0; i < curV.NumField(); i++ {
+		f := curV.Field(i)
+		if f.Type() != kbType || !f.CanSet() {
+			continue
+		}
+		kb := f.Interface().(KeyBinding)
+		if kb.First() == "" {
+			f.Set(defV.Field(i))
+		}
+	}
+	return cur
+}
+
+const currentSchemaVersion = 5
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
@@ -28,6 +51,14 @@ func Migrate(cfg Config) Config {
 		if cfg.StartupView == "" {
 			cfg.StartupView = DefaultConfig().StartupView
 		}
+	}
+	if cfg.SchemaVersion < 5 {
+		// 4 → 5: keybindings became []string per action (#112). The on-disk
+		// migration is handled transparently by KeyBinding.UnmarshalJSON
+		// (string → single-element slice). Newly added action fields
+		// (Detach, CursorUp/Down/Left/Right, SessionColorNext/Prev,
+		// ToggleAll, InputMode, CollapseItem, ExpandItem) are populated
+		// from defaults below.
 	}
 	if cfg.SchemaVersion < currentSchemaVersion {
 		cfg.SchemaVersion = currentSchemaVersion
@@ -55,19 +86,10 @@ func Migrate(cfg Config) Config {
 		}
 	}
 
-	// Fill in missing keybindings from defaults.
-	if cfg.Keybindings.GridOverview == "" {
-		cfg.Keybindings.GridOverview = defaults.Keybindings.GridOverview
-	}
-	if cfg.Keybindings.SidebarView == "" {
-		cfg.Keybindings.SidebarView = defaults.Keybindings.SidebarView
-	}
-	if cfg.Keybindings.ColorNext == "" {
-		cfg.Keybindings.ColorNext = defaults.Keybindings.ColorNext
-	}
-	if cfg.Keybindings.ColorPrev == "" {
-		cfg.Keybindings.ColorPrev = defaults.Keybindings.ColorPrev
-	}
+	// Fill in any missing keybindings from defaults. Reflection keeps this in
+	// sync as new actions are added — every empty KeyBinding field falls back
+	// to the default.
+	cfg.Keybindings = mergeKeybindingDefaults(cfg.Keybindings, defaults.Keybindings)
 
 	// Default the detach key when missing. Invalid values are reported and
 	// fall back to the default in cmd/start.go's initMuxBackend so the user

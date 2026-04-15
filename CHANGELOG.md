@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Keybindings config now accepts multiple keys per action**: every entry in the `keybindings` block of `~/.config/hive/config.json` may be either a single string (e.g. `"a"`) or a list (e.g. `["up", "k"]`). Existing single-string configs continue to load unchanged; the canonical on-disk form after the next save is the array (#112).
+
+### Added
+- **New keybinding actions**: `detach`, `cursor_up/down/left/right`, `session_color_next/prev`, `toggle_all`, `input_mode`, `collapse_item`, `expand_item` are now configurable. Defaults preserve current behavior; settings UI and handler wiring follow in subsequent commits (#112).
+
 ## [0.10.1] — 2026-04-14
 
 ### Fixed

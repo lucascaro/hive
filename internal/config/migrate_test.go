@@ -58,10 +58,10 @@ func TestMigrate_PreservesExistingInstallCmd(t *testing.T) {
 func TestMigrate_FillsMissingGridOverview(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: currentSchemaVersion,
-		Keybindings:   KeybindingsConfig{GridOverview: ""},
+		Keybindings:   KeybindingsConfig{GridOverview: nil},
 	}
 	got := Migrate(cfg)
-	if got.Keybindings.GridOverview == "" {
+	if got.Keybindings.GridOverview.First() == "" {
 		t.Error("Migrate should fill missing GridOverview keybinding from defaults")
 	}
 }
@@ -69,11 +69,11 @@ func TestMigrate_FillsMissingGridOverview(t *testing.T) {
 func TestMigrate_PreservesExistingGridOverview(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: currentSchemaVersion,
-		Keybindings:   KeybindingsConfig{GridOverview: "G"},
+		Keybindings:   KeybindingsConfig{GridOverview: KeyBinding{"G"}},
 	}
 	got := Migrate(cfg)
-	if got.Keybindings.GridOverview != "G" {
-		t.Errorf("GridOverview = %q, want %q", got.Keybindings.GridOverview, "G")
+	if got.Keybindings.GridOverview.First() != "G" {
+		t.Errorf("GridOverview = %v, want [G]", got.Keybindings.GridOverview)
 	}
 }
 
