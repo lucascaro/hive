@@ -5,18 +5,18 @@
    [;m│[0m  ╭──────╮                                                                                                      [;m│[0m   
    [;m│[0m  │ Keys │ tmux   Usage   Features                                                                              [;m│[0m   
    [;m│[0m──╯      ╰──────────────────────────────────────────────────────────────────────────────────────────────────────[;m│[0m   
-   [;m│[0m  [48;2;0;0;0m↑     up              a/enter attach                  c           next color      ?      help          [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m↓     down            t       new session             C           prev color      H      tmux shortcuts[m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mK     prev project    W       new worktree session    shift+up    move up         S      settings      [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mJ     next project    T       new team                shift+down  move down       ctrl+p palette       [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m←/h   collapse        n       new project             shift+left  move left       tab    switch pane   [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m→/l   expand          r       rename                  shift+right move right      q      quit          [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mspace toggle          x       kill session            /           filter          Q      quit+kill     [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m                      D       kill team               s           sidebar view                         [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m                                                      g           grid view                            [m       [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m↑       up              a/enter attach                  c           next color         …[m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m↓       down            i       input mode              C           prev color          [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mK       prev project    ctrl+q  detach                  v           next session color  [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mJ       next project    t       new session             V           prev session color  [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mup/k    cursor up       W       new worktree session    shift+up    move up             [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mdown/j  cursor down     T       new team                shift+down  move down           [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mleft/h  cursor left     n       new project             shift+left  move left           [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mright/l cursor right    r       rename                  shift+right move right          [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m←/h     collapse        x       kill session            /           filter              [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m→/l     expand          D       kill team               s           sidebar view        [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mspace   toggle                                          g           grid view           [m                      [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m                                                        G           toggle all-grid     [m                      [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[m                                                                                                              [;m│[0m   

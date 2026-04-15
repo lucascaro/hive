@@ -40,6 +40,15 @@ type KeyMap struct {
 	MoveDown       key.Binding
 	MoveLeft       key.Binding
 	MoveRight      key.Binding
+	CursorUp       key.Binding
+	CursorDown     key.Binding
+	CursorLeft     key.Binding
+	CursorRight    key.Binding
+	SessionColorNext key.Binding
+	SessionColorPrev key.Binding
+	ToggleAll      key.Binding
+	InputMode      key.Binding
+	Detach         key.Binding
 	Confirm        key.Binding
 	Cancel         key.Binding
 }
@@ -114,6 +123,15 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		MoveDown:       bind(kb.MoveDown, "", "move down"),
 		MoveLeft:       bind(kb.MoveLeft, "", "move left"),
 		MoveRight:      bind(kb.MoveRight, "", "move right"),
+		CursorUp:       bind(kb.CursorUp, "", "cursor up"),
+		CursorDown:     bind(kb.CursorDown, "", "cursor down"),
+		CursorLeft:     bind(kb.CursorLeft, "", "cursor left"),
+		CursorRight:    bind(kb.CursorRight, "", "cursor right"),
+		SessionColorNext: bind(kb.SessionColorNext, "", "next session color"),
+		SessionColorPrev: bind(kb.SessionColorPrev, "", "prev session color"),
+		ToggleAll:      bind(kb.ToggleAll, "", "toggle all-grid"),
+		InputMode:      bind(kb.InputMode, "", "input mode"),
+		Detach:         bind(kb.Detach, "", "detach"),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
 	}
@@ -148,9 +166,9 @@ func (km KeyMap) ShortHelp() []key.Binding {
 // Implements help.KeyMap.
 func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
-		{km.Attach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
-		{km.ColorNext, km.ColorPrev, km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Filter, km.SidebarView, km.GridOverview},
+		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
+		{km.Attach, km.InputMode, km.Detach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
+		{km.ColorNext, km.ColorPrev, km.SessionColorNext, km.SessionColorPrev, km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Filter, km.SidebarView, km.GridOverview, km.ToggleAll},
 		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.FocusToggle, km.Quit, km.QuitKill},
 	}
 }

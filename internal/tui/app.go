@@ -199,6 +199,15 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
 	m.gridView.InputEnabled = !cfg.DisableGridInput
+	m.gridView.Keys = components.GridKeys{
+		Detach:      m.keys.Detach,
+		InputMode:   m.keys.InputMode,
+		Attach:      m.keys.Attach,
+		CursorUp:    m.keys.CursorUp,
+		CursorDown:  m.keys.CursorDown,
+		CursorLeft:  m.keys.CursorLeft,
+		CursorRight: m.keys.CursorRight,
+	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil
 	m.appState.RecoverableSessions = nil
