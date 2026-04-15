@@ -8,6 +8,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
 | 1 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
+| 2 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
 
 ## Rejected
 

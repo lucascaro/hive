@@ -101,6 +101,7 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.preview.SetContent("")
 	cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
 	if m.HasView(ViewGrid) {
+		m.gridPollGen++
 		cmds = append(cmds, m.scheduleGridPoll())
 	}
 	return m, tea.Batch(cmds...)

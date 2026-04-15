@@ -10,7 +10,9 @@ const (
 )
 
 // computeLayout returns sidebarWidth and previewWidth for the given terminal dimensions.
-func computeLayout(termWidth, termHeight int) (sidebarWidth, previewWidth, contentHeight int) {
+// activityHeight is the number of rows reserved for the preview-activity panel
+// (below main, above the status bar). Pass 0 when the panel is not rendered.
+func computeLayout(termWidth, termHeight, activityHeight int) (sidebarWidth, previewWidth, contentHeight int) {
 	// Use safe defaults until WindowSizeMsg arrives.
 	if termWidth <= 0 {
 		termWidth = 80
@@ -34,7 +36,7 @@ func computeLayout(termWidth, termHeight int) (sidebarWidth, previewWidth, conte
 	if pw < 0 {
 		pw = 0
 	}
-	ch := termHeight - statusBarHeight
+	ch := termHeight - statusBarHeight - activityHeight
 	if ch < 1 {
 		ch = 1
 	}

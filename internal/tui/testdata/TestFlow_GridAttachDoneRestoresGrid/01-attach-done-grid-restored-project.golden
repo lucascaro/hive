@@ -34,7 +34,7 @@
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
-│                                                                                                                      │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ○ idle  ● working  ◉ waiting  ✕ dead                                                                                    
 ↑↓←→ navigate • shift+left/shift+right reorder • a/enter attach • x kill • r rename • c/C project color …               
+○ session-1                                                                                                             

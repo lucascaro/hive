@@ -153,6 +153,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 				m.appState.ActiveTeamID = s.TeamID
 			}
 			m.gridView.SyncState(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
+			m.gridPollGen++
 			return m.scheduleGridPoll()
 		}
 		// Already in project grid — close grid and return to main.
@@ -173,6 +174,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.appState.ActiveTeamID = s.TeamID
 		}
 		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
+		m.gridPollGen++
 		return m.scheduleGridPoll()
 	case "x":
 		if sess := m.gridView.Selected(); sess != nil {
@@ -323,10 +325,12 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.GridOverview):
 		m.openGrid(state.GridRestoreProject)
+		m.gridPollGen++
 		return m, m.scheduleGridPoll()
 
 	case msg.String() == "G":
 		m.openGrid(state.GridRestoreAll)
+		m.gridPollGen++
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.NewProject):
@@ -710,7 +714,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	sw, _, _ := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
+	sw, _, _ := computeLayout(m.appState.TermWidth, m.appState.TermHeight, components.PreviewActivityPanelHeight)
 	inSidebar := msg.X < sw
 
 	switch msg.Button {

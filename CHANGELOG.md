@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Preview-activity panel**: a single horizontal row at the bottom of the main and grid views shows a pip + title for every session, with the pip flashing green for ~150 ms each time hive polls that session. Makes the polling cadence directly observable so timing inconsistencies stand out at a glance.
+
 ### Changed
 - **Keybindings config now accepts multiple keys per action**: every entry in the `keybindings` block of `~/.config/hive/config.json` may be either a single string (e.g. `"a"`) or a list (e.g. `["up", "k"]`). Existing single-string configs continue to load unchanged; the canonical on-disk form after the next save is the array (#112).
 - **Groundwork for new keybinding actions** — `detach`, `cursor_up/down/left/right`, `session_color_next/prev`, `toggle_all`, `input_mode`, `collapse_item`, `expand_item` were added to the config schema with sensible defaults. **Schema only — these actions are not yet wired to any handler in this release.** Settings UI exposure and handler wiring land in subsequent commits (#112).
 
 ### Fixed
 - **Grid-mode attach/detach sidebar flash (regression)**: the sidebar no longer briefly renders when attaching to or detaching from a session opened from grid view. `handleGridSessionSelected` now keeps `ViewGrid` on the view stack through the attach so the render frame before `tea.Exec`/`tea.Quit` shows grid content rather than sidebar. `restoreGrid()` is idempotent so the detach-side re-push does not duplicate the grid on the stack. As a side effect, pressing `esc` on the attach hint when opened from grid now returns to grid (previously returned to sidebar) (#111).
+- **Inconsistent grid polling rate**: three polling-rate bugs that made some sessions appear to be captured much more frequently than others. (1) The grid input-mode fast loop (50 ms, focused-cell only) was stamping the activity pip on top of the background loop's stamp, making the focused cell pulse ~5× faster than its neighbors; the fast loop now updates content only — its actual purpose — and the background loop is the sole stamp source. (2) Pressing `g`/`G` to toggle between project and all-projects grid spawned a new `tea.Tick` chain every time without cancelling the previous one, multiplying the polling rate per toggle; a new `gridPollGen` generation counter discards stale ticks so old chains die off naturally (mirrors the existing `previewPollGen` pattern). (3) The single-session `PollPreview` chain that keeps main-view content fresh was double-stamping the active session's pip while grid was on top; the stamp is now skipped when `ViewGrid` is on the stack, leaving the grid loop as the sole pip source in grid view.
 
 ## [0.10.1] — 2026-04-14
 

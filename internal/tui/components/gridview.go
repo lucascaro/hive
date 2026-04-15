@@ -24,12 +24,15 @@ type GridSessionSelectedMsg struct {
 // Fast=true indicates this is from the input-mode focused-session poll loop;
 // the handler uses this to reschedule the correct loop.
 type GridPreviewsUpdatedMsg struct {
-	Contents map[string]string
-	Fast     bool
+	Contents   map[string]string
+	Fast       bool
+	Generation uint64
 }
 
 // PollGridPreviews returns a tea.Cmd that captures pane content for all sessions.
-func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd {
+// gen is the grid-poll generation; the handler discards stale messages so old
+// chains created by rapid mode toggles die off without compounding the rate.
+func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		contents := make(map[string]string, len(sessions))
 		for _, sess := range sessions {
@@ -42,7 +45,7 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration) tea.Cmd
 				contents[sess.ID] = sanitizePreviewContent(content)
 			}
 		}
-		return GridPreviewsUpdatedMsg{Contents: contents}
+		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen}
 	})
 }
 

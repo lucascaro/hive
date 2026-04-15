@@ -80,6 +80,13 @@ type Model struct {
 	// which lets stale concurrent poll goroutines die off naturally instead of
 	// accumulating and causing rapid-fire re-renders.
 	previewPollGen uint64
+	// gridPollGen is incremented whenever we intentionally start a fresh grid
+	// polling cycle (grid open, mode switch, attach return).  Background
+	// GridPreviewsUpdatedMsg events whose Generation doesn't match are
+	// discarded without rescheduling, so concurrent poll chains created by
+	// rapid g/G mode toggles die off naturally instead of accumulating and
+	// multiplying the polling rate.
+	gridPollGen uint64
 	// contentSnapshots holds the last captured pane content for each session,
 	// used by the status watcher to detect activity via content diffing.
 	contentSnapshots map[string]string
@@ -109,6 +116,9 @@ type Model struct {
 	// bell badge animates on/off in software (ANSI terminal blink is unreliable
 	// in modern terminals like iTerm2 which disable it by default).
 	bellBlinkOn bool
+	// lastPreviewChange records the time at which each session's preview was
+	// most recently polled. Drives the activity-pip flash. Not persisted.
+	lastPreviewChange map[string]time.Time
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -177,7 +187,8 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		dirPicker:           components.NewDirPicker(),
 		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:           ni,
-		contentSnapshots:    make(map[string]string),
+		contentSnapshots:  make(map[string]string),
+		lastPreviewChange: make(map[string]time.Time),
 		stableCounts:        make(map[string]int),
 		paneTitles:          make(map[string]string),
 		bellPending:         make(map[string]bool),
@@ -311,6 +322,7 @@ func (m Model) Init() tea.Cmd {
 		m.scheduleWatchStatuses(),
 		scheduleWatchState(m.stateLastKnownMtime),
 		m.scheduleBellBlink(),
+		m.scheduleActivityPipTick(),
 	}
 	if m.HasView(ViewGrid) {
 		cmds = append(cmds, m.scheduleGridPoll())
@@ -399,6 +411,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSettingsClosed()
 	case ConfigSavedMsg:
 		return m.handleConfigSaved()
+	case activityPipTickMsg:
+		return m.handleActivityPipTick()
 	case bellBlinkMsg:
 		m.bellBlinkOn = !m.bellBlinkOn
 		m.sidebar.SetBellBlink(m.bellBlinkOn)
@@ -428,10 +442,21 @@ func (m Model) View() string {
 		return m.settings.View()
 	case ViewGrid:
 		m.gridView.Width = m.appState.TermWidth
-		m.gridView.Height = m.appState.TermHeight
+		gridH := m.appState.TermHeight - components.PreviewActivityPanelHeight
+		if gridH < 1 {
+			gridH = 1
+		}
+		m.gridView.Height = gridH
 		m.gridHelpModel.Width = m.appState.TermWidth
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
-		return m.gridView.View(gridHints)
+		gridBody := m.gridView.View(gridHints)
+		gridActivity := components.PreviewActivityPanel{
+			Width:         m.appState.TermWidth,
+			Sessions:      m.gridSessions(m.gridView.Mode),
+			LastChange:    m.lastPreviewChange,
+			FlashDuration: 150 * time.Millisecond,
+		}.View()
+		return lipgloss.JoinVertical(lipgloss.Left, gridBody, gridActivity)
 	case ViewHelp:
 		return m.helpView()
 	case ViewGridInputHint:
@@ -470,7 +495,7 @@ func (m Model) View() string {
 		// Filter is an inline mode — fall through to main layout rendering.
 	}
 
-	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
+	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight, components.PreviewActivityPanelHeight)
 	m.sidebar.Width = sw
 	m.sidebar.Height = ch
 	m.preview.Resize(pw, ch)
@@ -479,6 +504,7 @@ func (m Model) View() string {
 	sidebarView := m.sidebar.View(m.appState.ActiveSessionID, m.appState.FocusedPane == state.PaneSidebar)
 	previewView := m.preview.View(m.appState.ActiveSessionID)
 	statusView := m.statusBar.View(&m.appState, m.buildStatusHints())
+	activityView := m.activityPanelView()
 
 	sidebarLines := strings.Count(sidebarView, "\n") + 1
 	previewLines := strings.Count(previewView, "\n") + 1
@@ -486,7 +512,7 @@ func (m Model) View() string {
 
 	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, previewView)
 	mainLines := strings.Count(main, "\n") + 1
-	out := lipgloss.JoinVertical(lipgloss.Left, main, statusView)
+	out := lipgloss.JoinVertical(lipgloss.Left, main, activityView, statusView)
 	outLines := strings.Count(out, "\n") + 1
 
 	sidebarW := strings.IndexByte(sidebarView, '\n')
@@ -549,11 +575,22 @@ func (m Model) View() string {
 }
 
 func (m *Model) recomputeLayout() {
-	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight)
+	sw, pw, ch := computeLayout(m.appState.TermWidth, m.appState.TermHeight, components.PreviewActivityPanelHeight)
 	m.sidebar.Width = sw
 	m.sidebar.Height = ch
 	m.preview.Resize(pw, ch)
 	m.statusBar.Width = m.appState.TermWidth
+}
+
+// activityPanelView renders the preview-activity panel (one row of pip+title
+// per session, packed horizontally). Rendered in both main and grid views.
+func (m *Model) activityPanelView() string {
+	return components.PreviewActivityPanel{
+		Width:         m.appState.TermWidth,
+		Sessions:      state.AllSessions(&m.appState),
+		LastChange:    m.lastPreviewChange,
+		FlashDuration: 150 * time.Millisecond,
+	}.View()
 }
 
 // buildStatusHints returns the pre-computed hint line for the statusbar.
