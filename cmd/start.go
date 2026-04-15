@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,10 @@ func runStart(_ *cobra.Command, _ []string) error {
 	// tea.ExecProcess). For the tmux backend the TUI handles attach internally
 	// via tea.ExecProcess and never sets LastAttach(); the loop runs only once.
 	for {
+		// Pre-clear the primary screen buffer so that BubbleTea's internal
+		// alt-screen exit/enter transitions during attach/detach are invisible
+		// (blank primary instead of terminal history).
+		writePrimaryBufferClear(os.Stdout)
 		model := tui.New(cfg, appState, whatsNewContent)
 		whatsNewContent = "" // only show on first loop iteration
 		p := tea.NewProgram(model,
@@ -154,6 +159,20 @@ func runStart(_ *cobra.Command, _ []string) error {
 		break
 	}
 	return nil
+}
+
+// writePrimaryBufferClear writes the ANSI sequence that clears the primary
+// screen buffer (the non-alt-screen buffer that holds shell history). This
+// must be called before tea.NewProgram so that BubbleTea saves a blank
+// primary buffer when it enters alt-screen. Any subsequent exit of alt-screen
+// during attach/detach then reveals a blank screen instead of the user's
+// terminal history.
+//
+// The sequence must be \033[2J\033[H (erase entire display + cursor home).
+// It must NOT contain \033[?1049l (exit alt-screen), which would expose the
+// primary buffer before it has been cleared.
+func writePrimaryBufferClear(w io.Writer) {
+	fmt.Fprint(w, "\033[2J\033[H")
 }
 
 // initMuxBackend selects and sets the active mux backend based on config.

@@ -51,12 +51,14 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {
-	// Pop the grid from the view stack here — after the message is processed —
-	// so there is no intermediate sidebar-render frame between grid close and
-	// the attach hint or doAttach transition.
-	if m.HasView(ViewGrid) {
-		m.PopView()
-	}
+	// Do NOT pop ViewGrid here. Keeping it on the stack until detach is what
+	// prevents the one-frame sidebar flash between Update returning and the
+	// attach Cmd executing: for HideAttachHint=true, TopView() stays ViewGrid
+	// through the Exec/Quit; for HideAttachHint=false, the hint is pushed on
+	// top of ViewGrid. On detach (AttachDoneMsg path), restoreGrid() is made
+	// idempotent so the grid is not pushed again when it is already on the
+	// stack (tmux tea.Exec case). Esc on the hint naturally returns to
+	// whichever view was under it (grid or main).
 	var sessionTitle string
 	var agentType state.AgentType
 	var projectName string

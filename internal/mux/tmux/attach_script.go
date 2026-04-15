@@ -62,7 +62,13 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	var lines []string
 
 	// Enter the alternate screen first so any tmux output below stays out
-	// of the user's scrollback.
+	// of the user's scrollback. This is intentionally redundant with
+	// altScreenExecCmd.Run() in internal/tui/views.go which writes the same
+	// sequence to the terminal immediately after BubbleTea's ReleaseTerminal
+	// and before spawning this subprocess. Keeping the write here is the
+	// belt-and-suspenders guarantee that the subprocess always runs in
+	// alt-screen even if it is invoked by a caller that bypasses
+	// altScreenExecCmd (e.g. `hive attach` CLI, tmux display-popup).
 	lines = append(lines, `printf '\033[?1049h\033[2J'`)
 
 	// Install the detach key binding. Idempotent and intentionally left in
@@ -78,10 +84,10 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// single-quoted delimiters for session names containing special chars).
 	lines = append(lines, "_hive_s="+s)
 
-	// trap restores the alternate screen and unsets the status-bar option
-	// overrides on exit. Hive owns the hive-* session, so there are no
-	// user-customized values to preserve — `set-option -u` returns each
-	// option to its server/global default from ~/.tmux.conf.
+	// trap unsets the status-bar option overrides and clears the screen on
+	// exit. Hive owns the hive-* session, so there are no user-customized
+	// values to preserve — `set-option -u` returns each option to its
+	// server/global default from ~/.tmux.conf.
 	//
 	// EXIT covers normal exit; INT/TERM/HUP cover the case where
 	// tea.ExecProcess (or the user's terminal) forwards a signal from a
@@ -89,13 +95,20 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// theme. The detach key binding is NOT restored here — it stays
 	// installed for the tmux server's lifetime.
 	//
+	// Order matters: the tmux cleanup runs FIRST (while still in alt-screen,
+	// so the user never sees the primary buffer during the cleanup delay),
+	// then the screen is cleared. We do NOT write \033[?1049l (exit
+	// alt-screen) — that would expose the primary terminal buffer while the
+	// tmux subprocess completes. BubbleTea's RestoreTerminal re-enters
+	// alt-screen immediately after and redraws the TUI.
+	//
 	// All unsets are batched into a single tmux invocation via \; to
 	// minimize process-spawn overhead on detach.
 	var unsetParts []string
 	for _, opt := range statusBarOpts {
 		unsetParts = append(unsetParts, fmt.Sprintf(`set-option -u -t "$_hive_s" %s`, opt))
 	}
-	trapBody := fmt.Sprintf(`printf "\033[?1049l"; tmux %s 2>/dev/null`, strings.Join(unsetParts, ` \; `))
+	trapBody := fmt.Sprintf(`tmux %s 2>/dev/null; printf "\033[2J\033[H"`, strings.Join(unsetParts, ` \; `))
 	lines = append(lines,
 		"trap '"+trapBody+"' EXIT INT TERM HUP",
 	)
