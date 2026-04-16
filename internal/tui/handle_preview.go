@@ -147,9 +147,14 @@ func (m *Model) stampPreviewPoll(sessID string) tea.Cmd {
 type activityPipTickMsg struct{}
 
 // scheduleActivityPipTick returns a tea.Cmd that fires activityPipTickMsg
-// every 150 ms. Lightweight — no IO, just a redraw trigger.
+// at a cadence matched to the current flash duration. During grid input mode
+// the tick is 25 ms so the pip visibly blinks; otherwise 150 ms.
 func (m *Model) scheduleActivityPipTick() tea.Cmd {
-	return tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+	interval := 150 * time.Millisecond
+	if m.HasView(ViewGrid) && m.gridView.InputMode() {
+		interval = 25 * time.Millisecond
+	}
+	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		return activityPipTickMsg{}
 	})
 }
@@ -166,9 +171,15 @@ func (m *Model) hasRecentActivity() bool {
 	if len(m.lastPreviewChange) == 0 {
 		return false
 	}
+	// Keep the ticker alive slightly longer than the flash duration so the
+	// "off" frame renders after the pip expires.
+	threshold := 300 * time.Millisecond
+	if m.HasView(ViewGrid) && m.gridView.InputMode() {
+		threshold = 100 * time.Millisecond
+	}
 	now := time.Now()
 	for _, t := range m.lastPreviewChange {
-		if now.Sub(t) < 300*time.Millisecond {
+		if now.Sub(t) < threshold {
 			return true
 		}
 	}
