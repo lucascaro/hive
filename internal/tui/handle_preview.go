@@ -45,15 +45,8 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		debugLog.Printf("grid poll msg STALE gen=%d want=%d — discarded", msg.Generation, m.gridPollGen)
 		return m, nil
 	}
-	if msg.Fast {
-		// Fast poll only has the focused session — merge to preserve other cells.
-		// Do NOT stamp the activity pip here: the focused session is already
-		// captured every background tick, and stamping on the 50 ms fast loop
-		// makes its pip flash ~5x faster than other sessions, breaking the
-		// "consistent cadence per session" invariant the activity panel relies
-		// on. The fast loop exists purely for input-echo responsiveness.
-		m.gridView.MergeContents(msg.Contents)
-	} else {
+	if !msg.Fast {
+		// Background poll: stamp activity pips, set full content, reschedule.
 		var pipCmd tea.Cmd
 		for sessID := range msg.Contents {
 			if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
@@ -66,17 +59,18 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		}
 		return m, tea.Batch(pipCmd, m.scheduleGridPoll())
 	}
+	// Fast poll: merge focused session content only. Do NOT stamp the
+	// activity pip — the focused session is already stamped every background
+	// tick, and stamping on the 50ms fast loop would make its pip flash ~5x
+	// faster than other sessions.
+	m.gridView.MergeContents(msg.Contents)
 	if !m.HasView(ViewGrid) {
 		return m, nil
 	}
-	if msg.Fast {
-		if m.gridView.InputMode() {
-			return m, m.scheduleFocusedSessionPoll()
-		}
-		return m, nil
+	if m.gridView.InputMode() {
+		return m, m.scheduleFocusedSessionPoll()
 	}
-	// Background loop: always reschedule while grid is visible.
-	return m, m.scheduleGridPoll()
+	return m, nil
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {

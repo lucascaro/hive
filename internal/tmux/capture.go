@@ -96,13 +96,24 @@ const batchSeparator = "\x1e"
 // BatchCapturePane captures multiple panes in a single sh -c subprocess.
 // targets maps "session:window" to the number of scrollback lines to capture.
 // When escapes is true, ANSI color codes are preserved (-e flag).
+//
+// Note: the output is split on ASCII Record Separator (0x1E). If a pane's
+// content contains this byte, parsing may return truncated results for that
+// pane. This is acceptable for preview rendering but callers that need exact
+// content should use CapturePane individually.
 func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, error) {
 	if len(targets) == 0 {
 		return nil, nil
 	}
 	if len(targets) == 1 {
 		for target, lines := range targets {
-			content, err := CapturePane(target, lines)
+			var content string
+			var err error
+			if escapes {
+				content, err = CapturePane(target, lines)
+			} else {
+				content, err = CapturePaneRaw(target, lines)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -113,12 +124,11 @@ func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, 
 	altStates := BatchIsAlternateScreen(targets)
 
 	var script strings.Builder
-	orderedTargets := make([]string, 0, len(targets))
 	for target, lines := range targets {
-		orderedTargets = append(orderedTargets, target)
-		script.WriteString("printf '%s\\n' '")
-		script.WriteString(target)
-		script.WriteString("'\n")
+		quoted := shellQuote(target)
+		script.WriteString("printf '%s\\n' ")
+		script.WriteString(quoted)
+		script.WriteByte('\n')
 
 		args := []string{"capture-pane"}
 		if altStates[target] {
@@ -128,7 +138,7 @@ func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, 
 		if escapes {
 			args = append(args, "-e")
 		}
-		args = append(args, "-t", target)
+		args = append(args, "-t", quoted)
 		if !altStates[target] && lines > 0 {
 			args = append(args, "-S", fmt.Sprintf("-%d", lines))
 		}
@@ -203,6 +213,11 @@ func BatchIsAlternateScreen(targets map[string]int) map[string]bool {
 		}
 	}
 	return result
+}
+
+// shellQuote wraps s in POSIX single quotes, escaping embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // IsPaneDead reports whether the pane's process has exited.
