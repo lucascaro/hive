@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -13,6 +14,25 @@ import (
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/styles"
 )
+
+// GridKeys holds the configurable bindings GridView consults during input
+// handling. The parent (tui.Model) sets this once from the active KeyMap
+// (see tui.New) before the Bubble Tea program starts dispatching, so rebinding
+// any of these actions in config takes effect inside the grid.
+//
+// Distinct from tui.GridKeyMap, which is the help-overlay description of the
+// grid hint line. GridKeys is the actual input-routing table used by Update;
+// when the zero value is left in place every key.Matches lookup is a no-op
+// (charm's empty key.Binding{} matches nothing).
+type GridKeys struct {
+	Detach      key.Binding
+	InputMode   key.Binding
+	Attach      key.Binding
+	CursorUp    key.Binding
+	CursorDown  key.Binding
+	CursorLeft  key.Binding
+	CursorRight key.Binding
+}
 
 // GridSessionSelectedMsg is sent when the user selects a session in the grid.
 type GridSessionSelectedMsg struct {
@@ -98,7 +118,11 @@ type GridView struct {
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
 	inputMode     bool              // true when keystrokes are forwarded to the focused session
-	InputEnabled  bool              // when false, 'i' is a no-op (set from cfg.DisableGridInput)
+	InputEnabled  bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	// Keys holds the configurable bindings consulted by Update. The parent
+	// (tui.Model) sets this once during construction; leaving the zero value
+	// in place disables every navigation/input key inside the grid.
+	Keys GridKeys
 }
 
 // Show activates the grid with the given sessions.
@@ -247,9 +271,10 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	}
 
 	// Input mode: forward all keystrokes to the focused session.
-	// Ctrl+Q exits input mode; everything else (including Esc) is forwarded.
+	// The configured Detach key exits input mode; everything else (including
+	// Esc) is forwarded.
 	if gv.inputMode {
-		if msg.String() == "ctrl+q" {
+		if key.Matches(msg, gv.Keys.Detach) {
 			gv.inputMode = false
 			return nil, true
 		}
@@ -272,23 +297,29 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	rows := (n + cols - 1) / cols
 
-	switch msg.String() {
-	case "i":
+	switch {
+	case key.Matches(msg, gv.Keys.InputMode):
 		if gv.InputEnabled {
 			if sess := gv.Selected(); sess != nil && sess.TmuxSession != "" {
 				gv.inputMode = true
 			}
 		}
-	case "esc":
+		return nil, true
+	// Esc remains a hard-coded literal as a universal "close overlay" gesture,
+	// matching the dialog/overlay convention elsewhere in the TUI. Will move
+	// into GridKeys (alongside a configurable Cancel) in chunk 3 of #112.
+	case msg.String() == "esc":
 		gv.Hide()
-	case "enter", "a":
+		return nil, true
+	case key.Matches(msg, gv.Keys.Attach):
 		if sess := gv.Selected(); sess != nil {
 			s := sess
 			return func() tea.Msg {
 				return GridSessionSelectedMsg{TmuxSession: s.TmuxSession, TmuxWindow: s.TmuxWindow}
 			}, true
 		}
-	case "left":
+		return nil, true
+	case key.Matches(msg, gv.Keys.CursorLeft):
 		if gv.atExtended {
 			// Cursor is at the visual bottom (extended row) of its session.
 			// Navigate left within that virtual last row.
@@ -315,7 +346,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				gv.Cursor--
 			}
 		}
-	case "right":
+	case key.Matches(msg, gv.Keys.CursorRight):
 		row := gv.Cursor / cols
 		if gv.atExtended {
 			row = rows - 1 // treat cursor as being in the visual last row
@@ -343,12 +374,12 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				gv.atExtended = false
 			}
 		}
-	case "up":
+	case key.Matches(msg, gv.Keys.CursorUp):
 		gv.atExtended = false
 		if gv.Cursor >= cols {
 			gv.Cursor -= cols
 		}
-	case "down":
+	case key.Matches(msg, gv.Keys.CursorDown):
 		gv.atExtended = false
 		if gv.Cursor+cols < n {
 			gv.Cursor += cols

@@ -179,8 +179,6 @@ type KeybindingsConfig struct {
 	ToggleCollapse KeyBinding `json:"toggle_collapse"`
 	CollapseItem   KeyBinding `json:"collapse_item"`
 	ExpandItem     KeyBinding `json:"expand_item"`
-	FocusPreview   KeyBinding `json:"focus_preview"`
-	FocusSidebar   KeyBinding `json:"focus_sidebar"`
 	NavUp          KeyBinding `json:"nav_up"`
 	NavDown        KeyBinding `json:"nav_down"`
 	NavProjectUp   KeyBinding `json:"nav_project_up"`

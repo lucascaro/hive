@@ -422,7 +422,7 @@ func (p *Preview) View(activeSession string) string {
 		}
 		msg := "Waiting for output…"
 		if activeSession == "" {
-			msg = "No active session\n\nSelect a session and press 'a' to attach"
+			msg = "No active session\n\nSelect a session and press Enter to attach"
 		}
 		content := lipgloss.NewStyle().
 			Width(innerW).Height(innerH).

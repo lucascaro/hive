@@ -23,7 +23,7 @@
 | `n` | New project |
 | `t` | New session (opens agent picker) |
 | `T` | New agent team (opens wizard) |
-| `a` / `Enter` | Attach to selected session |
+| `Enter` | Attach to selected session |
 | `r` | Rename selected session or team |
 | `x` | Kill selected session (with confirmation) |
 | `D` | Kill entire team (with confirmation) |
@@ -35,7 +35,6 @@
 | Key | Action |
 |-----|--------|
 | `s` | Switch to sidebar view (focus sidebar; exits grid if open) |
-| `Tab` | Toggle between sidebar and preview focus |
 
 ## Grid View
 
@@ -43,8 +42,8 @@
 |-----|--------|
 | `g` | Open grid view for the current project |
 | `G` | Open grid view for all projects |
-| `←` / `→` / `↑` / `↓` | Navigate grid cells (arrow keys only) |
-| `Enter` / `a` | Attach to selected session |
+| `←` / `→` / `↑` / `↓` / `h` / `j` / `k` / `l` | Navigate grid cells |
+| `Enter` | Attach to selected session |
 | `t` | New session in the selected session's project |
 | `W` | New worktree session in the selected session's project |
 | `x` | Kill selected session (with confirmation) |
@@ -130,7 +129,7 @@ The legend is visible in the main status bar and in the grid footer.
 
 ## Detach from an attached session
 
-When you attach to a session (`a` / `Enter`), Hive's TUI suspends and you interact with the agent directly. To return to Hive, press the **detach key**:
+When you attach to a session (`Enter`), Hive's TUI suspends and you interact with the agent directly. To return to Hive, press the **detach key**:
 
 | Key | Action |
 |-----|--------|
@@ -166,7 +165,7 @@ All key bindings can be overridden in `~/.config/hive/config.json` under the `ke
     "kill_session": "x",
     "kill_team": "D",
     "rename": "r",
-    "attach": "a",
+    "attach": "enter",
     "nav_up": "up",
     "nav_down": "down",
     "nav_project_up": "K",

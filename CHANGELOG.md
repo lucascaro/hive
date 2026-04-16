@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Grid + sidebar key handlers now read from the config-driven KeyMap**: literal `g/G/x/r/t/c/C/v/V/W` switches in grid mode and the `G`/`v`/`V` literals in the sidebar are routed through `key.Matches(...)` against the corresponding `KeybindingsConfig` actions (`GridOverview`, `ToggleAll`, `KillSession`, `Rename`, `NewSession`, `ColorNext/Prev`, `SessionColorNext/Prev`, `NewWorktreeSession`). Rebinding any of these in `~/.config/hive/config.json` now takes effect in both views (#112).
+- **Grid view input-mode exit and cursor navigation are configurable**: the previously hard-coded `ctrl+q` exit and `up/down/left/right` cursor keys inside `GridView` now resolve through the active `Detach` and `CursorUp/Down/Left/Right` bindings. As a side effect, grid navigation now also accepts the vim aliases `h/j/k/l` (the chunk 1 defaults for `CursorUp/Down/Left/Right`) — previously the grid only responded to arrow keys (#112).
+- **`Enter` is now the default attach key** (was `a`). Existing configs with `attach: "a"` (the old default) are auto-migrated to `"enter"` on schema v6 upgrade; customized values (anything other than `"a"`) are preserved. **Note:** `enter` was previously a hardcoded alias that attached regardless of configuration; it is now the configured default, so users who rebind `attach` to another key will no longer get `enter` as a free alias (#112).
+- **All keybinding actions are now editable in Settings → Keybindings**: 16 previously missing actions — including cursor nav, reorder, input mode, detach, session color, collapse/expand, sidebar view, and toggle-all — now have settings UI fields (#112).
+
+### Removed
+- **`tab` (focus toggle) binding removed** — `s` already focuses the sidebar; the tab toggle was unused. `FocusPreview` and `FocusSidebar` config fields are dropped (#112).
+
 ## [0.11.0] — 2026-04-15
 
 ### Added

@@ -37,4 +37,4 @@
                                 │╰─────────────────────────────────────────────────────────────────────────────────────╯
 ○ session-2                                                                                                             
  hive / test-project-2 / session-2 [codex] ● [running]                                                                  
- ? help • n new project • t new session • a/enter attach • g grid view • r rename • c next color • x kill session …  ○  
+ ? help • n new project • t new session • enter attach • g grid view • r rename • c next color • x kill session …  ○ i  

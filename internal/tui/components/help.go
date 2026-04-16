@@ -357,7 +357,7 @@ func (hp *HelpPanel) renderUsageTab(_ int) string {
 		"",
 		sec("Attaching"),
 		"",
-		"Press " + key("enter") + " or " + key("a") + " to attach to a session.",
+		"Press " + key("enter") + " to attach to a session.",
 		"",
 		"While attached, use the detach key to return to Hive:",
 		"  " + muted("Default: ") + key(mux.DetachKey()) + "  (configurable in Settings)",

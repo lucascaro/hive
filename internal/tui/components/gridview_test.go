@@ -350,7 +350,7 @@ func TestGridView_CursorWrap(t *testing.T) {
 	}
 
 	makeGV := func(cursor int) *GridView {
-		gv := &GridView{Active: true, Width: 160, Height: 50}
+		gv := &GridView{Active: true, Width: 160, Height: 50, Keys: DefaultGridKeys()}
 		gv.Show(sessions, state.GridRestoreProject)
 		gv.Cursor = cursor
 		return gv
@@ -396,7 +396,7 @@ func TestGridView_CursorWrap_SingleColumn(t *testing.T) {
 		{ID: "s2", Title: "b", AgentType: state.AgentClaude, Status: state.StatusRunning},
 	}
 	makeGV := func(cursor int) *GridView {
-		gv := &GridView{Active: true, Width: 40, Height: 50}
+		gv := &GridView{Active: true, Width: 40, Height: 50, Keys: DefaultGridKeys()}
 		gv.Show(sessions, state.GridRestoreProject)
 		gv.Cursor = cursor
 		return gv
@@ -446,7 +446,7 @@ func TestGridView_CursorWrap_ExtendedCell(t *testing.T) {
 		}
 	}
 	makeGV := func(cursor int, atExtended bool) *GridView {
-		gv := &GridView{Active: true, Width: 160, Height: 50}
+		gv := &GridView{Active: true, Width: 160, Height: 50, Keys: DefaultGridKeys()}
 		gv.Show(sessions, state.GridRestoreProject)
 		gv.Cursor = cursor
 		gv.atExtended = atExtended

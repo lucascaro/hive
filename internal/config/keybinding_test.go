@@ -112,11 +112,44 @@ func TestMigrate_V4ToV5_PreservesUserKeybindings(t *testing.T) {
 	cfg := Config{
 		SchemaVersion: 4,
 		Keybindings: KeybindingsConfig{
+			Attach: KeyBinding{"f"},
+		},
+	}
+	got := Migrate(cfg)
+	if got.Keybindings.Attach.First() != "f" {
+		t.Errorf("Attach = %v, want [f] (user customization preserved)", got.Keybindings.Attach)
+	}
+}
+
+// TestMigrate_V5ToV6_AttachDefaultMigrated ensures the old "a" default for
+// Attach is migrated to "enter" on schema upgrade.
+func TestMigrate_V5ToV6_AttachDefaultMigrated(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: 5,
+		Keybindings: KeybindingsConfig{
 			Attach: KeyBinding{"a"},
 		},
 	}
 	got := Migrate(cfg)
-	if got.Keybindings.Attach.First() != "a" {
-		t.Errorf("Attach = %v, want [a] (user customization preserved)", got.Keybindings.Attach)
+	if got.SchemaVersion != currentSchemaVersion {
+		t.Errorf("SchemaVersion = %d, want %d", got.SchemaVersion, currentSchemaVersion)
+	}
+	if got.Keybindings.Attach.First() != "enter" {
+		t.Errorf("Attach = %v, want [enter] after v5→v6 migration", got.Keybindings.Attach)
+	}
+}
+
+// TestMigrate_V5ToV6_AttachCustomPreserved ensures a user who customized
+// Attach to something other than "a" keeps their value through v5→v6.
+func TestMigrate_V5ToV6_AttachCustomPreserved(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: 5,
+		Keybindings: KeybindingsConfig{
+			Attach: KeyBinding{"f"},
+		},
+	}
+	got := Migrate(cfg)
+	if got.Keybindings.Attach.First() != "f" {
+		t.Errorf("Attach = %v, want [f] (custom preserved)", got.Keybindings.Attach)
 	}
 }
