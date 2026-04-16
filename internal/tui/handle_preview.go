@@ -23,8 +23,9 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 	// captures every session (including the active one) on its own cadence, so
 	// stamping here would double-stamp the active session's pip relative to
 	// the others, making it look like it polls twice as fast.
+	var pipCmd tea.Cmd
 	if !m.HasView(ViewGrid) {
-		m.stampPreviewPoll(msg.SessionID)
+		pipCmd = m.stampPreviewPoll(msg.SessionID)
 	}
 	if msg.SessionID == m.appState.ActiveSessionID {
 		m.appState.PreviewContent = msg.Content
@@ -33,7 +34,7 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 	} else {
 		debugLog.Printf("preview msg ignored: msg.session=%s active=%s gen=%d", msg.SessionID, m.appState.ActiveSessionID, msg.Generation)
 	}
-	return m, m.schedulePollPreview()
+	return m, tea.Batch(pipCmd, m.schedulePollPreview())
 }
 
 func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) (tea.Model, tea.Cmd) {
@@ -44,32 +45,44 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		debugLog.Printf("grid poll msg STALE gen=%d want=%d — discarded", msg.Generation, m.gridPollGen)
 		return m, nil
 	}
-	if msg.Fast {
-		// Fast poll only has the focused session — merge to preserve other cells.
-		// Do NOT stamp the activity pip here: the focused session is already
-		// captured every background tick, and stamping on the 50 ms fast loop
-		// makes its pip flash ~5x faster than other sessions, breaking the
-		// "consistent cadence per session" invariant the activity panel relies
-		// on. The fast loop exists purely for input-echo responsiveness.
-		m.gridView.MergeContents(msg.Contents)
-	} else {
+	if !msg.Fast {
+		// Background poll: stamp activity pips, set content, reschedule.
+		var pipCmd tea.Cmd
 		for sessID := range msg.Contents {
-			m.stampPreviewPoll(sessID)
+			if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
+				pipCmd = cmd
+			}
 		}
-		m.gridView.SetContents(msg.Contents)
+		if msg.Partial {
+			// Partial batch (e.g. input mode excluded the focused session).
+			// MergeContents preserves excluded sessions' content — SetContents
+			// would blank them, causing a visible flash.
+			m.gridView.MergeContents(msg.Contents)
+		} else {
+			m.gridView.SetContents(msg.Contents)
+		}
+		if !m.HasView(ViewGrid) {
+			return m, pipCmd
+		}
+		return m, tea.Batch(pipCmd, m.scheduleGridPoll())
 	}
+	// Fast poll: merge focused session content and stamp its pip.
+	// The pip stays continuously lit (50ms < 150ms flash window), which is
+	// the correct signal: "this session is actively monitored in input mode."
+	var pipCmd tea.Cmd
+	for sessID := range msg.Contents {
+		if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
+			pipCmd = cmd
+		}
+	}
+	m.gridView.MergeContents(msg.Contents)
 	if !m.HasView(ViewGrid) {
-		return m, nil
+		return m, pipCmd
 	}
-	if msg.Fast {
-		// Fast-poll loop: reschedule only if still in input mode.
-		if m.gridView.InputMode() {
-			return m, m.scheduleFocusedSessionPoll()
-		}
-		return m, nil
+	if m.gridView.InputMode() {
+		return m, tea.Batch(pipCmd, m.scheduleFocusedSessionPoll())
 	}
-	// Background loop: always reschedule while grid is visible.
-	return m, m.scheduleGridPoll()
+	return m, pipCmd
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {
@@ -118,30 +131,85 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 // stampPreviewPoll records the time a session's preview was most recently
 // polled. Drives the activity pip flash — fires on every poll regardless of
 // whether the captured content changed.
-func (m *Model) stampPreviewPoll(sessID string) {
+func (m *Model) stampPreviewPoll(sessID string) tea.Cmd {
 	if sessID == "" {
-		return
+		return nil
 	}
 	if m.lastPreviewChange == nil {
 		m.lastPreviewChange = make(map[string]time.Time)
 	}
 	m.lastPreviewChange[sessID] = time.Now()
+	return m.ensureActivityPipRunning()
 }
+
+// Activity pip timing. The flash duration must be < the tick interval so the
+// "off" frame renders between stamps. In grid input mode we run faster (25ms)
+// to drive the rotating progress-pie animation; otherwise 150ms is enough.
+const (
+	ActivityPipFlashNormal = 150 * time.Millisecond
+	ActivityPipFlashInput  = 25 * time.Millisecond
+	activityPipIdleThresh  = 300 * time.Millisecond
+	activityPipInputThresh = 100 * time.Millisecond
+)
 
 // activityPipTickMsg drives redraws so the activity pip flash fades out
 // cleanly even when no other messages are flowing.
 type activityPipTickMsg struct{}
 
+// gridInputActive reports whether the grid view is on top and input mode is on.
+// Used to gate input-mode-specific behavior across pip ticks, polling, and rendering.
+func (m *Model) gridInputActive() bool {
+	return m.HasView(ViewGrid) && m.gridView.InputMode()
+}
+
 // scheduleActivityPipTick returns a tea.Cmd that fires activityPipTickMsg
-// every 150 ms. Lightweight — no IO, just a redraw trigger.
+// at ActivityPipFlashNormal normally, or ActivityPipFlashInput while grid
+// input mode is active so the focused-session pip can drive the rotating
+// progress-pie animation. Lightweight — no IO, just a redraw trigger.
 func (m *Model) scheduleActivityPipTick() tea.Cmd {
-	return tea.Tick(150*time.Millisecond, func(_ time.Time) tea.Msg {
+	interval := ActivityPipFlashNormal
+	if m.gridInputActive() {
+		interval = ActivityPipFlashInput
+	}
+	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		return activityPipTickMsg{}
 	})
 }
 
 func (m Model) handleActivityPipTick() (tea.Model, tea.Cmd) {
+	if !m.hasRecentActivity() {
+		m.activityPipRunning = false
+		return m, nil
+	}
+	m.pipFrame++
 	return m, m.scheduleActivityPipTick()
+}
+
+func (m *Model) hasRecentActivity() bool {
+	if len(m.lastPreviewChange) == 0 {
+		return false
+	}
+	// Keep the ticker alive slightly longer than the flash duration so the
+	// "off" frame renders after the pip expires.
+	threshold := activityPipIdleThresh
+	if m.gridInputActive() {
+		threshold = activityPipInputThresh
+	}
+	now := time.Now()
+	for _, t := range m.lastPreviewChange {
+		if now.Sub(t) < threshold {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) ensureActivityPipRunning() tea.Cmd {
+	if m.activityPipRunning {
+		return nil
+	}
+	m.activityPipRunning = true
+	return m.scheduleActivityPipTick()
 }
 
 // scheduleBellBlink returns a tea.Cmd that fires bellBlinkMsg after 600 ms.
@@ -153,9 +221,18 @@ func (m *Model) scheduleBellBlink() tea.Cmd {
 	})
 }
 
-// inputModeBackgroundMs is the background poll interval (all sessions) during
-// input mode — 2× faster than the default 500 ms.
-const inputModeBackgroundMs = 250
+func (m *Model) ensureBellBlinkRunning() tea.Cmd {
+	if m.bellBlinkRunning {
+		return nil
+	}
+	m.bellBlinkRunning = true
+	return m.scheduleBellBlink()
+}
+
+// inputModeBackgroundMs is the background poll interval (non-focused sessions)
+// during input mode — 2× slower than the default 500ms to free CPU for the
+// focused session's fast 50ms poll.
+const inputModeBackgroundMs = 1000
 
 // inputModeFocusedMs is the focused-session poll interval during input mode.
 const inputModeFocusedMs = 50
@@ -166,16 +243,32 @@ func (m *Model) scheduleGridPoll() tea.Cmd {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
-	// In input mode use a faster background rate (250 ms, 2× the default) so
-	// non-focused sessions are also more responsive. Capped at the configured
-	// interval so tests that set PreviewRefreshMs=1 run at their requested speed.
+	partial := false
 	if m.gridView.InputMode() {
-		fast := time.Duration(inputModeBackgroundMs) * time.Millisecond
-		if fast < interval {
-			interval = fast
+		// In input mode, slow down the background poll to free CPU for the
+		// focused session's fast 50ms loop. The focused session is excluded
+		// from the batch (it's already captured by the fast poll).
+		slow := time.Duration(inputModeBackgroundMs) * time.Millisecond
+		if slow > interval {
+			interval = slow
+		}
+		// Exclude the focused session — already captured by the fast poll.
+		sel := m.gridView.Selected()
+		if sel != nil {
+			filtered := make([]*state.Session, 0, len(sessions))
+			for _, s := range sessions {
+				if s.ID != sel.ID {
+					filtered = append(filtered, s)
+				}
+			}
+			sessions = filtered
+			partial = true
+		}
+		if len(sessions) == 0 {
+			return nil
 		}
 	}
-	return components.PollGridPreviews(sessions, interval, m.gridPollGen)
+	return components.PollGridPreviews(sessions, interval, m.gridPollGen, partial)
 }
 
 // scheduleFocusedSessionPoll returns a tea.Cmd that polls just the focused
@@ -194,6 +287,10 @@ func (m *Model) scheduleFocusedSessionPoll() tea.Cmd {
 }
 
 func (m *Model) schedulePollPreview() tea.Cmd {
+	if m.HasView(ViewGrid) {
+		debugLog.Printf("schedulePollPreview: grid visible, skipping sidebar preview poll")
+		return nil
+	}
 	sess := m.appState.ActiveSession()
 	if sess == nil {
 		debugLog.Printf("schedulePollPreview: no active session (ActiveSessionID=%q)", m.appState.ActiveSessionID)

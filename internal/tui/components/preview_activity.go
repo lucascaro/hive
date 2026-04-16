@@ -16,8 +16,14 @@ import (
 const PreviewActivityPanelHeight = 1
 
 var (
-	activityPipActive = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
-	activityPipIdle   = styles.MutedStyle.Render("○")
+	activityPipActive           = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
+	activityPipActiveBackground = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("●")
+	activityPipIdle             = styles.MutedStyle.Render("○")
+
+	// activityPipPieFrames is the rotating progress-pie animation used for the
+	// input-focused session: empty → quarter → half → three-quarter → full.
+	activityPipPieFrames  = []string{"○", "◔", "◑", "◕", "●"}
+	activityPipFocusStyle = lipgloss.NewStyle().Foreground(styles.ColorSuccess)
 )
 
 type PreviewActivityPanel struct {
@@ -25,6 +31,13 @@ type PreviewActivityPanel struct {
 	Sessions      []*state.Session
 	LastChange    map[string]time.Time
 	FlashDuration time.Duration
+	// FocusedID, when non-empty, marks the session whose pip should render the
+	// rotating progress-pie animation in green. Other sessions render a
+	// standard on/off pip in yellow (background) or green (default).
+	FocusedID string
+	// PipFrame is the current animation frame counter. Used to index into
+	// activityPipPieFrames for the focused session's progress-pie animation.
+	PipFrame int
 }
 
 func (p PreviewActivityPanel) View() string {
@@ -42,9 +55,20 @@ func (p PreviewActivityPanel) View() string {
 		if sess == nil {
 			continue
 		}
-		pip := activityPipIdle
-		if t, ok := p.LastChange[sess.ID]; ok && now.Sub(t) < flash {
-			pip = activityPipActive
+		var pip string
+		isFocused := p.FocusedID != "" && sess.ID == p.FocusedID
+		if isFocused {
+			// Focused input-mode session: rotating green progress pie.
+			frame := activityPipPieFrames[p.PipFrame%len(activityPipPieFrames)]
+			pip = activityPipFocusStyle.Render(frame)
+		} else if t, ok := p.LastChange[sess.ID]; ok && now.Sub(t) < flash {
+			if p.FocusedID != "" {
+				pip = activityPipActiveBackground
+			} else {
+				pip = activityPipActive
+			}
+		} else {
+			pip = activityPipIdle
 		}
 		title := sess.Title
 		if title == "" {

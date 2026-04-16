@@ -43,29 +43,43 @@ type GridSessionSelectedMsg struct {
 // GridPreviewsUpdatedMsg carries fresh capture-pane content for all sessions.
 // Fast=true indicates this is from the input-mode focused-session poll loop;
 // the handler uses this to reschedule the correct loop.
+// Partial=true indicates the batch excluded some sessions (e.g. the focused
+// session during input mode); the handler uses MergeContents to avoid blanking
+// the excluded sessions' content.
 type GridPreviewsUpdatedMsg struct {
 	Contents   map[string]string
 	Fast       bool
+	Partial    bool
 	Generation uint64
 }
 
 // PollGridPreviews returns a tea.Cmd that captures pane content for all sessions.
 // gen is the grid-poll generation; the handler discards stale messages so old
 // chains created by rapid mode toggles die off without compounding the rate.
-func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64) tea.Cmd {
+// When partial is true, the result carries Partial=true so the handler uses
+// MergeContents instead of SetContents (avoids blanking excluded sessions).
+func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64, partial bool) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
-		contents := make(map[string]string, len(sessions))
+		targets := make(map[string]int, len(sessions))
+		targetToID := make(map[string]string, len(sessions))
 		for _, sess := range sessions {
 			if sess.TmuxSession == "" {
 				continue
 			}
 			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			content, err := mux.CapturePane(target, 100)
-			if err == nil {
-				contents[sess.ID] = sanitizePreviewContent(content)
+			targets[target] = 100
+			targetToID[target] = sess.ID
+		}
+		captured, err := mux.BatchCapturePane(targets, true)
+		contents := make(map[string]string, len(sessions))
+		if err == nil {
+			for target, content := range captured {
+				if sid, ok := targetToID[target]; ok {
+					contents[sid] = sanitizePreviewContent(content)
+				}
 			}
 		}
-		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen}
+		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen, Partial: partial}
 	})
 }
 
@@ -80,7 +94,7 @@ func PollFocusedGridPreview(sess *state.Session, interval time.Duration) tea.Cmd
 	sessID := sess.ID
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		contents := make(map[string]string, 1)
-		if content, err := mux.CapturePane(target, 200); err == nil {
+		if content, err := mux.CapturePane(target, 100); err == nil {
 			contents[sessID] = sanitizePreviewContent(content)
 		}
 		return GridPreviewsUpdatedMsg{Contents: contents, Fast: true}
@@ -137,6 +151,14 @@ func (gv *GridView) Hide() {
 // SetContents updates the captured preview content map.
 func (gv *GridView) SetContents(contents map[string]string) {
 	gv.contents = contents
+}
+
+// ContentFor returns the cached preview content for a session (used in tests).
+func (gv *GridView) ContentFor(sessionID string) string {
+	if gv.contents == nil {
+		return ""
+	}
+	return gv.contents[sessionID]
 }
 
 // MergeContents updates only the keys present in contents, leaving other

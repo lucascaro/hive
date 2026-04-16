@@ -115,10 +115,16 @@ type Model struct {
 	// bellBlinkOn is toggled every ~600 ms by the bell-blink ticker so the
 	// bell badge animates on/off in software (ANSI terminal blink is unreliable
 	// in modern terminals like iTerm2 which disable it by default).
-	bellBlinkOn bool
+	bellBlinkOn      bool
+	bellBlinkRunning bool
 	// lastPreviewChange records the time at which each session's preview was
 	// most recently polled. Drives the activity-pip flash. Not persisted.
-	lastPreviewChange map[string]time.Time
+	lastPreviewChange  map[string]time.Time
+	activityPipRunning bool
+	// pipFrame advances on every activityPipTickMsg. Used by the input-mode
+	// focused-session pip to render a rotating "progress pie" animation
+	// (○ → ◔ → ◑ → ◕ → ● → ...) instead of a binary on/off blink.
+	pipFrame int
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -330,8 +336,9 @@ func (m Model) Init() tea.Cmd {
 		m.scheduleWatchTitles(),
 		m.scheduleWatchStatuses(),
 		scheduleWatchState(m.stateLastKnownMtime),
-		m.scheduleBellBlink(),
-		m.scheduleActivityPipTick(),
+	}
+	if len(m.bellPending) > 0 {
+		cmds = append(cmds, m.ensureBellBlinkRunning())
 	}
 	if m.HasView(ViewGrid) {
 		cmds = append(cmds, m.scheduleGridPoll())
@@ -426,6 +433,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bellBlinkOn = !m.bellBlinkOn
 		m.sidebar.SetBellBlink(m.bellBlinkOn)
 		m.gridView.SetBellBlink(m.bellBlinkOn)
+		if len(m.bellPending) == 0 {
+			m.bellBlinkRunning = false
+			return m, nil
+		}
 		return m, m.scheduleBellBlink()
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -459,11 +470,21 @@ func (m Model) View() string {
 		m.gridHelpModel.Width = m.appState.TermWidth
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
 		gridBody := m.gridView.View(gridHints)
+		flashDur := ActivityPipFlashNormal
+		var focusedID string
+		if m.gridView.InputMode() {
+			flashDur = ActivityPipFlashInput
+			if sel := m.gridView.Selected(); sel != nil {
+				focusedID = sel.ID
+			}
+		}
 		gridActivity := components.PreviewActivityPanel{
 			Width:         m.appState.TermWidth,
 			Sessions:      m.gridSessions(m.gridView.Mode),
 			LastChange:    m.lastPreviewChange,
-			FlashDuration: 150 * time.Millisecond,
+			FlashDuration: flashDur,
+			FocusedID:     focusedID,
+			PipFrame:      m.pipFrame,
 		}.View()
 		return lipgloss.JoinVertical(lipgloss.Left, gridBody, gridActivity)
 	case ViewHelp:

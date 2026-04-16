@@ -236,6 +236,21 @@ func (m *MockBackend) GetPaneTitles(session string) (map[string]string, map[stri
 	return titles, bells, nil
 }
 
+func (m *MockBackend) BatchCapturePane(targets map[string]int, _ bool) (map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.record("BatchCapturePane"); err != nil {
+		return nil, err
+	}
+	results := make(map[string]string, len(targets))
+	for target := range targets {
+		if content, ok := m.paneContents[target]; ok {
+			results[target] = content
+		}
+	}
+	return results, nil
+}
+
 func (m *MockBackend) CapturePane(target string, lines int) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

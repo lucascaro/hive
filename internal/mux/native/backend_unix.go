@@ -116,6 +116,18 @@ func (b *Backend) CapturePane(target string, lines int) (string, error) {
 	return resp.Content, nil
 }
 
+func (b *Backend) BatchCapturePane(targets map[string]int, _ bool) (map[string]string, error) {
+	results := make(map[string]string, len(targets))
+	for target, lines := range targets {
+		content, err := b.CapturePane(target, lines)
+		if err != nil {
+			continue
+		}
+		results[target] = content
+	}
+	return results, nil
+}
+
 func (b *Backend) CapturePaneRaw(target string, lines int) (string, error) {
 	resp, err := b.client.do(Request{Op: "capture_pane_raw", Target: target, Lines: lines})
 	if err != nil {

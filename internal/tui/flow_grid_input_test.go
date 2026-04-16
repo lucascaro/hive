@@ -9,6 +9,7 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/mux/muxtest"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/components"
 	"github.com/muesli/termenv"
 )
 
@@ -315,4 +316,235 @@ func TestGridInputMode_HintEscCancelsInputMode(t *testing.T) {
 	}
 	// Grid should still be active.
 	f.AssertGridActive(true)
+}
+
+// TestGridInputMode_BackgroundPollSlowsDown verifies that entering input mode
+// causes the background grid poll to still run for non-focused sessions,
+// freeing CPU for the focused session's fast 50ms poll.
+func TestGridInputMode_BackgroundPollSlowsDown(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Use all-sessions grid (G) so we have 2 sessions from 2 projects.
+	f.SendKey("G")
+	f.AssertGridActive(true)
+
+	// Before input mode: scheduleGridPoll uses the configured interval.
+	cmd := f.model.scheduleGridPoll()
+	if cmd == nil {
+		t.Fatal("scheduleGridPoll should return a cmd in grid view")
+	}
+
+	// Enter input mode.
+	f.SendKey("i")
+	if !f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should be true after pressing i")
+	}
+
+	// In input mode: scheduleGridPoll should still return a cmd (for non-focused sessions).
+	cmd = f.model.scheduleGridPoll()
+	if cmd == nil {
+		t.Fatal("scheduleGridPoll should return a cmd in input mode (non-focused sessions)")
+	}
+}
+
+// TestGridInputMode_FocusedSessionExcludedFromBackgroundPoll verifies that in
+// input mode, the background grid poll does NOT capture the focused session
+// (which is already handled by the fast 50ms focused poll).
+func TestGridInputMode_FocusedSessionExcludedFromBackgroundPoll(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Use all-sessions grid to get both sessions.
+	f.SendKey("G")
+	f.AssertGridActive(true)
+
+	// Record the focused session ID.
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session in grid view")
+	}
+	focusedID := sel.ID
+
+	// Set mock pane content so batch capture returns something.
+	mock.SetPaneContent(mux.Target(sel.TmuxSession, sel.TmuxWindow), "focused content")
+
+	// Enter input mode.
+	f.SendKey("i")
+	if !f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should be true after pressing i")
+	}
+
+	// Fire the background poll and collect the result.
+	cmd := f.model.scheduleGridPoll()
+	if cmd == nil {
+		t.Fatal("scheduleGridPoll should return a cmd in input mode")
+	}
+	msg := cmd()
+	gridMsg, ok := msg.(components.GridPreviewsUpdatedMsg)
+	if !ok {
+		t.Fatalf("expected GridPreviewsUpdatedMsg, got %T", msg)
+	}
+
+	// The focused session should NOT be in the background poll results.
+	if _, found := gridMsg.Contents[focusedID]; found {
+		t.Errorf("background poll should exclude focused session %q in input mode", focusedID)
+	}
+}
+
+// TestGridInputMode_FocusedPollCapturesFocusedOnly verifies that the fast
+// focused-session poll in input mode captures ONLY the focused session.
+func TestGridInputMode_FocusedPollCapturesFocusedOnly(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("G")
+	f.SendKey("i")
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session in grid view")
+	}
+
+	cmd := f.model.scheduleFocusedSessionPoll()
+	if cmd == nil {
+		t.Fatal("scheduleFocusedSessionPoll should return a cmd in input mode")
+	}
+	msg := cmd()
+	gridMsg, ok := msg.(components.GridPreviewsUpdatedMsg)
+	if !ok {
+		t.Fatalf("expected GridPreviewsUpdatedMsg, got %T", msg)
+	}
+	if !gridMsg.Fast {
+		t.Error("focused poll should have Fast=true")
+	}
+	if len(gridMsg.Contents) != 1 {
+		t.Errorf("focused poll should capture exactly 1 session, got %d", len(gridMsg.Contents))
+	}
+	if _, found := gridMsg.Contents[sel.ID]; !found {
+		t.Errorf("focused poll should contain session %q", sel.ID)
+	}
+	_ = mock
+}
+
+// TestGridInputMode_FastPollStampsPip verifies that the fast poll in input
+// mode stamps the focused session's activity pip so it stays continuously lit.
+func TestGridInputMode_FastPollStampsPip(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("G")
+	f.SendKey("i")
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session")
+	}
+
+	// Clear any prior pip stamps.
+	delete(f.model.lastPreviewChange, sel.ID)
+
+	// Simulate a fast poll arriving for the focused session.
+	f.Send(components.GridPreviewsUpdatedMsg{
+		Contents: map[string]string{sel.ID: "updated content"},
+		Fast:     true,
+	})
+
+	// The pip should have been stamped.
+	if _, stamped := f.model.lastPreviewChange[sel.ID]; !stamped {
+		t.Error("fast poll should stamp the focused session's activity pip in input mode")
+	}
+}
+
+// TestGridInputMode_BackgroundPollPreservesFocusedContent verifies that the
+// background poll in input mode does NOT blank out the focused session's
+// content (which is maintained by the fast poll).
+func TestGridInputMode_BackgroundPollPreservesFocusedContent(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Set mock content for all sessions.
+	for _, sess := range state.AllSessions(&f.model.appState) {
+		mock.SetPaneContent(mux.Target(sess.TmuxSession, sess.TmuxWindow), "content for "+sess.ID)
+	}
+
+	f.SendKey("G")
+	f.AssertGridActive(true)
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session")
+	}
+
+	// Pre-populate the focused session's content (simulates a fast poll having run).
+	f.model.gridView.MergeContents(map[string]string{sel.ID: "fast poll content"})
+
+	// Enter input mode.
+	f.SendKey("i")
+
+	// Simulate a background poll arriving (which excludes the focused session).
+	bgContents := make(map[string]string)
+	for _, sess := range state.AllSessions(&f.model.appState) {
+		if sess.ID != sel.ID {
+			bgContents[sess.ID] = "bg content for " + sess.ID
+		}
+	}
+	f.Send(components.GridPreviewsUpdatedMsg{
+		Contents:   bgContents,
+		Partial:    true, // input mode excluded the focused session
+		Generation: f.model.gridPollGen,
+	})
+
+	// The focused session's content should be preserved (not blanked).
+	focusedContent := f.model.gridView.ContentFor(sel.ID)
+	if focusedContent == "" {
+		t.Error("focused session content should be preserved after background poll in input mode")
+	}
+	if focusedContent != "fast poll content" {
+		t.Errorf("focused session content = %q, want %q", focusedContent, "fast poll content")
+	}
+}
+
+// TestGridInputMode_ExitRestoresNormalPolling verifies that exiting input mode
+// restores the normal background polling behavior (all sessions at default interval).
+func TestGridInputMode_ExitRestoresNormalPolling(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Set mock content for actual targets used by testAppStateWithTwoProjects.
+	for _, sess := range state.AllSessions(&f.model.appState) {
+		mock.SetPaneContent(mux.Target(sess.TmuxSession, sess.TmuxWindow), "content for "+sess.ID)
+	}
+
+	// Use all-sessions grid to have both sessions.
+	f.SendKey("G")
+	f.AssertGridActive(true)
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session")
+	}
+
+	// Enter then exit input mode.
+	f.SendKey("i")
+	f.Send(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if f.model.gridView.InputMode() {
+		t.Fatal("gridView.InputMode() should be false after Ctrl+Q")
+	}
+
+	// Fire the background poll — should include ALL sessions again.
+	cmd := f.model.scheduleGridPoll()
+	if cmd == nil {
+		t.Fatal("scheduleGridPoll should return a cmd after exiting input mode")
+	}
+	msg := cmd()
+	gridMsg, ok := msg.(components.GridPreviewsUpdatedMsg)
+	if !ok {
+		t.Fatalf("expected GridPreviewsUpdatedMsg, got %T", msg)
+	}
+	// After exiting input mode, the focused session should be back in the poll.
+	if _, found := gridMsg.Contents[sel.ID]; !found {
+		t.Errorf("after exiting input mode, background poll should include all sessions including %q", sel.ID)
+	}
+	_ = mock
 }
