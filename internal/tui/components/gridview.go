@@ -123,6 +123,14 @@ func (gv *GridView) SetContents(contents map[string]string) {
 	gv.contents = contents
 }
 
+// ContentFor returns the cached preview content for a session (used in tests).
+func (gv *GridView) ContentFor(sessionID string) string {
+	if gv.contents == nil {
+		return ""
+	}
+	return gv.contents[sessionID]
+}
+
 // MergeContents updates only the keys present in contents, leaving other
 // sessions' content untouched. Used by the focused-session fast poll so it
 // doesn't blank out non-focused cells.

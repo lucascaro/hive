@@ -46,14 +46,22 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		return m, nil
 	}
 	if !msg.Fast {
-		// Background poll: stamp activity pips, set full content, reschedule.
+		// Background poll: stamp activity pips, set content, reschedule.
 		var pipCmd tea.Cmd
 		for sessID := range msg.Contents {
 			if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
 				pipCmd = cmd
 			}
 		}
-		m.gridView.SetContents(msg.Contents)
+		if m.gridView.InputMode() {
+			// In input mode the background batch excludes the focused session
+			// (handled by the fast poll). Use MergeContents to preserve the
+			// focused session's content — SetContents would blank it out,
+			// causing a visible flash between background and fast poll ticks.
+			m.gridView.MergeContents(msg.Contents)
+		} else {
+			m.gridView.SetContents(msg.Contents)
+		}
 		if !m.HasView(ViewGrid) {
 			return m, pipCmd
 		}
