@@ -20,7 +20,6 @@ type KeyMap struct {
 	ToggleCollapse key.Binding
 	CollapseItem   key.Binding
 	ExpandItem     key.Binding
-	FocusToggle    key.Binding
 	NavUp          key.Binding
 	NavDown        key.Binding
 	NavProjectUp   key.Binding
@@ -99,11 +98,10 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		KillSession:    bind(kb.KillSession, "", "kill session"),
 		KillTeam:       bind(kb.KillTeam, "", "kill team"),
 		Rename:         bind(kb.Rename, "", "rename"),
-		Attach:         bind(kb.Attach, "", "attach", "enter"),
+		Attach:         bind(kb.Attach, "", "attach"),
 		ToggleCollapse: bind(kb.ToggleCollapse, "space", "toggle"),
 		CollapseItem:   bind(kb.CollapseItem, "←/h", "collapse"),
 		ExpandItem:     bind(kb.ExpandItem, "→/l", "expand"),
-		FocusToggle:    bind(kb.FocusPreview, "tab", "switch pane"),
 		NavUp:          bind(kb.NavUp, "↑", "up", "up"),
 		NavDown:        bind(kb.NavDown, "↓", "down", "down"),
 		NavProjectUp:   bind(kb.NavProjectUp, "", "prev project"),
@@ -157,7 +155,6 @@ func (km KeyMap) ShortHelp() []key.Binding {
 		km.ColorNext,
 		km.KillSession,
 		km.Settings,
-		km.FocusToggle,
 		km.Quit,
 	}
 }
@@ -169,7 +166,7 @@ func (km KeyMap) FullHelp() [][]key.Binding {
 		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
 		{km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Attach, km.InputMode, km.Detach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
 		{km.ColorNext, km.ColorPrev, km.SessionColorNext, km.SessionColorPrev, km.Filter, km.SidebarView, km.GridOverview, km.ToggleAll},
-		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.FocusToggle, km.Quit, km.QuitKill},
+		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.Quit, km.QuitKill},
 	}
 }
 

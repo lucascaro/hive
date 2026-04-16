@@ -10,7 +10,7 @@ func DefaultGridKeys() GridKeys {
 	return GridKeys{
 		Detach:      key.NewBinding(key.WithKeys("ctrl+q")),
 		InputMode:   key.NewBinding(key.WithKeys("i")),
-		Attach:      key.NewBinding(key.WithKeys("enter", "a")),
+		Attach:      key.NewBinding(key.WithKeys("enter")),
 		CursorUp:    key.NewBinding(key.WithKeys("up")),
 		CursorDown:  key.NewBinding(key.WithKeys("down")),
 		CursorLeft:  key.NewBinding(key.WithKeys("left")),

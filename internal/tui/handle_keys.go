@@ -307,14 +307,6 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.PushView(ViewHelp)
 		return m, nil
 
-	case key.Matches(msg, m.keys.FocusToggle):
-		if m.appState.FocusedPane == state.PaneSidebar {
-			m.appState.FocusedPane = state.PanePreview
-		} else {
-			m.appState.FocusedPane = state.PaneSidebar
-		}
-		return m, nil
-
 	case key.Matches(msg, m.keys.Filter):
 		m.appState.FilterQuery = ""
 		m.PushView(ViewFilter)

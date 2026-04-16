@@ -23,7 +23,7 @@
 | `n` | New project |
 | `t` | New session (opens agent picker) |
 | `T` | New agent team (opens wizard) |
-| `a` / `Enter` | Attach to selected session |
+| `Enter` | Attach to selected session |
 | `r` | Rename selected session or team |
 | `x` | Kill selected session (with confirmation) |
 | `D` | Kill entire team (with confirmation) |
@@ -35,7 +35,6 @@
 | Key | Action |
 |-----|--------|
 | `s` | Switch to sidebar view (focus sidebar; exits grid if open) |
-| `Tab` | Toggle between sidebar and preview focus |
 
 ## Grid View
 
@@ -43,8 +42,8 @@
 |-----|--------|
 | `g` | Open grid view for the current project |
 | `G` | Open grid view for all projects |
-| `←` / `→` / `↑` / `↓` | Navigate grid cells (arrow keys only) |
-| `Enter` / `a` | Attach to selected session |
+| `←` / `→` / `↑` / `↓` / `h` / `j` / `k` / `l` | Navigate grid cells |
+| `Enter` | Attach to selected session |
 | `t` | New session in the selected session's project |
 | `W` | New worktree session in the selected session's project |
 | `x` | Kill selected session (with confirmation) |
