@@ -53,11 +53,10 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 				pipCmd = cmd
 			}
 		}
-		if m.gridView.InputMode() {
-			// In input mode the background batch excludes the focused session
-			// (handled by the fast poll). Use MergeContents to preserve the
-			// focused session's content — SetContents would blank it out,
-			// causing a visible flash between background and fast poll ticks.
+		if msg.Partial {
+			// Partial batch (e.g. input mode excluded the focused session).
+			// MergeContents preserves excluded sessions' content — SetContents
+			// would blank them, causing a visible flash.
 			m.gridView.MergeContents(msg.Contents)
 		} else {
 			m.gridView.SetContents(msg.Contents)
@@ -210,6 +209,7 @@ func (m *Model) scheduleGridPoll() tea.Cmd {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
+	partial := false
 	if m.gridView.InputMode() {
 		// In input mode, slow down the background poll to free CPU for the
 		// focused session's fast 50ms loop. The focused session is excluded
@@ -228,12 +228,13 @@ func (m *Model) scheduleGridPoll() tea.Cmd {
 				}
 			}
 			sessions = filtered
+			partial = true
 		}
 		if len(sessions) == 0 {
 			return nil
 		}
 	}
-	return components.PollGridPreviews(sessions, interval, m.gridPollGen)
+	return components.PollGridPreviews(sessions, interval, m.gridPollGen, partial)
 }
 
 // scheduleFocusedSessionPoll returns a tea.Cmd that polls just the focused

@@ -462,6 +462,7 @@ func TestGridInputMode_BackgroundPollPreservesFocusedContent(t *testing.T) {
 	}
 	f.Send(components.GridPreviewsUpdatedMsg{
 		Contents:   bgContents,
+		Partial:    true, // input mode excluded the focused session
 		Generation: f.model.gridPollGen,
 	})
 

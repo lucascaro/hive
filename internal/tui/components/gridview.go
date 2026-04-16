@@ -23,16 +23,22 @@ type GridSessionSelectedMsg struct {
 // GridPreviewsUpdatedMsg carries fresh capture-pane content for all sessions.
 // Fast=true indicates this is from the input-mode focused-session poll loop;
 // the handler uses this to reschedule the correct loop.
+// Partial=true indicates the batch excluded some sessions (e.g. the focused
+// session during input mode); the handler uses MergeContents to avoid blanking
+// the excluded sessions' content.
 type GridPreviewsUpdatedMsg struct {
 	Contents   map[string]string
 	Fast       bool
+	Partial    bool
 	Generation uint64
 }
 
 // PollGridPreviews returns a tea.Cmd that captures pane content for all sessions.
 // gen is the grid-poll generation; the handler discards stale messages so old
 // chains created by rapid mode toggles die off without compounding the rate.
-func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64) tea.Cmd {
+// When partial is true, the result carries Partial=true so the handler uses
+// MergeContents instead of SetContents (avoids blanking excluded sessions).
+func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64, partial bool) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		targets := make(map[string]int, len(sessions))
 		targetToID := make(map[string]string, len(sessions))
@@ -53,7 +59,7 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uin
 				}
 			}
 		}
-		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen}
+		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen, Partial: partial}
 	})
 }
 
