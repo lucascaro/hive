@@ -23,14 +23,22 @@ type TitlesDetectedMsg struct {
 // sessionTargets maps sessionID → "tmuxSession:windowIdx".
 func WatchTitles(sessionTargets map[string]string, interval time.Duration) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
-		found := make(map[string]string)
+		targets := make(map[string]int, len(sessionTargets))
+		targetToSession := make(map[string]string, len(sessionTargets))
 		for sessionID, target := range sessionTargets {
-			raw, err := mux.CapturePaneRaw(target, 200)
-			if err != nil {
-				continue
-			}
+			targets[target] = 200
+			targetToSession[target] = sessionID
+		}
+		captured, err := mux.BatchCapturePane(targets, false)
+		if err != nil {
+			return nil
+		}
+		found := make(map[string]string)
+		for target, raw := range captured {
 			if title := ExtractTitle(raw); title != "" {
-				found[sessionID] = title
+				if sid, ok := targetToSession[target]; ok {
+					found[sid] = title
+				}
 			}
 		}
 		if len(found) == 0 {
@@ -94,11 +102,21 @@ func WatchStatuses(
 	interval time.Duration,
 ) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
+		batchTargets := make(map[string]int, len(sessionTargets))
+		targetToSession := make(map[string]string, len(sessionTargets))
+		for sessionID, target := range sessionTargets {
+			batchTargets[target] = 50
+			targetToSession[target] = sessionID
+		}
+		captured, err := mux.BatchCapturePane(batchTargets, true)
+		if err != nil {
+			return StatusesDetectedMsg{Titles: titles, Bells: bells}
+		}
 		statuses := make(map[string]state.SessionStatus, len(sessionTargets))
 		contents := make(map[string]string, len(sessionTargets))
-		for sessionID, target := range sessionTargets {
-			content, err := mux.CapturePane(target, 50)
-			if err != nil {
+		for target, content := range captured {
+			sessionID, ok := targetToSession[target]
+			if !ok {
 				continue
 			}
 			contents[sessionID] = content

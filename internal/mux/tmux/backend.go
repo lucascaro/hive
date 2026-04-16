@@ -76,6 +76,10 @@ func (b *Backend) CapturePaneRaw(target string, lines int) (string, error) {
 	return tmux.CapturePaneRaw(target, lines)
 }
 
+func (b *Backend) BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, error) {
+	return tmux.BatchCapturePane(targets, escapes)
+}
+
 func (b *Backend) GetCurrentCommand(target string) (string, error) {
 	return tmux.GetCurrentCommand(target)
 }

@@ -197,10 +197,12 @@ func TestInit_IncludesGridPollWhenGridRestored(t *testing.T) {
 	if !ok {
 		t.Fatalf("Init() msg type = %T, want tea.BatchMsg", msg)
 	}
-	// Expected commands: SetWindowTitle, PollPreview, WatchTitles, WatchStatuses,
-	// WatchState, BellBlink, ActivityPipTick, GridPoll = 8 total.
-	if len(batch) != 8 {
-		t.Fatalf("Init() batch length = %d, want 8 including grid poll", len(batch))
+	// Expected commands: SetWindowTitle, WatchTitles, WatchStatuses,
+	// WatchState, GridPoll = 5 total. PollPreview is skipped when grid is
+	// visible (grid captures all sessions). Bell blink and activity pip
+	// tickers are started on-demand.
+	if len(batch) != 5 {
+		t.Fatalf("Init() batch length = %d, want 5 including grid poll", len(batch))
 	}
 }
 

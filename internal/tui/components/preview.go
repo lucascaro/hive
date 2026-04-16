@@ -40,6 +40,8 @@ var allAnsiSeq = regexp.MustCompile(
 		`)`,
 )
 
+var controlReplacer = strings.NewReplacer("\r", "", "\v", "", "\f", "", "\a", "")
+
 // sanitizePreviewContent strips all ANSI escape sequences that are NOT SGR
 // (Select Graphic Rendition, i.e. color/style codes ending with 'm').
 // Sequences like cursor movement, cursor positioning, scroll, and mode changes
@@ -60,7 +62,7 @@ func sanitizePreviewContent(s string) string {
 		}
 		return match
 	})
-	s = strings.NewReplacer("\r", "", "\v", "", "\f", "", "\a", "").Replace(s)
+	s = controlReplacer.Replace(s)
 	s = expandTabs(s)
 	s = stripZeroWidthChars(s)
 	return s
@@ -72,15 +74,17 @@ func sanitizePreviewContent(s string) string {
 // lipgloss applies Width() padding, it pads based on display width, leaving
 // lines with different physical lengths. This causes misaligned borders when
 // the terminal renders the content.
+var zeroWidthReplacer = strings.NewReplacer(
+	"\u200B", "",
+	"\u200C", "",
+	"\u200D", "",
+	"\uFEFF", "",
+	"\u2060", "",
+	"\u00AD", "",
+)
+
 func stripZeroWidthChars(s string) string {
-	return strings.NewReplacer(
-		"\u200B", "", // ZERO WIDTH SPACE
-		"\u200C", "", // ZERO WIDTH NON-JOINER
-		"\u200D", "", // ZERO WIDTH JOINER
-		"\uFEFF", "", // ZERO WIDTH NO-BREAK SPACE (BOM)
-		"\u2060", "", // WORD JOINER
-		"\u00AD", "", // SOFT HYPHEN
-	).Replace(s)
+	return zeroWidthReplacer.Replace(s)
 }
 
 // expandTabs replaces each horizontal tab with the number of spaces needed to
@@ -200,6 +204,17 @@ type SessionWindowGoneMsg struct {
 	SessionID string
 }
 
+// deadCheckInterval controls how often PollPreview checks IsPaneDead.
+// Checking every tick wastes a subprocess; every 10th tick (5s at 500ms) is sufficient.
+const deadCheckInterval = 10
+
+// pollPreviewTick tracks the tick count per generation for dead-pane throttling.
+var pollPreviewTick struct {
+	mu    sync.Mutex
+	gen   uint64
+	count int
+}
+
 // PollPreview returns a tea.Cmd that captures the current pane content.
 // gen is a monotonically increasing generation counter incremented whenever
 // the active session changes, so stale in-flight results can be discarded.
@@ -218,9 +233,15 @@ func PollPreview(sessionID, tmuxSession string, tmuxWindow int, interval time.Du
 			previewLog.Printf("PollPreview: CapturePane(%s) error: %v gen=%d", target, err, gen)
 			return PreviewUpdatedMsg{SessionID: sessionID, Content: "", Generation: gen}
 		}
-		// Pane process exited but window still exists (e.g. remain-on-exit).
-		// Treat as gone so hive cleans up the session.
-		if mux.IsPaneDead(target) {
+		pollPreviewTick.mu.Lock()
+		if pollPreviewTick.gen != gen {
+			pollPreviewTick.gen = gen
+			pollPreviewTick.count = 0
+		}
+		pollPreviewTick.count++
+		checkDead := pollPreviewTick.count%deadCheckInterval == 0
+		pollPreviewTick.mu.Unlock()
+		if checkDead && mux.IsPaneDead(target) {
 			previewLog.Printf("PollPreview: pane dead session=%s target=%s gen=%d", sessionID, target, gen)
 			return SessionWindowGoneMsg{SessionID: sessionID}
 		}

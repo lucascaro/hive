@@ -100,6 +100,9 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.appState.PreviewContent = ""
 	m.preview.SetContent("")
 	cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
+	if len(m.bellPending) > 0 {
+		cmds = append(cmds, m.ensureBellBlinkRunning())
+	}
 	if m.HasView(ViewGrid) {
 		m.gridPollGen++
 		cmds = append(cmds, m.scheduleGridPoll())
@@ -200,7 +203,7 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 			m.lastBellTime = time.Now()
 		}
 		if newBell {
-			changed = true // sidebar needs to show bell badges
+			changed = true
 		}
 	}
 
@@ -216,5 +219,9 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		m.sidebar.SetBellPending(m.bellPending)
 		m.gridView.SetBellPending(m.bellPending)
 	}
-	return m, m.scheduleWatchStatuses()
+	var bellCmd tea.Cmd
+	if len(m.bellPending) > 0 {
+		bellCmd = m.ensureBellBlinkRunning()
+	}
+	return m, tea.Batch(bellCmd, m.scheduleWatchStatuses())
 }

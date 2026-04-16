@@ -23,8 +23,9 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 	// captures every session (including the active one) on its own cadence, so
 	// stamping here would double-stamp the active session's pip relative to
 	// the others, making it look like it polls twice as fast.
+	var pipCmd tea.Cmd
 	if !m.HasView(ViewGrid) {
-		m.stampPreviewPoll(msg.SessionID)
+		pipCmd = m.stampPreviewPoll(msg.SessionID)
 	}
 	if msg.SessionID == m.appState.ActiveSessionID {
 		m.appState.PreviewContent = msg.Content
@@ -33,7 +34,7 @@ func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model
 	} else {
 		debugLog.Printf("preview msg ignored: msg.session=%s active=%s gen=%d", msg.SessionID, m.appState.ActiveSessionID, msg.Generation)
 	}
-	return m, m.schedulePollPreview()
+	return m, tea.Batch(pipCmd, m.schedulePollPreview())
 }
 
 func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) (tea.Model, tea.Cmd) {
@@ -53,16 +54,22 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		// on. The fast loop exists purely for input-echo responsiveness.
 		m.gridView.MergeContents(msg.Contents)
 	} else {
+		var pipCmd tea.Cmd
 		for sessID := range msg.Contents {
-			m.stampPreviewPoll(sessID)
+			if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
+				pipCmd = cmd
+			}
 		}
 		m.gridView.SetContents(msg.Contents)
+		if !m.HasView(ViewGrid) {
+			return m, pipCmd
+		}
+		return m, tea.Batch(pipCmd, m.scheduleGridPoll())
 	}
 	if !m.HasView(ViewGrid) {
 		return m, nil
 	}
 	if msg.Fast {
-		// Fast-poll loop: reschedule only if still in input mode.
 		if m.gridView.InputMode() {
 			return m, m.scheduleFocusedSessionPoll()
 		}
@@ -118,14 +125,15 @@ func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) 
 // stampPreviewPoll records the time a session's preview was most recently
 // polled. Drives the activity pip flash — fires on every poll regardless of
 // whether the captured content changed.
-func (m *Model) stampPreviewPoll(sessID string) {
+func (m *Model) stampPreviewPoll(sessID string) tea.Cmd {
 	if sessID == "" {
-		return
+		return nil
 	}
 	if m.lastPreviewChange == nil {
 		m.lastPreviewChange = make(map[string]time.Time)
 	}
 	m.lastPreviewChange[sessID] = time.Now()
+	return m.ensureActivityPipRunning()
 }
 
 // activityPipTickMsg drives redraws so the activity pip flash fades out
@@ -141,7 +149,32 @@ func (m *Model) scheduleActivityPipTick() tea.Cmd {
 }
 
 func (m Model) handleActivityPipTick() (tea.Model, tea.Cmd) {
+	if !m.hasRecentActivity() {
+		m.activityPipRunning = false
+		return m, nil
+	}
 	return m, m.scheduleActivityPipTick()
+}
+
+func (m *Model) hasRecentActivity() bool {
+	if len(m.lastPreviewChange) == 0 {
+		return false
+	}
+	now := time.Now()
+	for _, t := range m.lastPreviewChange {
+		if now.Sub(t) < 300*time.Millisecond {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) ensureActivityPipRunning() tea.Cmd {
+	if m.activityPipRunning {
+		return nil
+	}
+	m.activityPipRunning = true
+	return m.scheduleActivityPipTick()
 }
 
 // scheduleBellBlink returns a tea.Cmd that fires bellBlinkMsg after 600 ms.
@@ -151,6 +184,14 @@ func (m *Model) scheduleBellBlink() tea.Cmd {
 	return tea.Tick(600*time.Millisecond, func(_ time.Time) tea.Msg {
 		return bellBlinkMsg{}
 	})
+}
+
+func (m *Model) ensureBellBlinkRunning() tea.Cmd {
+	if m.bellBlinkRunning {
+		return nil
+	}
+	m.bellBlinkRunning = true
+	return m.scheduleBellBlink()
 }
 
 // inputModeBackgroundMs is the background poll interval (all sessions) during
@@ -194,6 +235,10 @@ func (m *Model) scheduleFocusedSessionPoll() tea.Cmd {
 }
 
 func (m *Model) schedulePollPreview() tea.Cmd {
+	if m.HasView(ViewGrid) {
+		debugLog.Printf("schedulePollPreview: grid visible, skipping sidebar preview poll")
+		return nil
+	}
 	sess := m.appState.ActiveSession()
 	if sess == nil {
 		debugLog.Printf("schedulePollPreview: no active session (ActiveSessionID=%q)", m.appState.ActiveSessionID)

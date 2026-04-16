@@ -59,6 +59,11 @@ type Backend interface {
 	// CapturePaneRaw returns content with all escape sequences preserved
 	// (used by the title watcher to detect OSC title sequences).
 	CapturePaneRaw(target string, lines int) (string, error)
+	// BatchCapturePane captures multiple panes in a single operation.
+	// targets maps target ("session:window") to the number of scrollback lines.
+	// escapes controls whether ANSI escape codes are preserved (-e flag).
+	// Returns a map from target to captured content.
+	BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, error)
 	// GetCurrentCommand returns the name of the foreground process in the pane.
 	GetCurrentCommand(target string) (string, error)
 	// IsPaneDead reports whether the pane's process has exited.
@@ -186,6 +191,14 @@ func CapturePaneRaw(target string, lines int) (string, error) {
 		return "", nil
 	}
 	return active.CapturePaneRaw(target, lines)
+}
+
+// BatchCapturePane captures multiple panes in a single operation.
+func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, error) {
+	if active == nil {
+		return nil, nil
+	}
+	return active.BatchCapturePane(targets, escapes)
 }
 
 // GetCurrentCommand returns the name of the foreground process in the pane.

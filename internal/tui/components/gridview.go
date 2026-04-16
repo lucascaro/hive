@@ -34,15 +34,23 @@ type GridPreviewsUpdatedMsg struct {
 // chains created by rapid mode toggles die off without compounding the rate.
 func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uint64) tea.Cmd {
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
-		contents := make(map[string]string, len(sessions))
+		targets := make(map[string]int, len(sessions))
+		targetToID := make(map[string]string, len(sessions))
 		for _, sess := range sessions {
 			if sess.TmuxSession == "" {
 				continue
 			}
 			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			content, err := mux.CapturePane(target, 100)
-			if err == nil {
-				contents[sess.ID] = sanitizePreviewContent(content)
+			targets[target] = 100
+			targetToID[target] = sess.ID
+		}
+		captured, err := mux.BatchCapturePane(targets, true)
+		contents := make(map[string]string, len(sessions))
+		if err == nil {
+			for target, content := range captured {
+				if sid, ok := targetToID[target]; ok {
+					contents[sid] = sanitizePreviewContent(content)
+				}
 			}
 		}
 		return GridPreviewsUpdatedMsg{Contents: contents, Generation: gen}
@@ -60,7 +68,7 @@ func PollFocusedGridPreview(sess *state.Session, interval time.Duration) tea.Cmd
 	sessID := sess.ID
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		contents := make(map[string]string, 1)
-		if content, err := mux.CapturePane(target, 200); err == nil {
+		if content, err := mux.CapturePane(target, 100); err == nil {
 			contents[sessID] = sanitizePreviewContent(content)
 		}
 		return GridPreviewsUpdatedMsg{Contents: contents, Fast: true}
