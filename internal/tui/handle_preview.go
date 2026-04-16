@@ -188,9 +188,10 @@ func (m *Model) ensureBellBlinkRunning() tea.Cmd {
 	return m.scheduleBellBlink()
 }
 
-// inputModeBackgroundMs is the background poll interval (all sessions) during
-// input mode — 2× faster than the default 500 ms.
-const inputModeBackgroundMs = 250
+// inputModeBackgroundMs is the background poll interval (non-focused sessions)
+// during input mode — 2× slower than the default 500ms to free CPU for the
+// focused session's fast 50ms poll.
+const inputModeBackgroundMs = 1000
 
 // inputModeFocusedMs is the focused-session poll interval during input mode.
 const inputModeFocusedMs = 50
@@ -201,13 +202,27 @@ func (m *Model) scheduleGridPoll() tea.Cmd {
 		return nil
 	}
 	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
-	// In input mode use a faster background rate (250 ms, 2× the default) so
-	// non-focused sessions are also more responsive. Capped at the configured
-	// interval so tests that set PreviewRefreshMs=1 run at their requested speed.
 	if m.gridView.InputMode() {
-		fast := time.Duration(inputModeBackgroundMs) * time.Millisecond
-		if fast < interval {
-			interval = fast
+		// In input mode, slow down the background poll to free CPU for the
+		// focused session's fast 50ms loop. The focused session is excluded
+		// from the batch (it's already captured by the fast poll).
+		slow := time.Duration(inputModeBackgroundMs) * time.Millisecond
+		if slow > interval {
+			interval = slow
+		}
+		// Exclude the focused session — already captured by the fast poll.
+		sel := m.gridView.Selected()
+		if sel != nil {
+			filtered := make([]*state.Session, 0, len(sessions))
+			for _, s := range sessions {
+				if s.ID != sel.ID {
+					filtered = append(filtered, s)
+				}
+			}
+			sessions = filtered
+		}
+		if len(sessions) == 0 {
+			return nil
 		}
 	}
 	return components.PollGridPreviews(sessions, interval, m.gridPollGen)
