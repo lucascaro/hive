@@ -16,8 +16,9 @@ import (
 const PreviewActivityPanelHeight = 1
 
 var (
-	activityPipActive = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
-	activityPipIdle   = styles.MutedStyle.Render("○")
+	activityPipActive            = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
+	activityPipActiveBackground   = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("●")
+	activityPipIdle              = styles.MutedStyle.Render("○")
 )
 
 type PreviewActivityPanel struct {
@@ -25,6 +26,10 @@ type PreviewActivityPanel struct {
 	Sessions      []*state.Session
 	LastChange    map[string]time.Time
 	FlashDuration time.Duration
+	// FocusedID, when non-empty, marks the session whose pip should render in
+	// the "focused" color (green). All other sessions get the background color
+	// (yellow). Used to distinguish the input-focused session in the grid.
+	FocusedID string
 }
 
 func (p PreviewActivityPanel) View() string {
@@ -44,7 +49,11 @@ func (p PreviewActivityPanel) View() string {
 		}
 		pip := activityPipIdle
 		if t, ok := p.LastChange[sess.ID]; ok && now.Sub(t) < flash {
-			pip = activityPipActive
+			if p.FocusedID != "" && sess.ID != p.FocusedID {
+				pip = activityPipActiveBackground
+			} else {
+				pip = activityPipActive
+			}
 		}
 		title := sess.Title
 		if title == "" {

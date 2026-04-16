@@ -458,14 +458,19 @@ func (m Model) View() string {
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
 		gridBody := m.gridView.View(gridHints)
 		flashDur := 150 * time.Millisecond
+		var focusedID string
 		if m.gridView.InputMode() {
 			flashDur = 25 * time.Millisecond
+			if sel := m.gridView.Selected(); sel != nil {
+				focusedID = sel.ID
+			}
 		}
 		gridActivity := components.PreviewActivityPanel{
 			Width:         m.appState.TermWidth,
 			Sessions:      m.gridSessions(m.gridView.Mode),
 			LastChange:    m.lastPreviewChange,
 			FlashDuration: flashDur,
+			FocusedID:     focusedID,
 		}.View()
 		return lipgloss.JoinVertical(lipgloss.Left, gridBody, gridActivity)
 	case ViewHelp:
