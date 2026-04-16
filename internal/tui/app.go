@@ -121,6 +121,10 @@ type Model struct {
 	// most recently polled. Drives the activity-pip flash. Not persisted.
 	lastPreviewChange  map[string]time.Time
 	activityPipRunning bool
+	// pipFrame advances on every activityPipTickMsg. Used by the input-mode
+	// focused-session pip to render a rotating "progress pie" animation
+	// (○ → ◔ → ◑ → ◕ → ● → ...) instead of a binary on/off blink.
+	pipFrame int
 	// stateLastKnownMtime is the modification time of state.json as of our most
 	// recent write or reload.  The background watcher compares against this to
 	// detect writes made by other hive instances.
@@ -471,6 +475,7 @@ func (m Model) View() string {
 			LastChange:    m.lastPreviewChange,
 			FlashDuration: flashDur,
 			FocusedID:     focusedID,
+			PipFrame:      m.pipFrame,
 		}.View()
 		return lipgloss.JoinVertical(lipgloss.Left, gridBody, gridActivity)
 	case ViewHelp:

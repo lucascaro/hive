@@ -164,6 +164,7 @@ func (m Model) handleActivityPipTick() (tea.Model, tea.Cmd) {
 		m.activityPipRunning = false
 		return m, nil
 	}
+	m.pipFrame++
 	return m, m.scheduleActivityPipTick()
 }
 
