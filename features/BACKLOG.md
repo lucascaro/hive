@@ -9,6 +9,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 |---|-------|-------|-------|------------|
 | 1 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
 | 2 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
+| 3 | #119 | Add command palette | RESEARCH | M |
 
 ## Rejected
 

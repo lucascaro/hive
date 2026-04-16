@@ -715,7 +715,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if inSidebar {
 			return m.handleSidebarClick(msg.Y)
 		}
-		// Click in preview area: attach the active session (same as pressing 'a').
+		// Click in preview area: attach the active session (same as pressing Enter).
 		if !m.cfg.HideAttachHint {
 			attach := m.pendingAttachDetails()
 			if attach != nil {

@@ -129,7 +129,7 @@ The legend is visible in the main status bar and in the grid footer.
 
 ## Detach from an attached session
 
-When you attach to a session (`a` / `Enter`), Hive's TUI suspends and you interact with the agent directly. To return to Hive, press the **detach key**:
+When you attach to a session (`Enter`), Hive's TUI suspends and you interact with the agent directly. To return to Hive, press the **detach key**:
 
 | Key | Action |
 |-----|--------|
@@ -165,7 +165,7 @@ All key bindings can be overridden in `~/.config/hive/config.json` under the `ke
     "kill_session": "x",
     "kill_team": "D",
     "rename": "r",
-    "attach": "a",
+    "attach": "enter",
     "nav_up": "up",
     "nav_down": "down",
     "nav_project_up": "K",
