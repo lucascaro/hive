@@ -17,7 +17,7 @@
                                 ││                                                                                     │
                                 ││                                  No active session                                  │
                                 ││                                                                                     │
-                                ││                      Select a session and press 'a' to attach                       │
+                                ││                     Select a session and press Enter to attach                      │
                                 ││                                                                                     │
                                 ││                                                                                     │
                                 ││                                                                                     │
@@ -37,4 +37,4 @@
                                 │╰─────────────────────────────────────────────────────────────────────────────────────╯
                                                                                                                         
  hive                                                                                                                   
- ? help • n new project • t new session • a/enter attach • g grid view • r rename • c next color • x kill session …  ○  
+ ? help • n new project • t new session • enter attach • g grid view • r rename • c next color • x kill session …  ○ i  

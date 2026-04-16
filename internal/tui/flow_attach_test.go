@@ -17,7 +17,7 @@ func TestFlow_AttachHint_ShowAndConfirm(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Press "a" to attach the active session.
-	f.SendKey("a")
+	f.SendSpecialKey(tea.KeyEnter)
 
 	// Attach hint should be shown.
 	if !f.Model().showAttachHint {
@@ -62,7 +62,7 @@ func TestFlow_AttachHint_Dismiss(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Press "a" to show attach hint.
-	f.SendKey("a")
+	f.SendSpecialKey(tea.KeyEnter)
 	if !f.Model().showAttachHint {
 		t.Fatal("showAttachHint should be true")
 	}
@@ -90,7 +90,7 @@ func TestFlow_AttachHint_DontShowAgain(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Show attach hint.
-	f.SendKey("a")
+	f.SendSpecialKey(tea.KeyEnter)
 	if !f.Model().showAttachHint {
 		t.Fatal("showAttachHint should be true")
 	}
@@ -213,7 +213,7 @@ func TestFlow_SidebarAttach_DirectAttach(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// Press "a" to attach — returns a cmd that produces SessionAttachMsg.
-	cmd := f.SendKey("a")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 
 	// No hint should be shown.
 	if f.Model().showAttachHint {

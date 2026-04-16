@@ -1338,7 +1338,7 @@ func TestFlow_SidebarAttachHintCancel_ReturnsToSidebar(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// From sidebar, press "a" to open the attach hint (grid never opens).
-	cmd := f.SendKey("a")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 	f.ExecCmdChain(cmd)
 	mmBefore := f.Model()
 	if !mmBefore.showAttachHint {
@@ -1371,7 +1371,7 @@ func TestFlow_Sidebar_TmuxExec_NoGridRender(t *testing.T) {
 	f := newFlowRunner(t, m, mock)
 
 	// From sidebar, press "a" to attach.
-	cmd := f.SendKey("a")
+	cmd := f.SendSpecialKey(tea.KeyEnter)
 	f.ExecCmdChain(cmd)
 
 	mm := f.Model()

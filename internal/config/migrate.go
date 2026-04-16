@@ -31,7 +31,7 @@ func mergeKeybindingDefaults(cur, def KeybindingsConfig) KeybindingsConfig {
 	return cur
 }
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
@@ -64,6 +64,18 @@ func Migrate(cfg Config) Config {
 	// CursorUp/Down/Left/Right, SessionColorNext/Prev, ToggleAll, InputMode,
 	// CollapseItem, ExpandItem) get populated by mergeKeybindingDefaults
 	// below — no per-version block needed.
+
+	if cfg.SchemaVersion < 6 {
+		// 5 → 6 (#112): Attach default changed from "a" to "enter".
+		// Migrate users who still have the old default; preserve custom values.
+		// Also drop the now-removed FocusPreview/FocusSidebar fields — they
+		// are simply ignored on unmarshal since the struct fields no longer
+		// exist (json:"focus_preview" / json:"focus_sidebar").
+		if len(cfg.Keybindings.Attach) == 1 && cfg.Keybindings.Attach[0] == "a" {
+			cfg.Keybindings.Attach = KeyBinding{"enter"}
+		}
+	}
+
 	if cfg.SchemaVersion < currentSchemaVersion {
 		cfg.SchemaVersion = currentSchemaVersion
 	}

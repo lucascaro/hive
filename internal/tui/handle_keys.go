@@ -86,7 +86,8 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Height = m.appState.TermHeight
 
 	// Input mode: all keys (except ctrl+c which always quits) are forwarded to
-	// the focused session. Ctrl+Q exits input mode (handled inside GridView.Update).
+	// the focused session. The configured Detach key exits input mode
+	// (handled inside GridView.Update via gv.Keys.Detach).
 	if m.gridView.InputMode() {
 		cmd, _ := m.gridView.Update(msg)
 		return cmd
@@ -138,8 +139,8 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	switch msg.String() {
-	case "g":
+	switch {
+	case key.Matches(msg, m.keys.GridOverview):
 		if m.gridView.Mode == state.GridRestoreAll {
 			// All-grid → switch to project grid.
 			prevID := ""
@@ -158,7 +159,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		// Already in project grid — close grid and return to main.
 		return m.closeGrid()
-	case "G":
+	case key.Matches(msg, m.keys.ToggleAll):
 		if m.gridView.Mode == state.GridRestoreAll {
 			// Already in all-grid — close grid and return to main.
 			return m.closeGrid()
@@ -176,7 +177,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 		m.gridPollGen++
 		return m.scheduleGridPoll()
-	case "x":
+	case key.Matches(msg, m.keys.KillSession):
 		if sess := m.gridView.Selected(); sess != nil {
 			s := sess
 			// Grid stays in the stack; confirm dialog is pushed on top.
@@ -187,13 +188,13 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 				}
 			}
 		}
-	case "r":
+	case key.Matches(msg, m.keys.Rename):
 		if sess := m.gridView.Selected(); sess != nil {
 			m.focusSession(sess.ID)
 			// Grid stays in the stack; rename dialog is pushed on top.
 			return m.startRename()
 		}
-	case "t":
+	case key.Matches(msg, m.keys.NewSession):
 		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
 			m.pendingProjectID = sess.ProjectID
 			m.pendingWorktree = false
@@ -202,27 +203,27 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.PushView(ViewAgentPicker)
 			return nil
 		}
-	case "c", "C":
+	case key.Matches(msg, m.keys.ColorNext), key.Matches(msg, m.keys.ColorPrev):
 		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
 			dir := +1
-			if msg.String() == "C" {
+			if key.Matches(msg, m.keys.ColorPrev) {
 				dir = -1
 			}
 			m.cycleProjectColor(sess.ProjectID, dir)
 			m.gridView.SetProjectColors(m.gridProjectColors())
 		}
 		return nil
-	case "v", "V":
+	case key.Matches(msg, m.keys.SessionColorNext), key.Matches(msg, m.keys.SessionColorPrev):
 		if sess := m.gridView.Selected(); sess != nil {
 			dir := +1
-			if msg.String() == "V" {
+			if key.Matches(msg, m.keys.SessionColorPrev) {
 				dir = -1
 			}
 			m.cycleSessionColor(sess.ID, dir)
 			m.gridView.SetSessionColors(m.gridSessionColors())
 		}
 		return nil
-	case "W":
+	case key.Matches(msg, m.keys.NewWorktreeSession):
 		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
 			if cmd := m.initWorktreeSession(sess.ProjectID); cmd != nil {
 				return cmd
@@ -306,14 +307,6 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.PushView(ViewHelp)
 		return m, nil
 
-	case key.Matches(msg, m.keys.FocusToggle):
-		if m.appState.FocusedPane == state.PaneSidebar {
-			m.appState.FocusedPane = state.PanePreview
-		} else {
-			m.appState.FocusedPane = state.PaneSidebar
-		}
-		return m, nil
-
 	case key.Matches(msg, m.keys.Filter):
 		m.appState.FilterQuery = ""
 		m.PushView(ViewFilter)
@@ -328,7 +321,7 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.gridPollGen++
 		return m, m.scheduleGridPoll()
 
-	case msg.String() == "G":
+	case key.Matches(msg, m.keys.ToggleAll):
 		m.openGrid(state.GridRestoreAll)
 		m.gridPollGen++
 		return m, m.scheduleGridPoll()
@@ -417,13 +410,13 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cycleProjectColor(projectID, dir)
 		return m, nil
 
-	case msg.String() == "v", msg.String() == "V":
+	case key.Matches(msg, m.keys.SessionColorNext), key.Matches(msg, m.keys.SessionColorPrev):
 		sel := m.sidebar.Selected()
 		if sel == nil || sel.SessionID == "" {
 			return m, nil
 		}
 		dir := +1
-		if msg.String() == "V" {
+		if key.Matches(msg, m.keys.SessionColorPrev) {
 			dir = -1
 		}
 		m.cycleSessionColor(sel.SessionID, dir)
@@ -722,7 +715,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if inSidebar {
 			return m.handleSidebarClick(msg.Y)
 		}
-		// Click in preview area: attach the active session (same as pressing 'a').
+		// Click in preview area: attach the active session (same as pressing Enter).
 		if !m.cfg.HideAttachHint {
 			attach := m.pendingAttachDetails()
 			if attach != nil {
