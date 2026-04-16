@@ -427,6 +427,35 @@ func TestGridInputMode_FocusedPollCapturesFocusedOnly(t *testing.T) {
 	_ = mock
 }
 
+// TestGridInputMode_FastPollStampsPip verifies that the fast poll in input
+// mode stamps the focused session's activity pip so it stays continuously lit.
+func TestGridInputMode_FastPollStampsPip(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("G")
+	f.SendKey("i")
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session")
+	}
+
+	// Clear any prior pip stamps.
+	delete(f.model.lastPreviewChange, sel.ID)
+
+	// Simulate a fast poll arriving for the focused session.
+	f.Send(components.GridPreviewsUpdatedMsg{
+		Contents: map[string]string{sel.ID: "updated content"},
+		Fast:     true,
+	})
+
+	// The pip should have been stamped.
+	if _, stamped := f.model.lastPreviewChange[sel.ID]; !stamped {
+		t.Error("fast poll should stamp the focused session's activity pip in input mode")
+	}
+}
+
 // TestGridInputMode_BackgroundPollPreservesFocusedContent verifies that the
 // background poll in input mode does NOT blank out the focused session's
 // content (which is maintained by the fast poll).

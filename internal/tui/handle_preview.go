@@ -66,18 +66,23 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 		}
 		return m, tea.Batch(pipCmd, m.scheduleGridPoll())
 	}
-	// Fast poll: merge focused session content only. Do NOT stamp the
-	// activity pip — the focused session is already stamped every background
-	// tick, and stamping on the 50ms fast loop would make its pip flash ~5x
-	// faster than other sessions.
+	// Fast poll: merge focused session content and stamp its pip.
+	// The pip stays continuously lit (50ms < 150ms flash window), which is
+	// the correct signal: "this session is actively monitored in input mode."
+	var pipCmd tea.Cmd
+	for sessID := range msg.Contents {
+		if cmd := m.stampPreviewPoll(sessID); cmd != nil && pipCmd == nil {
+			pipCmd = cmd
+		}
+	}
 	m.gridView.MergeContents(msg.Contents)
 	if !m.HasView(ViewGrid) {
-		return m, nil
+		return m, pipCmd
 	}
 	if m.gridView.InputMode() {
-		return m, m.scheduleFocusedSessionPoll()
+		return m, tea.Batch(pipCmd, m.scheduleFocusedSessionPoll())
 	}
-	return m, nil
+	return m, pipCmd
 }
 
 func (m Model) handleGridSessionSelected(msg components.GridSessionSelectedMsg) (tea.Model, tea.Cmd) {
