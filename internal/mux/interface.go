@@ -61,8 +61,11 @@ type Backend interface {
 	CapturePaneRaw(target string, lines int) (string, error)
 	// BatchCapturePane captures multiple panes in a single operation.
 	// targets maps target ("session:window") to the number of scrollback lines.
-	// escapes controls whether ANSI escape codes are preserved (-e flag).
-	// Returns a map from target to captured content.
+	// escapes is a hint requesting ANSI escape codes be preserved (tmux: -e flag);
+	// backends may ignore it if not applicable (e.g. the native backend always
+	// returns the buffered PTY output regardless of this flag).
+	// Returns a map from target to captured content. Missing keys indicate
+	// per-target capture failure (best-effort: errors are not surfaced).
 	BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, error)
 	// GetCurrentCommand returns the name of the foreground process in the pane.
 	GetCurrentCommand(target string) (string, error)

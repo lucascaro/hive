@@ -121,7 +121,7 @@ func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, 
 		}
 	}
 
-	altStates := BatchIsAlternateScreen(targets)
+	altStates := batchIsAlternateScreen(targets)
 
 	var script strings.Builder
 	for target, lines := range targets {
@@ -178,9 +178,9 @@ func BatchCapturePane(targets map[string]int, escapes bool) (map[string]string, 
 	return results, nil
 }
 
-// BatchIsAlternateScreen checks alternate screen state for all targets in a
+// batchIsAlternateScreen checks alternate screen state for all targets in a
 // single tmux list-windows call, falling back to per-target checks on error.
-func BatchIsAlternateScreen(targets map[string]int) map[string]bool {
+func batchIsAlternateScreen(targets map[string]int) map[string]bool {
 	result := make(map[string]bool, len(targets))
 
 	sessions := make(map[string]bool)

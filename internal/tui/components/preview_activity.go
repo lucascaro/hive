@@ -16,13 +16,13 @@ import (
 const PreviewActivityPanelHeight = 1
 
 var (
-	activityPipActive            = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
-	activityPipActiveBackground   = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("●")
-	activityPipIdle              = styles.MutedStyle.Render("○")
+	activityPipActive           = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("●")
+	activityPipActiveBackground = lipgloss.NewStyle().Foreground(styles.ColorWarning).Render("●")
+	activityPipIdle             = styles.MutedStyle.Render("○")
 
 	// activityPipPieFrames is the rotating progress-pie animation used for the
 	// input-focused session: empty → quarter → half → three-quarter → full.
-	activityPipPieFrames = []string{"○", "◔", "◑", "◕", "●"}
+	activityPipPieFrames  = []string{"○", "◔", "◑", "◕", "●"}
 	activityPipFocusStyle = lipgloss.NewStyle().Foreground(styles.ColorSuccess)
 )
 

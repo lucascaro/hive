@@ -461,10 +461,10 @@ func (m Model) View() string {
 		m.gridHelpModel.Width = m.appState.TermWidth
 		gridHints := m.gridHelpModel.View(NewGridKeyMap(m.keys))
 		gridBody := m.gridView.View(gridHints)
-		flashDur := 150 * time.Millisecond
+		flashDur := ActivityPipFlashNormal
 		var focusedID string
 		if m.gridView.InputMode() {
-			flashDur = 25 * time.Millisecond
+			flashDur = ActivityPipFlashInput
 			if sel := m.gridView.Selected(); sel != nil {
 				focusedID = sel.ID
 			}

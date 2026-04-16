@@ -142,17 +142,34 @@ func (m *Model) stampPreviewPoll(sessID string) tea.Cmd {
 	return m.ensureActivityPipRunning()
 }
 
+// Activity pip timing. The flash duration must be < the tick interval so the
+// "off" frame renders between stamps. In grid input mode we run faster (25ms)
+// to drive the rotating progress-pie animation; otherwise 150ms is enough.
+const (
+	ActivityPipFlashNormal = 150 * time.Millisecond
+	ActivityPipFlashInput  = 25 * time.Millisecond
+	activityPipIdleThresh  = 300 * time.Millisecond
+	activityPipInputThresh = 100 * time.Millisecond
+)
+
 // activityPipTickMsg drives redraws so the activity pip flash fades out
 // cleanly even when no other messages are flowing.
 type activityPipTickMsg struct{}
 
+// gridInputActive reports whether the grid view is on top and input mode is on.
+// Used to gate input-mode-specific behavior across pip ticks, polling, and rendering.
+func (m *Model) gridInputActive() bool {
+	return m.HasView(ViewGrid) && m.gridView.InputMode()
+}
+
 // scheduleActivityPipTick returns a tea.Cmd that fires activityPipTickMsg
-// at a cadence matched to the current flash duration. During grid input mode
-// the tick is 25 ms so the pip visibly blinks; otherwise 150 ms.
+// at ActivityPipFlashNormal normally, or ActivityPipFlashInput while grid
+// input mode is active so the focused-session pip can drive the rotating
+// progress-pie animation. Lightweight — no IO, just a redraw trigger.
 func (m *Model) scheduleActivityPipTick() tea.Cmd {
-	interval := 150 * time.Millisecond
-	if m.HasView(ViewGrid) && m.gridView.InputMode() {
-		interval = 25 * time.Millisecond
+	interval := ActivityPipFlashNormal
+	if m.gridInputActive() {
+		interval = ActivityPipFlashInput
 	}
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		return activityPipTickMsg{}
@@ -174,9 +191,9 @@ func (m *Model) hasRecentActivity() bool {
 	}
 	// Keep the ticker alive slightly longer than the flash duration so the
 	// "off" frame renders after the pip expires.
-	threshold := 300 * time.Millisecond
-	if m.HasView(ViewGrid) && m.gridView.InputMode() {
-		threshold = 100 * time.Millisecond
+	threshold := activityPipIdleThresh
+	if m.gridInputActive() {
+		threshold = activityPipInputThresh
 	}
 	now := time.Now()
 	for _, t := range m.lastPreviewChange {
