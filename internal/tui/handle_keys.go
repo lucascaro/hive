@@ -86,7 +86,8 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 	m.gridView.Height = m.appState.TermHeight
 
 	// Input mode: all keys (except ctrl+c which always quits) are forwarded to
-	// the focused session. Ctrl+Q exits input mode (handled inside GridView.Update).
+	// the focused session. The configured Detach key exits input mode
+	// (handled inside GridView.Update via gv.Keys.Detach).
 	if m.gridView.InputMode() {
 		cmd, _ := m.gridView.Update(msg)
 		return cmd

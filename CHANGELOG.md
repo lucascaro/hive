@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Grid + sidebar key handlers now read from the config-driven KeyMap**: literal `g/G/x/r/t/c/C/v/V/W` switches in grid mode and the `G`/`v`/`V` literals in the sidebar are routed through `key.Matches(...)` against the corresponding `KeybindingsConfig` actions (`GridOverview`, `ToggleAll`, `KillSession`, `Rename`, `NewSession`, `ColorNext/Prev`, `SessionColorNext/Prev`, `NewWorktreeSession`). Rebinding any of these in `~/.config/hive/config.json` now takes effect in both views (#112).
+- **Grid view input-mode exit and cursor navigation are configurable**: the previously hard-coded `ctrl+q` exit and `up/down/left/right` cursor keys inside `GridView` now resolve through the active `Detach` and `CursorUp/Down/Left/Right` bindings. As a side effect, grid navigation now also accepts the vim aliases `h/j/k/l` (the chunk 1 defaults for `CursorUp/Down/Left/Right`) — previously the grid only responded to arrow keys (#112).
+
 ## [0.11.0] — 2026-04-15
 
 ### Added
@@ -15,8 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Keybindings config now accepts multiple keys per action**: every entry in the `keybindings` block of `~/.config/hive/config.json` may be either a single string (e.g. `"a"`) or a list (e.g. `["up", "k"]`). Existing single-string configs continue to load unchanged; the canonical on-disk form after the next save is the array (#112).
 - **Groundwork for new keybinding actions** — `detach`, `cursor_up/down/left/right`, `session_color_next/prev`, `toggle_all`, `input_mode`, `collapse_item`, `expand_item` were added to the config schema with sensible defaults. **Schema only — these actions are not yet wired to any handler in this release.** Settings UI exposure and handler wiring land in subsequent commits (#112).
-- **Grid + sidebar key handlers now read from the config-driven KeyMap**: literal `g/G/x/r/t/c/C/v/V/W` switches in grid mode and the `G`/`v`/`V` literals in the sidebar are routed through `key.Matches(...)` against the corresponding `KeybindingsConfig` actions (`GridOverview`, `ToggleAll`, `KillSession`, `Rename`, `NewSession`, `ColorNext/Prev`, `SessionColorNext/Prev`, `NewWorktreeSession`). Rebinding any of these in `~/.config/hive/config.json` now takes effect in both views (#112).
-- **Grid view input-mode exit and cursor navigation are configurable**: the previously hard-coded `ctrl+q` exit and `up/down/left/right` cursor keys inside `GridView` now resolve through the active `Detach` and `CursorUp/Down/Left/Right` bindings. The default key sets are unchanged (`ctrl+q`, arrows + vim aliases) (#112).
 
 ### Fixed
 - **Grid-mode attach/detach sidebar flash (regression)**: the sidebar no longer briefly renders when attaching to or detaching from a session opened from grid view. `handleGridSessionSelected` now keeps `ViewGrid` on the view stack through the attach so the render frame before `tea.Exec`/`tea.Quit` shows grid content rather than sidebar. `restoreGrid()` is idempotent so the detach-side re-push does not duplicate the grid on the stack. As a side effect, pressing `esc` on the attach hint when opened from grid now returns to grid (previously returned to sidebar) (#111).

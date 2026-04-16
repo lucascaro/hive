@@ -16,8 +16,14 @@ import (
 )
 
 // GridKeys holds the configurable bindings GridView consults during input
-// handling. The parent (tui.Model) sets this once from the active KeyMap so
-// rebinding any of these actions in config takes effect inside the grid.
+// handling. The parent (tui.Model) sets this once from the active KeyMap
+// (see tui.New) before the Bubble Tea program starts dispatching, so rebinding
+// any of these actions in config takes effect inside the grid.
+//
+// Distinct from tui.GridKeyMap, which is the help-overlay description of the
+// grid hint line. GridKeys is the actual input-routing table used by Update;
+// when the zero value is left in place every key.Matches lookup is a no-op
+// (charm's empty key.Binding{} matches nothing).
 type GridKeys struct {
 	Detach      key.Binding
 	InputMode   key.Binding
@@ -26,21 +32,6 @@ type GridKeys struct {
 	CursorDown  key.Binding
 	CursorLeft  key.Binding
 	CursorRight key.Binding
-}
-
-// DefaultGridKeys returns the historical hard-coded bindings GridView used
-// before keymaps were plumbed in. Used by component-level tests that exercise
-// Update directly without constructing a full KeyMap.
-func DefaultGridKeys() GridKeys {
-	return GridKeys{
-		Detach:      key.NewBinding(key.WithKeys("ctrl+q")),
-		InputMode:   key.NewBinding(key.WithKeys("i")),
-		Attach:      key.NewBinding(key.WithKeys("enter", "a")),
-		CursorUp:    key.NewBinding(key.WithKeys("up")),
-		CursorDown:  key.NewBinding(key.WithKeys("down")),
-		CursorLeft:  key.NewBinding(key.WithKeys("left")),
-		CursorRight: key.NewBinding(key.WithKeys("right")),
-	}
 }
 
 // GridSessionSelectedMsg is sent when the user selects a session in the grid.
@@ -114,7 +105,10 @@ type GridView struct {
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
 	inputMode     bool              // true when keystrokes are forwarded to the focused session
 	InputEnabled  bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
-	Keys          GridKeys          // configurable bindings; set by parent from active KeyMap
+	// Keys holds the configurable bindings consulted by Update. The parent
+	// (tui.Model) sets this once during construction; leaving the zero value
+	// in place disables every navigation/input key inside the grid.
+	Keys GridKeys
 }
 
 // Show activates the grid with the given sessions.
@@ -289,6 +283,9 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}
 		}
 		return nil, true
+	// Esc remains a hard-coded literal as a universal "close overlay" gesture,
+	// matching the dialog/overlay convention elsewhere in the TUI. Will move
+	// into GridKeys (alongside a configurable Cancel) in chunk 3 of #112.
 	case msg.String() == "esc":
 		gv.Hide()
 		return nil, true
