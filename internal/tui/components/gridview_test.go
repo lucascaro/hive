@@ -875,3 +875,106 @@ func TestLastNContentLines(t *testing.T) {
 		})
 	}
 }
+
+// TestGridView_SetContents_CacheSkipsUnchanged verifies that SetContents only
+// sanitizes sessions whose raw content has changed since the last call.
+func TestGridView_SetContents_CacheSkipsUnchanged(t *testing.T) {
+	gv := &GridView{}
+	sessions := []*state.Session{{ID: "s1"}, {ID: "s2"}}
+	gv.Show(sessions, state.GridRestoreAll)
+
+	raw := map[string]string{
+		"s1": "hello \x1b[31mworld\x1b[0m",
+		"s2": "line two",
+	}
+	gv.SetContents(raw)
+
+	// Both should have sanitized content.
+	if gv.ContentFor("s1") == "" {
+		t.Error("expected sanitized content for s1")
+	}
+	if gv.ContentFor("s2") == "" {
+		t.Error("expected sanitized content for s2")
+	}
+
+	// Capture the sanitized output.
+	prev1 := gv.ContentFor("s1")
+	prev2 := gv.ContentFor("s2")
+
+	// Call again with same content — content should be identical (from cache).
+	gv.SetContents(raw)
+	if gv.ContentFor("s1") != prev1 {
+		t.Error("expected cached content for unchanged s1")
+	}
+	if gv.ContentFor("s2") != prev2 {
+		t.Error("expected cached content for unchanged s2")
+	}
+
+	// Change s1 only.
+	raw2 := map[string]string{
+		"s1": "changed content",
+		"s2": "line two",
+	}
+	gv.SetContents(raw2)
+	if gv.ContentFor("s1") == prev1 {
+		t.Error("expected re-sanitized content for changed s1")
+	}
+	if gv.ContentFor("s2") != prev2 {
+		t.Error("expected cached content for unchanged s2")
+	}
+}
+
+// TestGridView_MergeContents_CacheSkipsUnchanged verifies that MergeContents
+// only sanitizes sessions whose raw content has changed.
+func TestGridView_MergeContents_CacheSkipsUnchanged(t *testing.T) {
+	gv := &GridView{}
+	sessions := []*state.Session{{ID: "s1"}, {ID: "s2"}}
+	gv.Show(sessions, state.GridRestoreAll)
+
+	gv.SetContents(map[string]string{
+		"s1": "content A",
+		"s2": "content B",
+	})
+	prev1 := gv.ContentFor("s1")
+
+	// Merge with same content for s1 — should skip sanitization.
+	gv.MergeContents(map[string]string{"s1": "content A"})
+	if gv.ContentFor("s1") != prev1 {
+		t.Error("expected cached content for unchanged s1 via MergeContents")
+	}
+
+	// Merge with changed content for s1.
+	gv.MergeContents(map[string]string{"s1": "different"})
+	if gv.ContentFor("s1") == prev1 {
+		t.Error("expected re-sanitized content for changed s1 via MergeContents")
+	}
+
+	// s2 should be untouched.
+	if gv.ContentFor("s2") != "content B" {
+		t.Error("MergeContents should not affect untouched sessions")
+	}
+}
+
+// TestGridView_SetContents_RemovesStaleSessions verifies that sessions no
+// longer in the batch are removed from both raw and sanitized caches.
+func TestGridView_SetContents_RemovesStaleSessions(t *testing.T) {
+	gv := &GridView{}
+	sessions := []*state.Session{{ID: "s1"}, {ID: "s2"}}
+	gv.Show(sessions, state.GridRestoreAll)
+
+	gv.SetContents(map[string]string{
+		"s1": "content",
+		"s2": "content",
+	})
+	if gv.ContentFor("s2") == "" {
+		t.Fatal("s2 should have content")
+	}
+
+	// New batch without s2.
+	gv.SetContents(map[string]string{
+		"s1": "content",
+	})
+	if gv.ContentFor("s2") != "" {
+		t.Error("s2 should have been removed from cache")
+	}
+}

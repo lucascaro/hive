@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Slow preview updates on slower machines**: increased alt-screen detection cache TTL from 500ms to 5s, eliminating a redundant `tmux display-message` subprocess on nearly every sidebar preview poll. Moved content sanitization out of tick goroutines so the effective poll interval stays closer to the configured value. Added per-session content caching that skips expensive regex sanitization when raw capture output hasn't changed (common for idle sessions) (#120).
+- **Attach latency reduced**: batched the detach key binding into the status-bar setup tmux invocation, reducing attach from 3 sequential subprocesses to 2 (#120).
+
 ### Changed
 - **Grid + sidebar key handlers now read from the config-driven KeyMap**: literal `g/G/x/r/t/c/C/v/V/W` switches in grid mode and the `G`/`v`/`V` literals in the sidebar are routed through `key.Matches(...)` against the corresponding `KeybindingsConfig` actions (`GridOverview`, `ToggleAll`, `KillSession`, `Rename`, `NewSession`, `ColorNext/Prev`, `SessionColorNext/Prev`, `NewWorktreeSession`). Rebinding any of these in `~/.config/hive/config.json` now takes effect in both views (#112).
 - **Grid view input-mode exit and cursor navigation are configurable**: the previously hard-coded `ctrl+q` exit and `up/down/left/right` cursor keys inside `GridView` now resolve through the active `Detach` and `CursorUp/Down/Left/Right` bindings. As a side effect, grid navigation now also accepts the vim aliases `h/j/k/l` (the chunk 1 defaults for `CursorUp/Down/Left/Right`) — previously the grid only responded to arrow keys (#112).

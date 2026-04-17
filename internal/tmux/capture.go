@@ -19,7 +19,7 @@ type altCacheEntry struct {
 	checkedAt time.Time
 }
 
-const altScreenTTL = 500 * time.Millisecond
+const altScreenTTL = 5 * time.Second
 
 func isAlternateScreenCached(target string) bool {
 	now := time.Now()

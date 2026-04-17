@@ -75,7 +75,7 @@ func PollGridPreviews(sessions []*state.Session, interval time.Duration, gen uin
 		if err == nil {
 			for target, content := range captured {
 				if sid, ok := targetToID[target]; ok {
-					contents[sid] = sanitizePreviewContent(content)
+					contents[sid] = content
 				}
 			}
 		}
@@ -95,7 +95,7 @@ func PollFocusedGridPreview(sess *state.Session, interval time.Duration) tea.Cmd
 	return tea.Tick(interval, func(_ time.Time) tea.Msg {
 		contents := make(map[string]string, 1)
 		if content, err := mux.CapturePane(target, 100); err == nil {
-			contents[sessID] = sanitizePreviewContent(content)
+			contents[sessID] = content
 		}
 		return GridPreviewsUpdatedMsg{Contents: contents, Fast: true}
 	})
@@ -109,7 +109,8 @@ type GridView struct {
 	Height       int
 	Mode         state.GridRestoreMode
 	sessions      []*state.Session
-	contents      map[string]string
+	contents      map[string]string // sanitized content for rendering
+	rawContents   map[string]string // last raw capture per session for change detection
 	projectNames  map[string]string // projectID → display name
 	projectColors map[string]string // projectID → hex color
 	sessionColors map[string]string // sessionID → hex color
@@ -137,6 +138,9 @@ func (gv *GridView) Show(sessions []*state.Session, mode state.GridRestoreMode) 
 	if gv.contents == nil {
 		gv.contents = make(map[string]string)
 	}
+	if gv.rawContents == nil {
+		gv.rawContents = make(map[string]string)
+	}
 }
 
 // Hide deactivates the grid.
@@ -148,9 +152,29 @@ func (gv *GridView) Hide() {
 	gv.inputMode = false
 }
 
-// SetContents updates the captured preview content map.
-func (gv *GridView) SetContents(contents map[string]string) {
-	gv.contents = contents
+// SetContents replaces the captured preview content map with raw content,
+// sanitizing only sessions whose content has changed since the last poll.
+func (gv *GridView) SetContents(rawContents map[string]string) {
+	if gv.rawContents == nil {
+		gv.rawContents = make(map[string]string, len(rawContents))
+	}
+	if gv.contents == nil {
+		gv.contents = make(map[string]string, len(rawContents))
+	}
+	// Remove sessions no longer present in the new batch.
+	for k := range gv.rawContents {
+		if _, ok := rawContents[k]; !ok {
+			delete(gv.rawContents, k)
+			delete(gv.contents, k)
+		}
+	}
+	for k, raw := range rawContents {
+		if prev, ok := gv.rawContents[k]; ok && prev == raw {
+			continue // unchanged — skip sanitization
+		}
+		gv.rawContents[k] = raw
+		gv.contents[k] = sanitizePreviewContent(raw)
+	}
 }
 
 // ContentFor returns the cached preview content for a session (used in tests).
@@ -161,15 +185,22 @@ func (gv *GridView) ContentFor(sessionID string) string {
 	return gv.contents[sessionID]
 }
 
-// MergeContents updates only the keys present in contents, leaving other
-// sessions' content untouched. Used by the focused-session fast poll so it
-// doesn't blank out non-focused cells.
-func (gv *GridView) MergeContents(contents map[string]string) {
-	if gv.contents == nil {
-		gv.contents = make(map[string]string, len(contents))
+// MergeContents updates only the keys present in rawContents, leaving other
+// sessions' content untouched. Sanitizes only when raw content has changed.
+// Used by the focused-session fast poll so it doesn't blank out non-focused cells.
+func (gv *GridView) MergeContents(rawContents map[string]string) {
+	if gv.rawContents == nil {
+		gv.rawContents = make(map[string]string, len(rawContents))
 	}
-	for k, v := range contents {
-		gv.contents[k] = v
+	if gv.contents == nil {
+		gv.contents = make(map[string]string, len(rawContents))
+	}
+	for k, raw := range rawContents {
+		if prev, ok := gv.rawContents[k]; ok && prev == raw {
+			continue // unchanged — skip sanitization
+		}
+		gv.rawContents[k] = raw
+		gv.contents[k] = sanitizePreviewContent(raw)
 	}
 }
 

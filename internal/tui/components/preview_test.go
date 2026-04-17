@@ -691,3 +691,64 @@ func TestPreviewUpdatedMsg_Fields(t *testing.T) {
 		t.Errorf("Generation=%d, want 42", msg.Generation)
 	}
 }
+
+// TestPreviewSetContent_CacheSkipsResanitization verifies that SetContent
+// skips sanitization when the raw content hasn't changed (idle session).
+func TestPreviewSetContent_CacheSkipsResanitization(t *testing.T) {
+	p := &Preview{}
+	p.Resize(80, 24)
+
+	content := "hello world\nline two"
+
+	// First call should process and store content.
+	p.SetContent(content)
+	if !p.hasContent {
+		t.Fatal("expected hasContent=true after first SetContent")
+	}
+	if p.lastRawContent != content {
+		t.Errorf("lastRawContent not set after first call")
+	}
+
+	// Second call with identical content should return early.
+	// We verify by checking that lastNonBlankIdx doesn't change
+	// (SetContent resets userScrolled — if it ran fully, scrollToLastContent
+	// would recalculate; but the early return skips everything).
+	p.userScrolled = true
+	p.SetContent(content)
+	if !p.userScrolled {
+		t.Error("SetContent should have returned early for unchanged content, but userScrolled was cleared")
+	}
+
+	// Different content should trigger full processing.
+	p.SetContent("different content")
+	if p.userScrolled {
+		t.Error("SetContent should have processed new content and cleared userScrolled")
+	}
+	if p.lastRawContent != "different content" {
+		t.Errorf("lastRawContent not updated for new content")
+	}
+}
+
+// TestPreviewSetContent_CacheResetOnEmpty verifies that switching to empty
+// content (session switch) resets the cache so the next real content is processed.
+func TestPreviewSetContent_CacheResetOnEmpty(t *testing.T) {
+	p := &Preview{}
+	p.Resize(80, 24)
+
+	p.SetContent("some content")
+	if !p.hasContent {
+		t.Fatal("expected hasContent=true")
+	}
+
+	// Empty content should clear the cache.
+	p.SetContent("")
+	if p.hasContent {
+		t.Error("expected hasContent=false after empty SetContent")
+	}
+
+	// The same previous content should now be processed again (not cached).
+	p.SetContent("some content")
+	if !p.hasContent {
+		t.Error("expected hasContent=true after re-setting previous content")
+	}
+}
