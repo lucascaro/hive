@@ -1,7 +1,7 @@
 # Feature: Fix slow preview updates and attach delay on slower machines
 
 - **GitHub Issue:** #120
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
@@ -113,4 +113,4 @@ All 4 changes implemented as planned, no deviations:
 3. Added `lastRawContent` cache to `Preview.SetContent()` — early returns when raw content unchanged
 4. `bind-key` merged into the `set-option` batch in attach script (3 → 2 subprocesses)
 
-- **PR:** —
+- **PR:** #121
