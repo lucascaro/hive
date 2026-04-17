@@ -1,10 +1,10 @@
 # Feature: Sync state across multiple hive instances without mirroring zoom/focus
 
 - **GitHub Issue:** #117
-- **Stage:** TRIAGE
+- **Stage:** RESEARCH
 - **Type:** enhancement
 - **Complexity:** L
-- **Priority:** —
+- **Priority:** P4
 - **Branch:** —
 
 ## Description
@@ -52,20 +52,73 @@ Solving this requires a tmux architecture change:
 
 ## Research
 
-<Filled during RESEARCH stage.>
+### Key Discovery: Grid Input Mode Already Solves the Core Problem
+
+Grid view already achieves per-instance independence by design:
+- `gridview.go:61-84` — polls all sessions via `BatchCapturePane()` without attaching
+- `gridview.go:307-324` — input mode forwards keystrokes via `mux.SendKeys()` (line 318) using `tmux send-keys -l`, enabling pane interaction without tmux client attachment
+- `handle_preview.go:276-287` — focused session polls at 50ms in input mode; background at 1s
+- Each hive instance maintains its own `Model` with separate grid state, sidebar focus, and poll generation — already independent
+
+The "zoom" view (`tmux attach-session`) is the ONLY place where two hive instances would conflict. Everything else is already instance-independent.
+
+### Architecture Context
+
+- **Single tmux session**: `mux.HiveSession = "hive-sessions"` (`interface.go:13`) — all windows from all projects live in one tmux session
+- **Attach path**: `attach_script.go:134` runs `tmux attach-session -t "hive-sessions:N"` — this is the conflict point
+- **State sharing**: `state.json` with flock + mtime watcher (`persist.go:49-88`, `watcher.go`)
+- **View state already transient**: `ActiveSessionID`, `FocusedPane`, `PreviewContent`, grid mode — all in-memory only in `Model`, not in `state.json` (except `ActiveSessionID` which IS persisted — a secondary issue)
+
+### Three Alternative Approaches
+
+**Option A: "Virtual Attach" — Replace tmux attach with enhanced capture+send-keys (Recommended)**
+Replace the zoom/attach view with a full-terminal preview panel that uses `CapturePane` + `SendKeys` instead of `tmux attach-session`. This is essentially grid input mode scaled to the full terminal. Advantages:
+- Zero tmux-level changes needed
+- Each instance is inherently independent — no shared client state
+- Preview polling already works; input forwarding already works
+- The existing `Preview` component can be reused/extended
+Challenges:
+- Must handle ALL keyboard input including escape sequences, ctrl combos, mouse events — `keyToBytes()` (`gridview.go:757`) currently handles this but may need expansion
+- Latency: capture-pane polling (even at 50ms) adds visible lag vs native tmux attach (zero-latency)
+- Some terminal features may not translate perfectly (clipboard, mouse drag, resize signals)
+
+**Option B: tmux Session Grouping — `new-session -t`**
+Create per-instance tmux sessions that share windows with the main session via `tmux new-session -t hive-sessions`. Each instance gets independent window selection.
+Advantages:
+- Native tmux — zero latency, perfect terminal compatibility
+- Well-supported tmux feature
+Challenges:
+- Must manage instance lifecycle (create session on start, kill on exit/crash)
+- Needs unique instance IDs and cleanup of orphaned sessions
+- More complex state model — per-instance session names in state.json
+- Not compatible with native PTY backend (tmux-only)
+
+**Option C: Hybrid — Virtual attach as default, tmux attach as opt-in**
+Use Option A as the default "zoom" behavior (always independent). Keep `tmux attach-session` available as an explicit "take over" action for users who want zero-latency native terminal.
+Advantages:
+- Best of both worlds — independence by default, native attach when needed
+- Graceful degradation — works perfectly in single-instance mode
+- Could be shipped incrementally (virtual attach first, then refine)
 
 ### Relevant Code
-- `internal/state/model.go` — `AppState` struct; contains both shared and per-instance fields
-- `internal/tui/persist.go` — `saveState`/`LoadState` with flock + atomic rename
-- `internal/tui/watcher.go` — 500ms mtime polling triggers state reload
-- `internal/tui/handle_system.go:45-56` — state reload reconciliation
-- `internal/tui/app.go:659-750` — reconcile dead windows against live tmux
-- `cmd/start.go` — startup state loading, sets `ActiveProjectID`/`ActiveSessionID`
+- `internal/mux/interface.go:13` — `HiveSession = "hive-sessions"` (single global tmux session)
+- `internal/mux/interface.go:25-106` — `Backend` interface; `SendKeys`, `CapturePane`, `Attach` methods
+- `internal/tui/components/gridview.go:307-324` — grid input mode: `SendKeys` forwarding without attach
+- `internal/tui/components/gridview.go:757` — `keyToBytes()` — translates Bubble Tea key messages to tmux send-keys bytes
+- `internal/mux/tmux/attach_script.go:49-137` — current attach script (the conflict point)
+- `internal/tui/handle_preview.go:240-287` — poll scheduling; focused (50ms) vs background (1s)
+- `internal/tui/components/preview.go:260-448` — `Preview` component; could be extended for virtual attach
+- `internal/tui/views.go:222-253` — `doAttach()` — current attach via `tea.Exec`
+- `internal/state/model.go:144-182` — transient fields already per-instance
+- `internal/tui/persist.go:49-88` — state.json persistence with flock
 
 ### Constraints / Dependencies
 - Must not break single-instance usage (backwards compatible)
-- Sidebar collapse is currently persisted — need to decide if it stays shared or becomes per-instance
-- `ActiveProjectID`/`ActiveSessionID` are currently persisted for "resume where you left off" on restart — need a way to preserve that UX while not fighting across live instances
+- `keyToBytes()` coverage is critical for Option A — must handle all terminal input faithfully
+- Polling latency (50ms) may be noticeable vs native attach for fast-typing users
+- Mouse event forwarding needs verification
+- Native PTY backend (`internal/mux/native/`) would need equivalent changes
+- `ActiveSessionID` is currently persisted to state.json — secondary conflict across instances
 
 ## Plan
 
