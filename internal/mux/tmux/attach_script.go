@@ -71,14 +71,6 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 	// altScreenExecCmd (e.g. `hive attach` CLI, tmux display-popup).
 	lines = append(lines, `printf '\033[?1049h\033[2J'`)
 
-	// Install the detach key binding. Idempotent and intentionally left in
-	// place after detach — see the AttachScript doc comment for the
-	// rationale (no per-detach save/restore, persists for the lifetime of
-	// the tmux server). The tmux key spec is shell-safe (`C-<letter>`).
-	lines = append(lines,
-		fmt.Sprintf("tmux bind-key -n %s detach-client", spec.Tmux),
-	)
-
 	// Store the session name in a shell variable so the trap body does not
 	// need to embed single-quoted strings (which would break the trap's own
 	// single-quoted delimiters for session names containing special chars).
@@ -113,14 +105,16 @@ func buildAttachScript(tmuxSession, target, title string, spec mux.DetachKeySpec
 		"trap '"+trapBody+"' EXIT INT TERM HUP",
 	)
 
-	// Override status-bar options with the Hive look. All options are
-	// batched into a single tmux invocation via \; chaining to minimize
-	// process-spawn overhead (was 11 separate invocations).
+	// Install the detach key binding and override status-bar options in a
+	// single tmux invocation via \; chaining. The bind-key is idempotent
+	// and intentionally left in place after detach — see the AttachScript
+	// doc comment for the rationale (persists for the tmux server lifetime).
 	//
 	// The "{?pane_title, · …,}" conditional makes the separator and live
 	// title disappear cleanly when the pane has no title set, instead of
 	// rendering a dangling " · " after the static session header.
 	setOpts := []string{
+		fmt.Sprintf("bind-key -n %s detach-client", spec.Tmux),
 		"set-option -t " + s + " status on",
 		"set-option -t " + s + " status-position top",
 		"set-option -t " + s + " status-style 'bg=#7C3AED,fg=#F9FAFB'",

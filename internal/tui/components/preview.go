@@ -263,6 +263,9 @@ type Preview struct {
 	Focused bool
 	vp              viewport.Model
 	hasContent      bool
+	// lastRawContent caches the most recent raw capture-pane output so
+	// SetContent can skip sanitization when the content hasn't changed.
+	lastRawContent string
 	// lastNonBlankIdx is the index of the last line in the viewport content
 	// that contains visible text (after sanitization).  Stored so Resize can
 	// re-apply the same scroll position without re-scanning the content.
@@ -328,6 +331,13 @@ func (p *Preview) scrollToLastContent() {
 // viewport, scrolled to the bottom so the most recent output is visible.
 // Pass an empty string to clear the pane (e.g. when switching sessions).
 func (p *Preview) SetContent(content string) {
+	// Skip sanitization when the raw content hasn't changed since the last poll.
+	// This is common for idle sessions and avoids expensive regex/string work.
+	if content == p.lastRawContent {
+		return
+	}
+	p.lastRawContent = content
+
 	// Sanitize first so that hasContent reflects visible text, not raw escape
 	// sequences.  A brand-new tmux pane emits cursor-reset / screen-clear
 	// sequences (e.g. \x1b[?1049h\x1b[H\x1b[J) that are entirely stripped by

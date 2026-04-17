@@ -4,6 +4,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParsePaneTitles(t *testing.T) {
@@ -124,6 +125,41 @@ func TestShellQuote(t *testing.T) {
 				t.Errorf("sh round-trip: got %q, want %q", string(out), tc.in)
 			}
 		})
+	}
+}
+
+// TestAltScreenCacheTTL verifies the cache returns the seeded value within the
+// TTL window without calling IsAlternateScreen (which requires a real tmux server).
+// Cache-miss / expiry is not tested here because it falls through to tmux.
+func TestAltScreenCacheTTL(t *testing.T) {
+	// Reset cache state and restore on cleanup.
+	altScreenCache.mu.Lock()
+	altScreenCache.entries = nil
+	altScreenCache.mu.Unlock()
+	t.Cleanup(func() {
+		altScreenCache.mu.Lock()
+		altScreenCache.entries = nil
+		altScreenCache.mu.Unlock()
+	})
+
+	// Verify TTL is 5s (not the old 500ms).
+	if altScreenTTL.Seconds() != 5 {
+		t.Errorf("altScreenTTL = %v, want 5s", altScreenTTL)
+	}
+
+	// Seed the cache directly.
+	target := "test-session:0"
+	altScreenCache.mu.Lock()
+	altScreenCache.entries = map[string]altCacheEntry{
+		target: {isAlt: true, checkedAt: time.Now()},
+	}
+	altScreenCache.mu.Unlock()
+
+	// Within TTL, the cache should return the seeded value without calling
+	// IsAlternateScreen (which would fail since there's no real tmux server).
+	got := isAlternateScreenCached(target)
+	if !got {
+		t.Errorf("expected cached value true within TTL, got false")
 	}
 }
 

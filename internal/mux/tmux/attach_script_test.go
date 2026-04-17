@@ -177,10 +177,9 @@ func TestBuildAttachScript_BatchedCommands(t *testing.T) {
 	spec, _ := mux.ParseDetachKey("ctrl+q")
 	script := buildAttachScript("hive-sessions", "hive-sessions:0", "title", spec)
 
-	// Count lines starting with "tmux " — should be exactly 3:
-	// 1. bind-key
-	// 2. set-option chain (override)
-	// 3. attach-session
+	// Count lines starting with "tmux " — should be exactly 2:
+	// 1. bind-key + set-option chain (batched via \;)
+	// 2. attach-session
 	// The trap body contains 1 more tmux invocation but it's inline.
 	tmuxCount := 0
 	for _, line := range strings.Split(script, "\n") {
@@ -189,10 +188,10 @@ func TestBuildAttachScript_BatchedCommands(t *testing.T) {
 			tmuxCount++
 		}
 	}
-	// 3 top-level tmux lines (bind-key, set-option chain, attach-session)
+	// 2 top-level tmux lines (bind-key+set-option batch, attach-session)
 	// The trap body contains 1 more tmux invocation but it's inline, not a separate line.
-	if tmuxCount != 3 {
-		t.Errorf("expected 3 top-level tmux invocations, got %d\n--- script ---\n%s", tmuxCount, script)
+	if tmuxCount != 2 {
+		t.Errorf("expected 2 top-level tmux invocations, got %d\n--- script ---\n%s", tmuxCount, script)
 	}
 
 	// The override set-option must use \; chaining.
@@ -205,6 +204,11 @@ func TestBuildAttachScript_BatchedCommands(t *testing.T) {
 	}
 	if setLine == "" {
 		t.Fatalf("expected a chained set-option line with \\;\n--- script ---\n%s", script)
+	}
+
+	// The bind-key must be batched into the same line as the set-options.
+	if !strings.Contains(setLine, "bind-key") {
+		t.Errorf("expected bind-key batched with set-option in same tmux invocation\n--- line ---\n%s", setLine)
 	}
 
 	// All 10 status bar options must appear in the chained set-option line.
