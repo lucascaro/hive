@@ -128,13 +128,19 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-// TestAltScreenCacheTTL verifies the cache returns stale values within the TTL
-// window and makes a fresh call after the TTL expires.
+// TestAltScreenCacheTTL verifies the cache returns the seeded value within the
+// TTL window without calling IsAlternateScreen (which requires a real tmux server).
+// Cache-miss / expiry is not tested here because it falls through to tmux.
 func TestAltScreenCacheTTL(t *testing.T) {
-	// Reset cache state.
+	// Reset cache state and restore on cleanup.
 	altScreenCache.mu.Lock()
 	altScreenCache.entries = nil
 	altScreenCache.mu.Unlock()
+	t.Cleanup(func() {
+		altScreenCache.mu.Lock()
+		altScreenCache.entries = nil
+		altScreenCache.mu.Unlock()
+	})
 
 	// Verify TTL is 5s (not the old 500ms).
 	if altScreenTTL.Seconds() != 5 {
