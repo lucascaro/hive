@@ -1,7 +1,7 @@
 # Feature: Centralize session polling behind a single PollingManager
 
 - **GitHub Issue:** #115
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
@@ -137,4 +137,4 @@ Single `PollingManager` struct that owns all tick scheduling. Views declare inte
 - Schedule wrapper methods (`schedulePollPreview`, `scheduleGridPoll`, etc.) kept on Model as thin delegates to the polling manager — minimizes call-site churn while centralizing logic.
 - All ~20 `previewPollGen++` / `gridPollGen++` sites replaced with `m.polling.Invalidate()`.
 
-- **PR:** —
+- **PR:** [#125](https://github.com/lucascaro/hive/pull/125)
