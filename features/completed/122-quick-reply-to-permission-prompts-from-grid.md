@@ -1,7 +1,7 @@
 # Feature: Quick-reply to permission prompts from grid view without focusing
 
 - **GitHub Issue:** #122
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P1
@@ -81,4 +81,4 @@ Waiting cells get a distinct border color (`ColorWarning` / amber, matching the 
 - Quick-reply check in `gridview.go` is placed before the nav switch block, after the input-mode block, so it runs only in navigation mode.
 - Border highlight uses `styles.ColorWarning` (amber) to match the existing waiting status dot color.
 
-- **PR:** —
+- **PR:** [#123](https://github.com/lucascaro/hive/pull/123)
