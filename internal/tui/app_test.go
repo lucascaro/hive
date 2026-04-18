@@ -399,7 +399,7 @@ func TestSessionSwitch_PreviewClears(t *testing.T) {
 	m.appState.PreviewContent = "old session content"
 	m.preview.SetContent("old session content")
 	// Ensure no snapshot is stored for sess-2 (the target session).
-	delete(m.polling.ContentSnapshots, "sess-2")
+	delete(m.polling.contentSnapshots, "sess-2")
 
 	// Navigate down past the project header to the second session.
 	m.sidebar.MoveDown() // to team or second session
@@ -423,7 +423,7 @@ func TestSessionSwitch_PreviewShowsCachedContent(t *testing.T) {
 	m.preview.SetContent("old session content")
 
 	const cachedContent = "cached output for sess-2"
-	m.polling.ContentSnapshots["sess-2"] = cachedContent
+	m.polling.contentSnapshots["sess-2"] = cachedContent
 
 	// Navigate down past the project header to the second session.
 	m.sidebar.MoveDown()
@@ -460,7 +460,7 @@ func TestStatusesDetectedMsg_UpdatesContentSnapshot(t *testing.T) {
 	updated := result.(Model)
 
 	// Content snapshot must be updated for grid/session-switching.
-	if got := updated.polling.ContentSnapshots["sess-1"]; got != freshContent {
+	if got := updated.polling.contentSnapshots["sess-1"]; got != freshContent {
 		t.Errorf("contentSnapshot[sess-1] = %q, want %q", got, freshContent)
 	}
 	// Preview must NOT be updated — PollPreview is the sole preview source.

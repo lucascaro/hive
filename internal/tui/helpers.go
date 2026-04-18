@@ -84,7 +84,7 @@ func (m *Model) focusSession(sessionID string) {
 	}
 	m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 	m.gridView.SyncCursor(m.appState.ActiveSessionID)
-	cached := m.polling.ContentSnapshots[m.appState.ActiveSessionID] // "" for missing or empty
+	cached := m.polling.ContentSnapshot(m.appState.ActiveSessionID) // "" for missing or empty
 	m.appState.PreviewContent = cached
 	m.preview.SetContent(cached)
 }
@@ -154,7 +154,7 @@ func (m *Model) gridContentsFromSnapshots(sessions []*state.Session) map[string]
 	}
 	contents := make(map[string]string, len(sessions))
 	for _, sess := range sessions {
-		if content := m.polling.ContentSnapshots[sess.ID]; content != "" {
+		if content := m.polling.ContentSnapshot(sess.ID); content != "" {
 			contents[sess.ID] = content
 		}
 	}

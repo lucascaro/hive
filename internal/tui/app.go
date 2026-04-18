@@ -178,7 +178,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		gridHelpModel:       newStyledHelp(),
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
-	m.polling.DetectionCtxs = buildDetectionCtxs(cfg.Agents)
+	m.polling.SetDetectionCtxs(buildDetectionCtxs(cfg.Agents))
 	m.gridView.InputEnabled = !cfg.DisableGridInput
 	m.gridView.QuickReplyEnabled = !cfg.DisableQuickReply
 	m.gridView.Keys = components.GridKeys{
@@ -272,7 +272,7 @@ func (m *Model) restoreGrid() {
 	m.appState.RestoreGridMode = state.GridRestoreNone
 	sessions := m.gridSessions(mode)
 	m.gridView.SyncState(sessions, mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
-	m.gridView.SetPaneTitles(m.polling.PaneTitles)
+	m.gridView.SetPaneTitles(m.polling.PaneTitle())
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
 	if !m.HasView(ViewGrid) {
 		m.PushView(ViewGrid)

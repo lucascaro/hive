@@ -143,7 +143,7 @@ func TestFlow_SessionSwitch_PreviewClearAndCache(t *testing.T) {
 	m, mock := testFlowModel(t)
 
 	// Pre-populate content snapshots (as StatusesDetectedMsg would).
-	m.polling.ContentSnapshots["sess-1"] = "Output from session 1"
+	m.polling.contentSnapshots["sess-1"] = "Output from session 1"
 	m.appState.PreviewContent = "Output from session 1"
 	m.preview.SetContent("Output from session 1")
 

@@ -26,19 +26,19 @@ type PollingManager struct {
 	previewRefreshMs int
 
 	// Status detection state (moved from Model).
-	ContentSnapshots map[string]string
-	StableCounts     map[string]int
-	PaneTitles       map[string]string
-	DetectionCtxs    map[string]escape.SessionDetectionCtx
+	contentSnapshots map[string]string
+	stableCounts     map[string]int
+	paneTitles       map[string]string
+	detectionCtxs    map[string]escape.SessionDetectionCtx
 }
 
 // NewPollingManager creates a PollingManager with the given config interval.
 func NewPollingManager(previewRefreshMs int) PollingManager {
 	return PollingManager{
 		previewRefreshMs: previewRefreshMs,
-		ContentSnapshots: make(map[string]string),
-		StableCounts:     make(map[string]int),
-		PaneTitles:       make(map[string]string),
+		contentSnapshots: make(map[string]string),
+		stableCounts:     make(map[string]int),
+		paneTitles:       make(map[string]string),
 	}
 }
 
@@ -118,7 +118,7 @@ func (pm *PollingManager) ScheduleStatuses(allSessions []*state.Session) tea.Cmd
 	for _, sess := range allSessions {
 		if sess.Status != state.StatusDead {
 			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			if ctx, ok := pm.DetectionCtxs[string(sess.AgentType)]; ok {
+			if ctx, ok := pm.detectionCtxs[string(sess.AgentType)]; ok {
 				detection[sess.ID] = ctx
 			}
 		}
@@ -138,12 +138,12 @@ func (pm *PollingManager) ScheduleStatuses(allSessions []*state.Session) tea.Cmd
 		bells = make(map[string]bool)
 	}
 	// Snapshot maps to avoid races.
-	prevContents := make(map[string]string, len(pm.ContentSnapshots))
-	for k, v := range pm.ContentSnapshots {
+	prevContents := make(map[string]string, len(pm.contentSnapshots))
+	for k, v := range pm.contentSnapshots {
 		prevContents[k] = v
 	}
-	stableCounts := make(map[string]int, len(pm.StableCounts))
-	for k, v := range pm.StableCounts {
+	stableCounts := make(map[string]int, len(pm.stableCounts))
+	for k, v := range pm.stableCounts {
 		stableCounts[k] = v
 	}
 	interval := time.Duration(pm.previewRefreshMs*2) * time.Millisecond
@@ -165,8 +165,43 @@ func (pm *PollingManager) ScheduleTitles(allSessions []*state.Session) tea.Cmd {
 	return escape.WatchTitles(targets, interval)
 }
 
+// ContentSnapshot returns the last captured content for the given session.
+func (pm *PollingManager) ContentSnapshot(sessionID string) string {
+	return pm.contentSnapshots[sessionID]
+}
+
+// SetContentSnapshot stores a content snapshot for the given session.
+func (pm *PollingManager) SetContentSnapshot(sessionID, content string) {
+	pm.contentSnapshots[sessionID] = content
+}
+
+// StableCount returns the debounce counter for the given session.
+func (pm *PollingManager) StableCount(sessionID string) int {
+	return pm.stableCounts[sessionID]
+}
+
+// SetStableCount stores the debounce counter for the given session.
+func (pm *PollingManager) SetStableCount(sessionID string, count int) {
+	pm.stableCounts[sessionID] = count
+}
+
+// SetPaneTitles replaces the pane title map wholesale.
+func (pm *PollingManager) SetPaneTitles(titles map[string]string) {
+	pm.paneTitles = titles
+}
+
+// PaneTitle returns the pane title map for grid rendering.
+func (pm *PollingManager) PaneTitle() map[string]string {
+	return pm.paneTitles
+}
+
+// SetDetectionCtxs sets the compiled status detection regexes.
+func (pm *PollingManager) SetDetectionCtxs(ctxs map[string]escape.SessionDetectionCtx) {
+	pm.detectionCtxs = ctxs
+}
+
 // CleanupSession removes stale detection state for a killed session.
 func (pm *PollingManager) CleanupSession(sessionID string) {
-	delete(pm.StableCounts, sessionID)
-	delete(pm.ContentSnapshots, sessionID)
+	delete(pm.stableCounts, sessionID)
+	delete(pm.contentSnapshots, sessionID)
 }
