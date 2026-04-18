@@ -69,3 +69,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #109 | Fix performance: cyber view flashes and slow preview refresh on slow machines | #110 | — |
 | #111 | fix(grid): sidebar view flashes during attach/detach | #113 | 2026-04-14 |
 | #120 | Fix slow preview updates and attach delay on slower machines | #121 | 2026-04-17 |
+| #122 | Quick-reply to permission prompts from grid view without focusing | #123 | 2026-04-17 |

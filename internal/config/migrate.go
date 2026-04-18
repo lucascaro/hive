@@ -31,7 +31,7 @@ func mergeKeybindingDefaults(cur, def KeybindingsConfig) KeybindingsConfig {
 	return cur
 }
 
-const currentSchemaVersion = 6
+const currentSchemaVersion = 7
 
 // Migrate applies any needed schema migrations to cfg and returns the updated config.
 func Migrate(cfg Config) Config {
@@ -73,6 +73,16 @@ func Migrate(cfg Config) Config {
 		// exist (json:"focus_preview" / json:"focus_sidebar").
 		if len(cfg.Keybindings.Attach) == 1 && cfg.Keybindings.Attach[0] == "a" {
 			cfg.Keybindings.Attach = KeyBinding{"enter"}
+		}
+	}
+
+	if cfg.SchemaVersion < 7 {
+		// 6 → 7 (#122): backfill WaitPrompt for Claude so permission prompts
+		// (numbered options like "1. Accept  2. Always  3. No") are detected
+		// as StatusWaiting. Only set if not already customized.
+		if claude, ok := cfg.Agents["claude"]; ok && claude.Status.WaitPrompt == "" {
+			claude.Status.WaitPrompt = DefaultConfig().Agents["claude"].Status.WaitPrompt
+			cfg.Agents["claude"] = claude
 		}
 	}
 

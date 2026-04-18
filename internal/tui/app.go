@@ -205,6 +205,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
 	m.gridView.InputEnabled = !cfg.DisableGridInput
+	m.gridView.QuickReplyEnabled = !cfg.DisableQuickReply
 	m.gridView.Keys = components.GridKeys{
 		Detach:      m.keys.Detach,
 		InputMode:   m.keys.InputMode,

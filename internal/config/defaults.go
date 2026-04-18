@@ -22,6 +22,7 @@ func DefaultConfig() Config {
 				InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
 				Status: StatusDetection{
 					RunTitle:    `^[⠁-⠿]`,
+					WaitPrompt:  `^\s*[1-9]\.\s`,
 					StableTicks: 2,
 				},
 			},

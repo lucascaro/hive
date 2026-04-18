@@ -118,8 +118,9 @@ type GridView struct {
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
-	inputMode     bool              // true when keystrokes are forwarded to the focused session
-	InputEnabled  bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	inputMode         bool // true when keystrokes are forwarded to the focused session
+	InputEnabled      bool // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	QuickReplyEnabled bool // when true, 1-9 keys send digit to the focused session
 	// Keys holds the configurable bindings consulted by Update. The parent
 	// (tui.Model) sets this once during construction; leaving the zero value
 	// in place disables every navigation/input key inside the grid.
@@ -321,6 +322,22 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}
 		}
 		return nil, true
+	}
+
+	// Quick-reply: in navigation mode, pressing a digit 1-9 sends that digit
+	// + Enter to the focused session. Works in all session states so the user
+	// can quickly answer numbered prompts without attaching or entering input mode.
+	if gv.QuickReplyEnabled {
+		if r := msg.String(); len(r) == 1 && r[0] >= '1' && r[0] <= '9' {
+			if sess := gv.Selected(); sess != nil && sess.TmuxSession != "" {
+				target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+				digit := r
+				return func() tea.Msg {
+					mux.SendKeys(target, digit) //nolint:errcheck // best-effort
+					return nil
+				}, true
+			}
+		}
 	}
 
 	n := len(gv.sessions)

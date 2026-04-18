@@ -61,6 +61,13 @@
 | `q` | Quit app |
 | `Esc` | Exit grid view |
 | `i` | Enter input mode on focused cell (forward keystrokes to that session) |
+| `1`–`9` | Quick-reply: send digit to the focused session (no attach needed) |
+
+### Quick Reply
+
+Press `1`–`9` directly in grid navigation mode to send that digit to the focused session. This is ideal for answering numbered prompts (e.g. "1. Accept  2. Always  3. No") without attaching or entering input mode. Works in all session states.
+
+> **Opt-out:** Set `disable_quick_reply: true` in `~/.config/hive/config.json` to disable this feature.
 
 ### Grid Input Mode
 

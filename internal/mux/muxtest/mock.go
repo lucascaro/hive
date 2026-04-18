@@ -84,6 +84,15 @@ func (m *MockBackend) CallCount(method string) int {
 	return m.calls[method]
 }
 
+// ResetCounts clears all recorded call counts and the LastSentKeys/Target fields.
+func (m *MockBackend) ResetCounts() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = make(map[string]int)
+	m.LastSentTarget = ""
+	m.LastSentKeys = ""
+}
+
 // record must be called with m.mu held.
 func (m *MockBackend) record(method string) error {
 	m.calls[method]++

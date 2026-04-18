@@ -207,3 +207,44 @@ func TestMigrate_V3ToV4_PreservesExistingStartupView(t *testing.T) {
 		t.Errorf("StartupView = %q, want %q (user choice must be preserved)", got.StartupView, "grid-all")
 	}
 }
+
+// TestMigrate_V6ToV7_FillsClaudeWaitPrompt verifies that upgrading from
+// schema v6 to v7 backfills WaitPrompt for Claude (#122).
+func TestMigrate_V6ToV7_FillsClaudeWaitPrompt(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: 6,
+		Agents: map[string]AgentProfile{
+			"claude": {
+				Cmd:    []string{"claude"},
+				Status: StatusDetection{RunTitle: `^[⠁-⠿]`, StableTicks: 2},
+			},
+		},
+	}
+	got := Migrate(cfg)
+	profile := got.Agents["claude"]
+	if profile.Status.WaitPrompt == "" {
+		t.Error("Migrate v6→v7 should backfill WaitPrompt for Claude")
+	}
+	if want := DefaultConfig().Agents["claude"].Status.WaitPrompt; profile.Status.WaitPrompt != want {
+		t.Errorf("WaitPrompt = %q, want %q", profile.Status.WaitPrompt, want)
+	}
+}
+
+// TestMigrate_V6ToV7_PreservesCustomWaitPrompt verifies that the v6→v7
+// migration does not clobber a user who already set a custom WaitPrompt.
+func TestMigrate_V6ToV7_PreservesCustomWaitPrompt(t *testing.T) {
+	cfg := Config{
+		SchemaVersion: 6,
+		Agents: map[string]AgentProfile{
+			"claude": {
+				Cmd:    []string{"claude"},
+				Status: StatusDetection{RunTitle: `^[⠁-⠿]`, WaitPrompt: "custom-pattern", StableTicks: 2},
+			},
+		},
+	}
+	got := Migrate(cfg)
+	profile := got.Agents["claude"]
+	if profile.Status.WaitPrompt != "custom-pattern" {
+		t.Errorf("WaitPrompt = %q, want %q (user choice must be preserved)", profile.Status.WaitPrompt, "custom-pattern")
+	}
+}
