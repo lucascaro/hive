@@ -74,7 +74,9 @@ Waiting cells get a distinct border color (`ColorWarning` / amber, matching the 
 
 ## Implementation Notes
 
-- No deviations from the plan.
+- Quick-reply triggers on both `StatusWaiting` AND `StatusIdle` because Claude sessions don't always reach `StatusWaiting`. The amber border highlight only applies to `StatusWaiting` to avoid being too noisy.
+- Added `WaitPrompt: "^\s*[1-4]\.\s"` to Claude's default agent config so numbered permission prompts are now detected as `StatusWaiting`.
+- Added schema migration v6→v7 to backfill `WaitPrompt` for existing Claude configs.
 - Added `ResetCounts()` method to `muxtest.MockBackend` to support the `AllDigits` test.
 - Quick-reply check in `gridview.go` is placed before the nav switch block, after the input-mode block, so it runs only in navigation mode.
 - Border highlight uses `styles.ColorWarning` (amber) to match the existing waiting status dot color.

@@ -324,11 +324,13 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
-	// Quick-reply: in navigation mode, if the focused session is waiting and
-	// the user presses a digit 1-9, send that digit + Enter to the session.
+	// Quick-reply: in navigation mode, if the focused session is waiting or
+	// idle and the user presses a digit 1-9, send that digit + Enter to the
+	// session. Triggers on both StatusWaiting and StatusIdle because some
+	// agents (e.g. Claude) don't always reach StatusWaiting.
 	if gv.QuickReplyEnabled {
 		if r := msg.String(); len(r) == 1 && r[0] >= '1' && r[0] <= '9' {
-			if sess := gv.Selected(); sess != nil && sess.Status == state.StatusWaiting && sess.TmuxSession != "" {
+			if sess := gv.Selected(); sess != nil && (sess.Status == state.StatusWaiting || sess.Status == state.StatusIdle) && sess.TmuxSession != "" {
 				target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 				digit := r
 				return func() tea.Msg {

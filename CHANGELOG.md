@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Quick-reply from grid view**: pressing 1–9 on a focused grid cell whose session is waiting for input sends that digit + Enter directly to the session — no need to attach or enter input mode. Waiting sessions are highlighted with an amber border. Disable with `disable_quick_reply: true` in config (#122).
+- **Quick-reply from grid view**: pressing 1–9 on a focused grid cell whose session is idle or waiting for input sends that digit + Enter directly to the session — no need to attach or enter input mode. Waiting sessions are highlighted with an amber border. Disable with `disable_quick_reply: true` in config (#122).
+- **Claude permission prompt detection**: Claude sessions now properly detect `StatusWaiting` when showing numbered permission prompts (e.g. "1. Accept  2. Always  3. No") via a new `wait_prompt` pattern. Existing configs are auto-migrated (#122).
 
 ### Fixed
 - **Slow preview updates on slower machines**: increased alt-screen detection cache TTL from 500ms to 5s, eliminating a redundant `tmux display-message` subprocess on nearly every sidebar preview poll. Moved content sanitization out of tick goroutines so the effective poll interval stays closer to the configured value. Added per-session content caching that skips expensive regex sanitization when raw capture output hasn't changed (common for idle sessions) (#120).

@@ -37,9 +37,9 @@ func TestGridQuickReply_SendsDigitAndEnter(t *testing.T) {
 	}
 }
 
-// TestGridQuickReply_IgnoredWhenNotWaiting verifies that digit keys are
-// not forwarded when the focused session is not in waiting status.
-func TestGridQuickReply_IgnoredWhenNotWaiting(t *testing.T) {
+// TestGridQuickReply_IgnoredWhenRunning verifies that digit keys are
+// not forwarded when the focused session is in running status.
+func TestGridQuickReply_IgnoredWhenRunning(t *testing.T) {
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
 
@@ -59,7 +59,33 @@ func TestGridQuickReply_IgnoredWhenNotWaiting(t *testing.T) {
 	f.ExecCmdChain(cmd)
 
 	if mock.CallCount("SendKeys") != 0 {
-		t.Errorf("SendKeys should not be called when session is not waiting, got %d calls", mock.CallCount("SendKeys"))
+		t.Errorf("SendKeys should not be called when session is running, got %d calls", mock.CallCount("SendKeys"))
+	}
+}
+
+// TestGridQuickReply_WorksWhenIdle verifies that quick-reply also works
+// on idle sessions (some agents don't reach StatusWaiting).
+func TestGridQuickReply_WorksWhenIdle(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	sel := f.model.gridView.Selected()
+	if sel == nil {
+		t.Fatal("expected a selected session")
+	}
+	sel.Status = state.StatusIdle
+
+	cmd := f.SendKey("1")
+	f.ExecCmdChain(cmd)
+
+	if mock.CallCount("SendKeys") != 1 {
+		t.Errorf("SendKeys call count = %d, want 1 (should work on idle)", mock.CallCount("SendKeys"))
+	}
+	if mock.LastSentKeys != "1\n" {
+		t.Errorf("LastSentKeys = %q, want %q", mock.LastSentKeys, "1\n")
 	}
 }
 
