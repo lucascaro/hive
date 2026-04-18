@@ -26,9 +26,19 @@ type PaletteItem struct {
 	shortcut string // current keybinding (e.g. "enter", "ctrl+p")
 }
 
-func (p PaletteItem) Title() string       { return p.label }
-func (p PaletteItem) Description() string { return p.shortcut }
+// Title returns the label with the shortcut key appended in a muted style.
+// Rendered on a single line: "Attach session          enter"
+func (p PaletteItem) Title() string {
+	if p.shortcut == "" {
+		return p.label
+	}
+	return p.label + "  " + styles.MutedStyle.Render(p.shortcut)
+}
+func (p PaletteItem) Description() string { return "" }
 func (p PaletteItem) FilterValue() string { return p.label }
+
+// Shortcut returns the raw shortcut string (for testing).
+func (p PaletteItem) Shortcut() string { return p.shortcut }
 
 // NewPaletteItem creates a palette item with an action name, label, and shortcut.
 func NewPaletteItem(action, label, shortcut string) PaletteItem {
@@ -55,11 +65,6 @@ func NewCommandPalette() CommandPalette {
 		Foreground(styles.ColorAccent).
 		BorderForeground(styles.ColorAccent)
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Padding(0, 0, 0, 2)
-	delegate.Styles.NormalDesc = styles.MutedStyle.Padding(0, 0, 0, 2)
-	delegate.Styles.SelectedDesc = lipgloss.NewStyle().
-		Foreground(styles.ColorAccent).
-		Padding(0, 0, 0, 0)
-	delegate.ShowDescription = true
 
 	l := list.New(nil, delegate, 50, 10)
 	l.Title = ""

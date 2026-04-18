@@ -82,12 +82,12 @@ func TestPalette_ShortcutsShown(t *testing.T) {
 
 	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 
-	// Check that palette items have non-empty descriptions (shortcuts).
+	// Check that palette items have non-empty shortcuts.
 	items := f.model.paletteItems()
 	for _, item := range items {
 		pi := item.(components.PaletteItem)
-		if pi.Description() == "" {
-			t.Errorf("palette item %q has empty shortcut description", pi.Title())
+		if pi.Shortcut() == "" {
+			t.Errorf("palette item %q has empty shortcut", pi.FilterValue())
 		}
 	}
 }
