@@ -7,10 +7,9 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
-| 2 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
-| 3 | #119 | Add command palette | RESEARCH | M |
-| 4 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
+| 1 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
+| 2 | #119 | Add command palette | RESEARCH | M |
+| 3 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
 
 ## Rejected
 
@@ -69,4 +68,5 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #109 | Fix performance: cyber view flashes and slow preview refresh on slow machines | #110 | — |
 | #111 | fix(grid): sidebar view flashes during attach/detach | #113 | 2026-04-14 |
 | #120 | Fix slow preview updates and attach delay on slower machines | #121 | 2026-04-17 |
+| #112 | Make all key bindings configurable, consistent, and documented | #116 | 2026-04-17 |
 | #122 | Quick-reply to permission prompts from grid view without focusing | #123 | 2026-04-17 |

@@ -157,6 +157,30 @@ Always apply these principles when adding or modifying UI elements in the TUI:
 - Prefer showing information inline over requiring a modal/overlay for basic facts (e.g. project number, agent type, session status).
 - Reserve overlays for actions that need confirmation or multi-field input.
 
+## Keybindings Policy
+
+Every key binding change must update all four surfaces — omitting any one creates drift that confuses users and other contributors.
+
+### Required updates for any new or changed keybinding
+
+1. **Config field + default** — add or update the field in `KeybindingsConfig` (`internal/config/config.go`) and set the default in `internal/config/defaults.go`. Use `KeyBinding` ([]string) type so users can bind multiple keys.
+2. **Settings UI field** — add a `keybindField(...)` entry in `internal/tui/components/settings.go` under the Keybindings tab.
+3. **Documentation** — add or update the row in `docs/keybindings.md`.
+4. **Changelog** — add a user-facing entry under `[Unreleased]` in `CHANGELOG.md` if the change affects default behavior.
+
+### Hard-coded exceptions (NOT configurable)
+
+These keys are intentionally hard-coded and must not be moved into config:
+- `ctrl+c` — force-quit (universal safety)
+- `y`, `enter`, `esc`, `n` — dialog confirm/cancel
+- `d` — "don't show again" in hint overlays
+- `s`, `R`, `esc` — settings modal save/reset/cancel
+- Modal overlay navigation (`up/down/left/right/j/k`) in settings, help panel, and pickers
+
+### Routing pattern
+
+Use `key.Matches(msg, km.Action)` for all configurable bindings — never `msg.String() == "x"` for actions that should be rebindable. Literal `msg.String()` checks are reserved for the hard-coded exceptions above.
+
 ## Documentation Maintenance
 
 Keep project documentation accurate and up-to-date as part of every code change. Stale docs are a bug.

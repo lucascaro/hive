@@ -1,7 +1,7 @@
 # Feature: Make all key bindings configurable, consistent, and documented
 
 - **GitHub Issue:** #112
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
@@ -141,6 +141,9 @@ Detailed audit in `research/112-keybindings/RESEARCH.md`. Summary below.
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- Implemented across multiple PRs: #116 (plumb KeyMap through grid handlers), plus prior commits for config schema, migration, settings UI, and docs.
+- **Deviated from plan:** `Attach` default is `["enter"]` (not `["f"]`), `InputMode` default is `["i"]` (not `["enter"]`). The plan's key remap was reconsidered — keeping Enter as attach is more intuitive.
+- Modal overlay keys (settings, help, pickers) remain hard-coded — these are secondary UI surfaces where configurability has diminishing returns. Documented as exceptions in the AGENTS.md keybindings policy.
+- Added keybindings policy section to AGENTS.md requiring all four surfaces (config, settings UI, docs, changelog) to be updated for any keybinding change.
 
-- **PR:** —
+- **PR:** #116 (primary), plus incremental commits on main
