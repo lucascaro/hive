@@ -1,7 +1,7 @@
 # Feature: Add command palette
 
 - **GitHub Issue:** #119
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P3
@@ -99,4 +99,4 @@ Clone the AgentPicker pattern to create a `CommandPalette` component. Each palet
 - Action dispatch via string-based switch in handle_palette.go — maps each action to the same code path as its direct keybinding.
 - No new dependencies — reuses existing charmbracelet/bubbles/list.
 
-- **PR:** —
+- **PR:** [#126](https://github.com/lucascaro/hive/pull/126)

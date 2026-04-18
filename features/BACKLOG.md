@@ -7,9 +7,8 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #119 | Add command palette | IMPLEMENT | M |
-| 2 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
-| 3 | #124 | Detect and handle dead windows after session creation | TRIAGE | — |
+| 1 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
+| 2 | #124 | Detect and handle dead windows after session creation | TRIAGE | — |
 
 ## Rejected
 
@@ -71,3 +70,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #112 | Make all key bindings configurable, consistent, and documented | #116 | 2026-04-17 |
 | #122 | Quick-reply to permission prompts from grid view without focusing | #123 | 2026-04-17 |
 | #115 | Centralize session polling behind a single PollingManager | #125 | 2026-04-18 |
+| #119 | Add command palette | #126 | 2026-04-18 |
