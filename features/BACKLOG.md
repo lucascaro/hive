@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
+| 1 | #115 | Centralize session polling behind a single PollingManager | PLAN | L |
 | 2 | #119 | Add command palette | RESEARCH | M |
 | 3 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
 
