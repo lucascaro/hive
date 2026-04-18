@@ -5,18 +5,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lucascaro/hive/internal/escape"
-	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
 	"github.com/lucascaro/hive/internal/tui/components"
 )
 
 func (m Model) handlePreviewUpdated(msg components.PreviewUpdatedMsg) (tea.Model, tea.Cmd) {
-	if msg.Generation != m.previewPollGen {
+	if m.polling.IsStale(msg.Generation) {
 		// Stale poll from a previous session or navigation — discard without
 		// rescheduling so the old polling goroutine dies off naturally.
 		debugLog.Printf("preview msg STALE gen=%d want=%d session=%s — discarded",
-			msg.Generation, m.previewPollGen, msg.SessionID)
+			msg.Generation, m.polling.Generation(), msg.SessionID)
 		return m, nil
 	}
 	// Skip the activity-pip stamp while grid is on top: the grid poll already
@@ -41,8 +39,8 @@ func (m Model) handleGridPreviewsUpdated(msg components.GridPreviewsUpdatedMsg) 
 	// Discard stale background ticks from a previous chain (e.g. spawned by a
 	// prior g/G mode toggle that started a parallel loop). Stamping or
 	// rescheduling stale messages would multiply the effective polling rate.
-	if !msg.Fast && msg.Generation != m.gridPollGen {
-		debugLog.Printf("grid poll msg STALE gen=%d want=%d — discarded", msg.Generation, m.gridPollGen)
+	if !msg.Fast && m.polling.IsStale(msg.Generation) {
+		debugLog.Printf("grid poll msg STALE gen=%d want=%d — discarded", msg.Generation, m.polling.Generation())
 		return m, nil
 	}
 	if !msg.Fast {
@@ -237,55 +235,22 @@ const inputModeBackgroundMs = 1000
 // inputModeFocusedMs is the focused-session poll interval during input mode.
 const inputModeFocusedMs = 50
 
+// scheduleGridPoll delegates to the PollingManager with current grid state.
 func (m *Model) scheduleGridPoll() tea.Cmd {
 	sessions := m.gridSessions(m.gridView.Mode)
-	if len(sessions) == 0 {
-		return nil
+	focusedID := ""
+	if sel := m.gridView.Selected(); sel != nil {
+		focusedID = sel.ID
 	}
-	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
-	partial := false
-	if m.gridView.InputMode() {
-		// In input mode, slow down the background poll to free CPU for the
-		// focused session's fast 50ms loop. The focused session is excluded
-		// from the batch (it's already captured by the fast poll).
-		slow := time.Duration(inputModeBackgroundMs) * time.Millisecond
-		if slow > interval {
-			interval = slow
-		}
-		// Exclude the focused session — already captured by the fast poll.
-		sel := m.gridView.Selected()
-		if sel != nil {
-			filtered := make([]*state.Session, 0, len(sessions))
-			for _, s := range sessions {
-				if s.ID != sel.ID {
-					filtered = append(filtered, s)
-				}
-			}
-			sessions = filtered
-			partial = true
-		}
-		if len(sessions) == 0 {
-			return nil
-		}
-	}
-	return components.PollGridPreviews(sessions, interval, m.gridPollGen, partial)
+	return m.polling.ScheduleGridPoll(sessions, m.gridView.InputMode(), focusedID)
 }
 
-// scheduleFocusedSessionPoll returns a tea.Cmd that polls just the focused
-// session at 50 ms. Used for the fast poll loop in input mode.
+// scheduleFocusedSessionPoll delegates to the PollingManager.
 func (m *Model) scheduleFocusedSessionPoll() tea.Cmd {
-	sel := m.gridView.Selected()
-	if sel == nil {
-		return nil
-	}
-	interval := time.Duration(inputModeFocusedMs) * time.Millisecond
-	// Respect the configured interval if it's already faster (e.g. tests set 1 ms).
-	if cfg := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond; cfg < interval {
-		interval = cfg
-	}
-	return components.PollFocusedGridPreview(sel, interval)
+	return m.polling.ScheduleFocusedPoll(m.gridView.Selected())
 }
 
+// schedulePollPreview delegates to the PollingManager.
 func (m *Model) schedulePollPreview() tea.Cmd {
 	if m.HasView(ViewGrid) {
 		debugLog.Printf("schedulePollPreview: grid visible, skipping sidebar preview poll")
@@ -296,64 +261,17 @@ func (m *Model) schedulePollPreview() tea.Cmd {
 		debugLog.Printf("schedulePollPreview: no active session (ActiveSessionID=%q)", m.appState.ActiveSessionID)
 		return nil
 	}
-	interval := time.Duration(m.cfg.PreviewRefreshMs) * time.Millisecond
-	debugLog.Printf("schedulePollPreview: session=%s tmux=%s:%d interval=%v gen=%d",
-		sess.ID, sess.TmuxSession, sess.TmuxWindow, interval, m.previewPollGen)
-	return components.PollPreview(sess.ID, sess.TmuxSession, sess.TmuxWindow, interval, m.previewPollGen)
+	debugLog.Printf("schedulePollPreview: session=%s tmux=%s:%d gen=%d",
+		sess.ID, sess.TmuxSession, sess.TmuxWindow, m.polling.Generation())
+	return m.polling.SchedulePreview(sess)
 }
 
-func (m *Model) scheduleWatchTitles() tea.Cmd {
-	targets := make(map[string]string)
-	for _, sess := range state.AllSessions(&m.appState) {
-		if sess.Status != state.StatusDead {
-			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
-		}
-	}
-	if len(targets) == 0 {
-		return nil
-	}
-	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
-	return escape.WatchTitles(targets, interval)
-}
-
+// scheduleWatchStatuses delegates to the PollingManager.
 func (m *Model) scheduleWatchStatuses() tea.Cmd {
-	targets := make(map[string]string)
-	detection := make(map[string]escape.SessionDetectionCtx)
-	for _, sess := range state.AllSessions(&m.appState) {
-		if sess.Status != state.StatusDead {
-			targets[sess.ID] = mux.Target(sess.TmuxSession, sess.TmuxWindow)
-			if ctx, ok := m.detectionCtxs[string(sess.AgentType)]; ok {
-				detection[sess.ID] = ctx
-			}
-		}
-	}
-	if len(targets) == 0 {
-		return nil
-	}
-	// Batch-read pane titles and bell flags for all windows in the shared hive session.
-	titles, bells, err := mux.GetPaneTitles(mux.HiveSession)
-	if err != nil {
-		debugLog.Printf("scheduleWatchStatuses: GetPaneTitles(%s): %v", mux.HiveSession, err)
-		titles = make(map[string]string)
-		bells = make(map[string]bool)
-	} else {
-		if titles == nil {
-			titles = make(map[string]string)
-		}
-		if bells == nil {
-			bells = make(map[string]bool)
-		}
-	}
-	// Snapshot maps to avoid concurrent reads in the tick goroutine
-	// while handleStatusesDetected writes on the main goroutine.
-	prevContents := make(map[string]string, len(m.contentSnapshots))
-	for k, v := range m.contentSnapshots {
-		prevContents[k] = v
-	}
-	stableCounts := make(map[string]int, len(m.stableCounts))
-	for k, v := range m.stableCounts {
-		stableCounts[k] = v
-	}
-	interval := time.Duration(m.cfg.PreviewRefreshMs*2) * time.Millisecond
-	return escape.WatchStatuses(targets, prevContents, stableCounts, detection, titles, bells, interval)
+	return m.polling.ScheduleStatuses(state.AllSessions(&m.appState))
+}
+
+// scheduleWatchTitles delegates to the PollingManager.
+func (m *Model) scheduleWatchTitles() tea.Cmd {
+	return m.polling.ScheduleTitles(state.AllSessions(&m.appState))
 }

@@ -143,7 +143,7 @@ func TestFlow_SessionSwitch_PreviewClearAndCache(t *testing.T) {
 	m, mock := testFlowModel(t)
 
 	// Pre-populate content snapshots (as StatusesDetectedMsg would).
-	m.contentSnapshots["sess-1"] = "Output from session 1"
+	m.polling.ContentSnapshots["sess-1"] = "Output from session 1"
 	m.appState.PreviewContent = "Output from session 1"
 	m.preview.SetContent("Output from session 1")
 
@@ -555,7 +555,7 @@ func TestFlow_StatusUpdate_UpdatesPreview(t *testing.T) {
 	f.ViewContains("Waiting for output")
 
 	// PreviewUpdatedMsg (from PollPreview) IS the authoritative preview source.
-	gen := f.Model().previewPollGen
+	gen := f.Model().polling.Generation()
 	f.Send(components.PreviewUpdatedMsg{
 		SessionID:  "sess-1",
 		Content:    "Fresh output from agent",

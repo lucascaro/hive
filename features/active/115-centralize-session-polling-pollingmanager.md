@@ -1,7 +1,7 @@
 # Feature: Centralize session polling behind a single PollingManager
 
 - **GitHub Issue:** #115
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
@@ -80,19 +80,61 @@ Detailed findings in `research/115-polling/RESEARCH.md`.
 
 ## Plan
 
-<Filled during PLAN stage.>
+Single `PollingManager` struct that owns all tick scheduling. Views declare intent (`SetView`); the manager decides what to capture, at what interval, and deduplicates. One master `tea.Tick` chain at the fastest needed cadence (50ms in input mode, 500ms otherwise); internal counters fire slower tiers (1000ms for status/titles) as multiples of the base tick. One unified `PollTickMsg` replaces the 5 current message types.
+
+### Design Decisions
+
+- **Separate struct** (`PollingManager`) rather than methods on Model — isolates polling state, testable without full Model construction.
+- **Single generation counter** — one `uint64` that invalidates all stale chains on any state change (replaces `previewPollGen` + `gridPollGen`).
+- **Intent-based API** — `SetView(view, sessions, focusedID, inputMode)` replaces 5 separate schedule functions. Callers describe what's visible; manager decides what to capture.
+- **Tiered ticks** — master tick at base interval; `time.Since(lastSlowTick)` gates the 1000ms-tier captures (status detection, title polling).
+- **Existing capture functions kept initially** — `PollPreview`, `PollGridPreviews`, `PollFocusedGridPreview` become internal implementation details called from `HandleTick`. Can inline in a follow-up.
 
 ### Files to Change
-1. `path/to/file.go` — <what and why>
+
+1. `internal/tui/polling.go` (NEW) — `PollingManager` struct with fields: `generation uint64`, `baseInterval time.Duration`, `view ViewID`, `gridSessions []*state.Session`, `focusedSessionID string`, `inputMode bool`, `lastSlowTick time.Time`, `running bool`, plus config ref. Methods: `SetView()` (bumps generation, records intent, returns first tick cmd), `InvalidateAndReschedule()` (bumps generation, returns fresh tick), `HandleTick(PollTickMsg)` (validates generation, performs captures based on view+tier, returns next tick). Define `PollTickMsg` with `Generation uint64` and result fields for sidebar/grid/status/title data.
+
+2. `internal/tui/polling_test.go` (NEW) — Unit tests for the manager in isolation.
+
+3. `internal/tui/handle_preview.go` (MODIFY) — Remove `schedulePollPreview`, `scheduleGridPoll`, `scheduleFocusedSessionPoll`, `scheduleWatchTitles`, `scheduleWatchStatuses`. Replace `handlePreviewUpdated` and `handleGridPreviewsUpdated` with single `handlePollTick(PollTickMsg)` that dispatches results to sidebar/grid/status. Keep `stampPreviewPoll` and activity pip logic unchanged.
+
+4. `internal/tui/app.go` (MODIFY) — Add `polling PollingManager` field to Model. In `Init()`, replace 5 separate schedule calls with `m.polling.SetView(...)`. Remove `previewPollGen` and `gridPollGen` fields. Add `PollTickMsg` case to `Update` switch.
+
+5. `internal/tui/handle_keys.go` (MODIFY) — Replace ~12 call sites of `schedulePollPreview()` / `scheduleGridPoll()` / `scheduleFocusedSessionPoll()` with `m.polling.SetView(...)` or `m.polling.InvalidateAndReschedule()`.
+
+6. `internal/tui/handle_session.go` (MODIFY) — Replace ~8 call sites in `handleSessionCreated`, `handleAttachDone`, `handleSessionDetached`, etc.
+
+7. `internal/tui/components/gridview.go`, `internal/tui/components/preview.go` (NO CHANGE initially) — Capture functions remain as-is; called internally by `HandleTick`.
 
 ### Test Strategy
-- <how to verify>
+
+- `internal/tui/polling_test.go`:
+  - `TestPollingManager_SetViewBumpsGeneration` — verify generation increments on SetView, stale PollTickMsg is discarded by HandleTick.
+  - `TestPollingManager_TieredCapture` — verify fast ticks skip slow-tier captures until elapsed >= 1000ms.
+  - `TestPollingManager_InputModeDeduplication` — verify focused session excluded from background grid batch; captured by fast poll only.
+  - `TestPollingManager_ViewSwitchInvalidates` — verify switching from grid to sidebar stops grid polling and starts sidebar polling.
+  - `TestPollingManager_NoSessionsNoPoll` — verify SetView with empty sessions returns nil cmd.
+- `internal/tui/flow_grid_input_test.go` (MODIFY):
+  - Update `TestGridInputMode_BackgroundPollSlowsDown` to use PollingManager API.
+  - Update `TestGridInputMode_FocusedSessionExcludedFromBackgroundPoll` similarly.
+  - Update `TestGridInputMode_ExitRestoresNormalPolling` similarly.
+- `internal/tui/flow_test.go` (MODIFY):
+  - Update any tests that call `scheduleGridPoll()` or `schedulePollPreview()` directly.
 
 ### Risks
-- <what could go wrong>
+
+- **Large migration surface** — ~20+ call sites need updating in one PR. Mitigation: search-and-replace `schedulePollPreview()` → `m.polling.SetView(...)` is mechanical; test suite catches regressions.
+- **Tiered tick accuracy** — `time.Since(lastSlowTick)` drifts slightly from exact 1000ms. Acceptable — current code has the same drift via `tea.Tick` chains.
+- **Input mode latency** — must preserve 50ms echo. Mitigation: base tick drops to 50ms when input mode active, same as current `inputModeFocusedMs`.
+- **Test churn** — flow tests that directly reference `scheduleGridPoll()` etc. need updating. Mitigated by keeping the number of test-file changes small (3-4 files).
 
 ## Implementation Notes
 
-<Filled during IMPLEMENT stage.>
+- **Pragmatic approach:** Instead of a mega-tick that does all captures in one goroutine, the PollingManager is a coordinator that owns the generation counter and scheduling logic while reusing existing capture functions and message types. This minimizes risk and test churn.
+- Existing `PreviewUpdatedMsg`, `GridPreviewsUpdatedMsg`, `StatusesDetectedMsg`, `TitlesDetectedMsg` message types kept — no new unified message type needed for this phase.
+- `contentSnapshots`, `stableCounts`, `paneTitles`, `detectionCtxs` moved from Model fields into `PollingManager` struct fields.
+- `previewPollGen` and `gridPollGen` replaced by single `polling.generation`.
+- Schedule wrapper methods (`schedulePollPreview`, `scheduleGridPoll`, etc.) kept on Model as thin delegates to the polling manager — minimizes call-site churn while centralizing logic.
+- All ~20 `previewPollGen++` / `gridPollGen++` sites replaced with `m.polling.Invalidate()`.
 
 - **PR:** —

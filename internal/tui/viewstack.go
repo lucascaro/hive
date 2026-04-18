@@ -161,12 +161,12 @@ func (m *Model) refreshGrid() {
 		prevID = s.ID
 	}
 	m.syncGridState(prevID)
-	m.gridView.SetPaneTitles(m.paneTitles)
+	m.gridView.SetPaneTitles(m.polling.PaneTitles)
 }
 
 // openGrid is a helper that pushes the grid view and sets up grid state.
 func (m *Model) openGrid(mode state.GridRestoreMode) {
 	m.gridView.SyncState(m.gridSessions(mode), mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
-	m.gridView.SetPaneTitles(m.paneTitles)
+	m.gridView.SetPaneTitles(m.polling.PaneTitles)
 	m.PushView(ViewGrid)
 }

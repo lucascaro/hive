@@ -777,7 +777,7 @@ func TestFlow_GridExitStartsPreviewPoll(t *testing.T) {
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
 
-	genBefore := f.Model().previewPollGen
+	genBefore := f.Model().polling.Generation()
 
 	// Open all-projects grid and navigate to sess-2.
 	f.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
@@ -786,7 +786,7 @@ func TestFlow_GridExitStartsPreviewPoll(t *testing.T) {
 	// Exit grid with esc.
 	f.ExecCmdChain(f.SendSpecialKey(tea.KeyEscape))
 
-	genAfter := f.Model().previewPollGen
+	genAfter := f.Model().polling.Generation()
 	if genAfter <= genBefore {
 		t.Errorf("previewPollGen should increase on grid exit with session change: before=%d after=%d", genBefore, genAfter)
 	}

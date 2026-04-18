@@ -18,7 +18,7 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 	m.refreshGrid()
 	m.focusSession(msg.Session.ID)
 	m.persist()
-	m.previewPollGen++ // new session, start fresh poll chain
+	m.polling.Invalidate() // new session, start fresh poll chain
 	return m, m.schedulePollPreview()
 }
 
@@ -28,8 +28,7 @@ func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
 	if msg.TmuxSession != "" {
 		killTmuxSessionIfEmpty(&m.appState, msg.TmuxSession)
 	}
-	delete(m.stableCounts, msg.SessionID)
-	delete(m.contentSnapshots, msg.SessionID)
+	m.polling.CleanupSession(msg.SessionID)
 	// Rebuild sidebar before focusSession so its SyncActiveSession can
 	// locate the fallback in the new items list. Use persist() instead of
 	// commitState() to avoid a second redundant rebuild.
@@ -37,7 +36,7 @@ func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
 	m.refreshGrid()
 	m.focusSession(fallback)
 	m.persist()
-	m.previewPollGen++
+	m.polling.Invalidate()
 	return m, m.schedulePollPreview()
 }
 
@@ -96,7 +95,7 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.gridView.SetBellPending(m.bellPending)
 	m.gridView.SetBellBlink(m.bellBlinkOn)
 	m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
-	m.previewPollGen++
+	m.polling.Invalidate()
 	m.appState.PreviewContent = ""
 	m.preview.SetContent("")
 	cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
@@ -104,14 +103,14 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.ensureBellBlinkRunning())
 	}
 	if m.HasView(ViewGrid) {
-		m.gridPollGen++
+		m.polling.Invalidate()
 		cmds = append(cmds, m.scheduleGridPoll())
 	}
 	return m, tea.Batch(cmds...)
 }
 
 func (m Model) handleSessionDetached() (tea.Model, tea.Cmd) {
-	m.previewPollGen++ // returning from native attach; start fresh poll chain
+	m.polling.Invalidate() // returning from native attach; start fresh poll chain
 	m.appState.PreviewContent = ""
 	m.preview.SetContent("")
 	return m, m.schedulePollPreview()
@@ -120,12 +119,11 @@ func (m Model) handleSessionDetached() (tea.Model, tea.Cmd) {
 func (m Model) handleSessionWindowGone(msg components.SessionWindowGoneMsg) (tea.Model, tea.Cmd) {
 	debugLog.Printf("session window gone: %s", msg.SessionID)
 	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
-	delete(m.stableCounts, msg.SessionID)
-	delete(m.contentSnapshots, msg.SessionID)
+	m.polling.CleanupSession(msg.SessionID)
 	m.commitState()
 	// Switch to whichever session the sidebar now has selected.
 	m.syncActiveFromSidebar()
-	m.previewPollGen++ // invalidate any in-flight polls for the removed session
+	m.polling.Invalidate() // invalidate any in-flight polls for the removed session
 	return m, m.schedulePollPreview()
 }
 
@@ -155,21 +153,21 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 		if state.FindSession(&m.appState, sessionID) == nil {
 			continue
 		}
-		prev := m.contentSnapshots[sessionID]
-		m.contentSnapshots[sessionID] = content
+		prev := m.polling.ContentSnapshots[sessionID]
+		m.polling.ContentSnapshots[sessionID] = content
 		if content != prev {
-			m.stableCounts[sessionID] = 0 // content changed, reset debounce
+			m.polling.StableCounts[sessionID] = 0 // content changed, reset debounce
 		} else {
-			m.stableCounts[sessionID]++ // content unchanged, increment
+			m.polling.StableCounts[sessionID]++ // content unchanged, increment
 		}
 	}
 	// Wholesale-replace the pane titles map.  Dead-session entries naturally
 	// fall out without explicit cleanup, and the grid renders from this map
 	// directly when its subtitle row is enabled.
 	if msg.Titles != nil {
-		m.paneTitles = msg.Titles
+		m.polling.PaneTitles = msg.Titles
 		if m.HasView(ViewGrid) {
-			m.gridView.SetPaneTitles(m.paneTitles)
+			m.gridView.SetPaneTitles(m.polling.PaneTitles)
 		}
 	}
 	// NOTE: do NOT update m.preview from WatchStatuses content here.  WatchStatuses
@@ -185,7 +183,7 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 	changed := false
 	if len(msg.Bells) > 0 {
 		// Build reverse map: target → sessionID for visual indicator.
-		targetToSession := make(map[string]string, len(m.contentSnapshots))
+		targetToSession := make(map[string]string, len(m.polling.ContentSnapshots))
 		for _, sess := range state.AllSessions(&m.appState) {
 			targetToSession[mux.Target(sess.TmuxSession, sess.TmuxWindow)] = sess.ID
 		}
