@@ -9,6 +9,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 |---|-------|-------|-------|------------|
 | 1 | #119 | Add command palette | RESEARCH | M |
 | 2 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
+| 3 | #124 | Detect and handle dead windows after session creation | TRIAGE | — |
 
 ## Rejected
 
