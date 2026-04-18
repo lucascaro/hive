@@ -7,9 +7,8 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #115 | Centralize session polling behind a single PollingManager | PLAN | L |
-| 2 | #119 | Add command palette | RESEARCH | M |
-| 3 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
+| 1 | #119 | Add command palette | RESEARCH | M |
+| 2 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
 
 ## Rejected
 
@@ -70,3 +69,4 @@ See `features/templates/FEATURE.md` for the feature file template.
 | #120 | Fix slow preview updates and attach delay on slower machines | #121 | 2026-04-17 |
 | #112 | Make all key bindings configurable, consistent, and documented | #116 | 2026-04-17 |
 | #122 | Quick-reply to permission prompts from grid view without focusing | #123 | 2026-04-17 |
+| #115 | Centralize session polling behind a single PollingManager | #125 | 2026-04-18 |

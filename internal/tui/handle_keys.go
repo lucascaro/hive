@@ -154,7 +154,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 				m.appState.ActiveTeamID = s.TeamID
 			}
 			m.gridView.SyncState(m.gridSessions(state.GridRestoreProject), state.GridRestoreProject, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
-			m.gridPollGen++
+			m.polling.Invalidate()
 			return m.scheduleGridPoll()
 		}
 		// Already in project grid — close grid and return to main.
@@ -175,7 +175,7 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 			m.appState.ActiveTeamID = s.TeamID
 		}
 		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
-		m.gridPollGen++
+		m.polling.Invalidate()
 		return m.scheduleGridPoll()
 	case key.Matches(msg, m.keys.KillSession):
 		if sess := m.gridView.Selected(); sess != nil {
@@ -265,7 +265,7 @@ func (m *Model) closeGrid() tea.Cmd {
 	} else {
 		m.PopView()
 	}
-	m.previewPollGen++
+	m.polling.Invalidate()
 	return m.schedulePollPreview()
 }
 
@@ -273,7 +273,7 @@ func (m *Model) closeGrid() tea.Cmd {
 func (m *Model) popGridState(sel *state.Session) {
 	m.PopView()
 	m.focusSession(sel.ID)
-	m.previewPollGen++
+	m.polling.Invalidate()
 }
 
 // handleGlobalKey handles keys when no overlay or modal has focus.
@@ -318,12 +318,12 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.GridOverview):
 		m.openGrid(state.GridRestoreProject)
-		m.gridPollGen++
+		m.polling.Invalidate()
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.ToggleAll):
 		m.openGrid(state.GridRestoreAll)
-		m.gridPollGen++
+		m.polling.Invalidate()
 		return m, m.scheduleGridPoll()
 
 	case key.Matches(msg, m.keys.NewProject):
@@ -644,7 +644,7 @@ func (m Model) navigateSidebar(moveFn func(*components.Sidebar)) (tea.Model, tea
 	if m.sidebar.Cursor != prev {
 		m.syncActiveFromSidebar()
 		if m.appState.ActiveSessionID != prevSession {
-			m.previewPollGen++
+			m.polling.Invalidate()
 			return m, m.schedulePollPreview()
 		}
 	}
@@ -768,7 +768,7 @@ func (m Model) handleSidebarClick(y int) (tea.Model, tea.Cmd) {
 		if m.sidebar.Cursor != prev {
 			m.syncActiveFromSidebar()
 			if m.appState.ActiveSessionID != prevSession {
-				m.previewPollGen++
+				m.polling.Invalidate()
 				return m, m.schedulePollPreview()
 			}
 		}

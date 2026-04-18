@@ -74,33 +74,10 @@ type Model struct {
 	// attachPending is set before tea.Quit so cmd/start.go can handle the
 	// attach when the native backend is active (which cannot use tea.ExecProcess).
 	attachPending *SessionAttachMsg
-	// previewPollGen is incremented each time we intentionally start a fresh
-	// polling cycle (session switch, new session, detach).  PreviewUpdatedMsg
-	// events whose Generation doesn't match are discarded without rescheduling,
-	// which lets stale concurrent poll goroutines die off naturally instead of
-	// accumulating and causing rapid-fire re-renders.
-	previewPollGen uint64
-	// gridPollGen is incremented whenever we intentionally start a fresh grid
-	// polling cycle (grid open, mode switch, attach return).  Background
-	// GridPreviewsUpdatedMsg events whose Generation doesn't match are
-	// discarded without rescheduling, so concurrent poll chains created by
-	// rapid g/G mode toggles die off naturally instead of accumulating and
-	// multiplying the polling rate.
-	gridPollGen uint64
-	// contentSnapshots holds the last captured pane content for each session,
-	// used by the status watcher to detect activity via content diffing.
-	contentSnapshots map[string]string
-	// stableCounts tracks consecutive polls where content was unchanged per session,
-	// used for debounce before transitioning running→idle/waiting.
-	stableCounts map[string]int
-	// paneTitles holds the most recent pane title (set by agents via OSC 0/2)
-	// for each tmux target ("hive:N"), refreshed every status poll.  Keyed
-	// by target rather than sessionID to match GetPaneTitles' shape and the
-	// grid lookup.  Strictly transient — never persisted to disk.
-	paneTitles map[string]string
-	// detectionCtxs holds compiled status detection regexes per agent type,
-	// built once at startup from config.StatusDetection.
-	detectionCtxs map[string]escape.SessionDetectionCtx
+	// polling centralises all session polling behind a single generation
+	// counter. Replaces the previous separate previewPollGen / gridPollGen
+	// counters and scattered schedule call sites.
+	polling PollingManager
 	// lastBellTime is the time the last audible bell was forwarded to the
 	// user's terminal. Used for 500ms debounce to prevent rapid-fire bells.
 	lastBellTime time.Time
@@ -193,17 +170,15 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		dirPicker:           components.NewDirPicker(),
 		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:           ni,
-		contentSnapshots:  make(map[string]string),
+		polling:           NewPollingManager(cfg.PreviewRefreshMs),
 		lastPreviewChange: make(map[string]time.Time),
-		stableCounts:        make(map[string]int),
-		paneTitles:          make(map[string]string),
 		bellPending:         make(map[string]bool),
-		detectionCtxs:       buildDetectionCtxs(cfg.Agents),
 		viewStack:           []ViewID{ViewMain},
 		helpModel:           newStyledHelp(),
 		gridHelpModel:       newStyledHelp(),
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
+	m.polling.SetDetectionCtxs(buildDetectionCtxs(cfg.Agents))
 	m.gridView.InputEnabled = !cfg.DisableGridInput
 	m.gridView.QuickReplyEnabled = !cfg.DisableQuickReply
 	m.gridView.Keys = components.GridKeys{
@@ -297,7 +272,7 @@ func (m *Model) restoreGrid() {
 	m.appState.RestoreGridMode = state.GridRestoreNone
 	sessions := m.gridSessions(mode)
 	m.gridView.SyncState(sessions, mode, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), m.appState.ActiveSessionID)
-	m.gridView.SetPaneTitles(m.paneTitles)
+	m.gridView.SetPaneTitles(m.polling.PaneTitle())
 	m.gridView.SetContents(m.gridContentsFromSnapshots(sessions))
 	if !m.HasView(ViewGrid) {
 		m.PushView(ViewGrid)
@@ -331,11 +306,12 @@ func expandForActiveSession(appState *state.AppState, sessionID string) {
 
 // Init returns the initial commands.
 func (m Model) Init() tea.Cmd {
+	allSessions := state.AllSessions(&m.appState)
 	cmds := []tea.Cmd{
 		tea.SetWindowTitle("hive"),
 		m.schedulePollPreview(),
-		m.scheduleWatchTitles(),
-		m.scheduleWatchStatuses(),
+		m.polling.ScheduleTitles(allSessions),
+		m.polling.ScheduleStatuses(allSessions),
 		scheduleWatchState(m.stateLastKnownMtime),
 	}
 	if len(m.bellPending) > 0 {
@@ -745,7 +721,7 @@ func (m *Model) reloadStateFromDisk() {
 	} else {
 		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 	}
-	m.previewPollGen++
+	m.polling.Invalidate()
 	debugLog.Printf("reloadStateFromDisk: done — %d projects, %d dead sessions removed, activeSession=%s",
 		len(m.appState.Projects), len(deadIDs), m.appState.ActiveSessionID)
 }
