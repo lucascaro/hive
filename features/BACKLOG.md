@@ -7,10 +7,11 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
-| 2 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
-| 3 | #119 | Add command palette | RESEARCH | M |
-| 4 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
+| 1 | #122 | Quick-reply to permission prompts from grid view without focusing | IMPLEMENT | M |
+| 2 | #112 | Make all key bindings configurable, consistent, and documented | IMPLEMENT | L |
+| 3 | #115 | Centralize session polling behind a single PollingManager | RESEARCH | L |
+| 4 | #119 | Add command palette | RESEARCH | M |
+| 5 | #117 | Sync state across multiple hive instances without mirroring zoom/focus | RESEARCH | L |
 
 ## Rejected
 

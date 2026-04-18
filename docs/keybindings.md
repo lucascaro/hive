@@ -61,6 +61,15 @@
 | `q` | Quit app |
 | `Esc` | Exit grid view |
 | `i` | Enter input mode on focused cell (forward keystrokes to that session) |
+| `1`–`9` | Quick-reply: send digit + Enter to a waiting session (no attach needed) |
+
+### Quick Reply
+
+When a session is waiting for input (amber `◉` status dot), you can press `1`–`9` directly in grid navigation mode to send that digit followed by Enter to the session. This is ideal for answering numbered prompts (e.g. "1. Accept  2. Always  3. No") without attaching or entering input mode.
+
+> **Visual indicator:** Waiting sessions are highlighted with an amber border.
+
+> **Opt-out:** Set `disable_quick_reply: true` in `~/.config/hive/config.json` to disable this feature.
 
 ### Grid Input Mode
 

@@ -31,6 +31,7 @@ This file tracks features that are already implemented in Hive. For the feature 
 - Display help and tmux keybinding reference overlays from the main interface.
 - Full mouse support: left-click sidebar items to select sessions or toggle project/team collapse; left-click the preview pane to focus it and activate the session; left-click a grid cell to move the cursor; scroll wheel scrolls the sidebar, preview, and grid.
 - Grid cells show project name, session name, and agent type in each tile so sessions can be identified without consulting the sidebar.
+- Quick-reply: press 1–9 on a waiting grid cell to send that digit + Enter to the session instantly, without attaching or entering input mode. Waiting sessions are highlighted with an amber border.
 
 ## Notifications
 

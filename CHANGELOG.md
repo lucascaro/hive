@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Quick-reply from grid view**: pressing 1–9 on a focused grid cell whose session is waiting for input sends that digit + Enter directly to the session — no need to attach or enter input mode. Waiting sessions are highlighted with an amber border. Disable with `disable_quick_reply: true` in config (#122).
+
 ### Fixed
 - **Slow preview updates on slower machines**: increased alt-screen detection cache TTL from 500ms to 5s, eliminating a redundant `tmux display-message` subprocess on nearly every sidebar preview poll. Moved content sanitization out of tick goroutines so the effective poll interval stays closer to the configured value. Added per-session content caching that skips expensive regex sanitization when raw capture output hasn't changed (common for idle sessions) (#120).
 - **Attach latency reduced**: batched the detach key binding into the status-bar setup tmux invocation, reducing attach from 3 sequential subprocesses to 2 (#120).

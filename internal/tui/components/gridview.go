@@ -118,8 +118,9 @@ type GridView struct {
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
-	inputMode     bool              // true when keystrokes are forwarded to the focused session
-	InputEnabled  bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	inputMode        bool              // true when keystrokes are forwarded to the focused session
+	InputEnabled     bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	QuickReplyEnabled bool             // when true, 1-9 keys send digit+Enter to a waiting session
 	// Keys holds the configurable bindings consulted by Update. The parent
 	// (tui.Model) sets this once during construction; leaving the zero value
 	// in place disables every navigation/input key inside the grid.
@@ -323,6 +324,21 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	}
 
+	// Quick-reply: in navigation mode, if the focused session is waiting and
+	// the user presses a digit 1-9, send that digit + Enter to the session.
+	if gv.QuickReplyEnabled {
+		if r := msg.String(); len(r) == 1 && r[0] >= '1' && r[0] <= '9' {
+			if sess := gv.Selected(); sess != nil && sess.Status == state.StatusWaiting && sess.TmuxSession != "" {
+				target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+				digit := r
+				return func() tea.Msg {
+					mux.SendKeys(target, digit+"\n") //nolint:errcheck // best-effort
+					return nil
+				}, true
+			}
+		}
+	}
+
 	n := len(gv.sessions)
 	cols := gridColumns(gv.Width, gv.Height, n)
 
@@ -511,6 +527,8 @@ func (gv *GridView) renderCell(sess *state.Session, w, h int, selected, dimmed b
 		borderColor = styles.ColorAccent
 	} else if dimmed {
 		borderColor = styles.ColorDimmedBorder
+	} else if gv.QuickReplyEnabled && sess.Status == state.StatusWaiting {
+		borderColor = styles.ColorWarning
 	}
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
