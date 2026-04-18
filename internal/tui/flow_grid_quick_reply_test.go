@@ -29,8 +29,8 @@ func TestGridQuickReply_SendsDigitAndEnter(t *testing.T) {
 	if mock.CallCount("SendKeys") != 1 {
 		t.Errorf("SendKeys call count = %d, want 1", mock.CallCount("SendKeys"))
 	}
-	if mock.LastSentKeys != "1\n" {
-		t.Errorf("LastSentKeys = %q, want %q", mock.LastSentKeys, "1\n")
+	if mock.LastSentKeys != "1" {
+		t.Errorf("LastSentKeys = %q, want %q", mock.LastSentKeys, "1")
 	}
 }
 
@@ -112,7 +112,7 @@ func TestGridQuickReply_AllDigits(t *testing.T) {
 		cmd := f.SendKey(string(digit))
 		f.ExecCmdChain(cmd)
 
-		expected := string(digit) + "\n"
+		expected := string(digit)
 		if mock.LastSentKeys != expected {
 			t.Errorf("digit %c: LastSentKeys = %q, want %q", digit, mock.LastSentKeys, expected)
 		}

@@ -118,9 +118,9 @@ type GridView struct {
 	bellPending   map[string]bool   // sessionID → true when an unacknowledged bell has fired
 	bellBlinkOn   bool              // toggled by the bell-blink ticker; true = show ♪, false = show status dot
 	atExtended    bool              // true when cursor is visually at the extended (lower) portion of a cell
-	inputMode        bool              // true when keystrokes are forwarded to the focused session
-	InputEnabled     bool              // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
-	QuickReplyEnabled bool             // when true, 1-9 keys send digit+Enter to a waiting session
+	inputMode         bool // true when keystrokes are forwarded to the focused session
+	InputEnabled      bool // when false, InputMode key is a no-op (set from cfg.DisableGridInput)
+	QuickReplyEnabled bool // when true, 1-9 keys send digit to the focused session
 	// Keys holds the configurable bindings consulted by Update. The parent
 	// (tui.Model) sets this once during construction; leaving the zero value
 	// in place disables every navigation/input key inside the grid.
@@ -333,7 +333,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 				target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 				digit := r
 				return func() tea.Msg {
-					mux.SendKeys(target, digit+"\n") //nolint:errcheck // best-effort
+					mux.SendKeys(target, digit) //nolint:errcheck // best-effort
 					return nil
 				}, true
 			}

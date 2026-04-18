@@ -119,9 +119,9 @@ type Config struct {
 	// another keybinding or the forwarding latency is unacceptable).
 	DisableGridInput bool `json:"disable_grid_input,omitempty"`
 	// DisableQuickReply disables the quick-reply feature in grid view.
-	// When false (default), pressing 1-9 on a focused grid cell whose session
-	// is in "waiting" status sends that digit + Enter to the session without
-	// entering full input mode. Set to true to opt out.
+	// When false (default), pressing 1-9 on a focused grid cell sends that
+	// digit to the session without entering full input mode. Set to true to
+	// opt out.
 	DisableQuickReply bool `json:"disable_quick_reply,omitempty"`
 	// DetachKey is the single-key combination that returns the user from an
 	// attached session back to the Hive TUI. Accepted form is
