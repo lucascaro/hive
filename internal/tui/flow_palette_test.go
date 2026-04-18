@@ -106,7 +106,7 @@ func TestPalette_EscClearsFilterFirst(t *testing.T) {
 		t.Fatal("filter should be 'q'")
 	}
 
-	// First esc clears filter.
+	// First esc clears filter (no cmd needed — filter clear is synchronous).
 	f.SendSpecialKey(tea.KeyEscape)
 	if f.model.palette.FilterQuery() != "" {
 		t.Error("first esc should clear the filter")
@@ -120,5 +120,19 @@ func TestPalette_EscClearsFilterFirst(t *testing.T) {
 	f.ExecCmdChain(cmd)
 	if f.model.TopView() == ViewPalette {
 		t.Error("second esc should close the palette")
+	}
+}
+
+// TestPalette_OpenFromGrid verifies that ctrl+p works from grid view.
+func TestPalette_OpenFromGrid(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	f.SendKey("g")
+	f.AssertGridActive(true)
+
+	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
+	if f.model.TopView() != ViewPalette {
+		t.Fatalf("expected ViewPalette from grid, got %s", f.model.TopView())
 	}
 }

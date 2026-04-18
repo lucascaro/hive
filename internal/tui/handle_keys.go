@@ -113,6 +113,11 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		m.PushView(ViewHelp)
 		return nil
 	}
+	if key.Matches(msg, m.keys.Palette) {
+		m.palette.Show(m.paletteItems())
+		m.PushView(ViewPalette)
+		return nil
+	}
 	if key.Matches(msg, m.keys.Settings) {
 		m.settings.Width = m.appState.TermWidth
 		m.settings.Height = m.appState.TermHeight
