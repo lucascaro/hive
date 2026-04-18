@@ -6,11 +6,10 @@ import (
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/mux/muxtest"
-	"github.com/lucascaro/hive/internal/state"
 )
 
 // TestGridQuickReply_SendsDigitAndEnter verifies that pressing a digit key
-// on a waiting session sends that digit + newline to the session.
+// on a focused session sends that digit + newline to the session.
 func TestGridQuickReply_SendsDigitAndEnter(t *testing.T) {
 	m, mock := testFlowModel(t)
 	f := newFlowRunner(t, m, mock)
@@ -18,71 +17,17 @@ func TestGridQuickReply_SendsDigitAndEnter(t *testing.T) {
 	f.SendKey("g")
 	f.AssertGridActive(true)
 
-	// Update session status to waiting.
 	sel := f.model.gridView.Selected()
 	if sel == nil {
 		t.Fatal("expected a selected session in grid view")
 	}
-	sel.Status = state.StatusWaiting
 
-	// Press '1' — should send "1\n" to the session.
+	// Press '1' — should send "1\n" to the session regardless of status.
 	cmd := f.SendKey("1")
 	f.ExecCmdChain(cmd)
 
 	if mock.CallCount("SendKeys") != 1 {
 		t.Errorf("SendKeys call count = %d, want 1", mock.CallCount("SendKeys"))
-	}
-	if mock.LastSentKeys != "1\n" {
-		t.Errorf("LastSentKeys = %q, want %q", mock.LastSentKeys, "1\n")
-	}
-}
-
-// TestGridQuickReply_IgnoredWhenRunning verifies that digit keys are
-// not forwarded when the focused session is in running status.
-func TestGridQuickReply_IgnoredWhenRunning(t *testing.T) {
-	m, mock := testFlowModel(t)
-	f := newFlowRunner(t, m, mock)
-
-	f.SendKey("g")
-	f.AssertGridActive(true)
-
-	// Session is StatusRunning by default — digit should not trigger quick-reply.
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	if sel.Status != state.StatusRunning {
-		t.Fatalf("expected StatusRunning, got %q", sel.Status)
-	}
-
-	cmd := f.SendKey("1")
-	f.ExecCmdChain(cmd)
-
-	if mock.CallCount("SendKeys") != 0 {
-		t.Errorf("SendKeys should not be called when session is running, got %d calls", mock.CallCount("SendKeys"))
-	}
-}
-
-// TestGridQuickReply_WorksWhenIdle verifies that quick-reply also works
-// on idle sessions (some agents don't reach StatusWaiting).
-func TestGridQuickReply_WorksWhenIdle(t *testing.T) {
-	m, mock := testFlowModel(t)
-	f := newFlowRunner(t, m, mock)
-
-	f.SendKey("g")
-	f.AssertGridActive(true)
-
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	sel.Status = state.StatusIdle
-
-	cmd := f.SendKey("1")
-	f.ExecCmdChain(cmd)
-
-	if mock.CallCount("SendKeys") != 1 {
-		t.Errorf("SendKeys call count = %d, want 1 (should work on idle)", mock.CallCount("SendKeys"))
 	}
 	if mock.LastSentKeys != "1\n" {
 		t.Errorf("LastSentKeys = %q, want %q", mock.LastSentKeys, "1\n")
@@ -98,12 +43,7 @@ func TestGridQuickReply_IgnoredInInputMode(t *testing.T) {
 	f.SendKey("g")
 	f.AssertGridActive(true)
 
-	// Set session to waiting and enter input mode.
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	sel.Status = state.StatusWaiting
+	// Enter input mode.
 	f.SendKey("i")
 	if !f.model.gridView.InputMode() {
 		t.Fatal("should be in input mode after pressing i")
@@ -151,12 +91,6 @@ func TestGridQuickReply_DisabledByConfig(t *testing.T) {
 	f.SendKey("g")
 	f.AssertGridActive(true)
 
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	sel.Status = state.StatusWaiting
-
 	cmd := f.SendKey("1")
 	f.ExecCmdChain(cmd)
 
@@ -172,12 +106,6 @@ func TestGridQuickReply_AllDigits(t *testing.T) {
 
 	f.SendKey("g")
 	f.AssertGridActive(true)
-
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	sel.Status = state.StatusWaiting
 
 	for _, digit := range "123456789" {
 		mock.ResetCounts()
@@ -199,12 +127,6 @@ func TestGridQuickReply_ZeroNotHandled(t *testing.T) {
 
 	f.SendKey("g")
 	f.AssertGridActive(true)
-
-	sel := f.model.gridView.Selected()
-	if sel == nil {
-		t.Fatal("expected a selected session")
-	}
-	sel.Status = state.StatusWaiting
 
 	cmd := f.SendKey("0")
 	f.ExecCmdChain(cmd)
