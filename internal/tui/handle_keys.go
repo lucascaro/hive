@@ -54,6 +54,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.orphanPicker.Update(msg)
 		m.orphanPicker = updated
 		return m, cmd
+	case ViewPalette:
+		cmd, _ := m.palette.Update(msg)
+		return m, cmd
 	case ViewAgentPicker:
 		cmd, _ := m.agentPicker.Update(msg)
 		return m, cmd
@@ -305,6 +308,11 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.TmuxHelp):
 		m.helpPanel.Open(1)
 		m.PushView(ViewHelp)
+		return m, nil
+
+	case key.Matches(msg, m.keys.Palette):
+		m.palette.Show(m.paletteItems())
+		m.PushView(ViewPalette)
 		return m, nil
 
 	case key.Matches(msg, m.keys.Filter):

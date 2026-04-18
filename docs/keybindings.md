@@ -55,6 +55,7 @@
 | `G` | Switch to all-projects view (while project grid is open) |
 | `Shift+←` / `Shift+↑` | Move selected session left (earlier) in its group |
 | `Shift+→` / `Shift+↓` | Move selected session right (later) in its group |
+| `Ctrl+P` | Open command palette (search and run any action) |
 | `?` | Open help overlay |
 | `S` | Open settings |
 | `H` | Open tmux shortcuts reference |
