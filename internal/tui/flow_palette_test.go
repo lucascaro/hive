@@ -131,7 +131,7 @@ func TestPalette_HelpAction(t *testing.T) {
 	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 
 	// Dispatch the help action directly.
-	cmd := f.Send(components.CommandPalettePickedMsg{Action: paletteHelp})
+	cmd := f.Send(components.CommandPalettePickedMsg{Action: "help"})
 	f.ExecCmdChain(cmd)
 
 	if f.model.TopView() != ViewHelp {
@@ -146,7 +146,7 @@ func TestPalette_SettingsAction(t *testing.T) {
 
 	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 
-	cmd := f.Send(components.CommandPalettePickedMsg{Action: paletteSettings})
+	cmd := f.Send(components.CommandPalettePickedMsg{Action: "settings"})
 	f.ExecCmdChain(cmd)
 
 	if f.model.TopView() != ViewSettings {
@@ -161,7 +161,7 @@ func TestPalette_GridAction(t *testing.T) {
 
 	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 
-	cmd := f.Send(components.CommandPalettePickedMsg{Action: paletteGrid})
+	cmd := f.Send(components.CommandPalettePickedMsg{Action: "grid"})
 	f.ExecCmdChain(cmd)
 
 	f.AssertGridActive(true)
@@ -174,7 +174,7 @@ func TestPalette_QuitAction(t *testing.T) {
 
 	f.Send(tea.KeyMsg{Type: tea.KeyCtrlP})
 
-	cmd := f.Send(components.CommandPalettePickedMsg{Action: paletteQuit})
+	cmd := f.Send(components.CommandPalettePickedMsg{Action: "quit"})
 
 	// tea.Quit returns a tea.QuitMsg.
 	if cmd == nil {
