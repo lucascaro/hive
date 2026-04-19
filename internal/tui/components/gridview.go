@@ -32,6 +32,7 @@ type GridKeys struct {
 	CursorDown  key.Binding
 	CursorLeft  key.Binding
 	CursorRight key.Binding
+	Dismiss     key.Binding
 }
 
 // GridSessionSelectedMsg is sent when the user selects a session in the grid.
@@ -353,10 +354,7 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}
 		}
 		return nil, true
-	// Esc remains a hard-coded literal as a universal "close overlay" gesture,
-	// matching the dialog/overlay convention elsewhere in the TUI. Will move
-	// into GridKeys (alongside a configurable Cancel) in chunk 3 of #112.
-	case msg.String() == "esc":
+	case key.Matches(msg, gv.Keys.Dismiss):
 		gv.Hide()
 		return nil, true
 	case key.Matches(msg, gv.Keys.Attach):

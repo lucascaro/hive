@@ -50,6 +50,8 @@ type KeyMap struct {
 	Detach         key.Binding
 	Confirm        key.Binding
 	Cancel         key.Binding
+	Dismiss        key.Binding
+	JumpToProject  key.Binding
 }
 
 // uniqueKeys returns keys deduplicated, preserving order. Empty strings are skipped.
@@ -132,7 +134,20 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Detach:         bind(kb.Detach, "", "detach"),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
+		Dismiss:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close")),
+		JumpToProject:  jumpToProjectBinding(kb.JumpToProject),
 	}
+}
+
+// jumpToProjectBinding builds the 1-9 binding. If the user has not configured
+// any keys (pre-existing configs missing the field), fall back to "1"-"9" so
+// upgraders don't lose number-key project jumping.
+func jumpToProjectBinding(kb config.KeyBinding) key.Binding {
+	keys := []string(kb)
+	if len(keys) == 0 {
+		keys = []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	}
+	return key.NewBinding(key.WithKeys(keys...), key.WithHelp("1-9", "jump to project"))
 }
 
 // HelpKeyLabel returns the display string for the Help key binding.
@@ -163,7 +178,7 @@ func (km KeyMap) ShortHelp() []key.Binding {
 // Implements help.KeyMap.
 func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
+		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.JumpToProject, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
 		{km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Attach, km.InputMode, km.Detach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
 		{km.ColorNext, km.ColorPrev, km.SessionColorNext, km.SessionColorPrev, km.Filter, km.SidebarView, km.GridOverview, km.ToggleAll},
 		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.Quit, km.QuitKill},
@@ -208,7 +223,7 @@ func NewGridKeyMap(km KeyMap) GridKeyMap {
 		ColorPrev: key.NewBinding(key.WithKeys(km.ColorPrev.Keys()...), key.WithHelp("", "")),
 		SessionColorNext: key.NewBinding(key.WithKeys("v"), key.WithHelp("v/V", "session color")),
 		SessionColorPrev: key.NewBinding(key.WithKeys("V"), key.WithHelp("", "")),
-		ExitGrid:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/g/G", "exit")),
+		ExitGrid:  key.NewBinding(key.WithKeys(append(km.Dismiss.Keys(), "g", "G")...), key.WithHelp(km.Dismiss.Help().Key+"/g/G", "exit")),
 		ToggleAll: key.NewBinding(key.WithKeys("G"), key.WithHelp("", "")),
 		InputMode: key.NewBinding(key.WithKeys("i"), key.WithHelp("(i)", "input")),
 		Help:      key.NewBinding(key.WithKeys(km.Help.Keys()...), key.WithHelp(km.Help.Help().Key, "help")),

@@ -207,9 +207,10 @@ func TestKeyMap_FullHelp_CoversAllBindings(t *testing.T) {
 		}
 	}
 
-	// Confirm and Cancel are context-specific overlay bindings (shown only in
-	// confirm dialogs), not part of the general help overlay.
-	excluded := map[string]bool{"Confirm": true, "Cancel": true}
+	// Confirm, Cancel, and Dismiss are context-specific overlay bindings
+	// (shown only in confirm dialogs / close-overlay gestures), not part of
+	// the general help overlay.
+	excluded := map[string]bool{"Confirm": true, "Cancel": true, "Dismiss": true}
 
 	// Every other binding in the KeyMap should appear somewhere in FullHelp.
 	v := reflect.ValueOf(km)

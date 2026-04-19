@@ -193,6 +193,7 @@ type KeybindingsConfig struct {
 	CursorLeft     KeyBinding `json:"cursor_left"`
 	CursorRight    KeyBinding `json:"cursor_right"`
 	JumpProject1   KeyBinding `json:"jump_project_1"`
+	JumpToProject  KeyBinding `json:"jump_to_project"`
 	Filter         KeyBinding `json:"filter"`
 	SidebarView    KeyBinding `json:"sidebar_view"`
 	GridOverview   KeyBinding `json:"grid_overview"`

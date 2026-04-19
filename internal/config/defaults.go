@@ -90,6 +90,7 @@ func defaultKeybindings() KeybindingsConfig {
 		CursorLeft:         KeyBinding{"left", "h"},
 		CursorRight:        KeyBinding{"right", "l"},
 		JumpProject1:       KeyBinding{"1"},
+		JumpToProject:      KeyBinding{"1", "2", "3", "4", "5", "6", "7", "8", "9"},
 		Filter:             KeyBinding{"/"},
 		SidebarView:        KeyBinding{"s"},
 		GridOverview:       KeyBinding{"g"},

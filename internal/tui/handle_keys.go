@@ -28,7 +28,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.handleGridKey(msg)
 		return m, cmd
 	case ViewHelp:
-		if msg.String() == "esc" ||
+		if key.Matches(msg, m.keys.Dismiss) ||
 			key.Matches(msg, m.keys.Help) ||
 			key.Matches(msg, m.keys.Quit) {
 			m.PopView()
@@ -546,7 +546,7 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.moveItem(+1)
 
 	// Jump to project by number
-	case msg.String() >= "1" && msg.String() <= "9":
+	case key.Matches(msg, m.keys.JumpToProject) && len(msg.String()) == 1 && msg.String()[0] >= '1' && msg.String()[0] <= '9':
 		idx := int(msg.String()[0]-'0') - 1
 		count := 0
 		for i, item := range m.sidebar.Items {
