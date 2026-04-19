@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-04-18
+
 ### Added
 - **Quick-reply from grid view**: pressing 1–9 on any focused grid cell sends that digit directly to the session — no need to attach or enter input mode. Ideal for answering numbered permission prompts across multiple agents. Disable with `disable_quick_reply: true` in config (#122).
 - **Command palette**: press `Ctrl+P` to open a searchable list of all actions. Each item shows its keyboard shortcut so you learn bindings over time. Type to filter, Enter to run, Esc to cancel (#119).
@@ -354,7 +356,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/lucascaro/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/lucascaro/hive/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/lucascaro/hive/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/lucascaro/hive/compare/v0.9.0...v0.10.0
