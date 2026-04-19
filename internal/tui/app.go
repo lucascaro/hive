@@ -57,6 +57,7 @@ type Model struct {
 	recoveryPicker  components.RecoveryPicker
 	settings     components.SettingsView
 	dirPicker    components.DirPicker
+	palette      components.CommandPalette
 	nameInput    textinput.Model // for project name / directory input
 	// UI sub-states
 	inputMode          string // "project-name", "project-dir-confirm", "new-session", "worktree-branch", ""
@@ -168,6 +169,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		settings:            components.NewSettingsView(),
 		orphanPicker:        components.NewOrphanPicker(appState.OrphanSessions),
 		dirPicker:           components.NewDirPicker(),
+		palette:             components.NewCommandPalette(),
 		recoveryPicker:      components.NewRecoveryPicker(appState.RecoverableSessions),
 		nameInput:           ni,
 		polling:           NewPollingManager(cfg.PreviewRefreshMs),
@@ -380,6 +382,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleGridPreviewsUpdated(msg)
 	case components.GridSessionSelectedMsg:
 		return m.handleGridSessionSelected(msg)
+	case components.CommandPalettePickedMsg:
+		return m.handlePalettePicked(msg)
 	case components.AgentPickedMsg:
 		return m.handleAgentPicked(msg)
 	case AgentInstalledMsg:
@@ -480,6 +484,8 @@ func (m Model) View() string {
 		m.orphanPicker.Width = m.appState.TermWidth
 		m.orphanPicker.Height = m.appState.TermHeight
 		return m.overlayView(m.orphanPicker.View())
+	case ViewPalette:
+		return m.overlayView(m.palette.View())
 	case ViewAgentPicker:
 		return m.overlayView(m.agentPicker.View())
 	case ViewTeamBuilder:

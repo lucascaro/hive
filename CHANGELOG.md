@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Quick-reply from grid view**: pressing 1–9 on any focused grid cell sends that digit directly to the session — no need to attach or enter input mode. Ideal for answering numbered permission prompts across multiple agents. Disable with `disable_quick_reply: true` in config (#122).
+- **Command palette**: press `Ctrl+P` to open a searchable list of all actions. Each item shows its keyboard shortcut so you learn bindings over time. Type to filter, Enter to run, Esc to cancel (#119).
 - **Claude permission prompt detection**: Claude sessions now properly detect `StatusWaiting` when showing numbered permission prompts (e.g. "1. Accept  2. Always  3. No") via a new `wait_prompt` pattern. Existing configs are auto-migrated (#122).
 
 ### Changed

@@ -25,6 +25,7 @@ const (
 	ViewFilter         ViewID = "filter"
 	ViewWhatsNew       ViewID = "whats-new"
 	ViewGridInputHint  ViewID = "grid-input-hint"
+	ViewPalette        ViewID = "palette"
 )
 
 // PushView pushes a view onto the stack and syncs legacy flags.
@@ -147,6 +148,11 @@ func (m *Model) syncLegacyFlags(id ViewID, active bool) {
 		m.appState.FilterActive = active
 	case ViewWhatsNew:
 		// No legacy flag needed.
+	case ViewPalette:
+		m.palette.Active = active
+		if !active {
+			m.palette.Hide()
+		}
 	}
 }
 
