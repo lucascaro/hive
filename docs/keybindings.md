@@ -7,7 +7,7 @@
 | `↑` / `↓` | Move cursor up / down |
 | `J` | Jump to next project |
 | `K` | Jump to previous project |
-| `1`–`9` | Jump to project by index |
+| `1`–`9` | Jump to project by index (configurable via `jump_to_project`) |
 | `Space` | Toggle collapse/expand project or team |
 | `←` / `h` | Collapse current project or team; if on a session, collapse its parent |
 | `→` / `l` | Expand current project or team |

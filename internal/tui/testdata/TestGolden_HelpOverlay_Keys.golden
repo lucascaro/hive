@@ -13,7 +13,7 @@
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mdown/j  cursor down        i           input mode              s sidebar view          Q      quit+kill     [m  [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mleft/h  cursor left        ctrl+q      detach                  g grid view                                  [m  [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mright/l cursor right       t           new session             G toggle all-grid                            [m  [;m│[0m   
-   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m1-9     jump to project    W           new worktree session                                                 [m  [;m│[0m   
+   [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m[1-9]   jump to project    W           new worktree session                                                 [m  [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m←/h     collapse           T           new team                                                             [m  [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0m→/l     expand             n           new project                                                          [m  [;m│[0m   
    [;m│[0m  [48;2;0;0;0m[48;2;0;0;0mspace   toggle             r           rename                                                               [m  [;m│[0m   

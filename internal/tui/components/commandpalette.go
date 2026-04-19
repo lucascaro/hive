@@ -24,15 +24,21 @@ type PaletteItem struct {
 	action   string // internal action name
 	label    string // human-readable title
 	shortcut string // current keybinding (e.g. "enter", "ctrl+p")
+	disabled bool   // true when the action cannot be invoked on the current selection
 }
 
 // Title returns the label with the shortcut key appended in a muted style.
-// Rendered on a single line: "Attach session          enter"
+// Disabled items render the label in the muted style too, so keybindings
+// stay discoverable even when the selection makes the action a no-op.
 func (p PaletteItem) Title() string {
-	if p.shortcut == "" {
-		return p.label
+	label := p.label
+	if p.disabled {
+		label = styles.MutedStyle.Render(p.label)
 	}
-	return p.label + "  " + styles.MutedStyle.Render(p.shortcut)
+	if p.shortcut == "" {
+		return label
+	}
+	return label + "  " + styles.MutedStyle.Render(p.shortcut)
 }
 func (p PaletteItem) Description() string { return "" }
 func (p PaletteItem) FilterValue() string { return p.label }
@@ -40,9 +46,20 @@ func (p PaletteItem) FilterValue() string { return p.label }
 // Shortcut returns the raw shortcut string (for testing).
 func (p PaletteItem) Shortcut() string { return p.shortcut }
 
+// Disabled reports whether the item is shown dimmed (action unreachable on
+// the current selection). Dispatch still fires — the executor no-ops when the
+// selection is wrong — but the palette communicates the state to the user.
+func (p PaletteItem) Disabled() bool { return p.disabled }
+
 // NewPaletteItem creates a palette item with an action name, label, and shortcut.
 func NewPaletteItem(action, label, shortcut string) PaletteItem {
 	return PaletteItem{action: action, label: label, shortcut: shortcut}
+}
+
+// NewDisabledPaletteItem is like NewPaletteItem but marks the item dimmed to
+// signal the action is not currently applicable.
+func NewDisabledPaletteItem(action, label, shortcut string) PaletteItem {
+	return PaletteItem{action: action, label: label, shortcut: shortcut, disabled: true}
 }
 
 // CommandPalette is a modal list for searching and invoking any action by name.

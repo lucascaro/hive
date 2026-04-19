@@ -320,9 +320,20 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.MoveDown):
 		return m.moveItem(+1)
 
-	// Jump to project by number
-	case key.Matches(msg, m.keys.JumpToProject) && len(msg.String()) == 1 && msg.String()[0] >= '1' && msg.String()[0] <= '9':
-		idx := int(msg.String()[0]-'0') - 1
+	// Jump to project by position in the configured JumpToProject keys.
+	// The user's first key jumps to project 1, second to project 2, etc. —
+	// so non-digit custom bindings work without silently requiring digits.
+	case key.Matches(msg, m.keys.JumpToProject):
+		idx := -1
+		for i, k := range m.keys.JumpToProject.Keys() {
+			if msg.String() == k {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return m, nil
+		}
 		count := 0
 		for i, item := range m.sidebar.Items {
 			if item.Kind == components.KindProject {

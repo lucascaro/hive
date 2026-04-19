@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/components"
 )
 
 // CommandScope flags which dispatcher contexts a Command applies to.
@@ -38,28 +39,27 @@ var commands = []Command{
 	// --- Session actions ---
 	{ID: "attach", Label: "Attach to session",
 		Binding: func(km KeyMap) key.Binding { return km.Attach },
+		Enabled: hasSession,
 		Exec:    cmdAttach,
-		Scopes:  ScopeGlobal},
+		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-session", Label: "New session",
 		Binding: func(km KeyMap) key.Binding { return km.NewSession },
-		Enabled: hasProject,
+		Enabled: targetHasProject,
 		Exec:    cmdNewSession,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-worktree", Label: "New worktree session",
 		Binding: func(km KeyMap) key.Binding { return km.NewWorktreeSession },
-		Enabled: hasProject,
+		Enabled: targetHasProject,
 		Exec:    cmdNewWorktree,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "kill-session", Label: "Kill session",
 		Binding: func(km KeyMap) key.Binding { return km.KillSession },
-		Enabled: func(m *Model) bool {
-			t := m.activeTarget()
-			return t.Kind == TargetSession || t.Kind == TargetProject
-		},
-		Exec:   cmdKillSession, // branches to kill-project when target is a project
-		Scopes: ScopeGlobal | ScopeGrid},
+		Enabled: hasKillableTarget,
+		Exec:    cmdKillSession, // branches to kill-project when target is a project
+		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "rename", Label: "Rename session",
 		Binding: func(km KeyMap) key.Binding { return km.Rename },
+		Enabled: hasSession,
 		Exec:    cmdRename,
 		Scopes:  ScopeGlobal | ScopeGrid},
 
@@ -67,19 +67,25 @@ var commands = []Command{
 	{ID: "new-project", Label: "New project",
 		Binding: func(km KeyMap) key.Binding { return km.NewProject },
 		Exec:    cmdNewProject,
-		Scopes:  ScopeGlobal},
+		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-team", Label: "New team",
 		Binding: func(km KeyMap) key.Binding { return km.NewTeam },
-		Enabled: hasProject,
+		Enabled: targetHasProject,
 		Exec:    cmdNewTeam,
-		Scopes:  ScopeGlobal},
+		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "kill-team", Label: "Kill team",
 		Binding: func(km KeyMap) key.Binding { return km.KillTeam },
-		Enabled: func(m *Model) bool { return m.activeTarget().TeamID != "" },
+		Enabled: hasTeam,
 		Exec:    cmdKillTeam,
-		Scopes:  ScopeGlobal},
+		Scopes:  ScopeGlobal | ScopeGrid},
 
 	// --- View actions ---
+	//
+	// Open-grid/open-grid-all are ScopeGlobal only because they're meaningless
+	// when the grid is already open; grid mode's own GridOverview/ToggleAll
+	// keys handle project↔all toggling inline (see handle_keys.go handleGridKey).
+	// Filter is ScopeGlobal only because the filter input consumes keys
+	// directly and would capture the palette's result before it could render.
 	{ID: "grid", Label: "Grid view (project)",
 		Binding: func(km KeyMap) key.Binding { return km.GridOverview },
 		Exec:    cmdOpenGrid,
@@ -100,22 +106,22 @@ var commands = []Command{
 	// --- Appearance ---
 	{ID: "color-next", Label: "Next project color",
 		Binding: func(km KeyMap) key.Binding { return km.ColorNext },
-		Enabled: hasProject,
+		Enabled: targetHasProject,
 		Exec:    cmdColorNext,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "color-prev", Label: "Previous project color",
 		Binding: func(km KeyMap) key.Binding { return km.ColorPrev },
-		Enabled: hasProject,
+		Enabled: targetHasProject,
 		Exec:    cmdColorPrev,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "session-color-next", Label: "Next session color",
 		Binding: func(km KeyMap) key.Binding { return km.SessionColorNext },
-		Enabled: func(m *Model) bool { return m.activeTarget().SessionID != "" },
+		Enabled: hasSession,
 		Exec:    cmdSessionColorNext,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "session-color-prev", Label: "Previous session color",
 		Binding: func(km KeyMap) key.Binding { return km.SessionColorPrev },
-		Enabled: func(m *Model) bool { return m.activeTarget().SessionID != "" },
+		Enabled: hasSession,
 		Exec:    cmdSessionColorPrev,
 		Scopes:  ScopeGlobal | ScopeGrid},
 
@@ -177,8 +183,29 @@ func (m Model) dispatchCommand(msg tea.KeyMsg, scope CommandScope) (tea.Model, t
 }
 
 // --- Enabled predicates ---
+//
+// Each reads m.activeTarget() so grid and sidebar selections are treated
+// identically. Keep these tight — palette uses them to decide enable/disable
+// state, and direct-key dispatch runs them on every matching keystroke.
 
-func hasProject(m *Model) bool { return m.activeTarget().ProjectID != "" }
+// targetHasProject is true when the selection carries a project ID — which is
+// every sidebar/grid selection that has a project context (session, team, or
+// project itself). Used by commands that need a project to act on.
+func targetHasProject(m *Model) bool { return m.activeTarget().ProjectID != "" }
+
+// hasSession is true when the active selection is a session.
+func hasSession(m *Model) bool { return m.activeTarget().Kind == TargetSession }
+
+// hasTeam is true when the active selection is a team.
+func hasTeam(m *Model) bool { return m.activeTarget().Kind == TargetTeam }
+
+// hasKillableTarget is true when the selection is either a session or a
+// project — both are valid kill-session targets (sidebar's project-kind
+// branch confirms killing the whole project).
+func hasKillableTarget(m *Model) bool {
+	k := m.activeTarget().Kind
+	return k == TargetSession || k == TargetProject
+}
 
 // --- Executors ---
 //
@@ -187,6 +214,18 @@ func hasProject(m *Model) bool { return m.activeTarget().ProjectID != "" }
 // grid is active — that routing happens in one place (target.go).
 
 func cmdAttach(m *Model) (tea.Model, tea.Cmd) {
+	// Grid context attaches via the same GridSessionSelectedMsg path as the
+	// direct Enter key, so grid-restore state (RestoreGridMode, ActiveProjectID)
+	// is updated correctly on return from the attached session.
+	if m.TopView() == ViewGrid {
+		if sess := m.gridView.Selected(); sess != nil {
+			s := sess
+			return *m, func() tea.Msg {
+				return components.GridSessionSelectedMsg{TmuxSession: s.TmuxSession, TmuxWindow: s.TmuxWindow}
+			}
+		}
+		return *m, nil
+	}
 	if !m.cfg.HideAttachHint {
 		if attach := m.pendingAttachDetails(); attach != nil {
 			m.pendingAttach = attach

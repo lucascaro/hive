@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Configurable 1–9 jump to project**: a new `jump_to_project` keybinding now drives number-key project jumping (previously hardcoded). Defaults to `1,2,3,4,5,6,7,8,9` and appears in the help overlay. The first key in the list jumps to project 1, the second to project 2, etc. — so custom bindings like `F1,F2,…` also work.
+- **Parity tests for palette ↔ direct-key**: flow tests now verify that every core action (kill-session, rename, new-session, color-next) produces identical state whether invoked via keybinding or palette pick, from both sidebar and grid views.
+
+### Changed
+- **Command registry refactor**: three duplicated action-dispatch paths (`handleGlobalKey`, `handleGridKey`, `handlePalettePicked`) collapsed into a single command registry. A new `Target` adapter routes selection source by active view, so executors are context-free. The "palette works in one view but not the other" regression class is now structurally prevented.
+- **Palette shows disabled actions dimmed**: actions that can't act on the current selection (e.g. "Kill team" with no team selected) stay visible in the palette but render dimmed, preserving keybinding discoverability.
+- **Attach from palette now honors `hide_attach_hint`**: previously the palette path bypassed the first-use hint; now both palette and direct Enter go through the same code path.
+
+### Removed
+- **Dead `jump_project_1` config field**: the previous single-key "Jump to Project 1" config field was never wired to the handler and has been removed. Users with customized values are migrated automatically on schema upgrade.
+
 ## [0.12.0] — 2026-04-18
 
 ### Added

@@ -135,19 +135,23 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
 		Dismiss:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close")),
-		JumpToProject:  jumpToProjectBinding(kb.JumpToProject),
+		JumpToProject:  bind(kb.JumpToProject, jumpLabel(kb.JumpToProject), "jump to project"),
 	}
 }
 
-// jumpToProjectBinding builds the 1-9 binding. If the user has not configured
-// any keys (pre-existing configs missing the field), fall back to "1"-"9" so
-// upgraders don't lose number-key project jumping.
-func jumpToProjectBinding(kb config.KeyBinding) key.Binding {
+// jumpLabel renders the JumpToProject help string. For the 1-9 default we
+// collapse to "[1-9]"; for any other binding we show the first and last key
+// as a range (e.g. "[F1-F9]" or just "[F1]" for a single-key bind). Keeps
+// the help overlay column narrow.
+func jumpLabel(kb config.KeyBinding) string {
 	keys := []string(kb)
 	if len(keys) == 0 {
-		keys = []string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
+		return ""
 	}
-	return key.NewBinding(key.WithKeys(keys...), key.WithHelp("1-9", "jump to project"))
+	if len(keys) == 1 {
+		return "[" + keys[0] + "]"
+	}
+	return "[" + keys[0] + "-" + keys[len(keys)-1] + "]"
 }
 
 // HelpKeyLabel returns the display string for the Help key binding.
@@ -223,7 +227,13 @@ func NewGridKeyMap(km KeyMap) GridKeyMap {
 		ColorPrev: key.NewBinding(key.WithKeys(km.ColorPrev.Keys()...), key.WithHelp("", "")),
 		SessionColorNext: key.NewBinding(key.WithKeys("v"), key.WithHelp("v/V", "session color")),
 		SessionColorPrev: key.NewBinding(key.WithKeys("V"), key.WithHelp("", "")),
-		ExitGrid:  key.NewBinding(key.WithKeys(append(km.Dismiss.Keys(), "g", "G")...), key.WithHelp(km.Dismiss.Help().Key+"/g/G", "exit")),
+		// ExitGrid.WithKeys only needs the Dismiss keys — g/G are consumed by
+		// the outer grid switch in handleGridKey (they toggle project↔all
+		// grid mode there), so they never reach the GridView component. The
+		// help label still shows g/G because the user experiences them as
+		// "exit grid" when already in the matching mode (see the
+		// GridOverview/ToggleAll branches that call closeGrid).
+		ExitGrid: key.NewBinding(key.WithKeys(km.Dismiss.Keys()...), key.WithHelp(km.Dismiss.Help().Key+"/g/G", "exit")),
 		ToggleAll: key.NewBinding(key.WithKeys("G"), key.WithHelp("", "")),
 		InputMode: key.NewBinding(key.WithKeys("i"), key.WithHelp("(i)", "input")),
 		Help:      key.NewBinding(key.WithKeys(km.Help.Keys()...), key.WithHelp(km.Help.Help().Key, "help")),
