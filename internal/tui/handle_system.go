@@ -43,6 +43,14 @@ func (m Model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleStateWatch(msg stateWatchMsg) (tea.Model, tea.Cmd) {
+	if msg.canonicalGone {
+		// The tmux canonical session vanished (server restart or external
+		// kill-session). Grouped sessions now point at nothing, so continuing
+		// would silently corrupt attach/capture behaviour. Surface the error
+		// and quit cleanly — the user restarts hive to recover.
+		m.appState.LastError = "tmux session gone — restart hive to recover"
+		return m, tea.Quit
+	}
 	if !msg.mtime.Equal(m.stateLastKnownMtime) {
 		debugLog.Printf("stateWatchMsg: external change detected (mtime=%v), reloading", msg.mtime)
 		m.stateLastKnownMtime = msg.mtime

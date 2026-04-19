@@ -75,6 +75,8 @@ The `Backend` interface abstracts terminal multiplexing. Two implementations exi
 - **`native/`** — built-in PTY backend. A background daemon process (`hive mux-daemon`) owns all PTY master file descriptors. The TUI communicates with it over a Unix domain socket (`~/.config/hive/mux.sock`) using a length-prefixed JSON protocol.
 - **`tmux/`** — delegates to the `tmux` binary. Requires tmux to be installed.
 
+**Multi-instance tmux grouping** (`grouping.go`, optional `GroupedBackend` interface): when multiple hive processes run simultaneously, each creates its own tmux grouped session `hive-sessions-<pid>-<4hex>` that shares the canonical `hive-sessions` window list via `new-session -t`. Attach commands target the grouped session so each instance has independent current-window selection. Startup sweeps grouped sessions whose owning pid is no longer alive. Native PTY backend does not implement `GroupedBackend`; multi-instance independence is tmux-only.
+
 ```
 TUI → state reducers → mux backend client → Unix socket → daemon → PTY processes
 ```

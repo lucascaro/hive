@@ -97,7 +97,7 @@ type Project struct {
 	Directory      string            `json:"directory,omitempty"` // working directory for all sessions in this project
 	Teams          []*Team           `json:"teams"`
 	Sessions       []*Session        `json:"sessions"` // standalone (no team)
-	Collapsed      bool              `json:"collapsed"`
+	Collapsed      bool              `json:"-"`               // per-instance view state; not persisted so two hive instances can collapse independently
 	SessionCounter int               `json:"session_counter"` // monotonically increasing; never reset on delete
 	CreatedAt      time.Time         `json:"created_at"`
 	Meta           map[string]string `json:"meta,omitempty"`
@@ -112,7 +112,7 @@ type Team struct {
 	OrchestratorID string            `json:"orchestrator_id"`
 	Sessions       []*Session        `json:"sessions"`
 	SharedWorkDir  string            `json:"shared_work_dir"`
-	Collapsed      bool              `json:"collapsed"`
+	Collapsed      bool              `json:"-"` // per-instance view state; not persisted (see Project.Collapsed)
 	CreatedAt      time.Time         `json:"created_at"`
 	Meta           map[string]string `json:"meta,omitempty"`
 }

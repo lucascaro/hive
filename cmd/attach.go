@@ -66,7 +66,18 @@ func runAttach(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("session not found")
 	}
 
-	muxTarget := mux.Target(target.TmuxSession, target.TmuxWindow)
+	// Same multi-instance grouping as `hive start`: sweep orphans, create a
+	// per-process grouped session, attach through it so this CLI doesn't
+	// mirror the tmux view of a running TUI.
+	if err := mux.SweepOrphanInstances(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: orphan sweep failed: %v\n", err)
+	}
+	if err := mux.InitInstance(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to create per-instance tmux session: %v\n", err)
+	}
+	defer func() { _ = mux.ShutdownInstance() }()
+
+	muxTarget := mux.Target(mux.InstanceSession(), target.TmuxWindow)
 	fmt.Fprintf(os.Stderr, "Attaching to %s (%s)…\n", target.Title, muxTarget)
 	return mux.Attach(muxTarget)
 }

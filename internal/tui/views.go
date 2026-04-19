@@ -220,7 +220,6 @@ func (e *altScreenExecCmd) SetStderr(w io.Writer) {
 
 // doAttach returns the tea.Cmd that performs session attachment.
 func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
-	target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
 	restoreMode := sess.RestoreGridMode
 
 	if !mux.UseExecAttach() {
@@ -228,6 +227,12 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 		m.attachPending = &sess
 		return tea.Quit
 	}
+
+	// Route the attach through this process's grouped session so two hive
+	// instances can zoom into different windows without fighting each other
+	// for tmux's shared current-window selection. Falls back to the canonical
+	// session when grouping is not active (tests, backends without support).
+	target := mux.Target(mux.InstanceSession(), sess.TmuxWindow)
 
 	header := buildSessionHeader(sess)
 	script := mux.AttachScript(target, header)
