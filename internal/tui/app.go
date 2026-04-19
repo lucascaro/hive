@@ -191,6 +191,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		CursorDown:  m.keys.CursorDown,
 		CursorLeft:  m.keys.CursorLeft,
 		CursorRight: m.keys.CursorRight,
+		Dismiss:     m.keys.Dismiss,
 	}
 	// Clear the transient fields now that the pickers own their lists.
 	m.appState.OrphanSessions = nil

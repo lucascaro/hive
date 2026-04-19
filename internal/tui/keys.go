@@ -50,6 +50,8 @@ type KeyMap struct {
 	Detach         key.Binding
 	Confirm        key.Binding
 	Cancel         key.Binding
+	Dismiss        key.Binding
+	JumpToProject  key.Binding
 }
 
 // uniqueKeys returns keys deduplicated, preserving order. Empty strings are skipped.
@@ -132,7 +134,52 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 		Detach:         bind(kb.Detach, "", "detach"),
 		Confirm:        key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm")),
 		Cancel:         key.NewBinding(key.WithKeys("esc", "n"), key.WithHelp("esc/n", "cancel")),
+		Dismiss:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close")),
+		JumpToProject:  bind(kb.JumpToProject, jumpLabel(kb.JumpToProject), "jump to project"),
 	}
+}
+
+// jumpLabel renders the JumpToProject help string. Uses range notation
+// ("[1-9]", "[F1-F9]") only when the keys are a contiguous ASCII run so the
+// label doesn't lie about sparse custom bindings like ["F1","F5"].
+func jumpLabel(kb config.KeyBinding) string {
+	keys := []string(kb)
+	if len(keys) == 0 {
+		return ""
+	}
+	if len(keys) == 1 {
+		return "[" + keys[0] + "]"
+	}
+	if isContiguousRun(keys) {
+		return "[" + keys[0] + "-" + keys[len(keys)-1] + "]"
+	}
+	return "[" + strings.Join(keys, "/") + "]"
+}
+
+// isContiguousRun returns true when keys share a common prefix and differ
+// only in a trailing single character that increases by one per entry
+// (e.g. "1","2","3" or "F1","F2","F3"). Used to decide when a range label
+// is truthful.
+func isContiguousRun(keys []string) bool {
+	if len(keys) < 2 {
+		return false
+	}
+	prefixLen := len(keys[0]) - 1
+	if prefixLen < 0 {
+		return false
+	}
+	prefix := keys[0][:prefixLen]
+	prev := keys[0][prefixLen]
+	for _, k := range keys[1:] {
+		if len(k) != prefixLen+1 || k[:prefixLen] != prefix {
+			return false
+		}
+		if k[prefixLen] != prev+1 {
+			return false
+		}
+		prev = k[prefixLen]
+	}
+	return true
 }
 
 // HelpKeyLabel returns the display string for the Help key binding.
@@ -163,7 +210,7 @@ func (km KeyMap) ShortHelp() []key.Binding {
 // Implements help.KeyMap.
 func (km KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
+		{km.NavUp, km.NavDown, km.NavProjectUp, km.NavProjectDown, km.CursorUp, km.CursorDown, km.CursorLeft, km.CursorRight, km.JumpToProject, km.CollapseItem, km.ExpandItem, km.ToggleCollapse},
 		{km.MoveUp, km.MoveDown, km.MoveLeft, km.MoveRight, km.Attach, km.InputMode, km.Detach, km.NewSession, km.NewWorktreeSession, km.NewTeam, km.NewProject, km.Rename, km.KillSession, km.KillTeam},
 		{km.ColorNext, km.ColorPrev, km.SessionColorNext, km.SessionColorPrev, km.Filter, km.SidebarView, km.GridOverview, km.ToggleAll},
 		{km.Help, km.TmuxHelp, km.Settings, km.Palette, km.Quit, km.QuitKill},
@@ -208,7 +255,13 @@ func NewGridKeyMap(km KeyMap) GridKeyMap {
 		ColorPrev: key.NewBinding(key.WithKeys(km.ColorPrev.Keys()...), key.WithHelp("", "")),
 		SessionColorNext: key.NewBinding(key.WithKeys("v"), key.WithHelp("v/V", "session color")),
 		SessionColorPrev: key.NewBinding(key.WithKeys("V"), key.WithHelp("", "")),
-		ExitGrid:  key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc/g/G", "exit")),
+		// ExitGrid.WithKeys only needs the Dismiss keys — g/G are consumed by
+		// the outer grid switch in handleGridKey (they toggle project↔all
+		// grid mode there), so they never reach the GridView component. The
+		// help label still shows g/G because the user experiences them as
+		// "exit grid" when already in the matching mode (see the
+		// GridOverview/ToggleAll branches that call closeGrid).
+		ExitGrid: key.NewBinding(key.WithKeys(km.Dismiss.Keys()...), key.WithHelp(km.Dismiss.Help().Key+"/g/G", "exit")),
 		ToggleAll: key.NewBinding(key.WithKeys("G"), key.WithHelp("", "")),
 		InputMode: key.NewBinding(key.WithKeys("i"), key.WithHelp("(i)", "input")),
 		Help:      key.NewBinding(key.WithKeys(km.Help.Keys()...), key.WithHelp(km.Help.Help().Key, "help")),

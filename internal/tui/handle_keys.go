@@ -28,7 +28,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.handleGridKey(msg)
 		return m, cmd
 	case ViewHelp:
-		if msg.String() == "esc" ||
+		if key.Matches(msg, m.keys.Dismiss) ||
 			key.Matches(msg, m.keys.Help) ||
 			key.Matches(msg, m.keys.Quit) {
 			m.PopView()
@@ -96,33 +96,17 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		return cmd
 	}
 
-	// Actions that work consistently across sidebar and grid.
-	if key.Matches(msg, m.keys.Quit) {
-		return tea.Quit
-	}
+	// SidebarView in grid has grid-specific semantics (close grid), so it stays
+	// inline and runs before the registry — registry's cmdFocusSidebar is
+	// scoped to Global and wouldn't fire here anyway, but this makes the
+	// grid-specific behavior explicit.
 	if key.Matches(msg, m.keys.SidebarView) {
 		return m.closeGrid()
 	}
-	if key.Matches(msg, m.keys.Help) {
-		m.helpPanel.Open(0)
-		m.PushView(ViewHelp)
-		return nil
-	}
-	if key.Matches(msg, m.keys.TmuxHelp) {
-		m.helpPanel.Open(1)
-		m.PushView(ViewHelp)
-		return nil
-	}
+	// Palette opener is the registry's UI, not a registry entry.
 	if key.Matches(msg, m.keys.Palette) {
 		m.palette.Show(m.paletteItems())
 		m.PushView(ViewPalette)
-		return nil
-	}
-	if key.Matches(msg, m.keys.Settings) {
-		m.settings.Width = m.appState.TermWidth
-		m.settings.Height = m.appState.TermHeight
-		m.settings.Open(m.cfg)
-		m.PushView(ViewSettings)
 		return nil
 	}
 
@@ -147,6 +131,8 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	// Grid mode toggles are a state machine (project-grid ↔ all-grid ↔ closed)
+	// that doesn't fit the registry's "act on activeTarget" shape — kept inline.
 	switch {
 	case key.Matches(msg, m.keys.GridOverview):
 		if m.gridView.Mode == state.GridRestoreAll {
@@ -185,59 +171,14 @@ func (m *Model) handleGridKey(msg tea.KeyMsg) tea.Cmd {
 		m.gridView.SyncState(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll, m.gridProjectNames(), m.gridProjectColors(), m.gridSessionColors(), prevID)
 		m.polling.Invalidate()
 		return m.scheduleGridPoll()
-	case key.Matches(msg, m.keys.KillSession):
-		if sess := m.gridView.Selected(); sess != nil {
-			s := sess
-			// Grid stays in the stack; confirm dialog is pushed on top.
-			return func() tea.Msg {
-				return ConfirmActionMsg{
-					Message: fmt.Sprintf("Kill session %q?", s.Title),
-					Action:  "kill-session:" + s.ID,
-				}
-			}
-		}
-	case key.Matches(msg, m.keys.Rename):
-		if sess := m.gridView.Selected(); sess != nil {
-			m.focusSession(sess.ID)
-			// Grid stays in the stack; rename dialog is pushed on top.
-			return m.startRename()
-		}
-	case key.Matches(msg, m.keys.NewSession):
-		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
-			m.pendingProjectID = sess.ProjectID
-			m.pendingWorktree = false
-			m.inputMode = "new-session"
-			m.agentPicker.Show(m.sortedAgentItems())
-			m.PushView(ViewAgentPicker)
-			return nil
-		}
-	case key.Matches(msg, m.keys.ColorNext), key.Matches(msg, m.keys.ColorPrev):
-		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
-			dir := +1
-			if key.Matches(msg, m.keys.ColorPrev) {
-				dir = -1
-			}
-			m.cycleProjectColor(sess.ProjectID, dir)
-			m.gridView.SetProjectColors(m.gridProjectColors())
-		}
-		return nil
-	case key.Matches(msg, m.keys.SessionColorNext), key.Matches(msg, m.keys.SessionColorPrev):
-		if sess := m.gridView.Selected(); sess != nil {
-			dir := +1
-			if key.Matches(msg, m.keys.SessionColorPrev) {
-				dir = -1
-			}
-			m.cycleSessionColor(sess.ID, dir)
-			m.gridView.SetSessionColors(m.gridSessionColors())
-		}
-		return nil
-	case key.Matches(msg, m.keys.NewWorktreeSession):
-		if sess := m.gridView.Selected(); sess != nil && sess.ProjectID != "" {
-			if cmd := m.initWorktreeSession(sess.ProjectID); cmd != nil {
-				return cmd
-			}
-			return nil
-		}
+	}
+
+	// Delegate action keys (kill, rename, new session/worktree, color cycling,
+	// help/settings/quit) to the command registry — same executors as sidebar
+	// and palette, routed via activeTarget().
+	if nm, cmd, ok := Model(*m).dispatchCommand(msg, ScopeGrid); ok {
+		*m = nm.(Model)
+		return cmd
 	}
 	prevSel := m.gridView.Selected()
 	prevInputMode := m.gridView.InputMode()
@@ -284,190 +225,24 @@ func (m *Model) popGridState(sel *state.Session) {
 	m.polling.Invalidate()
 }
 
-// handleGlobalKey handles keys when no overlay or modal has focus.
+// handleGlobalKey handles keys when no overlay or modal has focus. Action
+// keybindings (new session, kill, attach, colors, quit, etc.) go through the
+// command registry so the palette and direct-key paths stay in sync. Pure
+// navigation and selection keys (nav, move, collapse, jump-to-project) remain
+// inline — they operate on the sidebar rather than on a Target.
 func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return m, tea.Quit
+	if nm, cmd, ok := m.dispatchCommand(msg, ScopeGlobal); ok {
+		return nm, cmd
+	}
 
-	case key.Matches(msg, m.keys.QuitKill):
-		return m, func() tea.Msg {
-			return ConfirmActionMsg{
-				Message: "Quit and kill ALL sessions?",
-				Action:  "quit-kill",
-			}
-		}
-
-	case key.Matches(msg, m.keys.Help):
-		m.helpPanel.Open(0)
-		m.PushView(ViewHelp)
-		return m, nil
-
-	case key.Matches(msg, m.keys.Settings):
-		m.settings.Width = m.appState.TermWidth
-		m.settings.Height = m.appState.TermHeight
-		m.settings.Open(m.cfg)
-		m.PushView(ViewSettings)
-		return m, nil
-
-	case key.Matches(msg, m.keys.TmuxHelp):
-		m.helpPanel.Open(1)
-		m.PushView(ViewHelp)
-		return m, nil
-
-	case key.Matches(msg, m.keys.Palette):
+	// Palette opener is not a registry command — it's the registry's UI.
+	if key.Matches(msg, m.keys.Palette) {
 		m.palette.Show(m.paletteItems())
 		m.PushView(ViewPalette)
 		return m, nil
+	}
 
-	case key.Matches(msg, m.keys.Filter):
-		m.appState.FilterQuery = ""
-		m.PushView(ViewFilter)
-		return m, nil
-
-	case key.Matches(msg, m.keys.SidebarView):
-		m.appState.FocusedPane = state.PaneSidebar
-		return m, nil
-
-	case key.Matches(msg, m.keys.GridOverview):
-		m.openGrid(state.GridRestoreProject)
-		m.polling.Invalidate()
-		return m, m.scheduleGridPoll()
-
-	case key.Matches(msg, m.keys.ToggleAll):
-		m.openGrid(state.GridRestoreAll)
-		m.polling.Invalidate()
-		return m, m.scheduleGridPoll()
-
-	case key.Matches(msg, m.keys.NewProject):
-		m.nameInput.Placeholder = "my-project"
-		m.nameInput.Reset()
-		m.PushView(ViewProjectName)
-		blinkCmd := m.nameInput.Focus()
-		return m, blinkCmd
-
-	case key.Matches(msg, m.keys.NewSession):
-		sel := m.sidebar.Selected()
-		if sel == nil {
-			return m, nil
-		}
-		pid := sel.ProjectID
-		if pid == "" {
-			return m, nil
-		}
-		m.pendingProjectID = pid
-		m.pendingWorktree = false
-		m.inputMode = "new-session"
-		m.agentPicker.Show(m.sortedAgentItems())
-		m.PushView(ViewAgentPicker)
-		return m, nil
-
-	case key.Matches(msg, m.keys.NewWorktreeSession):
-		sel := m.sidebar.Selected()
-		if sel == nil {
-			return m, nil
-		}
-		pid := sel.ProjectID
-		if pid == "" {
-			return m, nil
-		}
-		if cmd := m.initWorktreeSession(pid); cmd != nil {
-			return m, cmd
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.NewTeam):
-		sel := m.sidebar.Selected()
-		if sel == nil {
-			return m, nil
-		}
-		workDir := ""
-		if proj := state.FindProject(&m.appState, sel.ProjectID); proj != nil {
-			workDir = proj.Directory
-		}
-		if workDir == "" {
-			workDir, _ = os.Getwd()
-		}
-		m.teamBuilder.Start(workDir)
-		m.pendingProjectID = sel.ProjectID
-		m.PushView(ViewTeamBuilder)
-		return m, nil
-
-	case key.Matches(msg, m.keys.Attach):
-		if !m.cfg.HideAttachHint {
-			attach := m.pendingAttachDetails()
-			if attach != nil {
-				m.pendingAttach = attach
-				m.PushView(ViewAttachHint)
-				return m, nil
-			}
-		}
-		return m, m.attachActiveSession()
-
-	case key.Matches(msg, m.keys.Rename):
-		return m, m.startRename()
-
-	case key.Matches(msg, m.keys.ColorNext), key.Matches(msg, m.keys.ColorPrev):
-		sel := m.sidebar.Selected()
-		if sel == nil {
-			return m, nil
-		}
-		projectID := sel.ProjectID
-		if projectID == "" {
-			return m, nil
-		}
-		dir := +1
-		if key.Matches(msg, m.keys.ColorPrev) {
-			dir = -1
-		}
-		m.cycleProjectColor(projectID, dir)
-		return m, nil
-
-	case key.Matches(msg, m.keys.SessionColorNext), key.Matches(msg, m.keys.SessionColorPrev):
-		sel := m.sidebar.Selected()
-		if sel == nil || sel.SessionID == "" {
-			return m, nil
-		}
-		dir := +1
-		if key.Matches(msg, m.keys.SessionColorPrev) {
-			dir = -1
-		}
-		m.cycleSessionColor(sel.SessionID, dir)
-		return m, nil
-
-	case key.Matches(msg, m.keys.KillSession):
-		sel := m.sidebar.Selected()
-		if sel != nil && sel.Kind == components.KindProject {
-			return m, func() tea.Msg {
-				return ConfirmActionMsg{
-					Message: fmt.Sprintf("Kill project %q and all its sessions?", sel.Label),
-					Action:  "kill-project:" + sel.ProjectID,
-				}
-			}
-		}
-		if sel != nil && sel.SessionID != "" {
-			return m, func() tea.Msg {
-				return ConfirmActionMsg{
-					Message: fmt.Sprintf("Kill session %q?", sel.Label),
-					Action:  "kill-session:" + sel.SessionID,
-				}
-			}
-		}
-		return m, nil
-
-	case key.Matches(msg, m.keys.KillTeam):
-		sel := m.sidebar.Selected()
-		if sel != nil && sel.TeamID != "" {
-			teamName := m.teamNameByID(sel.TeamID)
-			return m, func() tea.Msg {
-				return ConfirmActionMsg{
-					Message: fmt.Sprintf("Kill team %q and all its sessions?", teamName),
-					Action:  "kill-team:" + sel.TeamID,
-				}
-			}
-		}
-		return m, nil
-
+	switch {
 	case key.Matches(msg, m.keys.ToggleCollapse):
 		sel := m.sidebar.Selected()
 		if sel != nil {
@@ -545,9 +320,20 @@ func (m Model) handleGlobalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.MoveDown):
 		return m.moveItem(+1)
 
-	// Jump to project by number
-	case msg.String() >= "1" && msg.String() <= "9":
-		idx := int(msg.String()[0]-'0') - 1
+	// Jump to project by position in the configured JumpToProject keys.
+	// The user's first key jumps to project 1, second to project 2, etc. —
+	// so non-digit custom bindings work without silently requiring digits.
+	case key.Matches(msg, m.keys.JumpToProject):
+		idx := -1
+		for i, k := range m.keys.JumpToProject.Keys() {
+			if msg.String() == k {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return m, nil
+		}
 		count := 0
 		for i, item := range m.sidebar.Items {
 			if item.Kind == components.KindProject {

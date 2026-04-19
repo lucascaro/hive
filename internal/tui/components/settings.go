@@ -819,7 +819,7 @@ func buildSettingTabs() []settingTab {
 			title: "Keybindings",
 			fields: []*settingField{
 				keybindField("Toggle Collapse", "Collapse or expand the selected project in the sidebar.", func(c config.Config) config.KeyBinding { return c.Keybindings.ToggleCollapse }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.ToggleCollapse = v }),
-				keybindField("Jump to Project 1", "Jump directly to the first project (repeatable pattern for 2–9).", func(c config.Config) config.KeyBinding { return c.Keybindings.JumpProject1 }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.JumpProject1 = v }),
+				keybindField("Jump to Project (1-9)", "Keys that jump to the Nth project in the sidebar. Default: 1,2,3,4,5,6,7,8,9.", func(c config.Config) config.KeyBinding { return c.Keybindings.JumpToProject }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.JumpToProject = v }),
 				keybindField("New Project", "Create a new project.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewProject }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewProject = v }),
 				keybindField("New Session", "Open the agent picker to start a new session.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewSession }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewSession = v }),
 				keybindField("New Team", "Open the team builder wizard.", func(c config.Config) config.KeyBinding { return c.Keybindings.NewTeam }, func(c *config.Config, v config.KeyBinding) { c.Keybindings.NewTeam = v }),
