@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Attach from palette now honors `hide_attach_hint`**: previously the palette path bypassed the first-use hint; now both palette and direct Enter go through the same code path.
 
 ### Removed
-- **Dead `jump_project_1` config field**: the previous single-key "Jump to Project 1" config field was never wired to the handler and has been removed. Users with customized values are migrated automatically on schema upgrade.
+- **Dead `jump_project_1` config field**: the previous single-key "Jump to Project 1" config field (editable in Settings but never wired to the dispatcher) has been removed. Users with a customized `jump_project_1` value will receive the new `1-9` default for `jump_to_project` on upgrade — no prior customization was functional.
 
 ## [0.12.0] — 2026-04-18
 

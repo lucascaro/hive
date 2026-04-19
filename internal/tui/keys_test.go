@@ -256,3 +256,29 @@ func TestGridKeyMap_ShortHelp_IncludesNavAndGridActions(t *testing.T) {
 		}
 	}
 }
+
+// TestJumpLabel_DefaultAndCustom pins down the range-vs-join rule: default
+// "1".."9" collapses to "[1-9]", "F1".."F9" likewise; sparse bindings like
+// F1 and F5 must NOT render as "[F1-F5]" (would imply F2/F3/F4 are bound).
+func TestJumpLabel_DefaultAndCustom(t *testing.T) {
+	cases := []struct {
+		name string
+		keys config.KeyBinding
+		want string
+	}{
+		{"empty", config.KeyBinding{}, ""},
+		{"single", config.KeyBinding{"F1"}, "[F1]"},
+		{"default-1-9", config.KeyBinding{"1", "2", "3", "4", "5", "6", "7", "8", "9"}, "[1-9]"},
+		{"contiguous-F", config.KeyBinding{"F1", "F2", "F3"}, "[F1-F3]"},
+		{"sparse", config.KeyBinding{"F1", "F5"}, "[F1/F5]"},
+		{"non-contiguous-prefix", config.KeyBinding{"a", "F1"}, "[a/F1]"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := jumpLabel(tc.keys)
+			if got != tc.want {
+				t.Errorf("jumpLabel(%v) = %q, want %q", tc.keys, got, tc.want)
+			}
+		})
+	}
+}

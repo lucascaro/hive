@@ -139,10 +139,9 @@ func NewKeyMap(kb config.KeybindingsConfig) KeyMap {
 	}
 }
 
-// jumpLabel renders the JumpToProject help string. For the 1-9 default we
-// collapse to "[1-9]"; for any other binding we show the first and last key
-// as a range (e.g. "[F1-F9]" or just "[F1]" for a single-key bind). Keeps
-// the help overlay column narrow.
+// jumpLabel renders the JumpToProject help string. Uses range notation
+// ("[1-9]", "[F1-F9]") only when the keys are a contiguous ASCII run so the
+// label doesn't lie about sparse custom bindings like ["F1","F5"].
 func jumpLabel(kb config.KeyBinding) string {
 	keys := []string(kb)
 	if len(keys) == 0 {
@@ -151,7 +150,36 @@ func jumpLabel(kb config.KeyBinding) string {
 	if len(keys) == 1 {
 		return "[" + keys[0] + "]"
 	}
-	return "[" + keys[0] + "-" + keys[len(keys)-1] + "]"
+	if isContiguousRun(keys) {
+		return "[" + keys[0] + "-" + keys[len(keys)-1] + "]"
+	}
+	return "[" + strings.Join(keys, "/") + "]"
+}
+
+// isContiguousRun returns true when keys share a common prefix and differ
+// only in a trailing single character that increases by one per entry
+// (e.g. "1","2","3" or "F1","F2","F3"). Used to decide when a range label
+// is truthful.
+func isContiguousRun(keys []string) bool {
+	if len(keys) < 2 {
+		return false
+	}
+	prefixLen := len(keys[0]) - 1
+	if prefixLen < 0 {
+		return false
+	}
+	prefix := keys[0][:prefixLen]
+	prev := keys[0][prefixLen]
+	for _, k := range keys[1:] {
+		if len(k) != prefixLen+1 || k[:prefixLen] != prefix {
+			return false
+		}
+		if k[prefixLen] != prev+1 {
+			return false
+		}
+		prev = k[prefixLen]
+	}
+	return true
 }
 
 // HelpKeyLabel returns the display string for the Help key binding.

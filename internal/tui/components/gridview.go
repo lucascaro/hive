@@ -357,6 +357,11 @@ func (gv *GridView) Update(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case key.Matches(msg, gv.Keys.Dismiss):
 		gv.Hide()
 		return nil, true
+	// Attach is also reachable here, but the tui.dispatchCommand(ScopeGrid)
+	// short-circuit in handleGridKey consumes the key before gridView.Update
+	// runs. This branch remains as a fallback for test/mouse paths that call
+	// GridView.Update directly without going through the tui dispatcher — in
+	// production it's effectively dead code. Keep the two paths in sync.
 	case key.Matches(msg, gv.Keys.Attach):
 		if sess := gv.Selected(); sess != nil {
 			s := sess

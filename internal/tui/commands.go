@@ -39,27 +39,27 @@ var commands = []Command{
 	// --- Session actions ---
 	{ID: "attach", Label: "Attach to session",
 		Binding: func(km KeyMap) key.Binding { return km.Attach },
-		Enabled: hasSession,
+		Enabled: targetIsSession,
 		Exec:    cmdAttach,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-session", Label: "New session",
 		Binding: func(km KeyMap) key.Binding { return km.NewSession },
-		Enabled: targetHasProject,
+		Enabled: targetHasProjectID,
 		Exec:    cmdNewSession,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-worktree", Label: "New worktree session",
 		Binding: func(km KeyMap) key.Binding { return km.NewWorktreeSession },
-		Enabled: targetHasProject,
+		Enabled: targetHasProjectID,
 		Exec:    cmdNewWorktree,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "kill-session", Label: "Kill session",
 		Binding: func(km KeyMap) key.Binding { return km.KillSession },
-		Enabled: hasKillableTarget,
+		Enabled: targetIsKillable,
 		Exec:    cmdKillSession, // branches to kill-project when target is a project
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "rename", Label: "Rename session",
 		Binding: func(km KeyMap) key.Binding { return km.Rename },
-		Enabled: hasSession,
+		Enabled: targetIsSession,
 		Exec:    cmdRename,
 		Scopes:  ScopeGlobal | ScopeGrid},
 
@@ -70,22 +70,24 @@ var commands = []Command{
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "new-team", Label: "New team",
 		Binding: func(km KeyMap) key.Binding { return km.NewTeam },
-		Enabled: targetHasProject,
+		Enabled: targetHasProjectID,
 		Exec:    cmdNewTeam,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "kill-team", Label: "Kill team",
 		Binding: func(km KeyMap) key.Binding { return km.KillTeam },
-		Enabled: hasTeam,
+		Enabled: targetIsTeam,
 		Exec:    cmdKillTeam,
 		Scopes:  ScopeGlobal | ScopeGrid},
 
 	// --- View actions ---
 	//
-	// Open-grid/open-grid-all are ScopeGlobal only because they're meaningless
-	// when the grid is already open; grid mode's own GridOverview/ToggleAll
-	// keys handle project↔all toggling inline (see handle_keys.go handleGridKey).
-	// Filter is ScopeGlobal only because the filter input consumes keys
-	// directly and would capture the palette's result before it could render.
+	// grid/grid-all are ScopeGlobal only: they open the grid, which is
+	// meaningless when already inside it. Grid's own GridOverview/ToggleAll
+	// keys handle project↔all toggling inline (see handleGridKey).
+	// sidebar is ScopeGlobal only: in grid, SidebarView is handled inline as
+	// "close grid" (different semantics).
+	// filter is ScopeGlobal only as a UX choice — filter narrows the sidebar
+	// list, which isn't visible from grid.
 	{ID: "grid", Label: "Grid view (project)",
 		Binding: func(km KeyMap) key.Binding { return km.GridOverview },
 		Exec:    cmdOpenGrid,
@@ -106,22 +108,22 @@ var commands = []Command{
 	// --- Appearance ---
 	{ID: "color-next", Label: "Next project color",
 		Binding: func(km KeyMap) key.Binding { return km.ColorNext },
-		Enabled: targetHasProject,
+		Enabled: targetHasProjectID,
 		Exec:    cmdColorNext,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "color-prev", Label: "Previous project color",
 		Binding: func(km KeyMap) key.Binding { return km.ColorPrev },
-		Enabled: targetHasProject,
+		Enabled: targetHasProjectID,
 		Exec:    cmdColorPrev,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "session-color-next", Label: "Next session color",
 		Binding: func(km KeyMap) key.Binding { return km.SessionColorNext },
-		Enabled: hasSession,
+		Enabled: targetIsSession,
 		Exec:    cmdSessionColorNext,
 		Scopes:  ScopeGlobal | ScopeGrid},
 	{ID: "session-color-prev", Label: "Previous session color",
 		Binding: func(km KeyMap) key.Binding { return km.SessionColorPrev },
-		Enabled: hasSession,
+		Enabled: targetIsSession,
 		Exec:    cmdSessionColorPrev,
 		Scopes:  ScopeGlobal | ScopeGrid},
 
@@ -182,36 +184,24 @@ func (m Model) dispatchCommand(msg tea.KeyMsg, scope CommandScope) (tea.Model, t
 	return m, nil, false
 }
 
-// --- Enabled predicates ---
-//
-// Each reads m.activeTarget() so grid and sidebar selections are treated
-// identically. Keep these tight — palette uses them to decide enable/disable
-// state, and direct-key dispatch runs them on every matching keystroke.
+// --- Enabled predicates (all read m.activeTarget) ---
 
-// targetHasProject is true when the selection carries a project ID — which is
-// every sidebar/grid selection that has a project context (session, team, or
-// project itself). Used by commands that need a project to act on.
-func targetHasProject(m *Model) bool { return m.activeTarget().ProjectID != "" }
+// targetHasProjectID is true when the selection carries a project ID (session,
+// team, or project itself). Not the same as Kind == TargetProject.
+func targetHasProjectID(m *Model) bool { return m.activeTarget().ProjectID != "" }
 
-// hasSession is true when the active selection is a session.
-func hasSession(m *Model) bool { return m.activeTarget().Kind == TargetSession }
+func targetIsSession(m *Model) bool { return m.activeTarget().Kind == TargetSession }
+func targetIsTeam(m *Model) bool    { return m.activeTarget().Kind == TargetTeam }
 
-// hasTeam is true when the active selection is a team.
-func hasTeam(m *Model) bool { return m.activeTarget().Kind == TargetTeam }
-
-// hasKillableTarget is true when the selection is either a session or a
-// project — both are valid kill-session targets (sidebar's project-kind
-// branch confirms killing the whole project).
-func hasKillableTarget(m *Model) bool {
+// targetIsKillable covers both "kill session" (Kind == Session) and "kill
+// project" (Kind == Project) — kill-session dispatches to the right confirm.
+func targetIsKillable(m *Model) bool {
 	k := m.activeTarget().Kind
 	return k == TargetSession || k == TargetProject
 }
 
 // --- Executors ---
-//
-// Each executor mutates *m and returns (m, cmd). Reads state via
-// m.activeTarget() so callers don't need to know whether the sidebar or the
-// grid is active — that routing happens in one place (target.go).
+// Each mutates *m and returns (m, cmd). Selection comes from m.activeTarget.
 
 func cmdAttach(m *Model) (tea.Model, tea.Cmd) {
 	// Grid context attaches via the same GridSessionSelectedMsg path as the
