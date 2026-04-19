@@ -16,12 +16,14 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 
 	switch msg.Action {
 	// Session actions
-	case "attach":
+	case paletteAttach:
 		if attach := m.pendingAttachDetails(); attach != nil {
 			cmd := m.doAttach(*attach)
 			return m, cmd
 		}
-	case "new-session":
+		// Fallback: trigger attach via the standard SessionAttachMsg path.
+		return m, m.attachActiveSession()
+	case paletteNewSession:
 		sel := m.sidebar.Selected()
 		if sel == nil {
 			return m, nil
@@ -36,7 +38,7 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 		m.agentPicker.Show(m.sortedAgentItems())
 		m.PushView(ViewAgentPicker)
 		return m, nil
-	case "new-worktree":
+	case paletteNewWorktree:
 		sel := m.sidebar.Selected()
 		if sel == nil {
 			return m, nil
@@ -48,7 +50,7 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 		if cmd := m.initWorktreeSession(pid); cmd != nil {
 			return m, cmd
 		}
-	case "kill-session":
+	case paletteKillSession:
 		sel := m.sidebar.Selected()
 		if sel != nil && sel.SessionID != "" {
 			return m, func() tea.Msg {
@@ -58,17 +60,17 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 				}
 			}
 		}
-	case "rename":
+	case paletteRename:
 		return m, m.startRename()
 
 	// Project & team actions
-	case "new-project":
+	case paletteNewProject:
 		m.nameInput.Placeholder = "my-project"
 		m.nameInput.Reset()
 		m.PushView(ViewProjectName)
 		blinkCmd := m.nameInput.Focus()
 		return m, blinkCmd
-	case "new-team":
+	case paletteNewTeam:
 		sel := m.sidebar.Selected()
 		if sel == nil || sel.ProjectID == "" {
 			return m, nil
@@ -84,7 +86,7 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 		m.pendingProjectID = sel.ProjectID
 		m.PushView(ViewTeamBuilder)
 		return m, nil
-	case "kill-team":
+	case paletteKillTeam:
 		sel := m.sidebar.Selected()
 		if sel != nil && sel.TeamID != "" {
 			return m, func() tea.Msg {
@@ -96,49 +98,49 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 		}
 
 	// View actions
-	case "grid":
+	case paletteGrid:
 		m.openGrid(state.GridRestoreProject)
 		m.polling.Invalidate()
 		return m, m.scheduleGridPoll()
-	case "grid-all":
+	case paletteGridAll:
 		m.openGrid(state.GridRestoreAll)
 		m.polling.Invalidate()
 		return m, m.scheduleGridPoll()
-	case "sidebar":
+	case paletteSidebar:
 		// Already in sidebar — no-op.
-	case "filter":
+	case paletteFilter:
 		m.appState.FilterQuery = ""
 		m.PushView(ViewFilter)
 		return m, nil
 
 	// Appearance
-	case "color-next":
+	case paletteColorNext:
 		if sel := m.sidebar.Selected(); sel != nil && sel.ProjectID != "" {
 			m.cycleProjectColor(sel.ProjectID, 1)
 		}
-	case "color-prev":
+	case paletteColorPrev:
 		if sel := m.sidebar.Selected(); sel != nil && sel.ProjectID != "" {
 			m.cycleProjectColor(sel.ProjectID, -1)
 		}
-	case "session-color-next":
+	case paletteSessionColorNext:
 		if sel := m.sidebar.Selected(); sel != nil && sel.SessionID != "" {
 			m.cycleSessionColor(sel.SessionID, 1)
 		}
-	case "session-color-prev":
+	case paletteSessionColorPrev:
 		if sel := m.sidebar.Selected(); sel != nil && sel.SessionID != "" {
 			m.cycleSessionColor(sel.SessionID, -1)
 		}
 
 	// Help & settings
-	case "help":
+	case paletteHelp:
 		m.helpPanel.Open(0)
 		m.PushView(ViewHelp)
 		return m, nil
-	case "tmux-help":
+	case paletteTmuxHelp:
 		m.helpPanel.Open(1)
 		m.PushView(ViewHelp)
 		return m, nil
-	case "settings":
+	case paletteSettings:
 		m.settings.Width = m.appState.TermWidth
 		m.settings.Height = m.appState.TermHeight
 		m.settings.Open(m.cfg)
@@ -146,9 +148,9 @@ func (m Model) handlePalettePicked(msg components.CommandPalettePickedMsg) (tea.
 		return m, nil
 
 	// Quit
-	case "quit":
+	case paletteQuit:
 		return m, tea.Quit
-	case "quit-kill":
+	case paletteQuitKill:
 		return m, func() tea.Msg {
 			return ConfirmActionMsg{
 				Message: "Quit and kill all sessions?",
