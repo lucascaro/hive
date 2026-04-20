@@ -1,7 +1,7 @@
 # Feature: Sync state across multiple hive instances without mirroring zoom/focus
 
 - **GitHub Issue:** #117
-- **Stage:** PLAN
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P4
@@ -287,4 +287,4 @@ One-time migration: existing `state.json` files containing `active_session_id` /
 - `go build ./... && go test ./... && go vet ./...` — all pass.
 - Manual test plan for PR: two terminals, zoom into different sessions; `kill -9` one hive and start a third to verify orphan sweep; external `tmux kill-session -t hive-sessions` to verify canonical-gone exit.
 
-- **PR:** —
+- **PR:** https://github.com/lucascaro/hive/pull/128
