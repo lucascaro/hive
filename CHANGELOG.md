@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] — 2026-04-19
+
 ### Fixed
 - **Mouse and bell options now set on every attach**: previously these tmux session options were only set during initial session creation. Sessions created by other hive instances, older versions, or recovered from orphaned tmux sessions now get mouse support and bell monitoring applied automatically on window creation and attach.
 
@@ -381,7 +383,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/lucascaro/hive/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/lucascaro/hive/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/lucascaro/hive/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/lucascaro/hive/compare/v0.11.0...v0.12.0
