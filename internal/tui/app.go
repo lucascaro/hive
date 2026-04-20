@@ -123,6 +123,12 @@ type Model struct {
 // LastAttach returns the pending attach request after the TUI exits, or nil.
 func (m Model) LastAttach() *SessionAttachMsg { return m.attachPending }
 
+// LastError returns the last error message surfaced by the TUI, or empty if
+// none. Callers inspect this after tea.Program.Run() to print fatal-exit
+// messages (e.g. canonical tmux session gone) that alt-screen teardown wipes
+// from the final render.
+func (m Model) LastError() string { return m.appState.LastError }
+
 // newStyledHelp returns a help.Model pre-configured with Hive's color palette.
 func newStyledHelp() help.Model {
 	h := help.New()

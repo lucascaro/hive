@@ -1,7 +1,9 @@
 package state
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -161,5 +163,37 @@ func TestActiveProject_NotFound(t *testing.T) {
 	s.ActiveProjectID = "nope"
 	if got := s.ActiveProject(); got != nil {
 		t.Errorf("ActiveProject() = %+v, want nil", got)
+	}
+}
+
+func TestProjectCollapsed_NotPersisted(t *testing.T) {
+	p := Project{ID: "p1", Name: "P", Collapsed: true}
+	data, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(data), "collapsed") {
+		t.Errorf("Project.Collapsed should not appear in JSON (per-instance view state); got %s", data)
+	}
+	// Unmarshal legacy data with "collapsed" field: should load cleanly and
+	// leave Collapsed at its zero value (not populated from persisted state).
+	legacy := []byte(`{"id":"p1","name":"P","collapsed":true,"teams":[],"sessions":[]}`)
+	var out Project
+	if err := json.Unmarshal(legacy, &out); err != nil {
+		t.Fatalf("legacy Unmarshal: %v", err)
+	}
+	if out.Collapsed {
+		t.Error("legacy collapsed=true leaked into in-memory Project.Collapsed; want false (field is json:\"-\")")
+	}
+}
+
+func TestTeamCollapsed_NotPersisted(t *testing.T) {
+	team := Team{ID: "t1", Name: "T", Collapsed: true}
+	data, err := json.Marshal(team)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(data), "collapsed") {
+		t.Errorf("Team.Collapsed should not appear in JSON; got %s", data)
 	}
 }

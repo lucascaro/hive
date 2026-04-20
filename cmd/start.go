@@ -92,6 +92,22 @@ func runStart(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("selected backend is not available.\nFor tmux backend: install tmux (https://github.com/tmux/tmux)\nOr use the native backend: hive start --native")
 	}
 
+	// Multi-instance grouping: reclaim grouped sessions left behind by crashed
+	// hive processes, then create this process's grouped session so attach
+	// commands target a per-instance view of the shared window list. No-op on
+	// the native backend (does not implement GroupedBackend).
+	if err := mux.SweepOrphanInstances(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: orphan sweep failed: %v\n", err)
+	}
+	if err := mux.InitInstance(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to create per-instance tmux session: %v (falling back to shared canonical)\n", err)
+	}
+	defer func() {
+		if err := mux.ShutdownInstance(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to tear down per-instance tmux session: %v\n", err)
+		}
+	}()
+
 	// Load state.
 	projects, err := tui.LoadState()
 	if err != nil {
@@ -134,6 +150,16 @@ func runStart(_ *cobra.Command, _ []string) error {
 		finalModel, err := p.Run()
 		if err != nil {
 			return fmt.Errorf("TUI error: %w", err)
+		}
+
+		// Alt-screen teardown wipes the TUI's final frame, so any status-bar
+		// error message set immediately before tea.Quit (e.g. canonical tmux
+		// session gone) is invisible. Mirror it to stderr so the user sees why
+		// hive exited.
+		if errModel, ok := finalModel.(interface{ LastError() string }); ok {
+			if msg := errModel.LastError(); msg != "" {
+				fmt.Fprintf(os.Stderr, "hive: %s\n", msg)
+			}
 		}
 
 		// Native backend attach: re-enter TUI after detaching from the session.
