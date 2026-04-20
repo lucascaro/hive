@@ -115,6 +115,7 @@ func (b *Backend) SupportsPopup() bool {
 // The popup runs the shared attach script (via `sh -c`) so it picks up the
 // configured single-key detach binding and the custom Hive status bar.
 func (b *Backend) PopupAttach(target, title string) error {
+	ensureSessionOptions(sessionFromTarget(target))
 	script := b.AttachScript(target, title)
 
 	args := []string{"display-popup",
@@ -139,6 +140,7 @@ func (b *Backend) PopupAttach(target, title string) error {
 // `Ctrl+B D` continues to work as a fallback because we add a binding
 // rather than replacing the prefix.
 func (b *Backend) Attach(target string) error {
+	ensureSessionOptions(sessionFromTarget(target))
 	script := b.AttachScript(target, "")
 	cmd := exec.Command("sh", "-c", script)
 	cmd.Stdin = os.Stdin
