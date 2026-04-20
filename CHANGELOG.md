@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-04-19
+
 ### Added
 - **Multi-instance independence (tmux backend)**: running hive in multiple terminals no longer mirrors zoom/focus. Each instance gets its own tmux grouped session sharing the canonical window list, so you can zoom into session A on one monitor while browsing the grid on another. Crashed instances are reclaimed automatically at startup. Native PTY backend is unchanged (still mirrors). The sidebar collapsed state is now per-instance (no longer persisted) for the same reason (#117).
 
@@ -376,7 +378,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/lucascaro/hive/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/lucascaro/hive/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/lucascaro/hive/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/lucascaro/hive/compare/v0.10.1...v0.11.0
