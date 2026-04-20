@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Mouse and bell options now set on every attach**: previously these tmux session options were only set during initial session creation. Sessions created by other hive instances, older versions, or recovered from orphaned tmux sessions now get mouse support and bell monitoring applied automatically on window creation and attach.
+
 ## [0.14.0] — 2026-04-19
 
 ### Added
