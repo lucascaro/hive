@@ -28,11 +28,7 @@ func (b *Backend) CreateSession(session, windowName, workDir string, cmd []strin
 	if err := tmux.CreateSession(session, windowName, workDir, b.wrapCmd(cmd)); err != nil {
 		return err
 	}
-	// Enable mouse support so users can scroll through output.
-	// Non-fatal: don't fail session creation over a cosmetic option.
-	_ = tmux.SetOption(session, "mouse", "on")
-	// Ensure bell monitoring is on so #{window_bell_flag} tracks bells.
-	_ = tmux.SetOption(session, "monitor-bell", "on")
+	ensureSessionOptions(session)
 	return nil
 }
 
@@ -43,7 +39,17 @@ func (b *Backend) ListSessionNames() ([]string, error) { return tmux.ListSession
 // CreateWindow adds a window to an existing tmux session. The agent command is
 // wrapped with "tmux detach-client" so the user returns to hive when done.
 func (b *Backend) CreateWindow(session, windowName, workDir string, cmd []string) (int, error) {
+	ensureSessionOptions(session)
 	return tmux.CreateWindow(session, windowName, workDir, b.wrapCmd(cmd))
+}
+
+// ensureSessionOptions idempotently sets session-level tmux options that hive
+// requires (mouse support, bell monitoring). Called on both CreateSession and
+// CreateWindow so options are applied even when joining a session created by
+// another hive instance or an older version.
+func ensureSessionOptions(session string) {
+	_ = tmux.SetOption(session, "mouse", "on")
+	_ = tmux.SetOption(session, "monitor-bell", "on")
 }
 
 func (b *Backend) WindowExists(target string) bool { return tmux.WindowExists(target) }
