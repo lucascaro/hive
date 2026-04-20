@@ -152,6 +152,16 @@ func runStart(_ *cobra.Command, _ []string) error {
 			return fmt.Errorf("TUI error: %w", err)
 		}
 
+		// Alt-screen teardown wipes the TUI's final frame, so any status-bar
+		// error message set immediately before tea.Quit (e.g. canonical tmux
+		// session gone) is invisible. Mirror it to stderr so the user sees why
+		// hive exited.
+		if errModel, ok := finalModel.(interface{ LastError() string }); ok {
+			if msg := errModel.LastError(); msg != "" {
+				fmt.Fprintf(os.Stderr, "hive: %s\n", msg)
+			}
+		}
+
 		// Native backend attach: re-enter TUI after detaching from the session.
 		if fm, ok := finalModel.(interface{ LastAttach() *tui.SessionAttachMsg }); ok {
 			if a := fm.LastAttach(); a != nil {

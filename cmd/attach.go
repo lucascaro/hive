@@ -77,7 +77,11 @@ func runAttach(_ *cobra.Command, args []string) error {
 	}
 	defer func() { _ = mux.ShutdownInstance() }()
 
-	muxTarget := mux.Target(mux.InstanceSession(), target.TmuxWindow)
+	sessName := target.TmuxSession
+	if sessName == mux.HiveSession {
+		sessName = mux.InstanceSession()
+	}
+	muxTarget := mux.Target(sessName, target.TmuxWindow)
 	fmt.Fprintf(os.Stderr, "Attaching to %s (%s)…\n", target.Title, muxTarget)
 	return mux.Attach(muxTarget)
 }

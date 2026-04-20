@@ -228,11 +228,16 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 		return tea.Quit
 	}
 
-	// Route the attach through this process's grouped session so two hive
-	// instances can zoom into different windows without fighting each other
-	// for tmux's shared current-window selection. Falls back to the canonical
-	// session when grouping is not active (tests, backends without support).
-	target := mux.Target(mux.InstanceSession(), sess.TmuxWindow)
+	// Route canonical-named sessions through this process's grouped session so
+	// two hive instances can zoom into different windows without fighting for
+	// tmux's shared current-window selection. Legacy/recovered sessions keep
+	// their original tmux session name — the grouped session shares windows
+	// only with the canonical, so substituting would target the wrong tmux.
+	sessName := sess.TmuxSession
+	if sessName == mux.HiveSession {
+		sessName = mux.InstanceSession()
+	}
+	target := mux.Target(sessName, sess.TmuxWindow)
 
 	header := buildSessionHeader(sess)
 	script := mux.AttachScript(target, header)
@@ -259,6 +264,8 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 }
 
 // RunAttach handles the attach flow for the native backend.
+// Native does not implement GroupedBackend, so attach targets the stored
+// session name directly — no grouped-session substitution (unlike doAttach).
 func RunAttach(sess SessionAttachMsg) error {
 	fmt.Print("\033[22;0t")
 	fmt.Printf("\033]0;%s\007", buildAttachTitle(sess))

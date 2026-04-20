@@ -12,6 +12,11 @@ This file tracks features that are already implemented in Hive. For the feature 
   Either way the TUI resumes in place after you detach — no restart required.
 - Create new projects and sessions directly from the keyboard-driven interface.
 - Kill individual sessions or quit the app while keeping tmux sessions running.
+- Run hive in multiple terminals simultaneously with independent per-instance
+  zoom/focus and sidebar collapse state. Sessions, windows, and captured output
+  stay in sync across instances; which cell is zoomed or which projects are
+  collapsed is per-instance. Tmux backend only — the native PTY backend still
+  mirrors views across instances.
 
 ## Agents And Teams
 

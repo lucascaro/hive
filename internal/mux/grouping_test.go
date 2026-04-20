@@ -55,8 +55,9 @@ func (f *fakeGroupedBackend) InstanceSession() string     { return f.instance }
 func (f *fakeGroupedBackend) CanonicalExists() bool       { return f.canonical }
 
 func TestInstanceSession_FallsBackToCanonicalWhenNoGroup(t *testing.T) {
+	prev := active
 	SetBackend(fakeBackend{})
-	defer SetBackend(nil)
+	defer func() { active = prev }()
 	if got := InstanceSession(); got != HiveSession {
 		t.Errorf("InstanceSession() with non-grouped backend = %q; want %q", got, HiveSession)
 	}
@@ -64,8 +65,9 @@ func TestInstanceSession_FallsBackToCanonicalWhenNoGroup(t *testing.T) {
 
 func TestInstanceSession_ReturnsGroupedName(t *testing.T) {
 	gb := &fakeGroupedBackend{canonical: true}
+	prev := active
 	SetBackend(gb)
-	defer SetBackend(nil)
+	defer func() { active = prev }()
 
 	// Before InitInstance: backend reports empty → fall back to canonical.
 	if got := InstanceSession(); got != HiveSession {
@@ -90,8 +92,9 @@ func TestInstanceSession_ReturnsGroupedName(t *testing.T) {
 
 func TestSweepOrphanInstances_ForwardsToGroupedBackend(t *testing.T) {
 	gb := &fakeGroupedBackend{}
+	prev := active
 	SetBackend(gb)
-	defer SetBackend(nil)
+	defer func() { active = prev }()
 	if err := SweepOrphanInstances(); err != nil {
 		t.Fatalf("SweepOrphanInstances: %v", err)
 	}
@@ -101,8 +104,9 @@ func TestSweepOrphanInstances_ForwardsToGroupedBackend(t *testing.T) {
 }
 
 func TestCanonicalExists_TrueForNonGroupedBackend(t *testing.T) {
+	prev := active
 	SetBackend(fakeBackend{})
-	defer SetBackend(nil)
+	defer func() { active = prev }()
 	// Non-grouped backends don't track a canonical session, so the helper
 	// returns true (no false negatives that would trigger the fatal dialog).
 	if !CanonicalExists() {
