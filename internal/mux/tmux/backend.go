@@ -43,10 +43,14 @@ func (b *Backend) CreateWindow(session, windowName, workDir string, cmd []string
 	return tmux.CreateWindow(session, windowName, workDir, b.wrapCmd(cmd))
 }
 
-// ensureSessionOptions idempotently sets session-level tmux options that hive
-// requires (mouse support, bell monitoring). Called on both CreateSession and
-// CreateWindow so options are applied even when joining a session created by
-// another hive instance or an older version.
+// EnsureSessionOptions idempotently sets session-level tmux options that hive
+// requires (mouse support, bell monitoring). Called on CreateSession,
+// CreateWindow, and Attach so options are applied even when joining a session
+// created by another hive instance or an older version.
+func (b *Backend) EnsureSessionOptions(session string) {
+	ensureSessionOptions(session)
+}
+
 func ensureSessionOptions(session string) {
 	_ = tmux.SetOption(session, "mouse", "on")
 	_ = tmux.SetOption(session, "monitor-bell", "on")

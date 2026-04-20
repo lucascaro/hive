@@ -261,6 +261,16 @@ func DetachKey() string {
 	return active.DetachKey()
 }
 
+// EnsureSessionOptions idempotently sets session-level options (mouse, bell)
+// on the given session. Only applies to the tmux backend; no-op for others.
+func EnsureSessionOptions(session string) {
+	if eso, ok := active.(interface {
+		EnsureSessionOptions(session string)
+	}); ok {
+		eso.EnsureSessionOptions(session)
+	}
+}
+
 // AttachScript returns the shell script the active backend uses to attach to
 // target with title shown in the status bar. Only the tmux backend produces
 // a script (the native backend uses the quit+restart path); for any other
