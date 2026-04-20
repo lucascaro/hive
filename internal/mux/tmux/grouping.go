@@ -3,12 +3,10 @@ package muxtmux
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"sync"
-	"syscall"
 
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/tmux"
@@ -152,17 +150,5 @@ func parseInstancePID(name string) (int, bool) {
 }
 
 // pidAlive reports whether a process with the given pid is currently running.
-// Uses `kill(pid, 0)` which performs the permission/existence check without
-// delivering a signal.
-func pidAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-	// ESRCH = no such process → dead. EPERM = process exists but not ours
-	// (treat as alive; safer than killing a tmux session we don't own).
-	return !errors.Is(err, syscall.ESRCH)
-}
+// Platform-specific implementations live in pidalive_unix.go and
+// pidalive_windows.go.
