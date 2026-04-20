@@ -239,10 +239,9 @@ func (m *Model) doAttach(sess SessionAttachMsg) tea.Cmd {
 	}
 	target := mux.Target(sessName, sess.TmuxWindow)
 
-	// Ensure mouse and bell options are set on the session we're about to
-	// attach to — it may have been created by another hive instance or an
-	// older version that didn't set these options.
-	mux.EnsureSessionOptions(sess.TmuxSession)
+	// Ensure mouse and bell options are set on the session we're actually
+	// attaching to — not the canonical name, but the instance-grouped one.
+	mux.EnsureSessionOptions(sessName)
 
 	header := buildSessionHeader(sess)
 	script := mux.AttachScript(target, header)
