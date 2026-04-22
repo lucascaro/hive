@@ -312,6 +312,11 @@ func detectOrphanContainers(appState *state.AppState) (orphans []string, recover
 		if !strings.HasPrefix(name, "hive-") {
 			continue
 		}
+		// Skip per-instance grouped sessions — they are transient mirrors
+		// of the canonical session and not true orphans.
+		if muxtmux.IsGroupedSession(name) {
+			continue
+		}
 		if _, known := knownSessions[name]; known {
 			continue
 		}

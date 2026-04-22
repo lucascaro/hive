@@ -223,13 +223,6 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		m.sidebar.SyncActiveSession(m.appState.ActiveSessionID)
 		debugLog.Printf("synced cursor to existing active session %s", m.appState.ActiveSessionID)
 	}
-	// Push startup overlays onto the view stack if they were activated by constructors.
-	if m.recoveryPicker.Active {
-		m.PushView(ViewRecovery)
-	}
-	if m.orphanPicker.Active {
-		m.PushView(ViewOrphan)
-	}
 	// Restore the grid view if the user detached from a grid-initiated session.
 	m.restoreGrid()
 	// Open the preferred startup view if no attach-restore already pushed a grid.
@@ -246,6 +239,14 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		default:
 			debugLog.Printf("unknown StartupView %q, defaulting to sidebar", m.cfg.StartupView)
 		}
+	}
+	// Push startup overlays onto the view stack AFTER grid/startup-view
+	// restoration so they appear on top (visible in grid mode too).
+	if m.recoveryPicker.Active {
+		m.PushView(ViewRecovery)
+	}
+	if m.orphanPicker.Active {
+		m.PushView(ViewOrphan)
 	}
 	// Show "What's New" overlay if there's changelog content.
 	// Pushed last so it appears on top of any restored grid or recovery overlays.
