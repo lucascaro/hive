@@ -134,6 +134,13 @@ func newInstanceName(pid int) string {
 	return fmt.Sprintf("hive-sessions-%d-%s", pid, hex.EncodeToString(buf[:]))
 }
 
+// IsGroupedSession reports whether name matches the per-instance grouped
+// session pattern (e.g. "hive-sessions-12345-a1b2"). These sessions are
+// transient and should not be treated as orphans.
+func IsGroupedSession(name string) bool {
+	return groupedSessionPattern.MatchString(name)
+}
+
 // parseInstancePID returns the pid embedded in a grouped session name, or
 // ok=false if name is not a grouped session (e.g. the canonical session,
 // unrelated tmux sessions).

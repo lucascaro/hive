@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Grouped sessions no longer flagged as orphans**: per-instance tmux sessions (e.g. `hive-sessions-12345-a1b2`) are now correctly skipped during orphan detection, preventing false positives in the recovery picker.
+- **Startup overlays visible in grid mode**: orphan-picker and recovery-picker overlays now appear on top of the grid view instead of being hidden beneath it.
+
 ## [0.14.1] — 2026-04-19
 
 ### Fixed

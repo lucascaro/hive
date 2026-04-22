@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/config"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tui/components"
 )
 
 func testModelForStack() Model {
@@ -325,6 +326,69 @@ func TestIntegration_GridKill_Cancel_ReturnsToGrid(t *testing.T) {
 	}
 }
 
+// Scenario tests for orphan/recovery overlays over grid.
+
+func TestScenario_GridOrphan_ReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	m.PushView(ViewGrid)
+	m.PushView(ViewOrphan)
+
+	if m.TopView() != ViewOrphan {
+		t.Fatalf("top = %q, want ViewOrphan", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should be in stack under orphan")
+	}
+
+	m.PopView()
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after pop, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+func TestScenario_GridRecovery_ReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	m.PushView(ViewGrid)
+	m.PushView(ViewRecovery)
+
+	if m.TopView() != ViewRecovery {
+		t.Fatalf("top = %q, want ViewRecovery", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should be in stack under recovery")
+	}
+
+	m.PopView()
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after pop, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+func TestScenario_GridRecoveryOrphan_DismissBothReturnsToGrid(t *testing.T) {
+	m := testModelForStack()
+
+	// Simulate startup: grid first, then recovery, then orphan on top.
+	m.PushView(ViewGrid)
+	m.PushView(ViewRecovery)
+	m.PushView(ViewOrphan)
+
+	if m.TopView() != ViewOrphan {
+		t.Fatalf("top = %q, want ViewOrphan", m.TopView())
+	}
+
+	m.PopView()
+	if m.TopView() != ViewRecovery {
+		t.Fatalf("after first pop, top = %q, want ViewRecovery", m.TopView())
+	}
+
+	m.PopView()
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after second pop, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
 func TestIntegration_GridRename_Enter_ReturnsToGrid(t *testing.T) {
 	m := testModelForStack()
 
@@ -345,5 +409,152 @@ func TestIntegration_GridRename_Enter_ReturnsToGrid(t *testing.T) {
 
 	if m.TopView() != ViewGrid {
 		t.Fatalf("after enter from rename, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+// Integration tests for orphan/recovery overlays initialized via New() with grid startup.
+
+func TestIntegration_GridStartup_OrphanOverlayOnTop(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid"
+
+	appState := state.AppState{
+		Projects: []*state.Project{{
+			ID:   "proj-1",
+			Name: "test",
+			Sessions: []*state.Session{{
+				ID:          "sess-1",
+				ProjectID:   "proj-1",
+				Title:       "session-1",
+				AgentType:   state.AgentClaude,
+				TmuxSession: "hive-test",
+				TmuxWindow:  0,
+				Status:      state.StatusRunning,
+			}},
+		}},
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-1",
+		AgentUsage:      make(map[string]state.AgentUsageRecord),
+		TermWidth:       120,
+		TermHeight:      40,
+		OrphanSessions:  []string{"hive-stale-abc"},
+	}
+
+	m := New(cfg, appState, "")
+
+	// Orphan overlay must be on top of grid, not hidden beneath it.
+	if m.TopView() != ViewOrphan {
+		t.Fatalf("top = %q, want ViewOrphan (orphan overlay should be above grid)", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should be in the stack beneath the orphan overlay")
+	}
+
+	// Dismiss orphan overlay with esc — should return to grid.
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = result.(Model)
+	// Process the OrphanPickerDoneMsg.
+	result, _ = m.Update(components.OrphanPickerDoneMsg{})
+	m = result.(Model)
+
+	if m.TopView() != ViewGrid {
+		t.Fatalf("after dismissing orphan, top = %q, want ViewGrid", m.TopView())
+	}
+}
+
+func TestIntegration_GridStartup_RecoveryOverlayOnTop(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid"
+
+	appState := state.AppState{
+		Projects: []*state.Project{{
+			ID:   "proj-1",
+			Name: "test",
+			Sessions: []*state.Session{{
+				ID:          "sess-1",
+				ProjectID:   "proj-1",
+				Title:       "session-1",
+				AgentType:   state.AgentClaude,
+				TmuxSession: "hive-test",
+				TmuxWindow:  0,
+				Status:      state.StatusRunning,
+			}},
+		}},
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-1",
+		AgentUsage:      make(map[string]state.AgentUsageRecord),
+		TermWidth:       120,
+		TermHeight:      40,
+		RecoverableSessions: []state.RecoverableSession{
+			{
+				TmuxSession:       "hive-old-abc",
+				WindowIndex:       0,
+				WindowName:        "main",
+				DetectedAgentType: state.AgentClaude,
+				PanePreview:       "$ claude",
+			},
+		},
+	}
+
+	m := New(cfg, appState, "")
+
+	// Recovery overlay must be on top of grid.
+	if m.TopView() != ViewRecovery {
+		t.Fatalf("top = %q, want ViewRecovery (recovery overlay should be above grid)", m.TopView())
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should be in the stack beneath the recovery overlay")
+	}
+}
+
+func TestIntegration_GridStartup_BothOverlays_CorrectOrder(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.PreviewRefreshMs = 1
+	cfg.StartupView = "grid"
+
+	appState := state.AppState{
+		Projects: []*state.Project{{
+			ID:   "proj-1",
+			Name: "test",
+			Sessions: []*state.Session{{
+				ID:          "sess-1",
+				ProjectID:   "proj-1",
+				Title:       "session-1",
+				AgentType:   state.AgentClaude,
+				TmuxSession: "hive-test",
+				TmuxWindow:  0,
+				Status:      state.StatusRunning,
+			}},
+		}},
+		ActiveProjectID: "proj-1",
+		ActiveSessionID: "sess-1",
+		AgentUsage:      make(map[string]state.AgentUsageRecord),
+		TermWidth:       120,
+		TermHeight:      40,
+		OrphanSessions:  []string{"hive-stale-abc"},
+		RecoverableSessions: []state.RecoverableSession{
+			{
+				TmuxSession:       "hive-old-abc",
+				WindowIndex:       0,
+				WindowName:        "main",
+				DetectedAgentType: state.AgentClaude,
+				PanePreview:       "$ claude",
+			},
+		},
+	}
+
+	m := New(cfg, appState, "")
+
+	// Orphan is pushed after recovery, so orphan is on top.
+	if m.TopView() != ViewOrphan {
+		t.Fatalf("top = %q, want ViewOrphan", m.TopView())
+	}
+	if !m.HasView(ViewRecovery) {
+		t.Fatal("recovery should be in the stack")
+	}
+	if !m.HasView(ViewGrid) {
+		t.Fatal("grid should be in the stack")
 	}
 }
