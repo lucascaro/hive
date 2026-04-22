@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2] — 2026-04-21
+
 ### Fixed
 - **Grouped sessions no longer flagged as orphans**: per-instance tmux sessions (e.g. `hive-sessions-12345-a1b2`) are now correctly skipped during orphan detection, preventing false positives in the recovery picker.
 - **Startup overlays visible in grid mode**: orphan-picker and recovery-picker overlays now appear on top of the grid view instead of being hidden beneath it.
@@ -387,7 +389,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/lucascaro/hive/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/lucascaro/hive/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/lucascaro/hive/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/lucascaro/hive/compare/v0.12.0...v0.13.0
