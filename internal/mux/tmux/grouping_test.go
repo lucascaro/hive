@@ -91,3 +91,31 @@ func TestGroupedSessionPattern_OnlyMatchesGrouped(t *testing.T) {
 		t.Errorf("groupedSessionPattern did not match grouped %q", sample)
 	}
 }
+
+func TestIsGroupedSession(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		// Positive matches:
+		{"hive-sessions-12345-abcd", true},
+		{"hive-sessions-1-0000", true},
+		{"hive-sessions-999999-ffff", true},
+		{fmt.Sprintf("hive-sessions-%d-a1b2", os.Getpid()), true},
+		// Negative matches:
+		{"hive-sessions", false},                // canonical
+		{"hive-sessions-abc-1234", false},       // non-numeric pid
+		{"hive-sessions-123-xyz1", false},       // non-hex suffix
+		{"hive-sessions-123-abcde", false},      // 5 hex chars, not 4
+		{"hive-sessions-123-abc", false},         // 3 hex chars
+		{"hive-old-123-abcd", false},            // wrong prefix
+		{"hive-sessions-123-abcd-extra", false}, // trailing garbage
+		{"", false},
+		{"not-hive", false},
+	}
+	for _, tc := range tests {
+		if got := IsGroupedSession(tc.name); got != tc.want {
+			t.Errorf("IsGroupedSession(%q) = %v; want %v", tc.name, got, tc.want)
+		}
+	}
+}
