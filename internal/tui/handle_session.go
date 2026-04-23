@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,7 +20,72 @@ func (m Model) handleSessionCreated(msg SessionCreatedMsg) (tea.Model, tea.Cmd) 
 	m.focusSession(msg.Session.ID)
 	m.persist()
 	m.polling.Invalidate() // new session, start fresh poll chain
-	return m, m.schedulePollPreview()
+	return m, tea.Batch(
+		m.schedulePollPreview(),
+		checkNewSessionAlive(msg.Session, m.cfg.PreviewRefreshMs),
+	)
+}
+
+// checkNewSessionAlive returns a tea.Cmd that waits briefly, then checks
+// whether the session's tmux window is still alive. If the window has already
+// exited (broken binary, missing dependency, immediate crash), it emits
+// SessionDeadOnArrivalMsg so the TUI can clean up the ghost session and show
+// an error to the user.
+func checkNewSessionAlive(sess *state.Session, refreshMs int) tea.Cmd {
+	if sess == nil || sess.TmuxSession == "" {
+		return nil
+	}
+	sid := sess.ID
+	tmuxSess := sess.TmuxSession
+	tmuxWin := sess.TmuxWindow
+	// Wait long enough for an immediate crash to be visible, but short enough
+	// to feel responsive. Use the preview refresh interval as a baseline (at
+	// least 500ms) so that in tests with refreshMs=1 we don't sleep forever.
+	delay := 500 * time.Millisecond
+	if d := time.Duration(refreshMs) * time.Millisecond; d < delay {
+		delay = d
+	}
+	return tea.Tick(delay, func(_ time.Time) tea.Msg {
+		target := mux.Target(tmuxSess, tmuxWin)
+		if !mux.WindowExists(target) || mux.IsPaneDead(target) {
+			return SessionDeadOnArrivalMsg{
+				SessionID:   sid,
+				TmuxSession: tmuxSess,
+				TmuxWindow:  tmuxWin,
+			}
+		}
+		return nil
+	})
+}
+
+func (m Model) handleSessionDeadOnArrival(msg SessionDeadOnArrivalMsg) (tea.Model, tea.Cmd) {
+	// Guard: session may have already been removed by preview polling or user action.
+	if state.FindSession(&m.appState, msg.SessionID) == nil {
+		return m, nil
+	}
+	return m.removeDeadSession(msg.SessionID, msg.TmuxSession,
+		fmt.Errorf("session failed to start: agent process exited immediately"))
+}
+
+// removeDeadSession cleans up a session whose tmux window has died, shows an
+// error message, and resumes polling. Used by dead-on-arrival, attach-done
+// error, and post-attach health check paths.
+func (m Model) removeDeadSession(sessionID, tmuxSession string, err error) (tea.Model, tea.Cmd) {
+	debugLog.Printf("removing dead session: %s (%v)", sessionID, err)
+	m.appState = *state.RemoveSession(&m.appState, sessionID)
+	if tmuxSession != "" {
+		killTmuxSessionIfEmpty(&m.appState, tmuxSession)
+	}
+	m.polling.CleanupSession(sessionID)
+	m.sidebar.Rebuild(&m.appState)
+	m.refreshGrid()
+	m.commitState()
+	m.syncActiveFromSidebar()
+	m.polling.Invalidate()
+	return m, tea.Batch(
+		m.schedulePollPreview(),
+		func() tea.Msg { return ErrorMsg{Err: err} },
+	)
 }
 
 func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
@@ -76,6 +142,16 @@ func (m Model) handleSessionAttach(msg SessionAttachMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
+		// Attach failed — the window may have vanished. Clean up the session
+		// if it no longer exists in tmux instead of leaving a ghost.
+		sess := m.appState.ActiveSession()
+		if sess != nil {
+			target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
+			if !mux.WindowExists(target) || mux.IsPaneDead(target) {
+				return m.removeDeadSession(sess.ID, sess.TmuxSession,
+					fmt.Errorf("session exited: %w", msg.Err))
+			}
+		}
 		return m, func() tea.Msg { return ErrorMsg{Err: msg.Err} }
 	}
 	// Clear bell indicator for the session the user just visited.
@@ -99,6 +175,13 @@ func (m Model) handleAttachDone(msg AttachDoneMsg) (tea.Model, tea.Cmd) {
 	m.appState.PreviewContent = ""
 	m.preview.SetContent("")
 	cmds := []tea.Cmd{tea.EnableMouseCellMotion, m.schedulePollPreview()}
+	// Schedule a post-attach health check: the agent may have died while the
+	// user was attached (they saw a blank pane and detached). The normal
+	// preview poll would eventually catch this, but checking immediately on
+	// return provides faster feedback.
+	if sess := m.appState.ActiveSession(); sess != nil {
+		cmds = append(cmds, checkNewSessionAlive(sess, m.cfg.PreviewRefreshMs))
+	}
 	if len(m.bellPending) > 0 {
 		cmds = append(cmds, m.ensureBellBlinkRunning())
 	}
@@ -145,6 +228,29 @@ func (m Model) handleTitlesDetected(msg escape.TitlesDetectedMsg) (tea.Model, te
 }
 
 func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model, tea.Cmd) {
+	// Remove dead sessions whose tmux windows have vanished or whose pane
+	// process has exited. This is the primary mechanism for detecting dead
+	// windows across ALL sessions (not just the active one).
+	for _, deadID := range msg.DeadSessions {
+		if state.FindSession(&m.appState, deadID) == nil {
+			continue
+		}
+		debugLog.Printf("status poll: dead session detected: %s", deadID)
+		sess := state.FindSession(&m.appState, deadID)
+		m.appState = *state.RemoveSession(&m.appState, deadID)
+		if sess != nil && sess.TmuxSession != "" {
+			killTmuxSessionIfEmpty(&m.appState, sess.TmuxSession)
+		}
+		m.polling.CleanupSession(deadID)
+	}
+	if len(msg.DeadSessions) > 0 {
+		m.sidebar.Rebuild(&m.appState)
+		m.refreshGrid()
+		m.commitState()
+		m.syncActiveFromSidebar()
+		m.polling.Invalidate()
+	}
+
 	// Update content snapshots and stable counts so the next diff is accurate.
 	// Skip sessions that no longer exist in appState — a late tick from a
 	// previously scheduled WatchStatuses can deliver data for killed sessions.

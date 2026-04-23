@@ -435,3 +435,78 @@ func TestWatchTitles_NilWhenNoTitles(t *testing.T) {
 		t.Errorf("expected nil when no titles found, got %T: %v", msg, msg)
 	}
 }
+
+// TestWatchStatuses_DetectsDeadWindow verifies that WatchStatuses reports
+// sessions whose tmux windows have disappeared, using ListWindows (same
+// approach as startup's reloadStateFromDisk).
+func TestWatchStatuses_DetectsDeadWindow(t *testing.T) {
+	mb := setupMockBackend(t)
+	// s1 has a live window; s2's window index does not exist.
+	mb.AddWindow("hive:0", "session-1")
+	mb.SetPaneContent("hive:0", "alive content")
+	mb.SetPaneContent("hive:1", "") // content exists but window does not
+
+	targets := map[string]string{
+		"s1": "hive:0",
+		"s2": "hive:1", // window index 1 not in ListWindows → dead
+	}
+	prev := map[string]string{}
+	stable := map[string]int{}
+
+	cmd := WatchStatuses(targets, prev, stable, nil, nil, nil, 0)
+	msg := cmd()
+	sdm, ok := msg.(StatusesDetectedMsg)
+	if !ok {
+		t.Fatalf("expected StatusesDetectedMsg, got %T", msg)
+	}
+	if len(sdm.DeadSessions) != 1 || sdm.DeadSessions[0] != "s2" {
+		t.Errorf("expected DeadSessions=[s2], got %v", sdm.DeadSessions)
+	}
+	if sdm.Statuses["s1"] == "" {
+		t.Error("s1 should have a status")
+	}
+}
+
+// TestWatchStatuses_DetectsDeadSession verifies that WatchStatuses reports
+// dead sessions when the entire tmux session is gone (ListWindows fails).
+func TestWatchStatuses_DetectsDeadSession(t *testing.T) {
+	mb := setupMockBackend(t)
+	_ = mb
+	// No windows or sessions set up at all — ListWindows returns empty.
+
+	targets := map[string]string{"s1": "hive:0"}
+	prev := map[string]string{}
+	stable := map[string]int{}
+
+	cmd := WatchStatuses(targets, prev, stable, nil, nil, nil, 0)
+	msg := cmd()
+	sdm, ok := msg.(StatusesDetectedMsg)
+	if !ok {
+		t.Fatalf("expected StatusesDetectedMsg, got %T", msg)
+	}
+	if len(sdm.DeadSessions) != 1 || sdm.DeadSessions[0] != "s1" {
+		t.Errorf("expected DeadSessions=[s1], got %v", sdm.DeadSessions)
+	}
+}
+
+// TestWatchStatuses_NoDeadSessions verifies no false positives when all
+// windows are alive.
+func TestWatchStatuses_NoDeadSessions(t *testing.T) {
+	mb := setupMockBackend(t)
+	mb.AddWindow("hive:0", "session-1")
+	mb.SetPaneContent("hive:0", "alive content")
+
+	targets := map[string]string{"s1": "hive:0"}
+	prev := map[string]string{}
+	stable := map[string]int{}
+
+	cmd := WatchStatuses(targets, prev, stable, nil, nil, nil, 0)
+	msg := cmd()
+	sdm, ok := msg.(StatusesDetectedMsg)
+	if !ok {
+		t.Fatalf("expected StatusesDetectedMsg, got %T", msg)
+	}
+	if len(sdm.DeadSessions) != 0 {
+		t.Errorf("expected no dead sessions, got %v", sdm.DeadSessions)
+	}
+}

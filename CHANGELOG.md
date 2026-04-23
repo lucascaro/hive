@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Dead windows detected after session creation**: when an agent process exits immediately (broken binary, missing dependency), the ghost session is now automatically removed and a clear error message is shown (#124)
+
 ## [0.14.2] — 2026-04-21
 
 ### Fixed

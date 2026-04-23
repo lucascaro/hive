@@ -2,6 +2,7 @@ package escape
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +11,19 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
 )
+
+// parseTarget splits a "session:index" target string into its components.
+func parseTarget(target string) (session string, windowIdx int) {
+	i := strings.LastIndexByte(target, ':')
+	if i < 0 {
+		return target, -1
+	}
+	idx, err := strconv.Atoi(target[i+1:])
+	if err != nil {
+		return target[:i], -1
+	}
+	return target[:i], idx
+}
 
 // TitlesDetectedMsg is sent when WatchTitles finds agent-set titles via escape sequences.
 // It carries all sessions with detected titles so callers can update them in one pass.
@@ -72,6 +86,9 @@ type StatusesDetectedMsg struct {
 	// Bells carries per-target bell flags from tmux's #{window_bell_flag}.
 	// Keyed by target ("tmuxSession:windowIdx"), true when a bell has fired.
 	Bells map[string]bool
+	// DeadSessions lists session IDs whose tmux windows no longer exist or
+	// whose pane process has exited. The TUI should remove these from state.
+	DeadSessions []string
 }
 
 // WatchStatuses returns a tea.Cmd that captures pane content for all active sessions
@@ -114,6 +131,43 @@ func WatchStatuses(
 		}
 		statuses := make(map[string]state.SessionStatus, len(sessionTargets))
 		contents := make(map[string]string, len(sessionTargets))
+		// Detect dead sessions using the same approach as startup
+		// (reloadStateFromDisk): list actual tmux windows and compare
+		// against expected window indices. This is authoritative —
+		// BatchCapturePane may return empty content for dead windows
+		// instead of omitting them.
+		var deadSessions []string
+		type windowSet = map[int]struct{}
+		windowCache := make(map[string]windowSet)
+		for sessionID, target := range sessionTargets {
+			tmuxSess, winIdx := parseTarget(target)
+			if tmuxSess == "" {
+				continue
+			}
+			ws, cached := windowCache[tmuxSess]
+			if !cached {
+				windows, lErr := mux.ListWindows(tmuxSess)
+				if lErr != nil {
+					// Can't list windows — session might be gone entirely.
+					deadSessions = append(deadSessions, sessionID)
+					windowCache[tmuxSess] = nil
+					continue
+				}
+				ws = make(windowSet, len(windows))
+				for _, w := range windows {
+					ws[w.Index] = struct{}{}
+				}
+				windowCache[tmuxSess] = ws
+			}
+			if ws == nil {
+				// Session gone (cached nil from previous error).
+				deadSessions = append(deadSessions, sessionID)
+				continue
+			}
+			if _, found := ws[winIdx]; !found {
+				deadSessions = append(deadSessions, sessionID)
+			}
+		}
 		for target, content := range captured {
 			sessionID, ok := targetToSession[target]
 			if !ok {
@@ -175,7 +229,7 @@ func WatchStatuses(
 
 			statuses[sessionID] = state.StatusIdle
 		}
-		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titles, Bells: bells}
+		return StatusesDetectedMsg{Statuses: statuses, Contents: contents, Titles: titles, Bells: bells, DeadSessions: deadSessions}
 	})
 }
 
