@@ -144,7 +144,7 @@ func newStyledHelp() help.Model {
 
 // New creates the root model. whatsNewContent, if non-empty, triggers the
 // "What's New" overlay on first render.
-func New(cfg config.Config, appState state.AppState, whatsNewContent string) Model {
+func New(cfg config.Config, appState state.AppState, whatsNewContent string, version ...string) Model {
 	initDebugLog()
 	components.InitSidebarLog()
 	components.InitStatusLog()
@@ -185,6 +185,9 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string) Mod
 		helpModel:           newStyledHelp(),
 		gridHelpModel:       newStyledHelp(),
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
+	}
+	if len(version) > 0 {
+		m.statusBar.Version = version[0]
 	}
 	m.polling.SetDetectionCtxs(buildDetectionCtxs(cfg.Agents))
 	m.gridView.InputEnabled = !cfg.DisableGridInput
@@ -348,6 +351,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleStatusesDetected(msg)
 	case SessionCreatedMsg:
 		return m.handleSessionCreated(msg)
+	case SessionDeadOnArrivalMsg:
+		return m.handleSessionDeadOnArrival(msg)
 	case SessionKilledMsg:
 		return m.handleSessionKilled(msg)
 	case SessionTitleChangedMsg:
