@@ -41,7 +41,7 @@ func testFlowModelWithVimNav(t *testing.T) (*flowRunner, *muxtest.MockBackend) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 

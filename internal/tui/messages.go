@@ -132,8 +132,18 @@ type ConfigSavedMsg struct {
 // badge on/off in the sidebar and grid view.
 type bellBlinkMsg struct{}
 
+// SessionDeadOnArrivalMsg is sent by the post-creation health check when a
+// newly created session's tmux window has already exited (e.g. broken agent
+// binary, missing dependency, immediate crash).
+type SessionDeadOnArrivalMsg struct {
+	SessionID   string
+	TmuxSession string
+	TmuxWindow  int
+}
+
 // Ensure tea.Msg interface satisfaction (compile-time checks).
 var _ tea.Msg = SessionCreatedMsg{}
+var _ tea.Msg = SessionDeadOnArrivalMsg{}
 var _ tea.Msg = AttachDoneMsg{}
 var _ tea.Msg = ProjectNameChangedMsg{}
 var _ tea.Msg = TeamNameChangedMsg{}

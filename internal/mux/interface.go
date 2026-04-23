@@ -3,7 +3,11 @@
 // function in this package.
 package mux
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 const (
 	projMaxLen  = 8
@@ -138,6 +142,20 @@ func WindowName(projectName, agentType, sessionTitle string) string {
 // Target returns the target string "session:window" used to address a pane.
 func Target(session string, windowIdx int) string {
 	return fmt.Sprintf("%s:%d", session, windowIdx)
+}
+
+// ParseTarget splits a "session:index" target string into its components.
+// Returns windowIdx -1 if the target cannot be parsed.
+func ParseTarget(target string) (session string, windowIdx int) {
+	i := strings.LastIndexByte(target, ':')
+	if i < 0 {
+		return target, -1
+	}
+	idx, err := strconv.Atoi(target[i+1:])
+	if err != nil {
+		return target[:i], -1
+	}
+	return target[:i], idx
 }
 
 func IsAvailable() bool { return active.IsAvailable() }

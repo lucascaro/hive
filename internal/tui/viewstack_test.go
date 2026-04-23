@@ -33,7 +33,7 @@ func testModelForStack() Model {
 		TermWidth:       120,
 		TermHeight:      40,
 	}
-	return New(cfg, appState, "")
+	return New(cfg, appState, "", "")
 }
 
 func TestPushView_AddsToStack(t *testing.T) {
@@ -441,7 +441,7 @@ func TestIntegration_GridStartup_OrphanOverlayOnTop(t *testing.T) {
 		OrphanSessions:  []string{"hive-stale-abc"},
 	}
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	// Orphan overlay must be on top of grid, not hidden beneath it.
 	if m.TopView() != ViewOrphan {
@@ -498,7 +498,7 @@ func TestIntegration_GridStartup_RecoveryOverlayOnTop(t *testing.T) {
 		},
 	}
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	// Recovery overlay must be on top of grid.
 	if m.TopView() != ViewRecovery {
@@ -545,7 +545,7 @@ func TestIntegration_GridStartup_BothOverlays_CorrectOrder(t *testing.T) {
 		},
 	}
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	// Orphan is pushed after recovery, so orphan is on top.
 	if m.TopView() != ViewOrphan {

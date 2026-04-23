@@ -7,7 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
-| 1 | #124 | Detect and handle dead windows after session creation | TRIAGE | — |
+| 1 | #124 | Detect and handle dead windows after session creation | IMPLEMENT | M |
 
 ## Rejected
 

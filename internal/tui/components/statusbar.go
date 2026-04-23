@@ -33,7 +33,8 @@ func InitStatusLog() {
 
 // StatusBar renders the two-line status bar at the bottom.
 type StatusBar struct {
-	Width int
+	Width   int
+	Version string
 }
 
 // View renders the status bar given the current app state and pre-computed hints.
@@ -59,7 +60,7 @@ func (sb *StatusBar) View(appState *state.AppState, hints string) string {
 	}
 
 	// Line 1: breadcrumb + status
-	rawBreadcrumb := buildBreadcrumb(appState)
+	rawBreadcrumb := buildBreadcrumb(appState, sb.Version)
 	breadcrumb := ansi.Truncate(rawBreadcrumb, innerW, "")
 	line1 := styles.StatusBarStyle.Width(w).Render(breadcrumb)
 
@@ -85,8 +86,13 @@ func (sb *StatusBar) View(appState *state.AppState, hints string) string {
 	return joined
 }
 
-func buildBreadcrumb(s *state.AppState) string {
-	parts := []string{styles.TitleStyle.Render("hive")}
+func buildBreadcrumb(s *state.AppState, version string) string {
+	dim := lipgloss.NewStyle().Faint(true)
+	titlePart := styles.TitleStyle.Render("hive")
+	if version != "" {
+		titlePart += " " + dim.Render("v"+version)
+	}
+	parts := []string{titlePart}
 
 	proj := s.ActiveProject()
 	if proj != nil {

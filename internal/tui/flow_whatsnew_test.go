@@ -41,7 +41,7 @@ func testFlowModelWithWhatsNew(t *testing.T, content string) (Model, *muxtest.Mo
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 
-	m := New(cfg, appState, content)
+	m := New(cfg, appState, content, "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 

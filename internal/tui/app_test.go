@@ -66,7 +66,7 @@ func testModelWithSessions() Model {
 		},
 		AgentUsage: make(map[string]state.AgentUsageRecord),
 	}
-	return New(cfg, appState, "")
+	return New(cfg, appState, "", "")
 }
 
 func testAppStateWithTwoProjects() state.AppState {
@@ -135,7 +135,7 @@ func TestNewAutoSelectsFirstSession_Empty(t *testing.T) {
 		Projects:   []*state.Project{},
 		AgentUsage: make(map[string]state.AgentUsageRecord),
 	}
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	if m.appState.ActiveSessionID != "" {
 		t.Fatalf("New() with no sessions should leave ActiveSessionID empty, got %q", m.appState.ActiveSessionID)
@@ -147,7 +147,7 @@ func TestNew_RestoresProjectGridMode(t *testing.T) {
 	appState := testAppStateWithTwoProjects()
 	appState.RestoreGridMode = state.GridRestoreProject
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	if !m.gridView.Active {
 		t.Fatal("grid view should be active after restore")
@@ -169,7 +169,7 @@ func TestNew_RestoresAllProjectsGridMode(t *testing.T) {
 	appState := testAppStateWithTwoProjects()
 	appState.RestoreGridMode = state.GridRestoreAll
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	if !m.gridView.Active {
 		t.Fatal("grid view should be active after restore")
@@ -187,7 +187,7 @@ func TestInit_IncludesGridPollWhenGridRestored(t *testing.T) {
 	appState := testAppStateWithTwoProjects()
 	appState.RestoreGridMode = state.GridRestoreProject
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	cmd := m.Init()
 	if cmd == nil {
 		t.Fatal("Init() should return a batch command")
@@ -283,7 +283,7 @@ func TestViewShowsNoActiveSession(t *testing.T) {
 		Projects:   []*state.Project{{ID: "p1", Name: "test", Teams: []*state.Team{}, Sessions: []*state.Session{}}},
 		AgentUsage: make(map[string]state.AgentUsageRecord),
 	}
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 
@@ -316,7 +316,7 @@ func TestSchedulePollPreview_ReturnsNilWithoutSession(t *testing.T) {
 		Projects:   []*state.Project{},
 		AgentUsage: make(map[string]state.AgentUsageRecord),
 	}
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 
 	cmd := m.schedulePollPreview()
 	if cmd != nil {
@@ -577,7 +577,7 @@ func TestGridSessionSelectedMsg_PreservesAllProjectsGridRestoreMode(t *testing.T
 	cfg := config.DefaultConfig()
 	cfg.HideAttachHint = true
 	appState := testAppStateWithTwoProjects()
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.gridView.Show(m.gridSessions(state.GridRestoreAll), state.GridRestoreAll)
 
 	result, cmd := m.Update(components.GridSessionSelectedMsg{

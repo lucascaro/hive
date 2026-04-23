@@ -18,6 +18,7 @@ type MockBackend struct {
 	paneContents  map[string]string            // "session:idx" → capture content
 	paneTitles    map[string]string            // "session:idx" → pane title
 	paneBells     map[string]bool              // "session:idx" → bell flag
+	paneDead      map[string]bool              // "session:idx" → pane dead flag
 	calls         map[string]int               // method name → call count
 	errors        map[string]error             // method name → error to return
 
@@ -43,6 +44,7 @@ func New() *MockBackend {
 		paneContents:  make(map[string]string),
 		paneTitles:    make(map[string]string),
 		paneBells:     make(map[string]bool),
+		paneDead:      make(map[string]bool),
 		calls:         make(map[string]int),
 		errors:        make(map[string]error),
 	}
@@ -282,7 +284,33 @@ func (m *MockBackend) IsPaneDead(target string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.record("IsPaneDead")
-	return false
+	return m.paneDead[target]
+}
+
+// SetPaneDead marks a target pane as dead (process exited) or alive.
+func (m *MockBackend) SetPaneDead(target string, dead bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if dead {
+		m.paneDead[target] = true
+	} else {
+		delete(m.paneDead, target)
+	}
+}
+
+// AddWindow adds a window entry to the mock so that WindowExists returns true.
+func (m *MockBackend) AddWindow(target, name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.windows[target] = name
+}
+
+// RemoveWindow removes a window from the mock, simulating a tmux window
+// that has disappeared (e.g. agent process crashed).
+func (m *MockBackend) RemoveWindow(target string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.windows, target)
 }
 
 func (m *MockBackend) GetCurrentCommand(target string) (string, error) {

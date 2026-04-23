@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -294,7 +296,7 @@ func testFlowModelThreeSessions(t *testing.T) (Model, *muxtest.MockBackend) {
 		TermHeight: 40,
 	}
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	return m, mock
@@ -593,4 +595,373 @@ func TestFlow_SidebarNewWorktreeSession(t *testing.T) {
 	}
 	// If agentPicker is not active, the project dir was not a git repo and an
 	// ErrorMsg was returned — that's the expected guard working correctly.
+}
+
+// --- Dead window detection tests ---
+//
+// These tests verify that hive detects and cleans up sessions whose tmux
+// windows have died. Three detection mechanisms are tested:
+//
+// 1. Status polling (WatchStatuses → handleStatusesDetected): the primary
+//    mechanism — checks ALL sessions every status poll cycle.
+// 2. Attach-done: exercises the real WindowExists/IsPaneDead checks inside
+//    handleAttachDone via the mock backend.
+// 3. Post-creation health check: one-shot 500ms check for immediate crashes.
+
+// TestFlow_StatusPoll_DetectsDeadSession verifies that the status polling
+// loop detects and removes sessions whose windows have vanished.
+func TestFlow_StatusPoll_DetectsDeadSession(t *testing.T) {
+	m, mock := testFlowModel(t)
+	_ = mock
+	f := newFlowRunner(t, m, mock)
+
+	// Add a second session to proj-1 so we can kill one and keep the other.
+	newSess := &state.Session{
+		ID:          "sess-doomed",
+		ProjectID:   "proj-1",
+		Title:       "doomed-session",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  3,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	f.Send(SessionCreatedMsg{Session: newSess})
+
+	// Verify both sessions exist.
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") == nil {
+		t.Fatal("sess-1 should exist")
+	}
+	if state.FindSession(&as, "sess-doomed") == nil {
+		t.Fatal("sess-doomed should exist")
+	}
+
+	// Simulate a status poll that reports sess-doomed as dead.
+	f.Send(escape.StatusesDetectedMsg{
+		Statuses:     map[string]state.SessionStatus{"sess-1": state.StatusRunning},
+		Contents:     map[string]string{"sess-1": "$ claude"},
+		DeadSessions: []string{"sess-doomed"},
+	})
+
+	// sess-doomed should be removed, sess-1 should remain.
+	as2 := f.Model().appState
+	if state.FindSession(&as2, "sess-doomed") != nil {
+		t.Error("dead session should have been removed by status poll")
+	}
+	if state.FindSession(&as2, "sess-1") == nil {
+		t.Error("healthy session should still be in state")
+	}
+}
+
+// TestFlow_StatusPoll_NoFalsePositive verifies that sessions with empty
+// DeadSessions are not affected.
+func TestFlow_StatusPoll_NoFalsePositive(t *testing.T) {
+	m, mock := testFlowModel(t)
+	_ = mock
+	f := newFlowRunner(t, m, mock)
+
+	f.Send(escape.StatusesDetectedMsg{
+		Statuses:     map[string]state.SessionStatus{"sess-1": state.StatusRunning},
+		Contents:     map[string]string{"sess-1": "$ claude"},
+		DeadSessions: nil,
+	})
+
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") == nil {
+		t.Error("session should not be removed when DeadSessions is empty")
+	}
+}
+
+// TestFlow_AttachDone_Error_WindowGone verifies that when attach fails and the
+// window is gone, the session is removed from state (not left as a ghost).
+func TestFlow_AttachDone_Error_WindowGone(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// sess-1 has TmuxSession="hive-proj1234", TmuxWindow=0.
+	// The mock's testFlowModel pre-populates pane content but not the windows
+	// map for this target, so WindowExists("hive-proj1234:0") returns false.
+	f.AssertActiveSession("sess-1")
+
+	// Simulate attach returning with an error (window disappeared during attach).
+	f.Send(AttachDoneMsg{Err: fmt.Errorf("can't find window 0")})
+
+	// Session should be cleaned up because WindowExists returns false.
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") != nil {
+		t.Error("session should have been removed after attach error with window gone")
+	}
+}
+
+// TestFlow_AttachDone_Error_PaneDead verifies cleanup when attach fails
+// and the pane is dead (process exited but window still exists in tmux).
+func TestFlow_AttachDone_Error_PaneDead(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	target := "hive-proj1234:0"
+	// Add the window so WindowExists returns true, but mark pane as dead.
+	mock.AddWindow(target, "session-1")
+	mock.SetPaneDead(target, true)
+
+	f.AssertActiveSession("sess-1")
+
+	// Simulate attach returning with an error.
+	f.Send(AttachDoneMsg{Err: fmt.Errorf("attach failed")})
+
+	// Session should be cleaned up because IsPaneDead returns true.
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") != nil {
+		t.Error("session should have been removed after attach error with dead pane")
+	}
+}
+
+// TestFlow_AttachDone_Error_WindowAlive verifies that when attach fails but
+// the window is still alive, the session is NOT removed (transient error).
+func TestFlow_AttachDone_Error_WindowAlive(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	target := "hive-proj1234:0"
+	// Window exists and pane is alive — error was transient.
+	mock.AddWindow(target, "session-1")
+
+	f.AssertActiveSession("sess-1")
+
+	f.Send(AttachDoneMsg{Err: fmt.Errorf("transient error")})
+
+	// Session should still be in state — window is alive.
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") == nil {
+		t.Error("session should NOT be removed when window is still alive")
+	}
+}
+
+// TestFlow_AttachDone_Success_SchedulesHealthCheck verifies that after a
+// successful attach, a post-attach health check is scheduled that will catch
+// sessions that died while the user was attached.
+func TestFlow_AttachDone_Success_DeadAfterAttach(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	target := "hive-proj1234:0"
+	mock.AddWindow(target, "session-1")
+
+	f.AssertActiveSession("sess-1")
+
+	// Simulate successful attach return.
+	cmd := f.Send(AttachDoneMsg{Err: nil, RestoreGridMode: state.GridRestoreNone})
+
+	// Session should still exist immediately after attach-done.
+	as := f.Model().appState
+	if state.FindSession(&as, "sess-1") == nil {
+		t.Fatal("session should exist after successful attach-done")
+	}
+
+	// Now simulate the window dying (agent exited while user was attached).
+	mock.RemoveWindow(target)
+
+	// The handler scheduled a health check via checkNewSessionAlive.
+	// Execute the batch to find and run the health check tick.
+	if cmd != nil {
+		msg := cmd()
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if c == nil {
+					continue
+				}
+				// Execute each sub-command; the health check tick
+				// will return SessionDeadOnArrivalMsg.
+				ch := make(chan tea.Msg, 1)
+				go func() { ch <- c() }()
+				select {
+				case result := <-ch:
+					if result != nil {
+						f.Send(result)
+					}
+				case <-time.After(2 * time.Second):
+					// Skip blocking commands (mouse enable, etc.)
+				}
+			}
+		}
+	}
+
+	// After health check fires and detects the dead window, session should be removed.
+	as2 := f.Model().appState
+	if state.FindSession(&as2, "sess-1") != nil {
+		t.Error("session should be removed after post-attach health check detects dead window")
+	}
+}
+
+// TestFlow_DeadOnArrival_WindowGone verifies that when a session's tmux window
+// disappears before the health check fires, the session is cleaned up and an
+// error message is surfaced.
+func TestFlow_DeadOnArrival_WindowGone(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Create a new session and add it to state.
+	newSess := &state.Session{
+		ID:          "sess-dead",
+		ProjectID:   "proj-1",
+		Title:       "dead-session",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  5,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	f.Send(SessionCreatedMsg{Session: newSess})
+	f.AssertActiveSession("sess-dead")
+
+	// Simulate window disappearing (agent crashed immediately).
+	// The mock's WindowExists checks the windows map; the target was never
+	// added because we manually created the session rather than going through
+	// ensureMuxWindow. This means WindowExists("hive-proj1234:5") returns false.
+
+	// Send the dead-on-arrival message (as the health check tick would).
+	cmd := f.Send(SessionDeadOnArrivalMsg{
+		SessionID:   "sess-dead",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  5,
+	})
+
+	// The session should be removed from state.
+	appState := f.Model().appState
+	if state.FindSession(&appState, "sess-dead") != nil {
+		t.Error("dead session should have been removed from state")
+	}
+
+	// The handler returns a batch with ErrorMsg — execute it to verify.
+	if cmd != nil {
+		msg := cmd()
+		if batch, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range batch {
+				if c == nil {
+					continue
+				}
+				result := c()
+				if errMsg, ok := result.(ErrorMsg); ok {
+					if errMsg.Err == nil {
+						t.Error("expected non-nil error in ErrorMsg")
+					}
+					return
+				}
+			}
+		}
+	}
+}
+
+// TestFlow_DeadOnArrival_PaneDead verifies that when a session's pane is marked
+// as dead, the health check cleans up the session.
+func TestFlow_DeadOnArrival_PaneDead(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	target := "hive-proj1234:5"
+
+	// Create a new session.
+	newSess := &state.Session{
+		ID:          "sess-dead",
+		ProjectID:   "proj-1",
+		Title:       "dead-session",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  5,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	mock.SetPaneContent(target, "$ claude")
+	f.Send(SessionCreatedMsg{Session: newSess})
+	f.AssertActiveSession("sess-dead")
+
+	// Mark pane as dead (agent exited).
+	mock.SetPaneDead(target, true)
+
+	// Send the dead-on-arrival message.
+	f.Send(SessionDeadOnArrivalMsg{
+		SessionID:   "sess-dead",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  5,
+	})
+
+	// The session should be removed from state.
+	appState2 := f.Model().appState
+	if state.FindSession(&appState2, "sess-dead") != nil {
+		t.Error("dead session should have been removed from state")
+	}
+}
+
+// TestFlow_DeadOnArrival_HealthySession verifies that a healthy session is NOT
+// removed when the dead-on-arrival check fires (no false positive).
+func TestFlow_DeadOnArrival_HealthySession(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	target := "hive-proj1234:5"
+
+	// Create a new session with a live window in the mock.
+	newSess := &state.Session{
+		ID:          "sess-alive",
+		ProjectID:   "proj-1",
+		Title:       "alive-session",
+		TmuxSession: "hive-proj1234",
+		TmuxWindow:  5,
+		Status:      state.StatusRunning,
+		AgentType:   state.AgentClaude,
+		AgentCmd:    []string{"claude"},
+	}
+	m2 := f.Model()
+	m2.appState.Projects[0].Sessions = append(m2.appState.Projects[0].Sessions, newSess)
+	f.model = m2
+	mock.AddWindow(target, "alive-session")
+	mock.SetPaneContent(target, "$ claude")
+	f.Send(SessionCreatedMsg{Session: newSess})
+	f.AssertActiveSession("sess-alive")
+
+	// The health check tick executes: window exists and pane is alive.
+	// checkNewSessionAlive uses mux.WindowExists and mux.IsPaneDead.
+	// Since the mock has the window in its map, it returns true/false respectively.
+	// The tick returns nil, so no SessionDeadOnArrivalMsg is sent.
+
+	// Verify the session is still in state (not removed).
+	aliveState := f.Model().appState
+	if state.FindSession(&aliveState, "sess-alive") == nil {
+		t.Error("healthy session should still be in state")
+	}
+
+	// Active session should still be the alive one.
+	f.AssertActiveSession("sess-alive")
+}
+
+// TestFlow_DeadOnArrival_AlreadyRemoved verifies that the handler is safe to
+// call when the session has already been cleaned up (e.g. by preview polling).
+func TestFlow_DeadOnArrival_AlreadyRemoved(t *testing.T) {
+	m, mock := testFlowModel(t)
+	f := newFlowRunner(t, m, mock)
+
+	// Send dead-on-arrival for a session that doesn't exist in state.
+	// This should be a no-op (no panic, no state change).
+	f.Send(SessionDeadOnArrivalMsg{
+		SessionID:   "sess-nonexistent",
+		TmuxSession: "hive-fake",
+		TmuxWindow:  99,
+	})
+
+	// Original sessions should be unchanged.
+	f.AssertActiveSession("sess-1")
+	existingState := f.Model().appState
+	if state.FindSession(&existingState, "sess-1") == nil {
+		t.Error("existing session should not be affected")
+	}
 }

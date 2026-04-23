@@ -141,7 +141,7 @@ func runStart(_ *cobra.Command, _ []string) error {
 		// alt-screen exit/enter transitions during attach/detach are invisible
 		// (blank primary instead of terminal history).
 		writePrimaryBufferClear(os.Stdout)
-		model := tui.New(cfg, appState, whatsNewContent)
+		model := tui.New(cfg, appState, whatsNewContent, Version)
 		whatsNewContent = "" // only show on first loop iteration
 		p := tea.NewProgram(model,
 			tea.WithAltScreen(),
