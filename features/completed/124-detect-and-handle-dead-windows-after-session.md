@@ -1,7 +1,7 @@
 # Feature: Detect and handle dead windows after session creation
 
 - **GitHub Issue:** #124
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
@@ -94,4 +94,4 @@ This approach:
 - 4 new flow tests: window gone, pane dead, healthy (no false positive), already removed (idempotency)
 - No deviations from plan
 
-- **PR:** —
+- **PR:** #130
