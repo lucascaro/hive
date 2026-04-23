@@ -91,7 +91,7 @@ func TestFlow_GridAttachDetachRestoresGrid(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreProject
 
-	m2 := New(cfg, appState, "")
+	m2 := New(cfg, appState, "", "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)
@@ -149,7 +149,7 @@ func TestFlow_GridAllProjectsRestores(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreAll
 
-	m2 := New(cfg, appState, "")
+	m2 := New(cfg, appState, "", "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)
@@ -198,7 +198,7 @@ func TestFlow_SidebarAttachDoesNotRestoreGrid(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreNone
 
-	m2 := New(cfg, appState, "")
+	m2 := New(cfg, appState, "", "")
 	m2.appState.TermWidth = 120
 	m2.appState.TermHeight = 40
 	f2 := newFlowRunner(t, m2, mock)
@@ -922,7 +922,7 @@ func TestFlow_StartupView_Grid_OpensProjectGrid(t *testing.T) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)
@@ -954,7 +954,7 @@ func TestFlow_StartupView_GridAll_OpensAllProjectsGrid(t *testing.T) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)
@@ -986,7 +986,7 @@ func TestFlow_StartupView_Sidebar_NoGrid(t *testing.T) {
 	appState.TermWidth = 120
 	appState.TermHeight = 40
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)
@@ -1018,7 +1018,7 @@ func TestFlow_StartupView_DoesNotConflictWithRestoreGridMode(t *testing.T) {
 	appState.TermHeight = 40
 	appState.RestoreGridMode = state.GridRestoreAll // detach-restore says all-projects grid
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)
@@ -1122,7 +1122,7 @@ func TestFlow_GridExtendedCellNavigation(t *testing.T) {
 	cfg.HideAttachHint = true
 	cfg.PreviewRefreshMs = 1
 
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = 120
 	m.appState.TermHeight = 40
 	f := newFlowRunner(t, m, mock)

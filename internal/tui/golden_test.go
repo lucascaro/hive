@@ -26,7 +26,7 @@ func goldenModel(t *testing.T, appState state.AppState) Model {
 
 	cfg := config.DefaultConfig()
 	cfg.HideAttachHint = true
-	m := New(cfg, appState, "")
+	m := New(cfg, appState, "", "")
 	m.appState.TermWidth = appState.TermWidth
 	m.appState.TermHeight = appState.TermHeight
 	return m

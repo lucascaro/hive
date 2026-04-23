@@ -82,10 +82,11 @@ func (m Model) removeDeadSession(sessionID, tmuxSession string, err error) (tea.
 	m.commitState()
 	m.syncActiveFromSidebar()
 	m.polling.Invalidate()
-	return m, tea.Batch(
-		m.schedulePollPreview(),
-		func() tea.Msg { return ErrorMsg{Err: err} },
-	)
+	cmds := []tea.Cmd{m.schedulePollPreview()}
+	if err != nil {
+		cmds = append(cmds, func() tea.Msg { return ErrorMsg{Err: err} })
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func (m Model) handleSessionKilled(msg SessionKilledMsg) (tea.Model, tea.Cmd) {
@@ -199,14 +200,11 @@ func (m Model) handleSessionDetached() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleSessionWindowGone(msg components.SessionWindowGoneMsg) (tea.Model, tea.Cmd) {
-	debugLog.Printf("session window gone: %s", msg.SessionID)
-	m.appState = *state.RemoveSession(&m.appState, msg.SessionID)
-	m.polling.CleanupSession(msg.SessionID)
-	m.commitState()
-	// Switch to whichever session the sidebar now has selected.
-	m.syncActiveFromSidebar()
-	m.polling.Invalidate() // invalidate any in-flight polls for the removed session
-	return m, m.schedulePollPreview()
+	sess := state.FindSession(&m.appState, msg.SessionID)
+	if sess == nil {
+		return m, nil
+	}
+	return m.removeDeadSession(sess.ID, sess.TmuxSession, nil)
 }
 
 func (m Model) handleTitlesDetected(msg escape.TitlesDetectedMsg) (tea.Model, tea.Cmd) {
@@ -232,13 +230,13 @@ func (m Model) handleStatusesDetected(msg escape.StatusesDetectedMsg) (tea.Model
 	// process has exited. This is the primary mechanism for detecting dead
 	// windows across ALL sessions (not just the active one).
 	for _, deadID := range msg.DeadSessions {
-		if state.FindSession(&m.appState, deadID) == nil {
+		sess := state.FindSession(&m.appState, deadID)
+		if sess == nil {
 			continue
 		}
 		debugLog.Printf("status poll: dead session detected: %s", deadID)
-		sess := state.FindSession(&m.appState, deadID)
 		m.appState = *state.RemoveSession(&m.appState, deadID)
-		if sess != nil && sess.TmuxSession != "" {
+		if sess.TmuxSession != "" {
 			killTmuxSessionIfEmpty(&m.appState, sess.TmuxSession)
 		}
 		m.polling.CleanupSession(deadID)

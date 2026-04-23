@@ -2,7 +2,6 @@ package escape
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -11,19 +10,6 @@ import (
 	"github.com/lucascaro/hive/internal/mux"
 	"github.com/lucascaro/hive/internal/state"
 )
-
-// parseTarget splits a "session:index" target string into its components.
-func parseTarget(target string) (session string, windowIdx int) {
-	i := strings.LastIndexByte(target, ':')
-	if i < 0 {
-		return target, -1
-	}
-	idx, err := strconv.Atoi(target[i+1:])
-	if err != nil {
-		return target[:i], -1
-	}
-	return target[:i], idx
-}
 
 // TitlesDetectedMsg is sent when WatchTitles finds agent-set titles via escape sequences.
 // It carries all sessions with detected titles so callers can update them in one pass.
@@ -140,7 +126,7 @@ func WatchStatuses(
 		type windowSet = map[int]struct{}
 		windowCache := make(map[string]windowSet)
 		for sessionID, target := range sessionTargets {
-			tmuxSess, winIdx := parseTarget(target)
+			tmuxSess, winIdx := mux.ParseTarget(target)
 			if tmuxSess == "" {
 				continue
 			}

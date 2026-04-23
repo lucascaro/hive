@@ -144,7 +144,7 @@ func newStyledHelp() help.Model {
 
 // New creates the root model. whatsNewContent, if non-empty, triggers the
 // "What's New" overlay on first render.
-func New(cfg config.Config, appState state.AppState, whatsNewContent string, version ...string) Model {
+func New(cfg config.Config, appState state.AppState, whatsNewContent string, version string) Model {
 	initDebugLog()
 	components.InitSidebarLog()
 	components.InitStatusLog()
@@ -186,9 +186,7 @@ func New(cfg config.Config, appState state.AppState, whatsNewContent string, ver
 		gridHelpModel:       newStyledHelp(),
 		helpPanel:           components.NewHelpPanel(newStyledHelp()),
 	}
-	if len(version) > 0 {
-		m.statusBar.Version = version[0]
-	}
+	m.statusBar.Version = version
 	m.polling.SetDetectionCtxs(buildDetectionCtxs(cfg.Agents))
 	m.gridView.InputEnabled = !cfg.DisableGridInput
 	m.gridView.QuickReplyEnabled = !cfg.DisableQuickReply
