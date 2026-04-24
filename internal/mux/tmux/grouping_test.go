@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"testing"
 )
 
@@ -64,6 +65,9 @@ func TestPidAlive_Self(t *testing.T) {
 }
 
 func TestPidAlive_Dead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pidAlive on Windows conservatively returns true for all PIDs")
+	}
 	// PID 1 is always alive on Unix (init/launchd). Use an impossibly high
 	// pid instead to simulate "dead".
 	if pidAlive(2_000_000_000) {
@@ -72,6 +76,9 @@ func TestPidAlive_Dead(t *testing.T) {
 }
 
 func TestPidAlive_Zero(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pidAlive on Windows conservatively returns true for all PIDs")
+	}
 	if pidAlive(0) {
 		t.Error("pidAlive(0) = true; want false")
 	}
