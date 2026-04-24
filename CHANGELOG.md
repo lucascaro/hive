@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.3] — 2026-04-24
+
 ### Fixed
 - **Dead windows detected after session creation**: when an agent process exits immediately (broken binary, missing dependency), the ghost session is now automatically removed and a clear error message is shown (#124)
 - **Faster startup and exit**: deduplicated tmux `list-windows` calls during state reconciliation, batched pane captures and command detection in orphan recovery, parallelized session kills on exit, and switched native daemon polling to exponential backoff
@@ -393,7 +395,8 @@ Initial public release.
 - Preview cache populated by status watcher so switching sessions shows content
   immediately rather than a blank pane.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.2...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v0.14.3...HEAD
+[0.14.3]: https://github.com/lucascaro/hive/compare/v0.14.2...v0.14.3
 [0.14.2]: https://github.com/lucascaro/hive/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/lucascaro/hive/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/lucascaro/hive/compare/v0.13.0...v0.14.0
