@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Dead windows detected after session creation**: when an agent process exits immediately (broken binary, missing dependency), the ghost session is now automatically removed and a clear error message is shown (#124)
+- **Faster startup and exit**: deduplicated tmux `list-windows` calls during state reconciliation, batched pane captures and command detection in orphan recovery, parallelized session kills on exit, and switched native daemon polling to exponential backoff
 
 ## [0.14.2] — 2026-04-21
 

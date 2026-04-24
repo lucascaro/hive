@@ -231,6 +231,52 @@ func GetCurrentCommand(target string) (string, error) {
 	return Exec("display-message", "-p", "-t", target, "#{pane_current_command}")
 }
 
+// BatchGetCurrentCommand returns the foreground process name for multiple panes
+// in a single sh -c subprocess, following the same pattern as BatchCapturePane.
+func BatchGetCurrentCommand(targets []string) (map[string]string, error) {
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	if len(targets) == 1 {
+		cmd, err := GetCurrentCommand(targets[0])
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{targets[0]: cmd}, nil
+	}
+
+	var script strings.Builder
+	for _, target := range targets {
+		quoted := shellQuote(target)
+		script.WriteString("printf '%s\\t' ")
+		script.WriteString(quoted)
+		script.WriteString("\ntmux display-message -p -t ")
+		script.WriteString(quoted)
+		script.WriteString(" '#{pane_current_command}' 2>/dev/null || printf '\\n'\n")
+	}
+
+	cmd := exec.Command("sh", "-c", script.String())
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("batch get-current-command: %w — %s", err, errBuf.String())
+	}
+
+	results := make(map[string]string, len(targets))
+	for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		results[parts[0]] = strings.TrimSpace(parts[1])
+	}
+	return results, nil
+}
+
 // GetPaneTitles returns pane titles and bell flags for all windows in a tmux
 // session.  It executes a single `list-windows` call and returns:
 //   - titles: "session:windowIndex" → pane title

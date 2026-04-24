@@ -17,6 +17,7 @@ import (
 	muxnative "github.com/lucascaro/hive/internal/mux/native"
 	muxtmux "github.com/lucascaro/hive/internal/mux/tmux"
 	"github.com/lucascaro/hive/internal/state"
+	"github.com/lucascaro/hive/internal/tmux"
 	"github.com/lucascaro/hive/internal/tui"
 )
 
@@ -236,26 +237,47 @@ func initMuxBackend(cfg config.Config) error {
 // no windows) and stores their names in appState.OrphanSessions for the TUI to
 // present to the user.
 func reconcileState(appState *state.AppState) {
+	// Group sessions by tmux session name so we call ListWindows once per
+	// unique tmux session instead of once per hive session.
+	type sessionsByMux struct {
+		sessions []*state.Session
+		windows  []mux.WindowInfo
+		err      error
+	}
+	grouped := make(map[string]*sessionsByMux)
+	for _, sess := range state.AllSessions(appState) {
+		g, ok := grouped[sess.TmuxSession]
+		if !ok {
+			g = &sessionsByMux{}
+			grouped[sess.TmuxSession] = g
+		}
+		g.sessions = append(g.sessions, sess)
+	}
+	for muxSess, g := range grouped {
+		g.windows, g.err = mux.ListWindows(muxSess)
+	}
+
 	var dead []*state.Session
 	var deadIDs []string
-	for _, sess := range state.AllSessions(appState) {
-		windows, err := mux.ListWindows(sess.TmuxSession)
-		if err != nil {
-			// Session gone entirely — all windows in it are dead.
-			dead = append(dead, sess)
-			deadIDs = append(deadIDs, sess.ID)
-			continue
-		}
-		found := false
-		for _, w := range windows {
-			if w.Index == sess.TmuxWindow {
-				found = true
-				break
+	for _, g := range grouped {
+		for _, sess := range g.sessions {
+			if g.err != nil {
+				// Session gone entirely — all windows in it are dead.
+				dead = append(dead, sess)
+				deadIDs = append(deadIDs, sess.ID)
+				continue
 			}
-		}
-		if !found {
-			dead = append(dead, sess)
-			deadIDs = append(deadIDs, sess.ID)
+			found := false
+			for _, w := range g.windows {
+				if w.Index == sess.TmuxWindow {
+					found = true
+					break
+				}
+			}
+			if !found {
+				dead = append(dead, sess)
+				deadIDs = append(deadIDs, sess.ID)
+			}
 		}
 	}
 	for _, sess := range dead {
@@ -308,6 +330,12 @@ func detectOrphanContainers(appState *state.AppState) (orphans []string, recover
 		knownSessions[sess.TmuxSession] = struct{}{}
 	}
 
+	// Phase 1: identify unknown hive-* sessions, list their windows.
+	type orphanInfo struct {
+		name    string
+		windows []mux.WindowInfo
+	}
+	var unknowns []orphanInfo
 	for _, name := range allNames {
 		if !strings.HasPrefix(name, "hive-") {
 			continue
@@ -325,16 +353,65 @@ func detectOrphanContainers(appState *state.AppState) (orphans []string, recover
 			orphans = append(orphans, name)
 			continue
 		}
-		for _, w := range windows {
-			target := fmt.Sprintf("%s:%d", name, w.Index)
-			agentType := detectAgentType(target)
-			preview, _ := mux.CapturePane(target, 10)
+		unknowns = append(unknowns, orphanInfo{name: name, windows: windows})
+	}
+
+	if len(unknowns) == 0 {
+		return orphans, nil
+	}
+
+	// Phase 2: batch-capture all pane previews in a single subprocess.
+	captureTargets := make(map[string]int)
+	var allTargets []string
+	for _, u := range unknowns {
+		for _, w := range u.windows {
+			target := fmt.Sprintf("%s:%d", u.name, w.Index)
+			captureTargets[target] = 10
+			allTargets = append(allTargets, target)
+		}
+	}
+	previews, _ := mux.BatchCapturePane(captureTargets, true)
+	if previews == nil {
+		previews = make(map[string]string)
+	}
+
+	// Phase 3: batch-detect agent types. Get all foreground commands in one
+	// subprocess, then fall back to content scanning for unmatched targets.
+	agentTypes := make(map[string]state.AgentType, len(allTargets))
+	cmds, _ := tmux.BatchGetCurrentCommand(allTargets)
+	if cmds == nil {
+		cmds = make(map[string]string)
+	}
+	for _, target := range allTargets {
+		if cmd, ok := cmds[target]; ok {
+			cmd = strings.TrimSpace(strings.ToLower(cmd))
+			if at, ok := knownAgents[cmd]; ok {
+				agentTypes[target] = at
+				continue
+			}
+		}
+		// Fallback: scan captured pane content for agent-specific keywords.
+		if content, ok := previews[target]; ok {
+			lower := strings.ToLower(content)
+			for keyword, at := range knownAgents {
+				if strings.Contains(lower, keyword) {
+					agentTypes[target] = at
+					break
+				}
+			}
+		}
+	}
+
+	// Phase 4: assemble results.
+	for _, u := range unknowns {
+		for _, w := range u.windows {
+			target := fmt.Sprintf("%s:%d", u.name, w.Index)
 			recoverable = append(recoverable, state.RecoverableSession{
-				TmuxSession:       name,
+				TmuxSession:       u.name,
 				WindowIndex:       w.Index,
 				WindowName:        w.Name,
-				DetectedAgentType: agentType,
-				PanePreview:       preview,
+				DetectedAgentType: agentTypes[target],
+				PanePreview:       previews[target],
 			})
 		}
 	}
@@ -351,26 +428,3 @@ var knownAgents = map[string]state.AgentType{
 	"opencode":  state.AgentOpenCode,
 }
 
-// detectAgentType tries to determine the agent type from the running process
-// name, falling back to scanning pane content for known keywords.
-func detectAgentType(target string) state.AgentType {
-	// Primary: check the foreground process name.
-	if cmd, err := mux.GetCurrentCommand(target); err == nil {
-		cmd = strings.TrimSpace(strings.ToLower(cmd))
-		if at, ok := knownAgents[cmd]; ok {
-			return at
-		}
-	}
-	// Fallback: scan visible pane content for agent-specific keywords.
-	content, err := mux.CapturePane(target, 30)
-	if err != nil {
-		return ""
-	}
-	lower := strings.ToLower(content)
-	for keyword, at := range knownAgents {
-		if strings.Contains(lower, keyword) {
-			return at
-		}
-	}
-	return ""
-}

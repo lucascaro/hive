@@ -218,14 +218,23 @@ func EnsureRunning(sockPath string, logPath string) error {
 		return fmt.Errorf("spawn daemon: %w", err)
 	}
 
-	// Poll until the socket is up (up to 2 s in 50 ms increments).
-	for i := 0; i < 40; i++ {
-		time.Sleep(50 * time.Millisecond)
+	// Poll with exponential backoff: 5, 10, 20, 40, 80, 160, 200, 200… ms.
+	// Total max wait ≈ 1.3 s; fast starts detected in ~15 ms instead of 50 ms.
+	delay := 5 * time.Millisecond
+	const maxDelay = 200 * time.Millisecond
+	const totalTimeout = 2 * time.Second
+	deadline := time.Now().Add(totalTimeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(delay)
 		if Ping(sockPath) == nil {
 			return nil
 		}
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
 	}
-	return fmt.Errorf("mux daemon did not start within 2 s")
+	return fmt.Errorf("mux daemon did not start within %v", totalTimeout)
 }
 
 // Ping attempts a round-trip with the daemon and returns nil on success.

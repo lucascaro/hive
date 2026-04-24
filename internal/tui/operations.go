@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -423,14 +424,29 @@ func (m *Model) killProject(projectID string) tea.Cmd {
 func (m *Model) killAllSessions() {
 	// Collect unique tmux session containers before we start killing windows.
 	tmuxSessions := uniqueTmuxSessionNames(&m.appState)
-	for _, sess := range state.AllSessions(&m.appState) {
+
+	// Kill all windows concurrently — tmux handles parallel commands fine.
+	allSessions := state.AllSessions(&m.appState)
+	var wg sync.WaitGroup
+	wg.Add(len(allSessions))
+	for _, sess := range allSessions {
 		target := mux.Target(sess.TmuxSession, sess.TmuxWindow)
-		_ = mux.KillWindow(target)
+		go func() {
+			defer wg.Done()
+			_ = mux.KillWindow(target)
+		}()
 	}
-	// All windows are gone — kill the now-empty session containers.
+	wg.Wait()
+
+	// All windows are gone — kill the now-empty session containers concurrently.
+	wg.Add(len(tmuxSessions))
 	for _, s := range tmuxSessions {
-		_ = mux.KillSession(s)
+		go func() {
+			defer wg.Done()
+			_ = mux.KillSession(s)
+		}()
 	}
+	wg.Wait()
 }
 
 func (m Model) handleConfirmedAction(action string) tea.Cmd {
