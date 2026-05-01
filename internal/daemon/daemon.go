@@ -71,7 +71,19 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, err
 	}
 
-	// Bootstrap session — only if no sessions persisted from a prior run.
+	// Revive any persisted sessions that have no live PTY (i.e. every
+	// entry loaded from disk on this run). Metadata is preserved; the
+	// shell is fresh — Phase 1.7 will eventually replay scrollback here.
+	for _, info := range reg.List() {
+		if !info.Alive {
+			if err := reg.Revive(info.ID, cfg.BootstrapSession); err != nil {
+				log.Printf("hived: revive %s: %v", info.ID, err)
+			}
+		}
+	}
+
+	// Bootstrap session only if the registry is still empty after revive
+	// (i.e. truly first run on this machine).
 	if len(reg.List()) == 0 && bootstrapWanted(cfg.BootstrapSession) {
 		_, err := reg.Create(wire.CreateSpec{
 			Name:  "main",

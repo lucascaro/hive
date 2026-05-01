@@ -206,6 +206,39 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	return e, nil
 }
 
+// Revive starts a fresh shell on the existing entry. No-op if the
+// entry already has a live session. Used on daemon startup to bring
+// previously-persisted sessions back to a usable state.
+//
+// Note: Phase 1.7 (disk-backed scrollback) will replay prior content
+// on revive. Today the slot is preserved but starts blank.
+func (r *Registry) Revive(id string, opts session.Options) error {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+	if e.sess != nil {
+		r.mu.Unlock()
+		return nil
+	}
+	r.mu.Unlock()
+
+	sess, err := session.Start(opts)
+	if err != nil {
+		return err
+	}
+	sess.ID = id
+
+	r.mu.Lock()
+	e.sess = sess
+	info := e.Info()
+	r.mu.Unlock()
+	r.broadcast(wire.SessionEventUpdated, info)
+	return nil
+}
+
 // Adopt registers an externally-started session under the given
 // metadata. Used by the daemon for its bootstrap session in Phase 2
 // transitional code (before the GUI calls CREATE_SESSION explicitly).
