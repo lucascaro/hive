@@ -6,6 +6,8 @@ import {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession,
   CreateSession, KillSession, UpdateSession, ListAgents,
+  CreateProject, KillProject, UpdateProject,
+  LaunchDir,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -13,7 +15,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 
 class SessionTerm {
   constructor(info) {
-    this.info = info; // { id, name, color, order, alive }
+    this.info = info;
     this.host = document.createElement('div');
     this.host.className = 'term-host';
     this.host.dataset.sid = info.id;
@@ -80,15 +82,17 @@ class SessionTerm {
 
 const decoder = new TextDecoder('utf-8', { fatal: false });
 
-// ---------- sidebar / app state ----------
+// ---------- app state ----------
 
 const state = {
-  sessions: [],          // SessionInfo[] in display order
-  terms: new Map(),      // id -> SessionTerm
+  projects: [],            // ProjectInfo[] in display order
+  sessions: [],            // SessionInfo[] in display order
+  collapsed: new Set(),    // project ids that are collapsed
+  terms: new Map(),        // session id -> SessionTerm
   activeId: null,
 };
 
-const sidebarUL = document.getElementById('sessions');
+const projectsUL = document.getElementById('projects');
 const status = document.getElementById('status');
 
 function setStatus(text, isError = false) {
@@ -96,45 +100,139 @@ function setStatus(text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
+// orderedSessions returns sessions sorted by (project order, session order)
+// so navigation always matches what the user sees.
+function orderedSessions() {
+  const projOrder = new Map(state.projects.map((p, i) => [p.id, i]));
+  return [...state.sessions].sort((a, b) => {
+    const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
+    const pb = projOrder.get(b.projectId ?? b.project_id ?? '') ?? 1e9;
+    if (pa !== pb) return pa - pb;
+    return (a.order ?? 0) - (b.order ?? 0);
+  });
+}
+
+function activeProjectId() {
+  if (state.activeId) {
+    const s = state.sessions.find((x) => x.id === state.activeId);
+    if (s) return s.projectId ?? s.project_id ?? state.projects[0]?.id ?? '';
+  }
+  return state.projects[0]?.id ?? '';
+}
+
+// ---------- sidebar render ----------
+
 function renderSidebar() {
-  sidebarUL.innerHTML = '';
-  state.sessions.sort((a, b) => a.order - b.order);
-  for (const s of state.sessions) {
-    const li = document.createElement('li');
-    li.className = 'session-item';
-    if (s.id === state.activeId) li.classList.add('selected');
-    if (!s.alive) li.classList.add('dead');
-    li.style.setProperty('--session-color', s.color || '#888');
-    li.dataset.sid = s.id;
-
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = s.name;
-
-    const swatch = document.createElement('span');
-    swatch.className = 'swatch';
-    const colorInput = document.createElement('input');
-    colorInput.type = 'color';
-    colorInput.value = s.color || '#888888';
-    colorInput.addEventListener('input', (e) => {
-      UpdateSession(s.id, '', e.target.value, -1);
-    });
-    swatch.appendChild(colorInput);
-
-    li.append(dot, name, swatch);
-    li.addEventListener('click', (e) => {
-      if (e.target === colorInput || e.target === swatch) return;
-      switchTo(s.id);
-    });
-    li.addEventListener('dblclick', () => beginRename(s, li, name));
-    sidebarUL.appendChild(li);
+  projectsUL.innerHTML = '';
+  const activePID = activeProjectId();
+  for (const p of state.projects) {
+    projectsUL.appendChild(renderProject(p, activePID));
   }
 }
 
-function beginRename(sess, li, nameEl) {
+function renderProject(p, activePID) {
+  const li = document.createElement('li');
+  li.className = 'project';
+  li.dataset.pid = p.id;
+  if (state.collapsed.has(p.id)) li.classList.add('collapsed');
+  if (p.id === activePID) li.classList.add('active');
+  li.style.setProperty('--project-color', p.color || '#888');
+
+  const header = document.createElement('div');
+  header.className = 'project-header';
+
+  const caret = document.createElement('span');
+  caret.className = 'caret';
+  caret.textContent = '▾';
+  caret.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
+    else state.collapsed.add(p.id);
+    renderSidebar();
+  });
+
+  const colorEl = document.createElement('span');
+  colorEl.className = 'project-color';
+
+  const name = document.createElement('span');
+  name.className = 'project-name';
+  name.textContent = p.name;
+  name.title = p.cwd ? `${p.name} — ${p.cwd}` : p.name;
+
+  const actions = document.createElement('span');
+  actions.className = 'project-actions';
+
+  const newBtn = document.createElement('button');
+  newBtn.textContent = '+';
+  newBtn.title = 'New session in this project';
+  newBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openLauncher(p.id);
+  });
+
+  const editBtn = document.createElement('button');
+  editBtn.textContent = '✎';
+  editBtn.title = 'Edit project';
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openProjectEditor(p);
+  });
+
+  actions.append(newBtn, editBtn);
+
+  header.append(caret, colorEl, name, actions);
+  header.addEventListener('dblclick', (e) => {
+    if (e.target === name || e.target === header) beginRenameProject(p, name);
+  });
+  li.appendChild(header);
+
+  const ul = document.createElement('ul');
+  ul.className = 'project-sessions';
+  const sessions = state.sessions
+    .filter((s) => (s.projectId ?? s.project_id) === p.id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  for (const s of sessions) {
+    ul.appendChild(renderSession(s));
+  }
+  li.appendChild(ul);
+  return li;
+}
+
+function renderSession(s) {
+  const li = document.createElement('li');
+  li.className = 'session-item';
+  if (s.id === state.activeId) li.classList.add('selected');
+  if (!s.alive) li.classList.add('dead');
+  li.style.setProperty('--session-color', s.color || '#888');
+  li.dataset.sid = s.id;
+
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = s.name;
+
+  const swatch = document.createElement('span');
+  swatch.className = 'swatch';
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.value = s.color || '#888888';
+  colorInput.addEventListener('input', (e) => {
+    UpdateSession(s.id, '', e.target.value, -1);
+  });
+  swatch.appendChild(colorInput);
+
+  li.append(dot, name, swatch);
+  li.addEventListener('click', (e) => {
+    if (e.target === colorInput || e.target === swatch) return;
+    switchTo(s.id);
+  });
+  li.addEventListener('dblclick', () => beginRenameSession(s, li, name));
+  return li;
+}
+
+function beginRenameSession(sess, li, nameEl) {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'name-input';
@@ -146,7 +244,29 @@ function beginRename(sess, li, nameEl) {
     if (commit && input.value.trim() && input.value !== sess.name) {
       UpdateSession(sess.id, input.value.trim(), '', -1);
     } else {
-      renderSidebar(); // restore
+      renderSidebar();
+    }
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function beginRenameProject(proj, nameEl) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'project-name-input';
+  input.value = proj.name;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const finish = (commit) => {
+    if (commit && input.value.trim() && input.value !== proj.name) {
+      UpdateProject(proj.id, input.value.trim(), '', '', -1);
+    } else {
+      renderSidebar();
     }
   };
   input.addEventListener('keydown', (e) => {
@@ -158,9 +278,7 @@ function beginRename(sess, li, nameEl) {
 
 function switchTo(id) {
   if (id === state.activeId) return;
-  if (state.activeId) {
-    state.terms.get(state.activeId)?.hide();
-  }
+  if (state.activeId) state.terms.get(state.activeId)?.hide();
   state.activeId = id;
   let st = state.terms.get(id);
   if (!st) {
@@ -173,18 +291,38 @@ function switchTo(id) {
   st.ensureAttached();
   renderSidebar();
   const info = state.sessions.find((s) => s.id === id);
-  setStatus(info ? `${info.name}` : '');
+  setStatus(info ? info.name : '');
 }
 
 // ---------- daemon events ----------
+
+EventsOn('project:list', (jsonStr) => {
+  const { projects } = JSON.parse(jsonStr);
+  state.projects = projects || [];
+  renderSidebar();
+});
+
+EventsOn('project:event', (jsonStr) => {
+  const ev = JSON.parse(jsonStr);
+  const i = state.projects.findIndex((p) => p.id === ev.project.id);
+  if (ev.kind === 'added') {
+    if (i < 0) state.projects.push(ev.project);
+  } else if (ev.kind === 'removed') {
+    if (i >= 0) state.projects.splice(i, 1);
+    state.collapsed.delete(ev.project.id);
+  } else if (ev.kind === 'updated') {
+    if (i >= 0) state.projects[i] = ev.project;
+  }
+  state.projects.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  renderSidebar();
+});
 
 EventsOn('session:list', (jsonStr) => {
   const { sessions } = JSON.parse(jsonStr);
   state.sessions = sessions || [];
   renderSidebar();
-  // Auto-attach to the first session on first load.
   if (!state.activeId && state.sessions.length > 0) {
-    switchTo(state.sessions[0].id);
+    switchTo(orderedSessions()[0].id);
   }
 });
 
@@ -193,19 +331,17 @@ EventsOn('session:event', (jsonStr) => {
   const i = state.sessions.findIndex((s) => s.id === ev.session.id);
   if (ev.kind === 'added') {
     if (i < 0) state.sessions.push(ev.session);
-    // Always focus a freshly-added session; in single-client Phase 3
-    // every "added" event corresponds to an action this user just took.
     renderSidebar();
     switchTo(ev.session.id);
     return;
   }
   if (ev.kind === 'removed') {
-    // If the removed session was active, focus the one immediately
-    // before it in sidebar order (or after, if it was first).
     let nextId = null;
-    if (state.activeId === ev.session.id && i >= 0 && state.sessions.length > 1) {
-      const prevIdx = i > 0 ? i - 1 : i + 1;
-      nextId = state.sessions[prevIdx]?.id ?? null;
+    if (state.activeId === ev.session.id) {
+      const ord = orderedSessions();
+      const idx = ord.findIndex((s) => s.id === ev.session.id);
+      const nb = idx > 0 ? ord[idx - 1] : ord[idx + 1];
+      nextId = nb?.id ?? null;
     }
     if (i >= 0) state.sessions.splice(i, 1);
     const t = state.terms.get(ev.session.id);
@@ -254,108 +390,15 @@ EventsOn('control:disconnect', () => {
   setStatus('control disconnected', true);
 });
 
-// ---------- keyboard ----------
-
-// Use capture phase so xterm.js (which handles keys on its element
-// during the bubble phase) doesn't swallow launcher navigation or
-// global shortcuts. We must also stopPropagation when we consume the
-// event, otherwise the focused xterm still receives it.
-window.addEventListener('keydown', (e) => {
-  // Launcher captures keys while open; check it first.
-  if (!launcherEl.classList.contains('hidden')) {
-    const handle = (fn) => {
-      e.preventDefault();
-      e.stopPropagation();
-      fn();
-    };
-    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-      return handle(() => moveLauncherSelection(+1));
-    }
-    if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-      return handle(() => moveLauncherSelection(-1));
-    }
-    if (e.key === 'Enter') {
-      return handle(activateLauncherSelection);
-    }
-    if (e.key === 'Escape') {
-      return handle(closeLauncher);
-    }
-    // Re-pressing the launcher hotkey closes it.
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) {
-      return handle(closeLauncher);
-    }
-  }
-
-  const meta = e.metaKey || e.ctrlKey;
-  if (!meta) return;
-  const swallow = () => { e.preventDefault(); e.stopPropagation(); };
-  if (e.key === 'n' || e.key === 'N') {
-    swallow();
-    openLauncher();
-  } else if (e.key === 'w' || e.key === 'W') {
-    swallow();
-    if (state.activeId) KillSession(state.activeId);
-  } else if (/^[1-9]$/.test(e.key)) {
-    const idx = parseInt(e.key, 10) - 1;
-    if (idx < state.sessions.length) {
-      swallow();
-      switchTo(state.sessions[idx].id);
-    }
-  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-    swallow();
-    moveActiveSession(-1, e.shiftKey);
-  } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-    swallow();
-    moveActiveSession(+1, e.shiftKey);
-  }
-}, true);
-
-// moveActiveSession with reorder=false switches focus to the previous/
-// next session in sidebar order. With reorder=true (Shift held) it
-// moves the active session itself up/down in the order.
-function moveActiveSession(delta, reorder) {
-  const n = state.sessions.length;
-  if (n === 0) return;
-  const idx = state.sessions.findIndex((s) => s.id === state.activeId);
-  if (idx < 0) {
-    switchTo(state.sessions[0].id);
-    return;
-  }
-  const next = (idx + delta + n) % n;
-  if (reorder) {
-    UpdateSession(state.activeId, '', '', next);
-  } else {
-    switchTo(state.sessions[next].id);
-  }
-}
-
-// ---------- resize ----------
-
-let resizeTimer = null;
-window.addEventListener('resize', () => {
-  if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    const t = state.activeId && state.terms.get(state.activeId);
-    if (t) {
-      t.fit.fit();
-      ResizeSession(t.info.id, t.term.cols, t.term.rows);
-    }
-  }, 50);
-});
-
-// ---------- bootstrap ----------
-
-// ---------- agent launcher menu ----------
+// ---------- agent launcher ----------
 
 const launcherEl = document.getElementById('launcher');
-const launcherState = { items: [], selected: 0 }; // items[].agent, items[].el
+const launcherState = { items: [], selected: 0, projectId: null };
 
 function highlightLauncherSelection() {
   launcherState.items.forEach((it, i) => {
     it.el.classList.toggle('selected', i === launcherState.selected);
-    if (i === launcherState.selected) {
-      it.el.scrollIntoView({ block: 'nearest' });
-    }
+    if (i === launcherState.selected) it.el.scrollIntoView({ block: 'nearest' });
   });
 }
 
@@ -374,17 +417,22 @@ function moveLauncherSelection(delta) {
 function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
   if (!it || !it.agent.available) return;
-  CreateSession(it.agent.id, '', '', 0, 0);
+  CreateSession(it.agent.id, launcherState.projectId || activeProjectId(), '', '', 0, 0);
   closeLauncher();
 }
 
-function openLauncher() {
+function openLauncher(projectId) {
+  launcherState.projectId = projectId || activeProjectId();
   ListAgents()
     .then((agents) => {
       launcherEl.innerHTML = '';
       launcherState.items = [];
-      const newBtn = document.getElementById('new-btn');
-      const r = newBtn.getBoundingClientRect();
+      // Anchor the launcher near the project's + button if we have a
+      // project anchor; otherwise near the global new-project button.
+      const anchorEl = projectId
+        ? document.querySelector(`.project[data-pid="${projectId}"] .project-actions button`)
+        : document.getElementById('new-project-btn');
+      const r = (anchorEl ?? document.getElementById('new-project-btn')).getBoundingClientRect();
       launcherEl.style.left = `${r.left}px`;
       launcherEl.style.top = `${r.bottom + 4}px`;
       let firstAvailable = -1;
@@ -408,7 +456,7 @@ function openLauncher() {
         if (a.available) {
           if (firstAvailable < 0) firstAvailable = idx;
           item.addEventListener('click', () => {
-            CreateSession(a.id, '', '', 0, 0);
+            CreateSession(a.id, launcherState.projectId, '', '', 0, 0);
             closeLauncher();
           });
           item.addEventListener('mouseenter', () => {
@@ -431,15 +479,149 @@ function closeLauncher() {
   launcherState.items = [];
 }
 
-document.getElementById('new-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (launcherEl.classList.contains('hidden')) openLauncher();
-  else closeLauncher();
+document.addEventListener('click', (e) => {
+  const inAction = e.target.closest('.project-actions');
+  if (!launcherEl.contains(e.target) && !inAction) closeLauncher();
 });
 
-document.addEventListener('click', (e) => {
-  if (!launcherEl.contains(e.target) && e.target.id !== 'new-btn') closeLauncher();
+// ---------- project editor (new + edit) ----------
+
+const editorEl = document.getElementById('project-editor');
+const editorTitle = document.getElementById('project-editor-title');
+const editorName = document.getElementById('project-editor-name');
+const editorCwd = document.getElementById('project-editor-cwd');
+const editorColor = document.getElementById('project-editor-color');
+const editorState = { editing: null }; // null = create; else project object
+
+function openProjectEditor(project) {
+  editorState.editing = project || null;
+  editorTitle.textContent = project ? 'Edit project' : 'New project';
+  editorName.value = project?.name ?? '';
+  editorColor.value = project?.color || '#f59e0b';
+  if (project) {
+    editorCwd.value = project.cwd ?? '';
+  } else {
+    LaunchDir().then((d) => { editorCwd.value = d || ''; }).catch(() => {});
+    editorCwd.value = '';
+  }
+  editorEl.classList.remove('hidden');
+  setTimeout(() => editorName.focus(), 0);
+}
+
+function closeProjectEditor() {
+  editorEl.classList.add('hidden');
+  editorState.editing = null;
+}
+
+function saveProjectEditor() {
+  const name = editorName.value.trim();
+  const cwd = editorCwd.value.trim();
+  const color = editorColor.value;
+  if (!name) return;
+  if (editorState.editing) {
+    UpdateProject(editorState.editing.id, name, color, cwd, -1);
+  } else {
+    CreateProject(name, color, cwd);
+  }
+  closeProjectEditor();
+}
+
+document.getElementById('project-editor-cancel').addEventListener('click', closeProjectEditor);
+document.getElementById('project-editor-save').addEventListener('click', saveProjectEditor);
+editorEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.target === editorName || e.target === editorCwd)) {
+    e.preventDefault();
+    saveProjectEditor();
+  } else if (e.key === 'Escape') {
+    closeProjectEditor();
+  }
 });
+document.getElementById('new-project-btn').addEventListener('click', () => openProjectEditor(null));
+
+// ---------- keyboard ----------
+
+window.addEventListener('keydown', (e) => {
+  if (!launcherEl.classList.contains('hidden')) {
+    const handle = (fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return handle(() => moveLauncherSelection(+1));
+    if (e.key === 'ArrowUp'   || (e.key === 'Tab' && e.shiftKey))  return handle(() => moveLauncherSelection(-1));
+    if (e.key === 'Enter')   return handle(activateLauncherSelection);
+    if (e.key === 'Escape')  return handle(closeLauncher);
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) return handle(closeLauncher);
+  }
+  if (!editorEl.classList.contains('hidden')) {
+    return; // editor's own listener handles keys
+  }
+
+  const meta = e.metaKey || e.ctrlKey;
+  if (!meta) return;
+  const swallow = () => { e.preventDefault(); e.stopPropagation(); };
+
+  if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
+    swallow();
+    openProjectEditor(null);
+  } else if (e.key === 'n' || e.key === 'N') {
+    swallow();
+    openLauncher();
+  } else if (e.key === 'w' || e.key === 'W') {
+    swallow();
+    if (state.activeId) KillSession(state.activeId);
+  } else if (/^[1-9]$/.test(e.key)) {
+    const idx = parseInt(e.key, 10) - 1;
+    const ord = orderedSessions();
+    if (idx < ord.length) {
+      swallow();
+      switchTo(ord[idx].id);
+    }
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    swallow();
+    moveActiveSession(-1, e.shiftKey);
+  } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    swallow();
+    moveActiveSession(+1, e.shiftKey);
+  }
+}, true);
+
+// moveActiveSession walks the (project_order, session_order) list.
+// reorder=true moves the session within its project only.
+function moveActiveSession(delta, reorder) {
+  const ord = orderedSessions();
+  const n = ord.length;
+  if (n === 0) return;
+  const idx = ord.findIndex((s) => s.id === state.activeId);
+  if (idx < 0) {
+    switchTo(ord[0].id);
+    return;
+  }
+  if (reorder) {
+    const cur = state.sessions.find((s) => s.id === state.activeId);
+    const sib = state.sessions
+      .filter((s) => (s.projectId ?? s.project_id) === (cur.projectId ?? cur.project_id))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const sIdx = sib.findIndex((s) => s.id === state.activeId);
+    const next = (sIdx + delta + sib.length) % sib.length;
+    UpdateSession(state.activeId, '', '', next);
+    return;
+  }
+  const next = (idx + delta + n) % n;
+  switchTo(ord[next].id);
+}
+
+// ---------- resize ----------
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const t = state.activeId && state.terms.get(state.activeId);
+    if (t) {
+      t.fit.fit();
+      ResizeSession(t.info.id, t.term.cols, t.term.rows);
+    }
+  }, 50);
+});
+
+// ---------- bootstrap ----------
 
 (async () => {
   setStatus('connecting…');

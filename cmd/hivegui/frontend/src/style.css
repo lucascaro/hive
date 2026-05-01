@@ -38,7 +38,7 @@ html, body {
   color: #f59e0b;
 }
 
-#new-btn {
+#new-project-btn {
   background: #1f1f1f;
   color: #ccc;
   border: none;
@@ -49,9 +49,9 @@ html, body {
   font-size: 14px;
   line-height: 1;
 }
-#new-btn:hover { background: #2a2a2a; }
+#new-project-btn:hover { background: #2a2a2a; }
 
-#sessions {
+#sessions, #projects {
   list-style: none;
   margin: 0;
   padding: 4px 0;
@@ -59,11 +59,104 @@ html, body {
   overflow-y: auto;
 }
 
+.project {
+  margin-bottom: 4px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  border-left: 3px solid transparent;
+}
+
+.project-header:hover { background: rgba(255,255,255,0.02); color: #ddd; }
+
+.project.active > .project-header {
+  border-left-color: var(--project-color, #888);
+  color: #eee;
+}
+
+.project-header .caret {
+  width: 10px;
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.project-header .project-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--project-color, #888);
+  flex-shrink: 0;
+}
+
+.project-header .project-name {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-header .project-name-input {
+  flex: 1;
+  background: #000;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+}
+
+.project-header .project-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0.5;
+}
+.project-header:hover .project-actions { opacity: 1; }
+
+.project-header .project-actions button {
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.project-header .project-actions button:hover { background: rgba(255,255,255,0.06); }
+
+.project-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project.collapsed .project-sessions { display: none; }
+.project.collapsed .caret { transform: rotate(-90deg); display: inline-block; }
+
 .session-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 5px 10px 5px 26px;
   cursor: pointer;
   font-size: 12.5px;
   color: #aaa;
@@ -207,6 +300,77 @@ html, body {
   font-family: Menlo, monospace;
 }
 .launcher-item.unavailable:hover { background: transparent; }
+
+#project-editor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 320px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+  z-index: 20;
+  font-size: 13px;
+}
+#project-editor.hidden { display: none; }
+#project-editor h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+}
+#project-editor label {
+  display: block;
+  margin-bottom: 10px;
+}
+#project-editor label > span {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+#project-editor input[type=text],
+#project-editor input[type=color] {
+  width: 100%;
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 6px 8px;
+  font: inherit;
+  box-sizing: border-box;
+  outline: none;
+}
+#project-editor input[type=color] {
+  height: 32px;
+  padding: 2px;
+}
+#project-editor .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+#project-editor .actions button {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+#project-editor .actions button:hover { background: #2a2a2a; }
+#project-editor .actions button.primary {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #000;
+  font-weight: 600;
+}
+#project-editor .actions button.primary:hover { background: #fbb04a; }
 
 #status {
   position: fixed;

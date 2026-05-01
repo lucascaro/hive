@@ -139,6 +139,10 @@ func (a *App) controlReadLoop(cs *connState) {
 			wruntime.EventsEmit(a.ctx, "session:list", string(payload))
 		case wire.FrameSessionEvent:
 			wruntime.EventsEmit(a.ctx, "session:event", string(payload))
+		case wire.FrameProjects:
+			wruntime.EventsEmit(a.ctx, "project:list", string(payload))
+		case wire.FrameProjectEvent:
+			wruntime.EventsEmit(a.ctx, "project:event", string(payload))
 		case wire.FrameError:
 			wruntime.EventsEmit(a.ctx, "control:error", string(payload))
 		default:
@@ -175,21 +179,74 @@ func (a *App) ListAgents() []AgentInfo {
 
 // CreateSession asks the daemon to create a new session. agentID is
 // the canonical ID from ListAgents (e.g. "claude") or "" for a
-// generic shell. The daemon will broadcast a SESSION_EVENT(added) over
-// the control connection; the frontend updates the sidebar from that.
-func (a *App) CreateSession(agentID, name, color string, cols, rows int) error {
+// generic shell. projectID is the owning project ("" = default).
+// The daemon will broadcast a SESSION_EVENT(added) over the control
+// connection; the frontend updates the sidebar from that.
+func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Agent: agentID,
-		Name:  name,
-		Color: color,
-		Cols:  cols,
-		Rows:  rows,
+		Agent:     agentID,
+		ProjectID: projectID,
+		Name:      name,
+		Color:     color,
+		Cols:      cols,
+		Rows:      rows,
 	})
 }
+
+// CreateProject creates a new project.
+func (a *App) CreateProject(name, color, cwd string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.writeJSON(wire.FrameCreateProject, wire.CreateProjectReq{
+		Name: name, Color: color, Cwd: cwd,
+	})
+}
+
+// KillProject removes a project. If killSessions is true, every
+// session in the project is also killed; otherwise sessions are
+// reassigned to the default project.
+func (a *App) KillProject(id string, killSessions bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.writeJSON(wire.FrameKillProject, wire.KillProjectReq{
+		ProjectID: id, KillSessions: killSessions,
+	})
+}
+
+// UpdateProject patches name/color/cwd/order. Empty strings on
+// name/color/cwd mean "no change"; -1 on order means "no change".
+func (a *App) UpdateProject(id, name, color, cwd string, order int) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	req := wire.UpdateProjectReq{ProjectID: id}
+	if name != "" {
+		req.Name = &name
+	}
+	if color != "" {
+		req.Color = &color
+	}
+	if cwd != "" {
+		req.Cwd = &cwd
+	}
+	if order >= 0 {
+		req.Order = &order
+	}
+	return cs.writeJSON(wire.FrameUpdateProject, req)
+}
+
+// LaunchDir returns the cwd captured at GUI startup; useful for the
+// new-project default cwd.
+func (a *App) LaunchDir() string { return a.launchDir }
 
 // KillSession asks the daemon to terminate a session.
 func (a *App) KillSession(id string) error {
