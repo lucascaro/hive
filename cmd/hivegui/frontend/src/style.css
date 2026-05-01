@@ -186,7 +186,9 @@ html, body {
   cursor: pointer;
   color: #ccc;
 }
-.launcher-item:hover { background: rgba(255,255,255,0.05); }
+.launcher-item:hover,
+.launcher-item.selected { background: rgba(255,255,255,0.08); }
+.launcher-item.selected { color: #fff; }
 .launcher-item .agent-dot {
   width: 8px;
   height: 8px;

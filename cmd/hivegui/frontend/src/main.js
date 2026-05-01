@@ -193,7 +193,20 @@ EventsOn('session:event', (jsonStr) => {
   const i = state.sessions.findIndex((s) => s.id === ev.session.id);
   if (ev.kind === 'added') {
     if (i < 0) state.sessions.push(ev.session);
-  } else if (ev.kind === 'removed') {
+    // Always focus a freshly-added session; in single-client Phase 3
+    // every "added" event corresponds to an action this user just took.
+    renderSidebar();
+    switchTo(ev.session.id);
+    return;
+  }
+  if (ev.kind === 'removed') {
+    // If the removed session was active, focus the one immediately
+    // before it in sidebar order (or after, if it was first).
+    let nextId = null;
+    if (state.activeId === ev.session.id && i >= 0 && state.sessions.length > 1) {
+      const prevIdx = i > 0 ? i - 1 : i + 1;
+      nextId = state.sessions[prevIdx]?.id ?? null;
+    }
     if (i >= 0) state.sessions.splice(i, 1);
     const t = state.terms.get(ev.session.id);
     if (t) {
@@ -202,18 +215,12 @@ EventsOn('session:event', (jsonStr) => {
     }
     if (state.activeId === ev.session.id) {
       state.activeId = null;
-      const next = state.sessions[0];
-      if (next) switchTo(next.id);
+      if (nextId) switchTo(nextId);
     }
   } else if (ev.kind === 'updated') {
     if (i >= 0) state.sessions[i] = ev.session;
   }
   renderSidebar();
-  // If the new session has no term yet and no session is active,
-  // attach to it.
-  if (ev.kind === 'added' && !state.activeId) {
-    switchTo(ev.session.id);
-  }
 });
 
 EventsOn('pty:data', (id, b64) => {
@@ -250,15 +257,35 @@ EventsOn('control:disconnect', () => {
 // ---------- keyboard ----------
 
 window.addEventListener('keydown', (e) => {
+  // Launcher captures keys while open; check it first.
+  if (!launcherEl.classList.contains('hidden')) {
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+      e.preventDefault();
+      moveLauncherSelection(+1);
+      return;
+    }
+    if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+      e.preventDefault();
+      moveLauncherSelection(-1);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      activateLauncherSelection();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeLauncher();
+      return;
+    }
+  }
+
   const meta = e.metaKey || e.ctrlKey;
   if (!meta) return;
   if (e.key === 'n' || e.key === 'N') {
     e.preventDefault();
-    if (e.shiftKey) {
-      openLauncher();
-    } else {
-      CreateSession('shell', '', '', 0, 0);
-    }
+    openLauncher();
   } else if (e.key === 'w' || e.key === 'W') {
     e.preventDefault();
     if (state.activeId) KillSession(state.activeId);
@@ -290,16 +317,47 @@ window.addEventListener('resize', () => {
 // ---------- agent launcher menu ----------
 
 const launcherEl = document.getElementById('launcher');
+const launcherState = { items: [], selected: 0 }; // items[].agent, items[].el
+
+function highlightLauncherSelection() {
+  launcherState.items.forEach((it, i) => {
+    it.el.classList.toggle('selected', i === launcherState.selected);
+    if (i === launcherState.selected) {
+      it.el.scrollIntoView({ block: 'nearest' });
+    }
+  });
+}
+
+function moveLauncherSelection(delta) {
+  const n = launcherState.items.length;
+  if (n === 0) return;
+  let i = launcherState.selected;
+  for (let step = 0; step < n; step++) {
+    i = (i + delta + n) % n;
+    if (launcherState.items[i].agent.available) break;
+  }
+  launcherState.selected = i;
+  highlightLauncherSelection();
+}
+
+function activateLauncherSelection() {
+  const it = launcherState.items[launcherState.selected];
+  if (!it || !it.agent.available) return;
+  CreateSession(it.agent.id, '', '', 0, 0);
+  closeLauncher();
+}
 
 function openLauncher() {
   ListAgents()
     .then((agents) => {
       launcherEl.innerHTML = '';
+      launcherState.items = [];
       const newBtn = document.getElementById('new-btn');
       const r = newBtn.getBoundingClientRect();
       launcherEl.style.left = `${r.left}px`;
       launcherEl.style.top = `${r.bottom + 4}px`;
-      for (const a of agents) {
+      let firstAvailable = -1;
+      agents.forEach((a, idx) => {
         const item = document.createElement('div');
         item.className = 'launcher-item' + (a.available ? '' : ' unavailable');
         item.style.setProperty('--agent-color', a.color);
@@ -317,13 +375,21 @@ function openLauncher() {
           item.appendChild(tag);
         }
         if (a.available) {
+          if (firstAvailable < 0) firstAvailable = idx;
           item.addEventListener('click', () => {
             CreateSession(a.id, '', '', 0, 0);
             closeLauncher();
           });
+          item.addEventListener('mouseenter', () => {
+            launcherState.selected = idx;
+            highlightLauncherSelection();
+          });
         }
         launcherEl.appendChild(item);
-      }
+        launcherState.items.push({ agent: a, el: item });
+      });
+      launcherState.selected = firstAvailable >= 0 ? firstAvailable : 0;
+      highlightLauncherSelection();
       launcherEl.classList.remove('hidden');
     })
     .catch(() => {});
@@ -331,6 +397,7 @@ function openLauncher() {
 
 function closeLauncher() {
   launcherEl.classList.add('hidden');
+  launcherState.items = [];
 }
 
 document.getElementById('new-btn').addEventListener('click', (e) => {
