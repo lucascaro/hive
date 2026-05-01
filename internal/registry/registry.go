@@ -159,7 +159,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	id := uuid.NewString()
 	name := spec.Name
 	if name == "" {
-		name = fmt.Sprintf("session %d", len(r.order)+1)
+		name = agent.RandomName(agent.ID(spec.Agent))
 	}
 	// Resolve agent default color if the spec didn't override it.
 	color := spec.Color
@@ -282,7 +282,7 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 		return existing, nil
 	}
 	if name == "" {
-		name = fmt.Sprintf("session %d", len(r.order)+1)
+		name = agent.RandomName("")
 	}
 	if color == "" {
 		color = pickColor(len(r.order))
