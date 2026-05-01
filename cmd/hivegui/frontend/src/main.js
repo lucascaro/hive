@@ -171,14 +171,19 @@ function onSessionBell(info) {
   if (state.attention.has(info.id)) {
     // Already showing attention; refresh to re-trigger CSS animation.
     state.attention.delete(info.id);
+    state.terms.get(info.id)?.host.classList.remove('attention');
   }
   state.attention.add(info.id);
+  state.terms.get(info.id)?.host.classList.add('attention');
   renderSidebar();
   fireBellNotification(info);
 }
 
 function clearAttention(sessionId) {
-  if (state.attention.delete(sessionId)) renderSidebar();
+  if (state.attention.delete(sessionId)) {
+    state.terms.get(sessionId)?.host.classList.remove('attention');
+    renderSidebar();
+  }
 }
 
 // Whenever the window regains focus, clear the active session's
@@ -563,6 +568,7 @@ function renderGrid() {
     const st = ensureTerm(info);
     st.host.classList.add('in-grid');
     st.host.classList.toggle('active', info.id === state.activeId);
+    st.host.classList.toggle('attention', state.attention.has(info.id));
     st.ensureAttached();
     termsHost.appendChild(st.host); // re-order to keep DOM == nav order
   }

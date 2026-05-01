@@ -363,6 +363,31 @@ html, body {
   border-color: var(--session-color, #888);
   box-shadow: 0 0 0 1px var(--session-color, #888);
 }
+
+@keyframes hive-tile-attention {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--session-color, #888) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--session-color, #888) 0%, transparent);
+  }
+  50% {
+    border-color: var(--session-color, #888);
+    box-shadow: 0 0 0 1px var(--session-color, #888),
+                0 0 16px 4px color-mix(in srgb, var(--session-color, #888) 35%, transparent);
+  }
+}
+
+#terms.grid .term-host.in-grid.attention {
+  animation: hive-tile-attention 1.2s ease-in-out infinite;
+}
+#terms.grid .term-host.in-grid.attention .tile-name::before {
+  content: '●';
+  color: var(--session-color, #888);
+  font-size: 8px;
+  margin-right: 6px;
+  vertical-align: middle;
+  text-shadow: 0 0 6px var(--session-color, #888);
+}
 #terms.grid .term-host .tile-header {
   display: flex;
   align-items: center;
