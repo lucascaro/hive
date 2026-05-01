@@ -372,6 +372,35 @@ function switchTo(id) {
   setStatus(info ? info.name : '');
 }
 
+// gridLayout caches the (rows, cols) chosen for the current scope so
+// the keyboard navigation and resize logic don't have to recompute.
+let gridLayout = { rows: 1, cols: 1, sessions: [] };
+
+// computeGridDims picks (rows, cols) that fills the container without
+// scrolling, biasing tile aspect toward typical terminal proportions
+// (~1.6 wide-to-tall). Reorders sessions row-major so that arrow
+// navigation feels predictable.
+function computeGridDims(n, w, h) {
+  if (n <= 0) return { rows: 1, cols: 1 };
+  // Target tile aspect ratio (width / height). Empirically a
+  // terminal looks fine between 1.4 and 1.8; pick 1.6.
+  const targetAspect = 1.6;
+  let best = { rows: 1, cols: n, score: Infinity };
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const tileW = w / cols;
+    const tileH = h / rows;
+    if (tileW <= 0 || tileH <= 0) continue;
+    const aspect = tileW / tileH;
+    // log distance from target, plus a small penalty for empty cells
+    // in the last row to prefer balanced grids.
+    const empty = rows * cols - n;
+    const score = Math.abs(Math.log(aspect / targetAspect)) + empty * 0.05;
+    if (score < best.score) best = { rows, cols, score };
+  }
+  return best;
+}
+
 // renderGrid lays out every tile that should be visible in the
 // current grid scope. Tiles for other sessions are hidden but kept
 // alive (so their xterm scrollback persists across mode switches).
@@ -382,11 +411,15 @@ function renderGrid() {
   const gridIDs = new Set(gridSessions.map((s) => s.id));
 
   // Ensure every grid session has a SessionTerm and is attached.
+  // Move tiles into the desired DOM order (row-major) so that flexbox
+  // / CSS grid honors the navigation order without us having to set
+  // grid-row/column explicitly.
   for (const info of gridSessions) {
     const st = ensureTerm(info);
     st.host.classList.add('in-grid');
     st.host.classList.toggle('active', info.id === state.activeId);
     st.ensureAttached();
+    termsHost.appendChild(st.host); // re-order to keep DOM == nav order
   }
   // Hide / unmark tiles outside the scope.
   for (const [sid, st] of state.terms) {
@@ -394,12 +427,67 @@ function renderGrid() {
       st.host.classList.remove('in-grid', 'active');
     }
   }
+
+  // Pick (rows, cols) that fills the container.
+  const w = termsHost.clientWidth || 800;
+  const h = termsHost.clientHeight || 600;
+  const { rows, cols } = computeGridDims(gridSessions.length, w, h);
+  termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+  gridLayout = { rows, cols, sessions: gridSessions };
+
   // Refit each visible tile after the layout settles.
   requestAnimationFrame(() => {
     for (const info of gridSessions) {
       state.terms.get(info.id)?.refit();
     }
   });
+}
+
+// gridSpatialMove moves the active tile in the given direction within
+// the current grid layout. delta = {col, row}. No-ops if the target
+// cell is outside the grid or empty.
+function gridSpatialMove(dCol, dRow) {
+  const { rows, cols, sessions } = gridLayout;
+  if (sessions.length === 0) return;
+  const idx = sessions.findIndex((s) => s.id === state.activeId);
+  if (idx < 0) {
+    state.activeId = sessions[0].id;
+    renderGrid();
+    renderSidebar();
+    return;
+  }
+  const r = Math.floor(idx / cols);
+  const c = idx % cols;
+  const nr = r + dRow;
+  const nc = c + dCol;
+  if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) return;
+  const target = nr * cols + nc;
+  if (target >= sessions.length) return; // empty cell on last row
+  state.activeId = sessions[target].id;
+  renderGrid();
+  renderSidebar();
+  state.terms.get(state.activeId)?.term.focus();
+  setStatus(sessions[target].name);
+}
+
+function shiftActiveProject(delta) {
+  if (state.projects.length === 0) return;
+  const cur = activeProjectId();
+  const i = state.projects.findIndex((p) => p.id === cur);
+  if (i < 0) return;
+  const next = state.projects[(i + delta + state.projects.length) % state.projects.length];
+  if (state.view === 'grid-project') {
+    state.gridProjectId = next.id;
+  }
+  const sessions = state.sessions
+    .filter((s) => (s.projectId ?? s.project_id) === next.id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (sessions[0]) state.activeId = sessions[0].id;
+  if (state.view === 'single') showSingle(state.activeId);
+  else renderGrid();
+  renderSidebar();
+  setStatus(`${next.name}`);
 }
 
 // gridScopeSessions returns the list of sessions that should be tiled
@@ -431,22 +519,6 @@ function setView(view) {
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
 }
 
-function shiftGridProject(delta) {
-  if (state.view !== 'grid-project') return;
-  const cur = state.gridProjectId || activeProjectId();
-  const i = state.projects.findIndex((p) => p.id === cur);
-  if (i < 0) return;
-  const next = state.projects[(i + delta + state.projects.length) % state.projects.length];
-  state.gridProjectId = next.id;
-  // Set active session to the first session of the new project.
-  const sessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id) === next.id)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  state.activeId = sessions[0]?.id ?? null;
-  renderGrid();
-  renderSidebar();
-  setStatus(`grid-project • ${next.name}`);
-}
 
 // ---------- daemon events ----------
 
@@ -744,18 +816,26 @@ window.addEventListener('keydown', (e) => {
     }
   } else if (e.key === 'ArrowLeft') {
     swallow();
-    if (state.view === 'grid-project') shiftGridProject(-1);
+    if (state.view !== 'single') gridSpatialMove(-1, 0);
     else moveActiveSession(-1, e.shiftKey);
   } else if (e.key === 'ArrowRight') {
     swallow();
-    if (state.view === 'grid-project') shiftGridProject(+1);
+    if (state.view !== 'single') gridSpatialMove(+1, 0);
     else moveActiveSession(+1, e.shiftKey);
   } else if (e.key === 'ArrowUp') {
     swallow();
-    moveActiveSession(-1, e.shiftKey);
+    if (state.view !== 'single') gridSpatialMove(0, -1);
+    else moveActiveSession(-1, e.shiftKey);
   } else if (e.key === 'ArrowDown') {
     swallow();
-    moveActiveSession(+1, e.shiftKey);
+    if (state.view !== 'single') gridSpatialMove(0, +1);
+    else moveActiveSession(+1, e.shiftKey);
+  } else if (e.key === '[') {
+    swallow();
+    shiftActiveProject(-1);
+  } else if (e.key === ']') {
+    swallow();
+    shiftActiveProject(+1);
   }
 }, true);
 

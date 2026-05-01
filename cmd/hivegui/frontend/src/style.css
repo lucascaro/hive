@@ -260,12 +260,11 @@ html, body {
 #terms.grid {
   position: relative;
   display: grid;
-  grid-auto-rows: minmax(220px, 1fr);
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  /* grid-template-{rows,columns} are set by JS to fill the viewport */
   gap: 6px;
   padding: 6px;
-  overflow: auto;
-  align-content: start;
+  overflow: hidden;
+  align-content: stretch;
 }
 
 #terms.grid .term-host {
