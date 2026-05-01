@@ -811,7 +811,13 @@ EventsOn('pty:event', (id, jsonStr) => {
   try {
     const ev = JSON.parse(jsonStr);
     const st = state.terms.get(id);
-    if (st && ev.kind === 'scrollback_replay_done') st.phase = 'live';
+    if (st && ev.kind === 'scrollback_replay_done') {
+      st.phase = 'live';
+      // After scrollback replay, snap the viewport to the latest
+      // line so the user sees the cursor / newest output rather than
+      // landing somewhere mid-history.
+      st.term.scrollToBottom();
+    }
   } catch { /* ignore */ }
 });
 
