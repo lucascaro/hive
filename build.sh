@@ -46,11 +46,23 @@ if ! command -v lipo >/dev/null 2>&1; then
   exit 1
 fi
 
-# 1. Wails universal app bundle (frontend + GUI binary).
+# 1. Frontend deps. Wails skips `npm install` when frontend/package.json
+#    matches a cached MD5, which can leave node_modules stale after a
+#    pull that adds a dep. Force a clean install when package.json is
+#    newer than node_modules.
+echo "==> Installing frontend dependencies"
+if [[ ! -d cmd/hivegui/frontend/node_modules ]] \
+   || [[ cmd/hivegui/frontend/package.json -nt cmd/hivegui/frontend/node_modules ]]; then
+  ( cd cmd/hivegui/frontend && npm install --no-audit --no-fund )
+else
+  echo "  (up to date)"
+fi
+
+# 2. Wails universal app bundle (frontend + GUI binary).
 echo "==> Building Wails universal .app"
 ( cd cmd/hivegui && wails build -platform darwin/universal -clean )
 
-# 2. hived universal binary, lipo'd into the .app.
+# 3. hived universal binary, lipo'd into the .app.
 echo "==> Building hived (universal)"
 mkdir -p .build
 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o .build/hived-darwin-amd64 ./cmd/hived
