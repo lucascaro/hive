@@ -147,14 +147,17 @@ const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 32;
 
 const state = {
-  projects: [],            // ProjectInfo[] in display order
-  sessions: [],            // SessionInfo[] in display order
-  collapsed: new Set(),    // project ids that are collapsed
-  attention: new Set(),    // session ids that have unread bells
-  terms: new Map(),        // session id -> SessionTerm
+  projects: [],             // ProjectInfo[] in display order
+  sessions: [],             // SessionInfo[] in display order
+  collapsed: new Set(),     // project ids that are collapsed
+  attention: new Set(),     // session ids that have unread bells
+  terms: new Map(),         // session id -> SessionTerm
   activeId: null,
-  view: 'single',          // 'single' | 'grid-project' | 'grid-all'
-  gridProjectId: null,     // project shown in grid-project mode
+  currentProjectId: null,   // "the project I'm working in"; can be set
+                            //   without a focused session (so empty
+                            //   projects are reachable / launchable)
+  view: 'single',           // 'single' | 'grid-project' | 'grid-all'
+  gridProjectId: null,      // project shown in grid-project mode
   fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
 };
 
@@ -273,9 +276,13 @@ function orderedSessions() {
 }
 
 function activeProjectId() {
-  // In grid-project mode the user's "current project" is whichever
-  // project is in grid focus, even if active session momentarily
-  // points at another project.
+  // currentProjectId is the user's explicit "I'm here" — set by
+  // ⌘[/], project-header click, switchTo (synced to session's
+  // project), and project events. Empty projects work because they
+  // can be the current project even with no active session.
+  if (state.currentProjectId) {
+    return state.currentProjectId;
+  }
   if (state.view === 'grid-project' && state.gridProjectId) {
     return state.gridProjectId;
   }
@@ -503,16 +510,17 @@ function switchTo(id) {
 
 // switchToProject activates a project: in grid-project mode it
 // retargets the grid, and in any mode it makes the project's first
-// session the active one.
+// session the active one. Empty projects are still selectable —
+// currentProjectId is set so ⌘N targets them correctly.
 function switchToProject(pid) {
   if (!pid) return;
+  state.currentProjectId = pid;
   if (state.view === 'grid-project') state.gridProjectId = pid;
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === pid)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   if (sessions[0]) switchTo(sessions[0].id);
   else {
-    // Project has no live sessions — still show its scope.
     state.activeId = null;
     if (state.view === 'single') showSingle(null);
     else renderGrid();
@@ -648,11 +656,15 @@ function renderGrid() {
 
 // setActive centralizes "the focused session changed" so every code
 // path (click, arrow nav, project switch, switchTo) clears the bell
-// indicator the same way.
+// indicator the same way and syncs the current project to whatever
+// project the new session belongs to.
 function setActive(id) {
   if (id) {
     state.attention.delete(id);
     state.terms.get(id)?.host.classList.remove('attention');
+    const s = state.sessions.find((x) => x.id === id);
+    const pid = s?.projectId ?? s?.project_id;
+    if (pid) state.currentProjectId = pid;
   }
   state.activeId = id;
 }
@@ -702,17 +714,24 @@ function shiftActiveProject(delta) {
   const i = state.projects.findIndex((p) => p.id === cur);
   if (i < 0) return;
   const next = state.projects[(i + delta + state.projects.length) % state.projects.length];
-  if (state.view === 'grid-project') {
-    state.gridProjectId = next.id;
-  }
+  state.currentProjectId = next.id;
+  if (state.view === 'grid-project') state.gridProjectId = next.id;
+
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === next.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (sessions[0]) setActive(sessions[0].id);
+  if (sessions[0]) {
+    setActive(sessions[0].id);
+  } else {
+    // Empty project — keep the project selected but drop the active
+    // session so the user can ⌘N into it. activeProjectId() now
+    // returns the empty project because currentProjectId is set.
+    state.activeId = null;
+  }
   if (state.view === 'single') showSingle(state.activeId);
   else renderGrid();
   renderSidebar();
-  setStatus(`${next.name}`);
+  setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
 // gridScopeSessions returns the list of sessions that should be tiled
@@ -750,6 +769,9 @@ function setView(view) {
 EventsOn('project:list', (jsonStr) => {
   const { projects } = JSON.parse(jsonStr);
   state.projects = projects || [];
+  if (!state.currentProjectId && state.projects[0]) {
+    state.currentProjectId = state.projects[0].id;
+  }
   renderSidebar();
 });
 
@@ -758,9 +780,14 @@ EventsOn('project:event', (jsonStr) => {
   const i = state.projects.findIndex((p) => p.id === ev.project.id);
   if (ev.kind === 'added') {
     if (i < 0) state.projects.push(ev.project);
+    // First-ever project: make it current.
+    if (!state.currentProjectId) state.currentProjectId = ev.project.id;
   } else if (ev.kind === 'removed') {
     if (i >= 0) state.projects.splice(i, 1);
     state.collapsed.delete(ev.project.id);
+    if (state.currentProjectId === ev.project.id) {
+      state.currentProjectId = state.projects[0]?.id ?? null;
+    }
   } else if (ev.kind === 'updated') {
     if (i >= 0) state.projects[i] = ev.project;
   }
