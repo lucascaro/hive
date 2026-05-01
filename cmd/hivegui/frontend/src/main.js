@@ -531,10 +531,17 @@ let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] 
 // scrolling, biasing tile aspect toward typical terminal proportions
 // (~1.6 wide-to-tall). Reorders sessions row-major so that arrow
 // navigation feels predictable.
+//
+// Small-n special cases match user expectation rather than the
+// aspect-ratio optimizer, which can pick stacked layouts on tall
+// windows when side-by-side is what people mean by "two terminals":
+//   n=1 → 1x1
+//   n=2 → 1x2 (always side-by-side)
 function computeGridDims(n, w, h) {
   if (n <= 0) return { rows: 1, cols: 1 };
-  // Target tile aspect ratio (width / height). Empirically a
-  // terminal looks fine between 1.4 and 1.8; pick 1.6.
+  if (n === 1) return { rows: 1, cols: 1 };
+  if (n === 2) return { rows: 1, cols: 2 };
+
   const targetAspect = 1.6;
   let best = { rows: 1, cols: n, score: Infinity };
   for (let cols = 1; cols <= n; cols++) {
