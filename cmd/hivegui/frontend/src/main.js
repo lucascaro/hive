@@ -41,7 +41,7 @@ class SessionTerm {
 
     this.term = new Terminal({
       fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
-      fontSize: 14,
+      fontSize: state.fontSize,
       cursorBlink: true,
       scrollback: 5000,
       theme: { background: '#000000' },
@@ -132,6 +132,10 @@ const decoder = new TextDecoder('utf-8', { fatal: false });
 
 // ---------- app state ----------
 
+const DEFAULT_FONT_SIZE = 14;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 32;
+
 const state = {
   projects: [],            // ProjectInfo[] in display order
   sessions: [],            // SessionInfo[] in display order
@@ -140,7 +144,34 @@ const state = {
   activeId: null,
   view: 'single',          // 'single' | 'grid-project' | 'grid-all'
   gridProjectId: null,     // project shown in grid-project mode
+  fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
 };
+
+function clampFont(n) {
+  return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, n));
+}
+
+function applyFontSize() {
+  for (const st of state.terms.values()) {
+    st.term.options.fontSize = state.fontSize;
+    st.refit();
+  }
+  localStorage.setItem('hive.fontSize', String(state.fontSize));
+}
+
+function bumpFontSize(delta) {
+  const next = clampFont(state.fontSize + delta);
+  if (next === state.fontSize) return;
+  state.fontSize = next;
+  applyFontSize();
+  setStatus(`font ${state.fontSize}px`);
+}
+
+function resetFontSize() {
+  state.fontSize = DEFAULT_FONT_SIZE;
+  applyFontSize();
+  setStatus(`font ${state.fontSize}px`);
+}
 
 const termsHost = document.getElementById('terms');
 termsHost.classList.add('single');
@@ -832,6 +863,22 @@ window.addEventListener('keydown', (e) => {
   const meta = e.metaKey || e.ctrlKey;
   if (!meta) return;
   const swallow = () => { e.preventDefault(); e.stopPropagation(); };
+
+  if (e.key === '=' || e.key === '+') {
+    swallow();
+    bumpFontSize(+1);
+    return;
+  }
+  if (e.key === '-' || e.key === '_') {
+    swallow();
+    bumpFontSize(-1);
+    return;
+  }
+  if (e.key === '0') {
+    swallow();
+    resetFontSize();
+    return;
+  }
 
   if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
     swallow();
