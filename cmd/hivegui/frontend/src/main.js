@@ -7,7 +7,7 @@ import {
   WriteStdin, ResizeSession,
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
-  LaunchDir, PickDirectory, OpenNewWindow,
+  LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -1080,7 +1080,11 @@ window.addEventListener('keydown', (e) => {
     }
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
-    if (state.activeId) KillSession(state.activeId);
+    if (e.shiftKey) {
+      CloseWindow();
+    } else if (state.activeId) {
+      KillSession(state.activeId);
+    }
   } else if (/^[1-9]$/.test(e.key)) {
     const idx = parseInt(e.key, 10) - 1;
     const ord = orderedSessions();

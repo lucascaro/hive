@@ -272,6 +272,14 @@ func (a *App) OpenNewWindow() error {
 	return spawnNewGUI(a.launchDir)
 }
 
+// CloseWindow quits this GUI process. Because each window is its own
+// process (multi-window is implemented by re-exec), closing the last
+// window naturally ends Hive — no explicit "quit app" plumbing
+// needed.
+func (a *App) CloseWindow() {
+	wruntime.Quit(a.ctx)
+}
+
 // KillSession asks the daemon to terminate a session.
 func (a *App) KillSession(id string) error {
 	cs, err := a.requireControl()
