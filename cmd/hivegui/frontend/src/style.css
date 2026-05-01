@@ -302,9 +302,19 @@ html, body {
   padding: 6px;
   box-sizing: border-box;
   display: none;
+  flex-direction: column;
 }
 #terms.single .term-host.visible {
-  display: block;
+  display: flex;
+}
+/* Tile header is grid-only; hide its space in single mode. */
+#terms.single .term-host .tile-header {
+  display: none;
+}
+#terms.single .term-host .term-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
 }
 
 #terms.grid {
