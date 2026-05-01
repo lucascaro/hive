@@ -7,7 +7,7 @@ import {
   WriteStdin, ResizeSession,
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
-  LaunchDir, PickDirectory,
+  LaunchDir, PickDirectory, OpenNewWindow,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -62,7 +62,7 @@ class SessionTerm {
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
       if (state.activeId !== this.info.id) {
-        state.activeId = this.info.id;
+        setActive(this.info.id);
         renderSidebar();
         if (state.view === 'single') {
           // Switch terms in single mode; in grid mode every tile is
@@ -72,8 +72,11 @@ class SessionTerm {
           renderGrid();
           this.term.focus();
         }
+      } else {
+        // Reclick on the active tile — still clears any leftover
+        // attention indicator.
+        clearAttention(this.info.id);
       }
-      clearAttention(this.info.id);
     });
 
     // BEL on a non-focused session marks it as needing attention and
@@ -480,8 +483,7 @@ function switchTo(id) {
     state.terms.get(id)?.term.focus();
     return;
   }
-  if (id) state.attention.delete(id);
-  state.activeId = id;
+  setActive(id);
   let info = null;
   if (id) {
     info = state.sessions.find((s) => s.id === id);
@@ -637,6 +639,17 @@ function renderGrid() {
   });
 }
 
+// setActive centralizes "the focused session changed" so every code
+// path (click, arrow nav, project switch, switchTo) clears the bell
+// indicator the same way.
+function setActive(id) {
+  if (id) {
+    state.attention.delete(id);
+    state.terms.get(id)?.host.classList.remove('attention');
+  }
+  state.activeId = id;
+}
+
 // gridSpatialMove moves the active tile in the given direction.
 // Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
 // 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
@@ -646,7 +659,7 @@ function gridSpatialMove(dCol, dRow) {
   if (sessions.length === 0) return;
   const idx = sessions.findIndex((s) => s.id === state.activeId);
   if (idx < 0) {
-    state.activeId = sessions[0].id;
+    setActive(sessions[0].id);
     renderGrid();
     renderSidebar();
     return;
@@ -664,7 +677,7 @@ function gridSpatialMove(dCol, dRow) {
   while (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
     const target = cellMap[nr * cols + nc];
     if (target != null && target !== idx) {
-      state.activeId = sessions[target].id;
+      setActive(sessions[target].id);
       renderGrid();
       renderSidebar();
       state.terms.get(state.activeId)?.term.focus();
@@ -688,7 +701,7 @@ function shiftActiveProject(delta) {
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === next.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (sessions[0]) state.activeId = sessions[0].id;
+  if (sessions[0]) setActive(sessions[0].id);
   if (state.view === 'single') showSingle(state.activeId);
   else renderGrid();
   renderSidebar();
@@ -1045,7 +1058,13 @@ window.addEventListener('keydown', (e) => {
     else setView('single');
   } else if (e.key === 'n' || e.key === 'N') {
     swallow();
-    openLauncher();
+    if (e.shiftKey) {
+      OpenNewWindow().catch((err) => {
+        setStatus(`window failed: ${err}`, true);
+      });
+    } else {
+      openLauncher();
+    }
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
     if (state.activeId) KillSession(state.activeId);

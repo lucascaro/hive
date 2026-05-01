@@ -262,6 +262,16 @@ func (a *App) PickDirectory(defaultDir string) (string, error) {
 	})
 }
 
+// OpenNewWindow spawns a second Hive GUI process. Wails v2 does not
+// natively support multiple windows in a single process, so we
+// re-exec the GUI binary as a detached child. The two GUIs share
+// the same hived (single-instance daemon enforced by the socket
+// lock), so sessions are visible from either window — each window
+// can independently maximize a different session.
+func (a *App) OpenNewWindow() error {
+	return spawnNewGUI(a.launchDir)
+}
+
 // KillSession asks the daemon to terminate a session.
 func (a *App) KillSession(id string) error {
 	cs, err := a.requireControl()
