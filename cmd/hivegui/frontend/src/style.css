@@ -225,6 +225,24 @@ html, body {
   border-radius: 1px 0 0 1px;
 }
 
+/* Attention indicator — fired by xterm BEL on a non-focused session. */
+@keyframes hive-attention-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
+  50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 70%, transparent); }
+}
+.session-item.attention {
+  animation: hive-attention-pulse 1.2s ease-in-out infinite;
+  color: #fff;
+}
+.session-item.attention .name::before {
+  content: '●';
+  color: var(--session-color, #888);
+  font-size: 8px;
+  margin-right: 4px;
+  vertical-align: middle;
+  text-shadow: 0 0 6px var(--session-color, #888);
+}
+
 /* Title gradient — color stays visible even when selected. */
 .session-item .name {
   flex: 1;

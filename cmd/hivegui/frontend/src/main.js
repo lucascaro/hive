@@ -73,6 +73,13 @@ class SessionTerm {
           this.term.focus();
         }
       }
+      clearAttention(this.info.id);
+    });
+
+    // BEL on a non-focused session marks it as needing attention and
+    // fires a desktop notification. xterm.js v5 exposes onBell.
+    this.term.onBell(() => {
+      onSessionBell(this.info);
     });
   }
 
@@ -140,6 +147,7 @@ const state = {
   projects: [],            // ProjectInfo[] in display order
   sessions: [],            // SessionInfo[] in display order
   collapsed: new Set(),    // project ids that are collapsed
+  attention: new Set(),    // session ids that have unread bells
   terms: new Map(),        // session id -> SessionTerm
   activeId: null,
   view: 'single',          // 'single' | 'grid-project' | 'grid-all'
@@ -149,6 +157,66 @@ const state = {
 
 function clampFont(n) {
   return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, n));
+}
+
+// ---------- bell + attention ----------
+
+// onSessionBell is fired by SessionTerm whenever its xterm receives
+// BEL. Active + window-focused session: ignore. Otherwise: mark
+// attention, repaint sidebar, and fire a desktop notification.
+function onSessionBell(info) {
+  const isActive = info.id === state.activeId;
+  const windowFocused = document.hasFocus();
+  if (isActive && windowFocused) return;
+  if (state.attention.has(info.id)) {
+    // Already showing attention; refresh to re-trigger CSS animation.
+    state.attention.delete(info.id);
+  }
+  state.attention.add(info.id);
+  renderSidebar();
+  fireBellNotification(info);
+}
+
+function clearAttention(sessionId) {
+  if (state.attention.delete(sessionId)) renderSidebar();
+}
+
+// Whenever the window regains focus, clear the active session's
+// attention state — the user is presumably looking at it.
+window.addEventListener('focus', () => {
+  if (state.activeId) clearAttention(state.activeId);
+});
+
+let notificationPermission = 'default';
+function ensureNotificationPermission() {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().then((p) => { notificationPermission = p; });
+  } else {
+    notificationPermission = Notification.permission;
+  }
+}
+
+function fireBellNotification(info) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  const projectName = proj?.name ?? '';
+  try {
+    const n = new Notification(`Hive — ${info.name}`, {
+      body: projectName ? `${projectName} needs attention` : 'Session needs attention',
+      tag: info.id,
+      silent: false,
+    });
+    n.onclick = () => {
+      window.focus();
+      switchTo(info.id);
+      clearAttention(info.id);
+      n.close();
+    };
+  } catch {
+    // Some webview builds reject Notification creation outright.
+    // Visual indicator still works regardless.
+  }
 }
 
 function applyFontSize() {
@@ -302,6 +370,7 @@ function renderSession(s) {
   li.className = 'session-item';
   if (s.id === state.activeId) li.classList.add('selected');
   if (!s.alive) li.classList.add('dead');
+  if (state.attention.has(s.id)) li.classList.add('attention');
   li.style.setProperty('--session-color', s.color || '#888');
   li.dataset.sid = s.id;
 
@@ -406,6 +475,7 @@ function switchTo(id) {
     state.terms.get(id)?.term.focus();
     return;
   }
+  if (id) state.attention.delete(id);
   state.activeId = id;
   let info = null;
   if (id) {
@@ -960,6 +1030,13 @@ window.addEventListener('keydown', (e) => {
     } else {
       setView(state.view === 'grid-project' ? 'single' : 'grid-project');
     }
+  } else if (e.key === 'Enter') {
+    // ⌘Enter mirrors ⌘G: in a grid mode it maximizes the active
+    // tile back to single mode; in single mode it expands to a
+    // per-project grid for context.
+    swallow();
+    if (state.view === 'single') setView('grid-project');
+    else setView('single');
   } else if (e.key === 'n' || e.key === 'N') {
     swallow();
     openLauncher();
@@ -1044,6 +1121,7 @@ window.addEventListener('resize', () => {
 
 (async () => {
   setStatus('connecting…');
+  ensureNotificationPermission();
   try {
     await ConnectControl();
     setStatus('connected');
