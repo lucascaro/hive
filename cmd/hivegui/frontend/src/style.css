@@ -243,18 +243,92 @@ html, body {
 #terms {
   position: relative;
   background: #000;
+  display: flex;
 }
 
-.term-host {
+#terms.single .term-host {
   position: absolute;
   inset: 0;
   padding: 6px;
   box-sizing: border-box;
   display: none;
 }
-
-.term-host.visible {
+#terms.single .term-host.visible {
   display: block;
+}
+
+#terms.grid {
+  position: relative;
+  display: grid;
+  grid-auto-rows: minmax(220px, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 6px;
+  padding: 6px;
+  overflow: auto;
+  align-content: start;
+}
+
+#terms.grid .term-host {
+  position: relative;
+  inset: auto;
+  display: none;
+  border: 1px solid #1a1a1a;
+  border-radius: 4px;
+  background: #000;
+  overflow: hidden;
+  padding: 0;
+}
+#terms.grid .term-host.in-grid {
+  display: flex;
+  flex-direction: column;
+}
+#terms.grid .term-host.in-grid.active {
+  border-color: var(--session-color, #888);
+  box-shadow: 0 0 0 1px var(--session-color, #888);
+}
+#terms.grid .term-host .tile-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #0a0a0a;
+  border-bottom: 1px solid #1a1a1a;
+  font: 11px Menlo, monospace;
+  color: #aaa;
+  flex-shrink: 0;
+}
+#terms.grid .term-host .tile-color {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--session-color, #888);
+  flex-shrink: 0;
+}
+#terms.grid .term-host .tile-name { flex: 1; color: #ccc; }
+#terms.grid .term-host .tile-project {
+  color: #666;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+#terms.grid .term-host .term-body {
+  flex: 1;
+  position: relative;
+  padding: 4px 6px;
+  overflow: hidden;
+}
+#terms.grid .term-host .term-body .xterm,
+#terms.single .term-host .xterm,
+#terms.grid .term-host .xterm-screen {
+  height: 100%;
+}
+
+#terms.grid:empty::after,
+#terms.grid:not(:has(.in-grid))::after {
+  content: 'no sessions in this project';
+  color: #555;
+  font-size: 13px;
+  margin: auto;
 }
 
 #launcher {

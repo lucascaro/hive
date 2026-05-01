@@ -19,6 +19,24 @@ class SessionTerm {
     this.host = document.createElement('div');
     this.host.className = 'term-host';
     this.host.dataset.sid = info.id;
+    this.host.style.setProperty('--session-color', info.color || '#888');
+
+    // Tile header (only visible in grid mode via CSS).
+    this.header = document.createElement('div');
+    this.header.className = 'tile-header';
+    this.tileColor = document.createElement('span');
+    this.tileColor.className = 'tile-color';
+    this.tileName = document.createElement('span');
+    this.tileName.className = 'tile-name';
+    this.tileName.textContent = info.name;
+    this.tileProject = document.createElement('span');
+    this.tileProject.className = 'tile-project';
+    this.header.append(this.tileColor, this.tileName, this.tileProject);
+
+    this.body = document.createElement('div');
+    this.body.className = 'term-body';
+
+    this.host.append(this.header, this.body);
     document.getElementById('terms').appendChild(this.host);
 
     this.term = new Terminal({
@@ -30,7 +48,7 @@ class SessionTerm {
     });
     this.fit = new FitAddon();
     this.term.loadAddon(this.fit);
-    this.term.open(this.host);
+    this.term.open(this.body);
     this.attached = false;
     this.phase = 'replay';
 
@@ -40,19 +58,49 @@ class SessionTerm {
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       WriteStdin(this.info.id, btoa(bin));
     });
+
+    // Click anywhere on the tile (header or body) selects this session.
+    this.host.addEventListener('mousedown', () => {
+      if (state.activeId !== this.info.id) {
+        state.activeId = this.info.id;
+        renderSidebar();
+        if (state.view === 'single') {
+          // Switch terms in single mode; in grid mode every tile is
+          // already visible so there's nothing else to do.
+          showSingle(this.info.id);
+        } else {
+          renderGrid();
+          this.term.focus();
+        }
+      }
+    });
+  }
+
+  setInfo(info) {
+    this.info = info;
+    this.host.style.setProperty('--session-color', info.color || '#888');
+    this.tileName.textContent = info.name;
+  }
+
+  setProjectName(name) {
+    this.tileProject.textContent = name || '';
   }
 
   show() {
     this.host.classList.add('visible');
-    this.fit.fit();
-    if (this.attached) {
-      ResizeSession(this.info.id, this.term.cols, this.term.rows);
-    }
+    this.refit();
     this.term.focus();
   }
 
   hide() {
     this.host.classList.remove('visible');
+  }
+
+  refit() {
+    try { this.fit.fit(); } catch {}
+    if (this.attached) {
+      ResizeSession(this.info.id, this.term.cols, this.term.rows);
+    }
   }
 
   async ensureAttached() {
@@ -90,7 +138,12 @@ const state = {
   collapsed: new Set(),    // project ids that are collapsed
   terms: new Map(),        // session id -> SessionTerm
   activeId: null,
+  view: 'single',          // 'single' | 'grid-project' | 'grid-all'
+  gridProjectId: null,     // project shown in grid-project mode
 };
+
+const termsHost = document.getElementById('terms');
+termsHost.classList.add('single');
 
 const projectsUL = document.getElementById('projects');
 const status = document.getElementById('status');
@@ -276,22 +329,123 @@ function beginRenameProject(proj, nameEl) {
   input.addEventListener('blur', () => finish(true));
 }
 
-function switchTo(id) {
-  if (id === state.activeId) return;
-  if (state.activeId) state.terms.get(state.activeId)?.hide();
-  state.activeId = id;
-  let st = state.terms.get(id);
+function ensureTerm(info) {
+  let st = state.terms.get(info.id);
   if (!st) {
-    const info = state.sessions.find((s) => s.id === id);
-    if (!info) return;
     st = new SessionTerm(info);
-    state.terms.set(id, st);
+    state.terms.set(info.id, st);
+  } else {
+    st.setInfo(info);
   }
-  st.show();
-  st.ensureAttached();
+  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  st.setProjectName(proj?.name ?? '');
+  return st;
+}
+
+function showSingle(id) {
+  termsHost.classList.add('single');
+  termsHost.classList.remove('grid');
+  // Hide everything except the active tile.
+  for (const [sid, st] of state.terms) {
+    if (sid === id) st.show();
+    else st.hide();
+    st.host.classList.remove('in-grid', 'active');
+  }
+  const st = id ? state.terms.get(id) : null;
+  if (st) st.ensureAttached();
+}
+
+function switchTo(id) {
+  if (id === state.activeId && state.view === 'single') {
+    state.terms.get(id)?.term.focus();
+    return;
+  }
+  state.activeId = id;
+  if (id) {
+    const info = state.sessions.find((s) => s.id === id);
+    if (info) ensureTerm(info);
+  }
+  if (state.view === 'single') showSingle(id);
+  else renderGrid();
   renderSidebar();
   const info = state.sessions.find((s) => s.id === id);
   setStatus(info ? info.name : '');
+}
+
+// renderGrid lays out every tile that should be visible in the
+// current grid scope. Tiles for other sessions are hidden but kept
+// alive (so their xterm scrollback persists across mode switches).
+function renderGrid() {
+  termsHost.classList.remove('single');
+  termsHost.classList.add('grid');
+  const gridSessions = gridScopeSessions();
+  const gridIDs = new Set(gridSessions.map((s) => s.id));
+
+  // Ensure every grid session has a SessionTerm and is attached.
+  for (const info of gridSessions) {
+    const st = ensureTerm(info);
+    st.host.classList.add('in-grid');
+    st.host.classList.toggle('active', info.id === state.activeId);
+    st.ensureAttached();
+  }
+  // Hide / unmark tiles outside the scope.
+  for (const [sid, st] of state.terms) {
+    if (!gridIDs.has(sid)) {
+      st.host.classList.remove('in-grid', 'active');
+    }
+  }
+  // Refit each visible tile after the layout settles.
+  requestAnimationFrame(() => {
+    for (const info of gridSessions) {
+      state.terms.get(info.id)?.refit();
+    }
+  });
+}
+
+// gridScopeSessions returns the list of sessions that should be tiled
+// in the current grid view.
+function gridScopeSessions() {
+  if (state.view === 'grid-all') return orderedSessions();
+  if (state.view === 'grid-project') {
+    const pid = state.gridProjectId || activeProjectId();
+    return state.sessions
+      .filter((s) => (s.projectId ?? s.project_id) === pid)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+  return [];
+}
+
+function setView(view) {
+  state.view = view;
+  if (view === 'grid-project') {
+    state.gridProjectId = activeProjectId();
+  }
+  if (view === 'single') {
+    showSingle(state.activeId);
+  } else {
+    renderGrid();
+  }
+  renderSidebar();
+  const ord = orderedSessions();
+  const active = ord.find((s) => s.id === state.activeId);
+  setStatus(`${view}${active ? ' • ' + active.name : ''}`);
+}
+
+function shiftGridProject(delta) {
+  if (state.view !== 'grid-project') return;
+  const cur = state.gridProjectId || activeProjectId();
+  const i = state.projects.findIndex((p) => p.id === cur);
+  if (i < 0) return;
+  const next = state.projects[(i + delta + state.projects.length) % state.projects.length];
+  state.gridProjectId = next.id;
+  // Set active session to the first session of the new project.
+  const sessions = state.sessions
+    .filter((s) => (s.projectId ?? s.project_id) === next.id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  state.activeId = sessions[0]?.id ?? null;
+  renderGrid();
+  renderSidebar();
+  setStatus(`grid-project • ${next.name}`);
 }
 
 // ---------- daemon events ----------
@@ -568,6 +722,13 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
     swallow();
     openProjectEditor(null);
+  } else if (e.key === 'g' || e.key === 'G') {
+    swallow();
+    if (e.shiftKey) {
+      setView(state.view === 'grid-all' ? 'single' : 'grid-all');
+    } else {
+      setView(state.view === 'grid-project' ? 'single' : 'grid-project');
+    }
   } else if (e.key === 'n' || e.key === 'N') {
     swallow();
     openLauncher();
@@ -581,10 +742,18 @@ window.addEventListener('keydown', (e) => {
       swallow();
       switchTo(ord[idx].id);
     }
-  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+  } else if (e.key === 'ArrowLeft') {
+    swallow();
+    if (state.view === 'grid-project') shiftGridProject(-1);
+    else moveActiveSession(-1, e.shiftKey);
+  } else if (e.key === 'ArrowRight') {
+    swallow();
+    if (state.view === 'grid-project') shiftGridProject(+1);
+    else moveActiveSession(+1, e.shiftKey);
+  } else if (e.key === 'ArrowUp') {
     swallow();
     moveActiveSession(-1, e.shiftKey);
-  } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+  } else if (e.key === 'ArrowDown') {
     swallow();
     moveActiveSession(+1, e.shiftKey);
   }
@@ -621,10 +790,13 @@ let resizeTimer = null;
 window.addEventListener('resize', () => {
   if (resizeTimer) clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    const t = state.activeId && state.terms.get(state.activeId);
-    if (t) {
-      t.fit.fit();
-      ResizeSession(t.info.id, t.term.cols, t.term.rows);
+    if (state.view === 'single') {
+      const t = state.activeId && state.terms.get(state.activeId);
+      if (t) t.refit();
+      return;
+    }
+    for (const info of gridScopeSessions()) {
+      state.terms.get(info.id)?.refit();
     }
   }, 50);
 });
