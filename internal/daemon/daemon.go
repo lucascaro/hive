@@ -1,6 +1,11 @@
-// Package daemon is the hived process: a single-session PTY host that
+// Package daemon is the hived process: a multi-session PTY host that
 // accepts client connections over a Unix socket and speaks the wire
 // protocol from internal/wire.
+//
+// A connection chooses its mode in HELLO:
+//   - control: session-management (LIST/CREATE/KILL/UPDATE), no DATA
+//   - attach:  attach to an existing session by ID
+//   - create:  create a new session, then attach to it
 package daemon
 
 import (
@@ -13,31 +18,33 @@ import (
 	"os"
 	"sync"
 
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
 // Config configures a Daemon.
 type Config struct {
-	SocketPath string         // empty → SocketPath()
-	Session    session.Options // shell, initial size, env
+	SocketPath string // empty → SocketPath()
+	StateDir   string // empty → registry.StateDir()
+	// BootstrapSession, if non-zero, makes the daemon create a default
+	// session at startup so a fresh GUI has something to attach to.
+	BootstrapSession session.Options
 }
 
-// Daemon owns the listener and the single Phase-1 session.
+// Daemon owns the listener and the registry.
 type Daemon struct {
 	cfg  Config
 	sock string
-
-	ln  net.Listener
-	sess *session.Session
+	reg  *registry.Registry
+	ln   net.Listener
 
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
 }
 
-// New creates the daemon, binds the socket, and starts the session.
-// The caller must call Run to begin accepting clients, and Close when
-// done.
+// New binds the socket, opens the registry, and (if configured)
+// creates the bootstrap session. Call Run to start accepting clients.
 func New(cfg Config) (*Daemon, error) {
 	sock := cfg.SocketPath
 	if sock == "" {
@@ -46,9 +53,6 @@ func New(cfg Config) (*Daemon, error) {
 	if err := EnsureSocketDir(sock); err != nil {
 		return nil, fmt.Errorf("daemon: socket dir: %w", err)
 	}
-	// If a stale socket file exists, attempt a probe-and-replace: try
-	// to dial it; if that succeeds, another daemon is alive — refuse to
-	// start. If it fails, remove the stale file.
 	if _, err := os.Stat(sock); err == nil {
 		if c, derr := net.Dial("unix", sock); derr == nil {
 			_ = c.Close()
@@ -56,31 +60,42 @@ func New(cfg Config) (*Daemon, error) {
 		}
 		_ = os.Remove(sock)
 	}
-
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
 	}
 
-	sess, err := session.Start(cfg.Session)
+	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
 		_ = ln.Close()
-		_ = os.Remove(sock)
-		return nil, fmt.Errorf("daemon: session start: %w", err)
+		return nil, err
+	}
+
+	// Bootstrap session — only if no sessions persisted from a prior run.
+	if len(reg.List()) == 0 && bootstrapWanted(cfg.BootstrapSession) {
+		_, err := reg.Create(wire.CreateSpec{
+			Name:  "main",
+			Cols:  cfg.BootstrapSession.Cols,
+			Rows:  cfg.BootstrapSession.Rows,
+			Shell: cfg.BootstrapSession.Shell,
+		})
+		if err != nil {
+			log.Printf("hived: bootstrap session: %v", err)
+		}
 	}
 
 	return &Daemon{
 		cfg:     cfg,
 		sock:    sock,
+		reg:     reg,
 		ln:      ln,
-		sess:    sess,
 		clients: make(map[net.Conn]struct{}),
 	}, nil
 }
 
 // Run accepts clients until ctx is cancelled or the listener is closed.
 func (d *Daemon) Run(ctx context.Context) error {
-	log.Printf("hived: listening on %s, session %s", d.sock, d.sess.ID)
+	log.Printf("hived: listening on %s, %d session(s)", d.sock, len(d.reg.List()))
 	go func() {
 		<-ctx.Done()
 		_ = d.ln.Close()
@@ -101,11 +116,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 // SocketPath returns the path the daemon is bound to.
 func (d *Daemon) SocketPath() string { return d.sock }
 
-// SessionID returns the ID of the active session.
-func (d *Daemon) SessionID() string { return d.sess.ID }
+// Registry exposes the registry for tests; production code should
+// not bypass the wire protocol.
+func (d *Daemon) Registry() *registry.Registry { return d.reg }
 
-// Close terminates the session, closes the listener, and removes the
-// socket file.
+// Close terminates every session, closes listeners, removes the socket.
 func (d *Daemon) Close() error {
 	d.mu.Lock()
 	for c := range d.clients {
@@ -116,14 +131,14 @@ func (d *Daemon) Close() error {
 	if d.ln != nil {
 		_ = d.ln.Close()
 	}
-	if d.sess != nil {
-		_ = d.sess.Close()
+	if d.reg != nil {
+		_ = d.reg.Close()
 	}
 	_ = os.Remove(d.sock)
 	return nil
 }
 
-// serve runs the per-client lifecycle: handshake, replay, fan-in/out.
+// serve dispatches on the HELLO mode.
 func (d *Daemon) serve(conn net.Conn) {
 	d.mu.Lock()
 	if d.clients == nil {
@@ -133,7 +148,6 @@ func (d *Daemon) serve(conn net.Conn) {
 	}
 	d.clients[conn] = struct{}{}
 	d.mu.Unlock()
-
 	defer func() {
 		d.mu.Lock()
 		delete(d.clients, conn)
@@ -141,7 +155,6 @@ func (d *Daemon) serve(conn net.Conn) {
 		_ = conn.Close()
 	}()
 
-	// 1. Read HELLO.
 	var hello wire.Hello
 	ft, err := wire.ReadJSON(conn, &hello)
 	if err != nil {
@@ -153,7 +166,6 @@ func (d *Daemon) serve(conn net.Conn) {
 		return
 	}
 	if hello.Version != wire.PROTOCOL_VERSION {
-		// Soft mismatch: send error + close.
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    "protocol_version_mismatch",
 			Message: fmt.Sprintf("server speaks v%d; client speaks v%d", wire.PROTOCOL_VERSION, hello.Version),
@@ -161,31 +173,150 @@ func (d *Daemon) serve(conn net.Conn) {
 		return
 	}
 
-	// 2. Send WELCOME.
-	cols, rows := d.cfg.Session.Cols, d.cfg.Session.Rows
+	switch hello.Mode {
+	case wire.ModeControl:
+		d.serveControl(conn)
+	case wire.ModeAttach:
+		d.serveAttach(conn, hello.SessionID)
+	case wire.ModeCreate:
+		spec := wire.CreateSpec{}
+		if hello.Create != nil {
+			spec = *hello.Create
+		}
+		e, err := d.reg.Create(spec)
+		if err != nil {
+			_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
+			return
+		}
+		d.serveAttach(conn, e.ID)
+	default:
+		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			Code:    "unknown_mode",
+			Message: fmt.Sprintf("mode %q; want control|attach|create", hello.Mode),
+		})
+	}
+}
+
+// serveControl handles a session-management connection.
+func (d *Daemon) serveControl(conn net.Conn) {
+	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
+		Version: wire.PROTOCOL_VERSION,
+		Mode:    wire.ModeControl,
+	}); err != nil {
+		return
+	}
+	listener, unsub := d.reg.Subscribe()
+	defer unsub()
+
+	// Push initial snapshot and stream registry events to the client.
+	stop := make(chan struct{})
+	go func() {
+		// Initial snapshot:
+		_ = wire.WriteJSON(conn, wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+		for {
+			select {
+			case ev, ok := <-listener:
+				if !ok {
+					return
+				}
+				if err := wire.WriteJSON(conn, wire.FrameSessionEvent, ev); err != nil {
+					return
+				}
+			case <-stop:
+				return
+			}
+		}
+	}()
+	defer close(stop)
+
+	for {
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.Printf("hived: control read: %v", err)
+			}
+			return
+		}
+		switch ft {
+		case wire.FrameListSessions:
+			_ = wire.WriteJSON(conn, wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+		case wire.FrameCreateSession:
+			var spec wire.CreateSpec
+			if err := jsonUnmarshal(payload, &spec); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				continue
+			}
+			if _, err := d.reg.Create(spec); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
+			}
+		case wire.FrameKillSession:
+			var req wire.KillSessionReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				continue
+			}
+			if err := d.reg.Kill(req.SessionID); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "kill_failed", Message: err.Error()})
+			}
+		case wire.FrameUpdateSession:
+			var req wire.UpdateSessionReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				continue
+			}
+			if _, err := d.reg.Update(req); err != nil {
+				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "update_failed", Message: err.Error()})
+			}
+		default:
+			log.Printf("hived: unexpected control frame: %s", ft)
+		}
+	}
+}
+
+// serveAttach handles a session-attached connection.
+func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
+	entry := d.reg.Get(sessionID)
+	if entry == nil {
+		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			Code:    "no_such_session",
+			Message: sessionID,
+		})
+		return
+	}
+	if entry.Session() == nil {
+		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			Code:    "session_dead",
+			Message: "session has no live PTY (daemon-restart resume not implemented yet)",
+		})
+		return
+	}
+	sess := entry.Session()
+
+	// Resolve current PTY size for WELCOME. session has no getter; we
+	// reuse cfg defaults if the bootstrap matches, else 80x24 as a
+	// reasonable default — the client usually issues a Resize next.
+	cols := d.cfg.BootstrapSession.Cols
 	if cols == 0 {
 		cols = 80
 	}
+	rows := d.cfg.BootstrapSession.Rows
 	if rows == 0 {
 		rows = 24
 	}
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version:   wire.PROTOCOL_VERSION,
-		SessionID: d.sess.ID,
+		Mode:      wire.ModeAttach,
+		SessionID: entry.ID,
 		Cols:      cols,
 		Rows:      rows,
 	}); err != nil {
 		return
 	}
 
-	// 3. Atomic replay + subscribe so no live bytes are dropped.
 	sink := &frameSink{conn: conn}
-	replay, unsub := d.sess.SubscribeAtomic(sink)
+	replay, unsub := sess.SubscribeAtomic(sink)
 	defer unsub()
 
-	// Send the replay snapshot, chunked, then announce that replay is
-	// done. The client uses this signal to switch from "painting
-	// scrollback" to "live".
 	if err := writeChunked(conn, wire.FrameData, replay, 16<<10); err != nil {
 		return
 	}
@@ -195,34 +326,32 @@ func (d *Daemon) serve(conn net.Conn) {
 		return
 	}
 
-	// 4. Read loop: client → PTY (and resize control frames).
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.Printf("hived: client read: %v", err)
+				log.Printf("hived: attach read: %v", err)
 			}
 			return
 		}
 		switch ft {
 		case wire.FrameData:
-			if _, werr := d.sess.Write(payload); werr != nil {
+			if _, werr := sess.Write(payload); werr != nil {
 				return
 			}
 		case wire.FrameResize:
 			var rz wire.Resize
-			if jerr := jsonUnmarshal(payload, &rz); jerr != nil {
+			if err := jsonUnmarshal(payload, &rz); err != nil {
 				continue
 			}
-			_ = d.sess.Resize(rz.Cols, rz.Rows)
+			_ = sess.Resize(rz.Cols, rz.Rows)
 		default:
-			log.Printf("hived: unexpected frame from client: %s", ft)
+			log.Printf("hived: unexpected attach frame: %s", ft)
 		}
 	}
 }
 
-// frameSink wraps a net.Conn so it can be used as a session.Sink. Each
-// PTY chunk becomes one DATA frame.
+// frameSink wraps a net.Conn so it can be a session.Sink.
 type frameSink struct {
 	conn net.Conn
 	mu   sync.Mutex
@@ -237,8 +366,12 @@ func (f *frameSink) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (f *frameSink) Close() error {
-	return f.conn.Close()
+func (f *frameSink) Close() error { return f.conn.Close() }
+
+// bootstrapWanted reports whether opts has any non-default field set.
+// Can't use struct equality because session.Options has a slice field.
+func bootstrapWanted(opts session.Options) bool {
+	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || opts.ScrollBytes != 0 || len(opts.Env) > 0
 }
 
 func writeChunked(w io.Writer, t wire.FrameType, p []byte, chunk int) error {

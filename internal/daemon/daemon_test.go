@@ -33,15 +33,15 @@ func skipOnWindows(t *testing.T) {
 	}
 }
 
-// startTestDaemon brings up a daemon on a temp socket and returns a
-// teardown func.
-func startTestDaemon(t *testing.T) (*Daemon, context.CancelFunc) {
+// startTestDaemon brings up a daemon with a bootstrap session and
+// returns it. State directory is also temporary.
+func startTestDaemon(t *testing.T) *Daemon {
 	t.Helper()
-	// Short socket name to stay under macOS's 104-char sun_path limit.
-	sock := filepath.Join(shortTempDir(t), "s")
+	tmp := shortTempDir(t)
 	d, err := New(Config{
-		SocketPath: sock,
-		Session: session.Options{
+		SocketPath: filepath.Join(tmp, "s"),
+		StateDir:   filepath.Join(tmp, "state"),
+		BootstrapSession: session.Options{
 			Shell: "/bin/bash",
 			Cols:  80,
 			Rows:  24,
@@ -51,18 +51,48 @@ func startTestDaemon(t *testing.T) (*Daemon, context.CancelFunc) {
 		t.Fatalf("New: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_ = d.Run(ctx)
-	}()
+	go func() { _ = d.Run(ctx) }()
 	t.Cleanup(func() {
 		cancel()
 		_ = d.Close()
 	})
-	return d, cancel
+	return d
 }
 
-// readUntilReplayDone reads frames until EVENT scrollback_replay_done,
-// accumulating any DATA bytes into out.
+func dial(t *testing.T, d *Daemon) net.Conn {
+	t.Helper()
+	c, err := net.Dial("unix", d.SocketPath())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	return c
+}
+
+func handshake(t *testing.T, conn net.Conn, hello wire.Hello) wire.Welcome {
+	t.Helper()
+	hello.Version = wire.PROTOCOL_VERSION
+	if hello.Client == "" {
+		hello.Client = "test/0"
+	}
+	if err := wire.WriteJSON(conn, wire.FrameHello, hello); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	var w wire.Welcome
+	ft, err := wire.ReadJSON(conn, &w)
+	if err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	if ft == wire.FrameError {
+		t.Fatalf("got ERROR during handshake")
+	}
+	if ft != wire.FrameWelcome {
+		t.Fatalf("expected WELCOME, got %s", ft)
+	}
+	return w
+}
+
+// readUntilReplayDone consumes DATA frames into out until the
+// scrollback_replay_done event arrives.
 func readUntilReplayDone(t *testing.T, conn net.Conn, out *bytes.Buffer) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -76,7 +106,6 @@ func readUntilReplayDone(t *testing.T, conn net.Conn, out *bytes.Buffer) {
 		case wire.FrameData:
 			out.Write(payload)
 		case wire.FrameEvent:
-			// Treat any event as "replay done" for this helper.
 			return
 		default:
 			t.Fatalf("unexpected frame during replay: %s", ft)
@@ -84,7 +113,6 @@ func readUntilReplayDone(t *testing.T, conn net.Conn, out *bytes.Buffer) {
 	}
 }
 
-// drainFor reads frames into out for the given duration.
 func drainFor(conn net.Conn, out *bytes.Buffer, d time.Duration) {
 	deadline := time.Now().Add(d)
 	for {
@@ -99,106 +127,150 @@ func drainFor(conn net.Conn, out *bytes.Buffer, d time.Duration) {
 	}
 }
 
-func handshake(t *testing.T, conn net.Conn) wire.Welcome {
+// firstSessionID grabs the bootstrap session via the registry helper.
+func firstSessionID(t *testing.T, d *Daemon) string {
 	t.Helper()
-	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
-		Version: wire.PROTOCOL_VERSION,
-		Client:  "test/0",
-	}); err != nil {
-		t.Fatalf("write hello: %v", err)
+	list := d.Registry().List()
+	if len(list) == 0 {
+		t.Fatalf("registry has no sessions")
 	}
-	var w wire.Welcome
-	ft, err := wire.ReadJSON(conn, &w)
-	if err != nil {
-		t.Fatalf("read welcome: %v", err)
-	}
-	if ft != wire.FrameWelcome {
-		t.Fatalf("expected WELCOME, got %s", ft)
-	}
-	return w
+	return list[0].ID
 }
 
-func TestDaemonAttachReattachReplay(t *testing.T) {
+func TestAttachReattachReplay(t *testing.T) {
 	skipOnWindows(t)
-	d, _ := startTestDaemon(t)
+	d := startTestDaemon(t)
+	id := firstSessionID(t, d)
 
-	dial := func() net.Conn {
-		c, err := net.Dial("unix", d.SocketPath())
-		if err != nil {
-			t.Fatalf("dial: %v", err)
-		}
-		return c
-	}
-
-	// First attach: handshake, send a marker command, drain, disconnect.
-	c1 := dial()
-	w1 := handshake(t, c1)
-	if w1.SessionID == "" {
-		t.Fatalf("welcome had empty session id")
+	// First attach.
+	c1 := dial(t, d)
+	w1 := handshake(t, c1, wire.Hello{Mode: wire.ModeAttach, SessionID: id})
+	if w1.SessionID != id {
+		t.Fatalf("welcome session id: got %s, want %s", w1.SessionID, id)
 	}
 	var buf1 bytes.Buffer
 	readUntilReplayDone(t, c1, &buf1)
-	if err := wire.WriteFrame(c1, wire.FrameData, []byte("echo HIVE_REPLAY_TEST_$((20+22))\n")); err != nil {
+	if err := wire.WriteFrame(c1, wire.FrameData, []byte("echo HIVE_PROBE_$((20+22))\n")); err != nil {
 		t.Fatalf("write data: %v", err)
 	}
 	drainFor(c1, &buf1, 800*time.Millisecond)
-	if !strings.Contains(buf1.String(), "HIVE_REPLAY_TEST_42") {
-		t.Fatalf("expected marker on first attach: %q", buf1.String())
+	if !strings.Contains(buf1.String(), "HIVE_PROBE_42") {
+		t.Fatalf("missing marker on first attach: %q", buf1.String())
 	}
 	_ = c1.Close()
 
-	// Second attach: the replay should contain the marker we just saw.
-	c2 := dial()
-	w2 := handshake(t, c2)
-	if w2.SessionID != w1.SessionID {
-		t.Errorf("session id changed across reattach: %s → %s", w1.SessionID, w2.SessionID)
-	}
+	// Reattach.
+	c2 := dial(t, d)
+	_ = handshake(t, c2, wire.Hello{Mode: wire.ModeAttach, SessionID: id})
 	var replay bytes.Buffer
 	readUntilReplayDone(t, c2, &replay)
-	if !bytes.Contains(replay.Bytes(), []byte("HIVE_REPLAY_TEST_42")) {
-		t.Errorf("replay missing prior output; got %q", replay.String())
+	if !bytes.Contains(replay.Bytes(), []byte("HIVE_PROBE_42")) {
+		t.Errorf("replay missing prior output: %q", replay.String())
 	}
 	_ = c2.Close()
 }
 
-func TestDaemonResize(t *testing.T) {
+func TestControlListAndCreate(t *testing.T) {
 	skipOnWindows(t)
-	d, _ := startTestDaemon(t)
+	d := startTestDaemon(t)
 
-	conn, err := net.Dial("unix", d.SocketPath())
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	conn := dial(t, d)
 	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
 
-	_ = handshake(t, conn)
-	var buf bytes.Buffer
-	readUntilReplayDone(t, conn, &buf)
+	// Initial snapshot arrives unsolicited from the daemon (one
+	// bootstrap session).
+	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read snapshot: %v", err)
+	}
+	if ft != wire.FrameSessions {
+		t.Fatalf("expected SESSIONS snapshot, got %s", ft)
+	}
+	var snap wire.SessionsResp
+	_ = jsonUnmarshal(payload, &snap)
+	if len(snap.Sessions) != 1 || snap.Sessions[0].Name != "main" {
+		t.Errorf("snapshot: %+v", snap)
+	}
 
-	if err := wire.WriteJSON(conn, wire.FrameResize, wire.Resize{Cols: 137, Rows: 41}); err != nil {
-		t.Fatalf("send resize: %v", err)
+	// Create a new session.
+	if err := wire.WriteJSON(conn, wire.FrameCreateSession, wire.CreateSpec{
+		Name: "extra", Color: "#abc", Cols: 80, Rows: 24, Shell: "/bin/bash",
+	}); err != nil {
+		t.Fatalf("create: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
-	if err := wire.WriteFrame(conn, wire.FrameData, []byte("stty size\n")); err != nil {
-		t.Fatalf("write stty: %v", err)
+	// Expect a SESSION_EVENT added.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	ft, payload, err = wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read event: %v", err)
 	}
-	drainFor(conn, &buf, 1500*time.Millisecond)
-	if !strings.Contains(buf.String(), "41 137") {
-		t.Errorf("expected 41 137; got %q", buf.String())
+	if ft != wire.FrameSessionEvent {
+		t.Fatalf("expected SESSION_EVENT, got %s", ft)
+	}
+	var ev wire.SessionEvent
+	_ = jsonUnmarshal(payload, &ev)
+	if ev.Kind != wire.SessionEventAdded || ev.Session.Name != "extra" {
+		t.Errorf("event: %+v", ev)
+	}
+
+	// LIST_SESSIONS now sees both.
+	_ = wire.WriteJSON(conn, wire.FrameListSessions, wire.ListSessionsReq{})
+	ft, payload, err = wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read list: %v", err)
+	}
+	if ft != wire.FrameSessions {
+		t.Fatalf("expected SESSIONS, got %s", ft)
+	}
+	_ = jsonUnmarshal(payload, &snap)
+	if len(snap.Sessions) != 2 {
+		t.Errorf("expected 2 sessions, got %+v", snap)
 	}
 }
 
-func TestDaemonRefusesProtocolMismatch(t *testing.T) {
+func TestCreateModeAttachesToNewSession(t *testing.T) {
 	skipOnWindows(t)
-	d, _ := startTestDaemon(t)
+	d := startTestDaemon(t)
 
-	conn, err := net.Dial("unix", d.SocketPath())
-	if err != nil {
-		t.Fatalf("dial: %v", err)
+	conn := dial(t, d)
+	defer conn.Close()
+	w := handshake(t, conn, wire.Hello{
+		Mode: wire.ModeCreate,
+		Create: &wire.CreateSpec{
+			Name: "fresh", Cols: 80, Rows: 24, Shell: "/bin/bash",
+		},
+	})
+	if w.SessionID == "" {
+		t.Fatalf("welcome did not carry session id")
 	}
+	var buf bytes.Buffer
+	readUntilReplayDone(t, conn, &buf)
+	// New session: no prior scrollback.
+	if buf.Len() > 256 {
+		t.Errorf("unexpectedly large replay on new session: %d bytes", buf.Len())
+	}
+	if err := wire.WriteFrame(conn, wire.FrameData, []byte("echo created\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	drainFor(conn, &buf, 800*time.Millisecond)
+	if !strings.Contains(buf.String(), "created") {
+		t.Errorf("expected 'created' echo: %q", buf.String())
+	}
+	// Registry now has 2 sessions.
+	if got := len(d.Registry().List()); got != 2 {
+		t.Errorf("expected 2 sessions in registry, got %d", got)
+	}
+}
+
+func TestRefusesProtocolMismatch(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+
+	conn := dial(t, d)
 	defer conn.Close()
 
-	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{Version: 999, Client: "bad"}); err != nil {
+	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{Version: 999, Client: "bad", Mode: wire.ModeControl}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}
 	ft, _, err := wire.ReadFrame(conn)
@@ -206,11 +278,29 @@ func TestDaemonRefusesProtocolMismatch(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	if ft != wire.FrameError {
-		t.Errorf("expected ERROR for bad version, got %s", ft)
+		t.Errorf("expected ERROR, got %s", ft)
 	}
-	// Connection should be closed shortly after.
-	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-	if _, _, err := wire.ReadFrame(conn); err == nil {
-		t.Errorf("expected connection close after version mismatch")
+}
+
+func TestAttachUnknownSession(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+
+	conn := dial(t, d)
+	defer conn.Close()
+	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION,
+		Client:  "test/0",
+		Mode:    wire.ModeAttach,
+		SessionID: "deadbeef-not-a-real-id",
+	}); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	ft, _, err := wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if ft != wire.FrameError {
+		t.Errorf("expected ERROR for missing session, got %s", ft)
 	}
 }

@@ -2,102 +2,297 @@ import '@xterm/xterm/css/xterm.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
-import { Connect, WriteStdin, Resize } from '../wailsjs/go/main/App';
+import {
+  ConnectControl, OpenSession, CloseAttach,
+  WriteStdin, ResizeSession,
+  CreateSession, KillSession, UpdateSession,
+} from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
-const term = new Terminal({
-  fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
-  fontSize: 14,
-  cursorBlink: true,
-  scrollback: 5000,
-  theme: { background: '#000000' },
-});
-const fit = new FitAddon();
-term.loadAddon(fit);
-term.open(document.getElementById('term'));
-fit.fit();
+// ---------- session terminal ----------
 
+class SessionTerm {
+  constructor(info) {
+    this.info = info; // { id, name, color, order, alive }
+    this.host = document.createElement('div');
+    this.host.className = 'term-host';
+    this.host.dataset.sid = info.id;
+    document.getElementById('terms').appendChild(this.host);
+
+    this.term = new Terminal({
+      fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
+      fontSize: 14,
+      cursorBlink: true,
+      scrollback: 5000,
+      theme: { background: '#000000' },
+    });
+    this.fit = new FitAddon();
+    this.term.loadAddon(this.fit);
+    this.term.open(this.host);
+    this.attached = false;
+    this.phase = 'replay';
+
+    this.term.onData((data) => {
+      const bytes = new TextEncoder().encode(data);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      WriteStdin(this.info.id, btoa(bin));
+    });
+  }
+
+  show() {
+    this.host.classList.add('visible');
+    this.fit.fit();
+    if (this.attached) {
+      ResizeSession(this.info.id, this.term.cols, this.term.rows);
+    }
+    this.term.focus();
+  }
+
+  hide() {
+    this.host.classList.remove('visible');
+  }
+
+  async ensureAttached() {
+    if (this.attached) return;
+    this.fit.fit();
+    try {
+      await OpenSession(this.info.id, this.term.cols, this.term.rows);
+      this.attached = true;
+    } catch (err) {
+      this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
+    }
+  }
+
+  writeData(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    this.term.write(decoder.decode(bytes, { stream: true }));
+  }
+
+  destroy() {
+    CloseAttach(this.info.id).catch(() => {});
+    this.term.dispose();
+    this.host.remove();
+  }
+}
+
+const decoder = new TextDecoder('utf-8', { fatal: false });
+
+// ---------- sidebar / app state ----------
+
+const state = {
+  sessions: [],          // SessionInfo[] in display order
+  terms: new Map(),      // id -> SessionTerm
+  activeId: null,
+};
+
+const sidebarUL = document.getElementById('sessions');
 const status = document.getElementById('status');
+
 function setStatus(text, isError = false) {
   status.textContent = text;
   status.classList.toggle('error', isError);
 }
 
-const decoder = new TextDecoder('utf-8', { fatal: false });
-const decodeB64 = (b64) => {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return decoder.decode(bytes, { stream: true });
-};
+function renderSidebar() {
+  sidebarUL.innerHTML = '';
+  state.sessions.sort((a, b) => a.order - b.order);
+  for (const s of state.sessions) {
+    const li = document.createElement('li');
+    li.className = 'session-item';
+    if (s.id === state.activeId) li.classList.add('selected');
+    if (!s.alive) li.classList.add('dead');
+    li.style.setProperty('--session-color', s.color || '#888');
+    li.dataset.sid = s.id;
 
-// During replay we paint scrollback into xterm; once replay-done arrives,
-// we treat further DATA as live. This phase distinction matters for
-// future features (e.g. hiding cursor flicker during replay) but is
-// transparent today.
-let phase = 'replay';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
 
-EventsOn('pty:data', (b64) => {
-  term.write(decodeB64(b64));
-});
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = s.name;
 
-EventsOn('pty:event', (jsonStr) => {
-  try {
-    const ev = JSON.parse(jsonStr);
-    if (ev.kind === 'scrollback_replay_done') {
-      phase = 'live';
-      setStatus(`session ${currentSessionId?.slice(0, 8) ?? ''} • live`);
-    } else if (ev.kind === 'session_exit') {
-      setStatus('session exited', true);
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = s.color || '#888888';
+    colorInput.addEventListener('input', (e) => {
+      UpdateSession(s.id, '', e.target.value, -1);
+    });
+    swatch.appendChild(colorInput);
+
+    li.append(dot, name, swatch);
+    li.addEventListener('click', (e) => {
+      if (e.target === colorInput || e.target === swatch) return;
+      switchTo(s.id);
+    });
+    li.addEventListener('dblclick', () => beginRename(s, li, name));
+    sidebarUL.appendChild(li);
+  }
+}
+
+function beginRename(sess, li, nameEl) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'name-input';
+  input.value = sess.name;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const finish = (commit) => {
+    if (commit && input.value.trim() && input.value !== sess.name) {
+      UpdateSession(sess.id, input.value.trim(), '', -1);
+    } else {
+      renderSidebar(); // restore
     }
-  } catch (e) { /* ignore */ }
-});
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
 
-EventsOn('pty:disconnect', () => {
-  setStatus('disconnected', true);
-});
+function switchTo(id) {
+  if (id === state.activeId) return;
+  if (state.activeId) {
+    state.terms.get(state.activeId)?.hide();
+  }
+  state.activeId = id;
+  let st = state.terms.get(id);
+  if (!st) {
+    const info = state.sessions.find((s) => s.id === id);
+    if (!info) return;
+    st = new SessionTerm(info);
+    state.terms.set(id, st);
+  }
+  st.show();
+  st.ensureAttached();
+  renderSidebar();
+  const info = state.sessions.find((s) => s.id === id);
+  setStatus(info ? `${info.name}` : '');
+}
 
-EventsOn('pty:error', (jsonStr) => {
-  try {
-    const e = JSON.parse(jsonStr);
-    setStatus(`error: ${e.code}`, true);
-    term.write(`\r\n\x1b[31m[hived: ${e.code}: ${e.message}]\x1b[0m\r\n`);
-  } catch {
-    setStatus('error', true);
+// ---------- daemon events ----------
+
+EventsOn('session:list', (jsonStr) => {
+  const { sessions } = JSON.parse(jsonStr);
+  state.sessions = sessions || [];
+  renderSidebar();
+  // Auto-attach to the first session on first load.
+  if (!state.activeId && state.sessions.length > 0) {
+    switchTo(state.sessions[0].id);
   }
 });
 
-// Keystrokes -> daemon (UTF-8 -> base64 -> WriteStdin).
-term.onData((data) => {
-  const bytes = new TextEncoder().encode(data);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  WriteStdin(btoa(bin));
+EventsOn('session:event', (jsonStr) => {
+  const ev = JSON.parse(jsonStr);
+  const i = state.sessions.findIndex((s) => s.id === ev.session.id);
+  if (ev.kind === 'added') {
+    if (i < 0) state.sessions.push(ev.session);
+  } else if (ev.kind === 'removed') {
+    if (i >= 0) state.sessions.splice(i, 1);
+    const t = state.terms.get(ev.session.id);
+    if (t) {
+      t.destroy();
+      state.terms.delete(ev.session.id);
+    }
+    if (state.activeId === ev.session.id) {
+      state.activeId = null;
+      const next = state.sessions[0];
+      if (next) switchTo(next.id);
+    }
+  } else if (ev.kind === 'updated') {
+    if (i >= 0) state.sessions[i] = ev.session;
+  }
+  renderSidebar();
+  // If the new session has no term yet and no session is active,
+  // attach to it.
+  if (ev.kind === 'added' && !state.activeId) {
+    switchTo(ev.session.id);
+  }
 });
+
+EventsOn('pty:data', (id, b64) => {
+  state.terms.get(id)?.writeData(b64);
+});
+
+EventsOn('pty:event', (id, jsonStr) => {
+  try {
+    const ev = JSON.parse(jsonStr);
+    const st = state.terms.get(id);
+    if (st && ev.kind === 'scrollback_replay_done') st.phase = 'live';
+  } catch { /* ignore */ }
+});
+
+EventsOn('pty:disconnect', (id) => {
+  const st = state.terms.get(id);
+  if (st) st.attached = false;
+});
+
+EventsOn('pty:error', (id, jsonStr) => {
+  const st = state.terms.get(id);
+  if (st) {
+    try {
+      const e = JSON.parse(jsonStr);
+      st.term.write(`\r\n\x1b[31m[hived: ${e.code}: ${e.message}]\x1b[0m\r\n`);
+    } catch {}
+  }
+});
+
+EventsOn('control:disconnect', () => {
+  setStatus('control disconnected', true);
+});
+
+// ---------- keyboard ----------
+
+window.addEventListener('keydown', (e) => {
+  const meta = e.metaKey || e.ctrlKey;
+  if (!meta) return;
+  if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault();
+    CreateSession('', '', 0, 0);
+  } else if (e.key === 'w' || e.key === 'W') {
+    e.preventDefault();
+    if (state.activeId) KillSession(state.activeId);
+  } else if (/^[1-9]$/.test(e.key)) {
+    const idx = parseInt(e.key, 10) - 1;
+    if (idx < state.sessions.length) {
+      e.preventDefault();
+      switchTo(state.sessions[idx].id);
+    }
+  }
+});
+
+// ---------- resize ----------
 
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   if (resizeTimer) clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    fit.fit();
-    Resize(term.cols, term.rows);
+    const t = state.activeId && state.terms.get(state.activeId);
+    if (t) {
+      t.fit.fit();
+      ResizeSession(t.info.id, t.term.cols, t.term.rows);
+    }
   }, 50);
 });
 
-term.focus();
+// ---------- bootstrap ----------
 
-let currentSessionId = null;
+document.getElementById('new-btn').addEventListener('click', () => {
+  CreateSession('', '', 0, 0);
+});
+
 (async () => {
+  setStatus('connecting…');
   try {
-    const info = await Connect(term.cols, term.rows);
-    currentSessionId = info.sessionId;
-    setStatus(`session ${info.sessionId.slice(0, 8)} • replay`);
-    // If the daemon's PTY size differs from ours, push our size.
-    if (info.cols !== term.cols || info.rows !== term.rows) {
-      Resize(term.cols, term.rows);
-    }
+    await ConnectControl();
+    setStatus('connected');
   } catch (err) {
     setStatus(`connect failed: ${err}`, true);
-    term.write(`\r\n\x1b[31m[connect failed: ${err}]\x1b[0m\r\n`);
   }
 })();

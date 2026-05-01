@@ -23,7 +23,11 @@ import (
 // implements. Bumped only when a breaking change is made; new frame
 // types (added monotonically) and new JSON fields (ignored if unknown)
 // do not require a version bump.
-const PROTOCOL_VERSION = 0
+//
+// v1 introduces connection modes (control vs attach vs create) and
+// session-management frames (LIST_SESSIONS, CREATE_SESSION, etc.).
+// v0 clients are rejected with FrameError.
+const PROTOCOL_VERSION = 1
 
 // MaxPayload caps a single frame at 1 MiB. Anything larger is treated
 // as a fatal protocol error.
@@ -39,6 +43,14 @@ const (
 	FrameResize  FrameType = 0x04 // C → S, JSON
 	FrameEvent   FrameType = 0x05 // S → C, JSON
 	FrameError   FrameType = 0x06 // S → C, JSON
+
+	// v1: control-mode frames.
+	FrameListSessions  FrameType = 0x07 // C → S, JSON, control
+	FrameSessions      FrameType = 0x08 // S → C, JSON, control
+	FrameCreateSession FrameType = 0x09 // C → S, JSON, control
+	FrameKillSession   FrameType = 0x0a // C → S, JSON, control
+	FrameUpdateSession FrameType = 0x0b // C → S, JSON, control
+	FrameSessionEvent  FrameType = 0x0c // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -55,6 +67,18 @@ func (t FrameType) String() string {
 		return "EVENT"
 	case FrameError:
 		return "ERROR"
+	case FrameListSessions:
+		return "LIST_SESSIONS"
+	case FrameSessions:
+		return "SESSIONS"
+	case FrameCreateSession:
+		return "CREATE_SESSION"
+	case FrameKillSession:
+		return "KILL_SESSION"
+	case FrameUpdateSession:
+		return "UPDATE_SESSION"
+	case FrameSessionEvent:
+		return "SESSION_EVENT"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

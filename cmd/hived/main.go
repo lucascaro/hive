@@ -27,7 +27,7 @@ func main() {
 
 	d, err := daemon.New(daemon.Config{
 		SocketPath: *sock,
-		Session: session.Options{
+		BootstrapSession: session.Options{
 			Shell: *shell,
 			Cols:  *cols,
 			Rows:  *rows,

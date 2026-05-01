@@ -4,20 +4,23 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Hive</title>
-    <style>
-        html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
-        #term { width: 100vw; height: 100vh; padding: 6px; box-sizing: border-box; }
-        #status {
-            position: fixed; right: 10px; bottom: 6px;
-            font: 11px Menlo, monospace; color: #888; pointer-events: none;
-            background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px;
-        }
-        #status.error { color: #ff7a7a; }
-    </style>
+    <link rel="stylesheet" href="./src/style.css"/>
 </head>
 <body>
-<div id="term"></div>
-<div id="status">connecting…</div>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <span class="brand">Hive</span>
+      <button id="new-btn" title="New session (⌘N)">+</button>
+    </header>
+    <ul id="sessions"></ul>
+    <footer class="hints">
+      ⌘1–9 switch · ⌘N new · ⌘W close · F2 rename
+    </footer>
+  </aside>
+  <main id="terms"></main>
+  <div id="status">connecting…</div>
+</div>
 <script src="./src/main.js" type="module"></script>
 </body>
 </html>
