@@ -79,6 +79,9 @@ func New(cfg Config) (*Daemon, error) {
 		log.Printf("hived: ensure default project: %v", err)
 	}
 	reg.MigrateOrphanSessions()
+	// Reclaim worktree directories whose owning session no longer
+	// exists (e.g. previous daemon was SIGKILL'd mid-Kill).
+	reg.ReclaimOrphanWorktrees()
 
 	// Revive any persisted sessions that have no live PTY (i.e. every
 	// entry loaded from disk on this run). Metadata is preserved; the
@@ -299,8 +302,16 @@ func (d *Daemon) serveControl(conn net.Conn) {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if err := d.reg.Kill(req.SessionID); err != nil {
-				sendError("kill_failed", err.Error())
+			if err := d.reg.Kill(req.SessionID, req.Force); err != nil {
+				if errors.Is(err, registry.ErrWorktreeDirty) {
+					_ = writeJSON(wire.FrameError, wire.Error{
+						Code:      wire.ErrCodeWorktreeDirty,
+						Message:   "worktree has uncommitted changes",
+						SessionID: req.SessionID,
+					})
+				} else {
+					sendError("kill_failed", err.Error())
+				}
 			}
 		case wire.FrameUpdateSession:
 			var req wire.UpdateSessionReq

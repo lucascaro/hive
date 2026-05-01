@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,22 +19,31 @@ import (
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/internal/worktree"
 )
 
 // ErrNotFound is returned when a session ID isn't known.
 var ErrNotFound = errors.New("registry: session not found")
 
+// ErrWorktreeDirty is returned by Kill when the session is backed by
+// a worktree with uncommitted changes and force=false. Callers (the
+// daemon) translate this into a wire.FrameError with code
+// wire.ErrCodeWorktreeDirty so the GUI can confirm with the user.
+var ErrWorktreeDirty = errors.New("registry: worktree has uncommitted changes")
+
 // Entry pairs persisted metadata with the live session. The session is
 // nil for entries loaded from disk that haven't been started this run.
 type Entry struct {
-	ID        string
-	Name      string
-	Color     string
-	Order     int
-	Created   time.Time
-	Agent     string           // canonical agent ID; "" = generic shell
-	ProjectID string           // owning project; "" = default project
-	sess      *session.Session // nil ⇔ not running this lifetime
+	ID             string
+	Name           string
+	Color          string
+	Order          int
+	Created        time.Time
+	Agent          string // canonical agent ID; "" = generic shell
+	ProjectID      string // owning project; "" = default project
+	WorktreePath   string // absolute path of the git worktree backing this session; "" = none
+	WorktreeBranch string // branch backing the worktree (informational; e.g. for sidebar tooltip)
+	sess           *session.Session // nil ⇔ not running this lifetime
 }
 
 // Project is the registry-side representation of a project.
@@ -67,14 +77,16 @@ func (e *Entry) Session() *session.Session { return e.sess }
 // Info renders the entry as a wire.SessionInfo for the protocol.
 func (e *Entry) Info() wire.SessionInfo {
 	return wire.SessionInfo{
-		ID:        e.ID,
-		Name:      e.Name,
-		Color:     e.Color,
-		Order:     e.Order,
-		Created:   e.Created.UTC().Format(time.RFC3339),
-		Alive:     e.Alive(),
-		Agent:     e.Agent,
-		ProjectID: e.ProjectID,
+		ID:             e.ID,
+		Name:           e.Name,
+		Color:          e.Color,
+		Order:          e.Order,
+		Created:        e.Created.UTC().Format(time.RFC3339),
+		Alive:          e.Alive(),
+		Agent:          e.Agent,
+		ProjectID:      e.ProjectID,
+		WorktreePath:   e.WorktreePath,
+		WorktreeBranch: e.WorktreeBranch,
 	}
 }
 
@@ -186,7 +198,9 @@ func (r *Registry) load() error {
 		r.entries[meta.ID] = &Entry{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color,
 			Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
-			ProjectID: meta.ProjectID,
+			ProjectID:      meta.ProjectID,
+			WorktreePath:   meta.WorktreePath,
+			WorktreeBranch: meta.WorktreeBranch,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -205,7 +219,9 @@ func (r *Registry) load() error {
 			r.entries[meta.ID] = &Entry{
 				ID: meta.ID, Name: meta.Name, Color: meta.Color,
 				Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
-				ProjectID: meta.ProjectID,
+				ProjectID:      meta.ProjectID,
+				WorktreePath:   meta.WorktreePath,
+				WorktreeBranch: meta.WorktreeBranch,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -297,6 +313,32 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		}
 		r.mu.Unlock()
 	}
+
+	// Worktree opt-in: if requested AND the resolved cwd is a git
+	// repo, create a worktree under <gitRoot>/.worktrees/ and run
+	// the session inside it. Failure here is non-fatal — the session
+	// falls back to the plain project cwd. Aborting create on
+	// worktree failure would block users on marginal repos (shallow
+	// clones, sandbox restrictions, slow filesystems).
+	var (
+		wtPath, wtBranch string
+	)
+	if spec.UseWorktree && cwd != "" && worktree.IsGitRepo(cwd) {
+		if root, err := worktree.Root(cwd); err == nil {
+			b, p, rerr := worktree.ResolveBranchAndPath(root, spec.Branch)
+			if rerr != nil {
+				log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
+			} else if cerr := worktree.CreateWorktree(root, b, p); cerr != nil {
+				log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
+			} else {
+				wtPath, wtBranch = p, b
+				cwd = p
+				worktree.EnsureGitignore(root)
+				log.Printf("registry: created worktree %s on branch %s", p, b)
+			}
+		}
+	}
+
 	sess, err := session.Start(session.Options{
 		Shell: spec.Shell,
 		Cmd:   cmd,
@@ -317,6 +359,11 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	// registry id so the registry id is the public identity.
 	sess.ID = id
 	e.sess = sess
+	if wtPath != "" {
+		e.WorktreePath = wtPath
+		e.WorktreeBranch = wtBranch
+		_ = r.persistEntryLocked(e)
+	}
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
 	return e, nil
@@ -346,6 +393,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		return nil
 	}
 	agentID := e.Agent
+	wtPath := e.WorktreePath
 	r.mu.Unlock()
 
 	if agentID != "" && len(opts.Cmd) == 0 {
@@ -353,6 +401,27 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			opts.Cmd = def.Cmd
 		}
 	}
+
+	// If the entry is supposed to live in a worktree, prefer the
+	// worktree path as cwd. If the dir vanished out-from-under us
+	// (e.g. user removed it manually), self-heal: clear the worktree
+	// fields and broadcast an updated event so the GUI drops the
+	// worktree badge. The session falls back to the project cwd.
+	if wtPath != "" {
+		if _, err := os.Stat(wtPath); err == nil {
+			opts.Cwd = wtPath
+		} else {
+			log.Printf("registry: revive %s: worktree %s missing; clearing", id, wtPath)
+			r.mu.Lock()
+			e.WorktreePath = ""
+			e.WorktreeBranch = ""
+			_ = r.persistEntryLocked(e)
+			info := e.Info()
+			r.mu.Unlock()
+			r.broadcast(wire.SessionEventUpdated, info)
+		}
+	}
+
 	sess, err := session.Start(opts)
 	if err != nil {
 		return err
@@ -399,10 +468,44 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 }
 
 // Kill terminates the session and removes its entry from the registry.
-// The on-disk metadata directory is also removed.
-func (r *Registry) Kill(id string) error {
+// The on-disk metadata directory is also removed. If the session is
+// backed by a git worktree, the worktree is also cleaned up
+// (`git worktree remove --force`, `os.RemoveAll`, `git worktree prune`).
+//
+// When force is false and the worktree has uncommitted changes,
+// returns ErrWorktreeDirty without modifying any state. Callers can
+// retry with force=true after confirming with the user.
+func (r *Registry) Kill(id string, force bool) error {
 	r.mu.Lock()
 	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+
+	// Capture worktree state and resolved repo root BEFORE we remove
+	// the entry from the map. Kill happens outside the lock; we'd
+	// lose the data otherwise.
+	wtPath, wtBranch := e.WorktreePath, e.WorktreeBranch
+	var projectCwd string
+	if p, ok := r.projects[e.ProjectID]; ok {
+		projectCwd = p.Cwd
+	}
+	r.mu.Unlock()
+
+	// Pre-flight safety check on the worktree. Returning here leaves
+	// everything intact so the user can retry with force=true.
+	if wtPath != "" && !force {
+		dirty, _ := worktree.HasUncommitted(wtPath)
+		if dirty {
+			return ErrWorktreeDirty
+		}
+	}
+
+	r.mu.Lock()
+	// Re-resolve the entry — the world may have changed while we were
+	// running the dirty check.
+	e, ok = r.entries[id]
 	if !ok {
 		r.mu.Unlock()
 		return ErrNotFound
@@ -419,8 +522,30 @@ func (r *Registry) Kill(id string) error {
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
 	r.mu.Unlock()
 
+	// Order: PTY first (releases any FD/cwd handles into the
+	// worktree), worktree second (now safe to git worktree remove),
+	// metadata last (so a crash mid-cleanup leaves a recoverable
+	// orphan that the next daemon-startup scan reclaims).
 	if e.sess != nil {
 		_ = e.sess.Close()
+	}
+	if wtPath != "" {
+		root, err := worktree.Root(projectCwd)
+		switch {
+		case err != nil:
+			log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
+			_ = os.RemoveAll(wtPath)
+		case !strings.HasPrefix(wtPath, root):
+			// The worktree path lives outside the current project
+			// repo (project cwd was changed). Don't run `git worktree
+			// remove` against an unrelated repo; just rm -rf.
+			log.Printf("registry: kill %s: worktree %s lives outside current project repo %s; using RemoveAll only", id, wtPath, root)
+			_ = os.RemoveAll(wtPath)
+		default:
+			if err := worktree.Cleanup(root, wtPath); err != nil {
+				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			}
+		}
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
@@ -542,7 +667,9 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 	return writeJSON(path, MetaFile{
 		ID: e.ID, Name: e.Name, Color: e.Color,
 		Order: e.Order, Created: e.Created, Agent: e.Agent,
-		ProjectID: e.ProjectID,
+		ProjectID:      e.ProjectID,
+		WorktreePath:   e.WorktreePath,
+		WorktreeBranch: e.WorktreeBranch,
 	})
 }
 

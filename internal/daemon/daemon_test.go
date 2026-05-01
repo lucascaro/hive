@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -330,6 +331,162 @@ func TestControlProjectsRoundTrip(t *testing.T) {
 	_ = jsonUnmarshal(payload, &resp)
 	if len(resp.Projects) != 2 {
 		t.Errorf("expected 2 projects after create, got %d (%+v)", len(resp.Projects), resp)
+	}
+}
+
+// TestKill_DirtyWorktree_FrameError verifies the daemon translates
+// registry.ErrWorktreeDirty into a wire.FrameError with the
+// well-known "worktree_dirty" code so the GUI can confirm with the
+// user. Force=true on a retry succeeds.
+func TestKill_DirtyWorktree_FrameError(t *testing.T) {
+	skipOnWindows(t)
+	if _, err := os.Stat("/usr/bin/git"); err != nil {
+		// We don't *need* /usr/bin/git specifically; PATH lookup is fine.
+	}
+	// Bring the daemon up against a fresh temp git repo as the
+	// project cwd so created sessions get worktrees.
+	tmp := shortTempDir(t)
+	repo := filepath.Join(tmp, "repo")
+	_ = os.MkdirAll(repo, 0o755)
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	d, err := New(Config{
+		SocketPath: filepath.Join(tmp, "s"),
+		StateDir:   filepath.Join(tmp, "state"),
+		BootstrapSession: session.Options{
+			Shell: "/bin/bash", Cols: 80, Rows: 24,
+			Cwd: repo,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = d.Run(ctx) }()
+	t.Cleanup(func() { cancel(); _ = d.Close() })
+
+	// Open control conn; create a worktree-backed session.
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+	// Drain initial PROJECTS + SESSIONS snapshots (and any added events).
+	deadline := time.Now().Add(2 * time.Second)
+	var sessionID string
+	for time.Now().Before(deadline) && sessionID == "" {
+		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			break
+		}
+		if ft == wire.FrameSessions {
+			var snap wire.SessionsResp
+			_ = jsonUnmarshal(payload, &snap)
+			for _, s := range snap.Sessions {
+				if s.WorktreePath != "" {
+					sessionID = s.ID
+				}
+			}
+		}
+	}
+	// Bootstrap session may not have UseWorktree=true. Issue a
+	// CREATE_SESSION for one that does.
+	if err := wire.WriteJSON(conn, wire.FrameCreateSession, wire.CreateSpec{
+		Name:        "wt",
+		Shell:       "/bin/bash",
+		Cols:        80,
+		Rows:        24,
+		UseWorktree: true,
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && sessionID == "" {
+		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			break
+		}
+		if ft == wire.FrameSessionEvent {
+			var ev wire.SessionEvent
+			_ = jsonUnmarshal(payload, &ev)
+			if ev.Kind == wire.SessionEventAdded && ev.Session.WorktreePath != "" {
+				sessionID = ev.Session.ID
+			}
+		}
+	}
+	if sessionID == "" {
+		t.Fatalf("did not observe a worktree-backed session")
+	}
+
+	// Reach into the registry to dirty the worktree (avoids racing on
+	// the daemon's session creation completing).
+	entry := d.Registry().Get(sessionID)
+	if entry == nil || entry.WorktreePath == "" {
+		t.Fatalf("entry missing or worktreeless: %+v", entry)
+	}
+	if err := os.WriteFile(filepath.Join(entry.WorktreePath, "scratch.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("dirty file: %v", err)
+	}
+
+	// 1. Kill without force → expect FrameError code worktree_dirty.
+	if err := wire.WriteJSON(conn, wire.FrameKillSession, wire.KillSessionReq{
+		SessionID: sessionID,
+	}); err != nil {
+		t.Fatalf("KillSession: %v", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if ft != wire.FrameError {
+		t.Fatalf("expected FrameError, got %s", ft)
+	}
+	var werr wire.Error
+	_ = jsonUnmarshal(payload, &werr)
+	if werr.Code != wire.ErrCodeWorktreeDirty {
+		t.Errorf("error code: got %q, want %q", werr.Code, wire.ErrCodeWorktreeDirty)
+	}
+	if werr.SessionID != sessionID {
+		t.Errorf("error session_id: got %q, want %q", werr.SessionID, sessionID)
+	}
+	// Session must still be alive after a refused kill.
+	if d.Registry().Get(sessionID) == nil {
+		t.Errorf("session vanished after refused kill")
+	}
+
+	// 2. Kill with force → succeeds; expect SESSION_EVENT(removed).
+	if err := wire.WriteJSON(conn, wire.FrameKillSession, wire.KillSessionReq{
+		SessionID: sessionID,
+		Force:     true,
+	}); err != nil {
+		t.Fatalf("force KillSession: %v", err)
+	}
+	deadline = time.Now().Add(3 * time.Second)
+	gotRemoved := false
+	for time.Now().Before(deadline) && !gotRemoved {
+		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			break
+		}
+		if ft == wire.FrameSessionEvent {
+			var ev wire.SessionEvent
+			_ = jsonUnmarshal(payload, &ev)
+			if ev.Kind == wire.SessionEventRemoved && ev.Session.ID == sessionID {
+				gotRemoved = true
+			}
+		}
+	}
+	if !gotRemoved {
+		t.Errorf("did not see SESSION_EVENT(removed) after force kill")
 	}
 }
 

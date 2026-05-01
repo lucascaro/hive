@@ -32,6 +32,14 @@ type CreateSpec struct {
 	// for agent launchers when Agent is set, but the daemon also
 	// accepts a raw Cmd from clients that don't speak agent IDs.
 	Cmd []string `json:"cmd,omitempty"`
+
+	// UseWorktree, when true and the resolved cwd is a git repo,
+	// makes the daemon create a fresh git worktree under
+	// <gitRoot>/.worktrees/ and run the session inside it.
+	UseWorktree bool `json:"use_worktree,omitempty"`
+	// Branch is an optional branch name for the worktree. When empty,
+	// a random adjective-noun is generated.
+	Branch string `json:"branch,omitempty"`
 }
 
 // Hello is the first frame the client sends after connecting.
@@ -60,14 +68,16 @@ type Welcome struct {
 // SessionInfo is the public-facing description of one daemon session.
 // It is what the client sees in SESSIONS and SESSION_EVENT payloads.
 type SessionInfo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Color     string `json:"color"`
-	Order     int    `json:"order"`
-	Created   string `json:"created"` // RFC 3339
-	Alive     bool   `json:"alive"`
-	Agent     string `json:"agent,omitempty"`      // canonical agent ID, "" = generic shell
-	ProjectID string `json:"project_id,omitempty"` // owning project; "" = unassigned/legacy
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Color          string `json:"color"`
+	Order          int    `json:"order"`
+	Created        string `json:"created"` // RFC 3339
+	Alive          bool   `json:"alive"`
+	Agent          string `json:"agent,omitempty"`           // canonical agent ID, "" = generic shell
+	ProjectID      string `json:"project_id,omitempty"`      // owning project; "" = unassigned/legacy
+	WorktreePath   string `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
+	WorktreeBranch string `json:"worktree_branch,omitempty"` // branch backing the worktree
 }
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).
@@ -78,9 +88,12 @@ type SessionsResp struct {
 	Sessions []SessionInfo `json:"sessions"`
 }
 
-// KillSessionReq is the KILL_SESSION payload.
+// KillSessionReq is the KILL_SESSION payload. Force=true tells the
+// daemon to skip the dirty-worktree safety check and discard
+// uncommitted changes.
 type KillSessionReq struct {
 	SessionID string `json:"session_id"`
+	Force     bool   `json:"force,omitempty"`
 }
 
 // UpdateSessionReq mutates session metadata. Pointer fields are
@@ -190,7 +203,16 @@ const (
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// SessionID, when non-empty, links the error to a specific
+	// session — used by clients (e.g. dirty-worktree confirm) to
+	// know which session to retry.
+	SessionID string `json:"session_id,omitempty"`
 }
+
+// Well-known error codes.
+const (
+	ErrCodeWorktreeDirty = "worktree_dirty"
+)
 
 // WriteJSON marshals v and writes it as a frame of type t.
 func WriteJSON(w io.Writer, t FrameType, v any) error {

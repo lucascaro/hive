@@ -66,7 +66,7 @@ func TestCreateListKill(t *testing.T) {
 		t.Errorf("order numbers: %+v", got)
 	}
 
-	if err := r.Kill(a.ID); err != nil {
+	if err := r.Kill(a.ID, true); err != nil {
 		t.Fatalf("Kill alpha: %v", err)
 	}
 	expectEvent("removed")

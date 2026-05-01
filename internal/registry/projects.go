@@ -3,6 +3,7 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/internal/worktree"
 )
 
 // ErrProjectNotFound is returned when a project ID isn't known.
@@ -48,6 +50,53 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 	}
 	r.mu.Unlock()
 	return r.CreateProject(wire.CreateProjectReq{Name: "default", Cwd: cwd})
+}
+
+// ReclaimOrphanWorktrees scans every project's <projectCwd>/.worktrees
+// directory and runs worktree.Cleanup on any subdirectory whose path
+// is not claimed by some live registry entry. Idempotent. Run once at
+// daemon startup so a SIGKILL'd previous process doesn't leak.
+func (r *Registry) ReclaimOrphanWorktrees() {
+	r.mu.Lock()
+	claimed := make(map[string]bool, len(r.entries))
+	for _, e := range r.entries {
+		if e.WorktreePath != "" {
+			claimed[e.WorktreePath] = true
+		}
+	}
+	projects := make([]*Project, 0, len(r.projects))
+	for _, p := range r.projects {
+		projects = append(projects, p)
+	}
+	r.mu.Unlock()
+
+	for _, p := range projects {
+		if p.Cwd == "" || !worktree.IsGitRepo(p.Cwd) {
+			continue
+		}
+		root, err := worktree.Root(p.Cwd)
+		if err != nil {
+			continue
+		}
+		wtDir := filepath.Join(root, ".worktrees")
+		entries, err := os.ReadDir(wtDir)
+		if err != nil {
+			continue
+		}
+		for _, d := range entries {
+			if !d.IsDir() {
+				continue
+			}
+			path := filepath.Join(wtDir, d.Name())
+			if claimed[path] {
+				continue
+			}
+			log.Printf("registry: reclaiming orphan worktree %s", path)
+			if err := worktree.Cleanup(root, path); err != nil {
+				log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+			}
+		}
+	}
 }
 
 // MigrateOrphanSessions assigns any session without a ProjectID to
@@ -177,7 +226,7 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 
 	if killSessions {
 		for _, e := range affected {
-			_ = r.Kill(e.ID)
+			_ = r.Kill(e.ID, true)
 		}
 	} else {
 		for _, e := range affected {

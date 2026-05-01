@@ -9,6 +9,7 @@ import {
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
+  IsGitRepo,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -30,9 +31,20 @@ class SessionTerm {
     this.tileName = document.createElement('span');
     this.tileName.className = 'tile-name';
     this.tileName.textContent = info.name;
+    this.tileWorktree = document.createElement('span');
+    this.tileWorktree.className = 'worktree-glyph';
+    this.tileWorktree.textContent = '⎇';
+    {
+      const wtBranch = info.worktreeBranch ?? info.worktree_branch;
+      if (wtBranch) {
+        this.tileWorktree.title = `Worktree: ${wtBranch}`;
+      } else {
+        this.tileWorktree.style.display = 'none';
+      }
+    }
     this.tileProject = document.createElement('span');
     this.tileProject.className = 'tile-project';
-    this.header.append(this.tileColor, this.tileName, this.tileProject);
+    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileProject);
 
     this.body = document.createElement('div');
     this.body.className = 'term-body';
@@ -107,6 +119,14 @@ class SessionTerm {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.tileName.textContent = info.name;
+    const wtBranch = info.worktreeBranch ?? info.worktree_branch;
+    if (wtBranch) {
+      this.tileWorktree.style.display = '';
+      this.tileWorktree.title = `Worktree: ${wtBranch}`;
+    } else {
+      this.tileWorktree.style.display = 'none';
+      this.tileWorktree.title = '';
+    }
   }
 
   setProjectName(name) {
@@ -413,6 +433,17 @@ function renderSession(s) {
   name.className = 'name';
   name.textContent = s.name;
 
+  // Worktree glyph: shown when the session is backed by a git
+  // worktree. Tooltip = branch name.
+  const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  let glyph = null;
+  if (wtBranch) {
+    glyph = document.createElement('span');
+    glyph.className = 'worktree-glyph';
+    glyph.textContent = '⎇';
+    glyph.title = `Worktree: ${wtBranch}`;
+  }
+
   const swatch = document.createElement('span');
   swatch.className = 'swatch';
   const colorInput = document.createElement('input');
@@ -423,7 +454,11 @@ function renderSession(s) {
   });
   swatch.appendChild(colorInput);
 
-  li.append(dot, name, swatch);
+  if (glyph) {
+    li.append(dot, name, glyph, swatch);
+  } else {
+    li.append(dot, name, swatch);
+  }
   li.addEventListener('click', (e) => {
     if (e.target === colorInput || e.target === swatch) return;
     switchTo(s.id);
@@ -892,19 +927,41 @@ EventsOn('control:disconnect', () => {
 });
 
 EventsOn('control:error', (jsonStr) => {
-  try {
-    const e = JSON.parse(jsonStr);
-    setStatus(`${e.code}: ${e.message}`, true);
-    console.warn('hived control error:', e);
-  } catch {
-    setStatus('hived error', true);
+  let e;
+  try { e = JSON.parse(jsonStr); } catch { setStatus('hived error', true); return; }
+  // Worktree-dirty kill: confirm with the user. The daemon already
+  // refused to kill, so we can safely retry with force=true if the
+  // user accepts.
+  if (e.code === 'worktree_dirty' && e.session_id) {
+    const sess = state.sessions.find((s) => s.id === e.session_id);
+    const branch = sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
+    const ok = window.confirm(
+      `${sess?.name ?? 'Session'} has uncommitted changes in ${branch}.\n\n` +
+      `Discard them and remove the worktree?`
+    );
+    if (ok) {
+      KillSession(e.session_id, true).catch((err) => {
+        setStatus(`force kill failed: ${err}`, true);
+      });
+    }
+    return;
   }
+  setStatus(`${e.code}: ${e.message}`, true);
+  console.warn('hived control error:', e);
 });
 
 // ---------- agent launcher ----------
 
 const launcherEl = document.getElementById('launcher');
-const launcherState = { items: [], selected: 0, projectId: null };
+const launcherState = {
+  items: [],
+  selected: 0,
+  projectId: null,
+  // useWorktree is sticky across launcher opens, persisted in
+  // localStorage. ⌃⌘N opens the launcher with this forced to true
+  // for the duration of that opening.
+  useWorktree: localStorage.getItem('hive.worktree') === '1',
+};
 
 function highlightLauncherSelection() {
   launcherState.items.forEach((it, i) => {
@@ -923,12 +980,23 @@ function moveLauncherSelection(delta) {
 function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
   if (!it) return;
-  CreateSession(it.agent.id, launcherState.projectId || activeProjectId(), '', '', 0, 0);
+  CreateSession(
+    it.agent.id,
+    launcherState.projectId || activeProjectId(),
+    '', '',
+    0, 0,
+    !!launcherState.useWorktree,
+  );
   closeLauncher();
 }
 
-function openLauncher(projectId) {
+function openLauncher(projectId, opts) {
   launcherState.projectId = projectId || activeProjectId();
+  // ⌃⌘N forces the worktree checkbox on for this opening regardless
+  // of the saved preference. Otherwise honor the sticky pref.
+  if (opts && typeof opts.forceWorktree === 'boolean') {
+    launcherState.useWorktree = opts.forceWorktree;
+  }
   ListAgents()
     .then((agents) => {
       launcherEl.innerHTML = '';
@@ -943,6 +1011,39 @@ function openLauncher(projectId) {
       const r = anchorEl.getBoundingClientRect();
       launcherEl.style.left = `${r.left}px`;
       launcherEl.style.top = `${r.bottom + 4}px`;
+
+      // Worktree toggle row at the top of the menu. Disabled (and
+      // visually muted) when the active project's cwd isn't a git
+      // repo. The IsGitRepo probe is async; we render the row
+      // immediately as enabled and disable it once the probe
+      // completes — almost always before the user reaches for the
+      // checkbox.
+      const proj = state.projects.find((p) => p.id === launcherState.projectId);
+      const projCwd = proj?.cwd ?? '';
+      const wtRow = document.createElement('label');
+      wtRow.className = 'launcher-worktree';
+      const wtBox = document.createElement('input');
+      wtBox.type = 'checkbox';
+      wtBox.checked = !!launcherState.useWorktree;
+      const wtLabel = document.createElement('span');
+      wtLabel.textContent = 'Create in git worktree';
+      wtRow.append(wtBox, wtLabel);
+      wtBox.addEventListener('change', (e) => {
+        launcherState.useWorktree = e.target.checked;
+        localStorage.setItem('hive.worktree', e.target.checked ? '1' : '0');
+      });
+      launcherEl.appendChild(wtRow);
+      if (projCwd) {
+        IsGitRepo(projCwd).then((ok) => {
+          if (!ok) {
+            wtRow.classList.add('disabled');
+            wtBox.disabled = true;
+            wtBox.checked = false;
+            launcherState.useWorktree = false;
+            wtLabel.textContent = 'Worktree (project is not a git repo)';
+          }
+        }).catch(() => {});
+      }
       // Detection (exec.LookPath on the daemon side) is best-effort:
       // it can miss agents installed as shell aliases, functions, or
       // PATH that's only set up by an interactive rc file. So we list
@@ -968,7 +1069,13 @@ function openLauncher(projectId) {
           tag.textContent = 'install?';
         }
         item.addEventListener('click', () => {
-          CreateSession(a.id, launcherState.projectId, '', '', 0, 0);
+          CreateSession(
+            a.id,
+            launcherState.projectId,
+            '', '',
+            0, 0,
+            !!launcherState.useWorktree,
+          );
           closeLauncher();
         });
         item.addEventListener('mouseenter', () => {
@@ -1127,6 +1234,11 @@ window.addEventListener('keydown', (e) => {
       OpenNewWindow().catch((err) => {
         setStatus(`window failed: ${err}`, true);
       });
+    } else if (e.altKey) {
+      // ⌥⌘N — open launcher with the worktree checkbox forced on.
+      // (Originally proposed as ⌃⌘N but ctrl-Cmd is awkward to hit
+      //  on US keyboards; alt-Cmd is right next to ⌘N.)
+      openLauncher(undefined, { forceWorktree: true });
     } else {
       openLauncher();
     }
@@ -1135,7 +1247,10 @@ window.addEventListener('keydown', (e) => {
     if (e.shiftKey) {
       CloseWindow();
     } else if (state.activeId) {
-      KillSession(state.activeId);
+      // force=false: lets the daemon refuse with worktree_dirty if
+      // the worktree has uncommitted changes; the control:error
+      // handler then shows a confirm dialog and retries with force.
+      KillSession(state.activeId, false);
     }
   } else if (/^[1-9]$/.test(e.key)) {
     const idx = parseInt(e.key, 10) - 1;

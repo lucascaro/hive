@@ -14,6 +14,7 @@ import (
 	"github.com/lucascaro/hive/internal/agent"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
+	"github.com/lucascaro/hive/internal/worktree"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -180,20 +181,24 @@ func (a *App) ListAgents() []AgentInfo {
 // CreateSession asks the daemon to create a new session. agentID is
 // the canonical ID from ListAgents (e.g. "claude") or "" for a
 // generic shell. projectID is the owning project ("" = default).
-// The daemon will broadcast a SESSION_EVENT(added) over the control
-// connection; the frontend updates the sidebar from that.
-func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int) error {
+// useWorktree, when true and the project's cwd is a git repo, makes
+// the daemon spawn the session inside a fresh git worktree under
+// <gitRoot>/.worktrees/. The daemon broadcasts a SESSION_EVENT(added)
+// over the control connection; the frontend updates the sidebar from
+// that.
+func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Agent:     agentID,
-		ProjectID: projectID,
-		Name:      name,
-		Color:     color,
-		Cols:      cols,
-		Rows:      rows,
+		Agent:       agentID,
+		ProjectID:   projectID,
+		Name:        name,
+		Color:       color,
+		Cols:        cols,
+		Rows:        rows,
+		UseWorktree: useWorktree,
 	})
 }
 
@@ -280,13 +285,25 @@ func (a *App) CloseWindow() {
 	wruntime.Quit(a.ctx)
 }
 
-// KillSession asks the daemon to terminate a session.
-func (a *App) KillSession(id string) error {
+// KillSession asks the daemon to terminate a session. force=true
+// skips the dirty-worktree safety check and discards uncommitted
+// changes. Without force, killing a session whose worktree has
+// uncommitted changes returns a "worktree_dirty" control error so
+// the GUI can confirm with the user.
+func (a *App) KillSession(id string, force bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameKillSession, wire.KillSessionReq{SessionID: id})
+	return cs.writeJSON(wire.FrameKillSession, wire.KillSessionReq{
+		SessionID: id, Force: force,
+	})
+}
+
+// IsGitRepo reports whether path is inside a git repository. The GUI
+// uses this to gate the launcher's worktree checkbox.
+func (a *App) IsGitRepo(path string) bool {
+	return worktree.IsGitRepo(path)
 }
 
 // UpdateSession patches name/color/order. Empty strings on name/color

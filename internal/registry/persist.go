@@ -10,13 +10,15 @@ import (
 
 // MetaFile is what we write to <session_dir>/session.json.
 type MetaFile struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Color     string    `json:"color"`
-	Order     int       `json:"order"`
-	Created   time.Time `json:"created"`
-	Agent     string    `json:"agent,omitempty"`      // canonical agent ID; "" = shell
-	ProjectID string    `json:"project_id,omitempty"` // owning project; "" = default
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Color          string    `json:"color"`
+	Order          int       `json:"order"`
+	Created        time.Time `json:"created"`
+	Agent          string    `json:"agent,omitempty"`           // canonical agent ID; "" = shell
+	ProjectID      string    `json:"project_id,omitempty"`      // owning project; "" = default
+	WorktreePath   string    `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
+	WorktreeBranch string    `json:"worktree_branch,omitempty"` // branch backing the worktree
 }
 
 // IndexFile is what we write to sessions/index.json.

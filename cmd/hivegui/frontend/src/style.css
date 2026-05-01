@@ -525,6 +525,41 @@ html, body {
 .launcher-item.uninstalled .agent-name {
   color: #999;
 }
+
+.launcher-worktree {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid #1f1f1f;
+  color: #ccc;
+  font-size: 11.5px;
+  user-select: none;
+  cursor: pointer;
+}
+.launcher-worktree input[type=checkbox] {
+  margin: 0;
+}
+.launcher-worktree.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Worktree glyph: shown next to a session name when the session
+   is backed by a git worktree. Sidebar + grid tile share the rule. */
+.worktree-glyph {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--session-color, #888);
+  margin: 0 4px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.session-item .worktree-glyph {
+  margin-left: 0;
+  margin-right: 4px;
+}
 .launcher-item .install-tag {
   font-size: 10.5px;
   color: #888;
