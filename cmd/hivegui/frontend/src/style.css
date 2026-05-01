@@ -381,7 +381,9 @@ html, body {
   position: relative;
   inset: auto;
   display: none;
-  border: 1px solid #1a1a1a;
+  /* Always-visible border tinted with the session color so each
+     tile's identity is obvious without having to read the title. */
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
   border-radius: 4px;
   background: #000;
   overflow: hidden;
@@ -398,7 +400,8 @@ html, body {
 }
 #terms.grid .term-host.in-grid.active {
   border-color: var(--session-color, #888);
-  box-shadow: 0 0 0 1px var(--session-color, #888);
+  box-shadow: 0 0 0 1px var(--session-color, #888),
+              0 0 18px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
 }
 
 @keyframes hive-tile-attention {
@@ -430,11 +433,25 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  background: #0a0a0a;
-  border-bottom: 1px solid #1a1a1a;
+  /* Title bar tinted with the session color — subtle for inactive
+     tiles, brighter when active. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--session-color, #888) 40%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--session-color, #888) 12%, #0a0a0a) 100%
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--session-color, #888) 35%, #1a1a1a);
   font: 11px Menlo, monospace;
-  color: #aaa;
+  color: #ddd;
   flex-shrink: 0;
+}
+#terms.grid .term-host.in-grid.active .tile-header {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--session-color, #888) 65%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--session-color, #888) 28%, #0a0a0a) 100%
+  );
+  color: #fff;
 }
 #terms.grid .term-host .tile-color {
   width: 6px;
@@ -442,10 +459,11 @@ html, body {
   border-radius: 50%;
   background: var(--session-color, #888);
   flex-shrink: 0;
+  box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
 }
-#terms.grid .term-host .tile-name { flex: 1; color: #ccc; }
+#terms.grid .term-host .tile-name { flex: 1; }
 #terms.grid .term-host .tile-project {
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
