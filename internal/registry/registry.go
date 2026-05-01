@@ -517,7 +517,12 @@ func (r *Registry) Kill(id string, force bool) error {
 			break
 		}
 	}
-	r.renumberLocked()
+	// Intentionally NOT renumbering remaining entries here. Orders
+	// were assigned at create time and only change on an explicit
+	// user move. Kill leaves a hole in the sequence (e.g. 0,1,3,4)
+	// — the sort-by-Order render handles holes fine, and not
+	// touching the field means we never have to broadcast spurious
+	// SessionEventUpdated for sessions the user didn't touch.
 	_ = r.persistIndexLocked()
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
 	r.mu.Unlock()
@@ -552,7 +557,11 @@ func (r *Registry) Kill(id string, force bool) error {
 	return nil
 }
 
-// Update mutates name / color / order. Pointer fields opt in.
+// Update mutates name / color / order. Pointer fields opt in. When
+// Order is set, ALL sessions whose Order shifted are broadcast as
+// updated events so the GUI's state stays in sync (otherwise the
+// other sessions keep stale .order values, and the relative sort
+// can flip on the next render).
 func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -566,7 +575,8 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	if req.Color != nil {
 		e.Color = *req.Color
 	}
-	if req.Order != nil {
+	orderChanged := req.Order != nil
+	if orderChanged {
 		r.moveLocked(e.ID, *req.Order)
 	}
 	if err := r.persistEntryLocked(e); err != nil {
@@ -574,6 +584,16 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	}
 	if err := r.persistIndexLocked(); err != nil {
 		return e, err
+	}
+	if orderChanged {
+		// Notify clients of every session, since renumberLocked
+		// touched all of them. Cheap: a few entries times one
+		// channel send each.
+		for _, sid := range r.order {
+			if other := r.entries[sid]; other != nil && other.ID != e.ID {
+				r.broadcastLocked(wire.SessionEventUpdated, other.Info())
+			}
+		}
 	}
 	defer r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 	return e, nil

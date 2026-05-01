@@ -215,7 +215,8 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 			break
 		}
 	}
-	r.renumberProjectsLocked()
+	// Intentionally NOT renumbering — same rationale as Kill().
+	// See registry.go for the full comment.
 	_ = r.persistProjectIndexLocked()
 
 	dir := filepath.Join(ProjectsDir(r.stateDir), id)
