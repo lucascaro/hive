@@ -348,6 +348,22 @@ html, body {
   height: 32px;
   padding: 2px;
 }
+#project-editor .cwd-row {
+  display: flex;
+  gap: 6px;
+}
+#project-editor .cwd-row input { flex: 1; }
+#project-editor .cwd-row button {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 0 12px;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+#project-editor .cwd-row button:hover { background: #2a2a2a; }
 #project-editor .actions {
   display: flex;
   justify-content: flex-end;

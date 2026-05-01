@@ -7,7 +7,7 @@ import {
   WriteStdin, ResizeSession,
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
-  LaunchDir,
+  LaunchDir, PickDirectory,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -528,6 +528,14 @@ function saveProjectEditor() {
 
 document.getElementById('project-editor-cancel').addEventListener('click', closeProjectEditor);
 document.getElementById('project-editor-save').addEventListener('click', saveProjectEditor);
+document.getElementById('project-editor-browse').addEventListener('click', async () => {
+  try {
+    const picked = await PickDirectory(editorCwd.value || '');
+    if (picked) editorCwd.value = picked;
+  } catch (err) {
+    // Silently ignore (user cancelled, or platform refused).
+  }
+});
 editorEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.target === editorName || e.target === editorCwd)) {
     e.preventDefault();

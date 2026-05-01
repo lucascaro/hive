@@ -248,6 +248,20 @@ func (a *App) UpdateProject(id, name, color, cwd string, order int) error {
 // new-project default cwd.
 func (a *App) LaunchDir() string { return a.launchDir }
 
+// PickDirectory opens the OS native folder picker and returns the
+// selected path, or "" if the user cancelled. defaultDir, if
+// non-empty, sets the dialog's starting location.
+func (a *App) PickDirectory(defaultDir string) (string, error) {
+	if defaultDir == "" {
+		defaultDir = a.launchDir
+	}
+	return wruntime.OpenDirectoryDialog(a.ctx, wruntime.OpenDialogOptions{
+		Title:                "Choose project directory",
+		DefaultDirectory:     defaultDir,
+		CanCreateDirectories: true,
+	})
+}
+
 // KillSession asks the daemon to terminate a session.
 func (a *App) KillSession(id string) error {
 	cs, err := a.requireControl()
