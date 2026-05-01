@@ -301,8 +301,33 @@ window.addEventListener('keydown', (e) => {
       swallow();
       switchTo(state.sessions[idx].id);
     }
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+    swallow();
+    moveActiveSession(-1, e.shiftKey);
+  } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+    swallow();
+    moveActiveSession(+1, e.shiftKey);
   }
 }, true);
+
+// moveActiveSession with reorder=false switches focus to the previous/
+// next session in sidebar order. With reorder=true (Shift held) it
+// moves the active session itself up/down in the order.
+function moveActiveSession(delta, reorder) {
+  const n = state.sessions.length;
+  if (n === 0) return;
+  const idx = state.sessions.findIndex((s) => s.id === state.activeId);
+  if (idx < 0) {
+    switchTo(state.sessions[0].id);
+    return;
+  }
+  const next = (idx + delta + n) % n;
+  if (reorder) {
+    UpdateSession(state.activeId, '', '', next);
+  } else {
+    switchTo(state.sessions[next].id);
+  }
+}
 
 // ---------- resize ----------
 
