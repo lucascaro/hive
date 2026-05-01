@@ -10,17 +10,33 @@ import (
 
 // MetaFile is what we write to <session_dir>/session.json.
 type MetaFile struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Color   string    `json:"color"`
-	Order   int       `json:"order"`
-	Created time.Time `json:"created"`
-	Agent   string    `json:"agent,omitempty"` // canonical agent ID; "" = shell
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Color     string    `json:"color"`
+	Order     int       `json:"order"`
+	Created   time.Time `json:"created"`
+	Agent     string    `json:"agent,omitempty"`      // canonical agent ID; "" = shell
+	ProjectID string    `json:"project_id,omitempty"` // owning project; "" = default
 }
 
 // IndexFile is what we write to sessions/index.json.
 type IndexFile struct {
 	Order []string `json:"order"` // session IDs in display order
+}
+
+// ProjectMetaFile is what we write to <project_dir>/project.json.
+type ProjectMetaFile struct {
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Color   string    `json:"color"`
+	Cwd     string    `json:"cwd,omitempty"`
+	Order   int       `json:"order"`
+	Created time.Time `json:"created"`
+}
+
+// ProjectIndexFile is what we write to projects/index.json.
+type ProjectIndexFile struct {
+	Order []string `json:"order"`
 }
 
 func writeAtomic(path string, data []byte) error {

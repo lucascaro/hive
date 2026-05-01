@@ -51,6 +51,14 @@ const (
 	FrameKillSession   FrameType = 0x0a // C → S, JSON, control
 	FrameUpdateSession FrameType = 0x0b // C → S, JSON, control
 	FrameSessionEvent  FrameType = 0x0c // S → C, JSON, control
+
+	// v1 phase-4 extension: projects.
+	FrameListProjects  FrameType = 0x0d // C → S, JSON, control
+	FrameProjects      FrameType = 0x0e // S → C, JSON, control
+	FrameCreateProject FrameType = 0x0f // C → S, JSON, control
+	FrameKillProject   FrameType = 0x10 // C → S, JSON, control
+	FrameUpdateProject FrameType = 0x11 // C → S, JSON, control
+	FrameProjectEvent  FrameType = 0x12 // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -79,6 +87,18 @@ func (t FrameType) String() string {
 		return "UPDATE_SESSION"
 	case FrameSessionEvent:
 		return "SESSION_EVENT"
+	case FrameListProjects:
+		return "LIST_PROJECTS"
+	case FrameProjects:
+		return "PROJECTS"
+	case FrameCreateProject:
+		return "CREATE_PROJECT"
+	case FrameKillProject:
+		return "KILL_PROJECT"
+	case FrameUpdateProject:
+		return "UPDATE_PROJECT"
+	case FrameProjectEvent:
+		return "PROJECT_EVENT"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

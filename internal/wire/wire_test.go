@@ -118,6 +118,21 @@ func TestV1ControlFrameRoundTrips(t *testing.T) {
 			Kind:    SessionEventAdded,
 			Session: SessionInfo{ID: "1", Name: "x", Order: 0, Alive: true},
 		}},
+		{"list-projects", FrameListProjects, ListProjectsReq{}},
+		{"projects", FrameProjects, ProjectsResp{Projects: []ProjectInfo{
+			{ID: "p1", Name: "hive", Color: "#fa0", Cwd: "/h", Order: 0, Created: "2026-04-30T00:00:00Z"},
+		}}},
+		{"create-project", FrameCreateProject, CreateProjectReq{Name: "x", Color: "#0af", Cwd: "/x"}},
+		{"kill-project", FrameKillProject, KillProjectReq{ProjectID: "p1", KillSessions: true}},
+		{"update-project", FrameUpdateProject, UpdateProjectReq{
+			ProjectID: "p1",
+			Name:      ptrStr("renamed"),
+			Cwd:       ptrStr("/new"),
+		}},
+		{"project-event", FrameProjectEvent, ProjectEvent{
+			Kind:    ProjectEventAdded,
+			Project: ProjectInfo{ID: "p1", Name: "x", Order: 0},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

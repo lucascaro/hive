@@ -20,13 +20,14 @@ const (
 // CreateSpec is the payload for ModeCreate's create field, and also
 // the standalone CREATE_SESSION control frame.
 type CreateSpec struct {
-	Name  string `json:"name,omitempty"`
-	Color string `json:"color,omitempty"`
-	Cols  int    `json:"cols,omitempty"`
-	Rows  int    `json:"rows,omitempty"`
-	Shell string `json:"shell,omitempty"`
-	Cwd   string `json:"cwd,omitempty"`   // working directory
-	Agent string `json:"agent,omitempty"` // canonical agent ID, e.g. "claude"; empty = generic shell
+	Name      string `json:"name,omitempty"`
+	Color     string `json:"color,omitempty"`
+	Cols      int    `json:"cols,omitempty"`
+	Rows      int    `json:"rows,omitempty"`
+	Shell     string `json:"shell,omitempty"`
+	Cwd       string `json:"cwd,omitempty"`        // working directory; falls back to project cwd
+	Agent     string `json:"agent,omitempty"`      // canonical agent ID, e.g. "claude"; empty = generic shell
+	ProjectID string `json:"project_id,omitempty"` // owning project; empty = default project
 	// Cmd, when set, runs in place of the shell. Phase 3 uses this
 	// for agent launchers when Agent is set, but the daemon also
 	// accepts a raw Cmd from clients that don't speak agent IDs.
@@ -59,13 +60,14 @@ type Welcome struct {
 // SessionInfo is the public-facing description of one daemon session.
 // It is what the client sees in SESSIONS and SESSION_EVENT payloads.
 type SessionInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Color   string `json:"color"`
-	Order   int    `json:"order"`
-	Created string `json:"created"` // RFC 3339
-	Alive   bool   `json:"alive"`
-	Agent   string `json:"agent,omitempty"` // canonical agent ID, "" = generic shell
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Color     string `json:"color"`
+	Order     int    `json:"order"`
+	Created   string `json:"created"` // RFC 3339
+	Alive     bool   `json:"alive"`
+	Agent     string `json:"agent,omitempty"`      // canonical agent ID, "" = generic shell
+	ProjectID string `json:"project_id,omitempty"` // owning project; "" = unassigned/legacy
 }
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).
@@ -89,6 +91,7 @@ type UpdateSessionReq struct {
 	Name      *string `json:"name,omitempty"`
 	Color     *string `json:"color,omitempty"`
 	Order     *int    `json:"order,omitempty"`
+	ProjectID *string `json:"project_id,omitempty"` // reassign session
 }
 
 // SessionEventKind enumerates the kinds carried by SESSION_EVENT.
@@ -103,6 +106,65 @@ const (
 type SessionEvent struct {
 	Kind    string      `json:"kind"`
 	Session SessionInfo `json:"session"`
+}
+
+// --- Phase 4: projects ---
+
+// ProjectInfo is the public-facing description of one project.
+type ProjectInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Color   string `json:"color"`
+	Cwd     string `json:"cwd,omitempty"`
+	Order   int    `json:"order"`
+	Created string `json:"created"` // RFC 3339
+}
+
+// ListProjectsReq is the LIST_PROJECTS payload (currently empty).
+type ListProjectsReq struct{}
+
+// ProjectsResp is the PROJECTS payload returned in response to
+// LIST_PROJECTS or pushed unsolicited as the initial control snapshot.
+type ProjectsResp struct {
+	Projects []ProjectInfo `json:"projects"`
+}
+
+// CreateProjectReq is the CREATE_PROJECT payload.
+type CreateProjectReq struct {
+	Name  string `json:"name,omitempty"`
+	Color string `json:"color,omitempty"`
+	Cwd   string `json:"cwd,omitempty"`
+}
+
+// KillProjectReq is the KILL_PROJECT payload. KillSessions=true kills
+// all sessions in the project; otherwise they are reassigned to the
+// default project (and thus survive the project removal).
+type KillProjectReq struct {
+	ProjectID    string `json:"project_id"`
+	KillSessions bool   `json:"kill_sessions,omitempty"`
+}
+
+// UpdateProjectReq mutates project metadata. Pointer fields opt in.
+type UpdateProjectReq struct {
+	ProjectID string  `json:"project_id"`
+	Name      *string `json:"name,omitempty"`
+	Color     *string `json:"color,omitempty"`
+	Cwd       *string `json:"cwd,omitempty"`
+	Order     *int    `json:"order,omitempty"`
+}
+
+// ProjectEventKind enumerates the kinds carried by PROJECT_EVENT.
+const (
+	ProjectEventAdded   = "added"
+	ProjectEventRemoved = "removed"
+	ProjectEventUpdated = "updated"
+)
+
+// ProjectEvent is the PROJECT_EVENT payload, broadcast to every
+// control connection on any project change.
+type ProjectEvent struct {
+	Kind    string      `json:"kind"`
+	Project ProjectInfo `json:"project"`
 }
 
 // Resize is sent by the client whenever its terminal widget changes

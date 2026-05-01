@@ -71,6 +71,15 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, err
 	}
 
+	// Ensure a default project exists, then migrate any orphan
+	// sessions to it. This is idempotent: existing installs (Phase
+	// 1-3) get a "default" project created on the first Phase 4 boot
+	// with their pre-existing sessions reassigned.
+	if _, err := reg.EnsureDefaultProject(cfg.BootstrapSession.Cwd); err != nil {
+		log.Printf("hived: ensure default project: %v", err)
+	}
+	reg.MigrateOrphanSessions()
+
 	// Revive any persisted sessions that have no live PTY (i.e. every
 	// entry loaded from disk on this run). Metadata is preserved; the
 	// shell is fresh — Phase 1.7 will eventually replay scrollback here.
@@ -219,19 +228,39 @@ func (d *Daemon) serveControl(conn net.Conn) {
 	}
 	listener, unsub := d.reg.Subscribe()
 	defer unsub()
+	pListener, pUnsub := d.reg.SubscribeProjects()
+	defer pUnsub()
 
-	// Push initial snapshot and stream registry events to the client.
+	// Per-conn write mutex so the snapshot/event goroutines don't
+	// interleave bytes with each other or with the response writes
+	// from the request loop below.
+	var connMu sync.Mutex
+	writeJSON := func(t wire.FrameType, v any) error {
+		connMu.Lock()
+		defer connMu.Unlock()
+		return wire.WriteJSON(conn, t, v)
+	}
+
 	stop := make(chan struct{})
 	go func() {
-		// Initial snapshot:
-		_ = wire.WriteJSON(conn, wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+		// Initial snapshot — projects first so the client can resolve
+		// session.project_id without a roundtrip.
+		_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
+		_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
 		for {
 			select {
 			case ev, ok := <-listener:
 				if !ok {
 					return
 				}
-				if err := wire.WriteJSON(conn, wire.FrameSessionEvent, ev); err != nil {
+				if err := writeJSON(wire.FrameSessionEvent, ev); err != nil {
+					return
+				}
+			case ev, ok := <-pListener:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FrameProjectEvent, ev); err != nil {
 					return
 				}
 			case <-stop:
@@ -241,6 +270,9 @@ func (d *Daemon) serveControl(conn net.Conn) {
 	}()
 	defer close(stop)
 
+	sendError := func(code, msg string) {
+		_ = writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
+	}
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
 		if err != nil {
@@ -251,33 +283,62 @@ func (d *Daemon) serveControl(conn net.Conn) {
 		}
 		switch ft {
 		case wire.FrameListSessions:
-			_ = wire.WriteJSON(conn, wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
 		case wire.FrameCreateSession:
 			var spec wire.CreateSpec
 			if err := jsonUnmarshal(payload, &spec); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				sendError("bad_payload", err.Error())
 				continue
 			}
 			if _, err := d.reg.Create(spec); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
+				sendError("create_failed", err.Error())
 			}
 		case wire.FrameKillSession:
 			var req wire.KillSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				sendError("bad_payload", err.Error())
 				continue
 			}
 			if err := d.reg.Kill(req.SessionID); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "kill_failed", Message: err.Error()})
+				sendError("kill_failed", err.Error())
 			}
 		case wire.FrameUpdateSession:
 			var req wire.UpdateSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "bad_payload", Message: err.Error()})
+				sendError("bad_payload", err.Error())
 				continue
 			}
 			if _, err := d.reg.Update(req); err != nil {
-				_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "update_failed", Message: err.Error()})
+				sendError("update_failed", err.Error())
+			}
+		case wire.FrameListProjects:
+			_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
+		case wire.FrameCreateProject:
+			var req wire.CreateProjectReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			if _, err := d.reg.CreateProject(req); err != nil {
+				sendError("create_project_failed", err.Error())
+			}
+		case wire.FrameKillProject:
+			var req wire.KillProjectReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			if err := d.reg.KillProject(req.ProjectID, req.KillSessions); err != nil {
+				sendError("kill_project_failed", err.Error())
+			}
+		case wire.FrameUpdateProject:
+			var req wire.UpdateProjectReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			if _, err := d.reg.UpdateProject(req); err != nil {
+				sendError("update_project_failed", err.Error())
 			}
 		default:
 			log.Printf("hived: unexpected control frame: %s", ft)

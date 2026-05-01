@@ -39,3 +39,9 @@ func StateDir() string {
 func SessionsDir(stateDir string) string {
 	return filepath.Join(stateDir, "sessions")
 }
+
+// ProjectsDir is the directory that holds per-project subdirectories
+// and the projects index file.
+func ProjectsDir(stateDir string) string {
+	return filepath.Join(stateDir, "projects")
+}

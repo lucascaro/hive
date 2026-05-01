@@ -25,13 +25,36 @@ var ErrNotFound = errors.New("registry: session not found")
 // Entry pairs persisted metadata with the live session. The session is
 // nil for entries loaded from disk that haven't been started this run.
 type Entry struct {
+	ID        string
+	Name      string
+	Color     string
+	Order     int
+	Created   time.Time
+	Agent     string           // canonical agent ID; "" = generic shell
+	ProjectID string           // owning project; "" = default project
+	sess      *session.Session // nil ⇔ not running this lifetime
+}
+
+// Project is the registry-side representation of a project.
+type Project struct {
 	ID      string
 	Name    string
 	Color   string
+	Cwd     string
 	Order   int
 	Created time.Time
-	Agent   string           // canonical agent ID; "" = generic shell
-	sess    *session.Session // nil ⇔ not running this lifetime
+}
+
+// Info renders the project as a wire.ProjectInfo.
+func (p *Project) Info() wire.ProjectInfo {
+	return wire.ProjectInfo{
+		ID:      p.ID,
+		Name:    p.Name,
+		Color:   p.Color,
+		Cwd:     p.Cwd,
+		Order:   p.Order,
+		Created: p.Created.UTC().Format(time.RFC3339),
+	}
 }
 
 // Alive reports whether this entry has a live session attached.
@@ -43,29 +66,42 @@ func (e *Entry) Session() *session.Session { return e.sess }
 // Info renders the entry as a wire.SessionInfo for the protocol.
 func (e *Entry) Info() wire.SessionInfo {
 	return wire.SessionInfo{
-		ID:      e.ID,
-		Name:    e.Name,
-		Color:   e.Color,
-		Order:   e.Order,
-		Created: e.Created.UTC().Format(time.RFC3339),
-		Alive:   e.Alive(),
-		Agent:   e.Agent,
+		ID:        e.ID,
+		Name:      e.Name,
+		Color:     e.Color,
+		Order:     e.Order,
+		Created:   e.Created.UTC().Format(time.RFC3339),
+		Alive:     e.Alive(),
+		Agent:     e.Agent,
+		ProjectID: e.ProjectID,
 	}
 }
 
 // Listener is a channel that receives SessionEvent notifications.
 type Listener chan wire.SessionEvent
 
-// Registry is the daemon-side authoritative store of sessions.
+// Registry is the daemon-side authoritative store of sessions and
+// the projects they belong to.
 type Registry struct {
 	mu       sync.Mutex
 	entries  map[string]*Entry
 	order    []string
 	stateDir string
 
+	projects     map[string]*Project
+	projectOrder []string
+
 	// Listeners are notified of every change. Slow listeners are dropped.
 	listeners map[Listener]struct{}
+
+	// projectListeners receive project events specifically. Kept
+	// separate from listeners so a sidebar can subscribe to both
+	// streams without filtering.
+	projectListeners map[ProjectListener]struct{}
 }
+
+// ProjectListener is a channel that receives ProjectEvent.
+type ProjectListener chan wire.ProjectEvent
 
 // Open creates or loads a Registry rooted at stateDir. Existing
 // metadata on disk is loaded; live sessions are not auto-started.
@@ -74,9 +110,11 @@ func Open(stateDir string) (*Registry, error) {
 		stateDir = StateDir()
 	}
 	r := &Registry{
-		entries:   make(map[string]*Entry),
-		stateDir:  stateDir,
-		listeners: make(map[Listener]struct{}),
+		entries:          make(map[string]*Entry),
+		stateDir:         stateDir,
+		projects:         make(map[string]*Project),
+		listeners:        make(map[Listener]struct{}),
+		projectListeners: make(map[ProjectListener]struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
@@ -84,14 +122,54 @@ func Open(stateDir string) (*Registry, error) {
 	return r, nil
 }
 
-// load reads index.json + every session.json under sessions/. Missing
-// files are tolerated; corrupt files are skipped with a best-effort
-// recovery.
+// load reads index.json + every session.json under sessions/, plus
+// the parallel projects/ tree. Missing files are tolerated; corrupt
+// files are skipped with a best-effort recovery.
 func (r *Registry) load() error {
 	dir := SessionsDir(r.stateDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	pdir := ProjectsDir(r.stateDir)
+	if err := os.MkdirAll(pdir, 0o700); err != nil {
+		return err
+	}
+
+	// Load projects first, so session->project lookups during
+	// migration succeed.
+	var pidx ProjectIndexFile
+	_ = readJSON(filepath.Join(pdir, "index.json"), &pidx)
+	pseen := make(map[string]bool)
+	for _, id := range pidx.Order {
+		var meta ProjectMetaFile
+		if err := readJSON(filepath.Join(pdir, id, "project.json"), &meta); err != nil {
+			continue
+		}
+		r.projects[meta.ID] = &Project{
+			ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
+			Order: meta.Order, Created: meta.Created,
+		}
+		r.projectOrder = append(r.projectOrder, meta.ID)
+		pseen[meta.ID] = true
+	}
+	if dirs, err := os.ReadDir(pdir); err == nil {
+		for _, d := range dirs {
+			if !d.IsDir() || pseen[d.Name()] {
+				continue
+			}
+			var meta ProjectMetaFile
+			if err := readJSON(filepath.Join(pdir, d.Name(), "project.json"), &meta); err != nil {
+				continue
+			}
+			meta.Order = len(r.projectOrder)
+			r.projects[meta.ID] = &Project{
+				ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
+				Order: meta.Order, Created: meta.Created,
+			}
+			r.projectOrder = append(r.projectOrder, meta.ID)
+		}
+	}
+
 	var idx IndexFile
 	_ = readJSON(filepath.Join(dir, "index.json"), &idx) // OK if missing
 
@@ -107,6 +185,7 @@ func (r *Registry) load() error {
 		r.entries[meta.ID] = &Entry{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color,
 			Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
+			ProjectID: meta.ProjectID,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -125,6 +204,7 @@ func (r *Registry) load() error {
 			r.entries[meta.ID] = &Entry{
 				ID: meta.ID, Name: meta.Name, Color: meta.Color,
 				Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
+				ProjectID: meta.ProjectID,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -171,9 +251,15 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if color == "" {
 		color = pickColor(len(r.order))
 	}
+	// Resolve owning project: fall back to the default if unset.
+	projectID := spec.ProjectID
+	if projectID == "" {
+		projectID = r.defaultProjectIDLocked()
+	}
 	e := &Entry{
 		ID: id, Name: name, Color: color,
-		Order: len(r.order), Created: time.Now().UTC(), Agent: spec.Agent,
+		Order: len(r.order), Created: time.Now().UTC(),
+		Agent: spec.Agent, ProjectID: projectID,
 	}
 	r.entries[id] = e
 	r.order = append(r.order, id)
@@ -201,10 +287,19 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 			cmd = def.Cmd
 		}
 	}
+	// If no explicit cwd, fall back to the project's cwd.
+	cwd := spec.Cwd
+	if cwd == "" {
+		r.mu.Lock()
+		if p, ok := r.projects[projectID]; ok && p.Cwd != "" {
+			cwd = p.Cwd
+		}
+		r.mu.Unlock()
+	}
 	sess, err := session.Start(session.Options{
 		Shell: spec.Shell,
 		Cmd:   cmd,
-		Cwd:   spec.Cwd,
+		Cwd:   cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
 	})
@@ -381,10 +476,16 @@ func (r *Registry) Close() error {
 	for ch := range r.listeners {
 		close(ch)
 	}
+	for ch := range r.projectListeners {
+		close(ch)
+	}
 	r.listeners = nil
+	r.projectListeners = nil
 	entries := r.entries
 	r.entries = nil
 	r.order = nil
+	r.projects = nil
+	r.projectOrder = nil
 	r.mu.Unlock()
 	for _, e := range entries {
 		if e.sess != nil {
@@ -438,7 +539,21 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 	return writeJSON(path, MetaFile{
 		ID: e.ID, Name: e.Name, Color: e.Color,
 		Order: e.Order, Created: e.Created, Agent: e.Agent,
+		ProjectID: e.ProjectID,
 	})
+}
+
+func (r *Registry) persistProjectLocked(p *Project) error {
+	path := filepath.Join(ProjectsDir(r.stateDir), p.ID, "project.json")
+	return writeJSON(path, ProjectMetaFile{
+		ID: p.ID, Name: p.Name, Color: p.Color, Cwd: p.Cwd,
+		Order: p.Order, Created: p.Created,
+	})
+}
+
+func (r *Registry) persistProjectIndexLocked() error {
+	idx := ProjectIndexFile{Order: append([]string(nil), r.projectOrder...)}
+	return writeJSON(filepath.Join(ProjectsDir(r.stateDir), "index.json"), idx)
 }
 
 func (r *Registry) persistIndexLocked() error {

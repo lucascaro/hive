@@ -178,9 +178,23 @@ func TestControlListAndCreate(t *testing.T) {
 	defer conn.Close()
 	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
 
-	// Initial snapshot arrives unsolicited from the daemon (one
-	// bootstrap session).
+	// Initial snapshots arrive unsolicited from the daemon: PROJECTS
+	// first (so the client can resolve session.project_id), then
+	// SESSIONS.
 	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read project snapshot: %v", err)
+	}
+	if ft != wire.FrameProjects {
+		t.Fatalf("expected PROJECTS snapshot, got %s", ft)
+	}
+	var psnap wire.ProjectsResp
+	_ = jsonUnmarshal(payload, &psnap)
+	if len(psnap.Projects) != 1 || psnap.Projects[0].Name != "default" {
+		t.Errorf("project snapshot: %+v", psnap)
+	}
+
+	ft, payload, err = wire.ReadFrame(conn)
 	if err != nil {
 		t.Fatalf("read snapshot: %v", err)
 	}
@@ -191,6 +205,9 @@ func TestControlListAndCreate(t *testing.T) {
 	_ = jsonUnmarshal(payload, &snap)
 	if len(snap.Sessions) != 1 || snap.Sessions[0].Name != "main" {
 		t.Errorf("snapshot: %+v", snap)
+	}
+	if snap.Sessions[0].ProjectID == "" {
+		t.Errorf("session snapshot missing ProjectID")
 	}
 
 	// Create a new session.
@@ -260,6 +277,59 @@ func TestCreateModeAttachesToNewSession(t *testing.T) {
 	// Registry now has 2 sessions.
 	if got := len(d.Registry().List()); got != 2 {
 		t.Errorf("expected 2 sessions in registry, got %d", got)
+	}
+}
+
+func TestControlProjectsRoundTrip(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+
+	// Drain initial PROJECTS + SESSIONS snapshots.
+	for i := 0; i < 2; i++ {
+		if _, _, err := wire.ReadFrame(conn); err != nil {
+			t.Fatalf("drain snapshot %d: %v", i, err)
+		}
+	}
+
+	// Create a new project.
+	if err := wire.WriteJSON(conn, wire.FrameCreateProject, wire.CreateProjectReq{
+		Name: "alpha", Color: "#abc", Cwd: "/tmp",
+	}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	// Expect a PROJECT_EVENT(added).
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read project event: %v", err)
+	}
+	if ft != wire.FrameProjectEvent {
+		t.Fatalf("expected PROJECT_EVENT, got %s", ft)
+	}
+	var ev wire.ProjectEvent
+	_ = jsonUnmarshal(payload, &ev)
+	if ev.Kind != wire.ProjectEventAdded || ev.Project.Name != "alpha" {
+		t.Errorf("project event: %+v", ev)
+	}
+
+	// LIST_PROJECTS should now return both projects.
+	_ = wire.WriteJSON(conn, wire.FrameListProjects, wire.ListProjectsReq{})
+	ft, payload, err = wire.ReadFrame(conn)
+	if err != nil {
+		t.Fatalf("read projects: %v", err)
+	}
+	if ft != wire.FrameProjects {
+		t.Fatalf("expected PROJECTS, got %s", ft)
+	}
+	var resp wire.ProjectsResp
+	_ = jsonUnmarshal(payload, &resp)
+	if len(resp.Projects) != 2 {
+		t.Errorf("expected 2 projects after create, got %d (%+v)", len(resp.Projects), resp)
 	}
 }
 
