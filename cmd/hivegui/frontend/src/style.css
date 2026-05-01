@@ -90,7 +90,24 @@ html, body {
 
 .project.active > .project-header {
   border-left-color: var(--project-color, #888);
-  color: #eee;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--project-color, #888) 22%, transparent) 0%,
+    rgba(255, 255, 255, 0.04) 60%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  color: #fff;
+}
+
+.project.active > .project-header .project-color {
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3),
+              0 0 8px color-mix(in srgb, var(--project-color, #888) 60%, transparent);
+}
+
+.project.active > .project-header .project-name {
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
 .project-header .caret {
