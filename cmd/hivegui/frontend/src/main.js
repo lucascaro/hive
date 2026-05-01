@@ -256,47 +256,53 @@ EventsOn('control:disconnect', () => {
 
 // ---------- keyboard ----------
 
+// Use capture phase so xterm.js (which handles keys on its element
+// during the bubble phase) doesn't swallow launcher navigation or
+// global shortcuts. We must also stopPropagation when we consume the
+// event, otherwise the focused xterm still receives it.
 window.addEventListener('keydown', (e) => {
   // Launcher captures keys while open; check it first.
   if (!launcherEl.classList.contains('hidden')) {
-    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+    const handle = (fn) => {
       e.preventDefault();
-      moveLauncherSelection(+1);
-      return;
+      e.stopPropagation();
+      fn();
+    };
+    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+      return handle(() => moveLauncherSelection(+1));
     }
     if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-      e.preventDefault();
-      moveLauncherSelection(-1);
-      return;
+      return handle(() => moveLauncherSelection(-1));
     }
     if (e.key === 'Enter') {
-      e.preventDefault();
-      activateLauncherSelection();
-      return;
+      return handle(activateLauncherSelection);
     }
     if (e.key === 'Escape') {
-      e.preventDefault();
-      closeLauncher();
-      return;
+      return handle(closeLauncher);
+    }
+    // Re-pressing the launcher hotkey closes it.
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) {
+      return handle(closeLauncher);
     }
   }
 
   const meta = e.metaKey || e.ctrlKey;
   if (!meta) return;
+  const swallow = () => { e.preventDefault(); e.stopPropagation(); };
   if (e.key === 'n' || e.key === 'N') {
-    e.preventDefault();
+    swallow();
     openLauncher();
   } else if (e.key === 'w' || e.key === 'W') {
-    e.preventDefault();
+    swallow();
     if (state.activeId) KillSession(state.activeId);
   } else if (/^[1-9]$/.test(e.key)) {
     const idx = parseInt(e.key, 10) - 1;
     if (idx < state.sessions.length) {
-      e.preventDefault();
+      swallow();
       switchTo(state.sessions[idx].id);
     }
   }
-});
+}, true);
 
 // ---------- resize ----------
 
@@ -408,9 +414,6 @@ document.getElementById('new-btn').addEventListener('click', (e) => {
 
 document.addEventListener('click', (e) => {
   if (!launcherEl.contains(e.target) && e.target.id !== 'new-btn') closeLauncher();
-});
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !launcherEl.classList.contains('hidden')) closeLauncher();
 });
 
 (async () => {
