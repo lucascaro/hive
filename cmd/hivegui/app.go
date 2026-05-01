@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucascaro/hive/internal/agent"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -146,16 +147,47 @@ func (a *App) controlReadLoop(cs *connState) {
 	}
 }
 
-// CreateSession asks the daemon to create a new session. The daemon
-// will broadcast a SESSION_EVENT(added) over the control connection;
-// the frontend handles that to update the sidebar.
-func (a *App) CreateSession(name, color string, cols, rows int) error {
+// AgentInfo is the JSON shape the frontend uses to render the launcher.
+type AgentInfo struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Color      string   `json:"color"`
+	Available  bool     `json:"available"`
+	InstallCmd []string `json:"installCmd,omitempty"`
+}
+
+// ListAgents returns every built-in agent definition. The frontend
+// uses this to populate the launcher menu.
+func (a *App) ListAgents() []AgentInfo {
+	defs := agent.All()
+	out := make([]AgentInfo, 0, len(defs))
+	for _, d := range defs {
+		out = append(out, AgentInfo{
+			ID:         string(d.ID),
+			Name:       d.Name,
+			Color:      d.Color,
+			Available:  d.Available(),
+			InstallCmd: d.InstallCmd,
+		})
+	}
+	return out
+}
+
+// CreateSession asks the daemon to create a new session. agentID is
+// the canonical ID from ListAgents (e.g. "claude") or "" for a
+// generic shell. The daemon will broadcast a SESSION_EVENT(added) over
+// the control connection; the frontend updates the sidebar from that.
+func (a *App) CreateSession(agentID, name, color string, cols, rows int) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Name: name, Color: color, Cols: cols, Rows: rows,
+		Agent: agentID,
+		Name:  name,
+		Color: color,
+		Cols:  cols,
+		Rows:  rows,
 	})
 }
 

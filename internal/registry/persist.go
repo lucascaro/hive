@@ -15,6 +15,7 @@ type MetaFile struct {
 	Color   string    `json:"color"`
 	Order   int       `json:"order"`
 	Created time.Time `json:"created"`
+	Agent   string    `json:"agent,omitempty"` // canonical agent ID; "" = shell
 }
 
 // IndexFile is what we write to sessions/index.json.

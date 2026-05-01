@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -29,6 +30,7 @@ type Entry struct {
 	Color   string
 	Order   int
 	Created time.Time
+	Agent   string           // canonical agent ID; "" = generic shell
 	sess    *session.Session // nil ⇔ not running this lifetime
 }
 
@@ -47,6 +49,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		Order:   e.Order,
 		Created: e.Created.UTC().Format(time.RFC3339),
 		Alive:   e.Alive(),
+		Agent:   e.Agent,
 	}
 }
 
@@ -103,7 +106,7 @@ func (r *Registry) load() error {
 		}
 		r.entries[meta.ID] = &Entry{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color,
-			Order: meta.Order, Created: meta.Created,
+			Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -121,7 +124,7 @@ func (r *Registry) load() error {
 			meta.Order = len(r.order)
 			r.entries[meta.ID] = &Entry{
 				ID: meta.ID, Name: meta.Name, Color: meta.Color,
-				Order: meta.Order, Created: meta.Created,
+				Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -158,13 +161,19 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if name == "" {
 		name = fmt.Sprintf("session %d", len(r.order)+1)
 	}
+	// Resolve agent default color if the spec didn't override it.
 	color := spec.Color
+	if color == "" && spec.Agent != "" {
+		if def, ok := agent.Get(agent.ID(spec.Agent)); ok {
+			color = def.Color
+		}
+	}
 	if color == "" {
 		color = pickColor(len(r.order))
 	}
 	e := &Entry{
 		ID: id, Name: name, Color: color,
-		Order: len(r.order), Created: time.Now().UTC(),
+		Order: len(r.order), Created: time.Now().UTC(), Agent: spec.Agent,
 	}
 	r.entries[id] = e
 	r.order = append(r.order, id)
@@ -184,9 +193,17 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.mu.Unlock()
 
 	// Start the session outside the lock so the PTY fork doesn't block
-	// the registry.
+	// the registry. If the spec names an agent (and no explicit Cmd),
+	// look up its default command and use it.
+	cmd := spec.Cmd
+	if len(cmd) == 0 && spec.Agent != "" {
+		if def, ok := agent.Get(agent.ID(spec.Agent)); ok && len(def.Cmd) > 0 {
+			cmd = def.Cmd
+		}
+	}
 	sess, err := session.Start(session.Options{
 		Shell: spec.Shell,
+		Cmd:   cmd,
 		Cwd:   spec.Cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
@@ -207,9 +224,15 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	return e, nil
 }
 
-// Revive starts a fresh shell on the existing entry. No-op if the
+// Revive starts a fresh process on the existing entry. No-op if the
 // entry already has a live session. Used on daemon startup to bring
 // previously-persisted sessions back to a usable state.
+//
+// If the entry's Agent is set, we re-resolve the agent's command via
+// the agent package — this means an agent binary moved on disk
+// between runs (e.g. nvm switch) is picked up automatically. If the
+// agent ID is unknown (e.g. a future agent rolled back), we fall back
+// to a generic shell.
 //
 // Note: Phase 1.7 (disk-backed scrollback) will replay prior content
 // on revive. Today the slot is preserved but starts blank.
@@ -224,8 +247,14 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		r.mu.Unlock()
 		return nil
 	}
+	agentID := e.Agent
 	r.mu.Unlock()
 
+	if agentID != "" && len(opts.Cmd) == 0 {
+		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
+			opts.Cmd = def.Cmd
+		}
+	}
 	sess, err := session.Start(opts)
 	if err != nil {
 		return err
@@ -408,7 +437,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 	path := filepath.Join(SessionsDir(r.stateDir), e.ID, "session.json")
 	return writeJSON(path, MetaFile{
 		ID: e.ID, Name: e.Name, Color: e.Color,
-		Order: e.Order, Created: e.Created,
+		Order: e.Order, Created: e.Created, Agent: e.Agent,
 	})
 }
 

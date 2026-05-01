@@ -164,6 +164,48 @@ html, body {
   display: block;
 }
 
+#launcher {
+  position: fixed;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  z-index: 10;
+  font-size: 12.5px;
+}
+#launcher.hidden { display: none; }
+
+.launcher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #ccc;
+}
+.launcher-item:hover { background: rgba(255,255,255,0.05); }
+.launcher-item .agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--agent-color, #888);
+  flex-shrink: 0;
+}
+.launcher-item .agent-name { flex: 1; }
+.launcher-item.unavailable {
+  opacity: 0.55;
+  cursor: default;
+}
+.launcher-item .install-tag {
+  font-size: 10.5px;
+  color: #888;
+  font-family: Menlo, monospace;
+}
+.launcher-item.unavailable:hover { background: transparent; }
+
 #status {
   position: fixed;
   right: 12px;

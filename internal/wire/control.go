@@ -25,9 +25,11 @@ type CreateSpec struct {
 	Cols  int    `json:"cols,omitempty"`
 	Rows  int    `json:"rows,omitempty"`
 	Shell string `json:"shell,omitempty"`
-	Cwd   string `json:"cwd,omitempty"` // working directory; default = daemon's
-	// Cmd, when set, runs in place of the shell. Phase 3 will use this
-	// for agent launchers; Phase 2 leaves it empty.
+	Cwd   string `json:"cwd,omitempty"`   // working directory
+	Agent string `json:"agent,omitempty"` // canonical agent ID, e.g. "claude"; empty = generic shell
+	// Cmd, when set, runs in place of the shell. Phase 3 uses this
+	// for agent launchers when Agent is set, but the daemon also
+	// accepts a raw Cmd from clients that don't speak agent IDs.
 	Cmd []string `json:"cmd,omitempty"`
 }
 
@@ -63,6 +65,7 @@ type SessionInfo struct {
 	Order   int    `json:"order"`
 	Created string `json:"created"` // RFC 3339
 	Alive   bool   `json:"alive"`
+	Agent   string `json:"agent,omitempty"` // canonical agent ID, "" = generic shell
 }
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).

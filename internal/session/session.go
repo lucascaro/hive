@@ -38,7 +38,8 @@ type Session struct {
 // Options configures a new Session.
 type Options struct {
 	Shell       string
-	Cwd         string // working directory for the shell; default = sane choice
+	Cmd         []string // when non-empty, runs in place of $SHELL (e.g. an agent)
+	Cwd         string   // working directory; default = sane choice
 	Cols, Rows  int
 	ScrollBytes int
 	Env         []string // appended to os.Environ()
@@ -61,11 +62,10 @@ func resolveCwd(opt string) string {
 	return ""
 }
 
-// Start spawns the shell on a new PTY. The session ID is a fresh UUID.
+// Start spawns a process on a new PTY. By default the process is the
+// user's login shell; pass a non-empty Cmd to run something else (an
+// agent, etc.). The session ID is a fresh UUID.
 func Start(opts Options) (*Session, error) {
-	if opts.Shell == "" {
-		opts.Shell = defaultShell()
-	}
 	if opts.Cols == 0 {
 		opts.Cols = 80
 	}
@@ -82,7 +82,16 @@ func Start(opts Options) (*Session, error) {
 		return nil, err
 	}
 
-	cmd := ptmx.Command(opts.Shell)
+	var cmd *pty.Cmd
+	if len(opts.Cmd) > 0 {
+		cmd = ptmx.Command(opts.Cmd[0], opts.Cmd[1:]...)
+	} else {
+		shell := opts.Shell
+		if shell == "" {
+			shell = defaultShell()
+		}
+		cmd = ptmx.Command(shell)
+	}
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)

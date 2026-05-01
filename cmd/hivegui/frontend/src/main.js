@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession,
-  CreateSession, KillSession, UpdateSession,
+  CreateSession, KillSession, UpdateSession, ListAgents,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -254,7 +254,11 @@ window.addEventListener('keydown', (e) => {
   if (!meta) return;
   if (e.key === 'n' || e.key === 'N') {
     e.preventDefault();
-    CreateSession('', '', 0, 0);
+    if (e.shiftKey) {
+      openLauncher();
+    } else {
+      CreateSession('shell', '', '', 0, 0);
+    }
   } else if (e.key === 'w' || e.key === 'W') {
     e.preventDefault();
     if (state.activeId) KillSession(state.activeId);
@@ -283,8 +287,63 @@ window.addEventListener('resize', () => {
 
 // ---------- bootstrap ----------
 
-document.getElementById('new-btn').addEventListener('click', () => {
-  CreateSession('', '', 0, 0);
+// ---------- agent launcher menu ----------
+
+const launcherEl = document.getElementById('launcher');
+
+function openLauncher() {
+  ListAgents()
+    .then((agents) => {
+      launcherEl.innerHTML = '';
+      const newBtn = document.getElementById('new-btn');
+      const r = newBtn.getBoundingClientRect();
+      launcherEl.style.left = `${r.left}px`;
+      launcherEl.style.top = `${r.bottom + 4}px`;
+      for (const a of agents) {
+        const item = document.createElement('div');
+        item.className = 'launcher-item' + (a.available ? '' : ' unavailable');
+        item.style.setProperty('--agent-color', a.color);
+        const dot = document.createElement('span');
+        dot.className = 'agent-dot';
+        const name = document.createElement('span');
+        name.className = 'agent-name';
+        name.textContent = a.name;
+        item.append(dot, name);
+        if (!a.available && a.installCmd && a.installCmd.length) {
+          const tag = document.createElement('span');
+          tag.className = 'install-tag';
+          tag.title = a.installCmd.join(' ');
+          tag.textContent = 'install';
+          item.appendChild(tag);
+        }
+        if (a.available) {
+          item.addEventListener('click', () => {
+            CreateSession(a.id, '', '', 0, 0);
+            closeLauncher();
+          });
+        }
+        launcherEl.appendChild(item);
+      }
+      launcherEl.classList.remove('hidden');
+    })
+    .catch(() => {});
+}
+
+function closeLauncher() {
+  launcherEl.classList.add('hidden');
+}
+
+document.getElementById('new-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (launcherEl.classList.contains('hidden')) openLauncher();
+  else closeLauncher();
+});
+
+document.addEventListener('click', (e) => {
+  if (!launcherEl.contains(e.target) && e.target.id !== 'new-btn') closeLauncher();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !launcherEl.classList.contains('hidden')) closeLauncher();
 });
 
 (async () => {
