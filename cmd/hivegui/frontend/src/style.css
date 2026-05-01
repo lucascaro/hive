@@ -13,6 +13,15 @@ html, body {
   display: grid;
   grid-template-columns: 200px 1fr;
   height: 100vh;
+  transition: grid-template-columns 120ms ease;
+}
+
+#app.sidebar-hidden {
+  grid-template-columns: 0 1fr;
+}
+#app.sidebar-hidden #sidebar {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 #sidebar {

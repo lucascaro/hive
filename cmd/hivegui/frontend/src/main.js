@@ -166,9 +166,16 @@ function orderedSessions() {
 }
 
 function activeProjectId() {
+  // In grid-project mode the user's "current project" is whichever
+  // project is in grid focus, even if active session momentarily
+  // points at another project.
+  if (state.view === 'grid-project' && state.gridProjectId) {
+    return state.gridProjectId;
+  }
   if (state.activeId) {
     const s = state.sessions.find((x) => x.id === state.activeId);
-    if (s) return s.projectId ?? s.project_id ?? state.projects[0]?.id ?? '';
+    const pid = s?.projectId ?? s?.project_id;
+    if (pid) return pid;
   }
   return state.projects[0]?.id ?? '';
 }
@@ -234,6 +241,14 @@ function renderProject(p, activePID) {
   actions.append(newBtn, editBtn);
 
   header.append(caret, colorEl, name, actions);
+  header.addEventListener('click', (e) => {
+    // Only fire when clicking the row background, color block, or name —
+    // not on buttons / caret / inline inputs. Each of those stops
+    // propagation in its own handler so we shouldn't see them here,
+    // but be defensive.
+    if (e.target.closest('.project-actions') || e.target === caret) return;
+    switchToProject(p.id);
+  });
   header.addEventListener('dblclick', (e) => {
     if (e.target === name || e.target === header) beginRenameProject(p, name);
   });
@@ -361,15 +376,40 @@ function switchTo(id) {
     return;
   }
   state.activeId = id;
+  let info = null;
   if (id) {
-    const info = state.sessions.find((s) => s.id === id);
+    info = state.sessions.find((s) => s.id === id);
     if (info) ensureTerm(info);
+  }
+  // Retarget the grid scope if the new session belongs to a different
+  // project than the one currently shown in grid-project mode.
+  if (state.view === 'grid-project' && info) {
+    const pid = info.projectId ?? info.project_id;
+    if (pid && pid !== state.gridProjectId) state.gridProjectId = pid;
   }
   if (state.view === 'single') showSingle(id);
   else renderGrid();
   renderSidebar();
-  const info = state.sessions.find((s) => s.id === id);
   setStatus(info ? info.name : '');
+}
+
+// switchToProject activates a project: in grid-project mode it
+// retargets the grid, and in any mode it makes the project's first
+// session the active one.
+function switchToProject(pid) {
+  if (!pid) return;
+  if (state.view === 'grid-project') state.gridProjectId = pid;
+  const sessions = state.sessions
+    .filter((s) => (s.projectId ?? s.project_id) === pid)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (sessions[0]) switchTo(sessions[0].id);
+  else {
+    // Project has no live sessions — still show its scope.
+    state.activeId = null;
+    if (state.view === 'single') showSingle(null);
+    else renderGrid();
+    renderSidebar();
+  }
 }
 
 // gridLayout caches the (rows, cols) chosen for the current scope so
@@ -653,12 +693,14 @@ function openLauncher(projectId) {
     .then((agents) => {
       launcherEl.innerHTML = '';
       launcherState.items = [];
-      // Anchor the launcher near the project's + button if we have a
-      // project anchor; otherwise near the global new-project button.
-      const anchorEl = projectId
-        ? document.querySelector(`.project[data-pid="${projectId}"] .project-actions button`)
-        : document.getElementById('new-project-btn');
-      const r = (anchorEl ?? document.getElementById('new-project-btn')).getBoundingClientRect();
+      // Anchor next to the resolved project's + button so the user
+      // can see which project the new session lands in. Falls back
+      // to the global new-project button if the project's row isn't
+      // currently in the DOM (e.g. its header is offscreen).
+      const anchorEl =
+        document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
+        document.getElementById('new-project-btn');
+      const r = anchorEl.getBoundingClientRect();
       launcherEl.style.left = `${r.left}px`;
       launcherEl.style.top = `${r.bottom + 4}px`;
       let firstAvailable = -1;
@@ -794,6 +836,18 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
     swallow();
     openProjectEditor(null);
+  } else if (e.key === 's' || e.key === 'S') {
+    swallow();
+    const app = document.getElementById('app');
+    app.classList.toggle('sidebar-hidden');
+    // Re-fit visible terminals after the layout transition.
+    setTimeout(() => {
+      if (state.view === 'single') {
+        state.terms.get(state.activeId)?.refit();
+      } else {
+        for (const info of gridScopeSessions()) state.terms.get(info.id)?.refit();
+      }
+    }, 150);
   } else if (e.key === 'g' || e.key === 'G') {
     swallow();
     if (e.shiftKey) {
