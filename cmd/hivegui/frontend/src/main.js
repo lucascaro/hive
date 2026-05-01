@@ -443,9 +443,12 @@ function switchToProject(pid) {
   }
 }
 
-// gridLayout caches the (rows, cols) chosen for the current scope so
-// the keyboard navigation and resize logic don't have to recompute.
-let gridLayout = { rows: 1, cols: 1, sessions: [] };
+// gridLayout caches the (rows, cols) chosen for the current scope plus
+// the per-tile placement so the keyboard navigation logic doesn't have
+// to recompute. assignments[i] = { row, col, rowSpan } — tiles above
+// last-row empty cells extend downward to fill the grid (matches
+// current Hive's behavior). cellMap[row*cols + col] = session index.
+let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
 
 // computeGridDims picks (rows, cols) that fills the container without
 // scrolling, biasing tile aspect toward typical terminal proportions
@@ -480,6 +483,7 @@ function renderGrid() {
   termsHost.classList.add('grid');
   const gridSessions = gridScopeSessions();
   const gridIDs = new Set(gridSessions.map((s) => s.id));
+  const n = gridSessions.length;
 
   // Ensure every grid session has a SessionTerm and is attached.
   // Move tiles into the desired DOM order (row-major) so that flexbox
@@ -496,16 +500,58 @@ function renderGrid() {
   for (const [sid, st] of state.terms) {
     if (!gridIDs.has(sid)) {
       st.host.classList.remove('in-grid', 'active');
+      st.host.style.gridRow = '';
+      st.host.style.gridColumn = '';
     }
   }
 
   // Pick (rows, cols) that fills the container.
   const w = termsHost.clientWidth || 800;
   const h = termsHost.clientHeight || 600;
-  const { rows, cols } = computeGridDims(gridSessions.length, w, h);
+  const { rows, cols } = computeGridDims(n, w, h);
+
+  // Compute placement: each tile occupies one cell; tiles directly
+  // above empty cells in the last row extend downward to fill the
+  // gap. Last-row gaps are at row-major indices [n .. rows*cols-1].
+  const assignments = new Array(n);
+  for (let i = 0; i < n; i++) {
+    assignments[i] = { row: Math.floor(i / cols), col: i % cols, rowSpan: 1 };
+  }
+  for (let e = n; e < rows * cols; e++) {
+    const aboveIdx = e - cols;
+    if (aboveIdx >= 0 && aboveIdx < n) {
+      assignments[aboveIdx].rowSpan += 1;
+    }
+  }
+
   termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-  gridLayout = { rows, cols, sessions: gridSessions };
+
+  // Apply each tile's row span. CSS grid 1-based; row indices are
+  // implicit row-major, so we only need to span when rowSpan > 1.
+  for (let i = 0; i < n; i++) {
+    const a = assignments[i];
+    const st = state.terms.get(gridSessions[i].id);
+    if (!st) continue;
+    if (a.rowSpan > 1) {
+      st.host.style.gridRow = `span ${a.rowSpan}`;
+    } else {
+      st.host.style.gridRow = '';
+    }
+    st.host.style.gridColumn = '';
+  }
+
+  // Build cellMap so spatial nav knows which tile owns each grid cell
+  // (including the cells absorbed by row-spans).
+  const cellMap = new Array(rows * cols).fill(null);
+  for (let i = 0; i < n; i++) {
+    const a = assignments[i];
+    for (let dr = 0; dr < a.rowSpan; dr++) {
+      cellMap[(a.row + dr) * cols + a.col] = i;
+    }
+  }
+
+  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
 
   // Refit each visible tile after the layout settles.
   requestAnimationFrame(() => {
@@ -515,11 +561,12 @@ function renderGrid() {
   });
 }
 
-// gridSpatialMove moves the active tile in the given direction within
-// the current grid layout. delta = {col, row}. No-ops if the target
-// cell is outside the grid or empty.
+// gridSpatialMove moves the active tile in the given direction.
+// Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
+// 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
+// "right" from tile 2 lands on tile 1 instead of doing nothing.
 function gridSpatialMove(dCol, dRow) {
-  const { rows, cols, sessions } = gridLayout;
+  const { rows, cols, sessions, cellMap, assignments } = gridLayout;
   if (sessions.length === 0) return;
   const idx = sessions.findIndex((s) => s.id === state.activeId);
   if (idx < 0) {
@@ -528,18 +575,29 @@ function gridSpatialMove(dCol, dRow) {
     renderSidebar();
     return;
   }
-  const r = Math.floor(idx / cols);
-  const c = idx % cols;
-  const nr = r + dRow;
-  const nc = c + dCol;
-  if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) return;
-  const target = nr * cols + nc;
-  if (target >= sessions.length) return; // empty cell on last row
-  state.activeId = sessions[target].id;
-  renderGrid();
-  renderSidebar();
-  state.terms.get(state.activeId)?.term.focus();
-  setStatus(sessions[target].name);
+  const a = assignments[idx];
+  // For downward moves, start from the tile's bottom edge (last row of
+  // its span); for the other directions the primary cell is correct.
+  let r = a.row;
+  let c = a.col;
+  if (dRow > 0) r = a.row + a.rowSpan - 1;
+  // Step in the requested direction, skipping cells that resolve to
+  // the current tile (row-span absorption) or empty cells.
+  let nr = r + dRow;
+  let nc = c + dCol;
+  while (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+    const target = cellMap[nr * cols + nc];
+    if (target != null && target !== idx) {
+      state.activeId = sessions[target].id;
+      renderGrid();
+      renderSidebar();
+      state.terms.get(state.activeId)?.term.focus();
+      setStatus(sessions[target].name);
+      return;
+    }
+    nr += dRow;
+    nc += dCol;
+  }
 }
 
 function shiftActiveProject(delta) {
