@@ -425,6 +425,8 @@ function renderSession(s) {
   if (state.attention.has(s.id)) li.classList.add('attention');
   li.style.setProperty('--session-color', s.color || '#888');
   li.dataset.sid = s.id;
+  li.dataset.pid = s.projectId ?? s.project_id ?? '';
+  li.draggable = true;
 
   const dot = document.createElement('span');
   dot.className = 'dot';
@@ -464,7 +466,93 @@ function renderSession(s) {
     switchTo(s.id);
   });
   li.addEventListener('dblclick', () => beginRenameSession(s, li, name));
+
+  // ---- Drag-to-reorder ----
+  // Same-project drops only; cross-project moves are not supported
+  // yet (would require also updating project_id on the wire).
+  li.addEventListener('dragstart', (e) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/x-hive-session', s.id);
+    li.classList.add('dragging');
+  });
+  li.addEventListener('dragend', () => {
+    li.classList.remove('dragging');
+    document.querySelectorAll('.session-item.drop-above, .session-item.drop-below')
+      .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+  });
+  li.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('text/x-hive-session')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const r = li.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    li.classList.toggle('drop-above', above);
+    li.classList.toggle('drop-below', !above);
+  });
+  li.addEventListener('dragleave', () => {
+    li.classList.remove('drop-above', 'drop-below');
+  });
+  li.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const sid = e.dataTransfer.getData('text/x-hive-session');
+    li.classList.remove('drop-above', 'drop-below');
+    if (!sid || sid === s.id) return;
+    const dragged = state.sessions.find((x) => x.id === sid);
+    if (!dragged) return;
+    const draggedPID = dragged.projectId ?? dragged.project_id ?? '';
+    const targetPID = s.projectId ?? s.project_id ?? '';
+    if (draggedPID !== targetPID) return; // cross-project: not supported yet
+    const r = li.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    reorderDroppedSession(sid, s.id, above);
+  });
   return li;
+}
+
+// reorderDroppedSession converts a drop position ("above" or "below"
+// the target row) into a global Order argument for UpdateSession.
+// The daemon's moveLocked treats the argument as a global index into
+// r.order; we pick the global Order of whichever neighbor sits at
+// the project-relative drop slot (after pretending the dragged
+// session is gone).
+function reorderDroppedSession(draggedID, targetID, above) {
+  const target = state.sessions.find((s) => s.id === targetID);
+  if (!target) return;
+  const projID = target.projectId ?? target.project_id ?? '';
+  const projSessions = state.sessions
+    .filter((s) => (s.projectId ?? s.project_id ?? '') === projID)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targetIdx = projSessions.findIndex((s) => s.id === targetID);
+  if (targetIdx < 0) return;
+  let projIdx = above ? targetIdx : targetIdx + 1;
+  const pretend = projSessions.filter((s) => s.id !== draggedID);
+  if (pretend.length === 0) return;
+  if (projIdx > pretend.length) projIdx = pretend.length;
+
+  // Find the global index in r.order that we want the dragged session
+  // to land at. We approximate using global Order values: pretend[i]
+  // currently has some Order value, and moveLocked accepts a global
+  // index. Easiest: walk the global ordered list of all sessions and
+  // count to the slot we want.
+  const globalOrdered = [...state.sessions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  let globalTargetIdx;
+  if (projIdx >= pretend.length) {
+    // Drop after the last neighbor: land just past it.
+    const last = pretend[pretend.length - 1];
+    globalTargetIdx = globalOrdered.findIndex((x) => x.id === last.id) + 1;
+  } else {
+    const neighbor = pretend[projIdx];
+    globalTargetIdx = globalOrdered.findIndex((x) => x.id === neighbor.id);
+  }
+  if (globalTargetIdx < 0) return;
+  // moveLocked is "remove from current pos, then insert at newOrder"
+  // — so if dragged is currently *before* the target index, the
+  // index shifts by 1 after removal. Compensate.
+  const draggedGlobalIdx = globalOrdered.findIndex((x) => x.id === draggedID);
+  if (draggedGlobalIdx >= 0 && draggedGlobalIdx < globalTargetIdx) {
+    globalTargetIdx -= 1;
+  }
+  UpdateSession(draggedID, '', '', globalTargetIdx);
 }
 
 function beginRenameSession(sess, li, nameEl) {

@@ -266,6 +266,25 @@ html, body {
   animation: hive-attention-pulse 1.2s ease-in-out infinite;
   color: #fff;
 }
+
+/* Drag-to-reorder visual: a thin colored line at the drop edge so
+   the user can see exactly where the dragged session will land. */
+.session-item.dragging {
+  opacity: 0.45;
+}
+.session-item.drop-above::before,
+.session-item.drop-below::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--session-color, #f59e0b);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.session-item.drop-above::before { top: -1px; }
+.session-item.drop-below::before { bottom: -1px; }
 .session-item.attention .name::before {
   content: '●';
   color: var(--session-color, #888);
