@@ -70,26 +70,42 @@ html, body {
 
 .project {
   margin-bottom: 4px;
+  position: relative;
+}
+.project::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--project-color, #888);
+  opacity: 0.45;
+  border-radius: 0 1px 1px 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, width 120ms ease;
+}
+.project.active::before {
+  opacity: 1;
+  width: 4px;
 }
 
 .project-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 5px 10px 5px 12px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #888;
   cursor: pointer;
   user-select: none;
-  border-left: 3px solid transparent;
 }
 
 .project-header:hover { background: rgba(255,255,255,0.02); color: #ddd; }
 
 .project.active > .project-header {
-  border-left-color: var(--project-color, #888);
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--project-color, #888) 22%, transparent) 0%,
@@ -187,7 +203,6 @@ html, body {
   font-size: 12.5px;
   color: #aaa;
   position: relative;
-  border-left: 3px solid transparent;
 }
 
 .session-item:hover {
@@ -198,7 +213,16 @@ html, body {
 .session-item.selected {
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
-  border-left-color: var(--session-color, #888);
+}
+.session-item.selected::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--session-color, #888);
+  border-radius: 1px 0 0 1px;
 }
 
 /* Title gradient — color stays visible even when selected. */
