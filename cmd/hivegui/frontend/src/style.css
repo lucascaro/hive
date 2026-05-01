@@ -466,16 +466,14 @@ html, body {
   flex-shrink: 0;
 }
 .launcher-item .agent-name { flex: 1; }
-.launcher-item.unavailable {
-  opacity: 0.55;
-  cursor: default;
+.launcher-item.uninstalled .agent-name {
+  color: #999;
 }
 .launcher-item .install-tag {
   font-size: 10.5px;
   color: #888;
   font-family: Menlo, monospace;
 }
-.launcher-item.unavailable:hover { background: transparent; }
 
 #project-editor {
   position: fixed;

@@ -862,18 +862,13 @@ function highlightLauncherSelection() {
 function moveLauncherSelection(delta) {
   const n = launcherState.items.length;
   if (n === 0) return;
-  let i = launcherState.selected;
-  for (let step = 0; step < n; step++) {
-    i = (i + delta + n) % n;
-    if (launcherState.items[i].agent.available) break;
-  }
-  launcherState.selected = i;
+  launcherState.selected = (launcherState.selected + delta + n) % n;
   highlightLauncherSelection();
 }
 
 function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
-  if (!it || !it.agent.available) return;
+  if (!it) return;
   CreateSession(it.agent.id, launcherState.projectId || activeProjectId(), '', '', 0, 0);
   closeLauncher();
 }
@@ -894,10 +889,17 @@ function openLauncher(projectId) {
       const r = anchorEl.getBoundingClientRect();
       launcherEl.style.left = `${r.left}px`;
       launcherEl.style.top = `${r.bottom + 4}px`;
-      let firstAvailable = -1;
+      // Detection (exec.LookPath on the daemon side) is best-effort:
+      // it can miss agents installed as shell aliases, functions, or
+      // PATH that's only set up by an interactive rc file. So we list
+      // every agent as launchable and let the user try; the daemon
+      // runs the command via the user's interactive shell, and any
+      // real failure surfaces as "command not found" inside the
+      // session's terminal. The "install" hint stays visible as
+      // advisory text for the truly-not-installed case.
       agents.forEach((a, idx) => {
         const item = document.createElement('div');
-        item.className = 'launcher-item' + (a.available ? '' : ' unavailable');
+        item.className = 'launcher-item' + (a.available ? '' : ' uninstalled');
         item.style.setProperty('--agent-color', a.color);
         const dot = document.createElement('span');
         dot.className = 'agent-dot';
@@ -909,24 +911,20 @@ function openLauncher(projectId) {
           const tag = document.createElement('span');
           tag.className = 'install-tag';
           tag.title = a.installCmd.join(' ');
-          tag.textContent = 'install';
-          item.appendChild(tag);
+          tag.textContent = 'install?';
         }
-        if (a.available) {
-          if (firstAvailable < 0) firstAvailable = idx;
-          item.addEventListener('click', () => {
-            CreateSession(a.id, launcherState.projectId, '', '', 0, 0);
-            closeLauncher();
-          });
-          item.addEventListener('mouseenter', () => {
-            launcherState.selected = idx;
-            highlightLauncherSelection();
-          });
-        }
+        item.addEventListener('click', () => {
+          CreateSession(a.id, launcherState.projectId, '', '', 0, 0);
+          closeLauncher();
+        });
+        item.addEventListener('mouseenter', () => {
+          launcherState.selected = idx;
+          highlightLauncherSelection();
+        });
         launcherEl.appendChild(item);
         launcherState.items.push({ agent: a, el: item });
       });
-      launcherState.selected = firstAvailable >= 0 ? firstAvailable : 0;
+      launcherState.selected = 0;
       highlightLauncherSelection();
       launcherEl.classList.remove('hidden');
     })

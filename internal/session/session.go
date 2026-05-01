@@ -82,14 +82,20 @@ func Start(opts Options) (*Session, error) {
 		return nil, err
 	}
 
+	shell := opts.Shell
+	if shell == "" {
+		shell = defaultShell()
+	}
+
 	var cmd *pty.Cmd
 	if len(opts.Cmd) > 0 {
-		cmd = ptmx.Command(opts.Cmd[0], opts.Cmd[1:]...)
+		// Run the command via the user's interactive shell so aliases,
+		// shell functions, and PATH set up in rc files (nvm, asdf,
+		// chruby, …) apply. Without this, an agent like `codex`
+		// defined as a zsh alias is unreachable.
+		line := shellEscape(opts.Cmd)
+		cmd = ptmx.Command(shell, "-i", "-c", line)
 	} else {
-		shell := opts.Shell
-		if shell == "" {
-			shell = defaultShell()
-		}
 		cmd = ptmx.Command(shell)
 	}
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
@@ -213,6 +219,54 @@ func (s *Session) Close() error {
 
 // Done returns a channel that is closed when the session exits.
 func (s *Session) Done() <-chan struct{} { return s.done }
+
+// shellEscape joins argv into a single line safe for "sh -c". Bare-word
+// args pass through unquoted; anything with whitespace or shell
+// metacharacters gets single-quoted with embedded single quotes
+// escaped via the standard '\'' trick.
+func shellEscape(argv []string) string {
+	const safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./@:+=,%"
+	out := make([]byte, 0, 32)
+	for i, a := range argv {
+		if i > 0 {
+			out = append(out, ' ')
+		}
+		if a == "" {
+			out = append(out, '\'', '\'')
+			continue
+		}
+		ok := true
+		for j := 0; j < len(a); j++ {
+			if !contains(safe, a[j]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			out = append(out, a...)
+			continue
+		}
+		out = append(out, '\'')
+		for j := 0; j < len(a); j++ {
+			if a[j] == '\'' {
+				out = append(out, '\'', '\\', '\'', '\'')
+			} else {
+				out = append(out, a[j])
+			}
+		}
+		out = append(out, '\'')
+	}
+	return string(out)
+}
+
+func contains(s string, b byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return true
+		}
+	}
+	return false
+}
 
 func defaultShell() string {
 	if s := os.Getenv("SHELL"); s != "" {
