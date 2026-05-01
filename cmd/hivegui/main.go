@@ -4,6 +4,7 @@ package main
 
 import (
 	"embed"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,8 +14,31 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// resolveLaunchDir is best-effort capture of the user's intent for
+// "where should new sessions open". macOS launches .app bundles with
+// cwd "/" regardless of how they were invoked (open, Finder, even
+// running Contents/MacOS/<bin> directly), so os.Getwd alone is not
+// reliable. We try, in order:
+//  1. os.Getwd() if it isn't "" or "/"
+//  2. $PWD env var (preserved when the user ran the binary directly
+//     from a shell that exports PWD)
+//  3. $HOME
+func resolveLaunchDir() string {
+	if cwd, err := os.Getwd(); err == nil && cwd != "" && cwd != "/" {
+		return cwd
+	}
+	if pwd := os.Getenv("PWD"); pwd != "" && pwd != "/" {
+		return pwd
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return ""
+}
+
 func main() {
-	app := NewApp()
+	launchDir := resolveLaunchDir()
+	app := NewApp(launchDir)
 	err := wails.Run(&options.App{
 		Title:            "Hive",
 		Width:            1024,

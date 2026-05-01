@@ -21,7 +21,8 @@ import (
 //   - one attach connection per session the user has opened
 //     (OpenSession), keyed by session ID
 type App struct {
-	ctx context.Context
+	ctx       context.Context
+	launchDir string // captured at process start; passed to hived as --cwd
 
 	mu       sync.Mutex
 	control  *connState                // control connection (or nil)
@@ -47,8 +48,11 @@ func (c *connState) writeFrame(t wire.FrameType, p []byte) error {
 	return wire.WriteFrame(c.conn, t, p)
 }
 
-func NewApp() *App {
-	return &App{attaches: make(map[string]*connState)}
+func NewApp(launchDir string) *App {
+	return &App{
+		launchDir: launchDir,
+		attaches:  make(map[string]*connState),
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -80,7 +84,7 @@ func (a *App) ConnectControl() error {
 	}
 	a.mu.Unlock()
 
-	conn, err := dialOrSpawn(hdaemon.SocketPath())
+	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
 	if err != nil {
 		return err
 	}
@@ -214,7 +218,7 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	}
 	a.mu.Unlock()
 
-	conn, err := dialOrSpawn(hdaemon.SocketPath())
+	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
 	if err != nil {
 		return nil, err
 	}
@@ -341,12 +345,14 @@ func (a *App) attachFor(id string) (*connState, error) {
 // ----------------------------- daemon spawn ------------------------------
 
 // dialOrSpawn dials hived; on failure spawns it as a detached child
-// and retries with backoff for up to ~3s.
-func dialOrSpawn(sock string) (net.Conn, error) {
+// and retries with backoff for up to ~3s. cwd, when non-empty, is
+// passed to hived as --cwd so newly-created sessions default to that
+// directory.
+func dialOrSpawn(sock, cwd string) (net.Conn, error) {
 	if c, err := net.Dial("unix", sock); err == nil {
 		return c, nil
 	}
-	if err := spawnHived(sock, 0, 0); err != nil {
+	if err := spawnHived(sock, cwd); err != nil {
 		return nil, fmt.Errorf("spawn hived: %w", err)
 	}
 	delays := []time.Duration{100, 200, 400, 800, 1600}

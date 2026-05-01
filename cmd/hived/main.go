@@ -20,15 +20,26 @@ func main() {
 	var (
 		sock  = flag.String("socket", "", "Unix socket path (empty = platform default)")
 		shell = flag.String("shell", "", "shell to run (empty = $SHELL or platform default)")
+		cwd   = flag.String("cwd", "", "default working directory for new sessions")
 		cols  = flag.Int("cols", 80, "initial PTY width in columns")
 		rows  = flag.Int("rows", 24, "initial PTY height in rows")
 	)
 	flag.Parse()
 
+	// Chdir to the user-supplied launch directory so session.Start's
+	// os.Getwd() fallback picks it up for any session created without
+	// an explicit Cwd.
+	if *cwd != "" {
+		if err := os.Chdir(*cwd); err != nil {
+			log.Printf("hived: chdir %s: %v", *cwd, err)
+		}
+	}
+
 	d, err := daemon.New(daemon.Config{
 		SocketPath: *sock,
 		BootstrapSession: session.Options{
 			Shell: *shell,
+			Cwd:   *cwd,
 			Cols:  *cols,
 			Rows:  *rows,
 		},

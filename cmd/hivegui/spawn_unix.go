@@ -3,15 +3,16 @@
 package main
 
 import (
-	"fmt"
 	"os/exec"
 	"syscall"
 )
 
-// spawnHived starts a detached `hived` process. It looks up the binary
-// using locateHived, then re-execs with setsid so the child outlives
-// the GUI.
-func spawnHived(sock string, cols, rows int) error {
+// spawnHived starts a detached `hived` process. cwd, if non-empty,
+// becomes both the daemon's working directory (cmd.Dir) and is
+// forwarded as --cwd so the daemon explicitly knows the user's
+// original launch directory regardless of what macOS did to the .app
+// process's cwd.
+func spawnHived(sock, cwd string) error {
 	bin, err := locateHived()
 	if err != nil {
 		return err
@@ -20,14 +21,14 @@ func spawnHived(sock string, cols, rows int) error {
 	if sock != "" {
 		args = append(args, "--socket", sock)
 	}
-	if cols > 0 {
-		args = append(args, "--cols", fmt.Sprintf("%d", cols))
-	}
-	if rows > 0 {
-		args = append(args, "--rows", fmt.Sprintf("%d", rows))
+	if cwd != "" {
+		args = append(args, "--cwd", cwd)
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
