@@ -1,6 +1,7 @@
 import '@xterm/xterm/css/xterm.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { WebglAddon } from '@xterm/addon-webgl';
 
 import {
   ConnectControl, OpenSession, CloseAttach,
@@ -42,13 +43,29 @@ class SessionTerm {
     this.term = new Terminal({
       fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
       fontSize: state.fontSize,
-      cursorBlink: true,
+      // cursorBlink causes a repaint twice a second per terminal —
+      // material on older machines with many tiles. Off by default.
+      cursorBlink: false,
       scrollback: 5000,
+      smoothScrollDuration: 0,
       theme: { background: '#000000' },
     });
     this.fit = new FitAddon();
     this.term.loadAddon(this.fit);
     this.term.open(this.body);
+
+    // WebGL renderer is dramatically faster than the default DOM
+    // renderer on older machines (VS Code uses the same approach).
+    // Load it lazily after open() and silently fall back to DOM if
+    // the GPU / driver doesn't support it.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      this.term.loadAddon(webgl);
+      this.webgl = webgl;
+    } catch (err) {
+      // GPU lacks WebGL2 — keep DOM renderer. No user-visible message.
+    }
     this.attached = false;
     this.phase = 'replay';
 
