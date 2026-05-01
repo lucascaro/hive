@@ -89,14 +89,18 @@ func Start(opts Options) (*Session, error) {
 
 	var cmd *pty.Cmd
 	if len(opts.Cmd) > 0 {
-		// Run the command via the user's interactive shell so aliases,
-		// shell functions, and PATH set up in rc files (nvm, asdf,
-		// chruby, …) apply. Without this, an agent like `codex`
-		// defined as a zsh alias is unreachable.
+		// Run the command via the user's login + interactive shell so
+		// PATH/aliases/functions set up in *either* .zprofile (login)
+		// or .zshrc (interactive) apply. fnm, nvm, asdf, etc. land in
+		// different rc files depending on the install instructions —
+		// covering both is the safe default. Same model Terminal.app
+		// uses for new windows.
 		line := shellEscape(opts.Cmd)
-		cmd = ptmx.Command(shell, "-i", "-c", line)
+		cmd = ptmx.Command(shell, "-l", "-i", "-c", line)
+		log.Printf("session: spawn %s -l -i -c %q (cwd=%s)", shell, line, opts.Cwd)
 	} else {
 		cmd = ptmx.Command(shell)
+		log.Printf("session: spawn %s (cwd=%s)", shell, opts.Cwd)
 	}
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	if len(opts.Env) > 0 {

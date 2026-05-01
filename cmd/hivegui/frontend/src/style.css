@@ -386,6 +386,11 @@ html, body {
   background: #000;
   overflow: hidden;
   padding: 0;
+  /* Without min-* zero, grid items default to min-content sizing and
+     each tile grows to fit its xterm canvas — making bottom rows
+     taller than top rows. Force fr distribution to win. */
+  min-width: 0;
+  min-height: 0;
 }
 #terms.grid .term-host.in-grid {
   display: flex;
@@ -450,6 +455,7 @@ html, body {
   position: relative;
   padding: 4px 6px;
   overflow: hidden;
+  min-height: 0; /* allow flex shrink so canvas doesn't push past 1fr */
 }
 #terms.grid .term-host .term-body .xterm,
 #terms.single .term-host .xterm,

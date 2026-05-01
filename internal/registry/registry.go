@@ -6,6 +6,7 @@ package registry
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -304,6 +305,8 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		Rows:  spec.Rows,
 	})
 	if err != nil {
+		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
+			e.ID, spec.Agent, cmd, err)
 		// Strand the metadata as a dead entry. The user can recreate
 		// or kill it.
 		r.broadcast(wire.SessionEventAdded, e.Info())

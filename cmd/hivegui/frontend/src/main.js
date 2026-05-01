@@ -891,6 +891,16 @@ EventsOn('control:disconnect', () => {
   setStatus('control disconnected', true);
 });
 
+EventsOn('control:error', (jsonStr) => {
+  try {
+    const e = JSON.parse(jsonStr);
+    setStatus(`${e.code}: ${e.message}`, true);
+    console.warn('hived control error:', e);
+  } catch {
+    setStatus('hived error', true);
+  }
+});
+
 // ---------- agent launcher ----------
 
 const launcherEl = document.getElementById('launcher');

@@ -7,12 +7,15 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 )
 
@@ -32,6 +35,17 @@ func main() {
 	if *cwd != "" {
 		if err := os.Chdir(*cwd); err != nil {
 			log.Printf("hived: chdir %s: %v", *cwd, err)
+		}
+	}
+
+	// Tee logs to a file under the state dir so the GUI's auto-spawned
+	// daemon (whose stdout/stderr are /dev/null) leaves a paper trail.
+	stateDir := registry.StateDir()
+	if err := os.MkdirAll(stateDir, 0o700); err == nil {
+		logPath := filepath.Join(stateDir, "hived.log")
+		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			log.SetOutput(io.MultiWriter(os.Stderr, f))
+			log.Printf("hived: log tee to %s", logPath)
 		}
 	}
 
