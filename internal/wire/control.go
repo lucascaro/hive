@@ -25,6 +25,7 @@ type CreateSpec struct {
 	Cols  int    `json:"cols,omitempty"`
 	Rows  int    `json:"rows,omitempty"`
 	Shell string `json:"shell,omitempty"`
+	Cwd   string `json:"cwd,omitempty"` // working directory; default = daemon's
 	// Cmd, when set, runs in place of the shell. Phase 3 will use this
 	// for agent launchers; Phase 2 leaves it empty.
 	Cmd []string `json:"cmd,omitempty"`

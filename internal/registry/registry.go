@@ -187,6 +187,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	// the registry.
 	sess, err := session.Start(session.Options{
 		Shell: spec.Shell,
+		Cwd:   spec.Cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
 	})

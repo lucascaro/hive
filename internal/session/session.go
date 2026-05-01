@@ -38,9 +38,27 @@ type Session struct {
 // Options configures a new Session.
 type Options struct {
 	Shell       string
+	Cwd         string // working directory for the shell; default = sane choice
 	Cols, Rows  int
 	ScrollBytes int
 	Env         []string // appended to os.Environ()
+}
+
+// resolveCwd returns the working directory to use for a new session.
+// Caller-supplied wins. Otherwise we use the daemon's own cwd, except
+// when that's "/" (the typical Finder-launch case on macOS) — then we
+// fall back to $HOME so sessions don't open in the filesystem root.
+func resolveCwd(opt string) string {
+	if opt != "" {
+		return opt
+	}
+	if cwd, err := os.Getwd(); err == nil && cwd != "" && cwd != "/" {
+		return cwd
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return ""
 }
 
 // Start spawns the shell on a new PTY. The session ID is a fresh UUID.
@@ -69,6 +87,7 @@ func Start(opts Options) (*Session, error) {
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)
 	}
+	cmd.Dir = resolveCwd(opts.Cwd)
 	if err := cmd.Start(); err != nil {
 		_ = ptmx.Close()
 		return nil, err
