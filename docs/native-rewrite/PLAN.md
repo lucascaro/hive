@@ -68,7 +68,7 @@ Alternatives considered: Fyne/Gio (would need to write the emulator — no), Tau
 | 2     | Multiple sessions + sidebar            | 2 wks    |
 | 3     | Agent integration                      | 2 wks    |
 | 4     | Layout: tabs, splits, grid             | 3 wks    |
-| 5     | Hive-specific features port            | 2–3 wks  |
+| 5     | System bell notifications              | ~1 wk    |
 | 6     | Platform polish & release              | 2 wks    |
 | 7     | Sunset old Hive                        | 1 wk     |
 
@@ -103,13 +103,16 @@ De-risk the two scariest pieces. See `phase-0.md` for the detailed plan.
 - Grid view; reorder via Shift+Left/Right (per grid-horizontal-reorder feedback).
 - **Acceptance:** parity with current grid/tabs UX.
 
-### Phase 5 — Feature port
-Walk current feature list, port one per sub-PR:
-- Session templates / workflows
-- Agent teams
-- Status bar, notifications
-- Keybindings (preserve existing — muscle memory)
-- Replace any current `tmux send-keys` workarounds with clean daemon RPCs.
+### Phase 5 — System bell notifications
+Narrow scope: surface BEL (`\x07`) as a per-session "needs attention"
+signal — sidebar pulse + dot, plus an OS notification when the session
+isn't focused. See `phase-5.md`.
+
+- ~~Status bar~~ — **won't do**; per-tile/sidebar attention indicators cover the only signal that mattered (which session needs me). Transient events use OS notifications.
+- ~~Session templates / workflows~~ — **future consideration** (post-v2)
+- ~~Agent teams~~ — **future consideration** (post-v2)
+- ~~Keybindings (preserve existing)~~ — **won't do**; v2 defines its own bindings, no muscle-memory contract with v1.
+- ~~Replace `tmux send-keys` workarounds with daemon RPCs~~ — **won't do / N/A**; the rewrite removes tmux entirely, so there are no workarounds to port.
 
 ### Phase 6 — Platform polish & release
 - Daemon lifecycle: launchd (macOS), systemd-user (Linux), Task Scheduler (Windows).

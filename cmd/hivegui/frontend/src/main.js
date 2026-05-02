@@ -10,7 +10,7 @@ import {
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
-  IsGitRepo, OpenURL,
+  IsGitRepo, OpenURL, Notify,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -90,6 +90,15 @@ class SessionTerm {
     } catch (err) {
       // Non-fatal; sessions still work without clickable links.
     }
+    // Drive the visual focus border off the xterm's real focus state
+    // — not state.activeId — so the border can never claim "I'm
+    // focused" while keystrokes go elsewhere. xterm.js v5 has no
+    // onFocus/onBlur events, so we listen on the host: focus events
+    // bubble from xterm's hidden textarea (.xterm-helper-textarea)
+    // through .term-host.
+    this.host.addEventListener('focusin', () => this.host.classList.add('term-focused'));
+    this.host.addEventListener('focusout', () => this.host.classList.remove('term-focused'));
+
     this.attached = false;
     this.phase = 'replay';
 
@@ -111,7 +120,6 @@ class SessionTerm {
           showSingle(this.info.id);
         } else {
           renderGrid();
-          this.term.focus();
         }
       } else {
         // Reclick on the active tile — still clears any leftover
@@ -198,6 +206,7 @@ class SessionTerm {
       if (commit && next && next !== this.info.name) {
         UpdateSession(this.info.id, next, '', -1);
       }
+      refocusActiveTerm();
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
@@ -215,7 +224,6 @@ class SessionTerm {
   show() {
     this.host.classList.add('visible');
     this.refit();
-    this.term.focus();
   }
 
   hide() {
@@ -285,20 +293,24 @@ function clampFont(n) {
 
 // onSessionBell is fired by SessionTerm whenever its xterm receives
 // BEL. Active + window-focused session: ignore. Otherwise: mark
-// attention, repaint sidebar, and fire a desktop notification.
+// attention, repaint sidebar, and fire a desktop notification — but
+// only on the transition from no-attention → attention, so a session
+// emitting bells in a tight loop doesn't spam the OS notification
+// center.
 function onSessionBell(info) {
   const isActive = info.id === state.activeId;
   const windowFocused = document.hasFocus();
   if (isActive && windowFocused) return;
-  if (state.attention.has(info.id)) {
-    // Already showing attention; refresh to re-trigger CSS animation.
+  const alreadyAttention = state.attention.has(info.id);
+  if (alreadyAttention) {
+    // Refresh to re-trigger CSS animation.
     state.attention.delete(info.id);
     state.terms.get(info.id)?.host.classList.remove('attention');
   }
   state.attention.add(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   updateSidebarSelection();
-  fireBellNotification(info);
+  if (!alreadyAttention) fireBellNotification(info);
 }
 
 function clearAttention(sessionId) {
@@ -309,41 +321,31 @@ function clearAttention(sessionId) {
 }
 
 // Whenever the window regains focus, clear the active session's
-// attention state — the user is presumably looking at it.
+// attention state — the user is presumably looking at it. Also
+// restore xterm focus: macOS fullscreen toggles, ⌘-tab returns, and
+// menu actions can leave the window focused but no element inside it,
+// so typing would land on the body and be lost.
 window.addEventListener('focus', () => {
   if (state.activeId) clearAttention(state.activeId);
+  refocusActiveTerm();
 });
 
-let notificationPermission = 'default';
-function ensureNotificationPermission() {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'default') {
-    Notification.requestPermission().then((p) => { notificationPermission = p; });
-  } else {
-    notificationPermission = Notification.permission;
-  }
-}
-
+// fireBellNotification routes through Go because Wails' WKWebView on
+// macOS doesn't implement the HTML5 Notification API. The Go side
+// dispatches per-platform (NSUserNotification / notify-send / Windows
+// toast). The session id is passed as the tag so the OS can dedupe
+// repeated bells from the same session and the click handler knows
+// which session to switch to.
 function fireBellNotification(info) {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
   const projectName = proj?.name ?? '';
-  try {
-    const n = new Notification(`Hive — ${info.name}`, {
-      body: projectName ? `${projectName} needs attention` : 'Session needs attention',
-      tag: info.id,
-      silent: false,
-    });
-    n.onclick = () => {
-      window.focus();
-      switchTo(info.id);
-      clearAttention(info.id);
-      n.close();
-    };
-  } catch {
-    // Some webview builds reject Notification creation outright.
-    // Visual indicator still works regardless.
-  }
+  const title = info.name || 'Session';
+  const subtitle = projectName;
+  const body = 'Waiting for input — click to switch.';
+  Notify(title, subtitle, body, info.id).catch(() => {
+    // Best-effort; the visual sidebar pulse covers the user even if
+    // the OS notification fails (no notify-send installed, etc.).
+  });
 }
 
 function applyFontSize() {
@@ -666,6 +668,7 @@ function beginRenameSession(sess, li, nameEl) {
     } else {
       renderSidebar();
     }
+    refocusActiveTerm();
   };
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') finish(true);
@@ -688,6 +691,7 @@ function beginRenameProject(proj, nameEl) {
     } else {
       renderSidebar();
     }
+    refocusActiveTerm();
   };
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') finish(true);
@@ -724,7 +728,7 @@ function showSingle(id) {
 
 function switchTo(id) {
   if (id === state.activeId && state.view === 'single') {
-    state.terms.get(id)?.term.focus();
+    focusActiveTerm();
     return;
   }
   setActive(id);
@@ -904,6 +908,36 @@ function setActive(id) {
     if (pid) state.currentProjectId = pid;
   }
   state.activeId = id;
+  // Schedule focus after the next paint so any DOM reorder / visibility
+  // change from renderGrid / showSingle has settled. xterm.focus()
+  // moves focus to its hidden textarea; that fires .onFocus, which
+  // adds .term-focused to the host (the source of truth for the
+  // visual focus border).
+  if (id) focusActiveTerm();
+}
+
+// focusActiveTerm focuses the xterm of state.activeId. Use this
+// (rather than calling term.focus() directly) at every site that
+// might leave the terminal without keyboard focus — switching modes,
+// closing dialogs, returning from OS fullscreen, etc.
+function focusActiveTerm() {
+  const st = state.activeId && state.terms.get(state.activeId);
+  if (!st) return;
+  requestAnimationFrame(() => st.term.focus());
+}
+
+// refocusActiveTerm is the "the user just dismissed something — put
+// keystrokes back on the active session" version. Skips when the user
+// is interacting with a real input (rename, project editor, etc.) or
+// when a modal is open.
+function refocusActiveTerm() {
+  if (!launcherEl.classList.contains('hidden')) return;
+  if (!editorEl.classList.contains('hidden')) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) {
+    if (!ae.classList.contains('xterm-helper-textarea')) return;
+  }
+  focusActiveTerm();
 }
 
 // gridSpatialMove moves the active tile in the given direction.
@@ -936,7 +970,6 @@ function gridSpatialMove(dCol, dRow) {
       setActive(sessions[target].id);
       renderGrid();
       updateSidebarSelection();
-      state.terms.get(state.activeId)?.term.focus();
       setStatus(sessions[target].name);
       return;
     }
@@ -995,6 +1028,9 @@ function setView(view) {
     renderGrid();
   }
   updateSidebarSelection();
+  // Toggling grid/fullscreen via the menu blurs the xterm; restore
+  // focus so the user can keep typing into the active session.
+  focusActiveTerm();
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
@@ -1120,6 +1156,17 @@ EventsOn('pty:error', (id, jsonStr) => {
 
 EventsOn('control:disconnect', () => {
   setStatus('control disconnected', true);
+});
+
+// User clicked a notification toast. Route to that session in the
+// current view (single keeps single, grid keeps grid) without toggling
+// modes. switchTo handles the view-aware repaint.
+EventsOn('bell-click', (sessionId) => {
+  if (!sessionId) return;
+  const info = state.sessions.find((s) => s.id === sessionId);
+  if (!info) return;
+  switchTo(sessionId);
+  clearAttention(sessionId);
 });
 
 EventsOn('control:error', (jsonStr) => {
@@ -1291,6 +1338,7 @@ function openLauncher(projectId, opts) {
 function closeLauncher() {
   launcherEl.classList.add('hidden');
   launcherState.items = [];
+  refocusActiveTerm();
 }
 
 document.addEventListener('click', (e) => {
@@ -1325,6 +1373,7 @@ function openProjectEditor(project) {
 function closeProjectEditor() {
   editorEl.classList.add('hidden');
   editorState.editing = null;
+  refocusActiveTerm();
 }
 
 function saveProjectEditor() {
@@ -1598,7 +1647,6 @@ window.addEventListener('resize', () => {
 
 (async () => {
   setStatus('connecting…');
-  ensureNotificationPermission();
   try {
     await ConnectControl();
     setStatus('connected');

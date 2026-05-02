@@ -31,14 +31,22 @@ When a session receives BEL:
 
 ## Implementation
 
-Frontend-only:
+Frontend + a thin Go binding:
 
-- xterm.js v5 exposes `term.onBell((listener))`. Wire it in
-  `SessionTerm`.
-- HTML5 `Notification` API is available in Wails' WKWebView; permission
-  is requested once at startup.
+- xterm.js v5 exposes `term.onBell((listener))`. Wired in `SessionTerm`.
+- **OS notifications dispatch from Go**, not the webview. WKWebView on
+  macOS does not implement the HTML5 Notification API, so the JS path
+  silently no-ops there. Instead the frontend calls a bound
+  `App.Notify(title, body)` method that lives in `internal/notify`:
+  - macOS: `osascript -e 'display notification ...'` (no entitlements,
+    works in unsigned dev builds).
+  - Linux: `notify-send` if available, no-op otherwise.
+  - Windows: `git.sr.ht/~jackmordaunt/go-toast/v2`.
 - Visual indicator: CSS class on the sidebar item with a pulsing
   outline + colored dot.
+- Notification dedupe: only fired on the transition from no-attention
+  → attention so a session emitting bells in a tight loop doesn't
+  spam Notification Center.
 
 No daemon changes — bell bytes flow through the existing DATA frame
 path; the GUI just notices them instead of sending raw `\x07` to the

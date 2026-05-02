@@ -161,7 +161,7 @@ with a bright border in the project's color.
 | 4.5 | GUI sidebar tree CRUD | new project, rename, recolor, change cwd; new session "+" per project; manual smoke |
 | 4.6 | GUI grid view per-project | ⌘G toggles; tiles render; click switches focus |
 | 4.7 | GUI grid view all-sessions; ⌘←/→ project nav | ⇧⌘G toggles between scopes; arrow nav works |
-| 4.8 | **Acceptance: 2 projects survive restart** | manual on macOS |
+| 4.8 | ~~Acceptance: 2 projects survive restart~~ | **won't do** — project persistence across restart is no longer a v2 requirement |
 
 ## Risks
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/agent"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/notify"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -56,6 +57,19 @@ func (c *connState) writeFrame(t wire.FrameType, p []byte) error {
 	return wire.WriteFrame(c.conn, t, p)
 }
 
+// Notify fires a native OS notification. Wails' webview lacks the HTML5
+// Notification API on macOS (WKWebView), so the frontend calls into Go
+// instead. tag round-trips back to the frontend via the "bell-click"
+// Wails event when the user clicks the notification (darwin only).
+// Errors are logged but not surfaced — notifications are best-effort UX.
+func (a *App) Notify(title, subtitle, body, tag string) error {
+	if err := notify.Notify(title, subtitle, body, tag); err != nil {
+		log.Printf("hivegui: notify failed: %v", err)
+		return err
+	}
+	return nil
+}
+
 func NewApp(launchDir string) *App {
 	return &App{
 		launchDir: launchDir,
@@ -68,6 +82,15 @@ func (a *App) startup(ctx context.Context) {
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
 	}
+	// Click on a notification → bring window forward + tell frontend
+	// which session to switch to. The ObjC delegate has already called
+	// activateIgnoringOtherApps before invoking us; WindowUnminimise
+	// covers the case where the window was minimised.
+	notify.SetActivationHandler(func(tag string) {
+		wruntime.WindowUnminimise(ctx)
+		wruntime.WindowShow(ctx)
+		wruntime.EventsEmit(ctx, "bell-click", tag)
+	})
 	go a.persistGeometryLoop(ctx)
 }
 

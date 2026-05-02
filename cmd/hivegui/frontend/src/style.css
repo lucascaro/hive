@@ -367,23 +367,26 @@ html, body {
 
 #terms.single .term-host {
   position: absolute;
-  inset: 0;
-  padding: 6px;
+  inset: 6px;
   box-sizing: border-box;
   display: none;
   flex-direction: column;
+  /* Match the grid-tile baseline border so the focus upgrade is
+     visible in single mode too. */
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
+  border-radius: 4px;
+  background: #000;
+  overflow: hidden;
 }
 #terms.single .term-host.visible {
   display: flex;
 }
-/* Tile header is grid-only; hide its space in single mode. */
-#terms.single .term-host .tile-header {
-  display: none;
-}
 #terms.single .term-host .term-body {
   flex: 1;
   position: relative;
+  padding: 4px 6px;
   overflow: hidden;
+  min-height: 0;
 }
 
 #terms.grid {
@@ -417,7 +420,11 @@ html, body {
   display: flex;
   flex-direction: column;
 }
-#terms.grid .term-host.in-grid.active {
+/* Visual focus border = real xterm focus. SessionTerm.onFocus /
+   .onBlur toggle .term-focused; when a session loses focus (sidebar
+   click, dialog open, window blur), the border goes away — and only
+   comes back once the xterm has actually regained focus. */
+.term-host.term-focused {
   border-color: var(--session-color, #888);
   box-shadow: 0 0 0 1px var(--session-color, #888),
               0 0 18px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
@@ -447,13 +454,13 @@ html, body {
   vertical-align: middle;
   text-shadow: 0 0 6px var(--session-color, #888);
 }
-#terms.grid .term-host .tile-header {
+.term-host .tile-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  /* Title bar tinted with the session color — subtle for inactive
-     tiles, brighter when active. */
+  /* Title bar tinted with the session color — subtle for unfocused
+     tiles, brighter when focused. */
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--session-color, #888) 40%, #0a0a0a) 0%,
@@ -464,7 +471,7 @@ html, body {
   color: #ddd;
   flex-shrink: 0;
 }
-#terms.grid .term-host.in-grid.active .tile-header {
+.term-host.term-focused .tile-header {
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--session-color, #888) 65%, #0a0a0a) 0%,
@@ -472,7 +479,7 @@ html, body {
   );
   color: #fff;
 }
-#terms.grid .term-host .tile-color {
+.term-host .tile-color {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -480,8 +487,8 @@ html, body {
   flex-shrink: 0;
   box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
 }
-#terms.grid .term-host .tile-name { flex: 1; }
-#terms.grid .term-host .tile-name-input {
+.term-host .tile-name { flex: 1; }
+.term-host .tile-name-input {
   flex: 1;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
@@ -491,7 +498,7 @@ html, body {
   font: inherit;
   outline: none;
 }
-#terms.grid .term-host .tile-project {
+.term-host .tile-project {
   color: rgba(255, 255, 255, 0.6);
   font-size: 10px;
   text-transform: uppercase;
