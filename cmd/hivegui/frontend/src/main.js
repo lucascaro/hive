@@ -1017,7 +1017,22 @@ function setActive(id) {
 function focusActiveTerm() {
   const st = state.activeId && state.terms.get(state.activeId);
   if (!st) return;
-  requestAnimationFrame(() => st.term.focus());
+  // A single click on a tile schedules this rAF; a dblclick then
+  // opens the inline rename input. Without checking activeElement
+  // when the rAF fires we'd snatch focus back from the rename input
+  // and the user couldn't type the new name. Same logic protects
+  // launcher/project-editor inputs from being stolen out from under.
+  requestAnimationFrame(() => {
+    const ae = document.activeElement;
+    if (
+      ae &&
+      (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable) &&
+      !ae.classList.contains('xterm-helper-textarea')
+    ) {
+      return;
+    }
+    st.term.focus();
+  });
 }
 
 // refocusActiveTerm is the "the user just dismissed something — put
