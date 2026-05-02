@@ -7,6 +7,9 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| P1 | #131 | Grid mode unusable + flickering on WSL2 starting in v0.12.0 (works on v0.11.0) | RESEARCH | M |
+| P2 | #132 | Ctrl-c kills sessions some times | RESEARCH | M |
+| P3 | #133 | Session recovery showing empty session some times after I reboot | RESEARCH | M |
 
 ## Rejected
 
