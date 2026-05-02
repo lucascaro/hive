@@ -254,10 +254,6 @@ func (r *Registry) Get(id string) *Entry {
 func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.mu.Lock()
 	id := uuid.NewString()
-	name := spec.Name
-	if name == "" {
-		name = agent.RandomName(agent.ID(spec.Agent))
-	}
 	// Resolve agent default color if the spec didn't override it.
 	color := spec.Color
 	if color == "" && spec.Agent != "" {
@@ -273,6 +269,48 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if projectID == "" {
 		projectID = r.defaultProjectIDLocked()
 	}
+	// Resolve cwd up front (under the same lock) so we can decide on a
+	// worktree branch BEFORE naming the session — the session name is
+	// derived from the worktree branch when one is in play, so the
+	// user can find the worktree directory from the session label.
+	cwd := spec.Cwd
+	if cwd == "" {
+		if p, ok := r.projects[projectID]; ok && p.Cwd != "" {
+			cwd = p.Cwd
+		}
+	}
+	r.mu.Unlock()
+
+	// Pre-resolve the worktree branch+path so the session name can
+	// match the worktree directory. ResolveBranchAndPath only picks a
+	// free name; the actual `git worktree add` happens further down.
+	var wtPath, wtBranch string
+	if spec.UseWorktree && cwd != "" && worktree.IsGitRepo(cwd) {
+		if root, err := worktree.Root(cwd); err == nil {
+			if b, p, rerr := worktree.ResolveBranchAndPath(root, spec.Branch); rerr == nil {
+				wtBranch, wtPath = b, p
+			} else {
+				log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
+			}
+		}
+	}
+
+	name := spec.Name
+	if name == "" {
+		if wtBranch != "" {
+			// Tie the session name to the worktree directory so the
+			// user can find the worktree from the session label.
+			suffix := spec.Agent
+			if suffix == "" {
+				suffix = "shell"
+			}
+			name = wtBranch + " " + suffix
+		} else {
+			name = agent.RandomName(agent.ID(spec.Agent))
+		}
+	}
+
+	r.mu.Lock()
 	e := &Entry{
 		ID: id, Name: name, Color: color,
 		Order: len(r.order), Created: time.Now().UTC(),
@@ -281,7 +319,6 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.entries[id] = e
 	r.order = append(r.order, id)
 	if err := r.persistEntryLocked(e); err != nil {
-		// Roll back the in-memory state so the registry stays consistent.
 		delete(r.entries, id)
 		r.order = r.order[:len(r.order)-1]
 		r.mu.Unlock()
@@ -304,38 +341,24 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 			cmd = def.Cmd
 		}
 	}
-	// If no explicit cwd, fall back to the project's cwd.
-	cwd := spec.Cwd
-	if cwd == "" {
-		r.mu.Lock()
-		if p, ok := r.projects[projectID]; ok && p.Cwd != "" {
-			cwd = p.Cwd
-		}
-		r.mu.Unlock()
-	}
 
-	// Worktree opt-in: if requested AND the resolved cwd is a git
-	// repo, create a worktree under <gitRoot>/.worktrees/ and run
-	// the session inside it. Failure here is non-fatal — the session
-	// falls back to the plain project cwd. Aborting create on
-	// worktree failure would block users on marginal repos (shallow
-	// clones, sandbox restrictions, slow filesystems).
-	var (
-		wtPath, wtBranch string
-	)
-	if spec.UseWorktree && cwd != "" && worktree.IsGitRepo(cwd) {
+	// Now actually create the worktree (heavy `git worktree add`).
+	// Failure here is non-fatal — the session falls back to the plain
+	// project cwd. Aborting create on worktree failure would block
+	// users on marginal repos (shallow clones, sandbox restrictions,
+	// slow filesystems).
+	if wtBranch != "" {
 		if root, err := worktree.Root(cwd); err == nil {
-			b, p, rerr := worktree.ResolveBranchAndPath(root, spec.Branch)
-			if rerr != nil {
-				log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
-			} else if cerr := worktree.CreateWorktree(root, b, p); cerr != nil {
+			if cerr := worktree.CreateWorktree(root, wtBranch, wtPath); cerr != nil {
 				log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
+				wtPath, wtBranch = "", ""
 			} else {
-				wtPath, wtBranch = p, b
-				cwd = p
+				cwd = wtPath
 				worktree.EnsureGitignore(root)
-				log.Printf("registry: created worktree %s on branch %s", p, b)
+				log.Printf("registry: created worktree %s on branch %s", wtPath, wtBranch)
 			}
+		} else {
+			wtPath, wtBranch = "", ""
 		}
 	}
 

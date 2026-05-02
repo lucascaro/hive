@@ -12,7 +12,7 @@ import {
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, Notify,
 } from '../wailsjs/go/main/App';
-import { EventsOn } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 
 // ---------- session terminal ----------
 
@@ -45,7 +45,12 @@ class SessionTerm {
     }
     this.tileProject = document.createElement('span');
     this.tileProject.className = 'tile-project';
-    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileProject);
+    // OSC-set window title from the running TUI (vim, htop, claude…).
+    // Sits between the session name and the project label so the
+    // user can tell at a glance what each tile is currently doing.
+    this.tileTermTitle = document.createElement('span');
+    this.tileTermTitle.className = 'tile-term-title';
+    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileTermTitle, this.tileProject);
 
     this.body = document.createElement('div');
     this.body.className = 'term-body';
@@ -117,6 +122,16 @@ class SessionTerm {
 
     this.attached = false;
     this.phase = 'replay';
+
+    // Track the OSC-set window title from the running TUI (vim, htop,
+    // claude code, etc.) so the app title bar can show it after the
+    // session name when this session is active.
+    this.termTitle = '';
+    this.term.onTitleChange((title) => {
+      this.termTitle = title || '';
+      this._renderTermTitle();
+      if (state.activeId === this.info.id) updateAppTitle();
+    });
 
     this.term.onData((data) => {
       const bytes = new TextEncoder().encode(data);
@@ -229,6 +244,21 @@ class SessionTerm {
     } else {
       this.tileWorktree.style.display = 'none';
       this.tileWorktree.title = '';
+    }
+    this._renderTermTitle();
+  }
+
+  _renderTermTitle() {
+    // Hide the slot when the TUI hasn't set a title or it just echoes
+    // the session name (avoids "foo — foo").
+    const t = this.termTitle || '';
+    if (!t || t === this.info.name) {
+      this.tileTermTitle.textContent = '';
+      this.tileTermTitle.style.display = 'none';
+    } else {
+      this.tileTermTitle.textContent = t;
+      this.tileTermTitle.title = t;
+      this.tileTermTitle.style.display = '';
     }
   }
 
@@ -591,7 +621,24 @@ function renderProject(p, activePID) {
     openProjectEditor(p);
   });
 
-  actions.append(newBtn, editBtn);
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '✕';
+  delBtn.title = 'Delete project';
+  delBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const sessions = state.sessions.filter(
+      (s) => (s.projectId ?? s.project_id) === p.id,
+    );
+    const msg = sessions.length
+      ? `Delete project "${p.name}" and kill ${sessions.length} session${sessions.length === 1 ? '' : 's'}?`
+      : `Delete project "${p.name}"?`;
+    if (!window.confirm(msg)) return;
+    KillProject(p.id, sessions.length > 0).catch((err) => {
+      setStatus(`delete failed: ${err}`, true);
+    });
+  });
+
+  actions.append(newBtn, editBtn, delBtn);
 
   header.append(caret, colorEl, name, actions);
   header.addEventListener('click', (e) => {
@@ -850,6 +897,28 @@ function switchTo(id) {
   else renderGrid();
   updateSidebarSelection();
   setStatus(info ? info.name : '');
+  updateAppTitle();
+  // setActive() called focusActiveTerm() before ensureTerm() existed
+  // for a brand-new session — re-focus now that the SessionTerm is
+  // created and visible. Without this, typing after creating a
+  // session lands in whichever terminal had focus before.
+  if (id) focusActiveTerm();
+}
+
+// updateAppTitle composes "Hive — <session> — <termTitle>" and pushes
+// it to both document.title and the native window title bar. The
+// termTitle slot is whatever the running TUI most recently set via
+// the OSC 0/2 escape sequence; empty if the program never set one.
+function updateAppTitle() {
+  const id = state.activeId;
+  const info = id ? state.sessions.find((s) => s.id === id) : null;
+  const parts = ['Hive'];
+  if (info?.name) parts.push(info.name);
+  const t = id ? state.terms.get(id) : null;
+  if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
+  const title = parts.join(' — ');
+  document.title = title;
+  try { WindowSetTitle(title); } catch (_) { /* runtime not ready */ }
 }
 
 // switchToProject activates a project: in grid-project mode it
@@ -1264,6 +1333,7 @@ EventsOn('session:event', (jsonStr) => {
       const proj = state.projects.find((p) => p.id === pid);
       st.setProjectName(proj?.name ?? '');
     }
+    if (state.activeId === ev.session.id) updateAppTitle();
   }
   renderSidebar();
 });
@@ -1570,6 +1640,10 @@ window.addEventListener('keydown', (e) => {
   if (!editorEl.classList.contains('hidden')) {
     return; // editor's own listener handles keys
   }
+  const _palette = document.getElementById('command-palette');
+  if (_palette && !_palette.classList.contains('hidden')) {
+    return; // palette's own listener handles keys
+  }
 
   // Dead-session overlay: route Enter/Escape to the active session's
   // overlay if it's shown. In grid mode the user can still click any
@@ -1602,9 +1676,21 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
+  if (e.key === 'k' || e.key === 'K') {
+    swallow();
+    openCommandPalette();
+    return;
+  }
   if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
     swallow();
     openProjectEditor(null);
+  } else if (e.key === 't' || e.key === 'T') {
+    swallow();
+    if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
+    else openLauncher();
+  } else if (e.key === 'Backspace' && e.shiftKey) {
+    swallow();
+    deleteActiveProject();
   } else if (e.key === 's' || e.key === 'S') {
     swallow();
     const app = document.getElementById('app');
@@ -1637,13 +1723,9 @@ window.addEventListener('keydown', (e) => {
       OpenNewWindow().catch((err) => {
         setStatus(`window failed: ${err}`, true);
       });
-    } else if (e.altKey) {
-      // ⌥⌘N — open launcher with the worktree checkbox forced on.
-      // (Originally proposed as ⌃⌘N but ctrl-Cmd is awkward to hit
-      //  on US keyboards; alt-Cmd is right next to ⌘N.)
-      openLauncher(undefined, { forceWorktree: true });
     } else {
-      openLauncher();
+      // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
+      openProjectEditor(null);
     }
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
@@ -1736,6 +1818,8 @@ const menuActions = {
   'menu:new-session': () => openLauncher(),
   'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
   'menu:new-project': () => openProjectEditor(null),
+  'menu:delete-project': () => deleteActiveProject(),
+  'menu:command-palette': () => openCommandPalette(),
   'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false); },
   'menu:zoom-in': () => bumpFontSize(+1),
   'menu:zoom-out': () => bumpFontSize(-1),
@@ -1756,6 +1840,129 @@ for (const [name, fn] of Object.entries(menuActions)) {
 for (let i = 1; i <= 9; i++) {
   EventsOn(`menu:switch-${i}`, () => switchToNthSession(i));
 }
+
+// ---------- delete project ----------
+
+function deleteActiveProject() {
+  const pid = activeProjectId();
+  const proj = state.projects.find((p) => p.id === pid);
+  if (!proj) return;
+  const sessions = state.sessions.filter(
+    (s) => (s.projectId ?? s.project_id) === pid,
+  );
+  const msg = sessions.length
+    ? `Delete project "${proj.name}" and kill ${sessions.length} session${sessions.length === 1 ? '' : 's'}?`
+    : `Delete project "${proj.name}"?`;
+  if (!window.confirm(msg)) return;
+  KillProject(pid, sessions.length > 0).catch((err) => {
+    setStatus(`delete failed: ${err}`, true);
+  });
+}
+
+// ---------- command palette ----------
+
+const paletteCommands = [
+  { id: 'new-project',          name: 'New Project…',                shortcut: '⌘N',     run: () => openProjectEditor(null) },
+  { id: 'new-session',          name: 'New Session',                 shortcut: '⌘T',     run: () => openLauncher() },
+  { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
+  { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
+  { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
+  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },
+  { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow() },
+  { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
+  { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         shortcut: '⌘G',     run: toggleProjectGrid },
+  { id: 'toggle-all-grid',      name: 'Toggle All Sessions Grid',    shortcut: '⇧⌘G',    run: toggleAllGrid },
+  { id: 'zoom-in',              name: 'Zoom In',                     shortcut: '⌘=',     run: () => bumpFontSize(+1) },
+  { id: 'zoom-out',             name: 'Zoom Out',                    shortcut: '⌘-',     run: () => bumpFontSize(-1) },
+  { id: 'zoom-reset',           name: 'Actual Size',                 shortcut: '⌘0',     run: () => resetFontSize() },
+  { id: 'next-session',         name: 'Next Session',                shortcut: '⌘↓',     run: () => navSession(+1) },
+  { id: 'prev-session',         name: 'Previous Session',            shortcut: '⌘↑',     run: () => navSession(-1) },
+  { id: 'move-forward',         name: 'Move Session Forward',        shortcut: '⇧⌘↓',    run: () => reorderActive(+1) },
+  { id: 'move-backward',        name: 'Move Session Backward',       shortcut: '⇧⌘↑',    run: () => reorderActive(-1) },
+  { id: 'next-project',         name: 'Next Project',                shortcut: '⌘]',     run: () => shiftActiveProject(+1) },
+  { id: 'prev-project',         name: 'Previous Project',            shortcut: '⌘[',     run: () => shiftActiveProject(-1) },
+];
+
+const paletteEl = document.getElementById('command-palette');
+const paletteInput = document.getElementById('command-palette-input');
+const paletteList = document.getElementById('command-palette-list');
+const paletteState = { items: [], selected: 0 };
+
+function renderPalette() {
+  const q = paletteInput.value.trim().toLowerCase();
+  paletteList.innerHTML = '';
+  paletteState.items = paletteCommands.filter((c) => {
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.shortcut.toLowerCase().includes(q);
+  });
+  if (paletteState.selected >= paletteState.items.length) {
+    paletteState.selected = 0;
+  }
+  paletteState.items.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'palette-item' + (i === paletteState.selected ? ' selected' : '');
+    const name = document.createElement('span');
+    name.className = 'palette-name';
+    name.textContent = c.name;
+    const sc = document.createElement('span');
+    sc.className = 'palette-shortcut';
+    sc.textContent = c.shortcut;
+    row.append(name, sc);
+    row.addEventListener('mouseenter', () => {
+      paletteState.selected = i;
+      for (const el of paletteList.children) el.classList.remove('selected');
+      row.classList.add('selected');
+    });
+    row.addEventListener('click', () => activatePalette(i));
+    paletteList.appendChild(row);
+  });
+}
+
+function openCommandPalette() {
+  paletteInput.value = '';
+  paletteState.selected = 0;
+  renderPalette();
+  paletteEl.classList.remove('hidden');
+  paletteInput.focus();
+}
+
+function closeCommandPalette() {
+  paletteEl.classList.add('hidden');
+}
+
+function activatePalette(i) {
+  const c = paletteState.items[i];
+  if (!c) return;
+  closeCommandPalette();
+  // Defer so the palette is fully closed before the action runs
+  // (some actions open another modal that owns focus).
+  setTimeout(() => c.run(), 0);
+}
+
+paletteInput.addEventListener('input', renderPalette);
+paletteEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault(); e.stopPropagation();
+    closeCommandPalette();
+  } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+    e.preventDefault(); e.stopPropagation();
+    if (paletteState.items.length === 0) return;
+    paletteState.selected = (paletteState.selected + 1) % paletteState.items.length;
+    renderPalette();
+  } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+    e.preventDefault(); e.stopPropagation();
+    if (paletteState.items.length === 0) return;
+    paletteState.selected = (paletteState.selected - 1 + paletteState.items.length) % paletteState.items.length;
+    renderPalette();
+  } else if (e.key === 'Enter') {
+    e.preventDefault(); e.stopPropagation();
+    activatePalette(paletteState.selected);
+  }
+});
+document.addEventListener('mousedown', (e) => {
+  if (paletteEl.classList.contains('hidden')) return;
+  if (!paletteEl.contains(e.target)) closeCommandPalette();
+});
 
 // moveActiveSession walks the (project_order, session_order) list.
 // reorder=true moves the session within its project only.
