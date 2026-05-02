@@ -82,14 +82,13 @@ func (a *App) startup(ctx context.Context) {
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
 	}
-	// Click on a notification → bring window forward + tell frontend
-	// which session to switch to. The ObjC delegate has already called
-	// activateIgnoringOtherApps before invoking us; WindowUnminimise
-	// covers the case where the window was minimised.
+	// Click on a notification → ObjC delegate has already called
+	// [NSApp activateIgnoringOtherApps:YES] to bring Hive forward.
+	// We just need to tell the frontend which session to switch to.
+	// Do it from a goroutine so the cgo callback returns immediately
+	// and we don't risk reentering Wails on the AppKit thread.
 	notify.SetActivationHandler(func(tag string) {
-		wruntime.WindowUnminimise(ctx)
-		wruntime.WindowShow(ctx)
-		wruntime.EventsEmit(ctx, "bell-click", tag)
+		go wruntime.EventsEmit(ctx, "bell-click", tag)
 	})
 	go a.persistGeometryLoop(ctx)
 }

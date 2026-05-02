@@ -22,6 +22,11 @@ extern void hiveOnNotificationActivated(const char *tag);
 
 - (void)userNotificationCenter:(NSUserNotificationCenter *)center
        didActivateNotification:(NSUserNotification *)notification {
+    // Only react to the user clicking the banner body — not action
+    // buttons, replies, or programmatic dismissals.
+    if (notification.activationType != NSUserNotificationActivationTypeContentsClicked) {
+        return;
+    }
     NSString *tag = notification.userInfo[@"tag"];
     // Bring Hive to the foreground regardless of which Space the user
     // is on; the click implicitly says "I want to go there".
