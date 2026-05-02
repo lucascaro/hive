@@ -1480,6 +1480,76 @@ window.addEventListener('keydown', (e) => {
   }
 }, true);
 
+// ---------- menu actions ----------
+//
+// Native menu items emit `menu:<action>` events from cmd/hivegui/menu.go.
+// They dispatch to the same handlers as the keyboard listener above so the
+// menu and keyboard stay in lockstep — when you add a shortcut, add it
+// here AND in menu.go.
+
+function toggleSidebar() {
+  const app = document.getElementById('app');
+  app.classList.toggle('sidebar-hidden');
+  setTimeout(() => {
+    if (state.view === 'single') {
+      state.terms.get(state.activeId)?.refit();
+    } else {
+      for (const info of gridScopeSessions()) state.terms.get(info.id)?.refit();
+    }
+  }, 150);
+}
+
+function toggleProjectGrid() {
+  setView(state.view === 'grid-project' ? 'single' : 'grid-project');
+}
+
+function toggleAllGrid() {
+  setView(state.view === 'grid-all' ? 'single' : 'grid-all');
+}
+
+function navSession(delta) {
+  if (state.view !== 'single') {
+    gridSpatialMove(delta > 0 ? +1 : -1, 0);
+  } else {
+    moveActiveSession(delta, false);
+  }
+}
+
+function reorderActive(delta) {
+  if (state.view === 'single') moveActiveSession(delta, true);
+  else gridSpatialMove(delta > 0 ? +1 : -1, 0);
+}
+
+function switchToNthSession(n) {
+  const ord = orderedSessions();
+  if (n - 1 < ord.length) switchTo(ord[n - 1].id);
+}
+
+const menuActions = {
+  'menu:new-session': () => openLauncher(),
+  'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
+  'menu:new-project': () => openProjectEditor(null),
+  'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false); },
+  'menu:zoom-in': () => bumpFontSize(+1),
+  'menu:zoom-out': () => bumpFontSize(-1),
+  'menu:zoom-reset': () => resetFontSize(),
+  'menu:toggle-sidebar': toggleSidebar,
+  'menu:toggle-project-grid': toggleProjectGrid,
+  'menu:toggle-all-grid': toggleAllGrid,
+  'menu:next-session': () => navSession(+1),
+  'menu:prev-session': () => navSession(-1),
+  'menu:move-session-forward': () => reorderActive(+1),
+  'menu:move-session-backward': () => reorderActive(-1),
+  'menu:next-project': () => shiftActiveProject(+1),
+  'menu:prev-project': () => shiftActiveProject(-1),
+};
+for (const [name, fn] of Object.entries(menuActions)) {
+  EventsOn(name, fn);
+}
+for (let i = 1; i <= 9; i++) {
+  EventsOn(`menu:switch-${i}`, () => switchToNthSession(i));
+}
+
 // moveActiveSession walks the (project_order, session_order) list.
 // reorder=true moves the session within its project only.
 function moveActiveSession(delta, reorder) {
