@@ -96,8 +96,24 @@ class SessionTerm {
     // onFocus/onBlur events, so we listen on the host: focus events
     // bubble from xterm's hidden textarea (.xterm-helper-textarea)
     // through .term-host.
-    this.host.addEventListener('focusin', () => this.host.classList.add('term-focused'));
-    this.host.addEventListener('focusout', () => this.host.classList.remove('term-focused'));
+    // On gain: sweep the class off every other host first, so only
+    // one tile is ever marked focused. xterm's open() / fit / mount
+    // sequence can fire focusin on multiple tiles in quick succession
+    // during initial render; without the sweep, several end up
+    // visually claiming focus simultaneously.
+    this.host.addEventListener('focusin', () => {
+      for (const el of document.querySelectorAll('.term-host.term-focused')) {
+        if (el !== this.host) el.classList.remove('term-focused');
+      }
+      this.host.classList.add('term-focused');
+    });
+    // On loss: only drop the class if focus actually left this host.
+    // Internal xterm focus juggling can briefly fire focusout with
+    // relatedTarget still inside the host — ignore those.
+    this.host.addEventListener('focusout', (e) => {
+      if (e.relatedTarget && this.host.contains(e.relatedTarget)) return;
+      this.host.classList.remove('term-focused');
+    });
 
     this.attached = false;
     this.phase = 'replay';
@@ -141,6 +157,42 @@ class SessionTerm {
     this.term.onBell(() => {
       onSessionBell(this.info);
     });
+
+    // Dead-session overlay: hidden until the underlying process exits
+    // (Alive transitions true→false). Centered card with primary
+    // "Close session" (Enter) and secondary "Dismiss" (Escape).
+    this.deadOverlay = document.createElement('div');
+    this.deadOverlay.className = 'dead-overlay';
+    this.deadOverlay.hidden = true;
+    const card = document.createElement('div');
+    card.className = 'dead-card';
+    const title = document.createElement('div');
+    title.className = 'dead-title';
+    title.textContent = 'Session ended';
+    const subtitle = document.createElement('div');
+    subtitle.className = 'dead-subtitle';
+    subtitle.textContent = 'The process running in this session has exited.';
+    const buttons = document.createElement('div');
+    buttons.className = 'dead-buttons';
+    this.deadCloseBtn = document.createElement('button');
+    this.deadCloseBtn.className = 'dead-btn primary';
+    this.deadCloseBtn.textContent = 'Close session';
+    this.deadCloseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._closeDead();
+    });
+    this.deadDismissBtn = document.createElement('button');
+    this.deadDismissBtn.className = 'dead-btn secondary';
+    this.deadDismissBtn.textContent = 'Dismiss';
+    this.deadDismissBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dismissDead();
+    });
+    buttons.append(this.deadCloseBtn, this.deadDismissBtn);
+    card.append(title, subtitle, buttons);
+    this.deadOverlay.append(card);
+    this.host.append(this.deadOverlay);
+    this.deadOverlayShown = false;
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum
@@ -260,6 +312,31 @@ class SessionTerm {
     this.term.dispose();
     this.host.remove();
   }
+
+  setDead(isDead) {
+    this.deadOverlayShown = isDead;
+    this.deadOverlay.hidden = !isDead;
+    this.host.classList.toggle('dead', isDead);
+    if (isDead) {
+      // Defer focus so it lands after the visibility flip and after
+      // any pending blur from the dying xterm.
+      setTimeout(() => {
+        if (this.deadOverlayShown) this.deadCloseBtn.focus();
+      }, 0);
+    }
+  }
+
+  _closeDead() {
+    KillSession(this.info.id, true).catch((err) => {
+      setStatus(`close failed: ${err}`, true);
+    });
+  }
+
+  _dismissDead() {
+    state.dismissedDead.add(this.info.id);
+    this.setDead(false);
+    refocusActiveTerm();
+  }
 }
 
 const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -275,6 +352,8 @@ const state = {
   sessions: [],             // SessionInfo[] in display order
   collapsed: new Set(),     // project ids that are collapsed
   attention: new Set(),     // session ids that have unread bells
+  aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
+  dismissedDead: new Set(), // session ids whose dead overlay user dismissed
   terms: new Map(),         // session id -> SessionTerm
   activeId: null,
   currentProjectId: null,   // "the project I'm working in"; can be set
@@ -346,6 +425,21 @@ function fireBellNotification(info) {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).
   });
+}
+
+// onSessionDeath fires once when a session transitions Alive→dead.
+// Shows the in-tile overlay, marks attention, and posts a desktop
+// notification distinct from a normal bell.
+function onSessionDeath(info) {
+  state.dismissedDead.delete(info.id);
+  const t = state.terms.get(info.id);
+  if (t) t.setDead(true);
+  // Reuse the attention pulse path so the sidebar entry highlights.
+  state.attention.add(info.id);
+  state.terms.get(info.id)?.host.classList.add('attention');
+  updateSidebarSelection();
+  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  Notify(info.name || 'Session', proj?.name ?? '', 'Session ended.', info.id).catch(() => {});
 }
 
 function applyFontSize() {
@@ -1068,9 +1162,25 @@ EventsOn('project:event', (jsonStr) => {
   renderSidebar();
 });
 
+// processAliveTransition compares incoming Alive against the last
+// known value for this session and fires the death/revive side
+// effects on the boundary. First sight of a session (no prior entry)
+// just records the value without firing anything.
+function processAliveTransition(info) {
+  const prev = state.aliveById.get(info.id);
+  state.aliveById.set(info.id, !!info.alive);
+  if (prev === true && info.alive === false) {
+    onSessionDeath(info);
+  } else if (prev === false && info.alive === true) {
+    state.dismissedDead.delete(info.id);
+    state.terms.get(info.id)?.setDead(false);
+  }
+}
+
 EventsOn('session:list', (jsonStr) => {
   const { sessions } = JSON.parse(jsonStr);
   state.sessions = sessions || [];
+  for (const s of state.sessions) processAliveTransition(s);
   renderSidebar();
   if (!state.activeId && state.sessions.length > 0) {
     switchTo(orderedSessions()[0].id);
@@ -1080,6 +1190,9 @@ EventsOn('session:list', (jsonStr) => {
 EventsOn('session:event', (jsonStr) => {
   const ev = JSON.parse(jsonStr);
   const i = state.sessions.findIndex((s) => s.id === ev.session.id);
+  if (ev.kind === 'added' || ev.kind === 'updated') {
+    processAliveTransition(ev.session);
+  }
   if (ev.kind === 'added') {
     if (i < 0) state.sessions.push(ev.session);
     renderSidebar();
@@ -1087,6 +1200,8 @@ EventsOn('session:event', (jsonStr) => {
     return;
   }
   if (ev.kind === 'removed') {
+    state.aliveById.delete(ev.session.id);
+    state.dismissedDead.delete(ev.session.id);
     let nextId = null;
     if (state.activeId === ev.session.id) {
       const ord = orderedSessions();
@@ -1422,6 +1537,17 @@ window.addEventListener('keydown', (e) => {
   }
   if (!editorEl.classList.contains('hidden')) {
     return; // editor's own listener handles keys
+  }
+
+  // Dead-session overlay: route Enter/Escape to the active session's
+  // overlay if it's shown. In grid mode the user can still click any
+  // tile's buttons directly; this just handles the focused tile.
+  if (state.activeId) {
+    const t = state.terms.get(state.activeId);
+    if (t?.deadOverlayShown) {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); t._closeDead(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t._dismissDead(); return; }
+    }
   }
 
   const meta = e.metaKey || e.ctrlKey;
