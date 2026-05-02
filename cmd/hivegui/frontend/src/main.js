@@ -108,6 +108,14 @@ class SessionTerm {
       }
     });
 
+    // Double-click the tile name to rename inline (same affordance
+    // as the sidebar). The header's mousedown selects the tile;
+    // dblclick on the name then opens the editor.
+    this.tileName.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      this._beginRename();
+    });
+
     // BEL on a non-focused session marks it as needing attention and
     // fires a desktop notification. xterm.js v5 exposes onBell.
     this.term.onBell(() => {
@@ -150,6 +158,42 @@ class SessionTerm {
       this.tileWorktree.style.display = 'none';
       this.tileWorktree.title = '';
     }
+  }
+
+  // _beginRename hides the tile-name span, drops an input next to
+  // it, and calls UpdateSession on Enter / blur. Escape cancels.
+  // The next session:event(updated) calls setInfo which refreshes
+  // tileName.textContent; we just need to put the span back in DOM.
+  _beginRename() {
+    if (this._renameInput) return; // already editing
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tile-name-input';
+    input.value = this.info.name;
+    this._renameInput = input;
+    this.tileName.style.display = 'none';
+    this.tileName.parentNode.insertBefore(input, this.tileName);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (commit) => {
+      if (done) return;
+      done = true;
+      const next = input.value.trim();
+      input.remove();
+      this._renameInput = null;
+      this.tileName.style.display = '';
+      if (commit && next && next !== this.info.name) {
+        UpdateSession(this.info.id, next, '', -1);
+      }
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+      else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    // Stop xterm / global hotkey handlers from grabbing keystrokes.
+    input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
   }
 
   setProjectName(name) {
@@ -996,6 +1040,17 @@ EventsOn('session:event', (jsonStr) => {
     }
   } else if (ev.kind === 'updated') {
     if (i >= 0) state.sessions[i] = ev.session;
+    // Push the new name/color/worktree branch into the cached
+    // SessionTerm so the grid tile-header refreshes immediately.
+    // Without this, renames look broken in grid mode — the sidebar
+    // updates but the tile keeps showing the old name.
+    const st = state.terms.get(ev.session.id);
+    if (st) {
+      st.setInfo(ev.session);
+      const pid = ev.session.projectId ?? ev.session.project_id;
+      const proj = state.projects.find((p) => p.id === pid);
+      st.setProjectName(proj?.name ?? '');
+    }
   }
   renderSidebar();
 });

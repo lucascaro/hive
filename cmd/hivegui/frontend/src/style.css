@@ -481,6 +481,16 @@ html, body {
   box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
 }
 #terms.grid .term-host .tile-name { flex: 1; }
+#terms.grid .term-host .tile-name-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font: inherit;
+  outline: none;
+}
 #terms.grid .term-host .tile-project {
   color: rgba(255, 255, 255, 0.6);
   font-size: 10px;
