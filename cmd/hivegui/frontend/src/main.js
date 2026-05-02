@@ -2,6 +2,7 @@ import '@xterm/xterm/css/xterm.css';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import {
   ConnectControl, OpenSession, CloseAttach,
@@ -9,7 +10,7 @@ import {
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
-  IsGitRepo,
+  IsGitRepo, OpenURL,
 } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 
@@ -77,6 +78,17 @@ class SessionTerm {
       this.webgl = webgl;
     } catch (err) {
       // GPU lacks WebGL2 — keep DOM renderer. No user-visible message.
+    }
+
+    // Detect URLs in terminal output and route activation through
+    // the OS default browser. Default behavior: hover underlines
+    // the URL, ⌘-click (or Ctrl-click on non-Mac) follows it.
+    try {
+      this.term.loadAddon(new WebLinksAddon((event, uri) => {
+        if (uri) OpenURL(uri);
+      }));
+    } catch (err) {
+      // Non-fatal; sessions still work without clickable links.
     }
     this.attached = false;
     this.phase = 'replay';

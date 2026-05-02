@@ -356,6 +356,15 @@ func (a *App) IsGitRepo(path string) bool {
 	return worktree.IsGitRepo(path)
 }
 
+// OpenURL hands a URL to the OS default browser. Used by the
+// xterm web-links addon when the user cmd-clicks a URL in a session.
+func (a *App) OpenURL(url string) {
+	if url == "" {
+		return
+	}
+	wruntime.BrowserOpenURL(a.ctx, url)
+}
+
 // UpdateSession patches name/color/order. Empty strings on name/color
 // mean "do not change"; -1 on order means "do not change".
 func (a *App) UpdateSession(id, name, color string, order int) error {
