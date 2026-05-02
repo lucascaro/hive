@@ -291,6 +291,10 @@ class SessionTerm {
 
   async ensureAttached() {
     if (this.attached) return;
+    // Don't attempt to attach to a session known to be dead — the daemon
+    // will refuse and the resulting [attach failed] line would accumulate
+    // each time the user switches back to the tile.
+    if (state.aliveById.get(this.info.id) === false) return;
     this.fit.fit();
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
@@ -433,7 +437,12 @@ function fireBellNotification(info) {
 function onSessionDeath(info) {
   state.dismissedDead.delete(info.id);
   const t = state.terms.get(info.id);
-  if (t) t.setDead(true);
+  if (t) {
+    // Flip attached eagerly so a switch-back before pty:disconnect arrives
+    // doesn't try to reuse the dying connection.
+    t.attached = false;
+    t.setDead(true);
+  }
   // Reuse the attention pulse path so the sidebar entry highlights.
   state.attention.add(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
@@ -1188,7 +1197,15 @@ function processAliveTransition(info) {
     onSessionDeath(info);
   } else if (prev === false && info.alive === true) {
     state.dismissedDead.delete(info.id);
-    state.terms.get(info.id)?.setDead(false);
+    const t = state.terms.get(info.id);
+    if (t) {
+      // Wipe stale frame from the previous (dead) shell so the revived
+      // session's prompt lands on a clean screen instead of stacking on
+      // the old cursor position.
+      try { t.term.reset(); } catch {}
+      t.attached = false;
+      t.setDead(false);
+    }
   }
 }
 
