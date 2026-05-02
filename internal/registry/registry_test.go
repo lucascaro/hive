@@ -79,6 +79,49 @@ func TestCreateListKill(t *testing.T) {
 	}
 }
 
+func TestSessionExitBroadcastsDead(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	listener, unsub := r.Subscribe()
+	defer unsub()
+
+	a, err := r.Create(wire.CreateSpec{Name: "dying", Cols: 80, Rows: 24, Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Drain the initial "added" event.
+	select {
+	case ev := <-listener:
+		if ev.Kind != wire.SessionEventAdded {
+			t.Fatalf("first event: got %s, want added", ev.Kind)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for added event")
+	}
+
+	// Force the underlying session to exit (closes the PTY → readLoop
+	// returns → closes done). The watchSessionExit goroutine should
+	// flip Alive to false and broadcast an Updated event.
+	if sess := a.Session(); sess != nil {
+		_ = sess.Close()
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case ev := <-listener:
+			if ev.Kind == wire.SessionEventUpdated && ev.Session.ID == a.ID && !ev.Session.Alive {
+				return
+			}
+			// Other updated events (e.g. worktree clears) are fine; keep waiting.
+		case <-deadline:
+			t.Fatalf("never saw updated+dead event for %s", a.ID)
+		}
+	}
+}
+
 func TestUpdateRenameAndColor(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)

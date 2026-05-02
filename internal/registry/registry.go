@@ -366,6 +366,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	}
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
+	go r.watchSessionExit(id, sess)
 	return e, nil
 }
 
@@ -433,6 +434,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	info := e.Info()
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventUpdated, info)
+	go r.watchSessionExit(id, sess)
 	return nil
 }
 
@@ -446,6 +448,7 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 		existing.sess = s
 		r.mu.Unlock()
 		r.broadcast(wire.SessionEventUpdated, existing.Info())
+		go r.watchSessionExit(id, s)
 		return existing, nil
 	}
 	if name == "" {
@@ -464,7 +467,27 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 	_ = r.persistIndexLocked()
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
+	go r.watchSessionExit(id, s)
 	return e, nil
+}
+
+// watchSessionExit waits for sess to exit, then — if the entry is
+// still attached to *this* session (not already replaced by a Revive
+// or removed by Kill) — clears e.sess and broadcasts an Updated event
+// so clients see Alive: false. The PTY's own resources are released
+// by readLoop's defer.
+func (r *Registry) watchSessionExit(id string, sess *session.Session) {
+	<-sess.Done()
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok || e.sess != sess {
+		r.mu.Unlock()
+		return
+	}
+	e.sess = nil
+	info := e.Info()
+	r.mu.Unlock()
+	r.broadcast(wire.SessionEventUpdated, info)
 }
 
 // Kill terminates the session and removes its entry from the registry.
