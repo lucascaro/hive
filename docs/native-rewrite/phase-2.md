@@ -1,7 +1,7 @@
 # Phase 2 — Multiple sessions + sidebar
 
 **Status:** In progress
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 **Inputs:** `phase-1.md`, `phase-1` working code (commits `403523c`, `0a39cb1`)
 
 ## Goal

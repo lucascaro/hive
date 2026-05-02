@@ -1,7 +1,7 @@
 # Phase 3 — Agent integration
 
 **Status:** In progress
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 **Inputs:** `phase-2.md` and the working multi-session daemon at `ce6eeb8`
 
 ## Goal

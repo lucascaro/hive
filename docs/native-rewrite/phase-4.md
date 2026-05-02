@@ -1,7 +1,7 @@
 # Phase 4 — Projects + grid
 
 **Status:** In progress
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 **Inputs:** Phase 1–3 working at `6020f8d`
 
 ## Why projects first

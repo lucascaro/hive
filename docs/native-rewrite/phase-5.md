@@ -1,7 +1,7 @@
 # Phase 5 — System bell notifications
 
 **Status:** In progress
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 
 ## Scope (deliberately narrow)
 

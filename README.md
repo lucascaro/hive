@@ -3,10 +3,11 @@
 A native desktop app for managing multiple AI coding agent sessions —
 Claude, Codex, Gemini, Copilot, Aider, plain shells — across projects.
 
-> **This branch (`silent-light`) is the v2 native rewrite.** The legacy
-> tmux-backed TUI lived on `main`; v2 ships its own daemon + GUI.
-> See `docs/native-rewrite/` for design docs (PLAN.md plus per-phase
-> notes).
+> **`main` is now Hive v2 — the native daemon + GUI rewrite.** The legacy
+> tmux-backed TUI (Hive v1, `v0.14.x`) lives on the
+> [`release/v1`](https://github.com/lucascaro/hive/tree/release/v1) branch
+> for bug fixes. See `docs/native-rewrite/` for v2 design docs (PLAN.md
+> plus per-phase notes).
 
 ## Status
 

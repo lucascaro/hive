@@ -1,7 +1,7 @@
 # Hive Native Rewrite — Overall Plan
 
-**Branch:** `silent-light`
-**Status:** Planning
+**Branch:** `main` (promoted from `silent-light` 2026-05-02)
+**Status:** Active development. v1 maintenance on `release/v1`.
 **Owner:** Lucas
 
 ## Motivation
@@ -122,15 +122,20 @@ isn't focused. See `phase-5.md`.
 
 ### Phase 7 — Sunset old Hive
 - Migration tool: read old config/state → new daemon session list.
-- Final tmux-backed release tagged; branch frozen.
-- Bug-fix-only mode for 1–2 releases on old branch.
+- v1 (TUI) lives on `release/v1` in bug-fix-only mode. No formal
+  maintenance window — patches cut as needed; v1 EOL announced when v2
+  reaches GA.
+- Forward-port shared-package fixes (`internal/config`, `internal/registry`,
+  `internal/agent`, `internal/notify`, `internal/worktree`) from
+  `release/v1` → `main` via cherry-pick. Never merge `release/v1` → `main`
+  wholesale (would resurrect the deleted TUI).
 
 ## Cross-cutting concerns
 
 - **Protocol versioning** from day one — daemon and client will rev independently.
 - **Test strategy:** daemon is unit-testable end-to-end; GUI gets thin smoke tests. No tests touching real config/state (per AGENTS.md).
 - **AGENTS.md** governs AI rules — never CLAUDE.md.
-- **Repo strategy:** `silent-light` branch is long-lived. Do not interleave with `main` feature work; the two architectures don't share enough to merge cleanly. Old Hive on `main` stays in bug-fix mode during the rewrite.
+- **Repo strategy:** `main` is v2 (the rewrite). v1 TUI lives on `release/v1` in bug-fix-only mode. The two architectures share only a handful of `internal/` packages (`config`, `registry`, `agent`, `notify`, `worktree`); cherry-pick fixes one direction (`release/v1` → `main`), never merge.
 - **Backout:** Phases 0–1 are throwaway-cheap. From Phase 2 onward, sunk cost grows. Phase 0 exit criteria are the real go/no-go gate.
 
 ## Risks

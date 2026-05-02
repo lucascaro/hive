@@ -2,7 +2,7 @@
 
 **Status:** GO (with Windows caveats noted below)
 **Date:** 2026-04-30
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 
 ## Decision
 

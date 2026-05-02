@@ -1,7 +1,7 @@
 # Phase 1 — Single persistent session, GUI client
 
 **Status:** In progress
-**Branch:** `silent-light`
+**Branch:** `main` (was `silent-light`)
 **Inputs:** `phase-0-report.md` (framework lock + protocol-v0 sketch)
 
 ## Goal

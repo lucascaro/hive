@@ -1,5 +1,17 @@
 # Hive – AI Coding Guidelines
 
+> **Branch model (as of 2026-05-02):** `main` is **Hive v2** — the
+> Wails GUI + `hived` daemon rewrite (`cmd/hivegui/`, `cmd/hived/`,
+> `internal/wire/`, `internal/worktree/`). v1 (TUI, Bubble Tea, tmux
+> backend) lives on `release/v1` for bug-fix-only maintenance.
+> Forward-port shared-package fixes (`internal/config`, `internal/registry`,
+> `internal/agent`, `internal/notify`, `internal/worktree`) from
+> `release/v1` → `main` via cherry-pick; never merge wholesale.
+>
+> ⚠️ Sections below describing the TUI / Bubble Tea / `internal/tui/`
+> still need a full rewrite for v2 — treat them as historical until
+> updated. See `docs/native-rewrite/PLAN.md` for v2 architecture.
+
 ## Codebase Quick Reference
 
 ### Module & Build
