@@ -92,7 +92,7 @@ class SessionTerm {
     this.host.addEventListener('mousedown', () => {
       if (state.activeId !== this.info.id) {
         setActive(this.info.id);
-        renderSidebar();
+        updateSidebarSelection();
         if (state.view === 'single') {
           // Switch terms in single mode; in grid mode every tile is
           // already visible so there's nothing else to do.
@@ -285,14 +285,14 @@ function onSessionBell(info) {
   }
   state.attention.add(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
-  renderSidebar();
+  updateSidebarSelection();
   fireBellNotification(info);
 }
 
 function clearAttention(sessionId) {
   if (state.attention.delete(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
-    renderSidebar();
+    updateSidebarSelection();
   }
 }
 
@@ -405,6 +405,24 @@ function renderSidebar() {
   const activePID = activeProjectId();
   for (const p of state.projects) {
     projectsUL.appendChild(renderProject(p, activePID));
+  }
+}
+
+// updateSidebarSelection toggles the .selected / .active /
+// .attention classes on existing DOM nodes without rebuilding them.
+// Selection-only or attention-only changes call this instead of
+// renderSidebar so consecutive clicks on a session-item still match
+// up as a dblclick pair (the rebuild between clicks was eating the
+// dblclick because the LI was a different node by the second click).
+function updateSidebarSelection() {
+  const activePID = activeProjectId();
+  for (const el of projectsUL.querySelectorAll('.project')) {
+    el.classList.toggle('active', el.dataset.pid === activePID);
+  }
+  for (const el of projectsUL.querySelectorAll('.session-item')) {
+    const sid = el.dataset.sid;
+    el.classList.toggle('selected', sid === state.activeId);
+    el.classList.toggle('attention', state.attention.has(sid));
   }
 }
 
@@ -711,7 +729,7 @@ function switchTo(id) {
   }
   if (state.view === 'single') showSingle(id);
   else renderGrid();
-  renderSidebar();
+  updateSidebarSelection();
   setStatus(info ? info.name : '');
 }
 
@@ -731,7 +749,7 @@ function switchToProject(pid) {
     state.activeId = null;
     if (state.view === 'single') showSingle(null);
     else renderGrid();
-    renderSidebar();
+    updateSidebarSelection();
   }
 }
 
@@ -887,7 +905,7 @@ function gridSpatialMove(dCol, dRow) {
   if (idx < 0) {
     setActive(sessions[0].id);
     renderGrid();
-    renderSidebar();
+    updateSidebarSelection();
     return;
   }
   const a = assignments[idx];
@@ -905,7 +923,7 @@ function gridSpatialMove(dCol, dRow) {
     if (target != null && target !== idx) {
       setActive(sessions[target].id);
       renderGrid();
-      renderSidebar();
+      updateSidebarSelection();
       state.terms.get(state.activeId)?.term.focus();
       setStatus(sessions[target].name);
       return;
@@ -937,7 +955,7 @@ function shiftActiveProject(delta) {
   }
   if (state.view === 'single') showSingle(state.activeId);
   else renderGrid();
-  renderSidebar();
+  updateSidebarSelection();
   setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
@@ -964,7 +982,7 @@ function setView(view) {
   } else {
     renderGrid();
   }
-  renderSidebar();
+  updateSidebarSelection();
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
