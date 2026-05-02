@@ -39,10 +39,21 @@ func resolveLaunchDir() string {
 func main() {
 	launchDir := resolveLaunchDir()
 	app := NewApp(launchDir)
+
+	// Restore the previous window geometry. Width/Height are passed
+	// at construction; the position is applied in OnStartup once we
+	// have the Wails runtime context.
+	width, height := 1024, 700
+	if g, ok := loadWindowGeometry(); ok {
+		width, height = g.W, g.H
+		app.initialX, app.initialY = g.X, g.Y
+		app.haveInitialPos = true
+	}
+
 	err := wails.Run(&options.App{
 		Title:            "Hive",
-		Width:            1024,
-		Height:           700,
+		Width:            width,
+		Height:           height,
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        app.startup,

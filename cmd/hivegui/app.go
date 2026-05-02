@@ -26,6 +26,12 @@ type App struct {
 	ctx       context.Context
 	launchDir string // captured at process start; passed to hived as --cwd
 
+	// Restored window geometry. Set by main() before Wails starts.
+	// Position can't be applied until we have the runtime ctx, so it
+	// happens in startup().
+	initialX, initialY int
+	haveInitialPos     bool
+
 	mu       sync.Mutex
 	control  *connState                // control connection (or nil)
 	attaches map[string]*connState     // session id → attach connection
@@ -59,9 +65,14 @@ func NewApp(launchDir string) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	if a.haveInitialPos {
+		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
+	}
+	go a.persistGeometryLoop(ctx)
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.saveGeometry()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.control != nil {
@@ -70,6 +81,45 @@ func (a *App) shutdown(ctx context.Context) {
 	for _, c := range a.attaches {
 		_ = c.conn.Close()
 	}
+}
+
+// persistGeometryLoop polls window position + size every 2s and
+// writes a fresh window.json whenever they change. Cheap, and means
+// a SIGKILL'd GUI still keeps most of its geometry next launch
+// (worst case the last 2s of moves are lost).
+func (a *App) persistGeometryLoop(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	var last windowGeometry
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			x, y := wruntime.WindowGetPosition(ctx)
+			w, h := wruntime.WindowGetSize(ctx)
+			cur := windowGeometry{X: x, Y: y, W: w, H: h}
+			if cur != last && cur.W >= 320 && cur.H >= 240 {
+				if err := saveWindowGeometry(cur); err == nil {
+					last = cur
+				}
+			}
+		}
+	}
+}
+
+// saveGeometry writes the current window geometry once. Called at
+// shutdown so the very last position survives a clean quit.
+func (a *App) saveGeometry() {
+	if a.ctx == nil {
+		return
+	}
+	x, y := wruntime.WindowGetPosition(a.ctx)
+	w, h := wruntime.WindowGetSize(a.ctx)
+	if w < 320 || h < 240 {
+		return
+	}
+	_ = saveWindowGeometry(windowGeometry{X: x, Y: y, W: w, H: h})
 }
 
 // ----------------------------- control conn -----------------------------

@@ -1504,10 +1504,12 @@ window.addEventListener('resize', () => {
       if (t) t.refit();
       return;
     }
-    for (const info of gridScopeSessions()) {
-      state.terms.get(info.id)?.refit();
-    }
-  }, 50);
+    // Grid mode: re-pick (rows, cols) for the new container shape.
+    // Just refitting each tile keeps the old layout, which looks
+    // wrong after a landscape↔portrait resize until the user
+    // switches sessions and accidentally triggers a re-render.
+    renderGrid();
+  }, 100);
 });
 
 // ---------- bootstrap ----------
