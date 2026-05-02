@@ -43,6 +43,7 @@ type Entry struct {
 	ProjectID      string // owning project; "" = default project
 	WorktreePath   string // absolute path of the git worktree backing this session; "" = none
 	WorktreeBranch string // branch backing the worktree (informational; e.g. for sidebar tooltip)
+	LastError      string // human-readable error from last failed Start/Revive; cleared on success
 	sess           *session.Session // nil ⇔ not running this lifetime
 }
 
@@ -87,6 +88,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		ProjectID:      e.ProjectID,
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
+		LastError:      e.LastError,
 	}
 }
 
@@ -350,7 +352,10 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
 			e.ID, spec.Agent, cmd, err)
 		// Strand the metadata as a dead entry. The user can recreate
-		// or kill it.
+		// or kill it. Store the error so the GUI can surface it.
+		r.mu.Lock()
+		e.LastError = err.Error()
+		r.mu.Unlock()
 		r.broadcast(wire.SessionEventAdded, e.Info())
 		return e, err
 	}
@@ -425,12 +430,18 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 
 	sess, err := session.Start(opts)
 	if err != nil {
+		r.mu.Lock()
+		e.LastError = err.Error()
+		info := e.Info()
+		r.mu.Unlock()
+		r.broadcast(wire.SessionEventUpdated, info)
 		return err
 	}
 	sess.ID = id
 
 	r.mu.Lock()
 	e.sess = sess
+	e.LastError = ""
 	info := e.Info()
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventUpdated, info)

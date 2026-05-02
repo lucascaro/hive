@@ -292,9 +292,11 @@ class SessionTerm {
   async ensureAttached() {
     if (this.attached) return;
     // Don't attempt to attach to a session known to be dead — the daemon
-    // will refuse and the resulting [attach failed] line would accumulate
-    // each time the user switches back to the tile.
-    if (state.aliveById.get(this.info.id) === false) return;
+    // will refuse. Show the dead overlay with the error reason instead.
+    if (state.aliveById.get(this.info.id) === false) {
+      this.setDead(true, this.info.last_error || 'The process failed to start.');
+      return;
+    }
     this.fit.fit();
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
@@ -317,11 +319,15 @@ class SessionTerm {
     this.host.remove();
   }
 
-  setDead(isDead) {
+  setDead(isDead, reason) {
     this.deadOverlayShown = isDead;
     this.deadOverlay.hidden = !isDead;
     this.host.classList.toggle('dead', isDead);
     if (isDead) {
+      const subtitle = this.deadOverlay.querySelector('.dead-subtitle');
+      if (subtitle && reason) {
+        subtitle.textContent = reason;
+      }
       // Defer focus so it lands after the visibility flip and after
       // any pending blur from the dying xterm.
       setTimeout(() => {
@@ -441,7 +447,7 @@ function onSessionDeath(info) {
     // Flip attached eagerly so a switch-back before pty:disconnect arrives
     // doesn't try to reuse the dying connection.
     t.attached = false;
-    t.setDead(true);
+    t.setDead(true, info.last_error || 'The process running in this session has exited.');
   }
   // Reuse the attention pulse path so the sidebar entry highlights.
   state.attention.add(info.id);
@@ -1194,6 +1200,9 @@ function processAliveTransition(info) {
   const prev = state.aliveById.get(info.id);
   state.aliveById.set(info.id, !!info.alive);
   if (prev === true && info.alive === false) {
+    onSessionDeath(info);
+  } else if (prev === undefined && info.alive === false) {
+    // Session was born dead (e.g. agent binary not found).
     onSessionDeath(info);
   } else if (prev === false && info.alive === true) {
     state.dismissedDead.delete(info.id);

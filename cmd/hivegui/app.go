@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -450,19 +451,27 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("attach hello: %w", err)
 	}
-	var welcome wire.Welcome
-	ft, err := wire.ReadJSON(conn, &welcome)
+	ft, payload, err := wire.ReadFrame(conn)
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("attach welcome: %w", err)
 	}
 	if ft == wire.FrameError {
 		_ = conn.Close()
-		return nil, errors.New("daemon rejected attach (session may have died)")
+		var werr wire.Error
+		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
+			return nil, fmt.Errorf("attach failed: %s", werr.Message)
+		}
+		return nil, errors.New("attach failed: daemon rejected attach")
 	}
 	if ft != wire.FrameWelcome {
 		_ = conn.Close()
 		return nil, fmt.Errorf("attach: unexpected frame %s", ft)
+	}
+	var welcome wire.Welcome
+	if err := json.Unmarshal(payload, &welcome); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("attach welcome: %w", err)
 	}
 
 	cs := &connState{conn: conn}

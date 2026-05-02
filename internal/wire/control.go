@@ -78,6 +78,7 @@ type SessionInfo struct {
 	ProjectID      string `json:"project_id,omitempty"`      // owning project; "" = unassigned/legacy
 	WorktreePath   string `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string `json:"worktree_branch,omitempty"` // branch backing the worktree
+	LastError      string `json:"last_error,omitempty"`      // human-readable error from last failed Start/Revive
 }
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).
