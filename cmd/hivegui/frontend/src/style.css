@@ -1,0 +1,777 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #000;
+  color: #ddd;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Global scrollbar styling — overrides macOS "Always show scrollbars".
+   Thin, subtle, dark-theme-aware; WebKit-only but Wails uses WebKit on
+   every supported platform. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* xterm.js renders its own scrollbar inside .xterm-viewport — hide it
+   completely. Scrollback still works via mouse wheel / trackpad and is
+   the same buffer whether or not the bar is visible. */
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+.xterm-viewport {
+  scrollbar-width: none;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  height: 100vh;
+  transition: grid-template-columns 120ms ease;
+}
+
+#app.sidebar-hidden {
+  grid-template-columns: 0 1fr;
+}
+#app.sidebar-hidden #sidebar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#sidebar {
+  background: #0a0a0a;
+  border-right: 1px solid #1f1f1f;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+#sidebar header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+#sidebar header .brand {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #f59e0b;
+}
+
+#new-project-btn {
+  background: #1f1f1f;
+  color: #ccc;
+  border: none;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+#new-project-btn:hover { background: #2a2a2a; }
+
+#sessions, #projects {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.project {
+  margin-bottom: 4px;
+  position: relative;
+}
+.project::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--project-color, #888);
+  opacity: 0.45;
+  border-radius: 0 1px 1px 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, width 120ms ease;
+}
+.project.active::before {
+  opacity: 1;
+  width: 4px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+
+.project-header:hover { background: rgba(255,255,255,0.02); color: #ddd; }
+
+.project.active > .project-header {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--project-color, #888) 22%, transparent) 0%,
+    rgba(255, 255, 255, 0.04) 60%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  color: #fff;
+}
+
+.project.active > .project-header .project-color {
+  width: 10px;
+  height: 10px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3),
+              0 0 8px color-mix(in srgb, var(--project-color, #888) 60%, transparent);
+}
+
+.project.active > .project-header .project-name {
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.project-header .caret {
+  width: 10px;
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.project-header .project-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--project-color, #888);
+  flex-shrink: 0;
+}
+
+.project-header .project-name {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-header .project-name-input {
+  flex: 1;
+  background: #000;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+}
+
+.project-header .project-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0.5;
+}
+.project-header:hover .project-actions { opacity: 1; }
+
+.project-header .project-actions button {
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.project-header .project-actions button:hover { background: rgba(255,255,255,0.06); }
+
+.project-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.project.collapsed .project-sessions { display: none; }
+.project.collapsed .caret { transform: rotate(-90deg); display: inline-block; }
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 26px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: #aaa;
+  position: relative;
+}
+
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #ddd;
+}
+
+.session-item.selected {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.session-item.selected::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--session-color, #888);
+  border-radius: 1px 0 0 1px;
+}
+
+/* Attention indicator — fired by xterm BEL on a non-focused session. */
+@keyframes hive-attention-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
+  50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 70%, transparent); }
+}
+.session-item.attention {
+  animation: hive-attention-pulse 1.2s ease-in-out infinite;
+  color: #fff;
+}
+
+/* Drag-to-reorder visual: a thin colored line at the drop edge so
+   the user can see exactly where the dragged session will land. */
+.session-item.dragging {
+  opacity: 0.45;
+}
+.session-item.drop-above::before,
+.session-item.drop-below::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--session-color, #f59e0b);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.session-item.drop-above::before { top: -1px; }
+.session-item.drop-below::before { bottom: -1px; }
+.session-item.attention .name::before {
+  content: '●';
+  color: var(--session-color, #888);
+  font-size: 8px;
+  margin-right: 4px;
+  vertical-align: middle;
+  text-shadow: 0 0 6px var(--session-color, #888);
+}
+
+/* Title gradient — color stays visible even when selected. */
+.session-item .name {
+  flex: 1;
+  background: linear-gradient(90deg, var(--session-color, #888) 0%, #fff 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item.dead .name {
+  background: none;
+  -webkit-text-fill-color: #555;
+  color: #555;
+  font-style: italic;
+}
+
+.session-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--session-color, #888);
+  flex-shrink: 0;
+}
+
+.session-item.dead .dot { background: #333; }
+
+.session-item .name-input {
+  flex: 1;
+  background: #000;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+
+.session-item .swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--session-color, #888);
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+}
+.session-item .swatch input[type=color] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.hints {
+  padding: 6px 10px;
+  border-top: 1px solid #1f1f1f;
+  font-size: 10.5px;
+  color: #555;
+  line-height: 1.4;
+}
+
+#terms {
+  position: relative;
+  background: #000;
+  display: flex;
+}
+
+#terms.single .term-host {
+  position: absolute;
+  inset: 6px;
+  box-sizing: border-box;
+  display: none;
+  flex-direction: column;
+  /* Match the grid-tile baseline border so the focus upgrade is
+     visible in single mode too. */
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
+  border-radius: 4px;
+  background: #000;
+  overflow: hidden;
+}
+#terms.single .term-host.visible {
+  display: flex;
+}
+#terms.single .term-host .term-body {
+  flex: 1;
+  position: relative;
+  padding: 4px 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#terms.grid {
+  position: relative;
+  display: grid;
+  /* grid-template-{rows,columns} are set by JS to fill the viewport */
+  gap: 6px;
+  padding: 6px;
+  overflow: hidden;
+  align-content: stretch;
+}
+
+#terms.grid .term-host {
+  position: relative;
+  inset: auto;
+  display: none;
+  /* Always-visible border tinted with the session color so each
+     tile's identity is obvious without having to read the title. */
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
+  border-radius: 4px;
+  background: #000;
+  overflow: hidden;
+  padding: 0;
+  /* Without min-* zero, grid items default to min-content sizing and
+     each tile grows to fit its xterm canvas — making bottom rows
+     taller than top rows. Force fr distribution to win. */
+  min-width: 0;
+  min-height: 0;
+}
+#terms.grid .term-host.in-grid {
+  display: flex;
+  flex-direction: column;
+}
+/* Visual focus border = real xterm focus. focusin/focusout on the
+   tile host toggle .term-focused; when a session loses focus
+   (sidebar click, dialog open, window blur), the border goes away —
+   and only comes back once the xterm has actually regained focus.
+   The #terms prefix is needed to outweigh the per-mode baseline
+   border rules (which are also ID-scoped). */
+#terms .term-host.term-focused {
+  border-color: var(--session-color, #888);
+  box-shadow: 0 0 0 1px var(--session-color, #888),
+              0 0 18px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
+}
+
+@keyframes hive-tile-attention {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--session-color, #888) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--session-color, #888) 0%, transparent);
+  }
+  50% {
+    border-color: var(--session-color, #888);
+    box-shadow: 0 0 0 1px var(--session-color, #888),
+                0 0 16px 4px color-mix(in srgb, var(--session-color, #888) 35%, transparent);
+  }
+}
+
+#terms.grid .term-host.in-grid.attention {
+  animation: hive-tile-attention 1.2s ease-in-out infinite;
+}
+#terms.grid .term-host.in-grid.attention .tile-name::before {
+  content: '●';
+  color: var(--session-color, #888);
+  font-size: 8px;
+  margin-right: 6px;
+  vertical-align: middle;
+  text-shadow: 0 0 6px var(--session-color, #888);
+}
+.term-host .tile-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  /* Title bar tinted with the session color — subtle for unfocused
+     tiles, brighter when focused. */
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--session-color, #888) 40%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--session-color, #888) 12%, #0a0a0a) 100%
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--session-color, #888) 35%, #1a1a1a);
+  font: 11px Menlo, monospace;
+  color: #ddd;
+  flex-shrink: 0;
+}
+.term-host.term-focused .tile-header {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--session-color, #888) 65%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--session-color, #888) 28%, #0a0a0a) 100%
+  );
+  color: #fff;
+}
+.term-host .tile-color {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--session-color, #888);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
+}
+.term-host .tile-name { flex: 1; }
+.term-host .tile-name-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font: inherit;
+  outline: none;
+}
+.term-host .tile-project {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+#terms.grid .term-host .term-body {
+  flex: 1;
+  position: relative;
+  padding: 4px 6px;
+  overflow: hidden;
+  min-height: 0; /* allow flex shrink so canvas doesn't push past 1fr */
+}
+#terms.grid .term-host .term-body .xterm,
+#terms.single .term-host .xterm,
+#terms.grid .term-host .xterm-screen {
+  height: 100%;
+}
+
+#terms.grid:empty::after,
+#terms.grid:not(:has(.in-grid))::after {
+  content: 'no sessions in this project';
+  color: #555;
+  font-size: 13px;
+  margin: auto;
+}
+
+#launcher {
+  position: fixed;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  z-index: 10;
+  font-size: 12.5px;
+}
+#launcher.hidden { display: none; }
+
+.launcher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #ccc;
+}
+.launcher-item:hover,
+.launcher-item.selected { background: rgba(255,255,255,0.08); }
+.launcher-item.selected { color: #fff; }
+.launcher-item .agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--agent-color, #888);
+  flex-shrink: 0;
+}
+.launcher-item .agent-name { flex: 1; }
+.launcher-item.uninstalled .agent-name {
+  color: #999;
+}
+
+.launcher-worktree {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid #1f1f1f;
+  color: #ccc;
+  font-size: 11.5px;
+  user-select: none;
+  cursor: pointer;
+}
+.launcher-worktree input[type=checkbox] {
+  margin: 0;
+}
+.launcher-worktree.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Worktree glyph: shown next to a session name when the session
+   is backed by a git worktree. Sidebar + grid tile share the rule. */
+.worktree-glyph {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--session-color, #888);
+  margin: 0 4px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.session-item .worktree-glyph {
+  margin-left: 0;
+  margin-right: 4px;
+}
+.launcher-item .install-tag {
+  font-size: 10.5px;
+  color: #888;
+  font-family: Menlo, monospace;
+}
+
+#project-editor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 320px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+  z-index: 20;
+  font-size: 13px;
+}
+#project-editor.hidden { display: none; }
+#project-editor h3 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+}
+#project-editor label {
+  display: block;
+  margin-bottom: 10px;
+}
+#project-editor label > span {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+#project-editor input[type=text],
+#project-editor input[type=color] {
+  width: 100%;
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 6px 8px;
+  font: inherit;
+  box-sizing: border-box;
+  outline: none;
+}
+#project-editor input[type=color] {
+  height: 32px;
+  padding: 2px;
+}
+#project-editor .cwd-row {
+  display: flex;
+  gap: 6px;
+}
+#project-editor .cwd-row input { flex: 1; }
+#project-editor .cwd-row button {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 0 12px;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+#project-editor .cwd-row button:hover { background: #2a2a2a; }
+#project-editor .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+#project-editor .actions button {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+#project-editor .actions button:hover { background: #2a2a2a; }
+#project-editor .actions button.primary {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #000;
+  font-weight: 600;
+}
+#project-editor .actions button.primary:hover { background: #fbb04a; }
+
+#status {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  font: 11px Menlo, monospace;
+  color: #888;
+  pointer-events: none;
+  background: rgba(0,0,0,0.5);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+#status.error { color: #ff7a7a; }
+
+/* Dead-session overlay — shown over a tile (grid or single mode)
+   when the underlying process has exited. */
+.term-host {
+  position: relative;
+}
+.term-host.dead .term-body {
+  filter: grayscale(0.7) brightness(0.55);
+  pointer-events: none;
+}
+.dead-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(1px);
+  z-index: 5;
+}
+.dead-overlay[hidden] { display: none; }
+.dead-card {
+  background: #0d0d0d;
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 55%, #2a2a2a);
+  border-radius: 6px;
+  padding: 14px 18px;
+  max-width: 80%;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6),
+              0 0 0 1px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
+}
+.dead-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.dead-subtitle {
+  font-size: 11.5px;
+  color: #aaa;
+  margin-bottom: 12px;
+}
+.dead-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.dead-btn {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ddd;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dead-btn:hover { background: #2a2a2a; }
+.dead-btn.primary {
+  background: var(--session-color, #f59e0b);
+  border-color: var(--session-color, #f59e0b);
+  color: #000;
+  font-weight: 600;
+}
+.dead-btn.primary:hover {
+  filter: brightness(1.12);
+}
+.dead-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--session-color, #888) 80%, #fff);
+  outline-offset: 1px;
+}

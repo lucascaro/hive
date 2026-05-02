@@ -1,0 +1,66 @@
+# Phase 5 — System bell notifications
+
+**Status:** In progress
+**Branch:** `silent-light`
+
+## Scope (deliberately narrow)
+
+Per user request: surface notifications when a session emits a BEL
+(`\x07`) — the conventional "I need input" signal that agent CLIs
+(Claude, Codex, etc.) use when they're waiting on the user.
+
+Everything else from the original Phase 5 sketch (workflows, agent
+teams, hooks, status detection) is deferred. This phase is one
+discrete UX win.
+
+## Behavior
+
+When a session receives BEL:
+
+- **If the session is the active one and the GUI window is focused**:
+  ignore. The user is already there.
+- **Otherwise**:
+  - Mark the session as "needs attention" — the sidebar row pulses
+    in the session's color, and a small dot appears next to its
+    name.
+  - Fire an OS notification: title `Hive — <session name>`, body
+    `<project name> needs attention`. Tag the notification with the
+    session id so repeated bells dedupe.
+- Switching to a session (single mode) or focusing its tile (grid
+  mode) clears the attention state.
+
+## Implementation
+
+Frontend + a thin Go binding:
+
+- xterm.js v5 exposes `term.onBell((listener))`. Wired in `SessionTerm`.
+- **OS notifications dispatch from Go**, not the webview. WKWebView on
+  macOS does not implement the HTML5 Notification API, so the JS path
+  silently no-ops there. Instead the frontend calls a bound
+  `App.Notify(title, body)` method that lives in `internal/notify`:
+  - macOS: `osascript -e 'display notification ...'` (no entitlements,
+    works in unsigned dev builds).
+  - Linux: `notify-send` if available, no-op otherwise.
+  - Windows: `git.sr.ht/~jackmordaunt/go-toast/v2`.
+- Visual indicator: CSS class on the sidebar item with a pulsing
+  outline + colored dot.
+- Notification dedupe: only fired on the transition from no-attention
+  → attention so a session emitting bells in a tight loop doesn't
+  spam Notification Center.
+
+No daemon changes — bell bytes flow through the existing DATA frame
+path; the GUI just notices them instead of sending raw `\x07` to the
+terminal renderer (xterm.js still renders the BEL visually if
+`bellStyle: 'sound'`).
+
+## Acceptance
+
+1. Open two sessions, run `claude` in one. Switch focus to the other.
+2. In the claude session, ask a question that prompts confirmation
+   (or simply `printf '\a'` via a regular shell session for a
+   plain-shell test).
+3. **Pass criteria:**
+   - The non-focused session's sidebar row pulses
+   - A macOS notification appears with the session name
+   - Clicking the sidebar row or the notification (best-effort)
+     clears the attention state

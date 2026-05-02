@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Hive</title>
+    <link rel="stylesheet" href="./src/style.css"/>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <span class="brand">Hive</span>
+      <button id="new-project-btn" title="New project (⇧⌘P)">＋</button>
+    </header>
+    <ul id="projects"></ul>
+    <footer class="hints">
+      ⌘N new · ⌘W close · ⌘G grid · ⇧⌘G all · ⌘[/] project · ⌘S sidebar · ⇧⌘P new project
+    </footer>
+  </aside>
+  <div id="launcher" class="hidden" role="menu"></div>
+  <div id="project-editor" class="hidden" role="dialog">
+    <h3 id="project-editor-title">New project</h3>
+    <label>
+      <span>Name</span>
+      <input id="project-editor-name" type="text" autocomplete="off"/>
+    </label>
+    <label>
+      <span>Working directory</span>
+      <div class="cwd-row">
+        <input id="project-editor-cwd" type="text" autocomplete="off"/>
+        <button id="project-editor-browse" type="button">Browse…</button>
+      </div>
+    </label>
+    <label>
+      <span>Color</span>
+      <input id="project-editor-color" type="color"/>
+    </label>
+    <div class="actions">
+      <button id="project-editor-cancel">Cancel</button>
+      <button id="project-editor-save" class="primary">Save</button>
+    </div>
+  </div>
+  <main id="terms"></main>
+  <div id="status">connecting…</div>
+</div>
+<script src="./src/main.js" type="module"></script>
+</body>
+</html>
