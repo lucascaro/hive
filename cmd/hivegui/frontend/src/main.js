@@ -1801,6 +1801,50 @@ window.addEventListener('resize', () => {
   }, 100);
 });
 
+// ---------- sidebar resize ----------
+//
+// Drag the right edge of the sidebar to resize. Width persists across
+// reloads. Constrained to a sane min/max so the resizer can't be lost
+// off-screen or eat the whole window.
+(function setupSidebarResize() {
+  const MIN = 140, MAX = 480;
+  const app = document.getElementById('app');
+  const handle = document.getElementById('sidebar-resizer');
+  if (!app || !handle) return;
+  const saved = parseInt(localStorage.getItem('hive.sidebarWidth') ?? '', 10);
+  if (Number.isFinite(saved)) {
+    app.style.setProperty('--sidebar-width', `${Math.max(MIN, Math.min(MAX, saved))}px`);
+  }
+  let dragging = false;
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    document.body.classList.add('resizing-sidebar');
+    handle.classList.add('dragging');
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const w = Math.max(MIN, Math.min(MAX, e.clientX));
+    app.style.setProperty('--sidebar-width', `${w}px`);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing-sidebar');
+    handle.classList.remove('dragging');
+    const px = app.style.getPropertyValue('--sidebar-width');
+    const w = parseInt(px, 10);
+    if (Number.isFinite(w)) localStorage.setItem('hive.sidebarWidth', String(w));
+    // Main pane width changed — reflow terminals.
+    if (state.view === 'single') {
+      const t = state.activeId && state.terms.get(state.activeId);
+      if (t) t.refit();
+    } else {
+      renderGrid();
+    }
+  });
+})();
+
 // ---------- bootstrap ----------
 
 (async () => {
