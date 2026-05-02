@@ -113,6 +113,29 @@ class SessionTerm {
     this.term.onBell(() => {
       onSessionBell(this.info);
     });
+
+    // Take over wheel handling. xterm's default wheel→lines math
+    // honors raw deltaY, which on macOS trackpads with momentum
+    // pumps in events of 200–400px each — enough to fly past a
+    // 5000-line scrollback in a single swipe. We cap each event to
+    // a sane line count so the user can actually read history.
+    // Capture phase + stopPropagation prevents xterm's own handler
+    // from firing.
+    const linesPerPixel = 1 / 14; // ~one line per ~14 px of delta
+    const maxLinesPerEvent = 8;   // about half a screen on a small tile
+    this.host.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let lines = Math.round(e.deltaY * linesPerPixel);
+      if (lines === 0) {
+        // Sub-pixel events — preserve direction so a slow scroll
+        // still moves at least one line.
+        lines = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
+      }
+      if (lines > maxLinesPerEvent) lines = maxLinesPerEvent;
+      if (lines < -maxLinesPerEvent) lines = -maxLinesPerEvent;
+      if (lines !== 0) this.term.scrollLines(lines);
+    }, { capture: true, passive: false });
   }
 
   setInfo(info) {
