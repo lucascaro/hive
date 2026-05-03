@@ -733,7 +733,11 @@ function renderProject(p, activePID) {
     if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const r = li.getBoundingClientRect();
+    // Use the header's bounds, not the whole li: with sessions
+    // expanded, the li is tall and the cursor is almost always
+    // above its midpoint, which collapses every adjacent drop into
+    // a no-op.
+    const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;
     li.classList.toggle('drop-above', above);
     li.classList.toggle('drop-below', !above);
@@ -751,7 +755,7 @@ function renderProject(p, activePID) {
     const pid = e.dataTransfer.getData('text/x-hive-project');
     li.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
-    const r = li.getBoundingClientRect();
+    const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;
     reorderDroppedProject(pid, p.id, above);
   });
