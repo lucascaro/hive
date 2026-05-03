@@ -526,7 +526,29 @@ body.resizing-sidebar #app { transition: none; }
   flex-shrink: 0;
   box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
 }
-.term-host .tile-name { flex: 1; }
+.term-host .tile-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-host .tile-term-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  margin-left: 4px;
+}
+.term-host .tile-term-title::before {
+  content: "—";
+  margin-right: 6px;
+  color: rgba(255, 255, 255, 0.3);
+}
 .term-host .tile-name-input {
   flex: 1;
   background: rgba(0, 0, 0, 0.55);
@@ -538,6 +560,7 @@ body.resizing-sidebar #app { transition: none; }
   outline: none;
 }
 .term-host .tile-project {
+  margin-left: auto;
   color: rgba(255, 255, 255, 0.6);
   font-size: 10px;
   text-transform: uppercase;
@@ -740,6 +763,57 @@ body.resizing-sidebar #app { transition: none; }
   border-radius: 3px;
 }
 #status.error { color: #ff7a7a; }
+
+/* ---------- command palette ---------- */
+#command-palette {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 480px;
+  max-width: 90vw;
+  max-height: 60vh;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#command-palette.hidden { display: none; }
+#command-palette-input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #1f1f1f;
+  outline: none;
+  color: #eee;
+  font-size: 14px;
+  padding: 12px 14px;
+}
+#command-palette-input::placeholder { color: #555; }
+#command-palette-list {
+  overflow-y: auto;
+  padding: 4px;
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #ccc;
+  font-size: 13px;
+}
+.palette-item.selected { background: rgba(255,255,255,0.08); color: #fff; }
+.palette-name { flex: 1; }
+.palette-shortcut {
+  font: 11.5px Menlo, monospace;
+  color: #888;
+}
+.palette-item.selected .palette-shortcut { color: #bbb; }
 
 /* Dead-session overlay — shown over a tile (grid or single mode)
    when the underlying process has exited. */

@@ -11,11 +11,11 @@
   <aside id="sidebar">
     <header>
       <span class="brand">Hive</span>
-      <button id="new-project-btn" title="New project (⇧⌘P)">＋</button>
+      <button id="new-project-btn" title="New project (⌘N)">＋</button>
     </header>
     <ul id="projects"></ul>
     <footer class="hints">
-      ⌘N new · ⌘W close · ⌘G grid · ⇧⌘G all · ⌘[/] project · ⌘S sidebar · ⇧⌘P new project
+      ⌘N project · ⌘T session · ⇧⌘T worktree · ⌘W close · ⌘G grid · ⌘K commands
     </footer>
     <div id="sidebar-resizer"
          role="separator"
@@ -46,6 +46,10 @@
       <button id="project-editor-cancel">Cancel</button>
       <button id="project-editor-save" class="primary">Save</button>
     </div>
+  </div>
+  <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
+    <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" autocomplete="off"/>
+    <div id="command-palette-list" role="listbox"></div>
   </div>
   <main id="terms"></main>
   <div id="status">connecting…</div>

@@ -31,13 +31,11 @@ func buildAppMenu(a *App) *menu.Menu {
 	m.Append(menu.AppMenu()) // About / Hide / Quit (⌘Q)
 
 	file := m.AddSubmenu("File")
-	file.AddText("New Session", keys.CmdOrCtrl("n"), emit("menu:new-session"))
+	file.AddText("New Project…", keys.CmdOrCtrl("n"), emit("menu:new-project"))
+	file.AddText("New Session", keys.CmdOrCtrl("t"), emit("menu:new-session"))
 	file.AddText("New Session in Worktree",
-		keys.Combo("n", keys.OptionOrAltKey, keys.CmdOrCtrlKey),
+		keys.Combo("t", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:new-session-worktree"))
-	file.AddText("New Project…",
-		keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:new-project"))
 	file.AddSeparator()
 	file.AddText("New Window",
 		keys.Combo("n", keys.ShiftKey, keys.CmdOrCtrlKey),
@@ -46,10 +44,16 @@ func buildAppMenu(a *App) *menu.Menu {
 	file.AddText("Close Window",
 		keys.Combo("w", keys.ShiftKey, keys.CmdOrCtrlKey),
 		func(_ *menu.CallbackData) { a.CloseWindow() })
+	file.AddSeparator()
+	file.AddText("Delete Project…",
+		keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:delete-project"))
 
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
 	view := m.AddSubmenu("View")
+	view.AddText("Command Palette…", keys.CmdOrCtrl("k"), emit("menu:command-palette"))
+	view.AddSeparator()
 	view.AddText("Zoom In", keys.CmdOrCtrl("="), emit("menu:zoom-in"))
 	view.AddText("Zoom Out", keys.CmdOrCtrl("-"), emit("menu:zoom-out"))
 	view.AddText("Actual Size", keys.CmdOrCtrl("0"), emit("menu:zoom-reset"))
