@@ -140,7 +140,8 @@ func (r *Registry) CreateProject(req wire.CreateProjectReq) (*Project, error) {
 	}
 	color := req.Color
 	if color == "" {
-		color = pickColor(len(r.projectOrder))
+		color = pickColor(r.lastProjectColor)
+		r.lastProjectColor = color
 	}
 	p := &Project{
 		ID: id, Name: name, Color: color, Cwd: req.Cwd,

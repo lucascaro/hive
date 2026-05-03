@@ -2,6 +2,7 @@ package registry
 
 import (
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -201,3 +202,58 @@ func TestPersistenceAcrossOpen(t *testing.T) {
 		t.Errorf("expected entries to be inactive after reopen")
 	}
 }
+
+func TestPickColorExcludesAvoid(t *testing.T) {
+	// Structural guarantee: when avoid is a palette entry, pickColor
+	// must never return it. Sample 100 calls per palette entry.
+	for _, avoid := range colorPalette {
+		for i := 0; i < 100; i++ {
+			got := pickColor(avoid)
+			if got == avoid {
+				t.Fatalf("pickColor(%q) returned avoided color", avoid)
+			}
+			if !slices.Contains(colorPalette, got) {
+				t.Fatalf("pickColor returned %q, not in palette", got)
+			}
+		}
+	}
+}
+
+func TestPickColorExcludesMultipleAvoid(t *testing.T) {
+	// Variadic avoid: pickColor must skip every entry in the avoid
+	// list, so the session-create path can avoid both the previous
+	// session color and the project color.
+	a, b := colorPalette[0], colorPalette[1]
+	for i := 0; i < 200; i++ {
+		got := pickColor(a, b)
+		if got == a || got == b {
+			t.Fatalf("pickColor(%q,%q) returned avoided color %q", a, b, got)
+		}
+	}
+}
+
+func TestPickColorEmptyAvoidUsesPalette(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		got := pickColor()
+		if !slices.Contains(colorPalette, got) {
+			t.Fatalf("pickColor() returned %q, not in palette", got)
+		}
+	}
+}
+
+func TestAutoAssignedProjectColorsDifferConsecutively(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	var prev string
+	for i := 0; i < 20; i++ {
+		p, err := r.CreateProject(wire.CreateProjectReq{Name: "p", Cwd: t.TempDir()})
+		if err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		}
+		if i > 0 && p.Color == prev {
+			t.Fatalf("consecutive auto-assigned project colors repeated: %q", p.Color)
+		}
+		prev = p.Color
+	}
+}
+
