@@ -1462,26 +1462,22 @@ daemonBannerDismiss.addEventListener('click', () => {
   hideDaemonBanner();
 });
 daemonBannerRestart.addEventListener('click', async () => {
-  // Phase A: restarting hived also kills every running session. Warn
-  // first. (Phase B will make sessions survive; update copy then.)
+  // Restart kills hived AND relaunches Hive itself, so every running
+  // session ends. Warn first.
   const ok = await Confirm(
-    'Restart daemon?',
-    'Restarting hived will terminate every running shell and agent ' +
-    'in this Hive. Save your work first.\n\n' +
+    'Restart Hive?',
+    'This will close Hive, terminate every running shell and agent, ' +
+    'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
     'Continue?',
   );
   if (!ok) return;
   daemonBannerRestart.disabled = true;
   daemonRestarting = true;
-  showDaemonBanner('Restarting hived…');
+  showDaemonBanner('Restarting Hive…');
   try {
     await RestartDaemon();
-    daemonBannerDismissedFor = null; // re-arm for any future mismatch
-    // Positively restore the status bar. The control:disconnect we
-    // suppressed during restart leaves no trace; if any disconnect
-    // event sneaks through (event-loop ordering races) it'd otherwise
-    // pin "control disconnected" red even though we just reconnected.
-    setStatus('connected');
+    // RestartDaemon quits this process on success; control returns
+    // here only on failure paths.
   } catch (err) {
     setStatus(`restart failed: ${err}`, true);
     showDaemonBanner(`Restart failed: ${err}`);
@@ -1504,12 +1500,12 @@ EventsOn('daemon:stale', (ev) => {
   if (ev.severity === 'mismatch') {
     showDaemonBanner(
       `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
-      `Restart the daemon to apply changes.`,
+      `Restart Hive to apply changes.`,
     );
   } else {
     showDaemonBanner(
       `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
-      `If something looks wrong, restart the daemon.`,
+      `If something looks wrong, restart Hive.`,
     );
   }
 });

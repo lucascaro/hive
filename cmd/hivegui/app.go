@@ -217,17 +217,16 @@ func (a *App) emitDaemonVersionStatus(daemonBuild string) {
 	wruntime.EventsEmit(a.ctx, "daemon:stale", ev)
 }
 
-// RestartDaemon kills the running hived (if any) and re-spawns it,
-// then reconnects the control conn. Phase A: this kills every live
-// session — Phase B will make sessions survive. The frontend warns
-// the user before calling this.
+// RestartDaemon kills the running hived and relaunches the GUI as a
+// detached child, then quits this process. Reconnecting in-place left
+// the existing window holding stale session state (xterm buffers,
+// attach conns) that no longer matched the fresh daemon; a full GUI
+// restart sidesteps that by starting from a clean slate.
 //
-// killRunningHived blocks until the previous process is actually gone
-// (escalating to SIGKILL after 3s and waiting again), so by the time
-// it returns, the socket is free for dialOrSpawn to bind a fresh one.
-// On any kill error we surface it instead of silently proceeding —
-// otherwise the user would see "Restart daemon" succeed while the
-// stale daemon kept running.
+// killRunningHived blocks until the previous daemon is actually gone
+// so the relaunched GUI's dialOrSpawn binds a fresh socket. We kill
+// before spawning the child for the same reason — otherwise the new
+// GUI would happily reconnect to the old daemon.
 func (a *App) RestartDaemon() error {
 	a.mu.Lock()
 	if a.control != nil {
@@ -243,7 +242,11 @@ func (a *App) RestartDaemon() error {
 	if err := killRunningHived(hdaemon.SocketPath()); err != nil {
 		return fmt.Errorf("kill stale hived: %w", err)
 	}
-	return a.ConnectControl()
+	if err := spawnNewGUI(a.launchDir); err != nil {
+		return fmt.Errorf("relaunch GUI: %w", err)
+	}
+	wruntime.Quit(a.ctx)
+	return nil
 }
 
 func (a *App) controlReadLoop(cs *connState) {
