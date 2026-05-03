@@ -238,7 +238,10 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 	return nil
 }
 
-// UpdateProject mutates project metadata.
+// UpdateProject mutates project metadata. When Order is set, every
+// project whose Order shifted is broadcast as updated so the GUI's
+// state stays in sync — otherwise the other projects keep stale
+// .order values and the relative sort flips on the next render.
 func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 	r.mu.Lock()
 	p, ok := r.projects[req.ProjectID]
@@ -255,7 +258,8 @@ func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 	if req.Cwd != nil {
 		p.Cwd = *req.Cwd
 	}
-	if req.Order != nil {
+	orderChanged := req.Order != nil
+	if orderChanged {
 		r.moveProjectLocked(p.ID, *req.Order)
 	}
 	if err := r.persistProjectLocked(p); err != nil {
@@ -267,7 +271,18 @@ func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 		return p, err
 	}
 	info := p.Info()
+	var others []wire.ProjectInfo
+	if orderChanged {
+		for _, pid := range r.projectOrder {
+			if other := r.projects[pid]; other != nil && other.ID != p.ID {
+				others = append(others, other.Info())
+			}
+		}
+	}
 	r.mu.Unlock()
+	for _, oi := range others {
+		r.broadcastProject(wire.ProjectEventUpdated, oi)
+	}
 	r.broadcastProject(wire.ProjectEventUpdated, info)
 	return p, nil
 }

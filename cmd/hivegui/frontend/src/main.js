@@ -705,15 +705,18 @@ function renderProject(p, activePID) {
   li.appendChild(ul);
 
   // ---- Drag-to-reorder for projects ----
-  // Drag is only initiated from the project header (chrome around the
-  // sessions list). Inner draggable session rows handle their own
-  // dragstart, so dragstart from inside .project-sessions never reaches
-  // here. We still ignore drags that begin on action buttons or inline
-  // inputs so click-and-drag on those doesn't kidnap the project.
+  // dragstart bubbles, so a session-item drag fires here too after
+  // its own handler runs. We must not preventDefault in that case
+  // (it would cancel the session drag). For drags that originate on
+  // the project chrome (action buttons, rename input) we DO want to
+  // abort, since the li itself is the closest draggable.
   li.addEventListener('dragstart', (e) => {
+    if (e.target.closest('.session-item')) {
+      // Bubbled from an inner session drag — leave it alone.
+      return;
+    }
     if (e.target.closest('.project-actions') ||
-        e.target.closest('.project-name-input') ||
-        e.target.closest('.project-sessions')) {
+        e.target.closest('.project-name-input')) {
       e.preventDefault();
       return;
     }
