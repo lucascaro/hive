@@ -17,7 +17,12 @@
     <footer class="hints">
       ⌘N new · ⌘W close · ⌘G grid · ⇧⌘G all · ⌘[/] project · ⌘S sidebar · ⇧⌘P new project
     </footer>
-    <div id="sidebar-resizer" title="Drag to resize"></div>
+    <div id="sidebar-resizer"
+         role="separator"
+         aria-orientation="vertical"
+         aria-label="Resize sidebar"
+         tabindex="0"
+         title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   </aside>
   <div id="launcher" class="hidden" role="menu"></div>
   <div id="project-editor" class="hidden" role="dialog">

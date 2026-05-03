@@ -1851,6 +1851,29 @@ window.addEventListener('resize', () => {
   // Belt-and-braces: if focus leaves the window mid-drag, end the drag so a
   // stray mousemove on return doesn't snap the sidebar to the cursor.
   window.addEventListener('blur', endDrag);
+
+  // Keyboard a11y: when the resizer has focus, arrow keys adjust width
+  // (Shift = larger step). Persist + refit on each change.
+  function nudge(delta) {
+    const cur = parseInt(getComputedStyle(app).getPropertyValue('--sidebar-width'), 10);
+    const base = Number.isFinite(cur) ? cur : 200;
+    const w = Math.max(MIN, Math.min(MAX, base + delta));
+    app.style.setProperty('--sidebar-width', `${w}px`);
+    localStorage.setItem('hive.sidebarWidth', String(w));
+    if (state.view === 'single') {
+      const t = state.activeId && state.terms.get(state.activeId);
+      if (t) t.refit();
+    } else {
+      renderGrid();
+    }
+  }
+  handle.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 50 : 10;
+    if (e.key === 'ArrowLeft')       { e.preventDefault(); nudge(-step); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(+step); }
+    else if (e.key === 'Home')       { e.preventDefault(); nudge(-MAX); }
+    else if (e.key === 'End')        { e.preventDefault(); nudge(+MAX); }
+  });
 })();
 
 // ---------- bootstrap ----------

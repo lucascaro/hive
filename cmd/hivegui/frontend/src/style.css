@@ -82,9 +82,11 @@ body.resizing-sidebar #app { transition: none; }
   transition: background 120ms ease;
 }
 #sidebar-resizer:hover,
-#sidebar-resizer.dragging {
+#sidebar-resizer.dragging,
+#sidebar-resizer:focus-visible {
   background: color-mix(in srgb, #f59e0b 35%, transparent);
 }
+#sidebar-resizer:focus-visible { outline: none; }
 #app.sidebar-hidden #sidebar-resizer { display: none; }
 
 #sidebar header {
