@@ -1801,6 +1801,81 @@ window.addEventListener('resize', () => {
   }, 100);
 });
 
+// ---------- sidebar resize ----------
+//
+// Drag the right edge of the sidebar to resize. Width persists across
+// reloads. Constrained to a sane min/max so the resizer can't be lost
+// off-screen or eat the whole window.
+(function setupSidebarResize() {
+  const MIN = 140, MAX = 480;
+  const app = document.getElementById('app');
+  const handle = document.getElementById('sidebar-resizer');
+  if (!app || !handle) return;
+  const saved = parseInt(localStorage.getItem('hive.sidebarWidth') || '', 10);
+  if (Number.isFinite(saved)) {
+    app.style.setProperty('--sidebar-width', `${Math.max(MIN, Math.min(MAX, saved))}px`);
+  }
+  // #app spans the viewport, so pointer clientX maps directly to sidebar width.
+  let dragging = false;
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing-sidebar');
+    handle.classList.remove('dragging');
+    const px = app.style.getPropertyValue('--sidebar-width');
+    const w = parseInt(px, 10);
+    if (Number.isFinite(w)) localStorage.setItem('hive.sidebarWidth', String(w));
+    // Main pane width changed — reflow terminals.
+    if (state.view === 'single') {
+      const t = state.activeId && state.terms.get(state.activeId);
+      if (t) t.refit();
+    } else {
+      renderGrid();
+    }
+  }
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    document.body.classList.add('resizing-sidebar');
+    handle.classList.add('dragging');
+    // Capture so we keep getting moves/ups even if the cursor leaves the window.
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const w = Math.max(MIN, Math.min(MAX, e.clientX));
+    app.style.setProperty('--sidebar-width', `${w}px`);
+  });
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  // Belt-and-braces: if focus leaves the window mid-drag, end the drag so a
+  // stray mousemove on return doesn't snap the sidebar to the cursor.
+  window.addEventListener('blur', endDrag);
+
+  // Keyboard a11y: when the resizer has focus, arrow keys adjust width
+  // (Shift = larger step). Persist + refit on each change.
+  function nudge(delta) {
+    const cur = parseInt(getComputedStyle(app).getPropertyValue('--sidebar-width'), 10);
+    const base = Number.isFinite(cur) ? cur : 200;
+    const w = Math.max(MIN, Math.min(MAX, base + delta));
+    app.style.setProperty('--sidebar-width', `${w}px`);
+    localStorage.setItem('hive.sidebarWidth', String(w));
+    if (state.view === 'single') {
+      const t = state.activeId && state.terms.get(state.activeId);
+      if (t) t.refit();
+    } else {
+      renderGrid();
+    }
+  }
+  handle.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 50 : 10;
+    if (e.key === 'ArrowLeft')       { e.preventDefault(); nudge(-step); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(+step); }
+    else if (e.key === 'Home')       { e.preventDefault(); nudge(-MAX); }
+    else if (e.key === 'End')        { e.preventDefault(); nudge(+MAX); }
+  });
+})();
+
 // ---------- bootstrap ----------
 
 (async () => {
