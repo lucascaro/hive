@@ -62,6 +62,11 @@ class SessionTerm {
       scrollback: 5000,
       smoothScrollDuration: 0,
       theme: { background: '#000000' },
+      // Route OSC 8 hyperlinks (used by Claude CLI and others) through
+      // the OS default browser via the Wails backend.
+      linkHandler: {
+        activate: (_e, uri) => { if (uri) OpenURL(uri); },
+      },
     });
     this.fit = new FitAddon();
     this.term.loadAddon(this.fit);
@@ -81,14 +86,50 @@ class SessionTerm {
     }
 
     // Detect URLs in terminal output and route activation through
-    // the OS default browser. Default behavior: hover underlines
-    // the URL, ⌘-click (or Ctrl-click on non-Mac) follows it.
+    // the OS default browser. Hover underlines the URL; click (or
+    // ⌘-click when mouse reporting is active) follows it.
     try {
       this.term.loadAddon(new WebLinksAddon((event, uri) => {
         if (uri) OpenURL(uri);
       }));
     } catch (err) {
       // Non-fatal; sessions still work without clickable links.
+    }
+
+    // When the running program enables mouse reporting (e.g. Claude,
+    // vim), xterm sends mousedown/mouseup to the PTY and cancels the
+    // event before the Linkifier can process it. Work around this by
+    // intercepting clicks on the xterm screen: if a recognized link
+    // is under the cursor, suppress the event so it doesn't reach the
+    // mouse protocol handler, letting the Linkifier's own handlers
+    // process it and call activate.
+    const screen = this.body.querySelector('.xterm-screen');
+    if (screen) {
+      screen.addEventListener('mousedown', (e) => {
+        const link = this.term._core?.linkifier?.currentLink;
+        if (link && link.link) {
+          this._pendingLink = link.link;
+          this._pendingLinkX = e.clientX;
+          this._pendingLinkY = e.clientY;
+          // Stop all other handlers — both the terminal's mouse-
+          // protocol handler and the Linkifier. We call activate
+          // manually on mouseup.
+          e.stopImmediatePropagation();
+        } else {
+          this._pendingLink = null;
+        }
+      }, { capture: true });
+      screen.addEventListener('mouseup', (e) => {
+        if (!this._pendingLink) return;
+        // Only treat as a click if the mouse barely moved (not a drag).
+        const dx = e.clientX - this._pendingLinkX;
+        const dy = e.clientY - this._pendingLinkY;
+        if (dx * dx + dy * dy < 25) {
+          e.stopImmediatePropagation();
+          this._pendingLink.activate(e, this._pendingLink.text);
+        }
+        this._pendingLink = null;
+      }, { capture: true });
     }
     // Drive the visual focus border off the xterm's real focus state
     // — not state.activeId — so the border can never claim "I'm
