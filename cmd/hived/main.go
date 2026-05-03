@@ -50,14 +50,6 @@ func main() {
 		}
 	}
 
-	// Write a pidfile so hivegui's "Restart daemon" action can find
-	// and signal us. Best-effort; cleared on clean shutdown.
-	pidPath := filepath.Join(stateDir, "hived.pid")
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
-		log.Printf("hived: write pidfile: %v", err)
-	}
-	defer os.Remove(pidPath)
-
 	d, err := daemon.New(daemon.Config{
 		SocketPath: *sock,
 		BootstrapSession: session.Options{
@@ -71,6 +63,17 @@ func main() {
 		log.Fatalf("hived: %v", err)
 	}
 	defer d.Close()
+
+	// Write a pidfile so hivegui's "Restart daemon" action can find
+	// and signal us. Done AFTER daemon.New so a second hived that
+	// loses the socket-bind race doesn't clobber the running
+	// daemon's pidfile and then leave it stale (log.Fatalf below
+	// skips defers, so no cleanup on the lose path).
+	pidPath := filepath.Join(stateDir, "hived.pid")
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
+		log.Printf("hived: write pidfile: %v", err)
+	}
+	defer os.Remove(pidPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
