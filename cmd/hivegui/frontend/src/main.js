@@ -909,16 +909,26 @@ function switchTo(id) {
 // it to both document.title and the native window title bar. The
 // termTitle slot is whatever the running TUI most recently set via
 // the OSC 0/2 escape sequence; empty if the program never set one.
+//
+// Throttled with a trailing-edge timer: programs like fish prompts
+// or progress encoders can fire OSC 0/2 dozens of times per second,
+// and each WindowSetTitle is a Wails IPC round-trip. 100ms keeps the
+// title visibly responsive without flooding the bridge.
+let _appTitleTimer = null;
 function updateAppTitle() {
-  const id = state.activeId;
-  const info = id ? state.sessions.find((s) => s.id === id) : null;
-  const parts = ['Hive'];
-  if (info?.name) parts.push(info.name);
-  const t = id ? state.terms.get(id) : null;
-  if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
-  const title = parts.join(' — ');
-  document.title = title;
-  try { WindowSetTitle(title); } catch (_) { /* runtime not ready */ }
+  if (_appTitleTimer) return;
+  _appTitleTimer = setTimeout(() => {
+    _appTitleTimer = null;
+    const id = state.activeId;
+    const info = id ? state.sessions.find((s) => s.id === id) : null;
+    const parts = ['Hive'];
+    if (info?.name) parts.push(info.name);
+    const t = id ? state.terms.get(id) : null;
+    if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
+    const title = parts.join(' — ');
+    document.title = title;
+    try { WindowSetTitle(title); } catch (_) { /* runtime not ready */ }
+  }, 100);
 }
 
 // switchToProject activates a project: in grid-project mode it
@@ -1676,7 +1686,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if (e.key === 'k' || e.key === 'K') {
+  if ((e.key === 'k' || e.key === 'K') && !e.shiftKey) {
     swallow();
     openCommandPalette();
     return;
@@ -1928,6 +1938,9 @@ function openCommandPalette() {
 
 function closeCommandPalette() {
   paletteEl.classList.add('hidden');
+  // Return focus to the active terminal. activatePalette()'s deferred
+  // run() will overwrite focus if the action opens its own modal.
+  focusActiveTerm();
 }
 
 function activatePalette(i) {

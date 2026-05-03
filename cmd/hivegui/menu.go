@@ -52,6 +52,8 @@ func buildAppMenu(a *App) *menu.Menu {
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
 	view := m.AddSubmenu("View")
+	view.AddText("Command Palette…", keys.CmdOrCtrl("k"), emit("menu:command-palette"))
+	view.AddSeparator()
 	view.AddText("Zoom In", keys.CmdOrCtrl("="), emit("menu:zoom-in"))
 	view.AddText("Zoom Out", keys.CmdOrCtrl("-"), emit("menu:zoom-out"))
 	view.AddText("Actual Size", keys.CmdOrCtrl("0"), emit("menu:zoom-reset"))
@@ -93,9 +95,6 @@ func buildAppMenu(a *App) *menu.Menu {
 	}
 
 	m.Append(menu.WindowMenu()) // Minimize / Zoom / Front
-
-	help := m.AddSubmenu("Help")
-	help.AddText("Command Palette…", keys.CmdOrCtrl("k"), emit("menu:command-palette"))
 
 	return m
 }

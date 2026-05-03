@@ -300,17 +300,25 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		if wtBranch != "" {
 			// Tie the session name to the worktree directory so the
 			// user can find the worktree from the session label.
+			// Slashes (e.g. `feature/foo`) get folded to `-` so the
+			// name is safe to use in paths and shell-quoted contexts.
 			suffix := spec.Agent
 			if suffix == "" {
 				suffix = "shell"
 			}
-			name = wtBranch + " " + suffix
+			name = strings.ReplaceAll(wtBranch, "/", "-") + " " + suffix
 		} else {
 			name = agent.RandomName(agent.ID(spec.Agent))
 		}
 	}
 
 	r.mu.Lock()
+	// Re-validate projectID after the unlock window above: a concurrent
+	// KillProject could have removed it. Fall back to the default
+	// project rather than persisting a dangling reference.
+	if _, ok := r.projects[projectID]; !ok {
+		projectID = r.defaultProjectIDLocked()
+	}
 	e := &Entry{
 		ID: id, Name: name, Color: color,
 		Order: len(r.order), Created: time.Now().UTC(),

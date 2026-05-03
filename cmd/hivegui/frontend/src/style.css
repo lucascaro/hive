@@ -489,7 +489,14 @@ html, body {
   flex-shrink: 0;
   box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
 }
-.term-host .tile-name { flex: 0 0 auto; }
+.term-host .tile-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .term-host .tile-term-title {
   flex: 1 1 auto;
   min-width: 0;
