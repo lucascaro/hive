@@ -628,6 +628,7 @@ function renderProject(p, activePID) {
   if (state.collapsed.has(p.id)) li.classList.add('collapsed');
   if (p.id === activePID) li.classList.add('active');
   li.style.setProperty('--project-color', p.color || '#888');
+  li.draggable = true;
 
   const header = document.createElement('div');
   header.className = 'project-header';
@@ -702,7 +703,79 @@ function renderProject(p, activePID) {
     ul.appendChild(renderSession(s));
   }
   li.appendChild(ul);
+
+  // ---- Drag-to-reorder for projects ----
+  // dragstart bubbles, so a session-item drag fires here too after
+  // its own handler runs. We must not preventDefault in that case
+  // (it would cancel the session drag). For drags that originate on
+  // the project chrome (action buttons, rename input) we DO want to
+  // abort, since the li itself is the closest draggable.
+  li.addEventListener('dragstart', (e) => {
+    if (e.target.closest('.session-item')) {
+      // Bubbled from an inner session drag — leave it alone.
+      return;
+    }
+    if (e.target.closest('.project-actions') ||
+        e.target.closest('.project-name-input')) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/x-hive-project', p.id);
+    li.classList.add('dragging');
+  });
+  li.addEventListener('dragend', () => {
+    li.classList.remove('dragging');
+    document.querySelectorAll('.project.drop-above, .project.drop-below')
+      .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+  });
+  li.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Use the header's bounds (not the whole li): with sessions
+    // expanded, the li is tall, the cursor is almost always above
+    // its midpoint, and the indicator would land far from the
+    // cursor. Anchoring both the hit-test and the visual to the
+    // header keeps them in sync.
+    const r = header.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    li.classList.toggle('drop-above', above);
+    li.classList.toggle('drop-below', !above);
+  });
+  li.addEventListener('dragleave', (e) => {
+    // Only clear when leaving the li entirely; dragover into a child
+    // re-fires and re-asserts the right class.
+    if (!li.contains(e.relatedTarget)) {
+      li.classList.remove('drop-above', 'drop-below');
+    }
+  });
+  li.addEventListener('drop', (e) => {
+    if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
+    e.preventDefault();
+    const pid = e.dataTransfer.getData('text/x-hive-project');
+    li.classList.remove('drop-above', 'drop-below');
+    if (!pid || pid === p.id) return;
+    const r = header.getBoundingClientRect();
+    const above = (e.clientY - r.top) < r.height / 2;
+    reorderDroppedProject(pid, p.id, above);
+  });
   return li;
+}
+
+// reorderDroppedProject converts an above/below drop into the new
+// Order index expected by UpdateProject. The daemon's moveProjectLocked
+// removes the dragged project then inserts at newOrder, so we
+// compensate when the source sits before the target.
+function reorderDroppedProject(draggedID, targetID, above) {
+  const ordered = [...state.projects].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targetIdx = ordered.findIndex((p) => p.id === targetID);
+  const draggedIdx = ordered.findIndex((p) => p.id === draggedID);
+  if (targetIdx < 0 || draggedIdx < 0) return;
+  let newOrder = above ? targetIdx : targetIdx + 1;
+  if (draggedIdx < newOrder) newOrder -= 1;
+  if (newOrder === draggedIdx) return;
+  UpdateProject(draggedID, '', '', '', newOrder);
 }
 
 function renderSession(s) {
@@ -1462,26 +1535,22 @@ daemonBannerDismiss.addEventListener('click', () => {
   hideDaemonBanner();
 });
 daemonBannerRestart.addEventListener('click', async () => {
-  // Phase A: restarting hived also kills every running session. Warn
-  // first. (Phase B will make sessions survive; update copy then.)
+  // Restart kills hived AND relaunches Hive itself, so every running
+  // session ends. Warn first.
   const ok = await Confirm(
-    'Restart daemon?',
-    'Restarting hived will terminate every running shell and agent ' +
-    'in this Hive. Save your work first.\n\n' +
+    'Restart Hive?',
+    'This will close Hive, terminate every running shell and agent, ' +
+    'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
     'Continue?',
   );
   if (!ok) return;
   daemonBannerRestart.disabled = true;
   daemonRestarting = true;
-  showDaemonBanner('Restarting hived…');
+  showDaemonBanner('Restarting Hive…');
   try {
     await RestartDaemon();
-    daemonBannerDismissedFor = null; // re-arm for any future mismatch
-    // Positively restore the status bar. The control:disconnect we
-    // suppressed during restart leaves no trace; if any disconnect
-    // event sneaks through (event-loop ordering races) it'd otherwise
-    // pin "control disconnected" red even though we just reconnected.
-    setStatus('connected');
+    // RestartDaemon quits this process on success; control returns
+    // here only on failure paths.
   } catch (err) {
     setStatus(`restart failed: ${err}`, true);
     showDaemonBanner(`Restart failed: ${err}`);
@@ -1504,12 +1573,12 @@ EventsOn('daemon:stale', (ev) => {
   if (ev.severity === 'mismatch') {
     showDaemonBanner(
       `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
-      `Restart the daemon to apply changes.`,
+      `Restart Hive to apply changes.`,
     );
   } else {
     showDaemonBanner(
       `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
-      `If something looks wrong, restart the daemon.`,
+      `If something looks wrong, restart Hive.`,
     );
   }
 });
@@ -1567,6 +1636,17 @@ const launcherState = {
   useWorktree: localStorage.getItem('hive.worktree') === '1',
 };
 
+function loadAgentUsage() {
+  try { return JSON.parse(localStorage.getItem('hive.agentUsage') || '{}') || {}; }
+  catch { return {}; }
+}
+function bumpAgentUsage(id) {
+  if (!id) return;
+  const u = loadAgentUsage();
+  u[id] = (u[id] || 0) + 1;
+  try { localStorage.setItem('hive.agentUsage', JSON.stringify(u)); } catch {}
+}
+
 function highlightLauncherSelection() {
   launcherState.items.forEach((it, i) => {
     it.el.classList.toggle('selected', i === launcherState.selected);
@@ -1584,6 +1664,7 @@ function moveLauncherSelection(delta) {
 function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
   if (!it) return;
+  bumpAgentUsage(it.agent.id);
   CreateSession(
     it.agent.id,
     launcherState.projectId || activeProjectId(),
@@ -1658,23 +1739,42 @@ function openLauncher(projectId, opts) {
       // real failure surfaces as "command not found" inside the
       // session's terminal. The "install" hint stays visible as
       // advisory text for the truly-not-installed case.
-      agents.forEach((a, idx) => {
+      // Sort agents by recent usage (most-used first), ties preserve
+      // the agent package's display order. Usage is persisted in
+      // localStorage and incremented on activation.
+      const usage = loadAgentUsage();
+      const ordered = agents
+        .map((a, i) => ({ a, i }))
+        .sort((x, y) => {
+          const ux = usage[x.a.id] || 0, uy = usage[y.a.id] || 0;
+          if (ux !== uy) return uy - ux;
+          return x.i - y.i;
+        })
+        .map((e) => e.a);
+      ordered.forEach((a, idx) => {
         const item = document.createElement('div');
         item.className = 'launcher-item' + (a.available ? '' : ' uninstalled');
         item.style.setProperty('--agent-color', a.color);
+        const num = document.createElement('span');
+        num.className = 'agent-num';
+        // Number keys 1–9 select that row directly; 10+ rows show no
+        // number (no digit shortcut).
+        num.textContent = idx < 9 ? String(idx + 1) : '';
         const dot = document.createElement('span');
         dot.className = 'agent-dot';
         const name = document.createElement('span');
         name.className = 'agent-name';
         name.textContent = a.name;
-        item.append(dot, name);
+        item.append(num, dot, name);
         if (!a.available && a.installCmd && a.installCmd.length) {
           const tag = document.createElement('span');
           tag.className = 'install-tag';
           tag.title = a.installCmd.join(' ');
           tag.textContent = 'install?';
+          item.appendChild(tag);
         }
         item.addEventListener('click', () => {
+          bumpAgentUsage(a.id);
           CreateSession(
             a.id,
             launcherState.projectId,
@@ -1782,6 +1882,18 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'Enter')   return handle(activateLauncherSelection);
     if (e.key === 'Escape')  return handle(closeLauncher);
     if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) return handle(closeLauncher);
+    // Digit shortcut: 1–9 picks the corresponding row. Skipped when
+    // a modifier is held so things like ⌘1 (browser tab switch) and
+    // ⌘+ aren't swallowed.
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+      const i = parseInt(e.key, 10) - 1;
+      if (i < launcherState.items.length) {
+        return handle(() => {
+          launcherState.selected = i;
+          activateLauncherSelection();
+        });
+      }
+    }
   }
   if (!editorEl.classList.contains('hidden')) {
     return; // editor's own listener handles keys

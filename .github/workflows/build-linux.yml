@@ -22,6 +22,36 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Seed frontend/dist
+        # wails generate module compiles the Go package, which hits
+        # the //go:embed all:frontend/dist directive in main.go. Seed
+        # an empty dist/ so the embed has something to read; the real
+        # vite build overwrites it below.
+        run: mkdir -p cmd/hivegui/frontend/dist && echo placeholder > cmd/hivegui/frontend/dist/.placeholder
+
+      - name: Install Wails CLI
+        # wails generate module produces cmd/hivegui/frontend/wailsjs/,
+        # which main.js imports. Without this step the vite build can't
+        # resolve "../wailsjs/go/main/App".
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Generate Wails bindings
+        working-directory: cmd/hivegui
+        run: wails generate module
+
+      - name: Build frontend
+        # cmd/hivegui/main.go embeds frontend/dist via go:embed, so the
+        # dist tree must exist before any `go build` / `go vet` / `go test`.
+        working-directory: cmd/hivegui/frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
       - name: Build
         run: go build ./...
 
