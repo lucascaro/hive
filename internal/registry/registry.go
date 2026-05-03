@@ -296,6 +296,11 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	}
 
 	name := spec.Name
+	// nameFromBranch records whether the name was derived from the
+	// pre-resolved worktree branch. If `git worktree add` later fails
+	// we'll rename to a random label so the persisted name doesn't
+	// claim a worktree that doesn't exist.
+	nameFromBranch := false
 	if name == "" {
 		if wtBranch != "" {
 			// Tie the session name to the worktree directory so the
@@ -307,6 +312,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 				suffix = "shell"
 			}
 			name = strings.ReplaceAll(wtBranch, "/", "-") + " " + suffix
+			nameFromBranch = true
 		} else {
 			name = agent.RandomName(agent.ID(spec.Agent))
 		}
@@ -368,6 +374,16 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		} else {
 			wtPath, wtBranch = "", ""
 		}
+	}
+	// If the name was derived from a worktree branch but the worktree
+	// failed to materialize, the persisted name would lie about reality
+	// ("feature-foo claude" with no worktree). Rename to a random label
+	// and re-persist so the session label matches what actually exists.
+	if nameFromBranch && wtBranch == "" {
+		r.mu.Lock()
+		e.Name = agent.RandomName(agent.ID(spec.Agent))
+		_ = r.persistEntryLocked(e)
+		r.mu.Unlock()
 	}
 
 	sess, err := session.Start(session.Options{

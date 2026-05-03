@@ -626,16 +626,7 @@ function renderProject(p, activePID) {
   delBtn.title = 'Delete project';
   delBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const sessions = state.sessions.filter(
-      (s) => (s.projectId ?? s.project_id) === p.id,
-    );
-    const msg = sessions.length
-      ? `Delete project "${p.name}" and kill ${sessions.length} session${sessions.length === 1 ? '' : 's'}?`
-      : `Delete project "${p.name}"?`;
-    if (!window.confirm(msg)) return;
-    KillProject(p.id, sessions.length > 0).catch((err) => {
-      setStatus(`delete failed: ${err}`, true);
-    });
+    confirmAndDeleteProject(p);
   });
 
   actions.append(newBtn, editBtn, delBtn);
@@ -1853,20 +1844,26 @@ for (let i = 1; i <= 9; i++) {
 
 // ---------- delete project ----------
 
-function deleteActiveProject() {
-  const pid = activeProjectId();
-  const proj = state.projects.find((p) => p.id === pid);
+// confirmAndDeleteProject is the single confirm + KillProject path
+// shared by the sidebar ✕ button and the ⇧⌘⌫ shortcut. Kept as one
+// function so the prompt text and killSessions logic can't drift.
+function confirmAndDeleteProject(proj) {
   if (!proj) return;
   const sessions = state.sessions.filter(
-    (s) => (s.projectId ?? s.project_id) === pid,
+    (s) => (s.projectId ?? s.project_id) === proj.id,
   );
   const msg = sessions.length
     ? `Delete project "${proj.name}" and kill ${sessions.length} session${sessions.length === 1 ? '' : 's'}?`
     : `Delete project "${proj.name}"?`;
   if (!window.confirm(msg)) return;
-  KillProject(pid, sessions.length > 0).catch((err) => {
+  KillProject(proj.id, sessions.length > 0).catch((err) => {
     setStatus(`delete failed: ${err}`, true);
   });
+}
+
+function deleteActiveProject() {
+  const pid = activeProjectId();
+  confirmAndDeleteProject(state.projects.find((p) => p.id === pid));
 }
 
 // ---------- command palette ----------
