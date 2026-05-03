@@ -46,6 +46,10 @@ type CreateSpec struct {
 type Hello struct {
 	Version int    `json:"version"`
 	Client  string `json:"client"` // free-form, e.g. "hive/0.2.0"
+	// BuildID is the client's link-time build identity (see
+	// internal/buildinfo). Omitempty so an older client talking to a
+	// newer daemon still parses cleanly; "" means "unknown".
+	BuildID string `json:"build_id,omitempty"`
 
 	// v1 fields:
 	Mode      Mode        `json:"mode,omitempty"`
@@ -58,7 +62,11 @@ type Hello struct {
 // can size its terminal widget before live data flows. For control
 // mode SessionID is empty.
 type Welcome struct {
-	Version   int    `json:"version"`
+	Version int `json:"version"`
+	// BuildID is the daemon's link-time build identity. Same shape
+	// and semantics as Hello.BuildID — clients compare to detect a
+	// stale daemon that survived a GUI rebuild.
+	BuildID   string `json:"build_id,omitempty"`
 	Mode      Mode   `json:"mode,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	Cols      int    `json:"cols,omitempty"`

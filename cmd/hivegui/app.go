@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/notify"
 	"github.com/lucascaro/hive/internal/wire"
@@ -166,6 +167,7 @@ func (a *App) ConnectControl() error {
 	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION,
 		Client:  "hivegui/0.2",
+		BuildID: buildinfo.BuildID(),
 		Mode:    wire.ModeControl,
 	}); err != nil {
 		_ = conn.Close()
@@ -187,7 +189,61 @@ func (a *App) ConnectControl() error {
 	a.control = cs
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
+	a.emitDaemonVersionStatus(welcome.BuildID)
 	return nil
+}
+
+// DaemonStaleEvent is the payload of the "daemon:stale" Wails event.
+// Severity is "match" (silent — emitted so the frontend can clear a
+// previously-shown banner), "mismatch" (both builds known and differ),
+// or "unknown" (one or both sides did not advertise a build).
+type DaemonStaleEvent struct {
+	Severity    string `json:"severity"`
+	GuiBuild    string `json:"guiBuild"`
+	DaemonBuild string `json:"daemonBuild"`
+}
+
+func (a *App) emitDaemonVersionStatus(daemonBuild string) {
+	gui := buildinfo.BuildID()
+	ev := DaemonStaleEvent{GuiBuild: gui, DaemonBuild: daemonBuild}
+	switch {
+	case gui == "" || daemonBuild == "":
+		ev.Severity = "unknown"
+	case gui == daemonBuild:
+		ev.Severity = "match"
+	default:
+		ev.Severity = "mismatch"
+	}
+	wruntime.EventsEmit(a.ctx, "daemon:stale", ev)
+}
+
+// RestartDaemon kills the running hived (if any) and re-spawns it,
+// then reconnects the control conn. Phase A: this kills every live
+// session — Phase B will make sessions survive. The frontend warns
+// the user before calling this.
+//
+// killRunningHived blocks until the previous process is actually gone
+// (escalating to SIGKILL after 3s and waiting again), so by the time
+// it returns, the socket is free for dialOrSpawn to bind a fresh one.
+// On any kill error we surface it instead of silently proceeding —
+// otherwise the user would see "Restart daemon" succeed while the
+// stale daemon kept running.
+func (a *App) RestartDaemon() error {
+	a.mu.Lock()
+	if a.control != nil {
+		_ = a.control.conn.Close()
+		a.control = nil
+	}
+	for _, c := range a.attaches {
+		_ = c.conn.Close()
+	}
+	a.attaches = make(map[string]*connState)
+	a.mu.Unlock()
+
+	if err := killRunningHived(hdaemon.SocketPath()); err != nil {
+		return fmt.Errorf("kill stale hived: %w", err)
+	}
+	return a.ConnectControl()
 }
 
 func (a *App) controlReadLoop(cs *connState) {
@@ -338,6 +394,24 @@ func (a *App) PickDirectory(defaultDir string) (string, error) {
 		DefaultDirectory:     defaultDir,
 		CanCreateDirectories: true,
 	})
+}
+
+// Confirm shows a native yes/no dialog and reports the user's choice.
+// Wails' WebKit on macOS silently no-ops window.confirm(), so the
+// frontend routes confirmations through here instead.
+func (a *App) Confirm(title, message string) bool {
+	res, err := wruntime.MessageDialog(a.ctx, wruntime.MessageDialogOptions{
+		Type:          wruntime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		Buttons:       []string{"OK", "Cancel"},
+		DefaultButton: "OK",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false
+	}
+	return res == "OK"
 }
 
 // OpenNewWindow spawns a second Hive GUI process. Wails v2 does not

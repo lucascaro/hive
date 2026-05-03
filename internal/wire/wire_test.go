@@ -70,12 +70,14 @@ func TestReadFrameTruncated(t *testing.T) {
 func TestHelloWelcomeRoundTrip(t *testing.T) {
 	var buf bytes.Buffer
 	if err := WriteJSON(&buf, FrameHello, Hello{
-		Version: PROTOCOL_VERSION, Client: "hive/0.2.0", Mode: ModeAttach, SessionID: "abc",
+		Version: PROTOCOL_VERSION, Client: "hive/0.2.0", BuildID: "abc1234",
+		Mode: ModeAttach, SessionID: "abc",
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)
 	}
 	if err := WriteJSON(&buf, FrameWelcome, Welcome{
-		Version: PROTOCOL_VERSION, Mode: ModeAttach, SessionID: "abc", Cols: 80, Rows: 24,
+		Version: PROTOCOL_VERSION, BuildID: "def5678",
+		Mode: ModeAttach, SessionID: "abc", Cols: 80, Rows: 24,
 	}); err != nil {
 		t.Fatalf("write welcome: %v", err)
 	}
@@ -84,7 +86,7 @@ func TestHelloWelcomeRoundTrip(t *testing.T) {
 	if ft, err := ReadJSON(&buf, &hello); err != nil || ft != FrameHello {
 		t.Fatalf("read hello: ft=%s err=%v", ft, err)
 	}
-	if hello.Client != "hive/0.2.0" || hello.Mode != ModeAttach || hello.SessionID != "abc" {
+	if hello.Client != "hive/0.2.0" || hello.Mode != ModeAttach || hello.SessionID != "abc" || hello.BuildID != "abc1234" {
 		t.Errorf("hello = %+v", hello)
 	}
 
@@ -92,8 +94,29 @@ func TestHelloWelcomeRoundTrip(t *testing.T) {
 	if ft, err := ReadJSON(&buf, &welcome); err != nil || ft != FrameWelcome {
 		t.Fatalf("read welcome: ft=%s err=%v", ft, err)
 	}
-	if welcome.SessionID != "abc" || welcome.Cols != 80 || welcome.Rows != 24 || welcome.Mode != ModeAttach {
+	if welcome.SessionID != "abc" || welcome.Cols != 80 || welcome.Rows != 24 || welcome.Mode != ModeAttach || welcome.BuildID != "def5678" {
 		t.Errorf("welcome = %+v", welcome)
+	}
+}
+
+// TestHelloWelcomeOlderClientBuildIDOmitted verifies that a Hello
+// without BuildID (older client) decodes cleanly with BuildID == ""
+// — the omitempty contract that lets the daemon distinguish "unknown"
+// from "mismatch".
+func TestHelloWelcomeOlderClientBuildIDOmitted(t *testing.T) {
+	var buf bytes.Buffer
+	// Older client: no BuildID set.
+	if err := WriteJSON(&buf, FrameHello, Hello{
+		Version: PROTOCOL_VERSION, Client: "hive/old", Mode: ModeControl,
+	}); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+	var hello Hello
+	if _, err := ReadJSON(&buf, &hello); err != nil {
+		t.Fatalf("read hello: %v", err)
+	}
+	if hello.BuildID != "" {
+		t.Errorf("expected empty BuildID, got %q", hello.BuildID)
 	}
 }
 

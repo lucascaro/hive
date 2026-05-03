@@ -10,7 +10,8 @@ import {
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
-  IsGitRepo, OpenURL, Notify,
+  IsGitRepo, OpenURL, Notify, Confirm,
+  RestartDaemon,
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 
@@ -1423,7 +1424,94 @@ EventsOn('pty:error', (id, jsonStr) => {
 });
 
 EventsOn('control:disconnect', () => {
+  // During a user-initiated RestartDaemon we knowingly close the
+  // control conn; the banner already says "Restarting hived…". Don't
+  // also flash an alarming red status line in that window.
+  if (daemonRestarting) return;
   setStatus('control disconnected', true);
+});
+
+// Stale-daemon banner. The Go side compares its own buildinfo.BuildID
+// to the value advertised in WELCOME and emits "daemon:stale" on every
+// connect with severity "match" / "mismatch" / "unknown". Mismatch is
+// symmetric (the daemon could be older OR newer than the GUI — bisect,
+// stash, reverse-checkout all flip the direction), so the copy is
+// deliberately direction-neutral.
+//
+// Dismissal is keyed on the specific daemonBuild that was dismissed,
+// so a *different* mismatched build later will still surface. A "match"
+// reconnect clears the dismissal flag too.
+const daemonBannerEl = document.getElementById('daemon-banner');
+const daemonBannerText = document.getElementById('daemon-banner-text');
+const daemonBannerRestart = document.getElementById('daemon-banner-restart');
+const daemonBannerDismiss = document.getElementById('daemon-banner-dismiss');
+let daemonBannerDismissedFor = null;
+let daemonRestarting = false;
+
+function showDaemonBanner(text) {
+  daemonBannerText.textContent = text;
+  daemonBannerEl.classList.remove('hidden');
+}
+function hideDaemonBanner() {
+  daemonBannerEl.classList.add('hidden');
+}
+daemonBannerDismiss.addEventListener('click', () => {
+  // Dismissals are per-daemon-build: re-show if a different build
+  // appears later. We stash the build we last saw mismatched (if any).
+  daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
+  hideDaemonBanner();
+});
+daemonBannerRestart.addEventListener('click', async () => {
+  // Phase A: restarting hived also kills every running session. Warn
+  // first. (Phase B will make sessions survive; update copy then.)
+  const ok = await Confirm(
+    'Restart daemon?',
+    'Restarting hived will terminate every running shell and agent ' +
+    'in this Hive. Save your work first.\n\n' +
+    'Continue?',
+  );
+  if (!ok) return;
+  daemonBannerRestart.disabled = true;
+  daemonRestarting = true;
+  showDaemonBanner('Restarting hived…');
+  try {
+    await RestartDaemon();
+    daemonBannerDismissedFor = null; // re-arm for any future mismatch
+    // Positively restore the status bar. The control:disconnect we
+    // suppressed during restart leaves no trace; if any disconnect
+    // event sneaks through (event-loop ordering races) it'd otherwise
+    // pin "control disconnected" red even though we just reconnected.
+    setStatus('connected');
+  } catch (err) {
+    setStatus(`restart failed: ${err}`, true);
+    showDaemonBanner(`Restart failed: ${err}`);
+  } finally {
+    daemonBannerRestart.disabled = false;
+    daemonRestarting = false;
+  }
+});
+
+EventsOn('daemon:stale', (ev) => {
+  if (!ev) return;
+  daemonBannerEl.dataset.daemonBuild = ev.daemonBuild || '';
+  if (ev.severity === 'match') {
+    daemonBannerDismissedFor = null; // reset so future mismatch can re-show
+    hideDaemonBanner();
+    return;
+  }
+  // Same build the user already dismissed: stay hidden.
+  if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
+  if (ev.severity === 'mismatch') {
+    showDaemonBanner(
+      `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
+      `Restart the daemon to apply changes.`,
+    );
+  } else {
+    showDaemonBanner(
+      `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
+      `If something looks wrong, restart the daemon.`,
+    );
+  }
 });
 
 // User clicked a notification toast. Route to that session in the
@@ -1437,7 +1525,7 @@ EventsOn('bell-click', (sessionId) => {
   clearAttention(sessionId);
 });
 
-EventsOn('control:error', (jsonStr) => {
+EventsOn('control:error', async (jsonStr) => {
   let e;
   try { e = JSON.parse(jsonStr); } catch { setStatus('hived error', true); return; }
   // Worktree-dirty kill: confirm with the user. The daemon already
@@ -1446,15 +1534,20 @@ EventsOn('control:error', (jsonStr) => {
   if (e.code === 'worktree_dirty' && e.session_id) {
     const sess = state.sessions.find((s) => s.id === e.session_id);
     const branch = sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
-    const ok = window.confirm(
+    const ok = await Confirm(
+      'Discard uncommitted changes?',
       `${sess?.name ?? 'Session'} has uncommitted changes in ${branch}.\n\n` +
-      `Discard them and remove the worktree?`
+      `Discard them and remove the worktree?`,
     );
-    if (ok) {
-      KillSession(e.session_id, true).catch((err) => {
-        setStatus(`force kill failed: ${err}`, true);
-      });
-    }
+    if (!ok) return;
+    // Confirm() is async + modal; the session may have been removed
+    // (or its worktree resolved) while the dialog was open. Re-check
+    // before issuing a second kill that would just produce a confusing
+    // "no_such_session" control error.
+    if (!state.sessions.find((s) => s.id === e.session_id)) return;
+    KillSession(e.session_id, true).catch((err) => {
+      setStatus(`force kill failed: ${err}`, true);
+    });
     return;
   }
   setStatus(`${e.code}: ${e.message}`, true);
@@ -1897,7 +1990,7 @@ for (let i = 1; i <= 9; i++) {
 // confirmAndDeleteProject is the single confirm + KillProject path
 // shared by the sidebar ✕ button and the ⇧⌘⌫ shortcut. Kept as one
 // function so the prompt text and killSessions logic can't drift.
-function confirmAndDeleteProject(proj) {
+async function confirmAndDeleteProject(proj) {
   if (!proj) return;
   const sessions = state.sessions.filter(
     (s) => (s.projectId ?? s.project_id) === proj.id,
@@ -1905,7 +1998,8 @@ function confirmAndDeleteProject(proj) {
   const msg = sessions.length
     ? `Delete project "${proj.name}" and kill ${sessions.length} session${sessions.length === 1 ? '' : 's'}?`
     : `Delete project "${proj.name}"?`;
-  if (!window.confirm(msg)) return;
+  const ok = await Confirm('Delete project', msg);
+  if (!ok) return;
   KillProject(proj.id, sessions.length > 0).catch((err) => {
     setStatus(`delete failed: ${err}`, true);
   });

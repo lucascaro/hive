@@ -7,7 +7,6 @@ require (
 	github.com/aymanbagabas/go-pty v0.2.2
 	github.com/google/uuid v1.6.0
 	github.com/wailsapp/wails/v2 v2.12.0
-	golang.org/x/term v0.41.0
 )
 
 require (
@@ -38,5 +37,6 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 )

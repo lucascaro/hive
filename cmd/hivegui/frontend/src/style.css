@@ -44,9 +44,15 @@ html, body {
 #app {
   display: grid;
   grid-template-columns: var(--sidebar-width, 200px) 1fr;
+  /* Row 1 is the daemon-mismatch banner (collapses to 0 when hidden);
+     row 2 is the normal sidebar + terms layout. */
+  grid-template-rows: auto 1fr;
   height: 100vh;
   transition: grid-template-columns 120ms ease;
 }
+#sidebar { grid-row: 2; grid-column: 1; }
+#sidebar-resizer { grid-row: 2; grid-column: 1; }
+#terms { grid-row: 2; grid-column: 2; }
 
 body.resizing-sidebar { cursor: col-resize; user-select: none; }
 body.resizing-sidebar #app { transition: none; }
@@ -763,6 +769,41 @@ body.resizing-sidebar #app { transition: none; }
   border-radius: 3px;
 }
 #status.error { color: #ff7a7a; }
+
+/* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
+   terms columns. Pushes the rest of the UI down rather than overlaying
+   it. Amber to match the brand. */
+#daemon-banner {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #2b1d05;
+  border-bottom: 1px solid #f59e0b;
+  color: #fcd9a8;
+  font: 12px Menlo, monospace;
+}
+#daemon-banner.hidden { display: none; }
+#daemon-banner #daemon-banner-text { flex: 1; }
+#daemon-banner button {
+  background: #f59e0b;
+  color: #000;
+  border: 0;
+  border-radius: 3px;
+  padding: 4px 10px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+#daemon-banner #daemon-banner-dismiss {
+  background: transparent;
+  color: #fcd9a8;
+  font-size: 18px;
+  padding: 0 6px;
+}
+#daemon-banner button:hover { filter: brightness(1.1); }
 
 /* ---------- command palette ---------- */
 #command-palette {
