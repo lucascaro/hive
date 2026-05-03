@@ -201,3 +201,54 @@ func TestPersistenceAcrossOpen(t *testing.T) {
 		t.Errorf("expected entries to be inactive after reopen")
 	}
 }
+
+func TestPickColorAvoidsPrevious(t *testing.T) {
+	// pickColor must never return the avoid color when avoid is a
+	// palette entry, even with adversarial RNG that always picks the
+	// avoided index first.
+	for _, avoid := range colorPalette {
+		for i := 0; i < 100; i++ {
+			got := pickColor(avoid)
+			if got == avoid {
+				t.Fatalf("pickColor(%q) returned avoided color", avoid)
+			}
+			if !contains(colorPalette, got) {
+				t.Fatalf("pickColor returned %q, not in palette", got)
+			}
+		}
+	}
+}
+
+func TestPickColorEmptyAvoidUsesPalette(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		got := pickColor("")
+		if !contains(colorPalette, got) {
+			t.Fatalf("pickColor(\"\") returned %q, not in palette", got)
+		}
+	}
+}
+
+func TestAutoAssignedProjectColorsDifferConsecutively(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	var prev string
+	for i := 0; i < 20; i++ {
+		p, err := r.CreateProject(wire.CreateProjectReq{Name: "p", Cwd: t.TempDir()})
+		if err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		}
+		if i > 0 && p.Color == prev {
+			t.Fatalf("consecutive auto-assigned project colors repeated: %q", p.Color)
+		}
+		prev = p.Color
+	}
+}
+
+func contains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

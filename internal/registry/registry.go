@@ -842,13 +842,23 @@ var colorPalette = []string{
 // Seeded once so sequential picks are not deterministic across runs.
 var colorRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-// pickColor returns a random palette color, retrying once if the
-// result equals avoid (the previously-picked color). Empty avoid =
-// no bias.
+// pickColor returns a random palette color. When avoid is a palette
+// entry it is guaranteed to be excluded, so consecutive calls with
+// the previous result as avoid never repeat. Empty avoid = uniform
+// across the full palette.
 func pickColor(avoid string) string {
-	c := colorPalette[colorRand.Intn(len(colorPalette))]
-	if c == avoid {
-		c = colorPalette[colorRand.Intn(len(colorPalette))]
+	if avoid == "" {
+		return colorPalette[colorRand.Intn(len(colorPalette))]
 	}
-	return c
+	// Pick uniformly from palette \ {avoid}. If avoid isn't in the
+	// palette, this still picks uniformly across all entries.
+	n := len(colorPalette)
+	idx := colorRand.Intn(n)
+	for i := range n {
+		c := colorPalette[(idx+i)%n]
+		if c != avoid {
+			return c
+		}
+	}
+	return colorPalette[idx]
 }
