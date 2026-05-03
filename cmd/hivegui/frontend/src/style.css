@@ -359,7 +359,15 @@ body.resizing-sidebar #app { transition: none; }
 .session-item .name {
   flex: 1;
   min-width: 0;
-  background: linear-gradient(90deg, var(--project-color, #888) 0%, var(--session-color, #fff) 100%);
+  /* Project → session gradient. The right-end stop blends 80% of the
+     session color with white so a user-picked dark hex stays readable
+     on the dark sidebar; palette-default colors are bright enough that
+     this barely shifts them. */
+  background: linear-gradient(
+    90deg,
+    var(--project-color, #888) 0%,
+    color-mix(in srgb, var(--session-color, #fff) 80%, #fff) 100%
+  );
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -526,11 +534,13 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  /* Title bar tinted with the session color — subtle for unfocused
-     tiles, brighter when focused. */
+  /* Title bar gradient: project color (left) → session color (right),
+     each mixed into the dark base so the bar reads as a tinted strip
+     rather than a solid block. Mirrors the sidebar gradient so the
+     same visual encoding applies in grid and single mode. */
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--session-color, #888) 40%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--project-color, var(--session-color, #888)) 40%, #0a0a0a) 0%,
     color-mix(in srgb, var(--session-color, #888) 12%, #0a0a0a) 100%
   );
   border-bottom: 1px solid color-mix(in srgb, var(--session-color, #888) 35%, #1a1a1a);
@@ -541,7 +551,7 @@ body.resizing-sidebar #app { transition: none; }
 .term-host.term-focused .tile-header {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--session-color, #888) 65%, #0a0a0a) 0%,
+    color-mix(in srgb, var(--project-color, var(--session-color, #888)) 65%, #0a0a0a) 0%,
     color-mix(in srgb, var(--session-color, #888) 28%, #0a0a0a) 100%
   );
   color: #fff;

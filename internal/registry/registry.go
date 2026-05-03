@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -263,18 +264,24 @@ func (r *Registry) Get(id string) *Entry {
 func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.mu.Lock()
 	id := uuid.NewString()
+	// Resolve owning project first so we can avoid its color when
+	// auto-picking the session color (otherwise the gradient could
+	// collapse to a flat hue).
+	projectID := spec.ProjectID
+	if projectID == "" {
+		projectID = r.defaultProjectIDLocked()
+	}
+	var projectColor string
+	if p, ok := r.projects[projectID]; ok {
+		projectColor = p.Color
+	}
 	// Color is reserved for project/session identity; agent identity
 	// is conveyed by the badge/icon. So skip the agent-default tier
 	// and pick a random palette color when the caller didn't choose.
 	color := spec.Color
 	if color == "" {
-		color = pickColor(r.lastSessionColor)
+		color = pickColor(r.lastSessionColor, projectColor)
 		r.lastSessionColor = color
-	}
-	// Resolve owning project: fall back to the default if unset.
-	projectID := spec.ProjectID
-	if projectID == "" {
-		projectID = r.defaultProjectIDLocked()
 	}
 	// Resolve cwd up front (under the same lock) so we can decide on a
 	// worktree branch BEFORE naming the session — the session name is
@@ -838,27 +845,18 @@ var colorPalette = []string{
 	"#eab308", // yellow
 }
 
-// colorRand is a package-local PRNG used solely for palette selection.
-// Seeded once so sequential picks are not deterministic across runs.
-var colorRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-// pickColor returns a random palette color. When avoid is a palette
-// entry it is guaranteed to be excluded, so consecutive calls with
-// the previous result as avoid never repeat. Empty avoid = uniform
-// across the full palette.
-func pickColor(avoid string) string {
-	if avoid == "" {
-		return colorPalette[colorRand.Intn(len(colorPalette))]
-	}
-	// Pick uniformly from palette \ {avoid}. If avoid isn't in the
-	// palette, this still picks uniformly across all entries.
+// pickColor returns a random palette color, excluding any entry
+// listed in avoid. Uses math/rand/v2 top-level helpers so it's
+// goroutine-safe without needing a lock at the call site.
+func pickColor(avoid ...string) string {
 	n := len(colorPalette)
-	idx := colorRand.Intn(n)
+	idx := rand.IntN(n)
 	for i := range n {
 		c := colorPalette[(idx+i)%n]
-		if c != avoid {
+		if !slices.Contains(avoid, c) {
 			return c
 		}
 	}
+	// Every palette entry is in avoid — fall back to a uniform pick.
 	return colorPalette[idx]
 }

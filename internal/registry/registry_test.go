@@ -2,6 +2,7 @@ package registry
 
 import (
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -202,28 +203,40 @@ func TestPersistenceAcrossOpen(t *testing.T) {
 	}
 }
 
-func TestPickColorAvoidsPrevious(t *testing.T) {
-	// pickColor must never return the avoid color when avoid is a
-	// palette entry, even with adversarial RNG that always picks the
-	// avoided index first.
+func TestPickColorExcludesAvoid(t *testing.T) {
+	// Structural guarantee: when avoid is a palette entry, pickColor
+	// must never return it. Sample 100 calls per palette entry.
 	for _, avoid := range colorPalette {
 		for i := 0; i < 100; i++ {
 			got := pickColor(avoid)
 			if got == avoid {
 				t.Fatalf("pickColor(%q) returned avoided color", avoid)
 			}
-			if !contains(colorPalette, got) {
+			if !slices.Contains(colorPalette, got) {
 				t.Fatalf("pickColor returned %q, not in palette", got)
 			}
 		}
 	}
 }
 
+func TestPickColorExcludesMultipleAvoid(t *testing.T) {
+	// Variadic avoid: pickColor must skip every entry in the avoid
+	// list, so the session-create path can avoid both the previous
+	// session color and the project color.
+	a, b := colorPalette[0], colorPalette[1]
+	for i := 0; i < 200; i++ {
+		got := pickColor(a, b)
+		if got == a || got == b {
+			t.Fatalf("pickColor(%q,%q) returned avoided color %q", a, b, got)
+		}
+	}
+}
+
 func TestPickColorEmptyAvoidUsesPalette(t *testing.T) {
 	for i := 0; i < 50; i++ {
-		got := pickColor("")
-		if !contains(colorPalette, got) {
-			t.Fatalf("pickColor(\"\") returned %q, not in palette", got)
+		got := pickColor()
+		if !slices.Contains(colorPalette, got) {
+			t.Fatalf("pickColor() returned %q, not in palette", got)
 		}
 	}
 }
@@ -244,11 +257,3 @@ func TestAutoAssignedProjectColorsDifferConsecutively(t *testing.T) {
 	}
 }
 
-func contains(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}

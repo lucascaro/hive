@@ -341,8 +341,9 @@ class SessionTerm {
     input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
   }
 
-  setProjectName(name) {
+  setProject(name, color) {
     this.tileProject.textContent = name || '';
+    this.host.style.setProperty('--project-color', color || '#888');
   }
 
   show() {
@@ -972,7 +973,7 @@ function ensureTerm(info) {
     st.setInfo(info);
   }
   const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
-  st.setProjectName(proj?.name ?? '');
+  st.setProject(proj?.name ?? '', proj?.color ?? '');
   return st;
 }
 
@@ -1373,6 +1374,15 @@ EventsOn('project:event', (jsonStr) => {
     }
   } else if (ev.kind === 'updated') {
     if (i >= 0) state.projects[i] = ev.project;
+    // Refresh tile-header project color for every session belonging
+    // to this project so grid/single-mode title bars reflect rename
+    // and recolor in real time.
+    for (const s of state.sessions) {
+      const pid = s.projectId ?? s.project_id;
+      if (pid !== ev.project.id) continue;
+      const st = state.terms.get(s.id);
+      if (st) st.setProject(ev.project.name, ev.project.color);
+    }
   }
   state.projects.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   renderSidebar();
@@ -1457,7 +1467,7 @@ EventsOn('session:event', (jsonStr) => {
       st.setInfo(ev.session);
       const pid = ev.session.projectId ?? ev.session.project_id;
       const proj = state.projects.find((p) => p.id === pid);
-      st.setProjectName(proj?.name ?? '');
+      st.setProject(proj?.name ?? '', proj?.color ?? '');
     }
     if (state.activeId === ev.session.id) updateAppTitle();
   }
