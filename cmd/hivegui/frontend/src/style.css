@@ -391,6 +391,7 @@ body.resizing-sidebar #app { transition: none; }
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #terms {

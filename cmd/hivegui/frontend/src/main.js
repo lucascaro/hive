@@ -1811,23 +1811,13 @@ window.addEventListener('resize', () => {
   const app = document.getElementById('app');
   const handle = document.getElementById('sidebar-resizer');
   if (!app || !handle) return;
-  const saved = parseInt(localStorage.getItem('hive.sidebarWidth') ?? '', 10);
+  const saved = parseInt(localStorage.getItem('hive.sidebarWidth') || '', 10);
   if (Number.isFinite(saved)) {
     app.style.setProperty('--sidebar-width', `${Math.max(MIN, Math.min(MAX, saved))}px`);
   }
+  // #app spans the viewport, so pointer clientX maps directly to sidebar width.
   let dragging = false;
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    dragging = true;
-    document.body.classList.add('resizing-sidebar');
-    handle.classList.add('dragging');
-  });
-  window.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
-    const w = Math.max(MIN, Math.min(MAX, e.clientX));
-    app.style.setProperty('--sidebar-width', `${w}px`);
-  });
-  window.addEventListener('mouseup', () => {
+  function endDrag() {
     if (!dragging) return;
     dragging = false;
     document.body.classList.remove('resizing-sidebar');
@@ -1842,7 +1832,25 @@ window.addEventListener('resize', () => {
     } else {
       renderGrid();
     }
+  }
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    document.body.classList.add('resizing-sidebar');
+    handle.classList.add('dragging');
+    // Capture so we keep getting moves/ups even if the cursor leaves the window.
+    handle.setPointerCapture(e.pointerId);
   });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const w = Math.max(MIN, Math.min(MAX, e.clientX));
+    app.style.setProperty('--sidebar-width', `${w}px`);
+  });
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  // Belt-and-braces: if focus leaves the window mid-drag, end the drag so a
+  // stray mousemove on return doesn't snap the sidebar to the cursor.
+  window.addEventListener('blur', endDrag);
 })();
 
 // ---------- bootstrap ----------
