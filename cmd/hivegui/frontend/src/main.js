@@ -1771,6 +1771,7 @@ function openLauncher(projectId, opts) {
           tag.className = 'install-tag';
           tag.title = a.installCmd.join(' ');
           tag.textContent = 'install?';
+          item.appendChild(tag);
         }
         item.addEventListener('click', () => {
           bumpAgentUsage(a.id);
