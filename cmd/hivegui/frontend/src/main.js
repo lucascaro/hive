@@ -726,34 +726,35 @@ function renderProject(p, activePID) {
   });
   li.addEventListener('dragend', () => {
     li.classList.remove('dragging');
-    document.querySelectorAll('.project.drop-above, .project.drop-below')
+    document.querySelectorAll('.project-header.drop-above, .project-header.drop-below')
       .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
   });
   li.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    // Use the header's bounds, not the whole li: with sessions
-    // expanded, the li is tall and the cursor is almost always
-    // above its midpoint, which collapses every adjacent drop into
-    // a no-op.
+    // Use the header's bounds (not the whole li): with sessions
+    // expanded, the li is tall, the cursor is almost always above
+    // its midpoint, and the indicator would land far from the
+    // cursor. Anchoring both the hit-test and the visual to the
+    // header keeps them in sync.
     const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;
-    li.classList.toggle('drop-above', above);
-    li.classList.toggle('drop-below', !above);
+    header.classList.toggle('drop-above', above);
+    header.classList.toggle('drop-below', !above);
   });
   li.addEventListener('dragleave', (e) => {
     // Only clear when leaving the li entirely; dragover into a child
     // re-fires and re-asserts the right class.
     if (!li.contains(e.relatedTarget)) {
-      li.classList.remove('drop-above', 'drop-below');
+      header.classList.remove('drop-above', 'drop-below');
     }
   });
   li.addEventListener('drop', (e) => {
     if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     const pid = e.dataTransfer.getData('text/x-hive-project');
-    li.classList.remove('drop-above', 'drop-below');
+    header.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;
