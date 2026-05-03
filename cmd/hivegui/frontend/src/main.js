@@ -1596,11 +1596,13 @@ function activateLauncherSelection() {
 
 function openLauncher(projectId, opts) {
   launcherState.projectId = projectId || activeProjectId();
-  // ⌃⌘N forces the worktree checkbox on for this opening regardless
-  // of the saved preference. Otherwise honor the sticky pref.
-  if (opts && typeof opts.forceWorktree === 'boolean') {
-    launcherState.useWorktree = opts.forceWorktree;
-  }
+  // Re-read the sticky pref each open so a one-shot forceWorktree from a
+  // previous opening doesn't leak into the next regular open. forceWorktree
+  // overrides for this opening only and is intentionally not persisted.
+  launcherState.useWorktree =
+    opts && typeof opts.forceWorktree === 'boolean'
+      ? opts.forceWorktree
+      : localStorage.getItem('hive.worktree') === '1';
   ListAgents()
     .then((agents) => {
       launcherEl.innerHTML = '';
