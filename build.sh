@@ -62,7 +62,10 @@ fi
 # GUI compares its own BuildID to the daemon's at handshake time and
 # surfaces a banner if they differ — see internal/buildinfo.
 build_id="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+# Use porcelain so untracked files (which `git diff` ignores) also
+# trigger the -dirty marker. Otherwise a new uncommitted .go file
+# would get compiled in but produce a deceptively clean BuildID.
+if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
   build_id="${build_id}-dirty"
 fi
 buildinfo_pkg="github.com/lucascaro/hive/internal/buildinfo"
@@ -71,16 +74,16 @@ echo "==> BuildID: ${build_id}"
 # 2. Wails universal app bundle (frontend + GUI binary).
 echo "==> Building Wails universal .app"
 ( cd cmd/hivegui && wails build -platform darwin/universal -clean \
-    -ldflags "-X ${buildinfo_pkg}.BuildID=${build_id}" )
+    -ldflags "-X ${buildinfo_pkg}.buildIDOverride=${build_id}" )
 
 # 3. hived universal binary, lipo'd into the .app.
 echo "==> Building hived (universal)"
 mkdir -p .build
 GOOS=darwin GOARCH=amd64 go build -trimpath \
-  -ldflags="-s -w -X ${buildinfo_pkg}.BuildID=${build_id}" \
+  -ldflags="-s -w -X ${buildinfo_pkg}.buildIDOverride=${build_id}" \
   -o .build/hived-darwin-amd64 ./cmd/hived
 GOOS=darwin GOARCH=arm64 go build -trimpath \
-  -ldflags="-s -w -X ${buildinfo_pkg}.BuildID=${build_id}" \
+  -ldflags="-s -w -X ${buildinfo_pkg}.buildIDOverride=${build_id}" \
   -o .build/hived-darwin-arm64 ./cmd/hived
 lipo -create -output cmd/hivegui/build/bin/hivegui.app/Contents/MacOS/hived \
   .build/hived-darwin-amd64 .build/hived-darwin-arm64

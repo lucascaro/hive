@@ -2,7 +2,12 @@
 
 package main
 
-// killRunningHived is a no-op on Windows: the daemon is not yet
-// supported there, and the GUI build doesn't ship a pidfile path
-// that we can act on.
-func killRunningHived(_ string) error { return nil }
+import "errors"
+
+// killRunningHived is unimplemented on Windows: the daemon isn't
+// supported there yet, and we don't have a reliable cross-process
+// signal path. Return an error so the GUI's "Restart daemon" action
+// surfaces the failure instead of silently pretending it worked.
+func killRunningHived(_ string) error {
+	return errors.New("restart not supported on this platform")
+}

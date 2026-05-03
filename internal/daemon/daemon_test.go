@@ -499,9 +499,7 @@ func TestKill_DirtyWorktree_FrameError(t *testing.T) {
 func TestWelcomeAdvertisesBuildID(t *testing.T) {
 	skipOnWindows(t)
 	// Override the package-level BuildID for the duration of this test.
-	prev := buildinfo.BuildID
-	buildinfo.BuildID = "test-build-xyz"
-	t.Cleanup(func() { buildinfo.BuildID = prev })
+	t.Cleanup(buildinfo.SetForTest("test-build-xyz"))
 
 	d := startTestDaemon(t)
 

@@ -167,7 +167,7 @@ func (a *App) ConnectControl() error {
 	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
 		Version: wire.PROTOCOL_VERSION,
 		Client:  "hivegui/0.2",
-		BuildID: buildinfo.BuildID,
+		BuildID: buildinfo.BuildID(),
 		Mode:    wire.ModeControl,
 	}); err != nil {
 		_ = conn.Close()
@@ -204,7 +204,7 @@ type DaemonStaleEvent struct {
 }
 
 func (a *App) emitDaemonVersionStatus(daemonBuild string) {
-	gui := buildinfo.BuildID
+	gui := buildinfo.BuildID()
 	ev := DaemonStaleEvent{GuiBuild: gui, DaemonBuild: daemonBuild}
 	switch {
 	case gui == "" || daemonBuild == "":
@@ -221,6 +221,13 @@ func (a *App) emitDaemonVersionStatus(daemonBuild string) {
 // then reconnects the control conn. Phase A: this kills every live
 // session — Phase B will make sessions survive. The frontend warns
 // the user before calling this.
+//
+// killRunningHived blocks until the previous process is actually gone
+// (escalating to SIGKILL after 3s and waiting again), so by the time
+// it returns, the socket is free for dialOrSpawn to bind a fresh one.
+// On any kill error we surface it instead of silently proceeding —
+// otherwise the user would see "Restart daemon" succeed while the
+// stale daemon kept running.
 func (a *App) RestartDaemon() error {
 	a.mu.Lock()
 	if a.control != nil {
@@ -234,17 +241,7 @@ func (a *App) RestartDaemon() error {
 	a.mu.Unlock()
 
 	if err := killRunningHived(hdaemon.SocketPath()); err != nil {
-		log.Printf("hivegui: kill stale hived: %v", err)
-	}
-	// Wait briefly for the socket to disappear so dialOrSpawn doesn't
-	// reuse the dying daemon's listener.
-	for i := 0; i < 30; i++ {
-		if c, err := net.DialTimeout("unix", hdaemon.SocketPath(), 50*time.Millisecond); err != nil {
-			break
-		} else {
-			_ = c.Close()
-		}
-		time.Sleep(100 * time.Millisecond)
+		return fmt.Errorf("kill stale hived: %w", err)
 	}
 	return a.ConnectControl()
 }

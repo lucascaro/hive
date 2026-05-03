@@ -1424,20 +1424,29 @@ EventsOn('pty:error', (id, jsonStr) => {
 });
 
 EventsOn('control:disconnect', () => {
+  // During a user-initiated RestartDaemon we knowingly close the
+  // control conn; the banner already says "Restarting hived…". Don't
+  // also flash an alarming red status line in that window.
+  if (daemonRestarting) return;
   setStatus('control disconnected', true);
 });
 
 // Stale-daemon banner. The Go side compares its own buildinfo.BuildID
-// to the value advertised in WELCOME and emits this on every connect.
-// "match" → hide (handles the case where the user clicked Restart and
-// builds now agree). "mismatch" / "unknown" → show, with severity-
-// specific copy. The user dismisses manually; we don't auto-clear on
-// other events.
+// to the value advertised in WELCOME and emits "daemon:stale" on every
+// connect with severity "match" / "mismatch" / "unknown". Mismatch is
+// symmetric (the daemon could be older OR newer than the GUI — bisect,
+// stash, reverse-checkout all flip the direction), so the copy is
+// deliberately direction-neutral.
+//
+// Dismissal is keyed on the specific daemonBuild that was dismissed,
+// so a *different* mismatched build later will still surface. A "match"
+// reconnect clears the dismissal flag too.
 const daemonBannerEl = document.getElementById('daemon-banner');
 const daemonBannerText = document.getElementById('daemon-banner-text');
 const daemonBannerRestart = document.getElementById('daemon-banner-restart');
 const daemonBannerDismiss = document.getElementById('daemon-banner-dismiss');
-let daemonBannerDismissed = false;
+let daemonBannerDismissedFor = null;
+let daemonRestarting = false;
 
 function showDaemonBanner(text) {
   daemonBannerText.textContent = text;
@@ -1447,7 +1456,9 @@ function hideDaemonBanner() {
   daemonBannerEl.classList.add('hidden');
 }
 daemonBannerDismiss.addEventListener('click', () => {
-  daemonBannerDismissed = true;
+  // Dismissals are per-daemon-build: re-show if a different build
+  // appears later. We stash the build we last saw mismatched (if any).
+  daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
   hideDaemonBanner();
 });
 daemonBannerRestart.addEventListener('click', async () => {
@@ -1461,27 +1472,34 @@ daemonBannerRestart.addEventListener('click', async () => {
   );
   if (!ok) return;
   daemonBannerRestart.disabled = true;
+  daemonRestarting = true;
+  showDaemonBanner('Restarting hived…');
   try {
     await RestartDaemon();
-    daemonBannerDismissed = false; // re-arm for any future mismatch
+    daemonBannerDismissedFor = null; // re-arm for any future mismatch
   } catch (err) {
     setStatus(`restart failed: ${err}`, true);
+    showDaemonBanner(`Restart failed: ${err}`);
   } finally {
     daemonBannerRestart.disabled = false;
+    daemonRestarting = false;
   }
 });
 
 EventsOn('daemon:stale', (ev) => {
   if (!ev) return;
+  daemonBannerEl.dataset.daemonBuild = ev.daemonBuild || '';
   if (ev.severity === 'match') {
+    daemonBannerDismissedFor = null; // reset so future mismatch can re-show
     hideDaemonBanner();
     return;
   }
-  if (daemonBannerDismissed) return;
+  // Same build the user already dismissed: stay hidden.
+  if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
   if (ev.severity === 'mismatch') {
     showDaemonBanner(
-      `hived is running an older build (${ev.daemonBuild}, yours is ${ev.guiBuild}). ` +
-      `New code in this GUI won't take effect until the daemon restarts.`,
+      `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
+      `Restart the daemon to apply changes.`,
     );
   } else {
     showDaemonBanner(
@@ -1516,11 +1534,15 @@ EventsOn('control:error', async (jsonStr) => {
       `${sess?.name ?? 'Session'} has uncommitted changes in ${branch}.\n\n` +
       `Discard them and remove the worktree?`,
     );
-    if (ok) {
-      KillSession(e.session_id, true).catch((err) => {
-        setStatus(`force kill failed: ${err}`, true);
-      });
-    }
+    if (!ok) return;
+    // Confirm() is async + modal; the session may have been removed
+    // (or its worktree resolved) while the dialog was open. Re-check
+    // before issuing a second kill that would just produce a confusing
+    // "no_such_session" control error.
+    if (!state.sessions.find((s) => s.id === e.session_id)) return;
+    KillSession(e.session_id, true).catch((err) => {
+      setStatus(`force kill failed: ${err}`, true);
+    });
     return;
   }
   setStatus(`${e.code}: ${e.message}`, true);
