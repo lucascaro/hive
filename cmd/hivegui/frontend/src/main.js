@@ -700,7 +700,7 @@ function renderProject(p, activePID) {
     .filter((s) => (s.projectId ?? s.project_id) === p.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   for (const s of sessions) {
-    ul.appendChild(renderSession(s));
+    ul.appendChild(renderSession(s, p.color || '#888'));
   }
   li.appendChild(ul);
 
@@ -778,13 +778,14 @@ function reorderDroppedProject(draggedID, targetID, above) {
   UpdateProject(draggedID, '', '', '', newOrder);
 }
 
-function renderSession(s) {
+function renderSession(s, projectColor) {
   const li = document.createElement('li');
   li.className = 'session-item';
   if (s.id === state.activeId) li.classList.add('selected');
   if (!s.alive) li.classList.add('dead');
   if (state.attention.has(s.id)) li.classList.add('attention');
   li.style.setProperty('--session-color', s.color || '#888');
+  li.style.setProperty('--project-color', projectColor || '#888');
   li.dataset.sid = s.id;
   li.dataset.pid = s.projectId ?? s.project_id ?? '';
   li.draggable = true;

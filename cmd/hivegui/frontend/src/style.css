@@ -359,7 +359,7 @@ body.resizing-sidebar #app { transition: none; }
 .session-item .name {
   flex: 1;
   min-width: 0;
-  background: linear-gradient(90deg, var(--session-color, #888) 0%, #fff 90%);
+  background: linear-gradient(90deg, var(--project-color, #888) 0%, var(--session-color, #fff) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

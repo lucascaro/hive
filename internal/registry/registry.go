@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -105,6 +106,12 @@ type Registry struct {
 
 	projects     map[string]*Project
 	projectOrder []string
+
+	// lastProjectColor / lastSessionColor remember the most recent
+	// auto-assigned palette color so consecutive creates pick a
+	// different one. Empty string = no bias.
+	lastProjectColor string
+	lastSessionColor string
 
 	// Listeners are notified of every change. Slow listeners are dropped.
 	listeners map[Listener]struct{}
@@ -256,15 +263,13 @@ func (r *Registry) Get(id string) *Entry {
 func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.mu.Lock()
 	id := uuid.NewString()
-	// Resolve agent default color if the spec didn't override it.
+	// Color is reserved for project/session identity; agent identity
+	// is conveyed by the badge/icon. So skip the agent-default tier
+	// and pick a random palette color when the caller didn't choose.
 	color := spec.Color
-	if color == "" && spec.Agent != "" {
-		if def, ok := agent.Get(agent.ID(spec.Agent)); ok {
-			color = def.Color
-		}
-	}
 	if color == "" {
-		color = pickColor(len(r.order))
+		color = pickColor(r.lastSessionColor)
+		r.lastSessionColor = color
 	}
 	// Resolve owning project: fall back to the default if unset.
 	projectID := spec.ProjectID
@@ -513,7 +518,8 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 		name = agent.RandomName("")
 	}
 	if color == "" {
-		color = pickColor(len(r.order))
+		color = pickColor(r.lastSessionColor)
+		r.lastSessionColor = color
 	}
 	e := &Entry{
 		ID: id, Name: name, Color: color,
@@ -812,16 +818,37 @@ func (r *Registry) broadcastLocked(kind string, info wire.SessionInfo) {
 	}
 }
 
-// pickColor returns a default color for the nth session. Six fixed
-// hues that rotate; users can override via Update.
-func pickColor(n int) string {
-	palette := []string{
-		"#f59e0b", // amber
-		"#8b5cf6", // violet
-		"#10b981", // emerald
-		"#3b82f6", // sky
-		"#ef4444", // red
-		"#ec4899", // pink
+// colorPalette is the curated set of "good" hues used for auto-
+// assigned project and session colors. All are readable as text on
+// the dark sidebar. Users can override via Update.
+var colorPalette = []string{
+	"#f59e0b", // amber
+	"#f97316", // orange
+	"#ef4444", // red
+	"#ec4899", // pink
+	"#d946ef", // fuchsia
+	"#a855f7", // purple
+	"#8b5cf6", // violet
+	"#6366f1", // indigo
+	"#3b82f6", // sky
+	"#06b6d4", // cyan
+	"#14b8a6", // teal
+	"#10b981", // emerald
+	"#84cc16", // lime
+	"#eab308", // yellow
+}
+
+// colorRand is a package-local PRNG used solely for palette selection.
+// Seeded once so sequential picks are not deterministic across runs.
+var colorRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+// pickColor returns a random palette color, retrying once if the
+// result equals avoid (the previously-picked color). Empty avoid =
+// no bias.
+func pickColor(avoid string) string {
+	c := colorPalette[colorRand.Intn(len(colorPalette))]
+	if c == avoid {
+		c = colorPalette[colorRand.Intn(len(colorPalette))]
 	}
-	return palette[n%len(palette)]
+	return c
 }
