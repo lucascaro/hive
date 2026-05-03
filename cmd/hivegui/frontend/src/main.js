@@ -2078,9 +2078,10 @@ function openCommandPalette() {
 }
 
 function closeCommandPalette() {
+  // Blur first: focusActiveTerm() bails when activeElement is an INPUT,
+  // and hiding the palette via CSS doesn't move focus off paletteInput.
+  paletteInput.blur();
   paletteEl.classList.add('hidden');
-  // Return focus to the active terminal. activatePalette()'s deferred
-  // run() will overwrite focus if the action opens its own modal.
   focusActiveTerm();
 }
 
