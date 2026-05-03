@@ -726,7 +726,7 @@ function renderProject(p, activePID) {
   });
   li.addEventListener('dragend', () => {
     li.classList.remove('dragging');
-    document.querySelectorAll('.project-header.drop-above, .project-header.drop-below')
+    document.querySelectorAll('.project.drop-above, .project.drop-below')
       .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
   });
   li.addEventListener('dragover', (e) => {
@@ -740,21 +740,21 @@ function renderProject(p, activePID) {
     // header keeps them in sync.
     const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;
-    header.classList.toggle('drop-above', above);
-    header.classList.toggle('drop-below', !above);
+    li.classList.toggle('drop-above', above);
+    li.classList.toggle('drop-below', !above);
   });
   li.addEventListener('dragleave', (e) => {
     // Only clear when leaving the li entirely; dragover into a child
     // re-fires and re-asserts the right class.
     if (!li.contains(e.relatedTarget)) {
-      header.classList.remove('drop-above', 'drop-below');
+      li.classList.remove('drop-above', 'drop-below');
     }
   });
   li.addEventListener('drop', (e) => {
     if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     const pid = e.dataTransfer.getData('text/x-hive-project');
-    header.classList.remove('drop-above', 'drop-below');
+    li.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
     const above = (e.clientY - r.top) < r.height / 2;

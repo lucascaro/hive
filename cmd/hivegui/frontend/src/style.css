@@ -170,7 +170,6 @@ body.resizing-sidebar #app { transition: none; }
   cursor: pointer;
   user-select: none;
   min-width: 0;
-  position: relative;
 }
 
 .project-header:hover { background: rgba(255,255,255,0.02); color: #ddd; }
@@ -326,12 +325,15 @@ body.resizing-sidebar #app { transition: none; }
 .session-item.drop-above::before { top: -1px; }
 .session-item.drop-below::before { bottom: -1px; }
 
-/* Drag-to-reorder visual for projects. The indicator is anchored to
-   the header (not the whole li) so it lands under the cursor even
-   when the project's sessions are expanded below. */
+/* Drag-to-reorder visual for projects. The indicator marks the
+   landing slot — above the project (and any expanded sessions
+   above this one) or below the project (after its sessions). The
+   hit-test uses the header midpoint, but the visual spans the
+   whole li so it sits at the actual insertion point. ::after is
+   used because ::before is the persistent color stripe. */
 .project.dragging { opacity: 0.45; }
-.project-header.drop-above::after,
-.project-header.drop-below::after {
+.project.drop-above::after,
+.project.drop-below::after {
   content: '';
   position: absolute;
   left: 6px;
@@ -342,8 +344,8 @@ body.resizing-sidebar #app { transition: none; }
   pointer-events: none;
   z-index: 2;
 }
-.project-header.drop-above::after { top: -1px; }
-.project-header.drop-below::after { bottom: -1px; }
+.project.drop-above::after { top: -1px; }
+.project.drop-below::after { bottom: -1px; }
 .session-item.attention .name::before {
   content: '●';
   color: var(--session-color, #888);
