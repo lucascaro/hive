@@ -26,6 +26,16 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Wails CLI
+        # wails generate module produces cmd/hivegui/frontend/wailsjs/,
+        # which main.js imports. Without this step the vite build can't
+        # resolve "../wailsjs/go/main/App".
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Generate Wails bindings
+        working-directory: cmd/hivegui
+        run: wails generate module
+
       - name: Build frontend
         # cmd/hivegui/main.go embeds frontend/dist via go:embed, so the
         # dist tree must exist before any `go build` / `go vet` / `go test`.
