@@ -64,12 +64,15 @@ func main() {
 	}
 	defer d.Close()
 
-	// Write a pidfile so hivegui's "Restart daemon" action can find
-	// and signal us. Done AFTER daemon.New so a second hived that
-	// loses the socket-bind race doesn't clobber the running
-	// daemon's pidfile and then leave it stale (log.Fatalf below
-	// skips defers, so no cleanup on the lose path).
-	pidPath := filepath.Join(stateDir, "hived.pid")
+	// Write a pidfile NEXT TO the socket so the GUI's Restart action
+	// can scope its SIGTERM to the daemon owning the socket it just
+	// dialed. (Earlier the pidfile lived at $STATE/hived.pid — global,
+	// which broke if the user had a second hived running with a custom
+	// --socket: the GUI could end up signaling the wrong instance.)
+	// Done AFTER daemon.New so a second hived that loses the bind
+	// race doesn't clobber the running daemon's pidfile and then leave
+	// it stale (log.Fatalf below skips defers).
+	pidPath := d.SocketPath() + ".pid"
 	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
 		log.Printf("hived: write pidfile: %v", err)
 	}

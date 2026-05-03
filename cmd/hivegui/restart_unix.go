@@ -7,27 +7,29 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/lucascaro/hive/internal/registry"
 )
 
-// killRunningHived sends SIGTERM to the hived recorded in $STATE/hived.pid,
+// killRunningHived sends SIGTERM to the hived recorded in <sock>.pid,
 // waits for it to exit, and escalates to SIGKILL on a 3s budget. On
 // SIGKILL, also waits for the process to actually exit so the caller
 // can rely on "killRunningHived returned nil ⇒ socket is free."
+//
+// The pidfile is scoped to the socket the daemon owns (sibling file,
+// "<sock>.pid"). That way a user running a second hived with a custom
+// --socket can't be accidentally signaled by the GUI's restart action,
+// which only ever talks to the default socket.
 //
 // Returns nil if the pidfile is missing, the recorded pid no longer
 // exists, or the recorded pid does not look like a hived (a stale
 // pidfile whose pid was recycled to an unrelated user process). The
 // last case is the safety-critical one: the OS hands recycled pids to
 // editors, shells, anything; we must not SIGTERM them.
-func killRunningHived(_ string) error {
-	pidPath := filepath.Join(registry.StateDir(), "hived.pid")
+func killRunningHived(sock string) error {
+	pidPath := sock + ".pid"
 	raw, err := os.ReadFile(pidPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

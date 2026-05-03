@@ -1477,6 +1477,11 @@ daemonBannerRestart.addEventListener('click', async () => {
   try {
     await RestartDaemon();
     daemonBannerDismissedFor = null; // re-arm for any future mismatch
+    // Positively restore the status bar. The control:disconnect we
+    // suppressed during restart leaves no trace; if any disconnect
+    // event sneaks through (event-loop ordering races) it'd otherwise
+    // pin "control disconnected" red even though we just reconnected.
+    setStatus('connected');
   } catch (err) {
     setStatus(`restart failed: ${err}`, true);
     showDaemonBanner(`Restart failed: ${err}`);
