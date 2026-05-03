@@ -324,6 +324,24 @@ body.resizing-sidebar #app { transition: none; }
 }
 .session-item.drop-above::before { top: -1px; }
 .session-item.drop-below::before { bottom: -1px; }
+
+/* Drag-to-reorder visual for projects. Uses ::after because ::before
+   is already the persistent color stripe. */
+.project.dragging { opacity: 0.45; }
+.project.drop-above::after,
+.project.drop-below::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: var(--project-color, #f59e0b);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 2;
+}
+.project.drop-above::after { top: -1px; }
+.project.drop-below::after { bottom: -1px; }
 .session-item.attention .name::before {
   content: '●';
   color: var(--session-color, #888);
@@ -618,6 +636,16 @@ body.resizing-sidebar #app { transition: none; }
 .launcher-item:hover,
 .launcher-item.selected { background: rgba(255,255,255,0.08); }
 .launcher-item.selected { color: #fff; }
+.launcher-item .agent-num {
+  display: inline-block;
+  width: 14px;
+  text-align: right;
+  font-family: Menlo, monospace;
+  font-size: 10.5px;
+  color: #666;
+  flex-shrink: 0;
+}
+.launcher-item.selected .agent-num { color: #aaa; }
 .launcher-item .agent-dot {
   width: 8px;
   height: 8px;
