@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -48,6 +49,14 @@ func main() {
 			log.Printf("hived: log tee to %s", logPath)
 		}
 	}
+
+	// Write a pidfile so hivegui's "Restart daemon" action can find
+	// and signal us. Best-effort; cleared on clean shutdown.
+	pidPath := filepath.Join(stateDir, "hived.pid")
+	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
+		log.Printf("hived: write pidfile: %v", err)
+	}
+	defer os.Remove(pidPath)
 
 	d, err := daemon.New(daemon.Config{
 		SocketPath: *sock,

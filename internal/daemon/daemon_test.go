@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -487,6 +488,30 @@ func TestKill_DirtyWorktree_FrameError(t *testing.T) {
 	}
 	if !gotRemoved {
 		t.Errorf("did not see SESSION_EVENT(removed) after force kill")
+	}
+}
+
+// TestWelcomeAdvertisesBuildID verifies the daemon echoes its
+// link-time buildinfo.BuildID in the Welcome frame, so a stale GUI
+// can detect it and surface the version-mismatch banner. This is the
+// Phase A handshake. Empty BuildID on the client side is tolerated;
+// the daemon still answers with its own.
+func TestWelcomeAdvertisesBuildID(t *testing.T) {
+	skipOnWindows(t)
+	// Override the package-level BuildID for the duration of this test.
+	prev := buildinfo.BuildID
+	buildinfo.BuildID = "test-build-xyz"
+	t.Cleanup(func() { buildinfo.BuildID = prev })
+
+	d := startTestDaemon(t)
+
+	conn := dial(t, d)
+	defer conn.Close()
+	// Hello with no BuildID (simulating an older client) — daemon
+	// should still respond with its own.
+	w := handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+	if w.BuildID != "test-build-xyz" {
+		t.Errorf("welcome BuildID: got %q, want %q", w.BuildID, "test-build-xyz")
 	}
 }
 

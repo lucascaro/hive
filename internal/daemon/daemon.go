@@ -18,6 +18,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
@@ -225,6 +226,7 @@ func (d *Daemon) serve(conn net.Conn) {
 func (d *Daemon) serveControl(conn net.Conn) {
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version: wire.PROTOCOL_VERSION,
+		BuildID: buildinfo.BuildID,
 		Mode:    wire.ModeControl,
 	}); err != nil {
 		return
@@ -389,6 +391,7 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	}
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version:   wire.PROTOCOL_VERSION,
+		BuildID:   buildinfo.BuildID,
 		Mode:      wire.ModeAttach,
 		SessionID: entry.ID,
 		Cols:      cols,
