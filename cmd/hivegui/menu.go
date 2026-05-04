@@ -52,7 +52,9 @@ func buildAppMenu(a *App) *menu.Menu {
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
 	view := m.AddSubmenu("View")
-	view.AddText("Command Palette…", keys.CmdOrCtrl("k"), emit("menu:command-palette"))
+	view.AddText("Command Palette…",
+		keys.Combo("k", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:command-palette"))
 	view.AddSeparator()
 	view.AddText("Zoom In", keys.CmdOrCtrl("="), emit("menu:zoom-in"))
 	view.AddText("Zoom Out", keys.CmdOrCtrl("-"), emit("menu:zoom-out"))
