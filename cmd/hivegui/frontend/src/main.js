@@ -162,10 +162,19 @@ class SessionTerm {
         const col = Math.floor((e.clientX - rect.left) / cellW);
         const row = Math.floor((e.clientY - rect.top) / cellH);
         if (col < 0 || row < 0 || col >= this.term.cols || row >= this.term.rows) return;
-        const clickAbs = (buf.viewportY + row) * this.term.cols + col;
-        const cursorAbs = (buf.viewportY + buf.cursorY) * this.term.cols + buf.cursorX;
-        const delta = clickAbs - cursorAbs;
-        if (!delta) return;
+        // Only act when click is on the cursor's row — otherwise we'd send
+        // arrow-key spam that line editors partially consume and partially
+        // echo as literal "[D".
+        if (row !== buf.cursorY) return;
+        // Clamp the target column to the last non-space cell on this row,
+        // so clicking in the empty area past end-of-input does nothing.
+        const line = buf.getLine(buf.viewportY + row);
+        if (!line) return;
+        const text = line.translateToString(true);
+        const lastCol = text.replace(/\s+$/, '').length;
+        const target = Math.min(col, lastCol);
+        const delta = target - buf.cursorX;
+        if (delta === 0) return;
         const seq = delta > 0 ? '\x1b[C'.repeat(delta) : '\x1b[D'.repeat(-delta);
         this._writePty(seq);
       });

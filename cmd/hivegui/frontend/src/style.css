@@ -504,6 +504,16 @@ body.resizing-sidebar #app { transition: none; }
   box-shadow: 0 0 0 1px var(--session-color, #888),
               0 0 18px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
 }
+/* Dim non-focused tiles so it's obvious which session keystrokes go to.
+   Header stays full opacity; only the terminal body fades. */
+#terms .term-host:not(.term-focused) .term-body {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+#terms .term-host.term-focused .term-body {
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
 
 @keyframes hive-tile-attention {
   0%, 100% {
