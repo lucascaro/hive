@@ -136,6 +136,39 @@ class SessionTerm {
         }
         this._pendingLink = null;
       }, { capture: true });
+
+      // Click-to-position: send arrow keys to move the line-editor cursor
+      // to the clicked cell. Best-effort — only safe in the normal buffer
+      // with mouse reporting off; alt-buffer TUIs (vim/htop) own the screen.
+      screen.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+        this._pendingClickX = e.clientX;
+        this._pendingClickY = e.clientY;
+        this._pendingClick = true;
+      });
+      screen.addEventListener('mouseup', (e) => {
+        if (!this._pendingClick) return;
+        this._pendingClick = false;
+        const dx = e.clientX - this._pendingClickX;
+        const dy = e.clientY - this._pendingClickY;
+        if (dx * dx + dy * dy >= 25) return; // dragged → selection, leave it
+        const buf = this.term.buffer.active;
+        if (buf.type !== 'normal') return;
+        if (this.term.modes && this.term.modes.mouseTrackingMode && this.term.modes.mouseTrackingMode !== 'none') return;
+        const rect = screen.getBoundingClientRect();
+        const cellW = rect.width / this.term.cols;
+        const cellH = rect.height / this.term.rows;
+        if (!(cellW > 0) || !(cellH > 0)) return;
+        const col = Math.floor((e.clientX - rect.left) / cellW);
+        const row = Math.floor((e.clientY - rect.top) / cellH);
+        if (col < 0 || row < 0 || col >= this.term.cols || row >= this.term.rows) return;
+        const clickAbs = (buf.viewportY + row) * this.term.cols + col;
+        const cursorAbs = (buf.viewportY + buf.cursorY) * this.term.cols + buf.cursorX;
+        const delta = clickAbs - cursorAbs;
+        if (!delta) return;
+        const seq = delta > 0 ? '\x1b[C'.repeat(delta) : '\x1b[D'.repeat(-delta);
+        this._writePty(seq);
+      });
     }
     // Drive the visual focus border off the xterm's real focus state
     // — not state.activeId — so the border can never claim "I'm
@@ -175,11 +208,24 @@ class SessionTerm {
       if (state.activeId === this.info.id) updateAppTitle();
     });
 
-    this.term.onData((data) => {
+    this._writePty = (data) => {
       const bytes = new TextEncoder().encode(data);
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
       WriteStdin(this.info.id, btoa(bin));
+    };
+    this.term.onData((data) => this._writePty(data));
+
+    // macOS Cmd+Backspace → Ctrl+U (kill to start of line). Browser doesn't
+    // translate this for us when xterm's helper-textarea is focused.
+    this.term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      if (e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
+        e.preventDefault();
+        this._writePty('\x15');
+        return false;
+      }
+      return true;
     });
 
     // Click anywhere on the tile (header or body) selects this session.
