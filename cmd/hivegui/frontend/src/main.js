@@ -1945,7 +1945,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if ((e.key === 'k' || e.key === 'K') && !e.shiftKey) {
+  if ((e.key === 'k' || e.key === 'K') && !e.shiftKey && e.metaKey && !e.ctrlKey) {
     swallow();
     openCommandPalette();
     return;
