@@ -401,10 +401,10 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	}
 
 	sink := &frameSink{conn: conn}
-	replay, unsub := sess.SubscribeAtomic(sink)
+	snapshot, unsub := sess.SubscribeAtomicSnapshot(sink)
 	defer unsub()
 
-	if err := writeChunked(conn, wire.FrameData, replay, 16<<10); err != nil {
+	if err := writeChunked(conn, wire.FrameData, snapshot, 16<<10); err != nil {
 		return
 	}
 	if err := wire.WriteJSON(conn, wire.FrameEvent, wire.Event{

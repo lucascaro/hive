@@ -26,13 +26,15 @@ type Sink interface {
 type Session struct {
 	ID         string
 	Scrollback *Scrollback
+	vt         *VT
 
 	cmd  *pty.Cmd
 	ptmx pty.Pty
 
-	mu    sync.Mutex
-	sinks map[Sink]struct{}
-	done  chan struct{}
+	mu        sync.Mutex
+	sinks     map[Sink]struct{}
+	done      chan struct{}
+	vtErrOnce sync.Once
 }
 
 // Options configures a new Session.
@@ -115,6 +117,7 @@ func Start(opts Options) (*Session, error) {
 	s := &Session{
 		ID:         uuid.NewString(),
 		Scrollback: NewScrollback(opts.ScrollBytes),
+		vt:         NewVT(opts.Cols, opts.Rows),
 		cmd:        cmd,
 		ptmx:       ptmx,
 		sinks:      make(map[Sink]struct{}),
@@ -133,6 +136,11 @@ func (s *Session) readLoop() {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
 			_, _ = s.Scrollback.Write(buf[:n])
+			if _, vterr := s.vt.Write(buf[:n]); vterr != nil {
+				s.vtErrOnce.Do(func() {
+					log.Printf("session %s: vt write: %v", s.ID, vterr)
+				})
+			}
 			s.fanout(buf[:n])
 		}
 		if err != nil {
@@ -203,14 +211,36 @@ func (s *Session) SubscribeAtomic(sink Sink) (replay []byte, unsubscribe func())
 	}
 }
 
+// SubscribeAtomicSnapshot is the reattach-friendly version of
+// SubscribeAtomic: it returns a synthesized repaint of the *current
+// visible state* (via the VT mirror) instead of the raw byte ring.
+// Same lock discipline so no live PTY bytes are dropped between the
+// snapshot and the live stream becoming active.
+func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscribe func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snapshot = s.vt.RenderSnapshot()
+	s.sinks[sink] = struct{}{}
+	return snapshot, func() {
+		s.mu.Lock()
+		delete(s.sinks, sink)
+		s.mu.Unlock()
+	}
+}
+
 // Write forwards bytes from a client to the PTY (i.e. keystrokes).
 func (s *Session) Write(p []byte) (int, error) {
 	return s.ptmx.Write(p)
 }
 
-// Resize updates the PTY's window size. cols × rows.
+// Resize updates the PTY's window size. cols × rows. Also resizes the
+// VT mirror so the next reattach snapshot matches the new dimensions.
 func (s *Session) Resize(cols, rows int) error {
-	return s.ptmx.Resize(cols, rows)
+	if err := s.ptmx.Resize(cols, rows); err != nil {
+		return err
+	}
+	_ = s.vt.Resize(cols, rows)
+	return nil
 }
 
 // Close terminates the shell and releases the PTY.
