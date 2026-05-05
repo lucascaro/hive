@@ -425,6 +425,14 @@ class SessionTerm {
       this.setDead(true, this.info.last_error || 'The process failed to start.');
       return;
     }
+    // Wait one frame so the .visible / .in-grid classes that show()
+    // just toggled have actually flowed through layout. fit.fit() reads
+    // offsetWidth/Height; if we measure before layout settles we end up
+    // sending the daemon stale (often default 80x24) dimensions, the
+    // daemon's WELCOME reports the same defaults, OpenSession's "did
+    // size change?" check skips the resize, and the running PTY app
+    // never SIGWINCHes — appearing static until the user toggles modes.
+    await new Promise((r) => requestAnimationFrame(r));
     this.fit.fit();
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
@@ -1543,6 +1551,11 @@ EventsOn('pty:event', (id, jsonStr) => {
       // line so the user sees the cursor / newest output rather than
       // landing somewhere mid-history.
       st.term.scrollToBottom();
+      // Defensive refit: if measurement at attach time was off (layout
+      // not yet settled, font metrics not loaded, etc.) the PTY app may
+      // be drawing at the wrong size. A second refit after replay sends
+      // the now-correct size and triggers SIGWINCH so the app repaints.
+      st.refit();
     }
   } catch { /* ignore */ }
 });
