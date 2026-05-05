@@ -21,7 +21,9 @@ const (
 	vtAttrReverse   int16 = 1 << 0
 	vtAttrUnderline int16 = 1 << 1
 	vtAttrBold      int16 = 1 << 2
-	// 1<<3 is unused upstream
+	// 1<<3 is attrGfx (DEC line-drawing charset). vt10x substitutes the
+	// rune at parse time, so Cell().Char is already the box-drawing glyph
+	// — there's no SGR code to emit and we intentionally don't mirror it.
 	vtAttrItalic int16 = 1 << 4
 	vtAttrBlink  int16 = 1 << 5
 )
@@ -89,6 +91,13 @@ func (v *VT) RenderSnapshot() []byte {
 	}
 
 	var buf bytes.Buffer
+	// If the session is on the alt screen (vim, htop, less, claude TUI…),
+	// enter alt screen FIRST so the snapshot lands there. Otherwise the
+	// next \x1b[?1049l from the live PTY would swap the client back to a
+	// blank normal screen and discard everything we just painted.
+	if v.term.Mode()&vt10x.ModeAltScreen != 0 {
+		buf.WriteString("\x1b[?1049h")
+	}
 	// Soft reset + erase-display + home. Note: \x1b[!p is DECSTR.
 	buf.WriteString("\x1b[!p\x1b[2J\x1b[H")
 
@@ -179,6 +188,27 @@ func (v *VT) RenderSnapshot() []byte {
 // xterm palette as [16,256); RGB and "default" are stored in the
 // 1<<24-base sentinel range.
 func writeSGR(buf *bytes.Buffer, mode int16, fg, bg vt10x.Color) {
+	// Undo vt10x's storage transformations before emitting SGR, so the
+	// receiving terminal applies each effect exactly once:
+	//
+	//   * Reverse video: vt10x's setChar pre-swaps FG/BG into the cell
+	//     AND keeps the attrReverse bit. Re-swap so emitting `;7` doesn't
+	//     reverse a row of selection-bar colours twice.
+	//
+	//   * Bold-bright: vt10x bumps FG by +8 when bold && FG<8 (so a
+	//     "bold red" cell stores FG=9). Demote FG back to its low-ANSI
+	//     index; xterm.js (and most terminals) auto-brighten bold by
+	//     default, reproducing the original look. Cells where the user
+	//     explicitly set bold + bright FG are indistinguishable in
+	//     storage, so they take the same path — visually identical
+	//     under normal "bold = brighter" rendering.
+	if mode&vtAttrReverse != 0 {
+		fg, bg = bg, fg
+	}
+	if mode&vtAttrBold != 0 && fg >= 8 && fg < 16 {
+		fg -= 8
+	}
+
 	// Always start from a clean slate — keeps the implementation simple
 	// and still compact in practice (most rows have few transitions).
 	buf.WriteString("\x1b[0")
