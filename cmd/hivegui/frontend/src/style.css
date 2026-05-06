@@ -282,18 +282,20 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 .session-item.selected {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--session-color, #888) 18%, transparent);
   color: #fff;
+  font-weight: 500;
+  padding-left: 23px;
 }
 .session-item.selected::after {
   content: '';
   position: absolute;
-  right: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  background: var(--session-color, #888);
-  border-radius: 1px 0 0 1px;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--session-color, #d0d0d0);
+  border-radius: 0 1px 1px 0;
 }
 
 /* Attention indicator — fired by xterm BEL on a non-focused session. */

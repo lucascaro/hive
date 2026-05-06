@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sidebar: more visible selected-session styling. Selection now uses an
+  18% session-color tint plus a 3px left accent bar (full row height),
+  replacing the prior 6% white overlay and 2px right-edge line.
+
 ## [2.0.1] — 2026-05-05
 
 ### Security
