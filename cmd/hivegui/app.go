@@ -39,6 +39,13 @@ type App struct {
 	mu       sync.Mutex
 	control  *connState                // control connection (or nil)
 	attaches map[string]*connState     // session id → attach connection
+
+	// openMu serializes OpenSession calls. Without it, two concurrent
+	// OpenSession(id) calls both observe an empty attaches[id], both
+	// dial the daemon, and both register attach subscribers — the
+	// session then fan-outs every byte (and the scrollback snapshot)
+	// twice, producing visibly duplicated output in xterm.
+	openMu sync.Mutex
 }
 
 // connState wraps a connection with a write mutex so multiple goroutines
@@ -517,6 +524,12 @@ type AttachInfo struct {
 // frontend should call this once per session it wants to render.
 // PTY bytes arrive as "pty:data" events tagged with the session id.
 func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
+	// Serialize across all in-flight OpenSession calls so the dial +
+	// handshake below can't race against itself for the same id and
+	// register two daemon subscribers. See openMu's doc for why.
+	a.openMu.Lock()
+	defer a.openMu.Unlock()
+
 	a.mu.Lock()
 	if _, ok := a.attaches[id]; ok {
 		a.mu.Unlock()
