@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   18% session-color tint plus a 3px left accent bar (full row height),
   replacing the prior 6% white overlay and 2px right-edge line.
 
+### Fixed
+
+- Session start: when a saved session's working directory no longer
+  exists, fall back to the daemon's cwd / `$HOME` instead of failing
+  with a misleading `fork/exec <shell>: no such file or directory`
+  error (Go reports the shell path on `chdir` failure, which made the
+  real cause — the missing directory — invisible).
+
 ## [2.0.1] — 2026-05-05
 
 ### Security

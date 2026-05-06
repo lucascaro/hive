@@ -48,12 +48,19 @@ type Options struct {
 }
 
 // resolveCwd returns the working directory to use for a new session.
-// Caller-supplied wins. Otherwise we use the daemon's own cwd, except
-// when that's "/" (the typical Finder-launch case on macOS) — then we
-// fall back to $HOME so sessions don't open in the filesystem root.
+// Caller-supplied wins, but only if it still exists as a directory —
+// fork/exec with a missing Dir returns a misleading ENOENT that blames
+// the shell binary ("no such file or directory" pointing at $SHELL),
+// so we'd rather fall back than confuse the user. Otherwise we use the
+// daemon's own cwd, except when that's "/" (the typical Finder-launch
+// case on macOS) — then we fall back to $HOME so sessions don't open
+// in the filesystem root.
 func resolveCwd(opt string) string {
 	if opt != "" {
-		return opt
+		if fi, err := os.Stat(opt); err == nil && fi.IsDir() {
+			return opt
+		}
+		log.Printf("session: requested cwd %q is missing or not a directory, falling back", opt)
 	}
 	if cwd, err := os.Getwd(); err == nil && cwd != "" && cwd != "/" {
 		return cwd
