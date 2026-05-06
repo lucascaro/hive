@@ -411,9 +411,19 @@ class SessionTerm {
   }
 
   refit() {
+    // Preserve "viewport pinned to bottom" across the fit. fit.fit()
+    // changes rows/cols and xterm doesn't always keep the viewport at
+    // the latest line — without this, every window resize or view
+    // switch on a session with scrollback would strand the user mid-
+    // history and they'd have to scroll down by hand.
+    const buf = this.term.buffer.active;
+    const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
     try { this.fit.fit(); } catch {}
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
+    }
+    if (wasAtBottom) {
+      requestAnimationFrame(() => this.term.scrollToBottom());
     }
   }
 
@@ -1547,15 +1557,17 @@ EventsOn('pty:event', (id, jsonStr) => {
     const st = state.terms.get(id);
     if (st && ev.kind === 'scrollback_replay_done') {
       st.phase = 'live';
-      // After scrollback replay, snap the viewport to the latest
-      // line so the user sees the cursor / newest output rather than
-      // landing somewhere mid-history.
-      st.term.scrollToBottom();
       // Defensive refit: if measurement at attach time was off (layout
       // not yet settled, font metrics not loaded, etc.) the PTY app may
       // be drawing at the wrong size. A second refit after replay sends
       // the now-correct size and triggers SIGWINCH so the app repaints.
+      // Run it before the explicit scrollToBottom so the fit's geometry
+      // change can't leave us stranded above the latest line.
       st.refit();
+      // After scrollback replay, snap the viewport to the latest
+      // line so the user sees the cursor / newest output rather than
+      // landing somewhere mid-history.
+      st.term.scrollToBottom();
     }
   } catch { /* ignore */ }
 });
