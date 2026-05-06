@@ -234,6 +234,14 @@ class SessionTerm {
         this._writePty('\x15');
         return false;
       }
+      // App-level shortcuts that xterm would otherwise translate into
+      // a control sequence and forward to the PTY (where the shell
+      // beeps because the binding is meaningless). Returning false
+      // tells xterm to ignore the event; it still bubbles to the
+      // window-level keydown handler that runs the actual shortcut.
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Backquote') {
+        return false;
+      }
       return true;
     });
 
