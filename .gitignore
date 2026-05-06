@@ -35,3 +35,6 @@ Thumbs.db
 # hive worktrees
 .worktrees
 .claude/settings.local.json
+
+# graphify knowledge graph (locally generated)
+/graphify-out/
