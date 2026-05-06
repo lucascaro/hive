@@ -110,7 +110,7 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
 - No telemetry in shipped binaries.
 
 [Unreleased]: https://github.com/lucascaro/hive/compare/v2.0.1...HEAD
-[2.0.1]: https://github.com/lucascaro/hive/compare/v2.0.0-alpha.2...v2.0.1
+[2.0.1]: https://github.com/lucascaro/hive/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/lucascaro/hive/compare/v2.0.0-alpha.2...v2.0.0
 [2.0.0-alpha.2]: https://github.com/lucascaro/hive/compare/v2.0.0-alpha.1...v2.0.0-alpha.2
 [2.0.0-alpha.1]: https://github.com/lucascaro/hive/releases/tag/v2.0.0-alpha.1
