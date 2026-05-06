@@ -10,7 +10,7 @@ import {
   CreateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
-  IsGitRepo, OpenURL, Notify, Confirm,
+  IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
   RestartDaemon,
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
@@ -234,6 +234,14 @@ class SessionTerm {
         this._writePty('\x15');
         return false;
       }
+      // App-level shortcuts that xterm would otherwise translate into
+      // a control sequence and forward to the PTY (where the shell
+      // beeps because the binding is meaningless). Returning false
+      // tells xterm to ignore the event; it still bubbles to the
+      // window-level keydown handler that runs the actual shortcut.
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Backquote') {
+        return false;
+      }
       return true;
     });
 
@@ -411,9 +419,19 @@ class SessionTerm {
   }
 
   refit() {
+    // Preserve "viewport pinned to bottom" across the fit. fit.fit()
+    // changes rows/cols and xterm doesn't always keep the viewport at
+    // the latest line — without this, every window resize or view
+    // switch on a session with scrollback would strand the user mid-
+    // history and they'd have to scroll down by hand.
+    const buf = this.term.buffer.active;
+    const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
     try { this.fit.fit(); } catch {}
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
+    }
+    if (wasAtBottom) {
+      requestAnimationFrame(() => this.term.scrollToBottom());
     }
   }
 
@@ -636,6 +654,19 @@ function orderedSessions() {
     if (pa !== pb) return pa - pb;
     return (a.order ?? 0) - (b.order ?? 0);
   });
+}
+
+// activeCwd resolves the directory associated with the current
+// view: a session's worktree (preferred), otherwise the owning
+// project's cwd, otherwise the user's currently-selected project.
+// Empty string means "let the Go side fall back to launchDir".
+function activeCwd() {
+  const id = state.activeId;
+  const s = id ? state.sessions.find((x) => x.id === id) : null;
+  if (s?.worktree_path) return s.worktree_path;
+  const pid = (s?.projectId ?? s?.project_id) || activeProjectId();
+  const p = pid ? state.projects.find((x) => x.id === pid) : null;
+  return p?.cwd ?? '';
 }
 
 function activeProjectId() {
@@ -1547,15 +1578,17 @@ EventsOn('pty:event', (id, jsonStr) => {
     const st = state.terms.get(id);
     if (st && ev.kind === 'scrollback_replay_done') {
       st.phase = 'live';
-      // After scrollback replay, snap the viewport to the latest
-      // line so the user sees the cursor / newest output rather than
-      // landing somewhere mid-history.
-      st.term.scrollToBottom();
       // Defensive refit: if measurement at attach time was off (layout
       // not yet settled, font metrics not loaded, etc.) the PTY app may
       // be drawing at the wrong size. A second refit after replay sends
       // the now-correct size and triggers SIGWINCH so the app repaints.
+      // Run it before the explicit scrollToBottom so the fit's geometry
+      // change can't leave us stranded above the latest line.
       st.refit();
+      // After scrollback replay, snap the viewport to the latest
+      // line so the user sees the cursor / newest output rather than
+      // landing somewhere mid-history.
+      st.term.scrollToBottom();
     }
   } catch { /* ignore */ }
 });
@@ -2018,6 +2051,15 @@ window.addEventListener('keydown', (e) => {
     openCommandPalette();
     return;
   }
+  // ⌃` opens an OS terminal at the active session's worktree (or
+  // its project's cwd as a fallback). Mirrors the VS Code shortcut.
+  if (e.code === 'Backquote' && !e.shiftKey) {
+    swallow();
+    OpenTerminalAt(activeCwd()).catch((err) => {
+      setStatus(`open terminal: ${err}`, true);
+    });
+    return;
+  }
   if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
     swallow();
     openProjectEditor(null);
@@ -2212,6 +2254,7 @@ const paletteCommands = [
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },
+  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch((err) => setStatus(`open terminal: ${err}`, true)) },
   { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow() },
   { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
   { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         shortcut: '⌘G',     run: toggleProjectGrid },
