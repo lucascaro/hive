@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -389,6 +390,14 @@ func (a *App) LaunchDir() string { return a.launchDir }
 // selected path, or "" if the user cancelled. defaultDir, if
 // non-empty, sets the dialog's starting location.
 func (a *App) PickDirectory(defaultDir string) (string, error) {
+	// macOS NSOpenPanel silently fails when DefaultDirectory points
+	// at a missing path, so fall back to launchDir if the saved cwd
+	// no longer exists.
+	if defaultDir != "" {
+		if st, err := os.Stat(defaultDir); err != nil || !st.IsDir() {
+			defaultDir = ""
+		}
+	}
 	if defaultDir == "" {
 		defaultDir = a.launchDir
 	}
