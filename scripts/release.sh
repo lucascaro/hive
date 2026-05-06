@@ -78,7 +78,10 @@ fi
 
 echo "Stamping changelog..."
 
-PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+# git's -v:refname sorts prerelease tags ABOVE the matching release
+# (e.g. v2.0.0-alpha.2 > v2.0.0), which produces wrong compare links.
+# Tell sort to treat "-" as a prerelease marker so v2.0.0 > v2.0.0-alpha.2.
+PREV_TAG=$(git -c versionsort.suffix=- tag -l 'v*' --sort=-v:refname | head -1)
 [[ -n "$PREV_TAG" ]] || PREV_TAG="v0.0.0"
 
 sed -i.bak "s/^## \[Unreleased\]/## [Unreleased]\n\n## [${VERSION}] — ${TODAY}/" CHANGELOG.md
