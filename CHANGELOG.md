@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Bump `golang.org/x/crypto` to 0.45.0, picking up fixes for two
+  moderate `ssh`/`ssh-agent` advisories (panic on malformed message,
+  unbounded memory consumption).
+- Bump `vite` (frontend dev dependency) to 8.0.10, closing a moderate
+  path-traversal advisory in optimized-deps `.map` handling.
+
 ## [2.0.0] — 2026-05-05
 
 First stable release of the v2 native rewrite. See
