@@ -37,21 +37,10 @@ VERSION_FILE="${VERSION_FILE:-}"
 #   Cargo.toml:      's/^version = ".*"/version = "__VERSION__"/'
 VERSION_SED="${VERSION_SED:-}"
 
-# If set, runs build once per PLATFORMS entry to produce artifacts.
-# Leave empty to skip cross-compilation (source releases only).
-#   %GOOS%, %GOARCH%, %OUTPUT%, %EXT% are substituted.
-# Example (Go):
-#   BUILD_CMD='GOOS=%GOOS% GOARCH=%GOARCH% go build -ldflags=-s\ -w -o %OUTPUT%%EXT% .'
-BUILD_CMD="${BUILD_CMD:-}"
-
-# Platforms to build for when BUILD_CMD is set (OS/ARCH pairs).
-PLATFORMS=(
-    "darwin/arm64"
-    "darwin/amd64"
-    "linux/amd64"
-    "linux/arm64"
-    "windows/amd64"
-)
+# Hive's release artifacts are produced by ./build.sh (Wails .app for
+# macOS + cross-compiled Windows zip), not by the generic per-platform
+# loop the hivesmith template provides. The BUILD_CMD/PLATFORMS knobs
+# from the template have been removed; see "BUILD ARTIFACTS" below.
 
 # ---- VALIDATION ----------------------------------------------------------
 
@@ -107,27 +96,22 @@ git add CHANGELOG.md ${VERSION_FILE:+"$VERSION_FILE"}
 git commit -m "release: ${TAG}"
 git tag "$TAG"
 
-# ---- CROSS-COMPILE -------------------------------------------------------
+# ---- BUILD ARTIFACTS -----------------------------------------------------
+#
+# Hive uses Wails for the GUI and a separate `hived` daemon binary, so the
+# generic GOOS/GOARCH loop in the hivesmith template can't produce the
+# right .app/.exe bundles. Delegate to build.sh, which knows how to
+# assemble the macOS universal .app and the Windows amd64 zip.
 
 ARTIFACTS=()
-if [[ -n "$BUILD_CMD" ]]; then
-    echo "Building artifacts..."
-    mkdir -p dist
-    for platform in "${PLATFORMS[@]}"; do
-        GOOS="${platform%/*}"
-        GOARCH="${platform#*/}"
-        EXT=""
-        [[ "$GOOS" == "windows" ]] && EXT=".exe"
-        OUTPUT="dist/${PROJECT}-${GOOS}-${GOARCH}"
-        cmd="${BUILD_CMD//%GOOS%/$GOOS}"
-        cmd="${cmd//%GOARCH%/$GOARCH}"
-        cmd="${cmd//%OUTPUT%/$OUTPUT}"
-        cmd="${cmd//%EXT%/$EXT}"
-        echo "  Building ${OUTPUT}${EXT}..."
-        bash -c "$cmd"
-        ARTIFACTS+=("${OUTPUT}${EXT}")
-    done
-fi
+echo "Building release artifacts via build.sh..."
+./build.sh --zip --version "$VERSION" --platform all
+for f in \
+    "release/Hive-${VERSION}-macos-universal.zip" \
+    "release/Hive-${VERSION}-windows-amd64.zip"; do
+    [[ -f "$f" ]] || { echo "Error: expected artifact missing: $f"; exit 1; }
+    ARTIFACTS+=("$f")
+done
 
 # ---- PUSH ----------------------------------------------------------------
 
@@ -142,7 +126,6 @@ gh release create "$TAG" --title "$TAG" --notes "$NOTES" ${ARTIFACTS[@]+"${ARTIF
 
 # ---- CLEANUP -------------------------------------------------------------
 
-[[ -d dist ]] && rm -rf dist
 echo ""
 echo "Released ${TAG} successfully!"
 echo "  https://github.com/${REPO}/releases/tag/${TAG}"
