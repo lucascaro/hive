@@ -342,6 +342,28 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 	})
 }
 
+// DuplicateSession creates a new session pinned to an explicit cwd —
+// used by the GUI's ⌘D / ⇧⌘D shortcuts to fork the active session into
+// the same project + directory (and same worktree, if the source had
+// one). The caller resolves the cwd on the JS side from the source
+// session's worktree path or its project's cwd.
+//
+// UseWorktree is forced to false here: when cwd already points inside a
+// worktree, we want to *reuse* it, not stack a nested worktree on top.
+// Passing agentID="" creates a generic shell session.
+func (a *App) DuplicateSession(agentID, projectID, cwd string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
+		Agent:       agentID,
+		ProjectID:   projectID,
+		Cwd:         cwd,
+		UseWorktree: false,
+	})
+}
+
 // CreateProject creates a new project.
 func (a *App) CreateProject(name, color, cwd string) error {
 	cs, err := a.requireControl()

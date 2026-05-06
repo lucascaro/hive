@@ -200,6 +200,61 @@ func TestKill_DirtyWorktree_ForceRemoves(t *testing.T) {
 	}
 }
 
+// TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree pins the
+// invariant the GUI's ⌘D / ⇧⌘D shortcut relies on: when the caller
+// passes Cwd pointing inside an existing worktree with UseWorktree=false,
+// the daemon must reuse that directory and not stack a nested
+// .worktrees/* on top. Regressions here would silently double the
+// worktree count every time the user duplicates a session.
+func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	// Source session: spawns a worktree under p.Cwd/.worktrees/<branch>.
+	src, err := r.Create(wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	defer r.Kill(src.ID, true)
+	wtPath := src.WorktreePath
+	if wtPath == "" {
+		t.Fatalf("expected source to have a worktree")
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	// Duplicate: explicit cwd inside the existing worktree, UseWorktree
+	// off. This is exactly the wire payload the GUI sends on ⌘D.
+	dup, err := r.Create(wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
+		Cwd: wtPath, UseWorktree: false,
+	})
+	if err != nil {
+		t.Fatalf("Create dup: %v", err)
+	}
+	defer r.Kill(dup.ID, true)
+
+	if dup.WorktreePath != "" {
+		t.Errorf("duplicate should not own a worktree; got %q", dup.WorktreePath)
+	}
+	// No nested .worktrees/ under the source worktree dir.
+	if _, err := os.Stat(filepath.Join(wtPath, ".worktrees")); err == nil {
+		t.Errorf("nested .worktrees/ created under source worktree at %q", wtPath)
+	}
+	// `git worktree list` should still show exactly two entries (main
+	// + the source's worktree). A nested worktree would show three.
+	out, err := exec.Command("git", "-C", p.Cwd, "worktree", "list").Output()
+	if err != nil {
+		t.Fatalf("git worktree list: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != 2 {
+		t.Errorf("expected 2 worktree entries (main + source), got %d:\n%s",
+			len(lines), out)
+	}
+}
+
 func TestRevive_StaleWorktreePath_SelfHeals(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
