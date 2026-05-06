@@ -16,10 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Session start: when a saved session's working directory no longer
-  exists, fall back to the daemon's cwd / `$HOME` instead of failing
-  with a misleading `fork/exec <shell>: no such file or directory`
-  error (Go reports the shell path on `chdir` failure, which made the
-  real cause — the missing directory — invisible).
+  exists, fail with a clear error naming the missing directory instead
+  of the misleading `fork/exec <shell>: no such file or directory`
+  Go produces on `chdir` failure (which sent users hunting for a
+  missing shell when the real cause was a deleted project directory).
 
 ## [2.0.1] — 2026-05-05
 

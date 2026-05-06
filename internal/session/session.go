@@ -4,6 +4,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -48,27 +49,36 @@ type Options struct {
 }
 
 // resolveCwd returns the working directory to use for a new session.
-// Caller-supplied wins, but only if it still exists as a directory —
-// fork/exec with a missing Dir returns a misleading ENOENT that blames
-// the shell binary ("no such file or directory" pointing at $SHELL),
-// so we'd rather fall back than confuse the user. Otherwise we use the
-// daemon's own cwd, except when that's "/" (the typical Finder-launch
-// case on macOS) — then we fall back to $HOME so sessions don't open
-// in the filesystem root.
-func resolveCwd(opt string) string {
+// A caller-supplied path must exist and be a directory — if it doesn't,
+// we return an error rather than silently substituting a different one.
+// (Without this check, fork/exec surfaces the failure as a misleading
+// ENOENT pointing at the shell binary, e.g. "fork/exec /usr/local/bin/fish:
+// no such file or directory", which sends users hunting for a missing
+// shell when the real cause is a deleted project directory.) When no
+// path is supplied, fall back to the daemon's own cwd, except when
+// that's "/" (the typical Finder-launch case on macOS) — then $HOME,
+// so sessions don't open in the filesystem root.
+func resolveCwd(opt string) (string, error) {
 	if opt != "" {
-		if fi, err := os.Stat(opt); err == nil && fi.IsDir() {
-			return opt
+		fi, err := os.Stat(opt)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("session cwd %q does not exist (was the directory moved or deleted?)", opt)
+			}
+			return "", fmt.Errorf("session cwd %q: %w", opt, err)
 		}
-		log.Printf("session: requested cwd %q is missing or not a directory, falling back", opt)
+		if !fi.IsDir() {
+			return "", fmt.Errorf("session cwd %q is not a directory", opt)
+		}
+		return opt, nil
 	}
 	if cwd, err := os.Getwd(); err == nil && cwd != "" && cwd != "/" {
-		return cwd
+		return cwd, nil
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		return home
+		return home, nil
 	}
-	return ""
+	return "", nil
 }
 
 // Start spawns a process on a new PTY. By default the process is the
@@ -115,7 +125,12 @@ func Start(opts Options) (*Session, error) {
 	if len(opts.Env) > 0 {
 		cmd.Env = append(cmd.Env, opts.Env...)
 	}
-	cmd.Dir = resolveCwd(opts.Cwd)
+	dir, err := resolveCwd(opts.Cwd)
+	if err != nil {
+		_ = ptmx.Close()
+		return nil, err
+	}
+	cmd.Dir = dir
 	if err := cmd.Start(); err != nil {
 		_ = ptmx.Close()
 		return nil, err
