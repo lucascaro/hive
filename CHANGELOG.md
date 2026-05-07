@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- GUI: Pressing Enter while editing a session or project name in the
+  sidebar now reliably commits the new name and exits edit mode,
+  matching the tile-rename behavior. Previously the input could linger,
+  fire `UpdateSession` twice via the blur path, or be swallowed by the
+  dead-session overlay's Enter handler. (#155)
+
 ## [2.1.0] — 2026-05-07
 
 ### Added
