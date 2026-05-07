@@ -59,6 +59,8 @@ const (
 	FrameKillProject   FrameType = 0x10 // C → S, JSON, control
 	FrameUpdateProject FrameType = 0x11 // C → S, JSON, control
 	FrameProjectEvent  FrameType = 0x12 // S → C, JSON, control
+
+	FrameRestartSession FrameType = 0x13 // C → S, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -99,6 +101,8 @@ func (t FrameType) String() string {
 		return "UPDATE_PROJECT"
 	case FrameProjectEvent:
 		return "PROJECT_EVENT"
+	case FrameRestartSession:
+		return "RESTART_SESSION"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

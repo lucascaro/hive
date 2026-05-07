@@ -529,6 +529,66 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	return nil
 }
 
+// Restart terminates the agent process running in the session and
+// respawns it in place. The Entry (its ID, Name, Color, Order, and
+// worktree binding) is preserved — only the underlying PTY/process
+// is recycled. If the agent has a ResumeCmd defined we use it so
+// the new process picks up the prior conversation; otherwise we
+// fall back to the agent's normal Cmd. If the session is already
+// dead (e.sess == nil) we just respawn.
+//
+// Use cases:
+//   - User updated agent skills/config and wants the agent to
+//     re-read them without losing the conversation.
+//   - (Future) recovering after RestartDaemon.
+func (r *Registry) Restart(id string) error {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok {
+		r.mu.Unlock()
+		return ErrNotFound
+	}
+	sess := e.sess
+	agentID := e.Agent
+	projectCwd := ""
+	if p, ok := r.projects[e.ProjectID]; ok {
+		projectCwd = p.Cwd
+	}
+	r.mu.Unlock()
+
+	// Tear down the current PTY. watchSessionExit also observes the
+	// close, but it races with our Revive call below — Revive's
+	// "already alive" guard short-circuits if e.sess hasn't been
+	// cleared yet. Wait for the readLoop to drain, then clear e.sess
+	// ourselves under the lock so Revive sees a vacant slot.
+	// watchSessionExit will then no-op (it checks e.sess == sess).
+	if sess != nil {
+		_ = sess.Close()
+		<-sess.Done()
+		r.mu.Lock()
+		if e2, ok := r.entries[id]; ok && e2.sess == sess {
+			e2.sess = nil
+		}
+		r.mu.Unlock()
+	}
+
+	var opts session.Options
+	if def, ok := agent.Get(agent.ID(agentID)); ok {
+		if len(def.ResumeCmd) > 0 {
+			opts.Cmd = def.ResumeCmd
+		} else {
+			opts.Cmd = def.Cmd
+		}
+	}
+	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
+	// wtPath when the worktree directory still exists; if the user removed
+	// it out-of-band, Revive's self-heal clears the worktree fields but
+	// leaves opts.Cwd alone — projectCwd is what session.Start should use.
+	opts.Cwd = projectCwd
+
+	return r.Revive(id, opts)
+}
+
 // Adopt registers an externally-started session under the given
 // metadata. Used by the daemon for its bootstrap session in Phase 2
 // transitional code (before the GUI calls CREATE_SESSION explicitly).

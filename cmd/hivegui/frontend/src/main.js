@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession,
-  CreateSession, DuplicateSession, KillSession, UpdateSession, ListAgents,
+  CreateSession, DuplicateSession, KillSession, RestartSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
@@ -205,6 +205,12 @@ class SessionTerm {
     });
 
     this.attached = false;
+    // needsReattach is set by pty:disconnect when our attach connection
+    // drops (e.g. Restart Session closes the daemon-side PTY). The next
+    // session:event(updated, alive=true) consumes the flag and triggers
+    // ensureAttached so the new PTY's stream resumes without the user
+    // having to switch sessions and back.
+    this.needsReattach = false;
     this.phase = 'replay';
 
     // Track the OSC-set window title from the running TUI (vim, htop,
@@ -1562,6 +1568,20 @@ EventsOn('session:event', (jsonStr) => {
       const pid = ev.session.projectId ?? ev.session.project_id;
       const proj = state.projects.find((p) => p.id === pid);
       st.setProject(proj?.name ?? '', proj?.color ?? '');
+      // Restart Session path: pty:disconnect already flipped attached
+      // off and set needsReattach. Now that the daemon has confirmed
+      // a fresh alive=true PTY, reattach the visible term so its
+      // resumed stream starts flowing without a manual switch.
+      // Hidden terms are left dirty; switchTo/showSingle/renderGrid
+      // will ensureAttached when they next become visible.
+      if (st.needsReattach && ev.session.alive) {
+        st.needsReattach = false;
+        try { st.term.reset(); } catch {}
+        const visible =
+          (state.view === 'single' && state.activeId === ev.session.id) ||
+          (state.view !== 'single' && st.host.classList.contains('in-grid'));
+        if (visible) st.ensureAttached();
+      }
     }
     if (state.activeId === ev.session.id) updateAppTitle();
   }
@@ -1595,7 +1615,13 @@ EventsOn('pty:event', (id, jsonStr) => {
 
 EventsOn('pty:disconnect', (id) => {
   const st = state.terms.get(id);
-  if (st) st.attached = false;
+  if (st) {
+    st.attached = false;
+    // Mark the term as needing reattach. Restart Session closes the
+    // daemon-side PTY (which lands here) and respawns; the subsequent
+    // session:event(updated, alive=true) is where we re-OpenSession.
+    st.needsReattach = true;
+  }
 });
 
 EventsOn('pty:error', (id, jsonStr) => {
@@ -2096,6 +2122,15 @@ function duplicateActiveSession() {
   DuplicateSession(s.agent || '', pid, cwd);
 }
 
+function restartActiveSession() {
+  const s = state.sessions.find((x) => x.id === state.activeId);
+  if (!s) {
+    setStatus('no active session to restart', true);
+    return;
+  }
+  RestartSession(s.id);
+}
+
 function duplicateActiveSessionChooseTool() {
   const s = state.sessions.find((x) => x.id === state.activeId);
   if (!s) return;
@@ -2391,6 +2426,7 @@ const menuActions = {
   'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
   'menu:duplicate-session': duplicateActiveSession,
   'menu:duplicate-session-choose-tool': duplicateActiveSessionChooseTool,
+  'menu:restart-session': restartActiveSession,
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
@@ -2449,6 +2485,7 @@ const paletteCommands = [
   { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
   { id: 'duplicate-session',    name: 'Duplicate Session',           shortcut: '⌘P',     run: duplicateActiveSession },
   { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
+  { id: 'restart-session',      name: 'Restart Session',             shortcut: '',       run: restartActiveSession },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },

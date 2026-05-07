@@ -123,6 +123,48 @@ func TestSessionExitBroadcastsDead(t *testing.T) {
 	}
 }
 
+func TestRestart_PreservesEntry(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "alpha", Color: "#abc", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	origSess := a.Session()
+	if origSess == nil {
+		t.Fatalf("expected live session before restart")
+	}
+
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	got := r.List()
+	if len(got) != 1 || got[0].ID != a.ID {
+		t.Fatalf("expected single entry with same ID after restart, got %+v", got)
+	}
+	if got[0].Name != "alpha" || got[0].Color != "#abc" {
+		t.Errorf("entry metadata changed after restart: %+v", got[0])
+	}
+	if !got[0].Alive {
+		t.Errorf("entry should be alive after restart")
+	}
+
+	// The original session should have been closed and replaced.
+	select {
+	case <-origSess.Done():
+	case <-time.After(2 * time.Second):
+		t.Errorf("original session never exited")
+	}
+	r.mu.Lock()
+	newSess := r.entries[a.ID].sess
+	r.mu.Unlock()
+	if newSess == nil || newSess == origSess {
+		t.Errorf("expected a fresh session after restart")
+	}
+}
+
 func TestUpdateRenameAndColor(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)

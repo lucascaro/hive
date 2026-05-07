@@ -105,6 +105,14 @@ type KillSessionReq struct {
 	Force     bool   `json:"force,omitempty"`
 }
 
+// RestartSessionReq is the RESTART_SESSION payload. The daemon
+// terminates the agent process in place (preserving the session
+// entry, its name/color/order/worktree) and respawns it using the
+// agent's ResumeCmd if defined, otherwise its Cmd.
+type RestartSessionReq struct {
+	SessionID string `json:"session_id"`
+}
+
 // UpdateSessionReq mutates session metadata. Pointer fields are
 // "omit if not setting". Order is *int because 0 is a valid value
 // and we need to distinguish "no change" from "set to zero".

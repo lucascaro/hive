@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GUI: Restart Session command (palette + File menu) recycles the
+  active session's agent process in place. The sidebar slot, name,
+  color, order, and worktree are preserved; the agent is relaunched
+  with its resume flag (`claude --continue`, `codex resume --last`,
+  etc.) so the prior conversation is picked back up. Useful for
+  picking up new skills/config without losing state.
 - GUI: ⌘P duplicates the active session into the same cwd/worktree;
   ⇧⌘P opens the launcher pinned to that cwd to pick a different tool.
   The duplicate adopts the source's worktree (no nested `.worktrees/*`
