@@ -201,7 +201,7 @@ func TestKill_DirtyWorktree_ForceRemoves(t *testing.T) {
 }
 
 // TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree pins the
-// invariant the GUI's ⌘D / ⇧⌘D shortcut relies on: when the caller
+// invariant the GUI's ⌘P / ⇧⌘P shortcut relies on: when the caller
 // passes Cwd pointing inside an existing worktree with UseWorktree=false,
 // the daemon must reuse that directory and not stack a nested
 // .worktrees/* on top. Regressions here would silently double the
@@ -225,7 +225,7 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 
 	// Duplicate: explicit cwd inside the existing worktree, UseWorktree
-	// off. This is exactly the wire payload the GUI sends on ⌘D.
+	// off. This is exactly the wire payload the GUI sends on ⌘P.
 	dup, err := r.Create(wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
 		Cwd: wtPath, UseWorktree: false,

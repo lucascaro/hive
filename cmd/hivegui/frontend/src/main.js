@@ -1953,11 +1953,18 @@ function closeLauncher() {
 
 // resolveSessionCwd picks the directory a session is actually running
 // in: its worktree path if any, otherwise the owning project's cwd.
-// Used by ⌘D / ⇧⌘D to fork a session into the same directory.
+// Used by ⌘P / ⇧⌘P to fork a session into the same directory.
+//
+// Wire payloads from the daemon use snake_case (see
+// internal/wire/control.go), so prefer those and fall back to the
+// camelCase variants for safety — this matches `s.projectId ??
+// s.project_id` used elsewhere in this file.
 function resolveSessionCwd(sess) {
   if (!sess) return '';
-  if (sess.worktreePath) return sess.worktreePath;
-  const proj = state.projects.find((p) => p.id === sess.projectId);
+  const wt = sess.worktree_path ?? sess.worktreePath;
+  if (wt) return wt;
+  const pid = sess.projectId ?? sess.project_id;
+  const proj = state.projects.find((p) => p.id === pid);
   return proj?.cwd ?? '';
 }
 
@@ -1969,8 +1976,9 @@ function duplicateActiveSession() {
     setStatus('cannot duplicate: source session has no cwd', true);
     return;
   }
+  const pid = s.projectId ?? s.project_id ?? '';
   if (s.agent) bumpAgentUsage(s.agent);
-  DuplicateSession(s.agent || '', s.projectId || '', cwd);
+  DuplicateSession(s.agent || '', pid, cwd);
 }
 
 function duplicateActiveSessionChooseTool() {
@@ -1981,7 +1989,8 @@ function duplicateActiveSessionChooseTool() {
     setStatus('cannot duplicate: source session has no cwd', true);
     return;
   }
-  openLauncher(s.projectId, { duplicateFrom: s, duplicateCwd: cwd });
+  const pid = s.projectId ?? s.project_id ?? '';
+  openLauncher(pid, { duplicateFrom: s, duplicateCwd: cwd });
 }
 
 document.addEventListener('click', (e) => {
@@ -2128,17 +2137,14 @@ window.addEventListener('keydown', (e) => {
     });
     return;
   }
-  if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
+  if (e.key === 'p' || e.key === 'P') {
     swallow();
-    openProjectEditor(null);
+    if (e.shiftKey) duplicateActiveSessionChooseTool();
+    else duplicateActiveSession();
   } else if (e.key === 't' || e.key === 'T') {
     swallow();
     if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
     else openLauncher();
-  } else if (e.key === 'd' || e.key === 'D') {
-    swallow();
-    if (e.shiftKey) duplicateActiveSessionChooseTool();
-    else duplicateActiveSession();
   } else if (e.key === 'Backspace' && e.shiftKey) {
     swallow();
     deleteActiveProject();

@@ -343,7 +343,7 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 }
 
 // DuplicateSession creates a new session pinned to an explicit cwd —
-// used by the GUI's ⌘D / ⇧⌘D shortcuts to fork the active session into
+// used by the GUI's ⌘P / ⇧⌘P shortcuts to fork the active session into
 // the same project + directory (and same worktree, if the source had
 // one). The caller resolves the cwd on the JS side from the source
 // session's worktree path or its project's cwd.
