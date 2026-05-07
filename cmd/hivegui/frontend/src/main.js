@@ -441,7 +441,8 @@ class SessionTerm {
       // geometry also paints the corrected viewport — without this
       // the user sees a one-frame "jump" on every refit. The rAF
       // re-pin is a backstop in case fit's resize completes async
-      // and bumps the viewport again after the sync call.
+      // and bumps the viewport again after the sync call. Both
+      // calls are intentional; do not collapse to one.
       this.term.scrollToBottom();
       requestAnimationFrame(() => this.term.scrollToBottom());
     }
@@ -1296,8 +1297,11 @@ function renderGrid() {
   // swaps (keyboard nav inside grid mode) don't resize anything but
   // would otherwise call fit.fit() on every tile — and fit.fit()
   // perturbs xterm's viewport for one frame, which the user sees as
-  // the active session "jumping up" on each arrow press.
-  const geomKey = `${rows}x${cols}@${w}x${h}:${n}`;
+  // the active session "jumping up" on each arrow press. The session
+  // id list is part of the key so a project / scope swap that lands
+  // on the same (rows, cols, w, h) still triggers refit — newly
+  // visible tiles may have stale xterm dimensions from a prior view.
+  const geomKey = `${rows}x${cols}@${w}x${h}:${gridSessions.map((s) => s.id).join(',')}`;
   const geomChanged = geomKey !== gridLayout.geomKey;
   gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap, geomKey };
 
