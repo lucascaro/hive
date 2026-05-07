@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worktree directory is only cleaned up when the last session in it
   is killed. New entries also appear in the command palette and the
   File menu.
+- GUI: in-app "Update available" banner. The desktop app now polls
+  GitHub releases on load and every 6h, surfacing a banner with a
+  one-click link to the release page when a newer tagged build
+  exists. Manual trigger via File → "Check for Updates…". Untagged
+  dev builds skip the check.
 
 ### Changed
 

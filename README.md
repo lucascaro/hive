@@ -59,6 +59,20 @@ GOOS=linux GOARCH=amd64 go build -o cmd/hivegui/build/bin/hived ./cmd/hived
 `hivegui` and `hived` must live in the same directory; the GUI
 auto-spawns the daemon at startup.
 
+## Updating
+
+Tagged release builds check GitHub for newer releases automatically:
+once on launch and every six hours. When a newer tag is found, the
+GUI shows an "Update available" banner with a one-click link to the
+release page. The check is also reachable manually from
+**File → Check for Updates…**.
+
+The check is a single anonymous `GET` to
+`api.github.com/repos/lucascaro/hive/releases/latest` (no
+identifying data beyond a `User-Agent: hivegui/<build-id>` header).
+Untagged dev builds — anything built without `./build.sh --version
+<tag>` — skip the check entirely and never call out.
+
 ## Layout
 
 ```
