@@ -101,6 +101,7 @@ func (a *App) startup(ctx context.Context) {
 		go wruntime.EventsEmit(ctx, "bell-click", tag)
 	})
 	go a.persistGeometryLoop(ctx)
+	a.startUpdateCheckLoop(ctx)
 }
 
 func (a *App) shutdown(ctx context.Context) {

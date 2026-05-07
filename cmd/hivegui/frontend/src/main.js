@@ -11,7 +11,7 @@ import {
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
-  RestartDaemon,
+  RestartDaemon, CheckForUpdate,
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 
@@ -1695,6 +1695,102 @@ EventsOn('daemon:stale', (ev) => {
   }
 });
 
+// Update-available banner. Backend's startUpdateCheckLoop emits
+// "update:available" on startup + every 6h when a newer GitHub
+// release tag than buildinfo.Version() is found. The user can also
+// trigger it manually via the "Check for Updates…" menu item, which
+// calls CheckForUpdate() and surfaces *all* outcomes (including
+// "you're up to date" and "skipped: dev build") so the click feels
+// responsive. Dismissals are remembered per-version in localStorage
+// so the 6h tick doesn't re-nag for a release the user has already
+// seen.
+const updateBannerEl = document.getElementById('update-banner');
+const updateBannerText = document.getElementById('update-banner-text');
+const updateBannerDownload = document.getElementById('update-banner-download');
+const updateBannerDismiss = document.getElementById('update-banner-dismiss');
+const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
+let updateBannerAutoHideTimer = null;
+
+function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {}) {
+  updateBannerText.textContent = text;
+  updateBannerDownload.style.display = showDownload && downloadUrl ? '' : 'none';
+  updateBannerEl.dataset.url = downloadUrl;
+  updateBannerEl.classList.remove('hidden');
+  if (updateBannerAutoHideTimer) {
+    clearTimeout(updateBannerAutoHideTimer);
+    updateBannerAutoHideTimer = null;
+  }
+  if (autoHideMs > 0) {
+    updateBannerAutoHideTimer = setTimeout(() => {
+      hideUpdateBanner();
+      updateBannerAutoHideTimer = null;
+    }, autoHideMs);
+  }
+}
+function hideUpdateBanner() { updateBannerEl.classList.add('hidden'); }
+
+updateBannerDownload.addEventListener('click', () => {
+  const url = updateBannerEl.dataset.url;
+  if (url) OpenURL(url);
+});
+updateBannerDismiss.addEventListener('click', () => {
+  const v = updateBannerEl.dataset.version || '';
+  if (v) {
+    try { localStorage.setItem(UPDATE_DISMISS_KEY, v); } catch {}
+  }
+  hideUpdateBanner();
+});
+
+// Transient (non-actionable) banners auto-hide so they don't linger
+// after the user has registered the message. The "available" banner
+// stays sticky — it has a Download button the user actually needs.
+const UPDATE_TRANSIENT_MS = 4000;
+
+function applyUpdateInfo(info, { manual = false } = {}) {
+  if (!info) return;
+  if (info.skipped) {
+    if (manual) {
+      showUpdateBanner('Update check skipped — this is a dev build.',
+        { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+    }
+    return;
+  }
+  if (info.available) {
+    let dismissed = '';
+    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch {}
+    if (!manual && dismissed === info.latest) return;
+    updateBannerEl.dataset.version = info.latest;
+    showUpdateBanner(
+      `Hive ${info.latest} is available (you have ${info.current}).`,
+      { downloadUrl: info.url },
+    );
+    return;
+  }
+  if (manual) {
+    showUpdateBanner(`Hive ${info.current} is up to date.`,
+      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+  }
+}
+
+EventsOn('update:available', (info) => applyUpdateInfo(info));
+
+// Pull once on load. Closes the race where the backend's startup
+// goroutine emits update:available before this listener exists (slow
+// WebView load). The Go side's 5s delay also still fires, but a
+// duplicate result is a no-op here.
+CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
+
+async function manualUpdateCheck() {
+  showUpdateBanner('Checking for updates…', { showDownload: false });
+  try {
+    const info = await CheckForUpdate();
+    applyUpdateInfo(info, { manual: true });
+  } catch (err) {
+    showUpdateBanner(`Update check failed: ${err}`,
+      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+  }
+}
+
 // User clicked a notification toast. Route to that session in the
 // current view (single keeps single, grid keeps grid) without toggling
 // modes. switchTo handles the view-aware repaint.
@@ -2292,6 +2388,7 @@ const menuActions = {
   'menu:move-session-backward': () => reorderActive(-1),
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
+  'menu:check-for-updates': () => manualUpdateCheck(),
 };
 for (const [name, fn] of Object.entries(menuActions)) {
   EventsOn(name, fn);

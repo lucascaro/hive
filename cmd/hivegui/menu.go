@@ -54,6 +54,8 @@ func buildAppMenu(a *App) *menu.Menu {
 	file.AddText("Delete Project…",
 		keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:delete-project"))
+	file.AddSeparator()
+	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
 
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 
