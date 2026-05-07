@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -14,18 +15,22 @@ func skipOnWindows(t *testing.T) {
 	}
 }
 
-type bufSink struct {
-	mu  *bufSinkMu
-}
 type bufSinkMu struct {
+	mu  sync.Mutex
 	buf bytes.Buffer
 }
 
 func (b *bufSinkMu) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return b.buf.Write(p)
 }
 
-func (b *bufSinkMu) String() string { return b.buf.String() }
+func (b *bufSinkMu) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 // drainUntil polls fn until it returns true or the deadline expires.
 func drainUntil(fn func() bool, d time.Duration) bool {

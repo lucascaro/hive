@@ -154,12 +154,7 @@ func (s *Session) readLoop() {
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
-			if _, vterr := s.vt.Write(buf[:n]); vterr != nil {
-				s.vtErrOnce.Do(func() {
-					log.Printf("session %s: vt write: %v", s.ID, vterr)
-				})
-			}
-			s.fanout(buf[:n])
+			s.deliver(buf[:n])
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -171,8 +166,22 @@ func (s *Session) readLoop() {
 	}
 }
 
-func (s *Session) fanout(p []byte) {
+// deliver applies one chunk of PTY output to the VT mirror and fans it
+// out to every active sink under a single critical section. Holding
+// s.mu across both steps is what makes SubscribeAtomicSnapshot's
+// "snapshot then live" guarantee actually atomic: a reattach either
+// sees the snapshot before this chunk (and receives it via fanout) or
+// after (and the chunk is in the snapshot but the new sink wasn't
+// registered when fanout ran). Without the shared lock, a chunk could
+// land in the snapshot AND be re-delivered to the new sink.
+func (s *Session) deliver(p []byte) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, vterr := s.vt.Write(p); vterr != nil {
+		s.vtErrOnce.Do(func() {
+			log.Printf("session %s: vt write: %v", s.ID, vterr)
+		})
+	}
 	dead := make([]Sink, 0)
 	for sink := range s.sinks {
 		if _, err := sink.Write(p); err != nil {
@@ -182,7 +191,6 @@ func (s *Session) fanout(p []byte) {
 	for _, d := range dead {
 		delete(s.sinks, d)
 	}
-	s.mu.Unlock()
 }
 
 func (s *Session) fanoutClose() {
