@@ -39,8 +39,15 @@ var updateURLPrefix = "https://github.com/" + updateRepo + "/"
 var updateCheckInterval = 6 * time.Hour
 
 // UpdateInfo is the payload of both CheckForUpdate's return value and
-// the "update:available" Wails event. Frontend reads .Available to
-// decide whether to show the banner; .URL goes to OpenURL on click.
+// the "update:available" Wails event.
+//
+// Available means strictly "a newer tagged release than the running
+// build exists" — it does NOT also imply that we trust the URL. URL
+// is set only when the release's html_url passes updateURLPrefix; the
+// frontend renders without a Download button when it's empty so a
+// suspicious response can't push a file:// or javascript: URL into
+// BrowserOpenURL, but the user is still told an update exists rather
+// than being silently rewritten to "up to date".
 type UpdateInfo struct {
 	Available bool   `json:"available"`
 	Current   string `json:"current"`
@@ -67,7 +74,15 @@ func (a *App) CheckForUpdate() (UpdateInfo, error) {
 		return info, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Derive from a.ctx (the Wails runtime context) when set so an
+	// in-flight check is cancelled at shutdown instead of holding the
+	// process for ~5s. Falls back to Background for the rare case
+	// where startup() hasn't run yet.
+	parent := context.Background()
+	if a.ctx != nil {
+		parent = a.ctx
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, updateReleasesAPI, nil)
 	if err != nil {
@@ -95,7 +110,11 @@ func (a *App) CheckForUpdate() (UpdateInfo, error) {
 	if strings.HasPrefix(rel.HTMLURL, updateURLPrefix) {
 		info.URL = rel.HTMLURL
 	}
-	if latest != "" && info.URL != "" && compareSemver(current, latest) < 0 {
+	// Available reflects ONLY whether there's a newer release. URL
+	// trust is reported separately via info.URL (empty = don't show a
+	// Download button) so a tampered html_url can't silently rewrite
+	// "available" into "up to date".
+	if latest != "" && compareSemver(current, latest) < 0 {
 		info.Available = true
 	}
 	return info, nil

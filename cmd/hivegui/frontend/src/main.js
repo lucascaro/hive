@@ -1715,6 +1715,11 @@ function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHid
   updateBannerText.textContent = text;
   updateBannerDownload.style.display = showDownload && downloadUrl ? '' : 'none';
   updateBannerEl.dataset.url = downloadUrl;
+  // Clear the per-version dismissal key on every show — only the
+  // "available" branch sets it back. Without this, dismissing a
+  // transient banner ("up to date", "checking…") would write a
+  // stale version into localStorage.
+  delete updateBannerEl.dataset.version;
   updateBannerEl.classList.remove('hidden');
   if (updateBannerAutoHideTimer) {
     clearTimeout(updateBannerAutoHideTimer);
@@ -1759,11 +1764,17 @@ function applyUpdateInfo(info, { manual = false } = {}) {
     let dismissed = '';
     try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch {}
     if (!manual && dismissed === info.latest) return;
+    // info.url is empty when the Go side rejected the release's
+    // html_url for failing the github.com/<repo>/ prefix check
+    // (defense-in-depth against a tampered or spoofed response).
+    // Still tell the user an update exists; just don't expose a
+    // one-click Download for an untrusted target.
+    const trustedURL = !!info.url;
+    const text = trustedURL
+      ? `Hive ${info.latest} is available (you have ${info.current}).`
+      : `Hive ${info.latest} is available (you have ${info.current}). Open releases page manually.`;
+    showUpdateBanner(text, { downloadUrl: info.url });
     updateBannerEl.dataset.version = info.latest;
-    showUpdateBanner(
-      `Hive ${info.latest} is available (you have ${info.current}).`,
-      { downloadUrl: info.url },
-    );
     return;
   }
   if (manual) {
@@ -1774,13 +1785,19 @@ function applyUpdateInfo(info, { manual = false } = {}) {
 
 EventsOn('update:available', (info) => applyUpdateInfo(info));
 
-// Pull once on load. Closes the race where the backend's startup
-// goroutine emits update:available before this listener exists (slow
-// WebView load). The Go side's 5s delay also still fires, but a
-// duplicate result is a no-op here.
+// Pull once on load. The Go side's periodic loop only fires every
+// 6h, so without this the user wouldn't see an "available" banner
+// until 6h after launch.
 CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
 
+// Guard against double-firing CheckForUpdate from the menu — clicking
+// "Check for Updates…" repeatedly should not produce N parallel
+// GitHub API calls.
+let updateCheckInFlight = false;
+
 async function manualUpdateCheck() {
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
   showUpdateBanner('Checking for updates…', { showDownload: false });
   try {
     const info = await CheckForUpdate();
@@ -1788,6 +1805,8 @@ async function manualUpdateCheck() {
   } catch (err) {
     showUpdateBanner(`Update check failed: ${err}`,
       { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+  } finally {
+    updateCheckInFlight = false;
   }
 }
 

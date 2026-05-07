@@ -92,6 +92,15 @@ func Version() string {
 	return versionOverride
 }
 
+// SetVersionForTest overrides Version() for the lifetime of the
+// caller's test. Use t.Cleanup with the returned restore function.
+// Tests that mutate this must not run with t.Parallel().
+func SetVersionForTest(value string) (restore func()) {
+	prev := versionOverride
+	versionOverride = value
+	return func() { versionOverride = prev }
+}
+
 func vcsBuildID() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
