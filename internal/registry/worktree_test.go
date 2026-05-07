@@ -347,3 +347,38 @@ func TestRevive_StaleWorktreePath_SelfHeals(t *testing.T) {
 	// Cleanup the new live session.
 	_ = r.Kill(e.ID, true)
 }
+
+// Revive must use the entry's project cwd, ignoring whatever cwd
+// the caller passed in opts. This matches the daemon-startup case
+// where hived's launch dir (often `/`) is meaningless and using it
+// breaks PATH resolution for project-local binaries (e.g. a
+// `node_modules/.bin/codex` symlink installed by `npm ci`).
+func TestRevive_UsesProjectCwd_NotCallerOpts(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	e, err := r.Create(wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	// Pretend the daemon restarted: detach the live session.
+	if e.sess != nil {
+		_ = e.sess.Close()
+		r.mu.Lock()
+		e.sess = nil
+		r.mu.Unlock()
+	}
+
+	// Pass a bogus cwd that does not exist. If Revive honored it,
+	// session.Start would fail with ENOENT. If Revive correctly
+	// substitutes the project cwd, the session starts cleanly.
+	bogus := filepath.Join(t.TempDir(), "does", "not", "exist")
+	if err := r.Revive(e.ID, session.Options{Shell: "/bin/bash", Cwd: bogus}); err != nil {
+		t.Fatalf("Revive: %v (expected project cwd to override bogus opts.Cwd)", err)
+	}
+	_ = r.Kill(e.ID, true)
+}
