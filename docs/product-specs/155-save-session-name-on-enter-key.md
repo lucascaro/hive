@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/155-save-session-name-on-enter-key.md](../exec-plans/active/155-save-session-name-on-enter-key.md)
+- **Exec plan:** [docs/exec-plans/completed/155-save-session-name-on-enter-key.md](../exec-plans/completed/155-save-session-name-on-enter-key.md)
 
 ## Problem
 

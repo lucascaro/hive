@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/155-save-session-name-on-enter-key.md](../../product-specs/155-save-session-name-on-enter-key.md)
 - **Issue:** #155
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -48,6 +48,7 @@ This is a UI keyboard-interaction fix in the frontend; the project has no JS uni
 
 - **2026-05-07** — Spec and exec plan created. Stage: RESEARCH.
 - **2026-05-07** — Plan approved; implemented in `cmd/hivegui/frontend/src/main.js` (sidebar session + project rename now mirror `_beginRename` pattern). Go tests pass; JS syntax-checked. Stage: IMPLEMENT.
+- **2026-05-07** — PR #156 opened. Converged via /hs-ralph-loop in 1 iteration (APPROVE on first review). Stage: DONE.
 
 ## Open questions
 

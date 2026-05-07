@@ -7,13 +7,13 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
-| P2 | #155 | Save session name on Enter key when editing | IMPLEMENT | [155-save-session-name-on-enter-key](155-save-session-name-on-enter-key.md) |
 
 ## Completed
 
 | Issue | Title | Shipped | Spec |
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
+| #155 | Save session name on Enter key when editing | 2026-05-07 | [155-save-session-name-on-enter-key](155-save-session-name-on-enter-key.md) |
 
 ## Rejected
 
