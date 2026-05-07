@@ -458,7 +458,7 @@ func (f *frameSink) Close() error { return f.conn.Close() }
 // bootstrapWanted reports whether opts has any non-default field set.
 // Can't use struct equality because session.Options has a slice field.
 func bootstrapWanted(opts session.Options) bool {
-	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || opts.ScrollBytes != 0 || len(opts.Env) > 0
+	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || len(opts.Env) > 0
 }
 
 func writeChunked(w io.Writer, t wire.FrameType, p []byte, chunk int) error {
