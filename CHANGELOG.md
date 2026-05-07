@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: after Restart Session, keyboard focus now returns to the
+  resumed terminal instead of leaving the window without a focused
+  element. The reattach path on `pty:disconnect` + `session:event(updated, alive)`
+  now calls `focusActiveTerm()` for the active session.
 - Session start: when a saved session's working directory no longer
   exists, fail with a clear error naming the missing directory instead
   of the misleading `fork/exec <shell>: no such file or directory`
