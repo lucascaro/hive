@@ -40,6 +40,15 @@ case "$platform" in
   *) echo "error: --platform must be one of: macos, windows, all" >&2; exit 2 ;;
 esac
 
+# Reject versions with characters that would break the -ldflags
+# string we splice this into. Real release tags are dotted digits
+# with optional pre-release suffixes (e.g. "0.4.1", "1.0.0-rc1") so
+# this is conservative.
+if [[ ! "$version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
+  echo "error: --version contains unsupported characters: $version" >&2
+  exit 2
+fi
+
 if ! command -v wails >/dev/null 2>&1; then
   if [[ -x "$(go env GOPATH)/bin/wails" ]]; then
     export PATH="$(go env GOPATH)/bin:$PATH"
@@ -72,7 +81,14 @@ if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
   build_id="${build_id}-dirty"
 fi
 buildinfo_pkg="github.com/lucascaro/hive/internal/buildinfo"
-echo "==> BuildID: ${build_id}"
+# Stamp both the commit-hash BuildID (always) and the release version
+# (only when --version was passed; otherwise the linker leaves it
+# empty and Version() returns "dev").
+ldflags_id="-X ${buildinfo_pkg}.buildIDOverride=${build_id}"
+if [[ "$version" != "dev" ]]; then
+  ldflags_id="${ldflags_id} -X ${buildinfo_pkg}.versionOverride=${version}"
+fi
+echo "==> BuildID: ${build_id}  Version: ${version}"
 
 build_macos() {
   if ! command -v lipo >/dev/null 2>&1; then
@@ -82,15 +98,15 @@ build_macos() {
 
   echo "==> [macos] Building Wails universal .app"
   ( cd cmd/hivegui && wails build -platform darwin/universal -clean \
-      -ldflags "-X ${buildinfo_pkg}.buildIDOverride=${build_id}" )
+      -ldflags "${ldflags_id}" )
 
   echo "==> [macos] Building hived (universal)"
   mkdir -p .build
   GOOS=darwin GOARCH=amd64 go build -trimpath \
-    -ldflags="-s -w -X ${buildinfo_pkg}.buildIDOverride=${build_id}" \
+    -ldflags="-s -w ${ldflags_id}" \
     -o .build/hived-darwin-amd64 ./cmd/hived
   GOOS=darwin GOARCH=arm64 go build -trimpath \
-    -ldflags="-s -w -X ${buildinfo_pkg}.buildIDOverride=${build_id}" \
+    -ldflags="-s -w ${ldflags_id}" \
     -o .build/hived-darwin-arm64 ./cmd/hived
   lipo -create -output cmd/hivegui/build/bin/hivegui.app/Contents/MacOS/hived \
     .build/hived-darwin-amd64 .build/hived-darwin-arm64
@@ -117,12 +133,12 @@ build_macos() {
 build_windows() {
   echo "==> [windows] Building Wails hivegui.exe (amd64)"
   ( cd cmd/hivegui && wails build -platform windows/amd64 -clean \
-      -ldflags "-X ${buildinfo_pkg}.buildIDOverride=${build_id}" )
+      -ldflags "${ldflags_id}" )
 
   echo "==> [windows] Building hived.exe (amd64)"
   mkdir -p .build
   GOOS=windows GOARCH=amd64 go build -trimpath \
-    -ldflags="-s -w -X ${buildinfo_pkg}.buildIDOverride=${build_id}" \
+    -ldflags="-s -w ${ldflags_id}" \
     -o .build/hived.exe ./cmd/hived
 
   BIN=cmd/hivegui/build/bin

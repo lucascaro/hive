@@ -11,7 +11,7 @@ import {
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
-  RestartDaemon,
+  RestartDaemon, CheckForUpdate,
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 
@@ -1695,6 +1695,121 @@ EventsOn('daemon:stale', (ev) => {
   }
 });
 
+// Update-available banner. Backend's startUpdateCheckLoop emits
+// "update:available" on startup + every 6h when a newer GitHub
+// release tag than buildinfo.Version() is found. The user can also
+// trigger it manually via the "Check for Updates…" menu item, which
+// calls CheckForUpdate() and surfaces *all* outcomes (including
+// "you're up to date" and "skipped: dev build") so the click feels
+// responsive. Dismissals are remembered per-version in localStorage
+// so the 6h tick doesn't re-nag for a release the user has already
+// seen.
+const updateBannerEl = document.getElementById('update-banner');
+const updateBannerText = document.getElementById('update-banner-text');
+const updateBannerDownload = document.getElementById('update-banner-download');
+const updateBannerDismiss = document.getElementById('update-banner-dismiss');
+const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
+let updateBannerAutoHideTimer = null;
+
+function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {}) {
+  updateBannerText.textContent = text;
+  updateBannerDownload.style.display = showDownload && downloadUrl ? '' : 'none';
+  updateBannerEl.dataset.url = downloadUrl;
+  // Clear the per-version dismissal key on every show — only the
+  // "available" branch sets it back. Without this, dismissing a
+  // transient banner ("up to date", "checking…") would write a
+  // stale version into localStorage.
+  delete updateBannerEl.dataset.version;
+  updateBannerEl.classList.remove('hidden');
+  if (updateBannerAutoHideTimer) {
+    clearTimeout(updateBannerAutoHideTimer);
+    updateBannerAutoHideTimer = null;
+  }
+  if (autoHideMs > 0) {
+    updateBannerAutoHideTimer = setTimeout(() => {
+      hideUpdateBanner();
+      updateBannerAutoHideTimer = null;
+    }, autoHideMs);
+  }
+}
+function hideUpdateBanner() { updateBannerEl.classList.add('hidden'); }
+
+updateBannerDownload.addEventListener('click', () => {
+  const url = updateBannerEl.dataset.url;
+  if (url) OpenURL(url);
+});
+updateBannerDismiss.addEventListener('click', () => {
+  const v = updateBannerEl.dataset.version || '';
+  if (v) {
+    try { localStorage.setItem(UPDATE_DISMISS_KEY, v); } catch {}
+  }
+  hideUpdateBanner();
+});
+
+// Transient (non-actionable) banners auto-hide so they don't linger
+// after the user has registered the message. The "available" banner
+// stays sticky — it has a Download button the user actually needs.
+const UPDATE_TRANSIENT_MS = 4000;
+
+function applyUpdateInfo(info, { manual = false } = {}) {
+  if (!info) return;
+  if (info.skipped) {
+    if (manual) {
+      showUpdateBanner('Update check skipped — this is a dev build.',
+        { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+    }
+    return;
+  }
+  if (info.available) {
+    let dismissed = '';
+    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch {}
+    if (!manual && dismissed === info.latest) return;
+    // info.url is empty when the Go side rejected the release's
+    // html_url for failing the github.com/<repo>/ prefix check
+    // (defense-in-depth against a tampered or spoofed response).
+    // Still tell the user an update exists; just don't expose a
+    // one-click Download for an untrusted target.
+    const trustedURL = !!info.url;
+    const text = trustedURL
+      ? `Hive ${info.latest} is available (you have ${info.current}).`
+      : `Hive ${info.latest} is available (you have ${info.current}). Open releases page manually.`;
+    showUpdateBanner(text, { downloadUrl: info.url });
+    updateBannerEl.dataset.version = info.latest;
+    return;
+  }
+  if (manual) {
+    showUpdateBanner(`Hive ${info.current} is up to date.`,
+      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+  }
+}
+
+EventsOn('update:available', (info) => applyUpdateInfo(info));
+
+// Pull once on load. The Go side's periodic loop only fires every
+// 6h, so without this the user wouldn't see an "available" banner
+// until 6h after launch.
+CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
+
+// Guard against double-firing CheckForUpdate from the menu — clicking
+// "Check for Updates…" repeatedly should not produce N parallel
+// GitHub API calls.
+let updateCheckInFlight = false;
+
+async function manualUpdateCheck() {
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  showUpdateBanner('Checking for updates…', { showDownload: false });
+  try {
+    const info = await CheckForUpdate();
+    applyUpdateInfo(info, { manual: true });
+  } catch (err) {
+    showUpdateBanner(`Update check failed: ${err}`,
+      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+  } finally {
+    updateCheckInFlight = false;
+  }
+}
+
 // User clicked a notification toast. Route to that session in the
 // current view (single keeps single, grid keeps grid) without toggling
 // modes. switchTo handles the view-aware repaint.
@@ -2292,6 +2407,7 @@ const menuActions = {
   'menu:move-session-backward': () => reorderActive(-1),
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
+  'menu:check-for-updates': () => manualUpdateCheck(),
 };
 for (const [name, fn] of Object.entries(menuActions)) {
   EventsOn(name, fn);
