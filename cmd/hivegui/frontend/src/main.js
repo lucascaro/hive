@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession,
-  CreateSession, KillSession, UpdateSession, ListAgents,
+  CreateSession, DuplicateSession, KillSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
@@ -1746,6 +1746,12 @@ const launcherState = {
   // localStorage. ⌃⌘N opens the launcher with this forced to true
   // for the duration of that opening.
   useWorktree: localStorage.getItem('hive.worktree') === '1',
+  // duplicateFrom, when set, switches the launcher into "duplicate
+  // session" mode: cwd is fixed to duplicateCwd, the worktree toggle is
+  // hidden, and selecting an agent calls DuplicateSession instead of
+  // CreateSession.
+  duplicateFrom: null,
+  duplicateCwd: '',
 };
 
 function loadAgentUsage() {
@@ -1777,13 +1783,21 @@ function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
   if (!it) return;
   bumpAgentUsage(it.agent.id);
-  CreateSession(
-    it.agent.id,
-    launcherState.projectId || activeProjectId(),
-    '', '',
-    0, 0,
-    !!launcherState.useWorktree,
-  );
+  if (launcherState.duplicateFrom) {
+    DuplicateSession(
+      it.agent.id,
+      launcherState.projectId || '',
+      launcherState.duplicateCwd,
+    );
+  } else {
+    CreateSession(
+      it.agent.id,
+      launcherState.projectId || activeProjectId(),
+      '', '',
+      0, 0,
+      !!launcherState.useWorktree,
+    );
+  }
   closeLauncher();
 }
 
@@ -1796,6 +1810,13 @@ function openLauncher(projectId, opts) {
     opts && typeof opts.forceWorktree === 'boolean'
       ? opts.forceWorktree
       : localStorage.getItem('hive.worktree') === '1';
+  // duplicateFrom: when present, the launcher is forking an existing
+  // session into the same cwd — never a new worktree.
+  launcherState.duplicateFrom = (opts && opts.duplicateFrom) || null;
+  launcherState.duplicateCwd = (opts && opts.duplicateCwd) || '';
+  if (launcherState.duplicateFrom) {
+    launcherState.useWorktree = false;
+  }
   ListAgents()
     .then((agents) => {
       launcherEl.innerHTML = '';
@@ -1819,29 +1840,33 @@ function openLauncher(projectId, opts) {
       // checkbox.
       const proj = state.projects.find((p) => p.id === launcherState.projectId);
       const projCwd = proj?.cwd ?? '';
-      const wtRow = document.createElement('label');
-      wtRow.className = 'launcher-worktree';
-      const wtBox = document.createElement('input');
-      wtBox.type = 'checkbox';
-      wtBox.checked = !!launcherState.useWorktree;
-      const wtLabel = document.createElement('span');
-      wtLabel.textContent = 'Create in git worktree';
-      wtRow.append(wtBox, wtLabel);
-      wtBox.addEventListener('change', (e) => {
-        launcherState.useWorktree = e.target.checked;
-        localStorage.setItem('hive.worktree', e.target.checked ? '1' : '0');
-      });
-      launcherEl.appendChild(wtRow);
-      if (projCwd) {
-        IsGitRepo(projCwd).then((ok) => {
-          if (!ok) {
-            wtRow.classList.add('disabled');
-            wtBox.disabled = true;
-            wtBox.checked = false;
-            launcherState.useWorktree = false;
-            wtLabel.textContent = 'Worktree (project is not a git repo)';
-          }
-        }).catch(() => {});
+      // In duplicate mode the cwd is fixed to the source session, so
+      // the worktree toggle is meaningless — skip the row entirely.
+      if (!launcherState.duplicateFrom) {
+        const wtRow = document.createElement('label');
+        wtRow.className = 'launcher-worktree';
+        const wtBox = document.createElement('input');
+        wtBox.type = 'checkbox';
+        wtBox.checked = !!launcherState.useWorktree;
+        const wtLabel = document.createElement('span');
+        wtLabel.textContent = 'Create in git worktree';
+        wtRow.append(wtBox, wtLabel);
+        wtBox.addEventListener('change', (e) => {
+          launcherState.useWorktree = e.target.checked;
+          localStorage.setItem('hive.worktree', e.target.checked ? '1' : '0');
+        });
+        launcherEl.appendChild(wtRow);
+        if (projCwd) {
+          IsGitRepo(projCwd).then((ok) => {
+            if (!ok) {
+              wtRow.classList.add('disabled');
+              wtBox.disabled = true;
+              wtBox.checked = false;
+              launcherState.useWorktree = false;
+              wtLabel.textContent = 'Worktree (project is not a git repo)';
+            }
+          }).catch(() => {});
+        }
       }
       // Detection (exec.LookPath on the daemon side) is best-effort:
       // it can miss agents installed as shell aliases, functions, or
@@ -1887,13 +1912,21 @@ function openLauncher(projectId, opts) {
         }
         item.addEventListener('click', () => {
           bumpAgentUsage(a.id);
-          CreateSession(
-            a.id,
-            launcherState.projectId,
-            '', '',
-            0, 0,
-            !!launcherState.useWorktree,
-          );
+          if (launcherState.duplicateFrom) {
+            DuplicateSession(
+              a.id,
+              launcherState.projectId || '',
+              launcherState.duplicateCwd,
+            );
+          } else {
+            CreateSession(
+              a.id,
+              launcherState.projectId,
+              '', '',
+              0, 0,
+              !!launcherState.useWorktree,
+            );
+          }
           closeLauncher();
         });
         item.addEventListener('mouseenter', () => {
@@ -1913,7 +1946,51 @@ function openLauncher(projectId, opts) {
 function closeLauncher() {
   launcherEl.classList.add('hidden');
   launcherState.items = [];
+  launcherState.duplicateFrom = null;
+  launcherState.duplicateCwd = '';
   refocusActiveTerm();
+}
+
+// resolveSessionCwd picks the directory a session is actually running
+// in: its worktree path if any, otherwise the owning project's cwd.
+// Used by ⌘P / ⇧⌘P to fork a session into the same directory.
+//
+// Wire payloads from the daemon use snake_case (see
+// internal/wire/control.go), so prefer those and fall back to the
+// camelCase variants for safety — this matches `s.projectId ??
+// s.project_id` used elsewhere in this file.
+function resolveSessionCwd(sess) {
+  if (!sess) return '';
+  const wt = sess.worktree_path ?? sess.worktreePath;
+  if (wt) return wt;
+  const pid = sess.projectId ?? sess.project_id;
+  const proj = state.projects.find((p) => p.id === pid);
+  return proj?.cwd ?? '';
+}
+
+function duplicateActiveSession() {
+  const s = state.sessions.find((x) => x.id === state.activeId);
+  if (!s) return;
+  const cwd = resolveSessionCwd(s);
+  if (!cwd) {
+    setStatus('cannot duplicate: source session has no cwd', true);
+    return;
+  }
+  const pid = s.projectId ?? s.project_id ?? '';
+  if (s.agent) bumpAgentUsage(s.agent);
+  DuplicateSession(s.agent || '', pid, cwd);
+}
+
+function duplicateActiveSessionChooseTool() {
+  const s = state.sessions.find((x) => x.id === state.activeId);
+  if (!s) return;
+  const cwd = resolveSessionCwd(s);
+  if (!cwd) {
+    setStatus('cannot duplicate: source session has no cwd', true);
+    return;
+  }
+  const pid = s.projectId ?? s.project_id ?? '';
+  openLauncher(pid, { duplicateFrom: s, duplicateCwd: cwd });
 }
 
 document.addEventListener('click', (e) => {
@@ -2060,9 +2137,10 @@ window.addEventListener('keydown', (e) => {
     });
     return;
   }
-  if ((e.key === 'p' || e.key === 'P') && e.shiftKey) {
+  if (e.key === 'p' || e.key === 'P') {
     swallow();
-    openProjectEditor(null);
+    if (e.shiftKey) duplicateActiveSessionChooseTool();
+    else duplicateActiveSession();
   } else if (e.key === 't' || e.key === 'T') {
     swallow();
     if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
@@ -2196,6 +2274,8 @@ function switchToNthSession(n) {
 const menuActions = {
   'menu:new-session': () => openLauncher(),
   'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
+  'menu:duplicate-session': duplicateActiveSession,
+  'menu:duplicate-session-choose-tool': duplicateActiveSessionChooseTool,
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
@@ -2251,6 +2331,8 @@ const paletteCommands = [
   { id: 'new-project',          name: 'New Project…',                shortcut: '⌘N',     run: () => openProjectEditor(null) },
   { id: 'new-session',          name: 'New Session',                 shortcut: '⌘T',     run: () => openLauncher() },
   { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
+  { id: 'duplicate-session',    name: 'Duplicate Session',           shortcut: '⌘P',     run: duplicateActiveSession },
+  { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },
@@ -2268,6 +2350,12 @@ const paletteCommands = [
   { id: 'move-backward',        name: 'Move Session Backward',       shortcut: '⇧⌘↑',    run: () => reorderActive(-1) },
   { id: 'next-project',         name: 'Next Project',                shortcut: '⌘]',     run: () => shiftActiveProject(+1) },
   { id: 'prev-project',         name: 'Previous Project',            shortcut: '⌘[',     run: () => shiftActiveProject(-1) },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: `switch-${i + 1}`,
+    name: `Switch to Session ${i + 1}`,
+    shortcut: `⌘${i + 1}`,
+    run: () => switchToNthSession(i + 1),
+  })),
 ];
 
 const paletteEl = document.getElementById('command-palette');

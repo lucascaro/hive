@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GUI: ⌘P duplicates the active session into the same cwd/worktree;
+  ⇧⌘P opens the launcher pinned to that cwd to pick a different tool.
+  The duplicate adopts the source's worktree (no nested `.worktrees/*`
+  is created), shows the worktree badge in the sidebar, and the
+  worktree directory is only cleaned up when the last session in it
+  is killed. New entries also appear in the command palette and the
+  File menu.
+
 ### Changed
 
 - Sidebar: more visible selected-session styling. Selection now uses an

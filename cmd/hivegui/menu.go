@@ -36,6 +36,12 @@ func buildAppMenu(a *App) *menu.Menu {
 	file.AddText("New Session in Worktree",
 		keys.Combo("t", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:new-session-worktree"))
+	file.AddText("Duplicate Session",
+		keys.CmdOrCtrl("p"),
+		emit("menu:duplicate-session"))
+	file.AddText("Duplicate Session (choose tool)…",
+		keys.Combo("p", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:duplicate-session-choose-tool"))
 	file.AddSeparator()
 	file.AddText("New Window",
 		keys.Combo("n", keys.ShiftKey, keys.CmdOrCtrlKey),
