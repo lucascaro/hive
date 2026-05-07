@@ -201,11 +201,12 @@ func TestKill_DirtyWorktree_ForceRemoves(t *testing.T) {
 }
 
 // TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree pins the
-// invariant the GUI's ⌘P / ⇧⌘P shortcut relies on: when the caller
+// invariants the GUI's ⌘P / ⇧⌘P shortcut relies on: when the caller
 // passes Cwd pointing inside an existing worktree with UseWorktree=false,
-// the daemon must reuse that directory and not stack a nested
-// .worktrees/* on top. Regressions here would silently double the
-// worktree count every time the user duplicates a session.
+// the daemon must (a) NOT stack a nested .worktrees/* on top, and
+// (b) ADOPT the existing worktree's path+branch onto the new entry so
+// the sidebar shows the badge and Kill keeps the worktree alive until
+// the last session in it goes away.
 func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
@@ -235,8 +236,11 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	}
 	defer r.Kill(dup.ID, true)
 
-	if dup.WorktreePath != "" {
-		t.Errorf("duplicate should not own a worktree; got %q", dup.WorktreePath)
+	if dup.WorktreePath != wtPath {
+		t.Errorf("duplicate should adopt source worktree path %q; got %q", wtPath, dup.WorktreePath)
+	}
+	if dup.WorktreeBranch != src.WorktreeBranch {
+		t.Errorf("duplicate should adopt source worktree branch %q; got %q", src.WorktreeBranch, dup.WorktreeBranch)
 	}
 	// No nested .worktrees/ under the source worktree dir.
 	if _, err := os.Stat(filepath.Join(wtPath, ".worktrees")); err == nil {
@@ -252,6 +256,55 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	if len(lines) != 2 {
 		t.Errorf("expected 2 worktree entries (main + source), got %d:\n%s",
 			len(lines), out)
+	}
+}
+
+// TestKill_SharedWorktree_KeepsWorktreeUntilLast pins the
+// last-session-wins cleanup rule: when several sessions live in the
+// same worktree (because they were duplicated from one another),
+// killing all but the last must NOT remove the directory. Only the
+// final Kill performs `git worktree remove`.
+func TestKill_SharedWorktree_KeepsWorktreeUntilLast(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	src, err := r.Create(wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	wtPath := src.WorktreePath
+	if wtPath == "" {
+		t.Fatalf("expected source to have a worktree")
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	dup, err := r.Create(wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash",
+		Cwd: wtPath, UseWorktree: false,
+	})
+	if err != nil {
+		t.Fatalf("Create dup: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+
+	// Kill the source (sibling still alive in the worktree). The
+	// worktree dir must survive — and the dirty check must be
+	// skipped since dirtiness is irrelevant when others remain.
+	if err := r.Kill(src.ID, false); err != nil {
+		t.Fatalf("Kill src: %v", err)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Errorf("worktree %q removed while sibling still uses it: %v", wtPath, err)
+	}
+
+	// Killing the last sibling cleans up.
+	if err := r.Kill(dup.ID, true); err != nil {
+		t.Fatalf("Kill dup: %v", err)
+	}
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Errorf("worktree %q should be cleaned up after last session; stat err=%v", wtPath, err)
 	}
 }
 

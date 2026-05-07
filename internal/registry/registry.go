@@ -293,12 +293,30 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 			cwd = p.Cwd
 		}
 	}
+	// Detect when cwd already lives in a worktree owned by another
+	// session in the same project (e.g. ⌘P duplicate). The new entry
+	// adopts that worktree's path+branch so the sidebar shows the
+	// worktree badge and Kill can keep the worktree alive until the
+	// last session in it goes away.
+	var adoptedPath, adoptedBranch string
+	if !spec.UseWorktree && cwd != "" {
+		for _, other := range r.entries {
+			if other.ProjectID == projectID && other.WorktreePath != "" && other.WorktreePath == cwd {
+				adoptedPath = other.WorktreePath
+				adoptedBranch = other.WorktreeBranch
+				break
+			}
+		}
+	}
 	r.mu.Unlock()
 
 	// Pre-resolve the worktree branch+path so the session name can
 	// match the worktree directory. ResolveBranchAndPath only picks a
 	// free name; the actual `git worktree add` happens further down.
 	var wtPath, wtBranch string
+	if adoptedPath != "" {
+		wtPath, wtBranch = adoptedPath, adoptedBranch
+	}
 	if spec.UseWorktree && cwd != "" && worktree.IsGitRepo(cwd) {
 		if root, err := worktree.Root(cwd); err == nil {
 			if b, p, rerr := worktree.ResolveBranchAndPath(root, spec.Branch); rerr == nil {
@@ -375,7 +393,10 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	// project cwd. Aborting create on worktree failure would block
 	// users on marginal repos (shallow clones, sandbox restrictions,
 	// slow filesystems).
-	if wtBranch != "" {
+	// Skip the create when we're adopting an existing worktree from a
+	// sibling session — the directory is already on disk and `git
+	// worktree add` would fail.
+	if wtBranch != "" && adoptedPath == "" {
 		if root, err := worktree.Root(cwd); err == nil {
 			if cerr := worktree.CreateWorktree(root, wtBranch, wtPath); cerr != nil {
 				log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
@@ -585,11 +606,26 @@ func (r *Registry) Kill(id string, force bool) error {
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
 	}
+	// Count siblings sharing this worktree. The worktree is only
+	// cleaned up when the LAST session in it is killed — duplicating
+	// (⌘P) creates extra entries that share the same worktree dir.
+	worktreeShared := false
+	if wtPath != "" {
+		for sid, other := range r.entries {
+			if sid != id && other.WorktreePath == wtPath {
+				worktreeShared = true
+				break
+			}
+		}
+	}
 	r.mu.Unlock()
 
 	// Pre-flight safety check on the worktree. Returning here leaves
-	// everything intact so the user can retry with force=true.
-	if wtPath != "" && !force {
+	// everything intact so the user can retry with force=true. Skip
+	// the check when other sessions still live in the worktree —
+	// killing this one won't remove the directory, so dirtiness is
+	// irrelevant.
+	if wtPath != "" && !worktreeShared && !force {
 		dirty, _ := worktree.HasUncommitted(wtPath)
 		if dirty {
 			return ErrWorktreeDirty
@@ -611,6 +647,18 @@ func (r *Registry) Kill(id string, force bool) error {
 			break
 		}
 	}
+	// Re-check sibling count after removing this entry, in case the
+	// world changed during the dirty check. Cleanup only runs when
+	// nobody else lives in the worktree.
+	if wtPath != "" {
+		worktreeShared = false
+		for _, other := range r.entries {
+			if other.WorktreePath == wtPath {
+				worktreeShared = true
+				break
+			}
+		}
+	}
 	// Intentionally NOT renumbering remaining entries here. Orders
 	// were assigned at create time and only change on an explicit
 	// user move. Kill leaves a hole in the sequence (e.g. 0,1,3,4)
@@ -628,7 +676,7 @@ func (r *Registry) Kill(id string, force bool) error {
 	if e.sess != nil {
 		_ = e.sess.Close()
 	}
-	if wtPath != "" {
+	if wtPath != "" && !worktreeShared {
 		root, err := worktree.Root(projectCwd)
 		switch {
 		case err != nil:
