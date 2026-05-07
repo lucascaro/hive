@@ -2331,6 +2331,8 @@ const paletteCommands = [
   { id: 'new-project',          name: 'New Project…',                shortcut: '⌘N',     run: () => openProjectEditor(null) },
   { id: 'new-session',          name: 'New Session',                 shortcut: '⌘T',     run: () => openLauncher() },
   { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
+  { id: 'duplicate-session',    name: 'Duplicate Session',           shortcut: '⌘P',     run: duplicateActiveSession },
+  { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },
@@ -2348,6 +2350,12 @@ const paletteCommands = [
   { id: 'move-backward',        name: 'Move Session Backward',       shortcut: '⇧⌘↑',    run: () => reorderActive(-1) },
   { id: 'next-project',         name: 'Next Project',                shortcut: '⌘]',     run: () => shiftActiveProject(+1) },
   { id: 'prev-project',         name: 'Previous Project',            shortcut: '⌘[',     run: () => shiftActiveProject(-1) },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: `switch-${i + 1}`,
+    name: `Switch to Session ${i + 1}`,
+    shortcut: `⌘${i + 1}`,
+    run: () => switchToNthSession(i + 1),
+  })),
 ];
 
 const paletteEl = document.getElementById('command-palette');
