@@ -1504,6 +1504,13 @@ function processAliveTransition(info) {
       try { t.term.reset(); } catch {}
       t.attached = false;
       t.setDead(false);
+      // Restart leaves the cached SessionTerm detached. If it's currently
+      // visible (single-mode active, or any tile in grid), re-attach now —
+      // otherwise the user only sees output after switching away and back.
+      const visible =
+        (state.view === 'single' && state.activeId === info.id) ||
+        (state.view !== 'single' && t.host.classList.contains('in-grid'));
+      if (visible) t.ensureAttached();
     }
   }
 }
