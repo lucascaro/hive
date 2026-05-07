@@ -1,5 +1,5 @@
-// Package session models a single hived session: one PTY, the shell
-// running on it, and the live scrollback ring of its output.
+// Package session models a single hived session: one PTY and the
+// shell running on it. Reattach repaints come from the VT mirror.
 package session
 
 import (
