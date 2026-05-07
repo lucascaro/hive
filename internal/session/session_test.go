@@ -48,7 +48,7 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	defer sess.Close()
 
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomic(sink)
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
 	defer unsub()
 
 	// Send a command, expect to see its output in the sink.
@@ -68,7 +68,7 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	sink2 := &bufSinkMu{}
-	replay, unsub2 := sess.SubscribeAtomic(sink2)
+	replay, unsub2 := sess.SubscribeAtomicSnapshot(sink2)
 	defer unsub2()
 
 	if !bytes.Contains(replay, []byte("HIVE_PROBE_2")) {
@@ -93,7 +93,7 @@ func TestSessionResize(t *testing.T) {
 	defer sess.Close()
 
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomic(sink)
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
 	defer unsub()
 
 	if err := sess.Resize(132, 50); err != nil {
@@ -109,19 +109,3 @@ func TestSessionResize(t *testing.T) {
 	}
 }
 
-func TestScrollbackRingDrops(t *testing.T) {
-	r := NewScrollback(8)
-	_, _ = r.Write([]byte("ABCD"))
-	_, _ = r.Write([]byte("EFGH"))
-	if got := string(r.Snapshot()); got != "ABCDEFGH" {
-		t.Errorf("snap = %q", got)
-	}
-	_, _ = r.Write([]byte("12"))
-	if got := string(r.Snapshot()); got != "CDEFGH12" {
-		t.Errorf("after overflow, snap = %q", got)
-	}
-	_, _ = r.Write([]byte("XXXXXXXXXX")) // bigger than capacity
-	if got := string(r.Snapshot()); got != "XXXXXXXX" {
-		t.Errorf("after big write, snap = %q", got)
-	}
-}

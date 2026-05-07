@@ -21,13 +21,12 @@ type Sink interface {
 	Write(p []byte) (int, error)
 }
 
-// Session owns a PTY, the process running on it, and a ring of recent
-// output. It does not own any wire-level state — that lives in the
-// daemon package, which calls Subscribe to receive bytes.
+// Session owns a PTY and the process running on it. It does not own any
+// wire-level state — that lives in the daemon package, which calls
+// Subscribe to receive bytes. Reattach repaints come from the VT mirror.
 type Session struct {
-	ID         string
-	Scrollback *Scrollback
-	vt         *VT
+	ID string
+	vt *VT
 
 	cmd  *pty.Cmd
 	ptmx pty.Pty
@@ -43,9 +42,8 @@ type Options struct {
 	Shell       string
 	Cmd         []string // when non-empty, runs in place of $SHELL (e.g. an agent)
 	Cwd         string   // working directory; default = sane choice
-	Cols, Rows  int
-	ScrollBytes int
-	Env         []string // appended to os.Environ()
+	Cols, Rows int
+	Env        []string // appended to os.Environ()
 }
 
 // resolveCwd returns the working directory to use for a new session.
@@ -137,27 +135,25 @@ func Start(opts Options) (*Session, error) {
 	}
 
 	s := &Session{
-		ID:         uuid.NewString(),
-		Scrollback: NewScrollback(opts.ScrollBytes),
-		vt:         NewVT(opts.Cols, opts.Rows),
-		cmd:        cmd,
-		ptmx:       ptmx,
-		sinks:      make(map[Sink]struct{}),
-		done:       make(chan struct{}),
+		ID:    uuid.NewString(),
+		vt:    NewVT(opts.Cols, opts.Rows),
+		cmd:   cmd,
+		ptmx:  ptmx,
+		sinks: make(map[Sink]struct{}),
+		done:  make(chan struct{}),
 	}
 	go s.readLoop()
 	return s, nil
 }
 
-// readLoop drains the PTY into the scrollback ring and every active
-// sink. It is the only goroutine that reads from the PTY.
+// readLoop drains the PTY into the VT mirror and every active sink. It
+// is the only goroutine that reads from the PTY.
 func (s *Session) readLoop() {
 	defer close(s.done)
 	buf := make([]byte, 4096)
 	for {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
-			_, _ = s.Scrollback.Write(buf[:n])
 			if _, vterr := s.vt.Write(buf[:n]); vterr != nil {
 				s.vtErrOnce.Do(func() {
 					log.Printf("session %s: vt write: %v", s.ID, vterr)
@@ -201,12 +197,8 @@ func (s *Session) fanoutClose() {
 }
 
 // Subscribe registers a sink to receive future PTY output. Returns an
-// unsubscribe function. The replay buffer is NOT sent automatically;
-// the caller is responsible for replaying Scrollback.Snapshot() before
-// subscribing if it wants atomic "replay then live" behavior.
-//
-// To prevent the gap between snapshot and subscribe from dropping bytes,
-// callers should hold the session mutex via SubscribeAtomic instead.
+// unsubscribe function. No replay is sent — callers that want atomic
+// "repaint then live" behavior should use SubscribeAtomicSnapshot.
 func (s *Session) Subscribe(sink Sink) func() {
 	s.mu.Lock()
 	s.sinks[sink] = struct{}{}
@@ -218,26 +210,10 @@ func (s *Session) Subscribe(sink Sink) func() {
 	}
 }
 
-// SubscribeAtomic returns the current scrollback snapshot AND registers
-// the sink for live updates under a single lock acquisition, so no
-// PTY bytes are dropped between replay and live stream.
-func (s *Session) SubscribeAtomic(sink Sink) (replay []byte, unsubscribe func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	replay = s.Scrollback.Snapshot()
-	s.sinks[sink] = struct{}{}
-	return replay, func() {
-		s.mu.Lock()
-		delete(s.sinks, sink)
-		s.mu.Unlock()
-	}
-}
-
-// SubscribeAtomicSnapshot is the reattach-friendly version of
-// SubscribeAtomic: it returns a synthesized repaint of the *current
-// visible state* (via the VT mirror) instead of the raw byte ring.
-// Same lock discipline so no live PTY bytes are dropped between the
-// snapshot and the live stream becoming active.
+// SubscribeAtomicSnapshot returns a synthesized repaint of the current
+// visible state (via the VT mirror) AND registers the sink for live
+// updates under a single lock acquisition, so no PTY bytes are dropped
+// between the snapshot and the live stream becoming active.
 func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscribe func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
