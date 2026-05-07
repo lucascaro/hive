@@ -465,6 +465,13 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 // agent ID is unknown (e.g. a future agent rolled back), we fall back
 // to a generic shell.
 //
+// The cwd is taken from the entry's project (overridden by the
+// worktree path when one exists). The caller's opts.Cwd is ignored
+// when the entry has a project — daemon startup has no useful cwd
+// to contribute, and using the daemon's launch dir leads to PATH
+// resolution failures (e.g. project-local `node_modules/.bin`
+// symlinks like `codex` won't be found if revive runs from `/`).
+//
 // Note: Phase 1.7 (disk-backed scrollback) will replay prior content
 // on revive. Today the slot is preserved but starts blank.
 func (r *Registry) Revive(id string, opts session.Options) error {
@@ -480,12 +487,20 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	}
 	agentID := e.Agent
 	wtPath := e.WorktreePath
+	projectCwd := ""
+	if p, ok := r.projects[e.ProjectID]; ok {
+		projectCwd = p.Cwd
+	}
 	r.mu.Unlock()
 
 	if agentID != "" && len(opts.Cmd) == 0 {
 		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
 			opts.Cmd = def.Cmd
 		}
+	}
+
+	if projectCwd != "" {
+		opts.Cwd = projectCwd
 	}
 
 	// If the entry is supposed to live in a worktree, prefer the
