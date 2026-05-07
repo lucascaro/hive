@@ -437,6 +437,12 @@ class SessionTerm {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
     if (wasAtBottom) {
+      // Sync re-pin so the same frame that paints the post-fit
+      // geometry also paints the corrected viewport — without this
+      // the user sees a one-frame "jump" on every refit. The rAF
+      // re-pin is a backstop in case fit's resize completes async
+      // and bumps the viewport again after the sync call.
+      this.term.scrollToBottom();
       requestAnimationFrame(() => this.term.scrollToBottom());
     }
   }
@@ -1086,6 +1092,11 @@ function showSingle(id) {
     else st.hide();
     st.host.classList.remove('in-grid', 'active');
   }
+  // Invalidate the grid geometry cache. Tiles get resized to fill
+  // the single-mode container while we're here, so the next
+  // renderGrid must run a refit pass even if the (rows, cols, w, h)
+  // it computes happens to match the last grid render.
+  gridLayout.geomKey = '';
   const st = id ? state.terms.get(id) : null;
   if (st) st.ensureAttached();
 }
@@ -1170,7 +1181,7 @@ function switchToProject(pid) {
 // to recompute. assignments[i] = { row, col, rowSpan } — tiles above
 // last-row empty cells extend downward to fill the grid (matches
 // current Hive's behavior). cellMap[row*cols + col] = session index.
-let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
+let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [], geomKey: '' };
 
 // computeGridDims picks (rows, cols) that fills the container without
 // scrolling, biasing tile aspect toward typical terminal proportions
@@ -1281,14 +1292,22 @@ function renderGrid() {
     }
   }
 
-  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
+  // Skip the refit pass when geometry is unchanged. Pure active-tile
+  // swaps (keyboard nav inside grid mode) don't resize anything but
+  // would otherwise call fit.fit() on every tile — and fit.fit()
+  // perturbs xterm's viewport for one frame, which the user sees as
+  // the active session "jumping up" on each arrow press.
+  const geomKey = `${rows}x${cols}@${w}x${h}:${n}`;
+  const geomChanged = geomKey !== gridLayout.geomKey;
+  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap, geomKey };
 
-  // Refit each visible tile after the layout settles.
-  requestAnimationFrame(() => {
-    for (const info of gridSessions) {
-      state.terms.get(info.id)?.refit();
-    }
-  });
+  if (geomChanged) {
+    requestAnimationFrame(() => {
+      for (const info of gridSessions) {
+        state.terms.get(info.id)?.refit();
+      }
+    });
+  }
 }
 
 // setActive centralizes "the focused session changed" so every code
