@@ -7,7 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession,
-  CreateSession, DuplicateSession, KillSession, UpdateSession, ListAgents,
+  CreateSession, DuplicateSession, KillSession, RestartSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
@@ -2096,6 +2096,15 @@ function duplicateActiveSession() {
   DuplicateSession(s.agent || '', pid, cwd);
 }
 
+function restartActiveSession() {
+  const s = state.sessions.find((x) => x.id === state.activeId);
+  if (!s) {
+    setStatus('no active session to restart', true);
+    return;
+  }
+  RestartSession(s.id);
+}
+
 function duplicateActiveSessionChooseTool() {
   const s = state.sessions.find((x) => x.id === state.activeId);
   if (!s) return;
@@ -2391,6 +2400,7 @@ const menuActions = {
   'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
   'menu:duplicate-session': duplicateActiveSession,
   'menu:duplicate-session-choose-tool': duplicateActiveSessionChooseTool,
+  'menu:restart-session': restartActiveSession,
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
@@ -2449,6 +2459,7 @@ const paletteCommands = [
   { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
   { id: 'duplicate-session',    name: 'Duplicate Session',           shortcut: '⌘P',     run: duplicateActiveSession },
   { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
+  { id: 'restart-session',      name: 'Restart Session',             shortcut: '',       run: restartActiveSession },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },

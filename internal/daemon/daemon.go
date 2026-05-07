@@ -315,6 +315,15 @@ func (d *Daemon) serveControl(conn net.Conn) {
 					sendError("kill_failed", err.Error())
 				}
 			}
+		case wire.FrameRestartSession:
+			var req wire.RestartSessionReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			if err := d.reg.Restart(req.SessionID); err != nil {
+				sendError("restart_failed", err.Error())
+			}
 		case wire.FrameUpdateSession:
 			var req wire.UpdateSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {

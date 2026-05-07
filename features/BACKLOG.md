@@ -7,6 +7,7 @@ See `features/templates/FEATURE.md` for the feature file template.
 
 | # | Issue | Title | Stage | Complexity |
 |---|-------|-------|-------|------------|
+| 1 | —     | [Resume conversations on daemon restart](active/resume-on-daemon-restart.md) | TRIAGE | M |
 
 ## Rejected
 

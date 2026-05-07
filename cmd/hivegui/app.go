@@ -489,6 +489,21 @@ func (a *App) KillSession(id string, force bool) error {
 	})
 }
 
+// RestartSession asks the daemon to recycle the agent process for
+// the given session in place. The session entry (name/color/order/
+// worktree) is preserved; the new process uses the agent's resume
+// flag (e.g. `claude --continue`) when available so the prior
+// conversation is picked back up.
+func (a *App) RestartSession(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.writeJSON(wire.FrameRestartSession, wire.RestartSessionReq{
+		SessionID: id,
+	})
+}
+
 // IsGitRepo reports whether path is inside a git repository. The GUI
 // uses this to gate the launcher's worktree checkbox.
 func (a *App) IsGitRepo(path string) bool {

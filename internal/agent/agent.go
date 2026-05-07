@@ -29,6 +29,7 @@ type Def struct {
 	ID         ID       // canonical identifier; persisted in session metadata
 	Name       string   // display name shown in the launcher
 	Cmd        []string // argv; first element is resolved via PATH at spawn
+	ResumeCmd  []string // argv used by Restart; falls back to Cmd if empty
 	Color      string   // default sidebar color
 	InstallCmd []string // shown to the user when not detected; never auto-run
 }
@@ -56,6 +57,7 @@ var (
 			ID:         IDClaude,
 			Name:       "Claude",
 			Cmd:        []string{"claude"},
+			ResumeCmd:  []string{"claude", "--continue"},
 			Color:      "#f59e0b",
 			InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
 		},
@@ -63,6 +65,7 @@ var (
 			ID:         IDCodex,
 			Name:       "Codex",
 			Cmd:        []string{"codex"},
+			ResumeCmd:  []string{"codex", "resume", "--last"},
 			Color:      "#10b981",
 			InstallCmd: []string{"npm", "install", "-g", "@openai/codex"},
 		},
@@ -70,6 +73,7 @@ var (
 			ID:         IDGemini,
 			Name:       "Gemini",
 			Cmd:        []string{"gemini"},
+			ResumeCmd:  []string{"gemini", "--continue"},
 			Color:      "#3b82f6",
 			InstallCmd: []string{"npm", "install", "-g", "@google/gemini-cli"},
 		},
@@ -77,6 +81,7 @@ var (
 			ID:         IDCopilot,
 			Name:       "Copilot",
 			Cmd:        []string{"copilot"},
+			ResumeCmd:  []string{"copilot", "--resume"},
 			Color:      "#8b5cf6",
 			InstallCmd: []string{"npm", "install", "-g", "@github/copilot"},
 		},
