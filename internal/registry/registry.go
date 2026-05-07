@@ -550,7 +550,6 @@ func (r *Registry) Restart(id string) error {
 	}
 	sess := e.sess
 	agentID := e.Agent
-	wtPath := e.WorktreePath
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
@@ -581,11 +580,11 @@ func (r *Registry) Restart(id string) error {
 			opts.Cmd = def.Cmd
 		}
 	}
-	if wtPath != "" {
-		opts.Cwd = wtPath
-	} else {
-		opts.Cwd = projectCwd
-	}
+	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
+	// wtPath when the worktree directory still exists; if the user removed
+	// it out-of-band, Revive's self-heal clears the worktree fields but
+	// leaves opts.Cwd alone — projectCwd is what session.Start should use.
+	opts.Cwd = projectCwd
 
 	return r.Revive(id, opts)
 }

@@ -205,6 +205,12 @@ class SessionTerm {
     });
 
     this.attached = false;
+    // needsReattach is set by pty:disconnect when our attach connection
+    // drops (e.g. Restart Session closes the daemon-side PTY). The next
+    // session:event(updated, alive=true) consumes the flag and triggers
+    // ensureAttached so the new PTY's stream resumes without the user
+    // having to switch sessions and back.
+    this.needsReattach = false;
     this.phase = 'replay';
 
     // Track the OSC-set window title from the running TUI (vim, htop,
@@ -1504,13 +1510,6 @@ function processAliveTransition(info) {
       try { t.term.reset(); } catch {}
       t.attached = false;
       t.setDead(false);
-      // Restart leaves the cached SessionTerm detached. If it's currently
-      // visible (single-mode active, or any tile in grid), re-attach now —
-      // otherwise the user only sees output after switching away and back.
-      const visible =
-        (state.view === 'single' && state.activeId === info.id) ||
-        (state.view !== 'single' && t.host.classList.contains('in-grid'));
-      if (visible) t.ensureAttached();
     }
   }
 }
@@ -1569,6 +1568,20 @@ EventsOn('session:event', (jsonStr) => {
       const pid = ev.session.projectId ?? ev.session.project_id;
       const proj = state.projects.find((p) => p.id === pid);
       st.setProject(proj?.name ?? '', proj?.color ?? '');
+      // Restart Session path: pty:disconnect already flipped attached
+      // off and set needsReattach. Now that the daemon has confirmed
+      // a fresh alive=true PTY, reattach the visible term so its
+      // resumed stream starts flowing without a manual switch.
+      // Hidden terms are left dirty; switchTo/showSingle/renderGrid
+      // will ensureAttached when they next become visible.
+      if (st.needsReattach && ev.session.alive) {
+        st.needsReattach = false;
+        try { st.term.reset(); } catch {}
+        const visible =
+          (state.view === 'single' && state.activeId === ev.session.id) ||
+          (state.view !== 'single' && st.host.classList.contains('in-grid'));
+        if (visible) st.ensureAttached();
+      }
     }
     if (state.activeId === ev.session.id) updateAppTitle();
   }
@@ -1602,7 +1615,13 @@ EventsOn('pty:event', (id, jsonStr) => {
 
 EventsOn('pty:disconnect', (id) => {
   const st = state.terms.get(id);
-  if (st) st.attached = false;
+  if (st) {
+    st.attached = false;
+    // Mark the term as needing reattach. Restart Session closes the
+    // daemon-side PTY (which lands here) and respawns; the subsequent
+    // session:event(updated, alive=true) is where we re-OpenSession.
+    st.needsReattach = true;
+  }
 });
 
 EventsOn('pty:error', (id, jsonStr) => {
