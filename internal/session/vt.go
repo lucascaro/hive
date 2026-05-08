@@ -28,13 +28,23 @@ const (
 	vtAttrBlink  int16 = 1 << 5
 )
 
+// historyRows caps the number of evicted rows we keep for prepending to
+// the snapshot. ~80 cols × 500 rows × ~100 bytes/row ≈ 50 KiB worst case.
+const historyRows = 500
+
 // VT is a goroutine-safe wrapper around a vt10x.Terminal. The emulator
 // itself takes a State lock internally on Write/Parse, but our own
 // Mutex serializes Write/Resize/RenderSnapshot against each other so we
 // never read a half-updated screen.
+//
+// `history` holds rows that have scrolled off the top of the live grid,
+// captured by a heuristic in Write (compare pre/post top rows). Each
+// entry is a self-contained ANSI byte string starting with `\x1b[m` and
+// ending with `\x1b[K`, so concatenation needs only `\r\n` separators.
 type VT struct {
-	mu   sync.Mutex
-	term vt10x.Terminal
+	mu      sync.Mutex
+	term    vt10x.Terminal
+	history [][]byte
 }
 
 // NewVT constructs a VT sized cols x rows. Falls back to 80x24 when
@@ -55,14 +65,84 @@ func NewVT(cols, rows int) *VT {
 // silently swallows sequences it doesn't model (mouse, OSC titles,
 // bracketed paste etc), which is fine: those don't affect the rendered
 // grid and live PTY bytes still flow to clients via the fanout path.
+//
+// While on the normal screen, Write also runs an eviction heuristic:
+// pre-snapshot the top rows, run the underlying term.Write, then look
+// for the largest k where preRows[k] == postRow[0]. If found, rows
+// preRows[0..k-1] were scrolled off and we push them onto `history`.
+// This catches the common scrolling-output case; CUP-and-overwrite,
+// `\x1b[2J` clears, and scroll-region operations all fall through with
+// no capture (matching xterm.js's own "2J doesn't push to scrollback"
+// behavior).
 func (v *VT) Write(p []byte) (int, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.term.Write(p)
+
+	cols, rows := v.term.Size()
+	preAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
+
+	var preRows [][]vt10x.Glyph
+	if !preAlt && cols > 0 && rows > 0 {
+		preRows = make([][]vt10x.Glyph, rows)
+		for y := range rows {
+			row := make([]vt10x.Glyph, cols)
+			for x := range cols {
+				row[x] = v.term.Cell(x, y)
+			}
+			preRows[y] = row
+		}
+	}
+
+	n, err := v.term.Write(p)
+
+	postAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
+	if preRows != nil && !postAlt {
+		v.captureEvictions(preRows, cols, rows)
+	}
+	return n, err
+}
+
+// captureEvictions runs the post-write heuristic and pushes evicted
+// rows onto the history ring. Caller holds v.mu.
+func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
+	// Find largest k in [1, rows) where preRows[k] equals the post-write
+	// top row. Largest match wins, so a single chunk that scrolls N
+	// lines is captured correctly.
+	k := -1
+	for kk := rows - 1; kk >= 1; kk-- {
+		if rowsEqualTerm(preRows[kk], v.term, 0, cols) {
+			k = kk
+			break
+		}
+	}
+	if k < 1 {
+		return
+	}
+	for y := 0; y < k; y++ {
+		if glyphRowBlank(preRows[y]) {
+			continue
+		}
+		v.pushHistory(captureRowANSI(preRows[y]))
+	}
+}
+
+// pushHistory appends b to the ring, trimming the oldest entries when
+// over capacity. Caller holds v.mu.
+func (v *VT) pushHistory(b []byte) {
+	v.history = append(v.history, b)
+	if len(v.history) > historyRows {
+		// Drop oldest. A sliding slice (re-allocate when too small) keeps
+		// memory bounded; for 500 entries the periodic re-slice cost is
+		// negligible vs the per-Write parsing cost.
+		drop := len(v.history) - historyRows
+		v.history = append([][]byte(nil), v.history[drop:]...)
+	}
 }
 
 // Resize updates the emulator's grid dimensions. Returns nil for now;
-// vt10x.Resize doesn't surface errors.
+// vt10x.Resize doesn't surface errors. History rows captured at the old
+// width remain in the ring as-is — re-laying them out is not worth the
+// complexity since most users don't resize mid-session.
 func (v *VT) Resize(cols, rows int) error {
 	if cols <= 0 || rows <= 0 {
 		return nil
@@ -76,82 +156,61 @@ func (v *VT) Resize(cols, rows int) error {
 // RenderSnapshot produces a self-contained ANSI byte stream that paints
 // the current visible state on a fresh terminal. Sequence:
 //
-//  1. soft reset + clear + home, so it works on any starting state
-//  2. each row, with SGR transitions emitted only when attrs change,
-//     short rows padded via \x1b[K, lines separated by \r\n
-//  3. final cursor positioning
-//  4. cursor visibility (DECTCEM) per emulator state
+//  1. soft reset + erase scrollback (3J) + erase visible (2J) + home
+//  2. (normal screen only) all retained history rows, joined by \r\n
+//  3. each visible row, with SGR transitions emitted only when attrs
+//     change, short rows padded via \x1b[K, lines separated by \r\n
+//  4. final cursor positioning (viewport-relative — xterm.js scrolls
+//     history into its scrollback automatically as the visible region
+//     fills, so no row offset is needed)
+//  5. cursor visibility (DECTCEM) per emulator state
 func (v *VT) RenderSnapshot() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
 	cols, rows := v.term.Size()
 	if cols <= 0 || rows <= 0 {
-		return []byte("\x1b[!p\x1b[2J\x1b[H")
+		return []byte("\x1b[!p\x1b[3J\x1b[2J\x1b[H")
 	}
 
 	var buf bytes.Buffer
+	onAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
 	// If the session is on the alt screen (vim, htop, less, claude TUI…),
 	// enter alt screen FIRST so the snapshot lands there. Otherwise the
 	// next \x1b[?1049l from the live PTY would swap the client back to a
 	// blank normal screen and discard everything we just painted.
-	if v.term.Mode()&vt10x.ModeAltScreen != 0 {
+	if onAlt {
 		buf.WriteString("\x1b[?1049h")
 	}
-	// Soft reset + erase-display + home. Note: \x1b[!p is DECSTR.
-	buf.WriteString("\x1b[!p\x1b[2J\x1b[H")
+	// Soft reset + erase scrollback + erase visible + home. \x1b[!p is
+	// DECSTR; \x1b[3J wipes any pre-existing scrollback in the receiving
+	// terminal so reattach truly replaces what's there.
+	buf.WriteString("\x1b[!p\x1b[3J\x1b[2J\x1b[H")
+
+	// History block (normal screen only). Each ring entry is already a
+	// self-contained `\x1b[m...\x1b[K` byte string, so we just join them
+	// with \r\n and add a trailing \r\n before the visible block.
+	if !onAlt && len(v.history) > 0 {
+		for i, line := range v.history {
+			if i > 0 {
+				buf.WriteString("\r\n")
+			}
+			buf.Write(line)
+		}
+		buf.WriteString("\r\n")
+	}
 
 	// Track current SGR state; "no attrs, default colours" means we've
 	// just emitted \x1b[m (or are at the start, post soft-reset).
 	var (
-		curMode int16     = 0
+		curMode int16       = 0
 		curFG   vt10x.Color = vt10x.DefaultFG
 		curBG   vt10x.Color = vt10x.DefaultBG
-		atDefault         = true
+		atDefault           = true
 	)
 
 	for y := range rows {
-		// Find last non-blank cell so we don't burn bytes on the
-		// trailing spaces — emit \x1b[K instead.
-		lastNonBlank := -1
-		for x := cols - 1; x >= 0; x-- {
-			g := v.term.Cell(x, y)
-			if g.Char != 0 && g.Char != ' ' {
-				lastNonBlank = x
-				break
-			}
-			// A cell with non-default attrs but a space still counts
-			// as visible — preserve highlighted blanks.
-			if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
-				lastNonBlank = x
-				break
-			}
-		}
-
-		for x := 0; x <= lastNonBlank; x++ {
-			g := v.term.Cell(x, y)
-			if g.Mode != curMode || g.FG != curFG || g.BG != curBG {
-				writeSGR(&buf, g.Mode, g.FG, g.BG)
-				curMode, curFG, curBG = g.Mode, g.FG, g.BG
-				atDefault = (curMode == 0 && curFG == vt10x.DefaultFG && curBG == vt10x.DefaultBG)
-			}
-			ch := g.Char
-			if ch == 0 {
-				ch = ' '
-			}
-			buf.WriteRune(ch)
-		}
-
-		// Reset to defaults before \x1b[K so the erase-to-EOL doesn't
-		// inherit a coloured background from the last cell.
-		if !atDefault {
-			buf.WriteString("\x1b[m")
-			curMode = 0
-			curFG = vt10x.DefaultFG
-			curBG = vt10x.DefaultBG
-			atDefault = true
-		}
-		buf.WriteString("\x1b[K")
+		renderRow(&buf, v.term, y, cols, &curMode, &curFG, &curBG, &atDefault)
 		if y < rows-1 {
 			buf.WriteString("\r\n")
 		}
@@ -181,6 +240,133 @@ func (v *VT) RenderSnapshot() []byte {
 	}
 
 	return buf.Bytes()
+}
+
+// renderRow appends one row of `term` (at row y, width cols) to buf,
+// using and updating the given SGR-tracking state. Trailing blank cells
+// are elided via \x1b[K. Caller is responsible for line separation
+// (\r\n) and for any final SGR reset after the last row.
+func renderRow(buf *bytes.Buffer, term vt10x.Terminal, y, cols int,
+	curMode *int16, curFG, curBG *vt10x.Color, atDefault *bool,
+) {
+	// Find last non-blank cell so we don't burn bytes on the trailing
+	// spaces — emit \x1b[K instead.
+	lastNonBlank := -1
+	for x := cols - 1; x >= 0; x-- {
+		g := term.Cell(x, y)
+		if g.Char != 0 && g.Char != ' ' {
+			lastNonBlank = x
+			break
+		}
+		// A cell with non-default attrs but a space still counts as
+		// visible — preserve highlighted blanks.
+		if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
+			lastNonBlank = x
+			break
+		}
+	}
+
+	for x := 0; x <= lastNonBlank; x++ {
+		g := term.Cell(x, y)
+		if g.Mode != *curMode || g.FG != *curFG || g.BG != *curBG {
+			writeSGR(buf, g.Mode, g.FG, g.BG)
+			*curMode, *curFG, *curBG = g.Mode, g.FG, g.BG
+			*atDefault = (*curMode == 0 && *curFG == vt10x.DefaultFG && *curBG == vt10x.DefaultBG)
+		}
+		ch := g.Char
+		if ch == 0 {
+			ch = ' '
+		}
+		buf.WriteRune(ch)
+	}
+
+	// Reset to defaults before \x1b[K so the erase-to-EOL doesn't
+	// inherit a coloured background from the last cell.
+	if !*atDefault {
+		buf.WriteString("\x1b[m")
+		*curMode = 0
+		*curFG = vt10x.DefaultFG
+		*curBG = vt10x.DefaultBG
+		*atDefault = true
+	}
+	buf.WriteString("\x1b[K")
+}
+
+// captureRowANSI renders a captured glyph row to a self-contained ANSI
+// byte string. Always starts at SGR defaults, ends at SGR defaults +
+// \x1b[K, so concatenating multiple captured rows with \r\n separators
+// is safe — there's no SGR bleed across rows.
+func captureRowANSI(glyphs []vt10x.Glyph) []byte {
+	var buf bytes.Buffer
+	var (
+		curMode int16       = 0
+		curFG   vt10x.Color = vt10x.DefaultFG
+		curBG   vt10x.Color = vt10x.DefaultBG
+		atDefault           = true
+	)
+	// Find last non-blank cell.
+	cols := len(glyphs)
+	lastNonBlank := -1
+	for x := cols - 1; x >= 0; x-- {
+		g := glyphs[x]
+		if g.Char != 0 && g.Char != ' ' {
+			lastNonBlank = x
+			break
+		}
+		if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
+			lastNonBlank = x
+			break
+		}
+	}
+	for x := 0; x <= lastNonBlank; x++ {
+		g := glyphs[x]
+		if g.Mode != curMode || g.FG != curFG || g.BG != curBG {
+			writeSGR(&buf, g.Mode, g.FG, g.BG)
+			curMode, curFG, curBG = g.Mode, g.FG, g.BG
+			atDefault = (curMode == 0 && curFG == vt10x.DefaultFG && curBG == vt10x.DefaultBG)
+		}
+		ch := g.Char
+		if ch == 0 {
+			ch = ' '
+		}
+		buf.WriteRune(ch)
+	}
+	if !atDefault {
+		buf.WriteString("\x1b[m")
+	}
+	buf.WriteString("\x1b[K")
+	return buf.Bytes()
+}
+
+// rowsEqualTerm reports whether the captured glyph row matches row y of
+// the live terminal. Used by the eviction heuristic to detect that an
+// old row has shifted up by k positions.
+func rowsEqualTerm(glyphs []vt10x.Glyph, term vt10x.Terminal, y, cols int) bool {
+	if len(glyphs) != cols {
+		return false
+	}
+	for x := range cols {
+		g := term.Cell(x, y)
+		if g != glyphs[x] {
+			return false
+		}
+	}
+	return true
+}
+
+// glyphRowBlank reports whether every cell is empty space at default
+// attrs. Blank captured rows are skipped to avoid false positives where
+// pre[k] and post[0] are both blank.
+func glyphRowBlank(glyphs []vt10x.Glyph) bool {
+	for _, g := range glyphs {
+		if g.Char != 0 && g.Char != ' ' {
+			return false
+		}
+		if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
+			return false
+		}
+	}
+	return true
 }
 
 // writeSGR emits the minimum SGR sequence to adopt (mode, fg, bg).

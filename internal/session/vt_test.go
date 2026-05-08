@@ -203,3 +203,179 @@ func TestVTResize(t *testing.T) {
 		t.Errorf("snapshot missing 'abc' after resize: %q", snap)
 	}
 }
+
+// TestVTSnapshotPreservesScrollback guards the documented contract that
+// reattach repaints include lines that scrolled off the visible
+// viewport. Regression: PR #141 swapped raw-byte replay for a vt10x
+// snapshot of the visible region only, dropping all scrollback.
+func TestVTSnapshotPreservesScrollback(t *testing.T) {
+	const cols, rows = 20, 5
+	v := NewVT(cols, rows)
+	// Write rows*3 distinct lines so rows*2 of them scroll off.
+	for i := range rows*3 {
+		line := []byte("line-")
+		line = append(line, byte('0'+i/10), byte('0'+i%10))
+		line = append(line, '\r', '\n')
+		if _, err := v.Write(line); err != nil {
+			t.Fatalf("write line %d: %v", i, err)
+		}
+	}
+	snap := string(v.RenderSnapshot())
+	for i := range rows*2 {
+		want := "line-" + string([]byte{byte('0' + i/10), byte('0' + i%10)})
+		if !strings.Contains(snap, want) {
+			t.Errorf("snapshot missing scrollback line %q", want)
+		}
+	}
+}
+
+// TestVTSnapshotScrollbackCappedAtHistoryRows guards that the ring
+// drops the oldest entries once over capacity, so memory stays bounded.
+func TestVTSnapshotScrollbackCappedAtHistoryRows(t *testing.T) {
+	const cols, rows = 20, 5
+	const extra = 50
+	v := NewVT(cols, rows)
+	total := rows + historyRows + extra
+	for i := range total {
+		// 4-digit line numbers so each line is unique.
+		line := []byte("line-")
+		for d := 1000; d > 0; d /= 10 {
+			line = append(line, byte('0'+(i/d)%10))
+		}
+		line = append(line, '\r', '\n')
+		if _, err := v.Write(line); err != nil {
+			t.Fatalf("write line %d: %v", i, err)
+		}
+	}
+	if got := len(v.history); got != historyRows {
+		t.Errorf("history len = %d, want %d", got, historyRows)
+	}
+	snap := string(v.RenderSnapshot())
+	// The first `extra` lines must have been dropped from the ring.
+	for i := range extra {
+		needle := "line-"
+		for d := 1000; d > 0; d /= 10 {
+			needle += string(byte('0' + (i/d)%10))
+		}
+		if strings.Contains(snap, needle) {
+			t.Errorf("snapshot still contains dropped line %q", needle)
+		}
+	}
+}
+
+// TestVTSnapshotScrollbackSkippedOnAltScreen guards that alt-screen
+// sessions get the existing snapshot path: enter alt-screen first, no
+// scrollback prepended. Vim/htop/claude TUI own their own redraw.
+func TestVTSnapshotScrollbackSkippedOnAltScreen(t *testing.T) {
+	v := NewVT(20, 3)
+	for range 10 {
+		if _, err := v.Write([]byte("normal-line\r\n")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	if _, err := v.Write([]byte("\x1b[?1049hALT-CONTENT")); err != nil {
+		t.Fatalf("alt: %v", err)
+	}
+	snap := string(v.RenderSnapshot())
+	if !strings.HasPrefix(snap, "\x1b[?1049h") {
+		t.Errorf("alt-screen snapshot must enter alt screen first; got prefix %q", snap[:min(20, len(snap))])
+	}
+	if strings.Contains(snap, "normal-line") {
+		t.Errorf("alt-screen snapshot must not include normal-screen scrollback")
+	}
+	if !strings.Contains(snap, "ALT-CONTENT") {
+		t.Errorf("alt-screen snapshot missing alt content: %q", snap)
+	}
+}
+
+// TestVTSnapshotScrollbackSurvivesAltScreenRoundTrip guards that the
+// ring keeps its normal-screen captures while alt-screen is up, so a
+// vim invocation in the middle of a session doesn't erase prior
+// scrollback when the user exits vim.
+func TestVTSnapshotScrollbackSurvivesAltScreenRoundTrip(t *testing.T) {
+	v := NewVT(20, 3)
+	for range 10 {
+		if _, err := v.Write([]byte("normal-line\r\n")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	if _, err := v.Write([]byte("\x1b[?1049hALT")); err != nil {
+		t.Fatalf("alt enter: %v", err)
+	}
+	if _, err := v.Write([]byte("\x1b[?1049l")); err != nil {
+		t.Fatalf("alt exit: %v", err)
+	}
+	snap := string(v.RenderSnapshot())
+	if !strings.Contains(snap, "normal-line") {
+		t.Errorf("post-alt snapshot lost normal-screen scrollback: %q", snap)
+	}
+}
+
+// TestVTSnapshotScrollbackPreservesSGR guards that styled lines that
+// scroll off the viewport keep their SGR attrs in the captured ring,
+// not just plain text.
+func TestVTSnapshotScrollbackPreservesSGR(t *testing.T) {
+	v := NewVT(20, 3)
+	// Bold red colored line, then enough plain lines to scroll it off.
+	if _, err := v.Write([]byte("\x1b[1;31mRED-BOLD\x1b[m\r\n")); err != nil {
+		t.Fatalf("colored: %v", err)
+	}
+	for range 10 {
+		if _, err := v.Write([]byte("plain\r\n")); err != nil {
+			t.Fatalf("plain: %v", err)
+		}
+	}
+	snap := string(v.RenderSnapshot())
+	if !strings.Contains(snap, "RED-BOLD") {
+		t.Fatalf("snapshot missing the colored scrollback line: %q", snap)
+	}
+	// History entry for "RED-BOLD" must contain bold (\x1b[0;1) and
+	// red (;31) before the text. Search for the substring up to the
+	// "RED-BOLD" occurrence.
+	idx := strings.Index(snap, "RED-BOLD")
+	if idx < 0 {
+		t.Fatal("RED-BOLD not found")
+	}
+	prefix := snap[:idx]
+	if !strings.Contains(prefix, ";1") {
+		t.Errorf("scrollback line lost bold SGR: %q", prefix)
+	}
+	if !strings.Contains(prefix, ";31") {
+		t.Errorf("scrollback line lost red SGR: %q", prefix)
+	}
+}
+
+// TestVTSnapshotScrollbackIgnoresClear guards that \x1b[2J wipes the
+// pre-rows in place (no eviction match), matching xterm.js's default
+// "clear doesn't push to scrollback" behavior.
+func TestVTSnapshotScrollbackIgnoresClear(t *testing.T) {
+	v := NewVT(20, 3)
+	if _, err := v.Write([]byte("before-clear\r\n\x1b[H\x1b[2J")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := len(v.history); got != 0 {
+		t.Errorf("history should be empty after \\x1b[2J; got %d entries", got)
+	}
+}
+
+// TestVTSnapshotScrollbackResize guards that Resize doesn't blow up
+// when the ring is non-empty, and the resized snapshot still
+// round-trips the visible region.
+func TestVTSnapshotScrollbackResize(t *testing.T) {
+	v := NewVT(20, 3)
+	for range 10 {
+		if _, err := v.Write([]byte("line\r\n")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	if err := v.Resize(40, 10); err != nil {
+		t.Fatalf("resize: %v", err)
+	}
+	if _, err := v.Write([]byte("after-resize")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	snap := string(v.RenderSnapshot())
+	if !strings.Contains(snap, "after-resize") {
+		t.Errorf("snapshot missing post-resize content: %q", snap)
+	}
+}

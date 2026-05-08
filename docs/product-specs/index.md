@@ -7,6 +7,8 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
+| P2 | #143 | vt snapshot: scrollback above visible viewport not preserved | IMPLEMENT | [143-vt-snapshot-scrollback-above-visible-viewport](143-vt-snapshot-scrollback-above-visible-viewport.md) |
 
 ## Completed
 

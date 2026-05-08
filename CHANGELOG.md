@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   p10k) and TUIs (Claude, Codex, lazygit) came back uncolored until
   the app repainted. Truecolor SGR (`38;2;R;G;B` / `48;2;R;G;B`) is
   now emitted for the RGB range; sentinels still fall through. (#144)
+- Session reattach now preserves scrollback above the visible viewport.
+  Lines that scrolled off the top of a running session reappear in the
+  GUI's scrollback after a restart, restoring the contract that PR #141
+  inadvertently broke when it switched the reattach repaint to a vt10x
+  visible-screen snapshot. Up to 500 evicted rows per session are kept
+  with their SGR styling intact. (#143)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,
