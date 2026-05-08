@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/142-vt-snapshot-cjk-wide-char-alignment.md](../../product-specs/142-vt-snapshot-cjk-wide-char-alignment.md)
 - **Issue:** #142
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -104,6 +104,9 @@ All tests live alongside source per the `AGENTS.md` convention. No flow-test add
 - **2026-05-08** — Spec ingested from #142, exec plan created at RESEARCH stage.
 - **2026-05-08** — Approach approved (replace vt10x with charmbracelet/x/vt).
 - **2026-05-08** — Implementation landed: `vt.go` rewritten on `vt.SafeEmulator`; `vt_test.go` retargeted; 3 new wide-char regression tests (`TestVTSnapshotWideCharRoundTrip`, `TestVTSnapshotWideCharCursorPosition`, `TestVTSnapshotWideCharOverlay`). All `internal/...` tests pass. CHANGELOG entry added under [Unreleased].
+- **2026-05-08** — PR #160 opened.
+- **2026-05-08** — Ralph iteration 1 flagged cursor-visibility callback race (theoretical — synchronous in current Charm code, but reviewer wanted defense in depth). Addressed by switching `cursorVisible` to `atomic.Bool` (commit 1af8f7f).
+- **2026-05-08** — Converged via /hs-ralph-loop on 2026-05-08 (iteration 2 verdict: APPROVE).
 
 ## Open questions
 

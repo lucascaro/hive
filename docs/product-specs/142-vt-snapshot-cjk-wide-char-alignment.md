@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/142-vt-snapshot-cjk-wide-char-alignment.md](../exec-plans/active/142-vt-snapshot-cjk-wide-char-alignment.md)
+- **Exec plan:** [docs/exec-plans/completed/142-vt-snapshot-cjk-wide-char-alignment.md](../exec-plans/completed/142-vt-snapshot-cjk-wide-char-alignment.md)
 
 ## Problem
 
