@@ -78,6 +78,15 @@ class SessionTerm {
     this.term.loadAddon(this.fit);
     this.term.open(this.body);
 
+    // Single source of truth for "tile geometry changed". Fires post-
+    // layout, only when the body's box actually resizes — covers window
+    // resize, sidebar drag, single↔grid flip, show/hide, and grid row-
+    // span changes without any push-based refit calls. Font-size changes
+    // don't change the body size and call _onBodyResize() explicitly.
+    this._pendingAttach = false;
+    this.ro = new ResizeObserver(() => this._onBodyResize());
+    this.ro.observe(this.body);
+
     // WebGL renderer is dramatically faster than the default DOM
     // renderer on older machines (VS Code uses the same approach).
     // Load it lazily after open() and silently fall back to DOM if
@@ -417,35 +426,45 @@ class SessionTerm {
 
   show() {
     this.host.classList.add('visible');
-    this.refit();
+    // Becoming visible flips display from none → block, which makes the
+    // body's box appear with non-zero size. ResizeObserver fires next
+    // tick and runs _onBodyResize for us.
   }
 
   hide() {
     this.host.classList.remove('visible');
   }
 
-  refit() {
-    // Preserve "viewport pinned to bottom" across the fit. fit.fit()
-    // changes rows/cols and xterm doesn't always keep the viewport at
-    // the latest line — without this, every window resize or view
-    // switch on a session with scrollback would strand the user mid-
-    // history and they'd have to scroll down by hand.
+  // _onBodyResize is the single resize entry point. ResizeObserver
+  // delivers the call post-layout, so fit.fit() reads correct dims
+  // — no rAF dance needed. Font-size changes call this explicitly
+  // (the body box doesn't change, so RO won't fire on its own).
+  _onBodyResize() {
+    // RO can fire with a zero box when the host is display:none (tile
+    // not .visible, or hidden because outside the grid scope). fit.fit()
+    // on a zero-size body produces garbage dims — skip until visible.
+    if (this.body.clientWidth === 0 || this.body.clientHeight === 0) return;
+
+    // First-time visibility for a deferred attach: hand off to
+    // ensureAttached, which does its own fit.fit() before OpenSession.
+    if (this._pendingAttach) {
+      this._pendingAttach = false;
+      this.ensureAttached();
+      return;
+    }
+
+    // Preserve "viewport pinned to bottom" across the resize. xterm's
+    // own resize doesn't auto-snap to bottom after reflow; without this,
+    // a user scrolled to the latest line would land mid-history.
     const buf = this.term.buffer.active;
     const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
-    try { this.fit.fit(); } catch {}
+    // Swallow throw and continue: a transient FitAddon error (e.g. a
+    // race against teardown) shouldn't drop the daemon-side resize.
+    try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
-    if (wasAtBottom) {
-      // Sync re-pin so the same frame that paints the post-fit
-      // geometry also paints the corrected viewport — without this
-      // the user sees a one-frame "jump" on every refit. The rAF
-      // re-pin is a backstop in case fit's resize completes async
-      // and bumps the viewport again after the sync call. Both
-      // calls are intentional; do not collapse to one.
-      this.term.scrollToBottom();
-      requestAnimationFrame(() => this.term.scrollToBottom());
-    }
+    if (wasAtBottom) this.term.scrollToBottom();
   }
 
   async ensureAttached() {
@@ -456,14 +475,13 @@ class SessionTerm {
       this.setDead(true, this.info.last_error || 'The process failed to start.');
       return;
     }
-    // Wait one frame so the .visible / .in-grid classes that show()
-    // just toggled have actually flowed through layout. fit.fit() reads
-    // offsetWidth/Height; if we measure before layout settles we end up
-    // sending the daemon stale (often default 80x24) dimensions, the
-    // daemon's WELCOME reports the same defaults, OpenSession's "did
-    // size change?" check skips the resize, and the running PTY app
-    // never SIGWINCHes — appearing static until the user toggles modes.
-    await new Promise((r) => requestAnimationFrame(r));
+    // If the host is still display:none, the body has no box yet and
+    // fit.fit() would measure 0×0. Defer until ResizeObserver fires
+    // with a real size — _onBodyResize will re-enter ensureAttached.
+    if (this.body.clientWidth === 0 || this.body.clientHeight === 0) {
+      this._pendingAttach = true;
+      return;
+    }
     this.fit.fit();
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
@@ -482,6 +500,7 @@ class SessionTerm {
 
   destroy() {
     CloseAttach(this.info.id).catch(() => {});
+    this.ro.disconnect();
     this.term.dispose();
     this.host.remove();
   }
@@ -627,7 +646,10 @@ function onSessionDeath(info) {
 function applyFontSize() {
   for (const st of state.terms.values()) {
     st.term.options.fontSize = state.fontSize;
-    st.refit();
+    // Body box doesn't change on font-size change, so ResizeObserver
+    // won't fire — call the resize handler explicitly so fit.fit()
+    // recomputes (cols, rows) from new char metrics.
+    st._onBodyResize();
   }
   localStorage.setItem('hive.fontSize', String(state.fontSize));
 }
@@ -1101,11 +1123,6 @@ function showSingle(id) {
     else st.hide();
     st.host.classList.remove('in-grid', 'active');
   }
-  // Invalidate the grid geometry cache. Tiles get resized to fill
-  // the single-mode container while we're here, so the next
-  // renderGrid must run a refit pass even if the (rows, cols, w, h)
-  // it computes happens to match the last grid render.
-  gridLayout.geomKey = '';
   const st = id ? state.terms.get(id) : null;
   if (st) st.ensureAttached();
 }
@@ -1190,7 +1207,7 @@ function switchToProject(pid) {
 // to recompute. assignments[i] = { row, col, rowSpan } — tiles above
 // last-row empty cells extend downward to fill the grid (matches
 // current Hive's behavior). cellMap[row*cols + col] = session index.
-let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [], geomKey: '' };
+let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
 
 // computeGridDims picks (rows, cols) that fills the container without
 // scrolling, biasing tile aspect toward typical terminal proportions
@@ -1301,25 +1318,11 @@ function renderGrid() {
     }
   }
 
-  // Skip the refit pass when geometry is unchanged. Pure active-tile
-  // swaps (keyboard nav inside grid mode) don't resize anything but
-  // would otherwise call fit.fit() on every tile — and fit.fit()
-  // perturbs xterm's viewport for one frame, which the user sees as
-  // the active session "jumping up" on each arrow press. The session
-  // id list is part of the key so a project / scope swap that lands
-  // on the same (rows, cols, w, h) still triggers refit — newly
-  // visible tiles may have stale xterm dimensions from a prior view.
-  const geomKey = `${rows}x${cols}@${w}x${h}:${gridSessions.map((s) => s.id).join(',')}`;
-  const geomChanged = geomKey !== gridLayout.geomKey;
-  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap, geomKey };
+  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
 
-  if (geomChanged) {
-    requestAnimationFrame(() => {
-      for (const info of gridSessions) {
-        state.terms.get(info.id)?.refit();
-      }
-    });
-  }
+  // No explicit refit pass: each tile's ResizeObserver fires when its
+  // body box changes (CSS grid cell resized, in-grid class toggled,
+  // tile shown/hidden). That's the only place fit.fit() runs.
 }
 
 // setActive centralizes "the focused session changed" so every code
@@ -1632,16 +1635,10 @@ EventsOn('pty:event', (id, jsonStr) => {
     const st = state.terms.get(id);
     if (st && ev.kind === 'scrollback_replay_done') {
       st.phase = 'live';
-      // Defensive refit: if measurement at attach time was off (layout
-      // not yet settled, font metrics not loaded, etc.) the PTY app may
-      // be drawing at the wrong size. A second refit after replay sends
-      // the now-correct size and triggers SIGWINCH so the app repaints.
-      // Run it before the explicit scrollToBottom so the fit's geometry
-      // change can't leave us stranded above the latest line.
-      st.refit();
-      // After scrollback replay, snap the viewport to the latest
-      // line so the user sees the cursor / newest output rather than
-      // landing somewhere mid-history.
+      // After scrollback replay, snap the viewport to the latest line
+      // so the user sees the cursor / newest output rather than landing
+      // somewhere mid-history. Tile dims are already correct via the
+      // ResizeObserver-driven fit at attach time — no defensive refit.
       st.term.scrollToBottom();
     }
   } catch { /* ignore */ }
@@ -2334,16 +2331,8 @@ window.addEventListener('keydown', (e) => {
     deleteActiveProject();
   } else if (e.key === 's' || e.key === 'S') {
     swallow();
-    const app = document.getElementById('app');
-    app.classList.toggle('sidebar-hidden');
-    // Re-fit visible terminals after the layout transition.
-    setTimeout(() => {
-      if (state.view === 'single') {
-        state.terms.get(state.activeId)?.refit();
-      } else {
-        for (const info of gridScopeSessions()) state.terms.get(info.id)?.refit();
-      }
-    }, 150);
+    document.getElementById('app').classList.toggle('sidebar-hidden');
+    // Layout reflow → tile bodies resize → ResizeObserver fits xterm.
   } else if (e.key === 'g' || e.key === 'G') {
     swallow();
     if (e.shiftKey) {
@@ -2418,15 +2407,8 @@ window.addEventListener('keydown', (e) => {
 // here AND in menu.go.
 
 function toggleSidebar() {
-  const app = document.getElementById('app');
-  app.classList.toggle('sidebar-hidden');
-  setTimeout(() => {
-    if (state.view === 'single') {
-      state.terms.get(state.activeId)?.refit();
-    } else {
-      for (const info of gridScopeSessions()) state.terms.get(info.id)?.refit();
-    }
-  }, 150);
+  document.getElementById('app').classList.toggle('sidebar-hidden');
+  // Layout reflow → tile bodies resize → ResizeObserver fits xterm.
 }
 
 function toggleProjectGrid() {
@@ -2656,23 +2638,26 @@ function moveActiveSession(delta, reorder) {
 }
 
 // ---------- resize ----------
-
-let resizeTimer = null;
-window.addEventListener('resize', () => {
-  if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (state.view === 'single') {
-      const t = state.activeId && state.terms.get(state.activeId);
-      if (t) t.refit();
-      return;
-    }
-    // Grid mode: re-pick (rows, cols) for the new container shape.
-    // Just refitting each tile keeps the old layout, which looks
-    // wrong after a landscape↔portrait resize until the user
-    // switches sessions and accidentally triggers a re-render.
-    renderGrid();
-  }, 100);
-});
+//
+// Per-tile fit is driven by each SessionTerm's own ResizeObserver
+// on its body. The only thing left at the page level is re-picking
+// (rows, cols) for the grid when the *container* changes shape —
+// e.g. landscape ↔ portrait window or sidebar drag — so tiles flow
+// from "side-by-side" to "stacked" and back.
+//
+// rAF coalesces the burst of RO entries during a continuous drag
+// into one renderGrid per frame. The guard also dodges the dreaded
+// "ResizeObserver loop completed with undelivered notifications"
+// warning that fires when a callback synchronously mutates layout.
+let _gridReflowQueued = false;
+new ResizeObserver(() => {
+  if (state.view === 'single' || _gridReflowQueued) return;
+  _gridReflowQueued = true;
+  requestAnimationFrame(() => {
+    _gridReflowQueued = false;
+    if (state.view !== 'single') renderGrid();
+  });
+}).observe(termsHost);
 
 // ---------- sidebar resize ----------
 //
@@ -2698,13 +2683,9 @@ window.addEventListener('resize', () => {
     const px = app.style.getPropertyValue('--sidebar-width');
     const w = parseInt(px, 10);
     if (Number.isFinite(w)) localStorage.setItem('hive.sidebarWidth', String(w));
-    // Main pane width changed — reflow terminals.
-    if (state.view === 'single') {
-      const t = state.activeId && state.terms.get(state.activeId);
-      if (t) t.refit();
-    } else {
-      renderGrid();
-    }
+    // Main pane width change reflows terminals automatically: each
+    // tile body's ResizeObserver fits its xterm; the termsHost RO
+    // re-picks (rows, cols) for the grid.
   }
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -2726,19 +2707,14 @@ window.addEventListener('resize', () => {
   window.addEventListener('blur', endDrag);
 
   // Keyboard a11y: when the resizer has focus, arrow keys adjust width
-  // (Shift = larger step). Persist + refit on each change.
+  // (Shift = larger step). The width change reflows the main pane;
+  // tile-body and termsHost ResizeObservers handle the rest.
   function nudge(delta) {
     const cur = parseInt(getComputedStyle(app).getPropertyValue('--sidebar-width'), 10);
     const base = Number.isFinite(cur) ? cur : 200;
     const w = Math.max(MIN, Math.min(MAX, base + delta));
     app.style.setProperty('--sidebar-width', `${w}px`);
     localStorage.setItem('hive.sidebarWidth', String(w));
-    if (state.view === 'single') {
-      const t = state.activeId && state.terms.get(state.activeId);
-      if (t) t.refit();
-    } else {
-      renderGrid();
-    }
   }
   handle.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 50 : 10;
