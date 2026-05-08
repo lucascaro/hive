@@ -1367,7 +1367,17 @@ function focusActiveTerm() {
     ) {
       return;
     }
-    st.term.focus();
+    // Focus the helper-textarea DOM node directly. xterm's term.focus()
+    // early-returns when its internal _focused flag is stale-true,
+    // which happens after view toggles where focusin/focusout fire
+    // across multiple tiles in quick succession (sidebar still shows
+    // the session as selected, but no element owns keyboard input).
+    // Driving the browser focus event directly fires focusin on
+    // .term-host, which the host listener consumes to set
+    // .term-focused, and routes keystrokes through xterm correctly.
+    const ta = st.host.querySelector('.xterm-helper-textarea');
+    if (ta) ta.focus();
+    else st.term.focus();
   });
 }
 

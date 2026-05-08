@@ -7,6 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| P2 | #159 | Returning to grid leaves session visually selected but keyboard input doesn't reach it | IMPLEMENT | [159-grid-return-session-input-focus](159-grid-return-session-input-focus.md) |
 
 ## Completed
 
