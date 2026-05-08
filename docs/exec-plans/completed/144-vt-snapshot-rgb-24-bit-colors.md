@@ -2,8 +2,9 @@
 
 - **Spec:** [docs/product-specs/144-vt-snapshot-rgb-24-bit-colors.md](../../product-specs/144-vt-snapshot-rgb-24-bit-colors.md)
 - **Issue:** #144
-- **Stage:** PLAN
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
+- **PR:** #158
 
 ## Summary
 
@@ -64,6 +65,8 @@ None.
 ## Progress
 
 - **2026-05-08** — Spec ingested, triaged S/P2/bug, research complete, plan written.
+- **2026-05-08** — Implemented; PR #158 opened.
+- **2026-05-08** — Converged via /hs-ralph-loop on 2026-05-08 (APPROVE on iteration 1, no findings).
 
 ## Open questions
 

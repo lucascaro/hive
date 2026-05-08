@@ -7,7 +7,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
-| P2 | #144 | vt snapshot: RGB / 24-bit colors fall back to default | IMPLEMENT | [144-vt-snapshot-rgb-24-bit-colors](144-vt-snapshot-rgb-24-bit-colors.md) |
 
 ## Completed
 
@@ -15,6 +14,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
 | #155 | Save session name on Enter key when editing | 2026-05-07 | [155-save-session-name-on-enter-key](155-save-session-name-on-enter-key.md) |
+| #144 | vt snapshot: RGB / 24-bit colors fall back to default | 2026-05-08 | [144-vt-snapshot-rgb-24-bit-colors](144-vt-snapshot-rgb-24-bit-colors.md) |
 
 ## Rejected
 

@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/144-vt-snapshot-rgb-24-bit-colors.md](../exec-plans/active/144-vt-snapshot-rgb-24-bit-colors.md)
+- **Exec plan:** [docs/exec-plans/completed/144-vt-snapshot-rgb-24-bit-colors.md](../exec-plans/completed/144-vt-snapshot-rgb-24-bit-colors.md)
 
 ## Problem
 
