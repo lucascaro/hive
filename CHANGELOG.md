@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   view-toggle's focusin/focusout churn — focusing the helper-textarea
   DOM node directly bypasses the stale flag and fires a real focus
   event. (#159)
+- GUI: Resize no longer strands the user mid-history when the viewport
+  is 1–2 lines short of the bottom. Codex (and similar TUIs) sometimes
+  leave the viewport just above the bottom; the resize handler now
+  treats anything within 2 lines of bottom as "at bottom" and re-snaps
+  after reflow. Deliberate scrollback (3+ lines up) is still preserved.
+  (#163)
+- Session snapshot: 24-bit RGB foreground/background colors now
+  round-trip across GUI reattach. Previously `writeColor` dropped the
+  RGB-encoded `vt10x.Color` to default, so modern prompts (starship,
+  p10k) and TUIs (Claude, Codex, lazygit) came back uncolored until
+  the app repainted. Truecolor SGR (`38;2;R;G;B` / `48;2;R;G;B`) is
+  now emitted for the RGB range; sentinels still fall through. (#144)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,
