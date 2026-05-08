@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/159-grid-return-session-input-focus.md](../../product-specs/159-grid-return-session-input-focus.md)
 - **Issue:** #159
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -85,6 +85,7 @@ This project has no JS test framework (`cmd/hivegui/frontend/package.json` has o
 
 - **2026-05-08** — Spec + plan created. Triage: bug / S / P2. Research complete.
 - **2026-05-08** — Implemented: focusActiveTerm now focuses the helper-textarea DOM node directly inside the rAF, with fallback to term.focus() before xterm has been opened. CHANGELOG entry added under [Unreleased]. `go test ./...` green; vite build not exercised because wails-generated runtime isn't checked in.
+- **2026-05-08** — PR #161 opened; converged via /hs-ralph-loop on first iteration (APPROVE, zero blocking/important findings).
 
 ## Open questions
 

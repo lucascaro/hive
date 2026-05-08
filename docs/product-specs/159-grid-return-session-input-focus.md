@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/159-grid-return-session-input-focus.md](../exec-plans/active/159-grid-return-session-input-focus.md)
+- **Exec plan:** [docs/exec-plans/completed/159-grid-return-session-input-focus.md](../exec-plans/completed/159-grid-return-session-input-focus.md)
 
 ## Problem
 
