@@ -7,6 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| P2 | #142 | vt snapshot: CJK / wide-char column misalignment | IMPLEMENT | [142-vt-snapshot-cjk-wide-char-alignment](142-vt-snapshot-cjk-wide-char-alignment.md) |
 
 ## Completed
 
