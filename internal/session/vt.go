@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/charmbracelet/x/vt"
 )
@@ -25,12 +26,14 @@ import (
 // VT is a goroutine-safe wrapper around vt.SafeEmulator. SafeEmulator's
 // own lock guards the emulator's parser/state; our Mutex serializes
 // Write/Resize/RenderSnapshot against each other so we never read a
-// half-updated screen and so the cursor-visibility callback's mutation
-// can't race with a concurrent RenderSnapshot.
+// half-updated screen. cursorVisible is updated from a callback that
+// the emulator invokes inside its parser, which we don't hold a lock
+// across — atomic.Bool keeps the read in RenderSnapshot race-free
+// without depending on Charm's internal callback-dispatch model.
 type VT struct {
 	mu            sync.Mutex
 	term          *vt.SafeEmulator
-	cursorVisible bool
+	cursorVisible atomic.Bool
 }
 
 // NewVT constructs a VT sized cols x rows. Falls back to 80x24 when
@@ -43,15 +46,12 @@ func NewVT(cols, rows int) *VT {
 		rows = 24
 	}
 	v := &VT{
-		term:          vt.NewSafeEmulator(cols, rows),
-		cursorVisible: true,
+		term: vt.NewSafeEmulator(cols, rows),
 	}
-	// The cursor-visibility callback fires synchronously inside
-	// SafeEmulator.Write, which we only call while holding v.mu, so the
-	// write here is already serialized — no extra locking needed.
+	v.cursorVisible.Store(true)
 	v.term.SetCallbacks(vt.Callbacks{
 		CursorVisibility: func(visible bool) {
-			v.cursorVisible = visible
+			v.cursorVisible.Store(visible)
 		},
 	})
 	return v
@@ -127,7 +127,7 @@ func (v *VT) RenderSnapshot() []byte {
 	}
 	fmt.Fprintf(&buf, "\x1b[%d;%dH", row, col)
 
-	if v.cursorVisible {
+	if v.cursorVisible.Load() {
 		buf.WriteString("\x1b[?25h")
 	} else {
 		buf.WriteString("\x1b[?25l")
