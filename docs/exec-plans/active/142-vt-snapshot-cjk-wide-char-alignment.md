@@ -102,8 +102,10 @@ All tests live alongside source per the `AGENTS.md` convention. No flow-test add
 ## Progress
 
 - **2026-05-08** — Spec ingested from #142, exec plan created at RESEARCH stage.
+- **2026-05-08** — Approach approved (replace vt10x with charmbracelet/x/vt).
+- **2026-05-08** — Implementation landed: `vt.go` rewritten on `vt.SafeEmulator`; `vt_test.go` retargeted; 3 new wide-char regression tests (`TestVTSnapshotWideCharRoundTrip`, `TestVTSnapshotWideCharCursorPosition`, `TestVTSnapshotWideCharOverlay`). All `internal/...` tests pass. CHANGELOG entry added under [Unreleased].
 
 ## Open questions
 
-- Does `charmbracelet/x/vt` expose a cursor-visibility flag (DECTCEM) on the emulator? If not, the snapshot will default to visible and rely on the next live byte to correct. To verify during implementation by reading the package source.
-- Does `Render()` include the trailing CUP and EL sequences we currently emit, or only the cell grid? Affects whether we still need the soft-reset preface and explicit final cursor positioning.
+- ~~Does `charmbracelet/x/vt` expose a cursor-visibility flag?~~ Resolved: no direct accessor, but `Callbacks.CursorVisibility` fires on DECTCEM transitions. Tracked in a `cursorVisible` field on `VT`, mutated under `v.mu` (callback fires synchronously inside `Write`).
+- ~~Does `Render()` include trailing CUP / EL?~~ Resolved: `Render()` emits only the styled cell grid joined by `\n`. We still emit the soft-reset preface, transform `\n` → `\r\n`, and append our own final CUP + DECTCEM.

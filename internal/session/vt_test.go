@@ -1,20 +1,41 @@
 package session
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/hinshun/vt10x"
+	uv "github.com/charmbracelet/ultraviolet"
 )
+
+// rowText concatenates display content of row y across cols. Wide cells
+// contribute their grapheme once and the shadow cell contributes "" so
+// the resulting string lines up with display columns.
+func rowText(v *VT, y, cols int) string {
+	var b strings.Builder
+	for x := range cols {
+		c := v.term.CellAt(x, y)
+		if c == nil || c.IsZero() {
+			b.WriteByte(' ')
+			continue
+		}
+		if c.Content == "" {
+			// Shadow half of a wide cell — already accounted for by the
+			// preceding cell's wide grapheme.
+			continue
+		}
+		b.WriteString(c.Content)
+	}
+	return b.String()
+}
 
 // TestVTSnapshotRoundTrip writes a known sequence into one VT, captures
 // its rendered snapshot, then feeds that snapshot into a fresh VT and
-// asserts the visible cells (chars only) match. Ignoring exact SGR
-// equality keeps the test resilient to minor SGR encoding differences;
-// what matters for the bug fix is that the *visible state* round-trips.
+// asserts the visible cells match. Bold attribute on "world" must
+// survive the round-trip.
 func TestVTSnapshotRoundTrip(t *testing.T) {
 	src := NewVT(20, 5)
-	// "hello" then move to next line, then bold "world".
 	if _, err := src.Write([]byte("hello\r\n\x1b[1mworld\x1b[m")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -35,85 +56,170 @@ func TestVTSnapshotRoundTrip(t *testing.T) {
 	}
 
 	for y := range 5 {
-		var srcLine, dstLine strings.Builder
-		for x := range 20 {
-			sg := src.term.Cell(x, y)
-			dg := dst.term.Cell(x, y)
-			sc := sg.Char
-			dc := dg.Char
-			if sc == 0 {
-				sc = ' '
-			}
-			if dc == 0 {
-				dc = ' '
-			}
-			srcLine.WriteRune(sc)
-			dstLine.WriteRune(dc)
-		}
-		if strings.TrimRight(srcLine.String(), " ") != strings.TrimRight(dstLine.String(), " ") {
-			t.Errorf("row %d mismatch:\n src=%q\n dst=%q", y, srcLine.String(), dstLine.String())
+		s := strings.TrimRight(rowText(src, y, 20), " ")
+		d := strings.TrimRight(rowText(dst, y, 20), " ")
+		if s != d {
+			t.Errorf("row %d mismatch:\n src=%q\n dst=%q", y, s, d)
 		}
 	}
 
-	// Bold "world" attrs must survive the round-trip — guards against
-	// SGR-bit drift in vt10x and against the writer dropping attrs.
-	for x := range 5 { // "world" at row 1, cols 0..4
-		sg := src.term.Cell(x, 1)
-		dg := dst.term.Cell(x, 1)
-		if sg.Mode&vtAttrBold == 0 {
+	// Bold on "world" (row 1, cols 0..4) must round-trip.
+	for x := range 5 {
+		sg := src.term.CellAt(x, 1)
+		dg := dst.term.CellAt(x, 1)
+		if sg == nil || sg.Style.Attrs&uv.AttrBold == 0 {
 			t.Fatalf("source bold not stored at (%d,1) — test setup wrong", x)
 		}
-		if dg.Mode&vtAttrBold == 0 {
-			t.Errorf("bold attr lost at (%d,1) after round-trip: src.Mode=%b dst.Mode=%b", x, sg.Mode, dg.Mode)
+		if dg == nil || dg.Style.Attrs&uv.AttrBold == 0 {
+			t.Errorf("bold attr lost at (%d,1) after round-trip", x)
 		}
 	}
 
 	// Cursor should also round-trip.
-	sc := src.term.Cursor()
-	dc := dst.term.Cursor()
+	sc := src.term.CursorPosition()
+	dc := dst.term.CursorPosition()
 	if sc.X != dc.X || sc.Y != dc.Y {
 		t.Errorf("cursor mismatch: src=(%d,%d) dst=(%d,%d)", sc.X, sc.Y, dc.X, dc.Y)
 	}
 }
 
-// TestVTReverseVideoNoDoubleApply guards a real bug: vt10x stores
-// reverse-video cells with FG/BG already swapped AND keeps the
-// attrReverse bit. A naive snapshot that re-emits both the swapped
-// colours and \x1b[7m makes the receiving terminal reverse them again,
-// landing on the wrong colours for any selection bar / status line / fzf
-// preview / vim visual-mode highlight.
-func TestVTReverseVideoNoDoubleApply(t *testing.T) {
-	src := NewVT(10, 1)
-	// Red FG on white BG, then enable reverse, then write "X". After
-	// vt10x's setChar, the cell is stored as FG=white, BG=red, with
-	// attrReverse set.
-	if _, err := src.Write([]byte("\x1b[31;47;7mX\x1b[m")); err != nil {
+// TestVTSnapshotWideCharRoundTrip is the regression test for #142.
+// A line of CJK characters must round-trip with the same display-column
+// layout, so xterm.js paints the snapshot identically to what it
+// painted from the live byte stream.
+func TestVTSnapshotWideCharRoundTrip(t *testing.T) {
+	src := NewVT(40, 5)
+	// Wide chars on row 0, narrow content on row 1 — the narrow row
+	// guards that we don't accidentally shift unrelated rows.
+	if _, err := src.Write([]byte("こんにちは世界\r\nhello")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	// Sanity: vt10x really did the pre-swap.
-	g := src.term.Cell(0, 0)
-	if g.Mode&vtAttrReverse == 0 {
-		t.Fatalf("test setup wrong: reverse bit not set on stored cell")
+	dst := NewVT(40, 5)
+	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
+		t.Fatalf("replay: %v", err)
 	}
-	if g.FG != 7 || g.BG != 1 { // 7=white(swapped FG), 1=red(swapped BG)
-		t.Fatalf("test setup wrong: vt10x did not pre-swap as expected: FG=%v BG=%v", g.FG, g.BG)
+
+	// Each wide grapheme should land at the same x and have Width == 2
+	// in both source and destination.
+	wideXs := []int{0, 2, 4, 6, 8, 10, 12}
+	for _, x := range wideXs {
+		s := src.term.CellAt(x, 0)
+		d := dst.term.CellAt(x, 0)
+		if s == nil || d == nil {
+			t.Fatalf("nil cell at (%d,0): src=%v dst=%v", x, s, d)
+		}
+		if s.Content != d.Content {
+			t.Errorf("wide cell (%d,0) content drift: src=%q dst=%q", x, s.Content, d.Content)
+		}
+		if s.Width != 2 || d.Width != 2 {
+			t.Errorf("wide cell (%d,0) width drift: src.Width=%d dst.Width=%d", x, s.Width, d.Width)
+		}
+	}
+
+	// Narrow row 1 must match too.
+	if got, want := rowText(dst, 1, 40), rowText(src, 1, 40); strings.TrimRight(got, " ") != strings.TrimRight(want, " ") {
+		t.Errorf("narrow row drifted after wide-char round-trip: src=%q dst=%q", want, got)
+	}
+}
+
+var cupRE = regexp.MustCompile(`\x1b\[(\d+);(\d+)H`)
+
+// TestVTSnapshotWideCharCursorPosition guards the specific failure
+// mode in #142: the snapshot's final CUP must address xterm.js display
+// columns, not raw cell index. Writing two wide chars then "abc" lands
+// the live cursor at display column 8 (1-indexed); the snapshot must
+// say so.
+func TestVTSnapshotWideCharCursorPosition(t *testing.T) {
+	v := NewVT(20, 3)
+	if _, err := v.Write([]byte("世界abc")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cur := v.term.CursorPosition()
+	wantCol := cur.X + 1
+	wantRow := cur.Y + 1
+	if wantCol != 8 {
+		// Sanity check: 2 wide chars (4 cols) + "abc" (3 cols) = cursor
+		// at col 7 (0-indexed) → wantCol == 8. If the emulator stores
+		// columns differently this test's premise is wrong.
+		t.Fatalf("test premise: expected cursor at display col 8, got %d", wantCol)
+	}
+
+	snap := string(v.RenderSnapshot())
+
+	// Find the LAST CUP in the snapshot — that's the cursor positioning
+	// we emit at the end. Earlier CUPs are part of the soft-reset preface
+	// (\x1b[H = \x1b[1;1H is implicit) or absent.
+	matches := cupRE.FindAllStringSubmatch(snap, -1)
+	if len(matches) == 0 {
+		t.Fatalf("no CUP in snapshot: %q", snap)
+	}
+	last := matches[len(matches)-1]
+	gotRow, _ := strconv.Atoi(last[1])
+	gotCol, _ := strconv.Atoi(last[2])
+	if gotRow != wantRow || gotCol != wantCol {
+		t.Errorf("snapshot CUP wrong: got (%d,%d), want (%d,%d). snap=%q", gotRow, gotCol, wantRow, wantCol, snap)
+	}
+}
+
+// TestVTSnapshotWideCharOverlay covers failure mode #4 from the spec:
+// an absolute CUP that targets a column inside a wide-rune region
+// should land at the same display column on round-trip.
+func TestVTSnapshotWideCharOverlay(t *testing.T) {
+	src := NewVT(20, 3)
+	// "世界" fills display cols 0..3. CUP to row 1, col 6 (1-indexed),
+	// then write "X". Live: 世界  X (with two spaces between 界 and X).
+	if _, err := src.Write([]byte("世界\x1b[1;6HX")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	dst := NewVT(20, 3)
+	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+
+	// 'X' must land at display col 5 in both source and destination.
+	sx := src.term.CellAt(5, 0)
+	dx := dst.term.CellAt(5, 0)
+	if sx == nil || sx.Content != "X" {
+		t.Fatalf("test premise: expected 'X' at col 5 on source, got %+v", sx)
+	}
+	if dx == nil || dx.Content != "X" {
+		t.Errorf("CUP-overlay-into-wide-region drifted: expected 'X' at col 5 on destination, got %+v", dx)
+	}
+}
+
+// TestVTReverseVideoNoDoubleApply guards against a class of bug where
+// reverse-video colours are emitted with the swap pre-applied AND \x1b[7m,
+// causing the receiving terminal to swap them again. The new emulator
+// uses ultraviolet's Style.Diff for SGR encoding which should not
+// double-apply, but the test stays valuable as a regression net.
+func TestVTReverseVideoNoDoubleApply(t *testing.T) {
+	src := NewVT(10, 1)
+	if _, err := src.Write([]byte("\x1b[31;47;7mX\x1b[m")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	srcCell := src.term.CellAt(0, 0)
+	if srcCell == nil || srcCell.Style.Attrs&uv.AttrReverse == 0 {
+		t.Fatalf("test premise: reverse attr not stored on source cell: %+v", srcCell)
 	}
 
 	dst := NewVT(10, 1)
 	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
-
-	// After replay the destination cell must end up with the SAME stored
-	// colours as the source (vt10x will pre-swap them too on replay,
-	// landing on the same FG/BG pair).
-	d := dst.term.Cell(0, 0)
-	if d.FG != g.FG || d.BG != g.BG {
-		t.Errorf("reverse-video colours drifted: src FG=%v BG=%v, dst FG=%v BG=%v", g.FG, g.BG, d.FG, d.BG)
+	dstCell := dst.term.CellAt(0, 0)
+	if dstCell == nil {
+		t.Fatal("destination cell missing after replay")
 	}
-	if d.Mode&vtAttrReverse == 0 {
+	if dstCell.Style.Attrs&uv.AttrReverse == 0 {
 		t.Errorf("reverse attr lost on round-trip")
+	}
+	// Foreground / background colours must match — if the snapshot
+	// double-applied reverse, src's red FG would land as white on dst.
+	if !srcCell.Style.Equal(&dstCell.Style) {
+		t.Errorf("style drift after reverse-video round-trip: src=%+v dst=%+v", srcCell.Style, dstCell.Style)
 	}
 }
 
@@ -126,8 +232,8 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 	if _, err := v.Write([]byte("\x1b[?1049hALT")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if v.term.Mode()&vt10x.ModeAltScreen == 0 {
-		t.Fatal("test setup wrong: vt10x did not switch to alt screen on \\x1b[?1049h")
+	if !v.term.IsAltScreen() {
+		t.Fatal("test setup wrong: emulator did not switch to alt screen on \\x1b[?1049h")
 	}
 	snap := string(v.RenderSnapshot())
 	if !strings.HasPrefix(snap, "\x1b[?1049h") {
@@ -136,7 +242,7 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 }
 
 // TestVTResize sanity-checks that Resize doesn't blow up and the
-// snapshot reflects the new dimensions.
+// snapshot reflects content placed before the resize.
 func TestVTResize(t *testing.T) {
 	v := NewVT(10, 3)
 	if _, err := v.Write([]byte("abc")); err != nil {

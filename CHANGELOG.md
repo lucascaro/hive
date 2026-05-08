@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: Reattach now renders CJK / wide-emoji rows with correct column
+  alignment. The headless emulator behind the snapshot path advanced
+  the cursor by one cell per rune and had no concept of double-width
+  cells, so any line containing wide content shifted on reattach until
+  the next live byte arrived. Swapped to `charmbracelet/x/vt`, which
+  models cells in display columns natively. (#142)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,
