@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: Resize no longer strands the user mid-history when the viewport
+  is 1–2 lines short of the bottom. Codex (and similar TUIs) sometimes
+  leave the viewport just above the bottom; the resize handler now
+  treats anything within 2 lines of bottom as "at bottom" and re-snaps
+  after reflow. Deliberate scrollback (3+ lines up) is still preserved.
+  (#163)
 - Session snapshot: 24-bit RGB foreground/background colors now
   round-trip across GUI reattach. Previously `writeColor` dropped the
   RGB-encoded `vt10x.Color` to default, so modern prompts (starship,
