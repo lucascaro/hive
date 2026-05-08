@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -132,6 +133,58 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 	snap := string(v.RenderSnapshot())
 	if !strings.HasPrefix(snap, "\x1b[?1049h") {
 		t.Errorf("alt-screen snapshot must enter alt screen first; got prefix %q", snap[:min(20, len(snap))])
+	}
+}
+
+// TestWriteColorRGBForeground verifies RGB-encoded colors emit a
+// truecolor SGR fragment instead of being dropped to default.
+func TestWriteColorRGBForeground(t *testing.T) {
+	var buf bytes.Buffer
+	writeColor(&buf, vt10x.Color(0xFF8040), true)
+	if got, want := buf.String(), ";38;2;255;128;64"; got != want {
+		t.Errorf("RGB FG: got %q, want %q", got, want)
+	}
+}
+
+// TestWriteColorRGBBackground verifies RGB BG emits ;48;2;…
+func TestWriteColorRGBBackground(t *testing.T) {
+	var buf bytes.Buffer
+	writeColor(&buf, vt10x.Color(0xFF8040), false)
+	if got, want := buf.String(), ";48;2;255;128;64"; got != want {
+		t.Errorf("RGB BG: got %q, want %q", got, want)
+	}
+}
+
+// TestWriteColorSentinelsNoOutput guards against decoding sentinels
+// (DefaultFG/DefaultBG/DefaultCursor at 1<<24+i) as if they were RGB.
+func TestWriteColorSentinelsNoOutput(t *testing.T) {
+	for _, c := range []vt10x.Color{vt10x.DefaultFG, vt10x.DefaultBG, vt10x.DefaultCursor} {
+		var buf bytes.Buffer
+		writeColor(&buf, c, true)
+		if buf.Len() != 0 {
+			t.Errorf("sentinel %d should emit nothing, got %q", c, buf.String())
+		}
+	}
+}
+
+// TestVTSnapshotRoundTripRGB verifies a 24-bit RGB foreground survives
+// snapshot → replay so GUI reattach preserves modern prompt/TUI styling.
+func TestVTSnapshotRoundTripRGB(t *testing.T) {
+	src := NewVT(10, 1)
+	if _, err := src.Write([]byte("\x1b[38;2;200;100;50mhi\x1b[m")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	srcFG := src.term.Cell(0, 0).FG
+	if srcFG != vt10x.Color(200<<16|100<<8|50) {
+		t.Fatalf("test setup wrong: vt10x did not store RGB as expected, got %v", srcFG)
+	}
+
+	dst := NewVT(10, 1)
+	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	if got := dst.term.Cell(0, 0).FG; got != srcFG {
+		t.Errorf("RGB FG lost across snapshot: src=%v dst=%v", srcFG, got)
 	}
 }
 

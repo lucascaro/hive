@@ -260,11 +260,18 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 		} else {
 			fmt.Fprintf(buf, ";48;5;%d", int(c))
 		}
+	case c < 1<<24:
+		// vt10x stores 24-bit RGB as Color(r<<16 | g<<8 | b) (see
+		// vt10x/state.go setAttr). Decode and emit the standard
+		// truecolor SGR so reattach preserves modern prompt/TUI styling.
+		r, g, b := (c>>16)&0xff, (c>>8)&0xff, c&0xff
+		if isFG {
+			fmt.Fprintf(buf, ";38;2;%d;%d;%d", r, g, b)
+		} else {
+			fmt.Fprintf(buf, ";48;2;%d;%d;%d", r, g, b)
+		}
 	default:
-		// Sentinel / RGB-encoded — fall back to default.
-		// vt10x stuffs RGB into 1<<24+r<<16+g<<8+b territory; rather
-		// than try to decode here, leave the colour at default. Worst
-		// case the snapshot is slightly less colourful than the live
-		// stream — live output will fix it on the next byte.
+		// Sentinel range (DefaultFG/DefaultBG/DefaultCursor at >=1<<24).
+		// These represent "default" — emit nothing.
 	}
 }

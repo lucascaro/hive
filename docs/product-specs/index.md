@@ -7,6 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| P2 | #144 | vt snapshot: RGB / 24-bit colors fall back to default | IMPLEMENT | [144-vt-snapshot-rgb-24-bit-colors](144-vt-snapshot-rgb-24-bit-colors.md) |
 
 ## Completed
 
