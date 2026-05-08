@@ -445,18 +445,22 @@ class SessionTerm {
     // on a zero-size body produces garbage dims — skip until visible.
     if (this.body.clientWidth === 0 || this.body.clientHeight === 0) return;
 
-    // Preserve "viewport pinned to bottom" across the resize. xterm's
-    // own resize doesn't auto-snap to bottom after reflow; without this,
-    // a user scrolled to the latest line would land mid-history.
-    const buf = this.term.buffer.active;
-    const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
-    try { this.fit.fit(); } catch { return; }
-
+    // First-time visibility for a deferred attach: hand off to
+    // ensureAttached, which does its own fit.fit() before OpenSession.
     if (this._pendingAttach) {
       this._pendingAttach = false;
       this.ensureAttached();
       return;
     }
+
+    // Preserve "viewport pinned to bottom" across the resize. xterm's
+    // own resize doesn't auto-snap to bottom after reflow; without this,
+    // a user scrolled to the latest line would land mid-history.
+    const buf = this.term.buffer.active;
+    const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
+    // Swallow throw and continue: a transient FitAddon error (e.g. a
+    // race against teardown) shouldn't drop the daemon-side resize.
+    try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
