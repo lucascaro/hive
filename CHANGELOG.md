@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
+  returns keyboard focus to the active session. Previously the
+  sidebar still showed the session as selected but keystrokes were
+  dropped because xterm's internal focus flag was stale after the
+  view-toggle's focusin/focusout churn — focusing the helper-textarea
+  DOM node directly bypasses the stale flag and fires a real focus
+  event. (#159)
 - GUI: Resize no longer strands the user mid-history when the viewport
   is 1–2 lines short of the bottom. Codex (and similar TUIs) sometimes
   leave the viewport just above the bottom; the resize handler now
