@@ -1033,19 +1033,23 @@ function beginRenameSession(sess, li, nameEl) {
   nameEl.replaceWith(input);
   input.focus();
   input.select();
+  let done = false;
   const finish = (commit) => {
-    if (commit && input.value.trim() && input.value !== sess.name) {
-      UpdateSession(sess.id, input.value.trim(), '', -1);
-    } else {
-      renderSidebar();
+    if (done) return;
+    done = true;
+    const next = input.value.trim();
+    input.replaceWith(nameEl);
+    if (commit && next && next !== sess.name) {
+      UpdateSession(sess.id, next, '', -1);
     }
     refocusActiveTerm();
   };
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
+    if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+    else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
   });
   input.addEventListener('blur', () => finish(true));
+  input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
 }
 
 function beginRenameProject(proj, nameEl) {
@@ -1056,19 +1060,23 @@ function beginRenameProject(proj, nameEl) {
   nameEl.replaceWith(input);
   input.focus();
   input.select();
+  let done = false;
   const finish = (commit) => {
-    if (commit && input.value.trim() && input.value !== proj.name) {
-      UpdateProject(proj.id, input.value.trim(), '', '', -1);
-    } else {
-      renderSidebar();
+    if (done) return;
+    done = true;
+    const next = input.value.trim();
+    input.replaceWith(nameEl);
+    if (commit && next && next !== proj.name) {
+      UpdateProject(proj.id, next, '', '', -1);
     }
     refocusActiveTerm();
   };
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
+    if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+    else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
   });
   input.addEventListener('blur', () => finish(true));
+  input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
 }
 
 function ensureTerm(info) {
