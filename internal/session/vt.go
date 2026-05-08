@@ -39,8 +39,10 @@ const historyRows = 500
 //
 // `history` holds rows that have scrolled off the top of the live grid,
 // captured by a heuristic in Write (compare pre/post top rows). Each
-// entry is a self-contained ANSI byte string starting with `\x1b[m` and
-// ending with `\x1b[K`, so concatenation needs only `\r\n` separators.
+// entry is a self-contained ANSI byte string: it begins at SGR defaults
+// (emitting `\x1b[0…m` lazily on the first non-default cell), ends at
+// SGR defaults followed by `\x1b[K`, so concatenation needs only
+// `\r\n` separators with no SGR bleed across rows.
 type VT struct {
 	mu      sync.Mutex
 	term    vt10x.Terminal
@@ -70,9 +72,13 @@ func NewVT(cols, rows int) *VT {
 // pre-snapshot the top rows, run the underlying term.Write, then look
 // for the largest k where preRows[k] == postRow[0]. If found, rows
 // preRows[0..k-1] were scrolled off and we push them onto `history`.
+// We bail when the post-write screen is entirely blank — that is a
+// full clear/repaint, not a scroll, and matching against any blank
+// preRows[kk] would otherwise push the cleared content into history.
 // This catches the common scrolling-output case; CUP-and-overwrite,
-// `\x1b[2J` clears, and scroll-region operations all fall through with
-// no capture (matching xterm.js's own "2J doesn't push to scrollback"
+// `\x1b[2J` clears (even when split across chunk boundaries from prior
+// content), and scroll-region operations all fall through with no
+// capture (matching xterm.js's own "2J doesn't push to scrollback"
 // behavior).
 func (v *VT) Write(p []byte) (int, error) {
 	v.mu.Lock()
@@ -104,10 +110,29 @@ func (v *VT) Write(p []byte) (int, error) {
 
 // captureEvictions runs the post-write heuristic and pushes evicted
 // rows onto the history ring. Caller holds v.mu.
+//
+// Bail when the entire post-write screen is blank: that is a clear /
+// full-screen erase, not a scroll, and matching `preRows[kk]==post[0]`
+// would otherwise push the just-cleared content into history. Once we
+// know the screen still has content, every preRows[0..k-1] is pushed
+// verbatim — blanks included — so vertical layout of the preserved
+// scrollback matches the original output (paragraph spacing, blank
+// separators).
 func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
+	// Bail when the post-write screen is entirely blank: a clear /
+	// full-screen erase (`\x1b[H\x1b[2J`, app exit, full repaint), not
+	// a scroll. Without this guard, a chunk boundary between content
+	// and the clear sequence leaks the cleared content into scrollback.
+	if termAllBlank(v.term, cols, rows) {
+		return
+	}
 	// Find largest k in [1, rows) where preRows[k] equals the post-write
 	// top row. Largest match wins, so a single chunk that scrolls N
-	// lines is captured correctly.
+	// lines is captured correctly. A blank candidate is fine here — the
+	// "all blank post" guard above already filters the false-positive
+	// case, and a legitimate scroll whose new top happens to be blank
+	// (e.g. an empty line in the middle of mixed output) still needs to
+	// match against blank preRows entries to capture the rest correctly.
 	k := -1
 	for kk := rows - 1; kk >= 1; kk-- {
 		if rowsEqualTerm(preRows[kk], v.term, 0, cols) {
@@ -119,9 +144,6 @@ func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
 		return
 	}
 	for y := 0; y < k; y++ {
-		if glyphRowBlank(preRows[y]) {
-			continue
-		}
 		v.pushHistory(captureRowANSI(preRows[y]))
 	}
 }
@@ -355,8 +377,8 @@ func rowsEqualTerm(glyphs []vt10x.Glyph, term vt10x.Terminal, y, cols int) bool 
 }
 
 // glyphRowBlank reports whether every cell is empty space at default
-// attrs. Blank captured rows are skipped to avoid false positives where
-// pre[k] and post[0] are both blank.
+// attrs. Blank captured rows are skipped as match candidates to avoid
+// false positives where pre[k] and post[0] are both blank.
 func glyphRowBlank(glyphs []vt10x.Glyph) bool {
 	for _, g := range glyphs {
 		if g.Char != 0 && g.Char != ' ' {
@@ -364,6 +386,26 @@ func glyphRowBlank(glyphs []vt10x.Glyph) bool {
 		}
 		if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
 			return false
+		}
+	}
+	return true
+}
+
+// termAllBlank reports whether every cell of the live terminal across
+// rows [0, rows) and cols [0, cols) is empty space at default attrs.
+// Used to bail out of the eviction heuristic when the post-write
+// screen is fully cleared, which would otherwise yield a false-positive
+// match against any blank preRows[kk].
+func termAllBlank(term vt10x.Terminal, cols, rows int) bool {
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			g := term.Cell(x, y)
+			if g.Char != 0 && g.Char != ' ' {
+				return false
+			}
+			if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
+				return false
+			}
 		}
 	}
 	return true

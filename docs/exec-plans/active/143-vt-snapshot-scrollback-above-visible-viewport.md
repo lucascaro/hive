@@ -162,17 +162,3 @@ Reuse `writeSGR`/`writeColor` unchanged. SGR state must reset between the histor
 ## Open questions
 
 - None blocking. Future: promote `historyRows` to config if users hit the cap.
-
-## Decision log
-
-- **2026-05-08** — Set scope: normal-screen scrollback only; alt-screen sessions get the existing snapshot path unchanged. Why: alt-screen apps own their own redraw and never had a "preserved scrollback" contract.
-
-## Progress
-
-- **2026-05-08** — Plan created at RESEARCH stage.
-
-## Open questions
-
-- Fork vt10x for a clean eviction callback, or keep vt10x unmodified and detect evictions in `VT.Write` (per-byte step / cursor-jump heuristic)?
-- Tall-vt10x-replay alternative: keep a normal-screen raw byte ring, render history by feeding the ring into a fresh `cols × (rows+history)` vt10x at snapshot time, render its top region as history. Worth comparing in PLAN.
-- Cap value (suggested ~500 lines). Hard-code or make a const that future config can promote.
