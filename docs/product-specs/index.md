@@ -7,6 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| P1 | #165 | Restarting a session can reload the wrong session when multiple share a worktree/directory | IMPLEMENT | [165-restart-session-wrong-session](165-restart-session-wrong-session.md) |
 
 ## Completed
 

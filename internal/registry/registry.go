@@ -27,6 +27,11 @@ import (
 // ErrNotFound is returned when a session ID isn't known.
 var ErrNotFound = errors.New("registry: session not found")
 
+// startSession is the package-level seam used to spawn the underlying
+// PTY. Tests swap this to capture the resolved session.Options without
+// forking real binaries (e.g. to inspect agent argv).
+var startSession = session.Start
+
 // ErrWorktreeDirty is returned by Kill when the session is backed by
 // a worktree with uncommitted changes and force=false. Callers (the
 // daemon) translate this into a wire.FrameError with code
@@ -385,6 +390,13 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if len(cmd) == 0 && spec.Agent != "" {
 		if def, ok := agent.Get(agent.ID(spec.Agent)); ok && len(def.Cmd) > 0 {
 			cmd = def.Cmd
+			// Pin the agent's conversation to our entry id so Restart
+			// can resume by id even when sibling sessions share this
+			// cwd. Skipped when the caller passed an explicit spec.Cmd
+			// (we don't mutate user-supplied argv).
+			if def.SessionIDFlag != "" {
+				cmd = append(append([]string(nil), cmd...), def.SessionIDFlag, id)
+			}
 		}
 	}
 
@@ -421,7 +433,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		r.mu.Unlock()
 	}
 
-	sess, err := session.Start(session.Options{
+	sess, err := startSession(session.Options{
 		Shell: spec.Shell,
 		Cmd:   cmd,
 		Cwd:   cwd,
@@ -523,7 +535,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		}
 	}
 
-	sess, err := session.Start(opts)
+	sess, err := startSession(opts)
 	if err != nil {
 		r.mu.Lock()
 		e.LastError = err.Error()
@@ -589,9 +601,14 @@ func (r *Registry) Restart(id string) error {
 
 	var opts session.Options
 	if def, ok := agent.Get(agent.ID(agentID)); ok {
-		if len(def.ResumeCmd) > 0 {
+		switch {
+		case def.ResumeArgs != nil:
+			// Resume the specific conversation pinned to this entry id;
+			// disambiguates when multiple sessions share a cwd.
+			opts.Cmd = def.ResumeArgs(id)
+		case len(def.ResumeCmd) > 0:
 			opts.Cmd = def.ResumeCmd
-		} else {
+		default:
 			opts.Cmd = def.Cmd
 		}
 	}

@@ -32,6 +32,15 @@ type Def struct {
 	ResumeCmd  []string // argv used by Restart; falls back to Cmd if empty
 	Color      string   // default sidebar color
 	InstallCmd []string // shown to the user when not detected; never auto-run
+	// SessionIDFlag, when non-empty, is appended to Cmd at first spawn as
+	// `[flag, sessionID]` so the agent records its conversation under the
+	// caller-chosen id. Required for unambiguous Restart when multiple
+	// sessions share a cwd/worktree.
+	SessionIDFlag string
+	// ResumeArgs builds the resume argv for a specific session id. When
+	// nil, Restart falls back to ResumeCmd (path-scoped, ambiguous when
+	// sessions share cwd) and then to Cmd.
+	ResumeArgs func(sessionID string) []string
 }
 
 // Available reports whether the agent's binary is on PATH right now.
@@ -54,12 +63,16 @@ var (
 			Color: "#9ca3af",
 		},
 		IDClaude: {
-			ID:         IDClaude,
-			Name:       "Claude",
-			Cmd:        []string{"claude"},
-			ResumeCmd:  []string{"claude", "--continue"},
-			Color:      "#f59e0b",
-			InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+			ID:            IDClaude,
+			Name:          "Claude",
+			Cmd:           []string{"claude"},
+			ResumeCmd:     []string{"claude", "--continue"},
+			Color:         "#f59e0b",
+			InstallCmd:    []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+			SessionIDFlag: "--session-id",
+			ResumeArgs: func(id string) []string {
+				return []string{"claude", "--resume", id}
+			},
 		},
 		IDCodex: {
 			ID:         IDCodex,

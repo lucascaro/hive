@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restart: Restarting a Claude session no longer reattaches to a
+  sibling's conversation when multiple sessions share a worktree or
+  cwd. Hive now pins each Claude session to its entry id at first
+  launch (`--session-id <uuid>`) and resumes via `claude --resume <uuid>`,
+  so restart is unambiguous regardless of how many siblings live in
+  the same directory. Codex/Gemini/Copilot retain today's path-scoped
+  resume; tracked separately. (#165)
 - GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
   returns keyboard focus to the active session. Previously the
   sidebar still showed the session as selected but keystrokes were

@@ -32,6 +32,29 @@ func TestUnknownAvailableFalse(t *testing.T) {
 	}
 }
 
+func TestClaudeDefSupportsSessionID(t *testing.T) {
+	d, ok := Get(IDClaude)
+	if !ok {
+		t.Fatalf("claude agent not registered")
+	}
+	if d.SessionIDFlag != "--session-id" {
+		t.Errorf("claude SessionIDFlag = %q, want --session-id", d.SessionIDFlag)
+	}
+	if d.ResumeArgs == nil {
+		t.Fatalf("claude ResumeArgs is nil; expected per-id resume support")
+	}
+	got := d.ResumeArgs("abc123")
+	want := []string{"claude", "--resume", "abc123"}
+	if len(got) != len(want) {
+		t.Fatalf("ResumeArgs len = %d, want %d (got %v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ResumeArgs[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestAvailableSubsetOfAll(t *testing.T) {
 	all := All()
 	avail := Available()

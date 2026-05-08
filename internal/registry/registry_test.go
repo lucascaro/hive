@@ -3,11 +3,40 @@ package registry
 import (
 	"runtime"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
+
+// captureStartSession installs a fake startSession that records every
+// session.Options handed to it and forwards to a benign `sleep` so the
+// returned *session.Session behaves normally for Close/Done. Tests
+// inspect the recorded argv to verify cmd resolution without forking
+// real agent binaries.
+func captureStartSession(t *testing.T) *struct {
+	mu   sync.Mutex
+	opts []session.Options
+} {
+	t.Helper()
+	rec := &struct {
+		mu   sync.Mutex
+		opts []session.Options
+	}{}
+	prev := startSession
+	startSession = func(opts session.Options) (*session.Session, error) {
+		rec.mu.Lock()
+		rec.opts = append(rec.opts, opts)
+		rec.mu.Unlock()
+		stub := opts
+		stub.Cmd = []string{"sleep", "30"}
+		return prev(stub)
+	}
+	t.Cleanup(func() { startSession = prev })
+	return rec
+}
 
 func skipOnWindows(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -296,6 +325,153 @@ func TestAutoAssignedProjectColorsDifferConsecutively(t *testing.T) {
 			t.Fatalf("consecutive auto-assigned project colors repeated: %q", p.Color)
 		}
 		prev = p.Color
+	}
+}
+
+// argvHasSuffix reports whether argv ends with the given tokens.
+func argvHasSuffix(argv, suffix []string) bool {
+	if len(argv) < len(suffix) {
+		return false
+	}
+	tail := argv[len(argv)-len(suffix):]
+	for i, s := range suffix {
+		if tail[i] != s {
+			return false
+		}
+	}
+	return true
+}
+
+func TestCreateAppendsSessionIDForClaude(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.opts) != 1 {
+		t.Fatalf("startSession calls = %d, want 1", len(rec.opts))
+	}
+	want := []string{"claude", "--session-id", a.ID}
+	if !argvHasSuffix(rec.opts[0].Cmd, want) {
+		t.Errorf("Create cmd = %v, want suffix %v", rec.opts[0].Cmd, want)
+	}
+}
+
+func TestRestartUsesResumeArgsForClaude(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.opts) < 2 {
+		t.Fatalf("startSession calls = %d, want >=2", len(rec.opts))
+	}
+	want := []string{"claude", "--resume", a.ID}
+	got := rec.opts[len(rec.opts)-1].Cmd
+	if len(got) != len(want) {
+		t.Fatalf("Restart cmd = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Restart cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestRestartFallsBackToResumeCmdForCodex(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Codex has no SessionIDFlag yet — Create cmd must NOT include --session-id.
+	rec.mu.Lock()
+	for _, tok := range rec.opts[0].Cmd {
+		if tok == "--session-id" {
+			rec.mu.Unlock()
+			t.Fatalf("codex Create cmd unexpectedly contains --session-id: %v", rec.opts[0].Cmd)
+		}
+	}
+	rec.mu.Unlock()
+
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	want := []string{"codex", "resume", "--last"}
+	got := rec.opts[len(rec.opts)-1].Cmd
+	if len(got) != len(want) {
+		t.Fatalf("codex Restart cmd = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("codex Restart cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestTwoClaudeSessionsRestartUseDistinctIDs(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "a", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create a: %v", err)
+	}
+	b, err := r.Create(wire.CreateSpec{Name: "b", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create b: %v", err)
+	}
+	if a.ID == b.ID {
+		t.Fatalf("expected distinct entry ids; both = %s", a.ID)
+	}
+
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart a: %v", err)
+	}
+	if err := r.Restart(b.ID); err != nil {
+		t.Fatalf("Restart b: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	// Last two startSession calls are the two restarts.
+	if len(rec.opts) < 4 {
+		t.Fatalf("startSession calls = %d, want >=4", len(rec.opts))
+	}
+	rA := rec.opts[len(rec.opts)-2].Cmd
+	rB := rec.opts[len(rec.opts)-1].Cmd
+	wantA := []string{"claude", "--resume", a.ID}
+	wantB := []string{"claude", "--resume", b.ID}
+	if !argvHasSuffix(rA, wantA) {
+		t.Errorf("restart(a) cmd = %v, want %v", rA, wantA)
+	}
+	if !argvHasSuffix(rB, wantB) {
+		t.Errorf("restart(b) cmd = %v, want %v", rB, wantB)
+	}
+	if rA[len(rA)-1] == rB[len(rB)-1] {
+		t.Errorf("restarts collapsed to the same id: %v vs %v", rA, rB)
 	}
 }
 
