@@ -1603,7 +1603,10 @@ EventsOn('session:event', (jsonStr) => {
         const visible =
           (state.view === 'single' && state.activeId === ev.session.id) ||
           (state.view !== 'single' && st.host.classList.contains('in-grid'));
-        if (visible) st.ensureAttached();
+        if (visible) {
+          st.ensureAttached();
+          if (state.activeId === ev.session.id) focusActiveTerm();
+        }
       }
     }
     if (state.activeId === ev.session.id) updateAppTitle();
