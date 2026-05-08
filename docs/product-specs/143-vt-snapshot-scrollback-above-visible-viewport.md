@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/143-vt-snapshot-scrollback-above-visible-viewport.md](../exec-plans/active/143-vt-snapshot-scrollback-above-visible-viewport.md)
+- **Exec plan:** [docs/exec-plans/completed/143-vt-snapshot-scrollback-above-visible-viewport.md](../exec-plans/completed/143-vt-snapshot-scrollback-above-visible-viewport.md)
 
 ## Problem
 

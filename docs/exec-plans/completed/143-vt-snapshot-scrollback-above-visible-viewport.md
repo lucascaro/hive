@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/143-vt-snapshot-scrollback-above-visible-viewport.md](../../product-specs/143-vt-snapshot-scrollback-above-visible-viewport.md)
 - **Issue:** #143
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -158,6 +158,7 @@ Reuse `writeSGR`/`writeColor` unchanged. SGR state must reset between the histor
 - **2026-05-08** — Advanced to PLAN; approach selected.
 - **2026-05-08** — Pivoted approach during IMPLEMENT (CUP corruption in tall mirror); revised plan committed.
 - **2026-05-08** — Implementation complete in `internal/session/vt.go`; 7 new unit tests in `vt_test.go` all pass alongside existing 4. Full Go suite passes; `cmd/hivegui` build failure (frontend/dist) is pre-existing and unrelated.
+- **2026-05-08** — PR #162 opened. Converged via /hs-ralph-loop after 2 iterations (autofix hardened the eviction heuristic; final review APPROVE).
 
 ## Open questions
 
