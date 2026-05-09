@@ -6,9 +6,11 @@
 package agent
 
 import (
+	"context"
 	"os/exec"
 	"sort"
 	"sync"
+	"time"
 )
 
 // ID is the canonical short identifier ("claude", "codex", ...).
@@ -32,6 +34,23 @@ type Def struct {
 	ResumeCmd  []string // argv used by Restart; falls back to Cmd if empty
 	Color      string   // default sidebar color
 	InstallCmd []string // shown to the user when not detected; never auto-run
+	// SessionIDFlag, when non-empty, is appended to Cmd at first spawn as
+	// `[flag, sessionID]` so the agent records its conversation under the
+	// caller-chosen id. Required for unambiguous Restart when multiple
+	// sessions share a cwd/worktree.
+	SessionIDFlag string
+	// ResumeArgs builds the resume argv for a specific session id. When
+	// nil, Restart falls back to ResumeCmd (path-scoped, ambiguous when
+	// sessions share cwd) and then to Cmd.
+	ResumeArgs func(sessionID string) []string
+	// CaptureSessionIDFn, when non-nil, is invoked from a goroutine
+	// after the agent process is spawned. It returns the agent CLI's
+	// session id (e.g. parsed from a rollout file) so future Restart
+	// can resume by id. Used for agents that do not accept a
+	// caller-chosen id at first launch (codex). The returned id is
+	// persisted on the registry Entry; an error or empty string means
+	// "no capture this run" and Restart falls back to ResumeCmd.
+	CaptureSessionIDFn func(ctx context.Context, cwd string, spawnedAt time.Time) (string, error)
 }
 
 // Available reports whether the agent's binary is on PATH right now.
@@ -54,12 +73,16 @@ var (
 			Color: "#9ca3af",
 		},
 		IDClaude: {
-			ID:         IDClaude,
-			Name:       "Claude",
-			Cmd:        []string{"claude"},
-			ResumeCmd:  []string{"claude", "--continue"},
-			Color:      "#f59e0b",
-			InstallCmd: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+			ID:            IDClaude,
+			Name:          "Claude",
+			Cmd:           []string{"claude"},
+			ResumeCmd:     []string{"claude", "--continue"},
+			Color:         "#f59e0b",
+			InstallCmd:    []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
+			SessionIDFlag: "--session-id",
+			ResumeArgs: func(id string) []string {
+				return []string{"claude", "--resume", id}
+			},
 		},
 		IDCodex: {
 			ID:         IDCodex,
@@ -68,6 +91,10 @@ var (
 			ResumeCmd:  []string{"codex", "resume", "--last"},
 			Color:      "#10b981",
 			InstallCmd: []string{"npm", "install", "-g", "@openai/codex"},
+			ResumeArgs: func(id string) []string {
+				return []string{"codex", "resume", id}
+			},
+			CaptureSessionIDFn: codexCaptureSessionID,
 		},
 		IDGemini: {
 			ID:         IDGemini,
