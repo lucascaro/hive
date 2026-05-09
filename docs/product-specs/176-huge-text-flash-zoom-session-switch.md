@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/176-huge-text-flash-zoom-session-switch.md](../exec-plans/active/176-huge-text-flash-zoom-session-switch.md)
+- **Exec plan:** [docs/exec-plans/completed/176-huge-text-flash-zoom-session-switch.md](../exec-plans/completed/176-huge-text-flash-zoom-session-switch.md)
 
 ## Problem
 

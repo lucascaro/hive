@@ -1,9 +1,11 @@
 # Fix huge-text flash on grid → zoom → session switch (regression)
 
 - **Spec:** [docs/product-specs/176-huge-text-flash-zoom-session-switch.md](../../product-specs/176-huge-text-flash-zoom-session-switch.md)
+- **Path note:** plan moved to `docs/exec-plans/completed/` on convergence.
 - **Issue:** #176
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
+- **PR:** #178
 
 ## Summary
 
@@ -110,6 +112,8 @@ If a follow-up wants to add JS test scaffolding, that's an "ocean" change tracke
 - **2026-05-09** — Research complete; advancing to PLAN.
 - **2026-05-09** — Plan approved; advancing to IMPLEMENT.
 - **2026-05-09** — Implemented the visibility gate in `cmd/hivegui/frontend/src/main.js` (`show`/`hide`/`destroy`, `_revealRaf` token initialised in the constructor). Updated CHANGELOG `[Unreleased]`. Verified `node --check` on main.js and `go test ./internal/... ./cmd/hived/...` (`./cmd/hivegui` setup-fails on missing `frontend/dist`/`wailsjs/`, a pre-existing worktree limitation; this change does not touch Go).
+- **2026-05-09** — PR #178 opened.
+- **2026-05-09** — Converged via /hs-ralph-loop on 2026-05-09 (APPROVE on iteration 1, no findings).
 
 ## Open questions
 
