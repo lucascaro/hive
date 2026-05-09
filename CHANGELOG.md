@@ -33,19 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   native menu accelerators. Conversely, Ctrl+\` (open OS terminal)
   is now Ctrl-only on every platform — on macOS ⌘\` is reserved for
   native window cycling, so it's no longer swallowed by the app.
-- Restart: Restarting a Claude or Codex session no longer reattaches
-  to a sibling's conversation when multiple sessions share a worktree
-  or cwd. For Claude, Hive pins each session to its entry id at first
-  launch (`--session-id <uuid>`) and resumes via
-  `claude --resume <uuid>`. For Codex (which has no flag to inject an
-  id at launch), Hive captures the codex-generated session UUID from
-  `~/.codex/sessions/.../rollout-*.jsonl` shortly after spawn and
-  resumes via `codex resume <uuid>`. The pinned id is persisted on the
-  session metadata so daemon restart respawns each session against its
-  own conversation rather than collapsing back to "most recent in
-  cwd". Restart is now unambiguous regardless of how many siblings
-  live in the same directory. Gemini/Copilot retain today's
-  path-scoped resume. (#165)
+- Restart: Restarting a Claude, Codex, Gemini, or Copilot session no
+  longer reattaches to a sibling's conversation when multiple sessions
+  share a worktree or cwd. For Claude and Gemini, Hive pins each
+  session to its entry id at first launch (`--session-id <uuid>`) and
+  resumes via `<agent> --resume <uuid>`. For Codex and Copilot (which
+  have no flag to inject an id at launch), Hive captures the
+  agent-generated session UUID from
+  `~/.codex/sessions/.../rollout-*.jsonl` (codex) or
+  `~/.copilot/session-state/<uuid>/workspace.yaml` (copilot) shortly
+  after spawn, matching the spawn cwd to disambiguate concurrent
+  sessions. The pinned id is persisted on the session metadata so
+  daemon restart respawns each session against its own conversation
+  rather than collapsing back to "most recent in cwd". Restart is now
+  unambiguous regardless of how many siblings live in the same
+  directory. Aider retains today's behavior (no resume command
+  available). (#165, #172)
 - GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
   returns keyboard focus to the active session. Previously the
   sidebar still showed the session as selected but keystrokes were
