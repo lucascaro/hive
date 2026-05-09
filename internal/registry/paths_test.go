@@ -19,3 +19,14 @@ func TestStateDirDefaultsWithoutOverride(t *testing.T) {
 		t.Errorf("default leaked test override: %q", got)
 	}
 }
+
+func TestStateDirOverridden(t *testing.T) {
+	t.Setenv("HIVE_STATE_DIR", "")
+	if StateDirOverridden() {
+		t.Error("StateDirOverridden() = true with empty HIVE_STATE_DIR; want false")
+	}
+	t.Setenv("HIVE_STATE_DIR", "/tmp/hive-iso/state")
+	if !StateDirOverridden() {
+		t.Error("StateDirOverridden() = false with HIVE_STATE_DIR set; want true")
+	}
+}

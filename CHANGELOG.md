@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An isolated dev daemon (`HIVE_STATE_DIR` set) no longer reaps
+  worktrees owned by the canonical/prod daemon at startup. The
+  on-disk `<project>/.worktrees/` namespace is shared across daemon
+  instances even when registries are isolated, so the orphan-worktree
+  reclaim now runs only when `HIVE_STATE_DIR` is unset. Iso runs that
+  leak their own worktrees on SIGKILL still get reaped on the next
+  prod-daemon startup, matching the existing orphan contract.
 - GUI: Keyboard shortcuts no longer accept both ⌘ and Ctrl on macOS.
   Platform-adaptive bindings (⌘T, ⌘N, ⌘W, ⌘1–9, etc.) now require
   ⌘ on macOS and Ctrl on Windows/Linux exclusively, matching the

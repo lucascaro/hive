@@ -81,8 +81,15 @@ func New(cfg Config) (*Daemon, error) {
 	}
 	reg.MigrateOrphanSessions()
 	// Reclaim worktree directories whose owning session no longer
-	// exists (e.g. previous daemon was SIGKILL'd mid-Kill).
-	reg.ReclaimOrphanWorktrees()
+	// exists (e.g. previous daemon was SIGKILL'd mid-Kill). Only the
+	// canonical daemon owns the on-disk <project>/.worktrees/ namespace;
+	// an isolated dev daemon (HIVE_STATE_DIR set) shares that directory
+	// with prod and would otherwise reap prod's worktrees as orphans.
+	if registry.StateDirOverridden() {
+		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
+	} else {
+		reg.ReclaimOrphanWorktrees()
+	}
 
 	// Revive any persisted sessions that have no live PTY (i.e. every
 	// entry loaded from disk on this run). Metadata is preserved; the

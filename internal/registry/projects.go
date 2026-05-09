@@ -56,6 +56,14 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 // directory and runs worktree.Cleanup on any subdirectory whose path
 // is not claimed by some live registry entry. Idempotent. Run once at
 // daemon startup so a SIGKILL'd previous process doesn't leak.
+//
+// Caller contract: only the canonical daemon may call this. The
+// on-disk <project>/.worktrees/ namespace is shared across daemon
+// instances (it lives under the project cwd, not under the state
+// dir), so an isolated dev daemon — HIVE_STATE_DIR set — must not
+// reap: every prod-owned worktree would look unclaimed in its
+// registry and get force-removed. Daemon startup gates this call on
+// registry.StateDirOverridden().
 func (r *Registry) ReclaimOrphanWorktrees() {
 	r.mu.Lock()
 	claimed := make(map[string]bool, len(r.entries))
