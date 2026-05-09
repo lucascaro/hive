@@ -76,6 +76,16 @@ func (v *VT) Write(p []byte) (int, error) {
 	return v.term.Write(p)
 }
 
+// Close releases the underlying emulator. After Close, Write returns
+// io.ErrClosedPipe; the drainer goroutine in NewVT unblocks on the
+// resulting EOF from the response pipe and exits, so the goroutine
+// and the emulator's internal state are eligible for GC.
+func (v *VT) Close() error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.term.Close()
+}
+
 // Resize updates the emulator's grid dimensions.
 func (v *VT) Resize(cols, rows int) error {
 	if cols <= 0 || rows <= 0 {

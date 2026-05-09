@@ -2,6 +2,7 @@ package session
 
 import (
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -306,6 +307,41 @@ func TestVTWriteDoesNotBlockOnQueries(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("vt.Write blocked on terminal-query response — drainer goroutine not running")
 	}
+}
+
+// TestVTCloseReleasesDrainer guards that VT.Close unblocks the
+// internal drainer goroutine. Without it, every closed session would
+// leak a goroutine and a pinned emulator. We probe goroutine count
+// before/after Close on a tight loop of throwaway VTs — a leak at
+// scale shows up as a steadily climbing count, but a few iterations
+// is enough to confirm Close actually drains.
+func TestVTCloseReleasesDrainer(t *testing.T) {
+	const n = 50
+	before := runtime.NumGoroutine()
+	for range n {
+		v := NewVT(80, 24)
+		// Trigger at least one query response to make sure the drainer
+		// has had bytes to consume — guards against trivial paths where
+		// the goroutine exits before doing any work.
+		if _, err := v.Write([]byte("\x1b[c")); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		if err := v.Close(); err != nil {
+			t.Fatalf("close: %v", err)
+		}
+	}
+	// Goroutines unwind asynchronously; give the scheduler a beat.
+	deadline := time.Now().Add(2 * time.Second)
+	var after int
+	for time.Now().Before(deadline) {
+		runtime.Gosched()
+		after = runtime.NumGoroutine()
+		if after-before < 5 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("drainer goroutines leaked: before=%d after=%d (created %d VTs)", before, after, n)
 }
 
 // TestVTResize sanity-checks that Resize doesn't blow up and the

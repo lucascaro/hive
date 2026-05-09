@@ -254,6 +254,8 @@ func (s *Session) Close() error {
 	if s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
+	// Close the emulator so its drainer goroutine can exit.
+	_ = s.vt.Close()
 	return s.ptmx.Close()
 }
 
