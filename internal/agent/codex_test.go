@@ -146,7 +146,7 @@ func TestCodexDefHasResumeArgsAndCapture(t *testing.T) {
 	if d.ResumeArgs == nil {
 		t.Errorf("codex ResumeArgs is nil")
 	} else {
-		got := d.ResumeArgs("xyz")
+		got := d.ResumeArgs("xyz", "")
 		want := []string{"codex", "resume", "xyz"}
 		if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 			t.Errorf("ResumeArgs = %v, want %v", got, want)

@@ -43,7 +43,10 @@ func TestClaudeDefSupportsSessionID(t *testing.T) {
 	if d.ResumeArgs == nil {
 		t.Fatalf("claude ResumeArgs is nil; expected per-id resume support")
 	}
-	got := d.ResumeArgs("abc123")
+	prev := claudeSessionExists
+	claudeSessionExists = func(id, cwd string) bool { return true }
+	t.Cleanup(func() { claudeSessionExists = prev })
+	got := d.ResumeArgs("abc123", "/tmp/some/cwd")
 	want := []string{"claude", "--resume", "abc123"}
 	if len(got) != len(want) {
 		t.Fatalf("ResumeArgs len = %d, want %d (got %v)", len(got), len(want), got)

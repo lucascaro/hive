@@ -39,10 +39,15 @@ type Def struct {
 	// caller-chosen id. Required for unambiguous Restart when multiple
 	// sessions share a cwd/worktree.
 	SessionIDFlag string
-	// ResumeArgs builds the resume argv for a specific session id. When
-	// nil, Restart falls back to ResumeCmd (path-scoped, ambiguous when
-	// sessions share cwd) and then to Cmd.
-	ResumeArgs func(sessionID string) []string
+	// ResumeArgs builds the resume argv for a specific session id. cwd
+	// is the directory the session will be respawned in; agents that
+	// only have an on-disk transcript after the first user message
+	// (Claude) use it to detect the "restarted before any message"
+	// case and re-pin under the same id instead of failing with
+	// "No conversation found". When nil, Restart falls back to
+	// ResumeCmd (path-scoped, ambiguous when sessions share cwd) and
+	// then to Cmd.
+	ResumeArgs func(sessionID, cwd string) []string
 	// CaptureSessionIDFn, when non-nil, is invoked from a goroutine
 	// after the agent process is spawned. It returns the agent CLI's
 	// session id (e.g. parsed from a rollout file) so future Restart
@@ -80,9 +85,7 @@ var (
 			Color:         "#f59e0b",
 			InstallCmd:    []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
 			SessionIDFlag: "--session-id",
-			ResumeArgs: func(id string) []string {
-				return []string{"claude", "--resume", id}
-			},
+			ResumeArgs:    claudeResumeArgs,
 		},
 		IDCodex: {
 			ID:         IDCodex,
@@ -91,7 +94,7 @@ var (
 			ResumeCmd:  []string{"codex", "resume", "--last"},
 			Color:      "#10b981",
 			InstallCmd: []string{"npm", "install", "-g", "@openai/codex"},
-			ResumeArgs: func(id string) []string {
+			ResumeArgs: func(id, _ string) []string {
 				return []string{"codex", "resume", id}
 			},
 			CaptureSessionIDFn: codexCaptureSessionID,
@@ -104,7 +107,7 @@ var (
 			Color:         "#3b82f6",
 			InstallCmd:    []string{"npm", "install", "-g", "@google/gemini-cli"},
 			SessionIDFlag: "--session-id",
-			ResumeArgs: func(id string) []string {
+			ResumeArgs: func(id, _ string) []string {
 				return []string{"gemini", "--resume", id}
 			},
 		},
@@ -115,7 +118,7 @@ var (
 			ResumeCmd:  []string{"copilot", "--resume"},
 			Color:      "#8b5cf6",
 			InstallCmd: []string{"npm", "install", "-g", "@github/copilot"},
-			ResumeArgs: func(id string) []string {
+			ResumeArgs: func(id, _ string) []string {
 				return []string{"copilot", "--resume=" + id}
 			},
 			CaptureSessionIDFn: copilotCaptureSessionID,
