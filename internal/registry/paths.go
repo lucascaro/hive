@@ -12,8 +12,14 @@ import (
 //	Linux:   $XDG_STATE_HOME/hive  (default: ~/.local/state/hive)
 //	Windows: %LOCALAPPDATA%\Hive
 //
-// Tests can override by passing an explicit path to OpenAt.
+// Setting HIVE_STATE_DIR overrides the platform default — useful for
+// running an isolated dev daemon alongside a production one without
+// touching its registry. Tests can also override by passing an explicit
+// path to OpenAt.
 func StateDir() string {
+	if s := os.Getenv("HIVE_STATE_DIR"); s != "" {
+		return s
+	}
 	switch runtime.GOOS {
 	case "darwin":
 		if home, err := os.UserHomeDir(); err == nil {
