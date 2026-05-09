@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/165-restart-session-wrong-session.md](../../product-specs/165-restart-session-wrong-session.md)
 - **Issue:** #165
-- **Stage:** IMPLEMENT
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -104,6 +104,7 @@ If `session.Start` is not currently observable from registry tests, the smallest
 
 - **2026-05-08** — Spec drafted, triage approved (bug, S → reconsider M during plan), research complete: root cause is path-scoped ResumeCmd colliding when sessions share cwd.
 - **2026-05-08** — Implemented Claude path: agent.Def gains SessionIDFlag + ResumeArgs; registry pins entry id at spawn and resumes by id. Added 5 tests via package-level startSession seam. All internal tests pass.
+- **2026-05-08** — PR #166 opened. Converged via /hs-ralph-loop in 1 iteration (APPROVE).
 
 ## Open questions
 

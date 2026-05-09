@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/165-restart-session-wrong-session.md](../exec-plans/active/165-restart-session-wrong-session.md)
+- **Exec plan:** [docs/exec-plans/completed/165-restart-session-wrong-session.md](../exec-plans/completed/165-restart-session-wrong-session.md)
 
 ## Problem
 
