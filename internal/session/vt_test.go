@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
@@ -272,6 +273,38 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 	snap := string(v.RenderSnapshot())
 	if !strings.HasPrefix(snap, "\x1b[?1049h") {
 		t.Errorf("alt-screen snapshot must enter alt screen first; got prefix %q", snap[:min(20, len(snap))])
+	}
+}
+
+// TestVTWriteDoesNotBlockOnQueries guards against a real bug class
+// from the charmbracelet/x/vt swap: the underlying emulator answers
+// terminal queries (DA1/DA2, mode reports, color queries, in-band
+// resize) by writing to an unbuffered io.Pipe. Without a drainer
+// goroutine the FIRST query from an agent would block vt.Write
+// indefinitely, which blocks deliver()'s critical section, which
+// starves every client's live byte stream — agent TUIs end up blank
+// in the GUI while plain shells (which rarely query) work fine.
+func TestVTWriteDoesNotBlockOnQueries(t *testing.T) {
+	v := NewVT(80, 24)
+	// DA1 ("\x1b[c"), DA2 ("\x1b[>c"), DECRQM mode report, OSC 10 color
+	// query — a representative slice of what agents emit on startup.
+	queries := []byte("\x1b[c\x1b[>c\x1b[?25$p\x1b]10;?\x07hello")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := v.Write(queries); err != nil {
+			t.Errorf("vt.Write: %v", err)
+		}
+	}()
+	select {
+	case <-done:
+		// Snapshot must still produce the literal content the agent
+		// wrote alongside the queries.
+		if !strings.Contains(string(v.RenderSnapshot()), "hello") {
+			t.Errorf("snapshot missing 'hello' after queries: %q", v.RenderSnapshot())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("vt.Write blocked on terminal-query response — drainer goroutine not running")
 	}
 }
 

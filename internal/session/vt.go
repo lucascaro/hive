@@ -16,6 +16,7 @@ package session
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,6 +55,16 @@ func NewVT(cols, rows int) *VT {
 			v.cursorVisible.Store(visible)
 		},
 	})
+	// charmbracelet/x/vt responds to terminal queries (DA1/DA2, mode
+	// reports, color queries, mouse events, in-band resize) by writing
+	// to an internal io.Pipe exposed via Read. The pipe is unbuffered,
+	// so the FIRST query an agent emits would block the parser inside
+	// vt.Write — which would in turn block deliver()'s critical section
+	// and starve every client's live byte stream. Plain shells rarely
+	// query, agent TUIs do constantly. Drain and discard: xterm.js on
+	// the client side already answers these queries from its own
+	// emulator, so the daemon-side response is redundant.
+	go io.Copy(io.Discard, v.term) //nolint:errcheck
 	return v
 }
 
