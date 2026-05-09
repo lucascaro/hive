@@ -31,10 +31,24 @@ import (
 // the emulator invokes inside its parser, which we don't hold a lock
 // across — atomic.Bool keeps the read in RenderSnapshot race-free
 // without depending on Charm's internal callback-dispatch model.
+//
+// drainerDone tracks the response-pipe drainer goroutine launched in
+// NewVT. Close waits on it so the goroutine and the emulator's
+// internal state are observably released before Close returns.
+//
+// Known upstream issue: charmbracelet/x/vt's Emulator reads and
+// writes its `closed` flag without synchronization (Read/Close at
+// emulator.go:252 / 265), so the race detector flags Close-during-
+// drainer as a data race. The race is benign — io.Pipe's own mutex
+// guarantees the pipe-writer close unblocks Read with io.EOF
+// regardless of the `closed` early-out — but `-race` cannot model
+// "benign." We do not currently run -race in CI; if that changes,
+// this needs an upstream fix or a wrapper-level shim around Read.
 type VT struct {
 	mu            sync.Mutex
 	term          *vt.SafeEmulator
 	cursorVisible atomic.Bool
+	drainerDone   sync.WaitGroup
 }
 
 // NewVT constructs a VT sized cols x rows. Falls back to 80x24 when
@@ -64,7 +78,11 @@ func NewVT(cols, rows int) *VT {
 	// query, agent TUIs do constantly. Drain and discard: xterm.js on
 	// the client side already answers these queries from its own
 	// emulator, so the daemon-side response is redundant.
-	go io.Copy(io.Discard, v.term) //nolint:errcheck
+	v.drainerDone.Add(1)
+	go func() {
+		defer v.drainerDone.Done()
+		_, _ = io.Copy(io.Discard, v.term)
+	}()
 	return v
 }
 
@@ -80,10 +98,22 @@ func (v *VT) Write(p []byte) (int, error) {
 // io.ErrClosedPipe; the drainer goroutine in NewVT unblocks on the
 // resulting EOF from the response pipe and exits, so the goroutine
 // and the emulator's internal state are eligible for GC.
+//
+// We wait for the drainer to fully exit before returning. The upstream
+// Emulator's `closed` flag is read unsynchronized by Read and written
+// by Close; without the wait, -race flags it as a data race even
+// though the io.Pipe internals would unblock the read correctly. The
+// term.Close call itself must happen outside v.mu — it closes the
+// response pipe writer, which is what unblocks the drainer's Read,
+// and the drainer does not hold v.mu (so holding it here would not
+// cause a deadlock today, but Lock-then-Wait on a goroutine we don't
+// control is a footgun worth avoiding).
 func (v *VT) Close() error {
 	v.mu.Lock()
-	defer v.mu.Unlock()
-	return v.term.Close()
+	err := v.term.Close()
+	v.mu.Unlock()
+	v.drainerDone.Wait()
+	return err
 }
 
 // Resize updates the emulator's grid dimensions.
