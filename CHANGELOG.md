@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HIVE_SOCKET` and `HIVE_STATE_DIR` environment variables override the
+  daemon socket path and state directory respectively. Setting both
+  lets you run an isolated dev daemon (and dev GUI build) alongside a
+  production one without touching its sessions or registry. Export the
+  variables in every process that talks to the daemon (the daemon
+  itself and any client — GUI or CLI); a client without them will
+  dial or spawn the platform-default daemon instead. The platform
+  defaults are unchanged when the variables are unset.
+
 ### Fixed
 
 - Restart: Restarting a Claude or Codex session no longer reattaches
