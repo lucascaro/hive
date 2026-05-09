@@ -7,8 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HIVE_SOCKET` and `HIVE_STATE_DIR` environment variables override the
+  daemon socket path and state directory respectively. Setting both
+  lets you run an isolated dev daemon (and dev GUI build) alongside a
+  production one without touching its sessions or registry. Export the
+  variables in every process that talks to the daemon (the daemon
+  itself and any client — GUI or CLI); a client without them will
+  dial or spawn the platform-default daemon instead. The platform
+  defaults are unchanged when the variables are unset.
+
 ### Fixed
 
+- Restart: Restarting a Claude or Codex session no longer reattaches
+  to a sibling's conversation when multiple sessions share a worktree
+  or cwd. For Claude, Hive pins each session to its entry id at first
+  launch (`--session-id <uuid>`) and resumes via
+  `claude --resume <uuid>`. For Codex (which has no flag to inject an
+  id at launch), Hive captures the codex-generated session UUID from
+  `~/.codex/sessions/.../rollout-*.jsonl` shortly after spawn and
+  resumes via `codex resume <uuid>`. The pinned id is persisted on the
+  session metadata so daemon restart respawns each session against its
+  own conversation rather than collapsing back to "most recent in
+  cwd". Restart is now unambiguous regardless of how many siblings
+  live in the same directory. Gemini/Copilot retain today's
+  path-scoped resume. (#165)
+- GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
+  returns keyboard focus to the active session. Previously the
+  sidebar still showed the session as selected but keystrokes were
+  dropped because xterm's internal focus flag was stale after the
+  view-toggle's focusin/focusout churn — focusing the helper-textarea
+  DOM node directly bypasses the stale flag and fires a real focus
+  event. (#159)
+- GUI: Resize no longer strands the user mid-history when the viewport
+  is 1–2 lines short of the bottom. Codex (and similar TUIs) sometimes
+  leave the viewport just above the bottom; the resize handler now
+  treats anything within 2 lines of bottom as "at bottom" and re-snaps
+  after reflow. Deliberate scrollback (3+ lines up) is still preserved.
+  (#163)
+- Session snapshot: 24-bit RGB foreground/background colors now
+  round-trip across GUI reattach. Previously `writeColor` dropped the
+  RGB-encoded `vt10x.Color` to default, so modern prompts (starship,
+  p10k) and TUIs (Claude, Codex, lazygit) came back uncolored until
+  the app repainted. Truecolor SGR (`38;2;R;G;B` / `48;2;R;G;B`) is
+  now emitted for the RGB range; sentinels still fall through. (#144)
+- Session reattach now preserves scrollback above the visible viewport.
+  Lines that scrolled off the top of a running session reappear in the
+  GUI's scrollback after a restart, restoring the contract that PR #141
+  inadvertently broke when it switched the reattach repaint to a vt10x
+  visible-screen snapshot. Up to 500 evicted rows per session are kept
+  with their SGR styling intact. (#143)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,
