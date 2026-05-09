@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restarting a Claude session before any message had been sent failed
+  with `No conversation found with session ID: <uuid>`. Claude only
+  writes the transcript jsonl after the first user message, so a fresh
+  pinned session has no on-disk record for `claude --resume <id>` to
+  find. Restart/Revive now stat the expected transcript path
+  (`~/.claude/projects/<encoded-cwd>/<id>.jsonl`) and re-pin the same
+  id via `claude --session-id <id>` when it doesn't exist, preserving
+  the Hive entry id ↔ claude conversation id mapping.
 - An isolated dev daemon (`HIVE_STATE_DIR` set) no longer reaps
   worktrees owned by the canonical/prod daemon at startup. The
   on-disk `<project>/.worktrees/` namespace is shared across daemon

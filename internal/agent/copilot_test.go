@@ -216,7 +216,7 @@ func TestCopilotDefHasResumeArgsAndCapture(t *testing.T) {
 	if d.ResumeArgs == nil {
 		t.Errorf("copilot ResumeArgs is nil")
 	} else {
-		got := d.ResumeArgs("xyz")
+		got := d.ResumeArgs("xyz", "")
 		want := []string{"copilot", "--resume=xyz"}
 		if !slices.Equal(got, want) {
 			t.Errorf("ResumeArgs = %v, want %v", got, want)
@@ -242,7 +242,7 @@ func TestGeminiDefHasSessionIDPinning(t *testing.T) {
 	if d.ResumeArgs == nil {
 		t.Errorf("gemini ResumeArgs is nil")
 	} else {
-		got := d.ResumeArgs("xyz")
+		got := d.ResumeArgs("xyz", "")
 		want := []string{"gemini", "--resume", "xyz"}
 		if !slices.Equal(got, want) {
 			t.Errorf("ResumeArgs = %v, want %v", got, want)

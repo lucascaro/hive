@@ -584,22 +584,6 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	}
 	r.mu.Unlock()
 
-	if agentID != "" && len(opts.Cmd) == 0 {
-		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
-			// If we previously pinned this entry to an agent
-			// conversation id (Claude --session-id at first launch,
-			// or codex post-spawn capture), resume that exact
-			// conversation. Otherwise the daemon-startup respawn
-			// runs a bare agent in the cwd and re-introduces the
-			// path-scoped ambiguity #165 fixed.
-			if agentSessionID != "" && def.ResumeArgs != nil {
-				opts.Cmd = def.ResumeArgs(agentSessionID)
-			} else {
-				opts.Cmd = def.Cmd
-			}
-		}
-	}
-
 	if projectCwd != "" {
 		opts.Cwd = projectCwd
 	}
@@ -621,6 +605,22 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			info := e.Info()
 			r.mu.Unlock()
 			r.broadcast(wire.SessionEventUpdated, info)
+		}
+	}
+
+	if agentID != "" && len(opts.Cmd) == 0 {
+		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
+			// If we previously pinned this entry to an agent
+			// conversation id (Claude --session-id at first launch,
+			// or codex post-spawn capture), resume that exact
+			// conversation. Otherwise the daemon-startup respawn
+			// runs a bare agent in the cwd and re-introduces the
+			// path-scoped ambiguity #165 fixed.
+			if agentSessionID != "" && def.ResumeArgs != nil {
+				opts.Cmd = def.ResumeArgs(agentSessionID, opts.Cwd)
+			} else {
+				opts.Cmd = def.Cmd
+			}
 		}
 	}
 
@@ -666,6 +666,7 @@ func (r *Registry) Restart(id string) error {
 	}
 	sess := e.sess
 	agentID := e.Agent
+	wtPath := e.WorktreePath
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
@@ -695,6 +696,17 @@ func (r *Registry) Restart(id string) error {
 	}
 	r.mu.Unlock()
 
+	// Resolve the cwd we expect the resume to spawn under, so
+	// ResumeArgs (Claude) can stat the agent's session file at the
+	// right project hash. Revive will redo this same promotion; we
+	// only compute it here to drive the resume-argv decision.
+	resumeCwd := projectCwd
+	if wtPath != "" {
+		if _, err := os.Stat(wtPath); err == nil {
+			resumeCwd = wtPath
+		}
+	}
+
 	var opts session.Options
 	if def, ok := agent.Get(agent.ID(agentID)); ok {
 		switch {
@@ -704,7 +716,7 @@ func (r *Registry) Restart(id string) error {
 			// a cwd. resumeID is the Hive entry id for Claude
 			// (pre-pinned via --session-id) and the codex-generated
 			// UUID captured post-spawn for Codex.
-			opts.Cmd = def.ResumeArgs(resumeID)
+			opts.Cmd = def.ResumeArgs(resumeID, resumeCwd)
 		case len(def.ResumeCmd) > 0:
 			opts.Cmd = def.ResumeCmd
 		default:

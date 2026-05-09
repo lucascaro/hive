@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -368,6 +369,10 @@ func TestRestartUsesResumeArgsForClaude(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
+	// Simulate the post-first-message state: claude has written a
+	// transcript jsonl for the pinned id. Restart must use --resume.
+	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
+
 	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -488,6 +493,7 @@ func TestTwoClaudeSessionsRestartUseDistinctIDs(t *testing.T) {
 	skipOnWindows(t)
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
+	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
 
 	a, err := r.Create(wire.CreateSpec{Name: "a", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
@@ -573,6 +579,7 @@ func TestReviveUsesResumeArgsForPinnedClaude(t *testing.T) {
 	skipOnWindows(t)
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
+	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
 
 	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
@@ -603,6 +610,42 @@ func TestReviveUsesResumeArgsForPinnedClaude(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("Revive cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// TestRestartEmptyClaudeSessionRepinsBySessionID covers the case
+// where the user clicks Restart before sending any prompt: claude
+// writes the transcript jsonl only after the first user message, so
+// `claude --resume <id>` would fail with "No conversation found with
+// session ID". Hive must instead re-pin the same id via
+// `claude --session-id <id>` so the restarted process keeps the
+// same Hive entry id ↔ claude conversation id mapping.
+func TestRestartEmptyClaudeSessionRepinsBySessionID(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+	// No transcript on disk: the session was never used.
+	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return false }))
+
+	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	want := []string{"claude", "--session-id", a.ID}
+	got := rec.opts[len(rec.opts)-1].Cmd
+	if len(got) != len(want) {
+		t.Fatalf("Restart cmd = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Restart cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
 		}
 	}
 }
