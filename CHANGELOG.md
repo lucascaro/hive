@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RGB-encoded colors to default, so modern prompts (starship, p10k)
   and TUIs (Claude, Codex, lazygit) came back uncolored until the app
   repainted. (#144)
+- An isolated dev daemon (`HIVE_STATE_DIR` set) no longer reaps
+  worktrees owned by the canonical/prod daemon at startup. The
+  on-disk `<project>/.worktrees/` namespace is shared across daemon
+  instances even when registries are isolated, so the orphan-worktree
+  reclaim now runs only when `HIVE_STATE_DIR` is unset. Iso runs that
+  leak their own worktrees on SIGKILL still get reaped on the next
+  prod-daemon startup, matching the existing orphan contract.
+- GUI: Keyboard shortcuts no longer accept both ⌘ and Ctrl on macOS.
+  Platform-adaptive bindings (⌘T, ⌘N, ⌘W, ⌘1–9, etc.) now require
+  ⌘ on macOS and Ctrl on Windows/Linux exclusively, matching the
+  native menu accelerators. Conversely, Ctrl+\` (open OS terminal)
+  is now Ctrl-only on every platform — on macOS ⌘\` is reserved for
+  native window cycling, so it's no longer swallowed by the app.
 - Restart: Restarting a Claude or Codex session no longer reattaches
   to a sibling's conversation when multiple sessions share a worktree
   or cwd. For Claude, Hive pins each session to its entry id at first

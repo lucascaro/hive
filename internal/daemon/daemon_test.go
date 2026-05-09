@@ -554,3 +554,118 @@ func TestAttachUnknownSession(t *testing.T) {
 		t.Errorf("expected ERROR for missing session, got %s", ft)
 	}
 }
+
+// initGitRepoAt initializes a git repo at dir with one empty commit.
+func initGitRepoAt(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"-c", "user.email=t@t", "-c", "user.name=t", "commit", "--allow-empty", "-q", "-m", "init"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// TestStartup_HIVEStateDir_SkipsOrphanReap is the regression test for
+// the "dev-iso daemon kills foreign worktrees" bug: when the daemon
+// boots with HIVE_STATE_DIR set (i.e. an isolated dev daemon sharing
+// the on-disk <repo>/.worktrees/ namespace with prod), the orphan
+// reaper must NOT delete worktree dirs whose owning sessions live in
+// the prod registry — those would all look unclaimed in iso's empty
+// registry and get force-removed.
+func TestStartup_HIVEStateDir_SkipsOrphanReap(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	repo := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepoAt(t, repo)
+	foreign := filepath.Join(repo, ".worktrees", "foreign-abc")
+	if err := os.MkdirAll(foreign, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(foreign, "MARKER")
+	if err := os.WriteFile(marker, []byte("prod-owned"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := filepath.Join(tmp, "state")
+	t.Setenv("HIVE_STATE_DIR", stateDir)
+
+	d, err := New(Config{
+		SocketPath: filepath.Join(tmp, "s"),
+		StateDir:   stateDir,
+		// Repo as bootstrap cwd → EnsureDefaultProject registers it,
+		// so ReclaimOrphanWorktrees would scan repo/.worktrees/ if the
+		// gate let it.
+		BootstrapSession: session.Options{
+			Shell: "/bin/bash",
+			Cols:  80,
+			Rows:  24,
+			Cwd:   repo,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = d.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		_ = d.Close()
+	})
+
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("foreign worktree was reaped despite HIVE_STATE_DIR override: %v", err)
+	}
+}
+
+// TestStartup_NoOverride_ReapsOrphans is the companion: without the
+// env override, the canonical daemon still reaps unclaimed worktree
+// dirs (this is the original, intended behavior of the reaper — the
+// fix only changes the iso case).
+func TestStartup_NoOverride_ReapsOrphans(t *testing.T) {
+	skipOnWindows(t)
+	t.Setenv("HIVE_STATE_DIR", "")
+	tmp := shortTempDir(t)
+	repo := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepoAt(t, repo)
+	foreign := filepath.Join(repo, ".worktrees", "stale-xyz")
+	if err := os.MkdirAll(foreign, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := New(Config{
+		SocketPath: filepath.Join(tmp, "s"),
+		StateDir:   filepath.Join(tmp, "state"),
+		BootstrapSession: session.Options{
+			Shell: "/bin/bash",
+			Cols:  80,
+			Rows:  24,
+			Cwd:   repo,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = d.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		_ = d.Close()
+	})
+
+	if _, err := os.Stat(foreign); !os.IsNotExist(err) {
+		t.Fatalf("expected stale worktree to be reaped, got err=%v", err)
+	}
+}

@@ -40,6 +40,15 @@ func StateDir() string {
 	return filepath.Join(os.TempDir(), "hive")
 }
 
+// StateDirOverridden reports whether HIVE_STATE_DIR is set, i.e. the
+// caller is running with an isolated (non-canonical) state directory.
+// Code that touches state shared across daemon instances — like the
+// on-disk worktree namespace under <project>/.worktrees/ — should
+// refuse to garbage-collect when this is true.
+func StateDirOverridden() bool {
+	return os.Getenv("HIVE_STATE_DIR") != ""
+}
+
 // SessionsDir is the directory that holds per-session subdirectories
 // and the index file.
 func SessionsDir(stateDir string) string {
