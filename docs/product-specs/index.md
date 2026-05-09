@@ -7,6 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
+| — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 
 ## Completed
 
@@ -17,6 +18,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | #159 | Returning to grid leaves session visually selected but keyboard input doesn't reach it | 2026-05-08 | [159-grid-return-session-input-focus](159-grid-return-session-input-focus.md) |
 | #155 | Save session name on Enter key when editing | 2026-05-07 | [155-save-session-name-on-enter-key](155-save-session-name-on-enter-key.md) |
 | #144 | vt snapshot: RGB / 24-bit colors fall back to default | 2026-05-08 | [144-vt-snapshot-rgb-24-bit-colors](144-vt-snapshot-rgb-24-bit-colors.md) |
+| #143 | vt snapshot: scrollback above visible viewport not preserved | 2026-05-08 | [143-vt-snapshot-scrollback-above-visible-viewport](143-vt-snapshot-scrollback-above-visible-viewport.md) |
 
 ## Rejected
 
