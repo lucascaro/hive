@@ -15,6 +15,24 @@ import {
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 
+// ---------- platform / modifier helpers ----------
+//
+// On macOS the primary modifier is ⌘ (metaKey); on Windows/Linux it's
+// Ctrl. Use `cmdOrCtrl(e)` for shortcuts that should adapt — e.g.
+// ⌘T on mac, Ctrl+T on Windows. The check is exclusive: on mac it
+// requires meta and rejects ctrl, and vice versa, so a stray Ctrl
+// press on macOS doesn't fire mac-only Cmd shortcuts. Shortcuts
+// that must always be Ctrl (e.g. Ctrl+` mirroring VS Code) check
+// `e.ctrlKey && !e.metaKey` directly and bypass this helper.
+const isMac = (() => {
+  const p = (typeof navigator !== 'undefined'
+    && (navigator.userAgentData?.platform || navigator.platform)) || '';
+  return /mac|iphone|ipad/i.test(p);
+})();
+function cmdOrCtrl(e) {
+  return isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
+}
+
 // ---------- session terminal ----------
 
 class SessionTerm {
@@ -241,10 +259,11 @@ class SessionTerm {
     this.term.onData((data) => this._writePty(data));
 
     // macOS Cmd+Backspace → Ctrl+U (kill to start of line). Browser doesn't
-    // translate this for us when xterm's helper-textarea is focused.
+    // translate this for us when xterm's helper-textarea is focused. Gated
+    // to mac so the Windows key on Linux/Windows can't accidentally fire it.
     this.term.attachCustomKeyEventHandler((e) => {
       if (e.type !== 'keydown') return true;
-      if (e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
+      if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
         e.preventDefault();
         this._writePty('\x15');
         return false;
@@ -254,7 +273,9 @@ class SessionTerm {
       // beeps because the binding is meaningless). Returning false
       // tells xterm to ignore the event; it still bubbles to the
       // window-level keydown handler that runs the actual shortcut.
-      if ((e.ctrlKey || e.metaKey) && e.code === 'Backquote') {
+      // Ctrl+` is intentionally Ctrl-only on every platform (mirrors
+      // VS Code; macOS already uses ⌘` for window cycling).
+      if (e.ctrlKey && !e.metaKey && e.code === 'Backquote') {
         return false;
       }
       return true;
@@ -2272,7 +2293,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp'   || (e.key === 'Tab' && e.shiftKey))  return handle(() => moveLauncherSelection(-1));
     if (e.key === 'Enter')   return handle(activateLauncherSelection);
     if (e.key === 'Escape')  return handle(closeLauncher);
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) return handle(closeLauncher);
+    if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N')) return handle(closeLauncher);
     // Digit shortcut: 1–9 picks the corresponding row. Skipped when
     // a modifier is held so things like ⌘1 (browser tab switch) and
     // ⌘+ aren't swallowed.
@@ -2305,9 +2326,22 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  const meta = e.metaKey || e.ctrlKey;
-  if (!meta) return;
   const swallow = () => { e.preventDefault(); e.stopPropagation(); };
+
+  // Ctrl+` opens an OS terminal at the active session's worktree.
+  // Mirrors VS Code; intentionally Ctrl on every platform — macOS
+  // reserves ⌘` for native window cycling, so we never bind to it.
+  // Handled before the ⌘/Ctrl gate below so it fires on mac too.
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'Backquote') {
+    swallow();
+    OpenTerminalAt(activeCwd()).catch((err) => {
+      setStatus(`open terminal: ${err}`, true);
+    });
+    return;
+  }
+
+  const meta = cmdOrCtrl(e);
+  if (!meta) return;
 
   if (e.key === '=' || e.key === '+') {
     swallow();
@@ -2325,18 +2359,9 @@ window.addEventListener('keydown', (e) => {
     return;
   }
 
-  if ((e.key === 'k' || e.key === 'K') && e.shiftKey && e.metaKey && !e.ctrlKey) {
+  if ((e.key === 'k' || e.key === 'K') && e.shiftKey) {
     swallow();
     openCommandPalette();
-    return;
-  }
-  // ⌃` opens an OS terminal at the active session's worktree (or
-  // its project's cwd as a fallback). Mirrors the VS Code shortcut.
-  if (e.code === 'Backquote' && !e.shiftKey) {
-    swallow();
-    OpenTerminalAt(activeCwd()).catch((err) => {
-      setStatus(`open terminal: ${err}`, true);
-    });
     return;
   }
   if (e.key === 'p' || e.key === 'P') {

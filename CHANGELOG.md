@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: Keyboard shortcuts no longer accept both ⌘ and Ctrl on macOS.
+  Platform-adaptive bindings (⌘T, ⌘N, ⌘W, ⌘1–9, etc.) now require
+  ⌘ on macOS and Ctrl on Windows/Linux exclusively, matching the
+  native menu accelerators. Conversely, Ctrl+\` (open OS terminal)
+  is now Ctrl-only on every platform — on macOS ⌘\` is reserved for
+  native window cycling, so it's no longer swallowed by the app.
 - Restart: Restarting a Claude or Codex session no longer reattaches
   to a sibling's conversation when multiple sessions share a worktree
   or cwd. For Claude, Hive pins each session to its entry id at first
