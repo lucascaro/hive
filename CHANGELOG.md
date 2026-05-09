@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: Reattach now renders CJK / wide-emoji rows with correct column
+  alignment. The headless emulator behind the snapshot path advanced
+  the cursor by one cell per rune and had no concept of double-width
+  cells, so any line containing wide content shifted on reattach until
+  the next live byte arrived. Swapped to `charmbracelet/x/vt`, which
+  models cells in display columns natively. (#142)
+- Session snapshot: 24-bit RGB foreground/background colors now
+  round-trip across GUI reattach. Previously the snapshot path dropped
+  RGB-encoded colors to default, so modern prompts (starship, p10k)
+  and TUIs (Claude, Codex, lazygit) came back uncolored until the app
+  repainted. (#144)
 - An isolated dev daemon (`HIVE_STATE_DIR` set) no longer reaps
   worktrees owned by the canonical/prod daemon at startup. The
   on-disk `<project>/.worktrees/` namespace is shared across daemon
@@ -72,16 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   treats anything within 2 lines of bottom as "at bottom" and re-snaps
   after reflow. Deliberate scrollback (3+ lines up) is still preserved.
   (#163)
-- Session snapshot: 24-bit RGB foreground/background colors now
-  round-trip across GUI reattach. Previously `writeColor` dropped the
-  RGB-encoded `vt10x.Color` to default, so modern prompts (starship,
-  p10k) and TUIs (Claude, Codex, lazygit) came back uncolored until
-  the app repainted. Truecolor SGR (`38;2;R;G;B` / `48;2;R;G;B`) is
-  now emitted for the RGB range; sentinels still fall through. (#144)
 - Session reattach now preserves scrollback above the visible viewport.
   Lines that scrolled off the top of a running session reappear in the
   GUI's scrollback after a restart, restoring the contract that PR #141
-  inadvertently broke when it switched the reattach repaint to a vt10x
+  inadvertently broke when it switched the reattach repaint to a
   visible-screen snapshot. Up to 500 evicted rows per session are kept
   with their SGR styling intact. (#143)
 - GUI: Pressing Enter while editing a session or project name in the
