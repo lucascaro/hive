@@ -1,0 +1,5 @@
+{
+  "cols": 40,
+  "rows": 2,
+  "description": "OSC 8 hyperlink sequence; defines the strip-vs-preserve behavior we ship today"
+}

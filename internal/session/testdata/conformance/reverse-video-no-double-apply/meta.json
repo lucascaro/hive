@@ -1,0 +1,5 @@
+{
+  "cols": 10,
+  "rows": 1,
+  "description": "Reverse video on red-on-white must not double-apply across snapshot replay"
+}

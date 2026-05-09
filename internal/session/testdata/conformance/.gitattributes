@@ -1,0 +1,6 @@
+# Conformance fixtures are binary byte streams (raw PTY bytes for inputs, raw
+# ANSI snapshot output for goldens). Git must not touch line endings or treat
+# them as text — CRLF→LF conversion would corrupt the bytes that the
+# conformance test compares byte-exactly.
+*.bin -text
+*.snapshot -text

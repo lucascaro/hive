@@ -1,0 +1,22 @@
+{
+  "cols": 20,
+  "rows": 3,
+  "description": "More lines than the visible viewport, chunked per line so eviction fires; scrollback ring captures the overflow",
+  "chunks": [
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9,
+    9
+  ]
+}

@@ -97,12 +97,16 @@ var (
 			CaptureSessionIDFn: codexCaptureSessionID,
 		},
 		IDGemini: {
-			ID:         IDGemini,
-			Name:       "Gemini",
-			Cmd:        []string{"gemini"},
-			ResumeCmd:  []string{"gemini", "--continue"},
-			Color:      "#3b82f6",
-			InstallCmd: []string{"npm", "install", "-g", "@google/gemini-cli"},
+			ID:            IDGemini,
+			Name:          "Gemini",
+			Cmd:           []string{"gemini"},
+			ResumeCmd:     []string{"gemini", "--continue"},
+			Color:         "#3b82f6",
+			InstallCmd:    []string{"npm", "install", "-g", "@google/gemini-cli"},
+			SessionIDFlag: "--session-id",
+			ResumeArgs: func(id string) []string {
+				return []string{"gemini", "--resume", id}
+			},
 		},
 		IDCopilot: {
 			ID:         IDCopilot,
@@ -111,6 +115,10 @@ var (
 			ResumeCmd:  []string{"copilot", "--resume"},
 			Color:      "#8b5cf6",
 			InstallCmd: []string{"npm", "install", "-g", "@github/copilot"},
+			ResumeArgs: func(id string) []string {
+				return []string{"copilot", "--resume=" + id}
+			},
+			CaptureSessionIDFn: copilotCaptureSessionID,
 		},
 		IDAider: {
 			ID:         IDAider,
