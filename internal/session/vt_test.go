@@ -12,6 +12,17 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
+// newVT wraps NewVT with a t.Cleanup that closes the emulator so the
+// drainer goroutine exits before the test process ends. Tests that
+// don't close leak one goroutine each, which would mask real leaks
+// surfaced by TestVTCloseReleasesDrainer's baseline-count check.
+func newVT(t *testing.T, cols, rows int) *VT {
+	t.Helper()
+	v := NewVT(cols, rows)
+	t.Cleanup(func() { _ = v.Close() })
+	return v
+}
+
 // rowText concatenates display content of row y across cols. Wide cells
 // contribute their grapheme once and the shadow cell contributes "" so
 // the resulting string lines up with display columns.
@@ -38,7 +49,7 @@ func rowText(v *VT, y, cols int) string {
 // asserts the visible cells match. Bold attribute on "world" must
 // survive the round-trip.
 func TestVTSnapshotRoundTrip(t *testing.T) {
-	src := NewVT(20, 5)
+	src := newVT(t, 20, 5)
 	if _, err := src.Write([]byte("hello\r\n\x1b[1mworld\x1b[m")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -53,7 +64,7 @@ func TestVTSnapshotRoundTrip(t *testing.T) {
 		t.Errorf("snapshot missing 'world': %q", snap)
 	}
 
-	dst := NewVT(20, 5)
+	dst := newVT(t, 20, 5)
 	if _, err := dst.Write(snap); err != nil {
 		t.Fatalf("replay write: %v", err)
 	}
@@ -91,14 +102,14 @@ func TestVTSnapshotRoundTrip(t *testing.T) {
 // layout, so xterm.js paints the snapshot identically to what it
 // painted from the live byte stream.
 func TestVTSnapshotWideCharRoundTrip(t *testing.T) {
-	src := NewVT(40, 5)
+	src := newVT(t, 40, 5)
 	// Wide chars on row 0, narrow content on row 1 — the narrow row
 	// guards that we don't accidentally shift unrelated rows.
 	if _, err := src.Write([]byte("こんにちは世界\r\nhello")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	dst := NewVT(40, 5)
+	dst := newVT(t, 40, 5)
 	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -134,7 +145,7 @@ var cupRE = regexp.MustCompile(`\x1b\[(\d+);(\d+)H`)
 // the live cursor at display column 8 (1-indexed); the snapshot must
 // say so.
 func TestVTSnapshotWideCharCursorPosition(t *testing.T) {
-	v := NewVT(20, 3)
+	v := newVT(t, 20, 3)
 	if _, err := v.Write([]byte("世界abc")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -170,14 +181,14 @@ func TestVTSnapshotWideCharCursorPosition(t *testing.T) {
 // an absolute CUP that targets a column inside a wide-rune region
 // should land at the same display column on round-trip.
 func TestVTSnapshotWideCharOverlay(t *testing.T) {
-	src := NewVT(20, 3)
+	src := newVT(t, 20, 3)
 	// "世界" fills display cols 0..3. CUP to row 1, col 6 (1-indexed),
 	// then write "X". Live: 世界  X (with two spaces between 界 and X).
 	if _, err := src.Write([]byte("世界\x1b[1;6HX")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	dst := NewVT(20, 3)
+	dst := newVT(t, 20, 3)
 	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -199,7 +210,7 @@ func TestVTSnapshotWideCharOverlay(t *testing.T) {
 // uses ultraviolet's Style.Diff for SGR encoding which should not
 // double-apply, but the test stays valuable as a regression net.
 func TestVTReverseVideoNoDoubleApply(t *testing.T) {
-	src := NewVT(10, 1)
+	src := newVT(t, 10, 1)
 	if _, err := src.Write([]byte("\x1b[31;47;7mX\x1b[m")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -208,7 +219,7 @@ func TestVTReverseVideoNoDoubleApply(t *testing.T) {
 		t.Fatalf("test premise: reverse attr not stored on source cell: %+v", srcCell)
 	}
 
-	dst := NewVT(10, 1)
+	dst := newVT(t, 10, 1)
 	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -233,7 +244,7 @@ func TestVTReverseVideoNoDoubleApply(t *testing.T) {
 // gymnastics — guarding against a regression in the new emulator's
 // renderer.
 func TestVTSnapshotRoundTripRGB(t *testing.T) {
-	src := NewVT(10, 1)
+	src := newVT(t, 10, 1)
 	if _, err := src.Write([]byte("\x1b[38;2;200;100;50mhi\x1b[m")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -242,7 +253,7 @@ func TestVTSnapshotRoundTripRGB(t *testing.T) {
 		t.Fatalf("test setup wrong: source FG color not stored: %+v", srcCell)
 	}
 
-	dst := NewVT(10, 1)
+	dst := newVT(t, 10, 1)
 	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -265,7 +276,7 @@ func TestVTSnapshotRoundTripRGB(t *testing.T) {
 // \x1b[?1049l from the live PTY swaps cleanly without discarding the
 // snapshot we just painted.
 func TestVTAltScreenSnapshot(t *testing.T) {
-	v := NewVT(10, 3)
+	v := newVT(t, 10, 3)
 	if _, err := v.Write([]byte("\x1b[?1049hALT")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -287,7 +298,7 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 // starves every client's live byte stream — agent TUIs end up blank
 // in the GUI while plain shells (which rarely query) work fine.
 func TestVTWriteDoesNotBlockOnQueries(t *testing.T) {
-	v := NewVT(80, 24)
+	v := newVT(t, 80, 24)
 	// DA1 ("\x1b[c"), DA2 ("\x1b[>c"), DECRQM mode report, OSC 10 color
 	// query — a representative slice of what agents emit on startup.
 	queries := []byte("\x1b[c\x1b[>c\x1b[?25$p\x1b]10;?\x07hello")
@@ -330,6 +341,9 @@ func TestVTCloseReleasesDrainer(t *testing.T) {
 	const n = 50
 	before := runtime.NumGoroutine()
 	for range n {
+		// Use NewVT directly here (not the newVT helper) — this test is
+		// about Close semantics and registering 50 t.Cleanups would
+		// double-close every v.
 		v := NewVT(80, 24)
 		// Trigger at least one query response to make sure the drainer
 		// has had bytes to consume — guards against trivial paths where
@@ -361,7 +375,7 @@ func TestVTCloseReleasesDrainer(t *testing.T) {
 // reattach. Charm's emulator already tracks scrollback natively, so
 // the only thing to verify is that RenderSnapshot prepends it.
 func TestVTSnapshotPreservesScrollback(t *testing.T) {
-	v := NewVT(20, 3)
+	v := newVT(t, 20, 3)
 	// Push enough lines to evict several into scrollback.
 	var lines strings.Builder
 	for i := range 10 {
@@ -395,7 +409,7 @@ func TestVTSnapshotPreservesScrollback(t *testing.T) {
 // regardless of active screen, so without the IsAltScreen gate we'd
 // leak prior shell output above the alt-screen UI on reattach.
 func TestVTSnapshotAltScreenSkipsScrollback(t *testing.T) {
-	v := NewVT(20, 3)
+	v := newVT(t, 20, 3)
 	// Push lines into the main scrollback first.
 	var pre strings.Builder
 	for i := range 10 {
@@ -423,7 +437,7 @@ func TestVTSnapshotAltScreenSkipsScrollback(t *testing.T) {
 // TestVTResize sanity-checks that Resize doesn't blow up and the
 // snapshot reflects content placed before the resize.
 func TestVTResize(t *testing.T) {
-	v := NewVT(10, 3)
+	v := newVT(t, 10, 3)
 	if _, err := v.Write([]byte("abc")); err != nil {
 		t.Fatalf("write: %v", err)
 	}

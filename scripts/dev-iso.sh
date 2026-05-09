@@ -35,7 +35,9 @@ if [[ $do_reset -eq 1 ]]; then
   echo "==> Wiping $iso_dir"
   rm -rf "$iso_dir"
 fi
-mkdir -p "$iso_dir/state"
+# 0700 because $iso_dir defaults to /tmp/hive-iso — keep the socket and
+# registry out of reach of other local users on shared machines.
+(umask 077 && mkdir -p "$iso_dir/state")
 
 if [[ $do_build -eq 1 ]]; then
   ./build.sh
