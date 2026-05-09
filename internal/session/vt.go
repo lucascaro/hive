@@ -21,8 +21,14 @@ import (
 	"sync"
 	"sync/atomic"
 
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
 )
+
+// historySnapshotRows caps the scrollback rows we prepend to the
+// snapshot. ~80 cols × 500 rows × ~100 bytes/row ≈ 50 KiB worst case,
+// matching the bound from the legacy vt10x snapshot path (#143).
+const historySnapshotRows = 500
 
 // VT is a goroutine-safe wrapper around vt.SafeEmulator. SafeEmulator's
 // own lock guards the emulator's parser/state; our Mutex serializes
@@ -134,14 +140,18 @@ func (v *VT) Resize(cols, rows int) error {
 //  2. enter alt-screen first if the session is on it (so a later \x1b[?1049l
 //     from the live PTY swaps the client back cleanly without discarding
 //     the snapshot)
-//  3. the emulator's own Render() output, which encodes SGR transitions
+//  3. on the normal screen only, the trailing N rows of scrollback
+//     (capped at historySnapshotRows) so xterm.js scrolls them up into
+//     its own scrollback buffer ahead of the visible viewport — restores
+//     the contract #143 set on the vt10x backend
+//  4. the emulator's own Render() output, which encodes SGR transitions
 //     and emits a single grapheme per wide cell (the second half of a
 //     wide cell is a zero-width shadow that Render skips). \n separators
 //     are upgraded to \r\n.
-//  4. final cursor positioning — the emulator already tracks display
+//  5. final cursor positioning — the emulator already tracks display
 //     columns (the cursor advances by cell.Width), so cur.X+1 maps
 //     directly to xterm.js's 1-indexed column.
-//  5. cursor visibility (DECTCEM) per emulator state.
+//  6. cursor visibility (DECTCEM) per emulator state.
 func (v *VT) RenderSnapshot() []byte {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -157,6 +167,24 @@ func (v *VT) RenderSnapshot() []byte {
 	}
 	// Soft reset + erase-display + home. \x1b[!p is DECSTR.
 	buf.WriteString("\x1b[!p\x1b[2J\x1b[H")
+
+	// Prepend scrollback (normal screen only — alt-screen sessions like
+	// vim/htop don't accumulate scrollback the user expects to see on
+	// reattach). Charm's Scrollback() returns the main screen's buffer
+	// regardless of the active screen, so we gate on IsAltScreen.
+	if !v.term.IsAltScreen() {
+		if sb := v.term.Scrollback(); sb != nil && sb.Len() > 0 {
+			lines := sb.Lines()
+			if n := len(lines); n > historySnapshotRows {
+				lines = lines[n-historySnapshotRows:]
+			}
+			history := uv.Lines(lines).Render()
+			buf.WriteString(strings.ReplaceAll(history, "\n", "\r\n"))
+			// Separator between history and the visible screen so the
+			// last history row doesn't merge with the first screen row.
+			buf.WriteString("\x1b[m\r\n")
+		}
+	}
 
 	rendered := v.term.Render()
 	// Render uses LF as line separator; we write to a PTY in raw mode,

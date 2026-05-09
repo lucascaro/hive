@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -352,6 +353,71 @@ func TestVTCloseReleasesDrainer(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("drainer goroutines leaked: before=%d after=%d (created %d VTs)", before, after, n)
+}
+
+// TestVTSnapshotPreservesScrollback covers the contract first set on
+// the vt10x backend in #143: lines that scrolled off the top of the
+// visible viewport must reappear in the GUI's scrollback after
+// reattach. Charm's emulator already tracks scrollback natively, so
+// the only thing to verify is that RenderSnapshot prepends it.
+func TestVTSnapshotPreservesScrollback(t *testing.T) {
+	v := NewVT(20, 3)
+	// Push enough lines to evict several into scrollback.
+	var lines strings.Builder
+	for i := range 10 {
+		fmt.Fprintf(&lines, "line%02d\r\n", i)
+	}
+	if _, err := v.Write([]byte(lines.String())); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if v.term.ScrollbackLen() == 0 {
+		t.Fatal("test premise: nothing scrolled off; emulator may have changed scrollback semantics")
+	}
+
+	snap := string(v.RenderSnapshot())
+	// Earliest visible line in the viewport should be "line07" (rows=3
+	// holds 07, 08, 09 plus the empty row after the trailing \r\n).
+	// Earlier "line00".."line06" must therefore live in the snapshot
+	// before the screen content as scrollback.
+	if !strings.Contains(snap, "line00") {
+		t.Errorf("snapshot missing scrollback row 'line00': %q", snap)
+	}
+	if !strings.Contains(snap, "line06") {
+		t.Errorf("snapshot missing scrollback row 'line06': %q", snap)
+	}
+}
+
+// TestVTSnapshotAltScreenSkipsScrollback guards that alt-screen
+// sessions (vim, htop, agent TUIs) do NOT get scrollback prepended
+// to their snapshot. The user's expectation on alt-screen reattach
+// is "show me the same UI", not "show me lines from before the alt
+// switch." Charm's Scrollback() returns the main screen's buffer
+// regardless of active screen, so without the IsAltScreen gate we'd
+// leak prior shell output above the alt-screen UI on reattach.
+func TestVTSnapshotAltScreenSkipsScrollback(t *testing.T) {
+	v := NewVT(20, 3)
+	// Push lines into the main scrollback first.
+	var pre strings.Builder
+	for i := range 10 {
+		fmt.Fprintf(&pre, "main%02d\r\n", i)
+	}
+	if _, err := v.Write([]byte(pre.String())); err != nil {
+		t.Fatalf("pre-write: %v", err)
+	}
+	// Now switch to alt screen and write something.
+	if _, err := v.Write([]byte("\x1b[?1049hALTUI")); err != nil {
+		t.Fatalf("alt-write: %v", err)
+	}
+	if !v.term.IsAltScreen() {
+		t.Fatal("test premise: emulator did not enter alt screen")
+	}
+	snap := string(v.RenderSnapshot())
+	if strings.Contains(snap, "main00") {
+		t.Errorf("alt-screen snapshot leaked normal-screen scrollback: %q", snap)
+	}
+	if !strings.Contains(snap, "ALTUI") {
+		t.Errorf("alt-screen snapshot missing live alt content: %q", snap)
+	}
 }
 
 // TestVTResize sanity-checks that Resize doesn't blow up and the

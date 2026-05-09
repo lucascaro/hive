@@ -31,6 +31,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   RGB-encoded colors to default, so modern prompts (starship, p10k)
   and TUIs (Claude, Codex, lazygit) came back uncolored until the app
   repainted. (#144)
+- Restart: Restarting a Claude or Codex session no longer reattaches
+  to a sibling's conversation when multiple sessions share a worktree
+  or cwd. For Claude, Hive pins each session to its entry id at first
+  launch (`--session-id <uuid>`) and resumes via
+  `claude --resume <uuid>`. For Codex (which has no flag to inject an
+  id at launch), Hive captures the codex-generated session UUID from
+  `~/.codex/sessions/.../rollout-*.jsonl` shortly after spawn and
+  resumes via `codex resume <uuid>`. The pinned id is persisted on the
+  session metadata so daemon restart respawns each session against its
+  own conversation rather than collapsing back to "most recent in
+  cwd". Restart is now unambiguous regardless of how many siblings
+  live in the same directory. Gemini/Copilot retain today's
+  path-scoped resume. (#165)
 - GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
   returns keyboard focus to the active session. Previously the
   sidebar still showed the session as selected but keystrokes were
@@ -44,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   treats anything within 2 lines of bottom as "at bottom" and re-snaps
   after reflow. Deliberate scrollback (3+ lines up) is still preserved.
   (#163)
+- Session reattach now preserves scrollback above the visible viewport.
+  Lines that scrolled off the top of a running session reappear in the
+  GUI's scrollback after a restart, restoring the contract that PR #141
+  inadvertently broke when it switched the reattach repaint to a
+  visible-screen snapshot. Up to 500 evicted rows per session are kept
+  with their SGR styling intact. (#143)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,
