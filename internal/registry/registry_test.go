@@ -393,6 +393,60 @@ func TestRestartUsesResumeArgsForClaude(t *testing.T) {
 	}
 }
 
+func TestCreatePinsAgentSessionIDForClaude(t *testing.T) {
+	skipOnWindows(t)
+	captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	r.mu.Lock()
+	got := r.entries[a.ID].AgentSessionID
+	r.mu.Unlock()
+	if got != a.ID {
+		t.Errorf("AgentSessionID = %q, want %q (= entry id)", got, a.ID)
+	}
+}
+
+func TestRestartUsesCapturedAgentSessionIDForCodex(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Simulate the post-spawn capture goroutine succeeding by setting
+	// the field directly. (The real capture polls ~/.codex/sessions
+	// asynchronously and is exercised in agent/codex_test.go.)
+	const captured = "019d4d18-aaaa-7bbb-8ccc-deadbeefcafe"
+	r.mu.Lock()
+	r.entries[a.ID].AgentSessionID = captured
+	r.mu.Unlock()
+
+	if err := r.Restart(a.ID); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	want := []string{"codex", "resume", captured}
+	got := rec.opts[len(rec.opts)-1].Cmd
+	if len(got) != len(want) {
+		t.Fatalf("codex Restart cmd = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Restart cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestRestartFallsBackToResumeCmdForCodex(t *testing.T) {
 	skipOnWindows(t)
 	rec := captureStartSession(t)

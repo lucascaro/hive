@@ -6,9 +6,11 @@
 package agent
 
 import (
+	"context"
 	"os/exec"
 	"sort"
 	"sync"
+	"time"
 )
 
 // ID is the canonical short identifier ("claude", "codex", ...).
@@ -41,6 +43,14 @@ type Def struct {
 	// nil, Restart falls back to ResumeCmd (path-scoped, ambiguous when
 	// sessions share cwd) and then to Cmd.
 	ResumeArgs func(sessionID string) []string
+	// CaptureSessionIDFn, when non-nil, is invoked from a goroutine
+	// after the agent process is spawned. It returns the agent CLI's
+	// session id (e.g. parsed from a rollout file) so future Restart
+	// can resume by id. Used for agents that do not accept a
+	// caller-chosen id at first launch (codex). The returned id is
+	// persisted on the registry Entry; an error or empty string means
+	// "no capture this run" and Restart falls back to ResumeCmd.
+	CaptureSessionIDFn func(ctx context.Context, cwd string, spawnedAt time.Time) (string, error)
 }
 
 // Available reports whether the agent's binary is on PATH right now.
@@ -81,6 +91,10 @@ var (
 			ResumeCmd:  []string{"codex", "resume", "--last"},
 			Color:      "#10b981",
 			InstallCmd: []string{"npm", "install", "-g", "@openai/codex"},
+			ResumeArgs: func(id string) []string {
+				return []string{"codex", "resume", id}
+			},
+			CaptureSessionIDFn: codexCaptureSessionID,
 		},
 		IDGemini: {
 			ID:         IDGemini,

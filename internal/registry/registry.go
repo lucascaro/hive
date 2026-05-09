@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -50,8 +51,21 @@ type Entry struct {
 	ProjectID      string // owning project; "" = default project
 	WorktreePath   string // absolute path of the git worktree backing this session; "" = none
 	WorktreeBranch string // branch backing the worktree (informational; e.g. for sidebar tooltip)
-	LastError      string // human-readable error from last failed Start/Revive; cleared on success
+	// AgentSessionID is the id the agent CLI uses to identify this
+	// conversation. For agents that accept a caller-chosen id at first
+	// launch (Claude: --session-id) this equals Entry.ID. For agents
+	// whose id is auto-generated (Codex) it's captured post-spawn from
+	// the agent's session-rollout file. Empty ⇔ not yet captured /
+	// agent does not support per-id resume; Restart then falls back to
+	// the agent's generic ResumeCmd. Daemon-internal — not on the wire.
+	AgentSessionID string
+	LastError      string           // human-readable error from last failed Start/Revive; cleared on success
 	sess           *session.Session // nil ⇔ not running this lifetime
+
+	// captureCancel cancels the post-spawn AgentSessionID capture
+	// goroutine when the session exits before capture completes.
+	// nil when no capture is in flight.
+	captureCancel context.CancelFunc
 }
 
 // Project is the registry-side representation of a project.
@@ -459,12 +473,65 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if wtPath != "" {
 		e.WorktreePath = wtPath
 		e.WorktreeBranch = wtBranch
+	}
+	// Pin the agent session id when the agent's first-launch flag let
+	// us choose it (Claude). Persist alongside the worktree fields
+	// above so the entry on disk matches what we just spawned.
+	if def, ok := agent.Get(agent.ID(spec.Agent)); ok && def.SessionIDFlag != "" {
+		e.AgentSessionID = id
+	}
+	if wtPath != "" || e.AgentSessionID != "" {
 		_ = r.persistEntryLocked(e)
 	}
+	// Kick off the post-spawn capture for agents that don't support
+	// caller-chosen ids (Codex). The cancel func is stored so
+	// watchSessionExit can stop the poll if the session dies first.
+	r.startAgentSessionIDCaptureLocked(e, cwd)
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
 	go r.watchSessionExit(id, sess)
 	return e, nil
+}
+
+// startAgentSessionIDCaptureLocked launches the per-agent capture
+// goroutine when the agent's Def opts into post-spawn id capture.
+// Caller must hold r.mu so the cancel func is wired before
+// watchSessionExit can race with it.
+func (r *Registry) startAgentSessionIDCaptureLocked(e *Entry, cwd string) {
+	def, ok := agent.Get(agent.ID(e.Agent))
+	if !ok || def.CaptureSessionIDFn == nil {
+		return
+	}
+	// 30s is a generous upper bound. Codex writes the rollout file
+	// well within a second of spawn in practice; the long tail is
+	// only for sandboxed/cold-start scenarios.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	e.captureCancel = cancel
+	id := e.ID
+	go func() {
+		defer cancel()
+		captured, err := def.CaptureSessionIDFn(ctx, cwd, time.Now())
+		if err != nil || captured == "" {
+			return
+		}
+		r.mu.Lock()
+		e2, ok := r.entries[id]
+		if !ok {
+			r.mu.Unlock()
+			return
+		}
+		// If the session already exited and was reaped, or another
+		// path has already populated AgentSessionID, leave it alone.
+		if e2.AgentSessionID != "" {
+			r.mu.Unlock()
+			return
+		}
+		e2.AgentSessionID = captured
+		_ = r.persistEntryLocked(e2)
+		info := e2.Info()
+		r.mu.Unlock()
+		r.broadcast(wire.SessionEventUpdated, info)
+	}()
 }
 
 // Revive starts a fresh process on the existing entry. No-op if the
@@ -599,13 +666,23 @@ func (r *Registry) Restart(id string) error {
 		r.mu.Unlock()
 	}
 
+	r.mu.Lock()
+	resumeID := ""
+	if e, ok := r.entries[id]; ok {
+		resumeID = e.AgentSessionID
+	}
+	r.mu.Unlock()
+
 	var opts session.Options
 	if def, ok := agent.Get(agent.ID(agentID)); ok {
 		switch {
-		case def.ResumeArgs != nil:
-			// Resume the specific conversation pinned to this entry id;
-			// disambiguates when multiple sessions share a cwd.
-			opts.Cmd = def.ResumeArgs(id)
+		case def.ResumeArgs != nil && resumeID != "":
+			// Resume the specific conversation by the agent CLI's
+			// session id. Disambiguates when multiple sessions share
+			// a cwd. resumeID is the Hive entry id for Claude
+			// (pre-pinned via --session-id) and the codex-generated
+			// UUID captured post-spawn for Codex.
+			opts.Cmd = def.ResumeArgs(resumeID)
 		case len(def.ResumeCmd) > 0:
 			opts.Cmd = def.ResumeCmd
 		default:
@@ -669,6 +746,14 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 		return
 	}
 	e.sess = nil
+	// Stop any post-spawn AgentSessionID capture that's still
+	// polling — the session is gone, no point waiting for codex's
+	// rollout file. The capture goroutine will return ctx.Canceled
+	// and exit without persisting.
+	if e.captureCancel != nil {
+		e.captureCancel()
+		e.captureCancel = nil
+	}
 	info := e.Info()
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventUpdated, info)
