@@ -29,14 +29,15 @@ func TestEncodeClaudeProjectDir(t *testing.T) {
 			want: "-home-u--config-x",
 		},
 		{
-			name: "windows-shaped path with drive and backslashes",
-			cwd:  `C:\Users\u\repo`,
-			// filepath.Clean on linux leaves backslashes alone, so
-			// we just verify the colon and any forward slashes flip
-			// to dashes; the test is mainly a smoke for the Windows
-			// path of the encoder, and the no-data-loss fallback
-			// (`--session-id`) keeps it safe regardless.
-			want: `C-\Users\u\repo`,
+			// Pre-normalized Windows-style input (already
+			// ToSlash'd) — covers the drive-colon branch in a
+			// platform-independent way. filepath.Clean's
+			// backslash handling differs between GOOS=windows
+			// and POSIX, so we feed the encoder slash form
+			// directly to keep the assertion deterministic.
+			name: "windows drive with forward slashes",
+			cwd:  "C:/Users/u/repo",
+			want: "C--Users-u-repo",
 		},
 	}
 	for _, tc := range cases {
