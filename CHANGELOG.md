@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- VT snapshot conformance corpus
+  (`internal/session/testdata/conformance/`) and a `scripts/vtcapture`
+  PTY-recording tool. The corpus pins the byte-exact snapshot output
+  for the fixture set against the current backend (hinshun/vt10x);
+  CI fails on any unintentional drift. Synthetic fixtures cover RGB,
+  reverse-video, alt-screen, scrollback eviction, OSC 8, and CJK wide
+  chars, with chunk boundaries declared so per-Write contracts (like
+  the eviction heuristic) are exercised faithfully. This is Phase 0
+  of the in-house VT emulator plan and is independently valuable as a
+  regression floor.
 - `HIVE_SOCKET` and `HIVE_STATE_DIR` environment variables override the
   daemon socket path and state directory respectively. Setting both
   lets you run an isolated dev daemon (and dev GUI build) alongside a

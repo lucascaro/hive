@@ -1,0 +1,9 @@
+{
+  "cols": 20,
+  "rows": 3,
+  "description": "Content and the clear sequence arrive in separate Writes; the post-blank-screen guard must reject the eviction match",
+  "chunks": [
+    16,
+    7
+  ]
+}

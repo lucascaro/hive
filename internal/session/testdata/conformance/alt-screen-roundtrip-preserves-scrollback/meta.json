@@ -1,0 +1,19 @@
+{
+  "cols": 20,
+  "rows": 3,
+  "description": "Vim-like enter/exit alt-screen must not erase prior normal-screen scrollback",
+  "chunks": [
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    11,
+    8
+  ]
+}

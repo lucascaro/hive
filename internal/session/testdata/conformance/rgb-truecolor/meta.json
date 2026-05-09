@@ -1,0 +1,5 @@
+{
+  "cols": 20,
+  "rows": 2,
+  "description": "24-bit RGB foreground; guards against legacy backends dropping truecolor"
+}
