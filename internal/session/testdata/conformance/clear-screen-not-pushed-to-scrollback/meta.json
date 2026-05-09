@@ -1,0 +1,5 @@
+{
+  "cols": 20,
+  "rows": 3,
+  "description": "Content followed by ESC[2J in one Write must not leak the cleared content into scrollback"
+}

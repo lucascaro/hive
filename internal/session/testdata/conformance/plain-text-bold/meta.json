@@ -1,0 +1,5 @@
+{
+  "cols": 20,
+  "rows": 5,
+  "description": "ASCII text with a bold word; baseline round-trip and SGR"
+}

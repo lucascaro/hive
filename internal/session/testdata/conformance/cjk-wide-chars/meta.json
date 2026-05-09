@@ -1,0 +1,5 @@
+{
+  "cols": 20,
+  "rows": 2,
+  "description": "CJK and emoji wide chars; column alignment must not desync from xterm.js"
+}

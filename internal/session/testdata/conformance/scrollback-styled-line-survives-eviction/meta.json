@@ -1,0 +1,18 @@
+{
+  "cols": 20,
+  "rows": 3,
+  "description": "A bold red line scrolled off the viewport must keep its SGR in the captured ring; chunked per line",
+  "chunks": [
+    20,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7
+  ]
+}
