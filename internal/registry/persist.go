@@ -19,6 +19,13 @@ type MetaFile struct {
 	ProjectID      string    `json:"project_id,omitempty"`      // owning project; "" = default
 	WorktreePath   string    `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string    `json:"worktree_branch,omitempty"` // branch backing the worktree
+	// AgentSessionID is the agent CLI's conversation id used for
+	// per-id resume across daemon restarts. For Claude this equals
+	// ID (we pin it via --session-id at first launch); for Codex it's
+	// the codex-generated UUID captured post-spawn from the rollout
+	// file. Empty ⇔ not pinned / not yet captured / agent does not
+	// support per-id resume.
+	AgentSessionID string `json:"agent_session_id,omitempty"`
 }
 
 // IndexFile is what we write to sessions/index.json.

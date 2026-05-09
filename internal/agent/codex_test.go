@@ -115,8 +115,11 @@ func TestCodexCaptureIgnoresPreexistingRolloutsInSameCwd(t *testing.T) {
 	older := "019d4d18-0000-7000-8000-000000000001"
 	newer := "019d4d18-0000-7000-8000-000000000002"
 
-	// Pre-existing rollout in the same cwd — must not match.
-	writeRollout(t, root, "2026/05/08", cwd, older, time.Now())
+	// Pre-existing rollout in the same cwd — must not match. Give
+	// it an mtime well before spawnedAt-1s so the cutoff filter
+	// excludes it (mirrors reality: a previous codex run hours/days
+	// ago, not a millisecond-old "old" file).
+	writeRollout(t, root, "2026/05/08", cwd, older, time.Now().Add(-1*time.Hour))
 
 	spawnedAt := time.Now()
 	go func() {

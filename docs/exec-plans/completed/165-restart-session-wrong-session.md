@@ -98,8 +98,6 @@ If `session.Start` is not currently observable from registry tests, the smallest
 - **2026-05-08** — Reuse the Hive entry UUID as the agent session id rather than adding `Entry.AgentSessionID`. Why: registry id is already a uuid (registry.go:266); avoids a persistence-format change and a backfill story for existing entries.
 - **2026-05-08** — Scope this PR to Claude. Why: Claude is the only agent with a verified `--session-id`-at-spawn flag. Codex supports `resume <UUID>` but its id is auto-generated, requiring post-spawn capture — out of scope. Track Gemini/Copilot/Codex as a follow-up issue.
 
-## Decision log
-
 ## Progress
 
 - **2026-05-08** — Spec drafted, triage approved (bug, S → reconsider M during plan), research complete: root cause is path-scoped ResumeCmd colliding when sessions share cwd.

@@ -37,16 +37,28 @@ var codexRolloutPattern = regexp.MustCompile(
 var codexCapturePollInterval = 200 * time.Millisecond
 
 // codexCaptureSessionID polls codex's session-rollout directory for a
-// new file whose first line records `payload.cwd == cwd` and whose
-// mtime is >= spawnedAt. Returns the UUID parsed from the filename.
+// rollout file whose mtime is >= spawnedAt-1s and whose first line
+// records `payload.cwd == cwd`. Returns the UUID parsed from the
+// filename.
 //
 // Strategy: poll every codexCapturePollInterval until ctx is done.
-// Per poll, walk the directory, ignore files whose name doesn't match
-// the rollout pattern, ignore files older than spawnedAt-1s (clock
-// fuzz), and read just the first line of each candidate to confirm
-// the cwd. First match wins. Files seen on the first poll are
-// recorded and re-skipped on subsequent polls so two near-simultaneous
-// codex spawns in the same cwd don't latch onto each other's file.
+// Per poll, walk the directory, ignore files whose name doesn't
+// match the rollout pattern or whose mtime is older than
+// spawnedAt-1s (clock fuzz), skip files we've already inspected and
+// rejected, and read just the first line of each remaining candidate
+// to confirm the cwd. First cwd-match wins.
+//
+// We deliberately do NOT snapshot "files seen on the first poll" as
+// pre-existing: codex frequently creates its rollout within
+// milliseconds of fork, before our first poll tick fires. A
+// snapshot-and-skip would classify our own rollout as pre-existing
+// and lose it forever. Instead, mtime + cwd check together
+// disambiguate: a prior codex run that happened to share this cwd
+// will have an mtime well before spawnedAt-1s (different process,
+// different invocation, different time) and is filtered by the
+// cutoff. Two truly concurrent codex spawns in the same cwd within
+// the same second are unsupported (no reliable signal to
+// disambiguate); the first cwd-match wins.
 func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time) (string, error) {
 	if codexSessionsDir == "" {
 		return "", errors.New("codex sessions dir unresolved (no HOME)")
@@ -56,29 +68,23 @@ func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time)
 	// imprecise. A small backstep prevents skipping a file written
 	// in the same second we recorded.
 	cutoff := spawnedAt.Add(-time.Second)
-	preexisting := map[string]struct{}{}
-	first := true
+	// Negative-cache: candidate files whose first line we read and
+	// confirmed do NOT match cwd. Avoids re-reading on every poll.
+	rejected := map[string]struct{}{}
 
 	ticker := time.NewTicker(codexCapturePollInterval)
 	defer ticker.Stop()
 
 	for {
-		matches := scanCodexRollouts(codexSessionsDir, cutoff)
-		for _, m := range matches {
-			if first {
-				preexisting[m.path] = struct{}{}
-				continue
-			}
-			if _, seen := preexisting[m.path]; seen {
+		for _, m := range scanCodexRollouts(codexSessionsDir, cutoff) {
+			if _, seen := rejected[m.path]; seen {
 				continue
 			}
 			if id, ok := readCodexRolloutCwd(m.path, cwd); ok {
 				return id, nil
 			}
-			// Negative result: remember so we don't re-read it.
-			preexisting[m.path] = struct{}{}
+			rejected[m.path] = struct{}{}
 		}
-		first = false
 
 		select {
 		case <-ctx.Done():
@@ -89,8 +95,9 @@ func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time)
 }
 
 type codexRolloutMatch struct {
-	path string
-	uuid string
+	path    string
+	uuid    string
+	modTime time.Time
 }
 
 // scanCodexRollouts walks the sessions tree and returns every rollout
@@ -119,7 +126,7 @@ func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
 		if info.ModTime().Before(cutoff) {
 			return nil
 		}
-		out = append(out, codexRolloutMatch{path: path, uuid: m[1]})
+		out = append(out, codexRolloutMatch{path: path, uuid: m[1], modTime: info.ModTime()})
 		return nil
 	})
 	return out

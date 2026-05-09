@@ -529,3 +529,119 @@ func TestTwoClaudeSessionsRestartUseDistinctIDs(t *testing.T) {
 	}
 }
 
+// TestAgentSessionIDPersistsAcrossReload verifies that the
+// AgentSessionID set on Create survives a registry reload (i.e. a
+// daemon restart). Without persistence, the daemon-startup Revive
+// can't pin Claude back to its conversation and the restart-wrong-
+// session bug returns on the first daemon restart after a fix.
+func TestAgentSessionIDPersistsAcrossReload(t *testing.T) {
+	skipOnWindows(t)
+	captureStartSession(t)
+	dir := t.TempDir()
+
+	r1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	a, err := r1.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wantID := a.ID
+	_ = r1.Close()
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+
+	r2.mu.Lock()
+	got := r2.entries[wantID].AgentSessionID
+	r2.mu.Unlock()
+	if got != wantID {
+		t.Errorf("after reload AgentSessionID = %q, want %q", got, wantID)
+	}
+}
+
+// TestReviveUsesResumeArgsForPinnedClaude exercises the daemon-
+// startup respawn path: a Claude entry persisted with a non-empty
+// AgentSessionID must Revive via `claude --resume <id>`, NOT a bare
+// `claude` (which would re-introduce the path-scoped ambiguity #165
+// fixed).
+func TestReviveUsesResumeArgsForPinnedClaude(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// Tear down the live session so Revive will respawn (mirrors
+	// what daemon startup sees: persisted entry, no live PTY).
+	r.mu.Lock()
+	sess := r.entries[a.ID].sess
+	r.entries[a.ID].sess = nil
+	r.mu.Unlock()
+	if sess != nil {
+		_ = sess.Close()
+		<-sess.Done()
+	}
+
+	if err := r.Revive(a.ID, session.Options{}); err != nil {
+		t.Fatalf("Revive: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	want := []string{"claude", "--resume", a.ID}
+	got := rec.opts[len(rec.opts)-1].Cmd
+	if len(got) != len(want) {
+		t.Fatalf("Revive cmd = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Revive cmd[%d] = %q, want %q (full=%v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// TestCreateWithExplicitCmdSkipsAgentSessionIDPin verifies that when
+// a caller passes an explicit spec.Cmd alongside Agent="claude", the
+// SessionIDFlag is NOT injected (we don't mutate user argv) and
+// AgentSessionID is NOT set. Otherwise Restart would later run
+// `claude --resume <entry.ID>` against a conversation the agent
+// never recorded under that id.
+func TestCreateWithExplicitCmdSkipsAgentSessionIDPin(t *testing.T) {
+	skipOnWindows(t)
+	rec := captureStartSession(t)
+	r := freshRegistry(t)
+
+	a, err := r.Create(wire.CreateSpec{
+		Name:  "c1",
+		Agent: "claude",
+		Cmd:   []string{"claude", "--print", "hi"},
+		Shell: "/bin/bash",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	rec.mu.Lock()
+	for _, tok := range rec.opts[0].Cmd {
+		if tok == "--session-id" {
+			rec.mu.Unlock()
+			t.Fatalf("Create with explicit Cmd unexpectedly contains --session-id: %v", rec.opts[0].Cmd)
+		}
+	}
+	rec.mu.Unlock()
+
+	r.mu.Lock()
+	got := r.entries[a.ID].AgentSessionID
+	r.mu.Unlock()
+	if got != "" {
+		t.Errorf("AgentSessionID = %q, want empty (caller-supplied Cmd was not pinned)", got)
+	}
+}
+

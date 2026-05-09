@@ -29,8 +29,10 @@ import (
 var ErrNotFound = errors.New("registry: session not found")
 
 // startSession is the package-level seam used to spawn the underlying
-// PTY. Tests swap this to capture the resolved session.Options without
-// forking real binaries (e.g. to inspect agent argv).
+// PTY. Tests swap this to capture the resolved session.Options
+// without forking real agent binaries (e.g. to inspect agent argv);
+// the test seam still execs a benign stub like `sleep` so the
+// returned *session.Session behaves normally.
 var startSession = session.Start
 
 // ErrWorktreeDirty is returned by Kill when the session is backed by
@@ -230,6 +232,7 @@ func (r *Registry) load() error {
 			ProjectID:      meta.ProjectID,
 			WorktreePath:   meta.WorktreePath,
 			WorktreeBranch: meta.WorktreeBranch,
+			AgentSessionID: meta.AgentSessionID,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -251,6 +254,7 @@ func (r *Registry) load() error {
 				ProjectID:      meta.ProjectID,
 				WorktreePath:   meta.WorktreePath,
 				WorktreeBranch: meta.WorktreeBranch,
+				AgentSessionID: meta.AgentSessionID,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -476,9 +480,16 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	}
 	// Pin the agent session id when the agent's first-launch flag let
 	// us choose it (Claude). Persist alongside the worktree fields
-	// above so the entry on disk matches what we just spawned.
-	if def, ok := agent.Get(agent.ID(spec.Agent)); ok && def.SessionIDFlag != "" {
-		e.AgentSessionID = id
+	// above so the entry on disk matches what we just spawned. Skip
+	// when the caller passed an explicit spec.Cmd — we never injected
+	// SessionIDFlag in that branch (we don't mutate user-supplied
+	// argv), so the agent did NOT record its conversation under our
+	// id. Pretending otherwise would make Restart resume the wrong
+	// conversation (or fail to find one).
+	if len(spec.Cmd) == 0 {
+		if def, ok := agent.Get(agent.ID(spec.Agent)); ok && def.SessionIDFlag != "" {
+			e.AgentSessionID = id
+		}
 	}
 	if wtPath != "" || e.AgentSessionID != "" {
 		_ = r.persistEntryLocked(e)
@@ -566,6 +577,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	}
 	agentID := e.Agent
 	wtPath := e.WorktreePath
+	agentSessionID := e.AgentSessionID
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
@@ -574,7 +586,17 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 
 	if agentID != "" && len(opts.Cmd) == 0 {
 		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
-			opts.Cmd = def.Cmd
+			// If we previously pinned this entry to an agent
+			// conversation id (Claude --session-id at first launch,
+			// or codex post-spawn capture), resume that exact
+			// conversation. Otherwise the daemon-startup respawn
+			// runs a bare agent in the cwd and re-introduces the
+			// path-scoped ambiguity #165 fixed.
+			if agentSessionID != "" && def.ResumeArgs != nil {
+				opts.Cmd = def.ResumeArgs(agentSessionID)
+			} else {
+				opts.Cmd = def.Cmd
+			}
 		}
 	}
 
@@ -1009,6 +1031,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		ProjectID:      e.ProjectID,
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
+		AgentSessionID: e.AgentSessionID,
 	})
 }
 
