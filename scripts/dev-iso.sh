@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# dev-iso.sh — Build and launch an isolated dev Hive that doesn't
+# touch your prod daemon, sessions, or registry. Uses the
+# HIVE_SOCKET / HIVE_STATE_DIR env-var overrides.
+#
+# Usage:
+#   scripts/dev-iso.sh           # build + run
+#   scripts/dev-iso.sh --reset   # also wipe the iso state dir first
+#   scripts/dev-iso.sh --no-build  # skip ./build.sh, just relaunch
+#   scripts/dev-iso.sh --dir /tmp/foo  # use a custom iso dir
+#
+# Run the binary directly (not via `open`) so the env vars survive —
+# launchctl strips most env from .app bundles opened with `open`.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+iso_dir=/tmp/hive-iso
+do_build=1
+do_reset=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir)      iso_dir="$2"; shift 2 ;;
+    --reset)    do_reset=1; shift ;;
+    --no-build) do_build=0; shift ;;
+    -h|--help)
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) echo "unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+if [[ $do_reset -eq 1 ]]; then
+  # Guard against catastrophic --dir values. --reset must only ever
+  # wipe a scratch dir under /tmp or /var/folders.
+  # Reject any `..` in the raw input first — defeats prefix bypass
+  # like `/tmp/../etc` even before canonicalization.
+  case "/$iso_dir/" in
+    */../*|*/..*|*../*)
+      echo "refusing: --dir must not contain '..' segments ($iso_dir)" >&2
+      exit 2 ;;
+  esac
+  # Canonicalize. macOS realpath has no -m, so fall back via the
+  # parent dir if iso_dir doesn't exist yet.
+  if [[ -e "$iso_dir" ]]; then
+    abs_iso_dir=$(realpath "$iso_dir")
+  else
+    parent=$(dirname "$iso_dir")
+    base=$(basename "$iso_dir")
+    if [[ -d "$parent" ]]; then
+      abs_iso_dir="$(cd "$parent" && pwd -P)/$base"
+    else
+      echo "refusing: parent of --dir does not exist: $parent" >&2
+      exit 2
+    fi
+  fi
+  # Strip trailing slashes for the comparison so `/tmp/` and `/tmp`
+  # both reject as "the prefix itself, no subpath".
+  abs_iso_dir="${abs_iso_dir%/}"
+  case "$abs_iso_dir" in
+    ""|/|/Users|/home|/tmp|/var|/var/folders|/private|/private/tmp|/private/var|/private/var/folders|"$HOME")
+      echo "refusing to wipe $abs_iso_dir — must be a subpath under /tmp or /var/folders" >&2
+      exit 2 ;;
+  esac
+  case "$abs_iso_dir" in
+    /tmp/*|/var/folders/*|/private/tmp/*|/private/var/folders/*) ;;
+    *)
+      echo "refusing to wipe $abs_iso_dir — --reset only operates under /tmp or /var/folders" >&2
+      exit 2 ;;
+  esac
+  echo "==> Wiping $abs_iso_dir"
+  rm -rf "$abs_iso_dir"
+fi
+mkdir -p "$iso_dir/state"
+
+if [[ $do_build -eq 1 ]]; then
+  ./build.sh
+fi
+
+app="cmd/hivegui/build/bin/hivegui.app/Contents/MacOS/hivegui"
+if [[ ! -x "$app" ]]; then
+  echo "error: $app not found — run ./build.sh first or omit --no-build" >&2
+  exit 1
+fi
+
+echo "==> Launching isolated Hive"
+echo "    HIVE_SOCKET=$iso_dir/hived.sock"
+echo "    HIVE_STATE_DIR=$iso_dir/state"
+HIVE_SOCKET="$iso_dir/hived.sock" \
+HIVE_STATE_DIR="$iso_dir/state" \
+  "$app"
