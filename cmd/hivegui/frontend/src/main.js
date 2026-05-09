@@ -426,9 +426,15 @@ class SessionTerm {
 
   show() {
     this.host.classList.add('visible');
-    // Becoming visible flips display from none → block, which makes the
-    // body's box appear with non-zero size. ResizeObserver fires next
-    // tick and runs _onBodyResize for us.
+    // Becoming visible flips display from none → block. ResizeObserver
+    // would fit on its next callback, but xterm's WebGL renderer
+    // schedules its canvas resize on rAF — one paint frame slips in
+    // first, stretching the stale grid-sized canvas into the new full-
+    // sized body (huge-text flash on grid → zoom → switch). Force
+    // layout now and fit synchronously so the next paint already has
+    // the right canvas dims; the trailing RO callback becomes a no-op.
+    void this.body.clientWidth;
+    this._onBodyResize();
   }
 
   hide() {
