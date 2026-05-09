@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Daemon: persisted sessions now resume their prior agent
+  conversation when `hived` restarts, not just when the user
+  triggers Restart Session. `Registry.Revive` reuses the same
+  `ResumeCmd` plumbing as Restart, so Claude / Codex / Gemini /
+  Copilot sessions pick up where they left off after a daemon
+  reboot. For Claude and Codex specifically, hive also captures a
+  per-session conversation ID (scanned from `~/.claude/projects/`
+  and `~/.codex/sessions/` shortly after Create, then refreshed by
+  a background janitor) and revives via `claude --resume <id>` /
+  `codex resume <id>` — so two ⌘P-duplicated sessions sharing a
+  project cwd revive into their own conversations instead of both
+  attaching to whichever was most recent in the cwd. Aider has no
+  resume command and stays on a fresh start. Resume-by-ID failure
+  is fail-loud: the entry stays dead with `LastError`, and the user
+  clicks Restart Session to recover.
+
 ### Fixed
 
 - GUI: Pressing Enter while editing a session or project name in the

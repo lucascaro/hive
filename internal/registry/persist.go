@@ -19,6 +19,7 @@ type MetaFile struct {
 	ProjectID      string    `json:"project_id,omitempty"`      // owning project; "" = default
 	WorktreePath   string    `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string    `json:"worktree_branch,omitempty"` // branch backing the worktree
+	ConversationID string    `json:"conversation_id,omitempty"` // agent-specific conversation ID for ID-based resume
 }
 
 // IndexFile is what we write to sessions/index.json.

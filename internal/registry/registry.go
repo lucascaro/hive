@@ -46,6 +46,7 @@ type Entry struct {
 	WorktreePath   string // absolute path of the git worktree backing this session; "" = none
 	WorktreeBranch string // branch backing the worktree (informational; e.g. for sidebar tooltip)
 	LastError      string // human-readable error from last failed Start/Revive; cleared on success
+	ConversationID string // agent-specific conversation ID for ID-based resume; "" if unknown
 	sess           *session.Session // nil ⇔ not running this lifetime
 }
 
@@ -121,6 +122,12 @@ type Registry struct {
 	// separate from listeners so a sidebar can subscribe to both
 	// streams without filtering.
 	projectListeners map[ProjectListener]struct{}
+
+	// janitorOnce ensures the conversation-ID janitor goroutine starts
+	// at most once per Registry. stopJanitor is closed by Close to
+	// shut it down.
+	janitorOnce sync.Once
+	stopJanitor chan struct{}
 }
 
 // ProjectListener is a channel that receives ProjectEvent.
@@ -138,6 +145,7 @@ func Open(stateDir string) (*Registry, error) {
 		projects:         make(map[string]*Project),
 		listeners:        make(map[Listener]struct{}),
 		projectListeners: make(map[ProjectListener]struct{}),
+		stopJanitor:      make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
@@ -211,6 +219,7 @@ func (r *Registry) load() error {
 			ProjectID:      meta.ProjectID,
 			WorktreePath:   meta.WorktreePath,
 			WorktreeBranch: meta.WorktreeBranch,
+			ConversationID: meta.ConversationID,
 		}
 		r.order = append(r.order, meta.ID)
 		seen[meta.ID] = true
@@ -232,6 +241,7 @@ func (r *Registry) load() error {
 				ProjectID:      meta.ProjectID,
 				WorktreePath:   meta.WorktreePath,
 				WorktreeBranch: meta.WorktreeBranch,
+				ConversationID: meta.ConversationID,
 			}
 			r.order = append(r.order, meta.ID)
 		}
@@ -452,7 +462,17 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
 	go r.watchSessionExit(id, sess)
+	r.startJanitorOnce()
+	go r.locateConversationID(id, agent.ID(spec.Agent), cwd, e.Created)
 	return e, nil
+}
+
+// startJanitorOnce launches the conversation-ID janitor goroutine on
+// the first call; subsequent calls are no-ops.
+func (r *Registry) startJanitorOnce() {
+	r.janitorOnce.Do(func() {
+		go r.runJanitor()
+	})
 }
 
 // Revive starts a fresh process on the existing entry. No-op if the
@@ -465,15 +485,28 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 // agent ID is unknown (e.g. a future agent rolled back), we fall back
 // to a generic shell.
 //
+// Resume behavior (see resumeArgsFor):
+//   - If ConversationID is set and the agent supports ID-based
+//     resume (claude, codex), revive runs `claude --resume <id>` /
+//     `codex resume <id>` — exact-conversation revive.
+//   - Else if the agent has a ResumeCmd (most agents), revive runs
+//     it (e.g. `claude --continue`). This resumes the most recent
+//     conversation in the cwd, which collides if two hive sessions
+//     share a project cwd (⌘P duplicate). The locator pipeline in
+//     Create populates ConversationID to avoid this collision once
+//     the agent has written to disk.
+//   - Else revive starts a fresh process (no resume).
+//
+// Resume-by-ID failure is fail-loud: if the spawn errors (stale ID,
+// agent CLI moved), the entry stays dead with LastError set; the
+// user clicks Restart Session to recover.
+//
 // The cwd is taken from the entry's project (overridden by the
 // worktree path when one exists). The caller's opts.Cwd is ignored
 // when the entry has a project — daemon startup has no useful cwd
 // to contribute, and using the daemon's launch dir leads to PATH
 // resolution failures (e.g. project-local `node_modules/.bin`
 // symlinks like `codex` won't be found if revive runs from `/`).
-//
-// Note: Phase 1.7 (disk-backed scrollback) will replay prior content
-// on revive. Today the slot is preserved but starts blank.
 func (r *Registry) Revive(id string, opts session.Options) error {
 	r.mu.Lock()
 	e, ok := r.entries[id]
@@ -486,6 +519,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		return nil
 	}
 	agentID := e.Agent
+	convID := e.ConversationID
 	wtPath := e.WorktreePath
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
@@ -494,8 +528,8 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	r.mu.Unlock()
 
 	if agentID != "" && len(opts.Cmd) == 0 {
-		if def, ok := agent.Get(agent.ID(agentID)); ok && len(def.Cmd) > 0 {
-			opts.Cmd = def.Cmd
+		if argv := resumeArgsFor(agentID, convID); len(argv) > 0 {
+			opts.Cmd = argv
 		}
 	}
 
@@ -565,6 +599,7 @@ func (r *Registry) Restart(id string) error {
 	}
 	sess := e.sess
 	agentID := e.Agent
+	convID := e.ConversationID
 	projectCwd := ""
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
@@ -588,13 +623,7 @@ func (r *Registry) Restart(id string) error {
 	}
 
 	var opts session.Options
-	if def, ok := agent.Get(agent.ID(agentID)); ok {
-		if len(def.ResumeCmd) > 0 {
-			opts.Cmd = def.ResumeCmd
-		} else {
-			opts.Cmd = def.Cmd
-		}
-	}
+	opts.Cmd = resumeArgsFor(agentID, convID)
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed
 	// it out-of-band, Revive's self-heal clears the worktree fields but
@@ -602,6 +631,32 @@ func (r *Registry) Restart(id string) error {
 	opts.Cwd = projectCwd
 
 	return r.Revive(id, opts)
+}
+
+// resumeArgsFor returns the argv that resumes the agent's prior
+// conversation, picking the most specific option available:
+//
+//  1. ResumeArgsWithID(convID)  — exact-conversation resume (Slice B)
+//  2. def.ResumeCmd             — most-recent-in-cwd resume (collides
+//                                 across duplicated sessions)
+//  3. def.Cmd                   — fresh start
+//
+// Returns nil if the agent ID is unknown; callers must fall through
+// to opts.Cmd (typically a generic shell).
+func resumeArgsFor(agentID, convID string) []string {
+	def, ok := agent.Get(agent.ID(agentID))
+	if !ok {
+		return nil
+	}
+	if convID != "" {
+		if argv := agent.ResumeArgsWithID(def.ID, convID); len(argv) > 0 {
+			return argv
+		}
+	}
+	if len(def.ResumeCmd) > 0 {
+		return def.ResumeCmd
+	}
+	return def.Cmd
 }
 
 // Adopt registers an externally-started session under the given
@@ -837,6 +892,15 @@ func (r *Registry) Subscribe() (Listener, func()) {
 // Close terminates every live session and clears listeners. The on-disk
 // metadata is preserved.
 func (r *Registry) Close() error {
+	// Signal the janitor to stop. Safe even if it never started:
+	// startJanitorOnce.Do guarantees we close exactly once here too.
+	r.janitorOnce.Do(func() {})
+	select {
+	case <-r.stopJanitor:
+		// already closed
+	default:
+		close(r.stopJanitor)
+	}
 	r.mu.Lock()
 	for ch := range r.listeners {
 		close(ch)
@@ -907,6 +971,7 @@ func (r *Registry) persistEntryLocked(e *Entry) error {
 		ProjectID:      e.ProjectID,
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
+		ConversationID: e.ConversationID,
 	})
 }
 
