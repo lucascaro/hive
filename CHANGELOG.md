@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `HIVE_SOCKET` and `HIVE_STATE_DIR` environment variables override the
+  daemon socket path and state directory respectively. Setting both
+  lets you run an isolated dev daemon (and dev GUI build) alongside a
+  production one without touching its sessions or registry. Export the
+  variables in every process that talks to the daemon (the daemon
+  itself and any client — GUI or CLI); a client without them will
+  dial or spawn the platform-default daemon instead. The platform
+  defaults are unchanged when the variables are unset.
+
 ### Fixed
 
 - GUI: Reattach now renders CJK / wide-emoji rows with correct column
@@ -15,6 +26,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cells, so any line containing wide content shifted on reattach until
   the next live byte arrived. Swapped to `charmbracelet/x/vt`, which
   models cells in display columns natively. (#142)
+- Session snapshot: 24-bit RGB foreground/background colors now
+  round-trip across GUI reattach. Previously the snapshot path dropped
+  RGB-encoded colors to default, so modern prompts (starship, p10k)
+  and TUIs (Claude, Codex, lazygit) came back uncolored until the app
+  repainted. (#144)
+- GUI: Toggling between grid and single view (⌘\, ⌘[) now reliably
+  returns keyboard focus to the active session. Previously the
+  sidebar still showed the session as selected but keystrokes were
+  dropped because xterm's internal focus flag was stale after the
+  view-toggle's focusin/focusout churn — focusing the helper-textarea
+  DOM node directly bypasses the stale flag and fires a real focus
+  event. (#159)
+- GUI: Resize no longer strands the user mid-history when the viewport
+  is 1–2 lines short of the bottom. Codex (and similar TUIs) sometimes
+  leave the viewport just above the bottom; the resize handler now
+  treats anything within 2 lines of bottom as "at bottom" and re-snaps
+  after reflow. Deliberate scrollback (3+ lines up) is still preserved.
+  (#163)
 - GUI: Pressing Enter while editing a session or project name in the
   sidebar now reliably commits the new name and exits edit mode,
   matching the tile-rename behavior. Previously the input could linger,

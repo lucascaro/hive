@@ -456,8 +456,13 @@ class SessionTerm {
     // Preserve "viewport pinned to bottom" across the resize. xterm's
     // own resize doesn't auto-snap to bottom after reflow; without this,
     // a user scrolled to the latest line would land mid-history.
+    // Tolerance: codex (and similar TUIs) sometimes leave the viewport
+    // a line or two short of the bottom; treat that as "at bottom" so
+    // resize doesn't strand the user mid-history. Anything further up
+    // is deliberate scrollback — leave it alone.
+    const STICKY_BOTTOM_LINES = 2;
     const buf = this.term.buffer.active;
-    const wasAtBottom = buf ? buf.viewportY >= buf.baseY : true;
+    const wasAtBottom = buf ? (buf.baseY - buf.viewportY) <= STICKY_BOTTOM_LINES : true;
     // Swallow throw and continue: a transient FitAddon error (e.g. a
     // race against teardown) shouldn't drop the daemon-side resize.
     try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
@@ -1367,7 +1372,17 @@ function focusActiveTerm() {
     ) {
       return;
     }
-    st.term.focus();
+    // Focus the helper-textarea DOM node directly. xterm's term.focus()
+    // early-returns when its internal _focused flag is stale-true,
+    // which happens after view toggles where focusin/focusout fire
+    // across multiple tiles in quick succession (sidebar still shows
+    // the session as selected, but no element owns keyboard input).
+    // Driving the browser focus event directly fires focusin on
+    // .term-host, which the host listener consumes to set
+    // .term-focused, and routes keystrokes through xterm correctly.
+    const ta = st.host.querySelector('.xterm-helper-textarea');
+    if (ta) ta.focus();
+    else st.term.focus();
   });
 }
 

@@ -10,7 +10,14 @@ import (
 // SocketPath returns the canonical hived socket path for the current
 // user and platform. Phase 1 uses Unix domain sockets on all platforms
 // (Windows 10 1803+ supports AF_UNIX).
+//
+// Setting HIVE_SOCKET overrides the platform default — useful for
+// running an isolated dev daemon alongside a production one without
+// touching its sessions.
 func SocketPath() string {
+	if s := os.Getenv("HIVE_SOCKET"); s != "" {
+		return s
+	}
 	switch runtime.GOOS {
 	case "linux", "freebsd", "openbsd", "netbsd":
 		if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {

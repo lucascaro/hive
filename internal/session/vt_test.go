@@ -223,6 +223,40 @@ func TestVTReverseVideoNoDoubleApply(t *testing.T) {
 	}
 }
 
+// TestVTSnapshotRoundTripRGB verifies a 24-bit RGB foreground survives
+// snapshot → replay so GUI reattach preserves modern prompt/TUI styling.
+// Originally landed as #144 against the vt10x backend; the swap to
+// charmbracelet/x/vt should keep this property without per-color SGR
+// gymnastics — guarding against a regression in the new emulator's
+// renderer.
+func TestVTSnapshotRoundTripRGB(t *testing.T) {
+	src := NewVT(10, 1)
+	if _, err := src.Write([]byte("\x1b[38;2;200;100;50mhi\x1b[m")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	srcCell := src.term.CellAt(0, 0)
+	if srcCell == nil || srcCell.Style.Fg == nil {
+		t.Fatalf("test setup wrong: source FG color not stored: %+v", srcCell)
+	}
+
+	dst := NewVT(10, 1)
+	if _, err := dst.Write(src.RenderSnapshot()); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	dstCell := dst.term.CellAt(0, 0)
+	if dstCell == nil || dstCell.Style.Fg == nil {
+		t.Fatalf("destination cell missing FG after replay: %+v", dstCell)
+	}
+	// Compare RGBA values — Style.Equal can be too strict if the
+	// underlying color.Color implementation differs by concrete type
+	// while encoding the same RGBA.
+	sr, sg, sb, sa := srcCell.Style.Fg.RGBA()
+	dr, dg, db, da := dstCell.Style.Fg.RGBA()
+	if sr != dr || sg != dg || sb != db || sa != da {
+		t.Errorf("RGB FG drifted across snapshot: src=%v dst=%v", srcCell.Style.Fg, dstCell.Style.Fg)
+	}
+}
+
 // TestVTAltScreenSnapshot guards that a snapshot taken while the session
 // is in the alt-screen buffer enters alt-screen first, so a later
 // \x1b[?1049l from the live PTY swaps cleanly without discarding the
