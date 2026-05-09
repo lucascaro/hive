@@ -137,6 +137,53 @@ func TestCopilotCaptureIgnoresPreexistingSessionsInSameCwd(t *testing.T) {
 	}
 }
 
+// Regression test: a session dir whose workspace.yaml is initially
+// missing the `cwd:` field (e.g. partially written) must NOT be
+// permanently negative-cached. Once the writer flushes the full file,
+// the next poll has to re-read and match.
+func TestCopilotCaptureRetriesPartiallyWrittenWorkspace(t *testing.T) {
+	root := t.TempDir()
+	swapCopilotSessionStateDir(t, root)
+	swapCopilotPollInterval(t, 20*time.Millisecond)
+
+	cwd := "/tmp/proj-a"
+	uuid := "03cab944-0fea-4f86-b3be-989a00303876"
+	dir := filepath.Join(root, uuid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wsPath := filepath.Join(dir, "workspace.yaml")
+	// Phase 1: workspace.yaml exists with a valid mtime but lacks
+	// `cwd:`. The capture loop must treat this as not-ready and keep
+	// polling rather than rejecting the dir for good.
+	if err := os.WriteFile(wsPath, []byte("id: "+uuid+"\nsummary: test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := os.Chtimes(wsPath, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	spawnedAt := time.Now()
+	go func() {
+		// Phase 2: writer finishes the file with cwd:.
+		time.Sleep(80 * time.Millisecond)
+		body := "id: " + uuid + "\ncwd: " + cwd + "\nsummary: test\n"
+		_ = os.WriteFile(wsPath, []byte(body), 0o644)
+		_ = os.Chtimes(wsPath, time.Now(), time.Now())
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got, err := copilotCaptureSessionID(ctx, cwd, spawnedAt)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if got != uuid {
+		t.Errorf("got uuid %q, want %q (capture must not permanently reject not-ready dirs)", got, uuid)
+	}
+}
+
 func TestCopilotCaptureSkipsNonUUIDDirNames(t *testing.T) {
 	root := t.TempDir()
 	swapCopilotSessionStateDir(t, root)

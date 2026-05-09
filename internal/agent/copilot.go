@@ -65,10 +65,19 @@ func copilotCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Tim
 			if _, seen := rejected[m.path]; seen {
 				continue
 			}
-			if id, ok := readCopilotWorkspaceCwd(m.path, m.uuid, cwd); ok {
-				return id, nil
+			switch readCopilotWorkspaceCwd(m.path, cwd) {
+			case copilotCwdMatch:
+				return m.uuid, nil
+			case copilotCwdMismatch:
+				// Definitive mismatch — this dir's `cwd:` field is
+				// present and not ours. Negative-cache so we don't
+				// re-read it on every poll.
+				rejected[m.path] = struct{}{}
+			case copilotCwdNotReady:
+				// File exists but `cwd:` not yet written, or a
+				// transient read/scan error. Leave uncached so the
+				// next poll re-reads.
 			}
-			rejected[m.path] = struct{}{}
 		}
 
 		select {
@@ -117,18 +126,31 @@ func scanCopilotSessionDirs(root string, cutoff time.Time) []copilotSessionMatch
 	return out
 }
 
-// readCopilotWorkspaceCwd reads <path>/workspace.yaml and returns
-// (uuid, true) when its `cwd:` field matches wantCwd. The uuid is
-// passed in by the scanner (= directory basename, already validated).
+// copilotCwdResult is a tri-state for readCopilotWorkspaceCwd so the
+// caller can distinguish a definitive mismatch (negative-cache it)
+// from a transient "not ready / read error" (re-try next poll).
+type copilotCwdResult int
+
+const (
+	copilotCwdNotReady copilotCwdResult = iota // open/read/scan error or `cwd:` not yet written
+	copilotCwdMatch                            // `cwd:` present and equals wantCwd
+	copilotCwdMismatch                         // `cwd:` present and different from wantCwd
+)
+
+// readCopilotWorkspaceCwd reads <path>/workspace.yaml and reports
+// whether its top-level `cwd:` field matches wantCwd. Returns
+// copilotCwdNotReady for I/O errors, scan errors, or a file that
+// doesn't yet contain a `cwd:` line — caller must NOT negative-cache
+// these, since the file may still be partially written.
 //
 // We parse manually instead of pulling in a YAML dependency: the
 // file is small (always the same handful of top-level keys) and we
 // only care about one field.
-func readCopilotWorkspaceCwd(dirPath, uuid, wantCwd string) (string, bool) {
+func readCopilotWorkspaceCwd(dirPath, wantCwd string) copilotCwdResult {
 	wsPath := filepath.Join(dirPath, "workspace.yaml")
 	f, err := os.Open(wsPath)
 	if err != nil {
-		return "", false
+		return copilotCwdNotReady
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -151,9 +173,13 @@ func readCopilotWorkspaceCwd(dirPath, uuid, wantCwd string) (string, bool) {
 		// strings; copilot writes unquoted, but be defensive).
 		val = strings.Trim(val, `"'`)
 		if val == wantCwd {
-			return uuid, true
+			return copilotCwdMatch
 		}
-		return "", false
+		return copilotCwdMismatch
 	}
-	return "", false
+	// Scan error or EOF without finding `cwd:`. Either way the file
+	// isn't (yet) authoritative — treat as not-ready so the caller
+	// retries on the next poll instead of permanently rejecting it.
+	_ = scanner.Err()
+	return copilotCwdNotReady
 }
