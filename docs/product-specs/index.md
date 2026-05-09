@@ -8,6 +8,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
 | P1 | #172 | Pin/capture agent session id for Gemini and Copilot | IMPLEMENT | [172-agent-session-id-gemini-copilot](172-agent-session-id-gemini-copilot.md) |
+| P1 (S) | #176 | Fix huge-text flash on grid → zoom → session switch (regression) | IMPLEMENT | [176-huge-text-flash-zoom-session-switch](176-huge-text-flash-zoom-session-switch.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 
 ## Completed

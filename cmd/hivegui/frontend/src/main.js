@@ -102,6 +102,7 @@ class SessionTerm {
     // span changes without any push-based refit calls. Font-size changes
     // don't change the body size and call _onBodyResize() explicitly.
     this._pendingAttach = false;
+    this._revealRaf = 0;
     this.ro = new ResizeObserver(() => this._onBodyResize());
     this.ro.observe(this.body);
 
@@ -446,20 +447,34 @@ class SessionTerm {
   }
 
   show() {
+    // Becoming visible flips display from none → block. fit.fit()
+    // updates xterm's cols/rows synchronously, but the WebGL renderer
+    // schedules the *canvas pixel resize* on rAF — so for one frame
+    // the stale (grid-cell-sized, or last-zoom-sized) canvas is CSS-
+    // stretched into the new body box, producing a huge-text flash.
+    // Gate paint with visibility:hidden across the rAF: layout still
+    // runs (fit measures the real body box), only the pixel paint is
+    // suppressed until after the renderer has caught up.
+    this.body.style.visibility = 'hidden';
     this.host.classList.add('visible');
-    // Becoming visible flips display from none → block. ResizeObserver
-    // would fit on its next callback, but xterm's WebGL renderer
-    // schedules its canvas resize on rAF — one paint frame slips in
-    // first, stretching the stale grid-sized canvas into the new full-
-    // sized body (huge-text flash on grid → zoom → switch). Force
-    // layout now and fit synchronously so the next paint already has
-    // the right canvas dims; the trailing RO callback becomes a no-op.
     void this.body.clientWidth;
     this._onBodyResize();
+    if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
+    this._revealRaf = requestAnimationFrame(() => {
+      this._revealRaf = 0;
+      this.body.style.visibility = '';
+    });
   }
 
   hide() {
     this.host.classList.remove('visible');
+    // Cancel any in-flight reveal so the next show() starts from a
+    // known-good state if the user switches away during the rAF gate.
+    if (this._revealRaf) {
+      cancelAnimationFrame(this._revealRaf);
+      this._revealRaf = 0;
+    }
+    this.body.style.visibility = '';
   }
 
   // _onBodyResize is the single resize entry point. ResizeObserver
@@ -532,6 +547,7 @@ class SessionTerm {
 
   destroy() {
     CloseAttach(this.info.id).catch(() => {});
+    if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     this.ro.disconnect();
     this.term.dispose();
     this.host.remove();
