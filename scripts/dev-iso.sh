@@ -32,8 +32,45 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ $do_reset -eq 1 ]]; then
-  echo "==> Wiping $iso_dir"
-  rm -rf "$iso_dir"
+  # Guard against catastrophic --dir values. --reset must only ever
+  # wipe a scratch dir under /tmp or /var/folders.
+  # Reject any `..` in the raw input first — defeats prefix bypass
+  # like `/tmp/../etc` even before canonicalization.
+  case "/$iso_dir/" in
+    */../*|*/..*|*../*)
+      echo "refusing: --dir must not contain '..' segments ($iso_dir)" >&2
+      exit 2 ;;
+  esac
+  # Canonicalize. macOS realpath has no -m, so fall back via the
+  # parent dir if iso_dir doesn't exist yet.
+  if [[ -e "$iso_dir" ]]; then
+    abs_iso_dir=$(realpath "$iso_dir")
+  else
+    parent=$(dirname "$iso_dir")
+    base=$(basename "$iso_dir")
+    if [[ -d "$parent" ]]; then
+      abs_iso_dir="$(cd "$parent" && pwd -P)/$base"
+    else
+      echo "refusing: parent of --dir does not exist: $parent" >&2
+      exit 2
+    fi
+  fi
+  # Strip trailing slashes for the comparison so `/tmp/` and `/tmp`
+  # both reject as "the prefix itself, no subpath".
+  abs_iso_dir="${abs_iso_dir%/}"
+  case "$abs_iso_dir" in
+    ""|/|/Users|/home|/tmp|/var|/var/folders|/private|/private/tmp|/private/var|/private/var/folders|"$HOME")
+      echo "refusing to wipe $abs_iso_dir — must be a subpath under /tmp or /var/folders" >&2
+      exit 2 ;;
+  esac
+  case "$abs_iso_dir" in
+    /tmp/*|/var/folders/*|/private/tmp/*|/private/var/folders/*) ;;
+    *)
+      echo "refusing to wipe $abs_iso_dir — --reset only operates under /tmp or /var/folders" >&2
+      exit 2 ;;
+  esac
+  echo "==> Wiping $abs_iso_dir"
+  rm -rf "$abs_iso_dir"
 fi
 mkdir -p "$iso_dir/state"
 
