@@ -30,6 +30,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows: the "Restart Hive" button in the daemon-stale banner now
+  actually restarts hived. Previously the platform stub returned
+  `restart not supported on this platform` and the relaunch never
+  fired. Windows now reads `<sock>.pid`, verifies the recorded pid is
+  hived.exe via `tasklist`, and TerminateProcess-es it (matching the
+  unix SIGKILL fallback). Stale pidfiles whose pid was recycled to an
+  unrelated process are removed without signaling.
+- Windows / Linux: toggling grid mode (`Ctrl+G` / `Ctrl+Enter`) no
+  longer flashes the grid then snaps back to single-session view, and
+  `Ctrl+Up` / `Ctrl+Down` / `Ctrl+Left` / `Ctrl+Right` no longer feel
+  reversed. The native menu's keyboard accelerators were firing
+  alongside the in-window JS keyboard listener, so every shortcut ran
+  twice. The native menu is now darwin-only — JS owns every shortcut
+  on Windows and Linux. macOS is unchanged.
 - Restarting a Claude session before any message had been sent failed
   with `No conversation found with session ID: <uuid>`. Claude only
   writes the transcript jsonl after the first user message, so a fresh
