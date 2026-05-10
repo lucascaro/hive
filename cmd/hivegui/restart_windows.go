@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+// probeFn is the package-level seam used by killRunningHived so tests
+// can stub the tasklist invocation without shelling out. Production
+// code points it at runTasklistProbe.
+var probeFn = runTasklistProbe
+
 // killRunningHived terminates the hived recorded in <sock>.pid and
 // waits for it to actually exit so the caller can rely on the
 // "killRunningHived returned nil ⇒ socket is free" contract that the
@@ -32,7 +37,11 @@ import (
 // removed and no kill is performed.
 //
 // Returns nil if the pidfile is missing, the recorded pid no longer
-// exists, or the recorded pid does not look like a hived.
+// exists, or the recorded pid does not look like a hived. Returns a
+// non-nil error if tasklist itself cannot be invoked (PATH/exec
+// failure) or if the killed process does not exit within the budget —
+// surfacing those keeps the GUI from silently relaunching while the
+// previous daemon is still bound to the socket.
 func killRunningHived(sock string) error {
 	pidPath := sock + ".pid"
 	raw, err := os.ReadFile(pidPath)
@@ -47,7 +56,10 @@ func killRunningHived(sock string) error {
 		return fmt.Errorf("invalid pid in %s: %q", pidPath, raw)
 	}
 
-	alive, isHived := tasklistProbe(pid)
+	alive, isHived, err := probeFn(pid)
+	if err != nil {
+		return fmt.Errorf("probe pid %d: %w", pid, err)
+	}
 	if !alive {
 		return nil // already gone
 	}
@@ -68,23 +80,31 @@ func killRunningHived(sock string) error {
 		}
 		return fmt.Errorf("terminate pid %d: %w", pid, err)
 	}
-	waitForExitWindows(pid, 3*time.Second)
+	if !waitForExitWindows(pid, 3*time.Second) {
+		return fmt.Errorf("pid %d still alive 3s after TerminateProcess", pid)
+	}
 	return nil
 }
 
-// tasklistProbe reports whether pid is currently running, and whether
-// its image name is hived.exe. Uses the built-in tasklist utility
-// (ships with every Windows install) for symmetry with the unix
-// implementation's `ps -o comm=` probe. Returns (false, false) on any
-// error so callers stay conservative about who they signal.
-func tasklistProbe(pid int) (alive, hived bool) {
+// runTasklistProbe reports whether pid is currently running and
+// whether its image name is hived.exe. Uses the built-in tasklist
+// utility (ships with every Windows install) for symmetry with the
+// unix implementation's `ps -o comm=` probe.
+//
+// Distinguishes "tasklist couldn't run" (returns err) from "tasklist
+// ran and found no matching pid" (returns alive=false, err=nil). The
+// caller cares about the difference: a missing pid means the daemon
+// is already dead; an exec failure means we can't tell, so we must
+// not silently proceed as if the socket were free.
+func runTasklistProbe(pid int) (alive, hived bool, err error) {
 	cmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/FO", "CSV", "/NH")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.Output()
 	if err != nil {
-		return false, false
+		return false, false, fmt.Errorf("exec tasklist: %w", err)
 	}
-	return parseTasklistRow(string(out))
+	a, h := parseTasklistRow(string(out))
+	return a, h, nil
 }
 
 // parseTasklistRow extracts (alive, isHived) from tasklist CSV output.
@@ -112,13 +132,16 @@ func parseTasklistRow(out string) (alive, hived bool) {
 	return true, image == "hived.exe"
 }
 
-// waitForExitWindows polls tasklist until pid is gone or the budget
-// elapses. Mirrors the unix waitForExit helper so the GUI's reconnect
-// does not race the dying socket.
+// waitForExitWindows polls until pid is gone or the budget elapses.
+// Mirrors the unix waitForExit helper. Errors from the probe are
+// treated as "still alive, keep polling" — the post-kill wait is best
+// effort and the caller ultimately surfaces a timeout if the deadline
+// passes.
 func waitForExitWindows(pid int, budget time.Duration) bool {
 	deadline := time.Now().Add(budget)
 	for time.Now().Before(deadline) {
-		if alive, _ := tasklistProbe(pid); !alive {
+		alive, _, err := probeFn(pid)
+		if err == nil && !alive {
 			return true
 		}
 		time.Sleep(100 * time.Millisecond)
