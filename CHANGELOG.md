@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: the "Restart Hive" button in the daemon-stale banner now
+  actually restarts hived. Previously the platform stub returned
+  `restart not supported on this platform` and the relaunch never
+  fired. Windows now reads `<sock>.pid`, verifies the recorded pid is
+  hived.exe via `tasklist`, and TerminateProcess-es it (matching the
+  unix SIGKILL fallback). Stale pidfiles whose pid was recycled to an
+  unrelated process are removed without signaling. (#177)
+- Windows / Linux: toggling grid mode (`Ctrl+G` / `Ctrl+Enter`) no
+  longer flashes the grid then snaps back to single-session view, and
+  `Ctrl+Up` / `Ctrl+Down` / `Ctrl+Left` / `Ctrl+Right` no longer feel
+  reversed. The native menu's keyboard accelerators were firing
+  alongside the in-window JS keyboard listener, so every shortcut ran
+  twice. The native menu is now darwin-only — JS owns every shortcut
+  on Windows and Linux. macOS is unchanged. (#177)
+- GUI: huge-text flash on grid → zoom → session switch (regression of
+  the #168 fix). Synchronously fitting in `show()` updates xterm's
+  cols/rows, but xterm-webgl's renderer schedules the canvas pixel
+  resize on rAF, so the next paint frame composited the stale
+  (grid-cell-sized or last-zoom-sized) canvas CSS-stretched into the
+  new body. `show()` now hides the body via `visibility: hidden`
+  across the rAF gate, then reveals on the next frame once the
+  renderer has caught up; `hide()` and `destroy()` cancel any
+  in-flight reveal so the next show starts clean. (#176)
+
+## [2.2.0] — 2026-05-09
+
 ### Added
 
 - VT snapshot conformance corpus
@@ -30,20 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Windows: the "Restart Hive" button in the daemon-stale banner now
-  actually restarts hived. Previously the platform stub returned
-  `restart not supported on this platform` and the relaunch never
-  fired. Windows now reads `<sock>.pid`, verifies the recorded pid is
-  hived.exe via `tasklist`, and TerminateProcess-es it (matching the
-  unix SIGKILL fallback). Stale pidfiles whose pid was recycled to an
-  unrelated process are removed without signaling.
-- Windows / Linux: toggling grid mode (`Ctrl+G` / `Ctrl+Enter`) no
-  longer flashes the grid then snaps back to single-session view, and
-  `Ctrl+Up` / `Ctrl+Down` / `Ctrl+Left` / `Ctrl+Right` no longer feel
-  reversed. The native menu's keyboard accelerators were firing
-  alongside the in-window JS keyboard listener, so every shortcut ran
-  twice. The native menu is now darwin-only — JS owns every shortcut
-  on Windows and Linux. macOS is unchanged.
 - Restarting a Claude session before any message had been sent failed
   with `No conversation found with session ID: <uuid>`. Claude only
   writes the transcript jsonl after the first user message, so a fresh
@@ -255,7 +269,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/lucascaro/hive/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/lucascaro/hive/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/lucascaro/hive/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/lucascaro/hive/compare/v2.0.0-alpha.2...v2.0.0
