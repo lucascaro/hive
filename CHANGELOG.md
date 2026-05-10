@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- GUI: huge-text flash on grid → zoom → session switch (regression of
+  the #168 fix). Synchronously fitting in `show()` updates xterm's
+  cols/rows, but xterm-webgl's renderer schedules the canvas pixel
+  resize on rAF, so the next paint frame composited the stale
+  (grid-cell-sized or last-zoom-sized) canvas CSS-stretched into the
+  new body. `show()` now hides the body via `visibility: hidden`
+  across the rAF gate, then reveals on the next frame once the
+  renderer has caught up; `hide()` and `destroy()` cancel any
+  in-flight reveal so the next show starts clean. (#176)
+
 ## [2.2.0] — 2026-05-09
 
 ### Added
