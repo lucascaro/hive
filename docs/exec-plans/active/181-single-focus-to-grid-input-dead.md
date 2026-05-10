@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/181-single-focus-to-grid-input-dead.md](../../product-specs/181-single-focus-to-grid-input-dead.md)
 - **Issue:** #181
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** https://github.com/lucascaro/hive/pull/182
+- **Branch:** feature/181-atomic-focus
 
 ## Summary
 
@@ -120,12 +122,16 @@ Add Go-side test only if a backend behavior change is introduced (none expected)
 
 - **2026-05-10** — Chose state-driven `setFocusedTile` over patching the transition. Why: user explicitly asked for atomicity / spaghetti removal; the patch-per-transition path has already recurred (#159, now #181) and would recur again on the next mode that touches DOM order.
 
-## Decision log
-
 ## Progress
 
 - **2026-05-10** — Spec drafted, triage approved (bug / M / P1), exec plan created at RESEARCH.
 - **2026-05-10** — Implementation landed on branch `feature/181-atomic-focus`. `setFocusedTile()` added as sole writer of `.term-focused`; focusin/focusout listeners removed from `SessionTerm`; `focusActiveTerm`/`refocusActiveTerm` collapsed into wrappers; explicit `setFocusedTile(null)` added at rename / launcher / project-editor open. Wails build + `go test ./...` green.
+
+## PR convergence ledger
+
+<!-- Append-only. One line per ralph-loop iteration. -->
+
+- **2026-05-10 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: fa7d8f1.
 
 ## Open questions
 
