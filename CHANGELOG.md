@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- macOS: "Restart Hive" killed hived but the new GUI never appeared.
+  `spawnNewGUI` re-execed the inner Mach-O directly, which spawns a
+  process but doesn't go through LaunchServices, so the relaunched
+  Wails/WebKit window never gained focus (often never rendered). When
+  running inside a `.app` bundle we now relaunch via `open -n
+  <bundle.app>`; `-n` forces a fresh instance even while the dying
+  parent is still around. Dev builds (binary outside a bundle) keep
+  the existing re-exec path.
+
 ## [2.2.1] — 2026-05-10
 
 ### Fixed
