@@ -207,30 +207,15 @@ class SessionTerm {
         this._writePty(seq);
       });
     }
-    // Drive the visual focus border off the xterm's real focus state
-    // — not state.activeId — so the border can never claim "I'm
-    // focused" while keystrokes go elsewhere. xterm.js v5 has no
-    // onFocus/onBlur events, so we listen on the host: focus events
-    // bubble from xterm's hidden textarea (.xterm-helper-textarea)
-    // through .term-host.
-    // On gain: sweep the class off every other host first, so only
-    // one tile is ever marked focused. xterm's open() / fit / mount
-    // sequence can fire focusin on multiple tiles in quick succession
-    // during initial render; without the sweep, several end up
-    // visually claiming focus simultaneously.
-    this.host.addEventListener('focusin', () => {
-      for (const el of document.querySelectorAll('.term-host.term-focused')) {
-        if (el !== this.host) el.classList.remove('term-focused');
-      }
-      this.host.classList.add('term-focused');
-    });
-    // On loss: only drop the class if focus actually left this host.
-    // Internal xterm focus juggling can briefly fire focusout with
-    // relatedTarget still inside the host — ignore those.
-    this.host.addEventListener('focusout', (e) => {
-      if (e.relatedTarget && this.host.contains(e.relatedTarget)) return;
-      this.host.classList.remove('term-focused');
-    });
+    // Visual focus (.term-focused) and keyboard focus (xterm's
+    // helper-textarea) are reconciled atomically by setFocusedTile(id),
+    // which is the sole writer of .term-focused. Driving the class off
+    // browser focusin/focusout events used to race with DOM churn during
+    // view transitions (single ↔ grid, renderGrid's appendChild reorder,
+    // xterm.open mounting new helper-textareas), leaving a tile visually
+    // focused while keystrokes went nowhere. Visual focus is now a pure
+    // projection of state.activeId, gated by whether a modal/rename
+    // owns the keyboard — they can't drift.
 
     this.attached = false;
     // needsReattach is set by pty:disconnect when our attach connection
@@ -417,6 +402,10 @@ class SessionTerm {
     this._renameInput = input;
     this.tileName.style.display = 'none';
     this.tileName.parentNode.insertBefore(input, this.tileName);
+    // Drop the visual focus border before stealing keyboard focus —
+    // setFocusedTile is the only writer of .term-focused, so without
+    // this the border would linger while the rename input owns input.
+    setFocusedTile(null);
     input.focus();
     input.select();
     let done = false;
@@ -1394,53 +1383,95 @@ function setActive(id) {
   if (id) focusActiveTerm();
 }
 
-// focusActiveTerm focuses the xterm of state.activeId. Use this
-// (rather than calling term.focus() directly) at every site that
-// might leave the terminal without keyboard focus — switching modes,
-// closing dialogs, returning from OS fullscreen, etc.
-function focusActiveTerm() {
-  const st = state.activeId && state.terms.get(state.activeId);
-  if (!st) return;
-  // A single click on a tile schedules this rAF; a dblclick then
-  // opens the inline rename input. Without checking activeElement
-  // when the rAF fires we'd snatch focus back from the rename input
-  // and the user couldn't type the new name. Same logic protects
-  // launcher/project-editor inputs from being stolen out from under.
+// setFocusedTile is the SOLE writer of .term-focused. It reconciles
+// visual focus and keyboard focus atomically — in the same rAF tick —
+// so they can never drift. Visual focus is a pure projection of
+// state.activeId gated by whether a modal/rename owns the keyboard.
+//
+// Pass state.activeId to focus the active session. Pass null to drop
+// the visual focus everywhere (e.g. when opening the launcher or a
+// rename input). Every state transition that could change which tile
+// should be focused (setActive, setView, renderGrid, modal open/close,
+// rename open/close, dialog close, OS fullscreen toggle, …) MUST end
+// by calling setFocusedTile(...).
+//
+// Previously visual focus was event-driven from focusin/focusout on
+// each .term-host, and keyboard focus was driven separately by
+// focusActiveTerm()'s ta.focus() call. During view transitions (most
+// visibly single → grid: renderGrid's appendChild reorder and the
+// helper-textarea mounted by xterm.open() for newly-materialized
+// tiles), the two could end up on different tiles. The user would
+// see a session lit up while keystrokes went nowhere. Single writer
+// makes that impossible: the class is added only here, in the same
+// rAF as the helper-textarea focus.
+function setFocusedTile(id) {
+  // Gate: a modal that owns the keyboard means no tile is focused.
+  const modalOpen =
+    !launcherEl.classList.contains('hidden') ||
+    !editorEl.classList.contains('hidden');
+  if (modalOpen || id == null || !state.terms.get(id)) {
+    for (const el of document.querySelectorAll('.term-host.term-focused')) {
+      el.classList.remove('term-focused');
+    }
+    return;
+  }
+  const st = state.terms.get(id);
+  // Schedule after the next paint so any in-flight DOM transition
+  // (showSingle / renderGrid / appendChild / xterm.open) settles
+  // before we read activeElement and move focus. The class write and
+  // the ta.focus() call live in the same tick — they can't interleave
+  // with a different transition.
   requestAnimationFrame(() => {
+    // Re-check the gate inside the rAF — a modal may have opened
+    // during the delay.
+    if (
+      !launcherEl.classList.contains('hidden') ||
+      !editorEl.classList.contains('hidden')
+    ) {
+      for (const el of document.querySelectorAll('.term-host.term-focused')) {
+        el.classList.remove('term-focused');
+      }
+      return;
+    }
+    // A real DOM input (rename, etc.) owns the keyboard — don't
+    // steal it. Visual class is also cleared so the user can't be
+    // misled into thinking the terminal will receive their keys.
     const ae = document.activeElement;
     if (
       ae &&
       (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable) &&
       !ae.classList.contains('xterm-helper-textarea')
     ) {
+      for (const el of document.querySelectorAll('.term-host.term-focused')) {
+        el.classList.remove('term-focused');
+      }
       return;
     }
+    // Atomic reconcile: sweep + add + focus, in this order, in one tick.
+    for (const el of document.querySelectorAll('.term-host.term-focused')) {
+      if (el !== st.host) el.classList.remove('term-focused');
+    }
+    st.host.classList.add('term-focused');
     // Focus the helper-textarea DOM node directly. xterm's term.focus()
     // early-returns when its internal _focused flag is stale-true,
-    // which happens after view toggles where focusin/focusout fire
-    // across multiple tiles in quick succession (sidebar still shows
-    // the session as selected, but no element owns keyboard input).
-    // Driving the browser focus event directly fires focusin on
-    // .term-host, which the host listener consumes to set
-    // .term-focused, and routes keystrokes through xterm correctly.
+    // which happens after view toggles where xterm.open() / fit /
+    // mount sequences mounted a fresh helper-textarea (see #159).
     const ta = st.host.querySelector('.xterm-helper-textarea');
     if (ta) ta.focus();
     else st.term.focus();
   });
 }
 
-// refocusActiveTerm is the "the user just dismissed something — put
-// keystrokes back on the active session" version. Skips when the user
-// is interacting with a real input (rename, project editor, etc.) or
-// when a modal is open.
+// focusActiveTerm / refocusActiveTerm are thin wrappers retained so
+// every existing callsite (and any third-party readers of the code)
+// keeps working. Both reduce to setFocusedTile(state.activeId): the
+// gate inside setFocusedTile decides whether to apply or clear.
+function focusActiveTerm() {
+  setFocusedTile(state.activeId);
+}
+
 function refocusActiveTerm() {
-  if (!launcherEl.classList.contains('hidden')) return;
-  if (!editorEl.classList.contains('hidden')) return;
-  const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) {
-    if (!ae.classList.contains('xterm-helper-textarea')) return;
-  }
-  focusActiveTerm();
+  setFocusedTile(state.activeId);
 }
 
 // gridSpatialMove moves the active tile in the given direction.
@@ -2169,6 +2200,8 @@ function openLauncher(projectId, opts) {
       launcherState.selected = 0;
       highlightLauncherSelection();
       launcherEl.classList.remove('hidden');
+      // Drop the active tile's visual focus — modal owns the keyboard.
+      setFocusedTile(null);
     })
     .catch(() => {});
 }
@@ -2258,6 +2291,8 @@ function openProjectEditor(project) {
     editorCwd.value = '';
   }
   editorEl.classList.remove('hidden');
+  // Drop the active tile's visual focus — modal owns the keyboard.
+  setFocusedTile(null);
   setTimeout(() => editorName.focus(), 0);
 }
 

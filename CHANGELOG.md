@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   <bundle.app>`; `-n` forces a fresh instance even while the dying
   parent is still around. Dev builds (binary outside a bundle) keep
   the existing re-exec path.
+- GUI: switching from single-focus to grid mode no longer leaves the
+  previously focused session visually highlighted but unable to receive
+  keystrokes. Visual focus (`.term-focused`) and keyboard focus
+  (xterm helper-textarea) are now reconciled atomically through a
+  single state-driven writer, so they can no longer drift across view
+  transitions, modal open/close, or rename input. (#181)
 
 ## [2.2.1] — 2026-05-10
 
