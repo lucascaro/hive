@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/177-windows-restart-button-and-grid-mode-bugs.md](../exec-plans/active/177-windows-restart-button-and-grid-mode-bugs.md)
+- **Exec plan:** [docs/exec-plans/completed/177-windows-restart-button-and-grid-mode-bugs.md](../exec-plans/completed/177-windows-restart-button-and-grid-mode-bugs.md)
 
 ## Problem
 

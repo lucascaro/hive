@@ -9,13 +9,13 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
 | P1 | #172 | Pin/capture agent session id for Gemini and Copilot | IMPLEMENT | [172-agent-session-id-gemini-copilot](172-agent-session-id-gemini-copilot.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
-| P2 | #177 | Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch | IMPLEMENT | [177-windows-restart-button-and-grid-mode-bugs](177-windows-restart-button-and-grid-mode-bugs.md) |
 
 ## Completed
 
 | Issue | Title | Shipped | Spec |
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
+| #177 | Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch | 2026-05-10 | [177-windows-restart-button-and-grid-mode-bugs](177-windows-restart-button-and-grid-mode-bugs.md) |
 | #165 | Restarting a session can reload the wrong session when multiple share a worktree/directory | 2026-05-08 | [165-restart-session-wrong-session](165-restart-session-wrong-session.md) |
 | #163 | GUI: resize loses scroll position when viewport is 1-2 lines short of bottom | 2026-05-08 | [163-resize-stick-mostly-bottom](163-resize-stick-mostly-bottom.md) |
 | #159 | Returning to grid leaves session visually selected but keyboard input doesn't reach it | 2026-05-08 | [159-grid-return-session-input-focus](159-grid-return-session-input-focus.md) |

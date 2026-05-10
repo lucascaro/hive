@@ -2,8 +2,9 @@
 
 - **Spec:** [docs/product-specs/177-windows-restart-button-and-grid-mode-bugs.md](../../product-specs/177-windows-restart-button-and-grid-mode-bugs.md)
 - **Issue:** #177
-- **Stage:** PLAN
-- **Status:** active
+- **PR:** [#179](https://github.com/lucascaro/hive/pull/179)
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -96,6 +97,8 @@ Per `AGENTS.md`, every change ships with tests. Build-tagged tests for Windows-o
 - **2026-05-09** — Triage classified as bug / L / P2.
 - **2026-05-09** — Research complete; root causes identified.
 - **2026-05-09** — Plan drafted and entering implementation.
+- **2026-05-10** — Implemented on `feature/177-windows-restart-grid-and-arrow-fixes`, opened PR #179.
+- **2026-05-10** — Converged via /hs-ralph-loop (1 iteration, COMMENT verdict, no blocking findings).
 
 ## Open questions
 
