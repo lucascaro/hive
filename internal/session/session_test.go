@@ -89,6 +89,63 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	}
 }
 
+func TestCmdExeEscape(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want string
+	}{
+		{"single plain word", []string{"claude"}, `"claude"`},
+		{"flag with value", []string{"claude", "--model", "opus"}, `"claude" "--model" "opus"`},
+		{"arg with space", []string{"claude", "--name", "claude opus"}, `"claude" "--name" "claude opus"`},
+		{"empty string preserved", []string{"foo", ""}, `"foo" ""`},
+		{"cmd metacharacters inside quotes", []string{"echo", "a&b|c^d>e<f%g"}, `"echo" "a&b|c^d>e<f%g"`},
+		{"embedded double quote", []string{"echo", `she said "hi"`}, `"echo" "she said \"hi\""`},
+		{"trailing backslashes get doubled before closing quote", []string{"x", `c:\path\`}, `"x" "c:\path\\"`},
+		{"backslash before quote", []string{"x", `a\"b`}, `"x" "a\\\"b"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := cmdExeEscape(c.in)
+			if got != c.want {
+				t.Fatalf("cmdExeEscape(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestStartSpawnsCmdOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only spawn path")
+	}
+	sess, err := Start(Options{Cmd: []string{"cmd.exe", "/C", "echo hivetest"}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+	sink := &bufSinkMu{}
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	defer unsub()
+	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
+		t.Fatalf("expected hivetest in output, got %q", sink.String())
+	}
+}
+
+func TestStartSpawnsCmdOnUnix(t *testing.T) {
+	skipOnWindows(t)
+	sess, err := Start(Options{Shell: "/bin/bash", Cmd: []string{"echo", "hivetest"}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+	sink := &bufSinkMu{}
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	defer unsub()
+	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
+		t.Fatalf("expected hivetest in output, got %q", sink.String())
+	}
+}
+
 func TestSessionResize(t *testing.T) {
 	skipOnWindows(t)
 	sess, err := Start(Options{Shell: "/bin/bash", Cols: 80, Rows: 24})
