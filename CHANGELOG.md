@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows: the "Restart Hive" button in the daemon-stale banner now
+  actually restarts hived. Previously the platform stub returned
+  `restart not supported on this platform` and the relaunch never
+  fired. Windows now reads `<sock>.pid`, verifies the recorded pid is
+  hived.exe via `tasklist`, and TerminateProcess-es it (matching the
+  unix SIGKILL fallback). Stale pidfiles whose pid was recycled to an
+  unrelated process are removed without signaling. (#177)
+- Windows / Linux: toggling grid mode (`Ctrl+G` / `Ctrl+Enter`) no
+  longer flashes the grid then snaps back to single-session view, and
+  `Ctrl+Up` / `Ctrl+Down` / `Ctrl+Left` / `Ctrl+Right` no longer feel
+  reversed. The native menu's keyboard accelerators were firing
+  alongside the in-window JS keyboard listener, so every shortcut ran
+  twice. The native menu is now darwin-only — JS owns every shortcut
+  on Windows and Linux. macOS is unchanged. (#177)
 - GUI: huge-text flash on grid → zoom → session switch (regression of
   the #168 fix). Synchronously fitting in `show()` updates xterm's
   cols/rows, but xterm-webgl's renderer schedules the canvas pixel
