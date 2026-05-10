@@ -1,11 +1,12 @@
 # Feature: <title>
 
 - **GitHub Issue:** #<number>
-- **Stage:** TRIAGE
+- **Stage:** TRIAGE | RESEARCH | PLAN | IMPLEMENT | REVIEW | QA | DONE
 - **Type:** bug | enhancement
 - **Complexity:** S | M | L
 - **Priority:** —
 - **Branch:** —
+- **PR:** —
 
 ## Description
 
@@ -38,4 +39,14 @@
 
 <Filled during IMPLEMENT stage.>
 
-- **PR:** —
+## PR convergence ledger
+
+<Append-only. One entry per `/ralph-loop` iteration.>
+
+- **<date> iter <N>** — verdict: <APPROVE|COMMENT|REQUEST_CHANGES>; findings_hash: <hex|empty>; action: <stop|autofix+push|escalated:<reason>>; head_sha: <short-sha>.
+
+## QA verdict
+
+<Filled by `/feature-qa` after PR merges. Append-only.>
+
+- **<date>** — verdict: <PASS|FAIL|NEEDS_FOLLOWUP>; checks: <bullet summary>; followups: <issue numbers or "none">; one-line: <summary>.
