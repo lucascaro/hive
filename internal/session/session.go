@@ -111,31 +111,23 @@ func Start(opts Options) (*Session, error) {
 			// cmd.exe doesn't understand `-l -i -c`. Windows installs
 			// `claude` (and most npm-shipped CLIs) as a `.cmd` shim that
 			// CreateProcessW can't exec directly — so wrapping via
-			// `cmd.exe /C` is both correct and required. PATH inherits
-			// from the parent process; there's no Windows analogue to
-			// login+interactive rc sourcing to preserve.
+			// `cmd.exe /S /C "<line>"` is both correct and required.
+			// PATH inherits from the parent process; there's no Windows
+			// analogue to login+interactive rc sourcing to preserve.
+			//
+			// Implementation note: Go's Windows exec layer re-quotes
+			// every argv element via `windows.ComposeCommandLine`,
+			// which would mangle the precisely-quoted line produced by
+			// `cmdExeEscape`. We bypass that by setting
+			// `SysProcAttr.CmdLine` directly — see
+			// `newWindowsCmd` in spawn_windows.go.
 			wrapper := os.Getenv("ComSpec")
 			if wrapper == "" {
 				wrapper = "cmd.exe"
 			}
-			// Note on cmd.exe `/C` argument-quote stripping: cmd's
-			// documented rule strips the leading and trailing quote of
-			// the rest of the command line when (a) there is exactly
-			// one quoted token, (b) it has no special chars, and (c) it
-			// names an executable. The single-token case (e.g.
-			// `cmdExeEscape(["claude"])` → `"claude"`) hits this rule —
-			// cmd strips both quotes and resolves `claude` via PATHEXT,
-			// which works for `.exe`/`.cmd` shims. Multi-token cases
-			// have >2 quotes and the rule does not fire, so per-arg
-			// quoting survives intact. We deliberately do NOT pre-wrap
-			// the line in extra outer quotes with `/S` because Go's
-			// Windows `exec` package re-applies its own argv quoting
-			// (`syscall.EscapeArg`) to each argv element passed to
-			// `ptmx.Command`, which double-escapes embedded quotes and
-			// produces a malformed command line.
 			line := cmdExeEscape(opts.Cmd)
-			cmd = ptmx.Command(wrapper, "/C", line)
-			log.Printf("session: spawn %s /C %q (cwd=%s)", wrapper, line, opts.Cwd)
+			cmd = newWindowsCmd(ptmx, wrapper, line)
+			log.Printf("session: spawn %s /S /C %q (cwd=%s)", wrapper, `"`+line+`"`, opts.Cwd)
 		} else {
 			// Run the command via the user's login + interactive shell so
 			// PATH/aliases/functions set up in *either* .zprofile (login)
