@@ -2,10 +2,10 @@
 
 - **Spec:** [docs/product-specs/181-single-focus-to-grid-input-dead.md](../../product-specs/181-single-focus-to-grid-input-dead.md)
 - **Issue:** #181
-- **Stage:** REVIEW
-- **Status:** active
-- **PR:** https://github.com/lucascaro/hive/pull/182
-- **Branch:** feature/181-atomic-focus
+- **Stage:** DONE
+- **Status:** completed
+- **PR:** https://github.com/lucascaro/hive/pull/182 (merged 2026-05-10)
+- **Branch:** feature/181-atomic-focus (deleted)
 
 ## Summary
 

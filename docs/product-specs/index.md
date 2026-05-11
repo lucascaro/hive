@@ -8,7 +8,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
 | P1 | #172 | Pin/capture agent session id for Gemini and Copilot | IMPLEMENT | [172-agent-session-id-gemini-copilot](172-agent-session-id-gemini-copilot.md) |
-| P1 | #181 | Single-focus → grid leaves session looking focused but keyboard input is dead | REVIEW | [181-single-focus-to-grid-input-dead](181-single-focus-to-grid-input-dead.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 
 ## Completed
@@ -16,6 +15,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | Shipped | Spec |
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
+| #181 | Single-focus → grid leaves session looking focused but keyboard input is dead | 2026-05-10 (PR #182) | [181-single-focus-to-grid-input-dead](181-single-focus-to-grid-input-dead.md) |
 | #177 | Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch | 2026-05-10 | [177-windows-restart-button-and-grid-mode-bugs](177-windows-restart-button-and-grid-mode-bugs.md) |
 | #176 | Fix huge-text flash on grid → zoom → session switch (regression) | 2026-05-09 (PR #178) | [176-huge-text-flash-zoom-session-switch](176-huge-text-flash-zoom-session-switch.md) |
 | #165 | Restarting a session can reload the wrong session when multiple share a worktree/directory | 2026-05-08 | [165-restart-session-wrong-session](165-restart-session-wrong-session.md) |
