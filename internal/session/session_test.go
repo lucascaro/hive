@@ -99,7 +99,16 @@ func TestCmdExeEscape(t *testing.T) {
 		{"flag with value", []string{"claude", "--model", "opus"}, `"claude" "--model" "opus"`},
 		{"arg with space", []string{"claude", "--name", "claude opus"}, `"claude" "--name" "claude opus"`},
 		{"empty string preserved", []string{"foo", ""}, `"foo" ""`},
-		{"cmd metacharacters inside quotes", []string{"echo", "a&b|c^d>e<f%g"}, `"echo" "a&b|c^d>e<f%g"`},
+		// cmd.exe leaves `& | < > ^` alone inside double quotes, so the
+		// helper merely wraps them. `%` is intentionally excluded — cmd
+		// expands `%VAR%` even inside quotes, so quoting alone does not
+		// neutralize it. See the doc comment on cmdExeEscape.
+		{"cmd metacharacters inside quotes", []string{"echo", "a&b|c^d>e<f"}, `"echo" "a&b|c^d>e<f"`},
+		// Pin actual behavior for `%`: the helper does not escape it.
+		// The quoted output is verbatim; cmd.exe will perform variable
+		// expansion at spawn time. Callers must not pass `%` expecting
+		// it to survive.
+		{"percent passes through verbatim (not escaped)", []string{"echo", "100%done"}, `"echo" "100%done"`},
 		{"embedded double quote", []string{"echo", `she said "hi"`}, `"echo" "she said \"hi\""`},
 		{"trailing backslashes get doubled before closing quote", []string{"x", `c:\path\`}, `"x" "c:\path\\"`},
 		{"backslash before quote", []string{"x", `a\"b`}, `"x" "a\\\"b"`},

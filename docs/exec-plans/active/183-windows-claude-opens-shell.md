@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/183-windows-claude-opens-shell.md](../../product-specs/183-windows-claude-opens-shell.md)
 - **Issue:** #183
-- **Stage:** IMPLEMENT
+- **PR:** #184
+- **Branch:** feature/183-windows-claude-opens-shell
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
@@ -30,7 +32,7 @@ On Windows, sessions configured with an agent command (e.g. `claude`) drop into 
 
 ## Approach
 
-Branch the agent-command spawn on `runtime.GOOS` inside `Session.New`. On Unix, keep the current `<shell> -l -i -c <line>` behavior — it's load-bearing for fnm/nvm/asdf PATH setup. On Windows, build the command line as `cmd.exe /C <line>` with cmd.exe-aware quoting. Prefer `$ComSpec` when set; fall back to `cmd.exe`.
+Branch the agent-command spawn on `runtime.GOOS` inside `Session.Start`. On Unix, keep the current `<shell> -l -i -c <line>` behavior — it's load-bearing for fnm/nvm/asdf PATH setup. On Windows, build the command line as `cmd.exe /S /C "<line>"` with cmd.exe-aware quoting. Prefer `$ComSpec` when set; fall back to `cmd.exe`.
 
 This is the smallest correct fix. Alternatives considered and rejected:
 
@@ -53,7 +55,7 @@ None.
 ### Tests
 
 - `internal/session/session_test.go` — add `TestCmdExeEscape` (runs on all platforms) covering: simple argv `[]string{"claude"}` → `"claude"`; argv with spaces `[]string{"claude", "--model", "claude opus 4.7"}` → `"claude" "--model" "claude opus 4.7"`; argv with embedded `"` → escaped via doubled quotes; argv with cmd metacharacters (`&`, `|`, `%`) → safely quoted; empty string argv → `""`.
-- `internal/session/session_test.go` — add `TestNewSpawnsCmdOnWindows`, gated by `runtime.GOOS == "windows"` (skip elsewhere). Calls `Session.New` with `Cmd: []string{"cmd.exe", "/C", "echo hivetest"}` (something self-contained that doesn't require a third-party CLI), waits for the read loop to capture output via `SubscribeAtomicSnapshot`, asserts `hivetest` appears in the snapshot.
+- `internal/session/session_test.go` — add `TestStartSpawnsCmdOnWindows`, gated by `runtime.GOOS == "windows"` (skip elsewhere). Calls `Start` with `Cmd: []string{"cmd.exe", "/C", "echo hivetest"}` (something self-contained that doesn't require a third-party CLI), waits for the read loop to capture output via `SubscribeAtomicSnapshot`, asserts `hivetest` appears in the snapshot.
 - `internal/session/session_test.go` — add `TestNewSpawnsCmdOnUnix` symmetric counterpart (skip on Windows) using `echo hivetest` so the Unix path stays covered too.
 
 ### Manual verification
@@ -71,6 +73,10 @@ Build `hivegui` on Windows, create a session with the Claude agent profile, conf
 - **2026-05-10** — Research done; root cause confirmed at session.go:116. Stage RESEARCH → PLAN.
 - **2026-05-10** — Plan approved. Stage PLAN → IMPLEMENT.
 - **2026-05-10** — Implemented GOOS branch + `cmdExeEscape` in session.go; added 3 tests in session_test.go; CHANGELOG `[Unreleased]` entry added. All session package tests pass; full suite green except pre-existing `cmd/hivegui` frontend embed (unrelated).
+
+## PR convergence ledger
+
+<!-- Append-only. One line per ralph-loop iteration. -->
 
 ## Open questions
 

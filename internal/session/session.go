@@ -118,9 +118,17 @@ func Start(opts Options) (*Session, error) {
 			if wrapper == "" {
 				wrapper = "cmd.exe"
 			}
+			// Use `/S /C "<line>"`: cmd.exe's documented `/C` parsing
+			// strips the leading and trailing quote of the rest of the
+			// command line when certain conditions hold (single quoted
+			// token naming an executable, no special chars between).
+			// `/S` makes that strip deterministic — cmd always removes
+			// exactly one outer pair — so the per-arg quoting produced
+			// by cmdExeEscape survives intact for every argv shape.
 			line := cmdExeEscape(opts.Cmd)
-			cmd = ptmx.Command(wrapper, "/C", line)
-			log.Printf("session: spawn %s /C %q (cwd=%s)", wrapper, line, opts.Cwd)
+			wrapped := `"` + line + `"`
+			cmd = ptmx.Command(wrapper, "/S", "/C", wrapped)
+			log.Printf("session: spawn %s /S /C %q (cwd=%s)", wrapper, wrapped, opts.Cwd)
 		} else {
 			// Run the command via the user's login + interactive shell so
 			// PATH/aliases/functions set up in *either* .zprofile (login)
@@ -318,10 +326,18 @@ func shellEscape(argv []string) string {
 
 // cmdExeEscape joins argv into a single command line for `cmd.exe /C`.
 // Each element is wrapped in double quotes; embedded `"` is escaped by
-// preceding backslashes per the standard CommandLineToArgvW rules, and
-// cmd.exe metacharacters (`& | < > ^ %`) inside quotes are passed
-// through literally — cmd.exe only treats them as special outside
-// quotes, so quoting the whole arg neutralizes them.
+// preceding backslashes per the standard CommandLineToArgvW rules.
+// cmd.exe metacharacters (`& | < > ^`) inside quotes are passed through
+// literally — cmd.exe only treats them as special outside quotes, so
+// quoting the whole arg neutralizes them.
+//
+// Caveat: `%` is NOT neutralized by quoting — cmd.exe performs `%VAR%`
+// environment-variable expansion even inside double quotes. Callers
+// must not pass user-controlled `%` characters expecting them to
+// survive verbatim. For agent argv (`claude`, flag-value pairs) this
+// is fine because `%` is not used; if a future caller needs `%`,
+// disable expansion by invoking cmd.exe with `/V:OFF` and `/D`, or
+// pre-escape outside this helper.
 func cmdExeEscape(argv []string) string {
 	out := make([]byte, 0, 32)
 	for i, a := range argv {
