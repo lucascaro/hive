@@ -78,6 +78,8 @@ Build `hivegui` on Windows, create a session with the Claude agent profile, conf
 
 <!-- Append-only. One line per ralph-loop iteration. -->
 
+- **2026-05-10 iter 1** — verdict: REQUEST_CHANGES; findings_hash: f2e3855b; threads_open: 0 (all 4 resolved by autofix); action: escalated:windows-ci-unfired; head_sha: cced798. Autofix pushed 5 commits (410ed63, 492746d, 8bb60f6, 29e5837, cced798) attempting to fix the Windows quoting via cmd.exe `/S /C` wrapping + `SysProcAttr.CmdLine` bypass of go-pty's `ComposeCommandLine`. Windows CI ran for `ec1927d`, `410ed63`, `492746d` — all FAILED with `'\"cmd.exe\"' is not recognized` because the test argv `["cmd.exe", "/C", "echo hivetest"]` triggers a double-wrap (spawner adds its own `cmd.exe /C` around it). Windows CI did NOT fire for `8bb60f6`, `29e5837`, `cced798` (the actual fix commits) — GitHub Actions silently skipped them. Linux/macOS CI passed throughout. Threads were correctness/consistency nits from review-pr; autofix cleared them all.
+
 ## Open questions
 
 - Should we keep `cmd.exe` as the wrapper, or detect PowerShell and prefer it? Recommendation: `cmd.exe` for simplicity and ubiquity.

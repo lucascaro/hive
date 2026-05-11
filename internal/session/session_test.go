@@ -127,7 +127,10 @@ func TestStartSpawnsCmdOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("windows-only spawn path")
 	}
-	sess, err := Start(Options{Cmd: []string{"cmd.exe", "/C", "echo hivetest"}, Cols: 80, Rows: 24})
+	// The spawner already wraps Cmd in `cmd.exe /S /C "..."`; using
+	// cmd.exe's built-in `echo` directly verifies that wrapping without
+	// the double-cmd-wrap that would confuse cmd.exe's quote parser.
+	sess, err := Start(Options{Cmd: []string{"echo", "hivetest"}, Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
