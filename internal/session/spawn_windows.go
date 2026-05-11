@@ -31,8 +31,11 @@ func newWindowsCmd(ptmx pty.Pty, wrapper, line string) *pty.Cmd {
 	// Path is set by ptmx.Command via lookExtensions; preserve it.
 	// Args[0] is also wrapper. Replace the command-line entirely so
 	// neither EscapeArg nor ComposeCommandLine touches our quoting.
+	// Quote the wrapper path in case ComSpec lives under a path with
+	// spaces (rare for cmd.exe — Windows installs it under
+	// %SystemRoot%\System32 — but cheap insurance).
 	c.SysProcAttr = &syscall.SysProcAttr{
-		CmdLine: wrapper + ` /S /C "` + line + `"`,
+		CmdLine: `"` + wrapper + `" /S /C "` + line + `"`,
 	}
 	return c
 }
