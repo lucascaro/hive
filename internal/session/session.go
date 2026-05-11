@@ -118,17 +118,24 @@ func Start(opts Options) (*Session, error) {
 			if wrapper == "" {
 				wrapper = "cmd.exe"
 			}
-			// Use `/S /C "<line>"`: cmd.exe's documented `/C` parsing
-			// strips the leading and trailing quote of the rest of the
-			// command line when certain conditions hold (single quoted
-			// token naming an executable, no special chars between).
-			// `/S` makes that strip deterministic — cmd always removes
-			// exactly one outer pair — so the per-arg quoting produced
-			// by cmdExeEscape survives intact for every argv shape.
+			// Note on cmd.exe `/C` argument-quote stripping: cmd's
+			// documented rule strips the leading and trailing quote of
+			// the rest of the command line when (a) there is exactly
+			// one quoted token, (b) it has no special chars, and (c) it
+			// names an executable. The single-token case (e.g.
+			// `cmdExeEscape(["claude"])` → `"claude"`) hits this rule —
+			// cmd strips both quotes and resolves `claude` via PATHEXT,
+			// which works for `.exe`/`.cmd` shims. Multi-token cases
+			// have >2 quotes and the rule does not fire, so per-arg
+			// quoting survives intact. We deliberately do NOT pre-wrap
+			// the line in extra outer quotes with `/S` because Go's
+			// Windows `exec` package re-applies its own argv quoting
+			// (`syscall.EscapeArg`) to each argv element passed to
+			// `ptmx.Command`, which double-escapes embedded quotes and
+			// produces a malformed command line.
 			line := cmdExeEscape(opts.Cmd)
-			wrapped := `"` + line + `"`
-			cmd = ptmx.Command(wrapper, "/S", "/C", wrapped)
-			log.Printf("session: spawn %s /S /C %q (cwd=%s)", wrapper, wrapped, opts.Cwd)
+			cmd = ptmx.Command(wrapper, "/C", line)
+			log.Printf("session: spawn %s /C %q (cwd=%s)", wrapper, line, opts.Cwd)
 		} else {
 			// Run the command via the user's login + interactive shell so
 			// PATH/aliases/functions set up in *either* .zprofile (login)

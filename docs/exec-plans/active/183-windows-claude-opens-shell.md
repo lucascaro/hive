@@ -32,7 +32,7 @@ On Windows, sessions configured with an agent command (e.g. `claude`) drop into 
 
 ## Approach
 
-Branch the agent-command spawn on `runtime.GOOS` inside `Session.Start`. On Unix, keep the current `<shell> -l -i -c <line>` behavior — it's load-bearing for fnm/nvm/asdf PATH setup. On Windows, build the command line as `cmd.exe /S /C "<line>"` with cmd.exe-aware quoting. Prefer `$ComSpec` when set; fall back to `cmd.exe`.
+Branch the agent-command spawn on `runtime.GOOS` inside `Session.Start`. On Unix, keep the current `<shell> -l -i -c <line>` behavior — it's load-bearing for fnm/nvm/asdf PATH setup. On Windows, build the command line as `cmd.exe /C <line>` with cmd.exe-aware quoting. Prefer `$ComSpec` when set; fall back to `cmd.exe`.
 
 This is the smallest correct fix. Alternatives considered and rejected:
 
