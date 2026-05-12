@@ -178,6 +178,14 @@ Mock extension needed: add `stdinLog` (array of `{ id, b64 }` entries) and a `la
 - **2026-05-12** — Implemented on `feature/186-grid-focus-regression`. Initial fix (single retry rAF) was insufficient — E2E with focus tracing showed the disturbance fires ~10ms after the verify rAF, AFTER the in-rAF check passed. Generalised to bounded polling (8 frames), idempotent re-focus. All 50 vitest + 7 Playwright tests pass, including the user-visible bug repro (`single → grid then type 'hello'`).
 - **2026-05-12** — `decideFocusAction` extracted to `lib/focus.js` with 10 unit tests; Wails mock extended with `stdinLog` / `stdinText()` / `resetStdin()` so E2E can assert keystrokes reach the backend.
 
+## PR convergence ledger
+
+<!-- Append-only. One line per /hs-review-loop iteration. -->
+
+- **2026-05-12 iter 1** — verdict: COMMENT (coerced to REQUEST_CHANGES); findings_hash: ef8c1edc; threads_open: 5; action: continue (autofix next iter); head_sha: fda78e2.
+- **2026-05-12 iter 2** — verdict: REQUEST_CHANGES (autofix ran); findings_hash: empty; threads_open: 0; action: autofix+push (5 fixes, CI passed); head_sha: fff3b54.
+- **2026-05-12 iter 3** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop (converged); head_sha: fff3b54.
+
 ## Open questions
 
 - **Reproduction path**: does the user hit this on every single → grid press, or only after a sidebar-click session switch immediately preceding the `⌘G`? Knowing this disambiguates between candidate causes 5 and the visibility-pending hypothesis.
