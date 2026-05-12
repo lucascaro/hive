@@ -56,7 +56,19 @@ export async function CloseAttach(_id) { return ''; }
 const stdinLog = []; // [{ id, b64, text }] — populated by WriteStdin so E2E can assert input routing.
 export async function WriteStdin(id, b64) {
   let text = '';
-  try { text = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary'); } catch {}
+  try {
+    if (typeof atob === 'function' && typeof TextDecoder !== 'undefined') {
+      // atob() returns a Latin-1 "binary string" — feed each char's
+      // code unit into a Uint8Array, then decode as UTF-8 so non-ASCII
+      // input round-trips correctly in E2E assertions.
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      text = new TextDecoder('utf-8').decode(bytes);
+    } else {
+      text = Buffer.from(b64, 'base64').toString('utf-8');
+    }
+  } catch {}
   stdinLog.push({ id, b64, text });
   return '';
 }

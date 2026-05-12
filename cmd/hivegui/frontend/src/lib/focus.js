@@ -24,11 +24,12 @@ export function decideFocusAction(snapshot) {
   if (id == null) return { kind: ACTION_CLEAR };
   if (!hasId(knownTermIds, id)) return { kind: ACTION_CLEAR };
 
-  // A real <input>/<textarea>/contentEditable owns the keyboard — for
-  // example an inline rename or a launcher input that's still focused
-  // by the time this gate runs. Leave focus where it is AND clear the
+  // A real <input>/<textarea> owns the keyboard — for example an
+  // inline rename or a launcher input that's still focused by the
+  // time this gate runs. Leave focus where it is AND clear the
   // visual border, so the UI can't claim a tile is focused while
-  // keystrokes go to a sibling DOM input.
+  // keystrokes go to a sibling DOM input. (contentEditable hosts
+  // are not part of the v2 UI surface and are not covered here.)
   const isXtermHelper = hasClass(activeClasses, 'xterm-helper-textarea');
   if (!isXtermHelper && isRealInput(activeTag)) return { kind: ACTION_PRESERVE };
 

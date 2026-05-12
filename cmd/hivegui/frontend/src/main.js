@@ -1402,7 +1402,7 @@ function applyFocus(id, attempt) {
   // Optional dev-mode assertion: two rAFs later, the visual focus
   // and the keyboard focus should agree. Console-warn on drift so
   // future variants of #159/#181/#186 are caught in QA.
-  if (debugFocusEnabled()) scheduleFocusConsistencyCheck(id);
+  if (debugFocusEnabled() && attempt === 0) scheduleFocusConsistencyCheck(id);
 }
 
 function sweepFocusBorder() {
@@ -1417,7 +1417,8 @@ function focusSnapshot(id) {
     id,
     modalOpen:
       !launcherEl.classList.contains('hidden') ||
-      !editorEl.classList.contains('hidden'),
+      !editorEl.classList.contains('hidden') ||
+      (paletteEl && !paletteEl.classList.contains('hidden')),
     activeTag: ae ? ae.tagName : '',
     activeClasses: ae ? ae.classList : '',
     knownTermIds: state.terms,
