@@ -22,9 +22,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests. Linux CI runs every layer on every PR.
 - Daemon integration tests covering update/restart/resize and
   multi-control-conn broadcast fan-out.
+- GUI: last view (single / grid-project / grid-all) persists across
+  launches. Previously the GUI always booted into single-focus mode
+  regardless of how it was left; now it restores the mode you last
+  used. Stored in `localStorage` under `hive.view`. (#187)
 
 ### Fixed
 
+- GUI: switching from single-focus mode to grid mode no longer leaves
+  the active session visually highlighted but unable to receive
+  keystrokes (regression of #181). Single → grid is the only transition
+  that fires a synchronous `display:none` flip on the active tile
+  during `renderGrid`'s parent class swap, which blurs the xterm
+  helper-textarea; ResizeObserver-driven xterm fits on newly-visible
+  neighbour tiles then re-blurred it ~10ms after the rAF that #181
+  used to re-focus. `setFocusedTile` now polls across up to 8 frames
+  and re-establishes focus whenever `document.activeElement` drifts
+  off the target's helper-textarea, idempotently. The gate decision
+  is extracted into a pure `decideFocusAction` helper with unit
+  tests, and the regression class is now covered by Playwright E2E
+  via a real xterm + Wails-mock harness. (#186)
 - macOS: "Restart Hive" killed hived but the new GUI never appeared.
   `spawnNewGUI` re-execed the inner Mach-O directly, which spawns a
   process but doesn't go through LaunchServices, so the relaunched

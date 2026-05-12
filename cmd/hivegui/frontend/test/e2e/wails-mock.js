@@ -53,7 +53,13 @@ function broadcast() {
 export async function ConnectControl() { setTimeout(broadcast, 0); return ''; }
 export async function OpenSession(id) { return id; }
 export async function CloseAttach(_id) { return ''; }
-export async function WriteStdin(_id, _bytes) { return ''; }
+const stdinLog = []; // [{ id, b64, text }] — populated by WriteStdin so E2E can assert input routing.
+export async function WriteStdin(id, b64) {
+  let text = '';
+  try { text = typeof atob === 'function' ? atob(b64) : Buffer.from(b64, 'base64').toString('binary'); } catch {}
+  stdinLog.push({ id, b64, text });
+  return '';
+}
 export async function ResizeSession(_id, _cols, _rows) { return ''; }
 export async function CreateSession(spec) {
   const id = 'mock-' + (state.sessions.length + 1);
@@ -117,5 +123,13 @@ if (typeof window !== 'undefined') {
     addSession(name) { return CreateSession({ name }); },
     killSession(id) { return KillSession(id); },
     listeners,
+    stdinLog,
+    stdinText(id) {
+      return stdinLog
+        .filter((e) => id == null || e.id === id)
+        .map((e) => e.text)
+        .join('');
+    },
+    resetStdin() { stdinLog.length = 0; },
   };
 }
