@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (xterm helper-textarea) are now reconciled atomically through a
   single state-driven writer, so they can no longer drift across view
   transitions, modal open/close, or rename input. (#181)
+- Windows: starting a session with an agent (Claude, Gemini, Copilot,
+  …) opened a bare `cmd.exe` prompt instead of running the agent. The
+  session spawner unconditionally invoked `<shell> -l -i -c <line>`,
+  but on Windows the shell falls back to `cmd.exe`, which treats
+  `-l -i -c` as garbage and drops the command. The spawn path now
+  branches on GOOS: Unix keeps `<shell> -l -i -c <line>` (load-bearing
+  for fnm/nvm/asdf PATH setup); Windows uses `%ComSpec% /C <line>`
+  with cmd.exe-aware quoting, which also correctly handles `.cmd`
+  shims like `claude.cmd`. (#183)
 
 ## [2.2.1] — 2026-05-10
 
