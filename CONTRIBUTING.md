@@ -25,9 +25,22 @@ bash build.sh
 
 ### Run Tests
 
+Hive has four test layers, all orchestrated by `scripts/test.sh`:
+
+| Layer | What it covers                                        | Runtime  |
+|-------|-------------------------------------------------------|----------|
+| `go`  | Go unit + daemon integration tests (`internal/...`)   | ~5s      |
+| `unit`| Pure JS modules under `cmd/hivegui/frontend/src/lib/` | <1s      |
+| `dom` | Vitest jsdom tests (sidebar tree, visibility gate)    | <1s      |
+| `e2e` | Playwright vs. the Wails-mock bridge                  | ~5s      |
+
 ```bash
-go test ./...
+scripts/test.sh             # all four
+scripts/test.sh go          # just Go
+scripts/test.sh unit dom    # frontend only, no browser
 ```
+
+The frontend layers live in `cmd/hivegui/frontend/test/`. E2E tests run against `vite dev` with `VITE_WAILS_MOCK=1`, which swaps the generated Wails bindings for an in-browser fake (`test/e2e/wails-mock.js`). No native Wails build is required to run them.
 
 ### Lint / Vet
 
