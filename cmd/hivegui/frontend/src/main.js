@@ -17,6 +17,10 @@ import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
+import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
+import {
+  decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
+} from './lib/focus.js';
 import { readProjectId, readWorktreeBranch } from './lib/wire.js';
 
 // ---------- session terminal ----------
@@ -574,10 +578,16 @@ const state = {
   currentProjectId: null,   // "the project I'm working in"; can be set
                             //   without a focused session (so empty
                             //   projects are reachable / launchable)
-  view: 'single',           // 'single' | 'grid-project' | 'grid-all'
+  view: loadSavedView(),    // 'single' | 'grid-project' | 'grid-all' — persisted across launches
   gridProjectId: null,      // project shown in grid-project mode
   fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
 };
+
+function loadSavedView() {
+  try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
+  catch { return normalizeView(null); }
+}
+
 
 // ---------- bell + attention ----------
 
@@ -1329,61 +1339,115 @@ function setActive(id) {
 // makes that impossible: the class is added only here, in the same
 // rAF as the helper-textarea focus.
 function setFocusedTile(id) {
-  // Gate: a modal that owns the keyboard means no tile is focused.
-  const modalOpen =
-    !launcherEl.classList.contains('hidden') ||
-    !editorEl.classList.contains('hidden');
-  if (modalOpen || id == null || !state.terms.get(id)) {
-    for (const el of document.querySelectorAll('.term-host.term-focused')) {
-      el.classList.remove('term-focused');
-    }
+  // First decision: synchronous, before any rAF. If we already know we
+  // should clear, do it immediately so a modal/null transition can't be
+  // overtaken by a stale in-flight focus rAF.
+  const snap = focusSnapshot(id);
+  if (snap.modalOpen || id == null || !state.terms.get(id)) {
+    sweepFocusBorder();
     return;
   }
-  const st = state.terms.get(id);
   // Schedule after the next paint so any in-flight DOM transition
   // (showSingle / renderGrid / appendChild / xterm.open) settles
-  // before we read activeElement and move focus. The class write and
-  // the ta.focus() call live in the same tick — they can't interleave
-  // with a different transition.
-  requestAnimationFrame(() => {
-    // Re-check the gate inside the rAF — a modal may have opened
-    // during the delay.
-    if (
+  // before we read activeElement and move focus.
+  requestAnimationFrame(() => applyFocus(id, /*attempt=*/0));
+}
+
+function applyFocus(id, attempt) {
+  const st = state.terms.get(id);
+  if (!st) { sweepFocusBorder(); return; }
+  const action = decideFocusAction(focusSnapshot(id));
+  if (action.kind === ACTION_CLEAR || action.kind === ACTION_PRESERVE) {
+    sweepFocusBorder();
+    return;
+  }
+  // Atomic reconcile: sweep + add + focus.
+  for (const el of document.querySelectorAll('.term-host.term-focused')) {
+    if (el !== st.host) el.classList.remove('term-focused');
+  }
+  st.host.classList.add('term-focused');
+  // Drive browser focus to the DOM helper-textarea. xterm's
+  // term.focus() early-returns on a stale-true _focused flag (#159);
+  // after this transition the flag is stale-false because the
+  // synchronous display:none flip during renderGrid's parent class
+  // swap (single → grid) fires focusout. ta.focus() drives the real
+  // event; the follow-up term.focus() resyncs xterm's internal state.
+  const ta = st.host.querySelector('.xterm-helper-textarea');
+  if (ta) ta.focus();
+  if (typeof st.term?.focus === 'function') st.term.focus();
+  // Schedule a verification rAF *next frame* (not this one — focus()
+  // just fired and synchronously updated activeElement, so an in-tick
+  // check would trivially pass and miss the real failure mode):
+  // post-renderGrid side-effects (ResizeObserver → fit → WebGL canvas
+  // resize on newly-visible neighbour tiles) can synchronously fire
+  // focusout ~10ms later. If activeElement has drifted off `ta` by
+  // then, re-focus. Cap retries so a genuine modal-takeover or rename
+  // doesn't busy-loop.
+  // Poll for several frames. A single rAF check is insufficient
+  // because post-renderGrid side-effects (ResizeObserver → fit →
+  // WebGL canvas resize on neighbour tiles) can fire focusout AFTER
+  // the rAF batch completes — the disturbance arrives one event-loop
+  // turn later than the verify. We watch for FOCUS_MAX_RETRIES frames
+  // and re-focus whenever activeElement drifts off `ta`. Polling is
+  // bounded and idempotent (re-focusing an already-focused element is
+  // a no-op).
+  const FOCUS_MAX_RETRIES = 8;
+  if (ta && attempt < FOCUS_MAX_RETRIES) {
+    requestAnimationFrame(() => {
+      const verifyAction = decideFocusAction(focusSnapshot(id));
+      if (verifyAction.kind !== ACTION_FOCUS) return; // a modal / rename took over
+      applyFocus(id, attempt + 1);
+    });
+  }
+  // Optional dev-mode assertion: two rAFs later, the visual focus
+  // and the keyboard focus should agree. Console-warn on drift so
+  // future variants of #159/#181/#186 are caught in QA.
+  if (debugFocusEnabled() && attempt === 0) scheduleFocusConsistencyCheck(id);
+}
+
+function sweepFocusBorder() {
+  for (const el of document.querySelectorAll('.term-host.term-focused')) {
+    el.classList.remove('term-focused');
+  }
+}
+
+function focusSnapshot(id) {
+  const ae = document.activeElement;
+  return {
+    id,
+    modalOpen:
       !launcherEl.classList.contains('hidden') ||
-      !editorEl.classList.contains('hidden')
-    ) {
-      for (const el of document.querySelectorAll('.term-host.term-focused')) {
-        el.classList.remove('term-focused');
-      }
-      return;
-    }
-    // A real DOM input (rename, etc.) owns the keyboard — don't
-    // steal it. Visual class is also cleared so the user can't be
-    // misled into thinking the terminal will receive their keys.
-    const ae = document.activeElement;
-    if (
-      ae &&
-      (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable) &&
-      !ae.classList.contains('xterm-helper-textarea')
-    ) {
-      for (const el of document.querySelectorAll('.term-host.term-focused')) {
-        el.classList.remove('term-focused');
-      }
-      return;
-    }
-    // Atomic reconcile: sweep + add + focus, in this order, in one tick.
-    for (const el of document.querySelectorAll('.term-host.term-focused')) {
-      if (el !== st.host) el.classList.remove('term-focused');
-    }
-    st.host.classList.add('term-focused');
-    // Focus the helper-textarea DOM node directly. xterm's term.focus()
-    // early-returns when its internal _focused flag is stale-true,
-    // which happens after view toggles where xterm.open() / fit /
-    // mount sequences mounted a fresh helper-textarea (see #159).
+      !editorEl.classList.contains('hidden') ||
+      (paletteEl && !paletteEl.classList.contains('hidden')),
+    activeTag: ae ? ae.tagName : '',
+    activeClasses: ae ? ae.classList : '',
+    knownTermIds: state.terms,
+  };
+}
+
+function debugFocusEnabled() {
+  try { return localStorage.getItem('hive.debug') === '1'; } catch { return false; }
+}
+
+function scheduleFocusConsistencyCheck(id) {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const st = state.terms.get(id);
+    if (!st) return;
     const ta = st.host.querySelector('.xterm-helper-textarea');
-    if (ta) ta.focus();
-    else st.term.focus();
-  });
+    const ae = document.activeElement;
+    const focusedHost = ae ? ae.closest('.term-host') : null;
+    if (focusedHost !== st.host || ae !== ta) {
+      // eslint-disable-next-line no-console
+      console.warn('[focus] inconsistent state', {
+        view: state.view,
+        activeId: state.activeId,
+        wantId: id,
+        aeTag: ae ? ae.tagName : null,
+        aeClass: ae ? ae.className : null,
+        focusedHostMatches: focusedHost === st.host,
+      });
+    }
+  }));
 }
 
 // focusActiveTerm / refocusActiveTerm are thin wrappers retained so
@@ -1461,6 +1525,7 @@ function gridScopeSessions() {
 
 function setView(view) {
   state.view = view;
+  try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch {}
   if (view === 'grid-project') {
     state.gridProjectId = activeProjectId();
   }
