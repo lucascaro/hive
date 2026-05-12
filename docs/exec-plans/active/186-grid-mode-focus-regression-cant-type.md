@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/186-grid-mode-focus-regression-cant-type.md](../../product-specs/186-grid-mode-focus-regression-cant-type.md)
 - **Issue:** #186
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** [#189](https://github.com/lucascaro/hive/pull/189)
+- **Branch:** feature/186-grid-focus-regression
 
 ## Summary
 
