@@ -89,6 +89,75 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	}
 }
 
+func TestCmdExeEscape(t *testing.T) {
+	cases := []struct {
+		name string
+		in   []string
+		want string
+	}{
+		{"single plain word", []string{"claude"}, `"claude"`},
+		{"flag with value", []string{"claude", "--model", "opus"}, `"claude" "--model" "opus"`},
+		{"arg with space", []string{"claude", "--name", "claude opus"}, `"claude" "--name" "claude opus"`},
+		{"empty string preserved", []string{"foo", ""}, `"foo" ""`},
+		// cmd.exe leaves `& | < > ^` alone inside double quotes, so the
+		// helper merely wraps them. `%` is intentionally excluded — cmd
+		// expands `%VAR%` even inside quotes, so quoting alone does not
+		// neutralize it. See the doc comment on cmdExeEscape.
+		{"cmd metacharacters inside quotes", []string{"echo", "a&b|c^d>e<f"}, `"echo" "a&b|c^d>e<f"`},
+		// Pin actual behavior for `%`: the helper does not escape it.
+		// The quoted output is verbatim; cmd.exe will perform variable
+		// expansion at spawn time. Callers must not pass `%` expecting
+		// it to survive.
+		{"percent passes through verbatim (not escaped)", []string{"echo", "100%done"}, `"echo" "100%done"`},
+		{"embedded double quote", []string{"echo", `she said "hi"`}, `"echo" "she said \"hi\""`},
+		{"trailing backslashes get doubled before closing quote", []string{"x", `c:\path\`}, `"x" "c:\path\\"`},
+		{"backslash before quote", []string{"x", `a\"b`}, `"x" "a\\\"b"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := cmdExeEscape(c.in)
+			if got != c.want {
+				t.Fatalf("cmdExeEscape(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestStartSpawnsCmdOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only spawn path")
+	}
+	// The spawner already wraps Cmd in `cmd.exe /S /C "..."`; using
+	// cmd.exe's built-in `echo` directly verifies that wrapping without
+	// the double-cmd-wrap that would confuse cmd.exe's quote parser.
+	sess, err := Start(Options{Cmd: []string{"echo", "hivetest"}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+	sink := &bufSinkMu{}
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	defer unsub()
+	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
+		t.Fatalf("expected hivetest in output, got %q", sink.String())
+	}
+}
+
+func TestStartSpawnsCmdOnUnix(t *testing.T) {
+	skipOnWindows(t)
+	sess, err := Start(Options{Shell: "/bin/bash", Cmd: []string{"echo", "hivetest"}, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+	sink := &bufSinkMu{}
+	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	defer unsub()
+	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
+		t.Fatalf("expected hivetest in output, got %q", sink.String())
+	}
+}
+
 func TestSessionResize(t *testing.T) {
 	skipOnWindows(t)
 	sess, err := Start(Options{Shell: "/bin/bash", Cols: 80, Rows: 24})

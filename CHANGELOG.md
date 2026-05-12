@@ -23,6 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Daemon integration tests covering update/restart/resize and
   multi-control-conn broadcast fan-out.
 
+### Fixed
+
+- macOS: "Restart Hive" killed hived but the new GUI never appeared.
+  `spawnNewGUI` re-execed the inner Mach-O directly, which spawns a
+  process but doesn't go through LaunchServices, so the relaunched
+  Wails/WebKit window never gained focus (often never rendered). When
+  running inside a `.app` bundle we now relaunch via `open -n
+  <bundle.app>`; `-n` forces a fresh instance even while the dying
+  parent is still around. Dev builds (binary outside a bundle) keep
+  the existing re-exec path.
+- GUI: switching from single-focus to grid mode no longer leaves the
+  previously focused session visually highlighted but unable to receive
+  keystrokes. Visual focus (`.term-focused`) and keyboard focus
+  (xterm helper-textarea) are now reconciled atomically through a
+  single state-driven writer, so they can no longer drift across view
+  transitions, modal open/close, or rename input. (#181)
+- Windows: starting a session with an agent (Claude, Gemini, Copilot,
+  …) opened a bare `cmd.exe` prompt instead of running the agent. The
+  session spawner unconditionally invoked `<shell> -l -i -c <line>`,
+  but on Windows the shell falls back to `cmd.exe`, which treats
+  `-l -i -c` as garbage and drops the command. The spawn path now
+  branches on GOOS: Unix keeps `<shell> -l -i -c <line>` (load-bearing
+  for fnm/nvm/asdf PATH setup); Windows uses `%ComSpec% /C <line>`
+  with cmd.exe-aware quoting, which also correctly handles `.cmd`
+  shims like `claude.cmd`. (#183)
+
 ## [2.2.1] — 2026-05-10
 
 ### Fixed

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 
 	"github.com/aymanbagabas/go-pty"
@@ -106,15 +107,38 @@ func Start(opts Options) (*Session, error) {
 
 	var cmd *pty.Cmd
 	if len(opts.Cmd) > 0 {
-		// Run the command via the user's login + interactive shell so
-		// PATH/aliases/functions set up in *either* .zprofile (login)
-		// or .zshrc (interactive) apply. fnm, nvm, asdf, etc. land in
-		// different rc files depending on the install instructions —
-		// covering both is the safe default. Same model Terminal.app
-		// uses for new windows.
-		line := shellEscape(opts.Cmd)
-		cmd = ptmx.Command(shell, "-l", "-i", "-c", line)
-		log.Printf("session: spawn %s -l -i -c %q (cwd=%s)", shell, line, opts.Cwd)
+		if runtime.GOOS == "windows" {
+			// cmd.exe doesn't understand `-l -i -c`. Windows installs
+			// `claude` (and most npm-shipped CLIs) as a `.cmd` shim that
+			// CreateProcessW can't exec directly — so wrapping via
+			// `cmd.exe /S /C "<line>"` is both correct and required.
+			// PATH inherits from the parent process; there's no Windows
+			// analogue to login+interactive rc sourcing to preserve.
+			//
+			// Implementation note: Go's Windows exec layer re-quotes
+			// every argv element via `windows.ComposeCommandLine`,
+			// which would mangle the precisely-quoted line produced by
+			// `cmdExeEscape`. We bypass that by setting
+			// `SysProcAttr.CmdLine` directly — see
+			// `newWindowsCmd` in spawn_windows.go.
+			wrapper := os.Getenv("ComSpec")
+			if wrapper == "" {
+				wrapper = "cmd.exe"
+			}
+			line := cmdExeEscape(opts.Cmd)
+			cmd = newWindowsCmd(ptmx, wrapper, line)
+			log.Printf("session: spawn %s /S /C %q (cwd=%s)", wrapper, `"`+line+`"`, opts.Cwd)
+		} else {
+			// Run the command via the user's login + interactive shell so
+			// PATH/aliases/functions set up in *either* .zprofile (login)
+			// or .zshrc (interactive) apply. fnm, nvm, asdf, etc. land in
+			// different rc files depending on the install instructions —
+			// covering both is the safe default. Same model Terminal.app
+			// uses for new windows.
+			line := shellEscape(opts.Cmd)
+			cmd = ptmx.Command(shell, "-l", "-i", "-c", line)
+			log.Printf("session: spawn %s -l -i -c %q (cwd=%s)", shell, line, opts.Cwd)
+		}
 	} else {
 		cmd = ptmx.Command(shell)
 		log.Printf("session: spawn %s (cwd=%s)", shell, opts.Cwd)
@@ -295,6 +319,59 @@ func shellEscape(argv []string) string {
 			}
 		}
 		out = append(out, '\'')
+	}
+	return string(out)
+}
+
+// cmdExeEscape joins argv into a single command line for `cmd.exe /C`.
+// Each element is wrapped in double quotes; embedded `"` is escaped by
+// preceding backslashes per the standard CommandLineToArgvW rules.
+// cmd.exe metacharacters (`& | < > ^`) inside quotes are passed through
+// literally — cmd.exe only treats them as special outside quotes, so
+// quoting the whole arg neutralizes them.
+//
+// Caveat: `%` is NOT neutralized by quoting — cmd.exe performs `%VAR%`
+// environment-variable expansion even inside double quotes. Callers
+// must not pass user-controlled `%` characters expecting them to
+// survive verbatim. For agent argv (`claude`, flag-value pairs) this
+// is fine because `%` is not used; if a future caller needs `%`,
+// disable expansion by invoking cmd.exe with `/V:OFF` and `/D`, or
+// pre-escape outside this helper.
+func cmdExeEscape(argv []string) string {
+	out := make([]byte, 0, 32)
+	for i, a := range argv {
+		if i > 0 {
+			out = append(out, ' ')
+		}
+		out = append(out, '"')
+		// CommandLineToArgvW rules: a run of N backslashes followed by
+		// `"` becomes 2N backslashes plus an escaped quote; a run
+		// followed by end-of-arg becomes 2N backslashes (so the closing
+		// `"` isn't escaped); otherwise backslashes pass through.
+		bs := 0
+		for j := 0; j < len(a); j++ {
+			c := a[j]
+			switch c {
+			case '\\':
+				bs++
+			case '"':
+				for k := 0; k < bs*2+1; k++ {
+					out = append(out, '\\')
+				}
+				out = append(out, '"')
+				bs = 0
+			default:
+				for k := 0; k < bs; k++ {
+					out = append(out, '\\')
+				}
+				bs = 0
+				out = append(out, c)
+			}
+		}
+		for k := 0; k < bs*2; k++ {
+			out = append(out, '\\')
+		}
+		out = append(out, '"')
 	}
 	return string(out)
 }

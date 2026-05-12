@@ -25,6 +25,14 @@ func swapCodexPollInterval(t *testing.T, d time.Duration) {
 // writeRollout writes a fake codex rollout file with the given cwd and
 // returns the full path. The filename UUID is taken from the wantUUID
 // argument so tests assert against a known id.
+//
+// Writes to a staging path inside the same directory, applies Chtimes,
+// then renames into place so the file only becomes visible to a
+// concurrent watcher after mtime is set. Without this, the capture
+// goroutine could observe the file between WriteFile and Chtimes,
+// return early, end the test, and trigger t.TempDir cleanup — leaving
+// the still-running writer's Chtimes to fail with ENOENT and Fatalf
+// after the test had already completed.
 func writeRollout(t *testing.T, root, day, cwd, uuid string, modTime time.Time) string {
 	t.Helper()
 	dir := filepath.Join(root, day)
@@ -32,12 +40,16 @@ func writeRollout(t *testing.T, root, day, cwd, uuid string, modTime time.Time) 
 		t.Fatalf("mkdir: %v", err)
 	}
 	path := filepath.Join(dir, "rollout-2026-05-08T12-00-00-"+uuid+".jsonl")
+	staging := path + ".tmp"
 	body := `{"timestamp":"2026-05-08T12:00:00.000Z","type":"session_meta","payload":{"id":"` + uuid + `","cwd":"` + cwd + `","timestamp":"2026-05-08T12:00:00.000Z"}}` + "\n"
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(staging, []byte(body), 0o644); err != nil {
 		t.Fatalf("write rollout: %v", err)
 	}
-	if err := os.Chtimes(path, modTime, modTime); err != nil {
+	if err := os.Chtimes(staging, modTime, modTime); err != nil {
 		t.Fatalf("chtimes: %v", err)
+	}
+	if err := os.Rename(staging, path); err != nil {
+		t.Fatalf("rename rollout: %v", err)
 	}
 	return path
 }

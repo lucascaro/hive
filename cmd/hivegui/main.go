@@ -19,11 +19,17 @@ var assets embed.FS
 // cwd "/" regardless of how they were invoked (open, Finder, even
 // running Contents/MacOS/<bin> directly), so os.Getwd alone is not
 // reliable. We try, in order:
-//  1. os.Getwd() if it isn't "" or "/"
-//  2. $PWD env var (preserved when the user ran the binary directly
+//  1. $HIVE_LAUNCH_DIR — explicitly propagated across `open -n` by
+//     spawnNewGUI so Restart Hive preserves the original launchDir
+//     even though LaunchServices resets the bundle's cwd to "/"
+//  2. os.Getwd() if it isn't "" or "/"
+//  3. $PWD env var (preserved when the user ran the binary directly
 //     from a shell that exports PWD)
-//  3. $HOME
+//  4. $HOME
 func resolveLaunchDir() string {
+	if dir := os.Getenv("HIVE_LAUNCH_DIR"); dir != "" && dir != "/" {
+		return dir
+	}
 	if cwd, err := os.Getwd(); err == nil && cwd != "" && cwd != "/" {
 		return cwd
 	}
