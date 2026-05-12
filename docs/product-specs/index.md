@@ -7,7 +7,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | <P1> | #<n> | <title> | TRIAGE \| RESEARCH \| PLAN \| IMPLEMENT | [<slug>](<slug>.md) |
-| P1 | #186 | Regression: focus inconsistent — switching from single-session to grid mode disables typing | REVIEW | [186-grid-mode-focus-regression-cant-type](186-grid-mode-focus-regression-cant-type.md) |
+| P1 | #186 | Regression: focus inconsistent — switching from single-session to grid mode disables typing | QA | [186-grid-mode-focus-regression-cant-type](186-grid-mode-focus-regression-cant-type.md) |
 | P1 | #172 | Pin/capture agent session id for Gemini and Copilot | IMPLEMENT | [172-agent-session-id-gemini-copilot](172-agent-session-id-gemini-copilot.md) |
 | P1 | #183 | Hive opens only a shell on Windows, not Claude | REVIEW | [183-windows-claude-opens-shell](183-windows-claude-opens-shell.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
