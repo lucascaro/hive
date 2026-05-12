@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/186-grid-mode-focus-regression-cant-type.md](../../product-specs/186-grid-mode-focus-regression-cant-type.md)
 - **Issue:** #186
-- **Stage:** QA
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** [#189](https://github.com/lucascaro/hive/pull/189) (merged 2026-05-12, squash → dff1656)
 - **Branch:** feature/186-grid-focus-regression (deleted on merge)
 
@@ -185,6 +185,16 @@ Mock extension needed: add `stdinLog` (array of `{ id, b64 }` entries) and a `la
 - **2026-05-12 iter 1** — verdict: COMMENT (coerced to REQUEST_CHANGES); findings_hash: ef8c1edc; threads_open: 5; action: continue (autofix next iter); head_sha: fda78e2.
 - **2026-05-12 iter 2** — verdict: REQUEST_CHANGES (autofix ran); findings_hash: empty; threads_open: 0; action: autofix+push (5 fixes, CI passed); head_sha: fff3b54.
 - **2026-05-12 iter 3** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop (converged); head_sha: fff3b54.
+
+## QA verdict
+
+- **2026-05-12** — verdict: PASS; checks: 5 passed / 0 failed / 0 followups; followups: none; one-line: all 3 success criteria mapped to merged code + automated tests; 51 vitest + 7 Playwright green; scope held to single↔grid focus pipeline + #187 view persistence prerequisite.
+  - 2026-05-12 dimensions:
+    - build/lint/test — PASS — `npx vitest run` 51/51, `npx playwright test` 7/7. `go test ./...` green except `cmd/hivegui` (missing generated `frontend/dist` embed — pre-existing local env caveat; CI generates dist before Go phase).
+    - acceptance — PASS — criterion-1 (single→grid) covered by `focus.spec.js:43,60,73` + `applyFocus` 8-frame poll at `main.js:1394-1401`. Criterion-2 (grid→single, #159 regression) covered by `focus.spec.js:88` round-trip; helper-textarea direct focus path at `main.js:1376` intact. Criterion-3 (regression guard) shipped: `scheduleFocusConsistencyCheck` dev assertion + 11 unit tests on `decideFocusAction` + 5 Playwright scenarios.
+    - non-goals — PASS — diff stays within focus + grid transition surface. Only adjacent module touched is `lib/view.js` for #187 (explicitly in scope per spec Notes). No xterm internals, no public API, no wire-format changes.
+    - regression — PASS — `focusActiveTerm` / `refocusActiveTerm` wrappers preserved at every prior call site (13 call sites verified). Polling is bounded (8 frames), idempotent, and self-terminates. `WriteStdin` mock signature change is additive (id was previously unused).
+    - doc accuracy — PASS — CHANGELOG `[Unreleased] / Fixed` covers #186; `[Unreleased] / Added` covers #187. README and `docs/*.md` carry no stale focus-behavior claims.
 
 ## Open questions
 
