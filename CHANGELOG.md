@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Frontend test harness. `scripts/test.sh` runs four layers: Go
+  (existing), Vitest unit tests for the new `cmd/hivegui/frontend/src/lib/`
+  pure modules, jsdom DOM tests, and a Playwright E2E suite that
+  drives the GUI through an in-browser Wails-mock bridge
+  (`test/e2e/wails-mock.js`). Grid layout math (`computeGridDims`,
+  `buildGridLayout`, `computeSpatialMove`), the visibility gate for
+  xterm `fit()`, the snake/camel wire normalizer, and the
+  cross-platform `cmdOrCtrl` helper are now covered as pure
+  functions — the regression classes behind the recent ctrl-arrow,
+  grid-mode-revert, and canvas-resize bugs all have direct unit
+  tests. Linux CI runs every layer on every PR.
+- Daemon integration tests covering update/restart/resize and
+  multi-control-conn broadcast fan-out.
+
 ## [2.2.1] — 2026-05-10
 
 ### Fixed

@@ -14,24 +14,10 @@ import {
   RestartDaemon, CheckForUpdate,
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
-
-// ---------- platform / modifier helpers ----------
-//
-// On macOS the primary modifier is ⌘ (metaKey); on Windows/Linux it's
-// Ctrl. Use `cmdOrCtrl(e)` for shortcuts that should adapt — e.g.
-// ⌘T on mac, Ctrl+T on Windows. The check is exclusive: on mac it
-// requires meta and rejects ctrl, and vice versa, so a stray Ctrl
-// press on macOS doesn't fire mac-only Cmd shortcuts. Shortcuts
-// that must always be Ctrl (e.g. Ctrl+` mirroring VS Code) check
-// `e.ctrlKey && !e.metaKey` directly and bypass this helper.
-const isMac = (() => {
-  const p = (typeof navigator !== 'undefined'
-    && (navigator.userAgentData?.platform || navigator.platform)) || '';
-  return /mac|iphone|ipad/i.test(p);
-})();
-function cmdOrCtrl(e) {
-  return isMac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
-}
+import { isMac, cmdOrCtrl } from './lib/platform.js';
+import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
+import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
+import { readProjectId, readWorktreeBranch } from './lib/wire.js';
 
 // ---------- session terminal ----------
 
@@ -587,10 +573,6 @@ const decoder = new TextDecoder('utf-8', { fatal: false });
 
 // ---------- app state ----------
 
-const DEFAULT_FONT_SIZE = 14;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 32;
-
 const state = {
   projects: [],             // ProjectInfo[] in display order
   sessions: [],             // SessionInfo[] in display order
@@ -607,10 +589,6 @@ const state = {
   gridProjectId: null,      // project shown in grid-project mode
   fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
 };
-
-function clampFont(n) {
-  return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, n));
-}
 
 // ---------- bell + attention ----------
 
@@ -1257,38 +1235,6 @@ function switchToProject(pid) {
 // current Hive's behavior). cellMap[row*cols + col] = session index.
 let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
 
-// computeGridDims picks (rows, cols) that fills the container without
-// scrolling, biasing tile aspect toward typical terminal proportions
-// (~1.6 wide-to-tall). Reorders sessions row-major so that arrow
-// navigation feels predictable.
-//
-// Small-n special cases match user expectation rather than the
-// aspect-ratio optimizer, which can pick stacked layouts on tall
-// windows when side-by-side is what people mean by "two terminals":
-//   n=1 → 1x1
-//   n=2 → 1x2 (always side-by-side)
-function computeGridDims(n, w, h) {
-  if (n <= 0) return { rows: 1, cols: 1 };
-  if (n === 1) return { rows: 1, cols: 1 };
-  if (n === 2) return { rows: 1, cols: 2 };
-
-  const targetAspect = 1.6;
-  let best = { rows: 1, cols: n, score: Infinity };
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols);
-    const tileW = w / cols;
-    const tileH = h / rows;
-    if (tileW <= 0 || tileH <= 0) continue;
-    const aspect = tileW / tileH;
-    // log distance from target, plus a small penalty for empty cells
-    // in the last row to prefer balanced grids.
-    const empty = rows * cols - n;
-    const score = Math.abs(Math.log(aspect / targetAspect)) + empty * 0.05;
-    if (score < best.score) best = { rows, cols, score };
-  }
-  return best;
-}
-
 // renderGrid lays out every tile that should be visible in the
 // current grid scope. Tiles for other sessions are hidden but kept
 // alive (so their xterm scrollback persists across mode switches).
@@ -1320,24 +1266,12 @@ function renderGrid() {
     }
   }
 
-  // Pick (rows, cols) that fills the container.
+  // Pick (rows, cols) that fills the container, then derive
+  // per-tile assignments + the cellMap used by spatial nav. Pure
+  // logic lives in lib/grid.js so it can be unit-tested.
   const w = termsHost.clientWidth || 800;
   const h = termsHost.clientHeight || 600;
-  const { rows, cols } = computeGridDims(n, w, h);
-
-  // Compute placement: each tile occupies one cell; tiles directly
-  // above empty cells in the last row extend downward to fill the
-  // gap. Last-row gaps are at row-major indices [n .. rows*cols-1].
-  const assignments = new Array(n);
-  for (let i = 0; i < n; i++) {
-    assignments[i] = { row: Math.floor(i / cols), col: i % cols, rowSpan: 1 };
-  }
-  for (let e = n; e < rows * cols; e++) {
-    const aboveIdx = e - cols;
-    if (aboveIdx >= 0 && aboveIdx < n) {
-      assignments[aboveIdx].rowSpan += 1;
-    }
-  }
+  const { rows, cols, assignments, cellMap } = buildGridLayout(n, w, h);
 
   termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
@@ -1354,16 +1288,6 @@ function renderGrid() {
       st.host.style.gridRow = '';
     }
     st.host.style.gridColumn = '';
-  }
-
-  // Build cellMap so spatial nav knows which tile owns each grid cell
-  // (including the cells absorbed by row-spans).
-  const cellMap = new Array(rows * cols).fill(null);
-  for (let i = 0; i < n; i++) {
-    const a = assignments[i];
-    for (let dr = 0; dr < a.rowSpan; dr++) {
-      cellMap[(a.row + dr) * cols + a.col] = i;
-    }
   }
 
   gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
@@ -1448,7 +1372,7 @@ function refocusActiveTerm() {
 // 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
 // "right" from tile 2 lands on tile 1 instead of doing nothing.
 function gridSpatialMove(dCol, dRow) {
-  const { rows, cols, sessions, cellMap, assignments } = gridLayout;
+  const { sessions } = gridLayout;
   if (sessions.length === 0) return;
   const idx = sessions.findIndex((s) => s.id === state.activeId);
   if (idx < 0) {
@@ -1457,28 +1381,12 @@ function gridSpatialMove(dCol, dRow) {
     updateSidebarSelection();
     return;
   }
-  const a = assignments[idx];
-  // For downward moves, start from the tile's bottom edge (last row of
-  // its span); for the other directions the primary cell is correct.
-  let r = a.row;
-  let c = a.col;
-  if (dRow > 0) r = a.row + a.rowSpan - 1;
-  // Step in the requested direction, skipping cells that resolve to
-  // the current tile (row-span absorption) or empty cells.
-  let nr = r + dRow;
-  let nc = c + dCol;
-  while (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-    const target = cellMap[nr * cols + nc];
-    if (target != null && target !== idx) {
-      setActive(sessions[target].id);
-      renderGrid();
-      updateSidebarSelection();
-      setStatus(sessions[target].name);
-      return;
-    }
-    nr += dRow;
-    nc += dCol;
-  }
+  const target = computeSpatialMove(gridLayout, idx, dCol, dRow);
+  if (target == null) return;
+  setActive(sessions[target].id);
+  renderGrid();
+  updateSidebarSelection();
+  setStatus(sessions[target].name);
 }
 
 function shiftActiveProject(delta) {

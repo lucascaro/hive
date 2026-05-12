@@ -58,7 +58,21 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
+      - name: Test (Go)
         run: go test ./...
         env:
           TERM: dumb  # deterministic golden file output (no ANSI colors)
+
+      - name: Test (frontend unit + DOM)
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/vitest run
+
+      - name: Install Playwright browsers
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Test (frontend E2E)
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright test
+        env:
+          CI: 'true'
