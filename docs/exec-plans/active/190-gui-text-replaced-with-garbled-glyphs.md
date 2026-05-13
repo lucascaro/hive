@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/190-gui-text-replaced-with-garbled-glyphs.md](../../product-specs/190-gui-text-replaced-with-garbled-glyphs.md)
 - **Issue:** #190
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** #191
+- **Branch:** feature/190-gui-glyph-corruption-recovery
 
 ## Summary
 
