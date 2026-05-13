@@ -62,3 +62,8 @@ None.
 ## Open questions
 
 None.
+
+## PR convergence ledger
+
+- **2026-05-13 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2af6099.
+
