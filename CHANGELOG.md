@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Worktrees now branch from `origin/<default-branch>` (typically
+  `origin/main`) instead of local HEAD. Previously, creating a
+  session-backed worktree from a stale checkout produced a worktree
+  on outdated code, wasting agent work on rebases and rediscovering
+  already-fixed bugs. `internal/worktree.CreateWorktree` performs a
+  best-effort `git fetch origin` and resolves
+  `refs/remotes/origin/HEAD` before `git worktree add`. Repos with no
+  remote, offline environments, or unreachable upstreams fall back to
+  HEAD-based branching transparently. (#192)
 - GUI: switching from single-focus mode to grid mode no longer leaves
   the active session visually highlighted but unable to receive
   keystrokes (regression of #181). Single → grid is the only transition

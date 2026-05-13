@@ -50,19 +50,31 @@ func WorktreePath(gitRoot, branch string) string {
 }
 
 // CreateWorktree runs `git worktree add` for the given branch. If the
-// branch doesn't exist yet, it is created from HEAD; otherwise the
-// existing branch is checked out into the new worktree dir. Bounded
-// by a 30-second timeout so a slow / hung filesystem can't lock up
-// session creation forever.
+// branch doesn't exist yet, it is created from the detected upstream
+// default ref (typically `origin/main`) so worktrees start on the
+// latest upstream tip even when the local default branch is stale.
+// When no upstream is configured or the remote is unreachable, falls
+// back to creating the branch from local HEAD. Bounded by a 30-second
+// timeout so a slow / hung filesystem can't lock up session creation
+// forever.
 func CreateWorktree(repoDir, branch, worktreePath string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreePath), 0o755); err != nil {
 		return fmt.Errorf("create worktree parent dir: %w", err)
 	}
+
+	// Best-effort: refresh `origin` so the upstream tip we branch from
+	// reflects the latest remote state. Failures are logged via the
+	// returned base ref staying empty (callers fall back to HEAD).
+	upstream := upstreamBaseRef(repoDir)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Try `worktree add -b <branch>` first (creates the branch from HEAD).
-	cmd := exec.CommandContext(ctx, "git", "-C", repoDir, "worktree", "add", "-b", branch, worktreePath)
+	args := []string{"-C", repoDir, "worktree", "add", "-b", branch, worktreePath}
+	if upstream != "" {
+		args = append(args, upstream)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return nil
@@ -80,7 +92,50 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 		}
 		return nil
 	}
+	// If we asked for an upstream base ref and it failed for some other
+	// reason (e.g. ref disappeared between fetch and add), retry without
+	// the explicit base ref so HEAD is used. This keeps creation robust
+	// in offline / shallow / sandboxed environments.
+	if upstream != "" {
+		ctx3, cancel3 := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel3()
+		cmd3 := exec.CommandContext(ctx3, "git", "-C", repoDir, "worktree", "add", "-b", branch, worktreePath)
+		if out3, err3 := cmd3.CombinedOutput(); err3 == nil {
+			return nil
+		} else {
+			out, err = out3, err3
+		}
+	}
 	return fmt.Errorf("git worktree add: %s", strings.TrimSpace(string(out)))
+}
+
+// upstreamBaseRef returns the short name of the upstream default ref
+// (e.g. `origin/main`) when one is configured, or "" otherwise. Before
+// resolving, it best-effort fetches `origin` so the returned ref points
+// at the latest remote tip. Bounded by short timeouts; never blocks
+// worktree creation for long.
+func upstreamBaseRef(repoDir string) string {
+	// Confirm `origin` exists before spending time on a fetch.
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer checkCancel()
+	if err := exec.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
+		return ""
+	}
+
+	// Best-effort fetch (10s). Network or auth failures fall through:
+	// we'll still resolve whatever `origin/HEAD` already points at locally.
+	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer fetchCancel()
+	_ = exec.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").Run()
+
+	// Resolve origin/HEAD -> origin/<default-branch>.
+	resolveCtx, resolveCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer resolveCancel()
+	out, err := exec.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // RemoveWorktree runs `git worktree remove --force` and then deletes

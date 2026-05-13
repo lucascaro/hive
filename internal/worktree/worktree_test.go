@@ -95,6 +95,113 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 	}
 }
 
+// initRepoWithUpstream creates a bare "upstream" repo with one commit,
+// clones it locally, then advances the bare repo by another commit so
+// that the local clone is one commit behind origin/main. Returns the
+// local clone path, the local-main HEAD sha (stale), and the
+// origin/main HEAD sha (fresh).
+func initRepoWithUpstream(t *testing.T) (localRepo, staleSHA, freshSHA string) {
+	t.Helper()
+	skipNoGit(t)
+
+	// 1. Bare upstream.
+	upstream := t.TempDir()
+	mustGit(t, upstream, "init", "-q", "--bare", "-b", "main")
+
+	// 2. Seed upstream with one commit via a throwaway worktree.
+	seed := t.TempDir()
+	mustGit(t, seed, "init", "-q", "-b", "main")
+	mustGit(t, seed, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "seed")
+	mustGit(t, seed, "remote", "add", "origin", upstream)
+	mustGit(t, seed, "push", "-q", "origin", "main")
+
+	// 3. Clone upstream as the local repo.
+	parent := t.TempDir()
+	local := filepath.Join(parent, "repo")
+	mustGit(t, parent, "clone", "-q", upstream, local)
+	mustGit(t, local, "-c", "user.email=t@t", "-c", "user.name=t",
+		"config", "user.email", "t@t")
+	mustGit(t, local, "config", "user.name", "t")
+	staleSHA = revParse(t, local, "HEAD")
+
+	// 4. Advance upstream by one commit (so local is now behind).
+	seed2 := t.TempDir()
+	mustGit(t, parent, "clone", "-q", upstream, filepath.Join(seed2, "wt"))
+	wt := filepath.Join(seed2, "wt")
+	mustGit(t, wt, "config", "user.email", "t@t")
+	mustGit(t, wt, "config", "user.name", "t")
+	mustGit(t, wt, "commit", "--allow-empty", "-q", "-m", "advance")
+	mustGit(t, wt, "push", "-q", "origin", "main")
+	freshSHA = revParseRemote(t, upstream, "main")
+
+	localRepo = local
+	return localRepo, staleSHA, freshSHA
+}
+
+func mustGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func revParse(t *testing.T, dir, ref string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", ref).Output()
+	if err != nil {
+		t.Fatalf("rev-parse %s: %v", ref, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func revParseRemote(t *testing.T, bareRepo, branch string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", bareRepo, "rev-parse", branch).Output()
+	if err != nil {
+		t.Fatalf("rev-parse %s in %s: %v", branch, bareRepo, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestCreateWorktree_PrefersUpstreamBase(t *testing.T) {
+	local, stale, fresh := initRepoWithUpstream(t)
+	if stale == fresh {
+		t.Fatalf("test setup failed: stale == fresh sha")
+	}
+
+	branch := "feature-x"
+	wtPath := WorktreePath(local, branch)
+	if err := CreateWorktree(local, branch, wtPath); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer Cleanup(local, wtPath)
+
+	got := revParse(t, wtPath, "HEAD")
+	if got != fresh {
+		t.Errorf("worktree HEAD = %s, want origin/main %s (stale local main was %s)", got, fresh, stale)
+	}
+}
+
+func TestCreateWorktree_NoRemoteFallsBackToHEAD(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t)
+	headBefore := revParse(t, repo, "HEAD")
+
+	branch := "no-remote-feature"
+	wtPath := WorktreePath(repo, branch)
+	if err := CreateWorktree(repo, branch, wtPath); err != nil {
+		t.Fatalf("CreateWorktree on repo without remote: %v", err)
+	}
+	defer Cleanup(repo, wtPath)
+
+	got := revParse(t, wtPath, "HEAD")
+	if got != headBefore {
+		t.Errorf("worktree HEAD = %s, want local HEAD %s", got, headBefore)
+	}
+}
+
 func TestCreateWorktree_BranchAlreadyExists(t *testing.T) {
 	skipNoGit(t)
 	repo := initRepo(t)
