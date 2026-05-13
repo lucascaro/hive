@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/192-worktrees-branch-from-origin-main.md](../exec-plans/active/192-worktrees-branch-from-origin-main.md)
+- **Exec plan:** [docs/exec-plans/completed/192-worktrees-branch-from-origin-main.md](../exec-plans/completed/192-worktrees-branch-from-origin-main.md)
 
 ## Problem
 

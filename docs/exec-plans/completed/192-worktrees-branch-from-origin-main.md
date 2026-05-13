@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/192-worktrees-branch-from-origin-main.md](../../product-specs/192-worktrees-branch-from-origin-main.md)
 - **Issue:** #192
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** #193
 - **Branch:** feature/192-worktrees-branch-from-origin-main
 
@@ -66,4 +66,8 @@ None.
 ## PR convergence ledger
 
 - **2026-05-13 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2af6099.
+
+## QA verdict
+
+- **2026-05-13** — **PASS-WITH-GAP**. Merged as 7c1d94c. `go test ./internal/worktree/...` passes on `origin/main`, including the two new tests (`TestCreateWorktree_PrefersUpstreamBase`, `TestCreateWorktree_NoRemoteFallsBackToHEAD`). Criteria #1 (worktree HEAD matches `origin/main` when local is behind) and #3 (test coverage extended) are met. Criterion #2 is partially met: fallback to local HEAD on unreachable remote works, but the spec's "surfaces a warning to the user / logs" subclause is **not** implemented — `upstreamBaseRef` silently discards the `git fetch` error and silently returns `""` on `symbolic-ref` failure. Worse, if fetch fails but a stale `origin/HEAD` resolves locally, the worktree is silently based on stale upstream. Follow-up fix in PR #201; manual verification deferred.
 
