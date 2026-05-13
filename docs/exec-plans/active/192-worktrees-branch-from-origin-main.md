@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/192-worktrees-branch-from-origin-main.md](../../product-specs/192-worktrees-branch-from-origin-main.md)
 - **Issue:** #192
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** #193
+- **Branch:** feature/192-worktrees-branch-from-origin-main
 
 ## Summary
 
