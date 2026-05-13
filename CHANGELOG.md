@@ -74,6 +74,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for fnm/nvm/asdf PATH setup); Windows uses `%ComSpec% /C <line>`
   with cmd.exe-aware quoting, which also correctly handles `.cmd`
   shims like `claude.cmd`. (#183)
+- GUI: terminal text no longer gets stuck displaying garbled glyphs in
+  long-lived sessions until the user resizes the window. The xterm.js
+  WebGL renderer can lose its GL context (browsers cap simultaneous
+  contexts process-wide, so many-tile sessions can trigger this) or
+  silently invalidate its glyph atlas on device-pixel-ratio changes
+  and visibility transitions. Each session tile now recovers from
+  context loss by re-attaching the WebGL addon (or falling back to the
+  DOM renderer) and forcing a full repaint, and clears the glyph atlas
+  on DPR changes and on becoming visible again. The GL context is also
+  disposed explicitly when a tile is destroyed to reduce pressure on
+  the per-process context cap. (#190)
 
 ## [2.2.1] — 2026-05-10
 
