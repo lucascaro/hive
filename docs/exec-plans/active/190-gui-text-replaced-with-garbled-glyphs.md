@@ -85,6 +85,7 @@ No JS test harness exists in the GUI frontend (see AGENTS.md; renderer changes h
 
 - **2026-05-12** — Spec drafted (#190), triage = bug/M/P1, research complete, plan drafted; awaiting Gate 4.
 - **2026-05-12** — Implemented: `_attachWebgl()` / `_onWebglContextLoss()` recovery, DPR + `visibilitychange` listeners that call `clearTextureAtlas()` + `term.refresh()`, explicit `webgl.dispose()` in `destroy()`. `go build ./...` + `go test ./...` pass. JS syntax checked with `node --check` (full `vite build` requires Wails-generated bindings not in repo).
+- **2026-05-13** — Rebased onto `origin/main` (was days stale; resolved CHANGELOG conflict, main.js auto-merged cleanly). Extracted pure helpers into `cmd/hivegui/frontend/src/lib/renderer-recovery.js` and added 8 vitest unit cases covering context-loss recovery + visibility predicate. Full `scripts/test.sh go unit dom` passes (e2e skipped — requires Wails-built `frontend/dist`).
 
 ## Open questions
 
