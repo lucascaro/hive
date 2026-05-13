@@ -89,7 +89,8 @@ No JS test harness exists in the GUI frontend (see AGENTS.md; renderer changes h
 
 ## PR convergence ledger
 
-- **2026-05-13 iter 1** — verdict: REQUEST_CHANGES; findings_hash: c4864cd91a268b7facb5a18f1fa5697c785db449fb0fa31d82a2827f230a55a9; threads_open: 0; action: autofix+push (DPR matchMedia rebind helper + tests); head_sha: ad1fe80. CI failure (focus.spec.js stdinText='llo' not 'hello') flagged as flake — retry pending.
+- **2026-05-13 iter 1** — verdict: REQUEST_CHANGES; findings_hash: c4864cd91a268b7facb5a18f1fa5697c785db449fb0fa31d82a2827f230a55a9; threads_open: 0; action: autofix+push (DPR matchMedia rebind helper + tests); head_sha: ad1fe80. CI failure (focus.spec.js stdinText='llo' not 'hello') confirmed flake — manual rerun of Linux job passed, and full CI on fe9ca21 also green.
+- **2026-05-13 iter 2** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: fe9ca21.
 
 ## Open questions
 
