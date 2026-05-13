@@ -22,6 +22,7 @@ import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
 import { readProjectId, readWorktreeBranch } from './lib/wire.js';
+import { shouldRefreshOnVisibility, recoverFromContextLoss } from './lib/renderer-recovery.js';
 
 // ---------- session terminal ----------
 
@@ -375,14 +376,16 @@ class SessionTerm {
 
   _onWebglContextLoss() {
     // The current addon's context died (commonly: too many WebGL
-    // contexts process-wide). Dispose it and try once to re-attach.
-    // If that fails, leave the terminal on the DOM renderer and still
-    // force a refresh so stale glyphs don't survive on the canvas.
-    try { this.webgl?.dispose(); } catch {}
+    // contexts process-wide). Recovery logic — dispose, reattach, fall
+    // back to refresh — lives in lib/renderer-recovery.js so it can be
+    // unit-tested without xterm or a real WebGL context.
+    const dead = this.webgl;
     this.webgl = null;
-    if (!this._attachWebgl()) {
-      try { this.term.refresh(0, this.term.rows - 1); } catch {}
-    }
+    recoverFromContextLoss({
+      dispose: () => dead?.dispose(),
+      reattach: () => this._attachWebgl(),
+      refresh: () => this.term.refresh(0, this.term.rows - 1),
+    });
   }
 
   _installRendererRecoveryListeners() {
@@ -409,7 +412,7 @@ class SessionTerm {
     // Visibility transitions: occlusion / GPU sleep can invalidate the
     // backbuffer without firing context-loss. Repaint on return.
     this._onVisibility = () => {
-      if (document.visibilityState === 'visible') this._refreshRenderer();
+      if (shouldRefreshOnVisibility(document.visibilityState)) this._refreshRenderer();
     };
     document.addEventListener('visibilitychange', this._onVisibility);
   }
