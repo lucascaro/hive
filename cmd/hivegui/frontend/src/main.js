@@ -22,6 +22,11 @@ import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
 import { readProjectId, readWorktreeBranch } from './lib/wire.js';
+import {
+  shouldRefreshOnVisibility,
+  recoverFromContextLoss,
+  bindDprWatcher,
+} from './lib/renderer-recovery.js';
 
 // ---------- session terminal ----------
 
@@ -99,15 +104,20 @@ class SessionTerm {
     // WebGL renderer is dramatically faster than the default DOM
     // renderer on older machines (VS Code uses the same approach).
     // Load it lazily after open() and silently fall back to DOM if
-    // the GPU / driver doesn't support it.
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      this.term.loadAddon(webgl);
-      this.webgl = webgl;
-    } catch (err) {
-      // GPU lacks WebGL2 — keep DOM renderer. No user-visible message.
-    }
+    // the GPU / driver doesn't support it. On context loss (e.g. the
+    // browser caps simultaneous WebGL contexts and kills ours when too
+    // many tiles exist), dispose the dead addon and try to re-attach;
+    // if re-attach fails, fall back to DOM and force a full repaint so
+    // we don't leave stale glyphs frozen on the canvas.
+    this._attachWebgl();
+
+    // Recover the renderer from the silent triggers that leave a stale
+    // backbuffer until the next resize: device-pixel-ratio changes
+    // (window dragged between displays with different scale, OS zoom)
+    // and visibility transitions (occlusion, GPU sleep). Both are cheap:
+    // clearTextureAtlas() rebuilds the glyph cache; term.refresh()
+    // forces a full repaint so the stale pixels are overwritten.
+    this._installRendererRecoveryListeners();
 
     // Detect URLs in terminal output and route activation through
     // the OS default browser. Hover underlines the URL; click (or
@@ -350,6 +360,66 @@ class SessionTerm {
     }, { capture: true, passive: false });
   }
 
+  _attachWebgl() {
+    // Build / re-build the WebGL addon. Called at init and on
+    // context-loss recovery. After a fresh attach the renderer's atlas
+    // is empty, so force a full repaint to overwrite whatever stale
+    // pixels were left behind by the lost context.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => this._onWebglContextLoss());
+      this.term.loadAddon(webgl);
+      this.webgl = webgl;
+      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      return true;
+    } catch {
+      this.webgl = null;
+      return false;
+    }
+  }
+
+  _onWebglContextLoss() {
+    // The current addon's context died (commonly: too many WebGL
+    // contexts process-wide). Recovery logic — dispose, reattach, fall
+    // back to refresh — lives in lib/renderer-recovery.js so it can be
+    // unit-tested without xterm or a real WebGL context.
+    const dead = this.webgl;
+    this.webgl = null;
+    recoverFromContextLoss({
+      dispose: () => dead?.dispose(),
+      reattach: () => this._attachWebgl(),
+      refresh: () => this.term.refresh(0, this.term.rows - 1),
+    });
+  }
+
+  _installRendererRecoveryListeners() {
+    // Clear the glyph atlas and force a full repaint. Cheap; safe to
+    // call when no WebGL addon is loaded (DOM renderer ignores the
+    // atlas hint and still benefits from the refresh).
+    this._refreshRenderer = () => {
+      try { this.webgl?.clearTextureAtlas(); } catch {}
+      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+    };
+
+    // DPR change: move-to-different-display or OS zoom. A
+    // `(resolution: Xdppx)` MQL only fires `change` on the single
+    // transition away from X, so the helper rebinds against the new
+    // DPR inside each handler — feature-detected and self-teardown so
+    // it's safe on Chromium-CEF builds that don't expose matchMedia.
+    this._dprWatcher = bindDprWatcher({
+      matchMedia: (q) => window.matchMedia(q),
+      getDpr: () => window.devicePixelRatio || 1,
+      onChange: () => this._refreshRenderer(),
+    });
+
+    // Visibility transitions: occlusion / GPU sleep can invalidate the
+    // backbuffer without firing context-loss. Repaint on return.
+    this._onVisibility = () => {
+      if (shouldRefreshOnVisibility(document.visibilityState)) this._refreshRenderer();
+    };
+    document.addEventListener('visibilitychange', this._onVisibility);
+  }
+
   setInfo(info) {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
@@ -528,6 +598,17 @@ class SessionTerm {
     CloseAttach(this.info.id).catch(() => {});
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     this.ro.disconnect();
+    if (this._dprWatcher) {
+      try { this._dprWatcher.teardown(); } catch {}
+      this._dprWatcher = null;
+    }
+    if (this._onVisibility) {
+      document.removeEventListener('visibilitychange', this._onVisibility);
+    }
+    // Release the GL context proactively so a many-tile session doesn't
+    // sit on it until GC and push another tile over the browser cap.
+    try { this.webgl?.dispose(); } catch {}
+    this.webgl = null;
     this.term.dispose();
     this.host.remove();
   }
