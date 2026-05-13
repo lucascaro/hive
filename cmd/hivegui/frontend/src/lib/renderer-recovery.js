@@ -39,3 +39,52 @@ export function recoverFromContextLoss(deps) {
   }
   return { reattached };
 }
+
+// Build a self-rebinding DPR change watcher. A `(resolution: Xdppx)`
+// MediaQueryList only fires `change` on the single transition away from
+// X — after that, `matches` stays false and further DPR shifts are
+// silent. We work around this by re-creating the MQL against the
+// *current* `window.devicePixelRatio` inside each `change` handler.
+//
+// `deps`:
+//   - matchMedia(query):  factory for MediaQueryList instances.
+//   - getDpr():           returns the current device pixel ratio.
+//   - onChange():         called after each successful DPR change.
+//
+// Returns `{ teardown() }` so callers can remove the currently-bound
+// listener at destruction. Returns `null` when the platform doesn't
+// support matchMedia or the initial bind throws — callers can skip the
+// DPR path silently.
+export function bindDprWatcher(deps) {
+  let mql = null;
+  let handler = null;
+  const bind = () => {
+    try {
+      const dpr = deps.getDpr();
+      mql = deps.matchMedia(`(resolution: ${dpr}dppx)`);
+      handler = () => {
+        // Tear down the now-stale MQL and rebind against the new DPR
+        // before notifying, so further transitions keep firing.
+        try { mql.removeEventListener('change', handler); } catch { /* ignore */ }
+        bind();
+        try { deps.onChange(); } catch { /* host handles its own errors */ }
+      };
+      mql.addEventListener('change', handler);
+      return true;
+    } catch {
+      mql = null;
+      handler = null;
+      return false;
+    }
+  };
+  if (!bind()) return null;
+  return {
+    teardown() {
+      if (mql && handler) {
+        try { mql.removeEventListener('change', handler); } catch { /* ignore */ }
+      }
+      mql = null;
+      handler = null;
+    },
+  };
+}

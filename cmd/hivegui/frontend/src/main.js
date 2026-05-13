@@ -22,7 +22,11 @@ import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
 import { readProjectId, readWorktreeBranch } from './lib/wire.js';
-import { shouldRefreshOnVisibility, recoverFromContextLoss } from './lib/renderer-recovery.js';
+import {
+  shouldRefreshOnVisibility,
+  recoverFromContextLoss,
+  bindDprWatcher,
+} from './lib/renderer-recovery.js';
 
 // ---------- session terminal ----------
 
@@ -397,17 +401,16 @@ class SessionTerm {
       try { this.term.refresh(0, this.term.rows - 1); } catch {}
     };
 
-    // DPR change: move-to-different-display or OS zoom. matchMedia
-    // syntax / availability varies across Chromium-CEF builds; feature-
-    // detect and skip silently if unsupported.
-    try {
-      const dpr = window.devicePixelRatio || 1;
-      this._dprMql = window.matchMedia(`(resolution: ${dpr}dppx)`);
-      this._onDprChange = () => this._refreshRenderer();
-      this._dprMql.addEventListener('change', this._onDprChange);
-    } catch {
-      this._dprMql = null;
-    }
+    // DPR change: move-to-different-display or OS zoom. A
+    // `(resolution: Xdppx)` MQL only fires `change` on the single
+    // transition away from X, so the helper rebinds against the new
+    // DPR inside each handler — feature-detected and self-teardown so
+    // it's safe on Chromium-CEF builds that don't expose matchMedia.
+    this._dprWatcher = bindDprWatcher({
+      matchMedia: (q) => window.matchMedia(q),
+      getDpr: () => window.devicePixelRatio || 1,
+      onChange: () => this._refreshRenderer(),
+    });
 
     // Visibility transitions: occlusion / GPU sleep can invalidate the
     // backbuffer without firing context-loss. Repaint on return.
@@ -595,8 +598,9 @@ class SessionTerm {
     CloseAttach(this.info.id).catch(() => {});
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     this.ro.disconnect();
-    if (this._dprMql && this._onDprChange) {
-      try { this._dprMql.removeEventListener('change', this._onDprChange); } catch {}
+    if (this._dprWatcher) {
+      try { this._dprWatcher.teardown(); } catch {}
+      this._dprWatcher = null;
     }
     if (this._onVisibility) {
       document.removeEventListener('visibilitychange', this._onVisibility);
