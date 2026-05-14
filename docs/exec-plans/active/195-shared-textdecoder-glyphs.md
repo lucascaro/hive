@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/195-shared-textdecoder-glyphs.md](../../product-specs/195-shared-textdecoder-glyphs.md)
 - **Issue:** #195
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
@@ -51,3 +51,8 @@ Considered alternative: drop `stream: true` and accept that a chunk ending mid-r
 ## Open questions
 
 None.
+
+## PR convergence ledger
+
+<!-- Append-only. One line per review-loop iteration. -->
+
