@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/195-shared-textdecoder-glyphs.md](../../product-specs/195-shared-textdecoder-glyphs.md)
 - **Issue:** #195
-- **Stage:** REVIEW
+- **Stage:** QA
 - **Status:** active
 
 ## Summary
