@@ -55,4 +55,5 @@ None.
 ## PR convergence ledger
 
 <!-- Append-only. One line per review-loop iteration. -->
+- **2026-05-14 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: a03203a.
 
