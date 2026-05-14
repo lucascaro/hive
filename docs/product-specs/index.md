@@ -13,6 +13,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | #192 | Worktrees should branch from origin/main, not local HEAD | REVIEW | [192-worktrees-branch-from-origin-main](192-worktrees-branch-from-origin-main.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | P1 | #190 | GUI: session terminal text gets replaced by garbled glyphs over time; resize fixes it | REVIEW | [190-gui-text-replaced-with-garbled-glyphs](190-gui-text-replaced-with-garbled-glyphs.md) |
+| P1 | #195 | GUI: shared TextDecoder across sessions produces garbled glyphs | IMPLEMENT | [195-shared-textdecoder-glyphs](195-shared-textdecoder-glyphs.md) |
 
 ## Completed
 

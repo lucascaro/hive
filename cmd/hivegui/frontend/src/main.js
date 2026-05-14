@@ -33,6 +33,12 @@ import {
 class SessionTerm {
   constructor(info) {
     this.info = info;
+    // Per-session UTF-8 decoder. Streaming mode buffers partial multi-byte
+    // sequences at chunk boundaries; sharing one decoder across sessions
+    // contaminates session B's bytes with session A's pending tail bytes,
+    // producing garbled glyphs — most visible with multi-byte-heavy output
+    // (emojis, box-drawing, Powerline glyphs from Claude, etc.).
+    this.decoder = new TextDecoder('utf-8', { fatal: false });
     this.host = document.createElement('div');
     this.host.className = 'term-host';
     this.host.dataset.sid = info.id;
@@ -591,7 +597,7 @@ class SessionTerm {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    this.term.write(decoder.decode(bytes, { stream: true }));
+    this.term.write(this.decoder.decode(bytes, { stream: true }));
   }
 
   destroy() {
@@ -642,8 +648,6 @@ class SessionTerm {
     refocusActiveTerm();
   }
 }
-
-const decoder = new TextDecoder('utf-8', { fatal: false });
 
 // ---------- app state ----------
 
