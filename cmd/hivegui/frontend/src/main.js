@@ -26,7 +26,15 @@ import {
   shouldRefreshOnVisibility,
   recoverFromContextLoss,
   bindDprWatcher,
+  bindFocusRefresh,
+  bindAtlasInterval,
 } from './lib/renderer-recovery.js';
+
+// Long-running sessions with heavy unique-glyph output (Claude,
+// syntax-highlighted diffs, 24-bit colors) overflow xterm's fixed WebGL
+// atlas; eviction makes new glyphs sample stale UVs — the "matrix
+// characters" symptom. Periodically clear the atlas while visible.
+const ATLAS_REFRESH_INTERVAL_MS = 90_000;
 
 // ---------- session terminal ----------
 
@@ -424,6 +432,25 @@ class SessionTerm {
       if (shouldRefreshOnVisibility(document.visibilityState)) this._refreshRenderer();
     };
     document.addEventListener('visibilitychange', this._onVisibility);
+
+    // Window focus: covers the user-noticeable "I tabbed back to Hive"
+    // case where visibilitychange may not fire (e.g. cross-monitor focus
+    // shifts on macOS with the window still 'visible'). Decision +
+    // binding live in lib/renderer-recovery.js so they're testable.
+    this._focusWatcher = bindFocusRefresh({
+      addEventListener: (evt, fn) => window.addEventListener(evt, fn),
+      removeEventListener: (evt, fn) => window.removeEventListener(evt, fn),
+      onRefresh: () => this._refreshRenderer(),
+    });
+
+    // Periodic atlas clear while visible — see ATLAS_REFRESH_INTERVAL_MS
+    // and lib/renderer-recovery.js for the WebGL-atlas-overflow rationale.
+    this._atlasWatcher = bindAtlasInterval({
+      setInterval: (fn, ms) => setInterval(fn, ms),
+      clearInterval: (id) => clearInterval(id),
+      getVisibilityState: () => document.visibilityState,
+      onRefresh: () => this._refreshRenderer(),
+    }, ATLAS_REFRESH_INTERVAL_MS);
   }
 
   setInfo(info) {
@@ -610,6 +637,14 @@ class SessionTerm {
     }
     if (this._onVisibility) {
       document.removeEventListener('visibilitychange', this._onVisibility);
+    }
+    if (this._focusWatcher) {
+      this._focusWatcher.teardown();
+      this._focusWatcher = null;
+    }
+    if (this._atlasWatcher) {
+      this._atlasWatcher.teardown();
+      this._atlasWatcher = null;
     }
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.

@@ -85,6 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on DPR changes and on becoming visible again. The GL context is also
   disposed explicitly when a tile is destroyed to reduce pressure on
   the per-process context cap. (#190)
+- GUI: extend the matrix-glyph mitigation to long-lived sessions with
+  heavy unique-glyph output (Claude, syntax-highlighted diffs, 24-bit
+  colors) where the xterm WebGL atlas overflows over time even without
+  a context-loss, DPR, or visibility trigger. Each tile now also
+  refreshes the renderer when the window regains focus (covers
+  cross-monitor focus shifts on macOS where `visibilitychange` may not
+  fire) and on a 90s visible-document interval that breaks the
+  atlas-accumulation pattern. Decision logic and binding live in
+  `lib/renderer-recovery.js` with unit-test coverage. (#198)
 
 ## [2.2.1] — 2026-05-10
 
