@@ -424,6 +424,23 @@ class SessionTerm {
       if (shouldRefreshOnVisibility(document.visibilityState)) this._refreshRenderer();
     };
     document.addEventListener('visibilitychange', this._onVisibility);
+
+    // Window focus: covers the user-noticeable "I tabbed back to Hive"
+    // case where visibilitychange may not fire (e.g. cross-monitor focus
+    // shifts on macOS with the window still 'visible').
+    this._onFocus = () => this._refreshRenderer();
+    window.addEventListener('focus', this._onFocus);
+
+    // Long-running sessions with heavy unique-glyph output (Claude,
+    // syntax-highlighted diffs, 24-bit colors) overflow xterm's fixed
+    // WebGL atlas. Eviction makes new glyphs sample stale UVs — the
+    // "matrix characters" symptom. The user's known workaround is to
+    // resize. Periodically clear the atlas while the document is
+    // visible; one frame's cost, breaks the accumulation.
+    this._atlasInterval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      this._refreshRenderer();
+    }, 90_000);
   }
 
   setInfo(info) {
@@ -610,6 +627,14 @@ class SessionTerm {
     }
     if (this._onVisibility) {
       document.removeEventListener('visibilitychange', this._onVisibility);
+    }
+    if (this._onFocus) {
+      window.removeEventListener('focus', this._onFocus);
+      this._onFocus = null;
+    }
+    if (this._atlasInterval) {
+      clearInterval(this._atlasInterval);
+      this._atlasInterval = null;
     }
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.
