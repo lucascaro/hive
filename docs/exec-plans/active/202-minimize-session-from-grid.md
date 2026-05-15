@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/202-minimize-session-from-grid.md](../../product-specs/202-minimize-session-from-grid.md)
 - **Issue:** #202
-- **Stage:** IMPLEMENT
+- **PR:** #204
+- **Branch:** `feature/202-minimize-session`
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
