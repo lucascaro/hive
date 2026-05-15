@@ -46,14 +46,16 @@ html, body {
   grid-template-columns: var(--sidebar-width, 200px) 1fr;
   /* Row 1 is the daemon-mismatch banner, row 2 is the update-available
      banner — both collapse to 0 when hidden. Row 3 is the normal
-     sidebar + terms layout. */
-  grid-template-rows: auto auto 1fr;
+     sidebar + terms layout. Row 4 is the minimized-sessions tray;
+     collapses to 0 when empty (display: none). */
+  grid-template-rows: auto auto 1fr auto;
   height: 100vh;
   transition: grid-template-columns 120ms ease;
 }
-#sidebar { grid-row: 3; grid-column: 1; }
-#sidebar-resizer { grid-row: 3; grid-column: 1; }
+#sidebar { grid-row: 3 / span 2; grid-column: 1; }
+#sidebar-resizer { grid-row: 3 / span 2; grid-column: 1; }
 #terms { grid-row: 3; grid-column: 2; }
+#minimized-tray { grid-row: 4; grid-column: 2; }
 #update-banner { grid-row: 2; grid-column: 1 / -1; }
 
 body.resizing-sidebar { cursor: col-resize; user-select: none; }
@@ -614,6 +616,79 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-project {
   margin-left: auto;
   color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.term-host .tile-minimize {
+  flex-shrink: 0;
+  margin-left: 6px;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.65);
+  font: 12px Menlo, monospace;
+  line-height: 1;
+  cursor: pointer;
+}
+.term-host .tile-minimize:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+#minimized-tray {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #0a0a0a;
+  border-top: 1px solid #1a1a1a;
+  min-height: 28px;
+  scrollbar-width: thin;
+}
+#minimized-tray.hidden { display: none; }
+#minimized-tray .min-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid color-mix(in srgb, var(--session-color, #888) 30%, #1a1a1a);
+  border-radius: 3px;
+  padding: 2px 8px;
+  color: #ddd;
+  font: 11px Menlo, monospace;
+  cursor: pointer;
+  max-width: 240px;
+}
+#minimized-tray .min-chip:hover {
+  background: color-mix(in srgb, var(--session-color, #888) 15%, #0a0a0a);
+  border-color: color-mix(in srgb, var(--session-color, #888) 55%, #1a1a1a);
+  color: #fff;
+}
+#minimized-tray .min-chip .min-chip-color {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--session-color, #888);
+  flex-shrink: 0;
+}
+#minimized-tray .min-chip .min-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#minimized-tray .min-chip .min-chip-project {
+  color: rgba(255, 255, 255, 0.55);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;

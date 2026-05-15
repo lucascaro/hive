@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GUI: minimize sessions to hide them from grid views. Each tile in
+  the project-grid and all-sessions-grid now has a small minimize
+  button on the right of its header (`–`). Minimized sessions are
+  removed from the grid and appear as chips in a tray below the
+  terminals; clicking a chip restores the session to the grid and
+  switches to it. Minimized sessions stay alive (output keeps
+  buffering) and remain reachable in single-session mode via the
+  sidebar, command palette, and `⌘[/]` cycling. State is per-app-run
+  (not persisted across launches). (#202)
 - Frontend test harness. `scripts/test.sh` runs four layers: Go
   (existing), Vitest unit tests for the new `cmd/hivegui/frontend/src/lib/`
   pure modules, jsdom DOM tests, and a Playwright E2E suite that

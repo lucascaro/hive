@@ -18,6 +18,7 @@ import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
+import { filterMinimized } from './lib/minimized.js';
 import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
@@ -70,7 +71,22 @@ class SessionTerm {
     // user can tell at a glance what each tile is currently doing.
     this.tileTermTitle = document.createElement('span');
     this.tileTermTitle.className = 'tile-term-title';
-    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileTermTitle, this.tileProject);
+    this.tileMinimize = document.createElement('button');
+    this.tileMinimize.className = 'tile-minimize';
+    this.tileMinimize.type = 'button';
+    this.tileMinimize.title = 'Minimize (hide from grid)';
+    this.tileMinimize.setAttribute('aria-label', 'Minimize session');
+    this.tileMinimize.textContent = '–';
+    this.tileMinimize.addEventListener('mousedown', (e) => {
+      // Block the surrounding tile mousedown so minimizing doesn't
+      // also select / switch to this tile.
+      e.stopPropagation();
+    });
+    this.tileMinimize.addEventListener('click', (e) => {
+      e.stopPropagation();
+      minimizeSession(this.info.id);
+    });
+    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileTermTitle, this.tileProject, this.tileMinimize);
 
     this.body = document.createElement('div');
     this.body.className = 'term-body';
@@ -656,6 +672,7 @@ const state = {
   sessions: [],             // SessionInfo[] in display order
   collapsed: new Set(),     // project ids that are collapsed
   attention: new Set(),     // session ids that have unread bells
+  minimized: new Set(),     // session ids hidden from grid views; restored via tray
   aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed
   terms: new Map(),         // session id -> SessionTerm
@@ -1598,14 +1615,93 @@ function shiftActiveProject(delta) {
 // gridScopeSessions returns the list of sessions that should be tiled
 // in the current grid view.
 function gridScopeSessions() {
-  if (state.view === 'grid-all') return orderedSessions();
+  if (state.view === 'grid-all') {
+    return filterMinimized(orderedSessions(), state.minimized);
+  }
   if (state.view === 'grid-project') {
     const pid = state.gridProjectId || activeProjectId();
-    return state.sessions
+    const scoped = state.sessions
       .filter((s) => (s.projectId ?? s.project_id) === pid)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return filterMinimized(scoped, state.minimized);
   }
   return [];
+}
+
+// minimizeSession hides a session from grid views by adding its id to
+// state.minimized. The session stays alive; its tile is removed on the
+// next renderGrid(). Single-session mode is unaffected — the user can
+// still switch to a minimized session via the sidebar / palette / ⌘[/].
+function minimizeSession(id) {
+  if (!id || state.minimized.has(id)) return;
+  state.minimized.add(id);
+  // If the active session is the one being minimized while in grid
+  // mode, hand focus to the next still-visible session so the focus
+  // ring doesn't vanish onto an offscreen tile.
+  if (state.activeId === id && state.view !== 'single') {
+    const next = gridScopeSessions().find((s) => s.id !== id);
+    if (next) setActive(next.id);
+  }
+  if (state.view !== 'single') renderGrid();
+  renderMinimizedTray();
+}
+
+// restoreSession removes a session from state.minimized and switches
+// to it. Works from any view — switchTo handles the view-aware repaint.
+function restoreSession(id) {
+  if (!id) return;
+  state.minimized.delete(id);
+  renderMinimizedTray();
+  switchTo(id);
+}
+
+// renderMinimizedTray rebuilds the #minimized-tray chip row from
+// state.minimized. Hidden when the set is empty.
+function renderMinimizedTray() {
+  const tray = document.getElementById('minimized-tray');
+  if (!tray) return;
+  tray.innerHTML = '';
+  const ids = Array.from(state.minimized);
+  if (ids.length === 0) {
+    tray.classList.add('hidden');
+    return;
+  }
+  tray.classList.remove('hidden');
+  // Preserve display order so the chip row reads top-to-bottom like
+  // the sidebar / grid would.
+  const ord = orderedSessions().filter((s) => state.minimized.has(s.id));
+  for (const info of ord) {
+    const chip = document.createElement('button');
+    chip.className = 'min-chip';
+    chip.type = 'button';
+    chip.dataset.sid = info.id;
+    chip.title = `Restore ${info.name}`;
+    chip.style.setProperty('--session-color', info.color || '#888');
+
+    const dot = document.createElement('span');
+    dot.className = 'min-chip-color';
+    chip.append(dot);
+
+    const name = document.createElement('span');
+    name.className = 'min-chip-name';
+    name.textContent = info.name;
+    chip.append(name);
+
+    const pid = info.projectId ?? info.project_id;
+    const proj = state.projects.find((p) => p.id === pid);
+    if (proj?.name) {
+      const projLabel = document.createElement('span');
+      projLabel.className = 'min-chip-project';
+      projLabel.textContent = proj.name;
+      chip.append(projLabel);
+    }
+
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      restoreSession(info.id);
+    });
+    tray.append(chip);
+  }
 }
 
 function setView(view) {
@@ -1699,7 +1795,14 @@ EventsOn('session:list', (jsonStr) => {
   const { sessions } = JSON.parse(jsonStr);
   state.sessions = sessions || [];
   for (const s of state.sessions) processAliveTransition(s);
+  // Drop any minimized ids whose sessions no longer exist (e.g. after
+  // a daemon restart or list reset) so the tray doesn't leak stale chips.
+  const liveIds = new Set(state.sessions.map((s) => s.id));
+  for (const id of Array.from(state.minimized)) {
+    if (!liveIds.has(id)) state.minimized.delete(id);
+  }
   renderSidebar();
+  renderMinimizedTray();
   if (!state.activeId && state.sessions.length > 0) {
     switchTo(orderedSessions()[0].id);
   }
@@ -1720,6 +1823,7 @@ EventsOn('session:event', (jsonStr) => {
   if (ev.kind === 'removed') {
     state.aliveById.delete(ev.session.id);
     state.dismissedDead.delete(ev.session.id);
+    state.minimized.delete(ev.session.id);
     let nextId = null;
     if (state.activeId === ev.session.id) {
       const ord = orderedSessions();
@@ -1770,6 +1874,7 @@ EventsOn('session:event', (jsonStr) => {
     if (state.activeId === ev.session.id) updateAppTitle();
   }
   renderSidebar();
+  if (ev.kind === 'removed' || ev.kind === 'updated') renderMinimizedTray();
 });
 
 EventsOn('pty:data', (id, b64) => {
