@@ -144,6 +144,12 @@ Per AGENTS.md: both unit and functional coverage.
 - **2026-05-15** — Plan approved. Stage: PLAN → IMPLEMENT.
 - **2026-05-15** — Implementation complete. New `lib/minimized.js` + 5 unit tests; tile minimize button; `#minimized-tray` chip row; `state.minimized` Set with cleanup on session removal and on `session:list` rebroadcast; CHANGELOG entry. All 71 Vitest tests + 12 Playwright tests pass.
 
+## PR convergence ledger
+
+<!-- Append-only. One line per /hs-review-loop iteration. -->
+
+- **2026-05-15 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: e1d4a41.
+
 ## Open questions
 
 - Should the tray be horizontally scrollable when there are many minimized sessions, or wrap to a second row? Defer to PLAN.
