@@ -417,18 +417,20 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	}
 
 	sink := &frameSink{conn: conn}
-	replay, unsub := sess.SubscribeAtomicReplay(sink)
-	defer unsub()
-
-	// Stream the byte-ring replay (or an empty replay for a fresh
-	// session) under the sink's write mutex so live PTY fanout blocks
-	// until the Begin/bytes/Done sequence is fully on the wire. No live
-	// bytes can land inside the replay window. The Begin event also
-	// tells the client to reset xterm.js's buffer before the bytes
-	// arrive, so the replay paints a clean slate.
-	if err := sink.writeReplay(replay, 16<<10); err != nil {
+	// SubscribeWithAtomicReplay holds s.mu across both the snapshot
+	// capture and the writeReplay call, so deliver cannot fanout to
+	// any sink (including this one before it's registered) while the
+	// Begin/replay/Done sequence is being written. The sink is
+	// registered for live fanout only after writeReplay returns
+	// successfully, so live bytes start arriving on the wire strictly
+	// after Done.
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		return sink.writeReplay(replay, 16<<10)
+	})
+	if err != nil {
 		return
 	}
+	defer unsub()
 
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
@@ -451,10 +453,14 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 			_ = sess.Resize(rz.Cols, rz.Rows)
 		case wire.FrameRequestReplay:
 			// Client (typically the GUI after a width-changing resize)
-			// asks us to re-stream the scrollback. Same atomic dance as
-			// the initial attach: hold the sink mutex from the Begin
-			// event through the Done event so live fanout queues on it.
-			if err := sink.writeReplay(sess.Replay(), 16<<10); err != nil {
+			// asks us to re-stream the scrollback. The sink is already
+			// registered for live fanout, so EmitAtomicReplay's hold of
+			// s.mu blocks deliver entirely until the Begin/replay/Done
+			// sequence is on the wire. After release, queued live data
+			// resumes in order.
+			if err := sess.EmitAtomicReplay(func(replay []byte) error {
+				return sink.writeReplay(replay, 16<<10)
+			}); err != nil {
 				return
 			}
 		default:
@@ -478,12 +484,18 @@ func (f *frameSink) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// writeReplay streams a scrollback replay to the client as
-// EventScrollbackReplayBegin → chunked FrameData → EventScrollbackReplayDone,
-// all under the sink's write mutex so any concurrent live PTY fanout
-// blocks until the replay finishes. That ordering is what prevents live
-// bytes from landing in the middle of (or before) the replay — which is
-// the proximate cause of the "live text overwriting scrollback" bug.
+// writeReplay streams Begin → chunked replay bytes → Done to the
+// client under f.mu, so any concurrent non-fanout writes to this sink
+// serialize behind us. The caller is expected to run this via the
+// session's atomic-replay helpers (SubscribeWithAtomicReplay /
+// EmitAtomicReplay) so that s.mu also serializes us against deliver
+// — without that outer serialization, a live fanout that started
+// before we acquired f.mu would write its byte to the wire BEFORE
+// the Begin event, get rendered by xterm in `live` phase, then get
+// wiped by term.reset() when Begin arrives. That is the exact
+// "live text overwriting scrollback" symptom the replay protocol
+// exists to eliminate.
+//
 // chunk is the max payload size per FrameData; pass 16<<10 to match
 // existing snapshot chunking.
 func (f *frameSink) writeReplay(replay []byte, chunk int) error {
@@ -495,10 +507,7 @@ func (f *frameSink) writeReplay(replay []byte, chunk int) error {
 		return err
 	}
 	for len(replay) > 0 {
-		n := chunk
-		if n > len(replay) {
-			n = len(replay)
-		}
+		n := min(chunk, len(replay))
 		if err := wire.WriteFrame(f.conn, wire.FrameData, replay[:n]); err != nil {
 			return err
 		}

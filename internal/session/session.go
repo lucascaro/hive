@@ -258,41 +258,47 @@ func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscri
 	}
 }
 
-// SubscribeAtomicReplay returns the raw-byte scrollback ring AND
-// registers the sink under a single lock acquisition. Sibling of
-// SubscribeAtomicSnapshot, but the caller writes the bytes verbatim to
-// the client (which has just been told to reset its terminal) rather
-// than a vt10x-synthesized repaint. Two advantages over snapshot:
+// SubscribeWithAtomicReplay runs writeFn with the current ring
+// snapshot AND registers sink for future fanout, all under s.mu, so
+// no live PTY byte can land on writeFn's transport between the
+// snapshot capture and the writeFn return. After writeFn returns
+// (without error), the sink is registered and starts receiving live
+// fanout from the next deliver onward.
 //
-//  1. Preserves the full byte stream (CSI sequences, alt-screen
-//     enter/leave, OSC titles) — the client gets exactly what the
-//     PTY produced, which xterm.js re-parses correctly at the new
-//     width. Snapshot bakes width into pre-rendered cells.
-//  2. Cross-attach scrollback is no longer limited to the 500-row
-//     vt10x history ring; the byte ring is sized by ringCap.
+// writeFn is expected to write a Begin event, the replay bytes, and a
+// Done event to its underlying transport, ideally under the sink's
+// own write mutex so any concurrent non-fanout writer is also
+// serialized. While writeFn runs, deliver() is blocked on s.mu — the
+// PTY reader continues filling the kernel buffer, but no other write
+// reaches the wire. Keep writeFn quick: long replays mean longer
+// session pauses (PTY backpressure picks up at the kernel buffer
+// level, ~64 KiB on macOS, before the agent stalls).
 //
-// To preserve "no live byte is dropped between replay and live", the
-// caller must serialize the replay write against fanout — typically
-// by holding the sink's write mutex from before this call returns
-// until after the last replay byte is written.
-func (s *Session) SubscribeAtomicReplay(sink Sink) (replay []byte, unsubscribe func()) {
+// On writeFn error the sink is not registered and unsubscribe is nil.
+func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byte) error) (unsubscribe func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	replay = s.vt.RingBytes()
+	if err := writeFn(s.vt.RingBytes()); err != nil {
+		return nil, err
+	}
 	s.sinks[sink] = struct{}{}
-	return replay, func() {
+	return func() {
 		s.mu.Lock()
 		delete(s.sinks, sink)
 		s.mu.Unlock()
-	}
+	}, nil
 }
 
-// Replay returns the current raw-byte scrollback ring without
-// registering a sink. For client-initiated replay requests (e.g. the
-// GUI's width-changing resize trigger) the sink is already registered;
-// only the bytes are needed.
-func (s *Session) Replay() []byte {
-	return s.vt.RingBytes()
+// EmitAtomicReplay runs writeFn with the current ring snapshot under
+// s.mu, so no deliver runs while writeFn writes. Used by clients
+// asking for a re-replay mid-attach (FrameRequestReplay) where the
+// sink is already registered — we still need the snapshot to be
+// captured atomically with the wire write to prevent live bytes from
+// being interleaved between Begin and Done.
+func (s *Session) EmitAtomicReplay(writeFn func(replay []byte) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return writeFn(s.vt.RingBytes())
 }
 
 // Write forwards bytes from a client to the PTY (i.e. keystrokes).

@@ -166,11 +166,26 @@ func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
 }
 
 // appendRing copies p onto the byte ring, trimming the oldest bytes
-// when the cap is exceeded. After trimming we scan forward to the
-// next CSI escape (ESC, 0x1B) or UTF-8 leading byte so a replay
-// from offset 0 doesn't begin in the middle of an escape sequence
-// or a multi-byte rune. The scan is bounded so worst-case truncation
-// loss is minor. Caller holds v.mu.
+// when the cap is exceeded. After trimming, scan forward for a safe
+// replay boundary so a replay from offset 0 never begins in the
+// middle of a CSI/OSC sequence or a multi-byte UTF-8 rune — either
+// of which would surface as visible literal-text garbage at the top
+// of the user's scrollback after an overflow.
+//
+// Boundary preference, from most-preferred to least:
+//
+//  1. A LF or CR byte (0x0A / 0x0D). Newlines never appear inside CSI
+//     parameter sequences and are an unambiguous parser boundary.
+//  2. The byte immediately after a CSI/OSC final byte (the `m` of
+//     "[31m", the `BEL` of "]2;…\a"). We pick this up by tracking
+//     whether the scan position is inside an unterminated escape.
+//  3. An ESC byte (0x1B) — the start of a fresh sequence.
+//  4. A UTF-8 leading byte (ASCII or 0xC0+) that is not inside an
+//     active escape per the back-scan.
+//
+// If nothing safe is in `scanWindow`, fall through and drop exactly
+// `drop` bytes. Worst case: one glitched cell of literal text at the
+// top of replay. Caller holds v.mu.
 func (v *VT) appendRing(p []byte) {
 	if len(p) == 0 {
 		return
@@ -180,11 +195,6 @@ func (v *VT) appendRing(p []byte) {
 		return
 	}
 	drop := len(v.ring) - ringCap
-	// Find a safe boundary at or after `drop`. Scan up to 4 KiB beyond
-	// the cut to find an ESC (CSI/OSC start) or a UTF-8 leading byte
-	// (not a 10xxxxxx continuation). If nothing safe is in range, fall
-	// through and just drop exactly `drop` bytes — replay may emit one
-	// glitched cell but won't desync the parser long-term.
 	const scanWindow = 4 << 10
 	limit := drop + scanWindow
 	if limit > len(v.ring) {
@@ -193,28 +203,92 @@ func (v *VT) appendRing(p []byte) {
 	safe := drop
 	for i := drop; i < limit; i++ {
 		b := v.ring[i]
-		if b == 0x1B {
-			safe = i
-			break
-		}
-		// UTF-8: leading bytes are 0xxxxxxx (ASCII) or 11xxxxxx;
-		// continuation bytes are 10xxxxxx. Cut on a leading byte.
-		if b < 0x80 || (b&0xC0) == 0xC0 {
-			// Skip past raw CSI parameter / data bytes hidden inside an
-			// active escape — heuristic: if the previous byte is ESC we
-			// already took that boundary above; here we just accept any
-			// leading-byte position as a safe rune boundary.
+		// Newlines are the gold-standard boundary: never inside CSI.
+		if b == 0x0A || b == 0x0D {
 			safe = i
 			break
 		}
 	}
-	// Compact: a single copy keeps the slice small. Pre-allocate to the
-	// retained length so the underlying array doesn't keep the trimmed
-	// bytes pinned.
+	// If we didn't find a newline, fall back to ESC / UTF-8 leading
+	// byte, but verify the candidate is NOT inside an unterminated
+	// escape by back-scanning up to backScan bytes for an unmatched
+	// ESC.
+	if safe == drop {
+		const backScan = 64
+		for i := drop; i < limit; i++ {
+			b := v.ring[i]
+			if b == 0x1B {
+				safe = i
+				break
+			}
+			if b < 0x80 || (b&0xC0) == 0xC0 {
+				if !insideUnterminatedEscape(v.ring, i, backScan) {
+					safe = i
+					break
+				}
+			}
+		}
+	}
 	retained := len(v.ring) - safe
 	next := make([]byte, retained)
 	copy(next, v.ring[safe:])
 	v.ring = next
+}
+
+// insideUnterminatedEscape reports whether position `pos` in `b` is
+// in the middle of a CSI / OSC sequence — i.e. there's an ESC in the
+// preceding `back` bytes that has not yet seen a terminating byte.
+// Walks each sequence explicitly:
+//
+//   CSI: ESC [ <params 0x30–0x3F | intermediates 0x20–0x2F>*
+//        <final 0x40–0x7E>      — '[' itself is a final-range byte
+//                                  but only the FIRST byte after ESC.
+//   OSC: ESC ] <data>* <BEL | ESC \>
+//   short: ESC <single byte>   — e.g. ESC 7 (DECSC). One-byte tail.
+//
+// "Back" caps how far we look backwards; CSI sequences are typically
+// under 16 bytes, OSC titles can be longer (terminal title up to
+// ~256 bytes), so 256 is a safe upper bound.
+func insideUnterminatedEscape(b []byte, pos int, back int) bool {
+	start := pos - back
+	if start < 0 {
+		start = 0
+	}
+	// Find the most recent ESC before pos.
+	escAt := -1
+	for i := pos - 1; i >= start; i-- {
+		if b[i] == 0x1B {
+			escAt = i
+			break
+		}
+	}
+	if escAt < 0 || escAt+1 >= pos {
+		return false
+	}
+	switch b[escAt+1] {
+	case '[':
+		// CSI: scan from escAt+2 to pos-1 looking for a final byte.
+		for i := escAt + 2; i < pos; i++ {
+			c := b[i]
+			if c >= 0x40 && c <= 0x7E {
+				return false
+			}
+		}
+		return true
+	case ']':
+		// OSC: scan for BEL or a subsequent ESC (start of ST).
+		for i := escAt + 2; i < pos; i++ {
+			c := b[i]
+			if c == 0x07 || c == 0x1B {
+				return false
+			}
+		}
+		return true
+	default:
+		// Short escape: ESC <X>. Terminated at escAt+2. If pos is
+		// past escAt+2 we're not inside any escape anymore.
+		return pos < escAt+2
+	}
 }
 
 // pushHistory appends b to the ring, trimming the oldest entries when

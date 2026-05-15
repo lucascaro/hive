@@ -606,3 +606,53 @@ func TestVT_ReplayReproducesScreen(t *testing.T) {
 			dst.term.Cursor().X, dst.term.Cursor().Y)
 	}
 }
+
+// TestVT_RingOverflowPrefersNewlineBoundary verifies that the
+// overflow-trim path prefers a newline as its replay boundary over
+// CSI / UTF-8 candidates. Newlines never appear inside CSI sequences,
+// so a replay starting on `\n` is guaranteed not to emit literal CSI
+// parameter bytes as visible text.
+func TestVT_RingOverflowPrefersNewlineBoundary(t *testing.T) {
+	v := NewVT(80, 24)
+	// Stream with explicit newlines + CSI; overflow once.
+	var stream bytes.Buffer
+	for i := 0; i < (ringCap/8)+200; i++ {
+		stream.WriteString("\x1b[31mhi\x1b[m\r\n")
+	}
+	if _, err := v.Write(stream.Bytes()); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got := v.RingBytes()
+	if len(got) == 0 {
+		t.Fatalf("ring empty")
+	}
+	// First byte should be a newline or an ESC — NOT a CSI parameter
+	// digit / 'm' / 'h' / 'i' which would render as literal text.
+	first := got[0]
+	if first != 0x0A && first != 0x0D && first != 0x1B {
+		t.Errorf("ring starts at unsafe byte %#x (%q); expected newline or ESC", first, string([]byte{first}))
+	}
+}
+
+// TestVT_InsideUnterminatedEscape exercises the helper directly.
+func TestVT_InsideUnterminatedEscape(t *testing.T) {
+	cases := []struct {
+		name string
+		buf  string
+		pos  int
+		want bool
+	}{
+		{"plain text", "hello world", 5, false},
+		{"after CSI terminator", "\x1b[31mhi", 5, false}, // pos=5 is the 'h' after 'm'
+		{"inside CSI param", "\x1b[31mhi", 3, true},      // pos=3 is the '1' inside [31m
+		{"inside OSC", "\x1b]2;title", 4, true},
+		{"after OSC BEL", "\x1b]2;title\x07more", 10, false},
+		{"no ESC nearby", "abcdefghij\x1b[mlater", 5, false},
+	}
+	for _, c := range cases {
+		got := insideUnterminatedEscape([]byte(c.buf), c.pos, 64)
+		if got != c.want {
+			t.Errorf("%s: pos=%d got %v want %v", c.name, c.pos, got, c.want)
+		}
+	}
+}

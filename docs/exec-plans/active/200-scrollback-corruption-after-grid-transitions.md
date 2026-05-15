@@ -114,6 +114,8 @@ Frontend: `_onBodyResize` (`cmd/hivegui/frontend/src/main.js:535–570`) sends a
 
 ## Decision log
 
+## PR convergence ledger
+
 ## Progress
 
 - **2026-05-15** — Spec created, issue #200 opened, triage: bug / L / P2. Stage → RESEARCH.

@@ -249,7 +249,6 @@ class SessionTerm {
     // ensureAttached so the new PTY's stream resumes without the user
     // having to switch sessions and back.
     this.needsReattach = false;
-    this.phase = 'replay';
 
     // Track the OSC-set window title from the running TUI (vim, htop,
     // claude code, etc.) so the app title bar can show it after the
@@ -1916,12 +1915,12 @@ EventsOn('pty:event', (id, jsonStr) => {
       // whatever's already rendered, producing the "live text overwrites
       // scrollback" symptom (the bug-2 path). The decoder is also
       // reset so a partial UTF-8 sequence across the boundary doesn't
-      // corrupt the first replay rune.
-      st.phase = 'replay';
+      // corrupt the first replay rune. Wire-order is what guarantees no
+      // live bytes land between Begin and Done — see daemon's
+      // SubscribeWithAtomicReplay / EmitAtomicReplay.
       st.term.reset();
       if (st.decoder) st.decoder = new TextDecoder('utf-8');
     } else if (ev.kind === 'scrollback_replay_done') {
-      st.phase = 'live';
       // After scrollback replay, snap the viewport to the latest line
       // so the user sees the cursor / newest output rather than landing
       // somewhere mid-history. Tile dims are already correct via the
