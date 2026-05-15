@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/200-scrollback-corruption-after-grid-transitions.md](../../product-specs/200-scrollback-corruption-after-grid-transitions.md)
 - **Issue:** #200
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** https://github.com/lucascaro/hive/pull/203
 - **Branch:** feature/200-scrollback-corruption-after-grid-transitions
 
@@ -120,6 +120,16 @@ Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extr
 **Playwright e2e (`cmd/hivegui/frontend/test/e2e/scrollback.spec.js` — new):**
 - `single → grid → single keeps wide-column scrollback` — drive real xterm in Wails dev shell, scroll up after transit, assert row length ≥ wide-cols − 10 before any soft-wrap.
 - `rapid streaming never overwrites scrolled history` — feed `seq 1 10000`, scroll up mid-stream, assert visible row numbers are monotonically increasing — no overwrite.
+
+## QA verdict
+
+- **2026-05-15** — verdict: NEEDS_FOLLOWUP; checks: 4 PASS / 0 FAIL / 1 followup; followups: #206 (gofmt trailing newline in daemon.go); one-line: spec's three success criteria all met by code-review + tests; one trailing-newline gofmt regression flagged as cosmetic followup.
+  - 2026-05-15 dimensions:
+    - build/lint/test — PASS — `go build ./...`, `go vet ./...`, `go test ./...`, Vitest 85/85, `npm run build` all green. gofmt -l surfaced 10 files but 9 are pre-existing drift unrelated to #200; the one new offender (internal/daemon/daemon.go) is a single trailing newline → tracked as #206.
+    - acceptance — PASS — Criterion 1 (narrow-scrollback-after-resize) and Criterion 2 (no-overwrite-mid-print) verified by code-walk of the s.mu→f.mu lock-ordered replay path; Criterion 3 (test coverage at appropriate layers) satisfied by 5 new Go tests + 14 Vitest cases + daemon TestRequestReplay, despite some test-name drift from the plan.
+    - non-goals — PASS — vt10x history ring left intact alongside the additive byte ring; no scrollback-length config surface added.
+    - regression — PASS — wire 0x14 is client→server optional; frontend `pty:event` handler tolerates unknown kinds via `handleScrollbackEvent` no-op return; `SubscribeAtomicSnapshot` retained and still tested; lock order s.mu→f.mu uniform across deliver and new APIs; ring lifetime bound to Session (no leak).
+    - doc accuracy — PASS — CHANGELOG #200 entry is accurate and user-visible; doc comments on new wire/session/daemon symbols are present; plan + spec correctly updated; AGENTS.md/README correctly untouched.
 
 ## Decision log
 
