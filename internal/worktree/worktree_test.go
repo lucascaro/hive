@@ -1,6 +1,8 @@
 package worktree
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -199,6 +201,41 @@ func TestCreateWorktree_NoRemoteFallsBackToHEAD(t *testing.T) {
 	got := revParse(t, wtPath, "HEAD")
 	if got != headBefore {
 		t.Errorf("worktree HEAD = %s, want local HEAD %s", got, headBefore)
+	}
+}
+
+func TestCreateWorktree_UnreachableRemoteWarnsAndFallsBack(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t)
+	// Point origin at a path that does not exist. `git fetch` will fail;
+	// `symbolic-ref refs/remotes/origin/HEAD` will also fail (never set).
+	bogus := filepath.Join(t.TempDir(), "does-not-exist.git")
+	mustGit(t, repo, "remote", "add", "origin", bogus)
+
+	var buf bytes.Buffer
+	origOut := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(origOut) })
+
+	headBefore := revParse(t, repo, "HEAD")
+	branch := "offline-feature"
+	wtPath := WorktreePath(repo, branch)
+	if err := CreateWorktree(repo, branch, wtPath); err != nil {
+		t.Fatalf("CreateWorktree with unreachable remote: %v", err)
+	}
+	defer Cleanup(repo, wtPath)
+
+	if got := revParse(t, wtPath, "HEAD"); got != headBefore {
+		t.Errorf("worktree HEAD = %s, want local HEAD %s (fallback path)", got, headBefore)
+	}
+	logs := buf.String()
+	if !strings.Contains(logs, "worktree:") {
+		t.Errorf("expected worktree warning in logs when remote is unreachable; got: %q", logs)
+	}
+	// Must mention either the fetch failure or the missing origin/HEAD so
+	// the operator can diagnose stale-upstream risk.
+	if !strings.Contains(logs, "fetch origin failed") && !strings.Contains(logs, "origin/HEAD not set") {
+		t.Errorf("expected log to mention fetch failure or missing origin/HEAD; got: %q", logs)
 	}
 }
 
