@@ -258,6 +258,49 @@ func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscri
 	}
 }
 
+// SubscribeWithAtomicReplay runs writeFn with the current ring
+// snapshot AND registers sink for future fanout, all under s.mu, so
+// no live PTY byte can land on writeFn's transport between the
+// snapshot capture and the writeFn return. After writeFn returns
+// (without error), the sink is registered and starts receiving live
+// fanout from the next deliver onward.
+//
+// writeFn is expected to write a Begin event, the replay bytes, and a
+// Done event to its underlying transport, ideally under the sink's
+// own write mutex so any concurrent non-fanout writer is also
+// serialized. While writeFn runs, deliver() is blocked on s.mu — the
+// PTY reader continues filling the kernel buffer, but no other write
+// reaches the wire. Keep writeFn quick: long replays mean longer
+// session pauses (PTY backpressure picks up at the kernel buffer
+// level, ~64 KiB on macOS, before the agent stalls).
+//
+// On writeFn error the sink is not registered and unsubscribe is nil.
+func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byte) error) (unsubscribe func(), err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := writeFn(s.vt.RingBytes()); err != nil {
+		return nil, err
+	}
+	s.sinks[sink] = struct{}{}
+	return func() {
+		s.mu.Lock()
+		delete(s.sinks, sink)
+		s.mu.Unlock()
+	}, nil
+}
+
+// EmitAtomicReplay runs writeFn with the current ring snapshot under
+// s.mu, so no deliver runs while writeFn writes. Used by clients
+// asking for a re-replay mid-attach (FrameRequestReplay) where the
+// sink is already registered — we still need the snapshot to be
+// captured atomically with the wire write to prevent live bytes from
+// being interleaved between Begin and Done.
+func (s *Session) EmitAtomicReplay(writeFn func(replay []byte) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return writeFn(s.vt.RingBytes())
+}
+
 // Write forwards bytes from a client to the PTY (i.e. keystrokes).
 func (s *Session) Write(p []byte) (int, error) {
 	return s.ptmx.Write(p)

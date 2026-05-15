@@ -417,17 +417,20 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	}
 
 	sink := &frameSink{conn: conn}
-	snapshot, unsub := sess.SubscribeAtomicSnapshot(sink)
+	// SubscribeWithAtomicReplay holds s.mu across both the snapshot
+	// capture and the writeReplay call, so deliver cannot fanout to
+	// any sink (including this one before it's registered) while the
+	// Begin/replay/Done sequence is being written. The sink is
+	// registered for live fanout only after writeReplay returns
+	// successfully, so live bytes start arriving on the wire strictly
+	// after Done.
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func(replay []byte) error {
+		return sink.writeReplay(replay, 16<<10)
+	})
+	if err != nil {
+		return
+	}
 	defer unsub()
-
-	if err := writeChunked(conn, wire.FrameData, snapshot, 16<<10); err != nil {
-		return
-	}
-	if err := wire.WriteJSON(conn, wire.FrameEvent, wire.Event{
-		Kind: wire.EventScrollbackReplayDone,
-	}); err != nil {
-		return
-	}
 
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
@@ -448,6 +451,18 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 				continue
 			}
 			_ = sess.Resize(rz.Cols, rz.Rows)
+		case wire.FrameRequestReplay:
+			// Client (typically the GUI after a width-changing resize)
+			// asks us to re-stream the scrollback. The sink is already
+			// registered for live fanout, so EmitAtomicReplay's hold of
+			// s.mu blocks deliver entirely until the Begin/replay/Done
+			// sequence is on the wire. After release, queued live data
+			// resumes in order.
+			if err := sess.EmitAtomicReplay(func(replay []byte) error {
+				return sink.writeReplay(replay, 16<<10)
+			}); err != nil {
+				return
+			}
 		default:
 			log.Printf("hived: unexpected attach frame: %s", ft)
 		}
@@ -469,6 +484,40 @@ func (f *frameSink) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// writeReplay streams Begin → chunked replay bytes → Done to the
+// client under f.mu, so any concurrent non-fanout writes to this sink
+// serialize behind us. The caller is expected to run this via the
+// session's atomic-replay helpers (SubscribeWithAtomicReplay /
+// EmitAtomicReplay) so that s.mu also serializes us against deliver
+// — without that outer serialization, a live fanout that started
+// before we acquired f.mu would write its byte to the wire BEFORE
+// the Begin event, get rendered by xterm in `live` phase, then get
+// wiped by term.reset() when Begin arrives. That is the exact
+// "live text overwriting scrollback" symptom the replay protocol
+// exists to eliminate.
+//
+// chunk is the max payload size per FrameData; pass 16<<10 to match
+// existing snapshot chunking.
+func (f *frameSink) writeReplay(replay []byte, chunk int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := wire.WriteJSON(f.conn, wire.FrameEvent, wire.Event{
+		Kind: wire.EventScrollbackReplayBegin,
+	}); err != nil {
+		return err
+	}
+	for len(replay) > 0 {
+		n := min(chunk, len(replay))
+		if err := wire.WriteFrame(f.conn, wire.FrameData, replay[:n]); err != nil {
+			return err
+		}
+		replay = replay[n:]
+	}
+	return wire.WriteJSON(f.conn, wire.FrameEvent, wire.Event{
+		Kind: wire.EventScrollbackReplayDone,
+	})
+}
+
 func (f *frameSink) Close() error { return f.conn.Close() }
 
 // bootstrapWanted reports whether opts has any non-default field set.
@@ -477,16 +526,3 @@ func bootstrapWanted(opts session.Options) bool {
 	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || len(opts.Env) > 0
 }
 
-func writeChunked(w io.Writer, t wire.FrameType, p []byte, chunk int) error {
-	for len(p) > 0 {
-		n := chunk
-		if n > len(p) {
-			n = len(p)
-		}
-		if err := wire.WriteFrame(w, t, p[:n]); err != nil {
-			return err
-		}
-		p = p[n:]
-	}
-	return nil
-}

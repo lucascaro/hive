@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"os/exec"
@@ -94,7 +95,9 @@ func handshake(t *testing.T, conn net.Conn, hello wire.Hello) wire.Welcome {
 }
 
 // readUntilReplayDone consumes DATA frames into out until the
-// scrollback_replay_done event arrives.
+// scrollback_replay_done event arrives. The replay sequence is now
+// Begin event → DATA frames → Done event, so we tolerate (and skip)
+// the Begin marker — only Done terminates the read.
 func readUntilReplayDone(t *testing.T, conn net.Conn, out *bytes.Buffer) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -108,7 +111,18 @@ func readUntilReplayDone(t *testing.T, conn net.Conn, out *bytes.Buffer) {
 		case wire.FrameData:
 			out.Write(payload)
 		case wire.FrameEvent:
-			return
+			var ev wire.Event
+			if err := json.Unmarshal(payload, &ev); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			switch ev.Kind {
+			case wire.EventScrollbackReplayBegin:
+				// keep reading; Done is what ends the replay
+			case wire.EventScrollbackReplayDone:
+				return
+			default:
+				t.Fatalf("unexpected event kind during replay: %q", ev.Kind)
+			}
 		default:
 			t.Fatalf("unexpected frame during replay: %s", ft)
 		}
@@ -667,5 +681,77 @@ func TestStartup_NoOverride_ReapsOrphans(t *testing.T) {
 
 	if _, err := os.Stat(foreign); !os.IsNotExist(err) {
 		t.Fatalf("expected stale worktree to be reaped, got err=%v", err)
+	}
+}
+
+// TestRequestReplay verifies a client can issue FrameRequestReplay
+// mid-attach and receive the scrollback bytes between Begin/Done
+// markers, with the same atomicity guarantees as the initial replay
+// at attach time.
+func TestRequestReplay(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := firstSessionID(t, d)
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeAttach, SessionID: id})
+
+	// Drain the initial replay.
+	var initial bytes.Buffer
+	readUntilReplayDone(t, conn, &initial)
+
+	// Generate distinctive output the daemon's byte ring will capture.
+	if err := wire.WriteFrame(conn, wire.FrameData, []byte("echo HIVE_REPLAY_MARK_77\n")); err != nil {
+		t.Fatalf("write data: %v", err)
+	}
+	// Drain live frames until the marker shows up.
+	var live bytes.Buffer
+	drainFor(conn, &live, 800*time.Millisecond)
+	if !strings.Contains(live.String(), "HIVE_REPLAY_MARK_77") {
+		t.Fatalf("marker did not arrive live: %q", live.String())
+	}
+
+	// Ask for a replay; expect Begin → DATA (containing marker) → Done.
+	if err := wire.WriteFrame(conn, wire.FrameRequestReplay, nil); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	var replay bytes.Buffer
+	sawBegin := false
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		_ = conn.SetReadDeadline(deadline)
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			t.Fatalf("read frame: %v", err)
+		}
+		switch ft {
+		case wire.FrameData:
+			if !sawBegin {
+				t.Errorf("got DATA before Begin event")
+			}
+			replay.Write(payload)
+		case wire.FrameEvent:
+			var ev wire.Event
+			if err := json.Unmarshal(payload, &ev); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			switch ev.Kind {
+			case wire.EventScrollbackReplayBegin:
+				sawBegin = true
+			case wire.EventScrollbackReplayDone:
+				if !sawBegin {
+					t.Errorf("got Done without Begin")
+				}
+				if !strings.Contains(replay.String(), "HIVE_REPLAY_MARK_77") {
+					t.Errorf("replay missing marker: %q", replay.String())
+				}
+				return
+			default:
+				t.Fatalf("unexpected event: %q", ev.Kind)
+			}
+		default:
+			t.Fatalf("unexpected frame: %s", ft)
+		}
 	}
 }

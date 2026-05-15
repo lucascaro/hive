@@ -61,6 +61,14 @@ const (
 	FrameProjectEvent  FrameType = 0x12 // S → C, JSON, control
 
 	FrameRestartSession FrameType = 0x13 // C → S, JSON, control
+
+	// FrameRequestReplay asks the daemon to re-stream the session's
+	// scrollback ring buffer into the attach connection. The daemon
+	// responds with EventScrollbackReplayBegin, a sequence of FrameData
+	// frames carrying the ring bytes, and EventScrollbackReplayDone —
+	// all written atomically with respect to live PTY fanout, so the
+	// client sees a clean buffer-reset boundary.
+	FrameRequestReplay FrameType = 0x14 // C → S, empty payload, attach
 )
 
 func (t FrameType) String() string {
@@ -103,6 +111,8 @@ func (t FrameType) String() string {
 		return "PROJECT_EVENT"
 	case FrameRestartSession:
 		return "RESTART_SESSION"
+	case FrameRequestReplay:
+		return "REQUEST_REPLAY"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

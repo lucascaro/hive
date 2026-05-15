@@ -697,6 +697,26 @@ func (a *App) ResizeSession(id string, cols, rows int) error {
 	return cs.writeJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
 }
 
+// RequestScrollbackReplay asks the daemon to re-stream the session's
+// scrollback byte ring. The GUI uses this after a width-changing
+// resize (single ↔ grid transitions) because xterm.js does not reflow
+// scrollback when its column count changes — replaying the raw bytes
+// into a freshly-reset terminal gets the history rendered at the new
+// width. The daemon serializes the replay against live PTY fanout, so
+// the client sees a clean Begin/bytes/Done sequence even under heavy
+// streaming.
+//
+// Distinct from RenderSnapshot / SubscribeAtomicSnapshot — the bytes
+// streamed back are the raw PTY ring, not the vt10x-synthesized
+// repaint.
+func (a *App) RequestScrollbackReplay(id string) error {
+	cs, err := a.attachFor(id)
+	if err != nil {
+		return err
+	}
+	return cs.writeFrame(wire.FrameRequestReplay, nil)
+}
+
 func (a *App) attachFor(id string) (*connState, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

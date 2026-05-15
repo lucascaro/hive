@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import {
   ConnectControl, OpenSession, CloseAttach,
-  WriteStdin, ResizeSession,
+  WriteStdin, ResizeSession, RequestScrollbackReplay,
   CreateSession, DuplicateSession, KillSession, RestartSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
@@ -28,6 +28,9 @@ import {
   recoverFromContextLoss,
   bindDprWatcher,
 } from './lib/renderer-recovery.js';
+import {
+  shouldRequestReplay, REPLAY_DEBOUNCE_MS, handleScrollbackEvent,
+} from './lib/scrollback.js';
 
 // ---------- session terminal ----------
 
@@ -246,7 +249,6 @@ class SessionTerm {
     // ensureAttached so the new PTY's stream resumes without the user
     // having to switch sessions and back.
     this.needsReattach = false;
-    this.phase = 'replay';
 
     // Track the OSC-set window title from the running TUI (vim, htop,
     // claude code, etc.) so the app title bar can show it after the
@@ -578,11 +580,45 @@ class SessionTerm {
     const wasAtBottom = buf ? (buf.baseY - buf.viewportY) <= STICKY_BOTTOM_LINES : true;
     // Swallow throw and continue: a transient FitAddon error (e.g. a
     // race against teardown) shouldn't drop the daemon-side resize.
+    const prevCols = this.term.cols;
     try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
     if (wasAtBottom) this.term.scrollToBottom();
+
+    // If the column count changed materially relative to the
+    // *baseline* (the cols active at the last replay, or initial
+    // attach if no replay has fired yet), xterm's scrollback is
+    // stale — its rendered rows were baked at the old width and
+    // xterm.js does not reflow history on resize. Ask the daemon to
+    // re-stream the raw byte ring; the EventScrollbackReplayBegin
+    // handler will term.reset() before the bytes arrive, and the
+    // daemon serializes the replay against live fanout so nothing
+    // interleaves.
+    //
+    // Comparing against a baseline (rather than the just-previous
+    // measurement) means a 80→84→83 sequence still triggers a replay
+    // — the final width is 3 cols off the baseline, even though
+    // neither single step crosses the threshold. We also unconditionally
+    // clear any pending timer on every resize, then re-arm only if
+    // the *current* delta still warrants a replay; otherwise an old
+    // measurement that briefly crossed the threshold would leave a
+    // stale timer armed.
+    if (this._replayBaselineCols === undefined) {
+      this._replayBaselineCols = prevCols || this.term.cols;
+    }
+    if (this._replayTimer) {
+      clearTimeout(this._replayTimer);
+      this._replayTimer = 0;
+    }
+    if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
+      this._replayTimer = setTimeout(() => {
+        this._replayTimer = 0;
+        this._replayBaselineCols = this.term.cols;
+        RequestScrollbackReplay(this.info.id).catch(() => { /* attach may have closed */ });
+      }, REPLAY_DEBOUNCE_MS);
+    }
   }
 
   async ensureAttached() {
@@ -1885,14 +1921,14 @@ EventsOn('pty:event', (id, jsonStr) => {
   try {
     const ev = JSON.parse(jsonStr);
     const st = state.terms.get(id);
-    if (st && ev.kind === 'scrollback_replay_done') {
-      st.phase = 'live';
-      // After scrollback replay, snap the viewport to the latest line
-      // so the user sees the cursor / newest output rather than landing
-      // somewhere mid-history. Tile dims are already correct via the
-      // ResizeObserver-driven fit at attach time — no defensive refit.
-      st.term.scrollToBottom();
-    }
+    if (!st) return;
+    // Begin: wipe xterm so replay paints onto a clean slate (otherwise
+    // the new bytes would overlay whatever's already rendered — the
+    // bug-2 symptom). Done: scroll to bottom so the user lands at the
+    // cursor. Wire-order is what guarantees no live bytes land
+    // between Begin and Done — see daemon's SubscribeWithAtomicReplay
+    // and EmitAtomicReplay.
+    handleScrollbackEvent(st, ev.kind);
   } catch { /* ignore */ }
 });
 
