@@ -525,4 +525,3 @@ func (f *frameSink) Close() error { return f.conn.Close() }
 func bootstrapWanted(opts session.Options) bool {
 	return opts.Shell != "" || opts.Cols != 0 || opts.Rows != 0 || len(opts.Env) > 0
 }
-
