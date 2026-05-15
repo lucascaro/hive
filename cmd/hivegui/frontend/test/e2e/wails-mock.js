@@ -73,6 +73,7 @@ export async function WriteStdin(id, b64) {
   return '';
 }
 export async function ResizeSession(_id, _cols, _rows) { return ''; }
+export async function RequestSnapshotReplay(_id) { return ''; }
 export async function CreateSession(spec) {
   const id = 'mock-' + (state.sessions.length + 1);
   const s = {

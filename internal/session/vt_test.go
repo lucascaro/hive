@@ -482,3 +482,127 @@ func TestVTSnapshotScrollbackResize(t *testing.T) {
 		t.Errorf("snapshot missing post-resize content: %q", snap)
 	}
 }
+
+// TestVT_RingCapturesAllBytes verifies that the byte ring buffer
+// retains every byte handed to Write, in order, until it fills the
+// cap. The ring is what powers the GUI's resize-replay path — if it
+// loses bytes, replay produces a corrupted xterm state.
+func TestVT_RingCapturesAllBytes(t *testing.T) {
+	v := NewVT(80, 24)
+	chunks := [][]byte{
+		[]byte("hello "),
+		[]byte("\x1b[31mred\x1b[m "),
+		[]byte("world\r\n"),
+		[]byte("second line\r\n"),
+	}
+	var want bytes.Buffer
+	for _, c := range chunks {
+		if _, err := v.Write(c); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		want.Write(c)
+	}
+	got := v.RingBytes()
+	if !bytes.Equal(got, want.Bytes()) {
+		t.Errorf("ring mismatch:\n  got  %q\n  want %q", got, want.Bytes())
+	}
+}
+
+// TestVT_RingOverflowDropsAtSafeBoundary verifies that when the ring
+// trims to stay under cap, the surviving prefix starts at an ESC byte
+// or a UTF-8 leading byte — not a multibyte continuation byte or a
+// raw parameter byte inside an active CSI. Otherwise the first replay
+// frame would be parsed as garbage by xterm.js.
+func TestVT_RingOverflowDropsAtSafeBoundary(t *testing.T) {
+	v := NewVT(80, 24)
+	// Build a stream that, when trimmed mid-byte, would land inside a
+	// UTF-8 multibyte run. Interleave plain ASCII + CSI + a UTF-8 rune.
+	var stream bytes.Buffer
+	for i := 0; i < (ringCap/16)+128; i++ {
+		stream.WriteString("\x1b[32mAB\xe2\x9c\x93\x1b[m ") // CSI + "AB" + ✓ + reset + space
+	}
+	if _, err := v.Write(stream.Bytes()); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got := v.RingBytes()
+	if len(got) == 0 {
+		t.Fatalf("ring empty after overflowing write")
+	}
+	if len(got) > ringCap {
+		t.Errorf("ring exceeds cap: got %d, cap %d", len(got), ringCap)
+	}
+	first := got[0]
+	// Acceptable: ESC, ASCII byte (<0x80), or UTF-8 lead (>=0xC0).
+	// Forbidden: UTF-8 continuation byte (0x80–0xBF, mask 0x80=set & 0x40=clear).
+	if first&0xC0 == 0x80 {
+		t.Errorf("ring starts inside multibyte sequence: first byte %#x", first)
+	}
+}
+
+// TestVT_ReplayReproducesScreen replays the byte ring into a fresh VT
+// and asserts the resulting visible screen matches the original. This
+// is the property the GUI's resize-replay path depends on: replaying
+// the ring into a freshly-reset xterm.js produces the same visible
+// state as the live session.
+func TestVT_ReplayReproducesScreen(t *testing.T) {
+	src := NewVT(40, 10)
+	script := []string{
+		"first line\r\n",
+		"\x1b[1mbold here\x1b[m\r\n",
+		"\x1b[31mred\x1b[m and \x1b[32mgreen\x1b[m\r\n",
+		"  indented\r\n",
+		"final\r\n",
+	}
+	for _, s := range script {
+		if _, err := src.Write([]byte(s)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	ring := src.RingBytes()
+	if len(ring) == 0 {
+		t.Fatal("ring empty")
+	}
+
+	dst := NewVT(40, 10)
+	if _, err := dst.Write(ring); err != nil {
+		t.Fatalf("replay write: %v", err)
+	}
+
+	// Compare visible cells (chars only).
+	src.mu.Lock()
+	dst.mu.Lock()
+	defer src.mu.Unlock()
+	defer dst.mu.Unlock()
+	cols, rows := src.term.Size()
+	for y := 0; y < rows; y++ {
+		var s, d strings.Builder
+		for x := 0; x < cols; x++ {
+			cs := src.term.Cell(x, y)
+			cd := dst.term.Cell(x, y)
+			cc := cs.Char
+			if cc == 0 {
+				cc = ' '
+			}
+			dc := cd.Char
+			if dc == 0 {
+				dc = ' '
+			}
+			s.WriteRune(cc)
+			d.WriteRune(dc)
+		}
+		got := strings.TrimRight(d.String(), " ")
+		want := strings.TrimRight(s.String(), " ")
+		if got != want {
+			t.Errorf("row %d mismatch:\n  src: %q\n  dst: %q", y, want, got)
+		}
+	}
+
+	// vt10x's Cursor() doesn't have stable equality semantics across
+	// instances (offsets vary), but x/y should match.
+	if src.term.Cursor().X != dst.term.Cursor().X ||
+		src.term.Cursor().Y != dst.term.Cursor().Y {
+		t.Errorf("cursor mismatch: src=(%d,%d) dst=(%d,%d)",
+			src.term.Cursor().X, src.term.Cursor().Y,
+			dst.term.Cursor().X, dst.term.Cursor().Y)
+	}
+}

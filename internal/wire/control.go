@@ -212,8 +212,13 @@ type Event struct {
 
 // Well-known event kinds.
 const (
-	EventScrollbackReplayDone = "scrollback_replay_done"
-	EventSessionExit          = "session_exit"
+	// EventScrollbackReplayBegin precedes a replay (initial attach or a
+	// client-requested replay). The client should reset its terminal
+	// buffer on receipt so the incoming bytes paint a clean slate
+	// instead of overlaying whatever's already on screen.
+	EventScrollbackReplayBegin = "scrollback_replay_begin"
+	EventScrollbackReplayDone  = "scrollback_replay_done"
+	EventSessionExit           = "session_exit"
 )
 
 // Error is sent by the server when something goes wrong.

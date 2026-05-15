@@ -258,6 +258,43 @@ func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscri
 	}
 }
 
+// SubscribeAtomicReplay returns the raw-byte scrollback ring AND
+// registers the sink under a single lock acquisition. Sibling of
+// SubscribeAtomicSnapshot, but the caller writes the bytes verbatim to
+// the client (which has just been told to reset its terminal) rather
+// than a vt10x-synthesized repaint. Two advantages over snapshot:
+//
+//  1. Preserves the full byte stream (CSI sequences, alt-screen
+//     enter/leave, OSC titles) — the client gets exactly what the
+//     PTY produced, which xterm.js re-parses correctly at the new
+//     width. Snapshot bakes width into pre-rendered cells.
+//  2. Cross-attach scrollback is no longer limited to the 500-row
+//     vt10x history ring; the byte ring is sized by ringCap.
+//
+// To preserve "no live byte is dropped between replay and live", the
+// caller must serialize the replay write against fanout — typically
+// by holding the sink's write mutex from before this call returns
+// until after the last replay byte is written.
+func (s *Session) SubscribeAtomicReplay(sink Sink) (replay []byte, unsubscribe func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	replay = s.vt.RingBytes()
+	s.sinks[sink] = struct{}{}
+	return replay, func() {
+		s.mu.Lock()
+		delete(s.sinks, sink)
+		s.mu.Unlock()
+	}
+}
+
+// Replay returns the current raw-byte scrollback ring without
+// registering a sink. For client-initiated replay requests (e.g. the
+// GUI's width-changing resize trigger) the sink is already registered;
+// only the bytes are needed.
+func (s *Session) Replay() []byte {
+	return s.vt.RingBytes()
+}
+
 // Write forwards bytes from a client to the PTY (i.e. keystrokes).
 func (s *Session) Write(p []byte) (int, error) {
 	return s.ptmx.Write(p)

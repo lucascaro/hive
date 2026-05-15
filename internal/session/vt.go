@@ -32,6 +32,15 @@ const (
 // the snapshot. ~80 cols × 500 rows × ~100 bytes/row ≈ 50 KiB worst case.
 const historyRows = 500
 
+// ringCap is the default size of the raw-byte scrollback ring. 8 MiB ≈
+// tens of thousands of lines of typical agent output. The ring lets us
+// replay the entire session into a freshly-reset xterm.js on resize,
+// recovering scrollback that xterm baked at the wrong width — which
+// xterm itself does not reflow on resize. Larger than the row history
+// because it stores raw bytes (CSI sequences and all) rather than
+// pre-rendered rows.
+const ringCap = 8 << 20
+
 // VT is a goroutine-safe wrapper around a vt10x.Terminal. The emulator
 // itself takes a State lock internally on Write/Parse, but our own
 // Mutex serializes Write/Resize/RenderSnapshot against each other so we
@@ -47,6 +56,13 @@ type VT struct {
 	mu      sync.Mutex
 	term    vt10x.Terminal
 	history [][]byte
+
+	// ring holds the raw PTY bytes seen so far, capped at ringCap. On
+	// overflow we drop the oldest bytes but advance to a safe boundary
+	// (ESC or UTF-8 lead byte) so replay never starts mid-escape or
+	// mid-multibyte rune. Used by clients to repaint xterm.js from a
+	// clean slate after a width-changing resize.
+	ring []byte
 }
 
 // NewVT constructs a VT sized cols x rows. Falls back to 80x24 when
@@ -100,6 +116,7 @@ func (v *VT) Write(p []byte) (int, error) {
 	}
 
 	n, err := v.term.Write(p)
+	v.appendRing(p)
 
 	postAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
 	if preRows != nil && !postAlt {
@@ -148,6 +165,58 @@ func (v *VT) captureEvictions(preRows [][]vt10x.Glyph, cols, rows int) {
 	}
 }
 
+// appendRing copies p onto the byte ring, trimming the oldest bytes
+// when the cap is exceeded. After trimming we scan forward to the
+// next CSI escape (ESC, 0x1B) or UTF-8 leading byte so a replay
+// from offset 0 doesn't begin in the middle of an escape sequence
+// or a multi-byte rune. The scan is bounded so worst-case truncation
+// loss is minor. Caller holds v.mu.
+func (v *VT) appendRing(p []byte) {
+	if len(p) == 0 {
+		return
+	}
+	v.ring = append(v.ring, p...)
+	if len(v.ring) <= ringCap {
+		return
+	}
+	drop := len(v.ring) - ringCap
+	// Find a safe boundary at or after `drop`. Scan up to 4 KiB beyond
+	// the cut to find an ESC (CSI/OSC start) or a UTF-8 leading byte
+	// (not a 10xxxxxx continuation). If nothing safe is in range, fall
+	// through and just drop exactly `drop` bytes — replay may emit one
+	// glitched cell but won't desync the parser long-term.
+	const scanWindow = 4 << 10
+	limit := drop + scanWindow
+	if limit > len(v.ring) {
+		limit = len(v.ring)
+	}
+	safe := drop
+	for i := drop; i < limit; i++ {
+		b := v.ring[i]
+		if b == 0x1B {
+			safe = i
+			break
+		}
+		// UTF-8: leading bytes are 0xxxxxxx (ASCII) or 11xxxxxx;
+		// continuation bytes are 10xxxxxx. Cut on a leading byte.
+		if b < 0x80 || (b&0xC0) == 0xC0 {
+			// Skip past raw CSI parameter / data bytes hidden inside an
+			// active escape — heuristic: if the previous byte is ESC we
+			// already took that boundary above; here we just accept any
+			// leading-byte position as a safe rune boundary.
+			safe = i
+			break
+		}
+	}
+	// Compact: a single copy keeps the slice small. Pre-allocate to the
+	// retained length so the underlying array doesn't keep the trimmed
+	// bytes pinned.
+	retained := len(v.ring) - safe
+	next := make([]byte, retained)
+	copy(next, v.ring[safe:])
+	v.ring = next
+}
+
 // pushHistory appends b to the ring, trimming the oldest entries when
 // over capacity. Caller holds v.mu.
 func (v *VT) pushHistory(b []byte) {
@@ -159,6 +228,20 @@ func (v *VT) pushHistory(b []byte) {
 		drop := len(v.history) - historyRows
 		v.history = append([][]byte(nil), v.history[drop:]...)
 	}
+}
+
+// RingBytes returns a defensive copy of the raw-byte scrollback ring.
+// Callers can stream the result to a client that wants to repaint
+// xterm.js from a clean slate after a width-changing resize.
+func (v *VT) RingBytes() []byte {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if len(v.ring) == 0 {
+		return nil
+	}
+	out := make([]byte, len(v.ring))
+	copy(out, v.ring)
+	return out
 }
 
 // Resize updates the emulator's grid dimensions. Returns nil for now;

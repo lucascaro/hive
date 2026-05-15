@@ -6,7 +6,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import {
   ConnectControl, OpenSession, CloseAttach,
-  WriteStdin, ResizeSession,
+  WriteStdin, ResizeSession, RequestSnapshotReplay,
   CreateSession, DuplicateSession, KillSession, RestartSession, UpdateSession, ListAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
@@ -28,6 +28,9 @@ import {
   recoverFromContextLoss,
   bindDprWatcher,
 } from './lib/renderer-recovery.js';
+import {
+  shouldRequestReplay, REPLAY_DEBOUNCE_MS,
+} from './lib/scrollback.js';
 
 // ---------- session terminal ----------
 
@@ -578,11 +581,31 @@ class SessionTerm {
     const wasAtBottom = buf ? (buf.baseY - buf.viewportY) <= STICKY_BOTTOM_LINES : true;
     // Swallow throw and continue: a transient FitAddon error (e.g. a
     // race against teardown) shouldn't drop the daemon-side resize.
+    const prevCols = this.term.cols;
     try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
     if (this.attached) {
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
     if (wasAtBottom) this.term.scrollToBottom();
+
+    // If the column count changed materially (single ↔ grid transit,
+    // window resize across modes), xterm's scrollback is now stale —
+    // its rendered rows were baked at the old width and xterm.js does
+    // not reflow history on resize. Ask the daemon to re-stream the
+    // raw byte ring; the EventScrollbackReplayBegin handler will
+    // term.reset() before the bytes arrive, and the daemon serializes
+    // the replay against live fanout so nothing interleaves.
+    //
+    // Debounced so dragging a divider doesn't trigger N replays —
+    // only the final settled width does. Sub-threshold changes
+    // (1–3 cols, e.g. font kerning jitter) are ignored.
+    if (this.attached && shouldRequestReplay(prevCols, this.term.cols)) {
+      if (this._replayTimer) clearTimeout(this._replayTimer);
+      this._replayTimer = setTimeout(() => {
+        this._replayTimer = 0;
+        RequestSnapshotReplay(this.info.id).catch(() => { /* attach may have closed */ });
+      }, REPLAY_DEBOUNCE_MS);
+    }
   }
 
   async ensureAttached() {
@@ -1885,7 +1908,19 @@ EventsOn('pty:event', (id, jsonStr) => {
   try {
     const ev = JSON.parse(jsonStr);
     const st = state.terms.get(id);
-    if (st && ev.kind === 'scrollback_replay_done') {
+    if (!st) return;
+    if (ev.kind === 'scrollback_replay_begin') {
+      // Daemon is about to re-stream the byte ring. Wipe xterm's buffer
+      // (visible viewport + scrollback) so the replay paints onto a
+      // clean slate — otherwise the new bytes would land on top of
+      // whatever's already rendered, producing the "live text overwrites
+      // scrollback" symptom (the bug-2 path). The decoder is also
+      // reset so a partial UTF-8 sequence across the boundary doesn't
+      // corrupt the first replay rune.
+      st.phase = 'replay';
+      st.term.reset();
+      if (st.decoder) st.decoder = new TextDecoder('utf-8');
+    } else if (ev.kind === 'scrollback_replay_done') {
       st.phase = 'live';
       // After scrollback replay, snap the viewport to the latest line
       // so the user sees the cursor / newest output rather than landing

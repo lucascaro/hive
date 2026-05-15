@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: scrollback no longer renders at the narrow grid width after a
+  single → grid → single transition, and live output no longer
+  overwrites already-scrolled lines. The daemon now keeps a per-session
+  raw-byte ring buffer (8 MiB) and re-streams it through a new
+  `REQUEST_REPLAY` wire frame whenever the GUI's column count changes
+  by ≥4 cols; the frontend `term.reset()`s on a `scrollback_replay_begin`
+  event so the replay paints onto a clean buffer. Initial attach uses
+  the same path, so reattach scrollback is no longer capped at the old
+  500-row vt10x history. (#200)
 - Worktrees: surface a log warning when `git fetch origin` fails or
   `origin/HEAD` is not configured, instead of silently falling back to
   local HEAD (or worse, silently basing a new worktree on a stale
