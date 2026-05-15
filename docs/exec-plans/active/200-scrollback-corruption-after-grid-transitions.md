@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/200-scrollback-corruption-after-grid-transitions.md](../../product-specs/200-scrollback-corruption-after-grid-transitions.md)
 - **Issue:** #200
-- **Stage:** REVIEW
+- **Stage:** QA
 - **Status:** active
 - **PR:** https://github.com/lucascaro/hive/pull/203
 - **Branch:** feature/200-scrollback-corruption-after-grid-transitions
@@ -131,6 +131,7 @@ Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extr
 - **2026-05-15 iter 1** — verdict: REQUEST_CHANGES; findings: 1 BLOCKING (replay snapshot race), 3 IMPORTANT (CSI-unsafe trim boundary; dead phase field; legacy history ring follow-up); action: autofix+push (manual, sub-agent did not invoke hivesmith skills); head_sha: fb1579e.
 - **2026-05-15 iter 2** — verdict: REQUEST_CHANGES (BLOCKING closed; 11 unresolved Copilot threads); action: manual autofix of 6 real findings (debounce baseline, binding rename, handler extract+test, plan drift in 3 places) and resolve-with-rationale of 11 threads; head_sha: de9dbe6.
 - **2026-05-15 iter 3** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2b9cdb6.
+- **2026-05-15** — Rebased onto origin/main (post-#204 minimize-sessions merge), all 6 commits replayed clean, CI green on all platforms, merged as squash commit `c234e68`. Stage → QA.
 
 ## Progress
 
