@@ -59,31 +59,40 @@ Detail kept here under 200 lines; no separate design doc needed yet.
 
 ## Approach
 
+> **Note (post-implementation):** This approach was specified before the eng review surfaced that ripping out `historyRows` + `captureEvictions` would cascade through `RenderSnapshot`, the conformance corpus, `scripts/vtcapture`, and every snapshot-based test. The shipped implementation adds the byte ring *alongside* the legacy row-history ring rather than replacing it; `SubscribeAtomicSnapshot` and `RenderSnapshot` remain in place. Cleanup of the legacy path is tracked as a follow-up — see [Decision log](#decision-log).
+
 Two distinct bugs, two fixes, one shared piece of plumbing.
 
-**Fix 1 — narrow scrollback after resize.** Replace the Go VT's 500-row ANSI history ring (`internal/session/vt.go:31–50`) with a per-session **raw-byte ring buffer (default 8 MiB)** in the daemon. On overflow, drop oldest bytes at a safe CSI / UTF-8 boundary. The vt10x screen state stays — it still computes "what's on screen right now". The byte ring becomes the single source of truth for "everything that happened".
+**Fix 1 — narrow scrollback after resize.** Add a per-session **raw-byte ring buffer (default 8 MiB, hard-coded const `ringCap = 8<<20`)** in the Go VT alongside the existing row-history ring. On overflow, drop oldest bytes preferring a newline boundary, falling back to ESC, then to UTF-8 lead bytes verified to be outside any unterminated CSI / OSC sequence (`insideUnterminatedEscape` helper). The vt10x screen state stays — it still computes "what's on screen right now". The byte ring becomes the source of truth for "everything that happened".
 
-Add a new wire frame `FrameRequestReplay` (`internal/wire/control.go`). The daemon streams ring bytes back through the same chunked path as today's reattach snapshot, bracketed by two new events `ScrollbackReplayBegin` / `ScrollbackReplayDone` (introduced for fix 2, reused here). Initial attach uses this same path, replacing today's `RenderSnapshot`-based reattach — fixes cross-attach scrollback truncation as a free side-effect.
+Add a new wire frame `FrameRequestReplay` (`internal/wire/frame.go`). The daemon streams ring bytes back chunked at 16 KiB, bracketed by two new events `ScrollbackReplayBegin` / `ScrollbackReplayDone`. Initial attach uses this same path, replacing the old `RenderSnapshot`-based attach data write — fixes cross-attach scrollback truncation (previously capped at the 500-row vt10x history).
 
-Frontend: `_onBodyResize` (`cmd/hivegui/frontend/src/main.js:535–570`) sends a debounced (100 ms) `RequestReplay` when `cols` change crosses a ≥4-col threshold. The frontend stays a dumb pipe — no client-side buffer.
+Frontend: `_onBodyResize` (`cmd/hivegui/frontend/src/main.js`) sends a debounced (100 ms) `FrameRequestReplay` when `cols` change crosses a ≥4-col threshold **relative to the baseline at the last replay** — not relative to the previous measurement, so a 80→90→89 sequence still triggers a replay even though no single step is ≥4. The frontend stays a dumb pipe — no client-side buffer.
 
-**Fix 2 — live text overwriting scrollback.** Symptom is the snapshot+live race at `internal/daemon/daemon.go:420–429`: snapshot bytes and live PTY bytes interleave at xterm with no buffer reset between. Add per-sink `replayInFlight` gating in the daemon (live fanout buffers until `Done` ships). Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` before accepting replay bytes. Defensive: also fix the `captureEvictions` heuristic (`vt.go:121–149`) — once we delete the row-history ring, this heuristic goes away entirely.
+**Fix 2 — live text overwriting scrollback.** Symptom is the snapshot+live race in the attach path: snapshot bytes and live PTY bytes interleaved at xterm with no buffer reset between. Two new Session methods serialize replay against fanout:
+
+- `SubscribeWithAtomicReplay(sink, writeFn)` — initial attach. Captures the ring, calls writeFn (which writes Begin → bytes → Done under the sink's f.mu), then registers the sink, all under s.mu. Deliver is blocked for the duration; live fanout to this sink starts strictly after Done.
+- `EmitAtomicReplay(writeFn)` — mid-session `FrameRequestReplay`. Sink already registered; s.mu blocks deliver while writeFn runs; queued live bytes deliver in order after Done.
+
+Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extracted `handleScrollbackEvent` helper for unit-test access). Wire-order — not a JS-side phase flag — is what guarantees no live bytes land between Begin and Done.
 
 ### Why this design
 
 - **Single source of truth.** Bytes live only in the daemon ring. No client-side dup with xterm's cell scrollback.
 - **Composes.** Fix 2's gating events carry fix 1's replay traffic too.
 - **No cell-level reflow needed.** Replaying raw bytes lets xterm re-parse at the new width — sidesteps the "vt.go:166 says it's not worth the complexity" problem.
-- **Memory:** 8 MiB × typical 3–10 sessions = 24–80 MiB in the daemon. Old ANSI ring was ~50 KiB; net add is bounded and capped via env/config.
+- **Memory:** 8 MiB × typical 3–10 sessions = 24–80 MiB in the daemon. The cap is currently a Go `const`, not env/config-tunable; raising it requires a recompile.
 
 ### Files to change
 
-1. `internal/wire/control.go` — add `FrameRequestReplay` frame type; add `EventScrollbackReplayBegin` / `EventScrollbackReplayDone` event constants.
-2. `internal/session/vt.go` — replace `historyRows` ANSI ring (lines 31–50) with a raw-byte ring (cap configurable; default 8 MiB). Add `RingBytes() []byte` and `RingLen() int` accessors. Drop `captureEvictions` (121–149) and its callers — no longer needed. Keep the vt10x screen for current-state rendering. Add a `resizeInFlight` guard around `Resize` (166–177) for safety.
-3. `internal/session/session.go` — write every chunk to the new ring in `deliver` (around 204). Ensure `vt.Resize` and `vt.Write` ordering is unambiguous under `s.mu`.
-4. `internal/daemon/daemon.go` — handle the new `FrameRequestReplay`. Emit `Begin` → chunked ring bytes → `Done`. Gate per-sink live fanout via a `replayInFlight` boolean. Initial attach (around 420–429) uses this same path instead of `RenderSnapshot`.
-5. `cmd/hivegui/frontend/src/main.js` — in `_onBodyResize` (535–570) detect width-threshold crossing, debounce 100 ms, send `RequestReplay`. New event handler for `ScrollbackReplayBegin` → `term.reset()`. No client-side buffer.
-6. `cmd/hivegui/frontend/src/lib/` — if a small helper is warranted for the replay-state machine, factor it out for unit-testability.
+1. `internal/wire/frame.go` — add `FrameRequestReplay` frame type (0x14).
+2. `internal/wire/control.go` — add `EventScrollbackReplayBegin` / `EventScrollbackReplayDone` event constants.
+3. `internal/session/vt.go` — add a raw-byte ring (cap `ringCap = 8<<20`, hard-coded) alongside the existing `historyRows` ring. Add `RingBytes()` accessor and `appendRing` with newline-preferring, CSI-safe boundary trim. **Legacy `historyRows` ring and `captureEvictions` are retained** — load-bearing for `RenderSnapshot` and the conformance corpus. Cleanup tracked as follow-up.
+4. `internal/session/session.go` — add `SubscribeWithAtomicReplay` and `EmitAtomicReplay`. Both hold s.mu across snapshot+writeFn so deliver is serialized.
+5. `internal/daemon/daemon.go` — handle the new `FrameRequestReplay` via `EmitAtomicReplay`. Initial attach uses `SubscribeWithAtomicReplay`. `frameSink.writeReplay` writes Begin → chunked ring bytes → Done under f.mu (called from inside the s.mu-held writeFn, so lock order is s.mu → f.mu, matching deliver).
+6. `cmd/hivegui/app.go` — add `RequestScrollbackReplay(id)` Wails binding.
+7. `cmd/hivegui/frontend/src/main.js` — `_onBodyResize` tracks `_replayBaselineCols`; on every resize, clear pending timer; re-arm only if current cols are ≥4 off the baseline. On replay events, delegate to `handleScrollbackEvent`.
+8. `cmd/hivegui/frontend/src/lib/scrollback.js` — `shouldRequestReplay` and `handleScrollbackEvent` helpers, unit-testable.
 
 ### New files
 
@@ -114,7 +123,12 @@ Frontend: `_onBodyResize` (`cmd/hivegui/frontend/src/main.js:535–570`) sends a
 
 ## Decision log
 
+- **2026-05-15** — Plan called for replacing `historyRows` ANSI ring + dropping `captureEvictions`. During IMPLEMENT the cascade through `RenderSnapshot` → conformance tests → `scripts/vtcapture` was assessed as out-of-scope for this PR. Decision: add the byte ring alongside the legacy ring, leave `RenderSnapshot` and the snapshot-based reattach API intact (still used by `SubscribeAtomicSnapshot`). Follow-up to delete the legacy path when the conformance corpus is migrated. Why: keeps this PR focused on the two scrollback bugs without entangling a snapshot-format migration.
+- **2026-05-15** — `ringCap` is hard-coded at 8 MiB (`const ringCap = 8 << 20` in vt.go). Plan originally said "tunable via env/config" — that was aspirational and is not implemented. If operators need to tune, raise via a follow-up: read from `os.Getenv("HIVE_SCROLLBACK_RING_KB")` at `NewVT` time. Decision deferred because the 8 MiB default has not yet been observed to be too small or too large in practice.
+
 ## PR convergence ledger
+
+- **2026-05-15 iter 1** — verdict: REQUEST_CHANGES; findings: 1 BLOCKING (replay snapshot race), 3 IMPORTANT (CSI-unsafe trim boundary; dead phase field; legacy history ring follow-up); action: autofix+push (manual, sub-agent did not invoke hivesmith skills); head_sha: fb1579e.
 
 ## Progress
 
