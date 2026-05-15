@@ -10,7 +10,6 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P1 | #186 | Regression: focus inconsistent — switching from single-session to grid mode disables typing | REVIEW | [186-grid-mode-focus-regression-cant-type](186-grid-mode-focus-regression-cant-type.md) |
 | P1 | #172 | Pin/capture agent session id for Gemini and Copilot | IMPLEMENT | [172-agent-session-id-gemini-copilot](172-agent-session-id-gemini-copilot.md) |
 | P1 | #183 | Hive opens only a shell on Windows, not Claude | REVIEW | [183-windows-claude-opens-shell](183-windows-claude-opens-shell.md) |
-| P2 | #200 | GUI: scrollback corruption after single↔grid transitions; text overwrites mid-print | QA | [200-scrollback-corruption-after-grid-transitions](200-scrollback-corruption-after-grid-transitions.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | P1 | #190 | GUI: session terminal text gets replaced by garbled glyphs over time; resize fixes it | REVIEW | [190-gui-text-replaced-with-garbled-glyphs](190-gui-text-replaced-with-garbled-glyphs.md) |
 | P1 | #195 | GUI: shared TextDecoder across sessions produces garbled glyphs | IMPLEMENT | [195-shared-textdecoder-glyphs](195-shared-textdecoder-glyphs.md) |
@@ -21,6 +20,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | Shipped | Spec |
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
+| #200 | GUI: scrollback corruption after single↔grid transitions; text overwrites mid-print | 2026-05-15 (PR #203) | [200-scrollback-corruption-after-grid-transitions](200-scrollback-corruption-after-grid-transitions.md) |
 | #192 | Worktrees should branch from origin/main, not local HEAD | 2026-05-13 (PR #193) | [192-worktrees-branch-from-origin-main](192-worktrees-branch-from-origin-main.md) |
 | #181 | Single-focus → grid leaves session looking focused but keyboard input is dead | 2026-05-10 (PR #182) | [181-single-focus-to-grid-input-dead](181-single-focus-to-grid-input-dead.md) |
 | #177 | Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch | 2026-05-10 | [177-windows-restart-button-and-grid-mode-bugs](177-windows-restart-button-and-grid-mode-bugs.md) |

@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/200-scrollback-corruption-after-grid-transitions.md](../exec-plans/active/200-scrollback-corruption-after-grid-transitions.md)
+- **Exec plan:** [docs/exec-plans/completed/200-scrollback-corruption-after-grid-transitions.md](../exec-plans/completed/200-scrollback-corruption-after-grid-transitions.md)
 
 ## Problem
 

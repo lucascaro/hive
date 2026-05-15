@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/200-scrollback-corruption-after-grid-transitions.md](../../product-specs/200-scrollback-corruption-after-grid-transitions.md)
 - **Issue:** #200
-- **Stage:** QA
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** https://github.com/lucascaro/hive/pull/203
 - **Branch:** feature/200-scrollback-corruption-after-grid-transitions
 
@@ -121,6 +121,16 @@ Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extr
 - `single → grid → single keeps wide-column scrollback` — drive real xterm in Wails dev shell, scroll up after transit, assert row length ≥ wide-cols − 10 before any soft-wrap.
 - `rapid streaming never overwrites scrolled history` — feed `seq 1 10000`, scroll up mid-stream, assert visible row numbers are monotonically increasing — no overwrite.
 
+## QA verdict
+
+- **2026-05-15** — verdict: NEEDS_FOLLOWUP; checks: 4 PASS / 0 FAIL / 1 followup; followups: #206 (gofmt trailing newline in daemon.go); one-line: spec's three success criteria all met by code-review + tests; one trailing-newline gofmt regression flagged as cosmetic followup.
+  - 2026-05-15 dimensions:
+    - build/lint/test — PASS — `go build ./...`, `go vet ./...`, `go test ./...`, Vitest 85/85, `npm run build` all green. gofmt -l surfaced 10 files but 9 are pre-existing drift unrelated to #200; the one new offender (internal/daemon/daemon.go) is a single trailing newline → tracked as #206.
+    - acceptance — PASS — Criterion 1 (narrow-scrollback-after-resize) and Criterion 2 (no-overwrite-mid-print) verified by code-walk of the s.mu→f.mu lock-ordered replay path; Criterion 3 (test coverage at appropriate layers) satisfied by 5 new Go tests + 14 Vitest cases + daemon TestRequestReplay, despite some test-name drift from the plan.
+    - non-goals — PASS — vt10x history ring left intact alongside the additive byte ring; no scrollback-length config surface added.
+    - regression — PASS — wire 0x14 is client→server optional; frontend `pty:event` handler tolerates unknown kinds via `handleScrollbackEvent` no-op return; `SubscribeAtomicSnapshot` retained and still tested; lock order s.mu→f.mu uniform across deliver and new APIs; ring lifetime bound to Session (no leak).
+    - doc accuracy — PASS — CHANGELOG #200 entry is accurate and user-visible; doc comments on new wire/session/daemon symbols are present; plan + spec correctly updated; AGENTS.md/README correctly untouched.
+
 ## Decision log
 
 - **2026-05-15** — Plan called for replacing `historyRows` ANSI ring + dropping `captureEvictions`. During IMPLEMENT the cascade through `RenderSnapshot` → conformance tests → `scripts/vtcapture` was assessed as out-of-scope for this PR. Decision: add the byte ring alongside the legacy ring, leave `RenderSnapshot` and the snapshot-based reattach API intact (still used by `SubscribeAtomicSnapshot`). Follow-up to delete the legacy path when the conformance corpus is migrated. Why: keeps this PR focused on the two scrollback bugs without entangling a snapshot-format migration.
@@ -131,7 +141,6 @@ Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extr
 - **2026-05-15 iter 1** — verdict: REQUEST_CHANGES; findings: 1 BLOCKING (replay snapshot race), 3 IMPORTANT (CSI-unsafe trim boundary; dead phase field; legacy history ring follow-up); action: autofix+push (manual, sub-agent did not invoke hivesmith skills); head_sha: fb1579e.
 - **2026-05-15 iter 2** — verdict: REQUEST_CHANGES (BLOCKING closed; 11 unresolved Copilot threads); action: manual autofix of 6 real findings (debounce baseline, binding rename, handler extract+test, plan drift in 3 places) and resolve-with-rationale of 11 threads; head_sha: de9dbe6.
 - **2026-05-15 iter 3** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 2b9cdb6.
-- **2026-05-15** — Rebased onto origin/main (post-#204 minimize-sessions merge), all 6 commits replayed clean, CI green on all platforms, merged as squash commit `c234e68`. Stage → QA.
 
 ## Progress
 
