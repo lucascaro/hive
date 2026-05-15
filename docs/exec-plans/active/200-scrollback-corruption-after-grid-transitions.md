@@ -129,6 +129,7 @@ Frontend handles `ScrollbackReplayBegin` by calling `term.reset()` (via the extr
 ## PR convergence ledger
 
 - **2026-05-15 iter 1** — verdict: REQUEST_CHANGES; findings: 1 BLOCKING (replay snapshot race), 3 IMPORTANT (CSI-unsafe trim boundary; dead phase field; legacy history ring follow-up); action: autofix+push (manual, sub-agent did not invoke hivesmith skills); head_sha: fb1579e.
+- **2026-05-15 iter 2** — verdict: REQUEST_CHANGES (BLOCKING closed; 11 unresolved Copilot threads); action: manual autofix of 6 real findings (debounce baseline, binding rename, handler extract+test, plan drift in 3 places) and resolve-with-rationale of 11 threads; head_sha: de9dbe6.
 
 ## Progress
 
