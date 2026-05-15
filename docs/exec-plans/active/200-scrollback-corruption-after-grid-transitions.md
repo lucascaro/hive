@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/200-scrollback-corruption-after-grid-transitions.md](../../product-specs/200-scrollback-corruption-after-grid-transitions.md)
 - **Issue:** #200
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** https://github.com/lucascaro/hive/pull/203
+- **Branch:** feature/200-scrollback-corruption-after-grid-transitions
 
 ## Summary
 
@@ -117,6 +119,7 @@ Frontend: `_onBodyResize` (`cmd/hivegui/frontend/src/main.js:535–570`) sends a
 - **2026-05-15** — Spec created, issue #200 opened, triage: bug / L / P2. Stage → RESEARCH.
 - **2026-05-15** — Research complete. Stage → PLAN.
 - **2026-05-15** — Plan approved via interactive HTML review (3 revisions: v1 truncate-scrollback → v2 client-side ring → v3 daemon-side byte ring, approved). Approval flag: `~/.claude/plans/scrollback-corruption-after-grid-transitions.approved.json`. Stage → IMPLEMENT.
+- **2026-05-15** — Implementation landed on `feature/200-scrollback-corruption-after-grid-transitions`. All Go + Vitest tests pass (74/74 frontend, full Go suite). PR #203 open. Stage → REVIEW.
 
 ## Open questions
 
