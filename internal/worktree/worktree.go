@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,15 +125,20 @@ func upstreamBaseRef(repoDir string) string {
 
 	// Best-effort fetch (10s). Network or auth failures fall through:
 	// we'll still resolve whatever `origin/HEAD` already points at locally.
+	// Warn so a stale cached origin/HEAD doesn't silently base new
+	// worktrees on outdated upstream — the very failure mode #192 fixed.
 	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer fetchCancel()
-	_ = exec.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").Run()
+	if fetchOut, fetchErr := exec.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput(); fetchErr != nil {
+		log.Printf("worktree: fetch origin failed (%v); new worktree may be based on stale origin/HEAD: %s", fetchErr, strings.TrimSpace(string(fetchOut)))
+	}
 
 	// Resolve origin/HEAD -> origin/<default-branch>.
 	resolveCtx, resolveCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer resolveCancel()
 	out, err := exec.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
 	if err != nil {
+		log.Printf("worktree: origin/HEAD not set in %s; falling back to local HEAD for new worktree", repoDir)
 		return ""
 	}
 	return strings.TrimSpace(string(out))

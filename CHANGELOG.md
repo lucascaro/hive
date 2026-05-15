@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Worktrees: surface a log warning when `git fetch origin` fails or
+  `origin/HEAD` is not configured, instead of silently falling back to
+  local HEAD (or worse, silently basing a new worktree on a stale
+  cached `origin/HEAD`). Closes the spec gap in #192's "remote
+  unreachable" success criterion.
 - Worktrees now branch from `origin/<default-branch>` (typically
   `origin/main`) instead of local HEAD. Previously, creating a
   session-backed worktree from a stale checkout produced a worktree
