@@ -61,3 +61,16 @@ jobs:
         run: go test ./...
         env:
           TERM: dumb  # deterministic golden file output (no ANSI colors)
+
+      - name: Test (Go e2e — real hived binary)
+        # Layer A: spawns the real hived binary in temp dirs and drives
+        # it over the real wire protocol. Isolation enforced by env
+        # vars below + testclient.RequireIsolation; never touches real
+        # hive state. See docs/exec-plans/active/210-real-e2e-tests.md.
+        run: |
+          export HOME="$(mktemp -d)"
+          export HIVE_STATE_DIR="$(mktemp -d)"
+          export HIVE_SOCKET="$(mktemp -d)/hived.sock"
+          go test -tags=e2e -timeout 180s ./cmd/hived/...
+        env:
+          TERM: dumb
