@@ -39,3 +39,9 @@ Thumbs.db
 
 # graphify knowledge graph (locally generated)
 /graphify-out/
+
+# hs-plan-html review-loop scratch (rendered plans + feedback server PIDs)
+/.plans/
+
+# Playwright e2e artifacts
+/cmd/hivegui/frontend/test-results/

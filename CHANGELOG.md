@@ -38,6 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: three grid-mode regressions and lock-in tests. (1) The first
+  time entering grid mode after restart no longer mis-anchors the
+  scrollback replay baseline against xterm's 80-column default,
+  preventing repeated spurious replays as DPR/fit jitter crosses the
+  threshold. (2) Minimizing or restoring a session no longer triggers
+  spurious scrollback replays in the remaining tiles when their
+  column widths reflow. (3) After resizing the window, toggling the
+  sidebar with `⌘S` no longer strands keystrokes on `document.body`
+  — the keyboard handler now routes through `toggleSidebar()` and
+  the toggle re-asserts keyboard focus the same way `setView` does
+  after grid/single transitions. Adds unit coverage for the rebaseline
+  helper (`applyRebaseline`) and Playwright e2e regressions for all
+  three (plus an R-control case asserting that legitimate window-resize
+  replays still fire). (#208)
 - GUI: scrollback no longer renders at the narrow grid width after a
   single → grid → single transition, and live output no longer
   overwrites already-scrolled lines. The daemon now keeps a per-session
