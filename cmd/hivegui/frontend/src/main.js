@@ -741,6 +741,17 @@ const state = {
   fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
 };
 
+// E2E test affordance: expose the term registry under a dunder name
+// so Playwright specs can read xterm buffer contents via
+// state.terms.get(id).term.buffer.active. Gated on the Vite mock/real
+// env vars so production builds drop this — the gates are inlined to
+// string literals by Vite at build time, so the whole block is dead
+// code in a normal wails build.
+if (typeof window !== 'undefined'
+    && (import.meta.env.VITE_WAILS_MOCK === '1' || import.meta.env.VITE_WAILS_REAL === '1')) {
+  window.__hive_state = state;
+}
+
 function loadSavedView() {
   try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
   catch { return normalizeView(null); }
