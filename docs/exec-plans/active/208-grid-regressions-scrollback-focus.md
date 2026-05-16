@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/208-grid-regressions-scrollback-focus.md](../../product-specs/208-grid-regressions-scrollback-focus.md)
 - **Issue:** #208
-- **Stage:** REVIEW
+- **Stage:** QA
 - **Status:** active
 - **PR:** [#209](https://github.com/lucascaro/hive/pull/209)
 - **Branch:** `feature/208-grid-regressions-scrollback-focus`
