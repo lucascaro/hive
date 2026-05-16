@@ -73,7 +73,11 @@ export async function WriteStdin(id, b64) {
   return '';
 }
 export async function ResizeSession(_id, _cols, _rows) { return ''; }
-export async function RequestScrollbackReplay(_id) { return ''; }
+const replayLog = []; // [{ id, t }] — populated by RequestScrollbackReplay so E2E can detect spurious replays after layout reflows.
+export async function RequestScrollbackReplay(id) {
+  replayLog.push({ id, t: Date.now() });
+  return '';
+}
 export async function CreateSession(spec) {
   const id = 'mock-' + (state.sessions.length + 1);
   const s = {
@@ -144,5 +148,8 @@ if (typeof window !== 'undefined') {
         .join('');
     },
     resetStdin() { stdinLog.length = 0; },
+    replayLog,
+    replayCount(id) { return replayLog.filter((e) => id == null || e.id === id).length; },
+    resetReplay() { replayLog.length = 0; },
   };
 }

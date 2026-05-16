@@ -30,6 +30,7 @@ import {
 } from './lib/renderer-recovery.js';
 import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, handleScrollbackEvent,
+  applyRebaseline,
 } from './lib/scrollback.js';
 
 // ---------- session terminal ----------
@@ -621,6 +622,19 @@ class SessionTerm {
     }
   }
 
+  // rebaselineReplayCols resets _replayBaselineCols to the current
+  // term.cols and clears any pending replay timer. Use this when grid
+  // geometry changes for a reason that is NOT a user-driven window
+  // resize (first-attach in grid; minimize/restore reflowing the
+  // remaining tiles). Those reflows shrink/widen the tile but the
+  // scrollback was already written at the new width once xterm
+  // re-fitted, so triggering shouldRequestReplay would be spurious and
+  // visibly drops or duplicates content. Pure window resize is handled
+  // by the threshold path in _onBodyResize and must not call this.
+  rebaselineReplayCols(_reason) {
+    applyRebaseline(this);
+  }
+
   async ensureAttached() {
     if (this.attached) return;
     // Don't attempt to attach to a session known to be dead — the daemon
@@ -640,6 +654,12 @@ class SessionTerm {
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
       this.attached = true;
+      // Anchor the replay baseline to the actual fitted cols for this
+      // tile. Without this, a later _onBodyResize would initialize the
+      // baseline from a stale xterm default (80) while term.cols is the
+      // real grid-cell width — the next resize crosses the threshold
+      // and fires a spurious scrollback replay on first grid entry.
+      this.rebaselineReplayCols('first-attach');
     } catch (err) {
       this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
     }
@@ -1678,7 +1698,10 @@ function minimizeSession(id) {
     const next = gridScopeSessions().find((s) => s.id !== id);
     if (next) setActive(next.id);
   }
-  if (state.view !== 'single') renderGrid();
+  if (state.view !== 'single') {
+    renderGrid();
+    rebaselineGridReplayCols();
+  }
   renderMinimizedTray();
 }
 
@@ -1689,6 +1712,28 @@ function restoreSession(id) {
   state.minimized.delete(id);
   renderMinimizedTray();
   switchTo(id);
+  if (state.view !== 'single') {
+    rebaselineGridReplayCols();
+  }
+}
+
+// rebaselineGridReplayCols defers a baseline reset to after the next
+// two animation frames. The first rAF lets the CSS grid layout settle
+// and ResizeObserver fire _onBodyResize on each affected tile (which
+// updates this.term.cols via fit.fit() and may arm a 100ms replay
+// debounce). The second rAF then snapshots the new term.cols as the
+// baseline and clears the pending debounce — turning a layout-driven
+// width change into a no-op rather than a spurious scrollback replay.
+// Pure user window resizes still flow through the threshold path in
+// _onBodyResize and continue to request replays as before.
+function rebaselineGridReplayCols() {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const st of state.terms.values()) {
+      if (st.host.classList.contains('in-grid')) {
+        st.rebaselineReplayCols('layout');
+      }
+    }
+  }));
 }
 
 // renderMinimizedTray rebuilds the #minimized-tray chip row from
@@ -2627,8 +2672,12 @@ window.addEventListener('keydown', (e) => {
     deleteActiveProject();
   } else if (e.key === 's' || e.key === 'S') {
     swallow();
-    document.getElementById('app').classList.toggle('sidebar-hidden');
-    // Layout reflow → tile bodies resize → ResizeObserver fits xterm.
+    // Route through toggleSidebar so the keyboard path stays in
+    // lockstep with the menu / command-palette path (including the
+    // post-reflow refocus added for #208 R3). Inline class flips
+    // here previously skipped the refocus and stranded keystrokes
+    // on document.body after a prior window resize.
+    toggleSidebar();
   } else if (e.key === 'g' || e.key === 'G') {
     swallow();
     if (e.shiftKey) {
@@ -2704,7 +2753,21 @@ window.addEventListener('keydown', (e) => {
 
 function toggleSidebar() {
   document.getElementById('app').classList.toggle('sidebar-hidden');
-  // Layout reflow → tile bodies resize → ResizeObserver fits xterm.
+  // Layout reflow → tile bodies resize → ResizeObserver fits xterm,
+  // and fit.fit() can synchronously fire focusout on the helper-
+  // textarea as the canvas re-sizes. Without re-asserting focus,
+  // keystrokes strand on document.body even though the visual
+  // .term-focused stays correctly pinned on the active tile (#208 R3).
+  //
+  // Sync-fire focusActiveTerm so setFocusedTile's rAF retry loop is
+  // armed before the first focusout; staggered delayed re-fires catch
+  // any focusout that escapes the standard 8-frame retry budget
+  // (later RO callbacks, WebGL canvas swap, DPR settle). All calls
+  // are idempotent — re-focusing an already-focused element is a no-op.
+  focusActiveTerm();
+  setTimeout(() => focusActiveTerm(), 32);
+  setTimeout(() => focusActiveTerm(), 100);
+  setTimeout(() => focusActiveTerm(), 250);
 }
 
 function toggleProjectGrid() {
