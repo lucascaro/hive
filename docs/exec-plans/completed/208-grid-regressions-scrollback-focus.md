@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/208-grid-regressions-scrollback-focus.md](../../product-specs/208-grid-regressions-scrollback-focus.md)
 - **Issue:** #208
-- **Stage:** QA
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** [#209](https://github.com/lucascaro/hive/pull/209)
 - **Branch:** `feature/208-grid-regressions-scrollback-focus`
 
@@ -61,6 +61,18 @@ Make `_replayBaselineCols` follow grid layout, not session lifetime. Add an expl
 - **rAF timing on post-`renderGrid` rebaseline.** Grid CSS recalc + ResizeObserver fire in the same frame. We need rebaseline to run *after* ResizeObserver's `_onBodyResize` so it overwrites with the new cols. Plan: one extra rAF after the grid mutation, then call per visible tile. Fallback if racy in practice: a `pendingRebaselineReason` flag consumed by the next `_onBodyResize`.
 - **Risk: focus rAF interacts with `setFocusedTile`'s retry loop.** If we observe both loops firing, switch to `setFocusedTile(state.activeId)` (which is idempotent) instead of `focusActiveTerm()`.
 - **No Go changes required.** All three regressions live in the frontend.
+
+## QA verdict
+
+<!-- Appended by /hs-feature-qa. Append-only. Latest entry is authoritative. -->
+- **2026-05-15** — verdict: NEEDS_FOLLOWUP; checks: 4 passed / 0 failed / 3 followups; followups: 3 manual operator smokes; one-line: automated tests all green on merged main; manual Wails-window smokes deferred to operator.
+  - 2026-05-15 dimensions:
+    - build/lint/test — PASS — `go test ./internal/...` ok; `npm test` 91/91 ok; `npm run test:e2e` 18/18 ok
+    - acceptance — PASS (automated) — `replay-baseline.test.js` (6) and `grid-scroll-regressions.spec.js` (4) and `sidebar-focus-regression.spec.js` (2) all pass; R-control case enforces that legitimate ≥4-col resizes still trigger replay
+    - acceptance — NEEDS_FOLLOWUP (manual) — three operator smokes from spec Success criteria require a real Wails window: (1) restart Hive → grid-all → scroll in each tile; (2) 3 sessions → minimize one → scroll/restore; (3) resize → ⌘S off → ⌘S on → type. These cannot be driven from headless test infra.
+    - non-goals — PASS — diff confirms no `internal/daemon/` or `internal/session/` changes; no cross-launch minimize-state persistence added; focus-management changes scoped to `toggleSidebar` + `applyRebaseline` helper.
+    - regression — PASS — `git log de5afbd~1..de5afbd` shows one feature commit + docs + gitignore; touched files are `cmd/hivegui/frontend/src/{main.js,lib/scrollback.js}` and test/wails-mock additions. No adjacent xterm/session-lifecycle code modified.
+    - doc accuracy — PASS — `CHANGELOG.md [Unreleased].Fixed` carries the #208 entry covering all three regressions and the test additions.
 
 ## PR convergence ledger
 

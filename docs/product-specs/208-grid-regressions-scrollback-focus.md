@@ -4,7 +4,9 @@
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/208-grid-regressions-scrollback-focus.md](../exec-plans/active/208-grid-regressions-scrollback-focus.md)
+- **Exec plan:** [docs/exec-plans/completed/208-grid-regressions-scrollback-focus.md](../exec-plans/completed/208-grid-regressions-scrollback-focus.md)
+- **PR:** #209
+- **Shipped:** 2026-05-16
 
 ## Problem
 
