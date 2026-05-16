@@ -84,8 +84,20 @@ jobs:
         working-directory: cmd/hivegui/frontend
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Test (frontend E2E)
+      - name: Test (frontend E2E — mock Wails)
         working-directory: cmd/hivegui/frontend
         run: ./node_modules/.bin/playwright test
         env:
           CI: 'true'
+
+      - name: Test (frontend E2E — real hived via ws-bridge)
+        # Layer B: spawns the real hived daemon + hived-ws-bridge in
+        # temp dirs, points the Vite frontend at the bridge URL via
+        # VITE_WAILS_REAL=1, runs Playwright. Catches wire/payload
+        # drift that the mock harness cannot see. See
+        # docs/exec-plans/active/210-real-e2e-tests.md.
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright test --config=playwright.real.config.js
+        env:
+          CI: 'true'
+          TERM: dumb

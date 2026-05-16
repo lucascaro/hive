@@ -39,3 +39,31 @@ test('toggles grid view', async ({ page }) => {
 
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 });
+
+// Layer C invariant: a clean boot must produce no console errors or
+// unhandled rejections. Cheap, broad regression net — any new feature
+// that throws on init surfaces here even if it has no dedicated test.
+test('clean boot produces no console errors or unhandled rejections', async ({ page }) => {
+  const errors = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+
+  await page.goto('/');
+  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+
+  // Exercise a few common UI paths so the assertion covers more than
+  // just the first paint.
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.evaluate(() => window.__hive.addSession('two'));
+  await page.waitForFunction(() => window.__hive.state.sessions.length >= 2);
+  await page.keyboard.press(`${mod}+Shift+g`);
+  await expect(page.locator('#terms')).toHaveClass(/grid/);
+  await page.keyboard.press(`${mod}+Shift+g`);
+  await expect(page.locator('#terms')).not.toHaveClass(/grid/);
+
+  // Allow any queued microtasks / rAFs to flush before asserting.
+  await page.waitForTimeout(100);
+  expect(errors, `unexpected errors:\n${errors.join('\n')}`).toEqual([]);
+});

@@ -1,6 +1,6 @@
 # 210 — Real end-to-end tests for hive
 
-- **Stage:** IMPLEMENT
+- **Stage:** QA
 - **Status:** active
 
 ## Summary
@@ -33,21 +33,34 @@ Phasing (one PR per layer): A → C → B, with CI rolling in alongside.
 - `.github/workflows/build-linux.yml` — add `Test (Go e2e — real hived binary)` step.
 - `.github/workflows/build-macos.yml` — same.
 
-### New files (this PR — Layer A only)
+### New files
 
-- `internal/wire/testclient/client.go` — async client over the binary wire protocol with `Dial`, `Handshake`, `WriteStdin`, `WaitForData`, `AwaitReplayBoundary`, `AwaitSessionEvent`, `CreateSession`, `RequireIsolation`. DATA + EVENT share one ordered channel to preserve wire order (separate channels lose select-ordering, returning empty replays).
-- `internal/wire/testclient/client_test.go` — unit tests against an in-test fake daemon (no real binary needed).
-- `cmd/hived/e2e_test.go` (`//go:build e2e`) — spawns the real `hived` binary in a temp dir; tests below.
-- `docs/exec-plans/active/210-real-e2e-tests.md` (this file).
+**Layer A**
+- `internal/wire/testclient/client.go` + `client_test.go` — async wire client + isolation guard.
+- `cmd/hived/e2e_test.go` (`//go:build e2e`) — daemon binary tests.
 
-### Tests (Layer A)
+**Layer B**
+- `cmd/hived-ws-bridge/main.go` — localhost WS shim translating JSON-RPC ↔ wire frames. Fail-closes on missing/escaping isolation env.
+- `cmd/hivegui/frontend/test/e2e-real/wails-bridge.js` — browser-side WS client matching the Wails App + runtime surface.
+- `cmd/hivegui/frontend/test/e2e-real/globalSetup.mjs` / `globalTeardown.mjs` — Playwright lifecycle that builds binaries, spawns hived + bridge in temp dirs, exports `WS_BRIDGE_URL`.
+- `cmd/hivegui/frontend/playwright.real.config.js` — separate Playwright config for real-daemon mode.
+- `cmd/hivegui/frontend/test/e2e-real/lifecycle.spec.js` — bootstrap session, attach, type, assert echoed output in xterm buffer.
+- `cmd/hivegui/frontend/test/e2e-real/glyph-utf8.spec.js` — multi-byte UTF-8 (2 / 3 / 4 byte) round-trips through real wire path.
 
-- `TestE2E_SessionLifecycle` — attach, type a marker, detach, reattach, replay carries the marker.
-- `TestE2E_ScrollbackAtomicityUnderConcurrentFanout` — two attach clients on one session, 200-line burst (with `stty -echo` so input doesn't pollute observers), assert identical clipped windows.
-- `TestE2E_MultiSessionIsolation` — 4 sessions, distinct concurrent markers, assert no cross-talk.
-- `TestE2E_DaemonRestart` — SIGTERM the daemon, restart against the same state dir, assert the named session persists in the registry.
-- `TestE2E_ProtocolVersionMismatch` — wrong wire version → daemon refuses cleanly.
-- `TestE2E_IsolationGuard_FailsClosed` — `RequireIsolation` errors when env vars are unset.
+**Layer C** (mock-Wails Playwright expansion)
+- `cmd/hivegui/frontend/test/e2e/scrollback-invariants.spec.js` — 5 invariants beyond the specific #208 regressions.
+- `cmd/hivegui/frontend/test/e2e/focus-invariants.spec.js` — 4 focus-alignment invariants not covered by `focus.spec.js`.
+- `cmd/hivegui/frontend/test/e2e/renderer-recovery.spec.js` — WebGL context-loss integration smoke.
+- `cmd/hivegui/frontend/test/e2e/payload-shapes.spec.js` — snake_case vs camelCase parity for SessionInfo.
+
+### Modified files
+
+- `cmd/hivegui/frontend/vite.config.js` — add `VITE_WAILS_REAL=1` substitution branch.
+- `cmd/hivegui/frontend/package.json` — add `test:e2e:real` script.
+- `cmd/hivegui/frontend/test/e2e/smoke.spec.js` — add console-error invariant.
+- `cmd/hivegui/frontend/src/main.js` — expose `window.__hive_state = state` gated on `import.meta.env.VITE_WAILS_MOCK/REAL` (test-only).
+- `.github/workflows/build-linux.yml` — Layer A + Layer B steps.
+- `.github/workflows/build-macos.yml` — Layer A + Layer C (mock) + Layer B steps.
 
 ## Decision log
 
@@ -57,10 +70,20 @@ Phasing (one PR per layer): A → C → B, with CI rolling in alongside.
 - **2026-05-15** — Drive stdin via a dedicated third attach in the fanout test, with `stty -echo` issued before the burst. Why: PTY input echo otherwise injects the START/END markers into observers before the actual output, breaking the clip window.
 - **2026-05-15** — Isolation guard recognises `/tmp`, `/private/tmp`, `/var/folders` (macOS `os.TempDir()` returns the latter on CI). Why: bare `/tmp` prefix-matching rejects valid temp paths on macOS runners.
 
+## Decision log (continued)
+
+- **2026-05-15** — Bundle Layers A + B + C into a single PR after user feedback ("one PR"). Why: original plan to ship three separate PRs was overcautious — the layers are conceptually one contract ("real e2e coverage"), reviewers benefit from seeing the whole story, and the regressions-have-to-stop framing argues for landing the full net at once.
+- **2026-05-15** — Layer C specs explicitly avoid duplicating `grid-scroll-regressions.spec.js`, `focus.spec.js`, etc. They target the GAPS in existing coverage, framed as invariants rather than historical-bug regression tests so the next refactor must uphold them generically.
+- **2026-05-15** — Layer B uses a single ordered WS JSON-RPC channel (gorilla/websocket already transitive in deps) rather than a separate frame protocol. Why: the bridge surface is ~10 methods; full protocol parity isn't worth the LOC.
+- **2026-05-15** — Layer B reads xterm buffer via a tiny `window.__hive_state = state` test hook in main.js, gated on Vite env vars so production drops it. Why: WebGL renderer paints to canvas; `.xterm-rows` DOM scrape returns empty. xterm's `buffer.active.getLine().translateToString(true)` is the source of truth.
+- **2026-05-15** — globalSetup uses `.mjs` extension. Why: `cmd/hivegui/frontend/package.json` does not set `"type": "module"`, but Playwright's globalSetup loader requires ESM syntax.
+
 ## Progress
 
-- **2026-05-15** — Layer A scaffolding landed: testclient + 6 e2e tests + CI wiring (Linux + macOS). All passing locally on macOS in ~12s (10s of which is the initial `go build hived`).
-- **2026-05-15** — Layer B and Layer C remain in plan; each will land as its own PR.
+- **2026-05-15** — Layer A scaffolding landed locally: testclient + 6 e2e tests + CI wiring (Linux + macOS). 6/6 green in ~12s.
+- **2026-05-15** — Layer C scaffolding landed locally: 4 new spec files + smoke.spec.js extension. Full mock suite 32/33 green (1 graceful skip for unavailable `WEBGL_lose_context`).
+- **2026-05-15** — Layer B scaffolding landed locally: hived-ws-bridge + browser-side bridge + Playwright real config + globalSetup/Teardown + lifecycle.spec.js + glyph-utf8.spec.js. 2/2 green in ~6s.
+- **2026-05-15** — All three layers wired into Linux and macOS CI on every PR.
 
 ## Open questions
 

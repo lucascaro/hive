@@ -74,3 +74,27 @@ jobs:
           go test -tags=e2e -timeout 180s ./cmd/hived/...
         env:
           TERM: dumb
+
+      - name: Test (frontend unit + DOM)
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/vitest run
+
+      - name: Install Playwright browsers
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Test (frontend E2E — mock Wails)
+        # macOS catches webview-specific regressions that headless
+        # Linux Chromium can't (WebGL atlas behaviour, DPR, fonts).
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright test
+        env:
+          CI: 'true'
+
+      - name: Test (frontend E2E — real hived via ws-bridge)
+        # Layer B on macOS too — wire protocol parity across platforms.
+        working-directory: cmd/hivegui/frontend
+        run: ./node_modules/.bin/playwright test --config=playwright.real.config.js
+        env:
+          CI: 'true'
+          TERM: dumb
