@@ -62,6 +62,11 @@ Make `_replayBaselineCols` follow grid layout, not session lifetime. Add an expl
 - **Risk: focus rAF interacts with `setFocusedTile`'s retry loop.** If we observe both loops firing, switch to `setFocusedTile(state.activeId)` (which is idempotent) instead of `focusActiveTerm()`.
 - **No Go changes required.** All three regressions live in the frontend.
 
+## PR convergence ledger
+
+<!-- Appended by /hs-review-loop. One line per iteration, append-only. -->
+- **2026-05-15 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 6964107.
+
 ## Progress
 
 - **2026-05-15** — Plan-first scaffold; Stage = IMPLEMENT. Spec + exec plan written; GitHub issue #208 created.
