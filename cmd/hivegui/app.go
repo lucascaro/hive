@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
@@ -72,6 +73,22 @@ func (c *connState) writeFrame(t wire.FrameType, p []byte) error {
 // instead. tag round-trips back to the frontend via the "bell-click"
 // Wails event when the user clicks the notification (darwin only).
 // Errors are logged but not surfaced — notifications are best-effort UX.
+// SetClipboardText writes text to the system clipboard.
+//
+// Replaces wails runtime.ClipboardSetText, which is broken on Windows:
+// the JS-bridged call runs on a non-STA goroutine, so OpenClipboard
+// silently fails and nothing reaches the clipboard. Reads
+// (ClipboardGetText) work since they don't require clipboard ownership.
+// atotto/clipboard shells out to clip.exe on Windows, sidestepping the
+// threading constraint entirely.
+func (a *App) SetClipboardText(s string) error {
+	if err := clipboard.WriteAll(s); err != nil {
+		log.Printf("hivegui: clipboard write failed: %v", err)
+		return err
+	}
+	return nil
+}
+
 func (a *App) Notify(title, subtitle, body, tag string) error {
 	if err := notify.Notify(title, subtitle, body, tag); err != nil {
 		log.Printf("hivegui: notify failed: %v", err)

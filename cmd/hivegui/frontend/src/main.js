@@ -11,9 +11,9 @@ import {
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
-  RestartDaemon, CheckForUpdate,
+  RestartDaemon, CheckForUpdate, SetClipboardText,
 } from '../wailsjs/go/main/App';
-import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
@@ -246,11 +246,14 @@ class SessionTerm {
       const key = e.key.toLowerCase();
       if (key === 'c') {
         const sel = this.term.getSelection();
-        if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+        // SetClipboardText (Go-side via atotto/clipboard) rather than
+        // wails runtime.ClipboardSetText — the latter is broken on
+        // Windows (non-STA goroutine, OpenClipboard fails silently).
+        if (sel) SetClipboardText(sel).catch(() => {});
         return false;
       }
       if (key === 'v') {
-        navigator.clipboard.readText().then((text) => {
+        ClipboardGetText().then((text) => {
           if (text) this._writePty(text);
         }).catch(() => {});
         return false;

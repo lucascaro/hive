@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
+	github.com/atotto/clipboard v0.1.4
 	github.com/aymanbagabas/go-pty v0.2.2
 	github.com/creack/pty v1.1.24
 	github.com/google/uuid v1.6.0
