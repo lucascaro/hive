@@ -233,6 +233,35 @@ class SessionTerm {
         this._writePty(seq);
       });
     }
+
+    // Keyboard copy/paste/select-all. Required because when an inner
+    // program (Claude CLI, vim) enables DEC mouse tracking, xterm.js
+    // forwards mouse events to the PTY instead of using them for text
+    // selection — leaving no way to copy output. Ctrl+Shift+A selects
+    // the full scrollback, Ctrl+Shift+C copies the current selection,
+    // Ctrl+Shift+V pastes from the system clipboard.
+    this.term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
+      const key = e.key.toLowerCase();
+      if (key === 'c') {
+        const sel = this.term.getSelection();
+        if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+        return false;
+      }
+      if (key === 'v') {
+        navigator.clipboard.readText().then((text) => {
+          if (text) this._writePty(text);
+        }).catch(() => {});
+        return false;
+      }
+      if (key === 'a') {
+        this.term.selectAll();
+        return false;
+      }
+      return true;
+    });
+
     // Visual focus (.term-focused) and keyboard focus (xterm's
     // helper-textarea) are reconciled atomically by setFocusedTile(id),
     // which is the sole writer of .term-focused. Driving the class off
