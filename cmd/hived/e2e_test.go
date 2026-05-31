@@ -39,12 +39,26 @@ import (
 
 var (
 	binPath     string
+	binDir      string
 	binBuildErr error
 	binOnce     sync.Once
 )
 
+// TestMain owns the package-level cleanup for the build dir created
+// by hivedBinary. Without it every `go test -tags=e2e` run left a
+// stray /tmp/hived-bin*/ behind, which accumulates over time on dev
+// machines and CI runners alike.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if binDir != "" {
+		_ = os.RemoveAll(binDir)
+	}
+	os.Exit(code)
+}
+
 // hivedBinary builds the cmd/hived binary into a temp path once per
-// test process and returns the path. Subsequent tests reuse it.
+// test process and returns the path. Subsequent tests reuse it. The
+// directory is recorded in binDir so TestMain can remove it on exit.
 func hivedBinary(t *testing.T) string {
 	t.Helper()
 	binOnce.Do(func() {
@@ -67,6 +81,7 @@ func hivedBinary(t *testing.T) string {
 			return
 		}
 		binPath = out
+		binDir = dir
 	})
 	if binBuildErr != nil {
 		t.Fatalf("hivedBinary: %v", binBuildErr)
@@ -357,10 +372,33 @@ func TestE2E_ScrollbackAtomicityUnderConcurrentFanout(t *testing.T) {
 		t.Errorf("fanout streams diverged (len a=%d b=%d, first diff at %d)",
 			len(got[0]), len(got[1]), firstDiff(got[0], got[1]))
 	}
-	// Sanity-check: the clipped window includes the expected line count.
-	if n := strings.Count(string(got[0]), "L0001"); n < 1 {
-		t.Errorf("burst content missing on stream A: %q", got[0])
+	// Sanity-check: the clipped window includes both the first AND
+	// last burst lines. Without checking the last line, a truncated
+	// burst that contained only the first few lines would still pass
+	// the equality check above as long as both observers were
+	// truncated identically — and the equality check is the whole
+	// point of the test. The end-to-end count assertion guarantees
+	// that "both got the same bytes" actually means "both got the
+	// full payload".
+	for _, want := range []string{"L0001", fmt.Sprintf("L%04d", lines)} {
+		if !strings.Contains(string(got[0]), want) {
+			t.Errorf("burst content missing %q on stream A (len=%d): %q",
+				want, len(got[0]), truncate(got[0], 200))
+		}
 	}
+}
+
+// truncate returns the first n bytes of b followed by "..." when
+// truncated. Keeps test failure messages readable without dumping
+// kilobytes of bash output.
+func truncate(b []byte, n int) []byte {
+	if len(b) <= n {
+		return b
+	}
+	out := make([]byte, 0, n+3)
+	out = append(out, b[:n]...)
+	out = append(out, '.', '.', '.')
+	return out
 }
 
 // clipBetween extracts the substring after `start` and up to (not
@@ -455,14 +493,11 @@ func TestE2E_MultiSessionIsolation(t *testing.T) {
 	}
 }
 
-// TestE2E_DaemonRestart: write a marker, terminate the daemon process,
+// TestE2E_DaemonRestart: create a named session, SIGTERM the daemon,
 // re-spawn against the same state dir, verify the persisted session
-// is restored.
-//
-// NOTE: PTY processes don't survive the daemon dying (the PTY's
-// controlling process is hived itself). What MUST survive is the
-// registry entry — the session is present after restart, just with
-// alive=false until reattach respawns it.
+// is restored AND its PTY is alive again (the daemon's startup loop
+// calls reg.Revive on every persisted entry — see
+// internal/daemon/daemon.go:99 — which spawns a fresh shell).
 func TestE2E_DaemonRestart(t *testing.T) {
 	d := spawnDaemon(t)
 	ctl := dialControl(t, d)
@@ -509,15 +544,19 @@ func TestE2E_DaemonRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("snapshot after restart: %v", err)
 	}
-	found := false
-	for _, s := range snap.Sessions {
-		if s.ID == createdID && s.Name == sessName {
-			found = true
+	var restored *wire.SessionInfo
+	for i := range snap.Sessions {
+		if snap.Sessions[i].ID == createdID && snap.Sessions[i].Name == sessName {
+			restored = &snap.Sessions[i]
 			break
 		}
 	}
-	if !found {
-		t.Errorf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
+	if restored == nil {
+		t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
+	}
+	if !restored.Alive {
+		t.Errorf("session %s should be alive after restart (daemon Revives), got alive=false: %+v",
+			createdID, *restored)
 	}
 }
 

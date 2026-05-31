@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -226,6 +225,11 @@ func (c *Client) AwaitReplayBoundary(timeout time.Duration) ([]byte, error) {
 						return buf.Bytes(), errors.New("testclient: Done without Begin")
 					}
 					return buf.Bytes(), nil
+				default:
+					// Surface unexpected events (e.g. session_exit) so
+					// the caller sees the real failure cause instead
+					// of waiting until timeout.
+					return buf.Bytes(), fmt.Errorf("testclient: unexpected event %q while waiting for replay done", ev.Kind)
 				}
 			}
 		case err := <-c.errs:
@@ -330,13 +334,20 @@ func (c *Client) readLoop() {
 		}
 		ft, payload, err := wire.ReadFrame(c.conn)
 		if err != nil {
-			// io.EOF / closed conn is the normal teardown path; only
-			// surface unexpected errors.
-			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-				select {
-				case c.errs <- err:
-				default:
-				}
+			// When Close was called explicitly, drop the error — it
+			// is just the read-side seeing our own conn.Close. In any
+			// other case surface the error (including io.EOF /
+			// net.ErrClosed) so callers in Handshake / WaitForData
+			// fail fast with the real cause (daemon crashed, refused,
+			// etc.) instead of waiting until timeout.
+			select {
+			case <-c.closed:
+				return
+			default:
+			}
+			select {
+			case c.errs <- err:
+			default:
 			}
 			return
 		}
@@ -413,16 +424,18 @@ func RequireIsolation() error {
 }
 
 // hasAnyPrefix returns true when `s` lives at or under any of the
-// given path prefixes. Paths are cleaned (filepath.Clean) on both
-// sides so trailing separators / mixed separators / Windows short-vs-
-// long-form mismatches don't produce a false negative.
+// given path prefixes. Paths are normalised via resolvePath on both
+// sides — that means lexical `..` segments are collapsed, the path is
+// made absolute, and symlinks are followed where possible. Without
+// the symlink hop, `HIVE_STATE_DIR=/tmp/escape` pointing at a symlink
+// to /Users/... would slip through the prefix gate.
 func hasAnyPrefix(s string, prefixes []string) bool {
-	s = filepath.Clean(s)
+	s = resolvePath(s)
 	for _, p := range prefixes {
 		if p == "" {
 			continue
 		}
-		p = filepath.Clean(p)
+		p = resolvePath(p)
 		if s == p {
 			return true
 		}
@@ -431,4 +444,37 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 		}
 	}
 	return false
+}
+
+// resolvePath returns an absolute, lexically-cleaned path with
+// symlinks resolved where the filesystem allows. EvalSymlinks needs
+// the path to exist; isolation paths (sockets, not-yet-created state
+// dirs) often have a non-existent leaf or even non-existent ancestors,
+// so we walk up to the longest existing prefix, EvalSymlinks that, and
+// re-join the remainder. Without this, on macOS /tmp and /var both
+// resolve through /private, so a sock built from os.TempDir() would
+// stay /var/folders/... while the prefix entry resolves to
+// /private/var/folders/... — and the HasPrefix gate would falsely
+// reject the input.
+func resolvePath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	p = filepath.Clean(p)
+	parts := strings.Split(p, string(os.PathSeparator))
+	for i := len(parts); i > 0; i-- {
+		prefix := strings.Join(parts[:i], string(os.PathSeparator))
+		if prefix == "" {
+			prefix = string(os.PathSeparator)
+		}
+		resolved, err := filepath.EvalSymlinks(prefix)
+		if err != nil {
+			continue
+		}
+		if i == len(parts) {
+			return resolved
+		}
+		return filepath.Join(append([]string{resolved}, parts[i:]...)...)
+	}
+	return p
 }

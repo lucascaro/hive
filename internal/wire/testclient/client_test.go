@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -276,17 +277,8 @@ func TestSessionInfo_JSONShape(t *testing.T) {
 	b, _ := json.Marshal(info)
 	s := string(b)
 	for _, want := range []string{`"project_id"`, `"worktree_path"`} {
-		if !contains(s, want) {
+		if !strings.Contains(s, want) {
 			t.Errorf("SessionInfo JSON missing %s: %s", want, s)
 		}
 	}
-}
-
-func contains(haystack, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }

@@ -1,6 +1,6 @@
 # 210 — Real end-to-end tests for hive
 
-- **Stage:** QA
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
@@ -26,7 +26,7 @@ Three layers + CI:
 - **Layer C** — Expand the mock-Wails Playwright suite to cover the five fragile zones with invariant-shaped tests.
 - **Layer D / CI** — All three layers run on Linux and macOS, every PR. CI exports `HOME` / `HIVE_STATE_DIR` / `HIVE_SOCKET` to temp paths.
 
-Phasing (one PR per layer): A → C → B, with CI rolling in alongside.
+Phasing: originally scoped as one PR per layer (A → C → B), but after user feedback ("one PR") all three were bundled into the single PR that introduces this plan. The CI wiring lands alongside in the same PR.
 
 ### Files to change
 
@@ -89,3 +89,8 @@ Phasing (one PR per layer): A → C → B, with CI rolling in alongside.
 
 - Per-PR runtime budget for Layer B (~2 min projected). If it slips toward 5 min we may need to split into smoke vs full passes; revisit when the bridge shim lands.
 - Should Layer A also build with `-race`? Worth the wall-time? Defer until the suite is broader.
+
+## PR convergence ledger
+
+<!-- Append-only. One line per /hs-review-loop iteration. -->
+
