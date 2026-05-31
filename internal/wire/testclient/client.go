@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -411,9 +412,21 @@ func RequireIsolation() error {
 	return nil
 }
 
+// hasAnyPrefix returns true when `s` lives at or under any of the
+// given path prefixes. Paths are cleaned (filepath.Clean) on both
+// sides so trailing separators / mixed separators / Windows short-vs-
+// long-form mismatches don't produce a false negative.
 func hasAnyPrefix(s string, prefixes []string) bool {
+	s = filepath.Clean(s)
 	for _, p := range prefixes {
-		if strings.HasPrefix(s, p+string(os.PathSeparator)) || s == p {
+		if p == "" {
+			continue
+		}
+		p = filepath.Clean(p)
+		if s == p {
+			return true
+		}
+		if strings.HasPrefix(s, p+string(os.PathSeparator)) {
 			return true
 		}
 	}

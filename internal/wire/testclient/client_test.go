@@ -6,17 +6,24 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// shortTempDir mirrors the helper used by daemon tests: keeps the
-// unix socket path under macOS's 104-byte sun_path cap.
+// shortTempDir picks a temp dir that keeps a unix-socket path under
+// macOS's 104-byte sun_path cap. On macOS/Linux that means /tmp; on
+// Windows we lean on the OS default (long Windows paths are fine for
+// AF_UNIX, which is supported on Windows 10+).
 func shortTempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "tcl")
+	base := "/tmp"
+	if runtime.GOOS == "windows" {
+		base = ""
+	}
+	dir, err := os.MkdirTemp(base, "tcl")
 	if err != nil {
 		t.Fatalf("mkdir temp: %v", err)
 	}
@@ -234,6 +241,10 @@ func TestClient_AwaitSessionEvent_FiltersByKind(t *testing.T) {
 }
 
 func TestRequireIsolation(t *testing.T) {
+	// Build a path that's guaranteed to live under a recognised temp
+	// prefix on the current OS. RequireIsolation checks os.TempDir()
+	// as one of its prefixes, so this works cross-platform.
+	tmp := filepath.Join(os.TempDir(), "tcl-iso")
 	cases := []struct {
 		name    string
 		sock    string
@@ -241,10 +252,9 @@ func TestRequireIsolation(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "both unset", wantErr: true},
-		{name: "only sock", sock: "/tmp/x/h.sock", wantErr: true},
-		{name: "outside tmp", sock: "/home/u/h.sock", state: "/home/u/state", wantErr: true},
-		{name: "both tmp", sock: "/tmp/x/h.sock", state: "/tmp/x/state", wantErr: false},
-		{name: "private tmp (macOS)", sock: "/private/tmp/x/h.sock", state: "/private/tmp/x/state", wantErr: false},
+		{name: "only sock", sock: filepath.Join(tmp, "h.sock"), wantErr: true},
+		{name: "outside tmp", sock: filepath.Join("definitely-not-temp", "h.sock"), state: filepath.Join("definitely-not-temp", "state"), wantErr: true},
+		{name: "both tmp", sock: filepath.Join(tmp, "h.sock"), state: filepath.Join(tmp, "state"), wantErr: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
