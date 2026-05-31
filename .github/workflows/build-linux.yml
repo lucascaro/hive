@@ -81,8 +81,12 @@ jobs:
         run: ./node_modules/.bin/vitest run
 
       - name: Install Playwright browsers
+        # Install BOTH the full chromium and the headless-shell variant
+        # so CI-mode launches (which prefer headless-shell) never trip
+        # on a missing binary. See the macOS workflow for the failure
+        # mode this guards against.
         working-directory: cmd/hivegui/frontend
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium chromium-headless-shell
 
       - name: Test (frontend E2E — mock Wails)
         working-directory: cmd/hivegui/frontend
