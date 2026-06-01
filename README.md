@@ -50,10 +50,12 @@ For Windows or Linux, build the GUI and the daemon separately:
 # Windows (cross-build from macOS works)
 ( cd cmd/hivegui && wails build -platform windows/amd64 )
 GOOS=windows GOARCH=amd64 go build -o cmd/hivegui/build/bin/hived.exe ./cmd/hived
+GOOS=windows GOARCH=amd64 go build -o cmd/hivegui/build/bin/hive.exe ./cmd/hive
 
 # Linux (build natively)
 ( cd cmd/hivegui && wails build -platform linux/amd64 )
 GOOS=linux GOARCH=amd64 go build -o cmd/hivegui/build/bin/hived ./cmd/hived
+GOOS=linux GOARCH=amd64 go build -o cmd/hivegui/build/bin/hive ./cmd/hive
 ```
 
 `hivegui` and `hived` must live in the same directory; the GUI
@@ -77,6 +79,7 @@ Untagged dev builds — anything built without `./build.sh --version
 
 ```
 cmd/
+  hive/            # terminal attach client (hive ls / hive attach)
   hived/           # session daemon
   hivegui/         # Wails GUI client
 internal/

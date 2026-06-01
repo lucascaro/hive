@@ -112,6 +112,18 @@ build_macos() {
     .build/hived-darwin-amd64 .build/hived-darwin-arm64
   rm -rf .build
 
+  echo "==> [macos] Building hive CLI (universal)"
+  mkdir -p .build
+  GOOS=darwin GOARCH=amd64 go build -trimpath \
+    -ldflags="-s -w ${ldflags_id}" \
+    -o .build/hive-amd64 ./cmd/hive
+  GOOS=darwin GOARCH=arm64 go build -trimpath \
+    -ldflags="-s -w ${ldflags_id}" \
+    -o .build/hive-arm64 ./cmd/hive
+  lipo -create -output cmd/hivegui/build/bin/hive \
+    .build/hive-amd64 .build/hive-arm64
+  rm -rf .build
+
   APP=cmd/hivegui/build/bin/hivegui.app
   echo "==> [macos] Built $APP"
   file "$APP/Contents/MacOS/hivegui" | head -1
@@ -135,22 +147,26 @@ build_windows() {
   ( cd cmd/hivegui && wails build -platform windows/amd64 -clean \
       -ldflags "${ldflags_id}" )
 
-  echo "==> [windows] Building hived.exe (amd64)"
+  echo "==> [windows] Building hived.exe + hive.exe (amd64)"
   mkdir -p .build
   GOOS=windows GOARCH=amd64 go build -trimpath \
     -ldflags="-s -w ${ldflags_id}" \
     -o .build/hived.exe ./cmd/hived
+  GOOS=windows GOARCH=amd64 go build -trimpath \
+    -ldflags="-s -w ${ldflags_id}" \
+    -o .build/hive.exe ./cmd/hive
 
   BIN=cmd/hivegui/build/bin
   cp .build/hived.exe "$BIN/hived.exe"
+  cp .build/hive.exe "$BIN/hive.exe"
   rm -rf .build
-  echo "==> [windows] Built $BIN/hivegui.exe + $BIN/hived.exe"
+  echo "==> [windows] Built $BIN/hivegui.exe + $BIN/hived.exe + $BIN/hive.exe"
 
   if [[ $zip_artifact -eq 1 ]]; then
     mkdir -p release
     out="release/Hive-${version}-windows-amd64.zip"
     rm -f "$out"
-    ( cd "$BIN" && zip -q "../../../../$out" hivegui.exe hived.exe )
+    ( cd "$BIN" && zip -q "../../../../$out" hivegui.exe hived.exe hive.exe )
     echo "==> [windows] Packaged $out ($(du -h "$out" | cut -f1))"
   fi
 }
