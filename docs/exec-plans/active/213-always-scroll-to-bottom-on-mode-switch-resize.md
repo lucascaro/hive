@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/213-always-scroll-to-bottom-on-mode-switch-resize.md](../../product-specs/213-always-scroll-to-bottom-on-mode-switch-resize.md)
 - **Issue:** #213
-- **Stage:** IMPLEMENT
+- **PR:** #214
+- **Branch:** `feature/213-always-scroll-to-bottom-on-mode-switch-resize`
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
