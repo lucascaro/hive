@@ -22,7 +22,11 @@ type Terminal interface {
 
 // AttachOptions tunes attach behavior.
 type AttachOptions struct {
-	// RequestReplay asks the daemon to repaint scrollback on attach.
+	// RequestReplay sends an explicit REQUEST_REPLAY frame after the
+	// handshake. The daemon ALREADY streams the full scrollback ring on
+	// every attach, so this must stay false for a normal attach — setting
+	// it true paints the history twice. It exists for callers that need a
+	// re-replay mid-session (e.g. after a width change), mirroring the GUI.
 	RequestReplay bool
 }
 

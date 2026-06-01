@@ -72,7 +72,9 @@ func runAttach(args []string) {
 	defer cleanup()
 
 	fmt.Fprintf(os.Stderr, "attached to %s — detach with Ctrl-A d\r\n", id)
-	if err := client.Attach(conn, id, t, client.AttachOptions{RequestReplay: true}); err != nil {
+	// The daemon streams the full scrollback automatically on attach, so we
+	// do NOT request a replay here — doing so would paint the history twice.
+	if err := client.Attach(conn, id, t, client.AttachOptions{RequestReplay: false}); err != nil {
 		cleanup()
 		fmt.Fprintln(os.Stderr, "hive attach:", err)
 		os.Exit(1)
