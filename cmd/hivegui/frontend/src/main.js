@@ -19,6 +19,7 @@ import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
 import { filterMinimized } from './lib/minimized.js';
+import { snapVisibleTermsToBottom } from './lib/view-scroll.js';
 import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
@@ -614,6 +615,11 @@ class SessionTerm {
       this._replayTimer = 0;
     }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
+      // Carry the user's pre-resize "at bottom?" intent through to the
+      // scrollback_replay_done handler. If the user was actively reading
+      // scrollback (wasAtBottom === false), the replay must not yank
+      // them back to the bottom on completion.
+      this._replayWantsBottom = wasAtBottom;
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
         this._replayBaselineCols = this.term.cols;
@@ -1811,6 +1817,10 @@ function setView(view) {
   // Toggling grid/fullscreen via the menu blurs the xterm; restore
   // focus so the user can keep typing into the active session.
   focusActiveTerm();
+  // Mode switches are deliberate user actions — always snap visible
+  // tiles to the bottom. Without this, xterm lands wherever the
+  // buffer happened to be (often mid-history), which is jarring.
+  snapVisibleTermsToBottom(state.terms.values());
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);

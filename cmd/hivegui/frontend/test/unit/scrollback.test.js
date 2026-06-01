@@ -69,12 +69,30 @@ describe('handleScrollbackEvent', () => {
     expect(st.decoder).not.toBe(beforeDecoder);
   });
 
-  it('done event scrolls to bottom', () => {
+  it('done event scrolls to bottom by default (no _replayWantsBottom)', () => {
     const st = makeSt();
     const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
     expect(ok).toBe(true);
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(st.term.reset).not.toHaveBeenCalled();
+  });
+
+  it('done event preserves position when _replayWantsBottom === false and clears the flag', () => {
+    const st = makeSt();
+    st._replayWantsBottom = false;
+    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(ok).toBe(true);
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    expect(st._replayWantsBottom).toBeUndefined();
+  });
+
+  it('done event snaps when _replayWantsBottom === true and clears the flag', () => {
+    const st = makeSt();
+    st._replayWantsBottom = true;
+    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(ok).toBe(true);
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._replayWantsBottom).toBeUndefined();
   });
 
   it('unknown event kinds are no-ops', () => {

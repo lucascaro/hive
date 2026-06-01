@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: scrolling discipline on mode switch and resize. Switching
+  display modes (focused / grid / grid-project) now always snaps
+  every visible tile to the bottom — mode toggles are deliberate
+  user actions, so the previous "land wherever the buffer happened
+  to be" behavior is gone. Resize keeps the existing 2-line
+  sticky-bottom tolerance (#163). The viewport is never automatically
+  moved away from where the user has placed it: when a window resize
+  triggers a scrollback replay while the user is reading deliberate
+  scrollback, the replay no longer yanks them to the bottom on
+  completion. (#213)
 - GUI: three grid-mode regressions and lock-in tests. (1) The first
   time entering grid mode after restart no longer mis-anchors the
   scrollback replay baseline against xterm's 80-column default,

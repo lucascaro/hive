@@ -32,7 +32,12 @@ export function shouldRequestReplay(prevCols, nextCols, threshold = REPLAY_COL_T
 // UTF-8 decoder so a partial multi-byte rune sitting across the
 // boundary doesn't corrupt the first replay character. On Done we
 // scroll to bottom so the user sees the cursor / newest output
-// rather than landing mid-history.
+// rather than landing mid-history — UNLESS `st._replayWantsBottom`
+// was explicitly set to `false` by the caller that armed the replay
+// (see _onBodyResize: a user actively reading scrollback when a
+// resize triggers a replay must not be yanked to the bottom). The
+// flag is consumed (deleted) after each Done so it does not leak
+// across replays.
 // applyRebaseline snaps the replay baseline to the term's current cols
 // and clears any pending debounced replay timer. Used when grid
 // geometry changes for a non-resize reason (first attach in grid,
@@ -62,11 +67,14 @@ export function handleScrollbackEvent(st, kind) {
       st.term.reset();
       if (st.decoder) st.decoder = new TextDecoder('utf-8');
       return true;
-    case 'scrollback_replay_done':
-      if (typeof st.term.scrollToBottom === 'function') {
+    case 'scrollback_replay_done': {
+      const wantsBottom = st._replayWantsBottom !== false;
+      delete st._replayWantsBottom;
+      if (wantsBottom && typeof st.term.scrollToBottom === 'function') {
         st.term.scrollToBottom();
       }
       return true;
+    }
     default:
       return false;
   }
