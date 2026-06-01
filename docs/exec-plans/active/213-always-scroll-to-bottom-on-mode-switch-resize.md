@@ -59,3 +59,7 @@ Why this over the obvious alternative (always-snap on every replay-done): the al
 ## Open questions
 
 None at scaffold time. If the `setView` loop reveals races with `_pendingAttach` tiles in grid mode, address via the `attached && body.clientHeight > 0` guard already in the helper.
+
+## PR convergence ledger
+
+- **2026-05-31 iter 1** — verdict: REQUEST_CHANGES; findings_hash: e5f8de1c31494614528c9f6bfeb9a970eec54d7d20f193ff17549937263dc4f1; threads_open: 0; action: autofix+push (293f7ff); ci: Linux focus.spec.js failed (suspected flake — file has cross-platform flake history); head_sha: 293f7ff.

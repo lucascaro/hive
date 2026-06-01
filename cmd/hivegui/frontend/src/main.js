@@ -1826,7 +1826,16 @@ function setView(view) {
   // Mode switches are deliberate user actions — always snap visible
   // tiles to the bottom. Without this, xterm lands wherever the
   // buffer happened to be (often mid-history), which is jarring.
-  snapVisibleTermsToBottom(state.terms.values());
+  //
+  // Defer to the next rAF so focusActiveTerm's own focus rAF lands
+  // first. Calling term.scrollToBottom() synchronously here triggers
+  // an xterm renderer refresh that can fire focusout on the helper
+  // textarea before applyFocus() has had a chance to run — on Linux
+  // CI this deterministically dropped the active-session focus after
+  // single → grid-all and ate the first keystroke (#214 review).
+  requestAnimationFrame(() => {
+    snapVisibleTermsToBottom(state.terms.values());
+  });
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
