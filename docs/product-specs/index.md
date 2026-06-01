@@ -14,7 +14,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P1 | #190 | GUI: session terminal text gets replaced by garbled glyphs over time; resize fixes it | REVIEW | [190-gui-text-replaced-with-garbled-glyphs](190-gui-text-replaced-with-garbled-glyphs.md) |
 | P1 | #195 | GUI: shared TextDecoder across sessions produces garbled glyphs | QA | [195-shared-textdecoder-glyphs](195-shared-textdecoder-glyphs.md) |
 | P2 | #202 | GUI: minimize sessions to remove from grid view; restore from a tray | REVIEW | [202-minimize-session-from-grid](202-minimize-session-from-grid.md) |
-| P2 | #213 | GUI: always scroll to bottom on mode switch; never auto-scroll up | REVIEW | [213-always-scroll-to-bottom-on-mode-switch-resize](213-always-scroll-to-bottom-on-mode-switch-resize.md) |
+| P2 | #213 | GUI: always scroll to bottom on mode switch; never auto-scroll up | QA | [213-always-scroll-to-bottom-on-mode-switch-resize](213-always-scroll-to-bottom-on-mode-switch-resize.md) |
 
 ## Completed
 
