@@ -19,6 +19,7 @@ import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
 import { filterMinimized } from './lib/minimized.js';
+import { snapVisibleTermsToBottom } from './lib/view-scroll.js';
 import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from './lib/focus.js';
@@ -612,8 +613,19 @@ class SessionTerm {
     if (this._replayTimer) {
       clearTimeout(this._replayTimer);
       this._replayTimer = 0;
+      // Cancel-without-rearm must also clear any stale wants-bottom
+      // intent — otherwise a `false` captured at the previous resize
+      // outlives its replay and suppresses the bottom-snap on the
+      // next replay-done from any source (re-attach, daemon-initiated
+      // atomic replay on subscribe, etc.).
+      delete this._replayWantsBottom;
     }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
+      // Carry the user's pre-resize "at bottom?" intent through to the
+      // scrollback_replay_done handler. If the user was actively reading
+      // scrollback (wasAtBottom === false), the replay must not yank
+      // them back to the bottom on completion.
+      this._replayWantsBottom = wasAtBottom;
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
         this._replayBaselineCols = this.term.cols;
@@ -1811,6 +1823,20 @@ function setView(view) {
   // Toggling grid/fullscreen via the menu blurs the xterm; restore
   // focus so the user can keep typing into the active session.
   focusActiveTerm();
+  // Mode switches are deliberate user actions — always snap visible
+  // tiles to the bottom. Without this, xterm lands wherever the
+  // buffer happened to be (often mid-history), which is jarring.
+  //
+  // Defer past focusActiveTerm's full focus-retry budget
+  // (FOCUS_MAX_RETRIES = 8 frames ≈ 130ms) before snapping. xterm's
+  // scrollToBottom() refreshes the renderer, which can fire focusout
+  // on the helper textarea — synchronous snap broke focus on Linux,
+  // single-rAF snap broke focus on macOS, because each platform's
+  // rAF cadence races focusActiveTerm's retry loop differently.
+  // A 250ms setTimeout clears the polling window on every platform;
+  // a quarter-second pre-snap pause is below the perception threshold
+  // for visual settling after a mode change.
+  setTimeout(() => snapVisibleTermsToBottom(state.terms.values()), 250);
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);

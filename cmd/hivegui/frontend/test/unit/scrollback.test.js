@@ -4,6 +4,7 @@ import {
   REPLAY_COL_THRESHOLD,
   REPLAY_DEBOUNCE_MS,
   handleScrollbackEvent,
+  applyRebaseline,
 } from '../../src/lib/scrollback.js';
 
 describe('shouldRequestReplay', () => {
@@ -69,12 +70,30 @@ describe('handleScrollbackEvent', () => {
     expect(st.decoder).not.toBe(beforeDecoder);
   });
 
-  it('done event scrolls to bottom', () => {
+  it('done event scrolls to bottom by default (no _replayWantsBottom)', () => {
     const st = makeSt();
     const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
     expect(ok).toBe(true);
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(st.term.reset).not.toHaveBeenCalled();
+  });
+
+  it('done event preserves position when _replayWantsBottom === false and clears the flag', () => {
+    const st = makeSt();
+    st._replayWantsBottom = false;
+    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(ok).toBe(true);
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    expect(st._replayWantsBottom).toBeUndefined();
+  });
+
+  it('done event snaps when _replayWantsBottom === true and clears the flag', () => {
+    const st = makeSt();
+    st._replayWantsBottom = true;
+    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(ok).toBe(true);
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._replayWantsBottom).toBeUndefined();
   });
 
   it('unknown event kinds are no-ops', () => {
@@ -106,6 +125,29 @@ describe('handleScrollbackEvent', () => {
     expect(st.term.reset.mock.invocationCallOrder[0]).toBeLessThan(
       st.term.write.mock.invocationCallOrder[0]
     );
+  });
+});
+
+describe('applyRebaseline clears stale wants-bottom intent', () => {
+  it('deletes _replayWantsBottom so a later replay-done does not read stale false', () => {
+    const cleared = vi.fn();
+    const st = {
+      term: { cols: 120 },
+      _replayBaselineCols: 80,
+      _replayTimer: 42,
+      _replayWantsBottom: false,
+    };
+    applyRebaseline(st, cleared);
+    expect(cleared).toHaveBeenCalledWith(42);
+    expect(st._replayBaselineCols).toBe(120);
+    expect(st._replayTimer).toBe(0);
+    expect(st._replayWantsBottom).toBeUndefined();
+  });
+
+  it('is a no-op on _replayWantsBottom when flag was unset', () => {
+    const st = { term: { cols: 100 }, _replayBaselineCols: 80 };
+    applyRebaseline(st, () => {});
+    expect(st._replayWantsBottom).toBeUndefined();
   });
 });
 
