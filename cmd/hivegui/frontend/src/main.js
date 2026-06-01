@@ -1827,15 +1827,16 @@ function setView(view) {
   // tiles to the bottom. Without this, xterm lands wherever the
   // buffer happened to be (often mid-history), which is jarring.
   //
-  // Defer to the next rAF so focusActiveTerm's own focus rAF lands
-  // first. Calling term.scrollToBottom() synchronously here triggers
-  // an xterm renderer refresh that can fire focusout on the helper
-  // textarea before applyFocus() has had a chance to run — on Linux
-  // CI this deterministically dropped the active-session focus after
-  // single → grid-all and ate the first keystroke (#214 review).
-  requestAnimationFrame(() => {
-    snapVisibleTermsToBottom(state.terms.values());
-  });
+  // Defer past focusActiveTerm's full focus-retry budget
+  // (FOCUS_MAX_RETRIES = 8 frames ≈ 130ms) before snapping. xterm's
+  // scrollToBottom() refreshes the renderer, which can fire focusout
+  // on the helper textarea — synchronous snap broke focus on Linux,
+  // single-rAF snap broke focus on macOS, because each platform's
+  // rAF cadence races focusActiveTerm's retry loop differently.
+  // A 250ms setTimeout clears the polling window on every platform;
+  // a quarter-second pre-snap pause is below the perception threshold
+  // for visual settling after a mode change.
+  setTimeout(() => snapVisibleTermsToBottom(state.terms.values()), 250);
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
