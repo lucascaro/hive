@@ -4,8 +4,12 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
+	"time"
+
+	"github.com/lucascaro/hive/internal/wire"
 )
 
 // ClientName is the wire Hello.Client identifier for this binary.
@@ -21,3 +25,47 @@ func Dial(socketPath string) (net.Conn, error) {
 	}
 	return conn, nil
 }
+
+// List opens a control-mode conversation on conn and returns the
+// daemon's current sessions. conn must be freshly dialed (no prior
+// handshake). It is consumed by this call.
+func List(conn net.Conn) ([]wire.SessionInfo, error) {
+	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION,
+		Client:  ClientName(),
+		Mode:    wire.ModeControl,
+	}); err != nil {
+		return nil, fmt.Errorf("control hello: %w", err)
+	}
+	var welcome wire.Welcome
+	ft, err := wire.ReadJSON(conn, &welcome)
+	if err != nil {
+		return nil, fmt.Errorf("control welcome: %w", err)
+	}
+	if ft != wire.FrameWelcome {
+		return nil, fmt.Errorf("control: expected WELCOME, got %s", ft)
+	}
+	if err := wire.WriteJSON(conn, wire.FrameListSessions, wire.ListSessionsReq{}); err != nil {
+		return nil, fmt.Errorf("list request: %w", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer conn.SetReadDeadline(time.Time{}) //nolint:errcheck
+	for {
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			return nil, fmt.Errorf("list read: %w", err)
+		}
+		if ft != wire.FrameSessions {
+			continue
+		}
+		var resp wire.SessionsResp
+		if len(payload) > 0 {
+			if err := jsonUnmarshal(payload, &resp); err != nil {
+				return nil, fmt.Errorf("list decode: %w", err)
+			}
+		}
+		return resp.Sessions, nil
+	}
+}
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
