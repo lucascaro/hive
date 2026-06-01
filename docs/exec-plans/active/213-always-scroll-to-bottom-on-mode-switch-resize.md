@@ -63,3 +63,5 @@ None at scaffold time. If the `setView` loop reveals races with `_pendingAttach`
 ## PR convergence ledger
 
 - **2026-05-31 iter 1** — verdict: REQUEST_CHANGES; findings_hash: e5f8de1c31494614528c9f6bfeb9a970eec54d7d20f193ff17549937263dc4f1; threads_open: 0; action: autofix+push (293f7ff); ci: Linux focus.spec.js failed (suspected flake — file has cross-platform flake history); head_sha: 293f7ff.
+- **2026-05-31 iter 1a** — out-of-band CI re-run confirmed Linux failure deterministic (twice on 293f7ff). Root cause: synchronous `snapVisibleTermsToBottom` inside `setView()` triggered xterm renderer refresh that fired focusout before `applyFocus()`'s rAF could land. Pushed 8877d1c (rAF defer) → Linux passed, macOS regressed at same line. Pushed c13d8bb (setTimeout 250ms, past 8-frame focus-retry window) → all platforms green.
+- **2026-05-31 iter 2** — verdict: APPROVE; findings_hash: (empty); threads_open: 0; action: stop; head_sha: c13d8bb. CI: all required checks pass.
