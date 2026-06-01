@@ -33,6 +33,52 @@ func runLS() {
 	fmt.Print(client.FormatSessions(sessions))
 }
 
+func runAttach(args []string) {
+	var idArg string
+	if len(args) > 0 {
+		idArg = args[0]
+	}
+
+	conn, err := client.Dial(daemon.SocketPath())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer conn.Close()
+
+	// Resolve the target via a separate control connection.
+	lsConn, err := client.Dial(daemon.SocketPath())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	sessions, err := client.List(lsConn)
+	_ = lsConn.Close()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hive attach:", err)
+		os.Exit(1)
+	}
+	id, err := client.ResolveSession(sessions, idArg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hive attach:", err)
+		os.Exit(1)
+	}
+
+	t, cleanup, err := newTerm()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hive attach: terminal:", err)
+		os.Exit(1)
+	}
+	defer cleanup()
+
+	fmt.Fprintf(os.Stderr, "attached to %s — detach with Ctrl-A d\r\n", id)
+	if err := client.Attach(conn, id, t, client.AttachOptions{RequestReplay: true}); err != nil {
+		cleanup()
+		fmt.Fprintln(os.Stderr, "hive attach:", err)
+		os.Exit(1)
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -42,8 +88,7 @@ func main() {
 	case "ls":
 		runLS()
 	case "attach":
-		fmt.Fprintln(os.Stderr, "attach: not implemented yet")
-		os.Exit(1)
+		runAttach(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
