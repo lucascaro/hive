@@ -613,6 +613,12 @@ class SessionTerm {
     if (this._replayTimer) {
       clearTimeout(this._replayTimer);
       this._replayTimer = 0;
+      // Cancel-without-rearm must also clear any stale wants-bottom
+      // intent — otherwise a `false` captured at the previous resize
+      // outlives its replay and suppresses the bottom-snap on the
+      // next replay-done from any source (re-attach, daemon-initiated
+      // atomic replay on subscribe, etc.).
+      delete this._replayWantsBottom;
     }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
       // Carry the user's pre-resize "at bottom?" intent through to the

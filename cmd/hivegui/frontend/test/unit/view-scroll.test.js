@@ -52,4 +52,23 @@ describe('snapVisibleTermsToBottom', () => {
     expect(a.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(b.term.scrollToBottom).toHaveBeenCalledTimes(1);
   });
+
+  it('overrides stale _replayWantsBottom=false on snapped terms', () => {
+    // Mode switches are deliberate "land at bottom" actions. A same-tick
+    // _onBodyResize armed by show() may have set wants-bottom=false; the
+    // snap must mark the term to honor bottom on the upcoming replay-done.
+    const t = makeTerm();
+    t._replayWantsBottom = false;
+    snapVisibleTermsToBottom([t]);
+    expect(t.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(t._replayWantsBottom).toBe(true);
+  });
+
+  it('does not set _replayWantsBottom on skipped terms', () => {
+    const detached = makeTerm({ attached: false });
+    const hidden = makeTerm({ h: 0 });
+    snapVisibleTermsToBottom([detached, hidden]);
+    expect(detached._replayWantsBottom).toBeUndefined();
+    expect(hidden._replayWantsBottom).toBeUndefined();
+  });
 });

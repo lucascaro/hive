@@ -57,6 +57,11 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
     clearTimer(st._replayTimer);
     st._replayTimer = 0;
   }
+  // Always clear any pending wants-bottom intent on rebaseline. The
+  // armed replay (if any) is being canceled here; leaving the flag
+  // would let a later unrelated replay-done read a stale `false` and
+  // skip its default bottom snap.
+  delete st._replayWantsBottom;
   return st;
 }
 
