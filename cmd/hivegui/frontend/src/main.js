@@ -11,9 +11,9 @@ import {
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
-  RestartDaemon, CheckForUpdate,
+  RestartDaemon, CheckForUpdate, SetClipboardText,
 } from '../wailsjs/go/main/App';
-import { EventsOn, WindowSetTitle } from '../wailsjs/runtime/runtime';
+import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
@@ -234,6 +234,61 @@ class SessionTerm {
         this._writePty(seq);
       });
     }
+
+    // Single custom key handler. xterm.js keeps only ONE custom key event
+    // handler — a second attachCustomKeyEventHandler() call silently replaces
+    // the first — so every app-level binding must live here, not in a second
+    // registration.
+    this.term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+
+      // macOS Cmd+Backspace → Ctrl+U (kill to start of line). Browser doesn't
+      // translate this for us when xterm's helper-textarea is focused. Gated
+      // to mac so the Windows key on Linux/Windows can't accidentally fire it.
+      if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
+        e.preventDefault();
+        this._writePty('\x15');
+        return false;
+      }
+      // App-level shortcuts that xterm would otherwise translate into a
+      // control sequence and forward to the PTY (where the shell beeps because
+      // the binding is meaningless). Returning false tells xterm to ignore the
+      // event; it still bubbles to the window-level keydown handler that runs
+      // the actual shortcut. Ctrl+` is intentionally Ctrl-only on every
+      // platform (mirrors VS Code; macOS already uses ⌘` for window cycling).
+      if (e.ctrlKey && !e.metaKey && e.code === 'Backquote') {
+        return false;
+      }
+
+      // Ctrl+Shift copy/paste/select-all. Required because when an inner
+      // program (Claude CLI, vim) enables DEC mouse tracking, xterm.js
+      // forwards mouse events to the PTY instead of using them for text
+      // selection — leaving no way to copy output. Ctrl+Shift+A selects the
+      // full scrollback, Ctrl+Shift+C copies the current selection,
+      // Ctrl+Shift+V pastes from the system clipboard.
+      if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
+      const key = e.key.toLowerCase();
+      if (key === 'c') {
+        const sel = this.term.getSelection();
+        // SetClipboardText (Go-side via atotto/clipboard) rather than
+        // wails runtime.ClipboardSetText — the latter is broken on
+        // Windows (non-STA goroutine, OpenClipboard fails silently).
+        if (sel) SetClipboardText(sel).catch(() => {});
+        return false;
+      }
+      if (key === 'v') {
+        ClipboardGetText().then((text) => {
+          if (text) this._writePty(text);
+        }).catch(() => {});
+        return false;
+      }
+      if (key === 'a') {
+        this.term.selectAll();
+        return false;
+      }
+      return true;
+    });
+
     // Visual focus (.term-focused) and keyboard focus (xterm's
     // helper-textarea) are reconciled atomically by setFocusedTile(id),
     // which is the sole writer of .term-focused. Driving the class off
@@ -269,29 +324,6 @@ class SessionTerm {
       WriteStdin(this.info.id, btoa(bin));
     };
     this.term.onData((data) => this._writePty(data));
-
-    // macOS Cmd+Backspace → Ctrl+U (kill to start of line). Browser doesn't
-    // translate this for us when xterm's helper-textarea is focused. Gated
-    // to mac so the Windows key on Linux/Windows can't accidentally fire it.
-    this.term.attachCustomKeyEventHandler((e) => {
-      if (e.type !== 'keydown') return true;
-      if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
-        e.preventDefault();
-        this._writePty('\x15');
-        return false;
-      }
-      // App-level shortcuts that xterm would otherwise translate into
-      // a control sequence and forward to the PTY (where the shell
-      // beeps because the binding is meaningless). Returning false
-      // tells xterm to ignore the event; it still bubbles to the
-      // window-level keydown handler that runs the actual shortcut.
-      // Ctrl+` is intentionally Ctrl-only on every platform (mirrors
-      // VS Code; macOS already uses ⌘` for window cycling).
-      if (e.ctrlKey && !e.metaKey && e.code === 'Backquote') {
-        return false;
-      }
-      return true;
-    });
 
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
