@@ -15,6 +15,7 @@ import {
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
+import { isCmdEnter, NEWLINE_SEQ } from './lib/keymap.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
@@ -248,6 +249,16 @@ class SessionTerm {
       if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
         e.preventDefault();
         this._writePty('\x15');
+        return false;
+      }
+      // macOS Cmd+Enter → insert a newline in the agent's input instead
+      // of submitting. The terminal sends a bare \r for Enter and drops
+      // the Cmd modifier, so Claude/Codex can't tell Cmd+Enter from Enter
+      // and submit. NEWLINE_SEQ (Ctrl+J / \x0a) is the newline byte both
+      // agents accept with no terminal config. Plain Enter still submits.
+      if (isCmdEnter(e)) {
+        e.preventDefault();
+        this._writePty(NEWLINE_SEQ);
         return false;
       }
       // App-level shortcuts that xterm would otherwise translate into a

@@ -15,6 +15,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P1 | #195 | GUI: shared TextDecoder across sessions produces garbled glyphs | QA | [195-shared-textdecoder-glyphs](195-shared-textdecoder-glyphs.md) |
 | P2 | #202 | GUI: minimize sessions to remove from grid view; restore from a tray | REVIEW | [202-minimize-session-from-grid](202-minimize-session-from-grid.md) |
 | P2 | #213 | GUI: always scroll to bottom on mode switch; never auto-scroll up | QA | [213-always-scroll-to-bottom-on-mode-switch-resize](213-always-scroll-to-bottom-on-mode-switch-resize.md) |
+| P2 | #217 | GUI: Cmd+Enter should insert a newline, not submit, in agent sessions on macOS | IMPLEMENT | [217-cmd-enter-insert-newline-not-submit](217-cmd-enter-insert-newline-not-submit.md) |
 
 ## Completed
 
