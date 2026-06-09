@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/217-cmd-enter-insert-newline-not-submit.md](../../product-specs/217-cmd-enter-insert-newline-not-submit.md)
 - **Issue:** #217
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** #218
+- **Branch:** feature/217-cmd-enter-insert-newline-not-submit
 
 ## Summary
 
@@ -69,6 +71,7 @@ Add one branch to the existing single `attachCustomKeyEventHandler` closure (`ma
 - **2026-06-09** — Spec scaffolded (#217), triaged bug/S/P2, research complete. Stage = RESEARCH.
 - **2026-06-09** — Plan approved. Stage = IMPLEMENT.
 - **2026-06-09** — Implemented: new `lib/keymap.js` (`isCmdEnter`, `NEWLINE_SEQ`), handler branch in `main.js`, `test/unit/keymap.test.js` (7 tests). Vitest 110/110 pass. CHANGELOG `[Unreleased]` updated. Go embed/vite build require Wails codegen (absent in plain checkout) — vitest is the authoritative gate for this frontend-only change.
+- **2026-06-09** — Pushed `feature/217-cmd-enter-insert-newline-not-submit`; opened PR #218. Stage = REVIEW.
 
 ## Open questions
 
