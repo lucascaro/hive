@@ -4,30 +4,29 @@
 // fake event objects (see test/unit/keymap.test.js), mirroring the
 // platform.js idiom. main.js keeps only the imperative wiring.
 
-import { isMac } from './platform.js';
-
 // Byte written to the PTY to insert a newline in the agent's input
 // without submitting. This is Ctrl+J (LF, 0x0a) — the one newline
 // shortcut that both Claude Code and Codex accept in every terminal
 // with no per-terminal configuration. Option+Enter (\x1b\r) and
-// Shift+Enter (CSI-u \x1b[13;2u) only work when the terminal is
-// specially configured and are documented as regression-prone, so we
-// deliberately do not emulate them.
+// the CSI-u Shift+Enter encoding (\x1b[13;2u) only work when the
+// terminal is specially configured and are documented as
+// regression-prone, so we deliberately send the literal Ctrl+J byte.
 export const NEWLINE_SEQ = '\x0a';
 
-// isCmdEnter reports whether a keydown event is a bare macOS Cmd+Enter
-// (no other modifier). On macOS the terminal sends a plain \r for Enter
-// and drops the Cmd modifier, so the agent CLI cannot tell Cmd+Enter
-// from Enter and submits. We intercept it here and send NEWLINE_SEQ
-// instead. Gated to mac + Cmd only: plain Enter still submits, and
-// Shift/Option/Ctrl+Enter and every non-mac platform are left untouched.
-export function isCmdEnter(e, mac = isMac) {
+// isShiftEnter reports whether a keydown event is a bare Shift+Enter
+// (no other modifier). xterm sends a plain \r for Shift+Enter — the
+// Shift is dropped — so Claude/Codex can't tell it from Enter and
+// submit. We intercept it here and send NEWLINE_SEQ instead. Shift+Enter
+// is the cross-platform "newline in a chat input" convention and, unlike
+// Cmd/Ctrl+Enter, carries no Cmd/Ctrl modifier, so it is not consumed by
+// the capture-phase window shortcut handler (which gates on Cmd/Ctrl) and
+// actually reaches the terminal. Plain Enter still submits.
+export function isShiftEnter(e) {
   return (
-    mac &&
-    e.metaKey &&
+    e.shiftKey &&
+    !e.metaKey &&
     !e.ctrlKey &&
     !e.altKey &&
-    !e.shiftKey &&
     e.key === 'Enter'
   );
 }

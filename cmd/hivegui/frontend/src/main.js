@@ -15,7 +15,7 @@ import {
 } from '../wailsjs/go/main/App';
 import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
-import { isCmdEnter, NEWLINE_SEQ } from './lib/keymap.js';
+import { isShiftEnter, NEWLINE_SEQ } from './lib/keymap.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
 import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
@@ -251,12 +251,14 @@ class SessionTerm {
         this._writePty('\x15');
         return false;
       }
-      // macOS Cmd+Enter → insert a newline in the agent's input instead
-      // of submitting. The terminal sends a bare \r for Enter and drops
-      // the Cmd modifier, so Claude/Codex can't tell Cmd+Enter from Enter
-      // and submit. NEWLINE_SEQ (Ctrl+J / \x0a) is the newline byte both
-      // agents accept with no terminal config. Plain Enter still submits.
-      if (isCmdEnter(e)) {
+      // Shift+Enter → insert a newline in the agent's input instead of
+      // submitting. xterm sends a bare \r for Shift+Enter and drops the
+      // Shift, so Claude/Codex can't tell it from Enter and submit.
+      // NEWLINE_SEQ (Ctrl+J / \x0a) is the newline byte both agents accept
+      // with no terminal config. Plain Enter still submits. Cmd/Ctrl+Enter
+      // is intentionally not used here — it is the grid-project toggle, and
+      // the capture-phase window handler consumes it before xterm sees it.
+      if (isShiftEnter(e)) {
         e.preventDefault();
         this._writePty(NEWLINE_SEQ);
         return false;

@@ -1,36 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { isCmdEnter, NEWLINE_SEQ } from '../../src/lib/keymap.js';
+import { isShiftEnter, NEWLINE_SEQ } from '../../src/lib/keymap.js';
 
 // Minimal fake keydown event with all modifier flags defaulted off.
 function ev(overrides = {}) {
   return { metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, key: 'Enter', ...overrides };
 }
 
-describe('isCmdEnter', () => {
-  it('fires for bare Cmd+Enter on mac', () => {
-    expect(isCmdEnter(ev({ metaKey: true }), true)).toBe(true);
+describe('isShiftEnter', () => {
+  it('fires for bare Shift+Enter', () => {
+    expect(isShiftEnter(ev({ shiftKey: true }))).toBe(true);
   });
 
   it('does not fire for plain Enter (no modifier) — preserves submit', () => {
-    expect(isCmdEnter(ev(), true)).toBe(false);
+    expect(isShiftEnter(ev())).toBe(false);
   });
 
   it('does not fire when another modifier is also held', () => {
-    expect(isCmdEnter(ev({ metaKey: true, ctrlKey: true }), true)).toBe(false);
-    expect(isCmdEnter(ev({ metaKey: true, altKey: true }), true)).toBe(false);
-    expect(isCmdEnter(ev({ metaKey: true, shiftKey: true }), true)).toBe(false);
+    expect(isShiftEnter(ev({ shiftKey: true, metaKey: true }))).toBe(false);
+    expect(isShiftEnter(ev({ shiftKey: true, ctrlKey: true }))).toBe(false);
+    expect(isShiftEnter(ev({ shiftKey: true, altKey: true }))).toBe(false);
   });
 
-  it('does not fire for Cmd + a non-Enter key', () => {
-    expect(isCmdEnter(ev({ metaKey: true, key: 'a' }), true)).toBe(false);
-  });
-
-  it('does not fire on non-mac even with metaKey down (platform gate)', () => {
-    expect(isCmdEnter(ev({ metaKey: true }), false)).toBe(false);
+  it('does not fire for Shift + a non-Enter key', () => {
+    expect(isShiftEnter(ev({ shiftKey: true, key: 'a' }))).toBe(false);
   });
 
   it('fires for numpad Enter (key is "Enter", code is "NumpadEnter")', () => {
-    expect(isCmdEnter(ev({ metaKey: true, code: 'NumpadEnter' }), true)).toBe(true);
+    expect(isShiftEnter(ev({ shiftKey: true, code: 'NumpadEnter' }))).toBe(true);
+  });
+
+  it('is platform-independent (no isMac gate)', () => {
+    // The predicate reads only event flags, so it behaves identically
+    // on every platform — Shift+Enter is the cross-platform newline key.
+    expect(isShiftEnter(ev({ shiftKey: true }))).toBe(true);
   });
 });
 

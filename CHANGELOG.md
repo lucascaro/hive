@@ -38,13 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- GUI: on macOS, `⌘+Enter` in an agent session now inserts a newline
-  instead of submitting. The terminal sends a bare `\r` for Enter and
-  drops the Cmd modifier, so Claude/Codex couldn't distinguish
-  `⌘+Enter` from plain Enter and submitted the prompt. The custom key
-  handler now intercepts `⌘+Enter` and writes Ctrl+J (`\x0a`) — the
-  newline byte both agents accept with no terminal configuration.
-  Plain Enter still submits; non-macOS platforms are unchanged. (#217)
+- GUI: `Shift+Enter` in an agent session now inserts a newline instead
+  of submitting, so you can compose multi-line prompts for Claude/Codex.
+  xterm sends a bare `\r` for `Shift+Enter` and drops the Shift, so the
+  agents couldn't distinguish it from plain Enter and submitted. The
+  custom key handler now intercepts `Shift+Enter` and writes Ctrl+J
+  (`\x0a`) — the newline byte both agents accept with no terminal
+  configuration. Plain Enter still submits; `⌘/Ctrl+Enter` still toggles
+  grid-project view. Works on all platforms. (#217)
 - GUI: scrolling discipline on mode switch and resize. Switching
   display modes (focused / grid / grid-project) now always snaps
   every visible tile to the bottom — mode toggles are deliberate
