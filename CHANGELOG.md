@@ -52,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   malformed JSON-RPC params instead of running handlers on zeroed
   structs, and serializes concurrent frame writes per daemon
   connection so racing writers can't corrupt the wire stream.
+- GUI: keystrokes typed immediately after switching to a grid view are no
+  longer dropped. Switching to grid reparents the active tile and triggers
+  async resize/fit on neighbour tiles, both of which momentarily blurred the
+  active terminal to `<body>`; a character typed in that sub-frame gap was
+  silently lost (e.g. `hello` → `ello`). A synchronous focus guard now
+  reclaims the terminal the instant it blurs during the post-switch settle
+  window, and the focus-retry loop no longer re-focuses an already-focused
+  textarea (which cleared pending input). (#186)
+- GUI: `Shift+Enter` in an agent session now inserts a newline instead
+  of submitting, so you can compose multi-line prompts for Claude/Codex.
+  xterm sends a bare `\r` for `Shift+Enter` and drops the Shift, so the
+  agents couldn't distinguish it from plain Enter and submitted. The
+  custom key handler now intercepts `Shift+Enter` and writes Ctrl+J
+  (`\x0a`) — the newline byte both agents accept with no terminal
+  configuration. Plain Enter still submits; `⌘/Ctrl+Enter` still toggles
+  grid-project view. Works on all platforms. (#217)
 - GUI: scrolling discipline on mode switch and resize. Switching
   display modes (focused / grid / grid-project) now always snaps
   every visible tile to the bottom — mode toggles are deliberate
