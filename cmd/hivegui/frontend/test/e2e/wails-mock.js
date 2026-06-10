@@ -28,6 +28,13 @@ export function EventsOn(name, handler) {
 export function EventsOff(name) { listeners.delete(name); }
 export function WindowSetTitle(t) { document.title = t; }
 
+// Clipboard bindings. main.js imports ClipboardGetText (runtime) and
+// SetClipboardText (App), both aliased here. The mock keeps an in-memory
+// clipboard so copy/paste paths don't throw at module load.
+let clipboard = '';
+export async function ClipboardGetText() { return clipboard; }
+export async function SetClipboardText(text) { clipboard = String(text ?? ''); }
+
 // --- App bindings ---
 
 const state = {
