@@ -68,16 +68,64 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
 export function handleScrollbackEvent(st, kind) {
   if (!st || !st.term) return false;
   switch (kind) {
-    case 'scrollback_replay_begin':
-      st.term.reset();
+    case 'scrollback_replay_begin': {
+      // Capture the reader's position as a distance from the bottom
+      // BEFORE the wipe. The replay rebuilds the buffer with the
+      // viewport tracking the bottom, so "skip the snap on done" alone
+      // cannot preserve a scrolled-up reading position — the position
+      // is destroyed at reset time, not at done time. (This was the
+      // real mechanism behind "scrolling jumps around with codex":
+      // any resize/mode-reflow replay dumped a reading user at the
+      // bottom despite #213's wants-bottom flag.)
+      const buf = st.term.buffer?.active;
+      if (buf && typeof buf.baseY === 'number' && typeof buf.viewportY === 'number') {
+        st._replayPrevFromBottom = Math.max(0, buf.baseY - buf.viewportY);
+      } else {
+        delete st._replayPrevFromBottom;
+      }
+      // Parse-ordered reset: xterm's write() is async-queued, so a
+      // synchronous reset() jumps the queue — any not-yet-parsed live
+      // bytes would repaint AFTER the wipe and then appear a second
+      // time when the replay re-streams them (duplicated lines under
+      // codex-rate output). The empty-write callback executes exactly
+      // between the pre-begin backlog and the replay bytes.
+      if (typeof st.term.write === 'function') {
+        st.term.write('', () => st.term.reset());
+      } else {
+        st.term.reset();
+      }
+      // The decoder resets immediately: writeData decodes at event
+      // time (queueing decoded strings), so decode order == event
+      // order and the fresh decoder must be in place for the first
+      // replay chunk, not parse time.
       if (st.decoder) st.decoder = new TextDecoder('utf-8');
       return true;
+    }
     case 'scrollback_replay_done': {
       const wantsBottom = st._replayWantsBottom !== false;
       delete st._replayWantsBottom;
-      if (wantsBottom && typeof st.term.scrollToBottom === 'function') {
-        st.term.scrollToBottom();
-      }
+      const fromBottom = st._replayPrevFromBottom;
+      delete st._replayPrevFromBottom;
+      const finish = () => {
+        if (wantsBottom) {
+          if (typeof st.term.scrollToBottom === 'function') st.term.scrollToBottom();
+          return;
+        }
+        // Restore the reader's distance from the bottom. Soft-wrapped
+        // line counts can differ after the rewrap at the new width, so
+        // this is an approximation — but it keeps the reader in
+        // history near where they were instead of at the bottom.
+        const buf = st.term.buffer?.active;
+        if (typeof fromBottom === 'number' && buf && typeof st.term.scrollToLine === 'function') {
+          st.term.scrollToLine(Math.max(0, buf.baseY - fromBottom));
+        }
+      };
+      // Parse-ordered: at done-event time the replay bytes may still
+      // be sitting in xterm's write queue — "done" must mean "fully
+      // parsed" before the viewport is placed, or the restore target
+      // is computed against a half-built buffer.
+      if (typeof st.term.write === 'function') st.term.write('', finish);
+      else finish();
       return true;
     }
     default:

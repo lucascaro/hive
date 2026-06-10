@@ -50,56 +50,122 @@ describe('debounce timing constant', () => {
 });
 
 describe('handleScrollbackEvent', () => {
-  function makeSt() {
-    return {
-      term: {
-        reset: vi.fn(),
-        scrollToBottom: vi.fn(),
-      },
-      decoder: new TextDecoder('utf-8'),
+  // Mock term with an xterm-like async write queue: write(data, cb)
+  // enqueues; flush() "parses" entries in order, firing callbacks.
+  // This models the property the handler now depends on — reset and
+  // viewport placement are parse-ordered, not event-ordered.
+  function makeSt({ baseY = 0, viewportY = 0 } = {}) {
+    const queue = [];
+    const order = [];
+    const term = {
+      buffer: { active: { baseY, viewportY } },
+      reset: vi.fn(() => order.push('reset')),
+      scrollToBottom: vi.fn(() => order.push('scrollToBottom')),
+      scrollToLine: vi.fn((n) => order.push(`scrollToLine:${n}`)),
+      write: vi.fn((data, cb) => {
+        queue.push({ data, cb });
+        if (data) order.push(`parse:${data}`);
+      }),
     };
+    const flush = () => {
+      while (queue.length) {
+        const entry = queue.shift();
+        // A real parser would consume entry.data here; our `order`
+        // log records data entries at enqueue time which is fine for
+        // relative ordering because flush preserves queue order.
+        entry.cb?.();
+      }
+    };
+    return { st: { term, decoder: new TextDecoder('utf-8') }, flush, order, queue };
   }
 
-  it('begin event calls term.reset() and refreshes decoder', () => {
-    const st = makeSt();
+  it('begin refreshes the decoder immediately (decode order is event order)', () => {
+    const { st } = makeSt();
     const beforeDecoder = st.decoder;
-    const ok = handleScrollbackEvent(st, 'scrollback_replay_begin');
-    expect(ok).toBe(true);
-    expect(st.term.reset).toHaveBeenCalledTimes(1);
-    // decoder should be a fresh instance (not the same object)
+    expect(handleScrollbackEvent(st, 'scrollback_replay_begin')).toBe(true);
     expect(st.decoder).not.toBe(beforeDecoder);
   });
 
-  it('done event scrolls to bottom by default (no _replayWantsBottom)', () => {
-    const st = makeSt();
-    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
-    expect(ok).toBe(true);
+  it('begin resets parse-ordered, not synchronously — backlog cannot repaint after the wipe', () => {
+    const { st, flush } = makeSt();
+    // Simulate codex-rate backlog already sitting in the queue.
+    st.term.write('backlog-bytes');
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Replay bytes arrive after begin.
+    st.term.write('replay-bytes');
+    // Event time: nothing reset yet (queue not parsed).
+    expect(st.term.reset).not.toHaveBeenCalled();
+    flush();
+    expect(st.term.reset).toHaveBeenCalledTimes(1);
+    // The reset callback was enqueued after the backlog and before the
+    // replay bytes: backlog parses, THEN reset, THEN replay paints.
+    const calls = st.term.write.mock.calls.map((c) => c[0]);
+    expect(calls).toEqual(['backlog-bytes', '', 'replay-bytes']);
+  });
+
+  it('begin captures the reader distance from bottom', () => {
+    const { st } = makeSt({ baseY: 100, viewportY: 60 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replayPrevFromBottom).toBe(40);
+  });
+
+  it('done snaps to bottom by default — after the queue is parsed', () => {
+    const { st, flush } = makeSt();
+    expect(handleScrollbackEvent(st, 'scrollback_replay_done')).toBe(true);
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled(); // not at event time
+    flush();
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(st.term.reset).not.toHaveBeenCalled();
   });
 
-  it('done event preserves position when _replayWantsBottom === false and clears the flag', () => {
-    const st = makeSt();
-    st._replayWantsBottom = false;
-    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
-    expect(ok).toBe(true);
-    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
-    expect(st._replayWantsBottom).toBeUndefined();
-  });
-
-  it('done event snaps when _replayWantsBottom === true and clears the flag', () => {
-    const st = makeSt();
+  it('done snaps when _replayWantsBottom === true and clears the flag', () => {
+    const { st, flush } = makeSt();
     st._replayWantsBottom = true;
-    const ok = handleScrollbackEvent(st, 'scrollback_replay_done');
-    expect(ok).toBe(true);
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(st._replayWantsBottom).toBeUndefined();
   });
 
+  it('done restores the reading position when _replayWantsBottom === false', () => {
+    const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replayPrevFromBottom).toBe(40);
+    st._replayWantsBottom = false;
+    // After the replay parsed, the rebuilt buffer has a new baseY.
+    st.term.buffer.active.baseY = 120;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(80); // 120 - 40
+    expect(st._replayWantsBottom).toBeUndefined();
+    expect(st._replayPrevFromBottom).toBeUndefined();
+  });
+
+  it('restore target clamps at 0 when history shrank', () => {
+    const { st, flush } = makeSt({ baseY: 50, viewportY: 0 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    st._replayWantsBottom = false;
+    st.term.buffer.active.baseY = 10; // rebuilt buffer is much shorter
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(0);
+  });
+
+  it('falls back to synchronous behavior when term has no write()', () => {
+    const st = {
+      term: { reset: vi.fn(), scrollToBottom: vi.fn() },
+      decoder: new TextDecoder('utf-8'),
+    };
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st.term.reset).toHaveBeenCalledTimes(1);
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+  });
+
   it('unknown event kinds are no-ops', () => {
-    const st = makeSt();
-    const ok = handleScrollbackEvent(st, 'something_else');
-    expect(ok).toBe(false);
+    const { st } = makeSt();
+    expect(handleScrollbackEvent(st, 'something_else')).toBe(false);
     expect(st.term.reset).not.toHaveBeenCalled();
     expect(st.term.scrollToBottom).not.toHaveBeenCalled();
   });
@@ -108,23 +174,6 @@ describe('handleScrollbackEvent', () => {
     expect(handleScrollbackEvent(null, 'scrollback_replay_begin')).toBe(false);
     expect(handleScrollbackEvent(undefined, 'scrollback_replay_begin')).toBe(false);
     expect(handleScrollbackEvent({}, 'scrollback_replay_begin')).toBe(false);
-  });
-
-  it('begin runs before any subsequent write would matter', () => {
-    // Document the ordering invariant: a caller doing
-    //   handleScrollbackEvent(st, 'scrollback_replay_begin')
-    //   st.term.write(replayBytes)
-    // observes reset() in call-1 before write() in call-2. Trivially
-    // true given JS is single-threaded; this test exists to lock the
-    // semantic in code so a future refactor that makes the handler
-    // async would have to update this test.
-    const st = makeSt();
-    st.term.write = vi.fn();
-    handleScrollbackEvent(st, 'scrollback_replay_begin');
-    st.term.write('hello');
-    expect(st.term.reset.mock.invocationCallOrder[0]).toBeLessThan(
-      st.term.write.mock.invocationCallOrder[0]
-    );
   });
 });
 
