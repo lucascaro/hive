@@ -91,3 +91,4 @@ Shift+Enter (not Cmd/Ctrl+Enter) is the chosen key for two reasons: (1) it is th
 
 - **2026-06-09 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 00cba6d.
 - **2026-06-09** — CI note: required check CodeQL = pass. Non-required "Build, Vet & Test (Linux/macOS)" Playwright E2E jobs fail, but they fail identically on `main`@56252de (pre-existing, every failing test is a focus/scrollback/minimize/smoke boot-timeout — none touch key handling). PR is MERGEABLE (state UNSTABLE due to the pre-existing reds only). Frontend vitest 110/110 green.
+- **2026-06-09 iter 2** — After E2E harness fixes + Shift+Enter rework: all checks green (Linux/Windows/macOS Build-Vet-Test + CodeQL). PR state = CLEAN. Note: the diff changed materially since iter-1 APPROVE (Cmd+Enter → Shift+Enter), so a re-review of the new diff is warranted before merge.
