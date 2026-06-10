@@ -27,4 +27,4 @@ Pressing Cmd+Enter in an agent session inserts a newline into the agent's input 
 
 ## Notes
 
-Related key handling lives in `cmd/hivegui/frontend/src/main.js:242` (`attachCustomKeyEventHandler`) and `cmd/hivegui/frontend/src/lib/platform.js`.
+Related key handling lives in `cmd/hivegui/frontend/src/main.js:243` (`attachCustomKeyEventHandler`) and `cmd/hivegui/frontend/src/lib/platform.js`.

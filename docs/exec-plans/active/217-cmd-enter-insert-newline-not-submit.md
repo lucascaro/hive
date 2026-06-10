@@ -15,8 +15,8 @@ On macOS, Cmd+Enter inside an agent session submits the prompt instead of insert
 
 ### Relevant code
 
-- `cmd/hivegui/frontend/src/main.js:242` — `this.term.attachCustomKeyEventHandler((e) => …)`. xterm.js keeps exactly **one** custom key handler, so every app-level key binding must live in this single closure. It already intercepts macOS Cmd+Backspace → `\x15` (`main.js:248`), Ctrl+` (`main.js:259`), and Ctrl+Shift+C/V/A (`main.js:269`). Each interception calls `e.preventDefault()` (where needed) and `return false` to suppress xterm's default, then writes a custom sequence via `this._writePty(...)`. This is the exact extension point for Cmd+Enter.
-- `cmd/hivegui/frontend/src/main.js:320` — `this._writePty(data)` TextEncoder-encodes `data`, base64s it, and calls Wails `WriteStdin(id, …)`. `this.term.onData(...)` (`main.js:326`) is what normally forwards Enter as `\r`.
+- `cmd/hivegui/frontend/src/main.js:243` — `this.term.attachCustomKeyEventHandler((e) => …)` (the handler block spans ~`main.js:239`–`290`). xterm.js keeps exactly **one** custom key handler, so every app-level key binding must live in this single closure. It already intercepts macOS Cmd+Backspace → `\x15` (`main.js:249`), Ctrl+` (`main.js:270`), and Ctrl+Shift+C/V/A (`main.js:280`). Each interception calls `e.preventDefault()` (where needed) and `return false` to suppress xterm's default, then writes a custom sequence via `this._writePty(...)`. This is the exact extension point for Cmd+Enter — the new Cmd+Enter branch is at `main.js:259`. (Line numbers reflect the post-change file.)
+- `cmd/hivegui/frontend/src/main.js:331` — `this._writePty(data)` TextEncoder-encodes `data`, base64s it, and calls Wails `WriteStdin(id, …)`. `this.term.onData(...)` (`main.js:337`) is what normally forwards Enter as `\r`.
 - `cmd/hivegui/frontend/src/lib/platform.js` — `isMac` (computed once) and `detectMac(nav)` / `cmdOrCtrl(e, mac)` pure helpers, unit-tested in `test/unit/platform.test.js`. Establishes the repo idiom: **pure key-decision logic lives in `lib/` and is unit-tested with fake event objects**, while `main.js` holds the imperative handler.
 
 ### What byte to send (the central question)
@@ -30,7 +30,7 @@ Sending `\x0a` for Cmd+Enter is therefore agent-agnostic and depends on no termi
 
 ### Constraints / dependencies
 
-- Must remain the **single** `attachCustomKeyEventHandler` (a second registration silently replaces the first — see the comment at `main.js:238`).
+- Must remain the **single** `attachCustomKeyEventHandler` (a second registration silently replaces the first — see the comment at `main.js:239`).
 - Gate to macOS + Cmd only (`isMac && e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey`), per the spec's non-goals (no remap of Shift/Option+Enter, no change on non-mac platforms). Plain Enter (no modifier) must keep falling through to xterm's default `\r` submit.
 - Numpad Enter reports `e.key === 'Enter'` with `e.code === 'NumpadEnter'`; keying off `e.key === 'Enter'` covers both.
 
@@ -41,11 +41,11 @@ Sending `\x0a` for Cmd+Enter is therefore agent-agnostic and depends on no termi
 
 ## Approach
 
-Add one branch to the existing single `attachCustomKeyEventHandler` closure (`main.js:242`) that intercepts macOS Cmd+Enter and writes `\x0a` (Ctrl+J) to the PTY instead of letting xterm submit `\r`. The decision logic (predicate + byte constant) is extracted into a new pure, unit-tested `lib/keymap.js` module, matching the `platform.js` idiom; the inline handler stays a thin wrapper. Chosen over emulating Option+Enter (`\x1b\r`) or Shift+Enter (CSI-u) because Ctrl+J is the only newline byte both Claude Code and Codex accept with zero terminal configuration (see Decision log).
+Add one branch to the existing single `attachCustomKeyEventHandler` closure (`main.js:243`) that intercepts macOS Cmd+Enter and writes `\x0a` (Ctrl+J) to the PTY instead of letting xterm submit `\r`. The decision logic (predicate + byte constant) is extracted into a new pure, unit-tested `lib/keymap.js` module, matching the `platform.js` idiom; the inline handler stays a thin wrapper. Chosen over emulating Option+Enter (`\x1b\r`) or Shift+Enter (CSI-u) because Ctrl+J is the only newline byte both Claude Code and Codex accept with zero terminal configuration (see Decision log).
 
 ### Files to change
 
-- `cmd/hivegui/frontend/src/main.js` — import `{ isCmdEnter, NEWLINE_SEQ }` from `./lib/keymap.js`; add a branch in the custom key handler (after the Cmd+Backspace branch at `main.js:248`) that does `e.preventDefault(); this._writePty(NEWLINE_SEQ); return false;` when `isCmdEnter(e)`.
+- `cmd/hivegui/frontend/src/main.js` — import `{ isCmdEnter, NEWLINE_SEQ }` from `./lib/keymap.js`; add a branch in the custom key handler (after the Cmd+Backspace branch at `main.js:249`, landing at `main.js:259`) that does `e.preventDefault(); this._writePty(NEWLINE_SEQ); return false;` when `isCmdEnter(e)`.
 
 ### New files
 
