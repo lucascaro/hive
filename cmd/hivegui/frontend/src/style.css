@@ -706,12 +706,49 @@ body.resizing-sidebar #app { transition: none; }
   height: 100%;
 }
 
-#terms.grid:empty::after,
-#terms.grid:not(:has(.in-grid))::after {
-  content: 'no sessions in this project';
-  color: #555;
-  font-size: 13px;
-  margin: auto;
+/* Actionable empty state — replaces the old CSS-only
+   "no sessions in this project" ::after text. Occupies the same grid
+   cell as #terms and floats above it; pointer events only on itself
+   so a sliver of terminal behind it stays interactive when hidden. */
+#empty-state {
+  grid-row: 3;
+  grid-column: 2;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #777;
+  pointer-events: auto;
+}
+#empty-state.hidden { display: none; }
+#empty-state .empty-title {
+  font-size: 15px;
+  color: #999;
+}
+#empty-state .empty-hint {
+  font-size: 12.5px;
+  color: #666;
+}
+#empty-state .empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+#empty-state .empty-actions button {
+  background: #1f1f1f;
+  color: #ddd;
+  border: 1px solid #333;
+  border-radius: 5px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+#empty-state .empty-actions button:hover { background: #2a2a2a; }
+#empty-state .empty-actions button:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
 }
 
 #launcher {
@@ -1097,5 +1134,132 @@ body.resizing-sidebar #app { transition: none; }
 }
 .dead-btn:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--session-color, #888) 80%, #fff);
+  outline-offset: 1px;
+}
+
+/* Keyboard-shortcuts help overlay (⌘/). The outer element is a
+   full-viewport backdrop; the panel matches the palette's chrome. */
+#help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 7vh;
+}
+#help-overlay.hidden { display: none; }
+#help-overlay-panel {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 80vh;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#help-overlay-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a2a2a;
+}
+#help-overlay-panel h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #ddd;
+}
+#help-overlay-close {
+  background: transparent;
+  border: 0;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+#help-overlay-close:hover { color: #fff; }
+#help-overlay-close:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+#help-overlay-groups {
+  overflow-y: auto;
+  padding: 8px 14px 14px;
+  columns: 2;
+  column-gap: 28px;
+}
+#help-overlay-groups section {
+  break-inside: avoid;
+  margin-top: 10px;
+}
+#help-overlay-groups h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #777;
+}
+#help-overlay-groups dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+#help-overlay-groups dt { margin: 0; }
+#help-overlay-groups dd {
+  margin: 0;
+  font-size: 12px;
+  color: #aaa;
+}
+#help-overlay-groups kbd {
+  font: 11px Menlo, monospace;
+  color: #ddd;
+  background: #1d1d1d;
+  border: 1px solid #333;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  #help-overlay-groups { columns: 1; }
+}
+
+/* Launcher loading / empty rows. */
+.launcher-loading,
+.launcher-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #777;
+}
+
+/* The collapse caret became a real <button> for keyboard a11y — keep
+   the original glyph look. */
+.project-header .caret {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* Keyboard-focus rings on the small controls that previously had
+   none. :focus-visible only — mouse clicks stay ring-free. */
+.project-header .caret:focus-visible,
+.project-header .project-actions button:focus-visible,
+#new-project-btn:focus-visible,
+.tile-minimize:focus-visible,
+.min-chip:focus-visible,
+#daemon-banner button:focus-visible,
+#update-banner button:focus-visible,
+#project-editor button:focus-visible,
+#empty-state .empty-actions button:focus-visible {
+  outline: 2px solid #f59e0b;
   outline-offset: 1px;
 }

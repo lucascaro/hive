@@ -35,6 +35,9 @@ import {
   applyRebaseline,
 } from './lib/scrollback.js';
 import { createStatus } from './lib/status.js';
+import { shortcutGroups, paletteShortcuts } from './lib/shortcuts.js';
+import { emptyStateModel } from './lib/empty-state.js';
+import { loadCollapsed, serializeCollapsed, pruneCollapsed, COLLAPSED_STORAGE_KEY } from './lib/collapsed.js';
 
 // ---------- session terminal ----------
 
@@ -55,6 +58,7 @@ class SessionTerm {
     // Tile header (only visible in grid mode via CSS).
     this.header = document.createElement('div');
     this.header.className = 'tile-header';
+    this.header.setAttribute('aria-label', `Session ${info.name}`);
     this.tileColor = document.createElement('span');
     this.tileColor.className = 'tile-color';
     this.tileName = document.createElement('span');
@@ -377,6 +381,8 @@ class SessionTerm {
     // "Close session" (Enter) and secondary "Dismiss" (Escape).
     this.deadOverlay = document.createElement('div');
     this.deadOverlay.className = 'dead-overlay';
+    this.deadOverlay.setAttribute('role', 'alertdialog');
+    this.deadOverlay.setAttribute('aria-label', 'Session ended');
     this.deadOverlay.hidden = true;
     const card = document.createElement('div');
     card.className = 'dead-card';
@@ -496,6 +502,7 @@ class SessionTerm {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.tileName.textContent = info.name;
+    this.header.setAttribute('aria-label', `Session ${info.name}`);
     const wtBranch = info.worktreeBranch ?? info.worktree_branch;
     if (wtBranch) {
       this.tileWorktree.style.display = '';
@@ -790,7 +797,7 @@ class SessionTerm {
 const state = {
   projects: [],             // ProjectInfo[] in display order
   sessions: [],             // SessionInfo[] in display order
-  collapsed: new Set(),     // project ids that are collapsed
+  collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
   attention: new Set(),     // session ids that have unread bells
   minimized: new Set(),     // session ids hidden from grid views; restored via tray
   aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
@@ -819,6 +826,16 @@ if (typeof window !== 'undefined'
 function loadSavedView() {
   try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
   catch { return normalizeView(null); }
+}
+
+function loadSavedCollapsed() {
+  try { return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY)); }
+  catch { return new Set(); }
+}
+
+function saveCollapsed() {
+  try { localStorage.setItem(COLLAPSED_STORAGE_KEY, serializeCollapsed(state.collapsed)); }
+  catch { /* private mode etc. — collapse state just won't persist */ }
 }
 
 
@@ -1013,6 +1030,7 @@ function renderSidebar() {
   for (const p of state.projects) {
     projectsUL.appendChild(renderProject(p, activePID));
   }
+  renderEmptyState();
 }
 
 // updateSidebarSelection toggles the .selected / .active /
@@ -1045,13 +1063,20 @@ function renderProject(p, activePID) {
   const header = document.createElement('div');
   header.className = 'project-header';
 
-  const caret = document.createElement('span');
+  // A real <button> so the caret is keyboard-operable and can carry
+  // aria-expanded; :focus-visible shows a ring only for keyboard focus.
+  const caret = document.createElement('button');
+  caret.type = 'button';
   caret.className = 'caret';
   caret.textContent = '▾';
+  const collapsedNow = state.collapsed.has(p.id);
+  caret.setAttribute('aria-expanded', String(!collapsedNow));
+  caret.setAttribute('aria-label', `${collapsedNow ? 'Expand' : 'Collapse'} ${p.name}`);
   caret.addEventListener('click', (e) => {
     e.stopPropagation();
     if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
     else state.collapsed.add(p.id);
+    saveCollapsed();
     renderSidebar();
   });
 
@@ -1738,7 +1763,8 @@ function focusSnapshot(id) {
     modalOpen:
       !launcherEl.classList.contains('hidden') ||
       !editorEl.classList.contains('hidden') ||
-      (paletteEl && !paletteEl.classList.contains('hidden')),
+      (paletteEl && !paletteEl.classList.contains('hidden')) ||
+      (helpEl && !helpEl.classList.contains('hidden')),
     activeTag: ae ? ae.tagName : '',
     activeClasses: ae ? ae.classList : '',
     knownTermIds: state.terms,
@@ -1919,6 +1945,7 @@ function renderMinimizedTray() {
     chip.type = 'button';
     chip.dataset.sid = info.id;
     chip.title = `Restore ${info.name}`;
+    chip.setAttribute('aria-label', `Restore ${info.name}`);
     chip.style.setProperty('--session-color', info.color || '#888');
 
     const dot = document.createElement('span');
@@ -1945,6 +1972,64 @@ function renderMinimizedTray() {
     });
     tray.append(chip);
   }
+  // Minimize/restore changes which sessions are visible without a
+  // sidebar render — re-evaluate the empty state here too.
+  renderEmptyState();
+}
+
+// renderEmptyState shows an actionable hint pane when the current
+// scope has nothing to display (first run, empty project, everything
+// minimized). Pure model in lib/empty-state.js; this just projects it
+// onto the #empty-state element. Cheap enough to call from every
+// repaint path — DOM is rebuilt only when the model kind changes.
+function renderEmptyState() {
+  const el = document.getElementById('empty-state');
+  if (!el) return;
+  const model = emptyStateModel({
+    projects: state.projects,
+    sessions: state.sessions,
+    view: state.view,
+    currentProjectId: state.currentProjectId,
+    gridProjectId: state.gridProjectId,
+    minimized: state.minimized,
+    isMac,
+  });
+  if (!model) {
+    el.classList.add('hidden');
+    el.dataset.kind = '';
+    return;
+  }
+  if (el.dataset.kind !== model.kind) {
+    el.dataset.kind = model.kind;
+    el.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'empty-title';
+    title.textContent = model.title;
+    const hint = document.createElement('div');
+    hint.className = 'empty-hint';
+    hint.textContent = model.hint;
+    el.append(title, hint);
+    if (model.actions.length) {
+      const row = document.createElement('div');
+      row.className = 'empty-actions';
+      for (const a of model.actions) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = a.label;
+        btn.addEventListener('click', (e) => {
+          // The launcher now opens synchronously; without this, the
+          // same click bubbles to the document-level outside-click
+          // closer and shuts it in the same tick.
+          e.stopPropagation();
+          if (a.id === 'new-session') openLauncher();
+          else if (a.id === 'new-project') openProjectEditor(null);
+        });
+        row.appendChild(btn);
+      }
+      el.appendChild(row);
+    }
+  }
+  el.classList.remove('hidden');
 }
 
 function setView(view) {
@@ -1979,6 +2064,7 @@ function setView(view) {
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
+  renderEmptyState();
 }
 
 
@@ -1989,6 +2075,13 @@ EventsOn('project:list', (jsonStr) => {
   state.projects = projects || [];
   if (!state.currentProjectId && state.projects[0]) {
     state.currentProjectId = state.projects[0].id;
+  }
+  // Drop persisted collapse entries for projects that no longer exist
+  // so the localStorage key can't grow forever.
+  const pruned = pruneCollapsed(state.collapsed, state.projects.map((p) => p.id));
+  if (pruned.changed) {
+    state.collapsed = pruned.set;
+    saveCollapsed();
   }
   renderSidebar();
 });
@@ -2002,7 +2095,7 @@ EventsOn('project:event', (jsonStr) => {
     if (!state.currentProjectId) state.currentProjectId = ev.project.id;
   } else if (ev.kind === 'removed') {
     if (i >= 0) state.projects.splice(i, 1);
-    state.collapsed.delete(ev.project.id);
+    if (state.collapsed.delete(ev.project.id)) saveCollapsed();
     if (state.currentProjectId === ev.project.id) {
       state.currentProjectId = state.projects[0]?.id ?? null;
     }
@@ -2464,6 +2557,7 @@ function activateLauncherSelection() {
   const it = launcherState.items[launcherState.selected];
   if (!it) return;
   bumpAgentUsage(it.agent.id);
+  flashStatus('creating session…');
   if (launcherState.duplicateFrom) {
     DuplicateSession(
       it.agent.id,
@@ -2498,28 +2592,45 @@ function openLauncher(projectId, opts) {
   if (launcherState.duplicateFrom) {
     launcherState.useWorktree = false;
   }
+  // Open the shell synchronously with a loading row so the popup
+  // appears the instant the user asks for it; the agent list fills in
+  // when ListAgents resolves. Kills the old open-blank-then-populate
+  // flash (and the launcher not appearing at all if the list is slow).
+  launcherEl.innerHTML = '';
+  launcherState.items = [];
+  // Anchor next to the resolved project's + button so the user
+  // can see which project the new session lands in. Falls back
+  // to the global new-project button if the project's row isn't
+  // currently in the DOM (e.g. its header is offscreen), and to a
+  // fixed spot over the sidebar if neither anchor exists — a
+  // missing anchor must not throw and leave the launcher unopened
+  // (the throw used to vanish into this chain's empty catch).
+  const anchorEl =
+    document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
+    document.getElementById('new-project-btn');
+  if (anchorEl) {
+    const r = anchorEl.getBoundingClientRect();
+    launcherEl.style.left = `${r.left}px`;
+    launcherEl.style.top = `${r.bottom + 4}px`;
+  } else {
+    launcherEl.style.left = '16px';
+    launcherEl.style.top = '64px';
+  }
+  const loading = document.createElement('div');
+  loading.className = 'launcher-loading';
+  loading.textContent = 'Loading agents…';
+  launcherEl.appendChild(loading);
+  launcherEl.classList.remove('hidden');
+  // Drop the active tile's visual focus — modal owns the keyboard.
+  setFocusedTile(null);
+
   ListAgents()
     .then((agents) => {
+      // The user may have dismissed the launcher while the list was in
+      // flight — don't resurrect it.
+      if (launcherEl.classList.contains('hidden')) return;
       launcherEl.innerHTML = '';
       launcherState.items = [];
-      // Anchor next to the resolved project's + button so the user
-      // can see which project the new session lands in. Falls back
-      // to the global new-project button if the project's row isn't
-      // currently in the DOM (e.g. its header is offscreen), and to a
-      // fixed spot over the sidebar if neither anchor exists — a
-      // missing anchor must not throw and leave the launcher unopened
-      // (the throw used to vanish into this chain's empty catch).
-      const anchorEl =
-        document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
-        document.getElementById('new-project-btn');
-      if (anchorEl) {
-        const r = anchorEl.getBoundingClientRect();
-        launcherEl.style.left = `${r.left}px`;
-        launcherEl.style.top = `${r.bottom + 4}px`;
-      } else {
-        launcherEl.style.left = '16px';
-        launcherEl.style.top = '64px';
-      }
 
       // Worktree toggle row at the top of the menu. Disabled (and
       // visually muted) when the active project's cwd isn't a git
@@ -2582,6 +2693,12 @@ function openLauncher(projectId, opts) {
           return x.i - y.i;
         })
         .map((e) => e.a);
+      if (ordered.length === 0) {
+        const none = document.createElement('div');
+        none.className = 'launcher-empty';
+        none.textContent = 'No agents found';
+        launcherEl.appendChild(none);
+      }
       ordered.forEach((a, idx) => {
         const item = document.createElement('div');
         item.className = 'launcher-item' + (a.available ? '' : ' uninstalled');
@@ -2606,6 +2723,7 @@ function openLauncher(projectId, opts) {
         }
         item.addEventListener('click', () => {
           bumpAgentUsage(a.id);
+          flashStatus('creating session…');
           if (launcherState.duplicateFrom) {
             DuplicateSession(
               a.id,
@@ -2632,14 +2750,15 @@ function openLauncher(projectId, opts) {
       });
       launcherState.selected = 0;
       highlightLauncherSelection();
-      launcherEl.classList.remove('hidden');
-      // Drop the active tile's visual focus — modal owns the keyboard.
-      setFocusedTile(null);
     })
     // Anything thrown in the chain above (not just a ListAgents
     // rejection) used to land here silently — the user pressed ⌘T and
-    // nothing happened, with no trace.
-    .catch(reportFailure('launcher'));
+    // nothing happened, with no trace. Close the loading shell too:
+    // an empty popup with stale "Loading agents…" would be worse.
+    .catch((err) => {
+      reportFailure('launcher')(err);
+      closeLauncher();
+    });
 }
 
 function closeLauncher() {
@@ -2803,6 +2922,15 @@ window.addEventListener('keydown', (e) => {
   if (_palette && !_palette.classList.contains('hidden')) {
     return; // palette's own listener handles keys
   }
+  const _help = document.getElementById('help-overlay');
+  if (_help && !_help.classList.contains('hidden')) {
+    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === '/')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeHelpOverlay();
+    }
+    return; // overlay owns the keyboard while open
+  }
 
   // Dead-session overlay: route Enter/Escape to the active session's
   // overlay if it's shown. In grid mode the user can still click any
@@ -2849,6 +2977,11 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'k' || e.key === 'K') && e.shiftKey) {
     swallow();
     openCommandPalette();
+    return;
+  }
+  if (e.key === '/') {
+    swallow();
+    openHelpOverlay();
     return;
   }
   if (e.key === 'p' || e.key === 'P') {
@@ -3042,37 +3175,41 @@ function deleteActiveProject() {
 
 // ---------- command palette ----------
 
+// Shortcut strings come from lib/shortcuts.js so the palette and the
+// ⌘/ help overlay can't drift from each other.
+const PALETTE_KEYS = paletteShortcuts({ isMac });
+
 const paletteCommands = [
-  { id: 'new-project',          name: 'New Project…',                shortcut: '⌘N',     run: () => openProjectEditor(null) },
-  { id: 'new-session',          name: 'New Session',                 shortcut: '⌘T',     run: () => openLauncher() },
-  { id: 'new-session-worktree', name: 'New Session in Worktree',     shortcut: '⇧⌘T',    run: () => openLauncher(undefined, { forceWorktree: true }) },
-  { id: 'duplicate-session',    name: 'Duplicate Session',           shortcut: '⌘P',     run: duplicateActiveSession },
-  { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
-  { id: 'restart-session',      name: 'Restart Session',             shortcut: '',       run: restartActiveSession },
-  { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
-  { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
-  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch(reportFailure('window')) },
-  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
-  { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow() },
-  { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
-  { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         shortcut: '⌘G',     run: toggleProjectGrid },
-  { id: 'toggle-all-grid',      name: 'Toggle All Sessions Grid',    shortcut: '⇧⌘G',    run: toggleAllGrid },
-  { id: 'zoom-in',              name: 'Zoom In',                     shortcut: '⌘=',     run: () => bumpFontSize(+1) },
-  { id: 'zoom-out',             name: 'Zoom Out',                    shortcut: '⌘-',     run: () => bumpFontSize(-1) },
-  { id: 'zoom-reset',           name: 'Actual Size',                 shortcut: '⌘0',     run: () => resetFontSize() },
-  { id: 'next-session',         name: 'Next Session',                shortcut: '⌘↓',     run: () => navSession(+1) },
-  { id: 'prev-session',         name: 'Previous Session',            shortcut: '⌘↑',     run: () => navSession(-1) },
-  { id: 'move-forward',         name: 'Move Session Forward',        shortcut: '⇧⌘↓',    run: () => reorderActive(+1) },
-  { id: 'move-backward',        name: 'Move Session Backward',       shortcut: '⇧⌘↑',    run: () => reorderActive(-1) },
-  { id: 'next-project',         name: 'Next Project',                shortcut: '⌘]',     run: () => shiftActiveProject(+1) },
-  { id: 'prev-project',         name: 'Previous Project',            shortcut: '⌘[',     run: () => shiftActiveProject(-1) },
+  { id: 'new-project',          name: 'New Project…',                run: () => openProjectEditor(null) },
+  { id: 'new-session',          name: 'New Session',                 run: () => openLauncher() },
+  { id: 'new-session-worktree', name: 'New Session in Worktree',     run: () => openLauncher(undefined, { forceWorktree: true }) },
+  { id: 'duplicate-session',    name: 'Duplicate Session',           run: duplicateActiveSession },
+  { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', run: duplicateActiveSessionChooseTool },
+  { id: 'restart-session',      name: 'Restart Session',             run: restartActiveSession },
+  { id: 'delete-project',       name: 'Delete Active Project…',      run: () => deleteActiveProject() },
+  { id: 'close-session',        name: 'Close Session',               run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
+  { id: 'new-window',           name: 'New Window',                  run: () => OpenNewWindow().catch(reportFailure('window')) },
+  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
+  { id: 'close-window',         name: 'Close Window',                run: () => CloseWindow() },
+  { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              run: toggleSidebar },
+  { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         run: toggleProjectGrid },
+  { id: 'toggle-all-grid',      name: 'Toggle All Sessions Grid',    run: toggleAllGrid },
+  { id: 'zoom-in',              name: 'Zoom In',                     run: () => bumpFontSize(+1) },
+  { id: 'zoom-out',             name: 'Zoom Out',                    run: () => bumpFontSize(-1) },
+  { id: 'zoom-reset',           name: 'Actual Size',                 run: () => resetFontSize() },
+  { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
+  { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
+  { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
+  { id: 'move-backward',        name: 'Move Session Backward',       run: () => reorderActive(-1) },
+  { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },
+  { id: 'prev-project',         name: 'Previous Project',            run: () => shiftActiveProject(-1) },
+  { id: 'keyboard-shortcuts',   name: 'Keyboard Shortcuts',          run: () => openHelpOverlay() },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,
-    shortcut: `⌘${i + 1}`,
     run: () => switchToNthSession(i + 1),
   })),
-];
+].map((c) => ({ ...c, shortcut: PALETTE_KEYS[c.id] ?? '' }));
 
 const paletteEl = document.getElementById('command-palette');
 const paletteInput = document.getElementById('command-palette-input');
@@ -3157,6 +3294,59 @@ paletteEl.addEventListener('keydown', (e) => {
 document.addEventListener('mousedown', (e) => {
   if (paletteEl.classList.contains('hidden')) return;
   if (!paletteEl.contains(e.target)) closeCommandPalette();
+});
+
+// ---------- keyboard-shortcuts help overlay (⌘/) ----------
+
+const helpEl = document.getElementById('help-overlay');
+const helpGroupsEl = document.getElementById('help-overlay-groups');
+const helpCloseBtn = document.getElementById('help-overlay-close');
+let helpRendered = false;
+
+function renderHelpOverlay() {
+  helpGroupsEl.innerHTML = '';
+  for (const group of shortcutGroups({ isMac })) {
+    const sec = document.createElement('section');
+    const h = document.createElement('h4');
+    h.textContent = group.title;
+    sec.appendChild(h);
+    const dl = document.createElement('dl');
+    for (const item of group.items) {
+      const dt = document.createElement('dt');
+      const kbd = document.createElement('kbd');
+      kbd.textContent = item.keys;
+      dt.appendChild(kbd);
+      const dd = document.createElement('dd');
+      dd.textContent = item.label;
+      dl.append(dt, dd);
+    }
+    sec.appendChild(dl);
+    helpGroupsEl.appendChild(sec);
+  }
+}
+
+function openHelpOverlay() {
+  if (!helpRendered) {
+    renderHelpOverlay(); // static content — render once
+    helpRendered = true;
+  }
+  helpEl.classList.remove('hidden');
+  // Same modal-focus discipline as the palette: drop the active tile's
+  // visual focus and give the keyboard to the overlay.
+  setFocusedTile(null);
+  helpCloseBtn.focus();
+}
+
+function closeHelpOverlay() {
+  helpEl.classList.add('hidden');
+  focusActiveTerm();
+}
+
+helpCloseBtn.addEventListener('click', closeHelpOverlay);
+helpEl.addEventListener('mousedown', (e) => {
+  // The overlay element is the full-viewport backdrop — clicking it
+  // (not the panel) dismisses.
+  if (e.target === helpEl) closeHelpOverlay();
 });
 
 // moveActiveSession walks the (project_order, session_order) list.
