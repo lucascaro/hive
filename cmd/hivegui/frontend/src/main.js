@@ -34,6 +34,7 @@ import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, handleScrollbackEvent,
   applyRebaseline,
 } from './lib/scrollback.js';
+import { createStatus } from './lib/status.js';
 
 // ---------- session terminal ----------
 
@@ -286,13 +287,13 @@ class SessionTerm {
         // SetClipboardText (Go-side via atotto/clipboard) rather than
         // wails runtime.ClipboardSetText — the latter is broken on
         // Windows (non-STA goroutine, OpenClipboard fails silently).
-        if (sel) SetClipboardText(sel).catch(() => {});
+        if (sel) SetClipboardText(sel).catch(reportFailure('copy'));
         return false;
       }
       if (key === 'v') {
         ClipboardGetText().then((text) => {
           if (text) this._writePty(text);
-        }).catch(() => {});
+        }).catch(reportFailure('paste'));
         return false;
       }
       if (key === 'a') {
@@ -548,17 +549,23 @@ class SessionTerm {
       this._renameInput = null;
       this.tileName.style.display = '';
       if (commit && next && next !== this.info.name) {
-        UpdateSession(this.info.id, next, '', -1);
+        UpdateSession(this.info.id, next, '', -1).catch(reportFailure('rename'));
       }
       refocusActiveTerm();
     };
+    // ONE capture-phase listener handles Enter/Escape AND shields the
+    // input from xterm / global hotkey handlers. It must be a single
+    // listener: stopPropagation() from a capture listener at the target
+    // also cancels the target's own bubble-phase listeners (DOM dispatch
+    // skips the bubble invocation once the flag is set), so a separate
+    // bubble-phase Enter handler would never run — Enter/Escape were
+    // dead and renames only ever committed via blur.
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
-      else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
-    });
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    }, { capture: true });
     input.addEventListener('blur', () => finish(true));
-    // Stop xterm / global hotkey handlers from grabbing keystrokes.
-    input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
   }
 
   setProject(name, color) {
@@ -730,6 +737,8 @@ class SessionTerm {
   }
 
   destroy() {
+    // Intentionally silent: destroy() tears down a session that's already
+    // gone; a failed CloseAttach has nothing for the user to act on.
     CloseAttach(this.info.id).catch(() => {});
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     this.ro.disconnect();
@@ -766,9 +775,7 @@ class SessionTerm {
   }
 
   _closeDead() {
-    KillSession(this.info.id, true).catch((err) => {
-      setStatus(`close failed: ${err}`, true);
-    });
+    KillSession(this.info.id, true).catch(reportFailure('close'));
   }
 
   _dismissDead() {
@@ -891,6 +898,8 @@ function onSessionDeath(info) {
   state.terms.get(info.id)?.host.classList.add('attention');
   updateSidebarSelection();
   const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  // Best-effort like fireBellNotification: the overlay + sidebar pulse
+  // already cover the user if the OS notification fails.
   Notify(info.name || 'Session', proj?.name ?? '', 'Session ended.', info.id).catch(() => {});
 }
 
@@ -925,10 +934,32 @@ termsHost.classList.add('single');
 const projectsUL = document.getElementById('projects');
 const status = document.getElementById('status');
 
+const statusCtl = createStatus({
+  render: (text, isError) => {
+    status.textContent = text;
+    status.classList.toggle('error', isError);
+  },
+  setTimer: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimer: (id) => window.clearTimeout(id),
+  now: () => Date.now(),
+});
+
+// setStatus owns the persistent slot: connection state, nav feedback.
 function setStatus(text, isError = false) {
-  status.textContent = text;
-  status.classList.toggle('error', isError);
+  statusCtl.set(text, isError);
 }
+
+// flashStatus owns transient per-action feedback; it auto-reverts to
+// the persistent slot (errors linger 6s, info 2.5s — see lib/status.js).
+function flashStatus(text, isError = false) {
+  statusCtl.flash(text, isError);
+}
+
+// reportFailure builds a .catch handler that surfaces a failed user
+// action in the status bar. Wails mutation promises reject when the
+// daemon connection is down (or the call throws Go-side), which used
+// to be swallowed — the button click just silently did nothing.
+const reportFailure = (what) => (err) => flashStatus(`${what} failed: ${err}`, true);
 
 // orderedSessions returns sessions sorted by (project order, session order)
 // so navigation always matches what the user sees.
@@ -1156,7 +1187,7 @@ function reorderDroppedProject(draggedID, targetID, above) {
   let newOrder = above ? targetIdx : targetIdx + 1;
   if (draggedIdx < newOrder) newOrder -= 1;
   if (newOrder === draggedIdx) return;
-  UpdateProject(draggedID, '', '', '', newOrder);
+  UpdateProject(draggedID, '', '', '', newOrder).catch(reportFailure('reorder project'));
 }
 
 function renderSession(s, projectColor) {
@@ -1195,7 +1226,7 @@ function renderSession(s, projectColor) {
   colorInput.type = 'color';
   colorInput.value = s.color || '#888888';
   colorInput.addEventListener('input', (e) => {
-    UpdateSession(s.id, '', e.target.value, -1);
+    UpdateSession(s.id, '', e.target.value, -1).catch(reportFailure('color change'));
   });
   swatch.appendChild(colorInput);
 
@@ -1295,7 +1326,7 @@ function reorderDroppedSession(draggedID, targetID, above) {
   if (draggedGlobalIdx >= 0 && draggedGlobalIdx < globalTargetIdx) {
     globalTargetIdx -= 1;
   }
-  UpdateSession(draggedID, '', '', globalTargetIdx);
+  UpdateSession(draggedID, '', '', globalTargetIdx).catch(reportFailure('reorder'));
 }
 
 function beginRenameSession(sess, li, nameEl) {
@@ -1313,16 +1344,19 @@ function beginRenameSession(sess, li, nameEl) {
     const next = input.value.trim();
     input.replaceWith(nameEl);
     if (commit && next && next !== sess.name) {
-      UpdateSession(sess.id, next, '', -1);
+      UpdateSession(sess.id, next, '', -1).catch(reportFailure('rename'));
     }
     refocusActiveTerm();
   };
+  // Single capture-phase listener — see the tile-rename comment in
+  // SessionTerm for why Enter/Escape must live in the same listener
+  // that calls stopPropagation().
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
-    else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
-  });
+    e.stopPropagation();
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  }, { capture: true });
   input.addEventListener('blur', () => finish(true));
-  input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
 }
 
 function beginRenameProject(proj, nameEl) {
@@ -1340,16 +1374,19 @@ function beginRenameProject(proj, nameEl) {
     const next = input.value.trim();
     input.replaceWith(nameEl);
     if (commit && next && next !== proj.name) {
-      UpdateProject(proj.id, next, '', '', -1);
+      UpdateProject(proj.id, next, '', '', -1).catch(reportFailure('rename project'));
     }
     refocusActiveTerm();
   };
+  // Single capture-phase listener — see the tile-rename comment in
+  // SessionTerm for why Enter/Escape must live in the same listener
+  // that calls stopPropagation().
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
-    else if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
-  });
+    e.stopPropagation();
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  }, { capture: true });
   input.addEventListener('blur', () => finish(true));
-  input.addEventListener('keydown', (e) => e.stopPropagation(), { capture: true });
 }
 
 function ensureTerm(info) {
@@ -2193,7 +2230,7 @@ daemonBannerRestart.addEventListener('click', async () => {
     // RestartDaemon quits this process on success; control returns
     // here only on failure paths.
   } catch (err) {
-    setStatus(`restart failed: ${err}`, true);
+    flashStatus(`restart failed: ${err}`, true);
     showDaemonBanner(`Restart failed: ${err}`);
   } finally {
     daemonBannerRestart.disabled = false;
@@ -2317,6 +2354,8 @@ EventsOn('update:available', (info) => applyUpdateInfo(info));
 // Pull once on load. The Go side's periodic loop only fires every
 // 6h, so without this the user wouldn't see an "available" banner
 // until 6h after launch.
+// Intentionally silent: background boot poll. The manual menu path
+// below surfaces every outcome, including failures.
 CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
 
 // Guard against double-firing CheckForUpdate from the menu — clicking
@@ -2352,7 +2391,7 @@ EventsOn('bell-click', (sessionId) => {
 
 EventsOn('control:error', async (jsonStr) => {
   let e;
-  try { e = JSON.parse(jsonStr); } catch { setStatus('hived error', true); return; }
+  try { e = JSON.parse(jsonStr); } catch { flashStatus('hived error', true); return; }
   // Worktree-dirty kill: confirm with the user. The daemon already
   // refused to kill, so we can safely retry with force=true if the
   // user accepts.
@@ -2370,12 +2409,10 @@ EventsOn('control:error', async (jsonStr) => {
     // before issuing a second kill that would just produce a confusing
     // "no_such_session" control error.
     if (!state.sessions.find((s) => s.id === e.session_id)) return;
-    KillSession(e.session_id, true).catch((err) => {
-      setStatus(`force kill failed: ${err}`, true);
-    });
+    KillSession(e.session_id, true).catch(reportFailure('force kill'));
     return;
   }
-  setStatus(`${e.code}: ${e.message}`, true);
+  flashStatus(`${e.code}: ${e.message}`, true);
   console.warn('hived control error:', e);
 });
 
@@ -2432,7 +2469,7 @@ function activateLauncherSelection() {
       it.agent.id,
       launcherState.projectId || '',
       launcherState.duplicateCwd,
-    );
+    ).catch(reportFailure('duplicate session'));
   } else {
     CreateSession(
       it.agent.id,
@@ -2440,7 +2477,7 @@ function activateLauncherSelection() {
       '', '',
       0, 0,
       !!launcherState.useWorktree,
-    );
+    ).catch(reportFailure('new session'));
   }
   closeLauncher();
 }
@@ -2468,13 +2505,21 @@ function openLauncher(projectId, opts) {
       // Anchor next to the resolved project's + button so the user
       // can see which project the new session lands in. Falls back
       // to the global new-project button if the project's row isn't
-      // currently in the DOM (e.g. its header is offscreen).
+      // currently in the DOM (e.g. its header is offscreen), and to a
+      // fixed spot over the sidebar if neither anchor exists — a
+      // missing anchor must not throw and leave the launcher unopened
+      // (the throw used to vanish into this chain's empty catch).
       const anchorEl =
         document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
         document.getElementById('new-project-btn');
-      const r = anchorEl.getBoundingClientRect();
-      launcherEl.style.left = `${r.left}px`;
-      launcherEl.style.top = `${r.bottom + 4}px`;
+      if (anchorEl) {
+        const r = anchorEl.getBoundingClientRect();
+        launcherEl.style.left = `${r.left}px`;
+        launcherEl.style.top = `${r.bottom + 4}px`;
+      } else {
+        launcherEl.style.left = '16px';
+        launcherEl.style.top = '64px';
+      }
 
       // Worktree toggle row at the top of the menu. Disabled (and
       // visually muted) when the active project's cwd isn't a git
@@ -2509,7 +2554,12 @@ function openLauncher(projectId, opts) {
               launcherState.useWorktree = false;
               wtLabel.textContent = 'Worktree (project is not a git repo)';
             }
-          }).catch(() => {});
+          }).catch(() => {
+            // Intentionally silent: the probe rejects only when the
+            // bridge itself is down. Worst case the daemon later
+            // refuses worktree creation via control:error, which IS
+            // surfaced.
+          });
         }
       }
       // Detection (exec.LookPath on the daemon side) is best-effort:
@@ -2561,7 +2611,7 @@ function openLauncher(projectId, opts) {
               a.id,
               launcherState.projectId || '',
               launcherState.duplicateCwd,
-            );
+            ).catch(reportFailure('duplicate session'));
           } else {
             CreateSession(
               a.id,
@@ -2569,7 +2619,7 @@ function openLauncher(projectId, opts) {
               '', '',
               0, 0,
               !!launcherState.useWorktree,
-            );
+            ).catch(reportFailure('new session'));
           }
           closeLauncher();
         });
@@ -2586,7 +2636,10 @@ function openLauncher(projectId, opts) {
       // Drop the active tile's visual focus — modal owns the keyboard.
       setFocusedTile(null);
     })
-    .catch(() => {});
+    // Anything thrown in the chain above (not just a ListAgents
+    // rejection) used to land here silently — the user pressed ⌘T and
+    // nothing happened, with no trace.
+    .catch(reportFailure('launcher'));
 }
 
 function closeLauncher() {
@@ -2619,21 +2672,21 @@ function duplicateActiveSession() {
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {
-    setStatus('cannot duplicate: source session has no cwd', true);
+    flashStatus('cannot duplicate: source session has no cwd', true);
     return;
   }
   const pid = s.projectId ?? s.project_id ?? '';
   if (s.agent) bumpAgentUsage(s.agent);
-  DuplicateSession(s.agent || '', pid, cwd);
+  DuplicateSession(s.agent || '', pid, cwd).catch(reportFailure('duplicate session'));
 }
 
 function restartActiveSession() {
   const s = state.sessions.find((x) => x.id === state.activeId);
   if (!s) {
-    setStatus('no active session to restart', true);
+    flashStatus('no active session to restart', true);
     return;
   }
-  RestartSession(s.id);
+  RestartSession(s.id).catch(reportFailure('restart'));
 }
 
 function duplicateActiveSessionChooseTool() {
@@ -2641,7 +2694,7 @@ function duplicateActiveSessionChooseTool() {
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {
-    setStatus('cannot duplicate: source session has no cwd', true);
+    flashStatus('cannot duplicate: source session has no cwd', true);
     return;
   }
   const pid = s.projectId ?? s.project_id ?? '';
@@ -2670,6 +2723,8 @@ function openProjectEditor(project) {
   if (project) {
     editorCwd.value = project.cwd ?? '';
   } else {
+    // Intentionally silent: cosmetic default for an empty field;
+    // Browse… still works if this fails.
     LaunchDir().then((d) => { editorCwd.value = d || ''; }).catch(() => {});
     editorCwd.value = '';
   }
@@ -2691,9 +2746,9 @@ function saveProjectEditor() {
   const color = editorColor.value;
   if (!name) return;
   if (editorState.editing) {
-    UpdateProject(editorState.editing.id, name, color, cwd, -1);
+    UpdateProject(editorState.editing.id, name, color, cwd, -1).catch(reportFailure('save project'));
   } else {
-    CreateProject(name, color, cwd);
+    CreateProject(name, color, cwd).catch(reportFailure('create project'));
   }
   closeProjectEditor();
 }
@@ -2768,9 +2823,7 @@ window.addEventListener('keydown', (e) => {
   // Handled before the ⌘/Ctrl gate below so it fires on mac too.
   if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'Backquote') {
     swallow();
-    OpenTerminalAt(activeCwd()).catch((err) => {
-      setStatus(`open terminal: ${err}`, true);
-    });
+    OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal'));
     return;
   }
 
@@ -2834,9 +2887,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'n' || e.key === 'N') {
     swallow();
     if (e.shiftKey) {
-      OpenNewWindow().catch((err) => {
-        setStatus(`window failed: ${err}`, true);
-      });
+      OpenNewWindow().catch(reportFailure('window'));
     } else {
       // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
       openProjectEditor(null);
@@ -2849,7 +2900,7 @@ window.addEventListener('keydown', (e) => {
       // force=false: lets the daemon refuse with worktree_dirty if
       // the worktree has uncommitted changes; the control:error
       // handler then shows a confirm dialog and retries with force.
-      KillSession(state.activeId, false);
+      KillSession(state.activeId, false).catch(reportFailure('close'));
     }
   } else if (/^[1-9]$/.test(e.key)) {
     const idx = parseInt(e.key, 10) - 1;
@@ -2944,7 +2995,7 @@ const menuActions = {
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
-  'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false); },
+  'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); },
   'menu:zoom-in': () => bumpFontSize(+1),
   'menu:zoom-out': () => bumpFontSize(-1),
   'menu:zoom-reset': () => resetFontSize(),
@@ -2981,9 +3032,7 @@ async function confirmAndDeleteProject(proj) {
     : `Delete project "${proj.name}"?`;
   const ok = await Confirm('Delete project', msg);
   if (!ok) return;
-  KillProject(proj.id, sessions.length > 0).catch((err) => {
-    setStatus(`delete failed: ${err}`, true);
-  });
+  KillProject(proj.id, sessions.length > 0).catch(reportFailure('delete project'));
 }
 
 function deleteActiveProject() {
@@ -3001,9 +3050,9 @@ const paletteCommands = [
   { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', shortcut: '⇧⌘P', run: duplicateActiveSessionChooseTool },
   { id: 'restart-session',      name: 'Restart Session',             shortcut: '',       run: restartActiveSession },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
-  { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false); } },
-  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch((err) => setStatus(`window failed: ${err}`, true)) },
-  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch((err) => setStatus(`open terminal: ${err}`, true)) },
+  { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
+  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch(reportFailure('window')) },
+  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
   { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow() },
   { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
   { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         shortcut: '⌘G',     run: toggleProjectGrid },

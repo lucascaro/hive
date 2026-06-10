@@ -32,8 +32,22 @@ export function WindowSetTitle(t) { document.title = t; }
 // SetClipboardText (App), both aliased here. The mock keeps an in-memory
 // clipboard so copy/paste paths don't throw at module load.
 let clipboard = '';
-export async function ClipboardGetText() { return clipboard; }
-export async function SetClipboardText(text) { clipboard = String(text ?? ''); }
+export async function ClipboardGetText() { maybeFail('ClipboardGetText'); return clipboard; }
+export async function SetClipboardText(text) { maybeFail('SetClipboardText'); clipboard = String(text ?? ''); }
+
+// --- failure injection ---
+//
+// window.__hive.failNext(method, message) arms a one-shot rejection for
+// the named binding, so E2E can assert that a failed daemon call
+// surfaces user-visible feedback instead of being silently swallowed.
+const failures = new Map(); // method name -> error message
+function maybeFail(method) {
+  if (failures.has(method)) {
+    const msg = failures.get(method);
+    failures.delete(method);
+    throw new Error(msg);
+  }
+}
 
 // --- App bindings ---
 
@@ -86,6 +100,7 @@ export async function RequestScrollbackReplay(id) {
   return '';
 }
 export async function CreateSession(spec) {
+  maybeFail('CreateSession');
   const id = 'mock-' + (state.sessions.length + 1);
   const s = {
     id, name: spec.name || `s${state.sessions.length + 1}`,
@@ -98,25 +113,37 @@ export async function CreateSession(spec) {
   emit('session:event', JSON.stringify({ kind: 'added', session: s }));
   return id;
 }
-export async function DuplicateSession(id) { return CreateSession({ name: 'dup' }); }
+export async function DuplicateSession(id) { maybeFail('DuplicateSession'); return CreateSession({ name: 'dup' }); }
 export async function KillSession(id) {
+  maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i < 0) return '';
   const [removed] = state.sessions.splice(i, 1);
   emit('session:event', JSON.stringify({ kind: 'removed', session: removed }));
   return '';
 }
-export async function RestartSession(_id) { return ''; }
-export async function UpdateSession(req) {
-  const s = state.sessions.find((x) => x.id === req.session_id);
+export async function RestartSession(_id) { maybeFail('RestartSession'); return ''; }
+// Positional args matching the real Wails binding (and the e2e-real
+// bridge): UpdateSession(id, name, color, order). Empty string / -1
+// mean "no change". The old object-shaped signature silently no-op'd
+// every rename driven through the UI.
+export async function UpdateSession(id, name, color, _order) {
+  maybeFail('UpdateSession');
+  const s = state.sessions.find((x) => x.id === id);
   if (!s) return '';
-  if (req.name != null) s.name = req.name;
-  if (req.color != null) s.color = req.color;
+  if (name) s.name = name;
+  if (color) s.color = color;
   emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
   return '';
 }
-export async function ListAgents() { return []; }
+// One real-shaped agent so launcher E2E can exercise the full
+// open → select → create flow (matches internal/agent's wire shape).
+export async function ListAgents() {
+  maybeFail('ListAgents');
+  return [{ id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] }];
+}
 export async function CreateProject(req) {
+  maybeFail('CreateProject');
   const id = 'p-' + (state.projects.length + 1);
   const p = { id, name: req.name || 'new', color: req.color || '#0af',
     cwd: req.cwd || '', order: state.projects.length,
@@ -125,8 +152,8 @@ export async function CreateProject(req) {
   emit('project:event', JSON.stringify({ kind: 'added', project: p }));
   return id;
 }
-export async function KillProject(_id) { return ''; }
-export async function UpdateProject(_req) { return ''; }
+export async function KillProject(_id) { maybeFail('KillProject'); return ''; }
+export async function UpdateProject(_req) { maybeFail('UpdateProject'); return ''; }
 export async function LaunchDir() { return ''; }
 export async function PickDirectory() { return ''; }
 export async function OpenNewWindow() { return ''; }
@@ -158,5 +185,6 @@ if (typeof window !== 'undefined') {
     replayLog,
     replayCount(id) { return replayLog.filter((e) => id == null || e.id === id).length; },
     resetReplay() { replayLog.length = 0; },
+    failNext(method, message = 'injected failure') { failures.set(method, message); },
   };
 }
