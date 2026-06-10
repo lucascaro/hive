@@ -82,3 +82,4 @@ Add one branch to the existing single `attachCustomKeyEventHandler` closure (`ma
 <Append-only. One line per review-loop iteration.>
 
 - **2026-06-09 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 00cba6d.
+- **2026-06-09** — CI note: required check CodeQL = pass. Non-required "Build, Vet & Test (Linux/macOS)" Playwright E2E jobs fail, but they fail identically on `main`@56252de (pre-existing, every failing test is a focus/scrollback/minimize/smoke boot-timeout — none touch key handling). PR is MERGEABLE (state UNSTABLE due to the pre-existing reds only). Frontend vitest 110/110 green.
