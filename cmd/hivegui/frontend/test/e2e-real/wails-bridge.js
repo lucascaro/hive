@@ -137,6 +137,14 @@ export async function Confirm() { return true; }
 export async function RestartDaemon() { return ''; }
 export async function CheckForUpdate() { return null; }
 
+// Clipboard bindings. main.js imports ClipboardGetText (runtime) and
+// SetClipboardText (App), both aliased to this bridge under
+// VITE_WAILS_REAL=1; without these exports the ESM import throws at
+// module load and the app never boots. In-memory is sufficient here.
+let clipboard = '';
+export async function ClipboardGetText() { return clipboard; }
+export async function SetClipboardText(text) { clipboard = String(text ?? ''); }
+
 // Test hooks for Playwright. Smaller surface than the mock — there's
 // no scripted state machine to poke; the daemon IS the state machine.
 if (typeof window !== 'undefined') {
