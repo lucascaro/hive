@@ -121,7 +121,7 @@ func (r *Registry) MigrateOrphanSessions() {
 	for _, e := range r.entries {
 		if e.ProjectID == "" {
 			e.ProjectID = defID
-			_ = r.persistEntryLocked(e)
+			r.persistEntryLoggedLocked(e, "migrate orphan sessions")
 			dirty = true
 		}
 	}
@@ -213,7 +213,7 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 	if !killSessions {
 		for _, e := range affected {
 			e.ProjectID = targetID
-			_ = r.persistEntryLocked(e)
+			r.persistEntryLoggedLocked(e, "delete project (reassign)")
 		}
 	}
 
@@ -226,7 +226,7 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 	}
 	// Intentionally NOT renumbering — same rationale as Kill().
 	// See registry.go for the full comment.
-	_ = r.persistProjectIndexLocked()
+	r.persistProjectIndexLoggedLocked("delete project")
 
 	dir := filepath.Join(ProjectsDir(r.stateDir), id)
 	info := p.Info()
@@ -322,7 +322,7 @@ func (r *Registry) renumberProjectsLocked() {
 	for i, id := range r.projectOrder {
 		if p := r.projects[id]; p != nil {
 			p.Order = i
-			_ = r.persistProjectLocked(p)
+			r.persistProjectLoggedLocked(p, "renumber projects")
 		}
 	}
 }
@@ -330,7 +330,9 @@ func (r *Registry) renumberProjectsLocked() {
 // SubscribeProjects returns a channel that receives ProjectEvent.
 // Slow consumers are dropped — listeners must drain promptly.
 func (r *Registry) SubscribeProjects() (ProjectListener, func()) {
-	ch := make(ProjectListener, 16)
+	// 64 for the same reason as Subscribe: order changes broadcast one
+	// event per project under lock.
+	ch := make(ProjectListener, 64)
 	r.mu.Lock()
 	r.projectListeners[ch] = struct{}{}
 	r.mu.Unlock()
@@ -352,6 +354,9 @@ func (r *Registry) broadcastProject(kind string, info wire.ProjectInfo) {
 		select {
 		case ch <- ev:
 		default:
+			// Same contract as broadcastLocked: drops must be loud.
+			log.Printf("registry: dropping slow project-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+				cap(ch), len(r.projectListeners))
 			delete(r.projectListeners, ch)
 			close(ch)
 		}

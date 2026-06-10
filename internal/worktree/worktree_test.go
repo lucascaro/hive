@@ -246,11 +246,57 @@ func TestCreateWorktree_BranchAlreadyExists(t *testing.T) {
 	if out, err := exec.Command("git", "-C", repo, "branch", "topic").CombinedOutput(); err != nil {
 		t.Fatalf("git branch: %v\n%s", err, out)
 	}
+	topicSHA := revParse(t, repo, "topic")
 	wt := WorktreePath(repo, "topic")
 	if err := CreateWorktree(repo, "topic", wt); err != nil {
-		t.Fatalf("CreateWorktree should fall back when branch exists: %v", err)
+		t.Fatalf("CreateWorktree should check out an existing branch: %v", err)
 	}
 	defer Cleanup(repo, wt)
+	// The worktree must actually be on the existing branch's tip — the
+	// rev-parse probe (not git's localized error text) routes us here.
+	if got := revParse(t, wt, "HEAD"); got != topicSHA {
+		t.Errorf("worktree HEAD = %s, want topic tip %s", got, topicSHA)
+	}
+}
+
+func TestCreateWorktree_ExistingBranchCheckedOutElsewhereReportsContext(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t)
+	mustGit(t, repo, "branch", "topic")
+	wtA := WorktreePath(repo, "topic")
+	if err := CreateWorktree(repo, "topic", wtA); err != nil {
+		t.Fatalf("first CreateWorktree: %v", err)
+	}
+	defer Cleanup(repo, wtA)
+
+	// A second worktree for the same branch must fail (git refuses), and
+	// the error must say which strategy failed instead of a bare git dump.
+	wtB := filepath.Join(repo, ".worktrees", "topic-second")
+	err := CreateWorktree(repo, "topic", wtB)
+	if err == nil {
+		t.Fatal("second CreateWorktree for same branch should fail")
+	}
+	if !strings.Contains(err.Error(), "existing branch topic") {
+		t.Errorf("error should name the existing-branch strategy; got: %v", err)
+	}
+}
+
+func TestCreateWorktree_AllAttemptsFailJoinsErrors(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	// ".." is invalid in ref names, so both the with-base and no-base
+	// attempts fail. The joined error must carry context from each.
+	bad := "bad..name"
+	err := CreateWorktree(repo, bad, filepath.Join(repo, ".worktrees", "bad-name"))
+	if err == nil {
+		t.Fatal("CreateWorktree with invalid branch name should fail")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `(base "origin/main")`) {
+		t.Errorf("error should report the upstream-base attempt; got: %v", err)
+	}
+	if !strings.Contains(msg, "(no base)") {
+		t.Errorf("error should report the no-base retry attempt; got: %v", err)
+	}
 }
 
 func TestCleanup_MissingDir(t *testing.T) {

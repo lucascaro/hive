@@ -38,6 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Daemon diagnosability hardening: failures that were previously
+  swallowed are now logged. Registry metadata-persist failures (12
+  sites — session/project entries and order indexes) warn with the
+  operation that lost the write; dropping a slow session/project event
+  listener warns instead of silently desyncing the GUI (and the event
+  buffers grew 16→64 so a many-session reorder can't overflow a
+  healthy listener); pidfile cleanup failures are logged at shutdown.
+  Worktree creation failures now report every attempted strategy
+  (joined errors instead of last-attempt-only), and existing-branch
+  detection uses `git rev-parse` exit codes instead of matching git's
+  locale-dependent error text. The `hived-ws-bridge` test shim rejects
+  malformed JSON-RPC params instead of running handlers on zeroed
+  structs, and serializes concurrent frame writes per daemon
+  connection so racing writers can't corrupt the wire stream.
 - GUI: scrolling discipline on mode switch and resize. Switching
   display modes (focused / grid / grid-project) now always snaps
   every visible tile to the bottom — mode toggles are deliberate

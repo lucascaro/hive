@@ -96,9 +96,35 @@ type session struct {
 	sockPath string
 
 	mu       sync.Mutex
-	control  net.Conn
-	attaches map[string]net.Conn // session id → attach conn
+	control  *lockedConn
+	attaches map[string]*lockedConn // session id → attach conn
 }
+
+// lockedConn serializes frame writes to one daemon connection.
+// wire.WriteFrame issues two Writes (header, then payload), so two
+// goroutines writing the same conn unserialized interleave mid-frame
+// and corrupt the stream. Reads stay lock-free: each conn has exactly
+// one reader goroutine, and socket reads never contend with writes.
+type lockedConn struct {
+	mu sync.Mutex
+	c  net.Conn
+}
+
+func (lc *lockedConn) writeFrame(t wire.FrameType, p []byte) error {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	return wire.WriteFrame(lc.c, t, p)
+}
+
+func (lc *lockedConn) writeJSON(t wire.FrameType, v any) error {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	return wire.WriteJSON(lc.c, t, v)
+}
+
+// Close is intentionally not guarded by lc.mu: net.Conn.Close is safe
+// concurrently with a blocked Write and must be able to unblock one.
+func (lc *lockedConn) Close() error { return lc.c.Close() }
 
 func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -107,7 +133,7 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 		return
 	}
 	defer c.Close()
-	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]net.Conn)}
+	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]*lockedConn)}
 	defer s.closeAll()
 	for {
 		_, raw, err := c.ReadMessage()
@@ -119,6 +145,11 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 			s.respond(0, nil, fmt.Errorf("parse: %w", err))
 			continue
 		}
+		// Goroutine-per-request, unbounded by design: the only client is
+		// the localhost Playwright runner, whose request rate is bounded
+		// by the test code itself. A semaphore here could deadlock the
+		// harness (a blocked ConnectControl holding a slot while the
+		// test pumps WriteStdin). dispatch recovers panics.
 		go s.dispatch(req)
 	}
 }
@@ -153,6 +184,20 @@ func (s *session) emit(name string, args ...any) {
 	_ = s.ws.WriteJSON(rpcResp{Event: name, Args: args})
 }
 
+// parseParams decodes a request's params into v. Absent params are
+// allowed and leave v at its zero value (the JS bridge always sends at
+// least {}); malformed params are an error so a handler never runs on
+// a silently zeroed struct.
+func parseParams(raw json.RawMessage, v any) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return fmt.Errorf("invalid params: %w", err)
+	}
+	return nil
+}
+
 func (s *session) dispatch(req rpcReq) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -164,11 +209,17 @@ func (s *session) dispatch(req rpcReq) {
 		s.respond(req.ID, "", s.connectControl())
 	case "CreateSession":
 		var p wire.CreateSpec
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameCreateSession, p))
 	case "KillSession":
 		var p wire.KillSessionReq
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameKillSession, p))
 	case "OpenSession":
 		var p struct {
@@ -176,7 +227,10 @@ func (s *session) dispatch(req rpcReq) {
 			Cols int    `json:"cols"`
 			Rows int    `json:"rows"`
 		}
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		info, err := s.openSession(p.ID, p.Cols, p.Rows)
 		s.respond(req.ID, info, err)
 	case "WriteStdin":
@@ -184,7 +238,10 @@ func (s *session) dispatch(req rpcReq) {
 			ID  string `json:"id"`
 			B64 string `json:"b64"`
 		}
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.writeStdin(p.ID, p.B64))
 	case "ResizeSession":
 		var p struct {
@@ -192,19 +249,28 @@ func (s *session) dispatch(req rpcReq) {
 			Cols int    `json:"cols"`
 			Rows int    `json:"rows"`
 		}
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.attachWriteJSON(p.ID, wire.FrameResize, wire.Resize{Cols: p.Cols, Rows: p.Rows}))
 	case "RequestScrollbackReplay":
 		var p struct {
 			ID string `json:"id"`
 		}
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.attachWriteFrame(p.ID, wire.FrameRequestReplay, nil))
 	case "CloseAttach":
 		var p struct {
 			ID string `json:"id"`
 		}
-		_ = json.Unmarshal(req.Params, &p)
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
 		s.respond(req.ID, "", s.closeAttach(p.ID))
 	default:
 		// Frontend imports a lot of methods we don't implement (Notify,
@@ -228,14 +294,15 @@ func (s *session) connectControl() error {
 		return err
 	}
 	_ = welcome // build-id is irrelevant for tests
+	lc := &lockedConn{c: conn}
 	s.mu.Lock()
-	s.control = conn
+	s.control = lc
 	s.mu.Unlock()
-	go s.controlReadLoop(conn)
+	go s.controlReadLoop(lc)
 	return nil
 }
 
-func (s *session) controlReadLoop(conn net.Conn) {
+func (s *session) controlReadLoop(conn *lockedConn) {
 	defer func() {
 		s.mu.Lock()
 		if s.control == conn {
@@ -246,7 +313,7 @@ func (s *session) controlReadLoop(conn net.Conn) {
 		s.emit("control:disconnect", "")
 	}()
 	for {
-		ft, payload, err := wire.ReadFrame(conn)
+		ft, payload, err := wire.ReadFrame(conn.c)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("ws-bridge: control read: %v", err)
@@ -288,18 +355,20 @@ func (s *session) openSession(id string, cols, rows int) (*attachInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	lc := &lockedConn{c: conn}
 	s.mu.Lock()
-	s.attaches[id] = conn
+	s.attaches[id] = lc
 	s.mu.Unlock()
-	go s.attachReadLoop(id, conn)
-	// Issue preferred size if non-zero and differs from welcome.
+	go s.attachReadLoop(id, lc)
+	// Issue preferred size if non-zero and differs from welcome. Routed
+	// through the locked writer — it races with WriteStdin dispatches.
 	if cols > 0 && rows > 0 && (cols != welcome.Cols || rows != welcome.Rows) {
-		_ = wire.WriteJSON(conn, wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
+		_ = lc.writeJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
 	}
 	return &attachInfo{SessionID: id, Cols: welcome.Cols, Rows: welcome.Rows}, nil
 }
 
-func (s *session) attachReadLoop(id string, conn net.Conn) {
+func (s *session) attachReadLoop(id string, conn *lockedConn) {
 	defer func() {
 		s.mu.Lock()
 		if s.attaches[id] == conn {
@@ -310,7 +379,7 @@ func (s *session) attachReadLoop(id string, conn net.Conn) {
 		s.emit("pty:disconnect", id)
 	}()
 	for {
-		ft, payload, err := wire.ReadFrame(conn)
+		ft, payload, err := wire.ReadFrame(conn.c)
 		if err != nil {
 			return
 		}
@@ -366,7 +435,7 @@ func (s *session) controlWriteJSON(t wire.FrameType, v any) error {
 	if c == nil {
 		return errors.New("no control connection")
 	}
-	return wire.WriteJSON(c, t, v)
+	return c.writeJSON(t, v)
 }
 
 func (s *session) attachWriteFrame(id string, t wire.FrameType, p []byte) error {
@@ -376,7 +445,7 @@ func (s *session) attachWriteFrame(id string, t wire.FrameType, p []byte) error 
 	if c == nil {
 		return fmt.Errorf("no attach for %s", id)
 	}
-	return wire.WriteFrame(c, t, p)
+	return c.writeFrame(t, p)
 }
 
 func (s *session) attachWriteJSON(id string, t wire.FrameType, v any) error {
@@ -386,7 +455,7 @@ func (s *session) attachWriteJSON(id string, t wire.FrameType, v any) error {
 	if c == nil {
 		return fmt.Errorf("no attach for %s", id)
 	}
-	return wire.WriteJSON(c, t, v)
+	return c.writeJSON(t, v)
 }
 
 // --- helpers ---
