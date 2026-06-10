@@ -76,3 +76,9 @@ Add one branch to the existing single `attachCustomKeyEventHandler` closure (`ma
 ## Open questions
 
 <Empty — newline byte and extension point are settled.>
+
+## PR convergence ledger
+
+<Append-only. One line per review-loop iteration.>
+
+- **2026-06-09 iter 1** — verdict: APPROVE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 00cba6d.
