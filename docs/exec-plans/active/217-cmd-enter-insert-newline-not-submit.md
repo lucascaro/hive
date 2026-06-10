@@ -72,6 +72,7 @@ Add one branch to the existing single `attachCustomKeyEventHandler` closure (`ma
 - **2026-06-09** — Plan approved. Stage = IMPLEMENT.
 - **2026-06-09** — Implemented: new `lib/keymap.js` (`isCmdEnter`, `NEWLINE_SEQ`), handler branch in `main.js`, `test/unit/keymap.test.js` (7 tests). Vitest 110/110 pass. CHANGELOG `[Unreleased]` updated. Go embed/vite build require Wails codegen (absent in plain checkout) — vitest is the authoritative gate for this frontend-only change.
 - **2026-06-09** — Pushed `feature/217-cmd-enter-insert-newline-not-submit`; opened PR #218. Stage = REVIEW.
+- **2026-06-09** — Review-loop iter 1 = APPROVE. Resolved 4 Copilot threads (stale `main.js:NNN` refs my diff shifted). CI investigation: Linux/macOS "Build, Vet & Test" was red, but pre-existing on `main` (proven: main@56252de fails identically; reverting this change locally still fails). Root cause: #212 added `ClipboardGetText`/`SetClipboardText` imports to `main.js` without updating `test/e2e/wails-mock.js`; the missing ESM exports threw at module load, breaking all 33 mock-Wails E2E tests. Per user, folded the one-file mock fix into this PR (33 failed → 32 passed locally).
 
 ## Open questions
 
