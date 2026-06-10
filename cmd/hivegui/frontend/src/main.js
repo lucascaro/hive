@@ -1564,18 +1564,64 @@ function setActive(id) {
 // see a session lit up while keystrokes went nowhere. Single writer
 // makes that impossible: the class is added only here, in the same
 // rAF as the helper-textarea focus.
+// Transient focus guard for the post-view-switch settle window.
+//
+// Switching to grid reparents the active tile (renderGrid's appendChild
+// reorder) and triggers async ResizeObserver → fit → WebGL resize on the
+// newly-visible neighbour tiles. Both momentarily blur the active
+// helper-textarea to <body>. A keystroke typed in that sub-frame gap lands
+// on <body> and is silently lost — observed as "ello"/"o" instead of
+// "hello" right after ⌘⇧G (a real keystroke-loss bug, and the cause of the
+// flaky focus E2E). applyFocus's rAF retry re-focuses, but only on the NEXT
+// frame, too late for a char already dropped.
+//
+// This document-level capture guard re-focuses SYNCHRONOUSLY the instant the
+// guarded textarea blurs to <body>, so focus is back before the next
+// keystroke's event-loop turn. It is armed only for a short window after a
+// real-tile focus request and only acts while that tile is still active and
+// no modal/rename legitimately owns the keyboard — so it never traps focus.
+let _focusGuard = null; // { id, until } | null
+
+function armFocusGuard(id) {
+  _focusGuard = { id, until: performance.now() + 500 };
+}
+
+document.addEventListener(
+  'focusout',
+  (e) => {
+    const g = _focusGuard;
+    if (!g) return;
+    if (performance.now() > g.until) { _focusGuard = null; return; }
+    if (state.activeId !== g.id) return; // active tile changed → let it go
+    if (focusSnapshot(g.id).modalOpen) return; // modal/rename owns keyboard
+    const st = state.terms.get(g.id);
+    if (!st) return;
+    const ta = st.host.querySelector('.xterm-helper-textarea');
+    if (!ta || e.target !== ta) return; // only when OUR textarea blurs
+    // Only reclaim a transient blur to nothing/<body>; never override the
+    // user intentionally focusing another control.
+    const dest = e.relatedTarget;
+    if (dest && dest !== document.body) return;
+    ta.focus();
+  },
+  true,
+);
+
 function setFocusedTile(id) {
   // First decision: synchronous, before any rAF. If we already know we
   // should clear, do it immediately so a modal/null transition can't be
   // overtaken by a stale in-flight focus rAF.
   const snap = focusSnapshot(id);
   if (snap.modalOpen || id == null || !state.terms.get(id)) {
+    _focusGuard = null;
     sweepFocusBorder();
     return;
   }
-  // Schedule after the next paint so any in-flight DOM transition
-  // (showSingle / renderGrid / appendChild / xterm.open) settles
-  // before we read activeElement and move focus.
+  // Arm the synchronous blur guard for the settle window, then schedule
+  // the focus drive after the next paint so any in-flight DOM transition
+  // (showSingle / renderGrid / appendChild / xterm.open) settles before we
+  // read activeElement and move focus.
+  armFocusGuard(id);
   requestAnimationFrame(() => applyFocus(id, /*attempt=*/0));
 }
 
@@ -1599,8 +1645,19 @@ function applyFocus(id, attempt) {
   // swap (single → grid) fires focusout. ta.focus() drives the real
   // event; the follow-up term.focus() resyncs xterm's internal state.
   const ta = st.host.querySelector('.xterm-helper-textarea');
-  if (ta) ta.focus();
-  if (typeof st.term?.focus === 'function') st.term.focus();
+  // Only drive focus when it has actually drifted off the target
+  // textarea. Re-focusing an already-focused xterm helper-textarea is
+  // NOT a harmless no-op: it clears the textarea's pending input mid-
+  // keystroke, so a character typed during the post-grid-switch retry
+  // window is dropped before xterm's input event emits it (observed as
+  // "ello" / "o" instead of "hello"). Because several setFocusedTile
+  // calls fire during a grid switch, multiple retry chains overlap and
+  // hammer focus() every frame for ~300ms; guarding on real drift keeps
+  // the #159/#181/#186 drift-correction while ending the keystroke loss.
+  if (ta && document.activeElement !== ta) {
+    ta.focus();
+    if (typeof st.term?.focus === 'function') st.term.focus();
+  }
   // Schedule a verification rAF *next frame* (not this one — focus()
   // just fired and synchronously updated activeElement, so an in-tick
   // check would trivially pass and miss the real failure mode):

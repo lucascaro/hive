@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: keystrokes typed immediately after switching to a grid view are no
+  longer dropped. Switching to grid reparents the active tile and triggers
+  async resize/fit on neighbour tiles, both of which momentarily blurred the
+  active terminal to `<body>`; a character typed in that sub-frame gap was
+  silently lost (e.g. `hello` → `ello`). A synchronous focus guard now
+  reclaims the terminal the instant it blurs during the post-switch settle
+  window, and the focus-retry loop no longer re-focuses an already-focused
+  textarea (which cleared pending input). (#186)
 - GUI: `Shift+Enter` in an agent session now inserts a newline instead
   of submitting, so you can compose multi-line prompts for Claude/Codex.
   xterm sends a bare `\r` for `Shift+Enter` and drops the Shift, so the
