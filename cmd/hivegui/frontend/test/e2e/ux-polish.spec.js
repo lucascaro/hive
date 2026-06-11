@@ -114,6 +114,17 @@ test('first-run empty state updates when projects change without a kind change',
   await expect(empty.getByRole('button', { name: /New session/ })).toBeVisible();
 });
 
+test('native menu event toggles the help overlay open and closed', async ({ page }) => {
+  await boot(page);
+  // The macOS menu accelerator intercepts ⌘/ before the webview's
+  // keydown listener, so the menu:keyboard-shortcuts handler itself
+  // must toggle — open on first fire, close on the second.
+  await page.evaluate(() => window.__hive.emit('menu:keyboard-shortcuts'));
+  await expect(page.locator('#help-overlay')).toBeVisible();
+  await page.evaluate(() => window.__hive.emit('menu:keyboard-shortcuts'));
+  await expect(page.locator('#help-overlay')).toBeHidden();
+});
+
 test('help overlay traps Tab inside the dialog', async ({ page }) => {
   await boot(page);
   await page.keyboard.press(`${mod}+/`);

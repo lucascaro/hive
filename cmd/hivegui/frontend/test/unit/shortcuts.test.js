@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { shortcutGroups, paletteShortcuts, footerHints } from '../../src/lib/shortcuts.js';
 
@@ -57,9 +58,14 @@ describe('shortcutGroups', () => {
 
 describe('footerHints', () => {
   it('matches the static mac footer text in index.html', () => {
-    expect(footerHints({ isMac: true })).toBe(
-      '⌘N project · ⌘T session · ⌘W close · ⌘G grid · ⇧⌘K commands · ⌘/ help',
-    );
+    // Read the real fallback so the two surfaces cannot drift: the
+    // static HTML is what users see for the frames before main.js
+    // re-renders it from this module.
+    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+    const footer = html.match(/<footer id="sidebar-hints"[^>]*>([\s\S]*?)<\/footer>/)?.[1];
+    expect(footer).toBeTruthy();
+    const fallback = footer.replace(/<!--[\s\S]*?-->/g, '').trim();
+    expect(footerHints({ isMac: true })).toBe(fallback);
   });
 
   it('uses Ctrl+ words off mac', () => {

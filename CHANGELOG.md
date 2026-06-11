@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   including the ones no menu shows (terminal-level `Ctrl+Shift+C/V/A`
   copy/paste/select-all, `⇧↩` newline, launcher digit keys, sidebar
   resizer keys). Also reachable from the command palette ("Keyboard
-  Shortcuts"). The palette's shortcut column and the overlay render
-  from one shared table (`lib/shortcuts.js`) so they cannot drift, and
-  non-mac platforms now see `Ctrl+`-style hints instead of mac glyphs.
+  Shortcuts") and the macOS Help menu. The palette's shortcut column
+  and the overlay render from one shared table (`lib/shortcuts.js`)
+  so they cannot drift, and non-mac platforms now see `Ctrl+`-style
+  hints instead of mac glyphs.
 - GUI: actionable empty states. First run shows "No sessions yet" with
   a New session button; an empty project and an all-minimized grid get
   their own hints — replacing the bare CSS placeholder text (or a

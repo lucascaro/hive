@@ -3170,6 +3170,11 @@ const menuActions = {
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
   'menu:check-for-updates': () => manualUpdateCheck(),
+  // Must toggle, not just open: the native ⌘/ accelerator intercepts
+  // the key before the webview on macOS, so the keydown close path
+  // (Escape/⌘/ in the window listener) never sees ⌘/ while the menu
+  // owns it.
+  'menu:keyboard-shortcuts': () => toggleHelpOverlay(),
 };
 for (const [name, fn] of Object.entries(menuActions)) {
   EventsOn(name, fn);
@@ -3368,6 +3373,14 @@ function openHelpOverlay() {
 function closeHelpOverlay() {
   helpEl.classList.add('hidden');
   focusActiveTerm();
+}
+
+// toggleHelpOverlay backs the native menu item (menu:keyboard-shortcuts):
+// on macOS the menu accelerator owns ⌘/, so open AND close must both be
+// reachable through this one entry point.
+function toggleHelpOverlay() {
+  if (helpEl.classList.contains('hidden')) openHelpOverlay();
+  else closeHelpOverlay();
 }
 
 helpCloseBtn.addEventListener('click', closeHelpOverlay);
