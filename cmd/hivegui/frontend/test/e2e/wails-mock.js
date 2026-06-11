@@ -194,11 +194,11 @@ export async function UpdateProject(id, name, color, cwd, _order) {
 }
 export async function LaunchDir() { return ''; }
 export async function PickDirectory() { return ''; }
-export async function OpenNewWindow() { return ''; }
-export async function CloseWindow() { return ''; }
+export async function OpenNewWindow() { maybeFail('OpenNewWindow'); return ''; }
+export async function CloseWindow() { maybeFail('CloseWindow'); return ''; }
 export async function IsGitRepo(_dir) { return false; }
-export async function OpenURL(_url) { return ''; }
-export async function OpenTerminalAt(_dir) { return ''; }
+export async function OpenURL(_url) { maybeFail('OpenURL'); return ''; }
+export async function OpenTerminalAt(_dir) { maybeFail('OpenTerminalAt'); return ''; }
 export async function Notify(_title, _body) { return ''; }
 export async function Confirm(_title, _body) { return true; }
 export async function RestartDaemon() { return ''; }

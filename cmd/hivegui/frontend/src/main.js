@@ -2896,7 +2896,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'n' || e.key === 'N') {
     swallow();
     if (e.shiftKey) {
-      OpenNewWindow().catch(reportFailure('window'));
+      OpenNewWindow().catch(reportFailure('new window'));
     } else {
       // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
       openProjectEditor(null);
@@ -3060,7 +3060,7 @@ const paletteCommands = [
   { id: 'restart-session',      name: 'Restart Session',             shortcut: '',       run: restartActiveSession },
   { id: 'delete-project',       name: 'Delete Active Project…',      shortcut: '⇧⌘⌫',    run: () => deleteActiveProject() },
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
-  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch(reportFailure('window')) },
+  { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch(reportFailure('new window')) },
   { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
   { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow().catch(reportFailure('close window')) },
   { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
@@ -3186,7 +3186,7 @@ function moveActiveSession(delta, reorder) {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const sIdx = sib.findIndex((s) => s.id === state.activeId);
     const next = (sIdx + delta + sib.length) % sib.length;
-    UpdateSession(state.activeId, '', '', next);
+    UpdateSession(state.activeId, '', '', next).catch(reportFailure('reorder'));
     return;
   }
   const next = (idx + delta + n) % n;
