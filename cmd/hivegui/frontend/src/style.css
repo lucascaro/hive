@@ -908,6 +908,9 @@ body.resizing-sidebar #app { transition: none; }
   0%   { background: rgba(220, 50, 50, 0.9); }
   100% { background: rgba(120, 20, 20, 0.65); }
 }
+@media (prefers-reduced-motion: reduce) {
+  #status.error { animation: none; }
+}
 
 /* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
    terms columns. Pushes the rest of the UI down rather than overlaying
