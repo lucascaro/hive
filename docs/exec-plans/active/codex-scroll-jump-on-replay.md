@@ -81,4 +81,6 @@ tests use it to prove scenarios actually fire replays.
 
 ## PR convergence ledger
 
-- (pending PR)
+<!-- Append-only. One line per /hs-review-loop iteration. PR #222. -->
+- **2026-06-10 iter 1** — verdict: REQUEST_CHANGES; action: autofix+push; head_sha: 0d75ed3.
+- **2026-06-10 iter 2** — verdict: REQUEST_CHANGES; action: autofix+push; head_sha: 8ad48e0.

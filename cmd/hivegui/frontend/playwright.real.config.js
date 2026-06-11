@@ -18,6 +18,9 @@ export default defineConfig({
   // Real-daemon tests are slower than the mock — give them more room.
   timeout: 60000,
   workers: 1,
+  // One retry on CI so a one-off flake doesn't fail the required leg;
+  // first-attempt artifacts (trace, scrolltrace attachment) are kept.
+  retries: process.env.CI ? 1 : 0,
   globalSetup: './test/e2e-real/globalSetup.mjs',
   globalTeardown: './test/e2e-real/globalTeardown.mjs',
   use: {

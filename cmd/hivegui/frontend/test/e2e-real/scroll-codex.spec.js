@@ -30,6 +30,17 @@ test.beforeEach(async ({ page }) => {
   }, WS_URL);
 });
 
+// On failure, attach the armed scroll trace so CI artifacts carry the
+// replay/viewport timeline that explains WHY an invariant broke.
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await testInfo.attach('scrolltrace', {
+      body: JSON.stringify(await page.evaluate(() => window.__hive_scrolltrace)),
+      contentType: 'application/json',
+    });
+  }
+});
+
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function bootWithTerm(page) {

@@ -696,7 +696,9 @@ class SessionTerm {
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
         this._replayBaselineCols = this.term.cols;
-        scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
+        if (scrollTrace.rec.enabled) {
+          scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
+        }
         RequestScrollbackReplay(this.info.id).catch(() => { /* attach may have closed */ });
       }, REPLAY_DEBOUNCE_MS);
     }
@@ -1962,7 +1964,9 @@ function setView(view) {
   // a quarter-second pre-snap pause is below the perception threshold
   // for visual settling after a mode change.
   setTimeout(() => {
-    scrollTrace.rec('mode-snap', { view });
+    if (scrollTrace.rec.enabled) {
+      scrollTrace.rec('mode-snap', { view });
+    }
     snapVisibleTermsToBottom(state.terms.values());
   }, 250);
   const ord = orderedSessions();
