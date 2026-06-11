@@ -99,21 +99,27 @@ export async function RequestScrollbackReplay(id) {
   replayLog.push({ id, t: Date.now() });
   return '';
 }
-export async function CreateSession(spec) {
+// Positional args matching the real Wails binding:
+// CreateSession(agentID, projectID, name, color, cols, rows, useWorktree).
+export async function CreateSession(agentID, projectID, name, color, _cols, _rows, _useWorktree) {
   maybeFail('CreateSession');
   const id = 'mock-' + (state.sessions.length + 1);
   const s = {
-    id, name: spec.name || `s${state.sessions.length + 1}`,
-    color: spec.color || '#0af', order: state.sessions.length,
-    created: new Date().toISOString(), alive: true, agent: spec.agent || '',
-    project_id: spec.project_id || 'p1',
+    id, name: name || `s${state.sessions.length + 1}`,
+    color: color || '#0af', order: state.sessions.length,
+    created: new Date().toISOString(), alive: true, agent: agentID || '',
+    project_id: projectID || 'p1',
     worktree_path: '', worktree_branch: '', last_error: '',
   };
   state.sessions.push(s);
   emit('session:event', JSON.stringify({ kind: 'added', session: s }));
   return id;
 }
-export async function DuplicateSession(id) { maybeFail('DuplicateSession'); return CreateSession({ name: 'dup' }); }
+// Positional: DuplicateSession(agentID, projectID, cwd).
+export async function DuplicateSession(agentID, projectID, _cwd) {
+  maybeFail('DuplicateSession');
+  return CreateSession(agentID, projectID, 'dup', '', 0, 0, false);
+}
 export async function KillSession(id) {
   maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
@@ -142,25 +148,57 @@ export async function ListAgents() {
   maybeFail('ListAgents');
   return [{ id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] }];
 }
-export async function CreateProject(req) {
+// Project mutations are positional too, matching the real bindings
+// (cmd/hivegui/app.go): CreateProject(name, color, cwd),
+// KillProject(id, killSessions), UpdateProject(id, name, color, cwd,
+// order). The old object-shaped/no-op forms silently no-op'd every
+// project create/save/delete driven through the UI — the same defect
+// UpdateSession had.
+export async function CreateProject(name, color, cwd) {
   maybeFail('CreateProject');
   const id = 'p-' + (state.projects.length + 1);
-  const p = { id, name: req.name || 'new', color: req.color || '#0af',
-    cwd: req.cwd || '', order: state.projects.length,
+  const p = { id, name: name || 'new', color: color || '#0af',
+    cwd: cwd || '', order: state.projects.length,
     created: new Date().toISOString() };
   state.projects.push(p);
   emit('project:event', JSON.stringify({ kind: 'added', project: p }));
   return id;
 }
-export async function KillProject(_id) { maybeFail('KillProject'); return ''; }
-export async function UpdateProject(_req) { maybeFail('UpdateProject'); return ''; }
+export async function KillProject(id, killSessions) {
+  maybeFail('KillProject');
+  const i = state.projects.findIndex((p) => p.id === id);
+  if (i < 0) return '';
+  if (killSessions) {
+    for (let j = state.sessions.length - 1; j >= 0; j--) {
+      if (state.sessions[j].project_id === id) {
+        const [rs] = state.sessions.splice(j, 1);
+        emit('session:event', JSON.stringify({ kind: 'removed', session: rs }));
+      }
+    }
+  }
+  const [removed] = state.projects.splice(i, 1);
+  emit('project:event', JSON.stringify({ kind: 'removed', project: removed }));
+  return '';
+}
+// Empty string / -1 mean "no change", mirroring UpdateSession (order is
+// accepted but not modelled, same as UpdateSession's _order).
+export async function UpdateProject(id, name, color, cwd, _order) {
+  maybeFail('UpdateProject');
+  const p = state.projects.find((x) => x.id === id);
+  if (!p) return '';
+  if (name) p.name = name;
+  if (color) p.color = color;
+  if (cwd) p.cwd = cwd;
+  emit('project:event', JSON.stringify({ kind: 'updated', project: p }));
+  return '';
+}
 export async function LaunchDir() { return ''; }
 export async function PickDirectory() { return ''; }
-export async function OpenNewWindow() { return ''; }
-export async function CloseWindow() { return ''; }
+export async function OpenNewWindow() { maybeFail('OpenNewWindow'); return ''; }
+export async function CloseWindow() { maybeFail('CloseWindow'); return ''; }
 export async function IsGitRepo(_dir) { return false; }
-export async function OpenURL(_url) { return ''; }
-export async function OpenTerminalAt(_dir) { return ''; }
+export async function OpenURL(_url) { maybeFail('OpenURL'); return ''; }
+export async function OpenTerminalAt(_dir) { maybeFail('OpenTerminalAt'); return ''; }
 export async function Notify(_title, _body) { return ''; }
 export async function Confirm(_title, _body) { return true; }
 export async function RestartDaemon() { return ''; }
@@ -171,7 +209,7 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     state,
     emit,
-    addSession(name) { return CreateSession({ name }); },
+    addSession(name) { return CreateSession('', 'p1', name, '', 0, 0, false); },
     killSession(id) { return KillSession(id); },
     listeners,
     stdinLog,
