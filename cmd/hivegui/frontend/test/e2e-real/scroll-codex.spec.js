@@ -32,12 +32,21 @@ test.beforeEach(async ({ page }) => {
 
 // On failure, attach the armed scroll trace so CI artifacts carry the
 // replay/viewport timeline that explains WHY an invariant broke.
+// Best-effort: the page may already be closed/crashed (that can be the
+// failure itself) and the trace may be undefined — neither is allowed
+// to throw here and mask the original test failure.
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) {
-    await testInfo.attach('scrolltrace', {
-      body: JSON.stringify(await page.evaluate(() => window.__hive_scrolltrace)),
-      contentType: 'application/json',
-    });
+    try {
+      const trace = await page.evaluate(() => window.__hive_scrolltrace);
+      await testInfo.attach('scrolltrace', {
+        body: JSON.stringify(trace ?? null),
+        contentType: 'application/json',
+      });
+    } catch {
+      // Closed page / navigation race — skip the attachment, keep the
+      // real failure.
+    }
   }
 });
 

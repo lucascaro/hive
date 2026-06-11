@@ -198,7 +198,7 @@ describe('handleScrollbackEvent', () => {
   });
 });
 
-describe('applyRebaseline clears stale wants-bottom intent', () => {
+describe('applyRebaseline clears stale restore intent (the pair)', () => {
   it('deletes _replayWantsBottom so a later replay-done does not read stale false', () => {
     const cleared = vi.fn();
     const st = {
@@ -214,10 +214,23 @@ describe('applyRebaseline clears stale wants-bottom intent', () => {
     expect(st._replayWantsBottom).toBeUndefined();
   });
 
-  it('is a no-op on _replayWantsBottom when flag was unset', () => {
+  it('deletes _replayPrevFromBottom so a latched done cannot restore a stale position', () => {
+    const st = {
+      term: { cols: 120 },
+      _replayBaselineCols: 80,
+      _replayWantsBottom: false,
+      _replayPrevFromBottom: 40,
+    };
+    applyRebaseline(st, () => {});
+    expect(st._replayWantsBottom).toBeUndefined();
+    expect(st._replayPrevFromBottom).toBeUndefined();
+  });
+
+  it('is a no-op on the intent pair when both were unset', () => {
     const st = { term: { cols: 100 }, _replayBaselineCols: 80 };
     applyRebaseline(st, () => {});
     expect(st._replayWantsBottom).toBeUndefined();
+    expect(st._replayPrevFromBottom).toBeUndefined();
   });
 });
 
