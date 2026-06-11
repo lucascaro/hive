@@ -64,7 +64,9 @@ async function focusFirstTerm(page) {
 // page's sidebar updates on its own. With two tiles, grid mode splits
 // the width and the col delta always crosses REPLAY_COL_THRESHOLD.
 async function addSecondSession(page) {
-  const ws = new WebSocket(WS_URL);
+  // Node < 22 has no global WebSocket; fall back to the ws package.
+  const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
+  const ws = new WS(WS_URL);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   const send = (id, method, params = {}) => ws.send(JSON.stringify({ id, method, params }));
   const waitFor = (id) => new Promise((res) => {
