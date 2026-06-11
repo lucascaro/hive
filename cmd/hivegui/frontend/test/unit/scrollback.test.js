@@ -103,10 +103,29 @@ describe('handleScrollbackEvent', () => {
     expect(calls).toEqual(['backlog-bytes', '', 'replay-bytes']);
   });
 
-  it('begin captures the reader distance from bottom', () => {
-    const { st } = makeSt({ baseY: 100, viewportY: 60 });
+  it('begin captures the reader distance from bottom — at parse time, not event time', () => {
+    const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
     handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replayPrevFromBottom).toBeUndefined(); // parse-ordered like the reset
+    flush();
     expect(st._replayPrevFromBottom).toBe(40);
+  });
+
+  it('capture is parse-ordered: backlog parsed before the wipe counts toward the distance', () => {
+    const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
+    // Codex-rate backlog already queued at begin time; parsing it adds
+    // 10 lines while the scrolled-up reader's viewportY stays put.
+    st.term.write('backlog-bytes', () => { st.term.buffer.active.baseY = 110; });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    st._replayWantsBottom = false;
+    // The replay re-streams everything, backlog included.
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 115; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // d = 110 - 60 = 50 (backlog included); restore = 115 - 50 = 65.
+    // An event-time capture would have measured 40 and restored to 75
+    // — a backlog's-worth of lines below the reader's content.
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(65);
   });
 
   it('done snaps to bottom by default — after the queue is parsed', () => {
@@ -130,10 +149,11 @@ describe('handleScrollbackEvent', () => {
   it('done restores the reading position when _replayWantsBottom === false', () => {
     const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
     handleScrollbackEvent(st, 'scrollback_replay_begin');
-    expect(st._replayPrevFromBottom).toBe(40);
     st._replayWantsBottom = false;
-    // After the replay parsed, the rebuilt buffer has a new baseY.
-    st.term.buffer.active.baseY = 120;
+    // The replay bytes parse after the reset and rebuild the buffer
+    // with a new baseY — modeled as a queued write whose "parse"
+    // bumps baseY, so the capture (queued at begin) still sees 100.
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 120; });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToBottom).not.toHaveBeenCalled();
@@ -146,7 +166,8 @@ describe('handleScrollbackEvent', () => {
     const { st, flush } = makeSt({ baseY: 50, viewportY: 0 });
     handleScrollbackEvent(st, 'scrollback_replay_begin');
     st._replayWantsBottom = false;
-    st.term.buffer.active.baseY = 10; // rebuilt buffer is much shorter
+    // Rebuilt buffer is much shorter than the captured distance (50).
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 10; });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToLine).toHaveBeenCalledWith(0);

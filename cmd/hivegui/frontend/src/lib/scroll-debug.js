@@ -1,9 +1,10 @@
 // Scroll/replay tracer. Gated on localStorage `hive.debug` = '1'
-// (same switch as the focus consistency checker), so production users
-// can flip it on and dump `window.__hive_scrolltrace` when reporting
-// scroll-jump bugs; tests read it to prove a scenario actually
-// exercised the replay machinery (a passing assertion over zero
-// replays proves nothing).
+// (same switch as the focus consistency checker). `enabled` is
+// latched once at startup, so to diagnose a scroll-jump bug: set
+// `localStorage.setItem('hive.debug', '1')`, RELOAD the app,
+// reproduce, then dump `window.__hive_scrolltrace`. Tests read the
+// ring to prove a scenario actually exercised the replay machinery
+// (a passing assertion over zero replays proves nothing).
 //
 // Pure factory — timer source injected for tests.
 

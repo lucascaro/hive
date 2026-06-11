@@ -37,9 +37,11 @@ import {
 import { createScrollTrace } from './lib/scroll-debug.js';
 
 // Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
-// focus consistency checker's switch). Users hitting scroll-jump bugs
-// can flip it on and dump window.__hive_scrolltrace; the e2e-real
-// scroll specs read it to prove a scenario actually fired replays.
+// focus consistency checker's switch). The gate is latched here at
+// module init: users hitting scroll-jump bugs set the key, RELOAD,
+// reproduce, then dump window.__hive_scrolltrace. The e2e-real scroll
+// specs arm it via addInitScript (before main.js runs) and read the
+// ring to prove a scenario actually fired replays.
 const scrollTrace = createScrollTrace({
   enabled: (() => {
     try { return localStorage.getItem('hive.debug') === '1'; } catch { return false; }
@@ -679,10 +681,12 @@ class SessionTerm {
       // atomic replay on subscribe, etc.).
       delete this._replayWantsBottom;
     }
-    scrollTrace.rec('resize', {
-      id: this.info.id, prevCols, cols: this.term.cols,
-      baseline: this._replayBaselineCols, wasAtBottom,
-    });
+    if (scrollTrace.rec.enabled) {
+      scrollTrace.rec('resize', {
+        id: this.info.id, prevCols, cols: this.term.cols,
+        baseline: this._replayBaselineCols, wasAtBottom,
+      });
+    }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
       // Carry the user's pre-resize "at bottom?" intent through to the
       // scrollback_replay_done handler. If the user was actively reading

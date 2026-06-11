@@ -77,21 +77,32 @@ export function handleScrollbackEvent(st, kind) {
       // real mechanism behind "scrolling jumps around with codex":
       // any resize/mode-reflow replay dumped a reading user at the
       // bottom despite #213's wants-bottom flag.)
-      const buf = st.term.buffer?.active;
-      if (buf && typeof buf.baseY === 'number' && typeof buf.viewportY === 'number') {
-        st._replayPrevFromBottom = Math.max(0, buf.baseY - buf.viewportY);
-      } else {
-        delete st._replayPrevFromBottom;
-      }
+      const capture = () => {
+        const buf = st.term.buffer?.active;
+        if (buf && typeof buf.baseY === 'number' && typeof buf.viewportY === 'number') {
+          st._replayPrevFromBottom = Math.max(0, buf.baseY - buf.viewportY);
+        } else {
+          delete st._replayPrevFromBottom;
+        }
+      };
       // Parse-ordered reset: xterm's write() is async-queued, so a
       // synchronous reset() jumps the queue — any not-yet-parsed live
       // bytes would repaint AFTER the wipe and then appear a second
       // time when the replay re-streams them (duplicated lines under
       // codex-rate output). The empty-write callback executes exactly
       // between the pre-begin backlog and the replay bytes.
+      //
+      // The capture is parse-ordered too, for the same reason: the
+      // backlog parsing between the begin event and the wipe grows
+      // baseY while a scrolled-up reader's viewportY stays put, and
+      // the replay re-streams those backlog bytes into the rebuilt
+      // buffer. Measuring at reset time includes them, so the done-
+      // restore lands on the content the reader was actually on
+      // instead of a backlog's-worth of lines below it.
       if (typeof st.term.write === 'function') {
-        st.term.write('', () => st.term.reset());
+        st.term.write('', () => { capture(); st.term.reset(); });
       } else {
+        capture();
         st.term.reset();
       }
       // The decoder resets immediately: writeData decodes at event
@@ -104,9 +115,16 @@ export function handleScrollbackEvent(st, kind) {
     case 'scrollback_replay_done': {
       const wantsBottom = st._replayWantsBottom !== false;
       delete st._replayWantsBottom;
-      const fromBottom = st._replayPrevFromBottom;
-      delete st._replayPrevFromBottom;
       const finish = () => {
+        // Consume the captured distance here, at parse time — the
+        // begin handler sets it from its own parse-ordered callback,
+        // which at done-EVENT time has usually not flushed yet (the
+        // replay bytes are still in the queue). Reading it at event
+        // time would see undefined and silently skip the restore.
+        // Queue order pairs each begin's capture with its done's
+        // finish even when events interleave.
+        const fromBottom = st._replayPrevFromBottom;
+        delete st._replayPrevFromBottom;
         if (wantsBottom) {
           if (typeof st.term.scrollToBottom === 'function') st.term.scrollToBottom();
           return;
