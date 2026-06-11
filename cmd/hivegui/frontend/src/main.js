@@ -113,7 +113,7 @@ class SessionTerm {
       // Route OSC 8 hyperlinks (used by Claude CLI and others) through
       // the OS default browser via the Wails backend.
       linkHandler: {
-        activate: (_e, uri) => { if (uri) OpenURL(uri); },
+        activate: (_e, uri) => { if (uri) OpenURL(uri).catch(reportFailure('open link')); },
       },
     });
     this.fit = new FitAddon();
@@ -153,7 +153,7 @@ class SessionTerm {
     // ⌘-click when mouse reporting is active) follows it.
     try {
       this.term.loadAddon(new WebLinksAddon((event, uri) => {
-        if (uri) OpenURL(uri);
+        if (uri) OpenURL(uri).catch(reportFailure('open link'));
       }));
     } catch (err) {
       // Non-fatal; sessions still work without clickable links.
@@ -335,6 +335,9 @@ class SessionTerm {
       const bytes = new TextEncoder().encode(data);
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      // Intentionally no reportFailure: this fires per keystroke, so a
+      // dead daemon would flood the status bar with one error per key.
+      // The disconnect itself is surfaced once ("control disconnected").
       WriteStdin(this.info.id, btoa(bin));
     };
     this.term.onData((data) => this._writePty(data));
@@ -637,6 +640,9 @@ class SessionTerm {
     const prevCols = this.term.cols;
     try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
     if (this.attached) {
+      // Intentionally no reportFailure: resize fires continuously during
+      // window/sidebar drags, so a dead daemon would flood the status
+      // bar. The disconnect is surfaced once ("control disconnected").
       ResizeSession(this.info.id, this.term.cols, this.term.rows);
     }
     if (wasAtBottom) this.term.scrollToBottom();
@@ -919,13 +925,16 @@ function bumpFontSize(delta) {
   if (next === state.fontSize) return;
   state.fontSize = next;
   applyFontSize();
-  setStatus(`font ${state.fontSize}px`);
+  // flashStatus (not setStatus): per-action feedback must auto-revert,
+  // not overwrite the persistent slot ("control disconnected", session
+  // name) until the next nav event.
+  flashStatus(`font ${state.fontSize}px`);
 }
 
 function resetFontSize() {
   state.fontSize = DEFAULT_FONT_SIZE;
   applyFontSize();
-  setStatus(`font ${state.fontSize}px`);
+  flashStatus(`font ${state.fontSize}px`);
 }
 
 const termsHost = document.getElementById('terms');
@@ -2302,7 +2311,7 @@ function hideUpdateBanner() { updateBannerEl.classList.add('hidden'); }
 
 updateBannerDownload.addEventListener('click', () => {
   const url = updateBannerEl.dataset.url;
-  if (url) OpenURL(url);
+  if (url) OpenURL(url).catch(reportFailure('open link'));
 });
 updateBannerDismiss.addEventListener('click', () => {
   const v = updateBannerEl.dataset.version || '';
@@ -2895,7 +2904,7 @@ window.addEventListener('keydown', (e) => {
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
     if (e.shiftKey) {
-      CloseWindow();
+      CloseWindow().catch(reportFailure('close window'));
     } else if (state.activeId) {
       // force=false: lets the daemon refuse with worktree_dirty if
       // the worktree has uncommitted changes; the control:error
@@ -3053,7 +3062,7 @@ const paletteCommands = [
   { id: 'close-session',        name: 'Close Session',               shortcut: '⌘W',     run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
   { id: 'new-window',           name: 'New Window',                  shortcut: '⇧⌘N',    run: () => OpenNewWindow().catch(reportFailure('window')) },
   { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       shortcut: '⌃`',     run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
-  { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow() },
+  { id: 'close-window',         name: 'Close Window',                shortcut: '⇧⌘W',    run: () => CloseWindow().catch(reportFailure('close window')) },
   { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              shortcut: '⌘S',     run: toggleSidebar },
   { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         shortcut: '⌘G',     run: toggleProjectGrid },
   { id: 'toggle-all-grid',      name: 'Toggle All Sessions Grid',    shortcut: '⇧⌘G',    run: toggleAllGrid },
