@@ -447,7 +447,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	if nameFromBranch && wtBranch == "" {
 		r.mu.Lock()
 		e.Name = agent.RandomName(agent.ID(spec.Agent))
-		_ = r.persistEntryLocked(e)
+		r.persistEntryLoggedLocked(e, "create (rename fallback)")
 		r.mu.Unlock()
 	}
 
@@ -492,7 +492,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 		}
 	}
 	if wtPath != "" || e.AgentSessionID != "" {
-		_ = r.persistEntryLocked(e)
+		r.persistEntryLoggedLocked(e, "create")
 	}
 	// Kick off the post-spawn capture for agents that don't support
 	// caller-chosen ids (Codex). The cancel func is stored so
@@ -538,7 +538,7 @@ func (r *Registry) startAgentSessionIDCaptureLocked(e *Entry, cwd string) {
 			return
 		}
 		e2.AgentSessionID = captured
-		_ = r.persistEntryLocked(e2)
+		r.persistEntryLoggedLocked(e2, "agent-session-id capture")
 		info := e2.Info()
 		r.mu.Unlock()
 		r.broadcast(wire.SessionEventUpdated, info)
@@ -601,7 +601,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			r.mu.Lock()
 			e.WorktreePath = ""
 			e.WorktreeBranch = ""
-			_ = r.persistEntryLocked(e)
+			r.persistEntryLoggedLocked(e, "revive (worktree missing)")
 			info := e.Info()
 			r.mu.Unlock()
 			r.broadcast(wire.SessionEventUpdated, info)
@@ -758,8 +758,8 @@ func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error)
 	}
 	r.entries[id] = e
 	r.order = append(r.order, id)
-	_ = r.persistEntryLocked(e)
-	_ = r.persistIndexLocked()
+	r.persistEntryLoggedLocked(e, "adopt")
+	r.persistIndexLoggedLocked("adopt")
 	r.mu.Unlock()
 	r.broadcast(wire.SessionEventAdded, e.Info())
 	go r.watchSessionExit(id, s)
@@ -876,7 +876,7 @@ func (r *Registry) Kill(id string, force bool) error {
 	// — the sort-by-Order render handles holes fine, and not
 	// touching the field means we never have to broadcast spurious
 	// SessionEventUpdated for sessions the user didn't touch.
-	_ = r.persistIndexLocked()
+	r.persistIndexLoggedLocked("kill")
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
 	r.mu.Unlock()
 
@@ -956,7 +956,11 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 // returned cleanup function unsubscribes and closes the channel.
 // Slow consumers are dropped — listeners must drain promptly.
 func (r *Registry) Subscribe() (Listener, func()) {
-	ch := make(Listener, 16)
+	// 64, not 16: Update with an order change broadcasts one event per
+	// session while holding r.mu (see renumberLocked), so a listener
+	// that's merely a beat behind on a many-session registry could
+	// overflow a small buffer and get dropped.
+	ch := make(Listener, 64)
 	r.mu.Lock()
 	r.listeners[ch] = struct{}{}
 	r.mu.Unlock()
@@ -1030,7 +1034,7 @@ func (r *Registry) renumberLocked() {
 	// them rather than diff: the volume is small.
 	for _, id := range r.order {
 		if e := r.entries[id]; e != nil {
-			_ = r.persistEntryLocked(e)
+			r.persistEntryLoggedLocked(e, "renumber")
 		}
 	}
 }
@@ -1066,6 +1070,35 @@ func (r *Registry) persistIndexLocked() error {
 	return writeJSON(filepath.Join(SessionsDir(r.stateDir), "index.json"), idx)
 }
 
+// persistEntryLoggedLocked persists e, logging (rather than returning)
+// any failure. For mutation paths that must proceed regardless: the
+// in-memory registry stays authoritative, but a failed write means the
+// on-disk copy is stale until the next successful persist, so the
+// failure must at least leave a trace in the log.
+func (r *Registry) persistEntryLoggedLocked(e *Entry, op string) {
+	if err := r.persistEntryLocked(e); err != nil {
+		log.Printf("registry: %s: persist session %s failed (on-disk metadata now stale): %v", op, e.ID, err)
+	}
+}
+
+func (r *Registry) persistIndexLoggedLocked(op string) {
+	if err := r.persistIndexLocked(); err != nil {
+		log.Printf("registry: %s: persist session index failed (on-disk order now stale): %v", op, err)
+	}
+}
+
+func (r *Registry) persistProjectLoggedLocked(p *Project, op string) {
+	if err := r.persistProjectLocked(p); err != nil {
+		log.Printf("registry: %s: persist project %s failed (on-disk metadata now stale): %v", op, p.ID, err)
+	}
+}
+
+func (r *Registry) persistProjectIndexLoggedLocked(op string) {
+	if err := r.persistProjectIndexLocked(); err != nil {
+		log.Printf("registry: %s: persist project index failed (on-disk order now stale): %v", op, err)
+	}
+}
+
 func (r *Registry) broadcast(kind string, info wire.SessionInfo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1078,7 +1111,11 @@ func (r *Registry) broadcastLocked(kind string, info wire.SessionInfo) {
 		select {
 		case ch <- ev:
 		default:
-			// drop slow listener
+			// Listener can't keep up. Dropping it silently would leave
+			// the client permanently desynced with no trace — warn so
+			// "the GUI went stale" can be correlated with this moment.
+			log.Printf("registry: dropping slow session-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+				cap(ch), len(r.listeners))
 			delete(r.listeners, ch)
 			close(ch)
 		}
