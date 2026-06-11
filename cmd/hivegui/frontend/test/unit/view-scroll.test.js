@@ -82,6 +82,38 @@ describe('snapVisibleTermsToBottom', () => {
     expect(t._replayPrevFromBottom).toBeUndefined();
   });
 
+  it('re-asserts bottom after the write queue drains (parse-ordered re-snap)', () => {
+    // On a slow machine the mode-switch replay's multi-MB re-parse may
+    // still be queued when the 250ms mode-snap fires. xterm loses
+    // bottom-follow during the heavy parse, so the synchronous
+    // scrollToBottom alone leaves the viewport stranded off-bottom.
+    // The snap must also enqueue a parse-ordered re-snap that runs
+    // only after the queue flushes.
+    const queue = [];
+    const st = {
+      attached: true,
+      body: { clientHeight: 200 },
+      term: {
+        scrollToBottom: vi.fn(),
+        write: vi.fn((data, cb) => { queue.push(cb); }),
+      },
+    };
+    // Heavy replay parse still in flight: pending queue entries ahead
+    // of whatever the snap enqueues.
+    queue.push(() => {}, () => {});
+
+    snapVisibleTermsToBottom([st]);
+    // Synchronous snap fires now — instant feedback on fast machines —
+    // but the parse-ordered re-snap must NOT have run yet.
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+
+    // Queue drains: replay parse completes, then the re-snap runs.
+    while (queue.length) queue.shift()?.();
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(2);
+    expect(st._replayWantsBottom).toBe(true);
+    expect(st._replayPrevFromBottom).toBeUndefined();
+  });
+
   it('snap mid-queue beats an already-latched replay-restore (no scrollToLine)', () => {
     // The replay-done EVENT latches wantsBottom at event time, but its
     // `finish` consumes the captured distance at PARSE time. A mode

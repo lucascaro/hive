@@ -9,6 +9,18 @@
 // (display:none / not yet laid out). xterm's scrollToBottom is a
 // no-op if there's no scrollback, so guarding is cheap.
 //
+// The snap is asserted twice:
+//   - synchronously, so the viewport lands at bottom immediately on
+//     machines where the replay has already parsed; and
+//   - via a parse-ordered empty write, because xterm's write() is
+//     async-queued — on a slow machine the mode-switch replay's
+//     multi-MB re-parse may still be queued when the snap fires, and
+//     xterm's bottom-follow is lost during that heavy parse (cap-trim
+//     keeps baseY pinned at the scrollback cap while the viewport
+//     drifts off-bottom). The empty-write callback re-asserts bottom
+//     only after the write queue drains, mirroring the parse-ordered
+//     discipline in scrollback.js.
+//
 // Pure helper — no xterm.js import — so it can be unit-tested in
 // jsdom against plain mocks. Accepts any iterable (array, Map.values()).
 //
@@ -37,6 +49,11 @@ export function snapVisibleTermsToBottom(terms) {
     if (!st.body || st.body.clientHeight === 0) continue;
     if (st.term && typeof st.term.scrollToBottom === 'function') {
       st.term.scrollToBottom();
+      // Parse-ordered re-snap: re-assert bottom after any in-flight
+      // replay bytes finish parsing (see header comment).
+      if (typeof st.term.write === 'function') {
+        st.term.write('', () => st.term.scrollToBottom());
+      }
       st._replayWantsBottom = true;
       delete st._replayPrevFromBottom;
     }
