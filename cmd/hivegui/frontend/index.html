@@ -24,7 +24,9 @@
       <button id="new-project-btn" title="New project (⌘N)">＋</button>
     </header>
     <ul id="projects"></ul>
-    <footer class="hints">
+    <footer id="sidebar-hints" class="hints">
+      <!-- Mac-glyph fallback; main.js re-renders this from
+           lib/shortcuts.js with platform-correct labels at boot. -->
       ⌘N project · ⌘T session · ⌘W close · ⌘G grid · ⇧⌘K commands · ⌘/ help
     </footer>
     <div id="sidebar-resizer"

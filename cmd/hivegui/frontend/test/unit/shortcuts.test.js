@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shortcutGroups, paletteShortcuts } from '../../src/lib/shortcuts.js';
+import { shortcutGroups, paletteShortcuts, footerHints } from '../../src/lib/shortcuts.js';
 
 describe('shortcutGroups', () => {
   it('renders mac glyphs on mac and Ctrl+ words elsewhere', () => {
@@ -36,6 +36,38 @@ describe('shortcutGroups', () => {
     const labels = (groups) => groups.flatMap((g) => g.items.map((i) => i.label));
     expect(labels(shortcutGroups({ isMac: true }))).toContain('Clear input line');
     expect(labels(shortcutGroups({ isMac: false }))).not.toContain('Clear input line');
+  });
+
+  it('separates arrow-key word labels off mac', () => {
+    const keys = shortcutGroups({ isMac: false })
+      .flatMap((g) => g.items.map((i) => i.keys))
+      .join(' ');
+    expect(keys).toContain('Ctrl+Up/Down/Left/Right');
+    expect(keys).toContain('Ctrl+Shift+Up/Down/Left/Right');
+    expect(keys).toContain('Up/Down / Tab');
+    expect(keys).toContain('Left/Right');
+    expect(keys).not.toMatch(/UpDown|LeftRight/);
+    // Mac glyphs stay run together — the conventional rendering.
+    const macKeys = shortcutGroups({ isMac: true })
+      .flatMap((g) => g.items.map((i) => i.keys))
+      .join(' ');
+    expect(macKeys).toContain('⌘↑↓←→');
+  });
+});
+
+describe('footerHints', () => {
+  it('matches the static mac footer text in index.html', () => {
+    expect(footerHints({ isMac: true })).toBe(
+      '⌘N project · ⌘T session · ⌘W close · ⌘G grid · ⇧⌘K commands · ⌘/ help',
+    );
+  });
+
+  it('uses Ctrl+ words off mac', () => {
+    const f = footerHints({ isMac: false });
+    expect(f).toContain('Ctrl+T session');
+    expect(f).toContain('Ctrl+Shift+K commands');
+    expect(f).toContain('Ctrl+/ help');
+    expect(f).not.toContain('⌘');
   });
 });
 

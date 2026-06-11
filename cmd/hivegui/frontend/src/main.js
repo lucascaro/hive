@@ -35,7 +35,7 @@ import {
   applyRebaseline,
 } from './lib/scrollback.js';
 import { createStatus } from './lib/status.js';
-import { shortcutGroups, paletteShortcuts } from './lib/shortcuts.js';
+import { shortcutGroups, paletteShortcuts, footerHints } from './lib/shortcuts.js';
 import { emptyStateModel } from './lib/empty-state.js';
 import { loadCollapsed, serializeCollapsed, pruneCollapsed, COLLAPSED_STORAGE_KEY } from './lib/collapsed.js';
 
@@ -1058,6 +1058,11 @@ function updateSidebarSelection() {
     el.classList.toggle('selected', sid === state.activeId);
     el.classList.toggle('attention', state.attention.has(sid));
   }
+  // The switch paths (switchTo / switchToProject / shiftActiveProject)
+  // end here without a sidebar rebuild — re-evaluate the empty state
+  // so it appears when an empty project is selected and clears when a
+  // live session becomes visible again.
+  renderEmptyState();
 }
 
 function renderProject(p, activePID) {
@@ -1990,7 +1995,7 @@ function renderMinimizedTray() {
 // scope has nothing to display (first run, empty project, everything
 // minimized). Pure model in lib/empty-state.js; this just projects it
 // onto the #empty-state element. Cheap enough to call from every
-// repaint path — DOM is rebuilt only when the model kind changes.
+// repaint path — DOM is rebuilt only when the model changes.
 function renderEmptyState() {
   const el = document.getElementById('empty-state');
   if (!el) return;
@@ -2006,9 +2011,15 @@ function renderEmptyState() {
   if (!model) {
     el.classList.add('hidden');
     el.dataset.kind = '';
+    delete el.dataset.sig;
     return;
   }
-  if (el.dataset.kind !== model.kind) {
+  // Key the rebuild off the full model, not just the kind: within
+  // 'first-run' the hint/actions vary with projects.length, so a
+  // kind-only check would leave stale text and buttons behind.
+  const sig = JSON.stringify(model);
+  if (el.dataset.sig !== sig) {
+    el.dataset.sig = sig;
     el.dataset.kind = model.kind;
     el.innerHTML = '';
     const title = document.createElement('div');
@@ -2937,6 +2948,14 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       closeHelpOverlay();
+    } else if (e.key === 'Tab') {
+      // aria-modal promises focus stays inside the dialog. The close
+      // button is its only focusable element, so trap Tab on it —
+      // otherwise focus walks into the page (eventually a hidden
+      // terminal's textarea) and keystrokes leak behind the backdrop.
+      e.preventDefault();
+      e.stopPropagation();
+      document.getElementById('help-overlay-close')?.focus();
     }
     return; // overlay owns the keyboard while open
   }
@@ -3357,6 +3376,12 @@ helpEl.addEventListener('mousedown', (e) => {
   // (not the panel) dismisses.
   if (e.target === helpEl) closeHelpOverlay();
 });
+
+// Sidebar footer hints: the static HTML text is the mac-glyph
+// fallback; re-render from the shared shortcut table so non-mac
+// platforms see Ctrl+-style hints that match the real bindings.
+const footerHintsEl = document.getElementById('sidebar-hints');
+if (footerHintsEl) footerHintsEl.textContent = footerHints({ isMac });
 
 // moveActiveSession walks the (project_order, session_order) list.
 // reorder=true moves the session within its project only.

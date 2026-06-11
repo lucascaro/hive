@@ -37,10 +37,17 @@ function ctrl(isMac, key, { shift = false } = {}) {
   return (shift ? 'Ctrl+Shift+' : 'Ctrl+') + k;
 }
 
+// Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
+// word labels need separators so non-mac renders "Up/Down/Left/Right"
+// instead of the unreadable "UpDownLeftRight".
+function arrowSeq(isMac, ...keys) {
+  return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
+}
+
 export function shortcutGroups({ isMac }) {
   const m = (key, opts) => mod(isMac, key, opts);
   const c = (key, opts) => ctrl(isMac, key, opts);
-  const arrows = `${keyLabel('up', isMac)}${keyLabel('down', isMac)}${keyLabel('left', isMac)}${keyLabel('right', isMac)}`;
+  const arrows = arrowSeq(isMac, 'up', 'down', 'left', 'right');
   return [
     {
       title: 'Sessions',
@@ -98,10 +105,10 @@ export function shortcutGroups({ isMac }) {
       title: 'Launcher & dialogs',
       items: [
         { keys: '1–9', label: 'Pick agent by number' },
-        { keys: `${keyLabel('up', isMac)}${keyLabel('down', isMac)} / Tab`, label: 'Navigate items' },
+        { keys: `${arrowSeq(isMac, 'up', 'down')} / Tab`, label: 'Navigate items' },
         { keys: keyLabel('enter', isMac), label: 'Confirm' },
         { keys: 'Esc', label: 'Dismiss / cancel' },
-        { keys: `${keyLabel('left', isMac)}${keyLabel('right', isMac)}`, label: 'Resize sidebar (when resizer focused; ⇧ = larger steps)' },
+        { keys: arrowSeq(isMac, 'left', 'right'), label: 'Resize sidebar (when resizer focused; ⇧ = larger steps)' },
       ],
     },
   ];
@@ -140,4 +147,19 @@ export function paletteShortcuts({ isMac }) {
   };
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;
+}
+
+// Sidebar footer hint line. index.html carries the mac-glyph text as
+// a static fallback; main.js re-renders it from here at boot so
+// non-mac platforms see Ctrl+-style hints that match the bindings.
+export function footerHints({ isMac }) {
+  const m = (key, opts) => mod(isMac, key, opts);
+  return [
+    `${m('N')} project`,
+    `${m('T')} session`,
+    `${m('W')} close`,
+    `${m('G')} grid`,
+    `${m('K', { shift: true })} commands`,
+    `${m('/')} help`,
+  ].join(' · ');
 }
