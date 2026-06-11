@@ -93,8 +93,14 @@ func TestDispatchEmptyParamsStillPermissive(t *testing.T) {
 	if !strings.Contains(resp.Error, "no control connection") {
 		t.Errorf("CreateSession with {}: error = %q, want execution error %q", resp.Error, "no control connection")
 	}
+	// Literal null is JSON-RPC's spelling of absent params — it must
+	// reach the handler like {}, not be rejected as malformed.
+	resp = roundTrip(t, ws, 2, "CreateSession", `null`)
+	if !strings.Contains(resp.Error, "no control connection") {
+		t.Errorf("CreateSession with null: error = %q, want execution error %q", resp.Error, "no control connection")
+	}
 	// Unknown methods keep returning empty success.
-	resp = roundTrip(t, ws, 2, "Notify", `{}`)
+	resp = roundTrip(t, ws, 3, "Notify", `{}`)
 	if resp.Error != "" {
 		t.Errorf("unknown method: error = %q, want success", resp.Error)
 	}

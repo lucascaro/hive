@@ -86,7 +86,11 @@ func TestPersistLoggedHelpersWarnOnFailure(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := captureLog(t)
+			// The *Locked helpers are called under r.mu everywhere in
+			// production — honor the same contract here.
+			r.mu.Lock()
 			tc.call()
+			r.mu.Unlock()
 			if !strings.Contains(buf.String(), tc.want) {
 				t.Errorf("expected log containing %q; got: %q", tc.want, buf.String())
 			}
@@ -103,10 +107,14 @@ func TestPersistLoggedHelpersSilentOnSuccess(t *testing.T) {
 	t.Cleanup(func() { _ = r.Close() })
 
 	buf := captureLog(t)
+	// The *Locked helpers are called under r.mu everywhere in
+	// production — honor the same contract here.
+	r.mu.Lock()
 	r.persistEntryLoggedLocked(&Entry{ID: "ok-entry"}, "test-op")
 	r.persistIndexLoggedLocked("test-op")
 	r.persistProjectLoggedLocked(&Project{ID: "ok-proj"}, "test-op")
 	r.persistProjectIndexLoggedLocked("test-op")
+	r.mu.Unlock()
 	if got := buf.String(); strings.Contains(got, "persist") {
 		t.Errorf("happy path should log nothing; got: %q", got)
 	}

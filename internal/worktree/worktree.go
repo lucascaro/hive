@@ -63,15 +63,12 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 		return fmt.Errorf("create worktree parent dir: %w", err)
 	}
 
-	// Best-effort: refresh `origin` so the upstream tip we branch from
-	// reflects the latest remote state. Failures are logged via the
-	// returned base ref staying empty (callers fall back to HEAD).
-	upstream := upstreamBaseRef(repoDir)
-
 	// Existing branch? Probe the ref directly — exit-code based, so it
 	// works regardless of git's message locale. (The substring check
 	// below stays only as a TOCTOU safety net for a branch created
-	// between this probe and the add.)
+	// between this probe and the add.) Probed before upstreamBaseRef:
+	// checking out an existing branch never branches from upstream, so
+	// it must not pay the fetch's network latency.
 	if branchExists(repoDir, branch) {
 		out, err := gitWorktreeAdd(repoDir, worktreePath, branch)
 		if err != nil {
@@ -80,6 +77,11 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 		}
 		return nil
 	}
+
+	// Best-effort: refresh `origin` so the upstream tip we branch from
+	// reflects the latest remote state. Failures are logged via the
+	// returned base ref staying empty (callers fall back to HEAD).
+	upstream := upstreamBaseRef(repoDir)
 
 	var attempts []error
 

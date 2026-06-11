@@ -184,12 +184,13 @@ func (s *session) emit(name string, args ...any) {
 	_ = s.ws.WriteJSON(rpcResp{Event: name, Args: args})
 }
 
-// parseParams decodes a request's params into v. Absent params are
-// allowed and leave v at its zero value (the JS bridge always sends at
-// least {}); malformed params are an error so a handler never runs on
-// a silently zeroed struct.
+// parseParams decodes a request's params into v. Absent params — and
+// literal null, JSON-RPC's spelling of absent — are allowed and leave
+// v at its zero value (the JS bridge always sends at least {});
+// malformed params are an error so a handler never runs on a silently
+// zeroed struct.
 func parseParams(raw json.RawMessage, v any) error {
-	if len(raw) == 0 {
+	if len(raw) == 0 || string(raw) == "null" {
 		return nil
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
