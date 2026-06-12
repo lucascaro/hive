@@ -54,6 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `window.__hive_scrolltrace`) for field diagnosis, and a real-daemon
   e2e suite (`scroll-codex.spec.js`) that reproduces the bug on the
   old code and locks the invariants.
+- GUI: action failures are no longer silent. Copying/pasting inside a
+  terminal, creating/duplicating/restarting/closing a session, renaming
+  or recoloring or reordering sessions and projects, saving a project,
+  and opening the agent launcher now show an error in the status bar
+  when the underlying daemon call fails (e.g. connection lost) —
+  previously the click just did nothing, with no trace. Status-bar
+  errors are guaranteed a minimum visibility window (1.5s), pulse red,
+  auto-hide (errors 6s, info 2.5s), revert to the persistent status
+  ("connected" / session name) instead of going blank, and are
+  announced to screen readers (`role="status"`, `aria-live="polite"`).
+  Also fixed: opening the launcher when its sidebar anchor row isn't in
+  the DOM could throw and leave the launcher unopened with no feedback.
+- GUI: Enter now commits and Escape now cancels inline renames (session
+  rows, project rows, and tile headers). A capture-phase
+  `stopPropagation()` listener on the rename input was cancelling the
+  same input's bubble-phase Enter/Escape handler (DOM dispatch skips
+  the bubble invocation once the stop-propagation flag is set), so
+  Enter did nothing and Escape couldn't cancel — the rename only ever
+  committed when the input lost focus, including after an attempted
+  Escape. The handlers now live in the single capture-phase listener.
 - Daemon diagnosability hardening: failures that were previously
   swallowed are now logged. Registry metadata-persist failures (12
   sites — session/project entries and order indexes) warn with the

@@ -899,7 +899,18 @@ body.resizing-sidebar #app { transition: none; }
   padding: 2px 6px;
   border-radius: 3px;
 }
-#status.error { color: #ff7a7a; }
+#status.error {
+  color: #ff9a9a;
+  background: rgba(120, 20, 20, 0.65);
+  animation: status-error-pulse 0.5s ease-out 1;
+}
+@keyframes status-error-pulse {
+  0%   { background: rgba(220, 50, 50, 0.9); }
+  100% { background: rgba(120, 20, 20, 0.65); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #status.error { animation: none; }
+}
 
 /* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
    terms columns. Pushes the rest of the UI down rather than overlaying
