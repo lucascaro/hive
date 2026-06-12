@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -76,7 +77,7 @@ func main() {
 	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
 		log.Printf("hived: write pidfile: %v", err)
 	}
-	defer os.Remove(pidPath)
+	defer removePidfile(pidPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
@@ -89,5 +90,15 @@ func main() {
 
 	if err := d.Run(ctx); err != nil {
 		log.Fatalf("hived: run: %v", err)
+	}
+}
+
+// removePidfile deletes the pidfile, logging any failure other than
+// "already gone" — a stale pidfile makes the GUI's Restart action
+// signal the wrong process, so a failed cleanup must be diagnosable
+// from hived.log.
+func removePidfile(path string) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("hived: remove pidfile %s: %v", path, err)
 	}
 }
