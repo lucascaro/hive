@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GUI: keyboard-shortcuts help overlay on `⌘/`, listing every binding —
+  including the ones no menu shows (terminal-level `Ctrl+Shift+C/V/A`
+  copy/paste/select-all, `⇧↩` newline, launcher digit keys, sidebar
+  resizer keys). Also reachable from the command palette ("Keyboard
+  Shortcuts") and the macOS Help menu. The palette's shortcut column
+  and the overlay render from one shared table (`lib/shortcuts.js`)
+  so they cannot drift, and non-mac platforms now see `Ctrl+`-style
+  hints instead of mac glyphs.
+- GUI: actionable empty states. First run shows "No sessions yet" with
+  a New session button; an empty project and an all-minimized grid get
+  their own hints — replacing the bare CSS placeholder text (or a
+  fully blank pane in single mode).
+- GUI: sidebar project collapse state persists across launches
+  (`localStorage`, `hive.collapsedProjects`; pruned when projects are
+  deleted).
+- GUI: the agent launcher opens instantly with a "Loading agents…" row
+  (then "No agents found" when the list is empty) instead of popping
+  in fully-formed a beat after the keypress; creating a session
+  flashes "creating session…" in the status bar.
+- GUI: accessibility pass — the sidebar footer hint no longer claims
+  the palette is on ⌘K (it is ⇧⌘K); project collapse carets are real
+  buttons with `aria-expanded` and keyboard focus rings; the dead
+  session overlay is an `alertdialog`; palette input, tile headers,
+  and tray chips carry aria-labels; keyboard-focus rings on sidebar,
+  tile, tray, and banner controls.
+
 - GUI: minimize sessions to hide them from grid views. Each tile in
   the project-grid and all-sessions-grid now has a small minimize
   button on the right of its header (`–`). Minimized sessions are
