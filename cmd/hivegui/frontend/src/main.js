@@ -12,13 +12,13 @@ import {
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
   RestartDaemon, CheckForUpdate, SetClipboardText,
-} from '../wailsjs/go/main/App';
-import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
+  EventsOn, WindowSetTitle, ClipboardGetText,
+} from './bridge.js';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from './lib/keymap.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
-import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
-import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
+import { DEFAULT_FONT_SIZE, clampFont } from './lib/font.js';
+import { VIEW_STORAGE_KEY } from './lib/view.js';
 import { filterMinimized } from './lib/minimized.js';
 import { snapVisibleTermsToBottom } from './lib/view-scroll.js';
 import {
@@ -34,11 +34,13 @@ import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, handleScrollbackEvent,
   applyRebaseline,
 } from './lib/scrollback.js';
-import { createStatus } from './lib/status.js';
 import { shortcutGroups, paletteShortcuts, footerHints } from './lib/shortcuts.js';
 import { emptyStateModel } from './lib/empty-state.js';
-import { loadCollapsed, serializeCollapsed, pruneCollapsed, COLLAPSED_STORAGE_KEY } from './lib/collapsed.js';
+import { pruneCollapsed } from './lib/collapsed.js';
 import { createScrollTrace } from './lib/scroll-debug.js';
+import { state, saveCollapsed } from './app/state.js';
+import { termsHost, projectsUL, setStatus, flashStatus, reportFailure } from './app/dom.js';
+import { orderedSessions, activeCwd, activeProjectId, resolveSessionCwd } from './app/selectors.js';
 
 // Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
 // focus consistency checker's switch). The gate is latched here at
@@ -823,53 +825,6 @@ class SessionTerm {
   }
 }
 
-// ---------- app state ----------
-
-const state = {
-  projects: [],             // ProjectInfo[] in display order
-  sessions: [],             // SessionInfo[] in display order
-  collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
-  attention: new Set(),     // session ids that have unread bells
-  minimized: new Set(),     // session ids hidden from grid views; restored via tray
-  aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
-  dismissedDead: new Set(), // session ids whose dead overlay user dismissed
-  terms: new Map(),         // session id -> SessionTerm
-  activeId: null,
-  currentProjectId: null,   // "the project I'm working in"; can be set
-                            //   without a focused session (so empty
-                            //   projects are reachable / launchable)
-  view: loadSavedView(),    // 'single' | 'grid-project' | 'grid-all' — persisted across launches
-  gridProjectId: null,      // project shown in grid-project mode
-  fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
-};
-
-// E2E test affordance: expose the term registry under a dunder name
-// so Playwright specs can read xterm buffer contents via
-// state.terms.get(id).term.buffer.active. Gated on the Vite mock/real
-// env vars so production builds drop this — the gates are inlined to
-// string literals by Vite at build time, so the whole block is dead
-// code in a normal wails build.
-if (typeof window !== 'undefined'
-    && (import.meta.env.VITE_WAILS_MOCK === '1' || import.meta.env.VITE_WAILS_REAL === '1')) {
-  window.__hive_state = state;
-}
-
-function loadSavedView() {
-  try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
-  catch { return normalizeView(null); }
-}
-
-function loadSavedCollapsed() {
-  try { return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY)); }
-  catch { return new Set(); }
-}
-
-function saveCollapsed() {
-  try { localStorage.setItem(COLLAPSED_STORAGE_KEY, serializeCollapsed(state.collapsed)); }
-  catch { /* private mode etc. — collapse state just won't persist */ }
-}
-
-
 // ---------- bell + attention ----------
 
 // onSessionBell is fired by SessionTerm whenever its xterm receives
@@ -977,83 +932,6 @@ function resetFontSize() {
   state.fontSize = DEFAULT_FONT_SIZE;
   applyFontSize();
   flashStatus(`font ${state.fontSize}px`);
-}
-
-const termsHost = document.getElementById('terms');
-termsHost.classList.add('single');
-
-const projectsUL = document.getElementById('projects');
-const status = document.getElementById('status');
-
-const statusCtl = createStatus({
-  render: (text, isError) => {
-    status.textContent = text;
-    status.classList.toggle('error', isError);
-  },
-  setTimer: (fn, ms) => window.setTimeout(fn, ms),
-  clearTimer: (id) => window.clearTimeout(id),
-  now: () => Date.now(),
-});
-
-// setStatus owns the persistent slot: connection state, nav feedback.
-function setStatus(text, isError = false) {
-  statusCtl.set(text, isError);
-}
-
-// flashStatus owns transient per-action feedback; it auto-reverts to
-// the persistent slot (errors linger 6s, info 2.5s — see lib/status.js).
-function flashStatus(text, isError = false) {
-  statusCtl.flash(text, isError);
-}
-
-// reportFailure builds a .catch handler that surfaces a failed user
-// action in the status bar. Wails mutation promises reject when the
-// daemon connection is down (or the call throws Go-side), which used
-// to be swallowed — the button click just silently did nothing.
-const reportFailure = (what) => (err) => flashStatus(`${what} failed: ${err}`, true);
-
-// orderedSessions returns sessions sorted by (project order, session order)
-// so navigation always matches what the user sees.
-function orderedSessions() {
-  const projOrder = new Map(state.projects.map((p, i) => [p.id, i]));
-  return [...state.sessions].sort((a, b) => {
-    const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
-    const pb = projOrder.get(b.projectId ?? b.project_id ?? '') ?? 1e9;
-    if (pa !== pb) return pa - pb;
-    return (a.order ?? 0) - (b.order ?? 0);
-  });
-}
-
-// activeCwd resolves the directory associated with the current
-// view: a session's worktree (preferred), otherwise the owning
-// project's cwd, otherwise the user's currently-selected project.
-// Empty string means "let the Go side fall back to launchDir".
-function activeCwd() {
-  const id = state.activeId;
-  const s = id ? state.sessions.find((x) => x.id === id) : null;
-  if (s?.worktree_path) return s.worktree_path;
-  const pid = (s?.projectId ?? s?.project_id) || activeProjectId();
-  const p = pid ? state.projects.find((x) => x.id === pid) : null;
-  return p?.cwd ?? '';
-}
-
-function activeProjectId() {
-  // currentProjectId is the user's explicit "I'm here" — set by
-  // ⌘[/], project-header click, switchTo (synced to session's
-  // project), and project events. Empty projects work because they
-  // can be the current project even with no active session.
-  if (state.currentProjectId) {
-    return state.currentProjectId;
-  }
-  if (state.view === 'grid-project' && state.gridProjectId) {
-    return state.gridProjectId;
-  }
-  if (state.activeId) {
-    const s = state.sessions.find((x) => x.id === state.activeId);
-    const pid = s?.projectId ?? s?.project_id;
-    if (pid) return pid;
-  }
-  return state.projects[0]?.id ?? '';
 }
 
 // ---------- sidebar render ----------
@@ -2824,23 +2702,6 @@ function closeLauncher() {
   launcherState.duplicateFrom = null;
   launcherState.duplicateCwd = '';
   refocusActiveTerm();
-}
-
-// resolveSessionCwd picks the directory a session is actually running
-// in: its worktree path if any, otherwise the owning project's cwd.
-// Used by ⌘P / ⇧⌘P to fork a session into the same directory.
-//
-// Wire payloads from the daemon use snake_case (see
-// internal/wire/control.go), so prefer those and fall back to the
-// camelCase variants for safety — this matches `s.projectId ??
-// s.project_id` used elsewhere in this file.
-function resolveSessionCwd(sess) {
-  if (!sess) return '';
-  const wt = sess.worktree_path ?? sess.worktreePath;
-  if (wt) return wt;
-  const pid = sess.projectId ?? sess.project_id;
-  const proj = state.projects.find((p) => p.id === pid);
-  return proj?.cwd ?? '';
 }
 
 function duplicateActiveSession() {
