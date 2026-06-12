@@ -49,6 +49,18 @@ function maybeFail(method) {
   }
 }
 
+// window.__hive.delayNext(method, ms) arms a one-shot delay for the
+// named binding, so E2E can observe in-flight UI (loading rows,
+// spinners) that a microtask-fast mock would otherwise skip past.
+const delays = new Map(); // method name -> ms
+async function maybeDelay(method) {
+  if (delays.has(method)) {
+    const ms = delays.get(method);
+    delays.delete(method);
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
+
 // --- App bindings ---
 
 const state = {
@@ -145,6 +157,7 @@ export async function UpdateSession(id, name, color, _order) {
 // One real-shaped agent so launcher E2E can exercise the full
 // open → select → create flow (matches internal/agent's wire shape).
 export async function ListAgents() {
+  await maybeDelay('ListAgents');
   maybeFail('ListAgents');
   return [{ id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] }];
 }
@@ -224,5 +237,6 @@ if (typeof window !== 'undefined') {
     replayCount(id) { return replayLog.filter((e) => id == null || e.id === id).length; },
     resetReplay() { replayLog.length = 0; },
     failNext(method, message = 'injected failure') { failures.set(method, message); },
+    delayNext(method, ms = 250) { delays.set(method, ms); },
   };
 }

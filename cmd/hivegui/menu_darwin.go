@@ -109,10 +109,11 @@ func buildAppMenu(a *App) *menu.Menu {
 
 	m.Append(menu.WindowMenu()) // Minimize / Zoom / Front
 
-	// Empty Help submenu — macOS auto-injects a Search field that
+	// Help submenu — macOS auto-injects a Search field that
 	// fuzzy-matches every item in every other menu, so the user can
 	// search all actions from the menu bar without opening the palette.
-	m.AddSubmenu("Help")
+	help := m.AddSubmenu("Help")
+	help.AddText("Keyboard Shortcuts", keys.CmdOrCtrl("/"), emit("menu:keyboard-shortcuts"))
 
 	return m
 }
