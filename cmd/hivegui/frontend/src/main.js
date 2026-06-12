@@ -38,6 +38,22 @@ import { createStatus } from './lib/status.js';
 import { shortcutGroups, paletteShortcuts, footerHints } from './lib/shortcuts.js';
 import { emptyStateModel } from './lib/empty-state.js';
 import { loadCollapsed, serializeCollapsed, pruneCollapsed, COLLAPSED_STORAGE_KEY } from './lib/collapsed.js';
+import { createScrollTrace } from './lib/scroll-debug.js';
+
+// Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
+// focus consistency checker's switch). The gate is latched here at
+// module init: users hitting scroll-jump bugs set the key, RELOAD,
+// reproduce, then dump window.__hive_scrolltrace. The e2e-real scroll
+// specs arm it via addInitScript (before main.js runs) and read the
+// ring to prove a scenario actually fired replays.
+const scrollTrace = createScrollTrace({
+  enabled: (() => {
+    try { return localStorage.getItem('hive.debug') === '1'; } catch { return false; }
+  })(),
+});
+if (typeof window !== 'undefined') {
+  window.__hive_scrolltrace = scrollTrace.ring;
+}
 
 // ---------- session terminal ----------
 
@@ -685,6 +701,12 @@ class SessionTerm {
       // atomic replay on subscribe, etc.).
       delete this._replayWantsBottom;
     }
+    if (scrollTrace.rec.enabled) {
+      scrollTrace.rec('resize', {
+        id: this.info.id, prevCols, cols: this.term.cols,
+        baseline: this._replayBaselineCols, wasAtBottom,
+      });
+    }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
       // Carry the user's pre-resize "at bottom?" intent through to the
       // scrollback_replay_done handler. If the user was actively reading
@@ -694,6 +716,9 @@ class SessionTerm {
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
         this._replayBaselineCols = this.term.cols;
+        if (scrollTrace.rec.enabled) {
+          scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
+        }
         RequestScrollbackReplay(this.info.id).catch(() => { /* attach may have closed */ });
       }, REPLAY_DEBOUNCE_MS);
     }
@@ -2080,7 +2105,12 @@ function setView(view) {
   // A 250ms setTimeout clears the polling window on every platform;
   // a quarter-second pre-snap pause is below the perception threshold
   // for visual settling after a mode change.
-  setTimeout(() => snapVisibleTermsToBottom(state.terms.values()), 250);
+  setTimeout(() => {
+    if (scrollTrace.rec.enabled) {
+      scrollTrace.rec('mode-snap', { view });
+    }
+    snapVisibleTermsToBottom(state.terms.values());
+  }, 250);
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
   setStatus(`${view}${active ? ' • ' + active.name : ''}`);
@@ -2262,6 +2292,13 @@ EventsOn('pty:event', (id, jsonStr) => {
     // cursor. Wire-order is what guarantees no live bytes land
     // between Begin and Done — see daemon's SubscribeWithAtomicReplay
     // and EmitAtomicReplay.
+    if (scrollTrace.rec.enabled) {
+      const buf = st.term?.buffer?.active;
+      scrollTrace.rec(ev.kind, {
+        id, viewportY: buf?.viewportY, baseY: buf?.baseY,
+        wants: st._replayWantsBottom,
+      });
+    }
     handleScrollbackEvent(st, ev.kind);
   } catch { /* ignore */ }
 });

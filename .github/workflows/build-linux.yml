@@ -105,3 +105,15 @@ jobs:
         env:
           CI: 'true'
           TERM: dumb
+
+      - name: Upload Playwright failure artifacts
+        # Traces + scrolltrace attachments are the only way to debug a
+        # CI-only e2e failure (retain-on-failure traces land in
+        # test-results/). Without this step they die with the runner.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results-linux
+          path: cmd/hivegui/frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7

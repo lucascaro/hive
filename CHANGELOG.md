@@ -64,6 +64,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: scrollback replays no longer destroy the reading position
+  ("scrolling jumps around with codex"). When a window resize, sidebar
+  drag, or grid reflow triggered a scrollback replay while the user
+  was scrolled up reading history, the replay's buffer reset dumped
+  them at the bottom — the #213 don't-snap flag only suppressed the
+  final explicit snap, after the position was already gone. The replay
+  now captures the reader's distance from the bottom before the wipe
+  and restores it once the replay has fully parsed. The reset and the
+  final viewport placement are also parse-ordered now (xterm's write
+  queue is async), so under codex-rate output a replay can no longer
+  interleave with unparsed live bytes and paint duplicated lines.
+  Deliberate mode switches still snap to the bottom. Adds a scroll
+  tracer (`localStorage hive.debug = '1'`, dump
+  `window.__hive_scrolltrace`) for field diagnosis, and a real-daemon
+  e2e suite (`scroll-codex.spec.js`) that reproduces the bug on the
+  old code and locks the invariants.
 - GUI: action failures are no longer silent. Copying/pasting inside a
   terminal, creating/duplicating/restarting/closing a session, renaming
   or recoloring or reordering sessions and projects, saving a project,
