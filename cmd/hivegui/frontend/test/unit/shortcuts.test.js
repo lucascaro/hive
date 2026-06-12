@@ -64,8 +64,11 @@ describe('footerHints', () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
     const footer = html.match(/<footer id="sidebar-hints"[^>]*>([\s\S]*?)<\/footer>/)?.[1];
     expect(footer).toBeTruthy();
-    const fallback = footer.replace(/<!--[\s\S]*?-->/g, '').trim();
-    expect(footerHints({ isMac: true })).toBe(fallback);
+    // Keep the fixture comment-free rather than regex-stripping comments
+    // here — partial sanitization patterns trip CodeQL, and the footer
+    // has no business containing markup anyway.
+    expect(footer).not.toContain('<!--');
+    expect(footerHints({ isMac: true })).toBe(footer.trim());
   });
 
   it('uses Ctrl+ words off mac', () => {
