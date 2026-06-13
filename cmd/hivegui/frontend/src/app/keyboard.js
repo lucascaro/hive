@@ -9,7 +9,7 @@ import {
   OpenNewWindow, CloseWindow, OpenTerminalAt,
 } from '../bridge.js';
 import { state } from './state.js';
-import { setStatus, flashStatus, reportFailure } from './dom.js';
+import { reportFailure } from './dom.js';
 import { orderedSessions, activeCwd, activeProjectId } from './selectors.js';
 import { cmdOrCtrl } from '../lib/platform.js';
 import {

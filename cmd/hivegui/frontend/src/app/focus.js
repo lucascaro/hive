@@ -4,13 +4,10 @@
 // imports this module, so the reverse edge must be a dep).
 
 import { state } from './state.js';
-import { setStatus } from './dom.js';
 import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from '../lib/focus.js';
 import { anyModalOpen } from './modals/registry.js';
-import { clearAttention } from './events.js';
-import { showSingle, renderGrid, updateAppTitle } from './view.js';
 
 let deps = {
   ensureTerm: () => {},
@@ -20,6 +17,10 @@ export function initFocus(injected) {
   deps = injected;
 }
 
+// setActive centralizes "the focused session changed" so every code
+// path (click, arrow nav, project switch, switchTo) clears the bell
+// indicator the same way and syncs the current project to whatever
+// project the new session belongs to.
 export function setActive(id) {
   if (id) {
     state.attention.delete(id);
@@ -235,8 +236,3 @@ export function focusActiveTerm() {
 export function refocusActiveTerm() {
   setFocusedTile(state.activeId);
 }
-
-// gridSpatialMove moves the active tile in the given direction.
-// Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
-// 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
-// "right" from tile 2 lands on tile 1 instead of doing nothing.

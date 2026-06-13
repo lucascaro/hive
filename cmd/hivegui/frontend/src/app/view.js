@@ -65,7 +65,7 @@ export function switchTo(id) {
   updateSidebarSelection();
   setStatus(info ? info.name : '');
   updateAppTitle();
-  // deps.setActive() called deps.focusActiveTerm() before deps.ensureTerm() existed
+  // setActive() called focusActiveTerm() before ensureTerm() existed
   // for a brand-new session — re-focus now that the SessionTerm is
   // created and visible. Without this, typing after creating a
   // session lands in whichever terminal had focus before.
@@ -187,11 +187,10 @@ export function renderGrid() {
   // tile shown/hidden). That's the only place fit.fit() runs.
 }
 
-// setActive centralizes "the focused session changed" so every code
-// path (click, arrow nav, project switch, switchTo) clears the bell
-// indicator the same way and syncs the current project to whatever
-// project the new session belongs to.
-
+// gridSpatialMove moves the active tile in the given direction.
+// Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
+// 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
+// "right" from tile 2 lands on tile 1 instead of doing nothing.
 export function gridSpatialMove(dCol, dRow) {
   const { sessions } = gridLayout;
   if (sessions.length === 0) return;

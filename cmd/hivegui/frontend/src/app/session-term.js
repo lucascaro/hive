@@ -14,7 +14,7 @@ import {
   ClipboardGetText, OpenURL,
 } from '../bridge.js';
 import { state } from './state.js';
-import { termsHost, flashStatus, reportFailure } from './dom.js';
+import { flashStatus, reportFailure } from './dom.js';
 import { isMac } from '../lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
@@ -24,12 +24,11 @@ import {
 import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
 } from '../lib/scrollback.js';
-import { readProjectId, readWorktreeBranch } from '../lib/wire.js';
 import { scrollTrace } from './trace.js';
 import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
-import { setActive, setFocusedTile, refocusActiveTerm, focusActiveTerm } from './focus.js';
+import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 
 
 export class SessionTerm {
