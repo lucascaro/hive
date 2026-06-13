@@ -5,14 +5,14 @@
 // initView(deps) — they live in session-term/focus modules (stage 6)
 // and main.js.
 
-import { WindowSetTitle, UpdateSession, KillSession } from '../bridge.js';
-import { state, saveCollapsed } from './state.js';
-import { termsHost, setStatus, flashStatus, reportFailure } from './dom.js';
+import { WindowSetTitle } from '../bridge.js';
+import { state } from './state.js';
+import { termsHost, setStatus } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
-import { updateSidebarSelection, renderSidebar } from './sidebar.js';
+import { updateSidebarSelection } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
-import { computeGridDims, buildGridLayout, computeSpatialMove } from '../lib/grid.js';
+import { buildGridLayout, computeSpatialMove } from '../lib/grid.js';
 import { VIEW_STORAGE_KEY } from '../lib/view.js';
 import { filterMinimized } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';

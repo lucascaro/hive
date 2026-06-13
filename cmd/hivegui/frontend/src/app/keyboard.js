@@ -328,6 +328,8 @@ export function deleteActiveProject() {
   confirmAndDeleteProject(state.projects.find((p) => p.id === pid));
 }
 
+// moveActiveSession walks the (project_order, session_order) list.
+// reorder=true moves the session within its project only.
 export function moveActiveSession(delta, reorder) {
   const ord = orderedSessions();
   const n = ord.length;
