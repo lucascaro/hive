@@ -12,13 +12,13 @@ import {
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
   RestartDaemon, CheckForUpdate, SetClipboardText,
-} from '../wailsjs/go/main/App';
-import { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';
+  EventsOn, WindowSetTitle, ClipboardGetText,
+} from './bridge.js';
 import { isMac, cmdOrCtrl } from './lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from './lib/keymap.js';
 import { computeGridDims, buildGridLayout, computeSpatialMove } from './lib/grid.js';
-import { DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE, clampFont } from './lib/font.js';
-import { normalizeView, VIEW_STORAGE_KEY } from './lib/view.js';
+import { DEFAULT_FONT_SIZE, clampFont } from './lib/font.js';
+import { VIEW_STORAGE_KEY } from './lib/view.js';
 import { filterMinimized } from './lib/minimized.js';
 import { snapVisibleTermsToBottom } from './lib/view-scroll.js';
 import {
@@ -34,11 +34,22 @@ import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, handleScrollbackEvent,
   applyRebaseline,
 } from './lib/scrollback.js';
-import { createStatus } from './lib/status.js';
 import { shortcutGroups, paletteShortcuts, footerHints } from './lib/shortcuts.js';
 import { emptyStateModel } from './lib/empty-state.js';
-import { loadCollapsed, serializeCollapsed, pruneCollapsed, COLLAPSED_STORAGE_KEY } from './lib/collapsed.js';
+import { pruneCollapsed } from './lib/collapsed.js';
 import { createScrollTrace } from './lib/scroll-debug.js';
+import { state, saveCollapsed } from './app/state.js';
+import { termsHost, projectsUL, setStatus, flashStatus, reportFailure } from './app/dom.js';
+import { orderedSessions, activeCwd, activeProjectId, resolveSessionCwd } from './app/selectors.js';
+import { anyModalOpen } from './app/modals/registry.js';
+import {
+  launcherEl, launcherState, moveLauncherSelection, activateLauncherSelection,
+  openLauncher, closeLauncher, duplicateActiveSession, restartActiveSession,
+  duplicateActiveSessionChooseTool, initLauncher,
+} from './app/modals/launcher.js';
+import { editorEl, openProjectEditor, initProjectEditor } from './app/modals/project-editor.js';
+import { openCommandPalette, initCommandPalette } from './app/modals/command-palette.js';
+import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 
 // Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
 // focus consistency checker's switch). The gate is latched here at
@@ -823,53 +834,6 @@ class SessionTerm {
   }
 }
 
-// ---------- app state ----------
-
-const state = {
-  projects: [],             // ProjectInfo[] in display order
-  sessions: [],             // SessionInfo[] in display order
-  collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
-  attention: new Set(),     // session ids that have unread bells
-  minimized: new Set(),     // session ids hidden from grid views; restored via tray
-  aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
-  dismissedDead: new Set(), // session ids whose dead overlay user dismissed
-  terms: new Map(),         // session id -> SessionTerm
-  activeId: null,
-  currentProjectId: null,   // "the project I'm working in"; can be set
-                            //   without a focused session (so empty
-                            //   projects are reachable / launchable)
-  view: loadSavedView(),    // 'single' | 'grid-project' | 'grid-all' — persisted across launches
-  gridProjectId: null,      // project shown in grid-project mode
-  fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
-};
-
-// E2E test affordance: expose the term registry under a dunder name
-// so Playwright specs can read xterm buffer contents via
-// state.terms.get(id).term.buffer.active. Gated on the Vite mock/real
-// env vars so production builds drop this — the gates are inlined to
-// string literals by Vite at build time, so the whole block is dead
-// code in a normal wails build.
-if (typeof window !== 'undefined'
-    && (import.meta.env.VITE_WAILS_MOCK === '1' || import.meta.env.VITE_WAILS_REAL === '1')) {
-  window.__hive_state = state;
-}
-
-function loadSavedView() {
-  try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
-  catch { return normalizeView(null); }
-}
-
-function loadSavedCollapsed() {
-  try { return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY)); }
-  catch { return new Set(); }
-}
-
-function saveCollapsed() {
-  try { localStorage.setItem(COLLAPSED_STORAGE_KEY, serializeCollapsed(state.collapsed)); }
-  catch { /* private mode etc. — collapse state just won't persist */ }
-}
-
-
 // ---------- bell + attention ----------
 
 // onSessionBell is fired by SessionTerm whenever its xterm receives
@@ -977,83 +941,6 @@ function resetFontSize() {
   state.fontSize = DEFAULT_FONT_SIZE;
   applyFontSize();
   flashStatus(`font ${state.fontSize}px`);
-}
-
-const termsHost = document.getElementById('terms');
-termsHost.classList.add('single');
-
-const projectsUL = document.getElementById('projects');
-const status = document.getElementById('status');
-
-const statusCtl = createStatus({
-  render: (text, isError) => {
-    status.textContent = text;
-    status.classList.toggle('error', isError);
-  },
-  setTimer: (fn, ms) => window.setTimeout(fn, ms),
-  clearTimer: (id) => window.clearTimeout(id),
-  now: () => Date.now(),
-});
-
-// setStatus owns the persistent slot: connection state, nav feedback.
-function setStatus(text, isError = false) {
-  statusCtl.set(text, isError);
-}
-
-// flashStatus owns transient per-action feedback; it auto-reverts to
-// the persistent slot (errors linger 6s, info 2.5s — see lib/status.js).
-function flashStatus(text, isError = false) {
-  statusCtl.flash(text, isError);
-}
-
-// reportFailure builds a .catch handler that surfaces a failed user
-// action in the status bar. Wails mutation promises reject when the
-// daemon connection is down (or the call throws Go-side), which used
-// to be swallowed — the button click just silently did nothing.
-const reportFailure = (what) => (err) => flashStatus(`${what} failed: ${err}`, true);
-
-// orderedSessions returns sessions sorted by (project order, session order)
-// so navigation always matches what the user sees.
-function orderedSessions() {
-  const projOrder = new Map(state.projects.map((p, i) => [p.id, i]));
-  return [...state.sessions].sort((a, b) => {
-    const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
-    const pb = projOrder.get(b.projectId ?? b.project_id ?? '') ?? 1e9;
-    if (pa !== pb) return pa - pb;
-    return (a.order ?? 0) - (b.order ?? 0);
-  });
-}
-
-// activeCwd resolves the directory associated with the current
-// view: a session's worktree (preferred), otherwise the owning
-// project's cwd, otherwise the user's currently-selected project.
-// Empty string means "let the Go side fall back to launchDir".
-function activeCwd() {
-  const id = state.activeId;
-  const s = id ? state.sessions.find((x) => x.id === id) : null;
-  if (s?.worktree_path) return s.worktree_path;
-  const pid = (s?.projectId ?? s?.project_id) || activeProjectId();
-  const p = pid ? state.projects.find((x) => x.id === pid) : null;
-  return p?.cwd ?? '';
-}
-
-function activeProjectId() {
-  // currentProjectId is the user's explicit "I'm here" — set by
-  // ⌘[/], project-header click, switchTo (synced to session's
-  // project), and project events. Empty projects work because they
-  // can be the current project even with no active session.
-  if (state.currentProjectId) {
-    return state.currentProjectId;
-  }
-  if (state.view === 'grid-project' && state.gridProjectId) {
-    return state.gridProjectId;
-  }
-  if (state.activeId) {
-    const s = state.sessions.find((x) => x.id === state.activeId);
-    const pid = s?.projectId ?? s?.project_id;
-    if (pid) return pid;
-  }
-  return state.projects[0]?.id ?? '';
 }
 
 // ---------- sidebar render ----------
@@ -1799,11 +1686,7 @@ function focusSnapshot(id) {
   const ae = document.activeElement;
   return {
     id,
-    modalOpen:
-      !launcherEl.classList.contains('hidden') ||
-      !editorEl.classList.contains('hidden') ||
-      (paletteEl && !paletteEl.classList.contains('hidden')) ||
-      (helpEl && !helpEl.classList.contains('hidden')),
+    modalOpen: anyModalOpen(),
     activeTag: ae ? ae.tagName : '',
     activeClasses: ae ? ae.classList : '',
     knownTermIds: state.terms,
@@ -2566,389 +2449,6 @@ EventsOn('control:error', async (jsonStr) => {
   console.warn('hived control error:', e);
 });
 
-// ---------- agent launcher ----------
-
-const launcherEl = document.getElementById('launcher');
-const launcherState = {
-  items: [],
-  selected: 0,
-  projectId: null,
-  // useWorktree is sticky across launcher opens, persisted in
-  // localStorage. ⌃⌘N opens the launcher with this forced to true
-  // for the duration of that opening.
-  useWorktree: localStorage.getItem('hive.worktree') === '1',
-  // duplicateFrom, when set, switches the launcher into "duplicate
-  // session" mode: cwd is fixed to duplicateCwd, the worktree toggle is
-  // hidden, and selecting an agent calls DuplicateSession instead of
-  // CreateSession.
-  duplicateFrom: null,
-  duplicateCwd: '',
-};
-
-function loadAgentUsage() {
-  try { return JSON.parse(localStorage.getItem('hive.agentUsage') || '{}') || {}; }
-  catch { return {}; }
-}
-function bumpAgentUsage(id) {
-  if (!id) return;
-  const u = loadAgentUsage();
-  u[id] = (u[id] || 0) + 1;
-  try { localStorage.setItem('hive.agentUsage', JSON.stringify(u)); } catch {}
-}
-
-function highlightLauncherSelection() {
-  launcherState.items.forEach((it, i) => {
-    it.el.classList.toggle('selected', i === launcherState.selected);
-    if (i === launcherState.selected) it.el.scrollIntoView({ block: 'nearest' });
-  });
-}
-
-function moveLauncherSelection(delta) {
-  const n = launcherState.items.length;
-  if (n === 0) return;
-  launcherState.selected = (launcherState.selected + delta + n) % n;
-  highlightLauncherSelection();
-}
-
-function activateLauncherSelection() {
-  const it = launcherState.items[launcherState.selected];
-  if (!it) return;
-  bumpAgentUsage(it.agent.id);
-  flashStatus('creating session…');
-  if (launcherState.duplicateFrom) {
-    DuplicateSession(
-      it.agent.id,
-      launcherState.projectId || '',
-      launcherState.duplicateCwd,
-    ).catch(reportFailure('duplicate session'));
-  } else {
-    CreateSession(
-      it.agent.id,
-      launcherState.projectId || activeProjectId(),
-      '', '',
-      0, 0,
-      !!launcherState.useWorktree,
-    ).catch(reportFailure('new session'));
-  }
-  closeLauncher();
-}
-
-function openLauncher(projectId, opts) {
-  launcherState.projectId = projectId || activeProjectId();
-  // Re-read the sticky pref each open so a one-shot forceWorktree from a
-  // previous opening doesn't leak into the next regular open. forceWorktree
-  // overrides for this opening only and is intentionally not persisted.
-  launcherState.useWorktree =
-    opts && typeof opts.forceWorktree === 'boolean'
-      ? opts.forceWorktree
-      : localStorage.getItem('hive.worktree') === '1';
-  // duplicateFrom: when present, the launcher is forking an existing
-  // session into the same cwd — never a new worktree.
-  launcherState.duplicateFrom = (opts && opts.duplicateFrom) || null;
-  launcherState.duplicateCwd = (opts && opts.duplicateCwd) || '';
-  if (launcherState.duplicateFrom) {
-    launcherState.useWorktree = false;
-  }
-  // Open the shell synchronously with a loading row so the popup
-  // appears the instant the user asks for it; the agent list fills in
-  // when ListAgents resolves. Kills the old open-blank-then-populate
-  // flash (and the launcher not appearing at all if the list is slow).
-  launcherEl.innerHTML = '';
-  launcherState.items = [];
-  // Anchor next to the resolved project's + button so the user
-  // can see which project the new session lands in. Falls back
-  // to the global new-project button if the project's row isn't
-  // currently in the DOM (e.g. its header is offscreen), and to a
-  // fixed spot over the sidebar if neither anchor exists — a
-  // missing anchor must not throw and leave the launcher unopened
-  // (the throw used to vanish into this chain's empty catch).
-  const anchorEl =
-    document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
-    document.getElementById('new-project-btn');
-  if (anchorEl) {
-    const r = anchorEl.getBoundingClientRect();
-    launcherEl.style.left = `${r.left}px`;
-    launcherEl.style.top = `${r.bottom + 4}px`;
-  } else {
-    launcherEl.style.left = '16px';
-    launcherEl.style.top = '64px';
-  }
-  const loading = document.createElement('div');
-  loading.className = 'launcher-loading';
-  loading.textContent = 'Loading agents…';
-  launcherEl.appendChild(loading);
-  launcherEl.classList.remove('hidden');
-  // Drop the active tile's visual focus — modal owns the keyboard.
-  setFocusedTile(null);
-
-  ListAgents()
-    .then((agents) => {
-      // The user may have dismissed the launcher while the list was in
-      // flight — don't resurrect it.
-      if (launcherEl.classList.contains('hidden')) return;
-      launcherEl.innerHTML = '';
-      launcherState.items = [];
-
-      // Worktree toggle row at the top of the menu. Disabled (and
-      // visually muted) when the active project's cwd isn't a git
-      // repo. The IsGitRepo probe is async; we render the row
-      // immediately as enabled and disable it once the probe
-      // completes — almost always before the user reaches for the
-      // checkbox.
-      const proj = state.projects.find((p) => p.id === launcherState.projectId);
-      const projCwd = proj?.cwd ?? '';
-      // In duplicate mode the cwd is fixed to the source session, so
-      // the worktree toggle is meaningless — skip the row entirely.
-      if (!launcherState.duplicateFrom) {
-        const wtRow = document.createElement('label');
-        wtRow.className = 'launcher-worktree';
-        const wtBox = document.createElement('input');
-        wtBox.type = 'checkbox';
-        wtBox.checked = !!launcherState.useWorktree;
-        const wtLabel = document.createElement('span');
-        wtLabel.textContent = 'Create in git worktree';
-        wtRow.append(wtBox, wtLabel);
-        wtBox.addEventListener('change', (e) => {
-          launcherState.useWorktree = e.target.checked;
-          localStorage.setItem('hive.worktree', e.target.checked ? '1' : '0');
-        });
-        launcherEl.appendChild(wtRow);
-        if (projCwd) {
-          IsGitRepo(projCwd).then((ok) => {
-            if (!ok) {
-              wtRow.classList.add('disabled');
-              wtBox.disabled = true;
-              wtBox.checked = false;
-              launcherState.useWorktree = false;
-              wtLabel.textContent = 'Worktree (project is not a git repo)';
-            }
-          }).catch(() => {
-            // Intentionally silent: the probe rejects only when the
-            // bridge itself is down. Worst case the daemon later
-            // refuses worktree creation via control:error, which IS
-            // surfaced.
-          });
-        }
-      }
-      // Detection (exec.LookPath on the daemon side) is best-effort:
-      // it can miss agents installed as shell aliases, functions, or
-      // PATH that's only set up by an interactive rc file. So we list
-      // every agent as launchable and let the user try; the daemon
-      // runs the command via the user's interactive shell, and any
-      // real failure surfaces as "command not found" inside the
-      // session's terminal. The "install" hint stays visible as
-      // advisory text for the truly-not-installed case.
-      // Sort agents by recent usage (most-used first), ties preserve
-      // the agent package's display order. Usage is persisted in
-      // localStorage and incremented on activation.
-      const usage = loadAgentUsage();
-      const ordered = agents
-        .map((a, i) => ({ a, i }))
-        .sort((x, y) => {
-          const ux = usage[x.a.id] || 0, uy = usage[y.a.id] || 0;
-          if (ux !== uy) return uy - ux;
-          return x.i - y.i;
-        })
-        .map((e) => e.a);
-      if (ordered.length === 0) {
-        const none = document.createElement('div');
-        none.className = 'launcher-empty';
-        none.textContent = 'No agents found';
-        launcherEl.appendChild(none);
-      }
-      ordered.forEach((a, idx) => {
-        const item = document.createElement('div');
-        item.className = 'launcher-item' + (a.available ? '' : ' uninstalled');
-        item.style.setProperty('--agent-color', a.color);
-        const num = document.createElement('span');
-        num.className = 'agent-num';
-        // Number keys 1–9 select that row directly; 10+ rows show no
-        // number (no digit shortcut).
-        num.textContent = idx < 9 ? String(idx + 1) : '';
-        const dot = document.createElement('span');
-        dot.className = 'agent-dot';
-        const name = document.createElement('span');
-        name.className = 'agent-name';
-        name.textContent = a.name;
-        item.append(num, dot, name);
-        if (!a.available && a.installCmd && a.installCmd.length) {
-          const tag = document.createElement('span');
-          tag.className = 'install-tag';
-          tag.title = a.installCmd.join(' ');
-          tag.textContent = 'install?';
-          item.appendChild(tag);
-        }
-        item.addEventListener('click', () => {
-          bumpAgentUsage(a.id);
-          flashStatus('creating session…');
-          if (launcherState.duplicateFrom) {
-            DuplicateSession(
-              a.id,
-              launcherState.projectId || '',
-              launcherState.duplicateCwd,
-            ).catch(reportFailure('duplicate session'));
-          } else {
-            CreateSession(
-              a.id,
-              launcherState.projectId,
-              '', '',
-              0, 0,
-              !!launcherState.useWorktree,
-            ).catch(reportFailure('new session'));
-          }
-          closeLauncher();
-        });
-        item.addEventListener('mouseenter', () => {
-          launcherState.selected = idx;
-          highlightLauncherSelection();
-        });
-        launcherEl.appendChild(item);
-        launcherState.items.push({ agent: a, el: item });
-      });
-      launcherState.selected = 0;
-      highlightLauncherSelection();
-    })
-    // Anything thrown in the chain above (not just a ListAgents
-    // rejection) used to land here silently — the user pressed ⌘T and
-    // nothing happened, with no trace. Close the loading shell too:
-    // an empty popup with stale "Loading agents…" would be worse.
-    .catch((err) => {
-      reportFailure('launcher')(err);
-      closeLauncher();
-    });
-}
-
-function closeLauncher() {
-  launcherEl.classList.add('hidden');
-  launcherState.items = [];
-  launcherState.duplicateFrom = null;
-  launcherState.duplicateCwd = '';
-  refocusActiveTerm();
-}
-
-// resolveSessionCwd picks the directory a session is actually running
-// in: its worktree path if any, otherwise the owning project's cwd.
-// Used by ⌘P / ⇧⌘P to fork a session into the same directory.
-//
-// Wire payloads from the daemon use snake_case (see
-// internal/wire/control.go), so prefer those and fall back to the
-// camelCase variants for safety — this matches `s.projectId ??
-// s.project_id` used elsewhere in this file.
-function resolveSessionCwd(sess) {
-  if (!sess) return '';
-  const wt = sess.worktree_path ?? sess.worktreePath;
-  if (wt) return wt;
-  const pid = sess.projectId ?? sess.project_id;
-  const proj = state.projects.find((p) => p.id === pid);
-  return proj?.cwd ?? '';
-}
-
-function duplicateActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
-  if (!s) return;
-  const cwd = resolveSessionCwd(s);
-  if (!cwd) {
-    flashStatus('cannot duplicate: source session has no cwd', true);
-    return;
-  }
-  const pid = s.projectId ?? s.project_id ?? '';
-  if (s.agent) bumpAgentUsage(s.agent);
-  DuplicateSession(s.agent || '', pid, cwd).catch(reportFailure('duplicate session'));
-}
-
-function restartActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
-  if (!s) {
-    flashStatus('no active session to restart', true);
-    return;
-  }
-  RestartSession(s.id).catch(reportFailure('restart'));
-}
-
-function duplicateActiveSessionChooseTool() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
-  if (!s) return;
-  const cwd = resolveSessionCwd(s);
-  if (!cwd) {
-    flashStatus('cannot duplicate: source session has no cwd', true);
-    return;
-  }
-  const pid = s.projectId ?? s.project_id ?? '';
-  openLauncher(pid, { duplicateFrom: s, duplicateCwd: cwd });
-}
-
-document.addEventListener('click', (e) => {
-  const inAction = e.target.closest('.project-actions');
-  if (!launcherEl.contains(e.target) && !inAction) closeLauncher();
-});
-
-// ---------- project editor (new + edit) ----------
-
-const editorEl = document.getElementById('project-editor');
-const editorTitle = document.getElementById('project-editor-title');
-const editorName = document.getElementById('project-editor-name');
-const editorCwd = document.getElementById('project-editor-cwd');
-const editorColor = document.getElementById('project-editor-color');
-const editorState = { editing: null }; // null = create; else project object
-
-function openProjectEditor(project) {
-  editorState.editing = project || null;
-  editorTitle.textContent = project ? 'Edit project' : 'New project';
-  editorName.value = project?.name ?? '';
-  editorColor.value = project?.color || '#f59e0b';
-  if (project) {
-    editorCwd.value = project.cwd ?? '';
-  } else {
-    // Intentionally silent: cosmetic default for an empty field;
-    // Browse… still works if this fails.
-    LaunchDir().then((d) => { editorCwd.value = d || ''; }).catch(() => {});
-    editorCwd.value = '';
-  }
-  editorEl.classList.remove('hidden');
-  // Drop the active tile's visual focus — modal owns the keyboard.
-  setFocusedTile(null);
-  setTimeout(() => editorName.focus(), 0);
-}
-
-function closeProjectEditor() {
-  editorEl.classList.add('hidden');
-  editorState.editing = null;
-  refocusActiveTerm();
-}
-
-function saveProjectEditor() {
-  const name = editorName.value.trim();
-  const cwd = editorCwd.value.trim();
-  const color = editorColor.value;
-  if (!name) return;
-  if (editorState.editing) {
-    UpdateProject(editorState.editing.id, name, color, cwd, -1).catch(reportFailure('save project'));
-  } else {
-    CreateProject(name, color, cwd).catch(reportFailure('create project'));
-  }
-  closeProjectEditor();
-}
-
-document.getElementById('project-editor-cancel').addEventListener('click', closeProjectEditor);
-document.getElementById('project-editor-save').addEventListener('click', saveProjectEditor);
-document.getElementById('project-editor-browse').addEventListener('click', async () => {
-  try {
-    const picked = await PickDirectory(editorCwd.value || '');
-    if (picked) editorCwd.value = picked;
-  } catch (err) {
-    // Silently ignore (user cancelled, or platform refused).
-  }
-});
-editorEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.target === editorName || e.target === editorCwd)) {
-    e.preventDefault();
-    saveProjectEditor();
-  } else if (e.key === 'Escape') {
-    closeProjectEditor();
-  }
-});
-document.getElementById('new-project-btn').addEventListener('click', () => openProjectEditor(null));
-
 // ---------- keyboard ----------
 
 window.addEventListener('keydown', (e) => {
@@ -3281,151 +2781,13 @@ const paletteCommands = [
   })),
 ].map((c) => ({ ...c, shortcut: PALETTE_KEYS[c.id] ?? '' }));
 
-const paletteEl = document.getElementById('command-palette');
-const paletteInput = document.getElementById('command-palette-input');
-const paletteList = document.getElementById('command-palette-list');
-const paletteState = { items: [], selected: 0 };
-
-function renderPalette() {
-  const q = paletteInput.value.trim().toLowerCase();
-  paletteList.innerHTML = '';
-  paletteState.items = paletteCommands.filter((c) => {
-    if (!q) return true;
-    return c.name.toLowerCase().includes(q) || c.shortcut.toLowerCase().includes(q);
-  });
-  if (paletteState.selected >= paletteState.items.length) {
-    paletteState.selected = 0;
-  }
-  paletteState.items.forEach((c, i) => {
-    const row = document.createElement('div');
-    row.className = 'palette-item' + (i === paletteState.selected ? ' selected' : '');
-    const name = document.createElement('span');
-    name.className = 'palette-name';
-    name.textContent = c.name;
-    const sc = document.createElement('span');
-    sc.className = 'palette-shortcut';
-    sc.textContent = c.shortcut;
-    row.append(name, sc);
-    row.addEventListener('mouseenter', () => {
-      paletteState.selected = i;
-      for (const el of paletteList.children) el.classList.remove('selected');
-      row.classList.add('selected');
-    });
-    row.addEventListener('click', () => activatePalette(i));
-    paletteList.appendChild(row);
-  });
-}
-
-function openCommandPalette() {
-  paletteInput.value = '';
-  paletteState.selected = 0;
-  renderPalette();
-  paletteEl.classList.remove('hidden');
-  paletteInput.focus();
-}
-
-function closeCommandPalette() {
-  // Blur first: focusActiveTerm() bails when activeElement is an INPUT,
-  // and hiding the palette via CSS doesn't move focus off paletteInput.
-  paletteInput.blur();
-  paletteEl.classList.add('hidden');
-  focusActiveTerm();
-}
-
-function activatePalette(i) {
-  const c = paletteState.items[i];
-  if (!c) return;
-  closeCommandPalette();
-  // Defer so the palette is fully closed before the action runs
-  // (some actions open another modal that owns focus).
-  setTimeout(() => c.run(), 0);
-}
-
-paletteInput.addEventListener('input', renderPalette);
-paletteEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    e.preventDefault(); e.stopPropagation();
-    closeCommandPalette();
-  } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-    e.preventDefault(); e.stopPropagation();
-    if (paletteState.items.length === 0) return;
-    paletteState.selected = (paletteState.selected + 1) % paletteState.items.length;
-    renderPalette();
-  } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-    e.preventDefault(); e.stopPropagation();
-    if (paletteState.items.length === 0) return;
-    paletteState.selected = (paletteState.selected - 1 + paletteState.items.length) % paletteState.items.length;
-    renderPalette();
-  } else if (e.key === 'Enter') {
-    e.preventDefault(); e.stopPropagation();
-    activatePalette(paletteState.selected);
-  }
-});
-document.addEventListener('mousedown', (e) => {
-  if (paletteEl.classList.contains('hidden')) return;
-  if (!paletteEl.contains(e.target)) closeCommandPalette();
-});
-
-// ---------- keyboard-shortcuts help overlay (⌘/) ----------
-
-const helpEl = document.getElementById('help-overlay');
-const helpGroupsEl = document.getElementById('help-overlay-groups');
-const helpCloseBtn = document.getElementById('help-overlay-close');
-let helpRendered = false;
-
-function renderHelpOverlay() {
-  helpGroupsEl.innerHTML = '';
-  for (const group of shortcutGroups({ isMac })) {
-    const sec = document.createElement('section');
-    const h = document.createElement('h4');
-    h.textContent = group.title;
-    sec.appendChild(h);
-    const dl = document.createElement('dl');
-    for (const item of group.items) {
-      const dt = document.createElement('dt');
-      const kbd = document.createElement('kbd');
-      kbd.textContent = item.keys;
-      dt.appendChild(kbd);
-      const dd = document.createElement('dd');
-      dd.textContent = item.label;
-      dl.append(dt, dd);
-    }
-    sec.appendChild(dl);
-    helpGroupsEl.appendChild(sec);
-  }
-}
-
-function openHelpOverlay() {
-  if (!helpRendered) {
-    renderHelpOverlay(); // static content — render once
-    helpRendered = true;
-  }
-  helpEl.classList.remove('hidden');
-  // Same modal-focus discipline as the palette: drop the active tile's
-  // visual focus and give the keyboard to the overlay.
-  setFocusedTile(null);
-  helpCloseBtn.focus();
-}
-
-function closeHelpOverlay() {
-  helpEl.classList.add('hidden');
-  focusActiveTerm();
-}
-
-// toggleHelpOverlay backs the native menu item (menu:keyboard-shortcuts):
-// on macOS the menu accelerator owns ⌘/, so open AND close must both be
-// reachable through this one entry point.
-function toggleHelpOverlay() {
-  if (helpEl.classList.contains('hidden')) openHelpOverlay();
-  else closeHelpOverlay();
-}
-
-helpCloseBtn.addEventListener('click', closeHelpOverlay);
-helpEl.addEventListener('mousedown', (e) => {
-  // The overlay element is the full-viewport backdrop — clicking it
-  // (not the panel) dismisses.
-  if (e.target === helpEl) closeHelpOverlay();
-});
+// Modal wiring: focus-pipeline callbacks are injected so the modal
+// modules never import the pipeline (main.js owns that coupling), and
+// each modal registers itself with the registry focusSnapshot reads.
+initLauncher({ setFocusedTile, refocusActiveTerm });
+initProjectEditor({ setFocusedTile, refocusActiveTerm });
+initCommandPalette({ commands: paletteCommands, focusActiveTerm });
+initHelpOverlay({ setFocusedTile, focusActiveTerm });
 
 // Sidebar footer hints: the static HTML text is the mac-glyph
 // fallback; re-render from the shared shortcut table so non-mac
