@@ -1,7 +1,9 @@
 // ---------- daemon-stale + update banners ----------
 //
-// Moved verbatim from main.js; initBanners() performs the listener
-// and EventsOn registrations plus the boot-time update poll.
+// Moved verbatim from main.js. initBanners() performs the listener
+// and EventsOn registrations plus the boot-time update poll — the
+// module has no side effects on import, matching events.js's
+// wireDaemonEvents pattern.
 // isDaemonRestarting() is read by the control:disconnect handler in
 // events.js so a user-initiated restart doesn't flash a red status.
 
@@ -36,60 +38,62 @@ function showDaemonBanner(text) {
 function hideDaemonBanner() {
   daemonBannerEl.classList.add('hidden');
 }
-daemonBannerDismiss.addEventListener('click', () => {
-  // Dismissals are per-daemon-build: re-show if a different build
-  // appears later. We stash the build we last saw mismatched (if any).
-  daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
-  hideDaemonBanner();
-});
-daemonBannerRestart.addEventListener('click', async () => {
-  // Restart kills hived AND relaunches Hive itself, so every running
-  // session ends. Warn first.
-  const ok = await Confirm(
-    'Restart Hive?',
-    'This will close Hive, terminate every running shell and agent, ' +
-    'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
-    'Continue?',
-  );
-  if (!ok) return;
-  daemonBannerRestart.disabled = true;
-  daemonRestarting = true;
-  showDaemonBanner('Restarting Hive…');
-  try {
-    await RestartDaemon();
-    // RestartDaemon quits this process on success; control returns
-    // here only on failure paths.
-  } catch (err) {
-    flashStatus(`restart failed: ${err}`, true);
-    showDaemonBanner(`Restart failed: ${err}`);
-  } finally {
-    daemonBannerRestart.disabled = false;
-    daemonRestarting = false;
-  }
-});
-
-EventsOn('daemon:stale', (ev) => {
-  if (!ev) return;
-  daemonBannerEl.dataset.daemonBuild = ev.daemonBuild || '';
-  if (ev.severity === 'match') {
-    daemonBannerDismissedFor = null; // reset so future mismatch can re-show
+function wireDaemonBanner() {
+  daemonBannerDismiss.addEventListener('click', () => {
+    // Dismissals are per-daemon-build: re-show if a different build
+    // appears later. We stash the build we last saw mismatched (if any).
+    daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
     hideDaemonBanner();
-    return;
-  }
-  // Same build the user already dismissed: stay hidden.
-  if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
-  if (ev.severity === 'mismatch') {
-    showDaemonBanner(
-      `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
-      `Restart Hive to apply changes.`,
+  });
+  daemonBannerRestart.addEventListener('click', async () => {
+    // Restart kills hived AND relaunches Hive itself, so every running
+    // session ends. Warn first.
+    const ok = await Confirm(
+      'Restart Hive?',
+      'This will close Hive, terminate every running shell and agent, ' +
+      'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
+      'Continue?',
     );
-  } else {
-    showDaemonBanner(
-      `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
-      `If something looks wrong, restart Hive.`,
-    );
-  }
-});
+    if (!ok) return;
+    daemonBannerRestart.disabled = true;
+    daemonRestarting = true;
+    showDaemonBanner('Restarting Hive…');
+    try {
+      await RestartDaemon();
+      // RestartDaemon quits this process on success; control returns
+      // here only on failure paths.
+    } catch (err) {
+      flashStatus(`restart failed: ${err}`, true);
+      showDaemonBanner(`Restart failed: ${err}`);
+    } finally {
+      daemonBannerRestart.disabled = false;
+      daemonRestarting = false;
+    }
+  });
+
+  EventsOn('daemon:stale', (ev) => {
+    if (!ev) return;
+    daemonBannerEl.dataset.daemonBuild = ev.daemonBuild || '';
+    if (ev.severity === 'match') {
+      daemonBannerDismissedFor = null; // reset so future mismatch can re-show
+      hideDaemonBanner();
+      return;
+    }
+    // Same build the user already dismissed: stay hidden.
+    if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
+    if (ev.severity === 'mismatch') {
+      showDaemonBanner(
+        `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
+        `Restart Hive to apply changes.`,
+      );
+    } else {
+      showDaemonBanner(
+        `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
+        `If something looks wrong, restart Hive.`,
+      );
+    }
+  });
+}
 
 // Update-available banner. Backend's startUpdateCheckLoop emits
 // "update:available" on startup + every 6h when a newer GitHub
@@ -130,18 +134,6 @@ function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHid
 }
 function hideUpdateBanner() { updateBannerEl.classList.add('hidden'); }
 
-updateBannerDownload.addEventListener('click', () => {
-  const url = updateBannerEl.dataset.url;
-  if (url) OpenURL(url).catch(reportFailure('open link'));
-});
-updateBannerDismiss.addEventListener('click', () => {
-  const v = updateBannerEl.dataset.version || '';
-  if (v) {
-    try { localStorage.setItem(UPDATE_DISMISS_KEY, v); } catch {}
-  }
-  hideUpdateBanner();
-});
-
 // Transient (non-actionable) banners auto-hide so they don't linger
 // after the user has registered the message. The "available" banner
 // stays sticky — it has a Download button the user actually needs.
@@ -179,14 +171,28 @@ function applyUpdateInfo(info, { manual = false } = {}) {
   }
 }
 
-EventsOn('update:available', (info) => applyUpdateInfo(info));
+function wireUpdateBanner() {
+  updateBannerDownload.addEventListener('click', () => {
+    const url = updateBannerEl.dataset.url;
+    if (url) OpenURL(url).catch(reportFailure('open link'));
+  });
+  updateBannerDismiss.addEventListener('click', () => {
+    const v = updateBannerEl.dataset.version || '';
+    if (v) {
+      try { localStorage.setItem(UPDATE_DISMISS_KEY, v); } catch {}
+    }
+    hideUpdateBanner();
+  });
 
-// Pull once on load. The Go side's periodic loop only fires every
-// 6h, so without this the user wouldn't see an "available" banner
-// until 6h after launch.
-// Intentionally silent: background boot poll. The manual menu path
-// below surfaces every outcome, including failures.
-CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
+  EventsOn('update:available', (info) => applyUpdateInfo(info));
+
+  // Pull once on load. The Go side's periodic loop only fires every
+  // 6h, so without this the user wouldn't see an "available" banner
+  // until 6h after launch.
+  // Intentionally silent: background boot poll. The manual menu path
+  // below surfaces every outcome, including failures.
+  CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
+}
 
 // Guard against double-firing CheckForUpdate from the menu — clicking
 // "Check for Updates…" repeatedly should not produce N parallel
@@ -209,7 +215,6 @@ export async function manualUpdateCheck() {
 }
 
 export function initBanners() {
-  // Registrations happened at module top level above — this function
-  // exists so main.js controls WHEN the module loads relative to the
-  // rest of the wiring (import order is the registration order).
+  wireDaemonBanner();
+  wireUpdateBanner();
 }
