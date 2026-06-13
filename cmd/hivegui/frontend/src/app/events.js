@@ -22,7 +22,6 @@ let deps = {
   scrollTrace: { rec: Object.assign(() => {}, { enabled: false }) },
 };
 
-
 // onSessionBell is fired by SessionTerm whenever its xterm receives
 // BEL. Active + window-focused session: ignore. Otherwise: mark
 // attention, repaint sidebar, and fire a desktop notification — but
@@ -102,9 +101,8 @@ export function wireDaemonEvents(injected) {
   // so typing would land on the body and be lost.
   window.addEventListener('focus', () => {
     if (state.activeId) clearAttention(state.activeId);
-    redeps.focusActiveTerm();
+    deps.refocusActiveTerm();
   });
-
 
   EventsOn('project:list', (jsonStr) => {
     const { projects } = JSON.parse(jsonStr);
