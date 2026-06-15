@@ -46,3 +46,6 @@ Thumbs.db
 
 # Playwright e2e artifacts
 /cmd/hivegui/frontend/test-results/
+
+# hivesmith local tooling config
+.hivesmith/
