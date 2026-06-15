@@ -55,6 +55,9 @@ export function snapVisibleTermsToBottom(terms) {
         st.term.write('', () => st.term.scrollToBottom());
       }
       st._replayWantsBottom = true;
+      // A mode switch is a deliberate "land at the bottom" — resume
+      // following so the next resize keeps the user pinned there.
+      st._followBottom = true;
       delete st._replayPrevFromBottom;
     }
   }

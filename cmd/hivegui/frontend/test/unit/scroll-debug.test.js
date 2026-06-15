@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createScrollTrace, SCROLL_TRACE_CAP } from '../../src/lib/scroll-debug.js';
+import {
+  createScrollTrace, SCROLL_TRACE_CAP, classifyViewportMove,
+} from '../../src/lib/scroll-debug.js';
 
 describe('createScrollTrace', () => {
   it('records nothing when disabled', () => {
@@ -30,5 +32,38 @@ describe('createScrollTrace', () => {
 
   it('default cap is SCROLL_TRACE_CAP', () => {
     expect(SCROLL_TRACE_CAP).toBe(2000);
+  });
+});
+
+describe('classifyViewportMove', () => {
+  // The jump-up bug moves the viewport UP (ydisp decreases) with no
+  // user gesture behind it. Downward / no-op moves are never the bug.
+  it('returns null when the viewport did not move up', () => {
+    expect(classifyViewportMove({ from: 10, to: 10, lastUserScrollTs: 0, now: 0 })).toBe(null);
+    expect(classifyViewportMove({ from: 10, to: 20, lastUserScrollTs: 0, now: 0 })).toBe(null);
+  });
+
+  it('labels an up-move within the user grace window as user-up', () => {
+    // User wheeled 100ms ago, then the viewport moved up → that's them.
+    expect(classifyViewportMove({
+      from: 100, to: 40, lastUserScrollTs: 900, now: 1000, userGraceMs: 250,
+    })).toBe('user-up');
+  });
+
+  it('treats the grace boundary as inclusive (still user-up)', () => {
+    expect(classifyViewportMove({
+      from: 100, to: 40, lastUserScrollTs: 750, now: 1000, userGraceMs: 250,
+    })).toBe('user-up');
+  });
+
+  it('labels an up-move with no recent user gesture as auto-up (the suspicious case)', () => {
+    expect(classifyViewportMove({
+      from: 100, to: 40, lastUserScrollTs: 100, now: 1000, userGraceMs: 250,
+    })).toBe('auto-up');
+  });
+
+  it('labels an up-move as auto-up when no user gesture was ever recorded', () => {
+    expect(classifyViewportMove({ from: 100, to: 40, lastUserScrollTs: null, now: 1000 })).toBe('auto-up');
+    expect(classifyViewportMove({ from: 100, to: 40, now: 1000 })).toBe('auto-up');
   });
 });

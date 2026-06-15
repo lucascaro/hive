@@ -282,8 +282,12 @@ export function wireDaemonEvents(injected) {
           id, viewportY: buf?.viewportY, baseY: buf?.baseY,
           wants: st._replayWantsBottom,
         });
+        // Mark replay activity so the scroll-jump detector can label a
+        // following up-move as replay-driven (tiny sinceReplayMs) vs an
+        // unrelated renderer/resize jump.
+        try { st._lastReplayTs = performance.now(); } catch { /* no perf clock */ }
       }
-      handleScrollbackEvent(st, ev.kind);
+      handleScrollbackEvent(st, ev.kind, deps.scrollTrace.rec.enabled ? deps.scrollTrace.rec : undefined);
     } catch { /* ignore */ }
   });
 

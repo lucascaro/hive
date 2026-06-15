@@ -241,6 +241,62 @@ test('viewport converges to the bottom after a mode switch under continuous outp
   expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
 });
 
+test('full scrollback: an unscrolled user is not stranded in history by a resize under load', async ({ page }) => {
+  // Regression guard for the cap-trim jump-up. The bug only arms once
+  // xterm's 5000-line scrollback is FULL: cap-trim then pins baseY at the
+  // cap while the viewport drifts off-bottom during heavy parse, so
+  // _onBodyResize's geometry check `(baseY - viewportY) <= 2` mis-reads
+  // "not at bottom" for a user who never scrolled — arming a
+  // wants=false replay that strands the viewport up in history. The other
+  // scroll specs pump <1500 lines (below the cap) and never hit this.
+  await bootWithTerm(page);
+
+  // Flat-out flood well past the cap so it keeps parsing through the
+  // resizes below (bottom-follow stays lost the whole time).
+  await page.keyboard.type(
+    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; echo HIVE_PUMP_DONE\n`,
+  );
+
+  // Wait until the buffer is genuinely at the cap.
+  await expect.poll(
+    async () => (await scrollState(page))?.baseY ?? 0,
+    { timeout: 30000, intervals: [200, 400] },
+  ).toBeGreaterThan(4500);
+
+  // The user has NOT scrolled. Fire spaced threshold-crossing resizes
+  // while the flood is still parsing — each lands inside the cap-trim
+  // bottom-follow-loss window. A correct client keeps the user pinned to
+  // the bottom; the buggy one strands them up in history.
+  for (const w of [780, 1240, 820, 1200]) {
+    await page.setViewportSize({ width: w, height: 640 });
+    await page.waitForTimeout(350);
+  }
+
+  await page.waitForTimeout(1500); // let the last replay land
+
+  const s = await scrollState(page);
+  const restores = await page.evaluate(
+    () => (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
+  );
+  const wantsFalse = restores.filter((r) => r.wants === false);
+
+  // Sanity / non-vacuity: the buffer hit the cap and resizes actually
+  // fired replays (an invariant that holds over zero replays proves
+  // nothing).
+  expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(4500);
+  expect(restores.length, 'no resize replay fired — scenario is vacuous').toBeGreaterThan(0);
+
+  // The invariant: a user who NEVER scrolled must never be handed a
+  // restore-into-history (wants=false) replay. On the buggy code the
+  // cap-trim mis-read of wasAtBottom produces these; the follow-intent
+  // fix eliminates them. Deterministic regardless of whether a later
+  // event happens to re-snap the viewport to the bottom.
+  expect(
+    wantsFalse.length,
+    `unscrolled user got ${wantsFalse.length} restore-into-history replay(s): ${JSON.stringify(wantsFalse.slice(0, 4))}`,
+  ).toBe(0);
+});
+
 test('a reader scrolled into history is not yanked to the bottom by a resize replay', async ({ page }) => {
   await bootWithTerm(page);
   // Fill scrollback, then stop output so the read position is stable.
