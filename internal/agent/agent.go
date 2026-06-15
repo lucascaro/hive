@@ -1,5 +1,5 @@
 // Package agent describes the AI-coding agents Hive can launch in a
-// session (Claude, Codex, Gemini, Copilot, Aider) plus a plain shell.
+// session (Claude, Codex, Gemini, Copilot, Aider, Pi) plus a plain shell.
 // The daemon spawns CreateSpec.Cmd directly; this package gives the
 // GUI and the daemon a shared catalog of "what does X require" so we
 // don't sprinkle agent names through the codebase.
@@ -24,6 +24,7 @@ const (
 	IDGemini  ID = "gemini"
 	IDCopilot ID = "copilot"
 	IDAider   ID = "aider"
+	IDPi      ID = "pi"
 )
 
 // Def describes one agent.
@@ -130,10 +131,32 @@ var (
 			Color:      "#ec4899",
 			InstallCmd: []string{"pip", "install", "aider-chat"},
 		},
+		IDPi: {
+			ID:        IDPi,
+			Name:      "Pi",
+			Cmd:       []string{"pi"},
+			ResumeCmd: []string{"pi", "-c"}, // fallback: continue most recent in cwd
+			Color:     "#06b6d4",
+			// Pi's own recommended install line keeps --ignore-scripts.
+			InstallCmd: []string{"npm", "install", "-g", "--ignore-scripts", "@earendil-works/pi-coding-agent"},
+			// `pi --session-id <id>` uses an exact, caller-chosen id,
+			// "creating it if missing" and reusing it (no fork) on later
+			// launches — verified against pi 0.79.3, which accepts our
+			// uuid4 ids. So, like Claude/Gemini, Hive pins its own entry
+			// id at first spawn and Restart resumes the same conversation
+			// by id; this is unambiguous even when sibling sessions share
+			// a cwd/worktree. The one flag both pins and resumes, so
+			// ResumeArgs reuses it (and ResumeCmd `pi -c` stays as the
+			// fallback for sessions launched with a user-supplied Cmd).
+			SessionIDFlag: "--session-id",
+			ResumeArgs: func(id, _ string) []string {
+				return []string{"pi", "--session-id", id}
+			},
+		},
 	}
 
 	// displayOrder is the order shown in the launcher.
-	displayOrder = []ID{IDShell, IDClaude, IDCodex, IDGemini, IDCopilot, IDAider}
+	displayOrder = []ID{IDShell, IDClaude, IDCodex, IDGemini, IDCopilot, IDAider, IDPi}
 )
 
 // Get returns the def for id, or zero Def + false if unknown.
