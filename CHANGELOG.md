@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agents: [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`) is now
+  a launchable agent. Hive pins each session's id via `pi --session-id`, so
+  Restart resumes the exact conversation by id — unambiguous even when
+  sibling sessions share a worktree (same guarantee as Claude/Gemini).
 - GUI: keyboard-shortcuts help overlay on `⌘/`, listing every binding —
   including the ones no menu shows (terminal-level `Ctrl+Shift+C/V/A`
   copy/paste/select-all, `⇧↩` newline, launcher digit keys, sidebar

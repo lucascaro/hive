@@ -1,7 +1,7 @@
 # Hive
 
 A native desktop app for managing multiple AI coding agent sessions —
-Claude, Codex, Gemini, Copilot, Aider, plain shells — across projects.
+Claude, Codex, Gemini, Copilot, Aider, Pi, plain shells — across projects.
 
 > **`main` is now Hive v2 — the native daemon + GUI rewrite.** The legacy
 > tmux-backed TUI (Hive v1, `v0.14.x`) lives on the
@@ -20,7 +20,7 @@ What works:
 - Wails-based desktop GUI with xterm.js — full keyboard control,
   font scaling, dark theme
 - Projects (name, color, working dir) — sidebar tree
-- Agent launcher (Claude, Codex, Gemini, Copilot, Aider, shell)
+- Agent launcher (Claude, Codex, Gemini, Copilot, Aider, Pi, shell)
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions
