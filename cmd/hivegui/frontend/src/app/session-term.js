@@ -496,7 +496,10 @@ export class SessionTerm {
       // viewportY would read as a huge spurious jump and pollute the trace.
       if (scrollTrace.rec.enabled
         && from <= buf.baseY
-        && classifyViewportMove({ from, to, lastUserScrollTs: this._lastUserScrollTs, now }) === 'auto-up') {
+        && classifyViewportMove({
+          from, to, lastUserScrollTs: this._lastUserScrollTs, now,
+          userGraceMs: USER_SCROLL_GRACE_MS,
+        }) === 'auto-up') {
         scrollTrace.rec('viewport-jump', {
           id: this.info.id,
           from, to, baseY: buf.baseY, bufType: buf.type,
