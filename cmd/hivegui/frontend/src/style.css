@@ -759,7 +759,16 @@ body.resizing-sidebar #app { transition: none; }
   padding: 4px;
   min-width: 180px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-  z-index: 10;
+  /* Must clear #sidebar-resizer (z-index 20). Neither #sidebar
+     (position: relative, no z-index) nor #app (plain grid, no
+     z-index/opacity/transform) establishes a stacking context, so the
+     resizer and this menu both resolve into the ROOT stacking context
+     where their z-indexes compare directly; at 10 the 5px resize strip
+     painted over the agent menu. At 20 they tie and DOM order wins it
+     for the menu (it follows #sidebar). Matches the other modals
+     (project-editor, command-palette). Adding `z-index` to #sidebar
+     would re-trap the resizer in its own context and break this. */
+  z-index: 20;
   font-size: 12.5px;
 }
 #launcher.hidden { display: none; }

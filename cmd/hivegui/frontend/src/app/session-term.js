@@ -26,6 +26,7 @@ import {
 } from '../lib/scrollback.js';
 import { scrollTrace, snapshotScrollJump } from './trace.js';
 import { classifyViewportMove } from '../lib/scroll-debug.js';
+import { wheelToScrollLines } from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
@@ -428,7 +429,10 @@ export class SessionTerm {
     // 5000-line scrollback in a single swipe. We cap each event to
     // a sane line count so the user can actually read history.
     // Capture phase + stopPropagation prevents xterm's own handler
-    // from firing.
+    // from firing. wheelToScrollLines normalizes deltaMode / legacy
+    // wheelDeltaY so the cap math doesn't collapse to zero (and the
+    // terminal become unscrollable) on WKWebView builds that report
+    // wheel events in line/page mode — see lib/wheel-scroll.js.
     const linesPerPixel = 1 / 14; // ~one line per ~14 px of delta
     const maxLinesPerEvent = 8;   // about half a screen on a small tile
     this.host.addEventListener('wheel', (e) => {
@@ -437,14 +441,18 @@ export class SessionTerm {
       // Stamp user-scroll intent so the jump detector attributes the
       // resulting onScroll to the user, not to a renderer/replay event.
       this._lastUserScrollTs = nowMs();
-      let lines = Math.round(e.deltaY * linesPerPixel);
-      if (lines === 0) {
-        // Sub-pixel events — preserve direction so a slow scroll
-        // still moves at least one line.
-        lines = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
+      const lines = wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent });
+      // Gated wheel trace: on a machine where the terminal won't scroll,
+      // set localStorage `hive.debug` = '1', reload, try to scroll, then
+      // dump window.__hive_scrolltrace to see the raw delta the webview
+      // delivered vs. the line count we derived from it.
+      if (scrollTrace.rec.enabled) {
+        scrollTrace.rec('wheel', {
+          id: this.info.id,
+          deltaY: e.deltaY, deltaMode: e.deltaMode,
+          wheelDeltaY: e.wheelDeltaY, lines,
+        });
       }
-      if (lines > maxLinesPerEvent) lines = maxLinesPerEvent;
-      if (lines < -maxLinesPerEvent) lines = -maxLinesPerEvent;
       if (lines !== 0) this.term.scrollLines(lines);
     }, { capture: true, passive: false });
 
