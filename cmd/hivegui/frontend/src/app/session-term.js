@@ -491,7 +491,11 @@ export class SessionTerm {
       // Scroll-jump auto-detector (gated on hive.debug=1): record any
       // UPWARD move no user gesture explains, and freeze the trace so
       // heavy output can't rotate the evidence away before it's dumped.
+      // Skip when `from` exceeds the current baseY: the buffer just shrank
+      // (term.reset() on replay-begin / reattach), so the stale pre-reset
+      // viewportY would read as a huge spurious jump and pollute the trace.
       if (scrollTrace.rec.enabled
+        && from <= buf.baseY
         && classifyViewportMove({ from, to, lastUserScrollTs: this._lastUserScrollTs, now }) === 'auto-up') {
         scrollTrace.rec('viewport-jump', {
           id: this.info.id,

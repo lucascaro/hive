@@ -65,6 +65,23 @@ describe('snapVisibleTermsToBottom', () => {
     expect(t._replayWantsBottom).toBe(true);
   });
 
+  it('resumes follow-intent on snapped terms (_followBottom = true)', () => {
+    // A mode switch is a deliberate "land at bottom", so the next resize
+    // must keep the user pinned there — even if they had scrolled up
+    // before (which had set _followBottom = false).
+    const t = makeTerm();
+    t._followBottom = false;
+    snapVisibleTermsToBottom([t]);
+    expect(t._followBottom).toBe(true);
+  });
+
+  it('does not resume follow-intent on skipped terms', () => {
+    const detached = makeTerm({ attached: false });
+    detached._followBottom = false;
+    snapVisibleTermsToBottom([detached]);
+    expect(detached._followBottom).toBe(false);
+  });
+
   it('does not set _replayWantsBottom on skipped terms', () => {
     const detached = makeTerm({ attached: false });
     const hidden = makeTerm({ h: 0 });

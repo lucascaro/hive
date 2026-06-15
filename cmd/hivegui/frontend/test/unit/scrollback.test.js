@@ -196,6 +196,44 @@ describe('handleScrollbackEvent', () => {
     expect(handleScrollbackEvent(undefined, 'scrollback_replay_begin')).toBe(false);
     expect(handleScrollbackEvent({}, 'scrollback_replay_begin')).toBe(false);
   });
+
+  // _followBottom is the cap-trim fix's source of truth for "is the user
+  // at the bottom?" in _onBodyResize. A replay-done must keep it honest.
+  it('done with wants=true re-latches _followBottom = true (snap resumes following)', () => {
+    const { st, flush } = makeSt();
+    st._followBottom = false; // user had been scrolled up
+    st._replayWantsBottom = true; // but this replay snaps to bottom
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._followBottom).toBe(true);
+  });
+
+  it('done with wants=false un-follows ONLY when a restore actually ran', () => {
+    const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin'); // captures fromBottom
+    st._followBottom = true;
+    st._replayWantsBottom = false;
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 120; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(80); // restore ran
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('done with wants=false does NOT un-follow when no restore ran (guards stranding)', () => {
+    // wants=false but no begin/capture → _replayPrevFromBottom undefined →
+    // scrollToLine is skipped. _followBottom must be left untouched: a user
+    // who scrolled back to the bottom while a stale replay was in flight
+    // must not be armed for a phantom restore-into-history on the next resize.
+    const { st, flush } = makeSt({ baseY: 100, viewportY: 100 });
+    st._followBottom = true;
+    st._replayWantsBottom = false;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToLine).not.toHaveBeenCalled();
+    expect(st._followBottom).toBe(true);
+  });
 });
 
 describe('applyRebaseline clears stale restore intent (the pair)', () => {

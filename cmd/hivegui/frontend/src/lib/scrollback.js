@@ -158,10 +158,12 @@ export function handleScrollbackEvent(st, kind, trace) {
         if (typeof fromBottom === 'number' && buf && typeof st.term.scrollToLine === 'function') {
           target = Math.max(0, buf.baseY - fromBottom);
           st.term.scrollToLine(target);
+          // Only un-follow when a restore ACTUALLY moved the viewport into
+          // history. Latching false unconditionally here would strand a
+          // user who has since scrolled back to the bottom while a stale
+          // wants=false replay was still in flight (no scrollToLine ran).
+          st._followBottom = false;
         }
-        // Replay restored a scrolled-up reading position — stay un-
-        // followed so the next resize preserves it too.
-        st._followBottom = false;
         if (trace) {
           trace('replay-restore', {
             id: st.info?.id, wants: false, fromBottom, target,
