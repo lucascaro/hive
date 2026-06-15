@@ -3,7 +3,7 @@ package agent
 import "testing"
 
 func TestBuiltinsPresent(t *testing.T) {
-	want := []ID{IDShell, IDClaude, IDCodex, IDGemini, IDCopilot, IDAider}
+	want := []ID{IDShell, IDClaude, IDCodex, IDGemini, IDCopilot, IDAider, IDPi}
 	for _, id := range want {
 		if _, ok := Get(id); !ok {
 			t.Errorf("missing built-in agent %s", id)
@@ -55,6 +55,44 @@ func TestClaudeDefSupportsSessionID(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("ResumeArgs[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestPiDefSupportsSessionID(t *testing.T) {
+	d, ok := Get(IDPi)
+	if !ok {
+		t.Fatalf("pi agent not registered")
+	}
+	if d.Name != "Pi" {
+		t.Errorf("pi Name = %q, want Pi", d.Name)
+	}
+	if len(d.Cmd) != 1 || d.Cmd[0] != "pi" {
+		t.Errorf("pi Cmd = %v, want [pi]", d.Cmd)
+	}
+	// `pi --session-id <id>` pins a caller-chosen id at first launch
+	// (verified against pi 0.79.3), so pi resumes unambiguously by id
+	// even when sibling sessions share a cwd.
+	if d.SessionIDFlag != "--session-id" {
+		t.Errorf("pi SessionIDFlag = %q, want --session-id", d.SessionIDFlag)
+	}
+	if d.ResumeArgs == nil {
+		t.Fatalf("pi ResumeArgs is nil; expected per-id resume support")
+	}
+	got := d.ResumeArgs("abc123", "/tmp/some/cwd")
+	want := []string{"pi", "--session-id", "abc123"}
+	if len(got) != len(want) {
+		t.Fatalf("ResumeArgs len = %d, want %d (got %v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ResumeArgs[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	// Generic cwd-scoped continue stays as the fallback for sessions
+	// launched with a user-supplied Cmd (no SessionIDFlag injection).
+	wantResume := []string{"pi", "-c"}
+	if len(d.ResumeCmd) != len(wantResume) || d.ResumeCmd[0] != "pi" || d.ResumeCmd[1] != "-c" {
+		t.Errorf("pi ResumeCmd = %v, want %v", d.ResumeCmd, wantResume)
 	}
 }
 
