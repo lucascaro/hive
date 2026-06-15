@@ -24,12 +24,27 @@ import {
 import {
   shouldRequestReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
 } from '../lib/scrollback.js';
-import { scrollTrace } from './trace.js';
+import { scrollTrace, snapshotScrollJump } from './trace.js';
+import { classifyViewportMove } from '../lib/scroll-debug.js';
 import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 
+
+// Monotonic millisecond clock for the scroll-jump detector. Falls back
+// to 0 where performance isn't available (never in a real renderer).
+function nowMs() {
+  try { return performance.now(); } catch { return 0; }
+}
+
+// A viewport within this many lines of the bottom counts as "at the
+// bottom". Tolerates TUIs (codex etc.) that park a line or two short.
+const STICKY_BOTTOM_LINES = 2;
+
+// How recently a user scroll gesture must have fired for an onScroll to
+// count as user-driven (vs parse-driven cap-trim drift).
+const USER_SCROLL_GRACE_MS = 250;
 
 export class SessionTerm {
   constructor(info) {
@@ -419,6 +434,9 @@ export class SessionTerm {
     this.host.addEventListener('wheel', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // Stamp user-scroll intent so the jump detector attributes the
+      // resulting onScroll to the user, not to a renderer/replay event.
+      this._lastUserScrollTs = nowMs();
       let lines = Math.round(e.deltaY * linesPerPixel);
       if (lines === 0) {
         // Sub-pixel events — preserve direction so a slow scroll
@@ -429,6 +447,70 @@ export class SessionTerm {
       if (lines < -maxLinesPerEvent) lines = -maxLinesPerEvent;
       if (lines !== 0) this.term.scrollLines(lines);
     }, { capture: true, passive: false });
+
+    // Follow-intent tracking (ALWAYS ON — this is the fix for the
+    // scroll-jump bug). "Is the user at the bottom?" must be derived from
+    // the user's own scroll gestures, never from buffer geometry: during
+    // heavy output at the scrollback cap, xterm transiently drops the
+    // viewport off the bottom (cap-trim pins baseY at the cap while
+    // viewportY drifts) even though the user never scrolled. Inferring
+    // wasAtBottom from `baseY - viewportY` in _onBodyResize then mis-read
+    // "not at bottom" and armed a restore-into-history replay. We instead
+    // latch _followBottom from real scroll gestures and ignore parse-
+    // driven drift.
+    this._followBottom = true;
+    this._lastUserScrollTs = -Infinity;
+    this._lastReplayTs = -Infinity;
+    this._lastViewportY = this.term.buffer.active?.viewportY ?? 0;
+
+    // Keyboard scrollback (Shift+PageUp/Down, Shift+Home/End) is user
+    // intent too. xterm handles these internally; we only timestamp them
+    // so the onScroll below attributes the resulting move to the user.
+    this.body.addEventListener('keydown', (e) => {
+      if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown'
+        || e.key === 'Home' || e.key === 'End')) {
+        this._lastUserScrollTs = nowMs();
+      }
+    }, { capture: true });
+
+    this.term.onScroll(() => {
+      const buf = this.term.buffer.active;
+      if (!buf) return;
+      const from = this._lastViewportY;
+      const to = buf.viewportY;
+      this._lastViewportY = to;
+      const now = nowMs();
+      // Only a recent user gesture may change follow-intent. A move with
+      // no gesture behind it is parse-driven cap-trim drift — ignore it,
+      // so a wobbling viewport never clears "follow the bottom".
+      const userDriven = (now - this._lastUserScrollTs) <= USER_SCROLL_GRACE_MS;
+      if (userDriven) {
+        this._followBottom = (buf.baseY - to) <= STICKY_BOTTOM_LINES;
+      }
+
+      // Scroll-jump auto-detector (gated on hive.debug=1): record any
+      // UPWARD move no user gesture explains, and freeze the trace so
+      // heavy output can't rotate the evidence away before it's dumped.
+      // Skip when `from` exceeds the current baseY: the buffer just shrank
+      // (term.reset() on replay-begin / reattach), so the stale pre-reset
+      // viewportY would read as a huge spurious jump and pollute the trace.
+      if (scrollTrace.rec.enabled
+        && from <= buf.baseY
+        && classifyViewportMove({
+          from, to, lastUserScrollTs: this._lastUserScrollTs, now,
+          userGraceMs: USER_SCROLL_GRACE_MS,
+        }) === 'auto-up') {
+        scrollTrace.rec('viewport-jump', {
+          id: this.info.id,
+          from, to, baseY: buf.baseY, bufType: buf.type,
+          cols: this.term.cols, rows: this.term.rows, view: state.view,
+          attached: this.attached, following: this._followBottom,
+          sinceReplayMs: this._lastReplayTs > -Infinity ? Math.round(now - this._lastReplayTs) : null,
+          sinceUserScrollMs: this._lastUserScrollTs > -Infinity ? Math.round(now - this._lastUserScrollTs) : null,
+        });
+        snapshotScrollJump();
+      }
+    });
   }
 
   _attachWebgl() {
@@ -456,11 +538,17 @@ export class SessionTerm {
     // unit-tested without xterm or a real WebGL context.
     const dead = this.webgl;
     this.webgl = null;
-    recoverFromContextLoss({
+    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-context-loss', { id: this.info.id });
+    const { reattached } = recoverFromContextLoss({
       dispose: () => dead?.dispose(),
       reattach: () => this._attachWebgl(),
       refresh: () => this.term.refresh(0, this.term.rows - 1),
     });
+    // reattached=false means we just fell back to the DOM renderer — its
+    // char metrics differ from WebGL's, so the next fit can shift cols
+    // and fire a replay no user action explains. Logging it lets the
+    // trace tie a "spontaneous" jump back to a renderer fallback.
+    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-recover', { id: this.info.id, reattached });
   }
 
   _installRendererRecoveryListeners() {
@@ -468,6 +556,7 @@ export class SessionTerm {
     // call when no WebGL addon is loaded (DOM renderer ignores the
     // atlas hint and still benefits from the refresh).
     this._refreshRenderer = () => {
+      if (scrollTrace.rec.enabled) scrollTrace.rec('renderer-refresh', { id: this.info.id });
       try { this.webgl?.clearTextureAtlas(); } catch {}
       try { this.term.refresh(0, this.term.rows - 1); } catch {}
     };
@@ -625,13 +714,16 @@ export class SessionTerm {
     // Preserve "viewport pinned to bottom" across the resize. xterm's
     // own resize doesn't auto-snap to bottom after reflow; without this,
     // a user scrolled to the latest line would land mid-history.
-    // Tolerance: codex (and similar TUIs) sometimes leave the viewport
-    // a line or two short of the bottom; treat that as "at bottom" so
-    // resize doesn't strand the user mid-history. Anything further up
-    // is deliberate scrollback — leave it alone.
-    const STICKY_BOTTOM_LINES = 2;
+    //
+    // wasAtBottom comes from _followBottom — the user's own scroll
+    // intent — NOT from `baseY - viewportY`. Under heavy output at the
+    // scrollback cap, xterm transiently drops the viewport off the bottom
+    // (cap-trim) for a user who never scrolled; the old geometry check
+    // mis-read that as "scrolled up" and armed a restore-into-history
+    // replay (the scroll-jump bug). _followBottom is latched only by real
+    // gestures, so cap-trim drift can't flip it.
     const buf = this.term.buffer.active;
-    const wasAtBottom = buf ? (buf.baseY - buf.viewportY) <= STICKY_BOTTOM_LINES : true;
+    const wasAtBottom = this._followBottom;
     // Swallow throw and continue: a transient FitAddon error (e.g. a
     // race against teardown) shouldn't drop the daemon-side resize.
     const prevCols = this.term.cols;
@@ -679,6 +771,11 @@ export class SessionTerm {
       scrollTrace.rec('resize', {
         id: this.info.id, prevCols, cols: this.term.cols,
         baseline: this._replayBaselineCols, wasAtBottom,
+        // Raw geometry behind wasAtBottom: during heavy output xterm can
+        // lose bottom-follow (baseY pinned at the scrollback cap while
+        // viewportY drifts), so wasAtBottom reads false even though the
+        // user never scrolled — the suspected arm of a spurious up-jump.
+        baseY: buf?.baseY, viewportY: buf?.viewportY, bufType: buf?.type,
       });
     }
     if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {

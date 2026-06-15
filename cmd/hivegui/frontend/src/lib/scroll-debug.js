@@ -21,3 +21,23 @@ export function createScrollTrace({ enabled, now, cap = SCROLL_TRACE_CAP }) {
   rec.enabled = enabled;
   return { rec, ring };
 }
+
+// Classify a single viewport move for the scroll-jump auto-detector.
+// The reported bug moves the viewport UP into history (xterm's ydisp
+// decreases) with no user gesture behind it. `from`/`to` are the
+// previous and new viewportY; `lastUserScrollTs` is when the user last
+// drove a scroll (wheel / scroll key), `now` the move's timestamp, both
+// on the same monotonic clock. Returns:
+//   - null       the move wasn't upward (down-scroll or no-op) — never the bug
+//   - 'user-up'  upward, but a user gesture fired within `userGraceMs` — expected
+//   - 'auto-up'  upward with NO recent user gesture — the suspicious case the
+//                detector records (a resize/replay/renderer event moved it)
+// Pure so the detector's decision can be unit-tested without xterm.
+export function classifyViewportMove({ from, to, lastUserScrollTs, now, userGraceMs = 250 }) {
+  if (!(to < from)) return null;
+  const userDriven =
+    typeof lastUserScrollTs === 'number' &&
+    typeof now === 'number' &&
+    (now - lastUserScrollTs) <= userGraceMs;
+  return userDriven ? 'user-up' : 'auto-up';
+}

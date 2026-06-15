@@ -69,7 +69,13 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
   return st;
 }
 
-export function handleScrollbackEvent(st, kind) {
+// `trace` (optional) is scrollTrace.rec — when supplied, the replay
+// restore decision is recorded at parse time (wantsBottom, the captured
+// fromBottom distance, the computed scrollToLine target, and the
+// resulting viewport). This is the smoking gun for the jump-up bug: a
+// `wantsBottom:false` restore to a target far above baseY while the user
+// was actually at the bottom shows the heuristic misfired.
+export function handleScrollbackEvent(st, kind, trace) {
   if (!st || !st.term) return false;
   switch (kind) {
     case 'scrollback_replay_begin': {
@@ -131,6 +137,16 @@ export function handleScrollbackEvent(st, kind) {
         delete st._replayPrevFromBottom;
         if (wantsBottom) {
           if (typeof st.term.scrollToBottom === 'function') st.term.scrollToBottom();
+          // Replay landed at the bottom — keep following. (Without this,
+          // a stale _followBottom=false could survive a snap-to-bottom.)
+          st._followBottom = true;
+          if (trace) {
+            const b = st.term.buffer?.active;
+            trace('replay-restore', {
+              id: st.info?.id, wants: true, fromBottom,
+              baseY: b?.baseY, viewportY: b?.viewportY,
+            });
+          }
           return;
         }
         // Restore the reader's distance from the bottom. Soft-wrapped
@@ -138,8 +154,21 @@ export function handleScrollbackEvent(st, kind) {
         // this is an approximation — but it keeps the reader in
         // history near where they were instead of at the bottom.
         const buf = st.term.buffer?.active;
+        let target;
         if (typeof fromBottom === 'number' && buf && typeof st.term.scrollToLine === 'function') {
-          st.term.scrollToLine(Math.max(0, buf.baseY - fromBottom));
+          target = Math.max(0, buf.baseY - fromBottom);
+          st.term.scrollToLine(target);
+          // Only un-follow when a restore ACTUALLY moved the viewport into
+          // history. Latching false unconditionally here would strand a
+          // user who has since scrolled back to the bottom while a stale
+          // wants=false replay was still in flight (no scrollToLine ran).
+          st._followBottom = false;
+        }
+        if (trace) {
+          trace('replay-restore', {
+            id: st.info?.id, wants: false, fromBottom, target,
+            baseY: buf?.baseY, viewportY: st.term.buffer?.active?.viewportY,
+          });
         }
       };
       // Parse-ordered: at done-event time the replay bytes may still
