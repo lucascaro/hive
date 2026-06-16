@@ -342,7 +342,7 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 
 	if spec.Agent != "" {
 		if _, ok := agent.Get(agent.ID(spec.Agent)); !ok {
-			return nil, fmt.Errorf("%w: %s", ErrUnknownAgent, spec.Agent)
+			return nil, fmt.Errorf("%w: %q", ErrUnknownAgent, spec.Agent)
 		}
 	}
 
@@ -599,7 +599,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 
 	if agentID != "" {
 		if _, ok := agent.Get(agent.ID(agentID)); !ok {
-			err := fmt.Errorf("%w: %s", ErrUnknownAgent, agentID)
+			err := fmt.Errorf("%w: %q", ErrUnknownAgent, agentID)
 			r.mu.Lock()
 			if e, ok := r.entries[id]; ok {
 				e.LastError = err.Error()
