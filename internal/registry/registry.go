@@ -28,6 +28,13 @@ import (
 // ErrNotFound is returned when a session ID isn't known.
 var ErrNotFound = errors.New("registry: session not found")
 
+// ErrUnknownAgent is returned when a client asks to create/revive an
+// agent session whose ID is not in this build's agent catalog. Failing
+// loudly is preferable to silently opening a generic shell, which can
+// happen during GUI/daemon version skew (for example, a newer GUI
+// listing an agent that an older hived does not know yet).
+var ErrUnknownAgent = errors.New("registry: unknown agent")
+
 // startSession is the package-level seam used to spawn the underlying
 // PTY. Tests swap this to capture the resolved session.Options
 // without forking real agent binaries (e.g. to inspect agent argv);
@@ -333,6 +340,12 @@ func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
 	}
 	r.mu.Unlock()
 
+	if spec.Agent != "" {
+		if _, ok := agent.Get(agent.ID(spec.Agent)); !ok {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownAgent, spec.Agent)
+		}
+	}
+
 	// Pre-resolve the worktree branch+path so the session name can
 	// match the worktree directory. ResolveBranchAndPath only picks a
 	// free name; the actual `git worktree add` happens further down.
@@ -583,6 +596,22 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		projectCwd = p.Cwd
 	}
 	r.mu.Unlock()
+
+	if agentID != "" {
+		if _, ok := agent.Get(agent.ID(agentID)); !ok {
+			err := fmt.Errorf("%w: %s", ErrUnknownAgent, agentID)
+			r.mu.Lock()
+			if e, ok := r.entries[id]; ok {
+				e.LastError = err.Error()
+				info := e.Info()
+				r.mu.Unlock()
+				r.broadcast(wire.SessionEventUpdated, info)
+			} else {
+				r.mu.Unlock()
+			}
+			return err
+		}
+	}
 
 	if projectCwd != "" {
 		opts.Cwd = projectCwd

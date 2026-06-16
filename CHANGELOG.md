@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Agents: creating a session for an agent unsupported by the running daemon now fails loudly instead of silently opening a generic shell, avoiding confusing GUI/daemon version-skew behavior for newly added agents like Pi.
 - GUI: scrollback replays no longer destroy the reading position
   ("scrolling jumps around with codex"). When a window resize, sidebar
   drag, or grid reflow triggered a scrollback replay while the user
