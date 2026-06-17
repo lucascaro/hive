@@ -10,7 +10,7 @@ import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
-import { handleScrollbackEvent } from '../lib/scrollback.js';
+import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 
 let deps = {
   switchTo: () => {},
@@ -169,6 +169,7 @@ export function wireDaemonEvents(injected) {
         // session's prompt lands on a clean screen instead of stacking on
         // the old cursor position.
         try { t.term.reset(); } catch {}
+        abandonReplays(t); // the wipe abandons any in-flight restream
         t.attached = false;
         t.setDead(false);
       }
@@ -246,6 +247,7 @@ export function wireDaemonEvents(injected) {
         if (st.needsReattach && ev.session.alive) {
           st.needsReattach = false;
           try { st.term.reset(); } catch {}
+          abandonReplays(st); // the wipe abandons any in-flight restream
           const visible =
             (state.view === 'single' && state.activeId === ev.session.id) ||
             (state.view !== 'single' && st.host.classList.contains('in-grid'));
@@ -295,6 +297,10 @@ export function wireDaemonEvents(injected) {
     const st = state.terms.get(id);
     if (st) {
       st.attached = false;
+      // The connection dropped: any in-flight replay's done will never
+      // arrive, so clear the in-flight count (else it pins the viewport
+      // to the bottom forever after reattach).
+      abandonReplays(st);
       // Mark the term as needing reattach. Restart Session closes the
       // daemon-side PTY (which lands here) and respawns; the subsequent
       // session:event(updated, alive=true) is where we re-OpenSession.

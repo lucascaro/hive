@@ -94,21 +94,19 @@ test('single full-buffer session: no transient viewport-jump on threshold-crossi
       }
     }
   }
-  await page.waitForTimeout(1500);
-
-  const finalGap = await page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
-    const buf = st?.term?.buffer?.active;
-    return buf ? buf.baseY - buf.viewportY : null;
-  });
   const replays = await traceTags(page, 'replay-request');
-  // eslint-disable-next-line no-console
-  console.log(`STRAND_STATS maxGap=${maxGapWhileFollowing} strandedSamples=${strandedSamples} finalGap=${finalGap}`);
-
   expect(replays, 'no replays fired — test is vacuous').toBeGreaterThan(0);
   // The invariant: a follower is never left stranded up in history while a
   // resize replay restreams. A brief one-frame reset blip is tolerable; a
   // sustained strand (multiple samples off-bottom) is the bug.
   expect(strandedSamples, `follower stranded mid-history for ${strandedSamples} samples (maxGap=${maxGapWhileFollowing})`).toBeLessThanOrEqual(1);
-  expect(finalGap, 'follower did not end at the bottom').toBe(0);
+
+  // And it must settle AT the bottom. Poll (not a fixed wait): a 60k-line
+  // replay re-parse can outlast any fixed sleep on a slow runner — matching
+  // the convergence pattern the sibling scroll-codex specs use.
+  await expect.poll(async () => page.evaluate(() => {
+    const st = [...(window.__hive_state?.terms?.values() || [])][0];
+    const buf = st?.term?.buffer?.active;
+    return buf ? buf.baseY - buf.viewportY : null;
+  }), { timeout: 12000, intervals: [250, 500] }).toBe(0);
 });

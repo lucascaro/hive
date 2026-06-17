@@ -69,6 +69,18 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
   return st;
 }
 
+// Abandon any in-flight scrollback replays for this term. The in-flight
+// counter keeps a FOLLOWING viewport pinned to the bottom during a restream
+// (see SessionTerm.onScroll); it is incremented on replay-begin and only
+// decremented on the matching replay-done. A dropped connection or a buffer
+// wipe for a non-replay reason (disconnect, reattach, revival) means those
+// done events will never arrive — so the count must be cleared here, or it
+// leaks >0 and pins the viewport to the bottom forever, re-correcting the
+// parse-driven cap-trim drift that #228 deliberately leaves alone.
+export function abandonReplays(st) {
+  if (st) st._replaysInFlight = 0;
+}
+
 // `trace` (optional) is scrollTrace.rec — when supplied, the replay
 // restore decision is recorded at parse time (wantsBottom, the captured
 // fromBottom distance, the computed scrollToLine target, and the
