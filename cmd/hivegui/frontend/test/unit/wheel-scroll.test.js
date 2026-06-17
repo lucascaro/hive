@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wheelToScrollLines } from '../../src/lib/wheel-scroll.js';
+import { wheelToScrollLines, shouldScrollViewport } from '../../src/lib/wheel-scroll.js';
 
 // The GUI takes over wheel handling (capture phase + preventDefault) so
 // EVERY wheel scroll flows through this math — if it returns 0, the
@@ -72,5 +72,25 @@ describe('wheelToScrollLines', () => {
       expect(wheelToScrollLines({ deltaY: undefined, deltaMode: 0 }, OPTS)).toBe(0);
       expect(wheelToScrollLines({ deltaY: NaN, deltaMode: 0 }, OPTS)).toBe(0);
     });
+  });
+});
+
+describe('shouldScrollViewport', () => {
+  // The takeover is correct ONLY in the normal buffer with mouse reporting
+  // off. Everywhere else the wheel must reach xterm/the app — this is the
+  // "scrolls in pi, not in Claude" regression.
+  it('takes over in the normal buffer with mouse reporting off (pi / plain shell)', () => {
+    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'none' })).toBe(true);
+    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: undefined })).toBe(true);
+  });
+
+  it('does NOT take over in the alternate buffer (full-screen TUIs)', () => {
+    expect(shouldScrollViewport({ bufferType: 'alternate', mouseTrackingMode: 'none' })).toBe(false);
+  });
+
+  it('does NOT take over when mouse tracking is active (Claude, vim)', () => {
+    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'vt200' })).toBe(false);
+    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'any' })).toBe(false);
+    expect(shouldScrollViewport({ bufferType: 'alternate', mouseTrackingMode: 'any' })).toBe(false);
   });
 });

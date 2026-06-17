@@ -21,6 +21,25 @@
 const DOM_DELTA_LINE = 1;
 const DOM_DELTA_PAGE = 2;
 
+// Whether the GUI should take over the wheel and turn it into local
+// scrollback (preventDefault + term.scrollLines). ONLY in the normal buffer
+// with mouse reporting OFF:
+//   - In the alternate buffer (full-screen TUIs — Claude, vim, htop) there is
+//     no scrollback, so term.scrollLines is a no-op.
+//   - When the running program has enabled mouse tracking it expects the
+//     wheel forwarded to it as mouse events so it can scroll its OWN content.
+// Taking over in either case swallows the gesture (capture-phase
+// preventDefault + stopPropagation) and the app can never scroll — which is
+// exactly why the terminal scrolled in a plain shell / pi but not in Claude.
+// When this returns false we let the event fall through to xterm's native
+// handling (forward-to-app, or Shift+wheel local scroll). Pure so the
+// buffer/mode matrix is unit-testable without xterm.
+export function shouldScrollViewport({ bufferType, mouseTrackingMode }) {
+  if (bufferType !== 'normal') return false;
+  if (mouseTrackingMode && mouseTrackingMode !== 'none') return false;
+  return true;
+}
+
 export function wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent }) {
   let deltaY = e.deltaY;
   let deltaMode = e.deltaMode;
