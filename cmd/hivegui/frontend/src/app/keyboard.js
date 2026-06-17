@@ -276,6 +276,9 @@ function toggleScrollDebug() {
   let on = false;
   try { on = localStorage.getItem('hive.debug') === '1'; } catch { /* storage off */ }
   try { localStorage.setItem('hive.debug', on ? '0' : '1'); } catch { /* storage off */ }
+  // The reload is intentional and unavoidable: trace.js reads hive.debug
+  // once at module load, so the new state only takes effect on a fresh load.
+  // The menu label says "(Reloads)" so this isn't a surprise.
   location.reload();
 }
 

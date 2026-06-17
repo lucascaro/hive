@@ -1,9 +1,12 @@
 // Wheel → terminal-line conversion, normalized across platforms.
 //
 // The GUI takes over wheel handling (capture phase + preventDefault) so
-// xterm's own wheel→lines math never runs — see SessionTerm. That means
-// EVERY wheel scroll flows through this one function; if it returns 0,
-// the terminal cannot scroll at all.
+// xterm's own wheel→lines math never runs — see SessionTerm. This function
+// runs only when shouldScrollViewport (below) says the gesture is ours to
+// interpret: the normal buffer with mouse reporting off. In that case every
+// wheel scroll flows through it, and if it returns 0 the terminal cannot
+// scroll at all. (Alt-buffer / mouse-tracking events bail before reaching
+// here and fall through to xterm.)
 //
 // The original math assumed pixel deltas (deltaMode 0) and a populated
 // standard `deltaY`, which holds on Chromium and on recent macOS. But

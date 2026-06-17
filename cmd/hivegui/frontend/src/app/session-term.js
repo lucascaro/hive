@@ -220,8 +220,12 @@ export class SessionTerm {
         const dy = e.clientY - this._pendingClickY;
         if (dx * dx + dy * dy >= 25) return; // dragged → selection, leave it
         const buf = this.term.buffer.active;
-        if (buf.type !== 'normal') return;
-        if (this.term.modes && this.term.modes.mouseTrackingMode && this.term.modes.mouseTrackingMode !== 'none') return;
+        // Same "is this gesture ours to interpret?" test as the wheel
+        // handler — only in the normal buffer with mouse reporting off.
+        if (!shouldScrollViewport({
+          bufferType: buf?.type,
+          mouseTrackingMode: this.term.modes?.mouseTrackingMode,
+        })) return;
         const rect = screen.getBoundingClientRect();
         const cellW = rect.width / this.term.cols;
         const cellH = rect.height / this.term.rows;

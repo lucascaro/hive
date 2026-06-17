@@ -93,4 +93,12 @@ describe('shouldScrollViewport', () => {
     expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'any' })).toBe(false);
     expect(shouldScrollViewport({ bufferType: 'alternate', mouseTrackingMode: 'any' })).toBe(false);
   });
+
+  // The live handler passes buf?.type, which can be undefined before the
+  // buffer is ready — anything that isn't exactly 'normal' must bail.
+  it('does NOT take over for a missing/empty buffer type', () => {
+    expect(shouldScrollViewport({ bufferType: undefined, mouseTrackingMode: 'none' })).toBe(false);
+    expect(shouldScrollViewport({ bufferType: null, mouseTrackingMode: 'none' })).toBe(false);
+    expect(shouldScrollViewport({ bufferType: '', mouseTrackingMode: 'none' })).toBe(false);
+  });
 });
