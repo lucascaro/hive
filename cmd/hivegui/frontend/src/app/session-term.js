@@ -484,6 +484,10 @@ export class SessionTerm {
     this._lastUserScrollTs = -Infinity;
     this._lastReplayTs = -Infinity;
     this._lastViewportY = this.term.buffer.active?.viewportY ?? 0;
+    // Set by handleScrollbackEvent while a replay restream is in flight, and
+    // a reentrancy guard for the bottom re-pin below.
+    this._replaysInFlight = 0;
+    this._repinning = false;
 
     // Keyboard scrollback (Shift+PageUp/Down, Shift+Home/End) is user
     // intent too. xterm handles these internally; we only timestamp them
@@ -508,6 +512,22 @@ export class SessionTerm {
       const userDriven = (now - this._lastUserScrollTs) <= USER_SCROLL_GRACE_MS;
       if (userDriven) {
         this._followBottom = (buf.baseY - to) <= STICKY_BOTTOM_LINES;
+      }
+
+      // Keep a FOLLOWING viewport glued to the bottom for the WHOLE replay
+      // restream, not just at replay-done. A full-buffer restream spans many
+      // frames; the begin handler's term.reset() wipes the viewport to the
+      // top and cap-trim then strands it in history, so without this the
+      // viewport drifts up mid-restream and only re-snaps at done — a visible
+      // scroll-jump (the user-reported signature: following:true, tiny
+      // sinceReplayMs). Re-pin only a genuine follower (never a reader
+      // scrolled up: _followBottom is false for them, and a user gesture this
+      // tick set it above). Reentrancy-guarded — scrollToBottom re-enters
+      // onScroll, which then sees us at the bottom and stops.
+      if (this._replaysInFlight > 0 && this._followBottom && !this._repinning
+        && (buf.baseY - to) > STICKY_BOTTOM_LINES && !userDriven) {
+        this._repinning = true;
+        try { this.term.scrollToBottom(); } finally { this._repinning = false; }
       }
 
       // Scroll-jump auto-detector (gated on hive.debug=1): record any
