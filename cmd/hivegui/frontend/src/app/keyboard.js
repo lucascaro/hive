@@ -6,7 +6,7 @@
 
 import {
   EventsOn, KillSession, KillProject, Confirm, UpdateSession,
-  OpenNewWindow, CloseWindow, OpenTerminalAt,
+  OpenNewWindow, CloseWindow, OpenTerminalAt, SetClipboardText, Notify,
 } from '../bridge.js';
 import { state } from './state.js';
 import { reportFailure } from './dom.js';
@@ -269,6 +269,35 @@ export function switchToNthSession(n) {
   if (n - 1 < ord.length) switchTo(ord[n - 1].id);
 }
 
+// Debug: arm/disarm the scroll tracer. trace.js latches hive.debug at
+// module load, so the new state only takes effect after a reload — do it
+// here so the user never needs the devtools console to flip the gate.
+function toggleScrollDebug() {
+  let on = false;
+  try { on = localStorage.getItem('hive.debug') === '1'; } catch { /* storage off */ }
+  try { localStorage.setItem('hive.debug', on ? '0' : '1'); } catch { /* storage off */ }
+  // The reload is intentional and unavoidable: trace.js reads hive.debug
+  // once at module load, so the new state only takes effect on a fresh load.
+  // The menu label says "(Reloads)" so this isn't a surprise.
+  location.reload();
+}
+
+// Debug: copy the captured scroll trace to the clipboard via the Go side
+// (works without devtools and without a clipboard user-gesture). Reuses
+// window.__hive_dumpscroll (trace.js) so the dump shape matches what the
+// e2e harness and bug reports expect.
+function copyScrollTrace() {
+  const dump = typeof window.__hive_dumpscroll === 'function'
+    ? window.__hive_dumpscroll()
+    : { enabled: false, ring: window.__hive_scrolltrace || [], lastJump: null };
+  SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy scroll trace'));
+  const n = dump.ring?.length ?? 0;
+  const body = dump.enabled
+    ? `Copied ${n} scroll event${n === 1 ? '' : 's'} to the clipboard.`
+    : 'Scroll debug is OFF — run "Toggle Scroll Debug" first, reload, reproduce, then copy.';
+  Notify('Hive', 'Scroll trace', body, 'scroll-trace').catch(() => {});
+}
+
 const menuActions = {
   'menu:new-session': () => openLauncher(),
   'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
@@ -297,6 +326,8 @@ const menuActions = {
   // (Escape/⌘/ in the window listener) never sees ⌘/ while the menu
   // owns it.
   'menu:keyboard-shortcuts': () => toggleHelpOverlay(),
+  'menu:toggle-scroll-debug': () => toggleScrollDebug(),
+  'menu:copy-scroll-trace': () => copyScrollTrace(),
 };
 for (const [name, fn] of Object.entries(menuActions)) {
   EventsOn(name, fn);

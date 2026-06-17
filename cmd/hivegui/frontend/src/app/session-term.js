@@ -26,7 +26,7 @@ import {
 } from '../lib/scrollback.js';
 import { scrollTrace, snapshotScrollJump } from './trace.js';
 import { classifyViewportMove } from '../lib/scroll-debug.js';
-import { wheelToScrollLines } from '../lib/wheel-scroll.js';
+import { wheelToScrollLines, shouldScrollViewport } from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
@@ -220,8 +220,12 @@ export class SessionTerm {
         const dy = e.clientY - this._pendingClickY;
         if (dx * dx + dy * dy >= 25) return; // dragged → selection, leave it
         const buf = this.term.buffer.active;
-        if (buf.type !== 'normal') return;
-        if (this.term.modes && this.term.modes.mouseTrackingMode && this.term.modes.mouseTrackingMode !== 'none') return;
+        // Same "is this gesture ours to interpret?" test as the wheel
+        // handler — only in the normal buffer with mouse reporting off.
+        if (!shouldScrollViewport({
+          bufferType: buf?.type,
+          mouseTrackingMode: this.term.modes?.mouseTrackingMode,
+        })) return;
         const rect = screen.getBoundingClientRect();
         const cellW = rect.width / this.term.cols;
         const cellH = rect.height / this.term.rows;
@@ -436,6 +440,16 @@ export class SessionTerm {
     const linesPerPixel = 1 / 14; // ~one line per ~14 px of delta
     const maxLinesPerEvent = 8;   // about half a screen on a small tile
     this.host.addEventListener('wheel', (e) => {
+      // Only take over the wheel in the normal buffer with mouse reporting
+      // off. In the alternate buffer (Claude, vim, htop) scrollLines is a
+      // no-op, and with mouse tracking on the app expects the wheel as mouse
+      // events — swallowing it here is why Claude wouldn't scroll while pi
+      // (a plain line buffer) did. Let xterm handle those natively.
+      const buf = this.term.buffer.active;
+      if (!shouldScrollViewport({
+        bufferType: buf?.type,
+        mouseTrackingMode: this.term.modes?.mouseTrackingMode,
+      })) return;
       e.preventDefault();
       e.stopPropagation();
       // Stamp user-scroll intent so the jump detector attributes the

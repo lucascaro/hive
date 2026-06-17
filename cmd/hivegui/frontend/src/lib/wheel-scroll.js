@@ -1,9 +1,12 @@
 // Wheel → terminal-line conversion, normalized across platforms.
 //
 // The GUI takes over wheel handling (capture phase + preventDefault) so
-// xterm's own wheel→lines math never runs — see SessionTerm. That means
-// EVERY wheel scroll flows through this one function; if it returns 0,
-// the terminal cannot scroll at all.
+// xterm's own wheel→lines math never runs — see SessionTerm. This function
+// runs only when shouldScrollViewport (below) says the gesture is ours to
+// interpret: the normal buffer with mouse reporting off. In that case every
+// wheel scroll flows through it, and if it returns 0 the terminal cannot
+// scroll at all. (Alt-buffer / mouse-tracking events bail before reaching
+// here and fall through to xterm.)
 //
 // The original math assumed pixel deltas (deltaMode 0) and a populated
 // standard `deltaY`, which holds on Chromium and on recent macOS. But
@@ -20,6 +23,25 @@
 
 const DOM_DELTA_LINE = 1;
 const DOM_DELTA_PAGE = 2;
+
+// Whether the GUI should take over the wheel and turn it into local
+// scrollback (preventDefault + term.scrollLines). ONLY in the normal buffer
+// with mouse reporting OFF:
+//   - In the alternate buffer (full-screen TUIs — Claude, vim, htop) there is
+//     no scrollback, so term.scrollLines is a no-op.
+//   - When the running program has enabled mouse tracking it expects the
+//     wheel forwarded to it as mouse events so it can scroll its OWN content.
+// Taking over in either case swallows the gesture (capture-phase
+// preventDefault + stopPropagation) and the app can never scroll — which is
+// exactly why the terminal scrolled in a plain shell / pi but not in Claude.
+// When this returns false we let the event fall through to xterm's native
+// handling (forward-to-app, or Shift+wheel local scroll). Pure so the
+// buffer/mode matrix is unit-testable without xterm.
+export function shouldScrollViewport({ bufferType, mouseTrackingMode }) {
+  if (bufferType !== 'normal') return false;
+  if (mouseTrackingMode && mouseTrackingMode !== 'none') return false;
+  return true;
+}
 
 export function wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent }) {
   let deltaY = e.deltaY;
