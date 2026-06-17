@@ -69,6 +69,18 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
   return st;
 }
 
+// Abandon any in-flight scrollback replays for this term. The in-flight
+// counter keeps a FOLLOWING viewport pinned to the bottom during a restream
+// (see SessionTerm.onScroll); it is incremented on replay-begin and only
+// decremented on the matching replay-done. A dropped connection or a buffer
+// wipe for a non-replay reason (disconnect, reattach, revival) means those
+// done events will never arrive — so the count must be cleared here, or it
+// leaks >0 and pins the viewport to the bottom forever, re-correcting the
+// parse-driven cap-trim drift that #228 deliberately leaves alone.
+export function abandonReplays(st) {
+  if (st) st._replaysInFlight = 0;
+}
+
 // `trace` (optional) is scrollTrace.rec — when supplied, the replay
 // restore decision is recorded at parse time (wantsBottom, the captured
 // fromBottom distance, the computed scrollToLine target, and the
@@ -120,12 +132,21 @@ export function handleScrollbackEvent(st, kind, trace) {
       // order and the fresh decoder must be in place for the first
       // replay chunk, not parse time.
       if (st.decoder) st.decoder = new TextDecoder('utf-8');
+      // Mark a replay as in flight so the term's onScroll can keep a
+      // FOLLOWING viewport pinned to the bottom for the whole restream
+      // (a full-buffer replay spans many frames; the reset above wipes the
+      // viewport to the top and cap-trim then strands it in history). A
+      // counter, not a flag: resizes can overlap, so several replays are
+      // in flight at once and the last done must not clear an earlier
+      // replay's pin. Decremented in the done handler's parse-ordered finish.
+      st._replaysInFlight = (st._replaysInFlight || 0) + 1;
       return true;
     }
     case 'scrollback_replay_done': {
       const wantsBottom = st._replayWantsBottom !== false;
       delete st._replayWantsBottom;
       const finish = () => {
+        st._replaysInFlight = Math.max(0, (st._replaysInFlight || 0) - 1);
         // Consume the captured distance here, at parse time — the
         // begin handler sets it from its own parse-ordered callback,
         // which at done-EVENT time has usually not flushed yet (the

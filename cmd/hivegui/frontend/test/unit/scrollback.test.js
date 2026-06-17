@@ -5,6 +5,7 @@ import {
   REPLAY_DEBOUNCE_MS,
   handleScrollbackEvent,
   applyRebaseline,
+  abandonReplays,
 } from '../../src/lib/scrollback.js';
 
 describe('shouldRequestReplay', () => {
@@ -109,6 +110,41 @@ describe('handleScrollbackEvent', () => {
     expect(st._replayPrevFromBottom).toBeUndefined(); // parse-ordered like the reset
     flush();
     expect(st._replayPrevFromBottom).toBe(40);
+  });
+
+  it('tracks in-flight replays: begin increments at event time, done decrements at parse time', () => {
+    // Drives the SessionTerm onScroll re-pin that keeps a follower glued to
+    // the bottom for the whole restream. The decrement must be parse-ordered
+    // (in finish), so the pin holds until the restream is fully parsed.
+    const { st, flush } = makeSt({ baseY: 50, viewportY: 50 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replaysInFlight).toBe(1);
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    expect(st._replaysInFlight, 'still in flight until the restream parses').toBe(1);
+    flush();
+    expect(st._replaysInFlight).toBe(0);
+  });
+
+  it('overlapping replays: counter holds >0 until the LAST done parses, never negative', () => {
+    const { st, flush } = makeSt({ baseY: 50, viewportY: 50 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replaysInFlight).toBe(2);
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st._replaysInFlight).toBe(0);
+  });
+
+  it('abandonReplays clears the in-flight count when a begin never gets its done', () => {
+    // Disconnect / reattach / revival wipe the buffer without a replay-done;
+    // without this the counter leaks >0 and pins the viewport forever.
+    const { st } = makeSt({ baseY: 50, viewportY: 50 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    expect(st._replaysInFlight).toBe(1);
+    abandonReplays(st);
+    expect(st._replaysInFlight).toBe(0);
+    expect(() => abandonReplays(null)).not.toThrow();
   });
 
   it('capture is parse-ordered: backlog parsed before the wipe counts toward the distance', () => {
