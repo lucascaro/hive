@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"errors"
 	"runtime"
 	"slices"
 	"sync"
@@ -53,6 +54,71 @@ func freshRegistry(t *testing.T) *Registry {
 	}
 	t.Cleanup(func() { _ = r.Close() })
 	return r
+}
+
+func TestCreateUnknownAgentFailsWithoutStartingShell(t *testing.T) {
+	r := freshRegistry(t)
+	rec := captureStartSession(t)
+
+	_, err := r.Create(wire.CreateSpec{Agent: "future-agent", Name: "future"})
+	if !errors.Is(err, ErrUnknownAgent) {
+		t.Fatalf("Create unknown agent error = %v, want ErrUnknownAgent", err)
+	}
+	if got := len(r.List()); got != 0 {
+		t.Fatalf("registry entries after failed Create = %d, want 0", got)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if got := len(rec.opts); got != 0 {
+		t.Fatalf("startSession calls = %d, want 0 (must not silently start a shell)", got)
+	}
+}
+
+func TestReviveUnknownAgentFailsWithoutStartingShell(t *testing.T) {
+	r := freshRegistry(t)
+	rec := captureStartSession(t)
+
+	r.mu.Lock()
+	e := &Entry{ID: "unknown-1", Name: "future", Agent: "future-agent", Created: time.Now().UTC()}
+	r.entries[e.ID] = e
+	r.order = append(r.order, e.ID)
+	r.mu.Unlock()
+
+	err := r.Revive(e.ID, session.Options{})
+	if !errors.Is(err, ErrUnknownAgent) {
+		t.Fatalf("Revive unknown agent error = %v, want ErrUnknownAgent", err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if got := len(rec.opts); got != 0 {
+		t.Fatalf("startSession calls = %d, want 0 (must not silently revive a shell)", got)
+	}
+	if got := r.Get(e.ID).LastError; got == "" {
+		t.Fatalf("LastError is empty, want unknown-agent error surfaced on entry")
+	}
+}
+
+func TestCreateAppendsSessionIDForPi(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	rec := captureStartSession(t)
+
+	a, err := r.Create(wire.CreateSpec{Agent: string(agent.IDPi), Name: "pi"})
+	if err != nil {
+		t.Fatalf("Create pi: %v", err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.opts) != 1 {
+		t.Fatalf("startSession calls = %d, want 1", len(rec.opts))
+	}
+	want := []string{"pi", "--session-id", a.ID}
+	if !slices.Equal(rec.opts[0].Cmd, want) {
+		t.Fatalf("pi Create cmd = %v, want %v", rec.opts[0].Cmd, want)
+	}
+	if got := r.Get(a.ID).AgentSessionID; got != a.ID {
+		t.Fatalf("pi AgentSessionID = %q, want entry id %q", got, a.ID)
+	}
 }
 
 func TestCreateListKill(t *testing.T) {
@@ -687,4 +753,3 @@ func TestCreateWithExplicitCmdSkipsAgentSessionIDPin(t *testing.T) {
 		t.Errorf("AgentSessionID = %q, want empty (caller-supplied Cmd was not pinned)", got)
 	}
 }
-
