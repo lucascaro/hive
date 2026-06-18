@@ -21,6 +21,15 @@
         <string>10.13.0</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
+        <!-- Disable macOS App Nap. Debug traces of the "GUI frozen" reports
+             showed the renderer's timers clamped to ~1 Hz (heartbeat gap
+             pinned at ~1000ms) and rendering suspended while the page still
+             reported document.visibilityState === "visible" — the signature
+             of App Nap throttling the process, not a busy loop or a hung
+             thread. A terminal multiplexer must keep streaming PTY output and
+             repainting even when it isn't the foreground app, so opt out. -->
+        <key>NSAppSleepDisabled</key>
+        <true/>
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
         {{if .Info.FileAssociations}}
