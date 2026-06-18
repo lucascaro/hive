@@ -109,15 +109,17 @@ func buildAppMenu(a *App) *menu.Menu {
 
 	m.Append(menu.WindowMenu()) // Minimize / Zoom / Front
 
-	// Debug submenu — surfaces the hive.debug scroll tracer without
-	// requiring devtools (production WKWebView builds ship with the web
-	// inspector disabled). "Toggle Scroll Debug" arms the tracer and
-	// reloads (the tracer latches its on/off at page load); "Copy Scroll
-	// Trace" puts the captured event ring on the clipboard so it can be
-	// pasted straight into a bug report — no console needed.
+	// Debug submenu — surfaces the hive.debug tracer (scroll/replay,
+	// grid relayout, focus reconciliation, keydown routing, and a
+	// main-thread heartbeat) without requiring devtools (production
+	// WKWebView builds ship with the web inspector disabled). "Toggle
+	// Debug Trace" arms the tracer and reloads (the tracer latches its
+	// on/off at page load); "Copy Debug Trace" puts the captured event
+	// ring + counters on the clipboard so it can be pasted straight into
+	// a bug report — no console needed.
 	debug := m.AddSubmenu("Debug")
-	debug.AddText("Toggle Scroll Debug (Reloads)", nil, emit("menu:toggle-scroll-debug"))
-	debug.AddText("Copy Scroll Trace", nil, emit("menu:copy-scroll-trace"))
+	debug.AddText("Toggle Debug Trace (Reloads)", nil, emit("menu:toggle-scroll-debug"))
+	debug.AddText("Copy Debug Trace", nil, emit("menu:copy-scroll-trace"))
 
 	// Help submenu — macOS auto-injects a Search field that
 	// fuzzy-matches every item in every other menu, so the user can

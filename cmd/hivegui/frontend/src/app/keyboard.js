@@ -24,6 +24,7 @@ import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
 } from './view.js';
 import { manualUpdateCheck } from './banners.js';
+import { scrollTrace } from './trace.js';
 
 let deps = {
   bumpFontSize: () => {},
@@ -37,6 +38,24 @@ export function initKeyboard(injected) {
 
 
 window.addEventListener('keydown', (e) => {
+  // Freeze probe: record every keydown that reaches the renderer, with
+  // the view and focus target at arrival. This is the discriminator for
+  // the "keys do nothing in grid mode" report:
+  //   • keydown events keep arriving but `ae` is BODY (not a terminal
+  //     textarea) → keyboard focus was lost; the thread is fine.
+  //   • NO keydown events recorded during the freeze window → the event
+  //     never reached the renderer (thread blocked, or the OS/menu layer
+  //     swallowed it). Cross-check against heartbeat-stall gaps.
+  if (scrollTrace.rec.enabled) {
+    scrollTrace.count('keydown');
+    const ae = document.activeElement;
+    scrollTrace.rec('keydown', {
+      key: e.key,
+      mods: `${e.metaKey ? 'M' : ''}${e.ctrlKey ? 'C' : ''}${e.altKey ? 'A' : ''}${e.shiftKey ? 'S' : ''}`,
+      view: state.view,
+      ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
+    });
+  }
   if (!launcherEl.classList.contains('hidden')) {
     const handle = (fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
     if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return handle(() => moveLauncherSelection(+1));
@@ -293,9 +312,9 @@ function copyScrollTrace() {
   SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy scroll trace'));
   const n = dump.ring?.length ?? 0;
   const body = dump.enabled
-    ? `Copied ${n} scroll event${n === 1 ? '' : 's'} to the clipboard.`
-    : 'Scroll debug is OFF — run "Toggle Scroll Debug" first, reload, reproduce, then copy.';
-  Notify('Hive', 'Scroll trace', body, 'scroll-trace').catch(() => {});
+    ? `Copied ${n} trace event${n === 1 ? '' : 's'} to the clipboard.`
+    : 'Debug Trace is OFF — run "Toggle Debug Trace" first, reload, reproduce, then copy.';
+  Notify('Hive', 'Debug Trace', body, 'scroll-trace').catch(() => {});
 }
 
 const menuActions = {
