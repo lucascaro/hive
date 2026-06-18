@@ -312,9 +312,9 @@ function copyScrollTrace() {
   SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy scroll trace'));
   const n = dump.ring?.length ?? 0;
   const body = dump.enabled
-    ? `Copied ${n} scroll event${n === 1 ? '' : 's'} to the clipboard.`
-    : 'Scroll debug is OFF — run "Toggle Scroll Debug" first, reload, reproduce, then copy.';
-  Notify('Hive', 'Scroll trace', body, 'scroll-trace').catch(() => {});
+    ? `Copied ${n} trace event${n === 1 ? '' : 's'} to the clipboard.`
+    : 'Debug Trace is OFF — run "Toggle Debug Trace" first, reload, reproduce, then copy.';
+  Notify('Hive', 'Debug Trace', body, 'scroll-trace').catch(() => {});
 }
 
 const menuActions = {

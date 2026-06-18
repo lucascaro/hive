@@ -33,6 +33,30 @@ describe('createScrollTrace', () => {
   it('default cap is SCROLL_TRACE_CAP', () => {
     expect(SCROLL_TRACE_CAP).toBe(2000);
   });
+
+  it('count() is a no-op when disabled', () => {
+    const { count, counters } = createScrollTrace({ enabled: false });
+    count('renderGrid');
+    count('renderGrid');
+    expect({ ...counters }).toEqual({});
+  });
+
+  it('count() accumulates per-name totals when enabled', () => {
+    const { count, counters } = createScrollTrace({ enabled: true, now: () => 0 });
+    count('renderGrid');
+    count('renderGrid');
+    count('focusApply', 3);
+    expect(counters.renderGrid).toBe(2);
+    expect(counters.focusApply).toBe(3);
+  });
+
+  it('counters survive ring rotation (totals outlive the capped ring)', () => {
+    const { rec, count, ring, counters } = createScrollTrace({ enabled: true, now: () => 0, cap: 3 });
+    for (let i = 0; i < 10; i++) { rec('render-grid', { i }); count('renderGrid'); }
+    // Ring dropped the oldest, but the counter kept every increment.
+    expect(ring.length).toBe(3);
+    expect(counters.renderGrid).toBe(10);
+  });
 });
 
 describe('classifyViewportMove', () => {

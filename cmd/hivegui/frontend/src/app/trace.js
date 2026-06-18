@@ -53,10 +53,19 @@ const STALL_FACTOR = 2; // only record gaps > 2x the nominal interval as stalls
 let _maxStallMs = 0;
 if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
   let lastBeat = performance.now();
+  // A hidden window throttles (or, on system sleep, pauses) background
+  // timers, so the gap across a hide/sleep is NOT a main-thread stall —
+  // recording it would inflate maxStallMs and corrupt the evidence this
+  // dump exists to provide. Skip ticks while hidden, and re-baseline on
+  // the hidden -> visible transition so the wake gap isn't logged.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') lastBeat = performance.now();
+  });
   setInterval(() => {
     const t = performance.now();
     const gap = t - lastBeat;
     lastBeat = t;
+    if (document.visibilityState !== 'visible') return; // throttled, not blocked
     if (gap > HEARTBEAT_MS * STALL_FACTOR) {
       if (gap > _maxStallMs) _maxStallMs = gap;
       scrollTrace.count('heartbeatStalls');
