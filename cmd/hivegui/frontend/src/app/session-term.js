@@ -829,6 +829,25 @@ export class SessionTerm {
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
         this._replayBaselineCols = this.term.cols;
+        // Skip the replay entirely while the session is on the ALTERNATE
+        // screen (claude/codex/pi and other full-screen TUIs). The alt
+        // buffer has no user-facing scrollback, and the program repaints
+        // itself in response to the SIGWINCH from ResizeSession above — so a
+        // replay here would re-stream the daemon's entire raw byte ring
+        // (megabytes of historical full-screen repaints, growing toward the
+        // 8 MB ring cap on a long-lived session) into a single synchronous
+        // xterm parse, freezing the renderer for seconds, to repaint a screen
+        // the TUI already redrew. Checked at fire time (not when the resize
+        // landed) so a freshly-attached session that has since entered the
+        // alt screen via its snapshot is caught too. Normal-buffer sessions
+        // (shells with real scrollback) are unaffected and still replay.
+        if (this.term.buffer.active.type === 'alternate') {
+          delete this._replayWantsBottom;
+          if (scrollTrace.rec.enabled) {
+            scrollTrace.rec('replay-skip-alt', { id: this.info.id, cols: this.term.cols });
+          }
+          return;
+        }
         if (scrollTrace.rec.enabled) {
           scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
         }
