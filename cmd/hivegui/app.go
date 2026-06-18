@@ -107,11 +107,10 @@ func NewApp(launchDir string) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// Opt out of macOS App Nap / activity-based timer throttling. Without
-	// this the OS can clamp the webview's timers to ~1 Hz and suspend
-	// rendering while it isn't frontmost, which presents as the GUI
-	// "freezing" (resize stops redrawing, menu changes don't reflect)
-	// even though the JS thread is alive. See internal/activity.
+	// Opt out of macOS App Nap / activity-based timer throttling. Defensive
+	// hygiene so a backgrounded webview keeps streaming PTY output and
+	// repainting — NOT the fix for the reported freeze (that was a synchronous
+	// full-ring scrollback replay; see session-term.js). See internal/activity.
 	activity.DisableThrottling()
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)

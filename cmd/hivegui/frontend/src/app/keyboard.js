@@ -50,7 +50,12 @@ window.addEventListener('keydown', (e) => {
     scrollTrace.count('keydown');
     const ae = document.activeElement;
     scrollTrace.rec('keydown', {
-      key: e.key,
+      // e.code (physical key: 'KeyA', 'ArrowDown', 'Enter'), NOT e.key — the
+      // trace is copied to the clipboard and frozen into localStorage, so
+      // logging the typed character would leak passwords / tokens into a
+      // pasted bug report. The physical key is all the probe needs (did the
+      // event arrive, was it a nav key, where was focus).
+      code: e.code,
       mods: `${e.metaKey ? 'M' : ''}${e.ctrlKey ? 'C' : ''}${e.altKey ? 'A' : ''}${e.shiftKey ? 'S' : ''}`,
       view: state.view,
       ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
@@ -309,7 +314,7 @@ function copyScrollTrace() {
   const dump = typeof window.__hive_dumpscroll === 'function'
     ? window.__hive_dumpscroll()
     : { enabled: false, ring: window.__hive_scrolltrace || [], lastJump: null };
-  SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy scroll trace'));
+  SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy debug trace'));
   const n = dump.ring?.length ?? 0;
   const body = dump.enabled
     ? `Copied ${n} trace event${n === 1 ? '' : 's'} to the clipboard.`

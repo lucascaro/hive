@@ -66,7 +66,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   regardless of how it was left; now it restores the mode you last
   used. Stored in `localStorage` under `hive.view`. (#187)
 
+### Changed
+
+- GUI: the Debug menu is relabeled "Toggle Debug Trace" / "Copy Debug
+  Trace" (was "Scroll Debug" / "Scroll Trace"); the captured trace now
+  covers grid relayout, focus, keydown routing, a main-thread heartbeat,
+  and inbound daemon traffic — not just scrolling.
+
 ### Fixed
+
+- GUI: full-screen agent sessions (claude/codex/pi and other alternate-
+  screen TUIs) no longer freeze for seconds on resize or a single↔grid
+  toggle. Such a resize requested a full scrollback replay — the daemon
+  re-streams its entire raw byte ring (toward an 8 MB cap on a long-lived
+  session) and the GUI parsed it in one synchronous write — but the
+  alternate screen has no user-facing scrollback and the program repaints
+  itself from SIGWINCH, so the replay was pure cost. It is now skipped on
+  the alternate screen; normal-buffer (shell) sessions still replay.
 
 - GUI: scrollback replays no longer destroy the reading position
   ("scrolling jumps around with codex"). When a window resize, sidebar

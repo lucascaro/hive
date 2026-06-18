@@ -21,6 +21,26 @@ export function shouldRequestReplay(prevCols, nextCols, threshold = REPLAY_COL_T
   return Math.abs(nextCols - prevCols) >= threshold;
 }
 
+// decideResizeReplay runs at replay-debounce fire time, once a resize has
+// already passed shouldRequestReplay. It answers two coupled questions:
+// whether to actually send the replay, and what the new replay baseline is.
+//
+//   - alternate screen (claude/codex/pi and other full-screen TUIs): SKIP.
+//     The alt buffer has no user-facing scrollback, and the program repaints
+//     itself from the SIGWINCH ResizeSession already sent — so replaying the
+//     daemon's whole raw byte ring (multi-MB on a long-lived session, toward
+//     the 8 MB cap) would freeze the renderer for seconds to repaint a screen
+//     the TUI already redrew. Crucially the baseline is LEFT UNCHANGED: the
+//     normal-buffer scrollback may be wrapped at the old width, and there is
+//     no alt→normal re-sync handler, so keeping the old baseline lets the next
+//     normal-buffer resize still cross the threshold and send the corrective
+//     replay.
+//   - normal screen: replay, and advance the baseline to the new width.
+export function decideResizeReplay({ bufferType, cols, baselineCols }) {
+  if (bufferType === 'alternate') return { replay: false, baseline: baselineCols };
+  return { replay: true, baseline: cols };
+}
+
 // Handle one EventScrollback{Begin,Done} payload by mutating the
 // session-term object accordingly. Extracted from main.js so the
 // state machine can be unit-tested against a mock term object
