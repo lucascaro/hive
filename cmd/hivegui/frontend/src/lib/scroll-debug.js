@@ -19,7 +19,16 @@ export function createScrollTrace({ enabled, now, cap = SCROLL_TRACE_CAP }) {
     if (ring.length > cap) ring.splice(0, ring.length - cap);
   }
   rec.enabled = enabled;
-  return { rec, ring };
+  // Monotonic counters that survive ring rotation. Under a render/focus
+  // storm the 2000-entry ring fills in ~1s and the early evidence scrolls
+  // away; the counters keep the totals (how many renderGrid calls, focus
+  // re-applies, heartbeat stalls, …) legible in any later dump.
+  const counters = Object.create(null);
+  function count(name, by = 1) {
+    if (!enabled) return;
+    counters[name] = (counters[name] || 0) + by;
+  }
+  return { rec, ring, count, counters };
 }
 
 // Classify a single viewport move for the scroll-jump auto-detector.

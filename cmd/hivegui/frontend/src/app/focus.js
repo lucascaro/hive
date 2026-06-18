@@ -8,6 +8,7 @@ import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from '../lib/focus.js';
 import { anyModalOpen } from './modals/registry.js';
+import { scrollTrace } from './trace.js';
 
 let deps = {
   ensureTerm: () => {},
@@ -123,6 +124,20 @@ export function setFocusedTile(id) {
 function applyFocus(id, attempt) {
   const st = state.terms.get(id);
   if (!st) { sweepFocusBorder(); return; }
+  // Freeze probe: count + record every focus-drive attempt. Several
+  // setFocusedTile() calls fire during a grid switch and each arms an
+  // 8-frame rAF retry chain; in grid mode with many tiles those chains
+  // overlap and can hammer focus() every frame. A focusApply count that
+  // dwarfs the renderGrid count — or focus-apply events that never stop
+  // — would mark the focus reconciliation loop as the storm source.
+  if (scrollTrace.rec.enabled) {
+    scrollTrace.count('focusApply');
+    const ae = document.activeElement;
+    scrollTrace.rec('focus-apply', {
+      id, attempt, view: state.view,
+      ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
+    });
+  }
   const action = decideFocusAction(focusSnapshot(id));
   if (action.kind === ACTION_CLEAR || action.kind === ACTION_PRESERVE) {
     sweepFocusBorder();

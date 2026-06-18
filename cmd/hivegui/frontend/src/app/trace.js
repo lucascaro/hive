@@ -33,15 +33,62 @@ export function snapshotScrollJump() {
   } catch { /* storage unavailable — the live ring is still dumpable */ }
 }
 
+// ---------- main-thread heartbeat watchdog ----------
+//
+// A freeze has two very different shapes, and the fix differs completely:
+//   1. The main thread is BLOCKED (a busy rAF/ResizeObserver storm, or a
+//      synchronous loop) — keystrokes, paints and timers all stall.
+//   2. The thread is HEALTHY but keyboard focus was lost — the app paints
+//      and the menu works, yet typed keys land on <body> and vanish.
+// Both look identical to a user ("frozen, but the menu still works"),
+// because the native menu runs in the main process either way.
+//
+// A setInterval callback can only run when the main thread yields, so the
+// gap between consecutive ticks measures how long the thread was blocked.
+// Under shape (1) the gap balloons far past the interval; under shape (2)
+// the heartbeat stays smooth. That split is the first question any dump of
+// this trace should answer — so it's recorded before anything else.
+const HEARTBEAT_MS = 250;
+const STALL_FACTOR = 2; // only record gaps > 2x the nominal interval as stalls
+let _maxStallMs = 0;
+if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
+  let lastBeat = performance.now();
+  setInterval(() => {
+    const t = performance.now();
+    const gap = t - lastBeat;
+    lastBeat = t;
+    if (gap > HEARTBEAT_MS * STALL_FACTOR) {
+      if (gap > _maxStallMs) _maxStallMs = gap;
+      scrollTrace.count('heartbeatStalls');
+      const ae = document.activeElement;
+      scrollTrace.rec('heartbeat-stall', {
+        // How long the main thread was unresponsive, in ms.
+        gap: Math.round(gap),
+        // The view + focus target AT the stall: was it grid mode, and was
+        // keyboard focus on a terminal textarea or stranded on <body>?
+        grid: !!document.getElementById('terms')?.classList.contains('grid'),
+        ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
+      });
+    }
+  }, HEARTBEAT_MS);
+}
+
 if (typeof window !== 'undefined') {
   window.__hive_scrolltrace = scrollTrace.ring;
   // Operator-facing dump handle: returns the full live ring plus the
-  // frozen last-jump window, and best-effort copies the JSON to the
+  // frozen last-jump window, the rotation-proof counters, and the worst
+  // observed main-thread stall. Best-effort copies the JSON to the
   // clipboard so a user hitting the bug can paste it straight back.
   window.__hive_dumpscroll = () => {
     let lastJump = null;
     try { lastJump = JSON.parse(localStorage.getItem(LASTJUMP_KEY) || 'null'); } catch { /* ignore */ }
-    const dump = { enabled: scrollTrace.rec.enabled, ring: scrollTrace.ring.slice(), lastJump };
+    const dump = {
+      enabled: scrollTrace.rec.enabled,
+      ring: scrollTrace.ring.slice(),
+      lastJump,
+      counters: { ...scrollTrace.counters },
+      maxStallMs: Math.round(_maxStallMs),
+    };
     try { navigator.clipboard?.writeText(JSON.stringify(dump)); } catch { /* clipboard may be denied */ }
     return dump;
   };

@@ -129,6 +129,7 @@ let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] 
 // current grid scope. Tiles for other sessions are hidden but kept
 // alive (so their xterm scrollback persists across mode switches).
 export function renderGrid() {
+  const _t0 = deps.scrollTrace.rec.enabled ? performance.now() : 0;
   termsHost.classList.remove('single');
   termsHost.classList.add('grid');
   const gridSessions = gridScopeSessions();
@@ -181,6 +182,18 @@ export function renderGrid() {
   }
 
   gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
+
+  // Freeze probe: count + time each layout pass. A runaway count (the
+  // container ResizeObserver → renderGrid → tile fit → container resize
+  // feedback loop) or a single multi-hundred-ms pass points straight at
+  // the grid relayout as the stall source. dur is the synchronous cost
+  // of this pass; ms is wall-clock so a storm shows as tight spacing.
+  if (deps.scrollTrace.rec.enabled) {
+    deps.scrollTrace.count('renderGrid');
+    deps.scrollTrace.rec('render-grid', {
+      n, rows, cols, dur: Math.round(performance.now() - _t0),
+    });
+  }
 
   // No explicit refit pass: each tile's ResizeObserver fires when its
   // body box changes (CSS grid cell resized, in-grid class toggled,
@@ -471,6 +484,11 @@ export function setView(view) {
 // warning that fires when a callback synchronously mutates layout.
 let _gridReflowQueued = false;
 new ResizeObserver(() => {
+  // Freeze probe: count every container RO firing (including the ones
+  // coalesced away by the queued guard). If this races far ahead of the
+  // render-grid count, the container is being resized in a tight loop —
+  // the classic ResizeObserver feedback storm.
+  if (deps.scrollTrace.rec.enabled) deps.scrollTrace.count('gridContainerResize');
   if (state.view === 'single' || _gridReflowQueued) return;
   _gridReflowQueued = true;
   requestAnimationFrame(() => {
