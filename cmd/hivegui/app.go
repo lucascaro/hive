@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
+	"github.com/lucascaro/hive/internal/activity"
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
@@ -38,8 +39,8 @@ type App struct {
 	haveInitialPos     bool
 
 	mu       sync.Mutex
-	control  *connState                // control connection (or nil)
-	attaches map[string]*connState     // session id → attach connection
+	control  *connState            // control connection (or nil)
+	attaches map[string]*connState // session id → attach connection
 
 	// openMu serializes OpenSession calls. Without it, two concurrent
 	// OpenSession(id) calls both observe an empty attaches[id], both
@@ -106,6 +107,12 @@ func NewApp(launchDir string) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Opt out of macOS App Nap / activity-based timer throttling. Without
+	// this the OS can clamp the webview's timers to ~1 Hz and suspend
+	// rendering while it isn't frontmost, which presents as the GUI
+	// "freezing" (resize stops redrawing, menu changes don't reflect)
+	// even though the JS thread is alive. See internal/activity.
+	activity.DisableThrottling()
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
 	}
