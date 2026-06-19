@@ -2,6 +2,10 @@
 // driven replay logic in main.js can be unit-tested without dragging
 // xterm.js or the Wails bridge into jsdom.
 
+// A viewport within this many lines of the bottom counts as "at the
+// bottom". Tolerates TUIs (codex etc.) that park a line or two short.
+const STICKY_BOTTOM_LINES = 2;
+
 // Column-count change that warrants a fresh scrollback replay. Picked
 // to ignore minor font-kerning jitter while still firing on single ↔
 // grid transitions (which typically change cols by tens of columns).
@@ -176,7 +180,12 @@ export function handleScrollbackEvent(st, kind, trace) {
         // finish even when events interleave.
         const fromBottom = st._replayPrevFromBottom;
         delete st._replayPrevFromBottom;
-        if (wantsBottom) {
+        // Respect _followBottom: only snap to bottom if the user was
+        // actually following. If they scrolled up (even mid-replay),
+        // restore their reading position instead of yanking them back.
+        // This prevents the replay-done handler from overriding the
+        // user's scroll intent — the root cause of the scroll-jump bug.
+        if (wantsBottom && st._followBottom) {
           if (typeof st.term.scrollToBottom === 'function') st.term.scrollToBottom();
           // Replay landed at the bottom — keep following. (Without this,
           // a stale _followBottom=false could survive a snap-to-bottom.)
@@ -196,14 +205,21 @@ export function handleScrollbackEvent(st, kind, trace) {
         // history near where they were instead of at the bottom.
         const buf = st.term.buffer?.active;
         let target;
-        if (typeof fromBottom === 'number' && buf && typeof st.term.scrollToLine === 'function') {
+        // Only restore when fromBottom > 0: the user was scrolled up
+        // BEFORE the replay started. If fromBottom is 0 (user was at
+        // bottom at replay start) and _followBottom is false (they
+        // scrolled up mid-replay), do not yank them back — that would
+        // reintroduce the scroll-jump we are fixing.
+        if (typeof fromBottom === 'number'
+          && fromBottom > 0
+          && buf
+          && typeof st.term.scrollToLine === 'function') {
           target = Math.max(0, buf.baseY - fromBottom);
           st.term.scrollToLine(target);
-          // Only un-follow when a restore ACTUALLY moved the viewport into
-          // history. Latching false unconditionally here would strand a
-          // user who has since scrolled back to the bottom while a stale
-          // wants=false replay was still in flight (no scrollToLine ran).
-          st._followBottom = false;
+          // Set _followBottom based on where the restore actually landed,
+          // not on the pre-replay fromBottom value (which may be stale if
+          // the user scrolled during the replay).
+          st._followBottom = buf.baseY - buf.viewportY <= STICKY_BOTTOM_LINES;
         }
         if (trace) {
           trace('replay-restore', {

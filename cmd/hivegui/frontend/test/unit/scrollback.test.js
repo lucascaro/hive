@@ -79,11 +79,18 @@ describe('handleScrollbackEvent', () => {
   function makeSt({ baseY = 0, viewportY = 0 } = {}) {
     const queue = [];
     const order = [];
+    // Shared buffer object so scrollToLine can mutate viewportY
+    // from within the term object literal (where `st` isn't in scope yet).
+    const buf = { active: { baseY, viewportY } };
     const term = {
-      buffer: { active: { baseY, viewportY } },
+      buffer: buf,
       reset: vi.fn(() => order.push('reset')),
       scrollToBottom: vi.fn(() => order.push('scrollToBottom')),
-      scrollToLine: vi.fn((n) => order.push(`scrollToLine:${n}`)),
+      scrollToLine: vi.fn((n) => {
+        order.push(`scrollToLine:${n}`);
+        // xterm's scrollToLine sets viewportY synchronously
+        buf.active.viewportY = n;
+      }),
       write: vi.fn((data, cb) => {
         queue.push({ data, cb });
         if (data) order.push(`parse:${data}`);
@@ -187,6 +194,7 @@ describe('handleScrollbackEvent', () => {
 
   it('done snaps to bottom by default — after the queue is parsed', () => {
     const { st, flush } = makeSt();
+    st._followBottom = true; // replay-done checks _followBottom
     expect(handleScrollbackEvent(st, 'scrollback_replay_done')).toBe(true);
     expect(st.term.scrollToBottom).not.toHaveBeenCalled(); // not at event time
     flush();
@@ -196,6 +204,7 @@ describe('handleScrollbackEvent', () => {
 
   it('done snaps when _replayWantsBottom === true and clears the flag', () => {
     const { st, flush } = makeSt();
+    st._followBottom = true; // replay-done checks _followBottom
     st._replayWantsBottom = true;
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
@@ -237,6 +246,7 @@ describe('handleScrollbackEvent', () => {
     };
     handleScrollbackEvent(st, 'scrollback_replay_begin');
     expect(st.term.reset).toHaveBeenCalledTimes(1);
+    st._followBottom = true; // replay-done checks _followBottom
     handleScrollbackEvent(st, 'scrollback_replay_done');
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
   });
@@ -255,15 +265,48 @@ describe('handleScrollbackEvent', () => {
   });
 
   // _followBottom is the cap-trim fix's source of truth for "is the user
-  // at the bottom?" in _onBodyResize. A replay-done must keep it honest.
-  it('done with wants=true re-latches _followBottom = true (snap resumes following)', () => {
+  // at the bottom?" in _onBodyResize. A replay-done must respect it —
+  // this is the fix for the scroll-jump bug: the replay-done handler
+  // must not override the user's scroll intent by snapping to bottom.
+  it('done with wants=true AND _followBottom=true snaps to bottom', () => {
     const { st, flush } = makeSt();
-    st._followBottom = false; // user had been scrolled up
-    st._replayWantsBottom = true; // but this replay snaps to bottom
+    st._followBottom = true; // user was following
+    st._replayWantsBottom = true;
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
     expect(st._followBottom).toBe(true);
+  });
+
+  it('done with wants=true BUT _followBottom=false does NOT snap (scroll-jump fix)', () => {
+    const { st, flush } = makeSt();
+    st._followBottom = false; // user had scrolled up
+    st._replayWantsBottom = true; // replay wants bottom, but user intent wins
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    // _followBottom stays false — user was not following, restore path ran
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('mid-replay scroll: fromBottom=0 with _followBottom=false does NOT restore to bottom', () => {
+    // User was at bottom at replay start (baseY === viewportY → fromBottom=0),
+    // scrolled up mid-replay (_followBottom=false), replay finishes. The
+    // restore path must NOT call scrollToLine(baseY) which would yank them
+    // back — that's the scroll-jump we are fixing.
+    // Use baseY === viewportY so the begin handler's capture reads 0.
+    const { st, flush } = makeSt({ baseY: 50, viewportY: 50 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Capture reads 50 - 50 = 0 → fromBottom = 0
+    st._followBottom = false; // user scrolled up during replay
+    st._replayWantsBottom = true;
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 100; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // fromBottom is 0, so scrollToLine is skipped — viewport stays put
+    expect(st.term.scrollToLine).not.toHaveBeenCalled();
+    // _followBottom stays false
+    expect(st._followBottom).toBe(false);
   });
 
   it('done with wants=false un-follows ONLY when a restore actually ran', () => {
@@ -342,5 +385,195 @@ describe('shouldRequestReplay against baseline (debounce edge case)', () => {
     expect(shouldRequestReplay(baseline, 89)).toBe(true);
     expect(shouldRequestReplay(baseline, 83)).toBe(false);
     expect(shouldRequestReplay(baseline, 84)).toBe(true);
+  });
+});
+
+// ---------- scroll-jump regression tests ----------
+//
+// These tests cover the scroll-jump bug (viewport jumping to 0 during
+// replays) and the stale _followBottom bug (viewport not snapping to
+// bottom on initial attach when _followBottom was false from a previous
+// session). They serve as both documentation of the bugs and regression
+// guards — if someone changes the replay-done handler in the future,
+// these tests will catch regressions.
+
+describe('scroll-jump bug regression — viewport must not jump to 0 during replays', () => {
+  // The original bug: the replay-done handler called scrollToBottom()
+  // unconditionally, overriding _followBottom. This caused the viewport
+  // to jump to position 0 during replays (resize, attach, etc.) even
+  // when the user had scrolled up. The fix: check _followBottom before
+  // snapping to bottom.
+
+  it('replay with _followBottom=true snaps to bottom (user was following)', () => {
+    // Scenario: user is at bottom, heavy output triggers a resize replay.
+    // The replay should snap to bottom — user is following.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 5000 });
+    st._followBottom = true;
+    st._replayWantsBottom = true;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._followBottom).toBe(true);
+  });
+
+  it('replay with _followBottom=false does NOT snap (user scrolled up)', () => {
+    // Scenario: user scrolled up to read history, a resize triggers a
+    // replay. The replay must NOT snap to bottom — user intent wins.
+    // This is the core scroll-jump fix.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 4800 });
+    st._followBottom = false; // user scrolled up
+    st._replayWantsBottom = true; // replay wants bottom
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    // _followBottom stays false — user was not following
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('replay with _followBottom=false and fromBottom=0 does NOT yank to bottom', () => {
+    // Scenario: user was at bottom when replay started (fromBottom=0),
+    // scrolled up mid-replay (_followBottom=false), replay finishes.
+    // The restore path must NOT call scrollToLine(baseY) which would
+    // yank them back to bottom — that's the scroll-jump.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 5000 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Capture reads 5000 - 5000 = 0 → fromBottom = 0
+    st._followBottom = false; // scrolled up mid-replay
+    st._replayWantsBottom = true;
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // fromBottom is 0, so scrollToLine is skipped — viewport stays put
+    expect(st.term.scrollToLine).not.toHaveBeenCalled();
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('replay with _followBottom=false and fromBottom>0 restores correct position', () => {
+    // Scenario: user scrolled up BEFORE the replay started (fromBottom>0),
+    // replay finishes. The restore should put them back at their position.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 4700 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Capture reads 5000 - 4700 = 300 → fromBottom = 300
+    st._followBottom = false; // user scrolled up before replay
+    st._replayWantsBottom = false;
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // Restore: target = 5000 - 300 = 4700
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(4700);
+    // After restore, user is at 4700, distance from bottom = 300 > 2
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('replay with _followBottom=false and fromBottom>0 snaps to bottom when restore lands there', () => {
+    // Scenario: user scrolled up slightly before replay (fromBottom=1),
+    // restore lands at bottom (baseY - 1 is at bottom). _followBottom
+    // should be set to true after restore.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 4999 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Capture reads 5000 - 4999 = 1 → fromBottom = 1
+    st._followBottom = false;
+    st._replayWantsBottom = false;
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // Restore: target = 5000 - 1 = 4999
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(4999);
+    // After restore, viewportY = 4999, baseY = 5000, distance = 1 <= 2
+    expect(st._followBottom).toBe(true);
+  });
+});
+
+describe('stale _followBottom bug — initial attach must snap to bottom', () => {
+  // The stale _followBottom bug: when a user scrolled up in a previous
+  // session, _followBottom was false when they reopened Hive. The initial
+  // attach replay then skipped snap-to-bottom, landing the viewport in
+  // the middle instead of the bottom. The fix: reset _followBottom = true
+  // in ensureAttached() before OpenSession().
+  //
+  // These tests verify the scrollback.js side: when _followBottom is
+  // true (as it should be after the ensureAttached fix), the replay
+  // snaps to bottom.
+
+  it('initial attach replay snaps to bottom when _followBottom=true', () => {
+    // This is what happens after the ensureAttached fix sets
+    // _followBottom = true before OpenSession().
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 5000 });
+    st._followBottom = true; // set by ensureAttached fix
+    st._replayWantsBottom = true; // default for initial attach
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._followBottom).toBe(true);
+  });
+
+  it('initial attach replay with _followBottom=false would NOT snap (regression guard)', () => {
+    // This test documents the bug scenario: if _followBottom is false
+    // (e.g., ensureAttached fix is missing), the replay would NOT snap.
+    // The ensureAttached fix prevents this by setting _followBottom = true.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 5000 });
+    st._followBottom = false; // stale from previous session (bug)
+    st._replayWantsBottom = true;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    // This is the BUG: viewport stays at 0 instead of snapping to bottom.
+    // The ensureAttached fix prevents _followBottom from being false here.
+    expect(st._followBottom).toBe(false);
+  });
+
+  it('resize replay respects user scroll state (not affected by stale _followBottom)', () => {
+    // Resize replays should use the user's CURRENT scroll state, not
+    // a stale value. If the user scrolled up before a resize, the
+    // replay should restore their position.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 4500 });
+    handleScrollbackEvent(st, 'scrollback_replay_begin');
+    // Capture reads 5000 - 4500 = 500 → fromBottom = 500
+    st._followBottom = false; // user scrolled up before resize
+    st._replayWantsBottom = true; // resize replay wants bottom
+    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    // _followBottom is false, so no snap — user stays scrolled up
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    // fromBottom is 500 > 0, so scrollToLine is called
+    expect(st.term.scrollToLine).toHaveBeenCalledWith(4500);
+  });
+});
+
+describe('scroll-jump: heavy output at scrollback cap', () => {
+  // Scenario: heavy agent output at the scrollback cap causes xterm to
+  // cap-trim (pin baseY at the cap while viewportY drifts). The re-pin
+  // logic in onScroll must keep a FOLLOWING viewport glued to the bottom
+  // for the WHOLE replay restream.
+
+  it('replay with _replaysInFlight>0 and _followBottom=true stays at bottom', () => {
+    // During a replay, the re-pin logic in onScroll keeps the viewport
+    // at bottom when _followBottom is true. The replay-done handler
+    // should also snap to bottom.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 5000 });
+    st._followBottom = true;
+    st._replaysInFlight = 1; // replay in progress
+    st._replayWantsBottom = true;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).toHaveBeenCalledTimes(1);
+    expect(st._replaysInFlight).toBe(0);
+    expect(st._followBottom).toBe(true);
+  });
+
+  it('replay with _replaysInFlight>0 and _followBottom=false does NOT snap', () => {
+    // During a replay, if the user scrolled up (_followBottom=false),
+    // the re-pin logic doesn't fire, and the replay-done handler
+    // should not snap to bottom either.
+    const { st, flush } = makeSt({ baseY: 5000, viewportY: 4800 });
+    st._followBottom = false; // user scrolled up during replay
+    st._replaysInFlight = 1;
+    st._replayWantsBottom = true;
+    handleScrollbackEvent(st, 'scrollback_replay_done');
+    flush();
+    expect(st.term.scrollToBottom).not.toHaveBeenCalled();
+    expect(st._replaysInFlight).toBe(0);
+    expect(st._followBottom).toBe(false);
   });
 });
