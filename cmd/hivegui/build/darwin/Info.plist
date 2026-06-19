@@ -21,6 +21,15 @@
         <string>10.13.0</string>
         <key>NSHighResolutionCapable</key>
         <string>true</string>
+        <!-- Disable macOS App Nap. This is DEFENSIVE hygiene, not the fix for
+             the "GUI frozen" reports — that turned out to be a synchronous
+             full-ring scrollback replay (see internal/session/vt.go ringCap
+             and the alt-screen replay skip in session-term.js). App Nap can
+             still clamp a backgrounded webview's timers to ~1 Hz, and a
+             terminal multiplexer must keep streaming PTY output and repainting
+             even when it isn't the foreground app, so we opt out regardless. -->
+        <key>NSAppSleepDisabled</key>
+        <true/>
         <key>NSHumanReadableCopyright</key>
         <string>{{.Info.Copyright}}</string>
         {{if .Info.FileAssociations}}

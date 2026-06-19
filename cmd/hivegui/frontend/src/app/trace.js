@@ -51,6 +51,21 @@ export function snapshotScrollJump() {
 const HEARTBEAT_MS = 250;
 const STALL_FACTOR = 2; // only record gaps > 2x the nominal interval as stalls
 let _maxStallMs = 0;
+// Standing window state at this instant. The first freeze capture showed
+// zero keydowns and maxStallMs=0 (thread never blocked) while rAF was
+// throttled to ~1fps — the signature of an OS-occluded / unfocused window
+// rather than a busy loop. So every freeze probe now carries whether the
+// page is visible and whether the webview actually holds OS key focus.
+function winState() {
+  const ae = document.activeElement;
+  return {
+    vis: document.visibilityState,
+    hasFocus: typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    grid: !!document.getElementById('terms')?.classList.contains('grid'),
+    ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
+  };
+}
+
 if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
   let lastBeat = performance.now();
   // A hidden window throttles (or, on system sleep, pauses) background
@@ -60,24 +75,32 @@ if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
   // the hidden -> visible transition so the wake gap isn't logged.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') lastBeat = performance.now();
+    scrollTrace.rec('visibility', winState());
   });
+  // Record the exact moment the webview gains/loses OS key focus. If keys
+  // go dead the instant a 'win-blur' fires (and never recover), the freeze
+  // is the window losing focus — not anything in the app's JS.
+  window.addEventListener('focus', () => scrollTrace.rec('win-focus', winState()));
+  window.addEventListener('blur', () => scrollTrace.rec('win-blur', winState()));
+  let beat = 0;
   setInterval(() => {
     const t = performance.now();
     const gap = t - lastBeat;
     lastBeat = t;
+    beat += 1;
+    // Low-rate alive beacon (~every 2s) — records the standing window state
+    // even when nothing else fires, so a long freeze shows whether the
+    // window sat hidden/unfocused the whole time. Recorded regardless of
+    // visibility (a hidden window is exactly what we want to catch here).
+    if (beat % 8 === 0) scrollTrace.rec('alive', winState());
     if (document.visibilityState !== 'visible') return; // throttled, not blocked
     if (gap > HEARTBEAT_MS * STALL_FACTOR) {
       if (gap > _maxStallMs) _maxStallMs = gap;
       scrollTrace.count('heartbeatStalls');
-      const ae = document.activeElement;
-      scrollTrace.rec('heartbeat-stall', {
-        // How long the main thread was unresponsive, in ms.
-        gap: Math.round(gap),
-        // The view + focus target AT the stall: was it grid mode, and was
-        // keyboard focus on a terminal textarea or stranded on <body>?
-        grid: !!document.getElementById('terms')?.classList.contains('grid'),
-        ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
-      });
+      // How long the main thread was unresponsive, plus the window state at
+      // the stall (grid? focus on a terminal textarea or stranded on body?
+      // did the webview even hold OS focus?).
+      scrollTrace.rec('heartbeat-stall', { gap: Math.round(gap), ...winState() });
     }
   }, HEARTBEAT_MS);
 }

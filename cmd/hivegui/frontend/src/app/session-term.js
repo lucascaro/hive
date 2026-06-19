@@ -22,7 +22,7 @@ import {
   shouldRefreshOnVisibility, recoverFromContextLoss, bindDprWatcher,
 } from '../lib/renderer-recovery.js';
 import {
-  shouldRequestReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
+  shouldRequestReplay, decideResizeReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
 } from '../lib/scrollback.js';
 import { scrollTrace, snapshotScrollJump } from './trace.js';
 import { classifyViewportMove } from '../lib/scroll-debug.js';
@@ -828,7 +828,26 @@ export class SessionTerm {
       this._replayWantsBottom = wasAtBottom;
       this._replayTimer = setTimeout(() => {
         this._replayTimer = 0;
-        this._replayBaselineCols = this.term.cols;
+        // Skip the replay while on the ALTERNATE screen (full-screen TUIs):
+        // no user-facing scrollback there, the program repaints from SIGWINCH,
+        // and re-streaming the multi-MB ring would freeze the renderer. The
+        // decision (and whether to advance the baseline) lives in a pure
+        // helper so the skip + baseline-untouched behavior is unit-tested.
+        // Checked at fire time so a just-attached session that has since
+        // entered the alt screen via its snapshot is caught too.
+        const { replay, baseline } = decideResizeReplay({
+          bufferType: this.term.buffer.active.type,
+          cols: this.term.cols,
+          baselineCols: this._replayBaselineCols,
+        });
+        this._replayBaselineCols = baseline;
+        if (!replay) {
+          delete this._replayWantsBottom;
+          if (scrollTrace.rec.enabled) {
+            scrollTrace.rec('replay-skip-alt', { id: this.info.id, cols: this.term.cols });
+          }
+          return;
+        }
         if (scrollTrace.rec.enabled) {
           scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
         }

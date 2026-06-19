@@ -264,6 +264,22 @@ export function wireDaemonEvents(injected) {
   });
 
   EventsOn('pty:data', (id, b64) => {
+    // Daemon-traffic probe: is the freeze the daemon flooding us? Count
+    // every inbound frame + (base64) byte volume, and drop a timestamped
+    // checkpoint every 200 frames so a flood shows as a steep bytes/sec
+    // slope to line up against the heartbeat-stall timestamps. Cheap and
+    // gated; counters ride the dump (rotation-proof) so the total survives
+    // even when the ring churns under a flood.
+    if (deps.scrollTrace.rec.enabled) {
+      deps.scrollTrace.count('ptyFrames');
+      deps.scrollTrace.count('ptyB64Bytes', b64 ? b64.length : 0);
+      if ((deps.scrollTrace.counters.ptyFrames % 200) === 0) {
+        deps.scrollTrace.rec('pty-checkpoint', {
+          frames: deps.scrollTrace.counters.ptyFrames,
+          b64Bytes: deps.scrollTrace.counters.ptyB64Bytes,
+        });
+      }
+    }
     state.terms.get(id)?.writeData(b64);
   });
 
@@ -280,6 +296,11 @@ export function wireDaemonEvents(injected) {
       // and EmitAtomicReplay.
       if (deps.scrollTrace.rec.enabled) {
         const buf = st.term?.buffer?.active;
+        // Count replay events by kind too: a daemon stuck re-streaming the
+        // scrollback ring shows up as a runaway scrollback_replay_begin
+        // count (the #222/#228/#232 suspects), distinct from a raw data
+        // flood (ptyFrames). A storm here = the daemon is the freeze.
+        deps.scrollTrace.count('ptyEvent:' + ev.kind);
         deps.scrollTrace.rec(ev.kind, {
           id, viewportY: buf?.viewportY, baseY: buf?.baseY,
           wants: st._replayWantsBottom,

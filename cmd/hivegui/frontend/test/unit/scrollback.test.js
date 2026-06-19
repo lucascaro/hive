@@ -1,12 +1,33 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   shouldRequestReplay,
+  decideResizeReplay,
   REPLAY_COL_THRESHOLD,
   REPLAY_DEBOUNCE_MS,
   handleScrollbackEvent,
   applyRebaseline,
   abandonReplays,
 } from '../../src/lib/scrollback.js';
+
+describe('decideResizeReplay — alt-screen replay skip (freeze fix)', () => {
+  it('skips the replay on the alternate screen', () => {
+    expect(decideResizeReplay({ bufferType: 'alternate', cols: 100, baselineCols: 232 }).replay)
+      .toBe(false);
+  });
+
+  it('does NOT advance the baseline when skipping (so alt→normal still corrects)', () => {
+    // The bug this guards: advancing the baseline on a skipped alt-screen
+    // resize would let a later normal-buffer resize fall under the threshold,
+    // leaving normal scrollback wrapped at the old width forever.
+    expect(decideResizeReplay({ bufferType: 'alternate', cols: 100, baselineCols: 232 }).baseline)
+      .toBe(232);
+  });
+
+  it('replays and advances the baseline on the normal screen', () => {
+    expect(decideResizeReplay({ bufferType: 'normal', cols: 100, baselineCols: 232 }))
+      .toEqual({ replay: true, baseline: 100 });
+  });
+});
 
 describe('shouldRequestReplay', () => {
   it('returns true on grid → single (large widen)', () => {

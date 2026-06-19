@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>xterm reflow fixture</title>
+    <style>
+      html, body { margin: 0; background: #000; }
+      /* A real, sized container so xterm measures glyphs and renders for real
+         (the thing jsdom can't do — which is why reflow must be checked here). */
+      #term { width: 900px; height: 320px; }
+    </style>
+  </head>
+  <body>
+    <div id="term"></div>
+    <script type="module" src="./xterm-reflow.js"></script>
+  </body>
+</html>
