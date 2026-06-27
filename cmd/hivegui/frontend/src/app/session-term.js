@@ -885,6 +885,11 @@ export class SessionTerm {
       return;
     }
     this.fit.fit();
+    // Reset _followBottom on attach: it may be stale from a previous
+    // session (user scrolled up, closed Hive, reopened). The initial
+    // attach replay must snap to bottom — _followBottom = true ensures
+    // the replay-done handler doesn't skip the snap via the restore path.
+    this._followBottom = true;
     try {
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
       this.attached = true;
