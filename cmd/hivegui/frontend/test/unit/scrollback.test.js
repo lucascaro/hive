@@ -9,6 +9,43 @@ import {
   abandonReplays,
 } from '../../src/lib/scrollback.js';
 
+// Mock term with an xterm-like async write queue: write(data, cb)
+// enqueues; flush() "parses" entries in order, firing callbacks.
+// This models the property the handler now depends on — reset and
+// viewport placement are parse-ordered, not event-ordered. Shared at
+// module scope so every describe block below can build a mock term.
+function makeSt({ baseY = 0, viewportY = 0 } = {}) {
+  const queue = [];
+  const order = [];
+  // Shared buffer object so scrollToLine can mutate viewportY
+  // from within the term object literal (where `st` isn't in scope yet).
+  const buf = { active: { baseY, viewportY } };
+  const term = {
+    buffer: buf,
+    reset: vi.fn(() => order.push('reset')),
+    scrollToBottom: vi.fn(() => order.push('scrollToBottom')),
+    scrollToLine: vi.fn((n) => {
+      order.push(`scrollToLine:${n}`);
+      // xterm's scrollToLine sets viewportY synchronously
+      buf.active.viewportY = n;
+    }),
+    write: vi.fn((data, cb) => {
+      queue.push({ data, cb });
+      if (data) order.push(`parse:${data}`);
+    }),
+  };
+  const flush = () => {
+    while (queue.length) {
+      const entry = queue.shift();
+      // A real parser would consume entry.data here; our `order`
+      // log records data entries at enqueue time which is fine for
+      // relative ordering because flush preserves queue order.
+      entry.cb?.();
+    }
+  };
+  return { st: { term, decoder: new TextDecoder('utf-8') }, flush, order, queue };
+}
+
 describe('decideResizeReplay — alt-screen replay skip (freeze fix)', () => {
   it('skips the replay on the alternate screen', () => {
     expect(decideResizeReplay({ bufferType: 'alternate', cols: 100, baselineCols: 232 }).replay)
@@ -72,42 +109,6 @@ describe('debounce timing constant', () => {
 });
 
 describe('handleScrollbackEvent', () => {
-  // Mock term with an xterm-like async write queue: write(data, cb)
-  // enqueues; flush() "parses" entries in order, firing callbacks.
-  // This models the property the handler now depends on — reset and
-  // viewport placement are parse-ordered, not event-ordered.
-  function makeSt({ baseY = 0, viewportY = 0 } = {}) {
-    const queue = [];
-    const order = [];
-    // Shared buffer object so scrollToLine can mutate viewportY
-    // from within the term object literal (where `st` isn't in scope yet).
-    const buf = { active: { baseY, viewportY } };
-    const term = {
-      buffer: buf,
-      reset: vi.fn(() => order.push('reset')),
-      scrollToBottom: vi.fn(() => order.push('scrollToBottom')),
-      scrollToLine: vi.fn((n) => {
-        order.push(`scrollToLine:${n}`);
-        // xterm's scrollToLine sets viewportY synchronously
-        buf.active.viewportY = n;
-      }),
-      write: vi.fn((data, cb) => {
-        queue.push({ data, cb });
-        if (data) order.push(`parse:${data}`);
-      }),
-    };
-    const flush = () => {
-      while (queue.length) {
-        const entry = queue.shift();
-        // A real parser would consume entry.data here; our `order`
-        // log records data entries at enqueue time which is fine for
-        // relative ordering because flush preserves queue order.
-        entry.cb?.();
-      }
-    };
-    return { st: { term, decoder: new TextDecoder('utf-8') }, flush, order, queue };
-  }
-
   it('begin refreshes the decoder immediately (decode order is event order)', () => {
     const { st } = makeSt();
     const beforeDecoder = st.decoder;
