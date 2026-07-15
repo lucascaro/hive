@@ -95,9 +95,7 @@ func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time)
 }
 
 type codexRolloutMatch struct {
-	path    string
-	uuid    string
-	modTime time.Time
+	path string
 }
 
 // scanCodexRollouts walks the sessions tree and returns every rollout
@@ -126,7 +124,7 @@ func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
 		if info.ModTime().Before(cutoff) {
 			return nil
 		}
-		out = append(out, codexRolloutMatch{path: path, uuid: m[1], modTime: info.ModTime()})
+		out = append(out, codexRolloutMatch{path: path})
 		return nil
 	})
 	return out

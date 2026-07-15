@@ -8,8 +8,6 @@ package agent
 import (
 	"context"
 	"os/exec"
-	"sort"
-	"sync"
 	"time"
 )
 
@@ -70,7 +68,6 @@ func (d Def) Available() bool {
 }
 
 var (
-	defsMu   sync.RWMutex
 	defsByID = map[ID]Def{
 		IDShell: {
 			ID:    IDShell,
@@ -161,42 +158,17 @@ var (
 
 // Get returns the def for id, or zero Def + false if unknown.
 func Get(id ID) (Def, bool) {
-	defsMu.RLock()
-	defer defsMu.RUnlock()
 	d, ok := defsByID[id]
 	return d, ok
 }
 
 // All returns every built-in agent in display order.
 func All() []Def {
-	defsMu.RLock()
-	defer defsMu.RUnlock()
 	out := make([]Def, 0, len(displayOrder))
 	for _, id := range displayOrder {
 		if d, ok := defsByID[id]; ok {
 			out = append(out, d)
 		}
 	}
-	return out
-}
-
-// Available returns the subset of agents whose binary is on PATH.
-// Useful for surfacing only-installed agents at the top of the menu.
-func Available() []Def {
-	all := All()
-	out := make([]Def, 0, len(all))
-	for _, d := range all {
-		if d.Available() {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
-// SortByName returns defs sorted alphabetically by display name.
-// Used when an alternative ordering is desired (e.g. command-palette).
-func SortByName(in []Def) []Def {
-	out := append([]Def(nil), in...)
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }

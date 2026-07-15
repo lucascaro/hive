@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/aymanbagabas/go-pty"
@@ -192,7 +193,7 @@ func (s *Session) readLoop() {
 
 // deliver applies one chunk of PTY output to the VT mirror and fans it
 // out to every active sink under a single critical section. Holding
-// s.mu across both steps is what makes SubscribeAtomicSnapshot's
+// s.mu across both steps is what makes SubscribeWithAtomicReplay's
 // "snapshot then live" guarantee actually atomic: a reattach either
 // sees the snapshot before this chunk (and receives it via fanout) or
 // after (and the chunk is in the snapshot but the new sink wasn't
@@ -225,36 +226,6 @@ func (s *Session) fanoutClose() {
 			_ = c.Close()
 		}
 		delete(s.sinks, sink)
-	}
-}
-
-// Subscribe registers a sink to receive future PTY output. Returns an
-// unsubscribe function. No replay is sent — callers that want atomic
-// "repaint then live" behavior should use SubscribeAtomicSnapshot.
-func (s *Session) Subscribe(sink Sink) func() {
-	s.mu.Lock()
-	s.sinks[sink] = struct{}{}
-	s.mu.Unlock()
-	return func() {
-		s.mu.Lock()
-		delete(s.sinks, sink)
-		s.mu.Unlock()
-	}
-}
-
-// SubscribeAtomicSnapshot returns a synthesized repaint of the current
-// visible state (via the VT mirror) AND registers the sink for live
-// updates under a single lock acquisition, so no PTY bytes are dropped
-// between the snapshot and the live stream becoming active.
-func (s *Session) SubscribeAtomicSnapshot(sink Sink) (snapshot []byte, unsubscribe func()) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	snapshot = s.vt.RenderSnapshot()
-	s.sinks[sink] = struct{}{}
-	return snapshot, func() {
-		s.mu.Lock()
-		delete(s.sinks, sink)
-		s.mu.Unlock()
 	}
 }
 
@@ -344,7 +315,7 @@ func shellEscape(argv []string) string {
 		}
 		ok := true
 		for j := 0; j < len(a); j++ {
-			if !contains(safe, a[j]) {
+			if strings.IndexByte(safe, a[j]) < 0 {
 				ok = false
 				break
 			}
@@ -417,15 +388,6 @@ func cmdExeEscape(argv []string) string {
 		out = append(out, '"')
 	}
 	return string(out)
-}
-
-func contains(s string, b byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == b {
-			return true
-		}
-	}
-	return false
 }
 
 func defaultShell() string {

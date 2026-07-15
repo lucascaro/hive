@@ -100,7 +100,7 @@ func TestUpdateProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
-	got := r.GetProject(p.ID)
+	got := r.projects[p.ID]
 	if got.Name != newName || got.Cwd != newCwd {
 		t.Errorf("after update: %+v", got)
 	}

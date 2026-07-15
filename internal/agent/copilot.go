@@ -89,9 +89,8 @@ func copilotCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Tim
 }
 
 type copilotSessionMatch struct {
-	path    string // <session-state>/<UUID>
-	uuid    string // directory basename, validated as UUID
-	modTime time.Time
+	path string // <session-state>/<UUID>
+	uuid string // directory basename, validated as UUID
 }
 
 // scanCopilotSessionDirs lists immediate subdirectories of root and
@@ -121,7 +120,7 @@ func scanCopilotSessionDirs(root string, cutoff time.Time) []copilotSessionMatch
 		if info.ModTime().Before(cutoff) {
 			continue
 		}
-		out = append(out, copilotSessionMatch{path: dirPath, uuid: name, modTime: info.ModTime()})
+		out = append(out, copilotSessionMatch{path: dirPath, uuid: name})
 	}
 	return out
 }

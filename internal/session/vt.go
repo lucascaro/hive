@@ -533,21 +533,6 @@ func rowsEqualTerm(glyphs []vt10x.Glyph, term vt10x.Terminal, y, cols int) bool 
 	return true
 }
 
-// glyphRowBlank reports whether every cell is empty space at default
-// attrs. Blank captured rows are skipped as match candidates to avoid
-// false positives where pre[k] and post[0] are both blank.
-func glyphRowBlank(glyphs []vt10x.Glyph) bool {
-	for _, g := range glyphs {
-		if g.Char != 0 && g.Char != ' ' {
-			return false
-		}
-		if g.Mode != 0 || g.FG != vt10x.DefaultFG || g.BG != vt10x.DefaultBG {
-			return false
-		}
-	}
-	return true
-}
-
 // termAllBlank reports whether every cell of the live terminal across
 // rows [0, rows) and cols [0, cols) is empty space at default attrs.
 // Used to bail out of the eviction heuristic when the post-write

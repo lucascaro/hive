@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,13 +29,6 @@ func (r *Registry) ListProjects() []wire.ProjectInfo {
 		}
 	}
 	return out
-}
-
-// GetProject returns the project with the given ID, or nil.
-func (r *Registry) GetProject(id string) *Project {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.projects[id]
 }
 
 // EnsureDefaultProject creates a project named "default" rooted at
@@ -117,15 +111,12 @@ func (r *Registry) MigrateOrphanSessions() {
 	if defID == "" {
 		return
 	}
-	dirty := false
 	for _, e := range r.entries {
 		if e.ProjectID == "" {
 			e.ProjectID = defID
 			r.persistEntryLoggedLocked(e, "migrate orphan sessions")
-			dirty = true
 		}
 	}
-	_ = dirty // currently no aggregate side-effect, but keep for clarity
 }
 
 // defaultProjectIDLocked must be called with r.mu held. Returns the
@@ -297,24 +288,10 @@ func (r *Registry) UpdateProject(req wire.UpdateProjectReq) (*Project, error) {
 }
 
 func (r *Registry) moveProjectLocked(id string, newOrder int) {
-	cur := -1
-	for i, s := range r.projectOrder {
-		if s == id {
-			cur = i
-			break
-		}
-	}
-	if cur < 0 {
+	if slices.Index(r.projectOrder, id) < 0 {
 		return
 	}
-	r.projectOrder = append(r.projectOrder[:cur], r.projectOrder[cur+1:]...)
-	if newOrder < 0 {
-		newOrder = 0
-	}
-	if newOrder > len(r.projectOrder) {
-		newOrder = len(r.projectOrder)
-	}
-	r.projectOrder = append(r.projectOrder[:newOrder], append([]string{id}, r.projectOrder[newOrder:]...)...)
+	r.projectOrder = moveInOrder(r.projectOrder, id, newOrder)
 	r.renumberProjectsLocked()
 }
 

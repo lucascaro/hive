@@ -180,6 +180,45 @@ func (a *App) saveGeometry() {
 
 // ----------------------------- control conn -----------------------------
 
+// dialHandshake dials the daemon socket (spawning hived if needed), sends
+// the given HELLO frame, and waits for WELCOME, closing the connection on
+// any failure. Mirrors the shape of hived-ws-bridge's dialHandshake helper
+// for the GUI's own control/attach call sites.
+func (a *App) dialHandshake(hello wire.Hello) (net.Conn, wire.Welcome, error) {
+	hello.Version = wire.PROTOCOL_VERSION
+	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
+	if err != nil {
+		return nil, wire.Welcome{}, err
+	}
+	if err := wire.WriteJSON(conn, wire.FrameHello, hello); err != nil {
+		_ = conn.Close()
+		return nil, wire.Welcome{}, fmt.Errorf("hello: %w", err)
+	}
+	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, wire.Welcome{}, fmt.Errorf("welcome: %w", err)
+	}
+	if ft == wire.FrameError {
+		_ = conn.Close()
+		var werr wire.Error
+		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
+			return nil, wire.Welcome{}, errors.New(werr.Message)
+		}
+		return nil, wire.Welcome{}, errors.New("daemon rejected connection")
+	}
+	if ft != wire.FrameWelcome {
+		_ = conn.Close()
+		return nil, wire.Welcome{}, fmt.Errorf("expected WELCOME, got %s", ft)
+	}
+	var welcome wire.Welcome
+	if err := json.Unmarshal(payload, &welcome); err != nil {
+		_ = conn.Close()
+		return nil, wire.Welcome{}, fmt.Errorf("welcome: %w", err)
+	}
+	return conn, welcome, nil
+}
+
 // ConnectControl opens (or reuses) the control connection. The
 // daemon will push an unsolicited SESSIONS snapshot followed by
 // SESSION_EVENT messages — these are forwarded to the frontend as
@@ -192,28 +231,14 @@ func (a *App) ConnectControl() error {
 	}
 	a.mu.Unlock()
 
-	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
-	if err != nil {
-		return err
-	}
-	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
+	conn, welcome, err := a.dialHandshake(wire.Hello{
 		Version: wire.PROTOCOL_VERSION,
 		Client:  "hivegui/0.2",
 		BuildID: buildinfo.BuildID(),
 		Mode:    wire.ModeControl,
-	}); err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("control hello: %w", err)
-	}
-	var welcome wire.Welcome
-	ft, err := wire.ReadJSON(conn, &welcome)
+	})
 	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("control welcome: %w", err)
-	}
-	if ft != wire.FrameWelcome {
-		_ = conn.Close()
-		return fmt.Errorf("control: expected WELCOME, got %s", ft)
+		return fmt.Errorf("control: %w", err)
 	}
 
 	cs := &connState{conn: conn}
@@ -598,40 +623,14 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	}
 	a.mu.Unlock()
 
-	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
+	conn, welcome, err := a.dialHandshake(wire.Hello{
 		Version:   wire.PROTOCOL_VERSION,
 		Client:    "hivegui/0.2",
 		Mode:      wire.ModeAttach,
 		SessionID: id,
-	}); err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("attach hello: %w", err)
-	}
-	ft, payload, err := wire.ReadFrame(conn)
+	})
 	if err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("attach welcome: %w", err)
-	}
-	if ft == wire.FrameError {
-		_ = conn.Close()
-		var werr wire.Error
-		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
-			return nil, fmt.Errorf("attach failed: %s", werr.Message)
-		}
-		return nil, errors.New("attach failed: daemon rejected attach")
-	}
-	if ft != wire.FrameWelcome {
-		_ = conn.Close()
-		return nil, fmt.Errorf("attach: unexpected frame %s", ft)
-	}
-	var welcome wire.Welcome
-	if err := json.Unmarshal(payload, &welcome); err != nil {
-		_ = conn.Close()
-		return nil, fmt.Errorf("attach welcome: %w", err)
+		return nil, fmt.Errorf("attach failed: %w", err)
 	}
 
 	cs := &connState{conn: conn}

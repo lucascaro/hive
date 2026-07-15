@@ -59,20 +59,22 @@ export function moveLauncherSelection(delta) {
   highlightLauncherSelection();
 }
 
-export function activateLauncherSelection() {
-  const it = launcherState.items[launcherState.selected];
-  if (!it) return;
-  bumpAgentUsage(it.agent.id);
+// launchSelected runs the create/duplicate-session sequence shared by
+// the keyboard-select path (activateLauncherSelection) and the
+// per-item click handler in openLauncher: bump usage, flash status,
+// call the daemon, close the launcher.
+function launchSelected(agentId) {
+  bumpAgentUsage(agentId);
   flashStatus('creating session…');
   if (launcherState.duplicateFrom) {
     DuplicateSession(
-      it.agent.id,
+      agentId,
       launcherState.projectId || '',
       launcherState.duplicateCwd,
     ).catch(reportFailure('duplicate session'));
   } else {
     CreateSession(
-      it.agent.id,
+      agentId,
       launcherState.projectId || activeProjectId(),
       '', '',
       0, 0,
@@ -80,6 +82,12 @@ export function activateLauncherSelection() {
     ).catch(reportFailure('new session'));
   }
   closeLauncher();
+}
+
+export function activateLauncherSelection() {
+  const it = launcherState.items[launcherState.selected];
+  if (!it) return;
+  launchSelected(it.agent.id);
 }
 
 export function openLauncher(projectId, opts) {
@@ -227,26 +235,7 @@ export function openLauncher(projectId, opts) {
           tag.textContent = 'install?';
           item.appendChild(tag);
         }
-        item.addEventListener('click', () => {
-          bumpAgentUsage(a.id);
-          flashStatus('creating session…');
-          if (launcherState.duplicateFrom) {
-            DuplicateSession(
-              a.id,
-              launcherState.projectId || '',
-              launcherState.duplicateCwd,
-            ).catch(reportFailure('duplicate session'));
-          } else {
-            CreateSession(
-              a.id,
-              launcherState.projectId,
-              '', '',
-              0, 0,
-              !!launcherState.useWorktree,
-            ).catch(reportFailure('new session'));
-          }
-          closeLauncher();
-        });
+        item.addEventListener('click', () => launchSelected(a.id));
         item.addEventListener('mouseenter', () => {
           launcherState.selected = idx;
           highlightLauncherSelection();
