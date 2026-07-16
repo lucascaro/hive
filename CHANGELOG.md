@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: renaming a session from its tile header no longer throws a
+  `ReferenceError` and silently discards the new name. The tile
+  rename's commit handler called `UpdateSession` without it being
+  imported, so the rename input closed but the daemon call never
+  fired.
 - GUI: full-screen agent sessions (claude/codex/pi and other alternate-
   screen TUIs) no longer freeze for seconds on resize or a single↔grid
   toggle. Such a resize requested a full scrollback replay — the daemon
