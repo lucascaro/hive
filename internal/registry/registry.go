@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -732,40 +731,6 @@ func (r *Registry) Restart(id string) error {
 	return r.Revive(id, opts)
 }
 
-// Adopt registers an externally-started session under the given
-// metadata. Used by the daemon for its bootstrap session in Phase 2
-// transitional code (before the GUI calls CREATE_SESSION explicitly).
-func (r *Registry) Adopt(s *session.Session, name, color string) (*Entry, error) {
-	r.mu.Lock()
-	id := s.ID
-	if existing := r.entries[id]; existing != nil {
-		existing.sess = s
-		r.mu.Unlock()
-		r.broadcast(wire.SessionEventUpdated, existing.Info())
-		go r.watchSessionExit(id, s)
-		return existing, nil
-	}
-	if name == "" {
-		name = agent.RandomName("")
-	}
-	if color == "" {
-		color = pickColor(r.lastSessionColor)
-		r.lastSessionColor = color
-	}
-	e := &Entry{
-		ID: id, Name: name, Color: color,
-		Order: len(r.order), Created: time.Now().UTC(), sess: s,
-	}
-	r.entries[id] = e
-	r.order = append(r.order, id)
-	r.persistEntryLoggedLocked(e, "adopt")
-	r.persistIndexLoggedLocked("adopt")
-	r.mu.Unlock()
-	r.broadcast(wire.SessionEventAdded, e.Info())
-	go r.watchSessionExit(id, s)
-	return e, nil
-}
-
 // watchSessionExit waits for sess to exit, then — if the entry is
 // still attached to *this* session (not already replaced by a Revive
 // or removed by Kill) — clears e.sess and broadcasts an Updated event
@@ -1002,25 +967,25 @@ func (r *Registry) Close() error {
 
 // --- internal helpers below ---
 
-func (r *Registry) moveLocked(id string, newOrder int) {
-	cur := -1
-	for i, s := range r.order {
-		if s == id {
-			cur = i
-			break
-		}
-	}
+// moveInOrder relocates id within order to newOrder, clamping to
+// [0, len(order)] after removal. No-op if id isn't present. Shared by
+// Registry's session-order and project-order slices, which use
+// identical reorder semantics.
+func moveInOrder(order []string, id string, newOrder int) []string {
+	cur := slices.Index(order, id)
 	if cur < 0 {
+		return order
+	}
+	order = slices.Delete(order, cur, cur+1)
+	newOrder = min(max(newOrder, 0), len(order))
+	return slices.Insert(order, newOrder, id)
+}
+
+func (r *Registry) moveLocked(id string, newOrder int) {
+	if slices.Index(r.order, id) < 0 {
 		return
 	}
-	r.order = append(r.order[:cur], r.order[cur+1:]...)
-	if newOrder < 0 {
-		newOrder = 0
-	}
-	if newOrder > len(r.order) {
-		newOrder = len(r.order)
-	}
-	r.order = append(r.order[:newOrder], append([]string{id}, r.order[newOrder:]...)...)
+	r.order = moveInOrder(r.order, id, newOrder)
 	r.renumberLocked()
 }
 
@@ -1066,7 +1031,6 @@ func (r *Registry) persistProjectIndexLocked() error {
 
 func (r *Registry) persistIndexLocked() error {
 	idx := IndexFile{Order: append([]string(nil), r.order...)}
-	sort.SliceStable(idx.Order, func(i, j int) bool { return false }) // preserve order
 	return writeJSON(filepath.Join(SessionsDir(r.stateDir), "index.json"), idx)
 }
 

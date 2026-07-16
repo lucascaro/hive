@@ -1,8 +1,7 @@
 package agent
 
 import (
-	"crypto/rand"
-	"encoding/binary"
+	"math/rand/v2"
 	"strings"
 )
 
@@ -32,17 +31,12 @@ var nouns = []string{
 	"willow", "wind",
 }
 
-// randomIndex returns a uniformly-distributed index in [0, n) using
-// crypto/rand. This is overkill for "pick a name" but keeps the package
-// free of math/rand seed concerns and avoids needing a global seed.
+// randomIndex returns a uniformly-distributed index in [0, n).
 func randomIndex(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	var buf [8]byte
-	_, _ = rand.Read(buf[:])
-	v := binary.BigEndian.Uint64(buf[:])
-	return int(v % uint64(n))
+	return rand.IntN(n)
 }
 
 // RandomName returns "<adjective>-<noun> <suffix>" where suffix is the

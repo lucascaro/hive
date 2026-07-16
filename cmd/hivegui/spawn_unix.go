@@ -4,7 +4,6 @@ package main
 
 import (
 	"os/exec"
-	"syscall"
 )
 
 // spawnHived starts a detached `hived` process. cwd, if non-empty,
@@ -25,12 +24,5 @@ func spawnHived(sock, cwd string) error {
 		args = append(args, "--cwd", cwd)
 	}
 	cmd := exec.Command(bin, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if cwd != "" {
-		cmd.Dir = cwd
-	}
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Start()
+	return startDetached(cmd, cwd)
 }

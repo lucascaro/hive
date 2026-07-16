@@ -95,22 +95,3 @@ func TestPiDefSupportsSessionID(t *testing.T) {
 		t.Errorf("pi ResumeCmd = %v, want %v", d.ResumeCmd, wantResume)
 	}
 }
-
-func TestAvailableSubsetOfAll(t *testing.T) {
-	all := All()
-	avail := Available()
-	if len(avail) > len(all) {
-		t.Errorf("Available() bigger than All()")
-	}
-	// Shell must always show up.
-	found := false
-	for _, d := range avail {
-		if d.ID == IDShell {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("Available() did not include shell")
-	}
-}

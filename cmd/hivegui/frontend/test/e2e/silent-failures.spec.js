@@ -65,6 +65,43 @@ test('failed rename shows an error', async ({ page }) => {
   await expect(status).toHaveText(/rename failed:.*no daemon/);
 });
 
+test('failed tile rename shows an error (regression: UpdateSession import)', async ({ page }) => {
+  // Locks the fix for a latent ReferenceError: SessionTerm's
+  // _beginRename commit handler called UpdateSession without it being
+  // imported in session-term.js, so the rename input closed but the
+  // daemon call never fired and nothing surfaced. This is the
+  // tile-header rename path — distinct from the sidebar rename test
+  // above, which exercises sidebar.js's beginRenameSession instead and
+  // already had the import.
+  await boot(page);
+  await page.evaluate(() => window.__hive.failNext('UpdateSession', 'no daemon'));
+
+  const tileName = page.locator('.term-host[data-sid="s1"] .tile-name');
+  await tileName.dblclick();
+  const input = page.locator('.term-host[data-sid="s1"] input.tile-name-input');
+  await input.fill('renamed-from-tile');
+  await input.press('Enter');
+
+  const status = page.locator('#status');
+  await expect(status).toHaveClass(/error/);
+  await expect(status).toHaveText(/rename failed:.*no daemon/);
+});
+
+test('tile rename commits on Enter', async ({ page }) => {
+  // Happy-path counterpart to the failure test above: if UpdateSession
+  // were undefined again, this commit would throw synchronously and
+  // the mock would never receive the call, so .tile-name would never
+  // update — this assertion would time out and catch the regression.
+  await boot(page);
+  const tileName = page.locator('.term-host[data-sid="s1"] .tile-name');
+  await tileName.dblclick();
+  const input = page.locator('.term-host[data-sid="s1"] input.tile-name-input');
+  await input.fill('tile-renamed');
+  await input.press('Enter');
+
+  await expect(page.locator('.term-host[data-sid="s1"] .tile-name')).toHaveText('tile-renamed');
+});
+
 test('error flash auto-reverts to the persistent status', async ({ page }) => {
   await boot(page);
   await page.evaluate(() => window.__hive.failNext('KillSession', 'transient'));

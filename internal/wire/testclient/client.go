@@ -118,33 +118,15 @@ func (c *Client) Handshake(hello wire.Hello) (wire.Welcome, error) {
 	}
 }
 
-// Welcome returns the daemon's WELCOME response captured during Handshake.
-func (c *Client) Welcome() wire.Welcome { return c.welcome }
-
 // WriteStdin sends raw PTY bytes (an attach-mode DATA frame).
 func (c *Client) WriteStdin(b []byte) error {
 	return wire.WriteFrame(c.conn, wire.FrameData, b)
-}
-
-// Resize sends a RESIZE frame.
-func (c *Client) Resize(cols, rows int) error {
-	return wire.WriteJSON(c.conn, wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
-}
-
-// RequestReplay asks the daemon to re-stream the scrollback ring buffer.
-func (c *Client) RequestReplay() error {
-	return wire.WriteFrame(c.conn, wire.FrameRequestReplay, nil)
 }
 
 // CreateSession sends a CREATE_SESSION control frame. Caller must be
 // in control mode.
 func (c *Client) CreateSession(spec wire.CreateSpec) error {
 	return wire.WriteJSON(c.conn, wire.FrameCreateSession, spec)
-}
-
-// KillSession sends KILL_SESSION.
-func (c *Client) KillSession(req wire.KillSessionReq) error {
-	return wire.WriteJSON(c.conn, wire.FrameKillSession, req)
 }
 
 // ListSessions sends LIST_SESSIONS. Use AwaitSessionsSnapshot to

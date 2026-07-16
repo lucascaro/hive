@@ -78,25 +78,6 @@ func TestWorktreePathSanitizes(t *testing.T) {
 	}
 }
 
-func TestCreateAndRemoveWorktree(t *testing.T) {
-	skipNoGit(t)
-	repo := initRepo(t)
-	branch := "feature-x"
-	wtPath := WorktreePath(repo, branch)
-	if err := CreateWorktree(repo, branch, wtPath); err != nil {
-		t.Fatalf("CreateWorktree: %v", err)
-	}
-	if _, err := os.Stat(wtPath); err != nil {
-		t.Fatalf("worktree dir missing after Create: %v", err)
-	}
-	if err := RemoveWorktree(repo, wtPath); err != nil {
-		t.Fatalf("RemoveWorktree: %v", err)
-	}
-	if _, err := os.Stat(wtPath); err == nil {
-		t.Errorf("worktree dir still exists after Remove")
-	}
-}
-
 // initRepoWithUpstream creates a bare "upstream" repo with one commit,
 // clones it locally, then advances the bare repo by another commit so
 // that the local clone is one commit behind origin/main. Returns the
@@ -352,16 +333,17 @@ func TestHasUncommitted_MissingDir(t *testing.T) {
 	}
 }
 
-func TestIsInGitignoreAndAdd(t *testing.T) {
+func TestAddToGitignore(t *testing.T) {
 	dir := t.TempDir()
-	if IsInGitignore(dir, ".worktrees") {
-		t.Errorf("missing .gitignore reported as containing pattern")
-	}
 	if err := AddToGitignore(dir, ".worktrees"); err != nil {
 		t.Fatalf("AddToGitignore: %v", err)
 	}
-	if !IsInGitignore(dir, ".worktrees") {
-		t.Errorf("just-added pattern not detected")
+	data, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if !strings.Contains(string(data), ".worktrees") {
+		t.Errorf("gitignore missing pattern; got %q", data)
 	}
 }
 

@@ -11,7 +11,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import {
   OpenSession, CloseAttach, WriteStdin, ResizeSession,
   RequestScrollbackReplay, KillSession, SetClipboardText,
-  ClipboardGetText, OpenURL,
+  ClipboardGetText, OpenURL, UpdateSession,
 } from '../bridge.js';
 import { state } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
@@ -31,12 +31,23 @@ import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
+import { beginInlineRename } from './inline-rename.js';
 
 
 // Monotonic millisecond clock for the scroll-jump detector. Falls back
 // to 0 where performance isn't available (never in a real renderer).
 function nowMs() {
   try { return performance.now(); } catch { return 0; }
+}
+
+// isClick tells a click from a drag by squared distance between
+// mousedown and mouseup — cheaper than Math.hypot, and we only ever
+// compare against a fixed threshold. CLICK_RADIUS_SQ = 25 = a 5px
+// radius, used by both the link-activation and click-to-position
+// hit-tests below.
+const CLICK_RADIUS_SQ = 25;
+function isClick(dx, dy) {
+  return dx * dx + dy * dy < CLICK_RADIUS_SQ;
 }
 
 // A viewport within this many lines of the bottom counts as "at the
@@ -197,7 +208,7 @@ export class SessionTerm {
         // Only treat as a click if the mouse barely moved (not a drag).
         const dx = e.clientX - this._pendingLinkX;
         const dy = e.clientY - this._pendingLinkY;
-        if (dx * dx + dy * dy < 25) {
+        if (isClick(dx, dy)) {
           e.stopImmediatePropagation();
           this._pendingLink.activate(e, this._pendingLink.text);
         }
@@ -218,7 +229,7 @@ export class SessionTerm {
         this._pendingClick = false;
         const dx = e.clientX - this._pendingClickX;
         const dy = e.clientY - this._pendingClickY;
-        if (dx * dx + dy * dy >= 25) return; // dragged → selection, leave it
+        if (!isClick(dx, dy)) return; // dragged → selection, leave it
         const buf = this.term.buffer.active;
         // Same "is this gesture ours to interpret?" test as the wheel
         // handler — only in the normal buffer with mouse reporting off.
@@ -658,45 +669,28 @@ export class SessionTerm {
   // tileName.textContent; we just need to put the span back in DOM.
   _beginRename() {
     if (this._renameInput) return; // already editing
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'tile-name-input';
-    input.value = this.info.name;
-    this._renameInput = input;
-    this.tileName.style.display = 'none';
-    this.tileName.parentNode.insertBefore(input, this.tileName);
-    // Drop the visual focus border before stealing keyboard focus —
-    // setFocusedTile is the only writer of .term-focused, so without
-    // this the border would linger while the rename input owns input.
-    setFocusedTile(null);
-    input.focus();
-    input.select();
-    let done = false;
-    const finish = (commit) => {
-      if (done) return;
-      done = true;
-      const next = input.value.trim();
-      input.remove();
-      this._renameInput = null;
-      this.tileName.style.display = '';
-      if (commit && next && next !== this.info.name) {
-        UpdateSession(this.info.id, next, '', -1).catch(reportFailure('rename'));
-      }
-      refocusActiveTerm();
-    };
-    // ONE capture-phase listener handles Enter/Escape AND shields the
-    // input from xterm / global hotkey handlers. It must be a single
-    // listener: stopPropagation() from a capture listener at the target
-    // also cancels the target's own bubble-phase listeners (DOM dispatch
-    // skips the bubble invocation once the flag is set), so a separate
-    // bubble-phase Enter handler would never run — Enter/Escape were
-    // dead and renames only ever committed via blur.
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') finish(true);
-      else if (e.key === 'Escape') finish(false);
-    }, { capture: true });
-    input.addEventListener('blur', () => finish(true));
+    beginInlineRename({
+      className: 'tile-name-input',
+      value: this.info.name,
+      mount: (input) => {
+        // Set the reentrancy guard here (mount runs before focus/select)
+        // to match the original's ordering: guard set, then focus stolen.
+        this._renameInput = input;
+        this.tileName.style.display = 'none';
+        this.tileName.parentNode.insertBefore(input, this.tileName);
+      },
+      // Drop the visual focus border before stealing keyboard focus —
+      // setFocusedTile is the only writer of .term-focused, so without
+      // this the border would linger while the rename input owns input.
+      beforeFocus: () => setFocusedTile(null),
+      unmount: (input) => {
+        input.remove();
+        this._renameInput = null;
+        this.tileName.style.display = '';
+      },
+      onCommit: (next) => UpdateSession(this.info.id, next, '', -1).catch(reportFailure('rename')),
+      onDone: () => refocusActiveTerm(),
+    });
   }
 
   setProject(name, color) {

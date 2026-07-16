@@ -11,6 +11,7 @@ import { projectsUL, reportFailure } from './dom.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
+import { beginInlineRename } from './inline-rename.js';
 
 let deps = {
   switchTo: () => {},
@@ -360,61 +361,23 @@ function reorderDroppedSession(draggedID, targetID, above) {
 }
 
 function beginRenameSession(sess, li, nameEl) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'name-input';
-  input.value = sess.name;
-  nameEl.replaceWith(input);
-  input.focus();
-  input.select();
-  let done = false;
-  const finish = (commit) => {
-    if (done) return;
-    done = true;
-    const next = input.value.trim();
-    input.replaceWith(nameEl);
-    if (commit && next && next !== sess.name) {
-      UpdateSession(sess.id, next, '', -1).catch(reportFailure('rename'));
-    }
-    deps.refocusActiveTerm();
-  };
-  // Single capture-phase listener — see the tile-rename comment in
-  // SessionTerm for why Enter/Escape must live in the same listener
-  // that calls stopPropagation().
-  input.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
-  }, { capture: true });
-  input.addEventListener('blur', () => finish(true));
+  beginInlineRename({
+    className: 'name-input',
+    value: sess.name,
+    mount: (input) => nameEl.replaceWith(input),
+    unmount: (input) => input.replaceWith(nameEl),
+    onCommit: (next) => UpdateSession(sess.id, next, '', -1).catch(reportFailure('rename')),
+    onDone: () => deps.refocusActiveTerm(),
+  });
 }
 
 function beginRenameProject(proj, nameEl) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'project-name-input';
-  input.value = proj.name;
-  nameEl.replaceWith(input);
-  input.focus();
-  input.select();
-  let done = false;
-  const finish = (commit) => {
-    if (done) return;
-    done = true;
-    const next = input.value.trim();
-    input.replaceWith(nameEl);
-    if (commit && next && next !== proj.name) {
-      UpdateProject(proj.id, next, '', '', -1).catch(reportFailure('rename project'));
-    }
-    deps.refocusActiveTerm();
-  };
-  // Single capture-phase listener — see the tile-rename comment in
-  // SessionTerm for why Enter/Escape must live in the same listener
-  // that calls stopPropagation().
-  input.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
-  }, { capture: true });
-  input.addEventListener('blur', () => finish(true));
+  beginInlineRename({
+    className: 'project-name-input',
+    value: proj.name,
+    mount: (input) => nameEl.replaceWith(input),
+    unmount: (input) => input.replaceWith(nameEl),
+    onCommit: (next) => UpdateProject(proj.id, next, '', '', -1).catch(reportFailure('rename project')),
+    onDone: () => deps.refocusActiveTerm(),
+  });
 }

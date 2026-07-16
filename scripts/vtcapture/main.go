@@ -24,11 +24,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/creack/pty"
+	"github.com/aymanbagabas/go-pty"
 
 	"github.com/lucascaro/hive/internal/session"
 )
@@ -63,12 +62,19 @@ func main() {
 		fatalf("mkdir %s: %v", *out, err)
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(*cols), Rows: uint16(*rows)})
+	ptmx, err := pty.New()
 	if err != nil {
-		fatalf("start pty: %v", err)
+		fatalf("open pty: %v", err)
 	}
 	defer func() { _ = ptmx.Close() }()
+	if err := ptmx.Resize(*cols, *rows); err != nil {
+		fatalf("resize pty: %v", err)
+	}
+
+	cmd := ptmx.Command(args[0], args[1:]...)
+	if err := cmd.Start(); err != nil {
+		fatalf("start pty: %v", err)
+	}
 
 	var (
 		buf    []byte

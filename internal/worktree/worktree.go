@@ -9,13 +9,11 @@
 package worktree
 
 import (
-	"bufio"
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,18 +182,6 @@ func upstreamBaseRef(repoDir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// RemoveWorktree runs `git worktree remove --force` and then deletes
-// the dir if git left it behind.
-func RemoveWorktree(repoDir, worktreePath string) error {
-	cmd := exec.Command("git", "-C", repoDir, "worktree", "remove", "--force", worktreePath)
-	out, err := cmd.CombinedOutput()
-	_ = os.RemoveAll(worktreePath)
-	if err != nil {
-		return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
 // Cleanup is the v2 idempotent removal helper used by registry.Kill
 // and the daemon-startup orphan reclaim. Runs `git worktree remove
 // --force`, then `os.RemoveAll`, then `git worktree prune` to clean
@@ -240,26 +226,6 @@ func HasUncommitted(worktreePath string) (bool, error) {
 		return false, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))
 	}
 	return len(strings.TrimSpace(string(out))) > 0, nil
-}
-
-// IsInGitignore reports whether pattern already appears (as its own
-// line) in the .gitignore file at gitRoot. Returns false if the file
-// does not exist.
-func IsInGitignore(gitRoot, pattern string) bool {
-	path := filepath.Join(gitRoot, ".gitignore")
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == pattern {
-			return true
-		}
-	}
-	return false
 }
 
 // AddToGitignore appends pattern as a new line to <gitRoot>/.gitignore,
@@ -341,9 +307,7 @@ func randIndex(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	var b [8]byte
-	_, _ = rand.Read(b[:])
-	return int(binary.BigEndian.Uint64(b[:]) % uint64(n))
+	return rand.IntN(n)
 }
 
 // sanitizeBranch replaces characters that are invalid in directory

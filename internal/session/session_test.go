@@ -53,7 +53,10 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	defer sess.Close()
 
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func([]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
 	defer unsub()
 
 	// Send a command, expect to see its output in the sink.
@@ -73,7 +76,14 @@ func TestSessionEchoAndPersistsState(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	sink2 := &bufSinkMu{}
-	replay, unsub2 := sess.SubscribeAtomicSnapshot(sink2)
+	var replay []byte
+	unsub2, err := sess.SubscribeWithAtomicReplay(sink2, func(r []byte) error {
+		replay = r
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
 	defer unsub2()
 
 	if !bytes.Contains(replay, []byte("HIVE_PROBE_2")) {
@@ -136,7 +146,10 @@ func TestStartSpawnsCmdOnWindows(t *testing.T) {
 	}
 	defer sess.Close()
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func([]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
 	defer unsub()
 	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
 		t.Fatalf("expected hivetest in output, got %q", sink.String())
@@ -151,7 +164,10 @@ func TestStartSpawnsCmdOnUnix(t *testing.T) {
 	}
 	defer sess.Close()
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func([]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
 	defer unsub()
 	if !drainUntil(func() bool { return strings.Contains(sink.String(), "hivetest") }, 5*time.Second) {
 		t.Fatalf("expected hivetest in output, got %q", sink.String())
@@ -167,7 +183,10 @@ func TestSessionResize(t *testing.T) {
 	defer sess.Close()
 
 	sink := &bufSinkMu{}
-	_, unsub := sess.SubscribeAtomicSnapshot(sink)
+	unsub, err := sess.SubscribeWithAtomicReplay(sink, func([]byte) error { return nil })
+	if err != nil {
+		t.Fatalf("SubscribeWithAtomicReplay: %v", err)
+	}
 	defer unsub()
 
 	if err := sess.Resize(132, 50); err != nil {
