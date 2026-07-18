@@ -47,7 +47,7 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 
 ### Files to change
 
-- `internal/wire/control.go` — add `Release string \`json:"release,omitempty"\`` to `Welcome`, beside `BuildID` (~:69). Single-word name so snake/camel case never arises. `omitempty` so an older daemon still parses. `Hello` is unchanged: the GUI knows its own version locally.
+- `internal/wire/control.go` — add `Release string` with tag `json:"release,omitempty"` to `Welcome`, beside `BuildID` (~:69). Single-word name so snake/camel case never arises. `omitempty` so an older daemon still parses. `Hello` is unchanged: the GUI knows its own version locally.
 - `internal/daemon/daemon.go` — set `Release: buildinfo.Version()` at both `Welcome` sites (`:234` control, `:408` attach) for wire consistency. Only the control one feeds the footer.
 - `cmd/hivegui/app.go` — `DaemonStaleEvent` gains `GuiRelease` / `DaemonRelease` string fields with camelCase json tags (`guiRelease`, `daemonRelease`), matching that struct's existing tags. This is a Wails event struct, not a `SessionInfo`/`ProjectInfo` wire payload, so the repo's snake_case wire convention does not apply. `emitDaemonVersionStatus` takes a second `daemonRelease string` param; `ConnectControl` passes `welcome.Release`. Severity logic untouched.
 - `cmd/hivegui/frontend/index.html` — replace the footer's hardcoded text with two spans, keeping the `#sidebar-hints` id and `.hints` class (CSS and the e2e locator key off them): `<span id="ver-gui"></span><span id="ver-daemon" hidden></span>`. Empty by default so the pre-JS paint shows nothing rather than stale text.
@@ -86,6 +86,10 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 - **2026-07-18** — Implemented. Go suite, 191 JS unit tests, 59 e2e all pass. Visually confirmed in Chromium (match / mismatch / narrow sidebar).
 - **2026-07-18** — Follow-up commit: `[hidden]` was inert against the author-origin `display: block`; added an explicit rule and an e2e assertion that fails without it.
 - **2026-07-18** — Pushed; PR #240 opened. Stage = REVIEW.
+
+## PR convergence ledger
+
+<Append-only. One line per /hs-review-loop iteration.>
 
 ## Open questions
 

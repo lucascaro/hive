@@ -36,7 +36,7 @@ The sidebar footer displays the running version and build of both binaries inste
 
 ## Notes
 
-The relevant plumbing already exists end to end. `emitDaemonVersionStatus` (`cmd/hivegui/app.go:263`) emits a `daemon:stale` Wails event on every control connect carrying `guiBuild`, `daemonBuild`, and a computed `severity`; this spec extends that payload rather than adding a new event or a Wails-bound method.
+The relevant plumbing already exists end to end. `emitDaemonVersionStatus` (in `cmd/hivegui/app.go`) emits a `daemon:stale` Wails event on every control connect carrying `guiBuild`, `daemonBuild`, and a computed `severity`; this spec extends that payload rather than adding a new event or a Wails-bound method.
 
 Naming landmine: `wire.Welcome.Version` is already taken — it is the *protocol* version integer (`internal/wire/control.go:65`). The new field is therefore named `Release`.
 
