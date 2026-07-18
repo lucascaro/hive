@@ -88,7 +88,7 @@ func buildAppMenu(a *App) *menu.Menu {
 	sess.AddSeparator()
 	sess.AddText("Next Session Needing Attention",
 		keys.CmdOrCtrl("b"), emit("menu:next-attention"))
-	sess.AddText("Jump Back to Previous Session",
+	sess.AddText("Jump Back to Where You Were",
 		keys.Combo("b", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:jump-back"))
 	sess.AddSeparator()

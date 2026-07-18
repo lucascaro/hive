@@ -130,6 +130,19 @@ keys + a label — the new `Sessions` entries are covered by those existing inva
   reason until a wails build runs.
 - **2026-07-18** — PR #241 opened; stage = REVIEW. Final state: 199 frontend tests (16 new).
 
+- **2026-07-18** — Minimized flagged sessions are restored by ⌘B and re-minimized by ⇧⌘B,
+  tracked in `state.attentionRestored` (a Set — a round can restore several). Why: operator's
+  call. The tray is where you put sessions you don't want to look at; a bell shouldn't
+  permanently undo that. Two guards: never re-minimize the session under the cursor, and never
+  re-minimize an id no longer in `state.sessions` (a dead id would strand a tray chip).
+- **2026-07-18** — Added `test/dom/attention-jump-integration.test.js` running the REAL
+  switchTo→setActive chain (stubbing only the injection seams). Why: review found the mocked
+  suite simulates the attention-clear it claims to verify, so `setActive` regressing would
+  have shipped green.
+- **2026-07-18** — Menu label "Jump Back to Previous Session" → "Jump Back to Where You Were".
+  Why: the Session submenu already has "Previous Session"; the old label read as a duplicate
+  of unrelated nav and contradicted the ⌘/ overlay wording.
+
 ## PR convergence ledger
 
 - **2026-07-18 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty;

@@ -66,7 +66,7 @@ const paletteCommands = [
   { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
   { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
   { id: 'next-attention',       name: 'Next Session Needing Attention', run: jumpToAttention },
-  { id: 'jump-back',            name: 'Jump Back to Previous Session',  run: jumpBack },
+  { id: 'jump-back',            name: 'Jump Back to Where You Were',  run: jumpBack },
   { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
   { id: 'move-backward',        name: 'Move Session Backward',       run: () => reorderActive(-1) },
   { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },

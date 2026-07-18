@@ -17,6 +17,8 @@ export const state = {
                             //   when empty, so a round of bells that walks
                             //   you through several flagged sessions keeps
                             //   the original anchor; cleared on use.
+  attentionRestored: new Set(), // sessions ⌘B pulled out of the minimized
+                            //   tray this round; ⇧⌘B puts them back.
   minimized: new Set(),     // session ids hidden from grid views; restored via tray
   aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed

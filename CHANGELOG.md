@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   flashing row with the mouse. `⇧⌘B` jumps back to the session you were
   working in before the first `⌘B` — so a round of bells can bounce you
   through several sessions and one keystroke still returns you to the
-  work you interrupted. Both are in the ⌘/ help overlay, the
+  work you interrupted. A minimized session that rings its bell is
+  restored on the way in and returned to the tray on the way back. Both are in the ⌘/ help overlay, the
   command palette, and the macOS Session menu (`Ctrl+B` / `Ctrl+Shift+B`
   on Windows and Linux).
 

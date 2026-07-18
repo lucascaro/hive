@@ -7,7 +7,7 @@
 // The cases below pin that down against the tempting simplification of
 // re-anchoring on every jump — which would walk the return target
 // forward and strand the user one interruption short of their work.
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -26,25 +26,48 @@ vi.mock('../../src/bridge.js', () => {
 });
 
 // switchTo owns real DOM/xterm work; the slot logic is what's under test.
+// The real chain is covered end-to-end in attention-jump-integration.test.js.
 vi.mock('../../src/app/view.js', () => ({
   switchTo: vi.fn(),
   setView: vi.fn(),
   gridSpatialMove: vi.fn(),
   shiftActiveProject: vi.fn(),
+  restoreSession: vi.fn(),
+  minimizeSession: vi.fn(),
 }));
 
-let state, jumpToAttention, jumpBack, switchTo;
+let state, jumpToAttention, jumpBack, switchTo, restoreSession;
 
 beforeAll(async () => {
-  document.body.innerHTML =
-    '<div id="terms"></div><ul id="projects"></ul><div id="status"></div>';
+  // The keydown handler consults every modal's visibility before it
+  // reaches the shortcut chain, and dereferences those elements without
+  // null guards — omitting them makes the listener throw before any
+  // binding runs (which is exactly what the dispatch tests below caught).
+  document.body.innerHTML = `
+    <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
+    <div id="launcher" class="hidden"></div>
+    <div id="project-editor" class="hidden"></div>
+    <div id="command-palette" class="hidden"></div>
+    <div id="help-overlay" class="hidden"></div>`;
   ({ state } = await import('../../src/app/state.js'));
-  ({ switchTo } = await import('../../src/app/view.js'));
+  ({ switchTo, restoreSession } = await import('../../src/app/view.js'));
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
+});
+
+// The no-op paths call the real flashStatus, which arms a 2500ms revert
+// timer (FLASH_INFO_MS). Left running, those fire against a torn-down
+// jsdom document — a classic source of cross-file flake.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
 });
 
 beforeEach(() => {
   switchTo.mockClear();
+  restoreSession.mockClear();
   state.projects = [{ id: 'p1' }];
   state.sessions = [
     { id: 'a', project_id: 'p1', order: 0 },
@@ -54,6 +77,8 @@ beforeEach(() => {
   state.activeId = 'a';
   state.attention = new Set();
   state.attentionReturnId = null;
+  state.attentionRestored = new Set();
+  state.minimized = new Set();
 });
 
 describe('jumpToAttention', () => {
@@ -123,5 +148,60 @@ describe('jumpBack', () => {
     jumpBack();
     expect(switchTo).not.toHaveBeenCalled();
     expect(state.attentionReturnId).toBeNull();
+  });
+});
+
+// Everything above calls the exported functions directly, which leaves the
+// actual binding untested: importing keyboard.js installs a capture-phase
+// window keydown listener, and swapping the shift branches or dropping
+// swallow() would ship green. These drive real KeyboardEvents instead.
+describe('⌘B / ⇧⌘B key dispatch', () => {
+  const press = (opts) => {
+    const e = new KeyboardEvent('keydown', {
+      key: 'b', bubbles: true, cancelable: true, ...opts,
+    });
+    window.dispatchEvent(e);
+    return e;
+  };
+  // cmdOrCtrl() reads the real platform: metaKey on mac, ctrlKey elsewhere.
+  const primary = /mac|iphone|ipad/i.test(navigator.platform)
+    ? { metaKey: true }
+    : { ctrlKey: true };
+
+  it('⌘B jumps to the flagged session and swallows the event', () => {
+    state.attention = new Set(['c']);
+    const e = press(primary);
+    expect(switchTo).toHaveBeenCalledWith('c');
+    expect(e.defaultPrevented).toBe(true);
+  });
+
+  it('⇧⌘B jumps back rather than forward', () => {
+    state.attentionReturnId = 'a';
+    state.activeId = 'c';
+    state.attention = new Set(['b']);
+    press({ ...primary, shiftKey: true });
+    // Went home to the anchor, NOT on to the flagged 'b'.
+    expect(switchTo).toHaveBeenCalledWith('a');
+    expect(switchTo).not.toHaveBeenCalledWith('b');
+  });
+
+  it('bare B is left alone for the terminal', () => {
+    state.attention = new Set(['c']);
+    const e = press({});
+    expect(switchTo).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+  });
+});
+
+// The macOS menu reaches these actions by emitting string ids from
+// cmd/hivegui/menu_darwin.go. Nothing type-checks that contract, so a
+// rename on either side silently dead-ends the menu item. menu_darwin.go
+// carries the mirror of this assertion in TestSessionMenuAttentionIds.
+describe('menu action ids', () => {
+  it('registers the ids menu_darwin.go emits', async () => {
+    const { EventsOn } = await import('../../src/bridge.js');
+    const registered = EventsOn.mock.calls.map(([name]) => name);
+    expect(registered).toContain('menu:next-attention');
+    expect(registered).toContain('menu:jump-back');
   });
 });

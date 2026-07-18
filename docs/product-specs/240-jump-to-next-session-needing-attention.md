@@ -32,8 +32,11 @@ flagged session clears its pulse, exactly as clicking it does today.
   its pulse; a second ⌘B lands on the other.
 - ⇧⌘B after several ⌘B hops returns to the session the round started from, not one hop back.
 - After ⇧⌘B releases the anchor, the next ⌘B anchors wherever the user is then.
+- A minimized session that rings its bell is restored by ⌘B and returned to the tray by ⇧⌘B —
+  glancing at it because it asked for you does not permanently drag it back into the grid.
 - ⌘B with nothing flagged shows a "no sessions need attention" status flash and does not change
-  the active session.
+  the active session. A stale flag on the session you're already in (which `onSessionDeath`
+  sets unconditionally) is cleared rather than left pulsing.
 - ⇧⌘B when the anchor session has since been killed shows a status flash and does not crash.
 - The jump works from single, grid-project, and grid-all views, and across projects.
 - Both bindings appear in the ⌘/ help overlay and the ⇧⌘K command palette.
