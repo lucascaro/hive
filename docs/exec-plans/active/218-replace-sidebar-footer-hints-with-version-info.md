@@ -95,6 +95,11 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 Append-only. One line per /hs-review-loop iteration.
 
 - **2026-07-18 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fb03935bc0b7c883f3c32288a7e40c2ee920e23aa375f6021a5d37a2c4ff2815; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 7c908ad.
+- **2026-07-18 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9989d8b429ba9902b99a87a0449cf563024a9af2bb8377ad45dd9c72c7a4eac9; threads_open: 0; action: manual fix of 3 IMPORTANT + 3 MINOR findings (commit b793108); head_sha: 3d0cb3d.
+
+Both CodeRabbit review threads from iter 1 are resolved and verified applied in-file (MD038 code-span split; stale `app.go:263` → symbol reference). No human threads, no Copilot threads.
+
+**Open verification item:** the macOS `⌘?` menu accelerator cannot be exercised by the Playwright harness (its Chromium has no native menu bar). Needs a real-app run on darwin to confirm the menu claims the chord ahead of AppKit's Help-search field. `⌘/` is unaffected either way.
 
 ## Open questions
 
