@@ -12,6 +12,10 @@ export const state = {
   sessions: [],             // SessionInfo[] in display order
   collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
   attention: new Set(),     // session ids that have unread bells
+  attentionReturnId: null,  // session to jump back to (⇧⌘B) after ⌘B took
+                            //   you to a flagged session. Written only when
+                            //   empty, so a tour of several flagged sessions
+                            //   keeps the original anchor; cleared on use.
   minimized: new Set(),     // session ids hidden from grid views; restored via tray
   aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed

@@ -9,8 +9,10 @@ import {
   OpenNewWindow, CloseWindow, OpenTerminalAt, SetClipboardText, Notify,
 } from '../bridge.js';
 import { state } from './state.js';
-import { reportFailure } from './dom.js';
-import { orderedSessions, activeCwd, activeProjectId } from './selectors.js';
+import { flashStatus, reportFailure } from './dom.js';
+import {
+  orderedSessions, activeCwd, activeProjectId, nextAttentionId,
+} from './selectors.js';
 import { cmdOrCtrl } from '../lib/platform.js';
 import {
   launcherEl, launcherState, moveLauncherSelection, activateLauncherSelection,
@@ -199,6 +201,10 @@ window.addEventListener('keydown', (e) => {
       // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
       openProjectEditor(null);
     }
+  } else if (e.key === 'b' || e.key === 'B') {
+    swallow();
+    if (e.shiftKey) jumpBack();
+    else jumpToAttention();
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
     if (e.shiftKey) {
@@ -288,6 +294,39 @@ export function reorderActive(delta) {
   else gridSpatialMove(delta > 0 ? +1 : -1, 0);
 }
 
+// jumpToAttention (⌘B) goes to the next session with an unread bell.
+// It records where you came from in state.attentionReturnId so ⇧⌘B can
+// bring you back — written only when the slot is empty, so touring
+// several flagged sessions with repeated ⌘B keeps the ORIGINAL anchor
+// rather than walking it forward one hop at a time.
+//
+// switchTo → setActive clears the target's attention flag, so a jump
+// both delivers you there and marks it seen, exactly like clicking it.
+export function jumpToAttention() {
+  const id = nextAttentionId();
+  if (!id) {
+    flashStatus('no sessions need attention');
+    return;
+  }
+  if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
+  switchTo(id);
+}
+
+// jumpBack (⇧⌘B) returns to the session held before the first ⌘B and
+// releases the anchor, so the next ⌘B starts a fresh round trip. The
+// anchored session can be killed while you're away, hence the
+// still-exists guard.
+export function jumpBack() {
+  const id = state.attentionReturnId;
+  if (!id || !state.sessions.some((s) => s.id === id)) {
+    state.attentionReturnId = null;
+    flashStatus('nowhere to jump back to');
+    return;
+  }
+  state.attentionReturnId = null;
+  switchTo(id);
+}
+
 export function switchToNthSession(n) {
   const ord = orderedSessions();
   if (n - 1 < ord.length) switchTo(ord[n - 1].id);
@@ -342,6 +381,8 @@ const menuActions = {
   'menu:prev-session': () => navSession(-1),
   'menu:move-session-forward': () => reorderActive(+1),
   'menu:move-session-backward': () => reorderActive(-1),
+  'menu:next-attention': jumpToAttention,
+  'menu:jump-back': jumpBack,
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
   'menu:check-for-updates': () => manualUpdateCheck(),
