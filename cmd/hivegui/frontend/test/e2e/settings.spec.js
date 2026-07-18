@@ -95,6 +95,34 @@ test('re-opening settings does not wipe an in-progress draft', async ({ page }) 
   await expect(row.locator('.settings-agent-cmd')).toHaveValue('halftyped --flag');
 });
 
+test('a drag that starts in a field and ends on the backdrop does not close', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await addAgent(page, 'Selected', 'selected --x');
+
+  // Selecting text in an input and releasing outside the panel
+  // dispatches the click on the nearest common ancestor — the backdrop
+  // — which used to close the modal and discard the draft.
+  const field = page.locator('.settings-agent-name').first();
+  const box = await field.boundingBox();
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.move(5, 5, { steps: 5 }); // release far outside the panel
+  await page.mouse.up();
+
+  await expect(page.locator('#settings')).toBeVisible();
+  await expect(field).toHaveValue('Selected');
+});
+
+test('a genuine backdrop click still closes', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(page.locator('#settings')).toBeHidden();
+});
+
 test('native menu event opens settings', async ({ page }) => {
   await boot(page);
   // On macOS the menu accelerator intercepts ⌘, before the webview's

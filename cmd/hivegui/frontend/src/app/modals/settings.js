@@ -254,8 +254,18 @@ export function initSettings(injected) {
       }
     }
   });
-  // Click on the backdrop (not the panel) closes.
+  // Click on the backdrop (not the panel) closes. Both ends of the
+  // gesture must land on the backdrop: a text-selection drag that
+  // starts inside an input and releases outside the panel dispatches
+  // its click on the nearest common ancestor — the backdrop — so
+  // testing the click alone discards the whole draft mid-edit. Same
+  // data-loss class as the openSettings re-entry guard above.
+  let downOnBackdrop = false;
+  settingsEl.addEventListener('mousedown', (e) => {
+    downOnBackdrop = e.target === settingsEl;
+  });
   settingsEl.addEventListener('click', (e) => {
-    if (e.target === settingsEl) closeSettings();
+    if (downOnBackdrop && e.target === settingsEl) closeSettings();
+    downOnBackdrop = false;
   });
 }

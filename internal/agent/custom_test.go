@@ -381,6 +381,52 @@ func TestNoCustomDirIsInert(t *testing.T) {
 	}
 }
 
+// TestSafeColorRejectsCSSInjection: the color is substituted into a CSS
+// custom property the launcher sets on a row, so a url() payload in a
+// hand-edited or shared agents.json made the webview issue an outbound
+// request just from opening the launcher. Verified against a real
+// browser before this guard existed.
+func TestSafeColorRejectsCSSInjection(t *testing.T) {
+	keep := []string{"#fff", "#FFF", "#8b5cf6", "#8B5CF6", "#12345678", "#abcd"}
+	for _, c := range keep {
+		if got := safeColor(c); got != c {
+			t.Errorf("safeColor(%q) = %q, want it kept", c, got)
+		}
+	}
+	drop := []string{
+		`url("http://evil/x")`,
+		"url(http://evil/x)",
+		"red; background: url(http://evil/x)",
+		"#8b5cf6; background: url(http://evil/x)",
+		"var(--x)",
+		"#xyz",
+		"#12345",
+		"8b5cf6",
+		"",
+		"   ",
+	}
+	for _, c := range drop {
+		if got := safeColor(c); got != defaultCustomColor {
+			t.Errorf("safeColor(%q) = %q, want the default %q", c, got, defaultCustomColor)
+		}
+	}
+}
+
+// The sanitizer must cover the load path too, not just Save — the
+// injection vector is a hand-edited agents.json, which never goes
+// through the modal.
+func TestCustomAgentSanitizesColorOnLoad(t *testing.T) {
+	writeCustom(t, `[{"id":"pixel","name":"Pixel","cmd":["echo"],"color":"url(http://evil/x)"}]`)
+
+	d, ok := Get("pixel")
+	if !ok {
+		t.Fatal("Get(pixel) = not found; a bad color must not drop the agent")
+	}
+	if d.Color != defaultCustomColor {
+		t.Errorf("Color = %q, want the injection replaced with %q", d.Color, defaultCustomColor)
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	for in, want := range map[string]string{
 		"Claude Lite":  "claude-lite",

@@ -161,13 +161,39 @@ func validateCustom(list []Custom) ([]Def, []error) {
 		if name == "" {
 			name = string(id)
 		}
-		color := strings.TrimSpace(c.Color)
-		if color == "" {
-			color = defaultCustomColor
-		}
+		color := safeColor(c.Color)
 		defs = append(defs, Def{ID: id, Name: name, Cmd: cmd, Color: color})
 	}
 	return defs, rejected
+}
+
+// safeColor returns c if it is a plain hex color, and the default
+// otherwise.
+//
+// The value is substituted into a CSS custom property that the launcher
+// sets on a row (`--agent-color`), so an arbitrary string is a CSS
+// injection: `url("http://…")` in the `background` shorthand made the
+// webview issue an outbound request just from opening the launcher —
+// verified, not theoretical. Built-in colors were compile-time
+// constants; custom agents are the first user-controlled source, and
+// agents.json is meant to be hand-edited and shared.
+//
+// Substituting rather than rejecting is deliberate: a bad color should
+// not drop an otherwise valid agent on the load path, and the reset to
+// grey is visible feedback on the save path. The CSS sink also uses
+// background-color rather than the shorthand as a second layer.
+func safeColor(c string) string {
+	c = strings.TrimSpace(c)
+	// #rgb, #rgba, #rrggbb, #rrggbbaa — what the color input emits and
+	// what every built-in uses.
+	if n := len(c) - 1; strings.HasPrefix(c, "#") && (n == 3 || n == 4 || n == 6 || n == 8) {
+		if strings.IndexFunc(c[1:], func(r rune) bool {
+			return !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F'))
+		}) < 0 {
+			return c
+		}
+	}
+	return defaultCustomColor
 }
 
 // trimCmd drops blank argv elements, which is what a trailing space in

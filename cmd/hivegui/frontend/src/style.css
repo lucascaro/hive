@@ -827,7 +827,13 @@ body.resizing-sidebar #app { transition: none; }
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--agent-color, #888);
+  /* background-color, not the `background` shorthand: the value comes
+     from a user-editable agents.json, and the shorthand would accept a
+     url() and fire an outbound request just from opening the launcher.
+     Go sanitizes the color too (agent.validateCustom) — this is the
+     second layer, so a future caller that skips validation is still
+     safe. */
+  background-color: var(--agent-color, #888);
   flex-shrink: 0;
 }
 .launcher-item .agent-name { flex: 1; }
