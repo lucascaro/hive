@@ -283,6 +283,7 @@ func TestSaveCustomRejectsInvalid(t *testing.T) {
 			{ID: "same", Name: "Two", Cmd: []string{"b"}},
 		},
 		"unsluggable name": {{Name: "!!!", Cmd: []string{"x"}}},
+		"missing name":     {{Name: "", Cmd: []string{"x"}}},
 	}
 	for name, list := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -295,6 +296,35 @@ func TestSaveCustomRejectsInvalid(t *testing.T) {
 			}
 			if string(after) != string(before) {
 				t.Error("a rejected save modified the existing file")
+			}
+		})
+	}
+}
+
+// A blank or unsluggable name must be reported as a name problem —
+// the user never sees or types an id, so "missing id" would send them
+// looking for a field that isn't in the form.
+func TestSaveCustomNameErrorsMentionTheName(t *testing.T) {
+	writeCustom(t, "")
+
+	cases := map[string]struct {
+		list []Custom
+		want string
+	}{
+		"blank name":       {[]Custom{{Name: "  ", Cmd: []string{"x"}}}, "name is required"},
+		"unsluggable name": {[]Custom{{Name: "!!!", Cmd: []string{"x"}}}, "letter or number"},
+	}
+	for label, tc := range cases {
+		t.Run(label, func(t *testing.T) {
+			err := SaveCustom(tc.list)
+			if err == nil {
+				t.Fatal("SaveCustom = nil, want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to mention %q", err, tc.want)
+			}
+			if strings.Contains(err.Error(), "missing id") {
+				t.Errorf("error = %q, want it to blame the name, not the id", err)
 			}
 		})
 	}

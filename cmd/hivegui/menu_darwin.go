@@ -32,13 +32,6 @@ func buildAppMenu(a *App) *menu.Menu {
 	m := menu.NewMenu()
 	m.Append(menu.AppMenu()) // About / Hide / Quit (⌘Q)
 
-	// macOS convention puts Settings/Preferences in the app menu at
-	// ⌘,. Wails' prebuilt AppMenu() is opaque, so this rides in its
-	// own submenu rather than being spliced into it; the accelerator
-	// is what users actually reach for.
-	settings := m.AddSubmenu("Settings")
-	settings.AddText("Settings…", keys.CmdOrCtrl(","), emit("menu:settings"))
-
 	file := m.AddSubmenu("File")
 	file.AddText("New Project…", keys.CmdOrCtrl("n"), emit("menu:new-project"))
 	file.AddText("New Session", keys.CmdOrCtrl("t"), emit("menu:new-session"))
@@ -66,6 +59,14 @@ func buildAppMenu(a *App) *menu.Menu {
 		emit("menu:delete-project"))
 	file.AddSeparator()
 	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
+	// macOS convention puts Settings in the app menu, but Wails v2
+	// builds that menu entirely in Objective-C from a role enum
+	// (WailsMenu.m's appendRole) — processMenuItem returns as soon as
+	// it sees Role != 0, so an appended item is never traversed.
+	// Hand-building the app menu instead would forfeit Hide / Hide
+	// Others / Show All, which need selectors Go can't invoke. File is
+	// the next-best home; ⌘, is what users actually reach for.
+	file.AddText("Settings…", keys.CmdOrCtrl(","), emit("menu:settings"))
 
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 

@@ -88,8 +88,12 @@ Frontend (`cmd/hivegui/frontend/test/dom/settings.test.js`): open/close, add/edi
 - **2026-07-18** — Tests: 13 Go unit (`internal/agent`), 4 functional (`internal/registry`), 3 binding-layer (`cmd/hivegui`), 2 daemon e2e (`cmd/hived`, `-tags=e2e`), 12 jsdom (`test/dom/settings.test.js`), 8 Playwright (`test/e2e/settings.spec.js`). All pass under `-race`.
 - **2026-07-18** — Verified: `./build.sh` produces a universal .app; `go vet` clean; `go test -race ./...` and `-tags=e2e` green; 195 vitest + 66 Playwright pass. Daemon e2e confirms a custom agent's command actually runs in the PTY and that a corrupt `agents.json` leaves the daemon usable.
 
+- **2026-07-18** — "Settings…" lives in the **File** menu, not the macOS app menu. Why: Wails v2 builds the app menu entirely in Objective-C from a role enum (`WailsMenu.m` `appendRole`); `processMenuItem` (`darwin/menu.go:116`) returns as soon as it sees `Role != 0`, so an appended item is never traversed — verified in the vendored source, not assumed. Hand-building the app menu would forfeit Hide / Hide Others / Show All, which need selectors Go cannot invoke. Operator chose File over a one-item top-level menu.
+- **2026-07-18** — Tab wraps at the dialog boundaries rather than pinning to one control. Why: `aria-modal="true"` promises focus stays inside, but settings is a form — the help overlay's single-element pin would make the fields unreachable. Without the wrap, Tab past Save lands on a terminal behind the backdrop and keystrokes leak into it.
+- **2026-07-18** — Blank/unsluggable names report a *name* error, not "missing id". Why: the id is assigned by Go and never shown in the form, so blaming it sends the user hunting for a field that does not exist.
+
 ## Open questions
 
 None. Resume support for custom agents is deliberately out of scope (see spec Non-goals).
 
-**Not verified by automation:** the native macOS ⌘, menu item was confirmed to compile and the `menu:settings` event path is covered in Playwright, but the actual menu bar rendering was not visually checked — macOS blocked AppleScript/screencapture in this environment.
+**Needs a human visual pass (QA):** macOS blocked AppleScript/screencapture in the implementation environment, so the real Wails webview and native menu bar were never seen. Playwright covers the modal and the `menu:settings` event path, but against the mock bridge in Chromium — not the native shell. Before QA sign-off, run the app and confirm: File ▸ Settings… renders and ⌘, opens the modal; add an agent, save, and see it in the ⌘T dropdown; quit and relaunch to confirm a session on that agent revives with its command.

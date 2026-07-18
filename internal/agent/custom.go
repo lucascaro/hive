@@ -130,7 +130,15 @@ func validateCustom(list []Custom) ([]Def, []error) {
 		}
 
 		if id == "" {
-			rejected = append(rejected, fmt.Errorf("%s: missing id", label))
+			// An empty id after assignIDs means the name was blank or
+			// slugged to nothing ("!!!"). Say that, rather than
+			// blaming an id the user never sees or types.
+			if name == "" {
+				rejected = append(rejected, fmt.Errorf("%s: name is required", label))
+			} else {
+				rejected = append(rejected, fmt.Errorf(
+					"%s: name must contain at least one letter or number", label))
+			}
 			continue
 		}
 		if _, isBuiltin := defsByID[id]; isBuiltin {

@@ -159,6 +159,25 @@ export function initSettings(injected) {
     } else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type === 'text') {
       e.preventDefault();
       saveSettings();
+    } else if (e.key === 'Tab') {
+      // aria-modal promises focus stays inside the dialog. Unlike the
+      // help overlay (one focusable element, so it just pins focus),
+      // this is a form — Tab must still walk the fields, so only the
+      // two boundaries wrap. Without this, Tab past Save lands on a
+      // terminal behind the backdrop and keystrokes leak into it.
+      const focusable = [...settingsEl.querySelectorAll(
+        'button, input, [tabindex]:not([tabindex="-1"])',
+      )].filter((el) => !el.disabled && el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   });
   // Click on the backdrop (not the panel) closes.

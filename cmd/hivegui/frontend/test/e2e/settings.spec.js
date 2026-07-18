@@ -50,6 +50,25 @@ test('settings owns the keyboard while open', async ({ page }) => {
   expect(await page.evaluate(() => window.__hive.stdinText())).not.toContain('typed');
 });
 
+test('Tab stays inside the dialog but still walks the form fields', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await addAgent(page, 'Tabbed', 'tabbed');
+
+  // Tab must move between the row's own inputs, not pin to one element
+  // the way the single-control help overlay does.
+  await page.locator('.settings-agent-name').focus();
+  await page.keyboard.press('Tab');
+  await expect.poll(() => page.evaluate(() => document.activeElement?.className))
+    .toContain('settings-agent-cmd');
+
+  // aria-modal promises focus never leaves: tabbing off the last
+  // control wraps to the first instead of reaching the terminal.
+  for (let i = 0; i < 12; i++) await page.keyboard.press('Tab');
+  await expect.poll(() => page.evaluate(() => document.getElementById('settings').contains(document.activeElement)))
+    .toBe(true);
+});
+
 test('native menu event opens settings', async ({ page }) => {
   await boot(page);
   // On macOS the menu accelerator intercepts ⌘, before the webview's
