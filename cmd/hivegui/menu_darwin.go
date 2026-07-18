@@ -32,6 +32,13 @@ func buildAppMenu(a *App) *menu.Menu {
 	m := menu.NewMenu()
 	m.Append(menu.AppMenu()) // About / Hide / Quit (⌘Q)
 
+	// macOS convention puts Settings/Preferences in the app menu at
+	// ⌘,. Wails' prebuilt AppMenu() is opaque, so this rides in its
+	// own submenu rather than being spliced into it; the accelerator
+	// is what users actually reach for.
+	settings := m.AddSubmenu("Settings")
+	settings.AddText("Settings…", keys.CmdOrCtrl(","), emit("menu:settings"))
+
 	file := m.AddSubmenu("File")
 	file.AddText("New Project…", keys.CmdOrCtrl("n"), emit("menu:new-project"))
 	file.AddText("New Session", keys.CmdOrCtrl("t"), emit("menu:new-session"))

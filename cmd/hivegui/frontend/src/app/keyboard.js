@@ -19,6 +19,7 @@ import {
 } from './modals/launcher.js';
 import { editorEl, openProjectEditor } from './modals/project-editor.js';
 import { openCommandPalette } from './modals/command-palette.js';
+import { openSettings, closeSettings } from './modals/settings.js';
 import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
 import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
@@ -88,6 +89,19 @@ window.addEventListener('keydown', (e) => {
   if (_palette && !_palette.classList.contains('hidden')) {
     return; // palette's own listener handles keys
   }
+  const _settings = document.getElementById('settings');
+  if (_settings && !_settings.classList.contains('hidden')) {
+    // Unlike the help overlay, settings is a form with many focusable
+    // inputs, so Tab is left alone to walk between them. Escape is
+    // handled here rather than in the modal's own listener because
+    // focus may still be on the terminal when it opens.
+    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === ',')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSettings();
+    }
+    return; // settings owns the keyboard while open
+  }
   const _help = document.getElementById('help-overlay');
   if (_help && !_help.classList.contains('hidden')) {
     if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === '/')) {
@@ -156,6 +170,14 @@ window.addEventListener('keydown', (e) => {
   if (e.key === '/') {
     swallow();
     openHelpOverlay();
+    return;
+  }
+  // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the native
+  // App menu also carries it; on Windows/Linux buildAppMenu returns
+  // nil (see menu_other.go), so this is the only path.
+  if (e.key === ',') {
+    swallow();
+    openSettings();
     return;
   }
   if (e.key === 'p' || e.key === 'P') {
@@ -331,6 +353,7 @@ const menuActions = {
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
+  'menu:settings': () => openSettings(),
   'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); },
   'menu:zoom-in': () => deps.bumpFontSize(+1),
   'menu:zoom-out': () => deps.bumpFontSize(-1),

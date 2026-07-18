@@ -19,6 +19,7 @@ import (
 	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/notify"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -99,6 +100,11 @@ func (a *App) Notify(title, subtitle, body, tag string) error {
 }
 
 func NewApp(launchDir string) *App {
+	// Point the agent catalog at the user's agents.json. hived does
+	// the same with the same directory; each process reloads on mtime
+	// change, so the GUI writing the file is all the daemon needs to
+	// see a new custom agent.
+	agent.SetCustomDir(registry.StateDir())
 	return &App{
 		launchDir: launchDir,
 		attaches:  make(map[string]*connState),
@@ -350,8 +356,9 @@ type AgentInfo struct {
 	InstallCmd []string `json:"installCmd,omitempty"`
 }
 
-// ListAgents returns every built-in agent definition. The frontend
-// uses this to populate the launcher menu.
+// ListAgents returns every agent definition — built-ins plus the
+// user's custom agents. The frontend uses this to populate the
+// launcher menu.
 func (a *App) ListAgents() []AgentInfo {
 	defs := agent.All()
 	out := make([]AgentInfo, 0, len(defs))
@@ -365,6 +372,44 @@ func (a *App) ListAgents() []AgentInfo {
 		})
 	}
 	return out
+}
+
+// CustomAgent is the JSON shape the settings modal edits. It mirrors
+// agent.Custom; camelCase tags match AgentInfo above (the snake_case
+// convention applies to the daemon's wire payloads, not to these
+// Wails bindings).
+type CustomAgent struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Cmd   []string `json:"cmd"`
+	Color string   `json:"color"`
+}
+
+// ListCustomAgents returns the user's custom agent definitions as
+// stored on disk, for the settings modal to edit. Invalid entries are
+// included deliberately — the user has to see a broken row to fix it.
+func (a *App) ListCustomAgents() []CustomAgent {
+	list := agent.LoadCustom()
+	out := make([]CustomAgent, 0, len(list))
+	for _, c := range list {
+		out = append(out, CustomAgent{ID: c.ID, Name: c.Name, Cmd: c.Cmd, Color: c.Color})
+	}
+	return out
+}
+
+// SaveCustomAgents validates and writes the full custom-agent list,
+// assigning IDs to new entries. It returns a validation error rather
+// than silently dropping bad entries so the modal can show the user
+// what was wrong — a warning in hived.log would be invisible to them.
+//
+// The daemon picks the change up on its next agent.Get; no reload
+// message is needed.
+func (a *App) SaveCustomAgents(list []CustomAgent) error {
+	in := make([]agent.Custom, 0, len(list))
+	for _, c := range list {
+		in = append(in, agent.Custom{ID: c.ID, Name: c.Name, Cmd: c.Cmd, Color: c.Color})
+	}
+	return agent.SaveCustom(in)
 }
 
 // CreateSession asks the daemon to create a new session. agentID is

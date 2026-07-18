@@ -15,6 +15,7 @@ export {
   ConnectControl, OpenSession, CloseAttach,
   WriteStdin, ResizeSession, RequestScrollbackReplay,
   CreateSession, DuplicateSession, KillSession, RestartSession, UpdateSession, ListAgents,
+  ListCustomAgents, SaveCustomAgents,
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,

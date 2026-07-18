@@ -20,6 +20,7 @@ vi.mock('../../src/bridge.js', () => {
     WriteStdin: fn(), ResizeSession: fn(), RequestScrollbackReplay: fn(),
     CreateSession: fn(), DuplicateSession: fn(), KillSession: fn(),
     RestartSession: fn(), UpdateSession: fn(), ListAgents: fn(),
+    ListCustomAgents: fn(), SaveCustomAgents: fn(),
     CreateProject: fn(), KillProject: fn(), UpdateProject: fn(),
     LaunchDir: fn(), PickDirectory: fn(), OpenNewWindow: fn(), CloseWindow: fn(),
     IsGitRepo: fn(), OpenURL: fn(), OpenTerminalAt: fn(),

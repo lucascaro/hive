@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also in
+  the app menu and command palette; `Ctrl+,` elsewhere) lets you add custom
+  agents with a name, command line, and color — for example a `claude-lite`
+  that runs `claude --model haiku`. Custom agents appear in the `⌘T` launcher
+  alongside the built-ins, with the same PATH availability check, and persist
+  and revive across restarts. Definitions live in `agents.json` in the Hive
+  state directory and can be hand-edited. Built-in agent ids cannot be
+  redefined, and custom agents do not support conversation resume — Restart
+  re-runs their command rather than continuing the prior session.
+
 - Agents: [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`) is now
   a launchable agent. Hive pins each session's id via `pi --session-id`, so
   Restart resumes the exact conversation by id — unambiguous even when
