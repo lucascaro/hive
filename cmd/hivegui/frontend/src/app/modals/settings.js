@@ -129,6 +129,15 @@ function render() {
 }
 
 export function openSettings() {
+  // Re-entry must not discard an in-progress draft. This is reachable
+  // on macOS: the native File ▸ Settings… accelerator consumes ⌘,
+  // before the webview's keydown listener sees it (same precedence
+  // that makes the '?' branch in keyboard.js dead on darwin, per
+  // menu_darwin.go), so pressing ⌘, with the modal already open
+  // arrives here as menu:settings rather than as the toggle-to-close
+  // in the keydown gate. Without this guard the `draft = []` below
+  // silently wipes the user's unsaved edits.
+  if (!settingsEl.classList.contains('hidden')) return;
   showError('');
   draft = [];
   loading = true;

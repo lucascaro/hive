@@ -28,7 +28,17 @@ test('⌘, opens settings, Esc closes it, typing reaches the terminal again', as
 
   await page.keyboard.press('Escape');
   await expect(page.locator('#settings')).toBeHidden();
-  // Focus must return to the terminal: typed keys land in stdin.
+
+  // Wait for focus to actually land before typing. toBeHidden() only
+  // proves the class flipped, which is synchronous — but closeSettings
+  // restores focus through setFocusedTile, which defers the real
+  // focus() into a requestAnimationFrame with a retry chain
+  // (src/app/focus.js). Typing in that gap sends the keys nowhere and
+  // the assertion below fails with an empty stdin, which is what this
+  // test did once on a loaded macOS CI runner.
+  await expect(page.getByRole('textbox', { name: 'Terminal input' })).toBeFocused();
+
+  // Focus is back on the terminal: typed keys land in stdin.
   await page.evaluate(() => window.__hive.resetStdin());
   await page.keyboard.type('hi');
   await expect.poll(() => page.evaluate(() => window.__hive.stdinText())).toContain('hi');
@@ -67,6 +77,22 @@ test('Tab stays inside the dialog but still walks the form fields', async ({ pag
   for (let i = 0; i < 12; i++) await page.keyboard.press('Tab');
   await expect.poll(() => page.evaluate(() => document.getElementById('settings').contains(document.activeElement)))
     .toBe(true);
+});
+
+test('re-opening settings does not wipe an in-progress draft', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await addAgent(page, 'Half Typed', 'halftyped --flag');
+
+  // On macOS the native File ▸ Settings… accelerator wins ⌘, over the
+  // webview, so this arrives as menu:settings with the modal already
+  // open — the path that used to hit `draft = []` and discard the row.
+  await page.evaluate(() => window.__hive.emit('menu:settings'));
+  await expect(page.locator('#settings')).toBeVisible();
+
+  const row = page.locator('.settings-agent-row').first();
+  await expect(row.locator('.settings-agent-name')).toHaveValue('Half Typed');
+  await expect(row.locator('.settings-agent-cmd')).toHaveValue('halftyped --flag');
 });
 
 test('native menu event opens settings', async ({ page }) => {
