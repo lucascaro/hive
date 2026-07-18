@@ -99,6 +99,7 @@ Frontend (`cmd/hivegui/frontend/test/dom/settings.test.js`): open/close, add/edi
 Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-07-18 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 995dded5; threads_open: 0 (was 7); action: autofix+push; head_sha: 7e703c4. BLOCKING: a malformed `agents.json` rendered as an empty list, so Save wrote `[]` back over it — silent, total data loss on a file the feature invites users to hand-edit. All four reviewer dimensions converged on it independently.
+- **2026-07-18 iter 2** — verdict: REQUEST_CHANGES (rubric said COMMENT; coerced by `mergeable: CONFLICTING`); findings_hash: 255eafb5; threads_open: 0; action: merge+autofix+push; head_sha: c93aa03. No BLOCKING — iter 1's data-loss fix holds and the hash moved, confirming convergence. Merged `main` (CHANGELOG union; `shortcuts.js` kept the Settings row and took main's new `? or /` label). Fixed a comment in `keyboard.js` that asserted the exact opposite of the App-menu constraint the feature is built around, plus `:disabled` and `:focus-visible` affordances for the settings buttons. Deferred as risky: `openSettings()` has no already-open guard, so **File ▸ Settings…** while the modal is open wipes the in-progress draft (`menu:settings` bypasses the keydown gate).
 
 ## Open questions
 
