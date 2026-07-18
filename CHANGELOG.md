@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also in
-  the app menu and command palette; `Ctrl+,` elsewhere) lets you add custom
+- Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also
+  under **File ▸ Settings…** and in the command palette; `Ctrl+,` or the
+  command palette elsewhere) lets you add custom
   agents with a name, command line, and color — for example a `claude-lite`
   that runs `claude --model haiku`. Custom agents appear in the `⌘T` launcher
   alongside the built-ins, with the same PATH availability check, and persist

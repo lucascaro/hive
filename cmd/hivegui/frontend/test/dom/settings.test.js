@@ -194,7 +194,7 @@ describe('settings modal', () => {
     await flush();
 
     expect(el('settings-error').classList.contains('hidden')).toBe(false);
-    expect(el('settings-error').textContent).toContain('Could not load');
+    expect(el('settings-error').textContent).toContain('agents.json');
   });
 
   it('discards edits on cancel', async () => {
@@ -222,5 +222,109 @@ describe('settings modal', () => {
       new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
     expect(el('settings').classList.contains('hidden')).toBe(true);
+  });
+});
+
+// A corrupt agents.json is the one case where an empty list is a lie.
+// Go rejects the promise; the modal must show an error, keep Save
+// disabled, and refuse to write — otherwise saving an empty draft
+// destroys every definition the user opened Settings to repair.
+describe('failed load', () => {
+  it('shows an error and refuses to save over the broken file', async () => {
+    listCustomAgents.mockRejectedValue(new Error('parse agents.json: invalid character'));
+    openSettings();
+    await flush();
+
+    expect(el('settings-error').classList.contains('hidden')).toBe(false);
+    expect(el('settings-error').textContent).toMatch(/agents\.json/);
+    expect(el('settings-save').disabled).toBe(true);
+    expect(el('settings-agent-add').disabled).toBe(true);
+
+    el('settings-save').click();
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+    // The modal stays open so the error remains visible.
+    expect(el('settings').classList.contains('hidden')).toBe(false);
+    closeSettings();
+  });
+
+  it('re-enables editing on a later successful open', async () => {
+    listCustomAgents.mockRejectedValue(new Error('boom'));
+    openSettings();
+    await flush();
+    closeSettings();
+
+    listCustomAgents.mockResolvedValue([]);
+    openSettings();
+    await flush();
+    expect(el('settings-save').disabled).toBe(false);
+    expect(el('settings-agent-add').disabled).toBe(false);
+    closeSettings();
+  });
+});
+
+describe('load race', () => {
+  it('does not clobber a draft with a stale response from a previous open', async () => {
+    let resolveFirst;
+    listCustomAgents.mockReturnValue(new Promise((r) => { resolveFirst = r; }));
+    openSettings();
+
+    closeSettings();
+    listCustomAgents.mockResolvedValue([
+      { id: 'kept', name: 'Kept', cmd: ['kept'], color: '#111111' },
+    ]);
+    openSettings();
+    await flush();
+
+    resolveFirst([{ id: 'stale', name: 'Stale', cmd: ['stale'], color: '#222222' }]);
+    await flush();
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].querySelector('.settings-agent-name').value).toBe('Kept');
+    closeSettings();
+  });
+});
+
+describe('focus containment', () => {
+  it('keeps focus inside the dialog after deleting a row', async () => {
+    listCustomAgents.mockResolvedValue([
+      { id: 'one', name: 'One', cmd: ['one'], color: '#111111' },
+      { id: 'two', name: 'Two', cmd: ['two'], color: '#222222' },
+    ]);
+    openSettings();
+    await flush();
+
+    const del = rows()[0].querySelector('.settings-agent-delete');
+    del.focus();
+    del.click();
+
+    // render() destroyed the focused button; focus must not fall to
+    // <body>, or the Tab trap has no boundary and leaks behind the
+    // backdrop.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(el('settings').contains(document.activeElement)).toBe(true);
+
+    // Deleting the last remaining row falls back to "+ Add agent".
+    rows()[0].querySelector('.settings-agent-delete').click();
+    expect(rows()).toHaveLength(0);
+    expect(document.activeElement).toBe(el('settings-agent-add'));
+    closeSettings();
+  });
+});
+
+describe('escape', () => {
+  it('consumes the event so it cannot reach the window handler', async () => {
+    openSettings();
+    await flush();
+
+    const seen = vi.fn();
+    window.addEventListener('keydown', seen);
+    el('settings').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    window.removeEventListener('keydown', seen);
+
+    expect(el('settings').classList.contains('hidden')).toBe(true);
+    expect(seen).not.toHaveBeenCalled();
   });
 });

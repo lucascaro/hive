@@ -92,9 +92,10 @@ window.addEventListener('keydown', (e) => {
   const _settings = document.getElementById('settings');
   if (_settings && !_settings.classList.contains('hidden')) {
     // Unlike the help overlay, settings is a form with many focusable
-    // inputs, so Tab is left alone to walk between them. Escape is
-    // handled here rather than in the modal's own listener because
-    // focus may still be on the terminal when it opens.
+    // inputs, so Tab is left alone to walk between them. The modal's
+    // own listener also handles Escape and consumes it; this branch is
+    // the fallback for when focus is still on the terminal, plus the
+    // ⌘, toggle-to-close.
     if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === ',')) {
       e.preventDefault();
       e.stopPropagation();

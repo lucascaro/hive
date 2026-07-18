@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -53,8 +56,8 @@ func TestCustomAgentsRoundTripThroughBindings(t *testing.T) {
 	isolateState(t)
 	a := NewApp(t.TempDir())
 
-	if got := a.ListCustomAgents(); len(got) != 0 {
-		t.Fatalf("ListCustomAgents = %v on a fresh state dir, want empty", got)
+	if got, err := a.ListCustomAgents(); err != nil || len(got) != 0 {
+		t.Fatalf("ListCustomAgents = %v, %v on a fresh state dir, want empty and no error", got, err)
 	}
 
 	in := []CustomAgent{
@@ -65,7 +68,10 @@ func TestCustomAgentsRoundTripThroughBindings(t *testing.T) {
 		t.Fatalf("SaveCustomAgents: %v", err)
 	}
 
-	out := a.ListCustomAgents()
+	out, err := a.ListCustomAgents()
+	if err != nil {
+		t.Fatalf("ListCustomAgents: %v", err)
+	}
 	if len(out) != 2 {
 		t.Fatalf("ListCustomAgents = %d entries, want 2", len(out))
 	}
@@ -90,7 +96,41 @@ func TestSaveCustomAgentsSurfacesValidationError(t *testing.T) {
 	if err == nil {
 		t.Fatal("SaveCustomAgents = nil for a built-in collision, want an error")
 	}
-	if len(a.ListCustomAgents()) != 0 {
+	if got, _ := a.ListCustomAgents(); len(got) != 0 {
 		t.Error("a rejected save still wrote to disk")
+	}
+}
+
+// TestListCustomAgentsSurfacesMalformedFile covers the binding the
+// settings modal calls. A malformed agents.json must reject the Wails
+// promise, not resolve empty — resolving empty renders as "no custom
+// agents yet" and the next Save would overwrite the broken file,
+// destroying every definition the user was about to repair.
+func TestListCustomAgentsSurfacesMalformedFile(t *testing.T) {
+	dir := isolateState(t)
+	a := NewApp(t.TempDir())
+
+	path := filepath.Join(dir, agent.CustomFileName)
+	body := []byte(`[{"id":"one","name":"One","cmd":["one"],,}]`)
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatalf("write %s: %v", agent.CustomFileName, err)
+	}
+
+	got, err := a.ListCustomAgents()
+	if err == nil {
+		t.Fatal("ListCustomAgents = nil error on a corrupt agents.json, want it surfaced")
+	}
+	if len(got) != 0 {
+		t.Errorf("ListCustomAgents = %v, want no entries alongside the error", got)
+	}
+
+	// The corrupt file must still be on disk byte-for-byte: nothing in
+	// the read path may destroy what the user has to hand-edit.
+	after, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("read back %s: %v", agent.CustomFileName, readErr)
+	}
+	if !bytes.Equal(after, body) {
+		t.Errorf("agents.json = %q after a failed load, want it untouched", after)
 	}
 }

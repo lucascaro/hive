@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -185,22 +186,33 @@ func trimCmd(cmd []string) []string {
 // for the settings UI to edit and write back. Unlike customDefs it
 // does not drop invalid entries — the user needs to see a broken row
 // in order to fix it.
-func LoadCustom() []Custom {
+//
+// Unlike customDefs it also does not swallow a parse failure. The
+// launcher can safely degrade to built-ins on a broken file, but the
+// settings modal cannot: an empty list there is indistinguishable
+// from "no agents defined", and saving over it would overwrite the
+// file the user was trying to fix. A missing file is (nil, nil); an
+// unreadable or malformed one is an error the caller must surface.
+func LoadCustom() ([]Custom, error) {
 	customMu.Lock()
 	dir := customDir
 	customMu.Unlock()
 	if dir == "" {
-		return nil
+		return nil, nil
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, CustomFileName))
+	path := filepath.Join(dir, CustomFileName)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("read %s: %w", CustomFileName, err)
 	}
 	var list []Custom
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil
+		return nil, fmt.Errorf("parse %s: %w", CustomFileName, err)
 	}
-	return list
+	return list, nil
 }
 
 // SaveCustom validates and atomically writes the full custom-agent

@@ -94,6 +94,10 @@ Frontend (`cmd/hivegui/frontend/test/dom/settings.test.js`): open/close, add/edi
 - **2026-07-18** — Tab wraps at the dialog boundaries rather than pinning to one control. Why: `aria-modal="true"` promises focus stays inside, but settings is a form — the help overlay's single-element pin would make the fields unreachable. Without the wrap, Tab past Save lands on a terminal behind the backdrop and keystrokes leak into it.
 - **2026-07-18** — Blank/unsluggable names report a *name* error, not "missing id". Why: the id is assigned by Go and never shown in the form, so blaming it sends the user hunting for a field that does not exist.
 
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
 ## Open questions
 
 None. Resume support for custom agents is deliberately out of scope (see spec Non-goals).

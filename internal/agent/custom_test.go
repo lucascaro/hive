@@ -214,7 +214,10 @@ func TestSaveCustomAssignsStableIDs(t *testing.T) {
 		t.Fatalf("SaveCustom: %v", err)
 	}
 
-	saved := LoadCustom()
+	saved, err := LoadCustom()
+	if err != nil {
+		t.Fatalf("LoadCustom: %v", err)
+	}
 	if len(saved) != 1 || saved[0].ID != "claude-lite" {
 		t.Fatalf("saved = %+v, want a claude-lite id slugged from the name", saved)
 	}
@@ -225,7 +228,10 @@ func TestSaveCustomAssignsStableIDs(t *testing.T) {
 	if err := SaveCustom(saved); err != nil {
 		t.Fatalf("SaveCustom after rename: %v", err)
 	}
-	renamed := LoadCustom()
+	renamed, err := LoadCustom()
+	if err != nil {
+		t.Fatalf("LoadCustom after rename: %v", err)
+	}
 	if renamed[0].ID != "claude-lite" {
 		t.Errorf("id = %q after rename, want it unchanged at %q", renamed[0].ID, "claude-lite")
 	}
@@ -249,7 +255,10 @@ func TestSaveCustomAvoidsBuiltinAndDuplicateIDs(t *testing.T) {
 		t.Fatalf("SaveCustom: %v", err)
 	}
 
-	saved := LoadCustom()
+	saved, err := LoadCustom()
+	if err != nil {
+		t.Fatalf("LoadCustom: %v", err)
+	}
 	if len(saved) != 2 {
 		t.Fatalf("saved %d entries, want 2", len(saved))
 	}
@@ -361,7 +370,7 @@ func TestSaveCustomWritesValidJSON(t *testing.T) {
 
 func TestNoCustomDirIsInert(t *testing.T) {
 	SetCustomDir("")
-	if got := LoadCustom(); got != nil {
+	if got, err := LoadCustom(); got != nil || err != nil {
 		t.Errorf("LoadCustom() = %v, want nil with no dir set", got)
 	}
 	if err := SaveCustom([]Custom{{Name: "x", Cmd: []string{"x"}}}); err == nil {
@@ -387,5 +396,43 @@ func TestSlugify(t *testing.T) {
 		if got := slugify(in); got != want {
 			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestLoadCustomSurfacesMalformedFile is the guard against silent data
+// loss. customDefs deliberately degrades to built-ins on a broken
+// file, but LoadCustom feeds the settings modal, where an empty list
+// is indistinguishable from "no agents defined" — and saving that
+// empty list back would overwrite the file the user is trying to fix.
+func TestLoadCustomSurfacesMalformedFile(t *testing.T) {
+	writeCustom(t, `[{"id":"broken","name":"Broken",,,}]`)
+
+	got, err := LoadCustom()
+	if err == nil {
+		t.Fatal("LoadCustom = nil error on malformed JSON, want the parse failure surfaced")
+	}
+	if got != nil {
+		t.Errorf("LoadCustom = %v, want nil entries alongside the error", got)
+	}
+
+	// The launcher still degrades quietly — the two paths differ on
+	// purpose and this asserts they stay that way.
+	if len(All()) != len(displayOrder) {
+		t.Error("All() surfaced the broken file; the launcher must fall back to built-ins")
+	}
+}
+
+// TestLoadCustomMissingFileIsNotAnError keeps "no file yet" (the
+// first-run state) distinct from "file is broken".
+func TestLoadCustomMissingFileIsNotAnError(t *testing.T) {
+	SetCustomDir(t.TempDir())
+	t.Cleanup(func() { SetCustomDir("") })
+
+	got, err := LoadCustom()
+	if err != nil {
+		t.Errorf("LoadCustom = %v, want no error when agents.json does not exist", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("LoadCustom = %v, want no entries", got)
 	}
 }

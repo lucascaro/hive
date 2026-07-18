@@ -12,11 +12,11 @@ The set of tools Hive can launch is a hardcoded Go map (`defsByID`, `internal/ag
 
 ## Desired behavior
 
-A user can define their own agents from inside the app and launch them like any built-in. A Settings screen — opened with the standard **⌘,** shortcut from the macOS app menu — lists their custom agents and lets them add, edit, and delete entries with a display name, a command line, and a color. Saved agents appear immediately in the ⌘T new-session dropdown alongside the built-ins, with the same availability check (greyed out with an install hint when the binary is not on `PATH`), and launch, persist, and revive across restarts exactly like a built-in does.
+A user can define their own agents from inside the app and launch them like any built-in. A Settings screen — opened with the standard **⌘,** shortcut, or from **File ▸ Settings…** — lists their custom agents and lets them add, edit, and delete entries with a display name, a command line, and a color. Saved agents appear immediately in the ⌘T new-session dropdown alongside the built-ins, with the same availability check (greyed out with an install hint when the binary is not on `PATH`). Launch, persistence, and command-based revival across restarts match built-in behavior; conversation resume is the one exception and is explicitly not supported for custom agents (Restart re-runs the command rather than continuing the prior session).
 
 ## Success criteria
 
-- **⌘,** opens a Settings screen from the macOS app menu; Ctrl+, opens it on Windows/Linux.
+- **⌘,** opens a Settings screen, also reachable from **File ▸ Settings…** and the command palette; Ctrl+, opens it on Windows/Linux.
 - A custom agent added in Settings appears in the ⌘T launcher dropdown without restarting Hive.
 - Launching a custom agent spawns its configured command with its configured arguments.
 - A session running a custom agent survives a quit/relaunch — it revives with the same command.

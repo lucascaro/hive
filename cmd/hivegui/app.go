@@ -388,13 +388,20 @@ type CustomAgent struct {
 // ListCustomAgents returns the user's custom agent definitions as
 // stored on disk, for the settings modal to edit. Invalid entries are
 // included deliberately — the user has to see a broken row to fix it.
-func (a *App) ListCustomAgents() []CustomAgent {
-	list := agent.LoadCustom()
+//
+// A malformed agents.json is an error, not an empty list. Returning
+// empty would render as "no custom agents yet" and a subsequent Save
+// would overwrite the very file the user needs to repair.
+func (a *App) ListCustomAgents() ([]CustomAgent, error) {
+	list, err := agent.LoadCustom()
+	if err != nil {
+		return nil, err
+	}
 	out := make([]CustomAgent, 0, len(list))
 	for _, c := range list {
 		out = append(out, CustomAgent{ID: c.ID, Name: c.Name, Cmd: c.Cmd, Color: c.Color})
 	}
-	return out
+	return out, nil
 }
 
 // SaveCustomAgents validates and writes the full custom-agent list,

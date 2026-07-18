@@ -27,6 +27,21 @@ const DEFAULT_COLOR = '#64748b';
 // draft is the in-progress edit; discarded on cancel.
 let draft = [];
 
+// loading distinguishes "still fetching" from "genuinely empty" so the
+// empty state never renders over a list that is about to arrive.
+let loading = false;
+
+// loadFailed blocks Save after a failed read. Go cannot tell a
+// deliberate "delete every agent" from a draft that is empty only
+// because agents.json would not parse, so the refusal has to live
+// here, where that distinction is still known.
+let loadFailed = false;
+
+// openToken invalidates an in-flight load when the modal is closed and
+// reopened before it resolves, so a stale response cannot overwrite a
+// newer draft.
+let openToken = 0;
+
 /** Splits a command line into argv on whitespace.
  *
  * ponytail: whitespace split, no quote handling. There is no
@@ -46,6 +61,13 @@ function showError(msg) {
 
 function render() {
   listEl.replaceChildren();
+  if (loading) {
+    const busy = document.createElement('p');
+    busy.className = 'settings-hint';
+    busy.textContent = 'Loading…';
+    listEl.append(busy);
+    return;
+  }
   if (draft.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'settings-hint';
@@ -92,6 +114,13 @@ function render() {
       draft.splice(i, 1);
       showError('');
       render();
+      // render() destroyed the button that had focus, dropping it to
+      // <body> — from there the Tab trap has no boundary to wrap and
+      // the next Tab walks behind the backdrop. Put focus back on the
+      // row that took this one's place, or on "+ Add agent".
+      const dels = listEl.querySelectorAll('.settings-agent-delete');
+      const next = dels[Math.min(i, dels.length - 1)];
+      (next || document.getElementById('settings-agent-add'))?.focus();
     });
 
     row.append(color, name, cmd, del);
@@ -102,6 +131,10 @@ function render() {
 export function openSettings() {
   showError('');
   draft = [];
+  loading = true;
+  loadFailed = false;
+  const token = ++openToken;
+  setEditingEnabled(false);
   render();
   settingsEl.classList.remove('hidden');
   // Drop the active tile's visual focus and pull focus into the
@@ -112,6 +145,9 @@ export function openSettings() {
 
   ListCustomAgents()
     .then((list) => {
+      if (token !== openToken) return; // closed and reopened; stale
+      loading = false;
+      setEditingEnabled(true);
       draft = (list || []).map((a) => ({
         id: a.id || '',
         name: a.name || '',
@@ -120,17 +156,40 @@ export function openSettings() {
       }));
       render();
     })
-    .catch(() => showError('Could not load custom agents.'));
+    .catch((err) => {
+      if (token !== openToken) return;
+      loading = false;
+      // Editing stays disabled: the draft is empty only because the
+      // read failed, and saving it would destroy agents.json.
+      loadFailed = true;
+      render();
+      showError(`Could not read agents.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`);
+    });
 }
 
 export function closeSettings() {
+  openToken += 1; // invalidate any in-flight load
+  loading = false;
+  loadFailed = false;
   settingsEl.classList.add('hidden');
   showError('');
   draft = [];
   deps.refocusActiveTerm();
 }
 
+// setEditingEnabled gates the controls that can mutate agents.json.
+// They stay disabled while a load is in flight or after one failed.
+function setEditingEnabled(on) {
+  const save = document.getElementById('settings-save');
+  const add = document.getElementById('settings-agent-add');
+  if (save) save.disabled = !on;
+  if (add) add.disabled = !on;
+}
+
 function saveSettings() {
+  // A draft that is empty because the file would not parse must never
+  // be written back over it.
+  if (loading || loadFailed) return;
   // Drop fully-blank rows so an accidental "+ Add agent" doesn't
   // block the save with a validation error.
   const payload = draft.filter((a) => a.name.trim() || a.cmd.length);
@@ -155,6 +214,12 @@ export function initSettings(injected) {
   });
   settingsEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      // Consume it. This listener fires before the window handler in
+      // keyboard.js, which would otherwise see an already-hidden
+      // dialog, fall past its settings gate, and spend the same
+      // Escape on whatever is behind the modal.
+      e.preventDefault();
+      e.stopPropagation();
       closeSettings();
     } else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type === 'text') {
       e.preventDefault();
