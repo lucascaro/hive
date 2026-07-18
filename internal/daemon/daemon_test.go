@@ -527,6 +527,53 @@ func TestWelcomeAdvertisesBuildID(t *testing.T) {
 	}
 }
 
+// TestWelcomeAdvertisesRelease verifies the daemon sends its
+// human-readable buildinfo.Version in the Welcome frame. The GUI's
+// sidebar footer displays it; without it the frontend can only show a
+// git hash. Release is distinct from Welcome.Version, which is the
+// integer protocol version — assert both so a future refactor cannot
+// quietly collapse the two.
+func TestWelcomeAdvertisesRelease(t *testing.T) {
+	skipOnWindows(t)
+	t.Cleanup(buildinfo.SetVersionForTest("v9.9.9-test"))
+
+	d := startTestDaemon(t)
+
+	// Control mode is the path that feeds the GUI's sidebar footer.
+	conn := dial(t, d)
+	defer conn.Close()
+	w := handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+
+	if w.Release != "v9.9.9-test" {
+		t.Errorf("welcome Release: got %q, want %q", w.Release, "v9.9.9-test")
+	}
+	if w.Version != wire.PROTOCOL_VERSION {
+		t.Errorf("welcome Version (protocol): got %d, want %d", w.Version, wire.PROTOCOL_VERSION)
+	}
+}
+
+// TestWelcomeReleaseOmittedWhenEmpty pins the wire contract the GUI's
+// build-ID-only fallback depends on: an unset release must not
+// serialize, so a frontend talking to a daemon predating the field
+// sees "" and degrades instead of rendering an empty "()".
+func TestWelcomeReleaseOmittedWhenEmpty(t *testing.T) {
+	b, err := json.Marshal(wire.Welcome{Version: wire.PROTOCOL_VERSION, BuildID: "abc123"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "release") {
+		t.Errorf("empty Release should be omitted, got %s", b)
+	}
+
+	var w wire.Welcome
+	if err := json.Unmarshal(b, &w); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if w.Release != "" {
+		t.Errorf("Release: got %q, want empty", w.Release)
+	}
+}
+
 func TestRefusesProtocolMismatch(t *testing.T) {
 	skipOnWindows(t)
 	d := startTestDaemon(t)

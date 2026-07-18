@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redefined, and custom agents do not support conversation resume — Restart
   re-runs their command rather than continuing the prior session.
 
+- GUI: `⌘B` jumps to the next session that rang the bell (the pulsing
+  ones), cycling through them and wrapping — no more hunting for the
+  flashing row with the mouse. `⇧⌘B` jumps back to the session you were
+  working in before the first `⌘B` — so a round of bells can bounce you
+  through several sessions and one keystroke still returns you to the
+  work you interrupted. A minimized session that rings its bell is
+  restored on the way in and returned to the tray on the way back. Both are in the ⌘/ help overlay, the
+  command palette, and the macOS Session menu (`Ctrl+B` / `Ctrl+Shift+B`
+  on Windows and Linux).
+
 - Agents: [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`) is now
   a launchable agent. Hive pins each session's id via `pi --session-id`, so
   Restart resumes the exact conversation by id — unambiguous even when
@@ -79,6 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GUI: `Ctrl+?` now opens the keyboard-shortcuts panel on Windows and
+  Linux, alongside the existing `Ctrl+/`. macOS already accepted both
+  `⌘?` and `⌘/` via the Help menu item; those platforms have no native
+  menu, so only `Ctrl+/` worked there.
+- GUI: the sidebar footer now shows the running version and build of
+  `hive` and `hived` instead of the keyboard-shortcut hints. It shows a
+  single line when both binaries come from the same build, and expands
+  to one line each — highlighted — when they differ, making a stale
+  daemon visible at a glance rather than only via the restart banner.
+  The shortcut hints are still available via the command palette
+  (`⇧⌘K`) and the keyboard-shortcuts overlay (`⌘/`).
 - GUI: the Debug menu is relabeled "Toggle Debug Trace" / "Copy Debug
   Trace" (was "Scroll Debug" / "Scroll Trace"); the captured trace now
   covers grid relayout, focus, keydown routing, a main-thread heartbeat,

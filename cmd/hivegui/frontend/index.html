@@ -24,12 +24,14 @@
       <button id="new-project-btn" title="New project (⌘N)">＋</button>
     </header>
     <ul id="projects"></ul>
-    <!-- Mac-glyph fallback; main.js re-renders this from
-         lib/shortcuts.js with platform-correct labels at boot.
-         Keep the element body markup-free: shortcuts.test.js pins it
-         verbatim against footerHints(). -->
+    <!-- Version/build readout for hive (GUI) and hived (daemon).
+         Both spans start empty: the daemon's version is only known
+         once the control handshake lands, so app/version-footer.js
+         fills these from the "daemon:stale" event. #ver-daemon stays
+         hidden while the builds match (the common case) and is
+         revealed only on mismatch. -->
     <footer id="sidebar-hints" class="hints">
-      ⌘N project · ⌘T session · ⌘W close · ⌘G grid · ⇧⌘K commands · ⌘/ help
+      <span id="ver-gui"></span><span id="ver-daemon" hidden></span>
     </footer>
     <div id="sidebar-resizer"
          role="separator"

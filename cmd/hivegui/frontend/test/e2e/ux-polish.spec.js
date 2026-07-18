@@ -34,6 +34,30 @@ test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the termin
   await expect.poll(() => page.evaluate(() => window.__hive.stdinText())).toContain('hi');
 });
 
+test('⌘? also opens the shortcuts overlay, and closes it again', async ({ page }) => {
+  await boot(page);
+  // "?" is Shift+/ — the near-universal "show me the shortcuts" key.
+  // With the sidebar footer no longer advertising any bindings, this is
+  // the key users are most likely to try unprompted, so it must work.
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  const overlay = page.locator('#help-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText('Command palette');
+  // The same key closes it, matching ⌘/ toggle behaviour.
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  await expect(overlay).toBeHidden();
+});
+
+test('the shortcuts overlay advertises both ⌘? and ⌘/', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  await expect(page.locator('#help-overlay').getByText('Keyboard shortcuts (this panel)'))
+    .toBeVisible();
+  // Whichever key the user arrived by, the panel must name the other.
+  const expected = process.platform === 'darwin' ? '⌘? or ⌘/' : 'Ctrl+? or Ctrl+/';
+  await expect(page.locator('#help-overlay kbd', { hasText: 'or' })).toHaveText(expected);
+});
+
 test('help overlay is reachable from the command palette and gates other shortcuts', async ({ page }) => {
   await boot(page);
   await page.keyboard.press(`${mod}+Shift+k`);
@@ -144,17 +168,81 @@ test('help overlay traps Tab inside the dialog', async ({ page }) => {
   await expect(page.locator('#help-overlay')).toBeHidden();
 });
 
-test('sidebar footer hints are platform-correct', async ({ page }) => {
+test('sidebar footer shows hive/hived version and build', async ({ page }) => {
   await boot(page);
-  const hints = page.locator('#sidebar-hints');
-  if (process.platform === 'darwin') {
-    await expect(hints).toContainText('⌘/ help');
-    await expect(hints).toContainText('⇧⌘K commands');
-  } else {
-    await expect(hints).toContainText('Ctrl+/ help');
-    await expect(hints).toContainText('Ctrl+Shift+K commands');
-    await expect(hints).not.toContainText('⌘');
-  }
+  const footer = page.locator('#sidebar-hints');
+  const daemonLine = page.locator('#ver-daemon');
+
+  // Matching builds: one line, daemon line hidden — the common case.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'match',
+    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
+  }));
+  await expect(footer).toContainText('hive v0.4.2 (a3f9c1)');
+  await expect(daemonLine).toBeHidden();
+
+  // Mismatch: both lines visible, warning styling applied.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'mismatch',
+    guiBuild: 'a3f9c1', daemonBuild: 'b7e220',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.1',
+  }));
+  await expect(daemonLine).toBeVisible();
+  await expect(daemonLine).toContainText('hived v0.4.1 (b7e220)');
+  await expect(footer).toHaveClass(/mismatch/);
+
+  // Back to matching: collapses again and clears the warning class.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'match',
+    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
+  }));
+  await expect(daemonLine).toBeHidden();
+  await expect(footer).not.toHaveClass(/mismatch/);
+
+  // The hidden attribute must do the hiding on its own. `.hints > span`
+  // sets an author-origin `display: block`, which outranks the UA's
+  // `[hidden] { display: none }` — so without an explicit rule this
+  // would stay visible, and the assertions above would only be passing
+  // because the render also blanks the text.
+  await page.evaluate(() => {
+    const el = document.getElementById('ver-daemon');
+    el.textContent = 'hived v9.9.9 (deadbee)';
+    el.hidden = true;
+  });
+  await expect(daemonLine).toBeHidden();
+});
+
+test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
+  await boot(page);
+  // Two long lines at the narrowest sidebar width is the worst case:
+  // this is what the removed `white-space: nowrap` used to hide behind
+  // an ellipsis, which would have truncated the build hash the footer
+  // exists to show.
+  await page.evaluate(() => {
+    document.getElementById('sidebar').style.width = '150px';
+    window.__hive.emit('daemon:stale', {
+      severity: 'mismatch',
+      guiBuild: 'a3f9c1d', daemonBuild: 'b7e220f',
+      guiRelease: 'v0.4.2-rc.1', daemonRelease: 'v0.4.1-rc.9',
+    });
+  });
+
+  const overflow = await page.evaluate(() => {
+    const el = document.getElementById('sidebar-hints');
+    const sidebar = document.getElementById('sidebar');
+    return {
+      footerRight: el.getBoundingClientRect().right,
+      sidebarRight: sidebar.getBoundingClientRect().right,
+      scrollOverflow: el.scrollWidth - el.clientWidth,
+    };
+  });
+  // scrollWidth vs clientWidth is the load-bearing check: #sidebar sets
+  // overflow-x: hidden, so the footerRight comparison alone would still
+  // pass if the text overflowed (it would just be clipped invisibly).
+  expect(overflow.scrollOverflow).toBeLessThanOrEqual(1);
+  expect(overflow.footerRight).toBeLessThanOrEqual(overflow.sidebarRight + 1);
 });
 
 test('project collapse state survives a reload', async ({ page }) => {

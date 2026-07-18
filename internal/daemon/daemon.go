@@ -234,6 +234,7 @@ func (d *Daemon) serveControl(conn net.Conn) {
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version: wire.PROTOCOL_VERSION,
 		BuildID: buildinfo.BuildID(),
+		Release: buildinfo.Version(),
 		Mode:    wire.ModeControl,
 	}); err != nil {
 		return
@@ -408,6 +409,7 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version:   wire.PROTOCOL_VERSION,
 		BuildID:   buildinfo.BuildID(),
+		Release:   buildinfo.Version(),
 		Mode:      wire.ModeAttach,
 		SessionID: entry.ID,
 		Cols:      cols,

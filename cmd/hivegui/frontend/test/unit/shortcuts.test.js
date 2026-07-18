@@ -1,6 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { shortcutGroups, paletteShortcuts, footerHints } from '../../src/lib/shortcuts.js';
+import { shortcutGroups, paletteShortcuts } from '../../src/lib/shortcuts.js';
 
 describe('shortcutGroups', () => {
   it('renders mac glyphs on mac and Ctrl+ words elsewhere', () => {
@@ -53,30 +52,6 @@ describe('shortcutGroups', () => {
       .flatMap((g) => g.items.map((i) => i.keys))
       .join(' ');
     expect(macKeys).toContain('⌘↑↓←→');
-  });
-});
-
-describe('footerHints', () => {
-  it('matches the static mac footer text in index.html', () => {
-    // Read the real fallback so the two surfaces cannot drift: the
-    // static HTML is what users see for the frames before main.js
-    // re-renders it from this module.
-    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-    const footer = html.match(/<footer id="sidebar-hints"[^>]*>([\s\S]*?)<\/footer>/)?.[1];
-    expect(footer).toBeTruthy();
-    // Keep the fixture comment-free rather than regex-stripping comments
-    // here — partial sanitization patterns trip CodeQL, and the footer
-    // has no business containing markup anyway.
-    expect(footer).not.toContain('<!--');
-    expect(footerHints({ isMac: true })).toBe(footer.trim());
-  });
-
-  it('uses Ctrl+ words off mac', () => {
-    const f = footerHints({ isMac: false });
-    expect(f).toContain('Ctrl+T session');
-    expect(f).toContain('Ctrl+Shift+K commands');
-    expect(f).toContain('Ctrl+/ help');
-    expect(f).not.toContain('⌘');
   });
 });
 

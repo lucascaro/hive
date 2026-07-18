@@ -60,6 +60,8 @@ export function shortcutGroups({ isMac }) {
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
         { keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`, label: 'Next / previous session (spatial move in grid)' },
         { keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`, label: 'Reorder session' },
+        { keys: m('B'), label: 'Next session needing attention (bell)' },
+        { keys: m('B', { shift: true }), label: 'Jump back to where you were' },
         { keys: 'Double-click', label: 'Rename (sidebar row or tile title)' },
       ],
     },
@@ -81,7 +83,7 @@ export function shortcutGroups({ isMac }) {
         { keys: `${m('=')} / ${m('-')} / ${m('0')}`, label: 'Zoom in / out / reset' },
         { keys: m('K', { shift: true }), label: 'Command palette' },
         { keys: m(','), label: 'Settings (custom agents)' },
-        { keys: m('/'), label: 'Keyboard shortcuts (this panel)' },
+        { keys: `${m('?')} or ${m('/')}`, label: 'Keyboard shortcuts (this panel)' },
       ],
     },
     {
@@ -142,26 +144,15 @@ export function paletteShortcuts({ isMac }) {
     'prev-session': m('up'),
     'move-forward': m('down', { shift: true }),
     'move-backward': m('up', { shift: true }),
+    'next-attention': m('B'),
+    'jump-back': m('B', { shift: true }),
     'next-project': m(']'),
     'prev-project': m('['),
+    // ⌘/ is what the macOS menu item displays, so the palette matches it.
+    // ⌘? also works (see menu_darwin.go); the overlay lists both.
     'keyboard-shortcuts': m('/'),
     settings: m(','),
   };
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;
-}
-
-// Sidebar footer hint line. index.html carries the mac-glyph text as
-// a static fallback; main.js re-renders it from here at boot so
-// non-mac platforms see Ctrl+-style hints that match the bindings.
-export function footerHints({ isMac }) {
-  const m = (key, opts) => mod(isMac, key, opts);
-  return [
-    `${m('N')} project`,
-    `${m('T')} session`,
-    `${m('W')} close`,
-    `${m('G')} grid`,
-    `${m('K', { shift: true })} commands`,
-    `${m('/')} help`,
-  ].join(' · ');
 }

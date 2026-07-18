@@ -94,6 +94,12 @@ func buildAppMenu(a *App) *menu.Menu {
 	sess.AddText("Next Session (⌘→ alternate)", keys.CmdOrCtrl("right"), emit("menu:next-session"))
 	sess.AddText("Previous Session (⌘← alternate)", keys.CmdOrCtrl("left"), emit("menu:prev-session"))
 	sess.AddSeparator()
+	sess.AddText("Next Session Needing Attention",
+		keys.CmdOrCtrl("b"), emit("menu:next-attention"))
+	sess.AddText("Jump Back to Where You Were",
+		keys.Combo("b", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:jump-back"))
+	sess.AddSeparator()
 	sess.AddText("Move Session Forward",
 		keys.Combo("down", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:move-session-forward"))
@@ -133,6 +139,19 @@ func buildAppMenu(a *App) *menu.Menu {
 	// fuzzy-matches every item in every other menu, so the user can
 	// search all actions from the menu bar without opening the palette.
 	help := m.AddSubmenu("Help")
+	// One accelerator covers both ⌘/ and ⌘?: AppKit matches menu key
+	// equivalents on the unshifted character, so Cmd+Shift+/ (which the
+	// webview would report as "?") fires this ⌘/ item too. Verified by
+	// hand on macOS — both chords open the overlay.
+	//
+	// So do NOT add a second item for ⌘?, and do not "fix" this to
+	// keys.Combo("/", CmdOrCtrlKey, ShiftKey): that would narrow the mask
+	// to require Shift and stop plain ⌘/ from matching here.
+	//
+	// The '?' branch in app/keyboard.js is therefore unreachable on
+	// darwin (the menu consumes the chord first) and exists for
+	// Windows/Linux, where buildAppMenu returns nil and there is no menu
+	// to handle it.
 	help.AddText("Keyboard Shortcuts", keys.CmdOrCtrl("/"), emit("menu:keyboard-shortcuts"))
 
 	return m
