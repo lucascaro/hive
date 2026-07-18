@@ -84,7 +84,10 @@ describe('paletteShortcuts', () => {
     expect(m['restart-session']).toBe('');
     expect(m['switch-1']).toBe('⌘1');
     expect(m['switch-9']).toBe('⌘9');
-    expect(m['keyboard-shortcuts']).toBe('⌘/');
+    // ⌘? is the primary binding (the macOS menu registers it); ⌘/ is an
+    // alias handled by the JS keydown handler. The palette shows one key
+    // per command, so it shows the primary.
+    expect(m['keyboard-shortcuts']).toBe('⌘?');
   });
 
   it('uses Ctrl+ words off mac', () => {

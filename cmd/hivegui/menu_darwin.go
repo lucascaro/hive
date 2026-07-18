@@ -125,11 +125,18 @@ func buildAppMenu(a *App) *menu.Menu {
 	// fuzzy-matches every item in every other menu, so the user can
 	// search all actions from the menu bar without opening the palette.
 	help := m.AddSubmenu("Help")
-	// Only ⌘/ is bound here. ⌘? opens the same panel but is deliberately
-	// left to the JS keydown handler (app/keyboard.js): a menu
-	// accelerator intercepts the key before the webview sees it, and one
-	// visible "Keyboard Shortcuts" row reads better than two.
-	help.AddText("Keyboard Shortcuts", keys.CmdOrCtrl("/"), emit("menu:keyboard-shortcuts"))
+	// The accelerator is ⌘? (Cmd+Shift+/), not ⌘/, specifically because
+	// macOS auto-injects a search field into every Help menu and binds it
+	// to ⌘? — AppKit would consume the chord before the WKWebView ever
+	// saw it, leaving the JS handler's '?' branch dead on darwin. Claiming
+	// it explicitly here is what makes ⌘? reach the overlay.
+	//
+	// ⌘/ is deliberately left unbound in the menu so it falls through to
+	// the JS keydown handler (app/keyboard.js), which accepts both keys.
+	// Net effect on macOS: ⌘? via the menu, ⌘/ via JS — both open the
+	// panel. If AppKit wins the ⌘? chord anyway, ⌘/ still works, so this
+	// degrades rather than regressing.
+	help.AddText("Keyboard Shortcuts", keys.Combo("/", keys.CmdOrCtrlKey, keys.ShiftKey), emit("menu:keyboard-shortcuts"))
 
 	return m
 }

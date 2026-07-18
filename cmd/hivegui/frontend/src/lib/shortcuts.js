@@ -143,7 +143,10 @@ export function paletteShortcuts({ isMac }) {
     'move-backward': m('up', { shift: true }),
     'next-project': m(']'),
     'prev-project': m('['),
-    'keyboard-shortcuts': m('/'),
+    // ⌘? is the primary binding (it is what the macOS menu registers);
+    // ⌘/ is an alias. The palette column shows one key per command, so
+    // it shows the primary — the overlay lists both.
+    'keyboard-shortcuts': m('?'),
   };
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;

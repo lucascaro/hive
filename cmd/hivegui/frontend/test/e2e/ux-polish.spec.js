@@ -238,9 +238,11 @@ test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
       scrollOverflow: el.scrollWidth - el.clientWidth,
     };
   });
-  // Allow a sub-pixel rounding margin.
-  expect(overflow.footerRight).toBeLessThanOrEqual(overflow.sidebarRight + 1);
+  // scrollWidth vs clientWidth is the load-bearing check: #sidebar sets
+  // overflow-x: hidden, so the footerRight comparison alone would still
+  // pass if the text overflowed (it would just be clipped invisibly).
   expect(overflow.scrollOverflow).toBeLessThanOrEqual(1);
+  expect(overflow.footerRight).toBeLessThanOrEqual(overflow.sidebarRight + 1);
 });
 
 test('project collapse state survives a reload', async ({ page }) => {

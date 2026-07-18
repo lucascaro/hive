@@ -431,9 +431,18 @@ body.resizing-sidebar #app { transition: none; }
   padding: 6px 10px;
   border-top: 1px solid #1f1f1f;
   font-size: 10.5px;
-  color: #555;
+  /* #555 on #0a0a0a is ~2.7:1 — under AA. That was tolerable when this
+     line held redundant shortcut hints, but it now carries the build
+     identity users are asked to read back in bug reports. #888 is
+     ~5.6:1 and matches the muted-text grey used elsewhere. */
+  color: #888;
   line-height: 1.4;
   overflow: hidden;
+  /* #sidebar sets user-select: none for drag-friendliness; opt back in
+     here so the version string can actually be selected and copied,
+     which is the whole point of showing it. */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* One row per binary. Block-level so the mismatch case (both spans

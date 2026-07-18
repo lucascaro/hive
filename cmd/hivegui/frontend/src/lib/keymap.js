@@ -30,3 +30,22 @@ export function isShiftEnter(e) {
     e.key === 'Enter'
   );
 }
+
+// isHelpOverlayKey reports whether a keydown opens (or closes) the
+// keyboard-shortcuts panel. Both ⌘/ and ⌘? are accepted: "?" is Shift+/
+// on a US layout, so e.key is already "?" when shift is held and no
+// separate shiftKey check is needed — the same shape as the '=' / '+'
+// zoom pair in app/keyboard.js.
+//
+// ⌘? is the near-universal "show me the shortcuts" key. It matters more
+// than usual here because the sidebar footer no longer advertises any
+// bindings, so the panel has to be reachable by a key people already
+// try unprompted.
+//
+// The Cmd/Ctrl modifier is required: a bare "?" is an ordinary character
+// that must reach the terminal, never the overlay. Callers that already
+// gate on cmdOrCtrl() still get the right answer, since this re-checks.
+export function isHelpOverlayKey(e) {
+  if (!(e.metaKey || e.ctrlKey)) return false;
+  return e.key === '/' || e.key === '?';
+}
