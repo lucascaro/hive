@@ -89,7 +89,9 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 
 ## PR convergence ledger
 
-<Append-only. One line per /hs-review-loop iteration.>
+Append-only. One line per /hs-review-loop iteration.
+
+- **2026-07-18 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: fb03935bc0b7c883f3c32288a7e40c2ee920e23aa375f6021a5d37a2c4ff2815; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 7c908ad.
 
 ## Open questions
 
