@@ -82,7 +82,7 @@ export function shortcutGroups({ isMac }) {
         { keys: m('S'), label: 'Toggle sidebar' },
         { keys: `${m('=')} / ${m('-')} / ${m('0')}`, label: 'Zoom in / out / reset' },
         { keys: m('K', { shift: true }), label: 'Command palette' },
-        { keys: m('/'), label: 'Keyboard shortcuts (this panel)' },
+        { keys: `${m('?')} or ${m('/')}`, label: 'Keyboard shortcuts (this panel)' },
       ],
     },
     {
@@ -147,23 +147,10 @@ export function paletteShortcuts({ isMac }) {
     'jump-back': m('B', { shift: true }),
     'next-project': m(']'),
     'prev-project': m('['),
+    // ⌘/ is what the macOS menu item displays, so the palette matches it.
+    // ⌘? also works (see menu_darwin.go); the overlay lists both.
     'keyboard-shortcuts': m('/'),
   };
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;
-}
-
-// Sidebar footer hint line. index.html carries the mac-glyph text as
-// a static fallback; main.js re-renders it from here at boot so
-// non-mac platforms see Ctrl+-style hints that match the bindings.
-export function footerHints({ isMac }) {
-  const m = (key, opts) => mod(isMac, key, opts);
-  return [
-    `${m('N')} project`,
-    `${m('T')} session`,
-    `${m('W')} close`,
-    `${m('G')} grid`,
-    `${m('K', { shift: true })} commands`,
-    `${m('/')} help`,
-  ].join(' · ');
 }

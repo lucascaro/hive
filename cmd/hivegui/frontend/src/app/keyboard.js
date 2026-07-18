@@ -22,6 +22,7 @@ import {
 import { editorEl, openProjectEditor } from './modals/project-editor.js';
 import { openCommandPalette } from './modals/command-palette.js';
 import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
+import { isHelpOverlayKey } from '../lib/keymap.js';
 import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
   restoreSession, minimizeSession,
@@ -95,7 +96,7 @@ window.addEventListener('keydown', (e) => {
   }
   const _help = document.getElementById('help-overlay');
   if (_help && !_help.classList.contains('hidden')) {
-    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === '/')) {
+    if (e.key === 'Escape' || isHelpOverlayKey(e)) {
       e.preventDefault();
       e.stopPropagation();
       closeHelpOverlay();
@@ -158,7 +159,8 @@ window.addEventListener('keydown', (e) => {
     openCommandPalette();
     return;
   }
-  if (e.key === '/') {
+  // Both ⌘/ and ⌘? open the shortcuts panel — see isHelpOverlayKey.
+  if (isHelpOverlayKey(e)) {
     swallow();
     openHelpOverlay();
     return;

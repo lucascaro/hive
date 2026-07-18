@@ -10,7 +10,7 @@ import {
   ConnectControl, KillSession, OpenNewWindow, CloseWindow, OpenTerminalAt,
 } from './bridge.js';
 import { isMac } from './lib/platform.js';
-import { paletteShortcuts, footerHints } from './lib/shortcuts.js';
+import { paletteShortcuts } from './lib/shortcuts.js';
 import { state } from './app/state.js';
 import { setStatus, reportFailure } from './app/dom.js';
 import { activeCwd } from './app/selectors.js';
@@ -25,6 +25,7 @@ import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents } from './app/events.js';
 import { isDaemonRestarting, initBanners } from './app/banners.js';
+import { initVersionFooter } from './app/version-footer.js';
 import {
   switchTo, switchToProject, updateAppTitle, renderMinimizedTray,
   renderEmptyState, shiftActiveProject, initView,
@@ -99,11 +100,9 @@ wireDaemonEvents({
   refocusActiveTerm, isDaemonRestarting, scrollTrace,
 });
 
-// Sidebar footer hints: the static HTML text is the mac-glyph
-// fallback; re-render from the shared shortcut table so non-mac
-// platforms see Ctrl+-style hints that match the real bindings.
-const footerHintsEl = document.getElementById('sidebar-hints');
-if (footerHintsEl) footerHintsEl.textContent = footerHints({ isMac });
+// Sidebar footer: hive/hived version + build. Populated from the
+// "daemon:stale" event, so it fills in once the control handshake lands.
+initVersionFooter();
 
 // ---------- sidebar resize ----------
 //

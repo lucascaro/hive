@@ -246,7 +246,7 @@ func (a *App) ConnectControl() error {
 	a.control = cs
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	a.emitDaemonVersionStatus(welcome.BuildID)
+	a.emitDaemonVersionStatus(welcome.BuildID, welcome.Release)
 	return nil
 }
 
@@ -254,15 +254,34 @@ func (a *App) ConnectControl() error {
 // Severity is "match" (silent — emitted so the frontend can clear a
 // previously-shown banner), "mismatch" (both builds known and differ),
 // or "unknown" (one or both sides did not advertise a build).
+//
+// The *Release fields carry the human-readable versions (buildinfo.Version)
+// so the sidebar footer can display them; they are informational only and
+// deliberately take no part in the Severity decision — see below.
 type DaemonStaleEvent struct {
-	Severity    string `json:"severity"`
-	GuiBuild    string `json:"guiBuild"`
-	DaemonBuild string `json:"daemonBuild"`
+	Severity      string `json:"severity"`
+	GuiBuild      string `json:"guiBuild"`
+	DaemonBuild   string `json:"daemonBuild"`
+	GuiRelease    string `json:"guiRelease"`
+	DaemonRelease string `json:"daemonRelease"`
 }
 
-func (a *App) emitDaemonVersionStatus(daemonBuild string) {
+// daemonVersionEvent builds the "daemon:stale" payload. Split out from
+// the emit so it is testable without a live Wails context.
+//
+// Severity is computed from build IDs alone: those are git revisions, so
+// equal build IDs already imply equal releases, and comparing releases too
+// would only add a second source of truth to keep in sync. daemonRelease is
+// empty when talking to a daemon built before Welcome gained the Release
+// field — consumers fall back to build-ID-only display.
+func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
 	gui := buildinfo.BuildID()
-	ev := DaemonStaleEvent{GuiBuild: gui, DaemonBuild: daemonBuild}
+	ev := DaemonStaleEvent{
+		GuiBuild:      gui,
+		DaemonBuild:   daemonBuild,
+		GuiRelease:    buildinfo.Version(),
+		DaemonRelease: daemonRelease,
+	}
 	switch {
 	case gui == "" || daemonBuild == "":
 		ev.Severity = "unknown"
@@ -271,7 +290,14 @@ func (a *App) emitDaemonVersionStatus(daemonBuild string) {
 	default:
 		ev.Severity = "mismatch"
 	}
-	wruntime.EventsEmit(a.ctx, "daemon:stale", ev)
+	return ev
+}
+
+// emitDaemonVersionStatus reports the GUI/daemon build relationship to the
+// frontend. Both the stale-daemon banner and the sidebar version footer
+// listen for this event.
+func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string) {
+	wruntime.EventsEmit(a.ctx, "daemon:stale", daemonVersionEvent(daemonBuild, daemonRelease))
 }
 
 // RestartDaemon kills the running hived and relaunches the GUI as a

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isShiftEnter, NEWLINE_SEQ } from '../../src/lib/keymap.js';
+import { isShiftEnter, isHelpOverlayKey, NEWLINE_SEQ } from '../../src/lib/keymap.js';
 
 // Minimal fake keydown event with all modifier flags defaulted off.
 function ev(overrides = {}) {
@@ -33,6 +33,41 @@ describe('isShiftEnter', () => {
     // The predicate reads only event flags, so it behaves identically
     // on every platform — Shift+Enter is the cross-platform newline key.
     expect(isShiftEnter(ev({ shiftKey: true }))).toBe(true);
+  });
+});
+
+describe('isHelpOverlayKey', () => {
+  // "?" is Shift+/ on a US layout, so the browser reports key === '?'
+  // directly — the predicate matches on the character, not on shiftKey.
+  const cases = [
+    ['Cmd+/', { metaKey: true, key: '/' }, true],
+    ['Cmd+?', { metaKey: true, key: '?' }, true],
+    ['Ctrl+/', { ctrlKey: true, key: '/' }, true],
+    ['Ctrl+?', { ctrlKey: true, key: '?' }, true],
+    // Shift is incidental: Cmd+Shift+/ still reports key '?' in a real
+    // browser, but an explicit shiftKey must not change the verdict.
+    ['Cmd+Shift+? (shift flag set)', { metaKey: true, shiftKey: true, key: '?' }, true],
+  ];
+  for (const [name, e, want] of cases) {
+    it(`fires for ${name}`, () => {
+      expect(isHelpOverlayKey(ev(e))).toBe(want);
+    });
+  }
+
+  it('does not fire for a bare "?" — it must reach the terminal', () => {
+    // This is the load-bearing negative: "?" is an ordinary character
+    // users type constantly. Swallowing it would break typing.
+    expect(isHelpOverlayKey(ev({ key: '?' }))).toBe(false);
+    expect(isHelpOverlayKey(ev({ shiftKey: true, key: '?' }))).toBe(false);
+  });
+
+  it('does not fire for a bare "/"', () => {
+    expect(isHelpOverlayKey(ev({ key: '/' }))).toBe(false);
+  });
+
+  it('does not fire for other Cmd/Ctrl keys', () => {
+    expect(isHelpOverlayKey(ev({ metaKey: true, key: 'k' }))).toBe(false);
+    expect(isHelpOverlayKey(ev({ ctrlKey: true, key: '.' }))).toBe(false);
   });
 });
 
