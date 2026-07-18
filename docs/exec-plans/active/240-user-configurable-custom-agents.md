@@ -98,6 +98,8 @@ Frontend (`cmd/hivegui/frontend/test/dom/settings.test.js`): open/close, add/edi
 
 Append-only. One line per `/hs-review-loop` iteration.
 
+- **2026-07-18 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 995dded5; threads_open: 0 (was 7); action: autofix+push; head_sha: 7e703c4. BLOCKING: a malformed `agents.json` rendered as an empty list, so Save wrote `[]` back over it — silent, total data loss on a file the feature invites users to hand-edit. All four reviewer dimensions converged on it independently.
+
 ## Open questions
 
 None. Resume support for custom agents is deliberately out of scope (see spec Non-goals).
