@@ -2,8 +2,10 @@
 
 - **Spec:** [docs/product-specs/218-replace-sidebar-footer-hints-with-version-info.md](../../product-specs/218-replace-sidebar-footer-hints-with-version-info.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
+- **PR:** #240
+- **Branch:** feature/218-replace-sidebar-footer-hints-with-version-info
 
 ## Summary
 
@@ -81,6 +83,9 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 ## Progress
 
 - **2026-07-18** — Plan-first scaffold; Stage = IMPLEMENT. Spec and exec plan written; no GitHub issue (local-only per operator choice).
+- **2026-07-18** — Implemented. Go suite, 191 JS unit tests, 59 e2e all pass. Visually confirmed in Chromium (match / mismatch / narrow sidebar).
+- **2026-07-18** — Follow-up commit: `[hidden]` was inert against the author-origin `display: block`; added an explicit rule and an e2e assertion that fails without it.
+- **2026-07-18** — Pushed; PR #240 opened. Stage = REVIEW.
 
 ## Open questions
 
