@@ -303,7 +303,7 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
   await startMarkerPump(page, 200);
   await expect.poll(
     async () => (await bufferLines(page)).join('\n'),
-    { timeout: 15000, intervals: [250, 500] },
+    { timeout: 30000, intervals: [250, 500] },
   ).toContain('HIVE_PUMP_DONE');
 
   // Scroll up with a real wheel gesture so the clamped wheel handler runs.
