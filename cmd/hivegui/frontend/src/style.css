@@ -1124,6 +1124,17 @@ body.resizing-sidebar #app { transition: none; }
   font-weight: 600;
 }
 #settings-panel .actions button.primary:hover { background: #fbb04a; }
+/* setEditingEnabled() disables these while agents.json is loading and
+   after a failed read, when clicking is a no-op — so they must not keep
+   the hover/pointer affordances of a live control. */
+#settings-agent-add:disabled,
+#settings-panel .actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#settings-agent-add:disabled:hover,
+#settings-panel .actions button:disabled:hover { background: #1f1f1f; }
+#settings-panel .actions button.primary:disabled:hover { background: #f59e0b; }
 
 #status {
   position: fixed;
@@ -1462,6 +1473,9 @@ body.resizing-sidebar #app { transition: none; }
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,
+#settings-agent-add:focus-visible,
+#settings-panel .actions button:focus-visible,
+.settings-agent-delete:focus-visible,
 #empty-state .empty-actions button:focus-visible {
   outline: 2px solid #f59e0b;
   outline-offset: 1px;

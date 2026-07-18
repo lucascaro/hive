@@ -180,8 +180,9 @@ window.addEventListener('keydown', (e) => {
     openHelpOverlay();
     return;
   }
-  // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the native
-  // App menu also carries it; on Windows/Linux buildAppMenu returns
+  // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the File menu
+  // carries the same accelerator (see menu_darwin.go — Wails v2 can't
+  // append to the native App menu); on Windows/Linux buildAppMenu returns
   // nil (see menu_other.go), so this is the only path.
   if (e.key === ',') {
     swallow();
