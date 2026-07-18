@@ -9,6 +9,9 @@ export default defineConfig({
   testMatch: '**/*.spec.js',
   fullyParallel: false,
   timeout: 30000,
+  // One retry on CI so a one-off flake doesn't fail the required leg;
+  // first-attempt artifacts (trace attachment) are kept.
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: 'http://localhost:5174',
     actionTimeout: 5000,

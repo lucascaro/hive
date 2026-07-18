@@ -20,6 +20,14 @@ test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the termin
   await expect(overlay).toContainText('Copy selection');
   await page.keyboard.press('Escape');
   await expect(overlay).toBeHidden();
+  // Wait for focus to actually land on the terminal (setFocusedTile defers
+  // the real ta.focus() via requestAnimationFrame) before typing, or keys
+  // sent too early can land nowhere under CI load.
+  await expect.poll(() => page.evaluate(() => {
+    const ta = document.querySelector('.term-host.active .xterm-helper-textarea')
+      || document.querySelector('.term-host .xterm-helper-textarea');
+    return document.activeElement === ta;
+  })).toBe(true);
   // Focus must return to the terminal: typed keys land in stdin.
   await page.evaluate(() => window.__hive.resetStdin());
   await page.keyboard.type('hi');
