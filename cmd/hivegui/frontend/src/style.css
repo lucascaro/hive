@@ -446,6 +446,11 @@ body.resizing-sidebar #app { transition: none; }
   overflow-wrap: anywhere;
 }
 
+/* An author-origin `display` beats the UA's `[hidden] { display: none }`,
+   so without this the hidden attribute on #ver-daemon would be inert.
+   Same reason .dead-overlay[hidden] below spells it out. */
+.hints > span[hidden] { display: none; }
+
 /* Mismatch state: readable, but deliberately quieter than the
    stale-daemon banner, which is the primary signal. */
 .hints.mismatch {

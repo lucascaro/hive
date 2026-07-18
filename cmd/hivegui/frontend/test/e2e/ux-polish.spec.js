@@ -168,6 +168,18 @@ test('sidebar footer shows hive/hived version and build', async ({ page }) => {
   }));
   await expect(daemonLine).toBeHidden();
   await expect(footer).not.toHaveClass(/mismatch/);
+
+  // The hidden attribute must do the hiding on its own. `.hints > span`
+  // sets an author-origin `display: block`, which outranks the UA's
+  // `[hidden] { display: none }` — so without an explicit rule this
+  // would stay visible, and the assertions above would only be passing
+  // because the render also blanks the text.
+  await page.evaluate(() => {
+    const el = document.getElementById('ver-daemon');
+    el.textContent = 'hived v9.9.9 (deadbee)';
+    el.hidden = true;
+  });
+  await expect(daemonLine).toBeHidden();
 });
 
 test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
