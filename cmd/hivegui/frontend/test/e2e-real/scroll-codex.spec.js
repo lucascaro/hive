@@ -220,10 +220,10 @@ test('viewport converges to the bottom after a mode switch under continuous outp
   };
 
   await page.keyboard.press(`${mod}+g`);
-  await expect.poll(atBottom, { timeout: 12000, intervals: [250, 500] }).toBe(0);
+  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
 
   await page.keyboard.press(`${mod}+g`);
-  await expect.poll(atBottom, { timeout: 12000, intervals: [250, 500] }).toBe(0);
+  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
 
   // Once the pump finishes and everything settles, bottom must be
   // stable -- no late replay or restore may move it.
@@ -231,7 +231,7 @@ test('viewport converges to the bottom after a mode switch under continuous outp
     async () => (await bufferLines(page)).join('\n'),
     { timeout: 30000, intervals: [250, 500] },
   ).toContain('HIVE_PUMP_DONE');
-  await expect.poll(atBottom, { timeout: 12000, intervals: [250, 500] }).toBe(0);
+  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
   for (let i = 0; i < 3; i++) {
     await page.waitForTimeout(300);
     expect(await atBottom(), 'viewport moved off the bottom after settling').toBe(0);

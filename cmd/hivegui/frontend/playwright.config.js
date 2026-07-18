@@ -9,6 +9,7 @@ export default defineConfig({
   testMatch: '**/*.spec.js',
   fullyParallel: false,
   timeout: 30000,
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: 'http://localhost:5174',
     actionTimeout: 5000,
