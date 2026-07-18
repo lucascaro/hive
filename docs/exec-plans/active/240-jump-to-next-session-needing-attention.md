@@ -74,8 +74,10 @@ split: attention-jump is view-independent — it always targets a specific sessi
 
 ### New files
 
-- `cmd/hivegui/frontend/test/unit/selectors.test.js` — `selectors.js` has no test file today;
-  it is a pure module over the importable `state` object, so it tests with no DOM.
+- `cmd/hivegui/frontend/test/dom/selectors.test.js` — `selectors.js` has no test file today.
+- `cmd/hivegui/frontend/test/dom/attention-jump.test.js` — return-slot semantics.
+
+Both landed in `test/dom/` rather than the planned `test/unit/` — see the decision log.
 
 ### Tests
 
@@ -127,6 +129,14 @@ keys + a label — the new `Sessions` entries are covered by those existing inva
   limitation, unrelated to this change; the Go embed of `frontend/dist` fails for the same
   reason until a wails build runs.
 - **2026-07-18** — PR #241 opened; stage = REVIEW. Final state: 199 frontend tests (16 new).
+
+## PR convergence ledger
+
+- **2026-07-18 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty;
+  threads_open: 0; action: stop; head_sha: 52f919a.
+- **2026-07-18 post-loop** — applied the three MINOR findings (README shortcut table rows +
+  stale-label fix, anchor released when a jump lands back on it, plan's "New files" section
+  corrected) rather than deferring, per AGENTS.md boil-the-lake.
 
 ## Open questions
 

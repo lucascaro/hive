@@ -85,6 +85,18 @@ describe('jumpToAttention', () => {
     expect(state.attentionReturnId).toBe('c');
   });
 
+  it('releases the anchor when the jump lands back on it', () => {
+    // The anchored session rings its own bell mid-round: ⌘B takes you
+    // home, so ⇧⌘B must not stay armed pointing at where you already are.
+    state.attention = new Set(['b']);
+    jumpToAttention();          // a → b, anchor = a
+    state.activeId = 'b';
+    state.attention = new Set(['a']);
+    jumpToAttention();          // b → a, which IS the anchor
+    expect(switchTo).toHaveBeenLastCalledWith('a');
+    expect(state.attentionReturnId).toBeNull();
+  });
+
   it('does not switch or anchor when nothing needs attention', () => {
     jumpToAttention();
     expect(switchTo).not.toHaveBeenCalled();

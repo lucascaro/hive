@@ -310,7 +310,12 @@ export function jumpToAttention() {
     flashStatus('no sessions need attention');
     return;
   }
-  if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
+  // Landing back on the anchor closes the round: you are already where
+  // ⇧⌘B would take you, so release the slot rather than leave a
+  // no-op jump-back armed (this happens when the session you were
+  // working in rings its own bell mid-round).
+  if (id === state.attentionReturnId) state.attentionReturnId = null;
+  else if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
   switchTo(id);
 }
 
