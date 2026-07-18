@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/240-jump-to-next-session-needing-attention.md](../../product-specs/240-jump-to-next-session-needing-attention.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
+- **PR:** #241
+- **Branch:** feature/240-jump-to-next-session-needing-attention
 - **Status:** active
 
 ## Summary
@@ -124,6 +126,7 @@ keys + a label — the new `Sessions` entries are covered by those existing inva
   `wailsjs/` bindings that only `wails build`/`wails dev` generates. Pre-existing environment
   limitation, unrelated to this change; the Go embed of `frontend/dist` fails for the same
   reason until a wails build runs.
+- **2026-07-18** — PR #241 opened; stage = REVIEW. Final state: 199 frontend tests (16 new).
 
 ## Open questions
 
