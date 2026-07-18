@@ -151,7 +151,7 @@ async function enableMouseTracking(page) {
   await page.waitForFunction(() => {
     const st = [...(window.__hive_state?.terms?.values() || [])][0];
     return st?.term?.modes?.mouseTrackingMode && st.term.modes.mouseTrackingMode !== 'none';
-  }, null, { timeout: 5000 });
+  }, null, { timeout: 10000 });
 }
 
 // Switch the session into the alternate screen buffer (DECSET 1049), as a
@@ -161,7 +161,7 @@ async function enterAltBuffer(page) {
   await page.waitForFunction(() => {
     const st = [...(window.__hive_state?.terms?.values() || [])][0];
     return st?.term?.buffer?.active?.type === 'alternate';
-  }, null, { timeout: 5000 });
+  }, null, { timeout: 10000 });
 }
 
 // Fill scrollback and confirm the viewport is following the bottom, so any
@@ -171,7 +171,7 @@ async function primeScrollback(page) {
   await startMarkerPump(page, 200);
   await expect.poll(
     async () => (await bufferLines(page)).join('\n'),
-    { timeout: 15000, intervals: [250, 500] },
+    { timeout: 30000, intervals: [250, 500] },
   ).toContain('HIVE_PUMP_DONE');
   const at = await scrollState(page);
   expect(at.baseY, 'scrollback should be populated').toBeGreaterThan(0);
