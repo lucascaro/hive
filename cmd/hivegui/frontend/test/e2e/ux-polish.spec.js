@@ -136,17 +136,67 @@ test('help overlay traps Tab inside the dialog', async ({ page }) => {
   await expect(page.locator('#help-overlay')).toBeHidden();
 });
 
-test('sidebar footer hints are platform-correct', async ({ page }) => {
+test('sidebar footer shows hive/hived version and build', async ({ page }) => {
   await boot(page);
-  const hints = page.locator('#sidebar-hints');
-  if (process.platform === 'darwin') {
-    await expect(hints).toContainText('⌘/ help');
-    await expect(hints).toContainText('⇧⌘K commands');
-  } else {
-    await expect(hints).toContainText('Ctrl+/ help');
-    await expect(hints).toContainText('Ctrl+Shift+K commands');
-    await expect(hints).not.toContainText('⌘');
-  }
+  const footer = page.locator('#sidebar-hints');
+  const daemonLine = page.locator('#ver-daemon');
+
+  // Matching builds: one line, daemon line hidden — the common case.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'match',
+    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
+  }));
+  await expect(footer).toContainText('hive v0.4.2 (a3f9c1)');
+  await expect(daemonLine).toBeHidden();
+
+  // Mismatch: both lines visible, warning styling applied.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'mismatch',
+    guiBuild: 'a3f9c1', daemonBuild: 'b7e220',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.1',
+  }));
+  await expect(daemonLine).toBeVisible();
+  await expect(daemonLine).toContainText('hived v0.4.1 (b7e220)');
+  await expect(footer).toHaveClass(/mismatch/);
+
+  // Back to matching: collapses again and clears the warning class.
+  await page.evaluate(() => window.__hive.emit('daemon:stale', {
+    severity: 'match',
+    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
+    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
+  }));
+  await expect(daemonLine).toBeHidden();
+  await expect(footer).not.toHaveClass(/mismatch/);
+});
+
+test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
+  await boot(page);
+  // Two long lines at the narrowest sidebar width is the worst case:
+  // this is what the removed `white-space: nowrap` used to hide behind
+  // an ellipsis, which would have truncated the build hash the footer
+  // exists to show.
+  await page.evaluate(() => {
+    document.getElementById('sidebar').style.width = '150px';
+    window.__hive.emit('daemon:stale', {
+      severity: 'mismatch',
+      guiBuild: 'a3f9c1d', daemonBuild: 'b7e220f',
+      guiRelease: 'v0.4.2-rc.1', daemonRelease: 'v0.4.1-rc.9',
+    });
+  });
+
+  const overflow = await page.evaluate(() => {
+    const el = document.getElementById('sidebar-hints');
+    const sidebar = document.getElementById('sidebar');
+    return {
+      footerRight: el.getBoundingClientRect().right,
+      sidebarRight: sidebar.getBoundingClientRect().right,
+      scrollOverflow: el.scrollWidth - el.clientWidth,
+    };
+  });
+  // Allow a sub-pixel rounding margin.
+  expect(overflow.footerRight).toBeLessThanOrEqual(overflow.sidebarRight + 1);
+  expect(overflow.scrollOverflow).toBeLessThanOrEqual(1);
 });
 
 test('project collapse state survives a reload', async ({ page }) => {

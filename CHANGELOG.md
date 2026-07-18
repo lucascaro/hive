@@ -68,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GUI: the sidebar footer now shows the running version and build of
+  `hive` and `hived` instead of the keyboard-shortcut hints. It shows a
+  single line when both binaries come from the same build, and expands
+  to one line each — highlighted — when they differ, making a stale
+  daemon visible at a glance rather than only via the restart banner.
+  The shortcut hints are still available via the command palette
+  (`⇧⌘K`) and the keyboard-shortcuts overlay (`⌘/`).
 - GUI: the Debug menu is relabeled "Toggle Debug Trace" / "Copy Debug
   Trace" (was "Scroll Debug" / "Scroll Trace"); the captured trace now
   covers grid relayout, focus, keydown routing, a main-thread heartbeat,

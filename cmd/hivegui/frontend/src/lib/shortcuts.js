@@ -148,18 +148,3 @@ export function paletteShortcuts({ isMac }) {
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;
 }
-
-// Sidebar footer hint line. index.html carries the mac-glyph text as
-// a static fallback; main.js re-renders it from here at boot so
-// non-mac platforms see Ctrl+-style hints that match the bindings.
-export function footerHints({ isMac }) {
-  const m = (key, opts) => mod(isMac, key, opts);
-  return [
-    `${m('N')} project`,
-    `${m('T')} session`,
-    `${m('W')} close`,
-    `${m('G')} grid`,
-    `${m('K', { shift: true })} commands`,
-    `${m('/')} help`,
-  ].join(' · ');
-}
