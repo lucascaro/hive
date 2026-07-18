@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/240-user-configurable-custom-agents.md](../../product-specs/240-user-configurable-custom-agents.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT
+- **PR:** #242
+- **Branch:** feature/240-user-configurable-custom-agents
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
@@ -36,7 +38,7 @@ Storage is `agents.json` in the state dir, read through a package-level cache ke
 - `internal/agent/agent.go` — `Get()` checks built-ins first then customs; `All()` returns built-ins in `displayOrder` followed by customs in file order. `Available()` (`agent.go:62`) already handles customs correctly via `LookPath`.
 - `cmd/hived/main.go` — `agent.SetCustomDir(stateDir)` beside the existing `registry.StateDir()` call at line 45.
 - `cmd/hivegui/app.go` — `SetCustomDir` at startup; new bindings `ListCustomAgents()` and `SaveCustomAgents()` (atomic temp-file + rename). JSON tags camelCase to match `AgentInfo` (`app.go:347`).
-- `cmd/hivegui/menu_darwin.go` — `Settings…` with `keys.CmdOrCtrl(",")` in the App menu section, emitting `menu:settings`.
+- `cmd/hivegui/menu_darwin.go` — `Settings…` with `keys.CmdOrCtrl(",")` emitting `menu:settings`. Landed in the **File** menu, not the App menu — see the Decision log for why Wails v2 makes the App menu unreachable.
 - `cmd/hivegui/frontend/index.html` — Settings modal markup, mirroring the `project-editor` block.
 - `cmd/hivegui/frontend/src/app/keyboard.js` — `menu:settings` action entry plus the Cmd/Ctrl+, binding (the latter is the only path on Windows/Linux).
 - `cmd/hivegui/frontend/src/bridge.js` — re-export the new bindings. Must stay a sibling of `main.js` (see its header comment) for the Playwright harness's vite substitution. Regenerate `wailsjs/`.
@@ -95,5 +97,7 @@ Frontend (`cmd/hivegui/frontend/test/dom/settings.test.js`): open/close, add/edi
 ## Open questions
 
 None. Resume support for custom agents is deliberately out of scope (see spec Non-goals).
+
+**Outstanding for QA — rename stability.** A manual smoke test against an isolated `HIVE_STATE_DIR` confirmed the modal writes a valid `agents.json`, but the rename-then-relaunch check was not signed off. That is the specific failure this design's ID-immutability rule exists to prevent, so it should be exercised before the QA verdict: create an agent, start a session on it, rename the agent, relaunch, and confirm the session revives with its configured command rather than dropping to a bare shell.
 
 **Needs a human visual pass (QA):** macOS blocked AppleScript/screencapture in the implementation environment, so the real Wails webview and native menu bar were never seen. Playwright covers the modal and the `menu:settings` event path, but against the mock bridge in Chromium — not the native shell. Before QA sign-off, run the app and confirm: File ▸ Settings… renders and ⌘, opens the modal; add an agent, save, and see it in the ⌘T dropdown; quit and relaunch to confirm a session on that agent revives with its command.
