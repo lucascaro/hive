@@ -80,7 +80,7 @@ export function shortcutGroups({ isMac }) {
         { keys: m('S'), label: 'Toggle sidebar' },
         { keys: `${m('=')} / ${m('-')} / ${m('0')}`, label: 'Zoom in / out / reset' },
         { keys: m('K', { shift: true }), label: 'Command palette' },
-        { keys: m('/'), label: 'Keyboard shortcuts (this panel)' },
+        { keys: `${m('?')} or ${m('/')}`, label: 'Keyboard shortcuts (this panel)' },
       ],
     },
     {

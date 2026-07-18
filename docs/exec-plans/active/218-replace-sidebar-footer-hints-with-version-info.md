@@ -79,6 +79,8 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 - **2026-07-18** — Footer subscribes to `daemon:stale` in its own module instead of extending `banners.js`. Why: that handler early-returns on `severity === 'match'`, the footer's normal case.
 - **2026-07-18** — Kept severity build-ID-based rather than adding release comparison. Why: build IDs are git revisions, so equal builds imply equal releases; a second comparison would be redundant state to keep in sync.
 - **2026-07-18** — Collapse to one line when builds match, expand to two on mismatch. Why: the sidebar is narrow and matching is the overwhelmingly common case; the layout shift on mismatch is a useful signal, not a defect.
+- **2026-07-18** — Bound `⌘?` to the shortcuts panel instead of restoring the footer hints. Why: review correctly noted the hints were the only always-visible shortcut surface on Windows/Linux (no native menu there). But the hints line was `white-space: nowrap` with ellipsis truncation, so at real sidebar widths it showed only ~2 of its 6 bindings — it was not actually doing the discovery job it appeared to. A key people already reach for beats a line that silently truncates. `⌘/` still works; the panel now advertises both.
+- **2026-07-18** — `⌘?` is handled in `app/keyboard.js`, not added to the macOS menu. Why: a menu accelerator intercepts the key before the webview sees it, and one visible "Keyboard Shortcuts" row reads better than two.
 
 ## Progress
 
@@ -86,6 +88,7 @@ Severity stays **build-ID-based**. Build IDs are git revisions, so equal build I
 - **2026-07-18** — Implemented. Go suite, 191 JS unit tests, 59 e2e all pass. Visually confirmed in Chromium (match / mismatch / narrow sidebar).
 - **2026-07-18** — Follow-up commit: `[hidden]` was inert against the author-origin `display: block`; added an explicit rule and an e2e assertion that fails without it.
 - **2026-07-18** — Pushed; PR #240 opened. Stage = REVIEW.
+- **2026-07-18** — Review flagged loss of shortcut discoverability on Windows/Linux (`buildAppMenu` returns nil there). Resolved by binding `⌘?` to the shortcuts panel rather than restoring the footer hints — see Decision log.
 
 ## PR convergence ledger
 

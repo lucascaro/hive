@@ -125,6 +125,10 @@ func buildAppMenu(a *App) *menu.Menu {
 	// fuzzy-matches every item in every other menu, so the user can
 	// search all actions from the menu bar without opening the palette.
 	help := m.AddSubmenu("Help")
+	// Only ⌘/ is bound here. ⌘? opens the same panel but is deliberately
+	// left to the JS keydown handler (app/keyboard.js): a menu
+	// accelerator intercepts the key before the webview sees it, and one
+	// visible "Keyboard Shortcuts" row reads better than two.
 	help.AddText("Keyboard Shortcuts", keys.CmdOrCtrl("/"), emit("menu:keyboard-shortcuts"))
 
 	return m

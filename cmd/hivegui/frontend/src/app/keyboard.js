@@ -90,7 +90,7 @@ window.addEventListener('keydown', (e) => {
   }
   const _help = document.getElementById('help-overlay');
   if (_help && !_help.classList.contains('hidden')) {
-    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === '/')) {
+    if (e.key === 'Escape' || (cmdOrCtrl(e) && (e.key === '/' || e.key === '?'))) {
       e.preventDefault();
       e.stopPropagation();
       closeHelpOverlay();
@@ -153,7 +153,13 @@ window.addEventListener('keydown', (e) => {
     openCommandPalette();
     return;
   }
-  if (e.key === '/') {
+  // Both ⌘/ and ⌘? open the shortcuts panel. "?" is Shift+/ on a US
+  // layout, so e.key is already "?" when shift is held — no separate
+  // shiftKey check needed. ⌘? is the near-universal "show me the
+  // shortcuts" key, and it's the one users try first; the sidebar
+  // footer no longer advertises any bindings, so the discovery key
+  // has to be one people already reach for.
+  if (e.key === '/' || e.key === '?') {
     swallow();
     openHelpOverlay();
     return;

@@ -34,6 +34,30 @@ test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the termin
   await expect.poll(() => page.evaluate(() => window.__hive.stdinText())).toContain('hi');
 });
 
+test('⌘? also opens the shortcuts overlay, and closes it again', async ({ page }) => {
+  await boot(page);
+  // "?" is Shift+/ — the near-universal "show me the shortcuts" key.
+  // With the sidebar footer no longer advertising any bindings, this is
+  // the key users are most likely to try unprompted, so it must work.
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  const overlay = page.locator('#help-overlay');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText('Command palette');
+  // The same key closes it, matching ⌘/ toggle behaviour.
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  await expect(overlay).toBeHidden();
+});
+
+test('the shortcuts overlay advertises both ⌘? and ⌘/', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+Shift+Slash`);
+  await expect(page.locator('#help-overlay').getByText('Keyboard shortcuts (this panel)'))
+    .toBeVisible();
+  // Whichever key the user arrived by, the panel must name the other.
+  const expected = process.platform === 'darwin' ? '⌘? or ⌘/' : 'Ctrl+? or Ctrl+/';
+  await expect(page.locator('#help-overlay kbd', { hasText: 'or' })).toHaveText(expected);
+});
+
 test('help overlay is reachable from the command palette and gates other shortcuts', async ({ page }) => {
   await boot(page);
   await page.keyboard.press(`${mod}+Shift+k`);
