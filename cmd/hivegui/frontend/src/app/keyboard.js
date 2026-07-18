@@ -9,8 +9,10 @@ import {
   OpenNewWindow, CloseWindow, OpenTerminalAt, SetClipboardText, Notify,
 } from '../bridge.js';
 import { state } from './state.js';
-import { reportFailure } from './dom.js';
-import { orderedSessions, activeCwd, activeProjectId } from './selectors.js';
+import { flashStatus, reportFailure } from './dom.js';
+import {
+  orderedSessions, activeCwd, activeProjectId, nextAttentionId,
+} from './selectors.js';
 import { cmdOrCtrl } from '../lib/platform.js';
 import {
   launcherEl, launcherState, moveLauncherSelection, activateLauncherSelection,
@@ -23,8 +25,11 @@ import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/h
 import { isHelpOverlayKey } from '../lib/keymap.js';
 import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
+  restoreSession, minimizeSession,
 } from './view.js';
 import { manualUpdateCheck } from './banners.js';
+import { clearAttention } from './events.js';
+import { updateSidebarSelection } from './sidebar.js';
 import { scrollTrace } from './trace.js';
 
 let deps = {
@@ -201,6 +206,10 @@ window.addEventListener('keydown', (e) => {
       // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
       openProjectEditor(null);
     }
+  } else if (e.key === 'b' || e.key === 'B') {
+    swallow();
+    if (e.shiftKey) jumpBack();
+    else jumpToAttention();
   } else if (e.key === 'w' || e.key === 'W') {
     swallow();
     if (e.shiftKey) {
@@ -290,6 +299,86 @@ export function reorderActive(delta) {
   else gridSpatialMove(delta > 0 ? +1 : -1, 0);
 }
 
+// jumpToAttention (⌘B) goes to the next session with an unread bell,
+// recording where you came from in state.attentionReturnId so ⇧⌘B can
+// bring you back. The anchor is written ONLY when the slot is empty, so
+// it holds the session you were working in before the FIRST ⌘B — a round
+// of bells can bounce you through several flagged sessions and ⇧⌘B still
+// returns you to the work you actually interrupted, not to the previous
+// interruption. ⇧⌘B releases the anchor, which starts the next round.
+//
+// switchTo → setActive clears the target's attention flag, so a jump
+// both delivers you there and marks it seen, exactly like clicking it.
+//
+// A minimized session that rings its bell is restored on the way in and
+// re-minimized on the way back (see endRound) — the tray is where you
+// put sessions you don't want to look at, and glancing at one because it
+// asked for you shouldn't be what drags it back into the grid for good.
+export function jumpToAttention() {
+  const id = nextAttentionId();
+  if (!id) {
+    // The active session can carry a stale flag: onSessionDeath adds
+    // attention unconditionally, even for the session you're looking at.
+    // nextAttentionId skips the active session, so without this the row
+    // would pulse while ⌘B insists nothing needs attention.
+    if (state.activeId && state.attention.has(state.activeId)) {
+      clearAttention(state.activeId);
+      updateSidebarSelection();
+    }
+    flashStatus('no sessions need attention');
+    return;
+  }
+  // Landing back on the anchor closes the round: you are already where
+  // ⇧⌘B would take you, so release the slot rather than leave a
+  // no-op jump-back armed (this happens when the session you were
+  // working in rings its own bell mid-round). Sessions restored earlier
+  // in the round stay restored — re-minimizing them while the user sits
+  // on the anchor would yank tiles out from under them with no keypress
+  // to explain it.
+  if (id === state.attentionReturnId) endRound({ reminimize: false });
+  else if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
+
+  if (state.minimized.has(id)) {
+    state.attentionRestored.add(id);
+    restoreSession(id); // un-minimize + re-render tray, then switchTo
+  } else {
+    switchTo(id);
+  }
+}
+
+// jumpBack (⇧⌘B) returns to the session held before the first ⌘B and
+// ends the round, so the next ⌘B starts a fresh one. The anchored
+// session can be killed while you're away, hence the still-exists guard.
+export function jumpBack() {
+  const id = state.attentionReturnId;
+  if (!id || !state.sessions.some((s) => s.id === id)) {
+    endRound({ reminimize: true }); // still tidy up any restored tiles
+    flashStatus('nowhere to jump back to');
+    return;
+  }
+  // Move focus home BEFORE re-minimizing: minimizeSession hands focus to
+  // another visible tile when it hides the active one, which would fight
+  // the jump we just made.
+  switchTo(id);
+  endRound({ reminimize: true });
+}
+
+// endRound releases the return anchor and, when asked, puts back every
+// session ⌘B pulled out of the minimized tray during the round. Sessions
+// killed while you were away are dropped rather than re-minimized —
+// adding a dead id to state.minimized would strand a chip in the tray.
+function endRound({ reminimize }) {
+  state.attentionReturnId = null;
+  if (reminimize) {
+    for (const rid of state.attentionRestored) {
+      if (rid !== state.activeId && state.sessions.some((s) => s.id === rid)) {
+        minimizeSession(rid);
+      }
+    }
+  }
+  state.attentionRestored.clear();
+}
+
 export function switchToNthSession(n) {
   const ord = orderedSessions();
   if (n - 1 < ord.length) switchTo(ord[n - 1].id);
@@ -344,6 +433,8 @@ const menuActions = {
   'menu:prev-session': () => navSession(-1),
   'menu:move-session-forward': () => reorderActive(+1),
   'menu:move-session-backward': () => reorderActive(-1),
+  'menu:next-attention': jumpToAttention,
+  'menu:jump-back': jumpBack,
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
   'menu:check-for-updates': () => manualUpdateCheck(),

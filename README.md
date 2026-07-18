@@ -95,18 +95,24 @@ build.sh           # macOS universal build
 
 | Key | Action |
 |---|---|
-| ⌘N | New session (agent launcher) |
+| ⌘T / ⇧⌘T | New session (agent launcher) / in a git worktree |
+| ⌘P / ⇧⌘P | Duplicate session / duplicate choosing the tool |
+| ⌘N | New project |
 | ⇧⌘N | New window |
 | ⌘W | Kill active session |
 | ⇧⌘W | Close this window |
-| ⇧⌘P | New project |
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
 | ⌘Enter | Toggle grid / single |
 | ⌘arrows | Spatial nav (grid) / session nav (single) |
+| ⌘B | Next session needing attention (rang the bell) |
+| ⇧⌘B | Jump back to where you were before the first ⌘B |
 | ⌘[ / ⌘] | Previous / next project |
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |
 | ⌘S | Toggle sidebar |
+| ⇧⌘K / ⌘/ | Command palette / keyboard-shortcuts overlay |
+
+Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
 
 ## Contributing
 

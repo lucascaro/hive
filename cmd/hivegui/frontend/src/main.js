@@ -33,7 +33,7 @@ import {
 import {
   initKeyboard, toggleSidebar, toggleProjectGrid, toggleAllGrid,
   confirmAndDeleteProject, deleteActiveProject, navSession, reorderActive,
-  switchToNthSession,
+  switchToNthSession, jumpToAttention, jumpBack,
 } from './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
@@ -66,6 +66,8 @@ const paletteCommands = [
   { id: 'zoom-reset',           name: 'Actual Size',                 run: () => resetFontSize() },
   { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
   { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
+  { id: 'next-attention',       name: 'Next Session Needing Attention', run: jumpToAttention },
+  { id: 'jump-back',            name: 'Jump Back to Where You Were',  run: jumpBack },
   { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
   { id: 'move-backward',        name: 'Move Session Backward',       run: () => reorderActive(-1) },
   { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },

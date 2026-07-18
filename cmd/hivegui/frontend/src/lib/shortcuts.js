@@ -60,6 +60,8 @@ export function shortcutGroups({ isMac }) {
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
         { keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`, label: 'Next / previous session (spatial move in grid)' },
         { keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`, label: 'Reorder session' },
+        { keys: m('B'), label: 'Next session needing attention (bell)' },
+        { keys: m('B', { shift: true }), label: 'Jump back to where you were' },
         { keys: 'Double-click', label: 'Rename (sidebar row or tile title)' },
       ],
     },
@@ -141,6 +143,8 @@ export function paletteShortcuts({ isMac }) {
     'prev-session': m('up'),
     'move-forward': m('down', { shift: true }),
     'move-backward': m('up', { shift: true }),
+    'next-attention': m('B'),
+    'jump-back': m('B', { shift: true }),
     'next-project': m(']'),
     'prev-project': m('['),
     // ⌘? is the primary binding (it is what the macOS menu registers);
