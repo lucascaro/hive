@@ -86,6 +86,12 @@ func buildAppMenu(a *App) *menu.Menu {
 	sess.AddText("Next Session (⌘→ alternate)", keys.CmdOrCtrl("right"), emit("menu:next-session"))
 	sess.AddText("Previous Session (⌘← alternate)", keys.CmdOrCtrl("left"), emit("menu:prev-session"))
 	sess.AddSeparator()
+	sess.AddText("Next Session Needing Attention",
+		keys.CmdOrCtrl("b"), emit("menu:next-attention"))
+	sess.AddText("Jump Back to Where You Were",
+		keys.Combo("b", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:jump-back"))
+	sess.AddSeparator()
 	sess.AddText("Move Session Forward",
 		keys.Combo("down", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:move-session-forward"))
