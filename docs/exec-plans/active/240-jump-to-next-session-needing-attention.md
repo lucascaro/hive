@@ -44,11 +44,11 @@ Authored via plan-first mode. Code references identified during planning:
 
 One pure selector + one thin action, wired into every surface that must stay in lockstep.
 
-The return slot is a **single id, not a stack**. Repeated ⌘B presses while touring flagged
-sessions keep the *original* anchor (the slot is written only when empty), so ⇧⌘B always
-returns to where the tour started rather than one hop back. ⇧⌘B clears the slot after use, so
-the next ⌘B sets a fresh anchor. A stack was rejected as speculative — attention lists are
-short and the "glance and return" flow needs exactly one anchor.
+The return slot is a **single id, not a stack**, holding the session you were working in before
+the **first** ⌘B. It is written only when the slot is empty, so a round of bells that walks you
+through several flagged sessions still returns you to the work you interrupted rather than to
+the previous interruption; ⇧⌘B releases the anchor, which starts the next round. A stack was
+rejected as speculative — one anchor covers the glance-and-return flow.
 
 Deliberately **not** mirroring `navSession`'s `if (state.view !== 'single') gridSpatialMove(...)`
 split: attention-jump is view-independent — it always targets a specific session, and
@@ -95,8 +95,13 @@ keys + a label — the new `Sessions` entries are covered by those existing inva
 - **2026-07-18** — ⇧⌘B is "jump back to where I was", not "previous flagged session". Why:
   operator clarified the intent mid-plan; the glance-and-return flow is what makes the forward
   jump safe to use.
-- **2026-07-18** — Single return slot, not a stack. Why: YAGNI; the anchor-preserving
-  semantics (write only when empty) give the useful behavior with one variable.
+- **2026-07-18** — Single return slot, not a stack. Why: YAGNI; the glance-and-return flow
+  needs exactly one hop.
+- **2026-07-18** — The slot is written once per round (only when empty), NOT rewritten on every
+  ⌘B. Briefly changed to one-hop-back during implementation on review feedback, then reverted:
+  the operator confirmed the intent is "the session I was working on before the FIRST ⌘B".
+  Trade-off accepted: if a round is never closed with ⇧⌘B, the anchor survives until the next
+  ⇧⌘B, which may point at a session from much earlier.
 - **2026-07-18** — Numbered 240, not 218. Why: no GitHub issue was created and the shared
   GitHub issue/PR number space is at 239; 218 is an existing PR.
 

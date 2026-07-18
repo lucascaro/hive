@@ -294,11 +294,13 @@ export function reorderActive(delta) {
   else gridSpatialMove(delta > 0 ? +1 : -1, 0);
 }
 
-// jumpToAttention (⌘B) goes to the next session with an unread bell.
-// It records where you came from in state.attentionReturnId so ⇧⌘B can
-// bring you back — written only when the slot is empty, so touring
-// several flagged sessions with repeated ⌘B keeps the ORIGINAL anchor
-// rather than walking it forward one hop at a time.
+// jumpToAttention (⌘B) goes to the next session with an unread bell,
+// recording where you came from in state.attentionReturnId so ⇧⌘B can
+// bring you back. The anchor is written ONLY when the slot is empty, so
+// it holds the session you were working in before the FIRST ⌘B — a round
+// of bells can bounce you through several flagged sessions and ⇧⌘B still
+// returns you to the work you actually interrupted, not to the previous
+// interruption. ⇧⌘B releases the anchor, which starts the next round.
 //
 // switchTo → setActive clears the target's attention flag, so a jump
 // both delivers you there and marks it seen, exactly like clicking it.

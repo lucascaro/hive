@@ -2,11 +2,11 @@
 //
 // Return-slot semantics for ⌘B / ⇧⌘B (src/app/keyboard.js).
 //
-// The slot is written only when empty, so touring several flagged
-// sessions with repeated ⌘B keeps the ORIGINAL anchor — that
-// write-once rule is the whole feature, and a naive "remember the last
-// session" implementation passes casual manual testing while failing
-// the two-hop case. Locked down here.
+// ⇧⌘B means "back to the work I was doing before the FIRST ⌘B", so the
+// anchor is written only when the slot is empty and released on use.
+// The cases below pin that down against the tempting simplification of
+// re-anchoring on every jump — which would walk the return target
+// forward and strand the user one interruption short of their work.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 vi.mock('../../src/bridge.js', () => {
@@ -64,7 +64,7 @@ describe('jumpToAttention', () => {
     expect(state.attentionReturnId).toBe('a');
   });
 
-  it('keeps the original anchor across a multi-hop tour', () => {
+  it('keeps the original anchor across a multi-hop round of bells', () => {
     state.attention = new Set(['b', 'c']);
     jumpToAttention();          // a → b, anchor = a
     state.activeId = 'b';       // switchTo is mocked; mirror what it would do
@@ -72,6 +72,17 @@ describe('jumpToAttention', () => {
     jumpToAttention();          // b → c, anchor must STILL be a
     expect(switchTo).toHaveBeenLastCalledWith('c');
     expect(state.attentionReturnId).toBe('a');
+  });
+
+  it('re-anchors on the next ⌘B after ⇧⌘B released the slot', () => {
+    state.attention = new Set(['b']);
+    jumpToAttention();          // a → b, anchor = a
+    state.activeId = 'b';
+    jumpBack();                 // back to a, anchor released
+    state.activeId = 'c';       // user goes to work in c
+    state.attention = new Set(['b']);
+    jumpToAttention();          // c → b, fresh anchor = c
+    expect(state.attentionReturnId).toBe('c');
   });
 
   it('does not switch or anchor when nothing needs attention', () => {

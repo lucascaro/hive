@@ -12,8 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GUI: `⌘B` jumps to the next session that rang the bell (the pulsing
   ones), cycling through them and wrapping — no more hunting for the
   flashing row with the mouse. `⇧⌘B` jumps back to the session you were
-  working in before the first `⌘B`, so glancing at an alerting agent
-  never costs you your place. Both are in the ⌘/ help overlay, the
+  working in before the first `⌘B` — so a round of bells can bounce you
+  through several sessions and one keystroke still returns you to the
+  work you interrupted. Both are in the ⌘/ help overlay, the
   command palette, and the macOS Session menu (`Ctrl+B` / `Ctrl+Shift+B`
   on Windows and Linux).
 

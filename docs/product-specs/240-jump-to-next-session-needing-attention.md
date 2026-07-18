@@ -18,9 +18,10 @@ scatters the session they were working in.
 ## Desired behavior
 
 A single keystroke jumps straight to the next session flagged for attention, cycling through
-them and wrapping. A second keystroke jumps *back* to whatever session the user was working in
-before the first jump, so glancing at an alerting agent never costs them their place. Landing
-on a flagged session clears its pulse, exactly as clicking it does today.
+them and wrapping. A second keystroke jumps *back* to the session the user was working in
+before the **first** jump — so a round of bells can walk them through several flagged sessions
+and one keystroke still returns them to the work they actually interrupted. Landing on a
+flagged session clears its pulse, exactly as clicking it does today.
 
 - **⌘B** (Ctrl+B off mac) — next session needing attention.
 - **⇧⌘B** — jump back to the session held before the first ⌘B.
@@ -29,8 +30,8 @@ on a flagged session clears its pulse, exactly as clicking it does today.
 
 - With two sessions flagged, ⌘B from a third session lands on the first flagged one and clears
   its pulse; a second ⌘B lands on the other.
-- ⇧⌘B after a tour of flagged sessions returns to the session the tour started from, not one
-  hop back.
+- ⇧⌘B after several ⌘B hops returns to the session the round started from, not one hop back.
+- After ⇧⌘B releases the anchor, the next ⌘B anchors wherever the user is then.
 - ⌘B with nothing flagged shows a "no sessions need attention" status flash and does not change
   the active session.
 - ⇧⌘B when the anchor session has since been killed shows a status flash and does not crash.
