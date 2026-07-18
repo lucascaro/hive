@@ -37,10 +37,11 @@ export function isShiftEnter(e) {
 // separate shiftKey check is needed — the same shape as the '=' / '+'
 // zoom pair in app/keyboard.js.
 //
-// ⌘? is the near-universal "show me the shortcuts" key. It matters more
-// than usual here because the sidebar footer no longer advertises any
-// bindings, so the panel has to be reachable by a key people already
-// try unprompted.
+// The '?' branch only ever fires on Windows/Linux. On macOS the Help
+// menu item's ⌘/ accelerator already matches both chords (AppKit matches
+// key equivalents on the unshifted character), so the menu consumes them
+// before the webview sees a keydown — see menu_darwin.go. Non-mac has no
+// native menu at all, which is where this predicate earns its keep.
 //
 // The Cmd/Ctrl modifier is required: a bare "?" is an ordinary character
 // that must reach the terminal, never the overlay. Callers that already

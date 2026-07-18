@@ -68,10 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- GUI: `⌘?` (`Ctrl+?`) now opens the keyboard-shortcuts panel, alongside
-  the existing `⌘/`. `?` is the near-universal "show me the shortcuts"
-  key, and with the sidebar footer no longer listing bindings it is the
-  one most people try first.
+- GUI: `Ctrl+?` now opens the keyboard-shortcuts panel on Windows and
+  Linux, alongside the existing `Ctrl+/`. macOS already accepted both
+  `⌘?` and `⌘/` via the Help menu item; those platforms have no native
+  menu, so only `Ctrl+/` worked there.
 - GUI: the sidebar footer now shows the running version and build of
   `hive` and `hived` instead of the keyboard-shortcut hints. It shows a
   single line when both binaries come from the same build, and expands
