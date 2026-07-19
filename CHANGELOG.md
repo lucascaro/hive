@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-07-19
+
 ### Added
 
 - Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also
@@ -567,7 +569,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/lucascaro/hive/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/lucascaro/hive/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/lucascaro/hive/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/lucascaro/hive/compare/v2.0.1...v2.1.0
