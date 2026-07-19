@@ -38,6 +38,40 @@ function showDaemonBanner(text) {
 function hideDaemonBanner() {
   daemonBannerEl.classList.add('hidden');
 }
+// restartHive confirms, then asks Go to replace the daemon and
+// relaunch. Exported (like manualUpdateCheck below) because the
+// daemon-stale banner used to be the *only* way to reach it: with
+// matching builds the banner never appears, so there was no way to
+// restart Hive at all. File ▸ Restart Hive… and the command palette
+// call this directly.
+export async function restartHive() {
+  // Restart kills hived AND relaunches Hive itself, so every running
+  // session ends. Warn first.
+  const ok = await Confirm(
+    'Restart Hive?',
+    'This will close Hive, terminate every running shell and agent, ' +
+    'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
+    'Continue?',
+  );
+  if (!ok) return;
+  daemonBannerRestart.disabled = true;
+  daemonRestarting = true;
+  showDaemonBanner('Restarting Hive…');
+  try {
+    await RestartDaemon();
+    // RestartDaemon quits this process on success; control returns
+    // here only on failure paths — including the daemon refusing to
+    // die, which now surfaces here instead of silently relaunching
+    // into the old daemon.
+  } catch (err) {
+    flashStatus(`restart failed: ${err}`, true);
+    showDaemonBanner(`Restart failed: ${err}`);
+  } finally {
+    daemonBannerRestart.disabled = false;
+    daemonRestarting = false;
+  }
+}
+
 function wireDaemonBanner() {
   daemonBannerDismiss.addEventListener('click', () => {
     // Dismissals are per-daemon-build: re-show if a different build
@@ -45,31 +79,7 @@ function wireDaemonBanner() {
     daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
     hideDaemonBanner();
   });
-  daemonBannerRestart.addEventListener('click', async () => {
-    // Restart kills hived AND relaunches Hive itself, so every running
-    // session ends. Warn first.
-    const ok = await Confirm(
-      'Restart Hive?',
-      'This will close Hive, terminate every running shell and agent, ' +
-      'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
-      'Continue?',
-    );
-    if (!ok) return;
-    daemonBannerRestart.disabled = true;
-    daemonRestarting = true;
-    showDaemonBanner('Restarting Hive…');
-    try {
-      await RestartDaemon();
-      // RestartDaemon quits this process on success; control returns
-      // here only on failure paths.
-    } catch (err) {
-      flashStatus(`restart failed: ${err}`, true);
-      showDaemonBanner(`Restart failed: ${err}`);
-    } finally {
-      daemonBannerRestart.disabled = false;
-      daemonRestarting = false;
-    }
-  });
+  daemonBannerRestart.addEventListener('click', restartHive);
 
   EventsOn('daemon:stale', (ev) => {
     if (!ev) return;

@@ -69,6 +69,15 @@ const (
 	// all written atomically with respect to live PTY fanout, so the
 	// client sees a clean buffer-reset boundary.
 	FrameRequestReplay FrameType = 0x14 // C → S, empty payload, attach
+
+	// FrameShutdown asks the daemon to stop accepting connections and
+	// exit, the same way SIGTERM does. The GUI's Restart action uses
+	// it as the primary kill channel: it already holds a control conn,
+	// so shutting down in-band needs no pidfile, no pid lookup, and no
+	// process-name heuristic — all of which can silently fail and
+	// leave the "restarted" GUI attached to the daemon it meant to
+	// replace.
+	FrameShutdown FrameType = 0x15 // C → S, empty payload, control
 )
 
 func (t FrameType) String() string {
@@ -113,6 +122,8 @@ func (t FrameType) String() string {
 		return "RESTART_SESSION"
 	case FrameRequestReplay:
 		return "REQUEST_REPLAY"
+	case FrameShutdown:
+		return "SHUTDOWN"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

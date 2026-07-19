@@ -28,7 +28,7 @@ import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
   restoreSession, minimizeSession,
 } from './view.js';
-import { manualUpdateCheck } from './banners.js';
+import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { scrollTrace } from './trace.js';
@@ -463,6 +463,7 @@ const menuActions = {
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
   'menu:check-for-updates': () => manualUpdateCheck(),
+  'menu:restart-hive': () => restartHive(),
   // Must toggle, not just open: the native ⌘/ accelerator intercepts
   // the key before the webview on macOS, so the keydown close path
   // (Escape/⌘/ in the window listener) never sees ⌘/ while the menu

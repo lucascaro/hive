@@ -42,6 +42,14 @@ type Daemon struct {
 
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
+
+	// shutdown is closed by Shutdown to stop Run the same way a
+	// cancelled context does. A client asking to exit in-band (the
+	// GUI's Restart action) has no handle on the daemon's context,
+	// and signalling by pid is exactly the fragile path this exists
+	// to avoid.
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New binds the socket, opens the registry, and (if configured)
@@ -117,11 +125,12 @@ func New(cfg Config) (*Daemon, error) {
 	}
 
 	return &Daemon{
-		cfg:     cfg,
-		sock:    sock,
-		reg:     reg,
-		ln:      ln,
-		clients: make(map[net.Conn]struct{}),
+		cfg:      cfg,
+		sock:     sock,
+		reg:      reg,
+		ln:       ln,
+		clients:  make(map[net.Conn]struct{}),
+		shutdown: make(chan struct{}),
 	}, nil
 }
 
@@ -129,7 +138,10 @@ func New(cfg Config) (*Daemon, error) {
 func (d *Daemon) Run(ctx context.Context) error {
 	log.Printf("hived: listening on %s, %d session(s)", d.sock, len(d.reg.List()))
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-d.shutdown:
+		}
 		_ = d.ln.Close()
 	}()
 	for {
@@ -143,6 +155,17 @@ func (d *Daemon) Run(ctx context.Context) error {
 		}
 		go d.serve(conn)
 	}
+}
+
+// Shutdown asks Run to stop accepting and return, exactly as a
+// cancelled context would. Safe to call more than once and from any
+// goroutine — a client can send FrameShutdown twice, and the pidfile
+// removal + registry flush that follow Run must happen once.
+func (d *Daemon) Shutdown() {
+	d.shutdownOnce.Do(func() {
+		log.Printf("hived: shutdown requested by client")
+		close(d.shutdown)
+	})
 }
 
 // SocketPath returns the path the daemon is bound to.
@@ -295,6 +318,13 @@ func (d *Daemon) serveControl(conn net.Conn) {
 			return
 		}
 		switch ft {
+		case wire.FrameShutdown:
+			// Return afterwards: the listener is about to close and
+			// this conn is going away with it. Nothing is written
+			// back — the client's proof of shutdown is the socket
+			// going quiet, not an ack it would have to trust.
+			d.Shutdown()
+			return
 		case wire.FrameListSessions:
 			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
 		case wire.FrameCreateSession:

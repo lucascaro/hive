@@ -306,34 +306,73 @@ func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string) {
 	wruntime.EventsEmit(a.ctx, "daemon:stale", daemonVersionEvent(daemonBuild, daemonRelease))
 }
 
-// RestartDaemon kills the running hived and relaunches the GUI as a
-// detached child, then quits this process. Reconnecting in-place left
+// restartKillBudget bounds each of the two kill channels' wait for
+// the socket to go quiet. hived's shutdown is a listener close plus a
+// registry flush, so this is generous.
+const restartKillBudget = 3 * time.Second
+
+// RestartDaemon stops the running hived, relaunches the GUI as a
+// detached child, and quits this process. Reconnecting in-place left
 // the existing window holding stale session state (xterm buffers,
 // attach conns) that no longer matched the fresh daemon; a full GUI
 // restart sidesteps that by starting from a clean slate.
 //
-// killRunningHived blocks until the previous daemon is actually gone
-// so the relaunched GUI's dialOrSpawn binds a fresh socket. We kill
-// before spawning the child for the same reason — otherwise the new
-// GUI would happily reconnect to the old daemon.
+// The daemon is stopped over the control connection we already hold
+// (FrameShutdown) and, failing that, by signalling the pid recorded
+// in <sock>.pid. Either way the socket is probed afterwards: only
+// once nothing answers do we relaunch and quit. That ordering is the
+// whole point — killRunningHived can return nil without having killed
+// anything (missing pidfile, unrecognised process name), and the
+// relaunched GUI's dialOrSpawn would then reconnect to the very
+// daemon the user asked to replace, silently.
+//
+// If the daemon survives both channels we return an error and stay
+// put. A visible failure in a working window beats quitting into a
+// window that looks restarted and isn't.
 func (a *App) RestartDaemon() error {
+	sock := hdaemon.SocketPath()
+
 	a.mu.Lock()
-	if a.control != nil {
-		_ = a.control.conn.Close()
-		a.control = nil
-	}
+	control := a.control
+	a.control = nil
 	for _, c := range a.attaches {
 		_ = c.conn.Close()
 	}
 	a.attaches = make(map[string]*connState)
 	a.mu.Unlock()
 
-	if err := killRunningHived(hdaemon.SocketPath()); err != nil {
-		return fmt.Errorf("kill stale hived: %w", err)
+	if control != nil {
+		if err := wire.WriteFrame(control.conn, wire.FrameShutdown, nil); err != nil {
+			log.Printf("hivegui: restart: send shutdown frame: %v", err)
+		}
+		_ = control.conn.Close()
+	} else {
+		log.Printf("hivegui: restart: no control conn, skipping in-band shutdown")
 	}
+
+	dead := control != nil && socketDead(sock, restartKillBudget)
+	log.Printf("hivegui: restart: in-band shutdown left socket dead=%v", dead)
+
+	if !dead {
+		// A kill error is logged, not returned: hived is a child the
+		// GUI never Wait()s on, so a SIGTERM'd daemon lingers as a
+		// zombie and the signal-based wait reports "still alive" for a
+		// process that has already released the socket. The socket
+		// probe below is the arbiter.
+		if err := killRunningHived(sock); err != nil {
+			log.Printf("hivegui: restart: kill hived: %v", err)
+		}
+		dead = socketDead(sock, restartKillBudget)
+		log.Printf("hivegui: restart: signal path left socket dead=%v", dead)
+	}
+	if !dead {
+		return fmt.Errorf("hived still answering on %s after shutdown and signal; not restarting", sock)
+	}
+
 	if err := spawnNewGUI(a.launchDir); err != nil {
 		return fmt.Errorf("relaunch GUI: %w", err)
 	}
+	log.Printf("hivegui: restart: relaunched, quitting")
 	wruntime.Quit(a.ctx)
 	return nil
 }

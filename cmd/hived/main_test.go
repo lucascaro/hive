@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestRemovePidfile(t *testing.T) {
 	t.Run("removes existing file silently", func(t *testing.T) {
 		buf := capture(t)
 		path := filepath.Join(t.TempDir(), "hived.sock.pid")
-		if err := os.WriteFile(path, []byte("123"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		removePidfile(path)
@@ -43,6 +44,25 @@ func TestRemovePidfile(t *testing.T) {
 		}
 	})
 
+	// The pidfile is the GUI restart path's fallback handle on the
+	// daemon. A daemon exiting after its replacement is already up
+	// must not delete the live daemon's pidfile — doing so leaves
+	// Restart Hive with nothing to signal.
+	t.Run("foreign pid is left alone", func(t *testing.T) {
+		buf := capture(t)
+		path := filepath.Join(t.TempDir(), "hived.sock.pid")
+		if err := os.WriteFile(path, []byte("999999"), 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		removePidfile(path)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("pidfile owned by another pid was removed: %v", err)
+		}
+		if !strings.Contains(buf.String(), "owned by pid 999999") {
+			t.Errorf("expected an ownership log line; got %q", buf.String())
+		}
+	})
+
 	t.Run("undeletable file logs a warning", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("chmod-based failure injection requires POSIX permissions")
@@ -56,7 +76,7 @@ func TestRemovePidfile(t *testing.T) {
 			t.Fatalf("Mkdir: %v", err)
 		}
 		path := filepath.Join(dir, "hived.sock.pid")
-		if err := os.WriteFile(path, []byte("123"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 		if err := os.Chmod(dir, 0o500); err != nil {
