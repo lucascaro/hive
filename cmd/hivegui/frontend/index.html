@@ -63,6 +63,28 @@
       <button id="project-editor-save" class="primary">Save</button>
     </div>
   </div>
+  <div id="settings" class="hidden" role="dialog" aria-modal="true" aria-label="Settings">
+    <div id="settings-panel">
+      <header>
+        <h3>Settings</h3>
+        <button id="settings-close" type="button" aria-label="Close">×</button>
+      </header>
+      <section id="settings-agents">
+        <h4>Custom agents</h4>
+        <p class="settings-hint">
+          Define your own tools — a command and its arguments. They appear in the
+          new-session menu alongside the built-ins.
+        </p>
+        <div id="settings-agents-list"></div>
+        <button id="settings-agent-add" type="button">+ Add agent</button>
+        <p id="settings-error" class="settings-error hidden" role="alert"></p>
+      </section>
+      <div class="actions">
+        <button id="settings-cancel" type="button">Cancel</button>
+        <button id="settings-save" type="button" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
     <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" aria-label="Search commands" autocomplete="off"/>
     <div id="command-palette-list" role="listbox"></div>

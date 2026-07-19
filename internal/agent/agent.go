@@ -157,18 +157,32 @@ var (
 )
 
 // Get returns the def for id, or zero Def + false if unknown.
+//
+// Built-ins are checked first: a custom agent may not shadow one, both
+// because built-ins carry ResumeArgs/CaptureSessionIDFn funcs that a
+// JSON config cannot express, and so that a bad config can never
+// break a built-in agent.
 func Get(id ID) (Def, bool) {
-	d, ok := defsByID[id]
-	return d, ok
+	if d, ok := defsByID[id]; ok {
+		return d, true
+	}
+	for _, d := range customDefs() {
+		if d.ID == id {
+			return d, true
+		}
+	}
+	return Def{}, false
 }
 
-// All returns every built-in agent in display order.
+// All returns every available agent — built-ins in display order,
+// followed by the user's custom agents in config-file order.
 func All() []Def {
-	out := make([]Def, 0, len(displayOrder))
+	custom := customDefs()
+	out := make([]Def, 0, len(displayOrder)+len(custom))
 	for _, id := range displayOrder {
 		if d, ok := defsByID[id]; ok {
 			out = append(out, d)
 		}
 	}
-	return out
+	return append(out, custom...)
 }

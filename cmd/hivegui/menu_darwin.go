@@ -59,6 +59,14 @@ func buildAppMenu(a *App) *menu.Menu {
 		emit("menu:delete-project"))
 	file.AddSeparator()
 	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
+	// macOS convention puts Settings in the app menu, but Wails v2
+	// builds that menu entirely in Objective-C from a role enum
+	// (WailsMenu.m's appendRole) — processMenuItem returns as soon as
+	// it sees Role != 0, so an appended item is never traversed.
+	// Hand-building the app menu instead would forfeit Hide / Hide
+	// Others / Show All, which need selectors Go can't invoke. File is
+	// the next-best home; ⌘, is what users actually reach for.
+	file.AddText("Settings…", keys.CmdOrCtrl(","), emit("menu:settings"))
 
 	m.Append(menu.EditMenu()) // Cut / Copy / Paste / Select All
 

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also
+  under **File ▸ Settings…** and in the command palette; `Ctrl+,` or the
+  command palette elsewhere) lets you add custom
+  agents with a name, command line, and color — for example a `claude-lite`
+  that runs `claude --model haiku`. Custom agents appear in the `⌘T` launcher
+  alongside the built-ins, with the same PATH availability check, and persist
+  and revive across restarts. Definitions live in `agents.json` in the Hive
+  state directory and can be hand-edited. Built-in agent ids cannot be
+  redefined, and custom agents do not support conversation resume — Restart
+  re-runs their command rather than continuing the prior session.
+
 - GUI: `⌘B` jumps to the next session that rang the bell (the pulsing
   ones), cycling through them and wrapping — no more hunting for the
   flashing row with the mouse. `⇧⌘B` jumps back to the session you were

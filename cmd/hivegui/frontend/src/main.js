@@ -21,6 +21,7 @@ import {
 } from './app/modals/launcher.js';
 import { openProjectEditor, initProjectEditor } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
+import { initSettings, openSettings } from './app/modals/settings.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents } from './app/events.js';
@@ -73,6 +74,7 @@ const paletteCommands = [
   { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },
   { id: 'prev-project',         name: 'Previous Project',            run: () => shiftActiveProject(-1) },
   { id: 'keyboard-shortcuts',   name: 'Keyboard Shortcuts',          run: () => openHelpOverlay() },
+  { id: 'settings',             name: 'Settings…',                   run: () => openSettings() },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,
@@ -89,6 +91,7 @@ const paletteCommands = [
 initLauncher({ setFocusedTile, refocusActiveTerm });
 initProjectEditor({ setFocusedTile, refocusActiveTerm });
 initCommandPalette({ commands: paletteCommands, focusActiveTerm });
+initSettings({ setFocusedTile, refocusActiveTerm });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({ switchTo, switchToProject, confirmAndDeleteProject, renderEmptyState, refocusActiveTerm });
 initBanners();

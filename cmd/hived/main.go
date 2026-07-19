@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
@@ -43,6 +44,13 @@ func main() {
 	// Tee logs to a file under the state dir so the GUI's auto-spawned
 	// daemon (whose stdout/stderr are /dev/null) leaves a paper trail.
 	stateDir := registry.StateDir()
+
+	// Point the agent catalog at the user's agents.json. The daemon
+	// needs this as much as the GUI does: registry entries persist
+	// only the agent ID, so every Revive/Restart re-resolves the
+	// command through agent.Get.
+	agent.SetCustomDir(stateDir)
+
 	if err := os.MkdirAll(stateDir, 0o700); err == nil {
 		logPath := filepath.Join(stateDir, "hived.log")
 		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {

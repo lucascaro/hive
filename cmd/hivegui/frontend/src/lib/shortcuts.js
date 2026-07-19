@@ -82,6 +82,7 @@ export function shortcutGroups({ isMac }) {
         { keys: m('S'), label: 'Toggle sidebar' },
         { keys: `${m('=')} / ${m('-')} / ${m('0')}`, label: 'Zoom in / out / reset' },
         { keys: m('K', { shift: true }), label: 'Command palette' },
+        { keys: m(','), label: 'Settings (custom agents)' },
         { keys: `${m('?')} or ${m('/')}`, label: 'Keyboard shortcuts (this panel)' },
       ],
     },
@@ -150,6 +151,7 @@ export function paletteShortcuts({ isMac }) {
     // ⌘/ is what the macOS menu item displays, so the palette matches it.
     // ⌘? also works (see menu_darwin.go); the overlay lists both.
     'keyboard-shortcuts': m('/'),
+    settings: m(','),
   };
   for (let i = 1; i <= 9; i++) map[`switch-${i}`] = m(String(i));
   return map;

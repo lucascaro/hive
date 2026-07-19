@@ -21,6 +21,7 @@ import {
 } from './modals/launcher.js';
 import { editorEl, openProjectEditor } from './modals/project-editor.js';
 import { openCommandPalette } from './modals/command-palette.js';
+import { openSettings, closeSettings } from './modals/settings.js';
 import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
 import { isHelpOverlayKey } from '../lib/keymap.js';
 import {
@@ -94,6 +95,20 @@ window.addEventListener('keydown', (e) => {
   if (_palette && !_palette.classList.contains('hidden')) {
     return; // palette's own listener handles keys
   }
+  const _settings = document.getElementById('settings');
+  if (_settings && !_settings.classList.contains('hidden')) {
+    // Unlike the help overlay, settings is a form with many focusable
+    // inputs, so Tab is left alone to walk between them. The modal's
+    // own listener also handles Escape and consumes it; this branch is
+    // the fallback for when focus is still on the terminal, plus the
+    // ⌘, toggle-to-close.
+    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === ',')) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSettings();
+    }
+    return; // settings owns the keyboard while open
+  }
   const _help = document.getElementById('help-overlay');
   if (_help && !_help.classList.contains('hidden')) {
     if (e.key === 'Escape' || isHelpOverlayKey(e)) {
@@ -163,6 +178,15 @@ window.addEventListener('keydown', (e) => {
   if (isHelpOverlayKey(e)) {
     swallow();
     openHelpOverlay();
+    return;
+  }
+  // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the File menu
+  // carries the same accelerator (see menu_darwin.go — Wails v2 can't
+  // append to the native App menu); on Windows/Linux buildAppMenu returns
+  // nil (see menu_other.go), so this is the only path.
+  if (e.key === ',') {
+    swallow();
+    openSettings();
     return;
   }
   if (e.key === 'p' || e.key === 'P') {
@@ -422,6 +446,7 @@ const menuActions = {
   'menu:new-project': () => openProjectEditor(null),
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
+  'menu:settings': () => openSettings(),
   'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); },
   'menu:zoom-in': () => deps.bumpFontSize(+1),
   'menu:zoom-out': () => deps.bumpFontSize(-1),
