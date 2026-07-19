@@ -73,6 +73,7 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 ## Progress
 
 - **2026-07-18** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-07-19** — Review iter 2 cleared four IMPORTANT items (writeMu bypass on the shutdown frame, a log line claiming an in-band attempt that never happened, `println` bypassing the new logfile, and a test reading the real state dir) plus the two Greptile MINORs (socketDead budget overrun, probe-dial EOF spam in hived.log). All three bot review threads replied to and resolved.
 - **2026-07-19** — Review iter 1 cleared both IMPORTANT findings: RestartDaemon no longer tears down conns before confirming the daemon died (the error path has to leave a working window, and there is no reconnect route), and restartHive is re-entrancy-guarded now that the menu and palette reach it. Both have regression tests; the Go one was mutation-checked against the pre-fix ordering.
 - **2026-07-19** — PR #244 opened; stage = REVIEW.
 - **2026-07-18** — Implemented on `feature/243-restart-hive-doesnt-reliably-restart-daemon`. `./build.sh` green; `internal/daemon` shutdown tests, `cmd/hivegui` restart tests, `cmd/hived` pidfile tests, and 253 frontend vitest tests all pass.
@@ -81,6 +82,7 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 
 <!-- Append-only. One line per /hs-review-loop iteration. -->
 
+- **2026-07-19 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: (4 IMPORTANT, distinct from iter 1); threads_open: 0 (3 bot threads replied + resolved); action: autofix+push; head_sha: 69ef50a.
 - **2026-07-19 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 495bdfec73271419d2f24d2560fdb9f0290d885f1efa99fb4bad82abac6f883c; threads_open: 0; action: autofix+push (2 IMPORTANT applied despite COMMENT-stop, per AGENTS.md boil-the-lake); head_sha: 8a0e349.
 
 ## Open questions
