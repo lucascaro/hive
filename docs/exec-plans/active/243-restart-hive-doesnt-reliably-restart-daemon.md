@@ -85,6 +85,20 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 - **2026-07-19 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: (4 IMPORTANT, distinct from iter 1); threads_open: 0 (3 bot threads replied + resolved); action: autofix+push; head_sha: 69ef50a.
 - **2026-07-19 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 495bdfec73271419d2f24d2560fdb9f0290d885f1efa99fb4bad82abac6f883c; threads_open: 0; action: autofix+push (2 IMPORTANT applied despite COMMENT-stop, per AGENTS.md boil-the-lake); head_sha: 8a0e349.
 
+## CI note (not caused by this PR)
+
+`CI (Linux)` fails on `main` itself, including tip `13121a0`, with the same three
+`e2e-real` specs that fail on this branch:
+
+- `wheel-scroll.spec.js:215` — mouse-tracking session forwards the wheel to the app
+- `wheel-scroll.spec.js:228` — alternate-buffer session does not swallow the wheel
+- `scroll-codex.spec.js:244` — unscrolled user not stranded by a resize under load (flaky, passes on retry)
+
+Confirmed pre-existing two ways: the identical set fails on `main`, and on this
+branch Linux flipped success → failure across `69ef50a` → `b404d1c`, a
+**docs-only** commit. Worth its own spec — it will block Gate 6 on every PR
+until fixed.
+
 ## Open questions
 
 - None blocking.
