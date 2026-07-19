@@ -39,6 +39,6 @@ CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-r
 
 ## Notes
 
-Surfaced while driving PR #244 (Restart Hive) through `/hs-review-loop`. That PR's own Windows failure *was* real and was fixed; these are not. Evidence is recorded in `docs/exec-plans/active/243-restart-hive-doesnt-reliably-restart-daemon.md` under `## CI note`.
+Surfaced while driving PR #244 (Restart Hive) through `/hs-review-loop`. That PR's own Windows failure *was* real and was fixed; these are not. Evidence is recorded in `docs/exec-plans/completed/243-restart-hive-doesnt-reliably-restart-daemon.md` under `## CI note`.
 
 Root cause is **not** diagnosed here — this spec records the evidence and the impact. The load-dependent `baseY` precondition in `scroll-codex.spec.js:286` is the most concrete starting thread: a runner under CPU contention produces less output in the same wall-clock window, which fits every observation, including why the failure set grows on the slower/busier runs.
