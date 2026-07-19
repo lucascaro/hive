@@ -2,10 +2,11 @@
 
 - **Issue:** —
 - **PR:** #244
+- **Shipped:** 2026-07-19 (c220c67)
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/243-restart-hive-doesnt-reliably-restart-daemon.md](../exec-plans/active/243-restart-hive-doesnt-reliably-restart-daemon.md)
+- **Exec plan:** [docs/exec-plans/completed/243-restart-hive-doesnt-reliably-restart-daemon.md](../exec-plans/completed/243-restart-hive-doesnt-reliably-restart-daemon.md)
 
 ## Problem
 

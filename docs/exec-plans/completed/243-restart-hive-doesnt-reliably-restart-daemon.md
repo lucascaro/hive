@@ -4,7 +4,8 @@
 - **Issue:** —
 - **PR:** #244
 - **Branch:** feature/243-restart-hive-doesnt-reliably-restart-daemon
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
@@ -77,6 +78,14 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 - **2026-07-19** — Review iter 1 cleared both IMPORTANT findings: RestartDaemon no longer tears down conns before confirming the daemon died (the error path has to leave a working window, and there is no reconnect route), and restartHive is re-entrancy-guarded now that the menu and palette reach it. Both have regression tests; the Go one was mutation-checked against the pre-fix ordering.
 - **2026-07-19** — PR #244 opened; stage = REVIEW.
 - **2026-07-18** — Implemented on `feature/243-restart-hive-doesnt-reliably-restart-daemon`. `./build.sh` green; `internal/daemon` shutdown tests, `cmd/hivegui` restart tests, `cmd/hived` pidfile tests, and 253 frontend vitest tests all pass.
+
+## QA verdict
+
+- **2026-07-19** — **PASS**. Merged as c220c67. Operator ran the decisive manual check on the built bundle: with `<sock>.pid` deleted — the state that pre-fix guaranteed the bug, since `killRunningHived` returns nil having killed nothing and the relaunched GUI dials straight back onto the surviving daemon — Restart Hive replaced the daemon. That covers success criteria 1 and 2, the two the whole change exists for.
+  - build/lint/test — PASS — `./build.sh`, `go test ./...` (every package ok), `go vet ./...`, `GOOS=windows go vet ./cmd/hivegui/`, Vitest 255/255. `gofmt -l` flags only files this PR did not touch. CI green on all three platforms at merge.
+  - acceptance — PASS — criteria 1, 2 operator-verified; 4 (menu + palette entry) exercised as the trigger; 3 (daemon survives both channels → error, no relaunch) covered by `TestRestartDaemon_FailurePreservesConns`, which was mutation-checked against the pre-fix ordering and is impractical to test by hand (needs a daemon that ignores both FrameShutdown and SIGKILL); 5 (no ~5s zombie stall) and 6 (per-step `hivegui.log` lines) follow from the socket probe replacing signal-based liveness and are not separately instrumented.
+  - regression — PASS — `FrameShutdown` (0x15) is client→server and optional; an older daemon ignores it and the SIGTERM fallback still runs. `removePidfile`'s ownership check tightened existing behavior, with `main_test.go` updated rather than weakened.
+  - root cause — **NOT REPRODUCED**. The specific `nil` path that fired on the operator's machine was never identified; the live state at triage was healthy. The fix holds regardless of which path it was, and `hivegui.log` exists so a recurrence is explainable rather than re-guessed. Reopen against this spec if the banner ever returns after a restart.
 
 ## PR convergence ledger
 
