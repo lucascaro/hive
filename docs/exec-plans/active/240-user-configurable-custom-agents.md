@@ -112,6 +112,8 @@ Append-only. One line per `/hs-review-loop` iteration.
 
   Both regression tests were confirmed to fail with their fix reverted.
 
+- **2026-07-18 iter 4** — **not completed.** The iteration was cut off by an account monthly-spend limit before its review returned, so `92ded50` (safeColor + backdrop-drag guard) and `b01bd65` (openSettings guard + test de-flake) are the only commits on this PR that have **not** been through `hs-review-pr`. Both were verified locally instead: each regression test was confirmed to fail with its fix reverted, the CSS injection was reproduced in a real browser before and after, and CI is green on all three platforms. Convergence was already reached at iter 3 (COMMENT, no BLOCKING, 0 threads); this pass was extra assurance, not a gate. If another review pass is wanted before merge, re-run `/hs-review-loop 242`.
+
 ## Open questions
 
 None. Resume support for custom agents is deliberately out of scope (see spec Non-goals).
