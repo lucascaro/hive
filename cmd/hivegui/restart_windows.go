@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -47,6 +48,7 @@ func killRunningHived(sock string) error {
 	raw, err := os.ReadFile(pidPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("hivegui: kill hived: no pidfile at %s; nothing to terminate", pidPath)
 			return nil
 		}
 		return fmt.Errorf("read pidfile: %w", err)
@@ -61,13 +63,16 @@ func killRunningHived(sock string) error {
 		return fmt.Errorf("probe pid %d: %w", pid, err)
 	}
 	if !alive {
+		log.Printf("hivegui: kill hived: pid %d already gone", pid)
 		return nil // already gone
 	}
 	if !isHived {
 		// Stale pidfile pointing at a recycled, unrelated pid.
+		log.Printf("hivegui: kill hived: pid %d is not a hived; removing stale pidfile %s", pid, pidPath)
 		_ = os.Remove(pidPath)
 		return nil
 	}
+	log.Printf("hivegui: kill hived: terminating pid %d", pid)
 
 	proc, err := os.FindProcess(pid)
 	if err != nil {

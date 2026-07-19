@@ -107,6 +107,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: "Restart Hive" now actually replaces the daemon — or says why it
+  can't. It asks `hived` to exit over the control connection Hive
+  already holds, then confirms the socket has gone quiet before
+  relaunching, so the new window can no longer come back attached to
+  the daemon it was supposed to replace (the stale-build banner
+  returning immediately after a "restart" was this bug). Signalling the
+  pid recorded in `<sock>.pid` remains as a fallback, but the pidfile is
+  no longer trusted as proof: three of its paths could report success
+  having killed nothing. If the daemon survives both attempts, the
+  restart fails visibly in the banner instead of quitting into a broken
+  state. Restarts are also no longer stalled ~5s by a liveness check
+  that could never observe the daemon exiting.
+- GUI: `hived` exiting no longer deletes a *newer* daemon's pidfile,
+  which left Restart Hive with no handle on the running daemon at all.
+- GUI: **Restart Hive…** is now in the File menu and the command
+  palette. It was previously reachable only from the daemon-stale
+  banner, so when the GUI and daemon builds matched there was no way to
+  restart Hive from inside the app.
+- GUI: errors are written to `hivegui.log` in the Hive state directory,
+  next to `hived.log`. Under LaunchServices the GUI's stderr goes to
+  `/dev/null`, so failures previously left no trace anywhere on disk.
 - GUI: renaming a session from its tile header no longer throws a
   `ReferenceError` and silently discards the new name. The tile
   rename's commit handler called `UpdateSession` without it being

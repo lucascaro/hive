@@ -25,7 +25,7 @@ import { initSettings, openSettings } from './app/modals/settings.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents } from './app/events.js';
-import { isDaemonRestarting, initBanners } from './app/banners.js';
+import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import { initVersionFooter } from './app/version-footer.js';
 import {
   switchTo, switchToProject, updateAppTitle, renderMinimizedTray,
@@ -75,6 +75,7 @@ const paletteCommands = [
   { id: 'prev-project',         name: 'Previous Project',            run: () => shiftActiveProject(-1) },
   { id: 'keyboard-shortcuts',   name: 'Keyboard Shortcuts',          run: () => openHelpOverlay() },
   { id: 'settings',             name: 'Settings…',                   run: () => openSettings() },
+  { id: 'restart-hive',         name: 'Restart Hive…',               run: () => restartHive() },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,

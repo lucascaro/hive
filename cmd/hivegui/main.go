@@ -4,8 +4,12 @@ package main
 
 import (
 	"embed"
+	"io"
+	"log"
 	"os"
+	"path/filepath"
 
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -42,7 +46,27 @@ func resolveLaunchDir() string {
 	return ""
 }
 
+// setupLogFile tees the standard logger to $STATE/hivegui.log,
+// mirroring what hived does with hived.log. Under LaunchServices the
+// GUI's stderr goes to /dev/null, so until now a failed restart (or
+// any other error) left no trace anywhere on disk — the reason the
+// "Restart Hive doesn't restart the daemon" report could not be
+// diagnosed from the machine it happened on.
+func setupLogFile() {
+	stateDir := registry.StateDir()
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(stateDir, "hivegui.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
+}
+
 func main() {
+	setupLogFile()
 	launchDir := resolveLaunchDir()
 	app := NewApp(launchDir)
 
@@ -68,6 +92,9 @@ func main() {
 		Bind:             []interface{}{app},
 	})
 	if err != nil {
-		println("hivegui:", err.Error())
+		// log, not println: println writes to stderr only, which
+		// LaunchServices sends to /dev/null — a startup failure would
+		// leave no trace in the very logfile setupLogFile just opened.
+		log.Printf("hivegui: wails.Run: %v", err)
 	}
 }

@@ -59,6 +59,9 @@ func buildAppMenu(a *App) *menu.Menu {
 		emit("menu:delete-project"))
 	file.AddSeparator()
 	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
+	// No accelerator: this terminates every running shell and agent,
+	// which is not something to leave one fat-finger away.
+	file.AddText("Restart Hive…", nil, emit("menu:restart-hive"))
 	// macOS convention puts Settings in the app menu, but Wails v2
 	// builds that menu entirely in Objective-C from a role enum
 	// (WailsMenu.m's appendRole) — processMenuItem returns as soon as
