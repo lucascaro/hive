@@ -92,6 +92,9 @@ func main() {
 		Bind:             []interface{}{app},
 	})
 	if err != nil {
-		println("hivegui:", err.Error())
+		// log, not println: println writes to stderr only, which
+		// LaunchServices sends to /dev/null — a startup failure would
+		// leave no trace in the very logfile setupLogFile just opened.
+		log.Printf("hivegui: wails.Run: %v", err)
 	}
 }

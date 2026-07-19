@@ -19,14 +19,30 @@ import (
 func socketDead(sock string, budget time.Duration) bool {
 	deadline := time.Now().Add(budget)
 	for {
-		c, err := net.DialTimeout("unix", sock, 500*time.Millisecond)
+		// Clamp the dial timeout to what's left, so the call as a
+		// whole honours budget instead of overrunning it by up to a
+		// full dial timeout on the last iteration.
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return false
+		}
+		if remaining > dialTimeout {
+			remaining = dialTimeout
+		}
+		c, err := net.DialTimeout("unix", sock, remaining)
 		if err != nil {
 			return true
 		}
 		_ = c.Close()
-		if !time.Now().Before(deadline) {
-			return false
-		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(pollInterval)
 	}
 }
+
+const (
+	dialTimeout = 500 * time.Millisecond
+	// Every probe dial costs the daemon an accepted connection that
+	// hangs up without a HELLO. 200ms keeps the restart responsive
+	// while keeping that chatter to a handful of entries over the
+	// fallback window.
+	pollInterval = 200 * time.Millisecond
+)

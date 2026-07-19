@@ -345,16 +345,19 @@ func (a *App) RestartDaemon() error {
 	// user in a dead window on exactly the path meant to protect
 	// them. Sending FrameShutdown does not require closing the conn,
 	// and socketDead dials its own.
+	dead := false
 	if control != nil {
-		if err := wire.WriteFrame(control.conn, wire.FrameShutdown, nil); err != nil {
+		// writeFrame, not wire.WriteFrame: the header and payload are
+		// two Write calls, and the frontend can be writing to this
+		// same conn concurrently. Every other writer takes writeMu.
+		if err := control.writeFrame(wire.FrameShutdown, nil); err != nil {
 			log.Printf("hivegui: restart: send shutdown frame: %v", err)
 		}
+		dead = socketDead(sock, restartKillBudget)
+		log.Printf("hivegui: restart: in-band shutdown left socket dead=%v", dead)
 	} else {
 		log.Printf("hivegui: restart: no control conn, skipping in-band shutdown")
 	}
-
-	dead := control != nil && socketDead(sock, restartKillBudget)
-	log.Printf("hivegui: restart: in-band shutdown left socket dead=%v", dead)
 
 	if !dead {
 		// A kill error is logged, not returned: hived is a child the

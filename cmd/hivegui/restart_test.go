@@ -71,6 +71,11 @@ func TestSocketDead_MissingPath(t *testing.T) {
 // there is no recovery route, since ConnectControl only runs from the
 // frontend's boot path. The error path must leave everything wired up.
 func TestRestartDaemon_FailurePreservesConns(t *testing.T) {
+	// NewApp calls agent.SetCustomDir(registry.StateDir()). Without
+	// this the test reads the developer's real Hive state directory
+	// and leaves the package-level customDir pointing at it for the
+	// rest of the binary.
+	isolateState(t)
 	sock := filepath.Join(shortTempDir(t), "s")
 	// A daemon that ignores FrameShutdown and never dies.
 	ln, err := net.Listen("unix", sock)

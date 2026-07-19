@@ -213,7 +213,13 @@ func (d *Daemon) serve(conn net.Conn) {
 	var hello wire.Hello
 	ft, err := wire.ReadJSON(conn, &hello)
 	if err != nil {
-		log.Printf("hived: read hello: %v", err)
+		// A connect-then-hang-up with no HELLO is a liveness probe,
+		// not an error — the GUI's restart path dials this socket
+		// repeatedly to find out whether the daemon is still up.
+		// Logging those buries real handshake failures in noise.
+		if !errors.Is(err, io.EOF) {
+			log.Printf("hived: read hello: %v", err)
+		}
 		return
 	}
 	if ft != wire.FrameHello {
