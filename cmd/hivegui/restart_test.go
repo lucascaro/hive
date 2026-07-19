@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -11,9 +12,17 @@ import (
 // shortTempDir keeps socket paths well clear of sun_path's 104-byte
 // limit on macOS, which t.TempDir() gets uncomfortably close to.
 // Mirrors the helper of the same name in internal/daemon.
+//
+// The /tmp base is unix-only — there is no such directory on Windows,
+// and sun_path is not a constraint there either, so fall back to the
+// default temp location.
 func shortTempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "hg")
+	base := "/tmp"
+	if runtime.GOOS == "windows" {
+		base = ""
+	}
+	dir, err := os.MkdirTemp(base, "hg")
 	if err != nil {
 		t.Fatalf("mkdir temp: %v", err)
 	}
