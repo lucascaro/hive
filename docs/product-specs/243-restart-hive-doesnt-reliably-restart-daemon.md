@@ -1,6 +1,7 @@
 # Restart Hive doesn't reliably restart the daemon
 
 - **Issue:** —
+- **PR:** #244
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1

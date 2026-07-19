@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/243-restart-hive-doesnt-reliably-restart-daemon.md](../../product-specs/243-restart-hive-doesnt-reliably-restart-daemon.md)
 - **Issue:** —
+- **PR:** #244
+- **Branch:** feature/243-restart-hive-doesnt-reliably-restart-daemon
 - **Status:** active
 
 ## Summary
@@ -69,6 +71,7 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 ## Progress
 
 - **2026-07-18** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-07-19** — PR #244 opened; stage = REVIEW.
 - **2026-07-18** — Implemented on `feature/243-restart-hive-doesnt-reliably-restart-daemon`. `./build.sh` green; `internal/daemon` shutdown tests, `cmd/hivegui` restart tests, `cmd/hived` pidfile tests, and 253 frontend vitest tests all pass.
 
 ## Open questions
