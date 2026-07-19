@@ -45,27 +45,37 @@ function hideDaemonBanner() {
 // restart Hive at all. File ▸ Restart Hive… and the command palette
 // call this directly.
 export async function restartHive() {
-  // Restart kills hived AND relaunches Hive itself, so every running
-  // session ends. Warn first.
-  const ok = await Confirm(
-    'Restart Hive?',
-    'This will close Hive, terminate every running shell and agent, ' +
-    'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
-    'Continue?',
-  );
-  if (!ok) return;
-  daemonBannerRestart.disabled = true;
+  // Re-entrancy guard. The banner button disables itself, but the
+  // menu item and palette entry bypass that — and the probe window
+  // is seconds long, plenty of time to invoke it twice and reach
+  // spawnNewGUI twice.
+  if (daemonRestarting) return;
+  // Claimed before the first await: the confirm dialog is itself a
+  // window during which a second invocation would otherwise slip
+  // past the check above.
   daemonRestarting = true;
-  showDaemonBanner('Restarting Hive…');
+  daemonBannerRestart.disabled = true;
   try {
-    await RestartDaemon();
-    // RestartDaemon quits this process on success; control returns
-    // here only on failure paths — including the daemon refusing to
-    // die, which now surfaces here instead of silently relaunching
-    // into the old daemon.
-  } catch (err) {
-    flashStatus(`restart failed: ${err}`, true);
-    showDaemonBanner(`Restart failed: ${err}`);
+    // Restart kills hived AND relaunches Hive itself, so every
+    // running session ends. Warn first.
+    const ok = await Confirm(
+      'Restart Hive?',
+      'This will close Hive, terminate every running shell and agent, ' +
+      'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
+      'Continue?',
+    );
+    if (!ok) return;
+    showDaemonBanner('Restarting Hive…');
+    try {
+      await RestartDaemon();
+      // RestartDaemon quits this process on success; control returns
+      // here only on failure paths — including the daemon refusing to
+      // die, which now surfaces here instead of silently relaunching
+      // into the old daemon.
+    } catch (err) {
+      flashStatus(`restart failed: ${err}`, true);
+      showDaemonBanner(`Restart failed: ${err}`);
+    }
   } finally {
     daemonBannerRestart.disabled = false;
     daemonRestarting = false;

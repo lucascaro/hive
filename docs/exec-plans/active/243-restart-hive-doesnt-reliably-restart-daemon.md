@@ -63,6 +63,8 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 
 ## Decision log
 
+- **2026-07-19** — Applied both IMPORTANT review findings rather than stopping on the COMMENT verdict. Why: AGENTS.md requires auto-fixing high-confidence low-risk findings in the same PR, and finding #1 falsified a claim in the code's own doc comment.
+
 - **2026-07-18** — In-band `FrameShutdown` over the control conn as the primary kill channel, pidfile/SIGTERM demoted to fallback. Why: the pidfile is the thing that fails, and the daemon already dispatches inbound control frames.
 - **2026-07-18** — Numbered 243 rather than max-prefix+1 (241). Why: this repo's spec numbers mirror GitHub PR numbers, and 241/242 are shipped PRs.
 - **2026-07-18** — `RestartDaemon` logs a `killRunningHived` error instead of returning it. Why: with hived as an unreaped child, the signal-based wait reports "still alive" for a zombie that has already released the socket, so returning that error would abort every restart. The socket probe is the arbiter; the kill error is diagnostic only.
@@ -71,8 +73,15 @@ Chosen over the obvious alternative (keep signalling by pid, add an `lsof -t <so
 ## Progress
 
 - **2026-07-18** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-07-19** — Review iter 1 cleared both IMPORTANT findings: RestartDaemon no longer tears down conns before confirming the daemon died (the error path has to leave a working window, and there is no reconnect route), and restartHive is re-entrancy-guarded now that the menu and palette reach it. Both have regression tests; the Go one was mutation-checked against the pre-fix ordering.
 - **2026-07-19** — PR #244 opened; stage = REVIEW.
 - **2026-07-18** — Implemented on `feature/243-restart-hive-doesnt-reliably-restart-daemon`. `./build.sh` green; `internal/daemon` shutdown tests, `cmd/hivegui` restart tests, `cmd/hived` pidfile tests, and 253 frontend vitest tests all pass.
+
+## PR convergence ledger
+
+<!-- Append-only. One line per /hs-review-loop iteration. -->
+
+- **2026-07-19 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 495bdfec73271419d2f24d2560fdb9f0290d885f1efa99fb4bad82abac6f883c; threads_open: 0; action: autofix+push (2 IMPORTANT applied despite COMMENT-stop, per AGENTS.md boil-the-lake); head_sha: 8a0e349.
 
 ## Open questions
 

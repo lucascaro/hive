@@ -78,3 +78,35 @@ describe('restartHive', () => {
     expect(isDaemonRestarting()).toBe(false);
   });
 });
+
+// The banner button disabled itself, but the menu item and palette
+// entry bypass that — and the daemon probe window is seconds long.
+// Two invocations must not both reach RestartDaemon (which would
+// spawn the replacement GUI twice).
+describe('restartHive re-entrancy', () => {
+  it('ignores a second invocation while one is in flight', async () => {
+    let releaseConfirm;
+    bridge.Confirm.mockImplementation(
+      () => new Promise((resolve) => { releaseConfirm = () => resolve(true); }),
+    );
+
+    const first = restartHive();
+    const second = restartHive();   // must be a no-op, not a second run
+    releaseConfirm();
+    await Promise.all([first, second]);
+
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
+    expect(bridge.RestartDaemon).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the guard when the user cancels', async () => {
+    bridge.Confirm.mockResolvedValue(false);
+    await restartHive();
+    expect(isDaemonRestarting()).toBe(false);
+
+    // A cancel must not wedge the action permanently.
+    bridge.Confirm.mockResolvedValue(true);
+    await restartHive();
+    expect(bridge.RestartDaemon).toHaveBeenCalledTimes(1);
+  });
+});

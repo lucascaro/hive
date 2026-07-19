@@ -334,18 +334,21 @@ func (a *App) RestartDaemon() error {
 
 	a.mu.Lock()
 	control := a.control
-	a.control = nil
-	for _, c := range a.attaches {
-		_ = c.conn.Close()
-	}
-	a.attaches = make(map[string]*connState)
 	a.mu.Unlock()
 
+	// Nothing is torn down until the daemon is confirmed gone. The
+	// error path below has to leave a *working* window behind, and
+	// there is no recovery route back: ConnectControl runs once from
+	// the frontend's boot path, and the control:disconnect handler
+	// only sets a status line (and is suppressed outright while a
+	// restart is in flight). Closing conns up front would strand the
+	// user in a dead window on exactly the path meant to protect
+	// them. Sending FrameShutdown does not require closing the conn,
+	// and socketDead dials its own.
 	if control != nil {
 		if err := wire.WriteFrame(control.conn, wire.FrameShutdown, nil); err != nil {
 			log.Printf("hivegui: restart: send shutdown frame: %v", err)
 		}
-		_ = control.conn.Close()
 	} else {
 		log.Printf("hivegui: restart: no control conn, skipping in-band shutdown")
 	}
@@ -366,8 +369,24 @@ func (a *App) RestartDaemon() error {
 		log.Printf("hivegui: restart: signal path left socket dead=%v", dead)
 	}
 	if !dead {
+		// Everything is still wired up — the window the user is
+		// looking at keeps working, and the banner shows why.
 		return fmt.Errorf("hived still answering on %s after shutdown and signal; not restarting", sock)
 	}
+
+	// The daemon is gone; these conns are dead sockets now. Release
+	// them before the relaunch so the outgoing process isn't holding
+	// half-open fds while the new GUI comes up.
+	a.mu.Lock()
+	if a.control != nil {
+		_ = a.control.conn.Close()
+		a.control = nil
+	}
+	for _, c := range a.attaches {
+		_ = c.conn.Close()
+	}
+	a.attaches = make(map[string]*connState)
+	a.mu.Unlock()
 
 	if err := spawnNewGUI(a.launchDir); err != nil {
 		return fmt.Errorf("relaunch GUI: %w", err)
