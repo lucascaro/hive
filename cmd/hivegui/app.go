@@ -19,6 +19,7 @@ import (
 	"github.com/lucascaro/hive/internal/buildinfo"
 	hdaemon "github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/notify"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -99,6 +100,11 @@ func (a *App) Notify(title, subtitle, body, tag string) error {
 }
 
 func NewApp(launchDir string) *App {
+	// Point the agent catalog at the user's agents.json. hived does
+	// the same with the same directory; each process reloads on mtime
+	// change, so the GUI writing the file is all the daemon needs to
+	// see a new custom agent.
+	agent.SetCustomDir(registry.StateDir())
 	return &App{
 		launchDir: launchDir,
 		attaches:  make(map[string]*connState),
@@ -246,7 +252,7 @@ func (a *App) ConnectControl() error {
 	a.control = cs
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	a.emitDaemonVersionStatus(welcome.BuildID)
+	a.emitDaemonVersionStatus(welcome.BuildID, welcome.Release)
 	return nil
 }
 
@@ -254,15 +260,34 @@ func (a *App) ConnectControl() error {
 // Severity is "match" (silent — emitted so the frontend can clear a
 // previously-shown banner), "mismatch" (both builds known and differ),
 // or "unknown" (one or both sides did not advertise a build).
+//
+// The *Release fields carry the human-readable versions (buildinfo.Version)
+// so the sidebar footer can display them; they are informational only and
+// deliberately take no part in the Severity decision — see below.
 type DaemonStaleEvent struct {
-	Severity    string `json:"severity"`
-	GuiBuild    string `json:"guiBuild"`
-	DaemonBuild string `json:"daemonBuild"`
+	Severity      string `json:"severity"`
+	GuiBuild      string `json:"guiBuild"`
+	DaemonBuild   string `json:"daemonBuild"`
+	GuiRelease    string `json:"guiRelease"`
+	DaemonRelease string `json:"daemonRelease"`
 }
 
-func (a *App) emitDaemonVersionStatus(daemonBuild string) {
+// daemonVersionEvent builds the "daemon:stale" payload. Split out from
+// the emit so it is testable without a live Wails context.
+//
+// Severity is computed from build IDs alone: those are git revisions, so
+// equal build IDs already imply equal releases, and comparing releases too
+// would only add a second source of truth to keep in sync. daemonRelease is
+// empty when talking to a daemon built before Welcome gained the Release
+// field — consumers fall back to build-ID-only display.
+func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
 	gui := buildinfo.BuildID()
-	ev := DaemonStaleEvent{GuiBuild: gui, DaemonBuild: daemonBuild}
+	ev := DaemonStaleEvent{
+		GuiBuild:      gui,
+		DaemonBuild:   daemonBuild,
+		GuiRelease:    buildinfo.Version(),
+		DaemonRelease: daemonRelease,
+	}
 	switch {
 	case gui == "" || daemonBuild == "":
 		ev.Severity = "unknown"
@@ -271,20 +296,90 @@ func (a *App) emitDaemonVersionStatus(daemonBuild string) {
 	default:
 		ev.Severity = "mismatch"
 	}
-	wruntime.EventsEmit(a.ctx, "daemon:stale", ev)
+	return ev
 }
 
-// RestartDaemon kills the running hived and relaunches the GUI as a
-// detached child, then quits this process. Reconnecting in-place left
+// emitDaemonVersionStatus reports the GUI/daemon build relationship to the
+// frontend. Both the stale-daemon banner and the sidebar version footer
+// listen for this event.
+func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string) {
+	wruntime.EventsEmit(a.ctx, "daemon:stale", daemonVersionEvent(daemonBuild, daemonRelease))
+}
+
+// restartKillBudget bounds each of the two kill channels' wait for
+// the socket to go quiet. hived's shutdown is a listener close plus a
+// registry flush, so this is generous.
+const restartKillBudget = 3 * time.Second
+
+// RestartDaemon stops the running hived, relaunches the GUI as a
+// detached child, and quits this process. Reconnecting in-place left
 // the existing window holding stale session state (xterm buffers,
 // attach conns) that no longer matched the fresh daemon; a full GUI
 // restart sidesteps that by starting from a clean slate.
 //
-// killRunningHived blocks until the previous daemon is actually gone
-// so the relaunched GUI's dialOrSpawn binds a fresh socket. We kill
-// before spawning the child for the same reason — otherwise the new
-// GUI would happily reconnect to the old daemon.
+// The daemon is stopped over the control connection we already hold
+// (FrameShutdown) and, failing that, by signalling the pid recorded
+// in <sock>.pid. Either way the socket is probed afterwards: only
+// once nothing answers do we relaunch and quit. That ordering is the
+// whole point — killRunningHived can return nil without having killed
+// anything (missing pidfile, unrecognised process name), and the
+// relaunched GUI's dialOrSpawn would then reconnect to the very
+// daemon the user asked to replace, silently.
+//
+// If the daemon survives both channels we return an error and stay
+// put. A visible failure in a working window beats quitting into a
+// window that looks restarted and isn't.
 func (a *App) RestartDaemon() error {
+	sock := hdaemon.SocketPath()
+
+	a.mu.Lock()
+	control := a.control
+	a.mu.Unlock()
+
+	// Nothing is torn down until the daemon is confirmed gone. The
+	// error path below has to leave a *working* window behind, and
+	// there is no recovery route back: ConnectControl runs once from
+	// the frontend's boot path, and the control:disconnect handler
+	// only sets a status line (and is suppressed outright while a
+	// restart is in flight). Closing conns up front would strand the
+	// user in a dead window on exactly the path meant to protect
+	// them. Sending FrameShutdown does not require closing the conn,
+	// and socketDead dials its own.
+	dead := false
+	if control != nil {
+		// writeFrame, not wire.WriteFrame: the header and payload are
+		// two Write calls, and the frontend can be writing to this
+		// same conn concurrently. Every other writer takes writeMu.
+		if err := control.writeFrame(wire.FrameShutdown, nil); err != nil {
+			log.Printf("hivegui: restart: send shutdown frame: %v", err)
+		}
+		dead = socketDead(sock, restartKillBudget)
+		log.Printf("hivegui: restart: in-band shutdown left socket dead=%v", dead)
+	} else {
+		log.Printf("hivegui: restart: no control conn, skipping in-band shutdown")
+	}
+
+	if !dead {
+		// A kill error is logged, not returned: hived is a child the
+		// GUI never Wait()s on, so a SIGTERM'd daemon lingers as a
+		// zombie and the signal-based wait reports "still alive" for a
+		// process that has already released the socket. The socket
+		// probe below is the arbiter.
+		if err := killRunningHived(sock); err != nil {
+			log.Printf("hivegui: restart: kill hived: %v", err)
+		}
+		dead = socketDead(sock, restartKillBudget)
+		log.Printf("hivegui: restart: signal path left socket dead=%v", dead)
+	}
+	if !dead {
+		// Everything is still wired up — the window the user is
+		// looking at keeps working, and the banner shows why.
+		return fmt.Errorf("hived still answering on %s after shutdown and signal; not restarting", sock)
+	}
+
+	// The daemon is gone; these conns are dead sockets now. Release
+	// them before the relaunch so the outgoing process isn't holding
+	// half-open fds while the new GUI comes up.
 	a.mu.Lock()
 	if a.control != nil {
 		_ = a.control.conn.Close()
@@ -296,12 +391,10 @@ func (a *App) RestartDaemon() error {
 	a.attaches = make(map[string]*connState)
 	a.mu.Unlock()
 
-	if err := killRunningHived(hdaemon.SocketPath()); err != nil {
-		return fmt.Errorf("kill stale hived: %w", err)
-	}
 	if err := spawnNewGUI(a.launchDir); err != nil {
 		return fmt.Errorf("relaunch GUI: %w", err)
 	}
+	log.Printf("hivegui: restart: relaunched, quitting")
 	wruntime.Quit(a.ctx)
 	return nil
 }
@@ -350,8 +443,9 @@ type AgentInfo struct {
 	InstallCmd []string `json:"installCmd,omitempty"`
 }
 
-// ListAgents returns every built-in agent definition. The frontend
-// uses this to populate the launcher menu.
+// ListAgents returns every agent definition — built-ins plus the
+// user's custom agents. The frontend uses this to populate the
+// launcher menu.
 func (a *App) ListAgents() []AgentInfo {
 	defs := agent.All()
 	out := make([]AgentInfo, 0, len(defs))
@@ -365,6 +459,51 @@ func (a *App) ListAgents() []AgentInfo {
 		})
 	}
 	return out
+}
+
+// CustomAgent is the JSON shape the settings modal edits. It mirrors
+// agent.Custom; camelCase tags match AgentInfo above (the snake_case
+// convention applies to the daemon's wire payloads, not to these
+// Wails bindings).
+type CustomAgent struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Cmd   []string `json:"cmd"`
+	Color string   `json:"color"`
+}
+
+// ListCustomAgents returns the user's custom agent definitions as
+// stored on disk, for the settings modal to edit. Invalid entries are
+// included deliberately — the user has to see a broken row to fix it.
+//
+// A malformed agents.json is an error, not an empty list. Returning
+// empty would render as "no custom agents yet" and a subsequent Save
+// would overwrite the very file the user needs to repair.
+func (a *App) ListCustomAgents() ([]CustomAgent, error) {
+	list, err := agent.LoadCustom()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CustomAgent, 0, len(list))
+	for _, c := range list {
+		out = append(out, CustomAgent{ID: c.ID, Name: c.Name, Cmd: c.Cmd, Color: c.Color})
+	}
+	return out, nil
+}
+
+// SaveCustomAgents validates and writes the full custom-agent list,
+// assigning IDs to new entries. It returns a validation error rather
+// than silently dropping bad entries so the modal can show the user
+// what was wrong — a warning in hived.log would be invisible to them.
+//
+// The daemon picks the change up on its next agent.Get; no reload
+// message is needed.
+func (a *App) SaveCustomAgents(list []CustomAgent) error {
+	in := make([]agent.Custom, 0, len(list))
+	for _, c := range list {
+		in = append(in, agent.Custom{ID: c.ID, Name: c.Name, Cmd: c.Cmd, Color: c.Color})
+	}
+	return agent.SaveCustom(in)
 }
 
 // CreateSession asks the daemon to create a new session. agentID is

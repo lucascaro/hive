@@ -14,8 +14,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 
+	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
@@ -43,6 +46,13 @@ func main() {
 	// Tee logs to a file under the state dir so the GUI's auto-spawned
 	// daemon (whose stdout/stderr are /dev/null) leaves a paper trail.
 	stateDir := registry.StateDir()
+
+	// Point the agent catalog at the user's agents.json. The daemon
+	// needs this as much as the GUI does: registry entries persist
+	// only the agent ID, so every Revive/Restart re-resolves the
+	// command through agent.Get.
+	agent.SetCustomDir(stateDir)
+
 	if err := os.MkdirAll(stateDir, 0o700); err == nil {
 		logPath := filepath.Join(stateDir, "hived.log")
 		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
@@ -74,7 +84,7 @@ func main() {
 	// race doesn't clobber the running daemon's pidfile and then leave
 	// it stale (log.Fatalf below skips defers).
 	pidPath := d.SocketPath() + ".pid"
-	if err := os.WriteFile(pidPath, []byte(fmt.Sprintf("%d", os.Getpid())), 0o600); err != nil {
+	if err := os.WriteFile(pidPath, fmt.Appendf(nil, "%d", os.Getpid()), 0o600); err != nil {
 		log.Printf("hived: write pidfile: %v", err)
 	}
 	defer removePidfile(pidPath)
@@ -93,11 +103,27 @@ func main() {
 	}
 }
 
-// removePidfile deletes the pidfile, logging any failure other than
-// "already gone" — a stale pidfile makes the GUI's Restart action
-// signal the wrong process, so a failed cleanup must be diagnosable
-// from hived.log.
+// removePidfile deletes the pidfile, but only when it still names
+// this process. A daemon that exits slowly (or is killed after its
+// replacement is already up) would otherwise delete the *live*
+// daemon's pidfile on the way out, leaving the GUI's Restart action
+// with no handle on the running daemon at all.
+//
+// Logs any failure other than "already gone" — a stale pidfile makes
+// the GUI's Restart action signal the wrong process, so a failed
+// cleanup must be diagnosable from hived.log.
 func removePidfile(path string) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("hived: read pidfile %s before removal: %v", path, err)
+		}
+		return
+	}
+	if owner := strings.TrimSpace(string(raw)); owner != strconv.Itoa(os.Getpid()) {
+		log.Printf("hived: pidfile %s now owned by pid %s, leaving it alone", path, owner)
+		return
+	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("hived: remove pidfile %s: %v", path, err)
 	}

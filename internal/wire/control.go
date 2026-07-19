@@ -66,7 +66,13 @@ type Welcome struct {
 	// BuildID is the daemon's link-time build identity. Same shape
 	// and semantics as Hello.BuildID — clients compare to detect a
 	// stale daemon that survived a GUI rebuild.
-	BuildID   string `json:"build_id,omitempty"`
+	BuildID string `json:"build_id,omitempty"`
+	// Release is the daemon's human-readable release version (see
+	// internal/buildinfo.Version) — e.g. "v0.4.2", or "dev" for an
+	// unstamped build. Distinct from Version above, which is the
+	// integer protocol version. Omitempty so a daemon predating this
+	// field still parses; "" means "unknown".
+	Release   string `json:"release,omitempty"`
 	Mode      Mode   `json:"mode,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	Cols      int    `json:"cols,omitempty"`

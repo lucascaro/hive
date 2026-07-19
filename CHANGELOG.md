@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agents: define your own tools. A new Settings screen (`⌘,` on macOS, also
+  under **File ▸ Settings…** and in the command palette; `Ctrl+,` or the
+  command palette elsewhere) lets you add custom
+  agents with a name, command line, and color — for example a `claude-lite`
+  that runs `claude --model haiku`. Custom agents appear in the `⌘T` launcher
+  alongside the built-ins, with the same PATH availability check, and persist
+  and revive across restarts. Definitions live in `agents.json` in the Hive
+  state directory and can be hand-edited. Built-in agent ids cannot be
+  redefined, and custom agents do not support conversation resume — Restart
+  re-runs their command rather than continuing the prior session.
+
+- GUI: `⌘B` jumps to the next session that rang the bell (the pulsing
+  ones), cycling through them and wrapping — no more hunting for the
+  flashing row with the mouse. `⇧⌘B` jumps back to the session you were
+  working in before the first `⌘B` — so a round of bells can bounce you
+  through several sessions and one keystroke still returns you to the
+  work you interrupted. A minimized session that rings its bell is
+  restored on the way in and returned to the tray on the way back. Both are in the ⌘/ help overlay, the
+  command palette, and the macOS Session menu (`Ctrl+B` / `Ctrl+Shift+B`
+  on Windows and Linux).
+
 - Agents: [Pi](https://pi.dev/) (`@earendil-works/pi-coding-agent`) is now
   a launchable agent. Hive pins each session's id via `pi --session-id`, so
   Restart resumes the exact conversation by id — unambiguous even when
@@ -68,6 +89,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GUI: `Ctrl+?` now opens the keyboard-shortcuts panel on Windows and
+  Linux, alongside the existing `Ctrl+/`. macOS already accepted both
+  `⌘?` and `⌘/` via the Help menu item; those platforms have no native
+  menu, so only `Ctrl+/` worked there.
+- GUI: the sidebar footer now shows the running version and build of
+  `hive` and `hived` instead of the keyboard-shortcut hints. It shows a
+  single line when both binaries come from the same build, and expands
+  to one line each — highlighted — when they differ, making a stale
+  daemon visible at a glance rather than only via the restart banner.
+  The shortcut hints are still available via the command palette
+  (`⇧⌘K`) and the keyboard-shortcuts overlay (`⌘/`).
 - GUI: the Debug menu is relabeled "Toggle Debug Trace" / "Copy Debug
   Trace" (was "Scroll Debug" / "Scroll Trace"); the captured trace now
   covers grid relayout, focus, keydown routing, a main-thread heartbeat,
@@ -75,6 +107,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: "Restart Hive" now actually replaces the daemon — or says why it
+  can't. It asks `hived` to exit over the control connection Hive
+  already holds, then confirms the socket has gone quiet before
+  relaunching, so the new window can no longer come back attached to
+  the daemon it was supposed to replace (the stale-build banner
+  returning immediately after a "restart" was this bug). Signalling the
+  pid recorded in `<sock>.pid` remains as a fallback, but the pidfile is
+  no longer trusted as proof: three of its paths could report success
+  having killed nothing. If the daemon survives both attempts, the
+  restart fails visibly in the banner instead of quitting into a broken
+  state. Restarts are also no longer stalled ~5s by a liveness check
+  that could never observe the daemon exiting.
+- GUI: `hived` exiting no longer deletes a *newer* daemon's pidfile,
+  which left Restart Hive with no handle on the running daemon at all.
+- GUI: **Restart Hive…** is now in the File menu and the command
+  palette. It was previously reachable only from the daemon-stale
+  banner, so when the GUI and daemon builds matched there was no way to
+  restart Hive from inside the app.
+- GUI: errors are written to `hivegui.log` in the Hive state directory,
+  next to `hived.log`. Under LaunchServices the GUI's stderr goes to
+  `/dev/null`, so failures previously left no trace anywhere on disk.
 - GUI: renaming a session from its tile header no longer throws a
   `ReferenceError` and silently discards the new name. The tile
   rename's commit handler called `UpdateSession` without it being

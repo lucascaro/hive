@@ -154,12 +154,38 @@ export async function UpdateSession(id, name, color, _order) {
   emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
   return '';
 }
+// Custom agents start empty; the settings modal writes into this
+// module-level array so a save → reopen round-trip works in E2E.
+let customAgents = [];
 // One real-shaped agent so launcher E2E can exercise the full
 // open → select → create flow (matches internal/agent's wire shape).
 export async function ListAgents() {
   await maybeDelay('ListAgents');
   maybeFail('ListAgents');
-  return [{ id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] }];
+  // Mirrors Go's agent.All(): built-ins first, then custom agents.
+  // The merge lives there, which is why the launcher needs no
+  // custom-agent code of its own.
+  return [
+    { id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] },
+    ...customAgents.map((a) => ({
+      id: a.id, name: a.name, color: a.color, available: true, installCmd: [],
+    })),
+  ];
+}
+export async function ListCustomAgents() {
+  await maybeDelay('ListCustomAgents');
+  maybeFail('ListCustomAgents');
+  return customAgents;
+}
+export async function SaveCustomAgents(list) {
+  await maybeDelay('SaveCustomAgents');
+  maybeFail('SaveCustomAgents');
+  // Mirror Go's id assignment so the mock round-trips like the real
+  // binding: ids are slugged once and never recomputed on rename.
+  customAgents = (list || []).map((a) => ({
+    ...a,
+    id: a.id || String(a.name || '').trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, ''),
+  }));
 }
 // Project mutations are positional too, matching the real bindings
 // (cmd/hivegui/app.go): CreateProject(name, color, cwd),

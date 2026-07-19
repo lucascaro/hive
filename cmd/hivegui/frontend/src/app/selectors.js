@@ -15,6 +15,24 @@ export function orderedSessions() {
   });
 }
 
+// nextAttentionId returns the id of the next session with an unread
+// bell, walking orderedSessions() cyclically from the active one, or
+// null when nothing else is flagged. The active session is skipped
+// explicitly — the full-circle walk ends back on it, and ⌘B must always
+// move you somewhere new (a flag on the session you're already looking
+// at is stale; setActive clears it on focus anyway).
+export function nextAttentionId() {
+  const ord = orderedSessions();
+  const n = ord.length;
+  if (n === 0) return null;
+  const start = ord.findIndex((s) => s.id === state.activeId); // -1 → start at 0
+  for (let i = 1; i <= n; i++) {
+    const s = ord[(start + i) % n];
+    if (s.id !== state.activeId && state.attention.has(s.id)) return s.id;
+  }
+  return null;
+}
+
 // activeCwd resolves the directory associated with the current
 // view: a session's worktree (preferred), otherwise the owning
 // project's cwd, otherwise the user's currently-selected project.

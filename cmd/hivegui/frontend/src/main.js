@@ -10,7 +10,7 @@ import {
   ConnectControl, KillSession, OpenNewWindow, CloseWindow, OpenTerminalAt,
 } from './bridge.js';
 import { isMac } from './lib/platform.js';
-import { paletteShortcuts, footerHints } from './lib/shortcuts.js';
+import { paletteShortcuts } from './lib/shortcuts.js';
 import { state } from './app/state.js';
 import { setStatus, reportFailure } from './app/dom.js';
 import { activeCwd } from './app/selectors.js';
@@ -21,10 +21,12 @@ import {
 } from './app/modals/launcher.js';
 import { openProjectEditor, initProjectEditor } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
+import { initSettings, openSettings } from './app/modals/settings.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents } from './app/events.js';
-import { isDaemonRestarting, initBanners } from './app/banners.js';
+import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
+import { initVersionFooter } from './app/version-footer.js';
 import {
   switchTo, switchToProject, updateAppTitle, renderMinimizedTray,
   renderEmptyState, shiftActiveProject, initView,
@@ -32,7 +34,7 @@ import {
 import {
   initKeyboard, toggleSidebar, toggleProjectGrid, toggleAllGrid,
   confirmAndDeleteProject, deleteActiveProject, navSession, reorderActive,
-  switchToNthSession,
+  switchToNthSession, jumpToAttention, jumpBack,
 } from './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
@@ -65,11 +67,15 @@ const paletteCommands = [
   { id: 'zoom-reset',           name: 'Actual Size',                 run: () => resetFontSize() },
   { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
   { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
+  { id: 'next-attention',       name: 'Next Session Needing Attention', run: jumpToAttention },
+  { id: 'jump-back',            name: 'Jump Back to Where You Were',  run: jumpBack },
   { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
   { id: 'move-backward',        name: 'Move Session Backward',       run: () => reorderActive(-1) },
   { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },
   { id: 'prev-project',         name: 'Previous Project',            run: () => shiftActiveProject(-1) },
   { id: 'keyboard-shortcuts',   name: 'Keyboard Shortcuts',          run: () => openHelpOverlay() },
+  { id: 'settings',             name: 'Settings…',                   run: () => openSettings() },
+  { id: 'restart-hive',         name: 'Restart Hive…',               run: () => restartHive() },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,
@@ -86,6 +92,7 @@ const paletteCommands = [
 initLauncher({ setFocusedTile, refocusActiveTerm });
 initProjectEditor({ setFocusedTile, refocusActiveTerm });
 initCommandPalette({ commands: paletteCommands, focusActiveTerm });
+initSettings({ setFocusedTile, refocusActiveTerm });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({ switchTo, switchToProject, confirmAndDeleteProject, renderEmptyState, refocusActiveTerm });
 initBanners();
@@ -97,11 +104,9 @@ wireDaemonEvents({
   refocusActiveTerm, isDaemonRestarting, scrollTrace,
 });
 
-// Sidebar footer hints: the static HTML text is the mac-glyph
-// fallback; re-render from the shared shortcut table so non-mac
-// platforms see Ctrl+-style hints that match the real bindings.
-const footerHintsEl = document.getElementById('sidebar-hints');
-if (footerHintsEl) footerHintsEl.textContent = footerHints({ isMac });
+// Sidebar footer: hive/hived version + build. Populated from the
+// "daemon:stale" event, so it fills in once the control handshake lands.
+initVersionFooter();
 
 // ---------- sidebar resize ----------
 //

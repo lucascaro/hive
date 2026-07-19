@@ -431,11 +431,39 @@ body.resizing-sidebar #app { transition: none; }
   padding: 6px 10px;
   border-top: 1px solid #1f1f1f;
   font-size: 10.5px;
-  color: #555;
+  /* #555 on #0a0a0a is ~2.7:1 — under AA. That was tolerable when this
+     line held redundant shortcut hints, but it now carries the build
+     identity users are asked to read back in bug reports. #888 is
+     ~5.6:1 and matches the muted-text grey used elsewhere. */
+  color: #888;
   line-height: 1.4;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* #sidebar sets user-select: none for drag-friendliness; opt back in
+     here so the version string can actually be selected and copied,
+     which is the whole point of showing it. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* One row per binary. Block-level so the mismatch case (both spans
+   visible) stacks instead of running off the edge of a narrow
+   sidebar. Version strings can be long-ish (a semver plus a 7-char
+   build hash), so wrap rather than truncate: an ellipsised build ID
+   is useless for the thing this footer exists to answer. */
+.hints > span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* An author-origin `display` beats the UA's `[hidden] { display: none }`,
+   so without this the hidden attribute on #ver-daemon would be inert.
+   Same reason .dead-overlay[hidden] below spells it out. */
+.hints > span[hidden] { display: none; }
+
+/* Mismatch state: readable, but deliberately quieter than the
+   stale-daemon banner, which is the primary signal. */
+.hints.mismatch {
+  color: #8a7a4a;
 }
 
 #terms {
@@ -799,7 +827,13 @@ body.resizing-sidebar #app { transition: none; }
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--agent-color, #888);
+  /* background-color, not the `background` shorthand: the value comes
+     from a user-editable agents.json, and the shorthand would accept a
+     url() and fire an outbound request just from opening the launcher.
+     Go sanitizes the color too (agent.validateCustom) — this is the
+     second layer, so a future caller that skips validation is still
+     safe. */
+  background-color: var(--agent-color, #888);
   flex-shrink: 0;
 }
 .launcher-item .agent-name { flex: 1; }
@@ -933,6 +967,180 @@ body.resizing-sidebar #app { transition: none; }
   font-weight: 600;
 }
 #project-editor .actions button.primary:hover { background: #fbb04a; }
+
+/* Settings — backdrop + panel, following the help-overlay shape. */
+#settings {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 7vh;
+}
+#settings.hidden { display: none; }
+#settings-panel {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 80vh;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+#settings-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a2a2a;
+}
+#settings-panel h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #ddd;
+}
+#settings-close {
+  background: transparent;
+  border: 0;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+#settings-close:hover { color: #fff; }
+#settings-close:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+#settings-agents {
+  overflow-y: auto;
+  padding: 12px 14px;
+  flex: 1;
+}
+#settings-agents h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+.settings-hint {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #777;
+  line-height: 1.45;
+}
+.settings-agent-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.settings-agent-row input[type=text] {
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 6px 8px;
+  font: inherit;
+  outline: none;
+  min-width: 0;
+}
+.settings-agent-row input[type=text]:focus {
+  border-color: #f59e0b;
+}
+.settings-agent-name { flex: 1 1 34%; }
+/* Commands run long ("claude --model haiku --foo"); give them the
+   larger share and let the name field shrink first. */
+.settings-agent-cmd {
+  flex: 2 1 55%;
+  font-family: Menlo, monospace;
+  font-size: 12px;
+}
+.settings-agent-row input[type=color] {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 30px;
+  padding: 2px;
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.settings-agent-delete {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  color: #888;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.settings-agent-delete:hover { color: #ff9a9a; }
+#settings-agent-add {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  margin-top: 4px;
+}
+#settings-agent-add:hover { background: #2a2a2a; }
+.settings-error {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(120, 20, 20, 0.35);
+  border: 1px solid #6b2020;
+  color: #ff9a9a;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+}
+.settings-error.hidden { display: none; }
+#settings-panel .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #2a2a2a;
+}
+#settings-panel .actions button {
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+#settings-panel .actions button:hover { background: #2a2a2a; }
+#settings-panel .actions button.primary {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #000;
+  font-weight: 600;
+}
+#settings-panel .actions button.primary:hover { background: #fbb04a; }
+/* setEditingEnabled() disables these while agents.json is loading and
+   after a failed read, when clicking is a no-op — so they must not keep
+   the hover/pointer affordances of a live control. */
+#settings-agent-add:disabled,
+#settings-panel .actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#settings-agent-add:disabled:hover,
+#settings-panel .actions button:disabled:hover { background: #1f1f1f; }
+#settings-panel .actions button.primary:disabled:hover { background: #f59e0b; }
 
 #status {
   position: fixed;
@@ -1271,6 +1479,9 @@ body.resizing-sidebar #app { transition: none; }
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,
+#settings-agent-add:focus-visible,
+#settings-panel .actions button:focus-visible,
+.settings-agent-delete:focus-visible,
 #empty-state .empty-actions button:focus-visible {
   outline: 2px solid #f59e0b;
   outline-offset: 1px;

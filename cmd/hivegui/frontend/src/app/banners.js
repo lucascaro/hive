@@ -38,16 +38,26 @@ function showDaemonBanner(text) {
 function hideDaemonBanner() {
   daemonBannerEl.classList.add('hidden');
 }
-function wireDaemonBanner() {
-  daemonBannerDismiss.addEventListener('click', () => {
-    // Dismissals are per-daemon-build: re-show if a different build
-    // appears later. We stash the build we last saw mismatched (if any).
-    daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
-    hideDaemonBanner();
-  });
-  daemonBannerRestart.addEventListener('click', async () => {
-    // Restart kills hived AND relaunches Hive itself, so every running
-    // session ends. Warn first.
+// restartHive confirms, then asks Go to replace the daemon and
+// relaunch. Exported (like manualUpdateCheck below) because the
+// daemon-stale banner used to be the *only* way to reach it: with
+// matching builds the banner never appears, so there was no way to
+// restart Hive at all. File ▸ Restart Hive… and the command palette
+// call this directly.
+export async function restartHive() {
+  // Re-entrancy guard. The banner button disables itself, but the
+  // menu item and palette entry bypass that — and the probe window
+  // is seconds long, plenty of time to invoke it twice and reach
+  // spawnNewGUI twice.
+  if (daemonRestarting) return;
+  // Claimed before the first await: the confirm dialog is itself a
+  // window during which a second invocation would otherwise slip
+  // past the check above.
+  daemonRestarting = true;
+  daemonBannerRestart.disabled = true;
+  try {
+    // Restart kills hived AND relaunches Hive itself, so every
+    // running session ends. Warn first.
     const ok = await Confirm(
       'Restart Hive?',
       'This will close Hive, terminate every running shell and agent, ' +
@@ -55,21 +65,31 @@ function wireDaemonBanner() {
       'Continue?',
     );
     if (!ok) return;
-    daemonBannerRestart.disabled = true;
-    daemonRestarting = true;
     showDaemonBanner('Restarting Hive…');
     try {
       await RestartDaemon();
       // RestartDaemon quits this process on success; control returns
-      // here only on failure paths.
+      // here only on failure paths — including the daemon refusing to
+      // die, which now surfaces here instead of silently relaunching
+      // into the old daemon.
     } catch (err) {
       flashStatus(`restart failed: ${err}`, true);
       showDaemonBanner(`Restart failed: ${err}`);
-    } finally {
-      daemonBannerRestart.disabled = false;
-      daemonRestarting = false;
     }
+  } finally {
+    daemonBannerRestart.disabled = false;
+    daemonRestarting = false;
+  }
+}
+
+function wireDaemonBanner() {
+  daemonBannerDismiss.addEventListener('click', () => {
+    // Dismissals are per-daemon-build: re-show if a different build
+    // appears later. We stash the build we last saw mismatched (if any).
+    daemonBannerDismissedFor = daemonBannerEl.dataset.daemonBuild || '';
+    hideDaemonBanner();
   });
+  daemonBannerRestart.addEventListener('click', restartHive);
 
   EventsOn('daemon:stale', (ev) => {
     if (!ev) return;

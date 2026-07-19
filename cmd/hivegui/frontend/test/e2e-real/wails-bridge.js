@@ -122,6 +122,8 @@ export async function KillSession(id, force) {
 export async function RestartSession(_id) { return ''; }
 export async function UpdateSession(_id, _name, _color, _order) { return ''; }
 export async function ListAgents() { return []; }
+export async function ListCustomAgents() { return []; }
+export async function SaveCustomAgents() { return undefined; }
 export async function CreateProject() { return ''; }
 export async function KillProject() { return ''; }
 export async function UpdateProject() { return ''; }

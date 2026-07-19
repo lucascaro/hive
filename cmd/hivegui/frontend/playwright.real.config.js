@@ -16,7 +16,7 @@ export default defineConfig({
   testMatch: '**/*.spec.js',
   fullyParallel: false,
   // Real-daemon tests are slower than the mock — give them more room.
-  timeout: 60000,
+  timeout: 90000,
   workers: 1,
   // One retry on CI so a one-off flake doesn't fail the required leg;
   // first-attempt artifacts (trace, scrolltrace attachment) are kept.
