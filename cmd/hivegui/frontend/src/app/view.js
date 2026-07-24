@@ -189,10 +189,15 @@ export function renderGrid() {
     termsHost.appendChild(st.host); // re-order to keep DOM == nav order
   }
   attachDeferred(_deferred);
-  try {
-    const _ms = (() => { try { return Math.round(performance.now() - _fanoutStart); } catch { return -1; } })();
-    LogFrontend(`renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`);
-  } catch { /* bridge absent in tests */ }
+  // Only log when the pass built new tiles — renderGrid runs on every
+  // repaint (switch, minimize, resize, …), and an unconditional line
+  // would spam the log with built=0 sync=0ms noise on every grid touch.
+  if (_built > 0) {
+    try {
+      const _ms = (() => { try { return Math.round(performance.now() - _fanoutStart); } catch { return -1; } })();
+      LogFrontend(`renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`);
+    } catch { /* bridge absent in tests */ }
+  }
   // Hide / unmark tiles outside the scope.
   for (const [sid, st] of state.terms) {
     if (!gridIDs.has(sid)) {
