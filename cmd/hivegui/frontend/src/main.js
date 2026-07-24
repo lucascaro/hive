@@ -8,7 +8,9 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
   ConnectControl, KillSession, OpenNewWindow, CloseWindow, OpenTerminalAt,
+  LogFrontend,
 } from './bridge.js';
+import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
 import { paletteShortcuts } from './lib/shortcuts.js';
 import { state } from './app/state.js';
@@ -174,14 +176,59 @@ initVersionFooter();
   });
 })();
 
+// ---------- freeze heartbeat ----------
+//
+// Always-on, low-rate main-thread heartbeat teed to hivegui.log. The
+// idle-freeze (thread parked, 0% CPU, no magenta) leaves no other trace
+// on disk, so a "went irresponsive" report has nothing to work from.
+// A STALL line means the thread was blocked (busy loop / sync stall); a
+// silent log across a freeze means the thread was idle-blocked or the
+// process wedged. The periodic "alive" line carries window state so an
+// occluded/unfocused window is distinguishable from a real block. The
+// first STALL after boot also quantifies the slow-startup hang.
+(function startFreezeHeartbeat() {
+  const NOMINAL_MS = 1000;
+  const ALIVE_EVERY = 3; // ~every 3s — tight enough to watch a mem/gap ramp
+  let last = (() => { try { return performance.now(); } catch { return 0; } })();
+  let beat = 0;
+  setInterval(() => {
+    let now;
+    try { now = performance.now(); } catch { now = last + NOMINAL_MS; }
+    const gap = now - last;
+    last = now;
+    beat += 1;
+    const heap = jsHeapMB(typeof performance !== 'undefined' ? performance : null);
+    const st = {
+      vis: document.visibilityState,
+      focus: typeof document.hasFocus === 'function' ? (document.hasFocus() ? 1 : 0) : '?',
+      terms: state.terms.size,
+      view: state.view,
+    };
+    if (heap !== null) st.heapMB = heap;
+    const line = classifyBeat({
+      gap, nominalMs: NOMINAL_MS,
+      visible: document.visibilityState === 'visible',
+      beat, aliveEvery: ALIVE_EVERY, state: st,
+    });
+    if (line) { try { LogFrontend(line); } catch { /* bridge absent in tests */ } }
+  }, NOMINAL_MS);
+})();
+
 // ---------- bootstrap ----------
 
 (async () => {
+  const t0 = (() => { try { return performance.now(); } catch { return 0; } })();
+  try { LogFrontend('boot: connecting control'); } catch { /* ignore */ }
   setStatus('connecting…');
   try {
     await ConnectControl();
     setStatus('connected');
+    try {
+      const dt = (() => { try { return Math.round(performance.now() - t0); } catch { return -1; } })();
+      LogFrontend(`boot: control connected in ${dt}ms`);
+    } catch { /* ignore */ }
   } catch (err) {
     setStatus(`connect failed: ${err}`, true);
+    try { LogFrontend(`boot: control connect failed: ${err}`); } catch { /* ignore */ }
   }
 })();

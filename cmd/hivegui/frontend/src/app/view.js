@@ -5,7 +5,7 @@
 // initView(deps) — they live in session-term/focus modules (stage 6)
 // and main.js.
 
-import { WindowSetTitle } from '../bridge.js';
+import { WindowSetTitle, LogFrontend } from '../bridge.js';
 import { state } from './state.js';
 import { termsHost, setStatus } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
@@ -125,6 +125,27 @@ export function switchToProject(pid) {
 // current Hive's behavior). cellMap[row*cols + col] = session index.
 let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
 
+// attachDeferred attaches non-active grid tiles one per idle callback so
+// the first paint isn't blocked by N synchronous fit()+replay passes.
+// ensureAttached is idempotent (returns early if already attached), so
+// re-running renderGrid — which re-queues everything — is harmless.
+// requestIdleCallback isn't available in all webviews; fall back to a
+// short-timeout chain so the stagger still happens.
+const _ric = (cb) => (typeof requestIdleCallback === 'function'
+  ? requestIdleCallback(cb, { timeout: 500 })
+  : setTimeout(cb, 16));
+function attachDeferred(terms) {
+  let i = 0;
+  const step = () => {
+    if (i >= terms.length) return;
+    const st = terms[i++];
+    // Skip tiles that left the grid before their turn came up.
+    if (st.host.classList.contains('in-grid')) st.ensureAttached();
+    if (i < terms.length) _ric(step);
+  };
+  if (terms.length) _ric(step);
+}
+
 // renderGrid lays out every tile that should be visible in the
 // current grid scope. Tiles for other sessions are hidden but kept
 // alive (so their xterm scrollback persists across mode switches).
@@ -136,18 +157,42 @@ export function renderGrid() {
   const gridIDs = new Set(gridSessions.map((s) => s.id));
   const n = gridSessions.length;
 
-  // Ensure every grid session has a SessionTerm and is attached.
+  // Startup-fan-out probe: how many tiles this pass builds+attaches and
+  // the synchronous cost of the loop. grid-all attaches every session at
+  // once; ensureTerm builds a new xterm + WebGL addon and ensureAttached
+  // runs a synchronous fit() per tile — the suspected slow-startup stall.
+  // (ensureAttached's await is fire-and-forget here, so this captures the
+  // synchronous DOM/construction cost; the per-tile open latency lands in
+  // the "ensureAttached" feLog lines.)
+  const _fanoutStart = (() => { try { return performance.now(); } catch { return 0; } })();
+  let _built = 0;
+
+  // Ensure every grid session has a SessionTerm; attach lazily. Every
+  // grid tile is on-screen (the grid fits all N into the viewport), but
+  // attaching all N synchronously runs N fit()s + kicks off N replays in
+  // one main-thread pass — the startup drag. Attach the ACTIVE tile now
+  // so the user's focus is live immediately; defer the rest to idle
+  // callbacks so they stream in without blocking the first paint.
   // Move tiles into the desired DOM order (row-major) so that flexbox
   // / CSS grid honors the navigation order without us having to set
   // grid-row/column explicitly.
+  const _deferred = [];
   for (const info of gridSessions) {
+    const existed = state.terms.has(info.id);
     const st = deps.ensureTerm(info);
+    if (!existed) _built += 1;
     st.host.classList.add('in-grid');
     st.host.classList.toggle('active', info.id === state.activeId);
     st.host.classList.toggle('attention', state.attention.has(info.id));
-    st.ensureAttached();
+    if (info.id === state.activeId) st.ensureAttached();
+    else _deferred.push(st);
     termsHost.appendChild(st.host); // re-order to keep DOM == nav order
   }
+  attachDeferred(_deferred);
+  try {
+    const _ms = (() => { try { return Math.round(performance.now() - _fanoutStart); } catch { return -1; } })();
+    LogFrontend(`renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`);
+  } catch { /* bridge absent in tests */ }
   // Hide / unmark tiles outside the scope.
   for (const [sid, st] of state.terms) {
     if (!gridIDs.has(sid)) {

@@ -304,6 +304,30 @@ func (v *VT) pushHistory(b []byte) {
 	}
 }
 
+// InitialReplayBytes returns the payload to paint a freshly-attaching
+// client. On the ALTERNATE screen (full-screen TUIs: claude, vim, htop…)
+// there is no user-facing scrollback — the app repaints itself — so we
+// return only a one-screen RenderSnapshot instead of the multi-MB raw
+// ring. This is the fix for the many-tile startup flood: 8 alt-screen
+// sessions were each replaying an 8 MiB ring (~32 MB total) into xterm
+// on the main thread, dragging then halting the GUI.
+//
+// On the normal screen we still return the full ring so deep scrollback
+// survives the attach (xterm can't reflow on resize, so the ring is how
+// width-changing resizes recover history — see appendRing).
+// The returned bool reports whether the snapshot (alt-screen) path was
+// taken — callers log it so hived.log proves which replay path ran (and
+// therefore which daemon build is live) without inferring from sizes.
+func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
+	v.mu.Lock()
+	onAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
+	v.mu.Unlock()
+	if onAlt {
+		return v.RenderSnapshot(), true
+	}
+	return v.RingBytes(), false
+}
+
 // RingBytes returns a defensive copy of the raw-byte scrollback ring.
 // Callers can stream the result to a client that wants to repaint
 // xterm.js from a clean slate after a width-changing resize.

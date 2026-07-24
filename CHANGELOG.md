@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- GUI: fixed a startup slowdown that degraded to a freeze when several
+  full-screen agent sessions (Claude, etc.) were open in grid view. On
+  attach the daemon replayed each session's entire multi-MB scrollback
+  ring into the terminal — tens of MB parsed on the main thread across
+  all tiles at once, ballooning webview memory until it stalled.
+  Full-screen (alt-screen) sessions now replay only a one-screen snapshot
+  (no scrollback, which they don't use anyway); normal-screen sessions
+  still get their full history. Grid tiles also now attach lazily (active
+  tile first, the rest on idle) instead of all at once.
+- GUI: recover the control connection automatically. A dropped
+  connection to the daemon (sleep/wake, a daemon upgrade) previously left
+  the window frozen with no way back except a full restart; it now
+  reconnects with backoff and re-syncs.
+- GUI: cap repeated WebGL context-loss recovery so a flapping GPU context
+  can't spin into a busy loop that freezes the window; the tile falls back
+  to the DOM renderer instead. Also bound the number of simultaneous WebGL
+  contexts so a many-tile grid can't exhaust the browser limit (which
+  showed as magenta blocks in place of terminal text).
+
+### Changed
+
+- Logs: `hived.log` and `hivegui.log` now rotate at 8 MiB (one prior
+  generation kept) instead of growing unbounded. Added always-on
+  diagnostic breadcrumbs — a main-thread heartbeat plus per-attach
+  replay/timing lines — to make future freezes diagnosable from the logs.
+
 ## [2.3.0] — 2026-07-19
 
 ### Added

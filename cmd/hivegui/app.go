@@ -99,6 +99,14 @@ func (a *App) Notify(title, subtitle, body, tag string) error {
 	return nil
 }
 
+// LogFrontend tees a frontend diagnostic line to hivegui.log. The webview's
+// own console goes to /dev/null under LaunchServices, so freeze/renderer
+// hypotheses (WebGL context-loss storms, reconnect loops) have nowhere to
+// land otherwise. Kept dead simple: one prefixed line per call.
+func (a *App) LogFrontend(msg string) {
+	log.Printf("hivegui[fe]: %s", msg)
+}
+
 func NewApp(launchDir string) *App {
 	// Point the agent catalog at the user's agents.json. hived does
 	// the same with the same directory; each process reloads on mtime
@@ -762,6 +770,7 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	}
 	a.mu.Unlock()
 
+	dialStart := time.Now()
 	conn, welcome, err := a.dialHandshake(wire.Hello{
 		Version:   wire.PROTOCOL_VERSION,
 		Client:    "hivegui/0.2",
@@ -771,6 +780,11 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attach failed: %w", err)
 	}
+	// Startup-latency probe: dial+handshake is a network round-trip to
+	// hived per session. On a many-session grid launch these run behind
+	// openMu (serialized), so a slow daemon shows here as the sum that
+	// stalls startup. Logged to hivegui.log next to the frontend probes.
+	log.Printf("hivegui[fe]: OpenSession id=%s dialHandshake=%dms", id, time.Since(dialStart).Milliseconds())
 
 	cs := &connState{conn: conn}
 	a.mu.Lock()
@@ -799,6 +813,23 @@ func (a *App) attachReadLoop(id string, cs *connState) {
 		_ = cs.conn.Close()
 		wruntime.EventsEmit(a.ctx, "pty:disconnect", id)
 	}()
+	// Startup-flood probe: sum the FrameData bytes in the first second
+	// after attach and log once. The initial subscribe replays the
+	// session's scrollback ring (up to a few MB); many sessions doing
+	// this at once floods pty:data events into the webview and can stall
+	// its main thread. This quantifies the initial burst per session.
+	loopStart := time.Now()
+	var initBytes int
+	var initFrames int
+	initLogged := false
+	logInitBurst := func() {
+		if initLogged {
+			return
+		}
+		initLogged = true
+		log.Printf("hivegui[fe]: attach id=%s initial burst frames=%d bytes=%d in %dms",
+			id, initFrames, initBytes, time.Since(loopStart).Milliseconds())
+	}
 	for {
 		ft, payload, err := wire.ReadFrame(cs.conn)
 		if err != nil {
@@ -806,6 +837,17 @@ func (a *App) attachReadLoop(id string, cs *connState) {
 				log.Printf("hivegui: attach %s read: %v", id, err)
 			}
 			return
+		}
+		if !initLogged {
+			if ft == wire.FrameData {
+				initFrames++
+				initBytes += len(payload)
+			}
+			// Flush the burst summary once the initial replay settles
+			// (1s quiet-ish window) or on the first non-data frame.
+			if time.Since(loopStart) > time.Second || ft == wire.FrameEvent {
+				logInitBurst()
+			}
 		}
 		switch ft {
 		case wire.FrameData:

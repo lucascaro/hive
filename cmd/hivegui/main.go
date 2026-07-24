@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2"
@@ -53,12 +52,7 @@ func resolveLaunchDir() string {
 // "Restart Hive doesn't restart the daemon" report could not be
 // diagnosed from the machine it happened on.
 func setupLogFile() {
-	stateDir := registry.StateDir()
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return
-	}
-	f, err := os.OpenFile(filepath.Join(stateDir, "hivegui.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := registry.OpenLogFile("hivegui.log")
 	if err != nil {
 		return
 	}

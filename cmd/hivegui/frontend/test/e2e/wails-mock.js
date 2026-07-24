@@ -239,6 +239,7 @@ export async function IsGitRepo(_dir) { return false; }
 export async function OpenURL(_url) { maybeFail('OpenURL'); return ''; }
 export async function OpenTerminalAt(_dir) { maybeFail('OpenTerminalAt'); return ''; }
 export async function Notify(_title, _body) { return ''; }
+export async function LogFrontend(_msg) { return ''; }
 export async function Confirm(_title, _body) { return true; }
 export async function RestartDaemon() { return ''; }
 export async function CheckForUpdate() { return null; }
