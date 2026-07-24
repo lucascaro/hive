@@ -136,6 +136,56 @@ func TestVTAltScreenSnapshot(t *testing.T) {
 	}
 }
 
+// TestInitialReplayBytesAltScreen verifies the startup-flood fix: an
+// alt-screen session (claude et al.) returns a compact one-screen
+// snapshot on initial attach, NOT the raw scrollback ring. Feeding the
+// ring's worth of bytes and confirming the initial replay is far smaller
+// (and is a snapshot, i.e. starts by entering alt screen) guards against
+// regressing back to the multi-MB per-tile flood.
+func TestInitialReplayBytesAltScreen(t *testing.T) {
+	v := NewVT(80, 24)
+	// Enter alt screen, then dump a lot of output (as a full-screen TUI
+	// repainting would). All of it lands in the ring.
+	if _, err := v.Write([]byte("\x1b[?1049h")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	big := bytes.Repeat([]byte("claude output line\r\n"), 5000)
+	if _, err := v.Write(big); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ring := v.RingBytes()
+	initial, snapshot := v.InitialReplayBytes()
+	if len(ring) < 50_000 {
+		t.Fatalf("test setup: ring too small (%d) to prove the point", len(ring))
+	}
+	if !snapshot {
+		t.Error("alt-screen initial replay should report snapshot=true")
+	}
+	if len(initial) >= len(ring) {
+		t.Errorf("alt-screen initial replay (%d B) should be far smaller than the ring (%d B)", len(initial), len(ring))
+	}
+	if !bytes.HasPrefix(initial, []byte("\x1b[?1049h")) {
+		t.Errorf("alt-screen initial replay should be a snapshot entering alt screen; got prefix %q", initial[:min(20, len(initial))])
+	}
+}
+
+// TestInitialReplayBytesNormalScreen verifies normal-screen sessions
+// still get the full ring on attach (deep scrollback survives; xterm
+// can't reflow on resize, so the ring is how history is preserved).
+func TestInitialReplayBytesNormalScreen(t *testing.T) {
+	v := NewVT(80, 24)
+	if _, err := v.Write([]byte("hello world\r\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, snapshot := v.InitialReplayBytes()
+	if snapshot {
+		t.Error("normal-screen initial replay should report snapshot=false")
+	}
+	if want := v.RingBytes(); !bytes.Equal(got, want) {
+		t.Errorf("normal-screen initial replay must equal the ring; got %d B, want %d B", len(got), len(want))
+	}
+}
+
 // TestWriteColorRGBForeground verifies RGB-encoded colors emit a
 // truecolor SGR fragment instead of being dropped to default.
 func TestWriteColorRGBForeground(t *testing.T) {

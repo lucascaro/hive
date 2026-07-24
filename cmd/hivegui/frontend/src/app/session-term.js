@@ -21,6 +21,19 @@ import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import {
   shouldRefreshOnVisibility, recoverFromContextLoss, bindDprWatcher,
 } from '../lib/renderer-recovery.js';
+import { acquireWebglSlot, releaseWebglSlot, recordWebglLoss } from '../lib/webgl-budget.js';
+import { LogFrontend } from '../bridge.js';
+
+// A WebGL context that dies, gets reattached, and dies again in a tight
+// loop pins a CPU core and freezes the whole GUI (the "works for days
+// then locks up" report). After this many losses within the window we
+// stop reattaching and leave the tile on the DOM renderer for good.
+const WEBGL_LOSS_STORM_MAX = 3;
+const WEBGL_LOSS_STORM_WINDOW_MS = 10000;
+
+// Best-effort disk log — the webview console is /dev/null under
+// LaunchServices, so renderer/freeze evidence has nowhere else to land.
+function feLog(msg) { try { LogFrontend(msg); } catch { /* bridge absent in tests */ } }
 import {
   shouldRequestReplay, decideResizeReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
 } from '../lib/scrollback.js';
@@ -571,15 +584,36 @@ export class SessionTerm {
     // context-loss recovery. After a fresh attach the renderer's atlas
     // is empty, so force a full repaint to overwrite whatever stale
     // pixels were left behind by the lost context.
+    //
+    // A tile that lost its context repeatedly (loss storm) has sworn off
+    // WebGL — never reattach, or the refresh paths (DPR / visibility)
+    // would restart the loop.
+    if (this._webglGaveUp) return false;
+
+    // Gate on a process-wide context budget first: past the browser's
+    // simultaneous-WebGL-context cap the atlas unbinds and tiles fill
+    // with magenta. Over budget → stay on the DOM renderer and just
+    // repaint so nothing stale is left frozen.
+    if (!acquireWebglSlot()) {
+      this.webgl = null;
+      this._hasWebglSlot = false;
+      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      return false;
+    }
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => this._onWebglContextLoss());
       this.term.loadAddon(webgl);
       this.webgl = webgl;
+      this._hasWebglSlot = true;
       try { this.term.refresh(0, this.term.rows - 1); } catch {}
       return true;
     } catch {
+      // Construct failed (no GPU / driver) — hand the slot back so a
+      // healthier tile can claim it.
+      releaseWebglSlot();
       this.webgl = null;
+      this._hasWebglSlot = false;
       return false;
     }
   }
@@ -591,7 +625,33 @@ export class SessionTerm {
     // unit-tested without xterm or a real WebGL context.
     const dead = this.webgl;
     this.webgl = null;
-    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-context-loss', { id: this.info.id });
+    // Release this tile's slot before reattaching, or _attachWebgl's
+    // budget check would see the dead context still counted and refuse
+    // to bring the tile back up.
+    if (this._hasWebglSlot) { releaseWebglSlot(); this._hasWebglSlot = false; }
+
+    // Storm guard: count losses in a sliding window. A context that keeps
+    // dying immediately after reattach would loop dispose→reattach→loss
+    // forever, pinning a core and freezing the GUI. Past the threshold we
+    // stop trying WebGL for this tile and stay on the DOM renderer.
+    this._webglLoss ||= { start: 0, count: 0 };
+    const { count, stormed } = recordWebglLoss(
+      this._webglLoss, nowMs(), WEBGL_LOSS_STORM_MAX, WEBGL_LOSS_STORM_WINDOW_MS,
+    );
+    feLog(`webgl-context-loss id=${this.info.id} count=${count}`);
+    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-context-loss', { id: this.info.id, count });
+
+    if (stormed) {
+      // Give up on WebGL for this tile. Dispose the dead addon, don't
+      // reattach, force one repaint so the DOM renderer takes over cleanly.
+      this._webglGaveUp = true;
+      try { dead?.dispose(); } catch { /* best-effort */ }
+      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      feLog(`webgl-give-up id=${this.info.id} — DOM renderer (loss storm)`);
+      if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-give-up', { id: this.info.id });
+      return;
+    }
+
     const { reattached } = recoverFromContextLoss({
       dispose: () => dead?.dispose(),
       reattach: () => this._attachWebgl(),
@@ -878,14 +938,22 @@ export class SessionTerm {
       this._pendingAttach = true;
       return;
     }
+    const _fitStart = nowMs();
     this.fit.fit();
+    const _fitMs = nowMs() - _fitStart;
     // Reset _followBottom on attach: it may be stale from a previous
     // session (user scrolled up, closed Hive, reopened). The initial
     // attach replay must snap to bottom — _followBottom = true ensures
     // the replay-done handler doesn't skip the snap via the restore path.
     this._followBottom = true;
     try {
+      const _openStart = nowMs();
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
+      // Startup-latency probe: fit.fit() is synchronous DOM measurement
+      // (blocks the main thread); OpenSession awaits the Go dial+handshake.
+      // On a many-tile grid launch these run per tile — this line pins
+      // which half of each attach is slow.
+      feLog(`ensureAttached id=${this.info.id} fit=${Math.round(_fitMs)}ms open=${Math.round(nowMs() - _openStart)}ms`);
       this.attached = true;
       // Anchor the replay baseline to the actual fitted cols for this
       // tile. Without this, a later _onBodyResize would initialize the
@@ -902,6 +970,17 @@ export class SessionTerm {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    // Startup-flood probe: xterm.write parses on the main thread, so a
+    // large initial scrollback replay blocks it. Sum bytes/writes for the
+    // first ~2s after this tile's first byte and log once — pairs with the
+    // Go-side "initial burst" line to show flood → main-thread stall.
+    this._wroteBytes = (this._wroteBytes || 0) + bin.length;
+    this._wroteCount = (this._wroteCount || 0) + 1;
+    if (this._writeWindowStart === undefined) this._writeWindowStart = nowMs();
+    if (!this._writeBurstLogged && nowMs() - this._writeWindowStart > 2000) {
+      this._writeBurstLogged = true;
+      feLog(`writeData burst id=${this.info.id} writes=${this._wroteCount} bytes=${this._wroteBytes} in ${Math.round(nowMs() - this._writeWindowStart)}ms`);
+    }
     this.term.write(this.decoder.decode(bytes, { stream: true }));
   }
 
@@ -921,6 +1000,7 @@ export class SessionTerm {
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.
     try { this.webgl?.dispose(); } catch {}
+    if (this._hasWebglSlot) { releaseWebglSlot(); this._hasWebglSlot = false; }
     this.webgl = null;
     this.term.dispose();
     this.host.remove();

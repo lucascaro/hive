@@ -249,7 +249,17 @@ func (s *Session) fanoutClose() {
 func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byte) error) (unsubscribe func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := writeFn(s.vt.RingBytes()); err != nil {
+	// Initial attach uses InitialReplayBytes, not the raw ring: alt-screen
+	// sessions (claude et al.) return a one-screen snapshot with no
+	// scrollback, avoiding the many-tile startup flood. Normal-screen
+	// sessions still get the full ring here. The resize-driven re-replay
+	// (EmitAtomicReplay) keeps using the ring for reflow recovery.
+	replay, snapshot := s.vt.InitialReplayBytes()
+	// Logged so hived.log proves which path ran per attach — a snapshot
+	// line here (vs a multi-MB ring) is the unconfounded signal that the
+	// fixed daemon build is live, independent of the days-long freeze.
+	log.Printf("session %s: initial replay %d bytes snapshot=%v", s.ID, len(replay), snapshot)
+	if err := writeFn(replay); err != nil {
 		return nil, err
 	}
 	s.sinks[sink] = struct{}{}

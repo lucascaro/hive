@@ -53,12 +53,9 @@ func main() {
 	// command through agent.Get.
 	agent.SetCustomDir(stateDir)
 
-	if err := os.MkdirAll(stateDir, 0o700); err == nil {
-		logPath := filepath.Join(stateDir, "hived.log")
-		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
-			log.SetOutput(io.MultiWriter(os.Stderr, f))
-			log.Printf("hived: log tee to %s", logPath)
-		}
+	if f, err := registry.OpenLogFile("hived.log"); err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+		log.Printf("hived: log tee to %s", filepath.Join(stateDir, "hived.log"))
 	}
 
 	d, err := daemon.New(daemon.Config{

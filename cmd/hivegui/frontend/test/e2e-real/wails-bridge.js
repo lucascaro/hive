@@ -135,6 +135,7 @@ export async function IsGitRepo() { return false; }
 export async function OpenURL() { return ''; }
 export async function OpenTerminalAt() { return ''; }
 export async function Notify() { return ''; }
+export async function LogFrontend() { return ''; }
 export async function Confirm() { return true; }
 export async function RestartDaemon() { return ''; }
 export async function CheckForUpdate() { return null; }

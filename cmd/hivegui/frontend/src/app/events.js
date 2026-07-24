@@ -4,7 +4,7 @@
 // EventsOn handler; view/focus callbacks and the scroll tracer are
 // injected because they live in main.js until later stages.
 
-import { EventsOn, Notify, Confirm, KillSession } from '../bridge.js';
+import { EventsOn, Notify, Confirm, KillSession, ConnectControl, LogFrontend } from '../bridge.js';
 import { state, saveCollapsed } from './state.js';
 import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
@@ -21,6 +21,35 @@ let deps = {
   isDaemonRestarting: () => false,
   scrollTrace: { rec: Object.assign(() => {}, { enabled: false }) },
 };
+
+// Control-connection reconnect loop. Guarded so overlapping disconnect
+// events don't spawn parallel loops. Backoff climbs 500ms → 5s cap so a
+// daemon that's slow to come back doesn't get hammered. Stops if a
+// RestartDaemon takes over (that path spawns a fresh GUI) or once
+// ConnectControl succeeds — the daemon then re-pushes the session list.
+let _reconnecting = false;
+async function reconnectControl() {
+  if (_reconnecting) return;
+  _reconnecting = true;
+  let delay = 500;
+  try {
+    for (;;) {
+      if (deps.isDaemonRestarting()) return; // fresh GUI is taking over
+      try {
+        await ConnectControl();
+        setStatus('connected');
+        try { LogFrontend('control reconnected'); } catch { /* bridge absent in tests */ }
+        return;
+      } catch (err) {
+        try { LogFrontend(`control reconnect failed: ${err}`); } catch { /* ignore */ }
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(delay * 2, 5000);
+      }
+    }
+  } finally {
+    _reconnecting = false;
+  }
+}
 
 // onSessionBell is fired by SessionTerm whenever its xterm receives
 // BEL. Active + window-focused session: ignore. Otherwise: mark
@@ -344,7 +373,15 @@ export function wireDaemonEvents(injected) {
     // control conn; the banner already says "Restarting hived…". Don't
     // also flash an alarming red status line in that window.
     if (deps.isDaemonRestarting()) return;
-    setStatus('control disconnected', true);
+    // The control conn is the GUI's only channel for session/project
+    // state and commands. Before, a drop (macOS sleep/wake, a daemon
+    // replaced by an upgrade) was terminal: ConnectControl ran once at
+    // boot and nothing reconnected, so the UI sat frozen until the user
+    // restarted. Retry with backoff — ConnectControl is idempotent and
+    // the daemon re-pushes a full SESSIONS snapshot on connect, so the
+    // UI re-syncs automatically once it's back.
+    setStatus('reconnecting…', true);
+    reconnectControl();
   });
 
   // User clicked a notification toast. Route to that session in the

@@ -19,6 +19,6 @@ export {
   CreateProject, KillProject, UpdateProject,
   LaunchDir, PickDirectory, OpenNewWindow, CloseWindow,
   IsGitRepo, OpenURL, OpenTerminalAt, Notify, Confirm,
-  RestartDaemon, CheckForUpdate, SetClipboardText,
+  RestartDaemon, CheckForUpdate, SetClipboardText, LogFrontend,
 } from '../wailsjs/go/main/App';
 export { EventsOn, WindowSetTitle, ClipboardGetText } from '../wailsjs/runtime/runtime';

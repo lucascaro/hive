@@ -49,3 +49,6 @@ Thumbs.db
 
 # hivesmith local tooling config
 .hivesmith/
+
+# stray daemon/gui log dumped into the repo root during debugging
+/hive.log
