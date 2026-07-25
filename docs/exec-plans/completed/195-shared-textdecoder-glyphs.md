@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/195-shared-textdecoder-glyphs.md](../../product-specs/195-shared-textdecoder-glyphs.md)
 - **Issue:** #195
-- **Stage:** QA
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 

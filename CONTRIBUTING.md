@@ -7,21 +7,19 @@ Thank you for your interest in contributing! This document explains how to build
 ### Prerequisites
 
 - **Go 1.25+** — [install](https://go.dev/dl/)
-- No other runtime dependencies for the native backend. The tmux backend additionally requires `tmux`.
+- **Node 20+** and the **Wails CLI** for the desktop GUI:
+  `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
 ### Build
 
 ```bash
 git clone https://github.com/lucascaro/hive
 cd hive
-go build -o hive .
+./build.sh            # macOS .app at cmd/hivegui/build/bin/hivegui.app
 ```
 
-Or use the build script, which also installs the binary to `/usr/local/bin`:
-
-```bash
-bash build.sh
-```
+See the [README](README.md#build) for `--open` / `--zip` flags and the
+Windows/Linux build steps.
 
 ### Run Tests
 
@@ -50,7 +48,7 @@ go vet ./...
 
 ## Project Layout
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a full description of every package and how they interact.
+See [DESIGN.md](DESIGN.md) for a full description of every package and how they interact.
 
 ## Submitting Changes
 
@@ -58,7 +56,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a full description of every package a
 2. Make your changes.
 3. Ensure `go test ./...` and `go vet ./...` pass.
 4. **Update `CHANGELOG.md`** — add an entry under `[Unreleased]` for every user-visible change (`Added`, `Changed`, `Fixed`, `Removed`, or `Security`).
-5. **Update `ARCHITECTURE.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
+5. **Update `DESIGN.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
 6. Update any relevant files in `docs/` if the subsystem they describe has changed.
 7. Open a pull request with a clear description of the problem and solution.
 

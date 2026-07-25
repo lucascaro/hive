@@ -9,12 +9,5 @@ See `features/templates/FEATURE.md` for the feature file template.
 |---|-------|-------|-------|------------|
 | 1 | —     | [Resume conversations on daemon restart](active/resume-on-daemon-restart.md) | TRIAGE | M |
 
-## Rejected
-
-| Issue | Title | Reason |
-|-------|-------|--------|
-
-## Completed
-
-| Issue | Title | PR | Merged |
-|-------|-------|----|--------|
+Shipped and rejected features are recorded in `CHANGELOG.md` and
+`docs/product-specs/` — not duplicated here.

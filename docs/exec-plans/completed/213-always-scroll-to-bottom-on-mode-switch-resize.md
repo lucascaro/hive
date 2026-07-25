@@ -4,8 +4,8 @@
 - **Issue:** #213
 - **PR:** #214
 - **Branch:** `feature/213-always-scroll-to-bottom-on-mode-switch-resize`
-- **Stage:** QA
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 

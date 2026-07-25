@@ -67,7 +67,7 @@ jobs:
         # Layer A: spawns the real hived binary in temp dirs and drives
         # it over the real wire protocol. Isolation enforced by env
         # vars below + testclient.RequireIsolation; never touches real
-        # hive state. See docs/exec-plans/active/210-real-e2e-tests.md.
+        # hive state. See docs/exec-plans/completed/210-real-e2e-tests.md.
         run: |
           export HOME="$(mktemp -d)"
           export HIVE_STATE_DIR="$(mktemp -d)"
@@ -99,7 +99,7 @@ jobs:
         # temp dirs, points the Vite frontend at the bridge URL via
         # VITE_WAILS_REAL=1, runs Playwright. Catches wire/payload
         # drift that the mock harness cannot see. See
-        # docs/exec-plans/active/210-real-e2e-tests.md.
+        # docs/exec-plans/completed/210-real-e2e-tests.md.
         working-directory: cmd/hivegui/frontend
         run: ./node_modules/.bin/playwright test --config=playwright.real.config.js
         env:

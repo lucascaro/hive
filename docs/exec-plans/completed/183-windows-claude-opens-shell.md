@@ -4,8 +4,8 @@
 - **Issue:** #183
 - **PR:** #184
 - **Branch:** feature/183-windows-claude-opens-shell
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 
