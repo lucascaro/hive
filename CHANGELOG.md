@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- GUI: back / forward navigation between sessions, like an editor or a
+  browser. **⌃-** returns to the session you were in before this one and
+  **⌃⇧-** goes forward again (**Ctrl+Alt+-** / **Ctrl+Alt+Shift+-** on
+  Windows and Linux, where Ctrl+- is already zoom out). History records
+  every way of switching — clicking a session in the sidebar, clicking a
+  tile in grid view, ⌘1–9, ⌘arrows, ⌘B, or the app switching you itself —
+  so "take me back to what I was working on" always works. Sessions killed
+  while you were away are skipped. Also available in the command palette as
+  **Go Back** / **Go Forward**.
+
 ### Fixed
 
 - GUI: fixed a startup slowdown that degraded to a freeze when several

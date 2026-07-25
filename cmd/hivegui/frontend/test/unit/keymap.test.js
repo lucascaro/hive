@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { isShiftEnter, isHelpOverlayKey, NEWLINE_SEQ } from '../../src/lib/keymap.js';
+import {
+  isShiftEnter, isHelpOverlayKey, navHistoryKey, NEWLINE_SEQ,
+} from '../../src/lib/keymap.js';
 
 // Minimal fake keydown event with all modifier flags defaulted off.
 function ev(overrides = {}) {
@@ -68,6 +70,70 @@ describe('isHelpOverlayKey', () => {
   it('does not fire for other Cmd/Ctrl keys', () => {
     expect(isHelpOverlayKey(ev({ metaKey: true, key: 'k' }))).toBe(false);
     expect(isHelpOverlayKey(ev({ ctrlKey: true, key: '.' }))).toBe(false);
+  });
+});
+
+describe('navHistoryKey', () => {
+  describe('macOS — Ctrl+- / Ctrl+Shift+-', () => {
+    it('fires for Ctrl+-', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, key: '-' }), true)).toBe('back');
+    });
+
+    it('fires forward for Ctrl+Shift+-', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '-' }), true)).toBe('forward');
+    });
+
+    it('accepts "_" — the shifted "-" on a US layout', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), true)).toBe('forward');
+    });
+
+    it('falls back to the physical Minus key for other layouts', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, key: 'Dead', code: 'Minus' }), true)).toBe('back');
+    });
+
+    it('does not fire for ⌘- — that is zoom out', () => {
+      expect(navHistoryKey(ev({ metaKey: true, key: '-' }), true)).toBe(null);
+    });
+
+    it('does not fire for ⌃⌥- — Alt is the non-mac chord, kept free here', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), true)).toBe(null);
+    });
+
+    it('does not fire for Ctrl+Cmd+- (both modifiers held)', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, metaKey: true, key: '-' }), true)).toBe(null);
+    });
+  });
+
+  describe('Windows / Linux — Ctrl+Alt+- / Ctrl+Alt+Shift+-', () => {
+    it('does NOT fire for plain Ctrl+- — that is zoom out', () => {
+      // Load-bearing negative. On non-mac, app/keyboard.js binds Ctrl+-
+      // to bumpFontSize(-1) via the cmdOrCtrl gate. Claiming it here
+      // would silently remove zoom out on two of three platforms.
+      expect(navHistoryKey(ev({ ctrlKey: true, key: '-' }), false)).toBe(null);
+      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), false)).toBe(null);
+    });
+
+    it('fires for Ctrl+Alt+-', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), false)).toBe('back');
+    });
+
+    it('fires forward for Ctrl+Alt+Shift+-', () => {
+      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, shiftKey: true, key: '-' }), false)).toBe('forward');
+    });
+
+    it('does not fire for Alt+- without Ctrl', () => {
+      expect(navHistoryKey(ev({ altKey: true, key: '-' }), false)).toBe(null);
+    });
+  });
+
+  it('does not fire for a bare "-" — it must reach the terminal', () => {
+    expect(navHistoryKey(ev({ key: '-' }), true)).toBe(null);
+    expect(navHistoryKey(ev({ key: '-' }), false)).toBe(null);
+  });
+
+  it('does not fire for Ctrl + another key', () => {
+    expect(navHistoryKey(ev({ ctrlKey: true, key: '=' }), true)).toBe(null);
+    expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '=' }), false)).toBe(null);
   });
 });
 

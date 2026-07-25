@@ -104,6 +104,7 @@ build.sh           # macOS universal build
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
 | ⌘Enter | Toggle grid / single |
 | ⌘arrows | Spatial nav (grid) / session nav (single) |
+| ⌃- / ⌃⇧- | Back / forward through recently visited sessions (Ctrl+Alt+- / Ctrl+Alt+Shift+- on Windows and Linux, where ⌃- is zoom) |
 | ⌘B | Next session needing attention (rang the bell) |
 | ⇧⌘B | Jump back to where you were before the first ⌘B |
 | ⌘[ / ⌘] | Previous / next project |

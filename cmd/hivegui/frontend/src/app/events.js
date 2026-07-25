@@ -10,6 +10,7 @@ import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
+import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 
 let deps = {
@@ -215,6 +216,7 @@ export function wireDaemonEvents(injected) {
     for (const id of Array.from(state.minimized)) {
       if (!liveIds.has(id)) state.minimized.delete(id);
     }
+    pruneNav(state.nav, (id) => liveIds.has(id));
     renderSidebar();
     deps.renderMinimizedTray();
     if (!state.activeId && state.sessions.length > 0) {
@@ -251,6 +253,9 @@ export function wireDaemonEvents(injected) {
         t.destroy();
         state.terms.delete(ev.session.id);
       }
+      // Prune AFTER the splice above: until then the removed id is
+      // still in state.sessions, so an exists-check would keep it.
+      pruneNav(state.nav, (id) => state.sessions.some((s) => s.id === id));
       if (state.activeId === ev.session.id) {
         state.activeId = null;
         if (nextId) deps.switchTo(nextId);
