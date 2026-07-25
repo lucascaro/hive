@@ -13,7 +13,7 @@ import { flashStatus, reportFailure } from './dom.js';
 import {
   orderedSessions, activeCwd, activeProjectId, nextAttentionId,
 } from './selectors.js';
-import { cmdOrCtrl } from '../lib/platform.js';
+import { cmdOrCtrl, isMac } from '../lib/platform.js';
 import {
   launcherEl, launcherState, moveLauncherSelection, activateLauncherSelection,
   openLauncher, closeLauncher, duplicateActiveSession,
@@ -23,7 +23,7 @@ import { editorEl, openProjectEditor } from './modals/project-editor.js';
 import { openCommandPalette } from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
-import { isHelpOverlayKey } from '../lib/keymap.js';
+import { isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
   switchTo, setView, gridSpatialMove, shiftActiveProject,
   restoreSession, minimizeSession,
@@ -31,12 +31,19 @@ import {
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
+import { goBack, goForward } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 
 let deps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
+  // Injected from main.js like focusActiveTerm above: keyboard.js must
+  // not import the focus pipeline directly (see the acyclic-modules
+  // note at the wiring block in main.js). The default still RUNS fn —
+  // an un-wired harness gets working navigation without suppression,
+  // not a silently swallowed switch.
+  withoutNavHistory: (fn) => fn(),
 };
 
 export function initKeyboard(injected) {
@@ -147,6 +154,18 @@ window.addEventListener('keydown', (e) => {
   if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'Backquote') {
     swallow();
     OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal'));
+    return;
+  }
+
+  // Session back / forward (Ctrl+- / Ctrl+Shift+- on mac, Ctrl+Alt+-
+  // / Ctrl+Alt+Shift+- elsewhere). Handled before the ⌘/Ctrl gate below
+  // for the same reason as Ctrl+` above: cmdOrCtrl rejects plain Ctrl on
+  // macOS, so a binding placed after it would never fire there.
+  const navDir = navHistoryKey(e, isMac);
+  if (navDir) {
+    swallow();
+    if (navDir === 'back') navBack();
+    else navForward();
     return;
   }
 
@@ -401,6 +420,46 @@ function endRound({ reminimize }) {
     }
   }
   state.attentionRestored.clear();
+}
+
+// navBack / navForward (Ctrl+- / Ctrl+Shift+-) walk the session history
+// recorded by setActive. withoutNavHistory keeps the replay from being
+// recorded as new navigation — otherwise back would immediately push the
+// session it just left and the two keys would ping-pong.
+//
+// sessionExists mirrors jumpBack's still-exists guard: a session on the
+// stack can be killed while you are elsewhere, and the stack walk skips
+// it rather than dead-ending.
+const sessionExists = (id) => state.sessions.some((s) => s.id === id);
+
+// navGo performs the switch a history step resolved to. A minimized
+// session has to be restored on the way in, exactly as ⌘B does at
+// jumpToAttention: gridScopeSessions filters state.minimized, so a bare
+// switchTo would make the session active with no tile in the grid — the
+// sidebar selection moves, nothing appears, and keyboard focus lands on
+// <body> where keystrokes are silently dropped.
+//
+// Unlike ⌘B this does NOT record the restore in attentionRestored:
+// that set exists so ⇧⌘B can re-minimize sessions a bell round pulled
+// out on your behalf. Going back here is a deliberate "put me in that
+// session", so it stays restored.
+function navGo(id) {
+  deps.withoutNavHistory(() => {
+    if (state.minimized.has(id)) restoreSession(id); // un-minimize, then switchTo
+    else switchTo(id);
+  });
+}
+
+export function navBack() {
+  const id = goBack(state.nav, state.activeId, sessionExists);
+  if (!id) { flashStatus('nothing to go back to'); return; }
+  navGo(id);
+}
+
+export function navForward() {
+  const id = goForward(state.nav, state.activeId, sessionExists);
+  if (!id) { flashStatus('nothing to go forward to'); return; }
+  navGo(id);
 }
 
 export function switchToNthSession(n) {

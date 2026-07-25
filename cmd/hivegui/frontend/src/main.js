@@ -36,11 +36,12 @@ import {
 import {
   initKeyboard, toggleSidebar, toggleProjectGrid, toggleAllGrid,
   confirmAndDeleteProject, deleteActiveProject, navSession, reorderActive,
-  switchToNthSession, jumpToAttention, jumpBack,
+  switchToNthSession, jumpToAttention, jumpBack, navBack, navForward,
 } from './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
   setActive, setFocusedTile, focusActiveTerm, refocusActiveTerm, initFocus,
+  withoutNavHistory,
 } from './app/focus.js';
 
 // ---------- command palette table ----------
@@ -69,6 +70,8 @@ const paletteCommands = [
   { id: 'zoom-reset',           name: 'Actual Size',                 run: () => resetFontSize() },
   { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
   { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
+  { id: 'nav-back',             name: 'Go Back',                      run: navBack },
+  { id: 'nav-forward',          name: 'Go Forward',                   run: navForward },
   { id: 'next-attention',       name: 'Next Session Needing Attention', run: jumpToAttention },
   { id: 'jump-back',            name: 'Jump Back to Where You Were',  run: jumpBack },
   { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
@@ -99,7 +102,7 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({ switchTo, switchToProject, confirmAndDeleteProject, renderEmptyState, refocusActiveTerm });
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
-initKeyboard({ bumpFontSize, resetFontSize, focusActiveTerm });
+initKeyboard({ bumpFontSize, resetFontSize, focusActiveTerm, withoutNavHistory });
 initFocus({ ensureTerm });
 wireDaemonEvents({
   switchTo, renderMinimizedTray, updateAppTitle, focusActiveTerm,

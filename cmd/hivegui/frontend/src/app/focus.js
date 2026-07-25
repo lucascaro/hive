@@ -8,6 +8,7 @@ import {
   decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
 } from '../lib/focus.js';
 import { anyModalOpen } from './modals/registry.js';
+import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 
 let deps = {
@@ -22,7 +23,26 @@ export function initFocus(injected) {
 // path (click, arrow nav, project switch, switchTo) clears the bell
 // indicator the same way and syncs the current project to whatever
 // project the new session belongs to.
+// withoutNavHistory runs fn with history recording suppressed, so the
+// Ctrl+- / Ctrl+Shift+- handlers can replay the stack without the
+// replay itself pushing new entries (which would ping-pong between two
+// sessions forever). try/finally so a throw inside fn can't leave the
+// flag stuck on and silently stop recording for the rest of the session.
+let _navSuppress = false;
+
+export function withoutNavHistory(fn) {
+  _navSuppress = true;
+  try { return fn(); } finally { _navSuppress = false; }
+}
+
 export function setActive(id) {
+  // Record the DEPARTURE before activeId is overwritten. This lives in
+  // setActive rather than switchTo because four selection paths reach
+  // setActive directly and would otherwise go unrecorded: tile mousedown
+  // (session-term.js), gridSpatialMove / shiftActiveProject /
+  // minimizeSession (view.js). "No matter how you switched" is the
+  // feature, so the hook has to sit on the choke point.
+  if (!_navSuppress && id && id !== state.activeId) pushNav(state.nav, state.activeId);
   if (id) {
     state.attention.delete(id);
     state.terms.get(id)?.host.classList.remove('attention');

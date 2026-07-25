@@ -5,6 +5,15 @@
 // drift from the actual handlers in main.js/menu.go, which is why
 // every binding change must touch this file too — see AGENTS.md.)
 //
+// The full drift surface for a GUI binding change is five files:
+//   1. the handler — app/keyboard.js (+ lib/keymap.js for a predicate)
+//   2. this file — shortcutGroups() AND paletteShortcuts()
+//   3. the palette command table — main.js
+//   4. the native macOS menu — cmd/hivegui/menu_darwin.go (⌘ chords only;
+//      Ctrl-only chords are deliberately JS-side, see the Ctrl+` comment
+//      in app/keyboard.js)
+//   5. the user-facing shortcut table in README.md
+//
 // Pure module: no DOM, unit-testable.
 
 // key: a printable key or a symbolic name from KEYS below.
@@ -37,6 +46,16 @@ function ctrl(isMac, key, { shift = false } = {}) {
   return (shift ? 'Ctrl+Shift+' : 'Ctrl+') + k;
 }
 
+// Session back/forward is the one binding that is not simply
+// "cmd on mac, ctrl elsewhere" or "ctrl everywhere": it is Ctrl on
+// macOS but Ctrl+Alt on Windows/Linux, because plain Ctrl+- is
+// already zoom-out there. See lib/keymap.js navHistoryKey.
+function ctrlAlt(isMac, key, { shift = false } = {}) {
+  const k = keyLabel(key, isMac);
+  if (isMac) return (shift ? '⌃⇧' : '⌃') + k;
+  return (shift ? 'Ctrl+Alt+Shift+' : 'Ctrl+Alt+') + k;
+}
+
 // Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
 // word labels need separators so non-mac renders "Up/Down/Left/Right"
 // instead of the unreadable "UpDownLeftRight".
@@ -47,6 +66,7 @@ function arrowSeq(isMac, ...keys) {
 export function shortcutGroups({ isMac }) {
   const m = (key, opts) => mod(isMac, key, opts);
   const c = (key, opts) => ctrl(isMac, key, opts);
+  const ca = (key, opts) => ctrlAlt(isMac, key, opts);
   const arrows = arrowSeq(isMac, 'up', 'down', 'left', 'right');
   return [
     {
@@ -60,6 +80,8 @@ export function shortcutGroups({ isMac }) {
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
         { keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`, label: 'Next / previous session (spatial move in grid)' },
         { keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`, label: 'Reorder session' },
+        { keys: ca('-'), label: 'Go back to the previously visited session' },
+        { keys: ca('-', { shift: true }), label: 'Go forward again' },
         { keys: m('B'), label: 'Next session needing attention (bell)' },
         { keys: m('B', { shift: true }), label: 'Jump back to where you were' },
         { keys: 'Double-click', label: 'Rename (sidebar row or tile title)' },
@@ -122,6 +144,7 @@ export function shortcutGroups({ isMac }) {
 export function paletteShortcuts({ isMac }) {
   const m = (key, opts) => mod(isMac, key, opts);
   const c = (key, opts) => ctrl(isMac, key, opts);
+  const ca = (key, opts) => ctrlAlt(isMac, key, opts);
   const map = {
     'new-project': m('N'),
     'new-session': m('T'),
@@ -144,6 +167,8 @@ export function paletteShortcuts({ isMac }) {
     'prev-session': m('up'),
     'move-forward': m('down', { shift: true }),
     'move-backward': m('up', { shift: true }),
+    'nav-back': ca('-'),
+    'nav-forward': ca('-', { shift: true }),
     'next-attention': m('B'),
     'jump-back': m('B', { shift: true }),
     'next-project': m(']'),

@@ -6,6 +6,7 @@
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from '../lib/view.js';
 import { loadCollapsed, serializeCollapsed, COLLAPSED_STORAGE_KEY } from '../lib/collapsed.js';
+import { createNavHistory } from '../lib/nav-history.js';
 
 export const state = {
   projects: [],             // ProjectInfo[] in display order
@@ -19,6 +20,12 @@ export const state = {
                             //   the original anchor; cleared on use.
   attentionRestored: new Set(), // sessions ⌘B pulled out of the minimized
                             //   tray this round; ⇧⌘B puts them back.
+  nav: createNavHistory(),  // back/forward stacks of visited session ids
+                            //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
+                            //   persisted, unlike `collapsed`: the terminals
+                            //   are gone after a restart anyway. Written from
+                            //   setActive (app/focus.js), the sole writer of
+                            //   activeId, so every switch path is recorded.
   minimized: new Set(),     // session ids hidden from grid views; restored via tray
   aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed

@@ -50,3 +50,36 @@ export function isHelpOverlayKey(e) {
   if (!(e.metaKey || e.ctrlKey)) return false;
   return e.key === '/' || e.key === '?';
 }
+
+// navHistoryKey reports whether a keydown is session back/forward
+// navigation. Returns 'back' | 'forward' | null.
+//
+//   macOS         Ctrl+-        / Ctrl+Shift+-
+//   Win / Linux   Ctrl+Alt+-    / Ctrl+Alt+Shift+-
+//
+// The split mirrors VS Code, and for the same reason: on Windows and
+// Linux the app's primary modifier is Ctrl (see lib/platform.js
+// cmdOrCtrl), so Ctrl+- and Ctrl+= are ALREADY zoom out / in in
+// app/keyboard.js. Requiring Alt there keeps zoom intact; the
+// !e.altKey branch on mac keeps ⌥⌃- free for the terminal.
+//
+// Callers must dispatch this BEFORE the cmdOrCtrl() gate in
+// app/keyboard.js — on macOS that gate rejects plain Ctrl outright.
+//
+// Key matching accepts '-' and '_' (shifted '-' on a US layout, the
+// same shape as the '=' / '+' zoom pair) and falls back to the
+// physical e.code === 'Minus' for layouts where neither is produced.
+//
+// Known limitation on Windows/Linux: AltGr reports as ctrlKey+altKey,
+// so on a layout where AltGr+'-' composes a character this swallows it.
+// Deliberately NOT guarded with e.getModifierState('AltGraph') — that
+// flag is set inconsistently for a manually-held Ctrl+Alt across X11
+// setups, and breaking the binding outright on Linux is worse than the
+// narrow collision. If it is ever reported, the AltGraph check is the
+// fix. (VS Code carries the same tradeoff on the same chord.)
+export function navHistoryKey(e, isMac) {
+  if (e.metaKey || !e.ctrlKey) return null;
+  if (isMac ? e.altKey : !e.altKey) return null;
+  if (!(e.key === '-' || e.key === '_' || e.code === 'Minus')) return null;
+  return e.shiftKey ? 'forward' : 'back';
+}
