@@ -5,9 +5,9 @@
 // responsible for the DOM side-effects (sweep .term-focused, add it,
 // call .focus()); this function just decides which side-effect to run.
 
-export const ACTION_CLEAR = 'clear';        // sweep .term-focused, focus nothing
-export const ACTION_PRESERVE = 'preserve';  // a real input owns the keyboard — leave focus alone, also clear .term-focused
-export const ACTION_FOCUS = 'focus';        // focus the helper-textarea of `id`
+export const ACTION_CLEAR = 'clear'; // sweep .term-focused, focus nothing
+export const ACTION_PRESERVE = 'preserve'; // a real input owns the keyboard — leave focus alone, also clear .term-focused
+export const ACTION_FOCUS = 'focus'; // focus the helper-textarea of `id`
 
 // snapshot describes everything the gate needs to know:
 //   - id: the requested focus target session id (state.activeId), or null
@@ -31,7 +31,8 @@ export function decideFocusAction(snapshot) {
   // keystrokes go to a sibling DOM input. (contentEditable hosts
   // are not part of the v2 UI surface and are not covered here.)
   const isXtermHelper = hasClass(activeClasses, 'xterm-helper-textarea');
-  if (!isXtermHelper && isRealInput(activeTag)) return { kind: ACTION_PRESERVE };
+  if (!isXtermHelper && isRealInput(activeTag))
+    return { kind: ACTION_PRESERVE };
 
   return { kind: ACTION_FOCUS, id };
 }

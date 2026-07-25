@@ -28,14 +28,26 @@ export function shouldRefreshOnVisibility(visibilityState) {
 // Returns { reattached } so callers can null out their addon handle
 // when reattach failed.
 export function recoverFromContextLoss(deps) {
-  try { deps.dispose(); } catch { /* dispose is best-effort */ }
+  try {
+    deps.dispose();
+  } catch {
+    /* dispose is best-effort */
+  }
   let reattached = false;
-  try { reattached = deps.reattach() === true; } catch { reattached = false; }
+  try {
+    reattached = deps.reattach() === true;
+  } catch {
+    reattached = false;
+  }
   if (!reattached) {
     // Reattach failed → we're on the DOM renderer now (or no renderer
     // at all). Force a refresh so the canvas's stale pixels are
     // overwritten without waiting for the next resize.
-    try { deps.refresh(); } catch { /* nothing else to do */ }
+    try {
+      deps.refresh();
+    } catch {
+      /* nothing else to do */
+    }
   }
   return { reattached };
 }
@@ -65,9 +77,17 @@ export function bindDprWatcher(deps) {
       handler = () => {
         // Tear down the now-stale MQL and rebind against the new DPR
         // before notifying, so further transitions keep firing.
-        try { mql.removeEventListener('change', handler); } catch { /* ignore */ }
+        try {
+          mql.removeEventListener('change', handler);
+        } catch {
+          /* ignore */
+        }
         bind();
-        try { deps.onChange(); } catch { /* host handles its own errors */ }
+        try {
+          deps.onChange();
+        } catch {
+          /* host handles its own errors */
+        }
       };
       mql.addEventListener('change', handler);
       return true;
@@ -81,7 +101,11 @@ export function bindDprWatcher(deps) {
   return {
     teardown() {
       if (mql && handler) {
-        try { mql.removeEventListener('change', handler); } catch { /* ignore */ }
+        try {
+          mql.removeEventListener('change', handler);
+        } catch {
+          /* ignore */
+        }
       }
       mql = null;
       handler = null;

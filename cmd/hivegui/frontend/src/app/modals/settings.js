@@ -51,7 +51,10 @@ let openToken = 0;
  * path if this bites: a real tokenizer here and in Go's validator.
  */
 export function splitCommand(line) {
-  return String(line || '').trim().split(/\s+/).filter(Boolean);
+  return String(line || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
 }
 
 function showError(msg) {
@@ -84,7 +87,9 @@ function render() {
     color.type = 'color';
     color.value = a.color || DEFAULT_COLOR;
     color.setAttribute('aria-label', 'Agent color');
-    color.addEventListener('input', () => { draft[i].color = color.value; });
+    color.addEventListener('input', () => {
+      draft[i].color = color.value;
+    });
 
     const name = document.createElement('input');
     name.type = 'text';
@@ -93,7 +98,9 @@ function render() {
     name.autocomplete = 'off';
     name.value = a.name || '';
     name.setAttribute('aria-label', 'Agent name');
-    name.addEventListener('input', () => { draft[i].name = name.value; });
+    name.addEventListener('input', () => {
+      draft[i].name = name.value;
+    });
 
     const cmd = document.createElement('input');
     cmd.type = 'text';
@@ -102,7 +109,9 @@ function render() {
     cmd.autocomplete = 'off';
     cmd.value = (a.cmd || []).join(' ');
     cmd.setAttribute('aria-label', 'Agent command');
-    cmd.addEventListener('input', () => { draft[i].cmd = splitCommand(cmd.value); });
+    cmd.addEventListener('input', () => {
+      draft[i].cmd = splitCommand(cmd.value);
+    });
 
     const del = document.createElement('button');
     del.type = 'button';
@@ -172,7 +181,9 @@ export function openSettings() {
       // read failed, and saving it would destroy agents.json.
       loadFailed = true;
       render();
-      showError(`Could not read agents.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`);
+      showError(
+        `Could not read agents.json — fix or move the file, then reopen Settings. (${String(err?.message || err)})`,
+      );
     });
 }
 
@@ -212,15 +223,25 @@ function saveSettings() {
 export function initSettings(injected) {
   deps = injected;
   registerModal(settingsEl);
-  document.getElementById('settings-close').addEventListener('click', closeSettings);
-  document.getElementById('settings-cancel').addEventListener('click', closeSettings);
-  document.getElementById('settings-save').addEventListener('click', saveSettings);
-  document.getElementById('settings-agent-add').addEventListener('click', () => {
-    draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
-    showError('');
-    render();
-    listEl.querySelector('.settings-agent-row:last-child .settings-agent-name')?.focus();
-  });
+  document
+    .getElementById('settings-close')
+    .addEventListener('click', closeSettings);
+  document
+    .getElementById('settings-cancel')
+    .addEventListener('click', closeSettings);
+  document
+    .getElementById('settings-save')
+    .addEventListener('click', saveSettings);
+  document
+    .getElementById('settings-agent-add')
+    .addEventListener('click', () => {
+      draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
+      showError('');
+      render();
+      listEl
+        .querySelector('.settings-agent-row:last-child .settings-agent-name')
+        ?.focus();
+    });
   settingsEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // Consume it. This listener fires before the window handler in
@@ -230,7 +251,11 @@ export function initSettings(injected) {
       e.preventDefault();
       e.stopPropagation();
       closeSettings();
-    } else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type === 'text') {
+    } else if (
+      e.key === 'Enter' &&
+      e.target.tagName === 'INPUT' &&
+      e.target.type === 'text'
+    ) {
       e.preventDefault();
       saveSettings();
     } else if (e.key === 'Tab') {
@@ -239,9 +264,11 @@ export function initSettings(injected) {
       // this is a form — Tab must still walk the fields, so only the
       // two boundaries wrap. Without this, Tab past Save lands on a
       // terminal behind the backdrop and keystrokes leak into it.
-      const focusable = [...settingsEl.querySelectorAll(
-        'button, input, [tabindex]:not([tabindex="-1"])',
-      )].filter((el) => !el.disabled && el.offsetParent !== null);
+      const focusable = [
+        ...settingsEl.querySelectorAll(
+          'button, input, [tabindex]:not([tabindex="-1"])',
+        ),
+      ].filter((el) => !el.disabled && el.offsetParent !== null);
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

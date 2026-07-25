@@ -75,11 +75,20 @@ export function shortcutGroups({ isMac }) {
         { keys: m('T'), label: 'New session' },
         { keys: m('T', { shift: true }), label: 'New session in git worktree' },
         { keys: m('P'), label: 'Duplicate session' },
-        { keys: m('P', { shift: true }), label: 'Duplicate session (choose tool)' },
+        {
+          keys: m('P', { shift: true }),
+          label: 'Duplicate session (choose tool)',
+        },
         { keys: m('W'), label: 'Close session' },
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
-        { keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`, label: 'Next / previous session (spatial move in grid)' },
-        { keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`, label: 'Reorder session' },
+        {
+          keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`,
+          label: 'Next / previous session (spatial move in grid)',
+        },
+        {
+          keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`,
+          label: 'Reorder session',
+        },
         { keys: ca('-'), label: 'Go back to the previously visited session' },
         { keys: ca('-', { shift: true }), label: 'Go forward again' },
         { keys: m('B'), label: 'Next session needing attention (bell)' },
@@ -91,7 +100,10 @@ export function shortcutGroups({ isMac }) {
       title: 'Projects',
       items: [
         { keys: m('N'), label: 'New project' },
-        { keys: m('backspace', { shift: true }), label: 'Delete active project' },
+        {
+          keys: m('backspace', { shift: true }),
+          label: 'Delete active project',
+        },
         { keys: `${m('[')} / ${m(']')}`, label: 'Previous / next project' },
       ],
     },
@@ -102,10 +114,16 @@ export function shortcutGroups({ isMac }) {
         { keys: m('G', { shift: true }), label: 'Toggle all-sessions grid' },
         { keys: m('enter'), label: 'Toggle grid ⇄ single' },
         { keys: m('S'), label: 'Toggle sidebar' },
-        { keys: `${m('=')} / ${m('-')} / ${m('0')}`, label: 'Zoom in / out / reset' },
+        {
+          keys: `${m('=')} / ${m('-')} / ${m('0')}`,
+          label: 'Zoom in / out / reset',
+        },
         { keys: m('K', { shift: true }), label: 'Command palette' },
         { keys: m(','), label: 'Settings (custom agents)' },
-        { keys: `${m('?')} or ${m('/')}`, label: 'Keyboard shortcuts (this panel)' },
+        {
+          keys: `${m('?')} or ${m('/')}`,
+          label: 'Keyboard shortcuts (this panel)',
+        },
       ],
     },
     {
@@ -119,10 +137,16 @@ export function shortcutGroups({ isMac }) {
     {
       title: 'Inside a terminal',
       items: [
-        { keys: c('C', { shift: true }), label: 'Copy selection (works under mouse-tracking TUIs)' },
+        {
+          keys: c('C', { shift: true }),
+          label: 'Copy selection (works under mouse-tracking TUIs)',
+        },
         { keys: c('V', { shift: true }), label: 'Paste' },
         { keys: c('A', { shift: true }), label: 'Select all' },
-        { keys: `⇧${keyLabel('enter', isMac)}`, label: 'Insert newline in agent input (instead of submitting)' },
+        {
+          keys: `⇧${keyLabel('enter', isMac)}`,
+          label: 'Insert newline in agent input (instead of submitting)',
+        },
         ...(isMac ? [{ keys: '⌘⌫', label: 'Clear input line' }] : []),
       ],
     },
@@ -130,10 +154,16 @@ export function shortcutGroups({ isMac }) {
       title: 'Launcher & dialogs',
       items: [
         { keys: '1–9', label: 'Pick agent by number' },
-        { keys: `${arrowSeq(isMac, 'up', 'down')} / Tab`, label: 'Navigate items' },
+        {
+          keys: `${arrowSeq(isMac, 'up', 'down')} / Tab`,
+          label: 'Navigate items',
+        },
         { keys: keyLabel('enter', isMac), label: 'Confirm' },
         { keys: 'Esc', label: 'Dismiss / cancel' },
-        { keys: arrowSeq(isMac, 'left', 'right'), label: 'Resize sidebar (when resizer focused; ⇧ = larger steps)' },
+        {
+          keys: arrowSeq(isMac, 'left', 'right'),
+          label: 'Resize sidebar (when resizer focused; ⇧ = larger steps)',
+        },
       ],
     },
   ];

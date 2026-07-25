@@ -23,11 +23,7 @@ export const NEWLINE_SEQ = '\x0a';
 // actually reaches the terminal. Plain Enter still submits.
 export function isShiftEnter(e) {
   return (
-    e.shiftKey &&
-    !e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    e.key === 'Enter'
+    e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Enter'
   );
 }
 

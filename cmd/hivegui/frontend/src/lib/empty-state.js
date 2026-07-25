@@ -23,7 +23,9 @@ export function emptyStateModel({
       hint: `Press ${mod}T to launch an agent${projects.length === 0 ? `, or ${mod}N to create a project` : ''}.`,
       actions: [
         { id: 'new-session', label: `New session (${mod}T)` },
-        ...(projects.length === 0 ? [{ id: 'new-project', label: `New project (${mod}N)` }] : []),
+        ...(projects.length === 0
+          ? [{ id: 'new-project', label: `New project (${mod}N)` }]
+          : []),
       ],
     };
   }
@@ -39,7 +41,9 @@ export function emptyStateModel({
     // only a truly empty current project with no active session needs
     // the nudge. Approximate: scope to the current project when set.
     if (currentProjectId) {
-      scope = sessions.filter((s) => (s.projectId ?? s.project_id) === currentProjectId);
+      scope = sessions.filter(
+        (s) => (s.projectId ?? s.project_id) === currentProjectId,
+      );
     }
   }
 

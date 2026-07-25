@@ -12,23 +12,45 @@ import { test, expect } from '@playwright/test';
 // prefer snake_case ?? camelCase when reading SessionInfo/ProjectInfo."
 
 const SHAPES = [
-  { kind: 'snake_case', shape: (id) => ({
-      id, name: 'shape-' + id, color: '#0af', order: 1,
-      created: new Date().toISOString(), alive: true, agent: '',
-      project_id: 'p1', worktree_path: '/wt/' + id,
-      worktree_branch: 'feat/' + id, last_error: '',
-  })},
-  { kind: 'camelCase', shape: (id) => ({
-      id, name: 'shape-' + id, color: '#0af', order: 1,
-      created: new Date().toISOString(), alive: true, agent: '',
-      projectId: 'p1', worktreePath: '/wt/' + id,
-      worktreeBranch: 'feat/' + id, lastError: '',
-  })},
+  {
+    kind: 'snake_case',
+    shape: (id) => ({
+      id,
+      name: `shape-${id}`,
+      color: '#0af',
+      order: 1,
+      created: new Date().toISOString(),
+      alive: true,
+      agent: '',
+      project_id: 'p1',
+      worktree_path: `/wt/${id}`,
+      worktree_branch: `feat/${id}`,
+      last_error: '',
+    }),
+  },
+  {
+    kind: 'camelCase',
+    shape: (id) => ({
+      id,
+      name: `shape-${id}`,
+      color: '#0af',
+      order: 1,
+      created: new Date().toISOString(),
+      alive: true,
+      agent: '',
+      projectId: 'p1',
+      worktreePath: `/wt/${id}`,
+      worktreeBranch: `feat/${id}`,
+      lastError: '',
+    }),
+  },
 ];
 
 async function bootMinimal(page) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 }
 
 for (const { kind, shape } of SHAPES) {
@@ -40,7 +62,10 @@ for (const { kind, shape } of SHAPES) {
     const id = `inject-${kind}`;
     await page.evaluate((info) => {
       window.__hive.state.sessions.push(info);
-      window.__hive.emit('session:event', JSON.stringify({ kind: 'added', session: info }));
+      window.__hive.emit(
+        'session:event',
+        JSON.stringify({ kind: 'added', session: info }),
+      );
     }, shape(id));
 
     // The session appears in the sidebar (its row is keyed by id).
@@ -54,12 +79,17 @@ for (const { kind, shape } of SHAPES) {
     await expect(row.locator('.worktree-glyph')).toBeVisible();
   });
 
-  test(`session is routed to its project from ${kind} payload`, async ({ page }) => {
+  test(`session is routed to its project from ${kind} payload`, async ({
+    page,
+  }) => {
     await bootMinimal(page);
     const id = `route-${kind}`;
     await page.evaluate((info) => {
       window.__hive.state.sessions.push(info);
-      window.__hive.emit('session:event', JSON.stringify({ kind: 'added', session: info }));
+      window.__hive.emit(
+        'session:event',
+        JSON.stringify({ kind: 'added', session: info }),
+      );
     }, shape(id));
 
     // The session must end up under its project's <li.project

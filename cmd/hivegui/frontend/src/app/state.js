@@ -5,38 +5,45 @@
 
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from '../lib/view.js';
-import { loadCollapsed, serializeCollapsed, COLLAPSED_STORAGE_KEY } from '../lib/collapsed.js';
+import {
+  loadCollapsed,
+  serializeCollapsed,
+  COLLAPSED_STORAGE_KEY,
+} from '../lib/collapsed.js';
 import { createNavHistory } from '../lib/nav-history.js';
 
 export const state = {
-  projects: [],             // ProjectInfo[] in display order
-  sessions: [],             // SessionInfo[] in display order
+  projects: [], // ProjectInfo[] in display order
+  sessions: [], // SessionInfo[] in display order
   collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
-  attention: new Set(),     // session ids that have unread bells
-  attentionReturnId: null,  // session to jump back to (⇧⌘B): the one you
-                            //   were in before the FIRST ⌘B. Written only
-                            //   when empty, so a round of bells that walks
-                            //   you through several flagged sessions keeps
-                            //   the original anchor; cleared on use.
+  attention: new Set(), // session ids that have unread bells
+  attentionReturnId: null, // session to jump back to (⇧⌘B): the one you
+  //   were in before the FIRST ⌘B. Written only
+  //   when empty, so a round of bells that walks
+  //   you through several flagged sessions keeps
+  //   the original anchor; cleared on use.
   attentionRestored: new Set(), // sessions ⌘B pulled out of the minimized
-                            //   tray this round; ⇧⌘B puts them back.
-  nav: createNavHistory(),  // back/forward stacks of visited session ids
-                            //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
-                            //   persisted, unlike `collapsed`: the terminals
-                            //   are gone after a restart anyway. Written from
-                            //   setActive (app/focus.js), the sole writer of
-                            //   activeId, so every switch path is recorded.
-  minimized: new Set(),     // session ids hidden from grid views; restored via tray
-  aliveById: new Map(),     // session id -> last-seen Alive bool (for transition detection)
+  //   tray this round; ⇧⌘B puts them back.
+  nav: createNavHistory(), // back/forward stacks of visited session ids
+  //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
+  //   persisted, unlike `collapsed`: the terminals
+  //   are gone after a restart anyway. Written from
+  //   setActive (app/focus.js), the sole writer of
+  //   activeId, so every switch path is recorded.
+  minimized: new Set(), // session ids hidden from grid views; restored via tray
+  aliveById: new Map(), // session id -> last-seen Alive bool (for transition detection)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed
-  terms: new Map(),         // session id -> SessionTerm
+  terms: new Map(), // session id -> SessionTerm
   activeId: null,
-  currentProjectId: null,   // "the project I'm working in"; can be set
-                            //   without a focused session (so empty
-                            //   projects are reachable / launchable)
-  view: loadSavedView(),    // 'single' | 'grid-project' | 'grid-all' — persisted across launches
-  gridProjectId: null,      // project shown in grid-project mode
-  fontSize: clampFont(parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) || DEFAULT_FONT_SIZE),
+  currentProjectId: null, // "the project I'm working in"; can be set
+  //   without a focused session (so empty
+  //   projects are reachable / launchable)
+  view: loadSavedView(), // 'single' | 'grid-project' | 'grid-all' — persisted across launches
+  gridProjectId: null, // project shown in grid-project mode
+  fontSize: clampFont(
+    parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) ||
+      DEFAULT_FONT_SIZE,
+  ),
 };
 
 // E2E test affordance: expose the term registry under a dunder name
@@ -45,22 +52,37 @@ export const state = {
 // env vars so production builds drop this — the gates are inlined to
 // string literals by Vite at build time, so the whole block is dead
 // code in a normal wails build.
-if (typeof window !== 'undefined'
-    && (import.meta.env.VITE_WAILS_MOCK === '1' || import.meta.env.VITE_WAILS_REAL === '1')) {
+if (
+  typeof window !== 'undefined' &&
+  (import.meta.env.VITE_WAILS_MOCK === '1' ||
+    import.meta.env.VITE_WAILS_REAL === '1')
+) {
   window.__hive_state = state;
 }
 
 export function loadSavedView() {
-  try { return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY)); }
-  catch { return normalizeView(null); }
+  try {
+    return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY));
+  } catch {
+    return normalizeView(null);
+  }
 }
 
 export function loadSavedCollapsed() {
-  try { return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY)); }
-  catch { return new Set(); }
+  try {
+    return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY));
+  } catch {
+    return new Set();
+  }
 }
 
 export function saveCollapsed() {
-  try { localStorage.setItem(COLLAPSED_STORAGE_KEY, serializeCollapsed(state.collapsed)); }
-  catch { /* private mode etc. — collapse state just won't persist */ }
+  try {
+    localStorage.setItem(
+      COLLAPSED_STORAGE_KEY,
+      serializeCollapsed(state.collapsed),
+    );
+  } catch {
+    /* private mode etc. — collapse state just won't persist */
+  }
 }

@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  createStatus, FLASH_ERROR_MS, FLASH_INFO_MS, FLASH_MIN_MS,
+  createStatus,
+  FLASH_ERROR_MS,
+  FLASH_INFO_MS,
+  FLASH_MIN_MS,
 } from '../../src/lib/status.js';
 
 // Manual timer/clock harness — createStatus takes injected timers, so
@@ -35,7 +38,9 @@ function harness() {
 
 describe('createStatus', () => {
   let h;
-  beforeEach(() => { h = harness(); });
+  beforeEach(() => {
+    h = harness();
+  });
 
   it('set renders immediately when no flash is active', () => {
     h.ctl.set('connected');

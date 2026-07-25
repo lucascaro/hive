@@ -13,28 +13,41 @@ import { test, expect } from '@playwright/test';
 
 async function bootWithSessions(page, count = 2) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
   for (let i = 1; i < count; i++) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
-  await page.waitForFunction((n) => window.__hive.state.sessions.length >= n, count);
+  await page.waitForFunction(
+    (n) => window.__hive.state.sessions.length >= n,
+    count,
+  );
   await page.evaluate(() => window.__hive.resetStdin());
 }
 
 async function waitForHelperFocus(page, timeout = 2000) {
-  await page.waitForFunction(() => {
-    const ae = document.activeElement;
-    return !!(ae && ae.classList && ae.classList.contains('xterm-helper-textarea'));
-  }, null, { timeout });
+  await page.waitForFunction(
+    () => {
+      const ae = document.activeElement;
+      return !!ae?.classList?.contains('xterm-helper-textarea');
+    },
+    null,
+    { timeout },
+  );
 }
 
 test.describe('renderer context-loss recovery', () => {
-  test('simulated WebGL context loss does not break input or surface errors', async ({ page }) => {
+  test('simulated WebGL context loss does not break input or surface errors', async ({
+    page,
+  }) => {
     const consoleErrors = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
-    page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${err.message}`));
+    page.on('pageerror', (err) =>
+      consoleErrors.push(`pageerror: ${err.message}`),
+    );
 
     await bootWithSessions(page, 1);
     await waitForHelperFocus(page);
@@ -45,8 +58,9 @@ test.describe('renderer context-loss recovery', () => {
     // skip the test rather than failing — the unit tests still cover
     // the recovery helper's contract.
     const lost = await page.evaluate(() => {
-      const canvas = document.querySelector('.term-host.active .xterm canvas')
-        || document.querySelector('.term-host .xterm canvas');
+      const canvas =
+        document.querySelector('.term-host.active .xterm canvas') ||
+        document.querySelector('.term-host .xterm canvas');
       if (!canvas) return false;
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       if (!gl) return false;
@@ -55,7 +69,11 @@ test.describe('renderer context-loss recovery', () => {
       ext.loseContext();
       // Restore later so the recovery cycle (dispose → reattach →
       // refresh) has a chance to land cleanly.
-      setTimeout(() => { try { ext.restoreContext(); } catch {} }, 50);
+      setTimeout(() => {
+        try {
+          ext.restoreContext();
+        } catch {}
+      }, 50);
       return true;
     });
     test.skip(!lost, 'WEBGL_lose_context not available in this Chromium build');
@@ -68,9 +86,14 @@ test.describe('renderer context-loss recovery', () => {
     await page.evaluate(() => window.__hive.resetStdin());
     await page.keyboard.type('recover');
     await expect
-      .poll(() => page.evaluate(() => window.__hive.stdinText()), { timeout: 2000 })
+      .poll(() => page.evaluate(() => window.__hive.stdinText()), {
+        timeout: 2000,
+      })
       .toContain('recover');
 
-    expect(consoleErrors, `console errors:\n${consoleErrors.join('\n')}`).toEqual([]);
+    expect(
+      consoleErrors,
+      `console errors:\n${consoleErrors.join('\n')}`,
+    ).toEqual([]);
   });
 });

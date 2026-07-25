@@ -94,7 +94,11 @@ export function updateAppTitle() {
     if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
     const title = parts.join(' — ');
     document.title = title;
-    try { WindowSetTitle(title); } catch (_) { /* runtime not ready */ }
+    try {
+      WindowSetTitle(title);
+    } catch (_) {
+      /* runtime not ready */
+    }
   }, 100);
 }
 
@@ -123,7 +127,13 @@ export function switchToProject(pid) {
 // to recompute. assignments[i] = { row, col, rowSpan } — tiles above
 // last-row empty cells extend downward to fill the grid (matches
 // current Hive's behavior). cellMap[row*cols + col] = session index.
-let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] };
+let gridLayout = {
+  rows: 1,
+  cols: 1,
+  sessions: [],
+  assignments: [],
+  cellMap: [],
+};
 
 // attachDeferred attaches non-active grid tiles one per idle callback so
 // the first paint isn't blocked by N synchronous fit()+replay passes.
@@ -131,9 +141,10 @@ let gridLayout = { rows: 1, cols: 1, sessions: [], assignments: [], cellMap: [] 
 // re-running renderGrid — which re-queues everything — is harmless.
 // requestIdleCallback isn't available in all webviews; fall back to a
 // short-timeout chain so the stagger still happens.
-const _ric = (cb) => (typeof requestIdleCallback === 'function'
-  ? requestIdleCallback(cb, { timeout: 500 })
-  : setTimeout(cb, 16));
+const _ric = (cb) =>
+  typeof requestIdleCallback === 'function'
+    ? requestIdleCallback(cb, { timeout: 500 })
+    : setTimeout(cb, 16);
 function attachDeferred(terms) {
   let i = 0;
   const step = () => {
@@ -164,7 +175,13 @@ export function renderGrid() {
   // (ensureAttached's await is fire-and-forget here, so this captures the
   // synchronous DOM/construction cost; the per-tile open latency lands in
   // the "ensureAttached" feLog lines.)
-  const _fanoutStart = (() => { try { return performance.now(); } catch { return 0; } })();
+  const _fanoutStart = (() => {
+    try {
+      return performance.now();
+    } catch {
+      return 0;
+    }
+  })();
   let _built = 0;
 
   // Ensure every grid session has a SessionTerm; attach lazily. Every
@@ -194,9 +211,19 @@ export function renderGrid() {
   // would spam the log with built=0 sync=0ms noise on every grid touch.
   if (_built > 0) {
     try {
-      const _ms = (() => { try { return Math.round(performance.now() - _fanoutStart); } catch { return -1; } })();
-      LogFrontend(`renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`);
-    } catch { /* bridge absent in tests */ }
+      const _ms = (() => {
+        try {
+          return Math.round(performance.now() - _fanoutStart);
+        } catch {
+          return -1;
+        }
+      })();
+      LogFrontend(
+        `renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`,
+      );
+    } catch {
+      /* bridge absent in tests */
+    }
   }
   // Hide / unmark tiles outside the scope.
   for (const [sid, st] of state.terms) {
@@ -241,7 +268,10 @@ export function renderGrid() {
   if (deps.scrollTrace.rec.enabled) {
     deps.scrollTrace.count('renderGrid');
     deps.scrollTrace.rec('render-grid', {
-      n, rows, cols, dur: Math.round(performance.now() - _t0),
+      n,
+      rows,
+      cols,
+      dur: Math.round(performance.now() - _t0),
     });
   }
 
@@ -277,7 +307,8 @@ export function shiftActiveProject(delta) {
   const cur = activeProjectId();
   const i = state.projects.findIndex((p) => p.id === cur);
   if (i < 0) return;
-  const next = state.projects[(i + delta + state.projects.length) % state.projects.length];
+  const next =
+    state.projects[(i + delta + state.projects.length) % state.projects.length];
   state.currentProjectId = next.id;
   if (state.view === 'grid-project') state.gridProjectId = next.id;
 
@@ -357,13 +388,15 @@ export function restoreSession(id) {
 // Pure user window resizes still flow through the threshold path in
 // _onBodyResize and continue to request replays as before.
 function rebaselineGridReplayCols() {
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    for (const st of state.terms.values()) {
-      if (st.host.classList.contains('in-grid')) {
-        st.rebaselineReplayCols('layout');
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      for (const st of state.terms.values()) {
+        if (st.host.classList.contains('in-grid')) {
+          st.rebaselineReplayCols('layout');
+        }
       }
-    }
-  }));
+    }),
+  );
 }
 
 // renderMinimizedTray rebuilds the #minimized-tray chip row from
@@ -482,7 +515,9 @@ export function renderEmptyState() {
 
 export function setView(view) {
   state.view = view;
-  try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch {}
+  try {
+    localStorage.setItem(VIEW_STORAGE_KEY, view);
+  } catch {}
   if (view === 'grid-project') {
     state.gridProjectId = activeProjectId();
   }
@@ -516,7 +551,7 @@ export function setView(view) {
   }, 250);
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
-  setStatus(`${view}${active ? ' • ' + active.name : ''}`);
+  setStatus(`${view}${active ? ` • ${active.name}` : ''}`);
   renderEmptyState();
 }
 
@@ -538,7 +573,8 @@ new ResizeObserver(() => {
   // coalesced away by the queued guard). If this races far ahead of the
   // render-grid count, the container is being resized in a tight loop —
   // the classic ResizeObserver feedback storm.
-  if (deps.scrollTrace.rec.enabled) deps.scrollTrace.count('gridContainerResize');
+  if (deps.scrollTrace.rec.enabled)
+    deps.scrollTrace.count('gridContainerResize');
   if (state.view === 'single' || _gridReflowQueued) return;
   _gridReflowQueued = true;
   requestAnimationFrame(() => {

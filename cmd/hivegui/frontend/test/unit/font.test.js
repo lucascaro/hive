@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clampFont, DEFAULT_FONT_SIZE, MIN_FONT_SIZE, MAX_FONT_SIZE,
+  clampFont,
+  DEFAULT_FONT_SIZE,
+  MIN_FONT_SIZE,
+  MAX_FONT_SIZE,
 } from '../../src/lib/font.js';
 
 describe('clampFont', () => {

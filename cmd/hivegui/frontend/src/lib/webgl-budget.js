@@ -30,10 +30,14 @@ export function releaseWebglSlot() {
   if (active > 0) active--;
 }
 
-export function activeWebglSlots() { return active; }
+export function activeWebglSlots() {
+  return active;
+}
 
 // Test-only: reset the module-level counter between cases.
-export function _resetWebglBudget() { active = 0; }
+export function _resetWebglBudget() {
+  active = 0;
+}
 
 // Sliding-window loss counter for the context-loss storm guard. A WebGL
 // context that dies immediately after every reattach loops forever and

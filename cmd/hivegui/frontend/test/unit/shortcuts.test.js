@@ -6,7 +6,9 @@ describe('shortcutGroups', () => {
     const mac = shortcutGroups({ isMac: true });
     const other = shortcutGroups({ isMac: false });
     const macKeys = mac.flatMap((g) => g.items.map((i) => i.keys)).join(' ');
-    const otherKeys = other.flatMap((g) => g.items.map((i) => i.keys)).join(' ');
+    const otherKeys = other
+      .flatMap((g) => g.items.map((i) => i.keys))
+      .join(' ');
     expect(macKeys).toContain('⌘T');
     expect(macKeys).toContain('⇧⌘T');
     expect(otherKeys).toContain('Ctrl+T');
@@ -18,7 +20,9 @@ describe('shortcutGroups', () => {
     for (const isMac of [true, false]) {
       for (const g of shortcutGroups({ isMac })) {
         const keys = g.items.map((i) => i.keys);
-        expect(new Set(keys).size, `${g.title} (isMac=${isMac}): ${keys}`).toBe(keys.length);
+        expect(new Set(keys).size, `${g.title} (isMac=${isMac}): ${keys}`).toBe(
+          keys.length,
+        );
       }
     }
   });
@@ -33,9 +37,14 @@ describe('shortcutGroups', () => {
   });
 
   it('mac-only clear-line entry appears only on mac', () => {
-    const labels = (groups) => groups.flatMap((g) => g.items.map((i) => i.label));
-    expect(labels(shortcutGroups({ isMac: true }))).toContain('Clear input line');
-    expect(labels(shortcutGroups({ isMac: false }))).not.toContain('Clear input line');
+    const labels = (groups) =>
+      groups.flatMap((g) => g.items.map((i) => i.label));
+    expect(labels(shortcutGroups({ isMac: true }))).toContain(
+      'Clear input line',
+    );
+    expect(labels(shortcutGroups({ isMac: false }))).not.toContain(
+      'Clear input line',
+    );
   });
 
   it('separates arrow-key word labels off mac', () => {

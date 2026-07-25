@@ -76,3 +76,11 @@ registry in 3b.
   change there goes wrong, not before.
 - Split `cmd/hivegui/frontend/src/style.css` (1488 lines) — cosmetic; only if
   merge conflicts start happening.
+- Fire-and-forget Wails-binding calls wrapped in `try/catch` only catch the
+  *synchronous* failure (binding absent in tests); an async **rejection** of
+  the returned promise still escapes as an unhandled rejection. Affects
+  `LogFrontend(...)` in `src/main.js` and `src/app/events.js`, and any similar
+  fire-and-forget binding call. Fix once with a tiny `fireAndForget(p)` helper
+  (`p?.catch(() => {})`) applied at every call site — not per-line. Surfaced by
+  CodeRabbit on PR #249 (the Biome PR); deferred out of that formatting PR to
+  keep it scoped. Low impact (fire-and-forget logging), so: only-if-it-hurts.

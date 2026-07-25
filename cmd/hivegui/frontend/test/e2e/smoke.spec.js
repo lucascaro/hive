@@ -3,7 +3,9 @@ import { test, expect } from '@playwright/test';
 // Smoke E2E: load the GUI with the Wails-mock bridge, verify the
 // sidebar renders the bootstrap project + session, then add a session
 // via the mock and verify the sidebar updates.
-test('boots, shows project & session, then reflects a new session', async ({ page }) => {
+test('boots, shows project & session, then reflects a new session', async ({
+  page,
+}) => {
   await page.goto('/');
 
   // Wait for the daemon-mock to push the initial snapshot.
@@ -27,7 +29,9 @@ test('boots, shows project & session, then reflects a new session', async ({ pag
 // terms host. Covers the grid-mode-revert regression class.
 test('toggles grid view', async ({ page }) => {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 
   // Add a second session so the grid is non-trivial.
   await page.evaluate(() => window.__hive.addSession('two'));
@@ -43,7 +47,9 @@ test('toggles grid view', async ({ page }) => {
 // Layer C invariant: a clean boot must produce no console errors or
 // unhandled rejections. Cheap, broad regression net — any new feature
 // that throws on init surfaces here even if it has no dedicated test.
-test('clean boot produces no console errors or unhandled rejections', async ({ page }) => {
+test('clean boot produces no console errors or unhandled rejections', async ({
+  page,
+}) => {
   const errors = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
@@ -51,7 +57,9 @@ test('clean boot produces no console errors or unhandled rejections', async ({ p
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
 
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 
   // Exercise a few common UI paths so the assertion covers more than
   // just the first paint.

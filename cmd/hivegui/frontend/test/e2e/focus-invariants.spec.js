@@ -23,11 +23,16 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function bootWithSessions(page, count = 2) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
   for (let i = 1; i < count; i++) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
-  await page.waitForFunction((n) => window.__hive.state.sessions.length >= n, count);
+  await page.waitForFunction(
+    (n) => window.__hive.state.sessions.length >= n,
+    count,
+  );
   await page.evaluate(() => window.__hive.resetStdin());
 }
 
@@ -37,25 +42,35 @@ async function enterGridAll(page) {
 }
 
 async function waitForHelperFocus(page, timeout = 2000) {
-  await page.waitForFunction(() => {
-    const ae = document.activeElement;
-    return !!(ae && ae.classList && ae.classList.contains('xterm-helper-textarea'));
-  }, null, { timeout });
+  await page.waitForFunction(
+    () => {
+      const ae = document.activeElement;
+      return !!ae?.classList?.contains('xterm-helper-textarea');
+    },
+    null,
+    { timeout },
+  );
 }
 
 // Assert focus is on a helper-textarea inside a tile carrying
 // .term-focused (the unified keyboard+visual contract).
 async function assertAlignedFocus(page, timeout = 2000) {
-  await page.waitForFunction(() => {
-    const ae = document.activeElement;
-    if (!ae || !ae.classList || !ae.classList.contains('xterm-helper-textarea')) return false;
-    const host = ae.closest('.term-host');
-    return !!(host && host.classList.contains('term-focused'));
-  }, null, { timeout });
+  await page.waitForFunction(
+    () => {
+      const ae = document.activeElement;
+      if (!ae?.classList?.contains('xterm-helper-textarea')) return false;
+      const host = ae.closest('.term-host');
+      return !!host?.classList.contains('term-focused');
+    },
+    null,
+    { timeout },
+  );
 }
 
 test.describe('focus invariants', () => {
-  test('F1: adding a session in grid mode keeps focus aligned (helper textarea inside .term-focused)', async ({ page }) => {
+  test('F1: adding a session in grid mode keeps focus aligned (helper textarea inside .term-focused)', async ({
+    page,
+  }) => {
     // The app intentionally moves focus to the newly-added session;
     // the invariant we lock in is the WEAKER but more important one:
     // wherever focus lands, it MUST be on a helper-textarea inside a
@@ -70,7 +85,9 @@ test.describe('focus invariants', () => {
     await assertAlignedFocus(page);
   });
 
-  test('F2: killing a non-active session preserves focus on the active tile', async ({ page }) => {
+  test('F2: killing a non-active session preserves focus on the active tile', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
     await waitForHelperFocus(page);
@@ -98,7 +115,9 @@ test.describe('focus invariants', () => {
     expect(after).toBe(activeSid);
   });
 
-  test('F3: sidebar toggle in single mode preserves keyboard focus', async ({ page }) => {
+  test('F3: sidebar toggle in single mode preserves keyboard focus', async ({
+    page,
+  }) => {
     // #208 R3 only covered grid mode + post-window-resize. This
     // exercises the simpler single-mode path so toggleSidebar's
     // refocus stays universal.
@@ -115,7 +134,9 @@ test.describe('focus invariants', () => {
     await page.evaluate(() => window.__hive.resetStdin());
     await page.keyboard.type('single');
     await expect
-      .poll(() => page.evaluate(() => window.__hive.stdinText()), { timeout: 2000 })
+      .poll(() => page.evaluate(() => window.__hive.stdinText()), {
+        timeout: 2000,
+      })
       .toContain('single');
   });
 
@@ -123,13 +144,22 @@ test.describe('focus invariants', () => {
     await bootWithSessions(page, 2);
     await waitForHelperFocus(page);
 
-    await page.evaluate(() => window.__hive.emit('project:event', JSON.stringify({
-      kind: 'added',
-      project: {
-        id: 'p-new', name: 'fresh', color: '#0ff', cwd: '',
-        order: 1, created: new Date().toISOString(),
-      },
-    })));
+    await page.evaluate(() =>
+      window.__hive.emit(
+        'project:event',
+        JSON.stringify({
+          kind: 'added',
+          project: {
+            id: 'p-new',
+            name: 'fresh',
+            color: '#0ff',
+            cwd: '',
+            order: 1,
+            created: new Date().toISOString(),
+          },
+        }),
+      ),
+    );
     // Add takes one rAF to render in the sidebar.
     await page.waitForTimeout(50);
     await assertAlignedFocus(page);

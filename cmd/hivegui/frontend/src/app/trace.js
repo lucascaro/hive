@@ -8,7 +8,11 @@ import { createScrollTrace } from '../lib/scroll-debug.js';
 // ring to prove a scenario actually fired replays.
 export const scrollTrace = createScrollTrace({
   enabled: (() => {
-    try { return localStorage.getItem('hive.debug') === '1'; } catch { return false; }
+    try {
+      return localStorage.getItem('hive.debug') === '1';
+    } catch {
+      return false;
+    }
   })(),
 });
 // localStorage key holding the trace window snapshotted at the moment a
@@ -26,11 +30,16 @@ const LASTJUMP_KEY = 'hive.scrolltrace.lastjump';
 // disabled — never throw into the scroll path.
 export function snapshotScrollJump() {
   try {
-    localStorage.setItem(LASTJUMP_KEY, JSON.stringify({
-      at: Date.now(),
-      ring: scrollTrace.ring.slice(-400),
-    }));
-  } catch { /* storage unavailable — the live ring is still dumpable */ }
+    localStorage.setItem(
+      LASTJUMP_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        ring: scrollTrace.ring.slice(-400),
+      }),
+    );
+  } catch {
+    /* storage unavailable — the live ring is still dumpable */
+  }
 }
 
 // ---------- main-thread heartbeat watchdog ----------
@@ -60,7 +69,8 @@ function winState() {
   const ae = document.activeElement;
   return {
     vis: document.visibilityState,
-    hasFocus: typeof document.hasFocus === 'function' ? document.hasFocus() : null,
+    hasFocus:
+      typeof document.hasFocus === 'function' ? document.hasFocus() : null,
     grid: !!document.getElementById('terms')?.classList.contains('grid'),
     ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
   };
@@ -80,8 +90,12 @@ if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
   // Record the exact moment the webview gains/loses OS key focus. If keys
   // go dead the instant a 'win-blur' fires (and never recover), the freeze
   // is the window losing focus — not anything in the app's JS.
-  window.addEventListener('focus', () => scrollTrace.rec('win-focus', winState()));
-  window.addEventListener('blur', () => scrollTrace.rec('win-blur', winState()));
+  window.addEventListener('focus', () =>
+    scrollTrace.rec('win-focus', winState()),
+  );
+  window.addEventListener('blur', () =>
+    scrollTrace.rec('win-blur', winState()),
+  );
   let beat = 0;
   setInterval(() => {
     const t = performance.now();
@@ -100,7 +114,10 @@ if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
       // How long the main thread was unresponsive, plus the window state at
       // the stall (grid? focus on a terminal textarea or stranded on body?
       // did the webview even hold OS focus?).
-      scrollTrace.rec('heartbeat-stall', { gap: Math.round(gap), ...winState() });
+      scrollTrace.rec('heartbeat-stall', {
+        gap: Math.round(gap),
+        ...winState(),
+      });
     }
   }, HEARTBEAT_MS);
 }
@@ -113,7 +130,11 @@ if (typeof window !== 'undefined') {
   // clipboard so a user hitting the bug can paste it straight back.
   window.__hive_dumpscroll = () => {
     let lastJump = null;
-    try { lastJump = JSON.parse(localStorage.getItem(LASTJUMP_KEY) || 'null'); } catch { /* ignore */ }
+    try {
+      lastJump = JSON.parse(localStorage.getItem(LASTJUMP_KEY) || 'null');
+    } catch {
+      /* ignore */
+    }
     const dump = {
       enabled: scrollTrace.rec.enabled,
       ring: scrollTrace.ring.slice(),
@@ -121,7 +142,11 @@ if (typeof window !== 'undefined') {
       counters: { ...scrollTrace.counters },
       maxStallMs: Math.round(_maxStallMs),
     };
-    try { navigator.clipboard?.writeText(JSON.stringify(dump)); } catch { /* clipboard may be denied */ }
+    try {
+      navigator.clipboard?.writeText(JSON.stringify(dump));
+    } catch {
+      /* clipboard may be denied */
+    }
     return dump;
   };
 }

@@ -7,7 +7,11 @@
 import '@xterm/xterm/css/xterm.css';
 
 import {
-  ConnectControl, KillSession, OpenNewWindow, CloseWindow, OpenTerminalAt,
+  ConnectControl,
+  KillSession,
+  OpenNewWindow,
+  CloseWindow,
+  OpenTerminalAt,
   LogFrontend,
 } from './bridge.js';
 import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
@@ -18,10 +22,16 @@ import { setStatus, reportFailure } from './app/dom.js';
 import { activeCwd } from './app/selectors.js';
 import { scrollTrace } from './app/trace.js';
 import {
-  openLauncher, duplicateActiveSession, restartActiveSession,
-  duplicateActiveSessionChooseTool, initLauncher,
+  openLauncher,
+  duplicateActiveSession,
+  restartActiveSession,
+  duplicateActiveSessionChooseTool,
+  initLauncher,
 } from './app/modals/launcher.js';
-import { openProjectEditor, initProjectEditor } from './app/modals/project-editor.js';
+import {
+  openProjectEditor,
+  initProjectEditor,
+} from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
 import { initSettings, openSettings } from './app/modals/settings.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
@@ -30,17 +40,36 @@ import { wireDaemonEvents } from './app/events.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import { initVersionFooter } from './app/version-footer.js';
 import {
-  switchTo, switchToProject, updateAppTitle, renderMinimizedTray,
-  renderEmptyState, shiftActiveProject, initView,
+  switchTo,
+  switchToProject,
+  updateAppTitle,
+  renderMinimizedTray,
+  renderEmptyState,
+  shiftActiveProject,
+  initView,
 } from './app/view.js';
 import {
-  initKeyboard, toggleSidebar, toggleProjectGrid, toggleAllGrid,
-  confirmAndDeleteProject, deleteActiveProject, navSession, reorderActive,
-  switchToNthSession, jumpToAttention, jumpBack, navBack, navForward,
+  initKeyboard,
+  toggleSidebar,
+  toggleProjectGrid,
+  toggleAllGrid,
+  confirmAndDeleteProject,
+  deleteActiveProject,
+  navSession,
+  reorderActive,
+  switchToNthSession,
+  jumpToAttention,
+  jumpBack,
+  navBack,
+  navForward,
 } from './app/keyboard.js';
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
-  setActive, setFocusedTile, focusActiveTerm, refocusActiveTerm, initFocus,
+  setActive,
+  setFocusedTile,
+  focusActiveTerm,
+  refocusActiveTerm,
+  initFocus,
   withoutNavHistory,
 } from './app/focus.js';
 
@@ -51,36 +80,108 @@ import {
 const PALETTE_KEYS = paletteShortcuts({ isMac });
 
 const paletteCommands = [
-  { id: 'new-project',          name: 'New Project…',                run: () => openProjectEditor(null) },
-  { id: 'new-session',          name: 'New Session',                 run: () => openLauncher() },
-  { id: 'new-session-worktree', name: 'New Session in Worktree',     run: () => openLauncher(undefined, { forceWorktree: true }) },
-  { id: 'duplicate-session',    name: 'Duplicate Session',           run: duplicateActiveSession },
-  { id: 'duplicate-session-choose-tool', name: 'Duplicate Session (choose tool)…', run: duplicateActiveSessionChooseTool },
-  { id: 'restart-session',      name: 'Restart Session',             run: restartActiveSession },
-  { id: 'delete-project',       name: 'Delete Active Project…',      run: () => deleteActiveProject() },
-  { id: 'close-session',        name: 'Close Session',               run: () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); } },
-  { id: 'new-window',           name: 'New Window',                  run: () => OpenNewWindow().catch(reportFailure('new window')) },
-  { id: 'open-os-terminal',     name: 'Open OS Terminal Here',       run: () => OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')) },
-  { id: 'close-window',         name: 'Close Window',                run: () => CloseWindow().catch(reportFailure('close window')) },
-  { id: 'toggle-sidebar',       name: 'Toggle Sidebar',              run: toggleSidebar },
-  { id: 'toggle-project-grid',  name: 'Toggle Project Grid',         run: toggleProjectGrid },
-  { id: 'toggle-all-grid',      name: 'Toggle All Sessions Grid',    run: toggleAllGrid },
-  { id: 'zoom-in',              name: 'Zoom In',                     run: () => bumpFontSize(+1) },
-  { id: 'zoom-out',             name: 'Zoom Out',                    run: () => bumpFontSize(-1) },
-  { id: 'zoom-reset',           name: 'Actual Size',                 run: () => resetFontSize() },
-  { id: 'next-session',         name: 'Next Session',                run: () => navSession(+1) },
-  { id: 'prev-session',         name: 'Previous Session',            run: () => navSession(-1) },
-  { id: 'nav-back',             name: 'Go Back',                      run: navBack },
-  { id: 'nav-forward',          name: 'Go Forward',                   run: navForward },
-  { id: 'next-attention',       name: 'Next Session Needing Attention', run: jumpToAttention },
-  { id: 'jump-back',            name: 'Jump Back to Where You Were',  run: jumpBack },
-  { id: 'move-forward',         name: 'Move Session Forward',        run: () => reorderActive(+1) },
-  { id: 'move-backward',        name: 'Move Session Backward',       run: () => reorderActive(-1) },
-  { id: 'next-project',         name: 'Next Project',                run: () => shiftActiveProject(+1) },
-  { id: 'prev-project',         name: 'Previous Project',            run: () => shiftActiveProject(-1) },
-  { id: 'keyboard-shortcuts',   name: 'Keyboard Shortcuts',          run: () => openHelpOverlay() },
-  { id: 'settings',             name: 'Settings…',                   run: () => openSettings() },
-  { id: 'restart-hive',         name: 'Restart Hive…',               run: () => restartHive() },
+  {
+    id: 'new-project',
+    name: 'New Project…',
+    run: () => openProjectEditor(null),
+  },
+  { id: 'new-session', name: 'New Session', run: () => openLauncher() },
+  {
+    id: 'new-session-worktree',
+    name: 'New Session in Worktree',
+    run: () => openLauncher(undefined, { forceWorktree: true }),
+  },
+  {
+    id: 'duplicate-session',
+    name: 'Duplicate Session',
+    run: duplicateActiveSession,
+  },
+  {
+    id: 'duplicate-session-choose-tool',
+    name: 'Duplicate Session (choose tool)…',
+    run: duplicateActiveSessionChooseTool,
+  },
+  { id: 'restart-session', name: 'Restart Session', run: restartActiveSession },
+  {
+    id: 'delete-project',
+    name: 'Delete Active Project…',
+    run: () => deleteActiveProject(),
+  },
+  {
+    id: 'close-session',
+    name: 'Close Session',
+    run: () => {
+      if (state.activeId)
+        KillSession(state.activeId, false).catch(reportFailure('close'));
+    },
+  },
+  {
+    id: 'new-window',
+    name: 'New Window',
+    run: () => OpenNewWindow().catch(reportFailure('new window')),
+  },
+  {
+    id: 'open-os-terminal',
+    name: 'Open OS Terminal Here',
+    run: () =>
+      OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal')),
+  },
+  {
+    id: 'close-window',
+    name: 'Close Window',
+    run: () => CloseWindow().catch(reportFailure('close window')),
+  },
+  { id: 'toggle-sidebar', name: 'Toggle Sidebar', run: toggleSidebar },
+  {
+    id: 'toggle-project-grid',
+    name: 'Toggle Project Grid',
+    run: toggleProjectGrid,
+  },
+  {
+    id: 'toggle-all-grid',
+    name: 'Toggle All Sessions Grid',
+    run: toggleAllGrid,
+  },
+  { id: 'zoom-in', name: 'Zoom In', run: () => bumpFontSize(+1) },
+  { id: 'zoom-out', name: 'Zoom Out', run: () => bumpFontSize(-1) },
+  { id: 'zoom-reset', name: 'Actual Size', run: () => resetFontSize() },
+  { id: 'next-session', name: 'Next Session', run: () => navSession(+1) },
+  { id: 'prev-session', name: 'Previous Session', run: () => navSession(-1) },
+  { id: 'nav-back', name: 'Go Back', run: navBack },
+  { id: 'nav-forward', name: 'Go Forward', run: navForward },
+  {
+    id: 'next-attention',
+    name: 'Next Session Needing Attention',
+    run: jumpToAttention,
+  },
+  { id: 'jump-back', name: 'Jump Back to Where You Were', run: jumpBack },
+  {
+    id: 'move-forward',
+    name: 'Move Session Forward',
+    run: () => reorderActive(+1),
+  },
+  {
+    id: 'move-backward',
+    name: 'Move Session Backward',
+    run: () => reorderActive(-1),
+  },
+  {
+    id: 'next-project',
+    name: 'Next Project',
+    run: () => shiftActiveProject(+1),
+  },
+  {
+    id: 'prev-project',
+    name: 'Previous Project',
+    run: () => shiftActiveProject(-1),
+  },
+  {
+    id: 'keyboard-shortcuts',
+    name: 'Keyboard Shortcuts',
+    run: () => openHelpOverlay(),
+  },
+  { id: 'settings', name: 'Settings…', run: () => openSettings() },
+  { id: 'restart-hive', name: 'Restart Hive…', run: () => restartHive() },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,
@@ -99,14 +200,30 @@ initProjectEditor({ setFocusedTile, refocusActiveTerm });
 initCommandPalette({ commands: paletteCommands, focusActiveTerm });
 initSettings({ setFocusedTile, refocusActiveTerm });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
-initSidebar({ switchTo, switchToProject, confirmAndDeleteProject, renderEmptyState, refocusActiveTerm });
+initSidebar({
+  switchTo,
+  switchToProject,
+  confirmAndDeleteProject,
+  renderEmptyState,
+  refocusActiveTerm,
+});
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
-initKeyboard({ bumpFontSize, resetFontSize, focusActiveTerm, withoutNavHistory });
+initKeyboard({
+  bumpFontSize,
+  resetFontSize,
+  focusActiveTerm,
+  withoutNavHistory,
+});
 initFocus({ ensureTerm });
 wireDaemonEvents({
-  switchTo, renderMinimizedTray, updateAppTitle, focusActiveTerm,
-  refocusActiveTerm, isDaemonRestarting, scrollTrace,
+  switchTo,
+  renderMinimizedTray,
+  updateAppTitle,
+  focusActiveTerm,
+  refocusActiveTerm,
+  isDaemonRestarting,
+  scrollTrace,
 });
 
 // Sidebar footer: hive/hived version + build. Populated from the
@@ -119,13 +236,17 @@ initVersionFooter();
 // reloads. Constrained to a sane min/max so the resizer can't be lost
 // off-screen or eat the whole window.
 (function setupSidebarResize() {
-  const MIN = 140, MAX = 480;
+  const MIN = 140,
+    MAX = 480;
   const app = document.getElementById('app');
   const handle = document.getElementById('sidebar-resizer');
   if (!app || !handle) return;
   const saved = parseInt(localStorage.getItem('hive.sidebarWidth') || '', 10);
   if (Number.isFinite(saved)) {
-    app.style.setProperty('--sidebar-width', `${Math.max(MIN, Math.min(MAX, saved))}px`);
+    app.style.setProperty(
+      '--sidebar-width',
+      `${Math.max(MIN, Math.min(MAX, saved))}px`,
+    );
   }
   // #app spans the viewport, so pointer clientX maps directly to sidebar width.
   let dragging = false;
@@ -136,7 +257,8 @@ initVersionFooter();
     handle.classList.remove('dragging');
     const px = app.style.getPropertyValue('--sidebar-width');
     const w = parseInt(px, 10);
-    if (Number.isFinite(w)) localStorage.setItem('hive.sidebarWidth', String(w));
+    if (Number.isFinite(w))
+      localStorage.setItem('hive.sidebarWidth', String(w));
     // Main pane width change reflows terminals automatically: each
     // tile body's ResizeObserver fits its xterm; the termsHost RO
     // re-picks (rows, cols) for the grid.
@@ -164,7 +286,10 @@ initVersionFooter();
   // (Shift = larger step). The width change reflows the main pane;
   // tile-body and termsHost ResizeObservers handle the rest.
   function nudge(delta) {
-    const cur = parseInt(getComputedStyle(app).getPropertyValue('--sidebar-width'), 10);
+    const cur = parseInt(
+      getComputedStyle(app).getPropertyValue('--sidebar-width'),
+      10,
+    );
     const base = Number.isFinite(cur) ? cur : 200;
     const w = Math.max(MIN, Math.min(MAX, base + delta));
     app.style.setProperty('--sidebar-width', `${w}px`);
@@ -172,10 +297,19 @@ initVersionFooter();
   }
   handle.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 50 : 10;
-    if (e.key === 'ArrowLeft')       { e.preventDefault(); nudge(-step); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(+step); }
-    else if (e.key === 'Home')       { e.preventDefault(); nudge(-MAX); }
-    else if (e.key === 'End')        { e.preventDefault(); nudge(+MAX); }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      nudge(-step);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      nudge(+step);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      nudge(-MAX);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      nudge(+MAX);
+    }
   });
 })();
 
@@ -192,46 +326,94 @@ initVersionFooter();
 (function startFreezeHeartbeat() {
   const NOMINAL_MS = 1000;
   const ALIVE_EVERY = 3; // ~every 3s — tight enough to watch a mem/gap ramp
-  let last = (() => { try { return performance.now(); } catch { return 0; } })();
+  let last = (() => {
+    try {
+      return performance.now();
+    } catch {
+      return 0;
+    }
+  })();
   let beat = 0;
   setInterval(() => {
     let now;
-    try { now = performance.now(); } catch { now = last + NOMINAL_MS; }
+    try {
+      now = performance.now();
+    } catch {
+      now = last + NOMINAL_MS;
+    }
     const gap = now - last;
     last = now;
     beat += 1;
-    const heap = jsHeapMB(typeof performance !== 'undefined' ? performance : null);
+    const heap = jsHeapMB(
+      typeof performance !== 'undefined' ? performance : null,
+    );
     const st = {
       vis: document.visibilityState,
-      focus: typeof document.hasFocus === 'function' ? (document.hasFocus() ? 1 : 0) : '?',
+      focus:
+        typeof document.hasFocus === 'function'
+          ? document.hasFocus()
+            ? 1
+            : 0
+          : '?',
       terms: state.terms.size,
       view: state.view,
     };
     if (heap !== null) st.heapMB = heap;
     const line = classifyBeat({
-      gap, nominalMs: NOMINAL_MS,
+      gap,
+      nominalMs: NOMINAL_MS,
       visible: document.visibilityState === 'visible',
-      beat, aliveEvery: ALIVE_EVERY, state: st,
+      beat,
+      aliveEvery: ALIVE_EVERY,
+      state: st,
     });
-    if (line) { try { LogFrontend(line); } catch { /* bridge absent in tests */ } }
+    if (line) {
+      try {
+        LogFrontend(line);
+      } catch {
+        /* bridge absent in tests */
+      }
+    }
   }, NOMINAL_MS);
 })();
 
 // ---------- bootstrap ----------
 
 (async () => {
-  const t0 = (() => { try { return performance.now(); } catch { return 0; } })();
-  try { LogFrontend('boot: connecting control'); } catch { /* ignore */ }
+  const t0 = (() => {
+    try {
+      return performance.now();
+    } catch {
+      return 0;
+    }
+  })();
+  try {
+    LogFrontend('boot: connecting control');
+  } catch {
+    /* ignore */
+  }
   setStatus('connecting…');
   try {
     await ConnectControl();
     setStatus('connected');
     try {
-      const dt = (() => { try { return Math.round(performance.now() - t0); } catch { return -1; } })();
+      const dt = (() => {
+        try {
+          return Math.round(performance.now() - t0);
+        } catch {
+          return -1;
+        }
+      })();
       LogFrontend(`boot: control connected in ${dt}ms`);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   } catch (err) {
     setStatus(`connect failed: ${err}`, true);
-    try { LogFrontend(`boot: control connect failed: ${err}`); } catch { /* ignore */ }
+    try {
+      LogFrontend(`boot: control connect failed: ${err}`);
+    } catch {
+      /* ignore */
+    }
   }
 })();

@@ -77,7 +77,10 @@ function renderProject(p, activePID) {
   caret.textContent = '▾';
   const collapsedNow = state.collapsed.has(p.id);
   caret.setAttribute('aria-expanded', String(!collapsedNow));
-  caret.setAttribute('aria-label', `${collapsedNow ? 'Expand' : 'Collapse'} ${p.name}`);
+  caret.setAttribute(
+    'aria-label',
+    `${collapsedNow ? 'Expand' : 'Collapse'} ${p.name}`,
+  );
   caret.addEventListener('click', (e) => {
     e.stopPropagation();
     if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
@@ -158,8 +161,10 @@ function renderProject(p, activePID) {
       // Bubbled from an inner session drag — leave it alone.
       return;
     }
-    if (e.target.closest('.project-actions') ||
-        e.target.closest('.project-name-input')) {
+    if (
+      e.target.closest('.project-actions') ||
+      e.target.closest('.project-name-input')
+    ) {
       e.preventDefault();
       return;
     }
@@ -169,8 +174,11 @@ function renderProject(p, activePID) {
   });
   li.addEventListener('dragend', () => {
     li.classList.remove('dragging');
-    document.querySelectorAll('.project.drop-above, .project.drop-below')
-      .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+    document
+      .querySelectorAll('.project.drop-above, .project.drop-below')
+      .forEach((el) => {
+        el.classList.remove('drop-above', 'drop-below');
+      });
   });
   li.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
@@ -182,7 +190,7 @@ function renderProject(p, activePID) {
     // cursor. Anchoring both the hit-test and the visual to the
     // header keeps them in sync.
     const r = header.getBoundingClientRect();
-    const above = (e.clientY - r.top) < r.height / 2;
+    const above = e.clientY - r.top < r.height / 2;
     li.classList.toggle('drop-above', above);
     li.classList.toggle('drop-below', !above);
   });
@@ -200,7 +208,7 @@ function renderProject(p, activePID) {
     li.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
-    const above = (e.clientY - r.top) < r.height / 2;
+    const above = e.clientY - r.top < r.height / 2;
     reorderDroppedProject(pid, p.id, above);
   });
   return li;
@@ -211,14 +219,18 @@ function renderProject(p, activePID) {
 // removes the dragged project then inserts at newOrder, so we
 // compensate when the source sits before the target.
 function reorderDroppedProject(draggedID, targetID, above) {
-  const ordered = [...state.projects].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const ordered = [...state.projects].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  );
   const targetIdx = ordered.findIndex((p) => p.id === targetID);
   const draggedIdx = ordered.findIndex((p) => p.id === draggedID);
   if (targetIdx < 0 || draggedIdx < 0) return;
   let newOrder = above ? targetIdx : targetIdx + 1;
   if (draggedIdx < newOrder) newOrder -= 1;
   if (newOrder === draggedIdx) return;
-  UpdateProject(draggedID, '', '', '', newOrder).catch(reportFailure('reorder project'));
+  UpdateProject(draggedID, '', '', '', newOrder).catch(
+    reportFailure('reorder project'),
+  );
 }
 
 function renderSession(s, projectColor) {
@@ -257,7 +269,9 @@ function renderSession(s, projectColor) {
   colorInput.type = 'color';
   colorInput.value = s.color || '#888888';
   colorInput.addEventListener('input', (e) => {
-    UpdateSession(s.id, '', e.target.value, -1).catch(reportFailure('color change'));
+    UpdateSession(s.id, '', e.target.value, -1).catch(
+      reportFailure('color change'),
+    );
   });
   swatch.appendChild(colorInput);
 
@@ -282,15 +296,18 @@ function renderSession(s, projectColor) {
   });
   li.addEventListener('dragend', () => {
     li.classList.remove('dragging');
-    document.querySelectorAll('.session-item.drop-above, .session-item.drop-below')
-      .forEach((el) => el.classList.remove('drop-above', 'drop-below'));
+    document
+      .querySelectorAll('.session-item.drop-above, .session-item.drop-below')
+      .forEach((el) => {
+        el.classList.remove('drop-above', 'drop-below');
+      });
   });
   li.addEventListener('dragover', (e) => {
     if (!e.dataTransfer.types.includes('text/x-hive-session')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     const r = li.getBoundingClientRect();
-    const above = (e.clientY - r.top) < r.height / 2;
+    const above = e.clientY - r.top < r.height / 2;
     li.classList.toggle('drop-above', above);
     li.classList.toggle('drop-below', !above);
   });
@@ -308,7 +325,7 @@ function renderSession(s, projectColor) {
     const targetPID = s.projectId ?? s.project_id ?? '';
     if (draggedPID !== targetPID) return; // cross-project: not supported yet
     const r = li.getBoundingClientRect();
-    const above = (e.clientY - r.top) < r.height / 2;
+    const above = e.clientY - r.top < r.height / 2;
     reorderDroppedSession(sid, s.id, above);
   });
   return li;
@@ -339,7 +356,9 @@ function reorderDroppedSession(draggedID, targetID, above) {
   // currently has some Order value, and moveLocked accepts a global
   // index. Easiest: walk the global ordered list of all sessions and
   // count to the slot we want.
-  const globalOrdered = [...state.sessions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const globalOrdered = [...state.sessions].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  );
   let globalTargetIdx;
   if (projIdx >= pretend.length) {
     // Drop after the last neighbor: land just past it.
@@ -357,16 +376,19 @@ function reorderDroppedSession(draggedID, targetID, above) {
   if (draggedGlobalIdx >= 0 && draggedGlobalIdx < globalTargetIdx) {
     globalTargetIdx -= 1;
   }
-  UpdateSession(draggedID, '', '', globalTargetIdx).catch(reportFailure('reorder'));
+  UpdateSession(draggedID, '', '', globalTargetIdx).catch(
+    reportFailure('reorder'),
+  );
 }
 
-function beginRenameSession(sess, li, nameEl) {
+function beginRenameSession(sess, _li, nameEl) {
   beginInlineRename({
     className: 'name-input',
     value: sess.name,
     mount: (input) => nameEl.replaceWith(input),
     unmount: (input) => input.replaceWith(nameEl),
-    onCommit: (next) => UpdateSession(sess.id, next, '', -1).catch(reportFailure('rename')),
+    onCommit: (next) =>
+      UpdateSession(sess.id, next, '', -1).catch(reportFailure('rename')),
     onDone: () => deps.refocusActiveTerm(),
   });
 }
@@ -377,7 +399,10 @@ function beginRenameProject(proj, nameEl) {
     value: proj.name,
     mount: (input) => nameEl.replaceWith(input),
     unmount: (input) => input.replaceWith(nameEl),
-    onCommit: (next) => UpdateProject(proj.id, next, '', '', -1).catch(reportFailure('rename project')),
+    onCommit: (next) =>
+      UpdateProject(proj.id, next, '', '', -1).catch(
+        reportFailure('rename project'),
+      ),
     onDone: () => deps.refocusActiveTerm(),
   });
 }

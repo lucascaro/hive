@@ -5,28 +5,53 @@
 // else is imported from the sibling modules.
 
 import {
-  EventsOn, KillSession, KillProject, Confirm, UpdateSession,
-  OpenNewWindow, CloseWindow, OpenTerminalAt, SetClipboardText, Notify,
+  EventsOn,
+  KillSession,
+  KillProject,
+  Confirm,
+  UpdateSession,
+  OpenNewWindow,
+  CloseWindow,
+  OpenTerminalAt,
+  SetClipboardText,
+  Notify,
 } from '../bridge.js';
 import { state } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
-  orderedSessions, activeCwd, activeProjectId, nextAttentionId,
+  orderedSessions,
+  activeCwd,
+  activeProjectId,
+  nextAttentionId,
 } from './selectors.js';
 import { cmdOrCtrl, isMac } from '../lib/platform.js';
 import {
-  launcherEl, launcherState, moveLauncherSelection, activateLauncherSelection,
-  openLauncher, closeLauncher, duplicateActiveSession,
-  duplicateActiveSessionChooseTool, restartActiveSession,
+  launcherEl,
+  launcherState,
+  moveLauncherSelection,
+  activateLauncherSelection,
+  openLauncher,
+  closeLauncher,
+  duplicateActiveSession,
+  duplicateActiveSessionChooseTool,
+  restartActiveSession,
 } from './modals/launcher.js';
 import { editorEl, openProjectEditor } from './modals/project-editor.js';
 import { openCommandPalette } from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
-import { openHelpOverlay, closeHelpOverlay, toggleHelpOverlay } from './modals/help-overlay.js';
+import {
+  openHelpOverlay,
+  closeHelpOverlay,
+  toggleHelpOverlay,
+} from './modals/help-overlay.js';
 import { isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
-  switchTo, setView, gridSpatialMove, shiftActiveProject,
-  restoreSession, minimizeSession,
+  switchTo,
+  setView,
+  gridSpatialMove,
+  shiftActiveProject,
+  restoreSession,
+  minimizeSession,
 } from './view.js';
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
@@ -50,250 +75,279 @@ export function initKeyboard(injected) {
   deps = injected;
 }
 
-
-window.addEventListener('keydown', (e) => {
-  // Freeze probe: record every keydown that reaches the renderer, with
-  // the view and focus target at arrival. This is the discriminator for
-  // the "keys do nothing in grid mode" report:
-  //   • keydown events keep arriving but `ae` is BODY (not a terminal
-  //     textarea) → keyboard focus was lost; the thread is fine.
-  //   • NO keydown events recorded during the freeze window → the event
-  //     never reached the renderer (thread blocked, or the OS/menu layer
-  //     swallowed it). Cross-check against heartbeat-stall gaps.
-  if (scrollTrace.rec.enabled) {
-    scrollTrace.count('keydown');
-    const ae = document.activeElement;
-    scrollTrace.rec('keydown', {
-      // e.code (physical key: 'KeyA', 'ArrowDown', 'Enter'), NOT e.key — the
-      // trace is copied to the clipboard and frozen into localStorage, so
-      // logging the typed character would leak passwords / tokens into a
-      // pasted bug report. The physical key is all the probe needs (did the
-      // event arrive, was it a nav key, where was focus).
-      code: e.code,
-      mods: `${e.metaKey ? 'M' : ''}${e.ctrlKey ? 'C' : ''}${e.altKey ? 'A' : ''}${e.shiftKey ? 'S' : ''}`,
-      view: state.view,
-      ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
-    });
-  }
-  if (!launcherEl.classList.contains('hidden')) {
-    const handle = (fn) => { e.preventDefault(); e.stopPropagation(); fn(); };
-    if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) return handle(() => moveLauncherSelection(+1));
-    if (e.key === 'ArrowUp'   || (e.key === 'Tab' && e.shiftKey))  return handle(() => moveLauncherSelection(-1));
-    if (e.key === 'Enter')   return handle(activateLauncherSelection);
-    if (e.key === 'Escape')  return handle(closeLauncher);
-    if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N')) return handle(closeLauncher);
-    // Digit shortcut: 1–9 picks the corresponding row. Skipped when
-    // a modifier is held so things like ⌘1 (browser tab switch) and
-    // ⌘+ aren't swallowed.
-    if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-      const i = parseInt(e.key, 10) - 1;
-      if (i < launcherState.items.length) {
-        return handle(() => {
-          launcherState.selected = i;
-          activateLauncherSelection();
-        });
+window.addEventListener(
+  'keydown',
+  (e) => {
+    // Freeze probe: record every keydown that reaches the renderer, with
+    // the view and focus target at arrival. This is the discriminator for
+    // the "keys do nothing in grid mode" report:
+    //   • keydown events keep arriving but `ae` is BODY (not a terminal
+    //     textarea) → keyboard focus was lost; the thread is fine.
+    //   • NO keydown events recorded during the freeze window → the event
+    //     never reached the renderer (thread blocked, or the OS/menu layer
+    //     swallowed it). Cross-check against heartbeat-stall gaps.
+    if (scrollTrace.rec.enabled) {
+      scrollTrace.count('keydown');
+      const ae = document.activeElement;
+      scrollTrace.rec('keydown', {
+        // e.code (physical key: 'KeyA', 'ArrowDown', 'Enter'), NOT e.key — the
+        // trace is copied to the clipboard and frozen into localStorage, so
+        // logging the typed character would leak passwords / tokens into a
+        // pasted bug report. The physical key is all the probe needs (did the
+        // event arrive, was it a nav key, where was focus).
+        code: e.code,
+        mods: `${e.metaKey ? 'M' : ''}${e.ctrlKey ? 'C' : ''}${e.altKey ? 'A' : ''}${e.shiftKey ? 'S' : ''}`,
+        view: state.view,
+        ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
+      });
+    }
+    if (!launcherEl.classList.contains('hidden')) {
+      const handle = (fn) => {
+        e.preventDefault();
+        e.stopPropagation();
+        fn();
+      };
+      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey))
+        return handle(() => moveLauncherSelection(+1));
+      if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey))
+        return handle(() => moveLauncherSelection(-1));
+      if (e.key === 'Enter') return handle(activateLauncherSelection);
+      if (e.key === 'Escape') return handle(closeLauncher);
+      if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N'))
+        return handle(closeLauncher);
+      // Digit shortcut: 1–9 picks the corresponding row. Skipped when
+      // a modifier is held so things like ⌘1 (browser tab switch) and
+      // ⌘+ aren't swallowed.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
+        const i = parseInt(e.key, 10) - 1;
+        if (i < launcherState.items.length) {
+          return handle(() => {
+            launcherState.selected = i;
+            activateLauncherSelection();
+          });
+        }
       }
     }
-  }
-  if (!editorEl.classList.contains('hidden')) {
-    return; // editor's own listener handles keys
-  }
-  const _palette = document.getElementById('command-palette');
-  if (_palette && !_palette.classList.contains('hidden')) {
-    return; // palette's own listener handles keys
-  }
-  const _settings = document.getElementById('settings');
-  if (_settings && !_settings.classList.contains('hidden')) {
-    // Unlike the help overlay, settings is a form with many focusable
-    // inputs, so Tab is left alone to walk between them. The modal's
-    // own listener also handles Escape and consumes it; this branch is
-    // the fallback for when focus is still on the terminal, plus the
-    // ⌘, toggle-to-close.
-    if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === ',')) {
+    if (!editorEl.classList.contains('hidden')) {
+      return; // editor's own listener handles keys
+    }
+    const _palette = document.getElementById('command-palette');
+    if (_palette && !_palette.classList.contains('hidden')) {
+      return; // palette's own listener handles keys
+    }
+    const _settings = document.getElementById('settings');
+    if (_settings && !_settings.classList.contains('hidden')) {
+      // Unlike the help overlay, settings is a form with many focusable
+      // inputs, so Tab is left alone to walk between them. The modal's
+      // own listener also handles Escape and consumes it; this branch is
+      // the fallback for when focus is still on the terminal, plus the
+      // ⌘, toggle-to-close.
+      if (e.key === 'Escape' || (cmdOrCtrl(e) && e.key === ',')) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSettings();
+      }
+      return; // settings owns the keyboard while open
+    }
+    const _help = document.getElementById('help-overlay');
+    if (_help && !_help.classList.contains('hidden')) {
+      if (e.key === 'Escape' || isHelpOverlayKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeHelpOverlay();
+      } else if (e.key === 'Tab') {
+        // aria-modal promises focus stays inside the dialog. The close
+        // button is its only focusable element, so trap Tab on it —
+        // otherwise focus walks into the page (eventually a hidden
+        // terminal's textarea) and keystrokes leak behind the backdrop.
+        e.preventDefault();
+        e.stopPropagation();
+        document.getElementById('help-overlay-close')?.focus();
+      }
+      return; // overlay owns the keyboard while open
+    }
+
+    // Dead-session overlay: route Enter/Escape to the active session's
+    // overlay if it's shown. In grid mode the user can still click any
+    // tile's buttons directly; this just handles the focused tile.
+    if (state.activeId) {
+      const t = state.terms.get(state.activeId);
+      if (t?.deadOverlayShown) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          t._closeDead();
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          t._dismissDead();
+          return;
+        }
+      }
+    }
+
+    const swallow = () => {
       e.preventDefault();
       e.stopPropagation();
-      closeSettings();
-    }
-    return; // settings owns the keyboard while open
-  }
-  const _help = document.getElementById('help-overlay');
-  if (_help && !_help.classList.contains('hidden')) {
-    if (e.key === 'Escape' || isHelpOverlayKey(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-      closeHelpOverlay();
-    } else if (e.key === 'Tab') {
-      // aria-modal promises focus stays inside the dialog. The close
-      // button is its only focusable element, so trap Tab on it —
-      // otherwise focus walks into the page (eventually a hidden
-      // terminal's textarea) and keystrokes leak behind the backdrop.
-      e.preventDefault();
-      e.stopPropagation();
-      document.getElementById('help-overlay-close')?.focus();
-    }
-    return; // overlay owns the keyboard while open
-  }
+    };
 
-  // Dead-session overlay: route Enter/Escape to the active session's
-  // overlay if it's shown. In grid mode the user can still click any
-  // tile's buttons directly; this just handles the focused tile.
-  if (state.activeId) {
-    const t = state.terms.get(state.activeId);
-    if (t?.deadOverlayShown) {
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); t._closeDead(); return; }
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); t._dismissDead(); return; }
-    }
-  }
-
-  const swallow = () => { e.preventDefault(); e.stopPropagation(); };
-
-  // Ctrl+` opens an OS terminal at the active session's worktree.
-  // Mirrors VS Code; intentionally Ctrl on every platform — macOS
-  // reserves ⌘` for native window cycling, so we never bind to it.
-  // Handled before the ⌘/Ctrl gate below so it fires on mac too.
-  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'Backquote') {
-    swallow();
-    OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal'));
-    return;
-  }
-
-  // Session back / forward (Ctrl+- / Ctrl+Shift+- on mac, Ctrl+Alt+-
-  // / Ctrl+Alt+Shift+- elsewhere). Handled before the ⌘/Ctrl gate below
-  // for the same reason as Ctrl+` above: cmdOrCtrl rejects plain Ctrl on
-  // macOS, so a binding placed after it would never fire there.
-  const navDir = navHistoryKey(e, isMac);
-  if (navDir) {
-    swallow();
-    if (navDir === 'back') navBack();
-    else navForward();
-    return;
-  }
-
-  const meta = cmdOrCtrl(e);
-  if (!meta) return;
-
-  if (e.key === '=' || e.key === '+') {
-    swallow();
-    deps.bumpFontSize(+1);
-    return;
-  }
-  if (e.key === '-' || e.key === '_') {
-    swallow();
-    deps.bumpFontSize(-1);
-    return;
-  }
-  if (e.key === '0') {
-    swallow();
-    deps.resetFontSize();
-    return;
-  }
-
-  if ((e.key === 'k' || e.key === 'K') && e.shiftKey) {
-    swallow();
-    openCommandPalette();
-    return;
-  }
-  // Both ⌘/ and ⌘? open the shortcuts panel — see isHelpOverlayKey.
-  if (isHelpOverlayKey(e)) {
-    swallow();
-    openHelpOverlay();
-    return;
-  }
-  // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the File menu
-  // carries the same accelerator (see menu_darwin.go — Wails v2 can't
-  // append to the native App menu); on Windows/Linux buildAppMenu returns
-  // nil (see menu_other.go), so this is the only path.
-  if (e.key === ',') {
-    swallow();
-    openSettings();
-    return;
-  }
-  if (e.key === 'p' || e.key === 'P') {
-    swallow();
-    if (e.shiftKey) duplicateActiveSessionChooseTool();
-    else duplicateActiveSession();
-  } else if (e.key === 't' || e.key === 'T') {
-    swallow();
-    if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
-    else openLauncher();
-  } else if (e.key === 'Backspace' && e.shiftKey) {
-    swallow();
-    deleteActiveProject();
-  } else if (e.key === 's' || e.key === 'S') {
-    swallow();
-    // Route through toggleSidebar so the keyboard path stays in
-    // lockstep with the menu / command-palette path (including the
-    // post-reflow refocus added for #208 R3). Inline class flips
-    // here previously skipped the refocus and stranded keystrokes
-    // on document.body after a prior window resize.
-    toggleSidebar();
-  } else if (e.key === 'g' || e.key === 'G') {
-    swallow();
-    if (e.shiftKey) {
-      setView(state.view === 'grid-all' ? 'single' : 'grid-all');
-    } else {
-      setView(state.view === 'grid-project' ? 'single' : 'grid-project');
-    }
-  } else if (e.key === 'Enter') {
-    // ⌘Enter mirrors ⌘G: in a grid mode it maximizes the active
-    // tile back to single mode; in single mode it expands to a
-    // per-project grid for context.
-    swallow();
-    if (state.view === 'single') setView('grid-project');
-    else setView('single');
-  } else if (e.key === 'n' || e.key === 'N') {
-    swallow();
-    if (e.shiftKey) {
-      OpenNewWindow().catch(reportFailure('new window'));
-    } else {
-      // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
-      openProjectEditor(null);
-    }
-  } else if (e.key === 'b' || e.key === 'B') {
-    swallow();
-    if (e.shiftKey) jumpBack();
-    else jumpToAttention();
-  } else if (e.key === 'w' || e.key === 'W') {
-    swallow();
-    if (e.shiftKey) {
-      CloseWindow().catch(reportFailure('close window'));
-    } else if (state.activeId) {
-      // force=false: lets the daemon refuse with worktree_dirty if
-      // the worktree has uncommitted changes; the control:error
-      // handler then shows a confirm dialog and retries with force.
-      KillSession(state.activeId, false).catch(reportFailure('close'));
-    }
-  } else if (/^[1-9]$/.test(e.key)) {
-    const idx = parseInt(e.key, 10) - 1;
-    const ord = orderedSessions();
-    if (idx < ord.length) {
+    // Ctrl+` opens an OS terminal at the active session's worktree.
+    // Mirrors VS Code; intentionally Ctrl on every platform — macOS
+    // reserves ⌘` for native window cycling, so we never bind to it.
+    // Handled before the ⌘/Ctrl gate below so it fires on mac too.
+    if (
+      e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      e.code === 'Backquote'
+    ) {
       swallow();
-      switchTo(ord[idx].id);
+      OpenTerminalAt(activeCwd()).catch(reportFailure('open terminal'));
+      return;
     }
-  } else if (e.key === 'ArrowLeft') {
-    swallow();
-    if (state.view !== 'single') gridSpatialMove(-1, 0);
-    else moveActiveSession(-1, e.shiftKey);
-  } else if (e.key === 'ArrowRight') {
-    swallow();
-    if (state.view !== 'single') gridSpatialMove(+1, 0);
-    else moveActiveSession(+1, e.shiftKey);
-  } else if (e.key === 'ArrowUp') {
-    swallow();
-    if (state.view !== 'single') gridSpatialMove(0, -1);
-    else moveActiveSession(-1, e.shiftKey);
-  } else if (e.key === 'ArrowDown') {
-    swallow();
-    if (state.view !== 'single') gridSpatialMove(0, +1);
-    else moveActiveSession(+1, e.shiftKey);
-  } else if (e.key === '[') {
-    swallow();
-    shiftActiveProject(-1);
-  } else if (e.key === ']') {
-    swallow();
-    shiftActiveProject(+1);
-  }
-}, true);
+
+    // Session back / forward (Ctrl+- / Ctrl+Shift+- on mac, Ctrl+Alt+-
+    // / Ctrl+Alt+Shift+- elsewhere). Handled before the ⌘/Ctrl gate below
+    // for the same reason as Ctrl+` above: cmdOrCtrl rejects plain Ctrl on
+    // macOS, so a binding placed after it would never fire there.
+    const navDir = navHistoryKey(e, isMac);
+    if (navDir) {
+      swallow();
+      if (navDir === 'back') navBack();
+      else navForward();
+      return;
+    }
+
+    const meta = cmdOrCtrl(e);
+    if (!meta) return;
+
+    if (e.key === '=' || e.key === '+') {
+      swallow();
+      deps.bumpFontSize(+1);
+      return;
+    }
+    if (e.key === '-' || e.key === '_') {
+      swallow();
+      deps.bumpFontSize(-1);
+      return;
+    }
+    if (e.key === '0') {
+      swallow();
+      deps.resetFontSize();
+      return;
+    }
+
+    if ((e.key === 'k' || e.key === 'K') && e.shiftKey) {
+      swallow();
+      openCommandPalette();
+      return;
+    }
+    // Both ⌘/ and ⌘? open the shortcuts panel — see isHelpOverlayKey.
+    if (isHelpOverlayKey(e)) {
+      swallow();
+      openHelpOverlay();
+      return;
+    }
+    // ⌘, / Ctrl+, — the standard Settings shortcut. On macOS the File menu
+    // carries the same accelerator (see menu_darwin.go — Wails v2 can't
+    // append to the native App menu); on Windows/Linux buildAppMenu returns
+    // nil (see menu_other.go), so this is the only path.
+    if (e.key === ',') {
+      swallow();
+      openSettings();
+      return;
+    }
+    if (e.key === 'p' || e.key === 'P') {
+      swallow();
+      if (e.shiftKey) duplicateActiveSessionChooseTool();
+      else duplicateActiveSession();
+    } else if (e.key === 't' || e.key === 'T') {
+      swallow();
+      if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
+      else openLauncher();
+    } else if (e.key === 'Backspace' && e.shiftKey) {
+      swallow();
+      deleteActiveProject();
+    } else if (e.key === 's' || e.key === 'S') {
+      swallow();
+      // Route through toggleSidebar so the keyboard path stays in
+      // lockstep with the menu / command-palette path (including the
+      // post-reflow refocus added for #208 R3). Inline class flips
+      // here previously skipped the refocus and stranded keystrokes
+      // on document.body after a prior window resize.
+      toggleSidebar();
+    } else if (e.key === 'g' || e.key === 'G') {
+      swallow();
+      if (e.shiftKey) {
+        setView(state.view === 'grid-all' ? 'single' : 'grid-all');
+      } else {
+        setView(state.view === 'grid-project' ? 'single' : 'grid-project');
+      }
+    } else if (e.key === 'Enter') {
+      // ⌘Enter mirrors ⌘G: in a grid mode it maximizes the active
+      // tile back to single mode; in single mode it expands to a
+      // per-project grid for context.
+      swallow();
+      if (state.view === 'single') setView('grid-project');
+      else setView('single');
+    } else if (e.key === 'n' || e.key === 'N') {
+      swallow();
+      if (e.shiftKey) {
+        OpenNewWindow().catch(reportFailure('new window'));
+      } else {
+        // ⌘N — new project. (⌥⌘N is reserved by macOS Spotlight.)
+        openProjectEditor(null);
+      }
+    } else if (e.key === 'b' || e.key === 'B') {
+      swallow();
+      if (e.shiftKey) jumpBack();
+      else jumpToAttention();
+    } else if (e.key === 'w' || e.key === 'W') {
+      swallow();
+      if (e.shiftKey) {
+        CloseWindow().catch(reportFailure('close window'));
+      } else if (state.activeId) {
+        // force=false: lets the daemon refuse with worktree_dirty if
+        // the worktree has uncommitted changes; the control:error
+        // handler then shows a confirm dialog and retries with force.
+        KillSession(state.activeId, false).catch(reportFailure('close'));
+      }
+    } else if (/^[1-9]$/.test(e.key)) {
+      const idx = parseInt(e.key, 10) - 1;
+      const ord = orderedSessions();
+      if (idx < ord.length) {
+        swallow();
+        switchTo(ord[idx].id);
+      }
+    } else if (e.key === 'ArrowLeft') {
+      swallow();
+      if (state.view !== 'single') gridSpatialMove(-1, 0);
+      else moveActiveSession(-1, e.shiftKey);
+    } else if (e.key === 'ArrowRight') {
+      swallow();
+      if (state.view !== 'single') gridSpatialMove(+1, 0);
+      else moveActiveSession(+1, e.shiftKey);
+    } else if (e.key === 'ArrowUp') {
+      swallow();
+      if (state.view !== 'single') gridSpatialMove(0, -1);
+      else moveActiveSession(-1, e.shiftKey);
+    } else if (e.key === 'ArrowDown') {
+      swallow();
+      if (state.view !== 'single') gridSpatialMove(0, +1);
+      else moveActiveSession(+1, e.shiftKey);
+    } else if (e.key === '[') {
+      swallow();
+      shiftActiveProject(-1);
+    } else if (e.key === ']') {
+      swallow();
+      shiftActiveProject(+1);
+    }
+  },
+  true,
+);
 
 // ---------- menu actions ----------
 //
@@ -445,20 +499,27 @@ const sessionExists = (id) => state.sessions.some((s) => s.id === id);
 // session", so it stays restored.
 function navGo(id) {
   deps.withoutNavHistory(() => {
-    if (state.minimized.has(id)) restoreSession(id); // un-minimize, then switchTo
+    if (state.minimized.has(id))
+      restoreSession(id); // un-minimize, then switchTo
     else switchTo(id);
   });
 }
 
 export function navBack() {
   const id = goBack(state.nav, state.activeId, sessionExists);
-  if (!id) { flashStatus('nothing to go back to'); return; }
+  if (!id) {
+    flashStatus('nothing to go back to');
+    return;
+  }
   navGo(id);
 }
 
 export function navForward() {
   const id = goForward(state.nav, state.activeId, sessionExists);
-  if (!id) { flashStatus('nothing to go forward to'); return; }
+  if (!id) {
+    flashStatus('nothing to go forward to');
+    return;
+  }
   navGo(id);
 }
 
@@ -472,8 +533,16 @@ export function switchToNthSession(n) {
 // here so the user never needs the devtools console to flip the gate.
 function toggleScrollDebug() {
   let on = false;
-  try { on = localStorage.getItem('hive.debug') === '1'; } catch { /* storage off */ }
-  try { localStorage.setItem('hive.debug', on ? '0' : '1'); } catch { /* storage off */ }
+  try {
+    on = localStorage.getItem('hive.debug') === '1';
+  } catch {
+    /* storage off */
+  }
+  try {
+    localStorage.setItem('hive.debug', on ? '0' : '1');
+  } catch {
+    /* storage off */
+  }
   // The reload is intentional and unavoidable: trace.js reads hive.debug
   // once at module load, so the new state only takes effect on a fresh load.
   // The menu label says "(Reloads)" so this isn't a surprise.
@@ -485,10 +554,17 @@ function toggleScrollDebug() {
 // window.__hive_dumpscroll (trace.js) so the dump shape matches what the
 // e2e harness and bug reports expect.
 function copyScrollTrace() {
-  const dump = typeof window.__hive_dumpscroll === 'function'
-    ? window.__hive_dumpscroll()
-    : { enabled: false, ring: window.__hive_scrolltrace || [], lastJump: null };
-  SetClipboardText(JSON.stringify(dump)).catch(reportFailure('copy debug trace'));
+  const dump =
+    typeof window.__hive_dumpscroll === 'function'
+      ? window.__hive_dumpscroll()
+      : {
+          enabled: false,
+          ring: window.__hive_scrolltrace || [],
+          lastJump: null,
+        };
+  SetClipboardText(JSON.stringify(dump)).catch(
+    reportFailure('copy debug trace'),
+  );
   const n = dump.ring?.length ?? 0;
   const body = dump.enabled
     ? `Copied ${n} trace event${n === 1 ? '' : 's'} to the clipboard.`
@@ -498,7 +574,8 @@ function copyScrollTrace() {
 
 const menuActions = {
   'menu:new-session': () => openLauncher(),
-  'menu:new-session-worktree': () => openLauncher(undefined, { forceWorktree: true }),
+  'menu:new-session-worktree': () =>
+    openLauncher(undefined, { forceWorktree: true }),
   'menu:duplicate-session': duplicateActiveSession,
   'menu:duplicate-session-choose-tool': duplicateActiveSessionChooseTool,
   'menu:restart-session': restartActiveSession,
@@ -506,7 +583,10 @@ const menuActions = {
   'menu:delete-project': () => deleteActiveProject(),
   'menu:command-palette': () => openCommandPalette(),
   'menu:settings': () => openSettings(),
-  'menu:close-session': () => { if (state.activeId) KillSession(state.activeId, false).catch(reportFailure('close')); },
+  'menu:close-session': () => {
+    if (state.activeId)
+      KillSession(state.activeId, false).catch(reportFailure('close'));
+  },
   'menu:zoom-in': () => deps.bumpFontSize(+1),
   'menu:zoom-out': () => deps.bumpFontSize(-1),
   'menu:zoom-reset': () => deps.resetFontSize(),
@@ -553,7 +633,9 @@ export async function confirmAndDeleteProject(proj) {
     : `Delete project "${proj.name}"?`;
   const ok = await Confirm('Delete project', msg);
   if (!ok) return;
-  KillProject(proj.id, sessions.length > 0).catch(reportFailure('delete project'));
+  KillProject(proj.id, sessions.length > 0).catch(
+    reportFailure('delete project'),
+  );
 }
 
 export function deleteActiveProject() {
@@ -575,7 +657,10 @@ export function moveActiveSession(delta, reorder) {
   if (reorder) {
     const cur = state.sessions.find((s) => s.id === state.activeId);
     const sib = state.sessions
-      .filter((s) => (s.projectId ?? s.project_id) === (cur.projectId ?? cur.project_id))
+      .filter(
+        (s) =>
+          (s.projectId ?? s.project_id) === (cur.projectId ?? cur.project_id),
+      )
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const sIdx = sib.findIndex((s) => s.id === state.activeId);
     const next = (sIdx + delta + sib.length) % sib.length;

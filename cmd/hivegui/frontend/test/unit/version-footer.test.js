@@ -7,7 +7,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // injected, so nothing else off the bridge is touched.
 vi.mock('../../src/bridge.js', () => ({ EventsOn: vi.fn() }));
 
-const { formatBinary, renderVersionFooter } = await import('../../src/app/version-footer.js');
+const { formatBinary, renderVersionFooter } = await import(
+  '../../src/app/version-footer.js'
+);
 
 // Minimal stand-ins for the footer elements. renderVersionFooter takes
 // them injected precisely so this file needs no live document.
@@ -37,7 +39,9 @@ beforeEach(() => {
 
 describe('formatBinary', () => {
   it('renders name, release and build when all are known', () => {
-    expect(formatBinary('hive', 'v0.4.2', 'a3f9c1')).toBe('hive v0.4.2 (a3f9c1)');
+    expect(formatBinary('hive', 'v0.4.2', 'a3f9c1')).toBe(
+      'hive v0.4.2 (a3f9c1)',
+    );
   });
 
   it('omits the release for a daemon predating the Release wire field', () => {
@@ -58,13 +62,16 @@ describe('formatBinary', () => {
 
 describe('renderVersionFooter', () => {
   it('collapses to one line when the builds match', () => {
-    renderVersionFooter({
-      severity: 'match',
-      guiBuild: 'a3f9c1',
-      daemonBuild: 'a3f9c1',
-      guiRelease: 'v0.4.2',
-      daemonRelease: 'v0.4.2',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'match',
+        guiBuild: 'a3f9c1',
+        daemonBuild: 'a3f9c1',
+        guiRelease: 'v0.4.2',
+        daemonRelease: 'v0.4.2',
+      },
+      els,
+    );
 
     expect(els.gui.textContent).toBe('hive v0.4.2 (a3f9c1)');
     expect(els.daemon.hidden).toBe(true);
@@ -73,13 +80,16 @@ describe('renderVersionFooter', () => {
   });
 
   it('expands to two lines and flags mismatch when builds differ', () => {
-    renderVersionFooter({
-      severity: 'mismatch',
-      guiBuild: 'a3f9c1',
-      daemonBuild: 'b7e220',
-      guiRelease: 'v0.4.2',
-      daemonRelease: 'v0.4.1',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'mismatch',
+        guiBuild: 'a3f9c1',
+        daemonBuild: 'b7e220',
+        guiRelease: 'v0.4.2',
+        daemonRelease: 'v0.4.1',
+      },
+      els,
+    );
 
     expect(els.gui.textContent).toBe('hive v0.4.2 (a3f9c1)');
     expect(els.daemon.textContent).toBe('hived v0.4.1 (b7e220)');
@@ -88,13 +98,16 @@ describe('renderVersionFooter', () => {
   });
 
   it('falls back to build-only for an older daemon that sends no release', () => {
-    renderVersionFooter({
-      severity: 'mismatch',
-      guiBuild: 'a3f9c1',
-      daemonBuild: 'b7e220',
-      guiRelease: 'v0.4.2',
-      daemonRelease: '',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'mismatch',
+        guiBuild: 'a3f9c1',
+        daemonBuild: 'b7e220',
+        guiRelease: 'v0.4.2',
+        daemonRelease: '',
+      },
+      els,
+    );
 
     expect(els.daemon.textContent).toBe('hived (b7e220)');
     expect(els.daemon.textContent).not.toContain('()');
@@ -104,13 +117,16 @@ describe('renderVersionFooter', () => {
     // "unknown" means one side didn't advertise a build. Worth showing
     // in full, but it isn't evidence of an actual version conflict, so
     // it must not get the warning colour.
-    renderVersionFooter({
-      severity: 'unknown',
-      guiBuild: 'a3f9c1',
-      daemonBuild: '',
-      guiRelease: 'v0.4.2',
-      daemonRelease: '',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'unknown',
+        guiBuild: 'a3f9c1',
+        daemonBuild: '',
+        guiRelease: 'v0.4.2',
+        daemonRelease: '',
+      },
+      els,
+    );
 
     expect(els.daemon.hidden).toBe(false);
     expect(els.daemon.textContent).toBe('hived (unknown build)');
@@ -118,16 +134,28 @@ describe('renderVersionFooter', () => {
   });
 
   it('clears the mismatch flag when a later connect matches', () => {
-    renderVersionFooter({
-      severity: 'mismatch', guiBuild: 'a', daemonBuild: 'b',
-      guiRelease: 'v1', daemonRelease: 'v2',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'mismatch',
+        guiBuild: 'a',
+        daemonBuild: 'b',
+        guiRelease: 'v1',
+        daemonRelease: 'v2',
+      },
+      els,
+    );
     expect(root.classes.has('mismatch')).toBe(true);
 
-    renderVersionFooter({
-      severity: 'match', guiBuild: 'a', daemonBuild: 'a',
-      guiRelease: 'v1', daemonRelease: 'v1',
-    }, els);
+    renderVersionFooter(
+      {
+        severity: 'match',
+        guiBuild: 'a',
+        daemonBuild: 'a',
+        guiRelease: 'v1',
+        daemonRelease: 'v1',
+      },
+      els,
+    );
     expect(root.classes.has('mismatch')).toBe(false);
     expect(els.daemon.hidden).toBe(true);
   });

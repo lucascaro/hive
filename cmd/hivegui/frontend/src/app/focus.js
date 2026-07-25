@@ -5,18 +5,21 @@
 
 import { state } from './state.js';
 import {
-  decideFocusAction, ACTION_CLEAR, ACTION_PRESERVE, ACTION_FOCUS,
+  decideFocusAction,
+  ACTION_CLEAR,
+  ACTION_PRESERVE,
+  ACTION_FOCUS,
 } from '../lib/focus.js';
 import { anyModalOpen } from './modals/registry.js';
 import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 
-let deps = {
+let _deps = {
   ensureTerm: () => {},
 };
 
 export function initFocus(injected) {
-  deps = injected;
+  _deps = injected;
 }
 
 // setActive centralizes "the focused session changed" so every code
@@ -32,7 +35,11 @@ let _navSuppress = false;
 
 export function withoutNavHistory(fn) {
   _navSuppress = true;
-  try { return fn(); } finally { _navSuppress = false; }
+  try {
+    return fn();
+  } finally {
+    _navSuppress = false;
+  }
 }
 
 export function setActive(id) {
@@ -42,7 +49,8 @@ export function setActive(id) {
   // (session-term.js), gridSpatialMove / shiftActiveProject /
   // minimizeSession (view.js). "No matter how you switched" is the
   // feature, so the hook has to sit on the choke point.
-  if (!_navSuppress && id && id !== state.activeId) pushNav(state.nav, state.activeId);
+  if (!_navSuppress && id && id !== state.activeId)
+    pushNav(state.nav, state.activeId);
   if (id) {
     state.attention.delete(id);
     state.terms.get(id)?.host.classList.remove('attention');
@@ -107,7 +115,10 @@ document.addEventListener(
   (e) => {
     const g = _focusGuard;
     if (!g) return;
-    if (performance.now() > g.until) { _focusGuard = null; return; }
+    if (performance.now() > g.until) {
+      _focusGuard = null;
+      return;
+    }
     if (state.activeId !== g.id) return; // active tile changed → let it go
     if (focusSnapshot(g.id).modalOpen) return; // modal/rename owns keyboard
     const st = state.terms.get(g.id);
@@ -138,12 +149,15 @@ export function setFocusedTile(id) {
   // (showSingle / renderGrid / appendChild / xterm.open) settles before we
   // read activeElement and move focus.
   armFocusGuard(id);
-  requestAnimationFrame(() => applyFocus(id, /*attempt=*/0));
+  requestAnimationFrame(() => applyFocus(id, /*attempt=*/ 0));
 }
 
 function applyFocus(id, attempt) {
   const st = state.terms.get(id);
-  if (!st) { sweepFocusBorder(); return; }
+  if (!st) {
+    sweepFocusBorder();
+    return;
+  }
   // Freeze probe: count + record every focus-drive attempt. Several
   // setFocusedTile() calls fire during a grid switch and each arms an
   // 8-frame rAF retry chain; in grid mode with many tiles those chains
@@ -154,7 +168,9 @@ function applyFocus(id, attempt) {
     scrollTrace.count('focusApply');
     const ae = document.activeElement;
     scrollTrace.rec('focus-apply', {
-      id, attempt, view: state.view,
+      id,
+      attempt,
+      view: state.view,
       ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
     });
   }
@@ -236,28 +252,34 @@ function focusSnapshot(id) {
 }
 
 function debugFocusEnabled() {
-  try { return localStorage.getItem('hive.debug') === '1'; } catch { return false; }
+  try {
+    return localStorage.getItem('hive.debug') === '1';
+  } catch {
+    return false;
+  }
 }
 
 function scheduleFocusConsistencyCheck(id) {
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    const st = state.terms.get(id);
-    if (!st) return;
-    const ta = st.host.querySelector('.xterm-helper-textarea');
-    const ae = document.activeElement;
-    const focusedHost = ae ? ae.closest('.term-host') : null;
-    if (focusedHost !== st.host || ae !== ta) {
-      // eslint-disable-next-line no-console
-      console.warn('[focus] inconsistent state', {
-        view: state.view,
-        activeId: state.activeId,
-        wantId: id,
-        aeTag: ae ? ae.tagName : null,
-        aeClass: ae ? ae.className : null,
-        focusedHostMatches: focusedHost === st.host,
-      });
-    }
-  }));
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const st = state.terms.get(id);
+      if (!st) return;
+      const ta = st.host.querySelector('.xterm-helper-textarea');
+      const ae = document.activeElement;
+      const focusedHost = ae ? ae.closest('.term-host') : null;
+      if (focusedHost !== st.host || ae !== ta) {
+        // eslint-disable-next-line no-console
+        console.warn('[focus] inconsistent state', {
+          view: state.view,
+          activeId: state.activeId,
+          wantId: id,
+          aeTag: ae ? ae.tagName : null,
+          aeClass: ae ? ae.className : null,
+          focusedHostMatches: focusedHost === st.host,
+        });
+      }
+    }),
+  );
 }
 
 // focusActiveTerm / refocusActiveTerm are thin wrappers retained so

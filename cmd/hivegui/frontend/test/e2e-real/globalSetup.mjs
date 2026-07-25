@@ -10,7 +10,6 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +36,8 @@ function waitForFile(p, timeoutMs) {
   return new Promise((resolve, reject) => {
     const tick = () => {
       if (fs.existsSync(p)) return resolve();
-      if (Date.now() > deadline) return reject(new Error(`timeout waiting for ${p}`));
+      if (Date.now() > deadline)
+        return reject(new Error(`timeout waiting for ${p}`));
       setTimeout(tick, 25);
     };
     tick();
@@ -45,7 +45,7 @@ function waitForFile(p, timeoutMs) {
 }
 
 async function readBridgeUrl(stdout, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
+  const _deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     let buf = '';
     const onData = (chunk) => {
@@ -59,7 +59,11 @@ async function readBridgeUrl(stdout, timeoutMs) {
     stdout.on('data', onData);
     setTimeout(() => {
       stdout.off('data', onData);
-      reject(new Error(`bridge URL not printed within ${timeoutMs}ms; got: ${buf.slice(0, 200)}`));
+      reject(
+        new Error(
+          `bridge URL not printed within ${timeoutMs}ms; got: ${buf.slice(0, 200)}`,
+        ),
+      );
     }, timeoutMs);
   });
 }
@@ -88,10 +92,14 @@ export default async function globalSetup() {
   buildBinary('./cmd/hived-ws-bridge', bridgeBin);
 
   // Spawn hived. The wire-protocol log tee lands under stateDir.
-  const hived = spawn(hivedBin, ['--socket', sock, '--shell', '/bin/bash', '--cols', '80', '--rows', '24'], {
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const hived = spawn(
+    hivedBin,
+    ['--socket', sock, '--shell', '/bin/bash', '--cols', '80', '--rows', '24'],
+    {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   hived.stderr.on('data', (b) => process.stderr.write(`[hived] ${b}`));
   await waitForFile(sock, 5000);
 

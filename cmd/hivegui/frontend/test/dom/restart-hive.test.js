@@ -38,7 +38,9 @@ beforeAll(async () => {
       <button id="update-banner-dismiss"></button>
     </div>
     <div id="status"></div>`;
-  ({ restartHive, isDaemonRestarting } = await import('../../src/app/banners.js'));
+  ({ restartHive, isDaemonRestarting } = await import(
+    '../../src/app/banners.js'
+  ));
   bannerEl = document.getElementById('daemon-banner');
   bannerText = document.getElementById('daemon-banner-text');
 });
@@ -68,7 +70,9 @@ describe('restartHive', () => {
     bridge.RestartDaemon.mockRejectedValue(new Error('hived still answering'));
     await restartHive();
     expect(bannerEl.classList.contains('hidden')).toBe(false);
-    expect(bannerText.textContent).toMatch(/Restart failed.*hived still answering/);
+    expect(bannerText.textContent).toMatch(
+      /Restart failed.*hived still answering/,
+    );
   });
 
   // events.js reads this to suppress the red "control disconnected"
@@ -87,11 +91,14 @@ describe('restartHive re-entrancy', () => {
   it('ignores a second invocation while one is in flight', async () => {
     let releaseConfirm;
     bridge.Confirm.mockImplementation(
-      () => new Promise((resolve) => { releaseConfirm = () => resolve(true); }),
+      () =>
+        new Promise((resolve) => {
+          releaseConfirm = () => resolve(true);
+        }),
     );
 
     const first = restartHive();
-    const second = restartHive();   // must be a no-op, not a second run
+    const second = restartHive(); // must be a no-op, not a second run
     releaseConfirm();
     await Promise.all([first, second]);
 

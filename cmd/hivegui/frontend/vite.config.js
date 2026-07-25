@@ -26,7 +26,10 @@ export default defineConfig({
       enforce: 'pre',
       resolveId(id, _importer) {
         if (!substitute) return null;
-        if (id === '../wailsjs/go/main/App' || id === '../wailsjs/runtime/runtime') {
+        if (
+          id === '../wailsjs/go/main/App' ||
+          id === '../wailsjs/runtime/runtime'
+        ) {
           return substitute;
         }
         return null;

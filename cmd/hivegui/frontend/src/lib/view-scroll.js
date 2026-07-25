@@ -45,7 +45,7 @@
 export function snapVisibleTermsToBottom(terms) {
   if (!terms) return;
   for (const st of terms) {
-    if (!st || !st.attached) continue;
+    if (!st?.attached) continue;
     if (!st.body || st.body.clientHeight === 0) continue;
     if (st.term && typeof st.term.scrollToBottom === 'function') {
       st.term.scrollToBottom();

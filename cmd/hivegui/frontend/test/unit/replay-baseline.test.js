@@ -32,7 +32,9 @@ describe('applyRebaseline', () => {
     expect(st._replayBaselineCols).toBe(84);
     // After rebaseline, the very next resize at the same width must not
     // cross the >=4 threshold.
-    expect(shouldRequestReplay(st._replayBaselineCols, st.term.cols)).toBe(false);
+    expect(shouldRequestReplay(st._replayBaselineCols, st.term.cols)).toBe(
+      false,
+    );
   });
 
   it('R2: after a >=4 col delta from minimize/restore, rebaseline prevents the next _onBodyResize from firing a replay', () => {
@@ -44,7 +46,9 @@ describe('applyRebaseline', () => {
     // so the inert reflow doesn't trip the threshold.
     const st = makeSt({ cols: 80, baseline: 60 });
     applyRebaseline(st);
-    expect(shouldRequestReplay(st._replayBaselineCols, st.term.cols)).toBe(false);
+    expect(shouldRequestReplay(st._replayBaselineCols, st.term.cols)).toBe(
+      false,
+    );
   });
 
   it('clears a pending debounced replay timer so a queued spurious replay does not fire', () => {

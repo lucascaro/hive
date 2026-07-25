@@ -9,9 +9,16 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 
 import {
-  OpenSession, CloseAttach, WriteStdin, ResizeSession,
-  RequestScrollbackReplay, KillSession, SetClipboardText,
-  ClipboardGetText, OpenURL, UpdateSession,
+  OpenSession,
+  CloseAttach,
+  WriteStdin,
+  ResizeSession,
+  RequestScrollbackReplay,
+  KillSession,
+  SetClipboardText,
+  ClipboardGetText,
+  OpenURL,
+  UpdateSession,
 } from '../bridge.js';
 import { state } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
@@ -19,9 +26,15 @@ import { isMac } from '../lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import {
-  shouldRefreshOnVisibility, recoverFromContextLoss, bindDprWatcher,
+  shouldRefreshOnVisibility,
+  recoverFromContextLoss,
+  bindDprWatcher,
 } from '../lib/renderer-recovery.js';
-import { acquireWebglSlot, releaseWebglSlot, recordWebglLoss } from '../lib/webgl-budget.js';
+import {
+  acquireWebglSlot,
+  releaseWebglSlot,
+  recordWebglLoss,
+} from '../lib/webgl-budget.js';
 import { LogFrontend } from '../bridge.js';
 
 // A WebGL context that dies, gets reattached, and dies again in a tight
@@ -33,24 +46,44 @@ const WEBGL_LOSS_STORM_WINDOW_MS = 10000;
 
 // Best-effort disk log — the webview console is /dev/null under
 // LaunchServices, so renderer/freeze evidence has nowhere else to land.
-function feLog(msg) { try { LogFrontend(msg); } catch { /* bridge absent in tests */ } }
+function feLog(msg) {
+  try {
+    LogFrontend(msg);
+  } catch {
+    /* bridge absent in tests */
+  }
+}
 import {
-  shouldRequestReplay, decideResizeReplay, REPLAY_DEBOUNCE_MS, applyRebaseline,
+  shouldRequestReplay,
+  decideResizeReplay,
+  REPLAY_DEBOUNCE_MS,
+  applyRebaseline,
 } from '../lib/scrollback.js';
 import { scrollTrace, snapshotScrollJump } from './trace.js';
 import { classifyViewportMove } from '../lib/scroll-debug.js';
-import { wheelToScrollLines, shouldScrollViewport } from '../lib/wheel-scroll.js';
+import {
+  wheelToScrollLines,
+  shouldScrollViewport,
+} from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
-import { minimizeSession, updateAppTitle, showSingle, renderGrid } from './view.js';
+import {
+  minimizeSession,
+  updateAppTitle,
+  showSingle,
+  renderGrid,
+} from './view.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 import { beginInlineRename } from './inline-rename.js';
 
-
 // Monotonic millisecond clock for the scroll-jump detector. Falls back
 // to 0 where performance isn't available (never in a real renderer).
 function nowMs() {
-  try { return performance.now(); } catch { return 0; }
+  try {
+    return performance.now();
+  } catch {
+    return 0;
+  }
 }
 
 // isClick tells a click from a drag by squared distance between
@@ -127,7 +160,14 @@ export class SessionTerm {
       e.stopPropagation();
       minimizeSession(this.info.id);
     });
-    this.header.append(this.tileColor, this.tileName, this.tileWorktree, this.tileTermTitle, this.tileProject, this.tileMinimize);
+    this.header.append(
+      this.tileColor,
+      this.tileName,
+      this.tileWorktree,
+      this.tileTermTitle,
+      this.tileProject,
+      this.tileMinimize,
+    );
 
     this.body = document.createElement('div');
     this.body.className = 'term-body';
@@ -147,7 +187,9 @@ export class SessionTerm {
       // Route OSC 8 hyperlinks (used by Claude CLI and others) through
       // the OS default browser via the Wails backend.
       linkHandler: {
-        activate: (_e, uri) => { if (uri) OpenURL(uri).catch(reportFailure('open link')); },
+        activate: (_e, uri) => {
+          if (uri) OpenURL(uri).catch(reportFailure('open link'));
+        },
       },
     });
     this.fit = new FitAddon();
@@ -186,10 +228,12 @@ export class SessionTerm {
     // the OS default browser. Hover underlines the URL; click (or
     // ⌘-click when mouse reporting is active) follows it.
     try {
-      this.term.loadAddon(new WebLinksAddon((event, uri) => {
-        if (uri) OpenURL(uri).catch(reportFailure('open link'));
-      }));
-    } catch (err) {
+      this.term.loadAddon(
+        new WebLinksAddon((_event, uri) => {
+          if (uri) OpenURL(uri).catch(reportFailure('open link'));
+        }),
+      );
+    } catch (_err) {
       // Non-fatal; sessions still work without clickable links.
     }
 
@@ -202,37 +246,46 @@ export class SessionTerm {
     // process it and call activate.
     const screen = this.body.querySelector('.xterm-screen');
     if (screen) {
-      screen.addEventListener('mousedown', (e) => {
-        const link = this.term._core?.linkifier?.currentLink;
-        if (link && link.link) {
-          this._pendingLink = link.link;
-          this._pendingLinkX = e.clientX;
-          this._pendingLinkY = e.clientY;
-          // Stop all other handlers — both the terminal's mouse-
-          // protocol handler and the Linkifier. We call activate
-          // manually on mouseup.
-          e.stopImmediatePropagation();
-        } else {
+      screen.addEventListener(
+        'mousedown',
+        (e) => {
+          const link = this.term._core?.linkifier?.currentLink;
+          if (link?.link) {
+            this._pendingLink = link.link;
+            this._pendingLinkX = e.clientX;
+            this._pendingLinkY = e.clientY;
+            // Stop all other handlers — both the terminal's mouse-
+            // protocol handler and the Linkifier. We call activate
+            // manually on mouseup.
+            e.stopImmediatePropagation();
+          } else {
+            this._pendingLink = null;
+          }
+        },
+        { capture: true },
+      );
+      screen.addEventListener(
+        'mouseup',
+        (e) => {
+          if (!this._pendingLink) return;
+          // Only treat as a click if the mouse barely moved (not a drag).
+          const dx = e.clientX - this._pendingLinkX;
+          const dy = e.clientY - this._pendingLinkY;
+          if (isClick(dx, dy)) {
+            e.stopImmediatePropagation();
+            this._pendingLink.activate(e, this._pendingLink.text);
+          }
           this._pendingLink = null;
-        }
-      }, { capture: true });
-      screen.addEventListener('mouseup', (e) => {
-        if (!this._pendingLink) return;
-        // Only treat as a click if the mouse barely moved (not a drag).
-        const dx = e.clientX - this._pendingLinkX;
-        const dy = e.clientY - this._pendingLinkY;
-        if (isClick(dx, dy)) {
-          e.stopImmediatePropagation();
-          this._pendingLink.activate(e, this._pendingLink.text);
-        }
-        this._pendingLink = null;
-      }, { capture: true });
+        },
+        { capture: true },
+      );
 
       // Click-to-position: send arrow keys to move the line-editor cursor
       // to the clicked cell. Best-effort — only safe in the normal buffer
       // with mouse reporting off; alt-buffer TUIs (vim/htop) own the screen.
       screen.addEventListener('mousedown', (e) => {
-        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey)
+          return;
         this._pendingClickX = e.clientX;
         this._pendingClickY = e.clientY;
         this._pendingClick = true;
@@ -246,17 +299,26 @@ export class SessionTerm {
         const buf = this.term.buffer.active;
         // Same "is this gesture ours to interpret?" test as the wheel
         // handler — only in the normal buffer with mouse reporting off.
-        if (!shouldScrollViewport({
-          bufferType: buf?.type,
-          mouseTrackingMode: this.term.modes?.mouseTrackingMode,
-        })) return;
+        if (
+          !shouldScrollViewport({
+            bufferType: buf?.type,
+            mouseTrackingMode: this.term.modes?.mouseTrackingMode,
+          })
+        )
+          return;
         const rect = screen.getBoundingClientRect();
         const cellW = rect.width / this.term.cols;
         const cellH = rect.height / this.term.rows;
         if (!(cellW > 0) || !(cellH > 0)) return;
         const col = Math.floor((e.clientX - rect.left) / cellW);
         const row = Math.floor((e.clientY - rect.top) / cellH);
-        if (col < 0 || row < 0 || col >= this.term.cols || row >= this.term.rows) return;
+        if (
+          col < 0 ||
+          row < 0 ||
+          col >= this.term.cols ||
+          row >= this.term.rows
+        )
+          return;
         // Only act when click is on the cursor's row — otherwise we'd send
         // arrow-key spam that line editors partially consume and partially
         // echo as literal "[D".
@@ -270,7 +332,8 @@ export class SessionTerm {
         const target = Math.min(col, lastCol);
         const delta = target - buf.cursorX;
         if (delta === 0) return;
-        const seq = delta > 0 ? '\x1b[C'.repeat(delta) : '\x1b[D'.repeat(-delta);
+        const seq =
+          delta > 0 ? '\x1b[C'.repeat(delta) : '\x1b[D'.repeat(-delta);
         this._writePty(seq);
       });
     }
@@ -285,7 +348,13 @@ export class SessionTerm {
       // macOS Cmd+Backspace → Ctrl+U (kill to start of line). Browser doesn't
       // translate this for us when xterm's helper-textarea is focused. Gated
       // to mac so the Windows key on Linux/Windows can't accidentally fire it.
-      if (isMac && e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace') {
+      if (
+        isMac &&
+        e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        e.key === 'Backspace'
+      ) {
         e.preventDefault();
         this._writePty('\x15');
         return false;
@@ -329,9 +398,11 @@ export class SessionTerm {
         return false;
       }
       if (key === 'v') {
-        ClipboardGetText().then((text) => {
-          if (text) this._writePty(text);
-        }).catch(reportFailure('paste'));
+        ClipboardGetText()
+          .then((text) => {
+            if (text) this._writePty(text);
+          })
+          .catch(reportFailure('paste'));
         return false;
       }
       if (key === 'a') {
@@ -372,7 +443,8 @@ export class SessionTerm {
     this._writePty = (data) => {
       const bytes = new TextEncoder().encode(data);
       let bin = '';
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      for (let i = 0; i < bytes.length; i++)
+        bin += String.fromCharCode(bytes[i]);
       // Intentionally no reportFailure: this fires per keystroke, so a
       // dead daemon would flood the status bar with one error per key.
       // The disconnect itself is surfaced once ("control disconnected").
@@ -462,37 +534,49 @@ export class SessionTerm {
     // terminal become unscrollable) on WKWebView builds that report
     // wheel events in line/page mode — see lib/wheel-scroll.js.
     const linesPerPixel = 1 / 14; // ~one line per ~14 px of delta
-    const maxLinesPerEvent = 8;   // about half a screen on a small tile
-    this.host.addEventListener('wheel', (e) => {
-      // Only take over the wheel in the normal buffer with mouse reporting
-      // off. In the alternate buffer (Claude, vim, htop) scrollLines is a
-      // no-op, and with mouse tracking on the app expects the wheel as mouse
-      // events — swallowing it here is why Claude wouldn't scroll while pi
-      // (a plain line buffer) did. Let xterm handle those natively.
-      const buf = this.term.buffer.active;
-      if (!shouldScrollViewport({
-        bufferType: buf?.type,
-        mouseTrackingMode: this.term.modes?.mouseTrackingMode,
-      })) return;
-      e.preventDefault();
-      e.stopPropagation();
-      // Stamp user-scroll intent so the jump detector attributes the
-      // resulting onScroll to the user, not to a renderer/replay event.
-      this._lastUserScrollTs = nowMs();
-      const lines = wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent });
-      // Gated wheel trace: on a machine where the terminal won't scroll,
-      // set localStorage `hive.debug` = '1', reload, try to scroll, then
-      // dump window.__hive_scrolltrace to see the raw delta the webview
-      // delivered vs. the line count we derived from it.
-      if (scrollTrace.rec.enabled) {
-        scrollTrace.rec('wheel', {
-          id: this.info.id,
-          deltaY: e.deltaY, deltaMode: e.deltaMode,
-          wheelDeltaY: e.wheelDeltaY, lines,
+    const maxLinesPerEvent = 8; // about half a screen on a small tile
+    this.host.addEventListener(
+      'wheel',
+      (e) => {
+        // Only take over the wheel in the normal buffer with mouse reporting
+        // off. In the alternate buffer (Claude, vim, htop) scrollLines is a
+        // no-op, and with mouse tracking on the app expects the wheel as mouse
+        // events — swallowing it here is why Claude wouldn't scroll while pi
+        // (a plain line buffer) did. Let xterm handle those natively.
+        const buf = this.term.buffer.active;
+        if (
+          !shouldScrollViewport({
+            bufferType: buf?.type,
+            mouseTrackingMode: this.term.modes?.mouseTrackingMode,
+          })
+        )
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Stamp user-scroll intent so the jump detector attributes the
+        // resulting onScroll to the user, not to a renderer/replay event.
+        this._lastUserScrollTs = nowMs();
+        const lines = wheelToScrollLines(e, {
+          linesPerPixel,
+          maxLinesPerEvent,
         });
-      }
-      if (lines !== 0) this.term.scrollLines(lines);
-    }, { capture: true, passive: false });
+        // Gated wheel trace: on a machine where the terminal won't scroll,
+        // set localStorage `hive.debug` = '1', reload, try to scroll, then
+        // dump window.__hive_scrolltrace to see the raw delta the webview
+        // delivered vs. the line count we derived from it.
+        if (scrollTrace.rec.enabled) {
+          scrollTrace.rec('wheel', {
+            id: this.info.id,
+            deltaY: e.deltaY,
+            deltaMode: e.deltaMode,
+            wheelDeltaY: e.wheelDeltaY,
+            lines,
+          });
+        }
+        if (lines !== 0) this.term.scrollLines(lines);
+      },
+      { capture: true, passive: false },
+    );
 
     // Follow-intent tracking (ALWAYS ON — this is the fix for the
     // scroll-jump bug). "Is the user at the bottom?" must be derived from
@@ -516,12 +600,21 @@ export class SessionTerm {
     // Keyboard scrollback (Shift+PageUp/Down, Shift+Home/End) is user
     // intent too. xterm handles these internally; we only timestamp them
     // so the onScroll below attributes the resulting move to the user.
-    this.body.addEventListener('keydown', (e) => {
-      if (e.shiftKey && (e.key === 'PageUp' || e.key === 'PageDown'
-        || e.key === 'Home' || e.key === 'End')) {
-        this._lastUserScrollTs = nowMs();
-      }
-    }, { capture: true });
+    this.body.addEventListener(
+      'keydown',
+      (e) => {
+        if (
+          e.shiftKey &&
+          (e.key === 'PageUp' ||
+            e.key === 'PageDown' ||
+            e.key === 'Home' ||
+            e.key === 'End')
+        ) {
+          this._lastUserScrollTs = nowMs();
+        }
+      },
+      { capture: true },
+    );
 
     this.term.onScroll(() => {
       const buf = this.term.buffer.active;
@@ -533,9 +626,9 @@ export class SessionTerm {
       // Only a recent user gesture may change follow-intent. A move with
       // no gesture behind it is parse-driven cap-trim drift — ignore it,
       // so a wobbling viewport never clears "follow the bottom".
-      const userDriven = (now - this._lastUserScrollTs) <= USER_SCROLL_GRACE_MS;
+      const userDriven = now - this._lastUserScrollTs <= USER_SCROLL_GRACE_MS;
       if (userDriven) {
-        this._followBottom = (buf.baseY - to) <= STICKY_BOTTOM_LINES;
+        this._followBottom = buf.baseY - to <= STICKY_BOTTOM_LINES;
       }
 
       // Keep a FOLLOWING viewport glued to the bottom for the WHOLE replay
@@ -548,10 +641,19 @@ export class SessionTerm {
       // scrolled up: _followBottom is false for them, and a user gesture this
       // tick set it above). Reentrancy-guarded — scrollToBottom re-enters
       // onScroll, which then sees us at the bottom and stops.
-      if (this._replaysInFlight > 0 && this._followBottom && !this._repinning
-        && (buf.baseY - to) > STICKY_BOTTOM_LINES && !userDriven) {
+      if (
+        this._replaysInFlight > 0 &&
+        this._followBottom &&
+        !this._repinning &&
+        buf.baseY - to > STICKY_BOTTOM_LINES &&
+        !userDriven
+      ) {
         this._repinning = true;
-        try { this.term.scrollToBottom(); } finally { this._repinning = false; }
+        try {
+          this.term.scrollToBottom();
+        } finally {
+          this._repinning = false;
+        }
       }
 
       // Scroll-jump auto-detector (gated on hive.debug=1): record any
@@ -560,19 +662,36 @@ export class SessionTerm {
       // Skip when `from` exceeds the current baseY: the buffer just shrank
       // (term.reset() on replay-begin / reattach), so the stale pre-reset
       // viewportY would read as a huge spurious jump and pollute the trace.
-      if (scrollTrace.rec.enabled
-        && from <= buf.baseY
-        && classifyViewportMove({
-          from, to, lastUserScrollTs: this._lastUserScrollTs, now,
+      if (
+        scrollTrace.rec.enabled &&
+        from <= buf.baseY &&
+        classifyViewportMove({
+          from,
+          to,
+          lastUserScrollTs: this._lastUserScrollTs,
+          now,
           userGraceMs: USER_SCROLL_GRACE_MS,
-        }) === 'auto-up') {
+        }) === 'auto-up'
+      ) {
         scrollTrace.rec('viewport-jump', {
           id: this.info.id,
-          from, to, baseY: buf.baseY, bufType: buf.type,
-          cols: this.term.cols, rows: this.term.rows, view: state.view,
-          attached: this.attached, following: this._followBottom,
-          sinceReplayMs: this._lastReplayTs > -Infinity ? Math.round(now - this._lastReplayTs) : null,
-          sinceUserScrollMs: this._lastUserScrollTs > -Infinity ? Math.round(now - this._lastUserScrollTs) : null,
+          from,
+          to,
+          baseY: buf.baseY,
+          bufType: buf.type,
+          cols: this.term.cols,
+          rows: this.term.rows,
+          view: state.view,
+          attached: this.attached,
+          following: this._followBottom,
+          sinceReplayMs:
+            this._lastReplayTs > -Infinity
+              ? Math.round(now - this._lastReplayTs)
+              : null,
+          sinceUserScrollMs:
+            this._lastUserScrollTs > -Infinity
+              ? Math.round(now - this._lastUserScrollTs)
+              : null,
         });
         snapshotScrollJump();
       }
@@ -597,7 +716,9 @@ export class SessionTerm {
     if (!acquireWebglSlot()) {
       this.webgl = null;
       this._hasWebglSlot = false;
-      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      try {
+        this.term.refresh(0, this.term.rows - 1);
+      } catch {}
       return false;
     }
     try {
@@ -606,7 +727,9 @@ export class SessionTerm {
       this.term.loadAddon(webgl);
       this.webgl = webgl;
       this._hasWebglSlot = true;
-      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      try {
+        this.term.refresh(0, this.term.rows - 1);
+      } catch {}
       return true;
     } catch {
       // Construct failed (no GPU / driver) — hand the slot back so a
@@ -628,7 +751,10 @@ export class SessionTerm {
     // Release this tile's slot before reattaching, or _attachWebgl's
     // budget check would see the dead context still counted and refuse
     // to bring the tile back up.
-    if (this._hasWebglSlot) { releaseWebglSlot(); this._hasWebglSlot = false; }
+    if (this._hasWebglSlot) {
+      releaseWebglSlot();
+      this._hasWebglSlot = false;
+    }
 
     // Storm guard: count losses in a sliding window. A context that keeps
     // dying immediately after reattach would loop dispose→reattach→loss
@@ -636,19 +762,30 @@ export class SessionTerm {
     // stop trying WebGL for this tile and stay on the DOM renderer.
     this._webglLoss ||= { start: 0, count: 0 };
     const { count, stormed } = recordWebglLoss(
-      this._webglLoss, nowMs(), WEBGL_LOSS_STORM_MAX, WEBGL_LOSS_STORM_WINDOW_MS,
+      this._webglLoss,
+      nowMs(),
+      WEBGL_LOSS_STORM_MAX,
+      WEBGL_LOSS_STORM_WINDOW_MS,
     );
     feLog(`webgl-context-loss id=${this.info.id} count=${count}`);
-    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-context-loss', { id: this.info.id, count });
+    if (scrollTrace.rec.enabled)
+      scrollTrace.rec('webgl-context-loss', { id: this.info.id, count });
 
     if (stormed) {
       // Give up on WebGL for this tile. Dispose the dead addon, don't
       // reattach, force one repaint so the DOM renderer takes over cleanly.
       this._webglGaveUp = true;
-      try { dead?.dispose(); } catch { /* best-effort */ }
-      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      try {
+        dead?.dispose();
+      } catch {
+        /* best-effort */
+      }
+      try {
+        this.term.refresh(0, this.term.rows - 1);
+      } catch {}
       feLog(`webgl-give-up id=${this.info.id} — DOM renderer (loss storm)`);
-      if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-give-up', { id: this.info.id });
+      if (scrollTrace.rec.enabled)
+        scrollTrace.rec('webgl-give-up', { id: this.info.id });
       return;
     }
 
@@ -661,7 +798,8 @@ export class SessionTerm {
     // char metrics differ from WebGL's, so the next fit can shift cols
     // and fire a replay no user action explains. Logging it lets the
     // trace tie a "spontaneous" jump back to a renderer fallback.
-    if (scrollTrace.rec.enabled) scrollTrace.rec('webgl-recover', { id: this.info.id, reattached });
+    if (scrollTrace.rec.enabled)
+      scrollTrace.rec('webgl-recover', { id: this.info.id, reattached });
   }
 
   _installRendererRecoveryListeners() {
@@ -669,9 +807,14 @@ export class SessionTerm {
     // call when no WebGL addon is loaded (DOM renderer ignores the
     // atlas hint and still benefits from the refresh).
     this._refreshRenderer = () => {
-      if (scrollTrace.rec.enabled) scrollTrace.rec('renderer-refresh', { id: this.info.id });
-      try { this.webgl?.clearTextureAtlas(); } catch {}
-      try { this.term.refresh(0, this.term.rows - 1); } catch {}
+      if (scrollTrace.rec.enabled)
+        scrollTrace.rec('renderer-refresh', { id: this.info.id });
+      try {
+        this.webgl?.clearTextureAtlas();
+      } catch {}
+      try {
+        this.term.refresh(0, this.term.rows - 1);
+      } catch {}
     };
 
     // DPR change: move-to-different-display or OS zoom. A
@@ -688,7 +831,8 @@ export class SessionTerm {
     // Visibility transitions: occlusion / GPU sleep can invalidate the
     // backbuffer without firing context-loss. Repaint on return.
     this._onVisibility = () => {
-      if (shouldRefreshOnVisibility(document.visibilityState)) this._refreshRenderer();
+      if (shouldRefreshOnVisibility(document.visibilityState))
+        this._refreshRenderer();
     };
     document.addEventListener('visibilitychange', this._onVisibility);
   }
@@ -748,7 +892,10 @@ export class SessionTerm {
         this._renameInput = null;
         this.tileName.style.display = '';
       },
-      onCommit: (next) => UpdateSession(this.info.id, next, '', -1).catch(reportFailure('rename')),
+      onCommit: (next) =>
+        UpdateSession(this.info.id, next, '', -1).catch(
+          reportFailure('rename'),
+        ),
       onDone: () => refocusActiveTerm(),
     });
   }
@@ -823,7 +970,11 @@ export class SessionTerm {
     // Swallow throw and continue: a transient FitAddon error (e.g. a
     // race against teardown) shouldn't drop the daemon-side resize.
     const prevCols = this.term.cols;
-    try { this.fit.fit(); } catch { /* keep going with last-known dims */ }
+    try {
+      this.fit.fit();
+    } catch {
+      /* keep going with last-known dims */
+    }
     if (this.attached) {
       // Intentionally no reportFailure: resize fires continuously during
       // window/sidebar drags, so a dead daemon would flood the status
@@ -865,16 +1016,24 @@ export class SessionTerm {
     }
     if (scrollTrace.rec.enabled) {
       scrollTrace.rec('resize', {
-        id: this.info.id, prevCols, cols: this.term.cols,
-        baseline: this._replayBaselineCols, wasAtBottom,
+        id: this.info.id,
+        prevCols,
+        cols: this.term.cols,
+        baseline: this._replayBaselineCols,
+        wasAtBottom,
         // Raw geometry behind wasAtBottom: during heavy output xterm can
         // lose bottom-follow (baseY pinned at the scrollback cap while
         // viewportY drifts), so wasAtBottom reads false even though the
         // user never scrolled — the suspected arm of a spurious up-jump.
-        baseY: buf?.baseY, viewportY: buf?.viewportY, bufType: buf?.type,
+        baseY: buf?.baseY,
+        viewportY: buf?.viewportY,
+        bufType: buf?.type,
       });
     }
-    if (this.attached && shouldRequestReplay(this._replayBaselineCols, this.term.cols)) {
+    if (
+      this.attached &&
+      shouldRequestReplay(this._replayBaselineCols, this.term.cols)
+    ) {
       // Carry the user's pre-resize "at bottom?" intent through to the
       // scrollback_replay_done handler. If the user was actively reading
       // scrollback (wasAtBottom === false), the replay must not yank
@@ -898,14 +1057,22 @@ export class SessionTerm {
         if (!replay) {
           delete this._replayWantsBottom;
           if (scrollTrace.rec.enabled) {
-            scrollTrace.rec('replay-skip-alt', { id: this.info.id, cols: this.term.cols });
+            scrollTrace.rec('replay-skip-alt', {
+              id: this.info.id,
+              cols: this.term.cols,
+            });
           }
           return;
         }
         if (scrollTrace.rec.enabled) {
-          scrollTrace.rec('replay-request', { id: this.info.id, cols: this.term.cols });
+          scrollTrace.rec('replay-request', {
+            id: this.info.id,
+            cols: this.term.cols,
+          });
         }
-        RequestScrollbackReplay(this.info.id).catch(() => { /* attach may have closed */ });
+        RequestScrollbackReplay(this.info.id).catch(() => {
+          /* attach may have closed */
+        });
       }, REPLAY_DEBOUNCE_MS);
     }
   }
@@ -928,7 +1095,10 @@ export class SessionTerm {
     // Don't attempt to attach to a session known to be dead — the daemon
     // will refuse. Show the dead overlay with the error reason instead.
     if (state.aliveById.get(this.info.id) === false) {
-      this.setDead(true, this.info.last_error || 'The process failed to start.');
+      this.setDead(
+        true,
+        this.info.last_error || 'The process failed to start.',
+      );
       return;
     }
     // If the host is still display:none, the body has no box yet and
@@ -953,7 +1123,9 @@ export class SessionTerm {
       // (blocks the main thread); OpenSession awaits the Go dial+handshake.
       // On a many-tile grid launch these run per tile — this line pins
       // which half of each attach is slow.
-      feLog(`ensureAttached id=${this.info.id} fit=${Math.round(_fitMs)}ms open=${Math.round(nowMs() - _openStart)}ms`);
+      feLog(
+        `ensureAttached id=${this.info.id} fit=${Math.round(_fitMs)}ms open=${Math.round(nowMs() - _openStart)}ms`,
+      );
       this.attached = true;
       // Anchor the replay baseline to the actual fitted cols for this
       // tile. Without this, a later _onBodyResize would initialize the
@@ -979,7 +1151,9 @@ export class SessionTerm {
     if (this._writeWindowStart === undefined) this._writeWindowStart = nowMs();
     if (!this._writeBurstLogged && nowMs() - this._writeWindowStart > 2000) {
       this._writeBurstLogged = true;
-      feLog(`writeData burst id=${this.info.id} writes=${this._wroteCount} bytes=${this._wroteBytes} in ${Math.round(nowMs() - this._writeWindowStart)}ms`);
+      feLog(
+        `writeData burst id=${this.info.id} writes=${this._wroteCount} bytes=${this._wroteBytes} in ${Math.round(nowMs() - this._writeWindowStart)}ms`,
+      );
     }
     this.term.write(this.decoder.decode(bytes, { stream: true }));
   }
@@ -991,7 +1165,9 @@ export class SessionTerm {
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
     this.ro.disconnect();
     if (this._dprWatcher) {
-      try { this._dprWatcher.teardown(); } catch {}
+      try {
+        this._dprWatcher.teardown();
+      } catch {}
       this._dprWatcher = null;
     }
     if (this._onVisibility) {
@@ -999,8 +1175,13 @@ export class SessionTerm {
     }
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.
-    try { this.webgl?.dispose(); } catch {}
-    if (this._hasWebglSlot) { releaseWebglSlot(); this._hasWebglSlot = false; }
+    try {
+      this.webgl?.dispose();
+    } catch {}
+    if (this._hasWebglSlot) {
+      releaseWebglSlot();
+      this._hasWebglSlot = false;
+    }
     this.webgl = null;
     this.term.dispose();
     this.host.remove();
@@ -1070,7 +1251,9 @@ export function ensureTerm(info) {
   } else {
     st.setInfo(info);
   }
-  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  const proj = state.projects.find(
+    (p) => p.id === (info.projectId ?? info.project_id),
+  );
   st.setProject(proj?.name ?? '', proj?.color ?? '');
   return st;
 }

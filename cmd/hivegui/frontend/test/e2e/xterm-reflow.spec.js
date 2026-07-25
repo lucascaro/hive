@@ -14,10 +14,14 @@ async function makeTerm(page, cols, rows) {
 }
 
 const xLine = (page) =>
-  page.evaluate(() => window.__reflow.lines().find((l) => l.text.startsWith('x')));
+  page.evaluate(() =>
+    window.__reflow.lines().find((l) => l.text.startsWith('x')),
+  );
 
 // Observed (real Chromium): the LIVE cursor line does NOT rewrap on resize.
-test('live cursor line does not rewrap on widen (documents the limitation)', async ({ page }) => {
+test('live cursor line does not rewrap on widen (documents the limitation)', async ({
+  page,
+}) => {
   await makeTerm(page, 20, 8);
   const sixty = 'x'.repeat(60);
   await page.evaluate((s) => window.__reflow.write(s), sixty);
@@ -32,12 +36,14 @@ test('live cursor line does not rewrap on widen (documents the limitation)', asy
 // The decisive case for shells: a wrapped line COMMITTED and scrolled into
 // history. If xterm reflows this, the normal-buffer replay is redundant and
 // can be dropped; if not, the replay is doing real work and must stay.
-test('committed scrollback line: does xterm rewrap on widen?', async ({ page }) => {
+test('committed scrollback line: does xterm rewrap on widen?', async ({
+  page,
+}) => {
   await makeTerm(page, 20, 4);
   const sixty = 'x'.repeat(60);
   // Commit the wrapped line, then push it up into scrollback with filler.
   await page.evaluate(async (s) => {
-    await window.__reflow.write(s + '\r\n');
+    await window.__reflow.write(`${s}\r\n`);
     for (let i = 0; i < 8; i++) await window.__reflow.write(`f${i}\r\n`);
   }, sixty);
   let line = await xLine(page);
@@ -57,7 +63,8 @@ test('scrollback content survives resize', async ({ page }) => {
   });
   await page.evaluate(() => window.__reflow.resize(40, 4));
   const texts = await page.evaluate(() =>
-    window.__reflow.lines().map((l) => l.text.trim()));
+    window.__reflow.lines().map((l) => l.text.trim()),
+  );
   expect(texts).toContain('line-0'); // scrolled-off line still present
   expect(texts).toContain('line-29');
 });

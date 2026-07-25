@@ -10,7 +10,9 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function boot(page) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 }
 
 async function addAgent(page, name, cmd) {
@@ -20,7 +22,9 @@ async function addAgent(page, name, cmd) {
   await row.locator('.settings-agent-cmd').fill(cmd);
 }
 
-test('⌘, opens settings, Esc closes it, typing reaches the terminal again', async ({ page }) => {
+test('⌘, opens settings, Esc closes it, typing reaches the terminal again', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await expect(page.locator('#settings')).toBeVisible();
@@ -36,12 +40,16 @@ test('⌘, opens settings, Esc closes it, typing reaches the terminal again', as
   // (src/app/focus.js). Typing in that gap sends the keys nowhere and
   // the assertion below fails with an empty stdin, which is what this
   // test did once on a loaded macOS CI runner.
-  await expect(page.getByRole('textbox', { name: 'Terminal input' })).toBeFocused();
+  await expect(
+    page.getByRole('textbox', { name: 'Terminal input' }),
+  ).toBeFocused();
 
   // Focus is back on the terminal: typed keys land in stdin.
   await page.evaluate(() => window.__hive.resetStdin());
   await page.keyboard.type('hi');
-  await expect.poll(() => page.evaluate(() => window.__hive.stdinText())).toContain('hi');
+  await expect
+    .poll(() => page.evaluate(() => window.__hive.stdinText()))
+    .toContain('hi');
 });
 
 test('settings owns the keyboard while open', async ({ page }) => {
@@ -57,10 +65,14 @@ test('settings owns the keyboard while open', async ({ page }) => {
   await page.evaluate(() => window.__hive.resetStdin());
   await page.locator('#settings-agent-add').click();
   await page.keyboard.type('typed');
-  expect(await page.evaluate(() => window.__hive.stdinText())).not.toContain('typed');
+  expect(await page.evaluate(() => window.__hive.stdinText())).not.toContain(
+    'typed',
+  );
 });
 
-test('Tab stays inside the dialog but still walks the form fields', async ({ page }) => {
+test('Tab stays inside the dialog but still walks the form fields', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await addAgent(page, 'Tabbed', 'tabbed');
@@ -69,17 +81,25 @@ test('Tab stays inside the dialog but still walks the form fields', async ({ pag
   // the way the single-control help overlay does.
   await page.locator('.settings-agent-name').focus();
   await page.keyboard.press('Tab');
-  await expect.poll(() => page.evaluate(() => document.activeElement?.className))
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.className))
     .toContain('settings-agent-cmd');
 
   // aria-modal promises focus never leaves: tabbing off the last
   // control wraps to the first instead of reaching the terminal.
   for (let i = 0; i < 12; i++) await page.keyboard.press('Tab');
-  await expect.poll(() => page.evaluate(() => document.getElementById('settings').contains(document.activeElement)))
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.getElementById('settings').contains(document.activeElement),
+      ),
+    )
     .toBe(true);
 });
 
-test('re-opening settings does not wipe an in-progress draft', async ({ page }) => {
+test('re-opening settings does not wipe an in-progress draft', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await addAgent(page, 'Half Typed', 'halftyped --flag');
@@ -92,10 +112,14 @@ test('re-opening settings does not wipe an in-progress draft', async ({ page }) 
 
   const row = page.locator('.settings-agent-row').first();
   await expect(row.locator('.settings-agent-name')).toHaveValue('Half Typed');
-  await expect(row.locator('.settings-agent-cmd')).toHaveValue('halftyped --flag');
+  await expect(row.locator('.settings-agent-cmd')).toHaveValue(
+    'halftyped --flag',
+  );
 });
 
-test('a drag that starts in a field and ends on the backdrop does not close', async ({ page }) => {
+test('a drag that starts in a field and ends on the backdrop does not close', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await addAgent(page, 'Selected', 'selected --x');
@@ -107,7 +131,9 @@ test('a drag that starts in a field and ends on the backdrop does not close', as
   const box = await field.boundingBox();
   await page.mouse.move(box.x + 5, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, {
+    steps: 5,
+  });
   await page.mouse.move(5, 5, { steps: 5 }); // release far outside the panel
   await page.mouse.up();
 
@@ -154,7 +180,9 @@ test('a saved custom agent shows up in the launcher', async ({ page }) => {
   await expect(page.locator('#launcher')).toContainText('Claude Lite');
 });
 
-test('custom agents round-trip: reopening settings shows the saved agent', async ({ page }) => {
+test('custom agents round-trip: reopening settings shows the saved agent', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await addAgent(page, 'My Tool', 'mytool --fast');
@@ -182,7 +210,9 @@ test('deleting a custom agent removes it', async ({ page }) => {
 
   await page.keyboard.press(`${mod}+,`);
   await expect(page.locator('.settings-agent-row')).toHaveCount(0);
-  await expect(page.locator('#settings-agents-list')).toContainText('No custom agents yet');
+  await expect(page.locator('#settings-agents-list')).toContainText(
+    'No custom agents yet',
+  );
 });
 
 test('cancel discards edits', async ({ page }) => {

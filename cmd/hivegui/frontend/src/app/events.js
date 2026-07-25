@@ -4,7 +4,14 @@
 // EventsOn handler; view/focus callbacks and the scroll tracer are
 // injected because they live in main.js until later stages.
 
-import { EventsOn, Notify, Confirm, KillSession, ConnectControl, LogFrontend } from '../bridge.js';
+import {
+  EventsOn,
+  Notify,
+  Confirm,
+  KillSession,
+  ConnectControl,
+  LogFrontend,
+} from '../bridge.js';
 import { state, saveCollapsed } from './state.js';
 import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
@@ -39,10 +46,18 @@ async function reconnectControl() {
       try {
         await ConnectControl();
         setStatus('connected');
-        try { LogFrontend('control reconnected'); } catch { /* bridge absent in tests */ }
+        try {
+          LogFrontend('control reconnected');
+        } catch {
+          /* bridge absent in tests */
+        }
         return;
       } catch (err) {
-        try { LogFrontend(`control reconnect failed: ${err}`); } catch { /* ignore */ }
+        try {
+          LogFrontend(`control reconnect failed: ${err}`);
+        } catch {
+          /* ignore */
+        }
         await new Promise((r) => setTimeout(r, delay));
         delay = Math.min(delay * 2, 5000);
       }
@@ -88,7 +103,9 @@ export function clearAttention(sessionId) {
 // repeated bells from the same session and the click handler knows
 // which session to switch to.
 function fireBellNotification(info) {
-  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  const proj = state.projects.find(
+    (p) => p.id === (info.projectId ?? info.project_id),
+  );
   const projectName = proj?.name ?? '';
   const title = info.name || 'Session';
   const subtitle = projectName;
@@ -109,16 +126,26 @@ function onSessionDeath(info) {
     // Flip attached eagerly so a switch-back before pty:disconnect arrives
     // doesn't try to reuse the dying connection.
     t.attached = false;
-    t.setDead(true, info.last_error || 'The process running in this session has exited.');
+    t.setDead(
+      true,
+      info.last_error || 'The process running in this session has exited.',
+    );
   }
   // Reuse the attention pulse path so the sidebar entry highlights.
   state.attention.add(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   updateSidebarSelection();
-  const proj = state.projects.find((p) => p.id === (info.projectId ?? info.project_id));
+  const proj = state.projects.find(
+    (p) => p.id === (info.projectId ?? info.project_id),
+  );
   // Best-effort like fireBellNotification: the overlay + sidebar pulse
   // already cover the user if the OS notification fails.
-  Notify(info.name || 'Session', proj?.name ?? '', 'Session ended.', info.id).catch(() => {});
+  Notify(
+    info.name || 'Session',
+    proj?.name ?? '',
+    'Session ended.',
+    info.id,
+  ).catch(() => {});
 }
 
 export function wireDaemonEvents(injected) {
@@ -142,7 +169,10 @@ export function wireDaemonEvents(injected) {
     }
     // Drop persisted collapse entries for projects that no longer exist
     // so the localStorage key can't grow forever.
-    const pruned = pruneCollapsed(state.collapsed, state.projects.map((p) => p.id));
+    const pruned = pruneCollapsed(
+      state.collapsed,
+      state.projects.map((p) => p.id),
+    );
     if (pruned.changed) {
       state.collapsed = pruned.set;
       saveCollapsed();
@@ -198,7 +228,9 @@ export function wireDaemonEvents(injected) {
         // Wipe stale frame from the previous (dead) shell so the revived
         // session's prompt lands on a clean screen instead of stacking on
         // the old cursor position.
-        try { t.term.reset(); } catch {}
+        try {
+          t.term.reset();
+        } catch {}
         abandonReplays(t); // the wipe abandons any in-flight restream
         t.attached = false;
         t.setDead(false);
@@ -280,7 +312,9 @@ export function wireDaemonEvents(injected) {
         // will ensureAttached when they next become visible.
         if (st.needsReattach && ev.session.alive) {
           st.needsReattach = false;
-          try { st.term.reset(); } catch {}
+          try {
+            st.term.reset();
+          } catch {}
           abandonReplays(st); // the wipe abandons any in-flight restream
           const visible =
             (state.view === 'single' && state.activeId === ev.session.id) ||
@@ -294,7 +328,8 @@ export function wireDaemonEvents(injected) {
       if (state.activeId === ev.session.id) deps.updateAppTitle();
     }
     renderSidebar();
-    if (ev.kind === 'removed' || ev.kind === 'updated') deps.renderMinimizedTray();
+    if (ev.kind === 'removed' || ev.kind === 'updated')
+      deps.renderMinimizedTray();
   });
 
   EventsOn('pty:data', (id, b64) => {
@@ -307,7 +342,7 @@ export function wireDaemonEvents(injected) {
     if (deps.scrollTrace.rec.enabled) {
       deps.scrollTrace.count('ptyFrames');
       deps.scrollTrace.count('ptyB64Bytes', b64 ? b64.length : 0);
-      if ((deps.scrollTrace.counters.ptyFrames % 200) === 0) {
+      if (deps.scrollTrace.counters.ptyFrames % 200 === 0) {
         deps.scrollTrace.rec('pty-checkpoint', {
           frames: deps.scrollTrace.counters.ptyFrames,
           b64Bytes: deps.scrollTrace.counters.ptyB64Bytes,
@@ -334,18 +369,30 @@ export function wireDaemonEvents(injected) {
         // scrollback ring shows up as a runaway scrollback_replay_begin
         // count (the #222/#228/#232 suspects), distinct from a raw data
         // flood (ptyFrames). A storm here = the daemon is the freeze.
-        deps.scrollTrace.count('ptyEvent:' + ev.kind);
+        deps.scrollTrace.count(`ptyEvent:${ev.kind}`);
         deps.scrollTrace.rec(ev.kind, {
-          id, viewportY: buf?.viewportY, baseY: buf?.baseY,
+          id,
+          viewportY: buf?.viewportY,
+          baseY: buf?.baseY,
           wants: st._replayWantsBottom,
         });
         // Mark replay activity so the scroll-jump detector can label a
         // following up-move as replay-driven (tiny sinceReplayMs) vs an
         // unrelated renderer/resize jump.
-        try { st._lastReplayTs = performance.now(); } catch { /* no perf clock */ }
+        try {
+          st._lastReplayTs = performance.now();
+        } catch {
+          /* no perf clock */
+        }
       }
-      handleScrollbackEvent(st, ev.kind, deps.scrollTrace.rec.enabled ? deps.scrollTrace.rec : undefined);
-    } catch { /* ignore */ }
+      handleScrollbackEvent(
+        st,
+        ev.kind,
+        deps.scrollTrace.rec.enabled ? deps.scrollTrace.rec : undefined,
+      );
+    } catch {
+      /* ignore */
+    }
   });
 
   EventsOn('pty:disconnect', (id) => {
@@ -368,7 +415,9 @@ export function wireDaemonEvents(injected) {
     if (st) {
       try {
         const e = JSON.parse(jsonStr);
-        st.term.write(`\r\n\x1b[31m[hived: ${e.code}: ${e.message}]\x1b[0m\r\n`);
+        st.term.write(
+          `\r\n\x1b[31m[hived: ${e.code}: ${e.message}]\x1b[0m\r\n`,
+        );
       } catch {}
     }
   });
@@ -402,17 +451,23 @@ export function wireDaemonEvents(injected) {
 
   EventsOn('control:error', async (jsonStr) => {
     let e;
-    try { e = JSON.parse(jsonStr); } catch { flashStatus('hived error', true); return; }
+    try {
+      e = JSON.parse(jsonStr);
+    } catch {
+      flashStatus('hived error', true);
+      return;
+    }
     // Worktree-dirty kill: confirm with the user. The daemon already
     // refused to kill, so we can safely retry with force=true if the
     // user accepts.
     if (e.code === 'worktree_dirty' && e.session_id) {
       const sess = state.sessions.find((s) => s.id === e.session_id);
-      const branch = sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
+      const branch =
+        sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
       const ok = await Confirm(
         'Discard uncommitted changes?',
         `${sess?.name ?? 'Session'} has uncommitted changes in ${branch}.\n\n` +
-        `Discard them and remove the worktree?`,
+          `Discard them and remove the worktree?`,
       );
       if (!ok) return;
       // Confirm() is async + modal; the session may have been removed
@@ -426,5 +481,4 @@ export function wireDaemonEvents(injected) {
     flashStatus(`${e.code}: ${e.message}`, true);
     console.warn('hived control error:', e);
   });
-
 }

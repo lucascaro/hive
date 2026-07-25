@@ -35,4 +35,5 @@ export function flashStatus(text, isError = false) {
 // action in the status bar. Wails mutation promises reject when the
 // daemon connection is down (or the call throws Go-side), which used
 // to be swallowed — the button click just silently did nothing.
-export const reportFailure = (what) => (err) => flashStatus(`${what} failed: ${err}`, true);
+export const reportFailure = (what) => (err) =>
+  flashStatus(`${what} failed: ${err}`, true);

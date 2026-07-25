@@ -30,7 +30,9 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.js loads.
-    try { localStorage.setItem('hive.debug', '1'); } catch {}
+    try {
+      localStorage.setItem('hive.debug', '1');
+    } catch {}
   }, WS_URL);
 });
 
@@ -61,11 +63,13 @@ async function bootWithTerm(page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li.session-item').length >= 1,
-    null, { timeout: 10000 },
+    null,
+    { timeout: 10000 },
   );
   await page.waitForFunction(
     () => !!document.querySelector('.term-host .xterm-helper-textarea'),
-    null, { timeout: 10000 },
+    null,
+    { timeout: 10000 },
   );
   await focusFirstTerm(page);
   await page.keyboard.type('stty -echo\n');
@@ -74,8 +78,9 @@ async function bootWithTerm(page) {
 
 async function focusFirstTerm(page) {
   await page.evaluate(() => {
-    const helper = document.querySelector('.term-host.active .xterm-helper-textarea')
-      || document.querySelector('.term-host .xterm-helper-textarea');
+    const helper =
+      document.querySelector('.term-host.active .xterm-helper-textarea') ||
+      document.querySelector('.term-host .xterm-helper-textarea');
     helper.focus();
   });
 }
@@ -91,23 +96,37 @@ async function addSecondSession(page) {
   // Node < 22 has no global WebSocket; fall back to the ws package.
   const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
   const ws = new WS(WS_URL);
-  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-  const send = (id, method, params = {}) => ws.send(JSON.stringify({ id, method, params }));
-  const waitFor = (id) => new Promise((res) => {
-    ws.addEventListener('message', function h(ev) {
-      const m = JSON.parse(ev.data);
-      if (m.id === id) { ws.removeEventListener('message', h); res(m); }
-    });
+  await new Promise((res, rej) => {
+    ws.onopen = res;
+    ws.onerror = rej;
   });
+  const send = (id, method, params = {}) =>
+    ws.send(JSON.stringify({ id, method, params }));
+  const waitFor = (id) =>
+    new Promise((res) => {
+      ws.addEventListener('message', function h(ev) {
+        const m = JSON.parse(ev.data);
+        if (m.id === id) {
+          ws.removeEventListener('message', h);
+          res(m);
+        }
+      });
+    });
   send(1, 'ConnectControl');
   await waitFor(1);
-  send(2, 'CreateSession', { name: 'second', shell: '/bin/bash', cols: 80, rows: 24 });
+  send(2, 'CreateSession', {
+    name: 'second',
+    shell: '/bin/bash',
+    cols: 80,
+    rows: 24,
+  });
   const resp = await waitFor(2);
   ws.close();
   if (resp.error) throw new Error(`CreateSession via bridge: ${resp.error}`);
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li.session-item').length >= 2,
-    null, { timeout: 10000 },
+    null,
+    { timeout: 10000 },
   );
   // Back to the original "main" session (⌘1 = first in display order).
   await page.keyboard.press(`${mod}+1`);
@@ -167,7 +186,9 @@ function extractMarkers(lines) {
   return out;
 }
 
-test('markers survive grid↔single toggles under continuous output, exactly once and in order', async ({ page }) => {
+test('markers survive grid↔single toggles under continuous output, exactly once and in order', async ({
+  page,
+}) => {
   await bootWithTerm(page);
   await addSecondSession(page);
   await startMarkerPump(page, 1200);
@@ -182,10 +203,12 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
     await page.keyboard.press(`${mod}+g`);
   }
 
-  await expect.poll(
-    async () => (await bufferLines(page)).join('\n'),
-    { timeout: 30000, intervals: [250, 500] },
-  ).toContain('HIVE_PUMP_DONE');
+  await expect
+    .poll(async () => (await bufferLines(page)).join('\n'), {
+      timeout: 30000,
+      intervals: [250, 500],
+    })
+    .toContain('HIVE_PUMP_DONE');
   await page.waitForTimeout(1200); // let any trailing replay land
 
   // Non-vacuity: the scenario must have fired at least one real replay.
@@ -197,14 +220,22 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
 
   // I1a: strictly increasing (no out-of-order interleave).
   const unsorted = markers.filter((m, i) => i > 0 && m <= markers[i - 1]);
-  expect(unsorted, `out-of-order/duplicate markers: ${unsorted.slice(0, 10)}`).toEqual([]);
+  expect(
+    unsorted,
+    `out-of-order/duplicate markers: ${unsorted.slice(0, 10)}`,
+  ).toEqual([]);
 
   // I1b: no duplicates (a backlog-after-reset replay paints lines twice).
   const dupes = markers.filter((m, i) => markers.indexOf(m) !== i);
-  expect(dupes, `duplicated markers: ${[...new Set(dupes)].slice(0, 10)}`).toEqual([]);
+  expect(
+    dupes,
+    `duplicated markers: ${[...new Set(dupes)].slice(0, 10)}`,
+  ).toEqual([]);
 });
 
-test('viewport converges to the bottom after a mode switch under continuous output', async ({ page }) => {
+test('viewport converges to the bottom after a mode switch under continuous output', async ({
+  page,
+}) => {
   await bootWithTerm(page);
   await addSecondSession(page);
   await startMarkerPump(page, 1500);
@@ -224,28 +255,41 @@ test('viewport converges to the bottom after a mode switch under continuous outp
   };
 
   await page.keyboard.press(`${mod}+g`);
-  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
+  await expect
+    .poll(atBottom, { timeout: 20000, intervals: [250, 500] })
+    .toBe(0);
 
   await page.keyboard.press(`${mod}+g`);
-  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
+  await expect
+    .poll(atBottom, { timeout: 20000, intervals: [250, 500] })
+    .toBe(0);
 
   // Once the pump finishes and everything settles, bottom must be
   // stable -- no late replay or restore may move it.
-  await expect.poll(
-    async () => (await bufferLines(page)).join('\n'),
-    { timeout: 30000, intervals: [250, 500] },
-  ).toContain('HIVE_PUMP_DONE');
-  await expect.poll(atBottom, { timeout: 20000, intervals: [250, 500] }).toBe(0);
+  await expect
+    .poll(async () => (await bufferLines(page)).join('\n'), {
+      timeout: 30000,
+      intervals: [250, 500],
+    })
+    .toContain('HIVE_PUMP_DONE');
+  await expect
+    .poll(atBottom, { timeout: 20000, intervals: [250, 500] })
+    .toBe(0);
   for (let i = 0; i < 3; i++) {
     await page.waitForTimeout(300);
-    expect(await atBottom(), 'viewport moved off the bottom after settling').toBe(0);
+    expect(
+      await atBottom(),
+      'viewport moved off the bottom after settling',
+    ).toBe(0);
   }
 
   // Non-vacuity: replays must actually have fired across the toggles.
   expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
 });
 
-test('full scrollback: an unscrolled user is not stranded in history by a resize under load', async ({ page }) => {
+test('full scrollback: an unscrolled user is not stranded in history by a resize under load', async ({
+  page,
+}) => {
   // Regression guard for the cap-trim jump-up. The bug only arms once
   // xterm's 5000-line scrollback is FULL: cap-trim then pins baseY at the
   // cap while the viewport drifts off-bottom during heavy parse, so
@@ -262,10 +306,12 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   );
 
   // Wait until the buffer is genuinely at the cap.
-  await expect.poll(
-    async () => (await scrollState(page))?.baseY ?? 0,
-    { timeout: 30000, intervals: [200, 400] },
-  ).toBeGreaterThan(4500);
+  await expect
+    .poll(async () => (await scrollState(page))?.baseY ?? 0, {
+      timeout: 30000,
+      intervals: [200, 400],
+    })
+    .toBeGreaterThan(4500);
 
   // The user has NOT scrolled. Fire spaced threshold-crossing resizes
   // while the flood is still parsing — each lands inside the cap-trim
@@ -279,16 +325,21 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   await page.waitForTimeout(1500); // let the last replay land
 
   const s = await scrollState(page);
-  const restores = await page.evaluate(
-    () => (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
+  const restores = await page.evaluate(() =>
+    (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
   );
   const wantsFalse = restores.filter((r) => r.wants === false);
 
   // Sanity / non-vacuity: the buffer hit the cap and resizes actually
   // fired replays (an invariant that holds over zero replays proves
   // nothing).
-  expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(4500);
-  expect(restores.length, 'no resize replay fired — scenario is vacuous').toBeGreaterThan(0);
+  expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(
+    4500,
+  );
+  expect(
+    restores.length,
+    'no resize replay fired — scenario is vacuous',
+  ).toBeGreaterThan(0);
 
   // The invariant: a user who NEVER scrolled must never be handed a
   // restore-into-history (wants=false) replay. On the buggy code the
@@ -301,14 +352,18 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   ).toBe(0);
 });
 
-test('a reader scrolled into history is not yanked to the bottom by a resize replay', async ({ page }) => {
+test('a reader scrolled into history is not yanked to the bottom by a resize replay', async ({
+  page,
+}) => {
   await bootWithTerm(page);
   // Fill scrollback, then stop output so the read position is stable.
   await startMarkerPump(page, 200);
-  await expect.poll(
-    async () => (await bufferLines(page)).join('\n'),
-    { timeout: 30000, intervals: [250, 500] },
-  ).toContain('HIVE_PUMP_DONE');
+  await expect
+    .poll(async () => (await bufferLines(page)).join('\n'), {
+      timeout: 30000,
+      intervals: [250, 500],
+    })
+    .toContain('HIVE_PUMP_DONE');
 
   // Scroll up with a real wheel gesture so the clamped wheel handler runs.
   const term = page.locator('.term-host .term-body').first();
@@ -327,5 +382,8 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
 
   expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
   const after = await scrollState(page);
-  expect(after.viewportY, 'replay-done yanked the reader to the bottom').toBeLessThan(after.baseY);
+  expect(
+    after.viewportY,
+    'replay-done yanked the reader to the bottom',
+  ).toBeLessThan(after.baseY);
 });
