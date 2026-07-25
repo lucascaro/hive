@@ -4,13 +4,13 @@
 > Wails GUI + `hived` daemon rewrite (`cmd/hivegui/`, `cmd/hived/`,
 > `internal/wire/`, `internal/worktree/`). v1 (TUI, Bubble Tea, tmux
 > backend) lives on `release/v1` for bug-fix-only maintenance.
-> Forward-port shared-package fixes (`internal/config`, `internal/registry`,
-> `internal/agent`, `internal/notify`, `internal/worktree`) from
-> `release/v1` → `main` via cherry-pick; never merge wholesale.
+> Forward-port shared-package fixes (`internal/registry`, `internal/agent`,
+> `internal/notify`, `internal/worktree`) from `release/v1` → `main` via
+> cherry-pick; never merge wholesale.
 >
-> ⚠️ Sections below describing the TUI / Bubble Tea / `internal/tui/`
-> still need a full rewrite for v2 — treat them as historical until
-> updated. See `docs/native-rewrite/PLAN.md` for v2 architecture.
+> Architecture lives in `DESIGN.md` (the v2 map). This file covers agent
+> working rules — testing, keybindings, docs, release, and the feature
+> pipeline.
 
 ## Codebase Quick Reference
 
@@ -18,131 +18,88 @@
 
 ```
 module: github.com/lucascaro/hive
-build:  go build ./...
-test:   go test ./...
-binary: hive
+build:  ./build.sh          # macOS .app (GUI + daemon); README has Win/Linux
+test:   scripts/test.sh     # all layers: go · unit · dom · e2e
+bins:   hived (daemon) · hivegui (Wails GUI) · hived-ws-bridge (e2e-real only)
 ```
 
-### Package Map
+### Architecture
 
-| Package | Path | Purpose |
-|---------|------|---------|
-| `main` | `main.go` | Entry point; calls `cmd.Execute()` |
-| `cmd` | `cmd/` | Cobra CLI commands (`start`, `attach`, `mux-daemon`, `version`) |
-| `tui` | `internal/tui/` | Bubble Tea root model (`Model`), Elm Update/View loop |
-| `tui/components` | `internal/tui/components/` | All UI components (sidebar, preview, statusbar, etc.) |
-| `tui/styles` | `internal/tui/styles/` | Lip Gloss colour theme and shared styles |
-| `state` | `internal/state/` | Pure data model + reducer functions; no I/O |
-| `config` | `internal/config/` | Load/save `~/.config/hive/config.json`; atomic writes |
-| `mux` | `internal/mux/` | `Backend` interface + package-level forwarding functions |
-| `mux/native` | `internal/mux/native/` | Built-in PTY daemon (Unix socket, JSON protocol) |
-| `mux/tmux` | `internal/mux/tmux/` | tmux binary backend |
-| `tmux` | `internal/tmux/` | Low-level tmux CLI wrappers |
-| `hooks` | `internal/hooks/` | Shell hook runner (`~/.config/hive/hooks/on-{event}`) |
-| `escape` | `internal/escape/` | OSC 2 / Hive title marker parser + background watcher |
-| `audio` | `internal/audio/` | Terminal-bell dispatcher; embedded WAVs + platform audio-tool shell-out |
-| `git` | `internal/git/` | Git worktree helpers |
+**`DESIGN.md` is the canonical map** — domains, one-way layer dependency
+(`wire → session/agent/worktree → registry → daemon`), cross-cutting concerns,
+and the hard rules. Read it before any repo-wide change. Don't re-document
+architecture here; AGENTS.md is working rules only.
 
-### Key Types
+The hard rules from `DESIGN.md` that most often bite in review:
+- Wire JSON is `snake_case` on the wire, `CamelCase` in Go (`json:"snake_case"`
+  tags); JS readers use `snake_case ?? camelCase` at the boundary.
+- The GUI never opens a PTY — every PTY operation goes through the wire
+  protocol. No `os/exec` / `creack/pty` / `internal/session` imports in
+  `cmd/hivegui/` or `frontend/`.
+- The registry is the only writer of persisted state under
+  `registry.StateDir()`; writes are atomic (temp + rename).
 
-```go
-// internal/state/model.go
-AppState          // single source of truth for the TUI; in-process no lock needed (BubbleTea is single-threaded); cross-process safety via state.json.lock + mtime watcher
-Project           // groups sessions; has ID, Name, Teams, Sessions
-Team              // orchestrator + workers; has OrchestratorID, Sessions, SharedWorkDir
-Session           // maps 1:1 to a mux window; has AgentType, Status, TmuxSession, TmuxWindow
-AgentType         // string enum: "claude", "codex", "gemini", "copilot", "aider", "opencode", "custom"
-SessionStatus     // string enum: "running", "idle", "waiting", "dead"
-TeamRole          // string enum: "orchestrator", "worker", "standalone"
-TitleSource       // string enum: "auto", "user", "agent"
+Package one-liners (full detail in `DESIGN.md`):
 
-// internal/config/config.go
-Config            // user config: Agents map, Keybindings, TeamDefaults, Hooks, Multiplexer
-AgentProfile      // Cmd []string, InstallCmd []string
+| Path | Purpose |
+|------|---------|
+| `internal/wire/` | Versioned IPC frames (types + framing, no I/O). GUI ⇄ daemon protocol. |
+| `internal/session/` | PTY lifecycle, VT parsing, scrollback buffer. One `Session` per child process. |
+| `internal/registry/` | Daemon's source of truth: sessions, projects, ordering, metadata + persistence. |
+| `internal/daemon/` (`cmd/hived/`) | Multi-session PTY host; Unix socket, dispatch by HELLO mode (`control`/`attach`/`create`). |
+| `internal/agent/` | Canonical agent catalog + human-readable name generation. |
+| `internal/worktree/` | Git worktree lifecycle; tracks dirty state so the registry can refuse destructive ops. |
+| `internal/notify/` | Desktop notifications; platform splits behind one Go interface. |
+| `internal/activity/` | Per-session activity / attention tracking. |
+| `internal/buildinfo/` | Single source for version + commit. |
+| `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
+| `cmd/hived-ws-bridge/` | WebSocket bridge fronting the daemon for the `e2e-real` browser tests. |
 
-// internal/mux/interface.go
-Backend           // interface: CreateSession, CreateWindow, CapturePane, Attach, …
+### Common change patterns
 
-// internal/tui/app.go
-Model             // root Bubble Tea model; holds AppState + all components
-```
+**Wire protocol change:** edit types in `internal/wire/` with explicit
+`json:"snake_case"` tags, then update all three clients in lock-step — the two
+production ones (`cmd/hivegui/app.go`, `cmd/hived-ws-bridge/main.go`) and
+`internal/wire/testclient` — plus any `snake_case ?? camelCase` JS readers.
 
-### Key Data Flows
+**Add an agent:** extend the catalog in `internal/agent/`. Users can also add
+custom agents at runtime via the GUI Settings screen (persisted to
+`agents.json` in the state dir) — built-in ids can't be redefined.
 
-**Session creation (keypress → tmux/PTY)**
-```
-User presses `t`
-  → AgentPicker component returns selected agent
-  → tui/app.go creates Session in state (state.CreateSession)
-  → calls mux.CreateWindow(tmuxSession, windowName, workDir, agentCmd)
-  → fires hooks.Run("session-create", event)
-  → dispatches SessionCreatedMsg back to Update()
-```
-
-**Preview refresh (ticker → screen)**
-```
-tea.Tick(500ms)
-  → mux.CapturePane(target, lines)
-  → AppState.PreviewContent updated
-  → components/preview.go View() renders ANSI content
-```
-
-**Title change (agent escape → sidebar)**
-```
-escape.Watcher polls CapturePaneRaw every 500ms
-  → detects OSC 2 (\033]2;title\007) or \x00HIVE_TITLE:...\x00
-  → dispatches SessionTitleChangedMsg{SessionID, Title, Source}
-  → app.go Update() calls state.UpdateSessionTitle
-  → sidebar re-renders with new title
-```
-
-### Common Change Patterns
-
-**Add a new `tea.Msg` type:**
-1. Define the struct in `internal/tui/messages.go`
-2. Add a `var _ tea.Msg = MyMsg{}` compile-time check at the bottom
-3. Handle it in `internal/tui/app.go` `Update()` switch
-
-**Add a new TUI component:**
-1. Create `internal/tui/components/mycomp.go` with a struct implementing `Update(tea.Msg) (MyComp, tea.Cmd)` and `View() string`
-2. Add it as a field on `tui.Model` in `app.go`
-3. Route messages to it in `app.go`'s `Update()`
-4. Call `View()` in `app.go`'s `View()`
-
-**Add a new CLI subcommand:**
-1. Create `cmd/mycmd.go` with a `cobra.Command`
-2. Call `mux.SetBackend(...)` in `RunE` if the command needs terminal sessions
-3. Register with `rootCmd.AddCommand(myCmd)` in `cmd/root.go`
-
-**Add a state mutation:**
-1. Add a reducer function to `internal/state/store.go` — takes `*AppState` + params, mutates and returns `*AppState`
-2. Call it from `tui/app.go`'s `Update()` (only place state should be mutated)
-
-**Add a hook event:**
-1. Add a constant to `internal/state/events.go`
-2. Call `hooks.Run(cfg.Hooks.Dir, state.HookEvent{...})` in the relevant app.go handler
-3. Document the new event in `docs/hooks.md`
+**Add/change a keybinding:** see **Keybindings Policy** below.
 
 ### Testing Conventions
 
-- **TDD — tests come with every change.** Never ship a bug fix, new feature, or behaviour change without adding or updating tests that would have caught the regression or verify the new behaviour. If you're in a hurry, write the test first.
-- **"Boil the lake" philosophy — do more now, not later.** When fixing a bug, also add the test that would have caught it. When adding a feature, cover the golden path and key edge cases. Do not defer test coverage to a follow-up. Address all code review feedback in the same PR rather than deferring to follow-ups. **Auto-fix every high-confidence, low-risk review finding in the same PR** — minor code-review nits (comments, constants, helper extraction, API consistency fixes that don't change behaviour) must be applied in the PR where they are raised, not left for "later." Only defer when the fix is high-risk (behaviour change, cross-cutting refactor) or low-confidence (taste, unclear improvement).
-- **All changes require both unit tests and functional tests.** Unit tests verify pure logic (state reducers, helpers). Functional tests verify end-to-end behaviour through the TUI using the `flowRunner` pattern in `internal/tui/flow_test.go`.
-- **`internal/state/`** — pure unit tests, no I/O mocking needed
-- **`internal/config/`** — tests use `t.TempDir()` for isolation
-- **`internal/tui/`** — component tests use `tea.NewProgram` with a fake model or direct `Update()` calls
-- **`internal/tui/` functional tests** — use `flowRunner` from `flow_test.go`: `testFlowModel()` creates an isolated Model with mock backend; `SendKey()`/`SendSpecialKey()` simulate input; assertion helpers like `ViewContains()`, `AssertActiveSession()`, `AssertGridActive()` verify outcomes. New features must include flow tests covering the golden path and key edge cases.
-- **`internal/tui/` tick intervals** — always set `cfg.PreviewRefreshMs = 1` in test helpers to avoid blocking on real-time `tea.Tick` intervals (default 500ms). Tests should verify behaviour, not wait on timers.
-- **`muxtest.MockBackend`** — use `SetUseExecAttach(true)` to exercise the `tea.ExecProcess` attach path; inject `model.attachOut = &bytes.Buffer{}` to capture pre-attach escape sequences.
-- Run all tests: `go test ./...`
-- Tests live alongside source (e.g., `model_test.go` next to `model.go`)
+- **TDD — tests come with every change.** Never ship a bug fix, feature, or
+  behaviour change without the test that would have caught the regression or
+  verifies the new behaviour. If you're in a hurry, write the test first.
+- **"Boil the lake" — do more now, not later.** Fix the bug *and* add its test;
+  cover the golden path and key edge cases; apply every high-confidence,
+  low-risk review nit in the same PR. Defer only genuinely high-risk (behaviour
+  change, cross-cutting refactor) or low-confidence (taste) changes.
+- **Test layers** — run via `scripts/test.sh [layer …]`:
+
+  | Layer | Covers | Where |
+  |-------|--------|-------|
+  | `go` | Go unit + daemon/session/registry integration | `internal/…`, `cmd/hived/` |
+  | `unit` | Pure JS `lib/` modules | `cmd/hivegui/frontend/test/unit` |
+  | `dom` | Vitest jsdom (sidebar tree, visibility gate) | `.../test/dom` |
+  | `e2e` | Playwright vs the Wails **mock** bridge | `.../test/e2e` |
+
+- **`e2e-real`** (separate: `npm run test:e2e:real`) drives a **real** `hived` +
+  `hived-ws-bridge` in isolated temp dirs. Isolation is mandatory — the harness
+  sets `HIVE_SOCKET` + `HIVE_STATE_DIR` to temp paths and never touches real
+  hive state (`testclient.RequireIsolation` enforces it Go-side). See
+  `docs/exec-plans/completed/210-real-e2e-tests.md`.
+- Go tests live beside source (`x_test.go` next to `x.go`); frontend tests live
+  under `cmd/hivegui/frontend/test/`.
 
 ---
 
 
 ## UX Best Practices
 
-Always apply these principles when adding or modifying UI elements in the TUI:
+Always apply these principles when adding or modifying UI elements in the GUI:
 
 ### Key Discoverability
 - **Always show the key next to the action it triggers.** If a number, letter, or chord activates something, display it inline — e.g. `[1] ProjectName`, `(n) new`, `[enter] attach`.
@@ -171,27 +128,30 @@ Always apply these principles when adding or modifying UI elements in the TUI:
 
 ## Keybindings Policy
 
-Every key binding change must update all four surfaces — omitting any one creates drift that confuses users and other contributors.
+Key bindings live in the frontend keymap (`cmd/hivegui/frontend/src/lib/keymap.js`
+and `src/app/keyboard.js`). Every change must update all surfaces below —
+omitting one creates drift that confuses users and other contributors.
 
 ### Required updates for any new or changed keybinding
 
-1. **Config field + default** — add or update the field in `KeybindingsConfig` (`internal/config/config.go`) and set the default in `internal/config/defaults.go`. Use `KeyBinding` ([]string) type so users can bind multiple keys.
-2. **Settings UI field** — add a `keybindField(...)` entry in `internal/tui/components/settings.go` under the Keybindings tab.
-3. **Documentation** — add or update the row in `docs/keybindings.md`.
-4. **Changelog** — add a user-facing entry under `[Unreleased]` in `CHANGELOG.md` if the change affects default behavior.
+1. **Keymap** — add or update the binding in `src/lib/keymap.js`. Use the
+   platform helpers in `src/lib/platform.js` (⌘ on macOS, Ctrl elsewhere)
+   rather than hard-coding a modifier.
+2. **Help overlay + command palette** — make sure the action appears with its
+   binding in the `⌘/` keyboard-shortcuts overlay and the command palette.
+3. **README** — update the Keybinds table in `README.md`.
+4. **Changelog** — add a user-facing entry under `[Unreleased]` in
+   `CHANGELOG.md` if the change affects default behaviour.
 
-### Hard-coded exceptions (NOT configurable)
+### Hard-coded exceptions (NOT rebindable)
 
-These keys are intentionally hard-coded and must not be moved into config:
-- `ctrl+c` — force-quit (universal safety)
-- `y`, `enter`, `esc`, `n` — dialog confirm/cancel
-- `d` — "don't show again" in hint overlays
-- `s`, `R`, `esc` — settings modal save/reset/cancel
-- Modal overlay navigation (`up/down/left/right/j/k`) in settings, help panel, and pickers
+- `Ctrl+C` — interrupt / force-quit (universal).
+- Dialog confirm/cancel (`Enter` / `Esc`) inside overlays.
 
-### Routing pattern
+### Design rule
 
-Use `key.Matches(msg, km.Action)` for all configurable bindings — never `msg.String() == "x"` for actions that should be rebindable. Literal `msg.String()` checks are reserved for the hard-coded exceptions above.
+Destructive actions (kill session, quit) must go through the confirmation
+overlay, and every overlay must show its confirm/cancel bindings.
 
 ## Documentation Maintenance
 
@@ -205,27 +165,20 @@ Keep project documentation accurate and up-to-date as part of every code change.
 - Do **not** create a new versioned section; only append to `[Unreleased]`. Versioning happens at release time.
 - Skip purely cosmetic or internal refactors that have no user-visible effect (e.g. renaming a private variable). Use judgment.
 
-### Architecture (`ARCHITECTURE.md`)
+### Architecture (`DESIGN.md`)
 
-Update `ARCHITECTURE.md` whenever a change is **significant** — meaning any of the following:
-- A new package is added or an existing one is removed/renamed.
-- A major interface, abstraction boundary, or data-flow path changes.
-- New components are added to the TUI layer (new files in `internal/tui/components/`).
-- The `cmd/` command set changes (new subcommands, removed subcommands).
-- The multiplexer, state, config, or hook subsystems change in a way that affects the high-level description.
+Update `DESIGN.md` whenever a change is **structural** — any of the following:
+- A package is added, removed, or renamed.
+- A layer boundary, the wire protocol, or a persistence rule changes.
+- A new hard rule is warranted (or an existing one changes).
 
-Minor changes (bug fixes, adding a field to an existing struct, small refactors) do **not** require architecture updates.
+Minor changes (bug fixes, adding a field to an existing struct, small refactors) do **not** require a `DESIGN.md` update.
 
 ### README and other docs
 
-- Update `README.md` when **user-visible features, CLI flags, configuration options, or default behaviour** change.
-- Update the relevant file in `docs/` when the subsystem it documents changes:
-  - `docs/agent-teams.md` — multi-agent team behaviour
-  - `docs/hooks.md` — hook events or environment variables
-  - `docs/keybindings.md` — key bindings or navigation
-  - `docs/features.md` — high-level feature descriptions
-  - `docs/design-decisions.md` — only when a significant architectural decision is made
-- If a doc file becomes incorrect after your change, fix it in the same commit.
+- Update `README.md` when **user-visible features, keybindings, flags, or default behaviour** change (keep the Keybinds table current).
+- Record non-obvious architectural decisions under `docs/design-docs/`.
+- If a doc becomes incorrect after your change, fix it in the same commit.
 
 ## Releasing
 
@@ -235,7 +188,7 @@ Use the release script to publish a new version:
 ./scripts/release.sh <version>    # e.g. ./scripts/release.sh 0.3.0
 ```
 
-The script handles everything: version bump (`cmd/version.go`), changelog stamp, commit, tag, cross-compilation (darwin arm64/amd64, linux amd64/arm64, windows amd64), GitHub release with attached binaries, and push.
+The script handles everything: version bump, changelog stamp, commit, tag, cross-compilation (darwin arm64/amd64, linux amd64/arm64, windows amd64), GitHub release with attached binaries, and push. Version/commit come from `internal/buildinfo` (stamped via ldflags at build time).
 
 **Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]` section in CHANGELOG.md.
 

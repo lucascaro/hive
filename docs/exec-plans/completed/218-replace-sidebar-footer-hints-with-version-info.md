@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/218-replace-sidebar-footer-hints-with-version-info.md](../../product-specs/218-replace-sidebar-footer-hints-with-version-info.md)
 - **Issue:** —
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 - **PR:** #240
 - **Branch:** feature/218-replace-sidebar-footer-hints-with-version-info
 

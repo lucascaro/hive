@@ -4,8 +4,8 @@
 - **Issue:** —
 - **PR:** #242
 - **Branch:** feature/240-user-configurable-custom-agents
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed
 
 ## Summary
 

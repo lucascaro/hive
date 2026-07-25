@@ -2,10 +2,10 @@
 
 - **Spec:** [docs/product-specs/240-jump-to-next-session-needing-attention.md](../../product-specs/240-jump-to-next-session-needing-attention.md)
 - **Issue:** —
-- **Stage:** REVIEW
+- **Stage:** DONE
 - **PR:** #241
 - **Branch:** feature/240-jump-to-next-session-needing-attention
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
