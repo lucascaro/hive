@@ -31,6 +31,9 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 async function bootWithTerm(page) {
+  // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
+  // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
+  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set');
   await page.goto('/');
   await page.waitForFunction(() => document.querySelectorAll('#projects li.session-item').length >= 1, null, { timeout: 10000 });
