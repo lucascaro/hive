@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  acquireWebglSlot, releaseWebglSlot, activeWebglSlots, _resetWebglBudget,
+  acquireWebglSlot,
+  releaseWebglSlot,
+  activeWebglSlots,
+  _resetWebglBudget,
   recordWebglLoss,
 } from '../../src/lib/webgl-budget.js';
 

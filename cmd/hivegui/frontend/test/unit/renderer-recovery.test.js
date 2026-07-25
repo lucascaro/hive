@@ -8,10 +8,18 @@ import {
 function makeFakeMql() {
   const listeners = new Set();
   return {
-    addEventListener: vi.fn((evt, fn) => { if (evt === 'change') listeners.add(fn); }),
-    removeEventListener: vi.fn((evt, fn) => { if (evt === 'change') listeners.delete(fn); }),
-    fire() { for (const fn of [...listeners]) fn(); },
-    listenerCount() { return listeners.size; },
+    addEventListener: vi.fn((evt, fn) => {
+      if (evt === 'change') listeners.add(fn);
+    }),
+    removeEventListener: vi.fn((evt, fn) => {
+      if (evt === 'change') listeners.delete(fn);
+    }),
+    fire() {
+      for (const fn of [...listeners]) fn();
+    },
+    listenerCount() {
+      return listeners.size;
+    },
   };
 }
 
@@ -57,7 +65,9 @@ describe('recoverFromContextLoss', () => {
   it('treats a throwing reattach as a failed reattach', () => {
     const deps = {
       dispose: vi.fn(),
-      reattach: vi.fn(() => { throw new Error('no WebGL2'); }),
+      reattach: vi.fn(() => {
+        throw new Error('no WebGL2');
+      }),
       refresh: vi.fn(),
     };
     const result = recoverFromContextLoss(deps);
@@ -69,7 +79,9 @@ describe('recoverFromContextLoss', () => {
     // Dispose can throw on an already-disposed addon (xterm.js raises
     // on double-dispose). The recovery path must keep going.
     const deps = {
-      dispose: vi.fn(() => { throw new Error('already disposed'); }),
+      dispose: vi.fn(() => {
+        throw new Error('already disposed');
+      }),
       reattach: vi.fn(() => true),
       refresh: vi.fn(),
     };
@@ -84,7 +96,9 @@ describe('recoverFromContextLoss', () => {
     const deps = {
       dispose: vi.fn(),
       reattach: vi.fn(() => false),
-      refresh: vi.fn(() => { throw new Error('disposed'); }),
+      refresh: vi.fn(() => {
+        throw new Error('disposed');
+      }),
     };
     expect(() => recoverFromContextLoss(deps)).not.toThrow();
   });
@@ -173,7 +187,9 @@ describe('bindDprWatcher', () => {
 
   it('returns null when matchMedia throws (unsupported platform)', () => {
     const watcher = bindDprWatcher({
-      matchMedia: () => { throw new Error('not supported'); },
+      matchMedia: () => {
+        throw new Error('not supported');
+      },
       getDpr: () => 1,
       onChange: () => {},
     });
@@ -183,7 +199,9 @@ describe('bindDprWatcher', () => {
   it('swallows a throwing onChange so the listener chain keeps working', () => {
     const mqls = [makeFakeMql(), makeFakeMql()];
     let i = 0;
-    const onChange = vi.fn(() => { throw new Error('host blew up'); });
+    const onChange = vi.fn(() => {
+      throw new Error('host blew up');
+    });
     const watcher = bindDprWatcher({
       matchMedia: () => mqls[i++],
       getDpr: () => 1,

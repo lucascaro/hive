@@ -112,12 +112,17 @@ describe('snapVisibleTermsToBottom', () => {
       body: { clientHeight: 200 },
       term: {
         scrollToBottom: vi.fn(),
-        write: vi.fn((data, cb) => { queue.push(cb); }),
+        write: vi.fn((_data, cb) => {
+          queue.push(cb);
+        }),
       },
     };
     // Heavy replay parse still in flight: pending queue entries ahead
     // of whatever the snap enqueues.
-    queue.push(() => {}, () => {});
+    queue.push(
+      () => {},
+      () => {},
+    );
 
     snapVisibleTermsToBottom([st]);
     // Synchronous snap fires now — instant feedback on fast machines —
@@ -147,10 +152,14 @@ describe('snapVisibleTermsToBottom', () => {
         reset: vi.fn(),
         scrollToBottom: vi.fn(),
         scrollToLine: vi.fn(),
-        write: vi.fn((data, cb) => { queue.push(cb); }),
+        write: vi.fn((_data, cb) => {
+          queue.push(cb);
+        }),
       },
     };
-    const flush = () => { while (queue.length) queue.shift()?.(); };
+    const flush = () => {
+      while (queue.length) queue.shift()?.();
+    };
 
     // Armed state: reader was scrolled up — wants-bottom false with a
     // captured distance from the begin's (already-parsed) capture.

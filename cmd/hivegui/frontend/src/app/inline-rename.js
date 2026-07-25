@@ -19,7 +19,15 @@
 //                      non-empty, changed value)
 //   onDone()        — called after every finish, commit or cancel
 //   beforeFocus()   — optional, run after mount but before focus/select
-export function beginInlineRename({ mount, unmount, value, className, onCommit, onDone, beforeFocus }) {
+export function beginInlineRename({
+  mount,
+  unmount,
+  value,
+  className,
+  onCommit,
+  onDone,
+  beforeFocus,
+}) {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = className;
@@ -43,11 +51,15 @@ export function beginInlineRename({ mount, unmount, value, className, onCommit, 
   // also cancels the target's own bubble-phase listeners (DOM dispatch
   // skips the bubble invocation once the flag is set), so a separate
   // bubble-phase Enter handler would never run.
-  input.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
-  }, { capture: true });
+  input.addEventListener(
+    'keydown',
+    (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    },
+    { capture: true },
+  );
   input.addEventListener('blur', () => finish(true));
   return input;
 }

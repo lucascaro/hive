@@ -7,10 +7,14 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function boot(page) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 }
 
-test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the terminal again', async ({ page }) => {
+test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the terminal again', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+/`);
   const overlay = page.locator('#help-overlay');
@@ -23,18 +27,27 @@ test('⌘/ opens the shortcuts overlay, Esc closes it, typing reaches the termin
   // Wait for focus to actually land on the terminal (setFocusedTile defers
   // the real ta.focus() via requestAnimationFrame) before typing, or keys
   // sent too early can land nowhere under CI load.
-  await expect.poll(() => page.evaluate(() => {
-    const ta = document.querySelector('.term-host.active .xterm-helper-textarea')
-      || document.querySelector('.term-host .xterm-helper-textarea');
-    return document.activeElement === ta;
-  })).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const ta =
+          document.querySelector('.term-host.active .xterm-helper-textarea') ||
+          document.querySelector('.term-host .xterm-helper-textarea');
+        return document.activeElement === ta;
+      }),
+    )
+    .toBe(true);
   // Focus must return to the terminal: typed keys land in stdin.
   await page.evaluate(() => window.__hive.resetStdin());
   await page.keyboard.type('hi');
-  await expect.poll(() => page.evaluate(() => window.__hive.stdinText())).toContain('hi');
+  await expect
+    .poll(() => page.evaluate(() => window.__hive.stdinText()))
+    .toContain('hi');
 });
 
-test('⌘? also opens the shortcuts overlay, and closes it again', async ({ page }) => {
+test('⌘? also opens the shortcuts overlay, and closes it again', async ({
+  page,
+}) => {
   await boot(page);
   // "?" is Shift+/ — the near-universal "show me the shortcuts" key.
   // With the sidebar footer no longer advertising any bindings, this is
@@ -51,14 +64,20 @@ test('⌘? also opens the shortcuts overlay, and closes it again', async ({ page
 test('the shortcuts overlay advertises both ⌘? and ⌘/', async ({ page }) => {
   await boot(page);
   await page.keyboard.press(`${mod}+Shift+Slash`);
-  await expect(page.locator('#help-overlay').getByText('Keyboard shortcuts (this panel)'))
-    .toBeVisible();
+  await expect(
+    page.locator('#help-overlay').getByText('Keyboard shortcuts (this panel)'),
+  ).toBeVisible();
   // Whichever key the user arrived by, the panel must name the other.
-  const expected = process.platform === 'darwin' ? '⌘? or ⌘/' : 'Ctrl+? or Ctrl+/';
-  await expect(page.locator('#help-overlay kbd', { hasText: 'or' })).toHaveText(expected);
+  const expected =
+    process.platform === 'darwin' ? '⌘? or ⌘/' : 'Ctrl+? or Ctrl+/';
+  await expect(page.locator('#help-overlay kbd', { hasText: 'or' })).toHaveText(
+    expected,
+  );
 });
 
-test('help overlay is reachable from the command palette and gates other shortcuts', async ({ page }) => {
+test('help overlay is reachable from the command palette and gates other shortcuts', async ({
+  page,
+}) => {
   await boot(page);
   await page.keyboard.press(`${mod}+Shift+k`);
   await page.locator('#command-palette-input').fill('keyboard');
@@ -71,7 +90,9 @@ test('help overlay is reachable from the command palette and gates other shortcu
   await expect(page.locator('#help-overlay')).toBeHidden();
 });
 
-test('killing the last session shows an actionable empty state', async ({ page }) => {
+test('killing the last session shows an actionable empty state', async ({
+  page,
+}) => {
   await boot(page);
   await page.evaluate(() => window.__hive.killSession('s1'));
   const empty = page.locator('#empty-state');
@@ -94,19 +115,32 @@ test('launcher shows a loading row before agents resolve', async ({ page }) => {
   await expect(launcher).toBeVisible();
   await expect(launcher.locator('.launcher-loading')).toBeVisible();
   // When the list resolves, the loading row is replaced by agents.
-  await expect(launcher.locator('.launcher-item').first()).toContainText('Shell');
+  await expect(launcher.locator('.launcher-item').first()).toContainText(
+    'Shell',
+  );
   await expect(launcher.locator('.launcher-loading')).toHaveCount(0);
   await page.keyboard.press('Escape');
 });
 
-test('selecting an empty project shows the empty state; switching away clears it', async ({ page }) => {
+test('selecting an empty project shows the empty state; switching away clears it', async ({
+  page,
+}) => {
   await boot(page);
   await page.evaluate(() => {
-    window.__hive.emit('project:event', JSON.stringify({
-      kind: 'added',
-      project: { id: 'p2', name: 'empty', color: '#888', cwd: '', order: 1,
-        created: new Date().toISOString() },
-    }));
+    window.__hive.emit(
+      'project:event',
+      JSON.stringify({
+        kind: 'added',
+        project: {
+          id: 'p2',
+          name: 'empty',
+          color: '#888',
+          cwd: '',
+          order: 1,
+          created: new Date().toISOString(),
+        },
+      }),
+    );
   });
   // Clicking the empty project's row goes through switchToProject —
   // a repaint path that does not rebuild the sidebar.
@@ -121,32 +155,56 @@ test('selecting an empty project shows the empty state; switching away clears it
   await expect(empty).toBeHidden();
 });
 
-test('first-run empty state updates when projects change without a kind change', async ({ page }) => {
+test('first-run empty state updates when projects change without a kind change', async ({
+  page,
+}) => {
   await boot(page);
   await page.evaluate(() => window.__hive.killSession('s1'));
   const empty = page.locator('#empty-state');
   await expect(empty).toHaveAttribute('data-kind', 'first-run');
-  await expect(empty.getByRole('button', { name: /New project/ })).toHaveCount(0);
+  await expect(empty.getByRole('button', { name: /New project/ })).toHaveCount(
+    0,
+  );
   // Remove the only project: same kind, but the model now offers a
   // New project action too.
   await page.evaluate(() => {
     const p = window.__hive.state.projects[0];
-    window.__hive.emit('project:event', JSON.stringify({ kind: 'removed', project: p }));
+    window.__hive.emit(
+      'project:event',
+      JSON.stringify({ kind: 'removed', project: p }),
+    );
   });
-  await expect(empty.getByRole('button', { name: /New project/ })).toBeVisible();
+  await expect(
+    empty.getByRole('button', { name: /New project/ }),
+  ).toBeVisible();
   // And adding a project back removes it again.
   await page.evaluate(() => {
-    window.__hive.emit('project:event', JSON.stringify({
-      kind: 'added',
-      project: { id: 'p9', name: 'fresh', color: '#888', cwd: '', order: 0,
-        created: new Date().toISOString() },
-    }));
+    window.__hive.emit(
+      'project:event',
+      JSON.stringify({
+        kind: 'added',
+        project: {
+          id: 'p9',
+          name: 'fresh',
+          color: '#888',
+          cwd: '',
+          order: 0,
+          created: new Date().toISOString(),
+        },
+      }),
+    );
   });
-  await expect(empty.getByRole('button', { name: /New project/ })).toHaveCount(0);
-  await expect(empty.getByRole('button', { name: /New session/ })).toBeVisible();
+  await expect(empty.getByRole('button', { name: /New project/ })).toHaveCount(
+    0,
+  );
+  await expect(
+    empty.getByRole('button', { name: /New session/ }),
+  ).toBeVisible();
 });
 
-test('native menu event toggles the help overlay open and closed', async ({ page }) => {
+test('native menu event toggles the help overlay open and closed', async ({
+  page,
+}) => {
   await boot(page);
   // The macOS menu accelerator intercepts ⌘/ before the webview's
   // keydown listener, so the menu:keyboard-shortcuts handler itself
@@ -162,7 +220,8 @@ test('help overlay traps Tab inside the dialog', async ({ page }) => {
   await page.keyboard.press(`${mod}+/`);
   await expect(page.locator('#help-overlay')).toBeVisible();
   for (let i = 0; i < 3; i++) await page.keyboard.press('Tab');
-  await expect.poll(() => page.evaluate(() => document.activeElement?.id))
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.id))
     .toBe('help-overlay-close');
   await page.keyboard.press('Escape');
   await expect(page.locator('#help-overlay')).toBeHidden();
@@ -174,30 +233,42 @@ test('sidebar footer shows hive/hived version and build', async ({ page }) => {
   const daemonLine = page.locator('#ver-daemon');
 
   // Matching builds: one line, daemon line hidden — the common case.
-  await page.evaluate(() => window.__hive.emit('daemon:stale', {
-    severity: 'match',
-    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
-    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
-  }));
+  await page.evaluate(() =>
+    window.__hive.emit('daemon:stale', {
+      severity: 'match',
+      guiBuild: 'a3f9c1',
+      daemonBuild: 'a3f9c1',
+      guiRelease: 'v0.4.2',
+      daemonRelease: 'v0.4.2',
+    }),
+  );
   await expect(footer).toContainText('hive v0.4.2 (a3f9c1)');
   await expect(daemonLine).toBeHidden();
 
   // Mismatch: both lines visible, warning styling applied.
-  await page.evaluate(() => window.__hive.emit('daemon:stale', {
-    severity: 'mismatch',
-    guiBuild: 'a3f9c1', daemonBuild: 'b7e220',
-    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.1',
-  }));
+  await page.evaluate(() =>
+    window.__hive.emit('daemon:stale', {
+      severity: 'mismatch',
+      guiBuild: 'a3f9c1',
+      daemonBuild: 'b7e220',
+      guiRelease: 'v0.4.2',
+      daemonRelease: 'v0.4.1',
+    }),
+  );
   await expect(daemonLine).toBeVisible();
   await expect(daemonLine).toContainText('hived v0.4.1 (b7e220)');
   await expect(footer).toHaveClass(/mismatch/);
 
   // Back to matching: collapses again and clears the warning class.
-  await page.evaluate(() => window.__hive.emit('daemon:stale', {
-    severity: 'match',
-    guiBuild: 'a3f9c1', daemonBuild: 'a3f9c1',
-    guiRelease: 'v0.4.2', daemonRelease: 'v0.4.2',
-  }));
+  await page.evaluate(() =>
+    window.__hive.emit('daemon:stale', {
+      severity: 'match',
+      guiBuild: 'a3f9c1',
+      daemonBuild: 'a3f9c1',
+      guiRelease: 'v0.4.2',
+      daemonRelease: 'v0.4.2',
+    }),
+  );
   await expect(daemonLine).toBeHidden();
   await expect(footer).not.toHaveClass(/mismatch/);
 
@@ -224,8 +295,10 @@ test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
     document.getElementById('sidebar').style.width = '150px';
     window.__hive.emit('daemon:stale', {
       severity: 'mismatch',
-      guiBuild: 'a3f9c1d', daemonBuild: 'b7e220f',
-      guiRelease: 'v0.4.2-rc.1', daemonRelease: 'v0.4.1-rc.9',
+      guiBuild: 'a3f9c1d',
+      daemonBuild: 'b7e220f',
+      guiRelease: 'v0.4.2-rc.1',
+      daemonRelease: 'v0.4.1-rc.9',
     });
   });
 
@@ -249,30 +322,52 @@ test('project collapse state survives a reload', async ({ page }) => {
   await boot(page);
   const caret = page.locator('#projects .project[data-pid="p1"] .caret');
   await caret.click();
-  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(/collapsed/);
+  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(
+    /collapsed/,
+  );
   await expect(caret).toHaveAttribute('aria-expanded', 'false');
 
   await page.reload();
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
-  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(/collapsed/);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(
+    /collapsed/,
+  );
 
   // Expand again and confirm that persists too.
   await page.locator('#projects .project[data-pid="p1"] .caret').click();
   await page.reload();
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
-  await expect(page.locator('#projects .project[data-pid="p1"]')).not.toHaveClass(/collapsed/);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+  await expect(
+    page.locator('#projects .project[data-pid="p1"]'),
+  ).not.toHaveClass(/collapsed/);
 });
 
-test('a11y attributes: palette input label, alertdialog dead overlay, caret button', async ({ page }) => {
+test('a11y attributes: palette input label, alertdialog dead overlay, caret button', async ({
+  page,
+}) => {
   await boot(page);
-  await expect(page.locator('#command-palette-input')).toHaveAttribute('aria-label', 'Search commands');
+  await expect(page.locator('#command-palette-input')).toHaveAttribute(
+    'aria-label',
+    'Search commands',
+  );
   const caret = page.locator('#projects .project[data-pid="p1"] .caret');
   await expect(caret).toHaveAttribute('aria-expanded', 'true');
 
   // Drive a session death through the mock and check the overlay role.
   await page.evaluate(() => {
-    const s = { ...window.__hive.state.sessions[0], alive: false, last_error: 'boom' };
-    window.__hive.emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    const s = {
+      ...window.__hive.state.sessions[0],
+      alive: false,
+      last_error: 'boom',
+    };
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'updated', session: s }),
+    );
   });
   const overlay = page.locator('.dead-overlay[role="alertdialog"]');
   await expect(overlay).toBeVisible();

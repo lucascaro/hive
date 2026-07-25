@@ -62,7 +62,8 @@ export function buildGridLayout(n, w, h) {
 // this function locks the convention down.
 export function computeSpatialMove(layout, currentIdx, dCol, dRow) {
   const { rows, cols, cellMap, assignments } = layout;
-  if (!assignments || currentIdx < 0 || currentIdx >= assignments.length) return null;
+  if (!assignments || currentIdx < 0 || currentIdx >= assignments.length)
+    return null;
   const a = assignments[currentIdx];
   // For downward moves, start from the tile's bottom edge.
   let r = a.row;

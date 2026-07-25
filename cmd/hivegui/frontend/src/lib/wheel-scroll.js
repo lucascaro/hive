@@ -50,8 +50,11 @@ export function wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent }) {
   // Legacy fallback: some WebKit builds leave the standard deltaY at 0
   // (or undefined) but still populate the deprecated wheelDeltaY, which
   // carries the OPPOSITE sign and a pixel-scale magnitude.
-  if ((!Number.isFinite(deltaY) || deltaY === 0)
-    && Number.isFinite(e.wheelDeltaY) && e.wheelDeltaY !== 0) {
+  if (
+    (!Number.isFinite(deltaY) || deltaY === 0) &&
+    Number.isFinite(e.wheelDeltaY) &&
+    e.wheelDeltaY !== 0
+  ) {
     deltaY = -e.wheelDeltaY;
     deltaMode = 0; // wheelDeltaY is pixel-scale
   }

@@ -34,7 +34,5 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
   },
-  projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
-  ],
+  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
 });

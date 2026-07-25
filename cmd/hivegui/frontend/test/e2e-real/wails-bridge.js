@@ -25,17 +25,28 @@ function ensureWS() {
   if (wsReady) return wsReady;
   wsReady = new Promise((resolve, reject) => {
     const url = getWsUrl();
-    if (!url) { reject(new Error('no WS bridge URL')); return; }
+    if (!url) {
+      reject(new Error('no WS bridge URL'));
+      return;
+    }
     ws = new WebSocket(url);
     ws.addEventListener('open', () => resolve(ws));
     ws.addEventListener('error', (e) => reject(e));
     ws.addEventListener('message', (m) => {
       let msg;
-      try { msg = JSON.parse(m.data); } catch { return; }
+      try {
+        msg = JSON.parse(m.data);
+      } catch {
+        return;
+      }
       if (msg.event) {
         const arr = listeners.get(msg.event) || [];
         for (const fn of arr) {
-          try { fn(...(msg.args || [])); } catch { /* swallow per Wails */ }
+          try {
+            fn(...(msg.args || []));
+          } catch {
+            /* swallow per Wails */
+          }
         }
         return;
       }
@@ -73,16 +84,24 @@ export function EventsOn(name, handler) {
     if (i >= 0) arr.splice(i, 1);
   };
 }
-export function EventsOff(name) { listeners.delete(name); }
-export function WindowSetTitle(t) { document.title = t; }
+export function EventsOff(name) {
+  listeners.delete(name);
+}
+export function WindowSetTitle(t) {
+  document.title = t;
+}
 
 // --- App bindings (subset — covers what test specs exercise) ---
 
-export async function ConnectControl() { return call('ConnectControl'); }
+export async function ConnectControl() {
+  return call('ConnectControl');
+}
 export async function OpenSession(id, cols, rows) {
   return call('OpenSession', { id, cols: cols || 0, rows: rows || 0 });
 }
-export async function CloseAttach(id) { return call('CloseAttach', { id }); }
+export async function CloseAttach(id) {
+  return call('CloseAttach', { id });
+}
 
 const stdinLog = [];
 export async function WriteStdin(id, b64) {
@@ -92,7 +111,9 @@ export async function WriteStdin(id, b64) {
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     text = new TextDecoder('utf-8').decode(bytes);
-  } catch { /* ignore decode errors — test hook only */ }
+  } catch {
+    /* ignore decode errors — test hook only */
+  }
   stdinLog.push({ id, b64, text });
   return call('WriteStdin', { id, b64 });
 }
@@ -102,7 +123,15 @@ export async function ResizeSession(id, cols, rows) {
 export async function RequestScrollbackReplay(id) {
   return call('RequestScrollbackReplay', { id });
 }
-export async function CreateSession(agentID, projectID, name, color, cols, rows, useWorktree) {
+export async function CreateSession(
+  agentID,
+  projectID,
+  name,
+  color,
+  cols,
+  rows,
+  useWorktree,
+) {
   // The Wails signature uses positional args; map to the bridge's
   // CreateSpec shape.
   return call('CreateSession', {
@@ -115,38 +144,84 @@ export async function CreateSession(agentID, projectID, name, color, cols, rows,
     use_worktree: !!useWorktree,
   });
 }
-export async function DuplicateSession() { return CreateSession('', '', 'dup', '', 80, 24, false); }
+export async function DuplicateSession() {
+  return CreateSession('', '', 'dup', '', 80, 24, false);
+}
 export async function KillSession(id, force) {
   return call('KillSession', { session_id: id, force: !!force });
 }
-export async function RestartSession(_id) { return ''; }
-export async function UpdateSession(_id, _name, _color, _order) { return ''; }
-export async function ListAgents() { return []; }
-export async function ListCustomAgents() { return []; }
-export async function SaveCustomAgents() { return undefined; }
-export async function CreateProject() { return ''; }
-export async function KillProject() { return ''; }
-export async function UpdateProject() { return ''; }
-export async function LaunchDir() { return ''; }
-export async function PickDirectory() { return ''; }
-export async function OpenNewWindow() { return ''; }
-export async function CloseWindow() { return ''; }
-export async function IsGitRepo() { return false; }
-export async function OpenURL() { return ''; }
-export async function OpenTerminalAt() { return ''; }
-export async function Notify() { return ''; }
-export async function LogFrontend() { return ''; }
-export async function Confirm() { return true; }
-export async function RestartDaemon() { return ''; }
-export async function CheckForUpdate() { return null; }
+export async function RestartSession(_id) {
+  return '';
+}
+export async function UpdateSession(_id, _name, _color, _order) {
+  return '';
+}
+export async function ListAgents() {
+  return [];
+}
+export async function ListCustomAgents() {
+  return [];
+}
+export async function SaveCustomAgents() {
+  return undefined;
+}
+export async function CreateProject() {
+  return '';
+}
+export async function KillProject() {
+  return '';
+}
+export async function UpdateProject() {
+  return '';
+}
+export async function LaunchDir() {
+  return '';
+}
+export async function PickDirectory() {
+  return '';
+}
+export async function OpenNewWindow() {
+  return '';
+}
+export async function CloseWindow() {
+  return '';
+}
+export async function IsGitRepo() {
+  return false;
+}
+export async function OpenURL() {
+  return '';
+}
+export async function OpenTerminalAt() {
+  return '';
+}
+export async function Notify() {
+  return '';
+}
+export async function LogFrontend() {
+  return '';
+}
+export async function Confirm() {
+  return true;
+}
+export async function RestartDaemon() {
+  return '';
+}
+export async function CheckForUpdate() {
+  return null;
+}
 
 // Clipboard bindings. main.js imports ClipboardGetText (runtime) and
 // SetClipboardText (App), both aliased to this bridge under
 // VITE_WAILS_REAL=1; without these exports the ESM import throws at
 // module load and the app never boots. In-memory is sufficient here.
 let clipboard = '';
-export async function ClipboardGetText() { return clipboard; }
-export async function SetClipboardText(text) { clipboard = String(text ?? ''); }
+export async function ClipboardGetText() {
+  return clipboard;
+}
+export async function SetClipboardText(text) {
+  clipboard = String(text ?? '');
+}
 
 // Test hooks for Playwright. Smaller surface than the mock — there's
 // no scripted state machine to poke; the daemon IS the state machine.
@@ -154,14 +229,23 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     stdinLog,
     stdinText(id) {
-      return stdinLog.filter((e) => id == null || e.id === id).map((e) => e.text).join('');
+      return stdinLog
+        .filter((e) => id == null || e.id === id)
+        .map((e) => e.text)
+        .join('');
     },
-    resetStdin() { stdinLog.length = 0; },
+    resetStdin() {
+      stdinLog.length = 0;
+    },
     listeners,
     emit(name, ...args) {
       const arr = listeners.get(name) || [];
       for (const fn of arr) {
-        try { fn(...args); } catch { /* */ }
+        try {
+          fn(...args);
+        } catch {
+          /* */
+        }
       }
     },
   };

@@ -5,7 +5,11 @@ const sess = (id, pid) => ({ id, project_id: pid });
 
 describe('emptyStateModel', () => {
   it('first-run when there are no sessions at all', () => {
-    const m = emptyStateModel({ projects: [{ id: 'p1' }], sessions: [], isMac: true });
+    const m = emptyStateModel({
+      projects: [{ id: 'p1' }],
+      sessions: [],
+      isMac: true,
+    });
     expect(m.kind).toBe('first-run');
     expect(m.hint).toContain('⌘T');
     expect(m.actions.map((a) => a.id)).toEqual(['new-session']);
@@ -55,30 +59,36 @@ describe('emptyStateModel', () => {
   });
 
   it('null when sessions are visible', () => {
-    expect(emptyStateModel({
-      projects: [{ id: 'p1' }],
-      sessions: [sess('s1', 'p1')],
-      view: 'single',
-      currentProjectId: 'p1',
-      isMac: true,
-    })).toBeNull();
-    expect(emptyStateModel({
-      projects: [{ id: 'p1' }],
-      sessions: [sess('s1', 'p1'), sess('s2', 'p1')],
-      view: 'grid-all',
-      minimized: new Set(['s1']),
-      isMac: true,
-    })).toBeNull();
+    expect(
+      emptyStateModel({
+        projects: [{ id: 'p1' }],
+        sessions: [sess('s1', 'p1')],
+        view: 'single',
+        currentProjectId: 'p1',
+        isMac: true,
+      }),
+    ).toBeNull();
+    expect(
+      emptyStateModel({
+        projects: [{ id: 'p1' }],
+        sessions: [sess('s1', 'p1'), sess('s2', 'p1')],
+        view: 'grid-all',
+        minimized: new Set(['s1']),
+        isMac: true,
+      }),
+    ).toBeNull();
   });
 
   it('minimized sessions do not trigger all-minimized in single view', () => {
-    expect(emptyStateModel({
-      projects: [{ id: 'p1' }],
-      sessions: [sess('s1', 'p1')],
-      view: 'single',
-      currentProjectId: 'p1',
-      minimized: new Set(['s1']),
-      isMac: true,
-    })).toBeNull();
+    expect(
+      emptyStateModel({
+        projects: [{ id: 'p1' }],
+        sessions: [sess('s1', 'p1')],
+        view: 'single',
+        currentProjectId: 'p1',
+        minimized: new Set(['s1']),
+        isMac: true,
+      }),
+    ).toBeNull();
   });
 });

@@ -21,14 +21,16 @@ function renderPalette() {
   paletteList.innerHTML = '';
   paletteState.items = paletteCommands.filter((c) => {
     if (!q) return true;
-    return c.name.toLowerCase().includes(q) || c.shortcut.toLowerCase().includes(q);
+    return (
+      c.name.toLowerCase().includes(q) || c.shortcut.toLowerCase().includes(q)
+    );
   });
   if (paletteState.selected >= paletteState.items.length) {
     paletteState.selected = 0;
   }
   paletteState.items.forEach((c, i) => {
     const row = document.createElement('div');
-    row.className = 'palette-item' + (i === paletteState.selected ? ' selected' : '');
+    row.className = `palette-item${i === paletteState.selected ? ' selected' : ''}`;
     const name = document.createElement('span');
     name.className = 'palette-name';
     name.textContent = c.name;
@@ -78,20 +80,27 @@ export function initCommandPalette({ commands, ...injected }) {
   paletteInput.addEventListener('input', renderPalette);
   paletteEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       closeCommandPalette();
     } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       if (paletteState.items.length === 0) return;
-      paletteState.selected = (paletteState.selected + 1) % paletteState.items.length;
+      paletteState.selected =
+        (paletteState.selected + 1) % paletteState.items.length;
       renderPalette();
     } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       if (paletteState.items.length === 0) return;
-      paletteState.selected = (paletteState.selected - 1 + paletteState.items.length) % paletteState.items.length;
+      paletteState.selected =
+        (paletteState.selected - 1 + paletteState.items.length) %
+        paletteState.items.length;
       renderPalette();
     } else if (e.key === 'Enter') {
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       activatePalette(paletteState.selected);
     }
   });

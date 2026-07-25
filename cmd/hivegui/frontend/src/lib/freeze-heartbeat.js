@@ -26,7 +26,14 @@
 // suppressed. The periodic "alive" line proves the loop is still running
 // (and carries window state) so a totally silent log = process wedged or
 // killed, not merely quiet.
-export function classifyBeat({ gap, nominalMs, visible, state, beat, aliveEvery }) {
+export function classifyBeat({
+  gap,
+  nominalMs,
+  visible,
+  state,
+  beat,
+  aliveEvery,
+}) {
   const stall = visible && gap > nominalMs * 2;
   if (stall) {
     return `hb STALL gap=${Math.round(gap)}ms ${fmtState(state)}`;
@@ -53,10 +60,12 @@ function fmtState(state) {
 // still a useful leak signal where available.
 export function jsHeapMB(perf) {
   try {
-    const m = perf && perf.memory;
+    const m = perf?.memory;
     if (m && typeof m.usedJSHeapSize === 'number') {
       return Math.round(m.usedJSHeapSize / (1024 * 1024));
     }
-  } catch { /* not exposed */ }
+  } catch {
+    /* not exposed */
+  }
   return null;
 }

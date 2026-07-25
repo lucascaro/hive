@@ -6,11 +6,16 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function bootWithSessions(page, count = 2) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
   for (let i = 1; i < count; i++) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
-  await page.waitForFunction((n) => window.__hive.state.sessions.length >= n, count);
+  await page.waitForFunction(
+    (n) => window.__hive.state.sessions.length >= n,
+    count,
+  );
 }
 
 async function enterGridAll(page) {
@@ -24,7 +29,9 @@ test.describe('session minimize', () => {
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
   });
 
-  test('minimize hides tile from grid-all view and reveals tray chip', async ({ page }) => {
+  test('minimize hides tile from grid-all view and reveals tray chip', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
 
@@ -59,15 +66,21 @@ test.describe('session minimize', () => {
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
   });
 
-  test('minimizing the active session moves focus to another visible tile', async ({ page }) => {
+  test('minimizing the active session moves focus to another visible tile', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
     // Make the first tile active.
     const tiles = page.locator('.term-host.in-grid');
     const firstSid = await tiles.first().evaluate((el) => el.dataset.sid);
     await tiles.first().click();
-    await page.waitForFunction((id) => window.__hive && document.querySelector(`.term-host.active[data-sid="${id}"]`),
-      firstSid);
+    await page.waitForFunction(
+      (id) =>
+        window.__hive &&
+        document.querySelector(`.term-host.active[data-sid="${id}"]`),
+      firstSid,
+    );
 
     // Minimize the active tile.
     await tiles.first().locator('.tile-minimize').click();
@@ -81,16 +94,22 @@ test.describe('session minimize', () => {
     expect(activeId).not.toBeNull();
   });
 
-  test('removing a minimized session clears it from the tray', async ({ page }) => {
+  test('removing a minimized session clears it from the tray', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
     await firstTile.locator('.tile-minimize').click();
-    await expect(page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`)).toBeVisible();
+    await expect(
+      page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
+    ).toBeVisible();
 
     await page.evaluate((id) => window.__hive.killSession(id), sid);
-    await expect(page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`)).toHaveCount(0);
+    await expect(
+      page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
+    ).toHaveCount(0);
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
   });
 });

@@ -39,7 +39,9 @@ describe('xterm.js native reflow on resize', () => {
     // 60 visible chars, no newline → wraps at width 20.
     const sixty = 'x'.repeat(60);
     await write(term, sixty);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(sixty);
+    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
+      sixty,
+    );
 
     // Content must survive a resize in both directions (no data loss). NOTE:
     // whether xterm *re-wraps* (3 rows → 2 on widening) is renderer-dependent
@@ -47,9 +49,13 @@ describe('xterm.js native reflow on resize', () => {
     // verify reflow visually in a real browser before trusting it to replace
     // the daemon replay. Here we only assert the safe invariant: no corruption.
     term.resize(40, 6);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(sixty);
+    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
+      sixty,
+    );
     term.resize(20, 6);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(sixty);
+    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
+      sixty,
+    );
   });
 
   it('preserves scrollback content across a resize', async () => {

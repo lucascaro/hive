@@ -22,12 +22,20 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function bootWithSessions(page, count = 2) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
   for (let i = 1; i < count; i++) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
-  await page.waitForFunction((n) => window.__hive.state.sessions.length >= n, count);
-  await page.evaluate(() => { window.__hive.resetStdin(); window.__hive.resetReplay(); });
+  await page.waitForFunction(
+    (n) => window.__hive.state.sessions.length >= n,
+    count,
+  );
+  await page.evaluate(() => {
+    window.__hive.resetStdin();
+    window.__hive.resetReplay();
+  });
 }
 
 async function enterGridAll(page) {
@@ -43,7 +51,9 @@ async function settleReplay(page) {
 }
 
 test.describe('#208 grid-mode scroll regressions', () => {
-  test('R1: cold-start in grid mode settles without endless replays', async ({ page }) => {
+  test('R1: cold-start in grid mode settles without endless replays', async ({
+    page,
+  }) => {
     // Pre-seed grid-all so the very first render is the grid. This
     // exercises ensureAttached's rebaselineReplayCols('first-attach')
     // hook on tiles that have no prior baseline. Without the hook,
@@ -51,7 +61,9 @@ test.describe('#208 grid-mode scroll regressions', () => {
     // 4-col threshold against a stale 80-default baseline and fires
     // replay-after-replay. With the hook, replays settle quickly.
     await page.addInitScript(() => {
-      try { localStorage.setItem('hive.view', 'grid-all'); } catch {}
+      try {
+        localStorage.setItem('hive.view', 'grid-all');
+      } catch {}
     });
     await bootWithSessions(page, 2);
     await expect(page.locator('#terms')).toHaveClass(/grid/);
@@ -67,7 +79,9 @@ test.describe('#208 grid-mode scroll regressions', () => {
     expect(replays).toBe(0);
   });
 
-  test('R2: minimizing one tile in a 3-tile grid does not fire a spurious replay in the remaining tiles', async ({ page }) => {
+  test('R2: minimizing one tile in a 3-tile grid does not fire a spurious replay in the remaining tiles', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
     // Let initial-attach replays (if any) settle, then reset the
@@ -86,7 +100,9 @@ test.describe('#208 grid-mode scroll regressions', () => {
     expect(replays).toBe(0);
   });
 
-  test('R2 restore: restoring a minimized tile does not fire a spurious replay in the others', async ({ page }) => {
+  test('R2 restore: restoring a minimized tile does not fire a spurious replay in the others', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
     const firstTile = page.locator('.term-host.in-grid').first();
@@ -105,7 +121,9 @@ test.describe('#208 grid-mode scroll regressions', () => {
     expect(replays).toBe(0);
   });
 
-  test('R-control: a real window resize that materially changes tile width still triggers a scrollback replay', async ({ page }) => {
+  test('R-control: a real window resize that materially changes tile width still triggers a scrollback replay', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
     await settleReplay(page);

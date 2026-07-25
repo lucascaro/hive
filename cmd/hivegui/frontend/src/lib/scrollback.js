@@ -20,7 +20,11 @@ export const REPLAY_DEBOUNCE_MS = 100;
 // (prevCols falsy) as well: an undefined / 0 prev means we haven't
 // measured yet, so suppress — the initial attach already sent a
 // replay.
-export function shouldRequestReplay(prevCols, nextCols, threshold = REPLAY_COL_THRESHOLD) {
+export function shouldRequestReplay(
+  prevCols,
+  nextCols,
+  threshold = REPLAY_COL_THRESHOLD,
+) {
   if (!prevCols || !nextCols) return false;
   return Math.abs(nextCols - prevCols) >= threshold;
 }
@@ -41,7 +45,8 @@ export function shouldRequestReplay(prevCols, nextCols, threshold = REPLAY_COL_T
 //     replay.
 //   - normal screen: replay, and advance the baseline to the new width.
 export function decideResizeReplay({ bufferType, cols, baselineCols }) {
-  if (bufferType === 'alternate') return { replay: false, baseline: baselineCols };
+  if (bufferType === 'alternate')
+    return { replay: false, baseline: baselineCols };
   return { replay: true, baseline: cols };
 }
 
@@ -75,7 +80,7 @@ export function decideResizeReplay({ bufferType, cols, baselineCols }) {
 // `st._replayTimer` is cleared via the injected clearTimer (defaults
 // to global clearTimeout) when present and truthy.
 export function applyRebaseline(st, clearTimer = clearTimeout) {
-  if (!st || !st.term) return st;
+  if (!st?.term) return st;
   st._replayBaselineCols = st.term.cols;
   if (st._replayTimer) {
     clearTimer(st._replayTimer);
@@ -112,7 +117,7 @@ export function abandonReplays(st) {
 // `wantsBottom:false` restore to a target far above baseY while the user
 // was actually at the bottom shows the heuristic misfired.
 export function handleScrollbackEvent(st, kind, trace) {
-  if (!st || !st.term) return false;
+  if (!st?.term) return false;
   switch (kind) {
     case 'scrollback_replay_begin': {
       // Capture the reader's position as a distance from the bottom
@@ -125,7 +130,11 @@ export function handleScrollbackEvent(st, kind, trace) {
       // bottom despite #213's wants-bottom flag.)
       const capture = () => {
         const buf = st.term.buffer?.active;
-        if (buf && typeof buf.baseY === 'number' && typeof buf.viewportY === 'number') {
+        if (
+          buf &&
+          typeof buf.baseY === 'number' &&
+          typeof buf.viewportY === 'number'
+        ) {
           st._replayPrevFromBottom = Math.max(0, buf.baseY - buf.viewportY);
         } else {
           delete st._replayPrevFromBottom;
@@ -146,7 +155,10 @@ export function handleScrollbackEvent(st, kind, trace) {
       // restore lands on the content the reader was actually on
       // instead of a backlog's-worth of lines below it.
       if (typeof st.term.write === 'function') {
-        st.term.write('', () => { capture(); st.term.reset(); });
+        st.term.write('', () => {
+          capture();
+          st.term.reset();
+        });
       } else {
         capture();
         st.term.reset();
@@ -186,15 +198,19 @@ export function handleScrollbackEvent(st, kind, trace) {
         // This prevents the replay-done handler from overriding the
         // user's scroll intent — the root cause of the scroll-jump bug.
         if (wantsBottom && st._followBottom) {
-          if (typeof st.term.scrollToBottom === 'function') st.term.scrollToBottom();
+          if (typeof st.term.scrollToBottom === 'function')
+            st.term.scrollToBottom();
           // Replay landed at the bottom — keep following. (Without this,
           // a stale _followBottom=false could survive a snap-to-bottom.)
           st._followBottom = true;
           if (trace) {
             const b = st.term.buffer?.active;
             trace('replay-restore', {
-              id: st.info?.id, wants: true, fromBottom,
-              baseY: b?.baseY, viewportY: b?.viewportY,
+              id: st.info?.id,
+              wants: true,
+              fromBottom,
+              baseY: b?.baseY,
+              viewportY: b?.viewportY,
             });
           }
           return;
@@ -210,10 +226,12 @@ export function handleScrollbackEvent(st, kind, trace) {
         // bottom at replay start) and _followBottom is false (they
         // scrolled up mid-replay), do not yank them back — that would
         // reintroduce the scroll-jump we are fixing.
-        if (typeof fromBottom === 'number'
-          && fromBottom > 0
-          && buf
-          && typeof st.term.scrollToLine === 'function') {
+        if (
+          typeof fromBottom === 'number' &&
+          fromBottom > 0 &&
+          buf &&
+          typeof st.term.scrollToLine === 'function'
+        ) {
           target = Math.max(0, buf.baseY - fromBottom);
           st.term.scrollToLine(target);
           // Set _followBottom based on where the restore actually landed,
@@ -223,8 +241,12 @@ export function handleScrollbackEvent(st, kind, trace) {
         }
         if (trace) {
           trace('replay-restore', {
-            id: st.info?.id, wants: false, fromBottom, target,
-            baseY: buf?.baseY, viewportY: st.term.buffer?.active?.viewportY,
+            id: st.info?.id,
+            wants: false,
+            fromBottom,
+            target,
+            baseY: buf?.baseY,
+            viewportY: st.term.buffer?.active?.viewportY,
           });
         }
       };

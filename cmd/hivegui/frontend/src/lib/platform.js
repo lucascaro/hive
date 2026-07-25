@@ -9,12 +9,14 @@ export function detectMac(nav) {
   return /mac|iphone|ipad/i.test(p);
 }
 
-export const isMac = detectMac(typeof navigator !== 'undefined' ? navigator : null);
+export const isMac = detectMac(
+  typeof navigator !== 'undefined' ? navigator : null,
+);
 
 // cmdOrCtrl returns true when the user pressed the platform's
 // "primary" modifier: Cmd on macOS, Ctrl elsewhere. We deliberately
 // reject the cross-platform combo (Ctrl+Cmd on macOS, Cmd+Ctrl on
 // PC) so chorded shortcuts don't fire on weird key states.
 export function cmdOrCtrl(e, mac = isMac) {
-  return mac ? (e.metaKey && !e.ctrlKey) : (e.ctrlKey && !e.metaKey);
+  return mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
 }

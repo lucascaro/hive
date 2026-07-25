@@ -15,16 +15,36 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
   return {
-    ConnectControl: fn(), OpenSession: fn(), CloseAttach: fn(),
-    WriteStdin: fn(), ResizeSession: fn(), RequestScrollbackReplay: fn(),
-    CreateSession: fn(), DuplicateSession: fn(), KillSession: fn(),
-    RestartSession: fn(), UpdateSession: fn(), ListAgents: fn(),
-    CreateProject: fn(), KillProject: fn(), UpdateProject: fn(),
-    LaunchDir: fn(), PickDirectory: fn(), OpenNewWindow: fn(), CloseWindow: fn(),
-    IsGitRepo: fn(), OpenURL: fn(), OpenTerminalAt: fn(),
-    Notify: fn(), Confirm: fn(), RestartDaemon: fn(),
-    CheckForUpdate: fn(), SetClipboardText: fn(),
-    EventsOn: vi.fn(), WindowSetTitle: vi.fn(), ClipboardGetText: fn(),
+    ConnectControl: fn(),
+    OpenSession: fn(),
+    CloseAttach: fn(),
+    WriteStdin: fn(),
+    ResizeSession: fn(),
+    RequestScrollbackReplay: fn(),
+    CreateSession: fn(),
+    DuplicateSession: fn(),
+    KillSession: fn(),
+    RestartSession: fn(),
+    UpdateSession: fn(),
+    ListAgents: fn(),
+    CreateProject: fn(),
+    KillProject: fn(),
+    UpdateProject: fn(),
+    LaunchDir: fn(),
+    PickDirectory: fn(),
+    OpenNewWindow: fn(),
+    CloseWindow: fn(),
+    IsGitRepo: fn(),
+    OpenURL: fn(),
+    OpenTerminalAt: fn(),
+    Notify: fn(),
+    Confirm: fn(),
+    RestartDaemon: fn(),
+    CheckForUpdate: fn(),
+    SetClipboardText: fn(),
+    EventsOn: vi.fn(),
+    WindowSetTitle: vi.fn(),
+    ClipboardGetText: fn(),
   };
 });
 
@@ -35,7 +55,11 @@ let state, jumpToAttention, jumpBack, initView, initFocus, setActive;
 function fakeTerm() {
   return {
     host: document.createElement('div'),
-    ensureAttached() {}, show() {}, hide() {}, fit() {}, focus() {},
+    ensureAttached() {},
+    show() {},
+    hide() {},
+    fit() {},
+    focus() {},
   };
 }
 
@@ -44,7 +68,9 @@ beforeAll(async () => {
   // has no implementation. The grid-reflow path it drives is not what
   // this file tests, so a no-op stub is enough.
   globalThis.ResizeObserver = class {
-    observe() {} unobserve() {} disconnect() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
   };
   document.body.innerHTML = `
     <div id="app"><ul id="projects"></ul><div id="status"></div>
@@ -63,7 +89,10 @@ beforeAll(async () => {
     ensureTerm: (info) => state.terms.get(info.id),
     setActive,
     focusActiveTerm: () => {},
-    scrollTrace: { rec: Object.assign(() => {}, { enabled: false }), count: () => {} },
+    scrollTrace: {
+      rec: Object.assign(() => {}, { enabled: false }),
+      count: () => {},
+    },
   });
 });
 
@@ -97,7 +126,9 @@ describe('⌘B through the real switchTo/setActive chain', () => {
     state.attention = new Set(['b']);
     state.terms.get('b').host.classList.add('attention');
     jumpToAttention();
-    expect(state.terms.get('b').host.classList.contains('attention')).toBe(false);
+    expect(state.terms.get('b').host.classList.contains('attention')).toBe(
+      false,
+    );
   });
 
   it('syncs currentProjectId when the flagged session is in another project', () => {
@@ -117,8 +148,8 @@ describe('⌘B through the real switchTo/setActive chain', () => {
 
   it('does not re-visit a session whose flag it already cleared', () => {
     state.attention = new Set(['b']);
-    jumpToAttention();          // a → b, flag cleared for real
-    jumpToAttention();          // nothing left to jump to
+    jumpToAttention(); // a → b, flag cleared for real
+    jumpToAttention(); // nothing left to jump to
     expect(state.activeId).toBe('b');
   });
 
@@ -144,8 +175,8 @@ describe('minimized sessions round-trip', () => {
   it('re-minimizes it when you jump back', () => {
     state.minimized = new Set(['b']);
     state.attention = new Set(['b']);
-    jumpToAttention();          // a → b, b restored
-    jumpBack();                 // back to a, b returns to the tray
+    jumpToAttention(); // a → b, b restored
+    jumpBack(); // back to a, b returns to the tray
     expect(state.activeId).toBe('a');
     expect(state.minimized.has('b')).toBe(true);
     expect(state.attentionRestored.size).toBe(0);
@@ -161,9 +192,9 @@ describe('minimized sessions round-trip', () => {
   it('re-minimizes every session restored across a multi-hop round', () => {
     state.minimized = new Set(['b', 'z']);
     state.attention = new Set(['b', 'z']);
-    jumpToAttention();          // a → b (restored)
-    jumpToAttention();          // b → z (restored)
-    jumpBack();                 // home to a; both go back in the tray
+    jumpToAttention(); // a → b (restored)
+    jumpToAttention(); // b → z (restored)
+    jumpBack(); // home to a; both go back in the tray
     expect(state.activeId).toBe('a');
     expect(state.minimized.has('b')).toBe(true);
     expect(state.minimized.has('z')).toBe(true);
@@ -182,9 +213,9 @@ describe('minimized sessions round-trip', () => {
   it('keeps you visible when the anchor died: releases the round, no self-minimize', () => {
     state.minimized = new Set(['b']);
     state.attention = new Set(['b']);
-    jumpToAttention();                 // anchor = a, b restored, now sitting in b
+    jumpToAttention(); // anchor = a, b restored, now sitting in b
     state.sessions = state.sessions.filter((s) => s.id !== 'a'); // anchor dies
-    jumpBack();                        // "nowhere to jump back to"
+    jumpBack(); // "nowhere to jump back to"
     // b must NOT go back in the tray — it is the session under the user's
     // cursor and there is nowhere to send them. Minimizing it here would
     // hide the tile they are looking at.

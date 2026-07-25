@@ -8,11 +8,17 @@
 // events.js so a user-initiated restart doesn't flash a red status.
 
 import {
-  EventsOn, Confirm, RestartDaemon, CheckForUpdate, OpenURL,
+  EventsOn,
+  Confirm,
+  RestartDaemon,
+  CheckForUpdate,
+  OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
 
-export function isDaemonRestarting() { return daemonRestarting; }
+export function isDaemonRestarting() {
+  return daemonRestarting;
+}
 
 // Stale-daemon banner. The Go side compares its own buildinfo.BuildID
 // to the value advertised in WELCOME and emits "daemon:stale" on every
@@ -61,8 +67,8 @@ export async function restartHive() {
     const ok = await Confirm(
       'Restart Hive?',
       'This will close Hive, terminate every running shell and agent, ' +
-      'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
-      'Continue?',
+        'and reopen Hive with a fresh daemon. Save your work first.\n\n' +
+        'Continue?',
     );
     if (!ok) return;
     showDaemonBanner('Restarting Hive…');
@@ -104,12 +110,12 @@ function wireDaemonBanner() {
     if (ev.severity === 'mismatch') {
       showDaemonBanner(
         `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
-        `Restart Hive to apply changes.`,
+          `Restart Hive to apply changes.`,
       );
     } else {
       showDaemonBanner(
         `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
-        `If something looks wrong, restart Hive.`,
+          `If something looks wrong, restart Hive.`,
       );
     }
   });
@@ -131,9 +137,13 @@ const updateBannerDismiss = document.getElementById('update-banner-dismiss');
 const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
 let updateBannerAutoHideTimer = null;
 
-function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {}) {
+function showUpdateBanner(
+  text,
+  { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {},
+) {
   updateBannerText.textContent = text;
-  updateBannerDownload.style.display = showDownload && downloadUrl ? '' : 'none';
+  updateBannerDownload.style.display =
+    showDownload && downloadUrl ? '' : 'none';
   updateBannerEl.dataset.url = downloadUrl;
   // Clear the per-version dismissal key on every show — only the
   // "available" branch sets it back. Without this, dismissing a
@@ -152,7 +162,9 @@ function showUpdateBanner(text, { downloadUrl = '', showDownload = true, autoHid
     }, autoHideMs);
   }
 }
-function hideUpdateBanner() { updateBannerEl.classList.add('hidden'); }
+function hideUpdateBanner() {
+  updateBannerEl.classList.add('hidden');
+}
 
 // Transient (non-actionable) banners auto-hide so they don't linger
 // after the user has registered the message. The "available" banner
@@ -163,14 +175,18 @@ function applyUpdateInfo(info, { manual = false } = {}) {
   if (!info) return;
   if (info.skipped) {
     if (manual) {
-      showUpdateBanner('Update check skipped — this is a dev build.',
-        { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+      showUpdateBanner('Update check skipped — this is a dev build.', {
+        showDownload: false,
+        autoHideMs: UPDATE_TRANSIENT_MS,
+      });
     }
     return;
   }
   if (info.available) {
     let dismissed = '';
-    try { dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || ''; } catch {}
+    try {
+      dismissed = localStorage.getItem(UPDATE_DISMISS_KEY) || '';
+    } catch {}
     if (!manual && dismissed === info.latest) return;
     // info.url is empty when the Go side rejected the release's
     // html_url for failing the github.com/<repo>/ prefix check
@@ -186,8 +202,10 @@ function applyUpdateInfo(info, { manual = false } = {}) {
     return;
   }
   if (manual) {
-    showUpdateBanner(`Hive ${info.current} is up to date.`,
-      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+    showUpdateBanner(`Hive ${info.current} is up to date.`, {
+      showDownload: false,
+      autoHideMs: UPDATE_TRANSIENT_MS,
+    });
   }
 }
 
@@ -199,7 +217,9 @@ function wireUpdateBanner() {
   updateBannerDismiss.addEventListener('click', () => {
     const v = updateBannerEl.dataset.version || '';
     if (v) {
-      try { localStorage.setItem(UPDATE_DISMISS_KEY, v); } catch {}
+      try {
+        localStorage.setItem(UPDATE_DISMISS_KEY, v);
+      } catch {}
     }
     hideUpdateBanner();
   });
@@ -211,7 +231,9 @@ function wireUpdateBanner() {
   // until 6h after launch.
   // Intentionally silent: background boot poll. The manual menu path
   // below surfaces every outcome, including failures.
-  CheckForUpdate().then((info) => applyUpdateInfo(info)).catch(() => {});
+  CheckForUpdate()
+    .then((info) => applyUpdateInfo(info))
+    .catch(() => {});
 }
 
 // Guard against double-firing CheckForUpdate from the menu — clicking
@@ -227,8 +249,10 @@ export async function manualUpdateCheck() {
     const info = await CheckForUpdate();
     applyUpdateInfo(info, { manual: true });
   } catch (err) {
-    showUpdateBanner(`Update check failed: ${err}`,
-      { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS });
+    showUpdateBanner(`Update check failed: ${err}`, {
+      showDownload: false,
+      autoHideMs: UPDATE_TRANSIENT_MS,
+    });
   } finally {
     updateCheckInFlight = false;
   }

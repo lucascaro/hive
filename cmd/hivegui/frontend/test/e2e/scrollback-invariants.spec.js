@@ -22,12 +22,20 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function bootWithSessions(page, count = 2) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
   for (let i = 1; i < count; i++) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
-  await page.waitForFunction((n) => window.__hive.state.sessions.length >= n, count);
-  await page.evaluate(() => { window.__hive.resetStdin(); window.__hive.resetReplay(); });
+  await page.waitForFunction(
+    (n) => window.__hive.state.sessions.length >= n,
+    count,
+  );
+  await page.evaluate(() => {
+    window.__hive.resetStdin();
+    window.__hive.resetReplay();
+  });
 }
 
 async function enterGridAll(page) {
@@ -41,7 +49,9 @@ async function settleReplay(page) {
 }
 
 test.describe('scrollback replay invariants', () => {
-  test('I1: adding a session in grid mode does not replay in existing tiles', async ({ page }) => {
+  test('I1: adding a session in grid mode does not replay in existing tiles', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
     await settleReplay(page);
@@ -49,7 +59,9 @@ test.describe('scrollback replay invariants', () => {
 
     // Existing-tile IDs captured before the addition.
     const existing = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.term-host.in-grid')).map((t) => t.dataset.sid),
+      Array.from(document.querySelectorAll('.term-host.in-grid')).map(
+        (t) => t.dataset.sid,
+      ),
     );
     expect(existing).toHaveLength(2);
 
@@ -64,7 +76,9 @@ test.describe('scrollback replay invariants', () => {
     expect(replays).toEqual([0, 0]);
   });
 
-  test('I2: killing a non-active grid session does not replay in survivors', async ({ page }) => {
+  test('I2: killing a non-active grid session does not replay in survivors', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 3);
     await enterGridAll(page);
     await settleReplay(page);
@@ -77,7 +91,9 @@ test.describe('scrollback replay invariants', () => {
     await page.evaluate(() => window.__hive.resetReplay());
 
     const sids = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.term-host.in-grid')).map((t) => t.dataset.sid),
+      Array.from(document.querySelectorAll('.term-host.in-grid')).map(
+        (t) => t.dataset.sid,
+      ),
     );
     const victim = sids[2];
     const survivors = [sids[0], sids[1]];
@@ -86,18 +102,25 @@ test.describe('scrollback replay invariants', () => {
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);
 
-    const replays = await page.evaluate((ids) => ids.map((id) => window.__hive.replayCount(id)), survivors);
+    const replays = await page.evaluate(
+      (ids) => ids.map((id) => window.__hive.replayCount(id)),
+      survivors,
+    );
     expect(replays).toEqual([0, 0]);
   });
 
-  test('I3: round-trip single → grid → single fires no net replay in active session', async ({ page }) => {
+  test('I3: round-trip single → grid → single fires no net replay in active session', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 2);
     await settleReplay(page);
     await page.evaluate(() => window.__hive.resetReplay());
 
     // Note the active session ID.
     const activeId = await page.evaluate(() => {
-      const a = document.querySelector('.term-host.active') || document.querySelector('.term-host');
+      const a =
+        document.querySelector('.term-host.active') ||
+        document.querySelector('.term-host');
       return a ? a.dataset.sid : null;
     });
     expect(activeId).not.toBeNull();
@@ -115,13 +138,20 @@ test.describe('scrollback replay invariants', () => {
     // upper bound. The active session may legitimately replay on the
     // way into grid; what we lock in is that we do NOT loop or pile
     // up replays after the geometry has settled.
-    const replays = await page.evaluate((id) => window.__hive.replayCount(id), activeId);
+    const replays = await page.evaluate(
+      (id) => window.__hive.replayCount(id),
+      activeId,
+    );
     expect(replays).toBeLessThanOrEqual(2);
   });
 
-  test('I4: grid-project cold-start settles without runaway replays', async ({ page }) => {
+  test('I4: grid-project cold-start settles without runaway replays', async ({
+    page,
+  }) => {
     await page.addInitScript(() => {
-      try { localStorage.setItem('hive.view', 'grid-project'); } catch {}
+      try {
+        localStorage.setItem('hive.view', 'grid-project');
+      } catch {}
     });
     await bootWithSessions(page, 2);
     await expect(page.locator('#terms')).toHaveClass(/grid/);
@@ -133,7 +163,9 @@ test.describe('scrollback replay invariants', () => {
     expect(replays).toBe(0);
   });
 
-  test('I5: sidebar toggle in single mode does not fire a replay (active tile width unchanged enough)', async ({ page }) => {
+  test('I5: sidebar toggle in single mode does not fire a replay (active tile width unchanged enough)', async ({
+    page,
+  }) => {
     await bootWithSessions(page, 2);
     await expect(page.locator('#terms')).not.toHaveClass(/grid/);
     await settleReplay(page);

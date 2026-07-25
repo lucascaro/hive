@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import {
-  isShiftEnter, isHelpOverlayKey, navHistoryKey, NEWLINE_SEQ,
+  isShiftEnter,
+  isHelpOverlayKey,
+  navHistoryKey,
+  NEWLINE_SEQ,
 } from '../../src/lib/keymap.js';
 
 // Minimal fake keydown event with all modifier flags defaulted off.
 function ev(overrides = {}) {
-  return { metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, key: 'Enter', ...overrides };
+  return {
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    key: 'Enter',
+    ...overrides,
+  };
 }
 
 describe('isShiftEnter', () => {
@@ -28,7 +38,9 @@ describe('isShiftEnter', () => {
   });
 
   it('fires for numpad Enter (key is "Enter", code is "NumpadEnter")', () => {
-    expect(isShiftEnter(ev({ shiftKey: true, code: 'NumpadEnter' }))).toBe(true);
+    expect(isShiftEnter(ev({ shiftKey: true, code: 'NumpadEnter' }))).toBe(
+      true,
+    );
   });
 
   it('is platform-independent (no isMac gate)', () => {
@@ -48,7 +60,11 @@ describe('isHelpOverlayKey', () => {
     ['Ctrl+?', { ctrlKey: true, key: '?' }, true],
     // Shift is incidental: Cmd+Shift+/ still reports key '?' in a real
     // browser, but an explicit shiftKey must not change the verdict.
-    ['Cmd+Shift+? (shift flag set)', { metaKey: true, shiftKey: true, key: '?' }, true],
+    [
+      'Cmd+Shift+? (shift flag set)',
+      { metaKey: true, shiftKey: true, key: '?' },
+      true,
+    ],
   ];
   for (const [name, e, want] of cases) {
     it(`fires for ${name}`, () => {
@@ -80,15 +96,21 @@ describe('navHistoryKey', () => {
     });
 
     it('fires forward for Ctrl+Shift+-', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '-' }), true)).toBe('forward');
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '-' }), true),
+      ).toBe('forward');
     });
 
     it('accepts "_" — the shifted "-" on a US layout', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), true)).toBe('forward');
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), true),
+      ).toBe('forward');
     });
 
     it('falls back to the physical Minus key for other layouts', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, key: 'Dead', code: 'Minus' }), true)).toBe('back');
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, key: 'Dead', code: 'Minus' }), true),
+      ).toBe('back');
     });
 
     it('does not fire for ⌘- — that is zoom out', () => {
@@ -96,11 +118,15 @@ describe('navHistoryKey', () => {
     });
 
     it('does not fire for ⌃⌥- — Alt is the non-mac chord, kept free here', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), true)).toBe(null);
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), true),
+      ).toBe(null);
     });
 
     it('does not fire for Ctrl+Cmd+- (both modifiers held)', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, metaKey: true, key: '-' }), true)).toBe(null);
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, metaKey: true, key: '-' }), true),
+      ).toBe(null);
     });
   });
 
@@ -110,15 +136,24 @@ describe('navHistoryKey', () => {
       // to bumpFontSize(-1) via the cmdOrCtrl gate. Claiming it here
       // would silently remove zoom out on two of three platforms.
       expect(navHistoryKey(ev({ ctrlKey: true, key: '-' }), false)).toBe(null);
-      expect(navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), false)).toBe(null);
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, shiftKey: true, key: '_' }), false),
+      ).toBe(null);
     });
 
     it('fires for Ctrl+Alt+-', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), false)).toBe('back');
+      expect(
+        navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '-' }), false),
+      ).toBe('back');
     });
 
     it('fires forward for Ctrl+Alt+Shift+-', () => {
-      expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, shiftKey: true, key: '-' }), false)).toBe('forward');
+      expect(
+        navHistoryKey(
+          ev({ ctrlKey: true, altKey: true, shiftKey: true, key: '-' }),
+          false,
+        ),
+      ).toBe('forward');
     });
 
     it('does not fire for Alt+- without Ctrl', () => {
@@ -133,7 +168,9 @@ describe('navHistoryKey', () => {
 
   it('does not fire for Ctrl + another key', () => {
     expect(navHistoryKey(ev({ ctrlKey: true, key: '=' }), true)).toBe(null);
-    expect(navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '=' }), false)).toBe(null);
+    expect(
+      navHistoryKey(ev({ ctrlKey: true, altKey: true, key: '=' }), false),
+    ).toBe(null);
   });
 });
 

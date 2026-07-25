@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeGridDims, buildGridLayout, computeSpatialMove,
+  computeGridDims,
+  buildGridLayout,
+  computeSpatialMove,
 } from '../../src/lib/grid.js';
 
 describe('computeGridDims', () => {

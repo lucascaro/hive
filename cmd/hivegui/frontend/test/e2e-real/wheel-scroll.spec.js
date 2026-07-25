@@ -32,7 +32,9 @@ test.beforeEach(async ({ page }) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.js loads,
     // so a failure attaches the derived `lines` per wheel event below.
-    try { localStorage.setItem('hive.debug', '1'); } catch {}
+    try {
+      localStorage.setItem('hive.debug', '1');
+    } catch {}
   }, WS_URL);
 });
 
@@ -47,7 +49,9 @@ test.afterEach(async ({ page }, testInfo) => {
         body: JSON.stringify(trace ?? null),
         contentType: 'application/json',
       });
-    } catch { /* page closed / nav race — keep the real failure */ }
+    } catch {
+      /* page closed / nav race — keep the real failure */
+    }
   }
 });
 
@@ -56,15 +60,18 @@ async function bootWithTerm(page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li.session-item').length >= 1,
-    null, { timeout: 10000 },
+    null,
+    { timeout: 10000 },
   );
   await page.waitForFunction(
     () => !!document.querySelector('.term-host .xterm-helper-textarea'),
-    null, { timeout: 10000 },
+    null,
+    { timeout: 10000 },
   );
   await page.evaluate(() => {
-    const helper = document.querySelector('.term-host.active .xterm-helper-textarea')
-      || document.querySelector('.term-host .xterm-helper-textarea');
+    const helper =
+      document.querySelector('.term-host.active .xterm-helper-textarea') ||
+      document.querySelector('.term-host .xterm-helper-textarea');
     helper.focus();
   });
   await page.keyboard.type('stty -echo\n');
@@ -108,24 +115,36 @@ function scrollState(page) {
 // on .term-host. This is faithful to a webview-delivered gesture: it exercises
 // not just the handler math but that the event PATH reaches the handler at all.
 async function dispatchWheel(page, init, times = 6) {
-  await page.evaluate(({ init, times }) => {
-    const host = document.querySelector('.term-host.active')
-      || document.querySelector('.term-host');
-    const r = host.getBoundingClientRect();
-    const target = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
-      || host;
-    // `wheelDeltaY` is a legacy read-only getter, not a WheelEvent constructor
-    // member — it can't be passed via the init dict, so override it on the
-    // instance to simulate a webview that only populates the deprecated field.
-    const { wheelDeltaY, ...ctor } = init;
-    for (let i = 0; i < times; i++) {
-      const ev = new WheelEvent('wheel', { bubbles: true, cancelable: true, ...ctor });
-      if (wheelDeltaY !== undefined) {
-        Object.defineProperty(ev, 'wheelDeltaY', { value: wheelDeltaY, configurable: true });
+  await page.evaluate(
+    ({ init, times }) => {
+      const host =
+        document.querySelector('.term-host.active') ||
+        document.querySelector('.term-host');
+      const r = host.getBoundingClientRect();
+      const target =
+        document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) ||
+        host;
+      // `wheelDeltaY` is a legacy read-only getter, not a WheelEvent constructor
+      // member — it can't be passed via the init dict, so override it on the
+      // instance to simulate a webview that only populates the deprecated field.
+      const { wheelDeltaY, ...ctor } = init;
+      for (let i = 0; i < times; i++) {
+        const ev = new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          ...ctor,
+        });
+        if (wheelDeltaY !== undefined) {
+          Object.defineProperty(ev, 'wheelDeltaY', {
+            value: wheelDeltaY,
+            configurable: true,
+          });
+        }
+        target.dispatchEvent(ev);
       }
-      target.dispatchEvent(ev);
-    }
-  }, { init, times });
+    },
+    { init, times },
+  );
   await page.waitForTimeout(100);
 }
 
@@ -139,7 +158,10 @@ async function countTakeover(page, init) {
     window.__takeoverCalls = 0;
     if (st && !st.__wheelWrapped) {
       const orig = st.term.scrollLines.bind(st.term);
-      st.term.scrollLines = (n) => { window.__takeoverCalls++; return orig(n); };
+      st.term.scrollLines = (n) => {
+        window.__takeoverCalls++;
+        return orig(n);
+      };
       st.__wheelWrapped = true;
     }
   });
@@ -151,20 +173,31 @@ async function countTakeover(page, init) {
 // do. The bytes flow shell → pty → xterm, which sets term.modes.mouseTrackingMode.
 async function enableMouseTracking(page) {
   await page.keyboard.type("printf '\\033[?1000h'\n");
-  await page.waitForFunction(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
-    return st?.term?.modes?.mouseTrackingMode && st.term.modes.mouseTrackingMode !== 'none';
-  }, null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const st = [...(window.__hive_state?.terms?.values() || [])][0];
+      return (
+        st?.term?.modes?.mouseTrackingMode &&
+        st.term.modes.mouseTrackingMode !== 'none'
+      );
+    },
+    null,
+    { timeout: 10000 },
+  );
 }
 
 // Switch the session into the alternate screen buffer (DECSET 1049), as a
 // full-screen TUI does — there is no scrollback there, so scrollLines is a no-op.
 async function enterAltBuffer(page) {
   await page.keyboard.type("printf '\\033[?1049h'\n");
-  await page.waitForFunction(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
-    return st?.term?.buffer?.active?.type === 'alternate';
-  }, null, { timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const st = [...(window.__hive_state?.terms?.values() || [])][0];
+      return st?.term?.buffer?.active?.type === 'alternate';
+    },
+    null,
+    { timeout: 10000 },
+  );
 }
 
 // Fill scrollback and confirm the viewport is following the bottom, so any
@@ -172,10 +205,12 @@ async function enterAltBuffer(page) {
 async function primeScrollback(page) {
   await bootWithTerm(page);
   await startMarkerPump(page, 200);
-  await expect.poll(
-    async () => (await bufferLines(page)).join('\n'),
-    { timeout: 30000, intervals: [250, 500] },
-  ).toContain('HIVE_PUMP_DONE');
+  await expect
+    .poll(async () => (await bufferLines(page)).join('\n'), {
+      timeout: 30000,
+      intervals: [250, 500],
+    })
+    .toContain('HIVE_PUMP_DONE');
   const at = await scrollState(page);
   expect(at.baseY, 'scrollback should be populated').toBeGreaterThan(0);
   expect(at.viewportY, 'viewport should start at the bottom').toBe(at.baseY);
@@ -185,11 +220,15 @@ async function primeScrollback(page) {
 // and the shape that works on the user's other Macs. If this ever fails the
 // takeover itself is broken; it also guards against a fix regressing the
 // working path.
-test('pixel-mode wheel scrolls into history (control — the working path)', async ({ page }) => {
+test('pixel-mode wheel scrolls into history (control — the working path)', async ({
+  page,
+}) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 0, deltaY: -300 });
   const after = await scrollState(page);
-  expect(after.viewportY, 'pixel wheel did not scroll up').toBeLessThan(after.baseY);
+  expect(after.viewportY, 'pixel wheel did not scroll up').toBeLessThan(
+    after.baseY,
+  );
 });
 
 // The suspected unscrollable-Mac shape: a wheel notch reported as a line count
@@ -198,16 +237,23 @@ test('line-mode wheel scrolls into history (deltaMode 1)', async ({ page }) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 1, deltaY: -3 });
   const after = await scrollState(page);
-  expect(after.viewportY, 'line-mode wheel did not scroll up').toBeLessThan(after.baseY);
+  expect(after.viewportY, 'line-mode wheel did not scroll up').toBeLessThan(
+    after.baseY,
+  );
 });
 
 // The other suspected shape: standard deltaY is 0 and only the deprecated
 // wheelDeltaY (opposite sign, pixel-scale) carries the gesture.
-test('legacy wheelDeltaY-only wheel scrolls into history (deltaY 0)', async ({ page }) => {
+test('legacy wheelDeltaY-only wheel scrolls into history (deltaY 0)', async ({
+  page,
+}) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 0, deltaY: 0, wheelDeltaY: 120 });
   const after = await scrollState(page);
-  expect(after.viewportY, 'wheelDeltaY-only wheel did not scroll up').toBeLessThan(after.baseY);
+  expect(
+    after.viewportY,
+    'wheelDeltaY-only wheel did not scroll up',
+  ).toBeLessThan(after.baseY);
 });
 
 // THE ACTUAL REGRESSION ("scrolls in pi, not in Claude" on the same machine).
@@ -215,22 +261,32 @@ test('legacy wheelDeltaY-only wheel scrolls into history (deltaY 0)', async ({ p
 // mouse events; the GUI's capture-phase preventDefault + scrollLines takeover
 // swallowed the gesture, so the app could never scroll. The takeover must bail
 // and let xterm forward the wheel to the app.
-test('mouse-tracking session forwards the wheel to the app, not the scrollback takeover', async ({ page }) => {
+test('mouse-tracking session forwards the wheel to the app, not the scrollback takeover', async ({
+  page,
+}) => {
   await primeScrollback(page);
   // Sanity: in the plain normal buffer (pi) the takeover runs.
-  expect(await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
-    'takeover should run in a plain normal buffer').toBeGreaterThan(0);
+  expect(
+    await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
+    'takeover should run in a plain normal buffer',
+  ).toBeGreaterThan(0);
   // Claude enables mouse tracking → the takeover must NOT swallow the wheel.
   await enableMouseTracking(page);
-  expect(await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
-    'takeover swallowed the wheel under mouse tracking (Claude could not scroll)').toBe(0);
+  expect(
+    await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
+    'takeover swallowed the wheel under mouse tracking (Claude could not scroll)',
+  ).toBe(0);
 });
 
 // Full-screen TUIs run in the alternate buffer where scrollLines is a no-op;
 // the takeover must bail there too so the app receives the wheel.
-test('alternate-buffer session does not swallow the wheel', async ({ page }) => {
+test('alternate-buffer session does not swallow the wheel', async ({
+  page,
+}) => {
   await bootWithTerm(page);
   await enterAltBuffer(page);
-  expect(await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
-    'takeover ran in the alternate buffer').toBe(0);
+  expect(
+    await countTakeover(page, { deltaMode: 1, deltaY: -3 }),
+    'takeover ran in the alternate buffer',
+  ).toBe(0);
 });

@@ -7,21 +7,49 @@
 // The cases below pin that down against the tempting simplification of
 // re-anchoring on every jump — which would walk the return target
 // forward and strand the user one interruption short of their work.
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from 'vitest';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
   return {
-    ConnectControl: fn(), OpenSession: fn(), CloseAttach: fn(),
-    WriteStdin: fn(), ResizeSession: fn(), RequestScrollbackReplay: fn(),
-    CreateSession: fn(), DuplicateSession: fn(), KillSession: fn(),
-    RestartSession: fn(), UpdateSession: fn(), ListAgents: fn(),
-    CreateProject: fn(), KillProject: fn(), UpdateProject: fn(),
-    LaunchDir: fn(), PickDirectory: fn(), OpenNewWindow: fn(), CloseWindow: fn(),
-    IsGitRepo: fn(), OpenURL: fn(), OpenTerminalAt: fn(),
-    Notify: fn(), Confirm: fn(), RestartDaemon: fn(),
-    CheckForUpdate: fn(), SetClipboardText: fn(),
-    EventsOn: vi.fn(), WindowSetTitle: vi.fn(), ClipboardGetText: fn(),
+    ConnectControl: fn(),
+    OpenSession: fn(),
+    CloseAttach: fn(),
+    WriteStdin: fn(),
+    ResizeSession: fn(),
+    RequestScrollbackReplay: fn(),
+    CreateSession: fn(),
+    DuplicateSession: fn(),
+    KillSession: fn(),
+    RestartSession: fn(),
+    UpdateSession: fn(),
+    ListAgents: fn(),
+    CreateProject: fn(),
+    KillProject: fn(),
+    UpdateProject: fn(),
+    LaunchDir: fn(),
+    PickDirectory: fn(),
+    OpenNewWindow: fn(),
+    CloseWindow: fn(),
+    IsGitRepo: fn(),
+    OpenURL: fn(),
+    OpenTerminalAt: fn(),
+    Notify: fn(),
+    Confirm: fn(),
+    RestartDaemon: fn(),
+    CheckForUpdate: fn(),
+    SetClipboardText: fn(),
+    EventsOn: vi.fn(),
+    WindowSetTitle: vi.fn(),
+    ClipboardGetText: fn(),
   };
 });
 
@@ -91,22 +119,22 @@ describe('jumpToAttention', () => {
 
   it('keeps the original anchor across a multi-hop round of bells', () => {
     state.attention = new Set(['b', 'c']);
-    jumpToAttention();          // a → b, anchor = a
-    state.activeId = 'b';       // switchTo is mocked; mirror what it would do
+    jumpToAttention(); // a → b, anchor = a
+    state.activeId = 'b'; // switchTo is mocked; mirror what it would do
     state.attention.delete('b');
-    jumpToAttention();          // b → c, anchor must STILL be a
+    jumpToAttention(); // b → c, anchor must STILL be a
     expect(switchTo).toHaveBeenLastCalledWith('c');
     expect(state.attentionReturnId).toBe('a');
   });
 
   it('re-anchors on the next ⌘B after ⇧⌘B released the slot', () => {
     state.attention = new Set(['b']);
-    jumpToAttention();          // a → b, anchor = a
+    jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b';
-    jumpBack();                 // back to a, anchor released
-    state.activeId = 'c';       // user goes to work in c
+    jumpBack(); // back to a, anchor released
+    state.activeId = 'c'; // user goes to work in c
     state.attention = new Set(['b']);
-    jumpToAttention();          // c → b, fresh anchor = c
+    jumpToAttention(); // c → b, fresh anchor = c
     expect(state.attentionReturnId).toBe('c');
   });
 
@@ -114,10 +142,10 @@ describe('jumpToAttention', () => {
     // The anchored session rings its own bell mid-round: ⌘B takes you
     // home, so ⇧⌘B must not stay armed pointing at where you already are.
     state.attention = new Set(['b']);
-    jumpToAttention();          // a → b, anchor = a
+    jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b';
     state.attention = new Set(['a']);
-    jumpToAttention();          // b → a, which IS the anchor
+    jumpToAttention(); // b → a, which IS the anchor
     expect(switchTo).toHaveBeenLastCalledWith('a');
     expect(state.attentionReturnId).toBeNull();
   });
@@ -158,7 +186,10 @@ describe('jumpBack', () => {
 describe('⌘B / ⇧⌘B key dispatch', () => {
   const press = (opts) => {
     const e = new KeyboardEvent('keydown', {
-      key: 'b', bubbles: true, cancelable: true, ...opts,
+      key: 'b',
+      bubbles: true,
+      cancelable: true,
+      ...opts,
     });
     window.dispatchEvent(e);
     return e;

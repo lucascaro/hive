@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { loadCollapsed, serializeCollapsed, pruneCollapsed } from '../../src/lib/collapsed.js';
+import {
+  loadCollapsed,
+  serializeCollapsed,
+  pruneCollapsed,
+} from '../../src/lib/collapsed.js';
 
 describe('collapsed persistence helpers', () => {
   it('round-trips a set', () => {
@@ -16,7 +20,10 @@ describe('collapsed persistence helpers', () => {
   });
 
   it('prunes ids for deleted projects', () => {
-    const { set, changed } = pruneCollapsed(new Set(['p1', 'gone']), ['p1', 'p2']);
+    const { set, changed } = pruneCollapsed(new Set(['p1', 'gone']), [
+      'p1',
+      'p2',
+    ]);
     expect(changed).toBe(true);
     expect(set).toEqual(new Set(['p1']));
   });

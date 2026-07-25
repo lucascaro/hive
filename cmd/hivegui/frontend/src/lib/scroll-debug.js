@@ -12,7 +12,8 @@ export const SCROLL_TRACE_CAP = 2000;
 
 export function createScrollTrace({ enabled, now, cap = SCROLL_TRACE_CAP }) {
   const ring = [];
-  const clock = now || (() => (typeof performance !== 'undefined' ? performance.now() : 0));
+  const clock =
+    now || (() => (typeof performance !== 'undefined' ? performance.now() : 0));
   function rec(tag, data = {}) {
     if (!enabled) return;
     ring.push({ t: Math.round(clock()), tag, ...data });
@@ -42,11 +43,17 @@ export function createScrollTrace({ enabled, now, cap = SCROLL_TRACE_CAP }) {
 //   - 'auto-up'  upward with NO recent user gesture — the suspicious case the
 //                detector records (a resize/replay/renderer event moved it)
 // Pure so the detector's decision can be unit-tested without xterm.
-export function classifyViewportMove({ from, to, lastUserScrollTs, now, userGraceMs = 250 }) {
+export function classifyViewportMove({
+  from,
+  to,
+  lastUserScrollTs,
+  now,
+  userGraceMs = 250,
+}) {
   if (!(to < from)) return null;
   const userDriven =
     typeof lastUserScrollTs === 'number' &&
     typeof now === 'number' &&
-    (now - lastUserScrollTs) <= userGraceMs;
+    now - lastUserScrollTs <= userGraceMs;
   return userDriven ? 'user-up' : 'auto-up';
 }

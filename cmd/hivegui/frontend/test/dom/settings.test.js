@@ -37,8 +37,9 @@ let refocusActiveTerm, setFocusedTile;
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
-  ({ openSettings, closeSettings, initSettings, splitCommand } =
-    await import('../../src/app/modals/settings.js'));
+  ({ openSettings, closeSettings, initSettings, splitCommand } = await import(
+    '../../src/app/modals/settings.js'
+  ));
   refocusActiveTerm = vi.fn();
   setFocusedTile = vi.fn();
   initSettings({ setFocusedTile, refocusActiveTerm });
@@ -64,7 +65,11 @@ function type(input, value) {
 
 describe('splitCommand', () => {
   it('splits a command line into argv on whitespace', () => {
-    expect(splitCommand('claude --model haiku')).toEqual(['claude', '--model', 'haiku']);
+    expect(splitCommand('claude --model haiku')).toEqual([
+      'claude',
+      '--model',
+      'haiku',
+    ]);
   });
 
   it('collapses extra whitespace and ignores padding', () => {
@@ -81,7 +86,12 @@ describe('splitCommand', () => {
 describe('settings modal', () => {
   it('opens, loads existing agents, and closes', async () => {
     listCustomAgents.mockResolvedValue([
-      { id: 'claude-lite', name: 'Claude Lite', cmd: ['claude', '--model', 'haiku'], color: '#8b5cf6' },
+      {
+        id: 'claude-lite',
+        name: 'Claude Lite',
+        cmd: ['claude', '--model', 'haiku'],
+        color: '#8b5cf6',
+      },
     ]);
 
     openSettings();
@@ -90,8 +100,12 @@ describe('settings modal', () => {
     await flush();
 
     expect(rows()).toHaveLength(1);
-    expect(rows()[0].querySelector('.settings-agent-name').value).toBe('Claude Lite');
-    expect(rows()[0].querySelector('.settings-agent-cmd').value).toBe('claude --model haiku');
+    expect(rows()[0].querySelector('.settings-agent-name').value).toBe(
+      'Claude Lite',
+    );
+    expect(rows()[0].querySelector('.settings-agent-cmd').value).toBe(
+      'claude --model haiku',
+    );
 
     closeSettings();
     expect(el('settings').classList.contains('hidden')).toBe(true);
@@ -105,13 +119,21 @@ describe('settings modal', () => {
     el('settings-agent-add').click();
     expect(rows()).toHaveLength(1);
     type(rows()[0].querySelector('.settings-agent-name'), 'Claude Lite');
-    type(rows()[0].querySelector('.settings-agent-cmd'), 'claude --model haiku');
+    type(
+      rows()[0].querySelector('.settings-agent-cmd'),
+      'claude --model haiku',
+    );
 
     el('settings-save').click();
     await flush();
 
     expect(saveCustomAgents).toHaveBeenCalledWith([
-      { id: '', name: 'Claude Lite', cmd: ['claude', '--model', 'haiku'], color: '#64748b' },
+      {
+        id: '',
+        name: 'Claude Lite',
+        cmd: ['claude', '--model', 'haiku'],
+        color: '#64748b',
+      },
     ]);
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
@@ -121,7 +143,12 @@ describe('settings modal', () => {
   // revive for every session already created with this agent.
   it('preserves an existing id across a rename', async () => {
     listCustomAgents.mockResolvedValue([
-      { id: 'claude-lite', name: 'Claude Lite', cmd: ['claude'], color: '#8b5cf6' },
+      {
+        id: 'claude-lite',
+        name: 'Claude Lite',
+        cmd: ['claude'],
+        color: '#8b5cf6',
+      },
     ]);
     openSettings();
     await flush();
@@ -173,7 +200,9 @@ describe('settings modal', () => {
   });
 
   it('surfaces a rejected save and stays open', async () => {
-    saveCustomAgents.mockRejectedValue(new Error('"claude" is a built-in agent and cannot be redefined'));
+    saveCustomAgents.mockRejectedValue(
+      new Error('"claude" is a built-in agent and cannot be redefined'),
+    );
     openSettings();
     await flush();
 
@@ -231,7 +260,9 @@ describe('settings modal', () => {
 // destroys every definition the user opened Settings to repair.
 describe('failed load', () => {
   it('shows an error and refuses to save over the broken file', async () => {
-    listCustomAgents.mockRejectedValue(new Error('parse agents.json: invalid character'));
+    listCustomAgents.mockRejectedValue(
+      new Error('parse agents.json: invalid character'),
+    );
     openSettings();
     await flush();
 
@@ -266,7 +297,11 @@ describe('failed load', () => {
 describe('load race', () => {
   it('does not clobber a draft with a stale response from a previous open', async () => {
     let resolveFirst;
-    listCustomAgents.mockReturnValue(new Promise((r) => { resolveFirst = r; }));
+    listCustomAgents.mockReturnValue(
+      new Promise((r) => {
+        resolveFirst = r;
+      }),
+    );
     openSettings();
 
     closeSettings();
@@ -276,7 +311,9 @@ describe('load race', () => {
     openSettings();
     await flush();
 
-    resolveFirst([{ id: 'stale', name: 'Stale', cmd: ['stale'], color: '#222222' }]);
+    resolveFirst([
+      { id: 'stale', name: 'Stale', cmd: ['stale'], color: '#222222' },
+    ]);
     await flush();
 
     expect(rows()).toHaveLength(1);
@@ -320,7 +357,11 @@ describe('escape', () => {
     const seen = vi.fn();
     window.addEventListener('keydown', seen);
     el('settings').dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }),
     );
     window.removeEventListener('keydown', seen);
 

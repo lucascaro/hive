@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { wheelToScrollLines, shouldScrollViewport } from '../../src/lib/wheel-scroll.js';
+import {
+  wheelToScrollLines,
+  shouldScrollViewport,
+} from '../../src/lib/wheel-scroll.js';
 
 // The GUI takes over wheel handling (capture phase + preventDefault) so
 // EVERY wheel scroll flows through this math — if it returns 0, the
@@ -54,12 +57,24 @@ describe('wheelToScrollLines', () => {
     // fallback the wheel is a complete no-op on those machines.
     it('uses wheelDeltaY (opposite sign) when deltaY is 0', () => {
       // wheelDeltaY +120 means scroll UP → negative line count.
-      expect(wheelToScrollLines({ deltaY: 0, deltaMode: 0, wheelDeltaY: 120 }, OPTS)).toBe(-8);
-      expect(wheelToScrollLines({ deltaY: 0, deltaMode: 0, wheelDeltaY: -120 }, OPTS)).toBe(8);
+      expect(
+        wheelToScrollLines({ deltaY: 0, deltaMode: 0, wheelDeltaY: 120 }, OPTS),
+      ).toBe(-8);
+      expect(
+        wheelToScrollLines(
+          { deltaY: 0, deltaMode: 0, wheelDeltaY: -120 },
+          OPTS,
+        ),
+      ).toBe(8);
     });
 
     it('prefers the standard deltaY when it is usable', () => {
-      expect(wheelToScrollLines({ deltaY: 28, deltaMode: 0, wheelDeltaY: 120 }, OPTS)).toBe(2);
+      expect(
+        wheelToScrollLines(
+          { deltaY: 28, deltaMode: 0, wheelDeltaY: 120 },
+          OPTS,
+        ),
+      ).toBe(2);
     });
   });
 
@@ -69,7 +84,9 @@ describe('wheelToScrollLines', () => {
     });
 
     it('returns 0 for a non-finite delta (never scrollLines(NaN))', () => {
-      expect(wheelToScrollLines({ deltaY: undefined, deltaMode: 0 }, OPTS)).toBe(0);
+      expect(
+        wheelToScrollLines({ deltaY: undefined, deltaMode: 0 }, OPTS),
+      ).toBe(0);
       expect(wheelToScrollLines({ deltaY: NaN, deltaMode: 0 }, OPTS)).toBe(0);
     });
   });
@@ -80,25 +97,58 @@ describe('shouldScrollViewport', () => {
   // off. Everywhere else the wheel must reach xterm/the app — this is the
   // "scrolls in pi, not in Claude" regression.
   it('takes over in the normal buffer with mouse reporting off (pi / plain shell)', () => {
-    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'none' })).toBe(true);
-    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: undefined })).toBe(true);
+    expect(
+      shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'none' }),
+    ).toBe(true);
+    expect(
+      shouldScrollViewport({
+        bufferType: 'normal',
+        mouseTrackingMode: undefined,
+      }),
+    ).toBe(true);
   });
 
   it('does NOT take over in the alternate buffer (full-screen TUIs)', () => {
-    expect(shouldScrollViewport({ bufferType: 'alternate', mouseTrackingMode: 'none' })).toBe(false);
+    expect(
+      shouldScrollViewport({
+        bufferType: 'alternate',
+        mouseTrackingMode: 'none',
+      }),
+    ).toBe(false);
   });
 
   it('does NOT take over when mouse tracking is active (Claude, vim)', () => {
-    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'vt200' })).toBe(false);
-    expect(shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'any' })).toBe(false);
-    expect(shouldScrollViewport({ bufferType: 'alternate', mouseTrackingMode: 'any' })).toBe(false);
+    expect(
+      shouldScrollViewport({
+        bufferType: 'normal',
+        mouseTrackingMode: 'vt200',
+      }),
+    ).toBe(false);
+    expect(
+      shouldScrollViewport({ bufferType: 'normal', mouseTrackingMode: 'any' }),
+    ).toBe(false);
+    expect(
+      shouldScrollViewport({
+        bufferType: 'alternate',
+        mouseTrackingMode: 'any',
+      }),
+    ).toBe(false);
   });
 
   // The live handler passes buf?.type, which can be undefined before the
   // buffer is ready — anything that isn't exactly 'normal' must bail.
   it('does NOT take over for a missing/empty buffer type', () => {
-    expect(shouldScrollViewport({ bufferType: undefined, mouseTrackingMode: 'none' })).toBe(false);
-    expect(shouldScrollViewport({ bufferType: null, mouseTrackingMode: 'none' })).toBe(false);
-    expect(shouldScrollViewport({ bufferType: '', mouseTrackingMode: 'none' })).toBe(false);
+    expect(
+      shouldScrollViewport({
+        bufferType: undefined,
+        mouseTrackingMode: 'none',
+      }),
+    ).toBe(false);
+    expect(
+      shouldScrollViewport({ bufferType: null, mouseTrackingMode: 'none' }),
+    ).toBe(false);
+    expect(
+      shouldScrollViewport({ bufferType: '', mouseTrackingMode: 'none' }),
+    ).toBe(false);
   });
 });

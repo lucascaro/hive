@@ -1,12 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import {
-  NAV_CAP, createNavHistory, pushNav, goBack, goForward, pruneNav,
+  NAV_CAP,
+  createNavHistory,
+  pushNav,
+  goBack,
+  goForward,
+  pruneNav,
 } from '../../src/lib/nav-history.js';
 
 // Default exists predicate: every id is live.
 const all = () => true;
 // exists predicate over an explicit live set.
-const only = (...ids) => (id) => ids.includes(id);
+const only =
+  (...ids) =>
+  (id) =>
+    ids.includes(id);
 
 describe('pushNav', () => {
   it('records a departure', () => {

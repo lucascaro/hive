@@ -5,7 +5,11 @@
 // pipeline directly (main.js owns that wiring).
 
 import {
-  CreateSession, DuplicateSession, RestartSession, ListAgents, IsGitRepo,
+  CreateSession,
+  DuplicateSession,
+  RestartSession,
+  ListAgents,
+  IsGitRepo,
 } from '../../bridge.js';
 import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
@@ -35,20 +39,26 @@ export const launcherState = {
 };
 
 function loadAgentUsage() {
-  try { return JSON.parse(localStorage.getItem('hive.agentUsage') || '{}') || {}; }
-  catch { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem('hive.agentUsage') || '{}') || {};
+  } catch {
+    return {};
+  }
 }
 export function bumpAgentUsage(id) {
   if (!id) return;
   const u = loadAgentUsage();
   u[id] = (u[id] || 0) + 1;
-  try { localStorage.setItem('hive.agentUsage', JSON.stringify(u)); } catch {}
+  try {
+    localStorage.setItem('hive.agentUsage', JSON.stringify(u));
+  } catch {}
 }
 
 function highlightLauncherSelection() {
   launcherState.items.forEach((it, i) => {
     it.el.classList.toggle('selected', i === launcherState.selected);
-    if (i === launcherState.selected) it.el.scrollIntoView({ block: 'nearest' });
+    if (i === launcherState.selected)
+      it.el.scrollIntoView({ block: 'nearest' });
   });
 }
 
@@ -76,8 +86,10 @@ function launchSelected(agentId) {
     CreateSession(
       agentId,
       launcherState.projectId || activeProjectId(),
-      '', '',
-      0, 0,
+      '',
+      '',
+      0,
+      0,
       !!launcherState.useWorktree,
     ).catch(reportFailure('new session'));
   }
@@ -101,8 +113,8 @@ export function openLauncher(projectId, opts) {
       : localStorage.getItem('hive.worktree') === '1';
   // duplicateFrom: when present, the launcher is forking an existing
   // session into the same cwd — never a new worktree.
-  launcherState.duplicateFrom = (opts && opts.duplicateFrom) || null;
-  launcherState.duplicateCwd = (opts && opts.duplicateCwd) || '';
+  launcherState.duplicateFrom = opts?.duplicateFrom || null;
+  launcherState.duplicateCwd = opts?.duplicateCwd || '';
   if (launcherState.duplicateFrom) {
     launcherState.useWorktree = false;
   }
@@ -120,8 +132,9 @@ export function openLauncher(projectId, opts) {
   // missing anchor must not throw and leave the launcher unopened
   // (the throw used to vanish into this chain's empty catch).
   const anchorEl =
-    document.querySelector(`.project[data-pid="${launcherState.projectId}"] .project-actions button`) ??
-    document.getElementById('new-project-btn');
+    document.querySelector(
+      `.project[data-pid="${launcherState.projectId}"] .project-actions button`,
+    ) ?? document.getElementById('new-project-btn');
   if (anchorEl) {
     const r = anchorEl.getBoundingClientRect();
     launcherEl.style.left = `${r.left}px`;
@@ -171,20 +184,22 @@ export function openLauncher(projectId, opts) {
         });
         launcherEl.appendChild(wtRow);
         if (projCwd) {
-          IsGitRepo(projCwd).then((ok) => {
-            if (!ok) {
-              wtRow.classList.add('disabled');
-              wtBox.disabled = true;
-              wtBox.checked = false;
-              launcherState.useWorktree = false;
-              wtLabel.textContent = 'Worktree (project is not a git repo)';
-            }
-          }).catch(() => {
-            // Intentionally silent: the probe rejects only when the
-            // bridge itself is down. Worst case the daemon later
-            // refuses worktree creation via control:error, which IS
-            // surfaced.
-          });
+          IsGitRepo(projCwd)
+            .then((ok) => {
+              if (!ok) {
+                wtRow.classList.add('disabled');
+                wtBox.disabled = true;
+                wtBox.checked = false;
+                launcherState.useWorktree = false;
+                wtLabel.textContent = 'Worktree (project is not a git repo)';
+              }
+            })
+            .catch(() => {
+              // Intentionally silent: the probe rejects only when the
+              // bridge itself is down. Worst case the daemon later
+              // refuses worktree creation via control:error, which IS
+              // surfaced.
+            });
         }
       }
       // Detection (exec.LookPath on the daemon side) is best-effort:
@@ -202,7 +217,8 @@ export function openLauncher(projectId, opts) {
       const ordered = agents
         .map((a, i) => ({ a, i }))
         .sort((x, y) => {
-          const ux = usage[x.a.id] || 0, uy = usage[y.a.id] || 0;
+          const ux = usage[x.a.id] || 0,
+            uy = usage[y.a.id] || 0;
           if (ux !== uy) return uy - ux;
           return x.i - y.i;
         })
@@ -215,7 +231,7 @@ export function openLauncher(projectId, opts) {
       }
       ordered.forEach((a, idx) => {
         const item = document.createElement('div');
-        item.className = 'launcher-item' + (a.available ? '' : ' uninstalled');
+        item.className = `launcher-item${a.available ? '' : ' uninstalled'}`;
         item.style.setProperty('--agent-color', a.color);
         const num = document.createElement('span');
         num.className = 'agent-num';
@@ -274,7 +290,9 @@ export function duplicateActiveSession() {
   }
   const pid = s.projectId ?? s.project_id ?? '';
   if (s.agent) bumpAgentUsage(s.agent);
-  DuplicateSession(s.agent || '', pid, cwd).catch(reportFailure('duplicate session'));
+  DuplicateSession(s.agent || '', pid, cwd).catch(
+    reportFailure('duplicate session'),
+  );
 }
 
 export function restartActiveSession() {

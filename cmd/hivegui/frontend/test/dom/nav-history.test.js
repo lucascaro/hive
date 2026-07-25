@@ -9,21 +9,49 @@
 // "records a bare setActive" case below is the regression guard for
 // that decision — a switchTo-based implementation passes every other
 // test in this file and silently loses clicks on grid tiles.
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+} from 'vitest';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
   return {
-    ConnectControl: fn(), OpenSession: fn(), CloseAttach: fn(),
-    WriteStdin: fn(), ResizeSession: fn(), RequestScrollbackReplay: fn(),
-    CreateSession: fn(), DuplicateSession: fn(), KillSession: fn(),
-    RestartSession: fn(), UpdateSession: fn(), ListAgents: fn(),
-    CreateProject: fn(), KillProject: fn(), UpdateProject: fn(),
-    LaunchDir: fn(), PickDirectory: fn(), OpenNewWindow: fn(), CloseWindow: fn(),
-    IsGitRepo: fn(), OpenURL: fn(), OpenTerminalAt: fn(),
-    Notify: fn(), Confirm: fn(), RestartDaemon: fn(),
-    CheckForUpdate: fn(), SetClipboardText: fn(),
-    EventsOn: vi.fn(), WindowSetTitle: vi.fn(), ClipboardGetText: fn(),
+    ConnectControl: fn(),
+    OpenSession: fn(),
+    CloseAttach: fn(),
+    WriteStdin: fn(),
+    ResizeSession: fn(),
+    RequestScrollbackReplay: fn(),
+    CreateSession: fn(),
+    DuplicateSession: fn(),
+    KillSession: fn(),
+    RestartSession: fn(),
+    UpdateSession: fn(),
+    ListAgents: fn(),
+    CreateProject: fn(),
+    KillProject: fn(),
+    UpdateProject: fn(),
+    LaunchDir: fn(),
+    PickDirectory: fn(),
+    OpenNewWindow: fn(),
+    CloseWindow: fn(),
+    IsGitRepo: fn(),
+    OpenURL: fn(),
+    OpenTerminalAt: fn(),
+    Notify: fn(),
+    Confirm: fn(),
+    RestartDaemon: fn(),
+    CheckForUpdate: fn(),
+    SetClipboardText: fn(),
+    EventsOn: vi.fn(),
+    WindowSetTitle: vi.fn(),
+    ClipboardGetText: fn(),
   };
 });
 
@@ -40,12 +68,22 @@ vi.mock('../../src/app/view.js', async () => {
     gridSpatialMove: vi.fn(),
     shiftActiveProject: vi.fn(),
     // Mirrors the real restoreSession (view.js): un-minimize, then switchTo.
-    restoreSession: vi.fn((id) => { state.minimized.delete(id); setActive(id); }),
+    restoreSession: vi.fn((id) => {
+      state.minimized.delete(id);
+      setActive(id);
+    }),
     minimizeSession: vi.fn(),
   };
 });
 
-let state, setActive, withoutNavHistory, navBack, navForward, switchTo, restoreSession, isMac;
+let state,
+  setActive,
+  withoutNavHistory,
+  navBack,
+  navForward,
+  switchTo,
+  restoreSession,
+  isMac;
 
 const session = (id) => ({ id, name: id, projectId: 'p1', order: 0 });
 
@@ -68,15 +106,22 @@ beforeAll(async () => {
   // that stops back/forward ping-ponging is never wired.
   kb.initKeyboard({
     withoutNavHistory,
-    bumpFontSize: () => {}, resetFontSize: () => {}, focusActiveTerm: () => {},
+    bumpFontSize: () => {},
+    resetFontSize: () => {},
+    focusActiveTerm: () => {},
   });
   ({ isMac } = await import('../../src/lib/platform.js'));
 });
 
 // The nowhere-to-go paths call the real flashStatus, which arms a
 // 2500ms revert timer against a document later torn down.
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.runOnlyPendingTimers(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.runOnlyPendingTimers();
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   switchTo.mockClear();
@@ -192,8 +237,12 @@ describe('navBack / navForward', () => {
     switchTo('b');
 
     const e = new KeyboardEvent('keydown', {
-      key: '-', code: 'Minus', ctrlKey: true, altKey: !isMac,
-      bubbles: true, cancelable: true,
+      key: '-',
+      code: 'Minus',
+      ctrlKey: true,
+      altKey: !isMac,
+      bubbles: true,
+      cancelable: true,
     });
     window.dispatchEvent(e);
 
@@ -209,9 +258,13 @@ describe('navBack / navForward', () => {
 
     // mac: ⌘- is zoom; non-mac: Ctrl+- is zoom.
     const zoom = new KeyboardEvent('keydown', {
-      key: '-', code: 'Minus',
-      metaKey: isMac, ctrlKey: !isMac, altKey: false,
-      bubbles: true, cancelable: true,
+      key: '-',
+      code: 'Minus',
+      metaKey: isMac,
+      ctrlKey: !isMac,
+      altKey: false,
+      bubbles: true,
+      cancelable: true,
     });
     window.dispatchEvent(zoom);
 

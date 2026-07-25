@@ -3,7 +3,10 @@
 // Moved verbatim from main.js; focus callbacks injected via init.
 
 import {
-  CreateProject, UpdateProject, LaunchDir, PickDirectory,
+  CreateProject,
+  UpdateProject,
+  LaunchDir,
+  PickDirectory,
 } from '../../bridge.js';
 import { reportFailure } from '../dom.js';
 import { registerModal } from './registry.js';
@@ -30,7 +33,11 @@ export function openProjectEditor(project) {
   } else {
     // Intentionally silent: cosmetic default for an empty field;
     // Browse… still works if this fails.
-    LaunchDir().then((d) => { editorCwd.value = d || ''; }).catch(() => {});
+    LaunchDir()
+      .then((d) => {
+        editorCwd.value = d || '';
+      })
+      .catch(() => {});
     editorCwd.value = '';
   }
   editorEl.classList.remove('hidden');
@@ -51,7 +58,9 @@ function saveProjectEditor() {
   const color = editorColor.value;
   if (!name) return;
   if (editorState.editing) {
-    UpdateProject(editorState.editing.id, name, color, cwd, -1).catch(reportFailure('save project'));
+    UpdateProject(editorState.editing.id, name, color, cwd, -1).catch(
+      reportFailure('save project'),
+    );
   } else {
     CreateProject(name, color, cwd).catch(reportFailure('create project'));
   }
@@ -61,23 +70,34 @@ function saveProjectEditor() {
 export function initProjectEditor(injected) {
   deps = injected;
   registerModal(editorEl);
-  document.getElementById('project-editor-cancel').addEventListener('click', closeProjectEditor);
-  document.getElementById('project-editor-save').addEventListener('click', saveProjectEditor);
-  document.getElementById('project-editor-browse').addEventListener('click', async () => {
-    try {
-      const picked = await PickDirectory(editorCwd.value || '');
-      if (picked) editorCwd.value = picked;
-    } catch (err) {
-      // Silently ignore (user cancelled, or platform refused).
-    }
-  });
+  document
+    .getElementById('project-editor-cancel')
+    .addEventListener('click', closeProjectEditor);
+  document
+    .getElementById('project-editor-save')
+    .addEventListener('click', saveProjectEditor);
+  document
+    .getElementById('project-editor-browse')
+    .addEventListener('click', async () => {
+      try {
+        const picked = await PickDirectory(editorCwd.value || '');
+        if (picked) editorCwd.value = picked;
+      } catch (_err) {
+        // Silently ignore (user cancelled, or platform refused).
+      }
+    });
   editorEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.target === editorName || e.target === editorCwd)) {
+    if (
+      e.key === 'Enter' &&
+      (e.target === editorName || e.target === editorCwd)
+    ) {
       e.preventDefault();
       saveProjectEditor();
     } else if (e.key === 'Escape') {
       closeProjectEditor();
     }
   });
-  document.getElementById('new-project-btn').addEventListener('click', () => openProjectEditor(null));
+  document
+    .getElementById('new-project-btn')
+    .addEventListener('click', () => openProjectEditor(null));
 }

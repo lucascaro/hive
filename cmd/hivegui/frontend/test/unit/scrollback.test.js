@@ -43,26 +43,46 @@ function makeSt({ baseY = 0, viewportY = 0 } = {}) {
       entry.cb?.();
     }
   };
-  return { st: { term, decoder: new TextDecoder('utf-8') }, flush, order, queue };
+  return {
+    st: { term, decoder: new TextDecoder('utf-8') },
+    flush,
+    order,
+    queue,
+  };
 }
 
 describe('decideResizeReplay — alt-screen replay skip (freeze fix)', () => {
   it('skips the replay on the alternate screen', () => {
-    expect(decideResizeReplay({ bufferType: 'alternate', cols: 100, baselineCols: 232 }).replay)
-      .toBe(false);
+    expect(
+      decideResizeReplay({
+        bufferType: 'alternate',
+        cols: 100,
+        baselineCols: 232,
+      }).replay,
+    ).toBe(false);
   });
 
   it('does NOT advance the baseline when skipping (so alt→normal still corrects)', () => {
     // The bug this guards: advancing the baseline on a skipped alt-screen
     // resize would let a later normal-buffer resize fall under the threshold,
     // leaving normal scrollback wrapped at the old width forever.
-    expect(decideResizeReplay({ bufferType: 'alternate', cols: 100, baselineCols: 232 }).baseline)
-      .toBe(232);
+    expect(
+      decideResizeReplay({
+        bufferType: 'alternate',
+        cols: 100,
+        baselineCols: 232,
+      }).baseline,
+    ).toBe(232);
   });
 
   it('replays and advances the baseline on the normal screen', () => {
-    expect(decideResizeReplay({ bufferType: 'normal', cols: 100, baselineCols: 232 }))
-      .toEqual({ replay: true, baseline: 100 });
+    expect(
+      decideResizeReplay({
+        bufferType: 'normal',
+        cols: 100,
+        baselineCols: 232,
+      }),
+    ).toEqual({ replay: true, baseline: 100 });
   });
 });
 
@@ -149,7 +169,10 @@ describe('handleScrollbackEvent', () => {
     handleScrollbackEvent(st, 'scrollback_replay_begin');
     expect(st._replaysInFlight).toBe(1);
     handleScrollbackEvent(st, 'scrollback_replay_done');
-    expect(st._replaysInFlight, 'still in flight until the restream parses').toBe(1);
+    expect(
+      st._replaysInFlight,
+      'still in flight until the restream parses',
+    ).toBe(1);
     flush();
     expect(st._replaysInFlight).toBe(0);
   });
@@ -180,11 +203,15 @@ describe('handleScrollbackEvent', () => {
     const { st, flush } = makeSt({ baseY: 100, viewportY: 60 });
     // Codex-rate backlog already queued at begin time; parsing it adds
     // 10 lines while the scrolled-up reader's viewportY stays put.
-    st.term.write('backlog-bytes', () => { st.term.buffer.active.baseY = 110; });
+    st.term.write('backlog-bytes', () => {
+      st.term.buffer.active.baseY = 110;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_begin');
     st._replayWantsBottom = false;
     // The replay re-streams everything, backlog included.
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 115; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 115;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // d = 110 - 60 = 50 (backlog included); restore = 115 - 50 = 65.
@@ -220,7 +247,9 @@ describe('handleScrollbackEvent', () => {
     // The replay bytes parse after the reset and rebuild the buffer
     // with a new baseY — modeled as a queued write whose "parse"
     // bumps baseY, so the capture (queued at begin) still sees 100.
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 120; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 120;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToBottom).not.toHaveBeenCalled();
@@ -234,7 +263,9 @@ describe('handleScrollbackEvent', () => {
     handleScrollbackEvent(st, 'scrollback_replay_begin');
     st._replayWantsBottom = false;
     // Rebuilt buffer is much shorter than the captured distance (50).
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 10; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 10;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToLine).toHaveBeenCalledWith(0);
@@ -261,7 +292,9 @@ describe('handleScrollbackEvent', () => {
 
   it('null / undefined st is a no-op (no throw)', () => {
     expect(handleScrollbackEvent(null, 'scrollback_replay_begin')).toBe(false);
-    expect(handleScrollbackEvent(undefined, 'scrollback_replay_begin')).toBe(false);
+    expect(handleScrollbackEvent(undefined, 'scrollback_replay_begin')).toBe(
+      false,
+    );
     expect(handleScrollbackEvent({}, 'scrollback_replay_begin')).toBe(false);
   });
 
@@ -301,7 +334,9 @@ describe('handleScrollbackEvent', () => {
     // Capture reads 50 - 50 = 0 → fromBottom = 0
     st._followBottom = false; // user scrolled up during replay
     st._replayWantsBottom = true;
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 100; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 100;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // fromBottom is 0, so scrollToLine is skipped — viewport stays put
@@ -315,7 +350,9 @@ describe('handleScrollbackEvent', () => {
     handleScrollbackEvent(st, 'scrollback_replay_begin'); // captures fromBottom
     st._followBottom = true;
     st._replayWantsBottom = false;
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 120; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 120;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     expect(st.term.scrollToLine).toHaveBeenCalledWith(80); // restore ran
@@ -441,7 +478,9 @@ describe('scroll-jump bug regression — viewport must not jump to 0 during repl
     // Capture reads 5000 - 5000 = 0 → fromBottom = 0
     st._followBottom = false; // scrolled up mid-replay
     st._replayWantsBottom = true;
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 5000;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // fromBottom is 0, so scrollToLine is skipped — viewport stays put
@@ -457,7 +496,9 @@ describe('scroll-jump bug regression — viewport must not jump to 0 during repl
     // Capture reads 5000 - 4700 = 300 → fromBottom = 300
     st._followBottom = false; // user scrolled up before replay
     st._replayWantsBottom = false;
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 5000;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // Restore: target = 5000 - 300 = 4700
@@ -475,7 +516,9 @@ describe('scroll-jump bug regression — viewport must not jump to 0 during repl
     // Capture reads 5000 - 4999 = 1 → fromBottom = 1
     st._followBottom = false;
     st._replayWantsBottom = false;
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 5000;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // Restore: target = 5000 - 1 = 4999
@@ -532,7 +575,9 @@ describe('stale _followBottom bug — initial attach must snap to bottom', () =>
     // Capture reads 5000 - 4500 = 500 → fromBottom = 500
     st._followBottom = false; // user scrolled up before resize
     st._replayWantsBottom = true; // resize replay wants bottom
-    st.term.write('replay-bytes', () => { st.term.buffer.active.baseY = 5000; });
+    st.term.write('replay-bytes', () => {
+      st.term.buffer.active.baseY = 5000;
+    });
     handleScrollbackEvent(st, 'scrollback_replay_done');
     flush();
     // _followBottom is false, so no snap — user stays scrolled up

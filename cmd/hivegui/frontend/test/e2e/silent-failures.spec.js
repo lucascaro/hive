@@ -9,7 +9,9 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 async function boot(page) {
   await page.goto('/');
-  await page.waitForFunction(() => document.querySelectorAll('#projects li').length > 0);
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
 }
 
 test('boot lands a persistent non-error status', async ({ page }) => {
@@ -20,10 +22,14 @@ test('boot lands a persistent non-error status', async ({ page }) => {
   await expect(page.locator('#status')).not.toHaveClass(/error/);
 });
 
-test('failed CreateSession via launcher shows an error and adds no session', async ({ page }) => {
+test('failed CreateSession via launcher shows an error and adds no session', async ({
+  page,
+}) => {
   await boot(page);
   const before = await page.evaluate(() => window.__hive.state.sessions.length);
-  await page.evaluate(() => window.__hive.failNext('CreateSession', 'daemon went away'));
+  await page.evaluate(() =>
+    window.__hive.failNext('CreateSession', 'daemon went away'),
+  );
 
   // ⌘T opens the launcher; Enter activates the selected agent row.
   await page.keyboard.press(`${mod}+t`);
@@ -34,10 +40,14 @@ test('failed CreateSession via launcher shows an error and adds no session', asy
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
   await expect(status).toHaveText(/new session failed:.*daemon went away/);
-  expect(await page.evaluate(() => window.__hive.state.sessions.length)).toBe(before);
+  expect(await page.evaluate(() => window.__hive.state.sessions.length)).toBe(
+    before,
+  );
 });
 
-test('failed KillSession shows an error and the session survives', async ({ page }) => {
+test('failed KillSession shows an error and the session survives', async ({
+  page,
+}) => {
   await boot(page);
   await page.evaluate(() => window.__hive.failNext('KillSession', 'boom'));
 
@@ -52,7 +62,9 @@ test('failed KillSession shows an error and the session survives', async ({ page
 
 test('failed rename shows an error', async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => window.__hive.failNext('UpdateSession', 'no daemon'));
+  await page.evaluate(() =>
+    window.__hive.failNext('UpdateSession', 'no daemon'),
+  );
 
   const row = page.locator('#projects li[data-sid="s1"] .name');
   await row.dblclick();
@@ -65,7 +77,9 @@ test('failed rename shows an error', async ({ page }) => {
   await expect(status).toHaveText(/rename failed:.*no daemon/);
 });
 
-test('failed tile rename shows an error (regression: UpdateSession import)', async ({ page }) => {
+test('failed tile rename shows an error (regression: UpdateSession import)', async ({
+  page,
+}) => {
   // Locks the fix for a latent ReferenceError: SessionTerm's
   // _beginRename commit handler called UpdateSession without it being
   // imported in session-term.js, so the rename input closed but the
@@ -74,7 +88,9 @@ test('failed tile rename shows an error (regression: UpdateSession import)', asy
   // above, which exercises sidebar.js's beginRenameSession instead and
   // already had the import.
   await boot(page);
-  await page.evaluate(() => window.__hive.failNext('UpdateSession', 'no daemon'));
+  await page.evaluate(() =>
+    window.__hive.failNext('UpdateSession', 'no daemon'),
+  );
 
   const tileName = page.locator('.term-host[data-sid="s1"] .tile-name');
   await tileName.dblclick();
@@ -99,7 +115,9 @@ test('tile rename commits on Enter', async ({ page }) => {
   await input.fill('tile-renamed');
   await input.press('Enter');
 
-  await expect(page.locator('.term-host[data-sid="s1"] .tile-name')).toHaveText('tile-renamed');
+  await expect(page.locator('.term-host[data-sid="s1"] .tile-name')).toHaveText(
+    'tile-renamed',
+  );
 });
 
 test('error flash auto-reverts to the persistent status', async ({ page }) => {
@@ -124,20 +142,28 @@ test('Enter commits a rename, Escape cancels it', async ({ page }) => {
   let input = page.locator('#projects li[data-sid="s1"] input.name-input');
   await input.fill('kept');
   await input.press('Enter');
-  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText('kept');
+  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText(
+    'kept',
+  );
 
   await page.locator('#projects li[data-sid="s1"] .name').dblclick();
   input = page.locator('#projects li[data-sid="s1"] input.name-input');
   await input.fill('discarded');
   await input.press('Escape');
-  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText('kept');
+  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText(
+    'kept',
+  );
 });
 
-test('launcher selects an agent and creates a session on the happy path', async ({ page }) => {
+test('launcher selects an agent and creates a session on the happy path', async ({
+  page,
+}) => {
   await boot(page);
   const before = await page.evaluate(() => window.__hive.state.sessions.length);
   await page.keyboard.press(`${mod}+t`);
-  await expect(page.locator('#launcher .launcher-item').first()).toContainText('Shell');
+  await expect(page.locator('#launcher .launcher-item').first()).toContainText(
+    'Shell',
+  );
   await page.keyboard.press('Enter');
   await page.waitForFunction(
     (n) => window.__hive.state.sessions.length === n + 1,
