@@ -79,8 +79,12 @@ jobs:
       - name: Lint & format check (frontend — Biome)
         # Platform-independent, so it runs on the Linux leg only (no need to
         # burn macOS/Windows minutes on identical results).
+        # --reporter=github emits ::error/::warning workflow-command
+        # annotations, which GitHub renders inline on the PR diff (and as
+        # check annotations for findings outside the diff). Still exits
+        # non-zero on real errors, so the gate is unchanged.
         working-directory: cmd/hivegui/frontend
-        run: ./node_modules/.bin/biome ci .
+        run: ./node_modules/.bin/biome ci --reporter=github .
 
       - name: Test (frontend unit + DOM)
         working-directory: cmd/hivegui/frontend
