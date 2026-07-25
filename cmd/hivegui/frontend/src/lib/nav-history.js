@@ -67,8 +67,18 @@ function step(from, to, currentId, exists) {
 // already skip them (see step), so this is housekeeping: without it a
 // window that churns through sessions fills NAV_CAP with dead ids and
 // the live history silently shortens.
+// Filters in place rather than reassigning, so a caller holding a
+// reference to h.back / h.fwd can't be left looking at a stale array.
 export function pruneNav(h, exists) {
-  h.back = h.back.filter(exists);
-  h.fwd = h.fwd.filter(exists);
+  keepInPlace(h.back, exists);
+  keepInPlace(h.fwd, exists);
   return h;
+}
+
+function keepInPlace(arr, exists) {
+  let w = 0;
+  for (let r = 0; r < arr.length; r++) {
+    if (exists(arr[r])) arr[w++] = arr[r];
+  }
+  arr.length = w;
 }

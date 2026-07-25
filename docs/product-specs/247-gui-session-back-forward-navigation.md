@@ -25,6 +25,7 @@ The chord matches VS Code, per platform: **Ctrl+-** back and **Ctrl+Shift+-** fo
 - Pressing back/forward does not itself add history entries (no ping-pong between two sessions).
 - Going back from a session in one project to a session in another switches the sidebar selection, window title, and current project along with it.
 - ⌘= / ⌘- / ⌘0 still zoom on macOS, and plain Ctrl+- still zooms on Windows and Linux.
+- Going back into a session you had minimized restores it to the grid and puts the keyboard in it, rather than selecting an invisible tile.
 - Killing the session at the top of the back stack makes back skip it instead of erroring or doing nothing.
 - With no history, back reports "nothing to go back to" in the status bar rather than failing silently.
 

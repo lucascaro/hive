@@ -75,6 +75,43 @@ test.describe('session back / forward history', () => {
     await page.keyboard.press(`${MOD}+0`); // restore
   });
 
+  test('going back into a minimized session leaves it visible and focused', async ({ page }) => {
+    // The regression this catches: gridScopeSessions filters
+    // state.minimized and renderGrid strips .in-grid from every tile
+    // outside the scope, so a bare switchTo makes the session active
+    // with a zero-area tile and keyboard focus on <body> — keystrokes
+    // silently dropped. Only a real browser sees the layout, which is
+    // why this lives here and not in the jsdom suite.
+    await bootWithSessions(page, 3);
+    const [a, b, c] = await sessionIds(page);
+
+    await page.click(`#projects li[data-sid="${a}"]`);
+    await page.evaluate((id) => window.__hive_state.minimized.add(id), a);
+    await page.click(`#projects li[data-sid="${b}"]`);
+    await page.click(`#projects li[data-sid="${c}"]`);
+    await page.keyboard.press(`${MOD}+Shift+g`); // grid-all
+
+    await page.keyboard.press(BACK);
+    await expect.poll(() => activeId(page)).toBe(b);
+    await page.keyboard.press(BACK);
+    await expect.poll(() => activeId(page)).toBe(a);
+
+    await expect.poll(() => page.evaluate((id) => {
+      const host = window.__hive_state.terms.get(id)?.host;
+      const box = host?.getBoundingClientRect();
+      return {
+        minimized: window.__hive_state.minimized.has(id),
+        inGrid: !!host?.classList.contains('in-grid'),
+        hasArea: !!(box && box.width > 0 && box.height > 0),
+      };
+    }, a)).toEqual({ minimized: false, inGrid: true, hasArea: true });
+
+    // And the keyboard actually lands in that terminal.
+    await expect.poll(() => page.evaluate(
+      () => !!document.activeElement?.classList.contains('xterm-helper-textarea'),
+    )).toBe(true);
+  });
+
   test('records ⌘1-9 switches too, not just clicks', async ({ page }) => {
     await bootWithSessions(page, 3);
     const [a, b] = await sessionIds(page);

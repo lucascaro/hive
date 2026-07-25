@@ -33,17 +33,19 @@ vi.mock('../../src/bridge.js', () => {
 // edge and nothing else.
 vi.mock('../../src/app/view.js', async () => {
   const { setActive } = await import('../../src/app/focus.js');
+  const { state } = await import('../../src/app/state.js');
   return {
     switchTo: vi.fn((id) => setActive(id)),
     setView: vi.fn(),
     gridSpatialMove: vi.fn(),
     shiftActiveProject: vi.fn(),
-    restoreSession: vi.fn(),
+    // Mirrors the real restoreSession (view.js): un-minimize, then switchTo.
+    restoreSession: vi.fn((id) => { state.minimized.delete(id); setActive(id); }),
     minimizeSession: vi.fn(),
   };
 });
 
-let state, setActive, withoutNavHistory, navBack, navForward, switchTo, isMac;
+let state, setActive, withoutNavHistory, navBack, navForward, switchTo, restoreSession, isMac;
 
 const session = (id) => ({ id, name: id, projectId: 'p1', order: 0 });
 
@@ -58,7 +60,7 @@ beforeAll(async () => {
     <div id="help-overlay" class="hidden"></div>`;
   ({ state } = await import('../../src/app/state.js'));
   ({ setActive, withoutNavHistory } = await import('../../src/app/focus.js'));
-  ({ switchTo } = await import('../../src/app/view.js'));
+  ({ switchTo, restoreSession } = await import('../../src/app/view.js'));
   const kb = await import('../../src/app/keyboard.js');
   ({ navBack, navForward } = kb);
   // main.js injects the focus pipeline into keyboard.js so the modules
@@ -80,8 +82,10 @@ beforeEach(() => {
   switchTo.mockClear();
   state.sessions = [session('a'), session('b'), session('c'), session('d')];
   state.activeId = null;
-  state.nav.back = [];
-  state.nav.fwd = [];
+  state.nav.back.length = 0;
+  state.nav.fwd.length = 0;
+  state.minimized.clear();
+  restoreSession.mockClear();
 });
 
 describe('recording', () => {
@@ -212,6 +216,44 @@ describe('navBack / navForward', () => {
     window.dispatchEvent(zoom);
 
     expect(state.activeId).toBe('b'); // did not navigate
+  });
+
+  it('un-minimizes a session it goes back into', () => {
+    // gridScopeSessions filters state.minimized, so a bare switchTo
+    // would make the session active with no tile: sidebar selection
+    // moves, nothing appears, and keyboard focus lands on <body> where
+    // keystrokes are silently dropped. ⌘B already restores on the way
+    // in (keyboard.js jumpToAttention); back/forward must match.
+    switchTo('a');
+    state.minimized.add('a');
+    switchTo('b');
+    switchTo('c');
+
+    navBack();
+    expect(state.activeId).toBe('b');
+    navBack();
+    expect(state.activeId).toBe('a');
+    expect(state.minimized.has('a')).toBe(false);
+    expect(restoreSession).toHaveBeenCalledWith('a');
+  });
+
+  it('un-minimizes on the forward leg too', () => {
+    switchTo('a');
+    switchTo('b');
+    state.minimized.add('b');
+    navBack();
+    expect(state.activeId).toBe('a');
+
+    navForward();
+    expect(state.activeId).toBe('b');
+    expect(state.minimized.has('b')).toBe(false);
+  });
+
+  it('leaves a non-minimized target alone', () => {
+    switchTo('a');
+    switchTo('b');
+    navBack();
+    expect(restoreSession).not.toHaveBeenCalled();
   });
 
   it('carries the current project across a back into another project', () => {

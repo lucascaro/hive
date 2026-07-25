@@ -432,16 +432,34 @@ function endRound({ reminimize }) {
 // it rather than dead-ending.
 const sessionExists = (id) => state.sessions.some((s) => s.id === id);
 
+// navGo performs the switch a history step resolved to. A minimized
+// session has to be restored on the way in, exactly as ⌘B does at
+// jumpToAttention: gridScopeSessions filters state.minimized, so a bare
+// switchTo would make the session active with no tile in the grid — the
+// sidebar selection moves, nothing appears, and keyboard focus lands on
+// <body> where keystrokes are silently dropped.
+//
+// Unlike ⌘B this does NOT record the restore in attentionRestored:
+// that set exists so ⇧⌘B can re-minimize sessions a bell round pulled
+// out on your behalf. Going back here is a deliberate "put me in that
+// session", so it stays restored.
+function navGo(id) {
+  deps.withoutNavHistory(() => {
+    if (state.minimized.has(id)) restoreSession(id); // un-minimize, then switchTo
+    else switchTo(id);
+  });
+}
+
 export function navBack() {
   const id = goBack(state.nav, state.activeId, sessionExists);
   if (!id) { flashStatus('nothing to go back to'); return; }
-  deps.withoutNavHistory(() => switchTo(id));
+  navGo(id);
 }
 
 export function navForward() {
   const id = goForward(state.nav, state.activeId, sessionExists);
   if (!id) { flashStatus('nothing to go forward to'); return; }
-  deps.withoutNavHistory(() => switchTo(id));
+  navGo(id);
 }
 
 export function switchToNthSession(n) {

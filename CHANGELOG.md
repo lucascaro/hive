@@ -15,8 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows and Linux, where Ctrl+- is already zoom out). History records
   every way of switching — clicking a session in the sidebar, clicking a
   tile in grid view, ⌘1–9, ⌘arrows, ⌘B, or the app switching you itself —
-  so "take me back to what I was working on" always works. Sessions killed
-  while you were away are skipped. Also available in the command palette as
+  so "take me back to what I was working on" always works. A session you
+  had minimized is restored on the way in; sessions killed while you were
+  away are skipped. Also available in the command palette as
   **Go Back** / **Go Forward**.
 
 ### Fixed

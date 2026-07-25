@@ -69,6 +69,14 @@ export function isHelpOverlayKey(e) {
 // Key matching accepts '-' and '_' (shifted '-' on a US layout, the
 // same shape as the '=' / '+' zoom pair) and falls back to the
 // physical e.code === 'Minus' for layouts where neither is produced.
+//
+// Known limitation on Windows/Linux: AltGr reports as ctrlKey+altKey,
+// so on a layout where AltGr+'-' composes a character this swallows it.
+// Deliberately NOT guarded with e.getModifierState('AltGraph') — that
+// flag is set inconsistently for a manually-held Ctrl+Alt across X11
+// setups, and breaking the binding outright on Linux is worse than the
+// narrow collision. If it is ever reported, the AltGraph check is the
+// fix. (VS Code carries the same tradeoff on the same chord.)
 export function navHistoryKey(e, isMac) {
   if (e.metaKey || !e.ctrlKey) return null;
   if (isMac ? e.altKey : !e.altKey) return null;

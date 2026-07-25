@@ -55,6 +55,7 @@ Not touched: `cmd/hivegui/menu_darwin.go`. Ctrl-only chords are deliberately JS-
 - `test/unit/nav-history.test.js` — push ignores null and consecutive dupes; a push after a back truncates `fwd`; cap drops oldest; `goBack`/`goForward` skip ids failing `exists` and return `null` when empty; back→forward round-trips; `pruneNav` clears both arrays.
 - `test/unit/keymap.test.js` (extend) — mac Ctrl+- → back, Ctrl+Shift+- → forward, ⌘- → null; **linux plain Ctrl+- → null (zoom regression guard)**, Ctrl+Alt+- → back, Ctrl+Alt+Shift+- → forward; `_` and `e.code === 'Minus'` both recognized.
 - `test/dom/nav-history.test.js` — A→B→C then two backs and a forward; the tile-mousedown path (`setActive` without `switchTo`) is recorded; history navigation does not itself push; a killed top-of-stack session is skipped.
+- `test/e2e/nav-history.spec.js` — real Chromium on darwin, so the shipping mac chord (plain Ctrl+-) runs through the real listener; zoom still works; back into a minimized session ends up visible, in-grid, and holding keyboard focus (jsdom can't see layout, so this case only exists here).
 - `test/unit/shortcuts.test.js` already asserts no duplicate combos per group; new entries must pass unchanged.
 
 ## Decision log
@@ -62,6 +63,8 @@ Not touched: `cmd/hivegui/menu_darwin.go`. Ctrl-only chords are deliberately JS-
 - **2026-07-25** — Hook `setActive`, not `switchTo`. Why: four selection paths bypass `switchTo`, including tile clicks.
 - **2026-07-25** — Per-platform chord (Ctrl on mac, Ctrl+Alt on Win/Linux) rather than one chord everywhere. Why: `Ctrl+-` is already zoom-out on Win/Linux via `cmdOrCtrl`; taking it would be a regression. VS Code splits the same way.
 - **2026-07-25** — In-memory only, no localStorage. Why: the terminals are gone after a restart anyway, and persisting adds a startup prune against the live session list for no user benefit.
+- **2026-07-25** — Back/forward restores a minimized target (`navGo`), matching ⌘B's `jumpToAttention`. Why: `gridScopeSessions` filters `state.minimized`, so a bare `switchTo` left the session active with a zero-area tile and keyboard focus on `<body>` — keystrokes silently dropped. Unlike ⌘B it does not add to `attentionRestored`; that set exists so ⇧⌘B can re-minimize what a bell round pulled out, and a deliberate "go back" should stay restored.
+- **2026-07-25** — AltGr collision on Windows/Linux (`Ctrl+Alt` == AltGr) documented but NOT guarded with `getModifierState('AltGraph')`. Why: that flag is set inconsistently for a manually-held Ctrl+Alt across X11 setups, and breaking the binding outright on Linux is worse than the narrow collision. VS Code carries the same tradeoff.
 - **2026-07-25** — Grid ⌘-arrow walking pushes one entry per cell. Why: it is the literal reading of "no matter how"; the 50-entry cap bounds the cost.
 
 ## Progress
@@ -73,6 +76,8 @@ Not touched: `cmd/hivegui/menu_darwin.go`. Ctrl-only chords are deliberately JS-
 ## PR convergence ledger
 
 <Append-only. One line per review iteration.>
+
+- **2026-07-25** — iteration 1 — verdict: REQUEST_CHANGES — action: fix. Blocking: back into a minimized session left it active with a zero-area tile and focus on `<body>` (reproduced in Playwright: `inGrid: false, visibleArea: 0, focusedHost: null`). Also raised: AltGr collision on Win/Linux, `pruneNav` reassigning arrays. All three addressed; both new regression tests verified to fail against the unfixed code.
 
 ## Open questions
 
