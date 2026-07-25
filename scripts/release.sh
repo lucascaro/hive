@@ -61,6 +61,11 @@ command -v gh >/dev/null || { echo "Error: gh (GitHub CLI) required"; exit 1; }
 ! git rev-parse "$TAG" &>/dev/null || { echo "Error: tag $TAG already exists"; exit 1; }
 grep -q '## \[Unreleased\]' CHANGELOG.md || { echo "Error: CHANGELOG.md has no [Unreleased] section"; exit 1; }
 
+# Non-blocking reminder: shipped exec-plans should move active/ -> completed/
+# (PLANS.md lifecycle) at merge time. Surface any stragglers before a release.
+active_plans=$(find docs/exec-plans/active -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+[[ "$active_plans" -gt 0 ]] && echo "Note: $active_plans exec-plan(s) still in docs/exec-plans/active/ — move any shipped in this release to completed/ (see PLANS.md)."
+
 # ---- VERSION BUMP --------------------------------------------------------
 
 if [[ -n "$VERSION_FILE" ]]; then

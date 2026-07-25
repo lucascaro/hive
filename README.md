@@ -13,7 +13,7 @@ Claude, Codex, Gemini, Copilot, Aider, Pi, plain shells — across projects.
 
 **Alpha.** The v2 architecture is feature-complete for daily use; the
 download is pre-release. Latest release:
-[v2.0.0-alpha.1](https://github.com/lucascaro/hive/releases/tag/v2.0.0-alpha.1).
+[v2.3.0](https://github.com/lucascaro/hive/releases/tag/v2.3.0).
 
 What works:
 - Multi-session daemon (`hived`) — sessions persist across GUI restart
@@ -30,7 +30,7 @@ inside grid cells, workflows / agent teams, code signing.
 
 ## Build
 
-Requires Go 1.22+, Node 18+, and the Wails CLI:
+Requires Go 1.25+, Node 20+, and the Wails CLI:
 
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -41,7 +41,7 @@ Then from the repo root:
 ```sh
 ./build.sh                    # macOS .app at cmd/hivegui/build/bin/hivegui.app
 ./build.sh --open             # build then launch
-./build.sh --zip --version v2.0.0-alpha.2   # also write release/<name>.zip
+./build.sh --zip --version v2.3.0   # also write release/<name>.zip
 ```
 
 For Windows or Linux, build the GUI and the daemon separately:
@@ -87,7 +87,6 @@ internal/
   agent/           # built-in agent launcher catalog
 docs/
   native-rewrite/  # v2 design docs (PLAN.md, phase-{0..5}.md)
-spikes/            # phase-0 reference code (kept for posterity)
 build.sh           # macOS universal build
 ```
 

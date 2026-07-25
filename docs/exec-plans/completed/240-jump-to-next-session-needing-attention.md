@@ -5,7 +5,7 @@
 - **Stage:** REVIEW
 - **PR:** #241
 - **Branch:** feature/240-jump-to-next-session-needing-attention
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
