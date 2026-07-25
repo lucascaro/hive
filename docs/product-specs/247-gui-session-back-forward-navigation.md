@@ -1,10 +1,11 @@
 # GUI: back / forward navigation between sessions
 
 - **Issue:** —
+- **PR:** #248
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/247-gui-session-back-forward-navigation.md](../exec-plans/active/247-gui-session-back-forward-navigation.md)
 
 ## Problem

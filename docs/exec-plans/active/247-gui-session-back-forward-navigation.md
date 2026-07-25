@@ -2,7 +2,9 @@
 
 - **Spec:** [docs/product-specs/247-gui-session-back-forward-navigation.md](../../product-specs/247-gui-session-back-forward-navigation.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT
+- **PR:** #248
+- **Branch:** feature/247-gui-session-back-forward-navigation
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
@@ -67,6 +69,10 @@ Not touched: `cmd/hivegui/menu_darwin.go`. Ctrl-only chords are deliberately JS-
 - **2026-07-25** — Plan-first scaffold; stage = IMPLEMENT.
 - **2026-07-25** — Review fix: `withoutNavHistory` is injected via `initKeyboard` deps rather than statically imported, restoring the acyclic-modules invariant stated at main.js's wiring block (keyboard.js must not import the focus pipeline). Added `test/e2e/nav-history.spec.js` so the macOS chord (plain Ctrl+-) runs through the real listener in a real browser — jsdom reports a non-mac navigator and could only ever exercise the Ctrl+Alt+- branch.
 - **2026-07-25** — Implemented on `feature/247-gui-session-back-forward-navigation`. All nine files changed as planned plus `src/lib/nav-history.js`. Checks: `npx vitest run` 32 files / 309 tests pass (28 in `keymap.test.js`, 16 in `unit/nav-history.test.js`, 12 in `dom/nav-history.test.js`); full `wails build` succeeds (frontend + Go); `go build ./...` and `go test ./cmd/hivegui/...` pass; full `wails build` produces a working `.app`.
+
+## PR convergence ledger
+
+<Append-only. One line per review iteration.>
 
 ## Open questions
 
