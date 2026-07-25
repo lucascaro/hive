@@ -11,8 +11,7 @@ Claude, Codex, Gemini, Copilot, Aider, Pi, plain shells — across projects.
 
 ## Status
 
-**Alpha.** The v2 architecture is feature-complete for daily use; the
-download is pre-release. Latest release:
+**Released.** The v2 architecture is stable and in daily use. Latest release:
 [v2.3.0](https://github.com/lucascaro/hive/releases/tag/v2.3.0).
 
 What works:

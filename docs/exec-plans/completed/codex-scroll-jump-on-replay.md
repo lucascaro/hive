@@ -1,7 +1,8 @@
 # Exec plan: codex scroll-jump on replay
 
 - **Spec:** [docs/product-specs/codex-scroll-jump-on-replay.md](../../product-specs/codex-scroll-jump-on-replay.md)
-- **Stage:** REVIEW
+- **Stage:** DONE
+- **Status:** completed
 - **Branch:** codex-scroll-jump
 
 ## Research

@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/217-cmd-enter-insert-newline-not-submit.md](../../product-specs/217-cmd-enter-insert-newline-not-submit.md)
 - **Issue:** #217
-- **Stage:** REVIEW
+- **Stage:** DONE
 - **Status:** completed
 - **PR:** #218
 - **Branch:** feature/217-cmd-enter-insert-newline-not-submit

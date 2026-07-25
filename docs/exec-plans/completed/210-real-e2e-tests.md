@@ -1,6 +1,6 @@
 # 210 — Real end-to-end tests for hive
 
-- **Stage:** REVIEW
+- **Stage:** DONE
 - **Status:** completed
 
 ## Summary

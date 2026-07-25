@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/172-agent-session-id-gemini-copilot.md](../../product-specs/172-agent-session-id-gemini-copilot.md)
 - **Issue:** #172
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Status:** completed
 
 ## Summary

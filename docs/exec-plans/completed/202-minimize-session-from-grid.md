@@ -4,7 +4,7 @@
 - **Issue:** #202
 - **PR:** #204
 - **Branch:** `feature/202-minimize-session`
-- **Stage:** REVIEW
+- **Stage:** DONE
 - **Status:** completed
 
 ## Summary
