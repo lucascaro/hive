@@ -65,8 +65,9 @@ Not touched: `cmd/hivegui/menu_darwin.go`. Ctrl-only chords are deliberately JS-
 ## Progress
 
 - **2026-07-25** — Plan-first scaffold; stage = IMPLEMENT.
-- **2026-07-25** — Implemented on `feature/247-gui-session-back-forward-navigation`. All nine files changed as planned plus `src/lib/nav-history.js`. Checks: `npx vitest run` 32 files / 309 tests pass (28 in `keymap.test.js`, 16 in `unit/nav-history.test.js`, 12 in `dom/nav-history.test.js`); full `wails build` succeeds (frontend + Go); `go build ./...` and `go test ./cmd/hivegui/...` pass.
+- **2026-07-25** — Review fix: `withoutNavHistory` is injected via `initKeyboard` deps rather than statically imported, restoring the acyclic-modules invariant stated at main.js's wiring block (keyboard.js must not import the focus pipeline). Added `test/e2e/nav-history.spec.js` so the macOS chord (plain Ctrl+-) runs through the real listener in a real browser — jsdom reports a non-mac navigator and could only ever exercise the Ctrl+Alt+- branch.
+- **2026-07-25** — Implemented on `feature/247-gui-session-back-forward-navigation`. All nine files changed as planned plus `src/lib/nav-history.js`. Checks: `npx vitest run` 32 files / 309 tests pass (28 in `keymap.test.js`, 16 in `unit/nav-history.test.js`, 12 in `dom/nav-history.test.js`); full `wails build` succeeds (frontend + Go); `go build ./...` and `go test ./cmd/hivegui/...` pass; full `wails build` produces a working `.app`.
 
 ## Open questions
 
-None.
+- **Not verified: WKWebView delivery of plain `Ctrl+-` in the packaged `.app`.** The logic and the dispatch placement are covered by `test/e2e/nav-history.spec.js` running in real Chromium on darwin (where `isMac` is true, so the actual shipping mac chord is pressed), but the shipped runtime is WKWebView, not Chromium. Driving the packaged app was blocked: `osascript`/System Events is not authorized in this environment (`-1743`), and the GUI has no CLI for creating sessions headlessly. Strong precedent that it works: `Ctrl+\`` is an existing shipped plain-Ctrl binding on the same capture-phase listener, dispatched in the same pre-gate position (`src/app/keyboard.js:143-151`). A 30-second manual check on a machine with Accessibility granted would close this.

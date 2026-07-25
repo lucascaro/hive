@@ -31,7 +31,6 @@ import {
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
-import { withoutNavHistory } from './focus.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 
@@ -39,6 +38,12 @@ let deps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
+  // Injected from main.js like focusActiveTerm above: keyboard.js must
+  // not import the focus pipeline directly (see the acyclic-modules
+  // note at the wiring block in main.js). The default still RUNS fn —
+  // an un-wired harness gets working navigation without suppression,
+  // not a silently swallowed switch.
+  withoutNavHistory: (fn) => fn(),
 };
 
 export function initKeyboard(injected) {
@@ -430,13 +435,13 @@ const sessionExists = (id) => state.sessions.some((s) => s.id === id);
 export function navBack() {
   const id = goBack(state.nav, state.activeId, sessionExists);
   if (!id) { flashStatus('nothing to go back to'); return; }
-  withoutNavHistory(() => switchTo(id));
+  deps.withoutNavHistory(() => switchTo(id));
 }
 
 export function navForward() {
   const id = goForward(state.nav, state.activeId, sessionExists);
   if (!id) { flashStatus('nothing to go forward to'); return; }
-  withoutNavHistory(() => switchTo(id));
+  deps.withoutNavHistory(() => switchTo(id));
 }
 
 export function switchToNthSession(n) {

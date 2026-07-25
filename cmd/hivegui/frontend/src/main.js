@@ -41,6 +41,7 @@ import {
 import { ensureTerm, bumpFontSize, resetFontSize } from './app/session-term.js';
 import {
   setActive, setFocusedTile, focusActiveTerm, refocusActiveTerm, initFocus,
+  withoutNavHistory,
 } from './app/focus.js';
 
 // ---------- command palette table ----------
@@ -101,7 +102,7 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({ switchTo, switchToProject, confirmAndDeleteProject, renderEmptyState, refocusActiveTerm });
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
-initKeyboard({ bumpFontSize, resetFontSize, focusActiveTerm });
+initKeyboard({ bumpFontSize, resetFontSize, focusActiveTerm, withoutNavHistory });
 initFocus({ ensureTerm });
 wireDaemonEvents({
   switchTo, renderMinimizedTray, updateAppTitle, focusActiveTerm,

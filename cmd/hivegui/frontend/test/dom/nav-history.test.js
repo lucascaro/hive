@@ -43,7 +43,7 @@ vi.mock('../../src/app/view.js', async () => {
   };
 });
 
-let state, setActive, navBack, navForward, switchTo, isMac;
+let state, setActive, withoutNavHistory, navBack, navForward, switchTo, isMac;
 
 const session = (id) => ({ id, name: id, projectId: 'p1', order: 0 });
 
@@ -57,9 +57,17 @@ beforeAll(async () => {
     <div id="command-palette" class="hidden"></div>
     <div id="help-overlay" class="hidden"></div>`;
   ({ state } = await import('../../src/app/state.js'));
-  ({ setActive } = await import('../../src/app/focus.js'));
+  ({ setActive, withoutNavHistory } = await import('../../src/app/focus.js'));
   ({ switchTo } = await import('../../src/app/view.js'));
-  ({ navBack, navForward } = await import('../../src/app/keyboard.js'));
+  const kb = await import('../../src/app/keyboard.js');
+  ({ navBack, navForward } = kb);
+  // main.js injects the focus pipeline into keyboard.js so the modules
+  // stay acyclic; this harness has to do the same or the suppression
+  // that stops back/forward ping-ponging is never wired.
+  kb.initKeyboard({
+    withoutNavHistory,
+    bumpFontSize: () => {}, resetFontSize: () => {}, focusActiveTerm: () => {},
+  });
   ({ isMac } = await import('../../src/lib/platform.js'));
 });
 
