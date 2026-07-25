@@ -9,7 +9,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:real": "playwright test --config=playwright.real.config.js"
+    "test:e2e:real": "playwright test --config=playwright.real.config.js",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "ci": "biome ci ."
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -18,6 +22,7 @@
     "@xterm/xterm": "^5.5.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.5",
     "@playwright/test": "^1.48.0",
     "jsdom": "^25.0.0",
     "vite": "^8.0.10",
