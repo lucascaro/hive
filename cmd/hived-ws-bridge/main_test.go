@@ -113,7 +113,7 @@ func TestDispatchEmptyParamsStillPermissive(t *testing.T) {
 func TestConcurrentAttachWritesAreSerialized(t *testing.T) {
 	client, server := net.Pipe()
 	defer server.Close()
-	s := &session{attaches: map[string]*lockedConn{"sid": {c: client}}}
+	s := &session{attaches: map[string]*wire.Client{"sid": wire.NewClient(client)}}
 
 	const goroutines, frames = 10, 50
 	got := make(map[string]int)

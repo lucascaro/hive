@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -40,8 +39,8 @@ type App struct {
 	haveInitialPos     bool
 
 	mu       sync.Mutex
-	control  *connState            // control connection (or nil)
-	attaches map[string]*connState // session id → attach connection
+	control  *wire.Client            // control connection (or nil)
+	attaches map[string]*wire.Client // session id → attach connection
 
 	// openMu serializes OpenSession calls. Without it, two concurrent
 	// OpenSession(id) calls both observe an empty attaches[id], both
@@ -49,25 +48,6 @@ type App struct {
 	// session then fan-outs every byte (and the scrollback snapshot)
 	// twice, producing visibly duplicated output in xterm.
 	openMu sync.Mutex
-}
-
-// connState wraps a connection with a write mutex so multiple goroutines
-// (frontend writes vs. internal pings) don't interleave bytes.
-type connState struct {
-	conn    net.Conn
-	writeMu sync.Mutex
-}
-
-func (c *connState) writeJSON(t wire.FrameType, v any) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return wire.WriteJSON(c.conn, t, v)
-}
-
-func (c *connState) writeFrame(t wire.FrameType, p []byte) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return wire.WriteFrame(c.conn, t, p)
 }
 
 // Notify fires a native OS notification. Wails' webview lacks the HTML5
@@ -115,7 +95,7 @@ func NewApp(launchDir string) *App {
 	agent.SetCustomDir(registry.StateDir())
 	return &App{
 		launchDir: launchDir,
-		attaches:  make(map[string]*connState),
+		attaches:  make(map[string]*wire.Client),
 	}
 }
 
@@ -146,10 +126,10 @@ func (a *App) shutdown(ctx context.Context) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.control != nil {
-		_ = a.control.conn.Close()
+		_ = a.control.Close()
 	}
 	for _, c := range a.attaches {
-		_ = c.conn.Close()
+		_ = c.Close()
 	}
 }
 
@@ -194,43 +174,14 @@ func (a *App) saveGeometry() {
 
 // ----------------------------- control conn -----------------------------
 
-// dialHandshake dials the daemon socket (spawning hived if needed), sends
-// the given HELLO frame, and waits for WELCOME, closing the connection on
-// any failure. Mirrors the shape of hived-ws-bridge's dialHandshake helper
-// for the GUI's own control/attach call sites.
-func (a *App) dialHandshake(hello wire.Hello) (net.Conn, wire.Welcome, error) {
-	hello.Version = wire.PROTOCOL_VERSION
+// dialHandshake dials the daemon socket (spawning hived if needed) and
+// performs the HELLO/WELCOME handshake via the shared wire client.
+func (a *App) dialHandshake(hello wire.Hello) (*wire.Client, error) {
 	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
 	if err != nil {
-		return nil, wire.Welcome{}, err
+		return nil, err
 	}
-	if err := wire.WriteJSON(conn, wire.FrameHello, hello); err != nil {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("hello: %w", err)
-	}
-	ft, payload, err := wire.ReadFrame(conn)
-	if err != nil {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("welcome: %w", err)
-	}
-	if ft == wire.FrameError {
-		_ = conn.Close()
-		var werr wire.Error
-		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
-			return nil, wire.Welcome{}, errors.New(werr.Message)
-		}
-		return nil, wire.Welcome{}, errors.New("daemon rejected connection")
-	}
-	if ft != wire.FrameWelcome {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("expected WELCOME, got %s", ft)
-	}
-	var welcome wire.Welcome
-	if err := json.Unmarshal(payload, &welcome); err != nil {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("welcome: %w", err)
-	}
-	return conn, welcome, nil
+	return wire.Handshake(conn, hello)
 }
 
 // ConnectControl opens (or reuses) the control connection. The
@@ -245,8 +196,7 @@ func (a *App) ConnectControl() error {
 	}
 	a.mu.Unlock()
 
-	conn, welcome, err := a.dialHandshake(wire.Hello{
-		Version: wire.PROTOCOL_VERSION,
+	cs, err := a.dialHandshake(wire.Hello{
 		Client:  "hivegui/0.2",
 		BuildID: buildinfo.BuildID(),
 		Mode:    wire.ModeControl,
@@ -255,12 +205,11 @@ func (a *App) ConnectControl() error {
 		return fmt.Errorf("control: %w", err)
 	}
 
-	cs := &connState{conn: conn}
 	a.mu.Lock()
 	a.control = cs
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	a.emitDaemonVersionStatus(welcome.BuildID, welcome.Release)
+	a.emitDaemonVersionStatus(cs.Welcome().BuildID, cs.Welcome().Release)
 	return nil
 }
 
@@ -358,7 +307,7 @@ func (a *App) RestartDaemon() error {
 		// writeFrame, not wire.WriteFrame: the header and payload are
 		// two Write calls, and the frontend can be writing to this
 		// same conn concurrently. Every other writer takes writeMu.
-		if err := control.writeFrame(wire.FrameShutdown, nil); err != nil {
+		if err := control.WriteFrame(wire.FrameShutdown, nil); err != nil {
 			log.Printf("hivegui: restart: send shutdown frame: %v", err)
 		}
 		dead = socketDead(sock, restartKillBudget)
@@ -390,13 +339,13 @@ func (a *App) RestartDaemon() error {
 	// half-open fds while the new GUI comes up.
 	a.mu.Lock()
 	if a.control != nil {
-		_ = a.control.conn.Close()
+		_ = a.control.Close()
 		a.control = nil
 	}
 	for _, c := range a.attaches {
-		_ = c.conn.Close()
+		_ = c.Close()
 	}
-	a.attaches = make(map[string]*connState)
+	a.attaches = make(map[string]*wire.Client)
 	a.mu.Unlock()
 
 	if err := spawnNewGUI(a.launchDir); err != nil {
@@ -407,36 +356,27 @@ func (a *App) RestartDaemon() error {
 	return nil
 }
 
-func (a *App) controlReadLoop(cs *connState) {
+func (a *App) controlReadLoop(cs *wire.Client) {
 	defer func() {
 		a.mu.Lock()
 		if a.control == cs {
 			a.control = nil
 		}
 		a.mu.Unlock()
-		_ = cs.conn.Close()
+		_ = cs.Close()
 		wruntime.EventsEmit(a.ctx, "control:disconnect", "")
 	}()
 	for {
-		ft, payload, err := wire.ReadFrame(cs.conn)
+		ft, payload, err := cs.ReadFrame()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("hivegui: control read: %v", err)
 			}
 			return
 		}
-		switch ft {
-		case wire.FrameSessions:
-			wruntime.EventsEmit(a.ctx, "session:list", string(payload))
-		case wire.FrameSessionEvent:
-			wruntime.EventsEmit(a.ctx, "session:event", string(payload))
-		case wire.FrameProjects:
-			wruntime.EventsEmit(a.ctx, "project:list", string(payload))
-		case wire.FrameProjectEvent:
-			wruntime.EventsEmit(a.ctx, "project:event", string(payload))
-		case wire.FrameError:
-			wruntime.EventsEmit(a.ctx, "control:error", string(payload))
-		default:
+		if name, ok := wire.ControlEventName(ft); ok {
+			wruntime.EventsEmit(a.ctx, name, string(payload))
+		} else {
 			log.Printf("hivegui: control unexpected frame %s", ft)
 		}
 	}
@@ -527,7 +467,7 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
+	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
 		Agent:       agentID,
 		ProjectID:   projectID,
 		Name:        name,
@@ -552,7 +492,7 @@ func (a *App) DuplicateSession(agentID, projectID, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameCreateSession, wire.CreateSpec{
+	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
 		Agent:       agentID,
 		ProjectID:   projectID,
 		Cwd:         cwd,
@@ -566,7 +506,7 @@ func (a *App) CreateProject(name, color, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameCreateProject, wire.CreateProjectReq{
+	return cs.WriteJSON(wire.FrameCreateProject, wire.CreateProjectReq{
 		Name: name, Color: color, Cwd: cwd,
 	})
 }
@@ -579,7 +519,7 @@ func (a *App) KillProject(id string, killSessions bool) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameKillProject, wire.KillProjectReq{
+	return cs.WriteJSON(wire.FrameKillProject, wire.KillProjectReq{
 		ProjectID: id, KillSessions: killSessions,
 	})
 }
@@ -604,7 +544,7 @@ func (a *App) UpdateProject(id, name, color, cwd string, order int) error {
 	if order >= 0 {
 		req.Order = &order
 	}
-	return cs.writeJSON(wire.FrameUpdateProject, req)
+	return cs.WriteJSON(wire.FrameUpdateProject, req)
 }
 
 // LaunchDir returns the cwd captured at GUI startup; useful for the
@@ -679,7 +619,7 @@ func (a *App) KillSession(id string, force bool) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameKillSession, wire.KillSessionReq{
+	return cs.WriteJSON(wire.FrameKillSession, wire.KillSessionReq{
 		SessionID: id, Force: force,
 	})
 }
@@ -694,7 +634,7 @@ func (a *App) RestartSession(id string) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameRestartSession, wire.RestartSessionReq{
+	return cs.WriteJSON(wire.FrameRestartSession, wire.RestartSessionReq{
 		SessionID: id,
 	})
 }
@@ -731,10 +671,10 @@ func (a *App) UpdateSession(id, name, color string, order int) error {
 	if order >= 0 {
 		req.Order = &order
 	}
-	return cs.writeJSON(wire.FrameUpdateSession, req)
+	return cs.WriteJSON(wire.FrameUpdateSession, req)
 }
 
-func (a *App) requireControl() (*connState, error) {
+func (a *App) requireControl() (*wire.Client, error) {
 	a.mu.Lock()
 	cs := a.control
 	a.mu.Unlock()
@@ -771,8 +711,7 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	a.mu.Unlock()
 
 	dialStart := time.Now()
-	conn, welcome, err := a.dialHandshake(wire.Hello{
-		Version:   wire.PROTOCOL_VERSION,
+	cs, err := a.dialHandshake(wire.Hello{
 		Client:    "hivegui/0.2",
 		Mode:      wire.ModeAttach,
 		SessionID: id,
@@ -780,13 +719,13 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("attach failed: %w", err)
 	}
+	welcome := cs.Welcome()
 	// Startup-latency probe: dial+handshake is a network round-trip to
 	// hived per session. On a many-session grid launch these run behind
 	// openMu (serialized), so a slow daemon shows here as the sum that
 	// stalls startup. Logged to hivegui.log next to the frontend probes.
 	log.Printf("hivegui[fe]: OpenSession id=%s dialHandshake=%dms", id, time.Since(dialStart).Milliseconds())
 
-	cs := &connState{conn: conn}
 	a.mu.Lock()
 	a.attaches[id] = cs
 	a.mu.Unlock()
@@ -795,7 +734,7 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	// Issue the frontend's preferred size right after the handshake;
 	// the daemon's WELCOME reports its current size which may differ.
 	if cols > 0 && rows > 0 && (cols != welcome.Cols || rows != welcome.Rows) {
-		_ = cs.writeJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
+		_ = cs.WriteJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
 	}
 
 	return &AttachInfo{
@@ -803,14 +742,14 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 	}, nil
 }
 
-func (a *App) attachReadLoop(id string, cs *connState) {
+func (a *App) attachReadLoop(id string, cs *wire.Client) {
 	defer func() {
 		a.mu.Lock()
 		if a.attaches[id] == cs {
 			delete(a.attaches, id)
 		}
 		a.mu.Unlock()
-		_ = cs.conn.Close()
+		_ = cs.Close()
 		wruntime.EventsEmit(a.ctx, "pty:disconnect", id)
 	}()
 	// Startup-flood probe: sum the FrameData bytes in the first second
@@ -831,7 +770,7 @@ func (a *App) attachReadLoop(id string, cs *connState) {
 			id, initFrames, initBytes, time.Since(loopStart).Milliseconds())
 	}
 	for {
-		ft, payload, err := wire.ReadFrame(cs.conn)
+		ft, payload, err := cs.ReadFrame()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("hivegui: attach %s read: %v", id, err)
@@ -849,15 +788,14 @@ func (a *App) attachReadLoop(id string, cs *connState) {
 				logInitBurst()
 			}
 		}
-		switch ft {
-		case wire.FrameData:
-			wruntime.EventsEmit(a.ctx, "pty:data", id, base64.StdEncoding.EncodeToString(payload))
-		case wire.FrameEvent:
-			wruntime.EventsEmit(a.ctx, "pty:event", id, string(payload))
-		case wire.FrameError:
-			wruntime.EventsEmit(a.ctx, "pty:error", id, string(payload))
-		default:
+		name, ok := wire.AttachEventName(ft)
+		switch {
+		case !ok:
 			log.Printf("hivegui: attach %s unexpected frame %s", id, ft)
+		case ft == wire.FrameData:
+			wruntime.EventsEmit(a.ctx, name, id, base64.StdEncoding.EncodeToString(payload))
+		default:
+			wruntime.EventsEmit(a.ctx, name, id, string(payload))
 		}
 	}
 }
@@ -875,7 +813,7 @@ func (a *App) CloseAttach(id string) error {
 	if !ok {
 		return nil
 	}
-	return cs.conn.Close()
+	return cs.Close()
 }
 
 // WriteStdin forwards keystrokes to the attached session.
@@ -888,7 +826,7 @@ func (a *App) WriteStdin(id, b64 string) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeFrame(wire.FrameData, data)
+	return cs.WriteFrame(wire.FrameData, data)
 }
 
 // ResizeSession sends a RESIZE control frame on the attach connection.
@@ -897,7 +835,7 @@ func (a *App) ResizeSession(id string, cols, rows int) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
+	return cs.WriteJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
 }
 
 // RequestScrollbackReplay asks the daemon to re-stream the session's
@@ -917,10 +855,10 @@ func (a *App) RequestScrollbackReplay(id string) error {
 	if err != nil {
 		return err
 	}
-	return cs.writeFrame(wire.FrameRequestReplay, nil)
+	return cs.WriteFrame(wire.FrameRequestReplay, nil)
 }
 
-func (a *App) attachFor(id string) (*connState, error) {
+func (a *App) attachFor(id string) (*wire.Client, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	cs, ok := a.attaches[id]

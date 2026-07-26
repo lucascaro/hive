@@ -96,35 +96,9 @@ type session struct {
 	sockPath string
 
 	mu       sync.Mutex
-	control  *lockedConn
-	attaches map[string]*lockedConn // session id → attach conn
+	control  *wire.Client
+	attaches map[string]*wire.Client // session id → attach conn
 }
-
-// lockedConn serializes frame writes to one daemon connection.
-// wire.WriteFrame issues two Writes (header, then payload), so two
-// goroutines writing the same conn unserialized interleave mid-frame
-// and corrupt the stream. Reads stay lock-free: each conn has exactly
-// one reader goroutine, and socket reads never contend with writes.
-type lockedConn struct {
-	mu sync.Mutex
-	c  net.Conn
-}
-
-func (lc *lockedConn) writeFrame(t wire.FrameType, p []byte) error {
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	return wire.WriteFrame(lc.c, t, p)
-}
-
-func (lc *lockedConn) writeJSON(t wire.FrameType, v any) error {
-	lc.mu.Lock()
-	defer lc.mu.Unlock()
-	return wire.WriteJSON(lc.c, t, v)
-}
-
-// Close is intentionally not guarded by lc.mu: net.Conn.Close is safe
-// concurrently with a blocked Write and must be able to unblock one.
-func (lc *lockedConn) Close() error { return lc.c.Close() }
 
 func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -133,7 +107,7 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 		return
 	}
 	defer c.Close()
-	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]*lockedConn)}
+	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]*wire.Client)}
 	defer s.closeAll()
 	for {
 		_, raw, err := c.ReadMessage()
@@ -290,48 +264,37 @@ func (s *session) connectControl() error {
 	}
 	s.mu.Unlock()
 
-	conn, welcome, err := dialHandshake(s.sockPath, wire.Hello{Mode: wire.ModeControl, Client: "ws-bridge/control"})
+	cli, err := dialHandshake(s.sockPath, wire.Hello{Mode: wire.ModeControl, Client: "ws-bridge/control"})
 	if err != nil {
 		return err
 	}
-	_ = welcome // build-id is irrelevant for tests
-	lc := &lockedConn{c: conn}
 	s.mu.Lock()
-	s.control = lc
+	s.control = cli
 	s.mu.Unlock()
-	go s.controlReadLoop(lc)
+	go s.controlReadLoop(cli)
 	return nil
 }
 
-func (s *session) controlReadLoop(conn *lockedConn) {
+func (s *session) controlReadLoop(cli *wire.Client) {
 	defer func() {
 		s.mu.Lock()
-		if s.control == conn {
+		if s.control == cli {
 			s.control = nil
 		}
 		s.mu.Unlock()
-		_ = conn.Close()
+		_ = cli.Close()
 		s.emit("control:disconnect", "")
 	}()
 	for {
-		ft, payload, err := wire.ReadFrame(conn.c)
+		ft, payload, err := cli.ReadFrame()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("ws-bridge: control read: %v", err)
 			}
 			return
 		}
-		switch ft {
-		case wire.FrameSessions:
-			s.emit("session:list", string(payload))
-		case wire.FrameSessionEvent:
-			s.emit("session:event", string(payload))
-		case wire.FrameProjects:
-			s.emit("project:list", string(payload))
-		case wire.FrameProjectEvent:
-			s.emit("project:event", string(payload))
-		case wire.FrameError:
-			s.emit("control:error", string(payload))
+		if name, ok := wire.ControlEventName(ft); ok {
+			s.emit(name, string(payload))
 		}
 	}
 }
@@ -350,47 +313,48 @@ func (s *session) openSession(id string, cols, rows int) (*attachInfo, error) {
 	}
 	s.mu.Unlock()
 
-	conn, welcome, err := dialHandshake(s.sockPath, wire.Hello{
+	cli, err := dialHandshake(s.sockPath, wire.Hello{
 		Mode: wire.ModeAttach, SessionID: id, Client: "ws-bridge/attach",
 	})
 	if err != nil {
 		return nil, err
 	}
-	lc := &lockedConn{c: conn}
+	welcome := cli.Welcome()
 	s.mu.Lock()
-	s.attaches[id] = lc
+	s.attaches[id] = cli
 	s.mu.Unlock()
-	go s.attachReadLoop(id, lc)
+	go s.attachReadLoop(id, cli)
 	// Issue preferred size if non-zero and differs from welcome. Routed
 	// through the locked writer — it races with WriteStdin dispatches.
 	if cols > 0 && rows > 0 && (cols != welcome.Cols || rows != welcome.Rows) {
-		_ = lc.writeJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
+		_ = cli.WriteJSON(wire.FrameResize, wire.Resize{Cols: cols, Rows: rows})
 	}
 	return &attachInfo{SessionID: id, Cols: welcome.Cols, Rows: welcome.Rows}, nil
 }
 
-func (s *session) attachReadLoop(id string, conn *lockedConn) {
+func (s *session) attachReadLoop(id string, cli *wire.Client) {
 	defer func() {
 		s.mu.Lock()
-		if s.attaches[id] == conn {
+		if s.attaches[id] == cli {
 			delete(s.attaches, id)
 		}
 		s.mu.Unlock()
-		_ = conn.Close()
+		_ = cli.Close()
 		s.emit("pty:disconnect", id)
 	}()
 	for {
-		ft, payload, err := wire.ReadFrame(conn.c)
+		ft, payload, err := cli.ReadFrame()
 		if err != nil {
 			return
 		}
-		switch ft {
-		case wire.FrameData:
-			s.emit("pty:data", id, base64.StdEncoding.EncodeToString(payload))
-		case wire.FrameEvent:
-			s.emit("pty:event", id, string(payload))
-		case wire.FrameError:
-			s.emit("pty:error", id, string(payload))
+		name, ok := wire.AttachEventName(ft)
+		if !ok {
+			continue
+		}
+		if ft == wire.FrameData {
+			s.emit(name, id, base64.StdEncoding.EncodeToString(payload))
+		} else {
+			s.emit(name, id, string(payload))
 		}
 	}
 }
@@ -436,7 +400,7 @@ func (s *session) controlWriteJSON(t wire.FrameType, v any) error {
 	if c == nil {
 		return errors.New("no control connection")
 	}
-	return c.writeJSON(t, v)
+	return c.WriteJSON(t, v)
 }
 
 func (s *session) attachWriteFrame(id string, t wire.FrameType, p []byte) error {
@@ -446,7 +410,7 @@ func (s *session) attachWriteFrame(id string, t wire.FrameType, p []byte) error 
 	if c == nil {
 		return fmt.Errorf("no attach for %s", id)
 	}
-	return c.writeFrame(t, p)
+	return c.WriteFrame(t, p)
 }
 
 func (s *session) attachWriteJSON(id string, t wire.FrameType, v any) error {
@@ -456,38 +420,16 @@ func (s *session) attachWriteJSON(id string, t wire.FrameType, v any) error {
 	if c == nil {
 		return fmt.Errorf("no attach for %s", id)
 	}
-	return c.writeJSON(t, v)
+	return c.WriteJSON(t, v)
 }
 
 // --- helpers ---
 
-func dialHandshake(sockPath string, hello wire.Hello) (net.Conn, wire.Welcome, error) {
-	hello.Version = wire.PROTOCOL_VERSION
+func dialHandshake(sockPath string, hello wire.Hello) (*wire.Client, error) {
 	d := net.Dialer{Timeout: 3 * time.Second}
 	conn, err := d.DialContext(context.Background(), "unix", sockPath)
 	if err != nil {
-		return nil, wire.Welcome{}, fmt.Errorf("dial %s: %w", sockPath, err)
+		return nil, fmt.Errorf("dial %s: %w", sockPath, err)
 	}
-	if err := wire.WriteJSON(conn, wire.FrameHello, hello); err != nil {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("hello: %w", err)
-	}
-	ft, payload, err := wire.ReadFrame(conn)
-	if err != nil {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("welcome read: %w", err)
-	}
-	if ft == wire.FrameError {
-		_ = conn.Close()
-		var werr wire.Error
-		_ = json.Unmarshal(payload, &werr)
-		return nil, wire.Welcome{}, fmt.Errorf("handshake refused: %s", werr.Message)
-	}
-	if ft != wire.FrameWelcome {
-		_ = conn.Close()
-		return nil, wire.Welcome{}, fmt.Errorf("unexpected frame %s", ft)
-	}
-	var w wire.Welcome
-	_ = json.Unmarshal(payload, &w)
-	return conn, w, nil
+	return wire.Handshake(conn, hello)
 }

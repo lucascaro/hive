@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/lucascaro/hive/internal/wire"
 )
 
 // shortTempDir keeps socket paths well clear of sun_path's 104-byte
@@ -115,8 +117,8 @@ func TestRestartDaemon_FailurePreservesConns(t *testing.T) {
 	defer attach.Close()
 
 	app := NewApp("")
-	app.control = &connState{conn: control}
-	app.attaches["sess-1"] = &connState{conn: attach}
+	app.control = wire.NewClient(control)
+	app.attaches["sess-1"] = wire.NewClient(attach)
 
 	if err := app.RestartDaemon(); err == nil {
 		t.Fatal("RestartDaemon should fail while the daemon is still answering")
