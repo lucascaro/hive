@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,7 +36,7 @@ func TestCreateResolvesCustomAgentCmd(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	if _, err := r.Create(wire.CreateSpec{
+	if _, err := r.Create(context.Background(), wire.CreateSpec{
 		Name: "lite", Agent: "claude-lite", Shell: "/bin/bash",
 	}); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -63,7 +64,7 @@ func TestReviveResolvesCustomAgentFromPersistedID(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "t1", Agent: "mytool", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "t1", Agent: "mytool", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestRestartCustomAgentFallsBackToCmd(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "t1", Agent: "mytool", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "t1", Agent: "mytool", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestCreateWithUnknownAgentFallsBackToShell(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	if _, err := r.Create(wire.CreateSpec{
+	if _, err := r.Create(context.Background(), wire.CreateSpec{
 		Name: "ghost", Agent: "no-such-agent", Shell: "/bin/bash",
 	}); err != nil {
 		t.Fatalf("Create: %v", err)

@@ -55,8 +55,8 @@ func WorktreePath(gitRoot, branch string) string {
 // When no upstream is configured or the remote is unreachable, falls
 // back to creating the branch from local HEAD. Bounded by a 30-second
 // timeout so a slow / hung filesystem can't lock up session creation
-// forever.
-func CreateWorktree(repoDir, branch, worktreePath string) error {
+// forever, and by ctx so daemon shutdown cancels in-flight git work.
+func CreateWorktree(ctx context.Context, repoDir, branch, worktreePath string) error {
 	if err := os.MkdirAll(filepath.Dir(worktreePath), 0o755); err != nil {
 		return fmt.Errorf("create worktree parent dir: %w", err)
 	}
@@ -67,8 +67,8 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	// between this probe and the add.) Probed before upstreamBaseRef:
 	// checking out an existing branch never branches from upstream, so
 	// it must not pay the fetch's network latency.
-	if branchExists(repoDir, branch) {
-		out, err := gitWorktreeAdd(repoDir, worktreePath, branch)
+	if branchExists(ctx, repoDir, branch) {
+		out, err := gitWorktreeAdd(ctx, repoDir, worktreePath, branch)
 		if err != nil {
 			return fmt.Errorf("git worktree add (existing branch %s): %s: %w",
 				branch, strings.TrimSpace(string(out)), err)
@@ -79,7 +79,7 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	// Best-effort: refresh `origin` so the upstream tip we branch from
 	// reflects the latest remote state. Failures are logged via the
 	// returned base ref staying empty (callers fall back to HEAD).
-	upstream := upstreamBaseRef(repoDir)
+	upstream := upstreamBaseRef(ctx, repoDir)
 
 	var attempts []error
 
@@ -89,7 +89,7 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	if upstream != "" {
 		args = append(args, upstream)
 	}
-	out, err := gitWorktreeAdd(repoDir, args...)
+	out, err := gitWorktreeAdd(ctx, repoDir, args...)
 	if err == nil {
 		return nil
 	}
@@ -100,7 +100,7 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	// fall back to checking it out. gitWorktreeAdd pins LC_ALL=C, so
 	// these substrings are stable across user locales.
 	if strings.Contains(string(out), "already exists") || strings.Contains(string(out), "fatal: A branch named") {
-		out2, err2 := gitWorktreeAdd(repoDir, worktreePath, branch)
+		out2, err2 := gitWorktreeAdd(ctx, repoDir, worktreePath, branch)
 		if err2 == nil {
 			return nil
 		}
@@ -114,7 +114,7 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 	// the explicit base ref so HEAD is used. This keeps creation robust
 	// in offline / shallow / sandboxed environments.
 	if upstream != "" {
-		out3, err3 := gitWorktreeAdd(repoDir, "-b", branch, worktreePath)
+		out3, err3 := gitWorktreeAdd(ctx, repoDir, "-b", branch, worktreePath)
 		if err3 == nil {
 			return nil
 		}
@@ -127,8 +127,8 @@ func CreateWorktree(repoDir, branch, worktreePath string) error {
 // gitWorktreeAdd runs `git -C repoDir worktree add <args…>` with a 30s
 // timeout and a C locale. The locale pin keeps CreateWorktree's
 // error-text fallback meaningful on non-English systems.
-func gitWorktreeAdd(repoDir string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func gitWorktreeAdd(ctx context.Context, repoDir string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	full := append([]string{"-C", repoDir, "worktree", "add"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
@@ -141,8 +141,8 @@ func gitWorktreeAdd(repoDir string, args ...string) ([]byte, error) {
 }
 
 // branchExists reports whether refs/heads/<branch> exists in repoDir.
-func branchExists(repoDir, branch string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func branchExists(ctx context.Context, repoDir, branch string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, "git", "-C", repoDir,
 		"rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
@@ -153,9 +153,9 @@ func branchExists(repoDir, branch string) bool {
 // resolving, it best-effort fetches `origin` so the returned ref points
 // at the latest remote tip. Bounded by short timeouts; never blocks
 // worktree creation for long.
-func upstreamBaseRef(repoDir string) string {
+func upstreamBaseRef(ctx context.Context, repoDir string) string {
 	// Confirm `origin` exists before spending time on a fetch.
-	checkCtx, checkCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	checkCtx, checkCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer checkCancel()
 	if err := exec.CommandContext(checkCtx, "git", "-C", repoDir, "remote", "get-url", "origin").Run(); err != nil {
 		return ""
@@ -165,14 +165,14 @@ func upstreamBaseRef(repoDir string) string {
 	// we'll still resolve whatever `origin/HEAD` already points at locally.
 	// Warn so a stale cached origin/HEAD doesn't silently base new
 	// worktrees on outdated upstream — the very failure mode #192 fixed.
-	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	fetchCtx, fetchCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer fetchCancel()
 	if fetchOut, fetchErr := exec.CommandContext(fetchCtx, "git", "-C", repoDir, "fetch", "--quiet", "origin").CombinedOutput(); fetchErr != nil {
 		log.Printf("worktree: fetch origin failed (%v); new worktree may be based on stale origin/HEAD: %s", fetchErr, strings.TrimSpace(string(fetchOut)))
 	}
 
 	// Resolve origin/HEAD -> origin/<default-branch>.
-	resolveCtx, resolveCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	resolveCtx, resolveCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer resolveCancel()
 	out, err := exec.CommandContext(resolveCtx, "git", "-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
 	if err != nil {

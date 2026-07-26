@@ -113,7 +113,9 @@ func New(cfg Config) (*Daemon, error) {
 	// Bootstrap session only if the registry is still empty after revive
 	// (i.e. truly first run on this machine).
 	if len(reg.List()) == 0 && bootstrapWanted(cfg.BootstrapSession) {
-		_, err := reg.Create(wire.CreateSpec{
+		// Pre-Run: no daemon context exists yet, so this one-shot
+		// bootstrap create is rooted at Background.
+		_, err := reg.Create(context.Background(), wire.CreateSpec{
 			Name:  "main",
 			Cols:  cfg.BootstrapSession.Cols,
 			Rows:  cfg.BootstrapSession.Rows,
@@ -153,7 +155,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 			log.Printf("hived: accept: %v", err)
 			continue
 		}
-		go d.serve(conn)
+		go d.serve(ctx, conn)
 	}
 }
 
@@ -193,8 +195,10 @@ func (d *Daemon) Close() error {
 	return nil
 }
 
-// serve dispatches on the HELLO mode.
-func (d *Daemon) serve(conn net.Conn) {
+// serve dispatches on the HELLO mode. ctx is the daemon's Run context
+// (not a per-connection one): registry work it reaches — the post-spawn
+// agent-session-id capture in particular — outlives this connection.
+func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 	d.mu.Lock()
 	if d.clients == nil {
 		d.mu.Unlock()
@@ -236,7 +240,7 @@ func (d *Daemon) serve(conn net.Conn) {
 
 	switch hello.Mode {
 	case wire.ModeControl:
-		d.serveControl(conn)
+		d.serveControl(ctx, conn)
 	case wire.ModeAttach:
 		d.serveAttach(conn, hello.SessionID)
 	case wire.ModeCreate:
@@ -244,7 +248,7 @@ func (d *Daemon) serve(conn net.Conn) {
 		if hello.Create != nil {
 			spec = *hello.Create
 		}
-		e, err := d.reg.Create(spec)
+		e, err := d.reg.Create(ctx, spec)
 		if err != nil {
 			_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{Code: "create_failed", Message: err.Error()})
 			return
@@ -259,7 +263,7 @@ func (d *Daemon) serve(conn net.Conn) {
 }
 
 // serveControl handles a session-management connection.
-func (d *Daemon) serveControl(conn net.Conn) {
+func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version: wire.PROTOCOL_VERSION,
 		BuildID: buildinfo.BuildID(),
@@ -339,7 +343,7 @@ func (d *Daemon) serveControl(conn net.Conn) {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if _, err := d.reg.Create(spec); err != nil {
+			if _, err := d.reg.Create(ctx, spec); err != nil {
 				sendError("create_failed", err.Error())
 			}
 		case wire.FrameKillSession:

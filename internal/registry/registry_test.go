@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"runtime"
 	"slices"
 	"sync"
@@ -62,11 +63,11 @@ func TestCreateListKill(t *testing.T) {
 	listener, unsub := r.Subscribe()
 	defer unsub()
 
-	a, err := r.Create(wire.CreateSpec{Name: "alpha", Color: "#abc", Cols: 80, Rows: 24, Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "alpha", Color: "#abc", Cols: 80, Rows: 24, Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create alpha: %v", err)
 	}
-	b, err := r.Create(wire.CreateSpec{Name: "beta", Color: "#def", Cols: 80, Rows: 24, Shell: "/bin/bash"})
+	b, err := r.Create(context.Background(), wire.CreateSpec{Name: "beta", Color: "#def", Cols: 80, Rows: 24, Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create beta: %v", err)
 	}
@@ -117,7 +118,7 @@ func TestSessionExitBroadcastsDead(t *testing.T) {
 	listener, unsub := r.Subscribe()
 	defer unsub()
 
-	a, err := r.Create(wire.CreateSpec{Name: "dying", Cols: 80, Rows: 24, Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "dying", Cols: 80, Rows: 24, Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestRestart_PreservesEntry(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "alpha", Color: "#abc", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "alpha", Color: "#abc", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -198,7 +199,7 @@ func TestRestart_PreservesEntry(t *testing.T) {
 func TestUpdateRenameAndColor(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	a, _ := r.Create(wire.CreateSpec{Name: "x", Shell: "/bin/bash"})
+	a, _ := r.Create(context.Background(), wire.CreateSpec{Name: "x", Shell: "/bin/bash"})
 
 	newName := "renamed"
 	newColor := "#fedcba"
@@ -220,9 +221,9 @@ func TestUpdateRenameAndColor(t *testing.T) {
 func TestReorder(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	a, _ := r.Create(wire.CreateSpec{Name: "a", Shell: "/bin/bash"})
-	b, _ := r.Create(wire.CreateSpec{Name: "b", Shell: "/bin/bash"})
-	c, _ := r.Create(wire.CreateSpec{Name: "c", Shell: "/bin/bash"})
+	a, _ := r.Create(context.Background(), wire.CreateSpec{Name: "a", Shell: "/bin/bash"})
+	b, _ := r.Create(context.Background(), wire.CreateSpec{Name: "b", Shell: "/bin/bash"})
+	c, _ := r.Create(context.Background(), wire.CreateSpec{Name: "c", Shell: "/bin/bash"})
 
 	// Move c to position 0.
 	zero := 0
@@ -247,8 +248,8 @@ func TestPersistenceAcrossOpen(t *testing.T) {
 	dir := t.TempDir()
 
 	r1, _ := Open(dir)
-	a, _ := r1.Create(wire.CreateSpec{Name: "first", Color: "#111", Shell: "/bin/bash"})
-	b, _ := r1.Create(wire.CreateSpec{Name: "second", Color: "#222", Shell: "/bin/bash"})
+	a, _ := r1.Create(context.Background(), wire.CreateSpec{Name: "first", Color: "#111", Shell: "/bin/bash"})
+	b, _ := r1.Create(context.Background(), wire.CreateSpec{Name: "second", Color: "#222", Shell: "/bin/bash"})
 	_ = a
 	_ = b
 	_ = r1.Close()
@@ -348,7 +349,7 @@ func TestCreateAppendsSessionIDForClaude(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -373,7 +374,7 @@ func TestRestartUsesResumeArgsForClaude(t *testing.T) {
 	// transcript jsonl for the pinned id. Restart must use --resume.
 	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
 
-	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -403,7 +404,7 @@ func TestCreatePinsAgentSessionIDForClaude(t *testing.T) {
 	captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -421,7 +422,7 @@ func TestRestartUsesCapturedAgentSessionIDForCodex(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -457,7 +458,7 @@ func TestRestartFallsBackToResumeCmdForCodex(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "x", Agent: "codex", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -495,11 +496,11 @@ func TestTwoClaudeSessionsRestartUseDistinctIDs(t *testing.T) {
 	r := freshRegistry(t)
 	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
 
-	a, err := r.Create(wire.CreateSpec{Name: "a", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "a", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create a: %v", err)
 	}
-	b, err := r.Create(wire.CreateSpec{Name: "b", Agent: "claude", Shell: "/bin/bash"})
+	b, err := r.Create(context.Background(), wire.CreateSpec{Name: "b", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create b: %v", err)
 	}
@@ -549,7 +550,7 @@ func TestAgentSessionIDPersistsAcrossReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	a, err := r1.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r1.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -581,7 +582,7 @@ func TestReviveUsesResumeArgsForPinnedClaude(t *testing.T) {
 	r := freshRegistry(t)
 	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return true }))
 
-	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -628,7 +629,7 @@ func TestRestartEmptyClaudeSessionRepinsBySessionID(t *testing.T) {
 	// No transcript on disk: the session was never used.
 	t.Cleanup(agent.SetClaudeSessionExistsForTest(func(id, cwd string) bool { return false }))
 
-	a, err := r.Create(wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
+	a, err := r.Create(context.Background(), wire.CreateSpec{Name: "c1", Agent: "claude", Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -661,7 +662,7 @@ func TestCreateWithExplicitCmdSkipsAgentSessionIDPin(t *testing.T) {
 	rec := captureStartSession(t)
 	r := freshRegistry(t)
 
-	a, err := r.Create(wire.CreateSpec{
+	a, err := r.Create(context.Background(), wire.CreateSpec{
 		Name:  "c1",
 		Agent: "claude",
 		Cmd:   []string{"claude", "--print", "hi"},
@@ -687,4 +688,3 @@ func TestCreateWithExplicitCmdSkipsAgentSessionIDPin(t *testing.T) {
 		t.Errorf("AgentSessionID = %q, want empty (caller-supplied Cmd was not pinned)", got)
 	}
 }
-

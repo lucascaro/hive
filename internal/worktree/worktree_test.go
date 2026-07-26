@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -63,11 +64,11 @@ func TestIsGitRepoAndRoot(t *testing.T) {
 
 func TestWorktreePathSanitizes(t *testing.T) {
 	cases := map[string]string{
-		"feature/x":  "feature-x",
-		"hot fix":    "hot-fix",
-		"a:b":        "a-b",
-		"win\\path":  "win-path",
-		"plain":      "plain",
+		"feature/x": "feature-x",
+		"hot fix":   "hot-fix",
+		"a:b":       "a-b",
+		"win\\path": "win-path",
+		"plain":     "plain",
 	}
 	for in, wantSeg := range cases {
 		got := WorktreePath("/r", in)
@@ -148,6 +149,25 @@ func revParseRemote(t *testing.T, bareRepo, branch string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// TestCreateWorktree_CancelledContext pins the cancellation contract
+// added when the git helpers stopped rooting their own
+// context.Background() timeouts: a cancelled caller ctx must abort the
+// add and leave no worktree behind.
+func TestCreateWorktree_CancelledContext(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	wtPath := WorktreePath(repo, "cancelled")
+	if err := CreateWorktree(ctx, repo, "cancelled", wtPath); err == nil {
+		t.Fatal("CreateWorktree with a cancelled ctx: want error, got nil")
+	}
+	if _, err := os.Stat(wtPath); err == nil {
+		t.Errorf("worktree dir %s exists after a cancelled create", wtPath)
+	}
+}
+
 func TestCreateWorktree_PrefersUpstreamBase(t *testing.T) {
 	local, stale, fresh := initRepoWithUpstream(t)
 	if stale == fresh {
@@ -156,7 +176,7 @@ func TestCreateWorktree_PrefersUpstreamBase(t *testing.T) {
 
 	branch := "feature-x"
 	wtPath := WorktreePath(local, branch)
-	if err := CreateWorktree(local, branch, wtPath); err != nil {
+	if err := CreateWorktree(context.Background(), local, branch, wtPath); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
 	defer Cleanup(local, wtPath)
@@ -174,7 +194,7 @@ func TestCreateWorktree_NoRemoteFallsBackToHEAD(t *testing.T) {
 
 	branch := "no-remote-feature"
 	wtPath := WorktreePath(repo, branch)
-	if err := CreateWorktree(repo, branch, wtPath); err != nil {
+	if err := CreateWorktree(context.Background(), repo, branch, wtPath); err != nil {
 		t.Fatalf("CreateWorktree on repo without remote: %v", err)
 	}
 	defer Cleanup(repo, wtPath)
@@ -201,7 +221,7 @@ func TestCreateWorktree_UnreachableRemoteWarnsAndFallsBack(t *testing.T) {
 	headBefore := revParse(t, repo, "HEAD")
 	branch := "offline-feature"
 	wtPath := WorktreePath(repo, branch)
-	if err := CreateWorktree(repo, branch, wtPath); err != nil {
+	if err := CreateWorktree(context.Background(), repo, branch, wtPath); err != nil {
 		t.Fatalf("CreateWorktree with unreachable remote: %v", err)
 	}
 	defer Cleanup(repo, wtPath)
@@ -229,7 +249,7 @@ func TestCreateWorktree_BranchAlreadyExists(t *testing.T) {
 	}
 	topicSHA := revParse(t, repo, "topic")
 	wt := WorktreePath(repo, "topic")
-	if err := CreateWorktree(repo, "topic", wt); err != nil {
+	if err := CreateWorktree(context.Background(), repo, "topic", wt); err != nil {
 		t.Fatalf("CreateWorktree should check out an existing branch: %v", err)
 	}
 	defer Cleanup(repo, wt)
@@ -245,7 +265,7 @@ func TestCreateWorktree_ExistingBranchCheckedOutElsewhereReportsContext(t *testi
 	repo := initRepo(t)
 	mustGit(t, repo, "branch", "topic")
 	wtA := WorktreePath(repo, "topic")
-	if err := CreateWorktree(repo, "topic", wtA); err != nil {
+	if err := CreateWorktree(context.Background(), repo, "topic", wtA); err != nil {
 		t.Fatalf("first CreateWorktree: %v", err)
 	}
 	defer Cleanup(repo, wtA)
@@ -253,7 +273,7 @@ func TestCreateWorktree_ExistingBranchCheckedOutElsewhereReportsContext(t *testi
 	// A second worktree for the same branch must fail (git refuses), and
 	// the error must say which strategy failed instead of a bare git dump.
 	wtB := filepath.Join(repo, ".worktrees", "topic-second")
-	err := CreateWorktree(repo, "topic", wtB)
+	err := CreateWorktree(context.Background(), repo, "topic", wtB)
 	if err == nil {
 		t.Fatal("second CreateWorktree for same branch should fail")
 	}
@@ -267,7 +287,7 @@ func TestCreateWorktree_AllAttemptsFailJoinsErrors(t *testing.T) {
 	// ".." is invalid in ref names, so both the with-base and no-base
 	// attempts fail. The joined error must carry context from each.
 	bad := "bad..name"
-	err := CreateWorktree(repo, bad, filepath.Join(repo, ".worktrees", "bad-name"))
+	err := CreateWorktree(context.Background(), repo, bad, filepath.Join(repo, ".worktrees", "bad-name"))
 	if err == nil {
 		t.Fatal("CreateWorktree with invalid branch name should fail")
 	}
@@ -298,7 +318,7 @@ func TestHasUncommitted(t *testing.T) {
 	skipNoGit(t)
 	repo := initRepo(t)
 	wt := WorktreePath(repo, "wip")
-	if err := CreateWorktree(repo, "wip", wt); err != nil {
+	if err := CreateWorktree(context.Background(), repo, "wip", wt); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
 	defer Cleanup(repo, wt)
