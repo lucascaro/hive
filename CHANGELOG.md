@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Worktree sessions now inherit the project's agent config. A fresh `git
+  worktree add` only materializes tracked files, so an untracked
+  `.claude/skills` (or `.agents/skills`, `commands`, `hooks`, `plugins`,
+  `output-styles`, `settings.local.json`) stayed behind in the main
+  checkout and the agent in the worktree couldn't see any of it. Hive now
+  symlinks those entries into each new worktree — symlinks, so a skill you
+  add or edit in the main checkout shows up in every worktree
+  immediately. Anything already present is left alone, so a committed
+  `.claude/settings.json` is never clobbered, and per-checkout state in
+  the same directories (lock files, task queues) is deliberately not
+  shared.
 - GUI: back / forward navigation between sessions, like an editor or a
   browser. **⌃-** returns to the session you were in before this one and
   **⌃⇧-** goes forward again (**Ctrl+Alt+-** / **Ctrl+Alt+Shift+-** on

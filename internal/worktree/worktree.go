@@ -212,6 +212,66 @@ func Cleanup(repoDir, worktreePath string) error {
 	return nil
 }
 
+// agentConfigDirs are the per-project agent config directories that
+// live in the main checkout but are typically untracked, so a fresh
+// `git worktree add` leaves them behind — taking the project's skills,
+// commands and local settings with them.
+var agentConfigDirs = []string{".claude", ".agents"}
+
+// agentConfigEntries is the allowlist of children linked when a config
+// dir already exists in the worktree. Deliberately an allowlist, not a
+// denylist: these dirs also hold per-run *state* (lock files, task
+// queues) which must stay private to each checkout, and the cost of
+// missing an entry (a skill doesn't show up) is far below the cost of
+// wrongly sharing state between worktrees.
+var agentConfigEntries = []string{
+	"agents", "commands", "hooks", "output-styles", "plugins", "skills",
+	"settings.local.json",
+}
+
+// LinkAgentConfig symlinks the repo's agent config (.claude, .agents)
+// into a freshly created worktree so sessions there see the same
+// skills, commands and local settings as the main checkout.
+//
+// Symlinks (not copies) so that a skill added or edited in the main
+// checkout is immediately visible from every existing worktree.
+//
+// Never clobbers: a destination path that already exists is skipped,
+// which is what keeps tracked files (e.g. a committed
+// .claude/settings.json that `git worktree add` already checked out)
+// untouched. Links are per-entry (see agentConfigEntries) rather than
+// whole-dir so per-checkout state in the same dirs stays unshared.
+// Best-effort — problems are logged, never returned.
+func LinkAgentConfig(repoRoot, worktreePath string) {
+	if repoRoot == "" || worktreePath == "" || repoRoot == worktreePath {
+		return
+	}
+	for _, dir := range agentConfigDirs {
+		srcDir := filepath.Join(repoRoot, dir)
+		if st, err := os.Stat(srcDir); err != nil || !st.IsDir() {
+			continue
+		}
+		dstDir := filepath.Join(worktreePath, dir)
+		for _, name := range agentConfigEntries {
+			src := filepath.Join(srcDir, name)
+			if _, err := os.Lstat(src); err != nil {
+				continue // nothing to link
+			}
+			dst := filepath.Join(dstDir, name)
+			if _, err := os.Lstat(dst); err == nil {
+				continue // exists — leave it alone
+			}
+			if err := os.MkdirAll(dstDir, 0o755); err != nil {
+				log.Printf("worktree: mkdir %s: %v", dstDir, err)
+				break
+			}
+			if err := os.Symlink(src, dst); err != nil {
+				log.Printf("worktree: link %s: %v", filepath.Join(dir, name), err)
+			}
+		}
+	}
+}
+
 // HasUncommitted reports whether the worktree has tracked changes,
 // untracked files, or staged-but-uncommitted changes. Returns
 // (false, nil) when worktreePath is missing — a missing worktree

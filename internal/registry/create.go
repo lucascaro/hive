@@ -268,6 +268,7 @@ func (r *Registry) materializeWorktree(ctx context.Context, p *createPlan) {
 	}
 	p.cwd = p.wtPath
 	worktree.EnsureGitignore(root)
+	worktree.LinkAgentConfig(root, p.wtPath)
 	log.Printf("registry: created worktree %s on branch %s", p.wtPath, p.wtBranch)
 }
 
