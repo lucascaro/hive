@@ -545,3 +545,40 @@ func TestCleanupDoesNotFollowAgentConfigLinks(t *testing.T) {
 		t.Fatalf("Cleanup destroyed the real config: %q, %v", got, err)
 	}
 }
+
+// The pathspec exclusions in HasUncommitted must hide only the entries
+// LinkAgentConfig planted — genuine work still has to register, or the
+// dirty check stops protecting anything.
+func TestHasUncommittedIgnoresLinkedConfigOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+	repo := initRepo(t)
+	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
+	mustWrite(t, filepath.Join(repo, ".claude", "skills", "s.md"), "skill")
+
+	wt := filepath.Join(repo, ".worktrees", "wt")
+	if err := CreateWorktree(context.Background(), repo, "wt", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	LinkAgentConfig(repo, wt)
+
+	if dirty, err := HasUncommitted(wt); err != nil || dirty {
+		t.Errorf("linked config alone reads dirty: %v, %v", dirty, err)
+	}
+
+	// A real untracked file beside the links must still count.
+	mustWrite(t, filepath.Join(wt, "notes.md"), "work")
+	if dirty, err := HasUncommitted(wt); err != nil || !dirty {
+		t.Errorf("real untracked file not reported: %v, %v", dirty, err)
+	}
+
+	// So must a real file inside a config dir that isn't a linked entry.
+	if err := os.Remove(filepath.Join(wt, "notes.md")); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(wt, ".claude", "notes.md"), "work")
+	if dirty, err := HasUncommitted(wt); err != nil || !dirty {
+		t.Errorf("real file inside .claude not reported: %v, %v", dirty, err)
+	}
+}

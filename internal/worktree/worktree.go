@@ -283,11 +283,26 @@ func LinkAgentConfig(repoRoot, worktreePath string) {
 // untracked files, or staged-but-uncommitted changes. Returns
 // (false, nil) when worktreePath is missing — a missing worktree
 // can't have uncommitted work to lose, so the caller should proceed.
+//
+// The agent config LinkAgentConfig planted is excluded: those entries
+// are hive's own doing, not the user's uncommitted work, and counting
+// them would make every pristine worktree refuse to close (see
+// registry.ErrWorktreeDirty). Projects that gitignore their agent
+// config never hit that; this covers the ones that don't.
 func HasUncommitted(worktreePath string) (bool, error) {
 	if _, err := os.Stat(worktreePath); err != nil {
 		return false, nil
 	}
-	cmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
+	// -uall is load-bearing: without it git collapses an untracked
+	// directory to a single "?? .claude/" entry and never descends far
+	// enough for the pathspec exclusions below to match.
+	args := []string{"-C", worktreePath, "status", "--porcelain", "-uall", "--", "."}
+	for _, dir := range agentConfigDirs {
+		for _, name := range agentConfigEntries {
+			args = append(args, ":(exclude)"+dir+"/"+name)
+		}
+	}
+	cmd := exec.Command("git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))
