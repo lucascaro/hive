@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +55,7 @@ func TestCreate_WorktreeNonGitCwd(t *testing.T) {
 	r := freshRegistry(t)
 	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "plain", Cwd: t.TempDir()})
 
-	e, err := r.Create(wire.CreateSpec{
+	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID:   p.ID,
 		Shell:       "/bin/bash",
 		UseWorktree: true,
@@ -73,7 +74,7 @@ func TestCreate_WorktreeHappyPath(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 
-	e, err := r.Create(wire.CreateSpec{
+	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID:   p.ID,
 		Shell:       "/bin/bash",
 		Agent:       "claude",
@@ -123,7 +124,7 @@ func TestKill_WorktreeRemoved(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 
-	e, err := r.Create(wire.CreateSpec{
+	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID:   p.ID,
 		Shell:       "/bin/bash",
 		UseWorktree: true,
@@ -153,7 +154,7 @@ func TestKill_WorktreeRemoved(t *testing.T) {
 func TestKill_DirtyWorktree_NoForce_ErrsAndPreserves(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
-	e, err := r.Create(wire.CreateSpec{
+	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID:   p.ID,
 		Shell:       "/bin/bash",
 		UseWorktree: true,
@@ -186,7 +187,7 @@ func TestKill_DirtyWorktree_NoForce_ErrsAndPreserves(t *testing.T) {
 func TestKill_DirtyWorktree_ForceRemoves(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
-	e, _ := r.Create(wire.CreateSpec{
+	e, _ := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
 	})
 	time.Sleep(80 * time.Millisecond)
@@ -212,7 +213,7 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 	r, p := freshRegistryWithProject(t)
 
 	// Source session: spawns a worktree under p.Cwd/.worktrees/<branch>.
-	src, err := r.Create(wire.CreateSpec{
+	src, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude", UseWorktree: true,
 	})
 	if err != nil {
@@ -227,7 +228,7 @@ func TestCreate_ExplicitCwdInsideWorktree_NoNestedWorktree(t *testing.T) {
 
 	// Duplicate: explicit cwd inside the existing worktree, UseWorktree
 	// off. This is exactly the wire payload the GUI sends on ⌘P.
-	dup, err := r.Create(wire.CreateSpec{
+	dup, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", Agent: "claude",
 		Cwd: wtPath, UseWorktree: false,
 	})
@@ -268,7 +269,7 @@ func TestKill_SharedWorktree_KeepsWorktreeUntilLast(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 
-	src, err := r.Create(wire.CreateSpec{
+	src, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
 	})
 	if err != nil {
@@ -280,7 +281,7 @@ func TestKill_SharedWorktree_KeepsWorktreeUntilLast(t *testing.T) {
 	}
 	time.Sleep(80 * time.Millisecond)
 
-	dup, err := r.Create(wire.CreateSpec{
+	dup, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash",
 		Cwd: wtPath, UseWorktree: false,
 	})
@@ -315,7 +316,7 @@ func TestRevive_StaleWorktreePath_SelfHeals(t *testing.T) {
 	// Create a worktree session, drop the live PTY without going
 	// through Kill (which would also delete the worktree), and then
 	// nuke the worktree dir to simulate the user wiping it.
-	e, _ := r.Create(wire.CreateSpec{
+	e, _ := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
 	})
 	time.Sleep(80 * time.Millisecond)
@@ -357,7 +358,7 @@ func TestRevive_UsesProjectCwd_NotCallerOpts(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 
-	e, err := r.Create(wire.CreateSpec{
+	e, err := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash",
 	})
 	if err != nil {

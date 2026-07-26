@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"runtime"
 	"testing"
 
@@ -40,7 +41,7 @@ func TestSessionInheritsProjectCwd(t *testing.T) {
 	skipNonPosix(t)
 	r := freshRegistry(t)
 	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "p", Color: "#abc", Cwd: "/tmp"})
-	e, err := r.Create(wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
+	e, err := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
 	if err != nil {
 		t.Fatalf("Create session: %v", err)
 	}
@@ -58,8 +59,8 @@ func TestKillProjectReassign(t *testing.T) {
 	def, _ := r.EnsureDefaultProject("/tmp")
 	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "extra"})
 	// Two sessions in p.
-	a, _ := r.Create(wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
-	b, _ := r.Create(wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
+	a, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
+	b, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
 	if err := r.KillProject(p.ID, false); err != nil {
 		t.Fatalf("KillProject reassign: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestKillProjectKillSessions(t *testing.T) {
 	r := freshRegistry(t)
 	_, _ = r.EnsureDefaultProject("/tmp")
 	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "doomed"})
-	a, _ := r.Create(wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
+	a, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
 	if err := r.KillProject(p.ID, true); err != nil {
 		t.Fatalf("KillProject killSessions: %v", err)
 	}

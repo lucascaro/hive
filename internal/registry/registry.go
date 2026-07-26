@@ -15,8 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
@@ -272,269 +270,6 @@ func (r *Registry) Get(id string) *Entry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.entries[id]
-}
-
-// Create adds a new session and starts it. Metadata persists before
-// the session starts so a crash mid-Create still surfaces the entry.
-func (r *Registry) Create(spec wire.CreateSpec) (*Entry, error) {
-	r.mu.Lock()
-	id := uuid.NewString()
-	// Resolve owning project first so we can avoid its color when
-	// auto-picking the session color (otherwise the gradient could
-	// collapse to a flat hue).
-	projectID := spec.ProjectID
-	if projectID == "" {
-		projectID = r.defaultProjectIDLocked()
-	}
-	var projectColor string
-	if p, ok := r.projects[projectID]; ok {
-		projectColor = p.Color
-	}
-	// Color is reserved for project/session identity; agent identity
-	// is conveyed by the badge/icon. So skip the agent-default tier
-	// and pick a random palette color when the caller didn't choose.
-	color := spec.Color
-	if color == "" {
-		color = pickColor(r.lastSessionColor, projectColor)
-		r.lastSessionColor = color
-	}
-	// Resolve cwd up front (under the same lock) so we can decide on a
-	// worktree branch BEFORE naming the session — the session name is
-	// derived from the worktree branch when one is in play, so the
-	// user can find the worktree directory from the session label.
-	cwd := spec.Cwd
-	if cwd == "" {
-		if p, ok := r.projects[projectID]; ok && p.Cwd != "" {
-			cwd = p.Cwd
-		}
-	}
-	// Detect when cwd already lives in a worktree owned by another
-	// session in the same project (e.g. ⌘P duplicate). The new entry
-	// adopts that worktree's path+branch so the sidebar shows the
-	// worktree badge and Kill can keep the worktree alive until the
-	// last session in it goes away.
-	var adoptedPath, adoptedBranch string
-	if !spec.UseWorktree && cwd != "" {
-		for _, other := range r.entries {
-			if other.ProjectID == projectID && other.WorktreePath != "" && other.WorktreePath == cwd {
-				adoptedPath = other.WorktreePath
-				adoptedBranch = other.WorktreeBranch
-				break
-			}
-		}
-	}
-	r.mu.Unlock()
-
-	// Pre-resolve the worktree branch+path so the session name can
-	// match the worktree directory. ResolveBranchAndPath only picks a
-	// free name; the actual `git worktree add` happens further down.
-	var wtPath, wtBranch string
-	if adoptedPath != "" {
-		wtPath, wtBranch = adoptedPath, adoptedBranch
-	}
-	if spec.UseWorktree && cwd != "" && worktree.IsGitRepo(cwd) {
-		if root, err := worktree.Root(cwd); err == nil {
-			if b, p, rerr := worktree.ResolveBranchAndPath(root, spec.Branch); rerr == nil {
-				wtBranch, wtPath = b, p
-			} else {
-				log.Printf("registry: worktree.ResolveBranchAndPath: %v", rerr)
-			}
-		}
-	}
-
-	name := spec.Name
-	// nameFromBranch records whether the name was derived from the
-	// pre-resolved worktree branch. If `git worktree add` later fails
-	// we'll rename to a random label so the persisted name doesn't
-	// claim a worktree that doesn't exist.
-	nameFromBranch := false
-	if name == "" {
-		if wtBranch != "" {
-			// Tie the session name to the worktree directory so the
-			// user can find the worktree from the session label.
-			// Slashes (e.g. `feature/foo`) get folded to `-` so the
-			// name is safe to use in paths and shell-quoted contexts.
-			suffix := spec.Agent
-			if suffix == "" {
-				suffix = "shell"
-			}
-			name = strings.ReplaceAll(wtBranch, "/", "-") + " " + suffix
-			nameFromBranch = true
-		} else {
-			name = agent.RandomName(agent.ID(spec.Agent))
-		}
-	}
-
-	r.mu.Lock()
-	// Re-validate projectID after the unlock window above: a concurrent
-	// KillProject could have removed it. Fall back to the default
-	// project rather than persisting a dangling reference.
-	if _, ok := r.projects[projectID]; !ok {
-		projectID = r.defaultProjectIDLocked()
-	}
-	e := &Entry{
-		ID: id, Name: name, Color: color,
-		Order: len(r.order), Created: time.Now().UTC(),
-		Agent: spec.Agent, ProjectID: projectID,
-	}
-	r.entries[id] = e
-	r.order = append(r.order, id)
-	if err := r.persistEntryLocked(e); err != nil {
-		delete(r.entries, id)
-		r.order = r.order[:len(r.order)-1]
-		r.mu.Unlock()
-		return nil, err
-	}
-	if err := r.persistIndexLocked(); err != nil {
-		delete(r.entries, id)
-		r.order = r.order[:len(r.order)-1]
-		r.mu.Unlock()
-		return nil, err
-	}
-	r.mu.Unlock()
-
-	// Start the session outside the lock so the PTY fork doesn't block
-	// the registry. If the spec names an agent (and no explicit Cmd),
-	// look up its default command and use it.
-	cmd := spec.Cmd
-	if len(cmd) == 0 && spec.Agent != "" {
-		if def, ok := agent.Get(agent.ID(spec.Agent)); ok && len(def.Cmd) > 0 {
-			cmd = def.Cmd
-			// Pin the agent's conversation to our entry id so Restart
-			// can resume by id even when sibling sessions share this
-			// cwd. Skipped when the caller passed an explicit spec.Cmd
-			// (we don't mutate user-supplied argv).
-			if def.SessionIDFlag != "" {
-				cmd = append(append([]string(nil), cmd...), def.SessionIDFlag, id)
-			}
-		}
-	}
-
-	// Now actually create the worktree (heavy `git worktree add`).
-	// Failure here is non-fatal — the session falls back to the plain
-	// project cwd. Aborting create on worktree failure would block
-	// users on marginal repos (shallow clones, sandbox restrictions,
-	// slow filesystems).
-	// Skip the create when we're adopting an existing worktree from a
-	// sibling session — the directory is already on disk and `git
-	// worktree add` would fail.
-	if wtBranch != "" && adoptedPath == "" {
-		if root, err := worktree.Root(cwd); err == nil {
-			if cerr := worktree.CreateWorktree(root, wtBranch, wtPath); cerr != nil {
-				log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
-				wtPath, wtBranch = "", ""
-			} else {
-				cwd = wtPath
-				worktree.EnsureGitignore(root)
-				log.Printf("registry: created worktree %s on branch %s", wtPath, wtBranch)
-			}
-		} else {
-			wtPath, wtBranch = "", ""
-		}
-	}
-	// If the name was derived from a worktree branch but the worktree
-	// failed to materialize, the persisted name would lie about reality
-	// ("feature-foo claude" with no worktree). Rename to a random label
-	// and re-persist so the session label matches what actually exists.
-	if nameFromBranch && wtBranch == "" {
-		r.mu.Lock()
-		e.Name = agent.RandomName(agent.ID(spec.Agent))
-		r.persistEntryLoggedLocked(e, "create (rename fallback)")
-		r.mu.Unlock()
-	}
-
-	sess, err := startSession(session.Options{
-		Shell: spec.Shell,
-		Cmd:   cmd,
-		Cwd:   cwd,
-		Cols:  spec.Cols,
-		Rows:  spec.Rows,
-	})
-	if err != nil {
-		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
-			e.ID, spec.Agent, cmd, err)
-		// Strand the metadata as a dead entry. The user can recreate
-		// or kill it. Store the error so the GUI can surface it.
-		r.mu.Lock()
-		e.LastError = err.Error()
-		r.mu.Unlock()
-		r.broadcast(wire.SessionEventAdded, e.Info())
-		return e, err
-	}
-	r.mu.Lock()
-	// The session.Session uses its own UUID; we override with the
-	// registry id so the registry id is the public identity.
-	sess.ID = id
-	e.sess = sess
-	if wtPath != "" {
-		e.WorktreePath = wtPath
-		e.WorktreeBranch = wtBranch
-	}
-	// Pin the agent session id when the agent's first-launch flag let
-	// us choose it (Claude). Persist alongside the worktree fields
-	// above so the entry on disk matches what we just spawned. Skip
-	// when the caller passed an explicit spec.Cmd — we never injected
-	// SessionIDFlag in that branch (we don't mutate user-supplied
-	// argv), so the agent did NOT record its conversation under our
-	// id. Pretending otherwise would make Restart resume the wrong
-	// conversation (or fail to find one).
-	if len(spec.Cmd) == 0 {
-		if def, ok := agent.Get(agent.ID(spec.Agent)); ok && def.SessionIDFlag != "" {
-			e.AgentSessionID = id
-		}
-	}
-	if wtPath != "" || e.AgentSessionID != "" {
-		r.persistEntryLoggedLocked(e, "create")
-	}
-	// Kick off the post-spawn capture for agents that don't support
-	// caller-chosen ids (Codex). The cancel func is stored so
-	// watchSessionExit can stop the poll if the session dies first.
-	r.startAgentSessionIDCaptureLocked(e, cwd)
-	r.mu.Unlock()
-	r.broadcast(wire.SessionEventAdded, e.Info())
-	go r.watchSessionExit(id, sess)
-	return e, nil
-}
-
-// startAgentSessionIDCaptureLocked launches the per-agent capture
-// goroutine when the agent's Def opts into post-spawn id capture.
-// Caller must hold r.mu so the cancel func is wired before
-// watchSessionExit can race with it.
-func (r *Registry) startAgentSessionIDCaptureLocked(e *Entry, cwd string) {
-	def, ok := agent.Get(agent.ID(e.Agent))
-	if !ok || def.CaptureSessionIDFn == nil {
-		return
-	}
-	// 30s is a generous upper bound. Codex writes the rollout file
-	// well within a second of spawn in practice; the long tail is
-	// only for sandboxed/cold-start scenarios.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	e.captureCancel = cancel
-	id := e.ID
-	go func() {
-		defer cancel()
-		captured, err := def.CaptureSessionIDFn(ctx, cwd, time.Now())
-		if err != nil || captured == "" {
-			return
-		}
-		r.mu.Lock()
-		e2, ok := r.entries[id]
-		if !ok {
-			r.mu.Unlock()
-			return
-		}
-		// If the session already exited and was reaped, or another
-		// path has already populated AgentSessionID, leave it alone.
-		if e2.AgentSessionID != "" {
-			r.mu.Unlock()
-			return
-		}
-		e2.AgentSessionID = captured
-		r.persistEntryLoggedLocked(e2, "agent-session-id capture")
-		info := e2.Info()
-		r.mu.Unlock()
-		r.broadcast(wire.SessionEventUpdated, info)
-	}()
 }
 
 // Revive starts a fresh process on the existing entry. No-op if the
@@ -975,6 +710,14 @@ func (r *Registry) renumberLocked() {
 	}
 }
 
+// ponytail: disk I/O runs under r.mu, so persist latency blocks every
+// session op; renumberLocked makes it len(order) writes per reorder,
+// not one. Not fixed by snapshot-under-lock + write-outside: r.mu is
+// also what serializes the writes, so releasing it before the write
+// lets a slow writer land a stale snapshot on top of a newer one.
+// Upgrade path if it ever hurts: a persist-ordering lock acquired
+// under r.mu and released after the write, threaded through every
+// *Locked persist call site.
 func (r *Registry) persistEntryLocked(e *Entry) error {
 	path := filepath.Join(SessionsDir(r.stateDir), e.ID, "session.json")
 	return writeJSON(path, MetaFile{
@@ -1033,4 +776,3 @@ func (r *Registry) persistProjectIndexLoggedLocked(op string) {
 		log.Printf("registry: %s: persist project index failed (on-disk order now stale): %v", op, err)
 	}
 }
-
