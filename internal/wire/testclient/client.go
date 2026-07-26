@@ -38,15 +38,17 @@ import (
 //     the Begin → DATA → Done replay envelope.
 //   - sessions / projects: control-mode broadcast channels.
 //   - snaps:    one-shot frames (WELCOME, ERROR, SESSIONS, PROJECTS).
+// Write and Await methods require a successful Handshake first; they
+// panic on a client that has only been dialed.
 type Client struct {
-	conn net.Conn
+	conn net.Conn        // raw conn; owned by cli after Handshake
+	cli  *wire.Client    // shared protocol client; nil until Handshake
 
 	stream   chan frameMsg
 	sessions chan wire.SessionEvent
 	projects chan wire.ProjectEvent
 	snaps    chan frameMsg
 	errs     chan error
-	welcome  wire.Welcome
 
 	closeOnce sync.Once
 	closed    chan struct{}
@@ -57,16 +59,16 @@ type frameMsg struct {
 	payload []byte
 }
 
-// Dial opens a connection to the daemon's unix socket and starts the
-// reader goroutine. Handshake is a separate call so the caller can
-// fail fast on missing isolation env vars before opening sockets.
+// Dial opens a connection to the daemon's unix socket. Handshake is a
+// separate call so the caller can fail fast on missing isolation env
+// vars before opening sockets.
 func Dial(ctx context.Context, sockPath string) (*Client, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", sockPath)
 	if err != nil {
 		return nil, fmt.Errorf("testclient: dial %s: %w", sockPath, err)
 	}
-	c := &Client{
+	return &Client{
 		conn:     conn,
 		stream:   make(chan frameMsg, 256),
 		sessions: make(chan wire.SessionEvent, 32),
@@ -74,65 +76,41 @@ func Dial(ctx context.Context, sockPath string) (*Client, error) {
 		snaps:    make(chan frameMsg, 8),
 		errs:     make(chan error, 1),
 		closed:   make(chan struct{}),
-	}
-	go c.readLoop()
-	return c, nil
+	}, nil
 }
 
-// Handshake sends HELLO and reads the WELCOME (or ERROR) reply.
-// The client version is filled in for the caller.
+// Handshake sends HELLO and reads the WELCOME (or ERROR) reply via the
+// shared wire.Client, then starts the demux reader goroutine.
 func (c *Client) Handshake(hello wire.Hello) (wire.Welcome, error) {
-	if hello.Version == 0 {
-		hello.Version = wire.PROTOCOL_VERSION
-	}
 	if hello.Client == "" {
 		hello.Client = "testclient/0"
 	}
-	if err := wire.WriteJSON(c.conn, wire.FrameHello, hello); err != nil {
-		return wire.Welcome{}, fmt.Errorf("testclient: write HELLO: %w", err)
+	// wire.Handshake bounds the WELCOME wait itself, so a mute daemon
+	// fails the test instead of hanging it.
+	cli, err := wire.Handshake(c.conn, hello)
+	if err != nil {
+		return wire.Welcome{}, fmt.Errorf("testclient: %w", err)
 	}
-	// The reader goroutine is already running. WELCOME / ERROR arrive
-	// via the snapshot channel (anything that isn't DATA/EVENT/
-	// SESSION_EVENT/PROJECT_EVENT lands there).
-	select {
-	case msg := <-c.snaps:
-		switch msg.t {
-		case wire.FrameWelcome:
-			var w wire.Welcome
-			if err := json.Unmarshal(msg.payload, &w); err != nil {
-				return wire.Welcome{}, fmt.Errorf("testclient: decode WELCOME: %w", err)
-			}
-			c.welcome = w
-			return w, nil
-		case wire.FrameError:
-			var e wire.Error
-			_ = json.Unmarshal(msg.payload, &e)
-			return wire.Welcome{}, fmt.Errorf("testclient: daemon refused handshake: %s: %s", e.Code, e.Message)
-		default:
-			return wire.Welcome{}, fmt.Errorf("testclient: unexpected frame during handshake: %s", msg.t)
-		}
-	case err := <-c.errs:
-		return wire.Welcome{}, fmt.Errorf("testclient: handshake read: %w", err)
-	case <-time.After(5 * time.Second):
-		return wire.Welcome{}, errors.New("testclient: handshake timeout")
-	}
+	c.cli = cli
+	go c.readLoop()
+	return cli.Welcome(), nil
 }
 
 // WriteStdin sends raw PTY bytes (an attach-mode DATA frame).
 func (c *Client) WriteStdin(b []byte) error {
-	return wire.WriteFrame(c.conn, wire.FrameData, b)
+	return c.cli.WriteFrame(wire.FrameData, b)
 }
 
 // CreateSession sends a CREATE_SESSION control frame. Caller must be
 // in control mode.
 func (c *Client) CreateSession(spec wire.CreateSpec) error {
-	return wire.WriteJSON(c.conn, wire.FrameCreateSession, spec)
+	return c.cli.WriteJSON(wire.FrameCreateSession, spec)
 }
 
 // ListSessions sends LIST_SESSIONS. Use AwaitSessionsSnapshot to
 // consume the response.
 func (c *Client) ListSessions() error {
-	return wire.WriteJSON(c.conn, wire.FrameListSessions, wire.ListSessionsReq{})
+	return c.cli.WriteJSON(wire.FrameListSessions, wire.ListSessionsReq{})
 }
 
 // WaitForData reads from the stream until the accumulated DATA bytes
@@ -314,7 +292,7 @@ func (c *Client) readLoop() {
 			return
 		default:
 		}
-		ft, payload, err := wire.ReadFrame(c.conn)
+		ft, payload, err := c.cli.ReadFrame()
 		if err != nil {
 			// When Close was called explicitly, drop the error — it
 			// is just the read-side seeing our own conn.Close. In any
