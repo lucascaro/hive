@@ -1,0 +1,58 @@
+package registry
+
+import (
+	"log"
+
+	"github.com/lucascaro/hive/internal/wire"
+)
+
+// Listener is a channel that receives SessionEvent notifications.
+type Listener chan wire.SessionEvent
+
+// ProjectListener is a channel that receives ProjectEvent.
+type ProjectListener chan wire.ProjectEvent
+
+// Subscribe returns a channel that receives every SessionEvent. The
+// returned cleanup function unsubscribes and closes the channel.
+// Slow consumers are dropped — listeners must drain promptly.
+func (r *Registry) Subscribe() (Listener, func()) {
+	// 64, not 16: Update with an order change broadcasts one event per
+	// session while holding r.mu (see renumberLocked), so a listener
+	// that's merely a beat behind on a many-session registry could
+	// overflow a small buffer and get dropped.
+	ch := make(Listener, 64)
+	r.mu.Lock()
+	r.listeners[ch] = struct{}{}
+	r.mu.Unlock()
+	return ch, func() {
+		r.mu.Lock()
+		if _, ok := r.listeners[ch]; ok {
+			delete(r.listeners, ch)
+			close(ch)
+		}
+		r.mu.Unlock()
+	}
+}
+
+func (r *Registry) broadcast(kind string, info wire.SessionInfo) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.broadcastLocked(kind, info)
+}
+
+func (r *Registry) broadcastLocked(kind string, info wire.SessionInfo) {
+	ev := wire.SessionEvent{Kind: kind, Session: info}
+	for ch := range r.listeners {
+		select {
+		case ch <- ev:
+		default:
+			// Listener can't keep up. Dropping it silently would leave
+			// the client permanently desynced with no trace — warn so
+			// "the GUI went stale" can be correlated with this moment.
+			log.Printf("registry: dropping slow session-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
+				cap(ch), len(r.listeners))
+			delete(r.listeners, ch)
+			close(ch)
+		}
+	}
+}

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -114,9 +113,6 @@ func (e *Entry) Info() wire.SessionInfo {
 	}
 }
 
-// Listener is a channel that receives SessionEvent notifications.
-type Listener chan wire.SessionEvent
-
 // Registry is the daemon-side authoritative store of sessions and
 // the projects they belong to.
 type Registry struct {
@@ -142,9 +138,6 @@ type Registry struct {
 	// streams without filtering.
 	projectListeners map[ProjectListener]struct{}
 }
-
-// ProjectListener is a channel that receives ProjectEvent.
-type ProjectListener chan wire.ProjectEvent
 
 // Open creates or loads a Registry rooted at stateDir. Existing
 // metadata on disk is loaded; live sessions are not auto-started.
@@ -917,28 +910,6 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 	return e, nil
 }
 
-// Subscribe returns a channel that receives every SessionEvent. The
-// returned cleanup function unsubscribes and closes the channel.
-// Slow consumers are dropped — listeners must drain promptly.
-func (r *Registry) Subscribe() (Listener, func()) {
-	// 64, not 16: Update with an order change broadcasts one event per
-	// session while holding r.mu (see renumberLocked), so a listener
-	// that's merely a beat behind on a many-session registry could
-	// overflow a small buffer and get dropped.
-	ch := make(Listener, 64)
-	r.mu.Lock()
-	r.listeners[ch] = struct{}{}
-	r.mu.Unlock()
-	return ch, func() {
-		r.mu.Lock()
-		if _, ok := r.listeners[ch]; ok {
-			delete(r.listeners, ch)
-			close(ch)
-		}
-		r.mu.Unlock()
-	}
-}
-
 // Close terminates every live session and clears listeners. The on-disk
 // metadata is preserved.
 func (r *Registry) Close() error {
@@ -1063,61 +1034,3 @@ func (r *Registry) persistProjectIndexLoggedLocked(op string) {
 	}
 }
 
-func (r *Registry) broadcast(kind string, info wire.SessionInfo) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.broadcastLocked(kind, info)
-}
-
-func (r *Registry) broadcastLocked(kind string, info wire.SessionInfo) {
-	ev := wire.SessionEvent{Kind: kind, Session: info}
-	for ch := range r.listeners {
-		select {
-		case ch <- ev:
-		default:
-			// Listener can't keep up. Dropping it silently would leave
-			// the client permanently desynced with no trace — warn so
-			// "the GUI went stale" can be correlated with this moment.
-			log.Printf("registry: dropping slow session-event listener (buffer %d full, %d listeners); client is desynced until it resubscribes",
-				cap(ch), len(r.listeners))
-			delete(r.listeners, ch)
-			close(ch)
-		}
-	}
-}
-
-// colorPalette is the curated set of "good" hues used for auto-
-// assigned project and session colors. All are readable as text on
-// the dark sidebar. Users can override via Update.
-var colorPalette = []string{
-	"#f59e0b", // amber
-	"#f97316", // orange
-	"#ef4444", // red
-	"#ec4899", // pink
-	"#d946ef", // fuchsia
-	"#a855f7", // purple
-	"#8b5cf6", // violet
-	"#6366f1", // indigo
-	"#3b82f6", // sky
-	"#06b6d4", // cyan
-	"#14b8a6", // teal
-	"#10b981", // emerald
-	"#84cc16", // lime
-	"#eab308", // yellow
-}
-
-// pickColor returns a random palette color, excluding any entry
-// listed in avoid. Uses math/rand/v2 top-level helpers so it's
-// goroutine-safe without needing a lock at the call site.
-func pickColor(avoid ...string) string {
-	n := len(colorPalette)
-	idx := rand.IntN(n)
-	for i := range n {
-		c := colorPalette[(idx+i)%n]
-		if !slices.Contains(avoid, c) {
-			return c
-		}
-	}
-	// Every palette entry is in avoid — fall back to a uniform pick.
-	return colorPalette[idx]
-}
