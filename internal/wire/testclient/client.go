@@ -38,6 +38,8 @@ import (
 //     the Begin → DATA → Done replay envelope.
 //   - sessions / projects: control-mode broadcast channels.
 //   - snaps:    one-shot frames (WELCOME, ERROR, SESSIONS, PROJECTS).
+// Write and Await methods require a successful Handshake first; they
+// panic on a client that has only been dialed.
 type Client struct {
 	conn net.Conn        // raw conn; owned by cli after Handshake
 	cli  *wire.Client    // shared protocol client; nil until Handshake

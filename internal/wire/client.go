@@ -55,7 +55,7 @@ func Handshake(conn net.Conn, hello Hello) (*Client, error) {
 		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
 			return nil, fmt.Errorf("daemon refused connection: %s", werr.Message)
 		}
-		return nil, fmt.Errorf("daemon rejected connection")
+		return nil, fmt.Errorf("daemon refused connection")
 	default:
 		_ = conn.Close()
 		return nil, fmt.Errorf("expected WELCOME, got %s", ft)

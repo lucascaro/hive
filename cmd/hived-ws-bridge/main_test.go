@@ -107,9 +107,10 @@ func TestDispatchEmptyParamsStillPermissive(t *testing.T) {
 }
 
 // TestConcurrentAttachWritesAreSerialized proves frame writes from
-// concurrent goroutines cannot interleave mid-frame. Before lockedConn,
-// wire.WriteFrame's two Writes (header, payload) from racing goroutines
-// corrupted the stream; this test fails on that code.
+// concurrent goroutines cannot interleave mid-frame. Without the write
+// mutex in wire.Client, wire.WriteFrame's two Writes (header, payload)
+// from racing goroutines corrupted the stream; this test fails on that
+// code.
 func TestConcurrentAttachWritesAreSerialized(t *testing.T) {
 	client, server := net.Pipe()
 	defer server.Close()
