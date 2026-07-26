@@ -12,7 +12,7 @@ See `docs/native-rewrite/phase-1.md` for the role of this binary.
 Requires Go 1.22+, Node 18+, and the Wails CLI:
 
 ```sh
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+scripts/ci-bootstrap.sh  # installs the pinned Wails CLI + generates bindings
 ```
 
 From the repo root:
