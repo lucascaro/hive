@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 // Client is one handshaken connection to hived in a single wire mode.
@@ -22,16 +23,23 @@ type Client struct {
 	welcome Welcome
 }
 
+// handshakeTimeout bounds the wait for WELCOME. A daemon that accepts
+// the socket but never answers must fail the caller, not hang it —
+// the GUI's ConnectControl/OpenSession have no other watchdog. A var,
+// not a const, so tests can shrink it.
+var handshakeTimeout = 5 * time.Second
+
 // Handshake sends HELLO on an established conn, waits for WELCOME and
 // returns the wrapped Client. The conn is closed on any failure.
 // hello.Version is filled with PROTOCOL_VERSION when zero (left alone
-// otherwise so tests can probe version rejection). Callers that need a
-// handshake timeout set a read deadline on conn beforehand and clear
-// it afterwards.
+// otherwise so tests can probe version rejection). The WELCOME wait is
+// bounded by handshakeTimeout; any caller-set read deadline is
+// overwritten and cleared on success.
 func Handshake(conn net.Conn, hello Hello) (*Client, error) {
 	if hello.Version == 0 {
 		hello.Version = PROTOCOL_VERSION
 	}
+	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
 	if err := WriteJSON(conn, FrameHello, hello); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("hello: %w", err)
@@ -48,6 +56,7 @@ func Handshake(conn net.Conn, hello Hello) (*Client, error) {
 			_ = conn.Close()
 			return nil, fmt.Errorf("welcome: %w", err)
 		}
+		_ = conn.SetReadDeadline(time.Time{})
 		return &Client{conn: conn, welcome: w}, nil
 	case FrameError:
 		_ = conn.Close()

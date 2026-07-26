@@ -85,14 +85,12 @@ func (c *Client) Handshake(hello wire.Hello) (wire.Welcome, error) {
 	if hello.Client == "" {
 		hello.Client = "testclient/0"
 	}
-	// wire.Handshake reads synchronously; bound it with a deadline so a
-	// mute daemon fails the test in 5s instead of hanging it.
-	_ = c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	// wire.Handshake bounds the WELCOME wait itself, so a mute daemon
+	// fails the test instead of hanging it.
 	cli, err := wire.Handshake(c.conn, hello)
 	if err != nil {
 		return wire.Welcome{}, fmt.Errorf("testclient: %w", err)
 	}
-	_ = c.conn.SetReadDeadline(time.Time{})
 	c.cli = cli
 	go c.readLoop()
 	return cli.Welcome(), nil

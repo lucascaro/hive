@@ -100,17 +100,20 @@ func TestHandshake_UnexpectedFrame(t *testing.T) {
 	}
 }
 
-func TestHandshake_HonorsReadDeadline(t *testing.T) {
+func TestHandshake_TimesOutOnMuteServer(t *testing.T) {
+	old := handshakeTimeout
+	handshakeTimeout = 50 * time.Millisecond
+	defer func() { handshakeTimeout = old }()
+
 	cli, srv := net.Pipe()
 	defer srv.Close()
-	// Server reads HELLO but never answers.
+	// Server reads HELLO but never answers WELCOME.
 	go func() {
 		var hello Hello
 		_, _ = ReadJSON(srv, &hello)
 	}()
-	_ = cli.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
 	if _, err := Handshake(cli, Hello{Mode: ModeControl}); err == nil {
-		t.Fatal("expected deadline error")
+		t.Fatal("expected timeout error on mute server")
 	}
 }
 
