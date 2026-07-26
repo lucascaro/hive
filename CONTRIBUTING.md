@@ -8,7 +8,7 @@ Thank you for your interest in contributing! This document explains how to build
 
 - **Go 1.25+** — [install](https://go.dev/dl/)
 - **Node 20+** and the **Wails CLI** for the desktop GUI:
-  `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+  run `scripts/ci-bootstrap.sh` (installs the pinned Wails CLI version)
 
 ### Build
 

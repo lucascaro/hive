@@ -18,7 +18,9 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'VITE_WAILS_MOCK=1 VITE_PORT=5174 ./node_modules/.bin/vite',
+    // env vars via `env` (not shell prefix) so this also starts on Windows.
+    command: 'npx vite',
+    env: { VITE_WAILS_MOCK: '1', VITE_PORT: '5174' },
     url: 'http://localhost:5174',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,

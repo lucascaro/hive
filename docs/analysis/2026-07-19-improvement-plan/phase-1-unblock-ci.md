@@ -1,6 +1,7 @@
 # Phase 1 — Unblock CI: the flaky e2e-real suite (P1)
 
-**Why first:** `CI (Linux)` and `CI (macOS)` fail on unchanged `main` (5/8 and
+**Why first:** the Linux and macOS CI legs (then named `CI (Linux)` /
+`CI (macOS)`, now a single `CI` matrix) fail on unchanged `main` (5/8 and
 4/8 recent runs). Every red check on every PR is untrustworthy. Spec:
 `docs/product-specs/245-flaky-e2e-real-suite-blocks-every-pr.md`.
 

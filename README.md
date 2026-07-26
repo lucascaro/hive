@@ -32,7 +32,7 @@ inside grid cells, workflows / agent teams, code signing.
 Requires Go 1.25+, Node 20+, and the Wails CLI:
 
 ```sh
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
+scripts/ci-bootstrap.sh  # installs the pinned Wails CLI + generates bindings
 ```
 
 Then from the repo root:

@@ -11,7 +11,7 @@
 #   --open                           open the macOS .app on success
 #
 # Requires: go (1.22+), node (18+),
-#           wails (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`),
+#           wails (install the pinned version: `scripts/ci-bootstrap.sh`),
 #           lipo (Xcode command line tools, macOS target only).
 set -euo pipefail
 
@@ -50,11 +50,15 @@ if [[ ! "$version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
 fi
 
 if ! command -v wails >/dev/null 2>&1; then
-  if [[ -x "$(go env GOPATH)/bin/wails" ]]; then
-    export PATH="$(go env GOPATH)/bin:$PATH"
+  # go install honors GOBIN when set, so look there first. GOEXE
+  # covers the .exe suffix when running under Git Bash on Windows.
+  gobin="$(go env GOBIN)"
+  gobin="${gobin:-$(go env GOPATH)/bin}"
+  if [[ -x "$gobin/wails$(go env GOEXE)" ]]; then
+    export PATH="$gobin:$PATH"
   else
-    echo "error: wails CLI not found. Install with:" >&2
-    echo "  go install github.com/wailsapp/wails/v2/cmd/wails@latest" >&2
+    echo "error: wails CLI not found. Install the pinned version with:" >&2
+    echo "  scripts/ci-bootstrap.sh" >&2
     exit 1
   fi
 fi
