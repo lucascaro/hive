@@ -582,3 +582,34 @@ func TestHasUncommittedIgnoresLinkedConfigOnly(t *testing.T) {
 		t.Errorf("real file inside .claude not reported: %v, %v", dirty, err)
 	}
 }
+
+// copyEntry is LinkAgentConfig's fallback where symlinks are
+// unavailable (Windows without elevation). Exercised directly so it is
+// covered on the platforms CI actually runs.
+func TestCopyEntry(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+
+	// Directory, including a nested file.
+	mustMkdir(t, filepath.Join(src, "skills", "nested"))
+	mustWrite(t, filepath.Join(src, "skills", "nested", "s.md"), "skill")
+	if err := copyEntry(filepath.Join(src, "skills"), filepath.Join(dst, "skills")); err != nil {
+		t.Fatalf("copyEntry dir: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dst, "skills", "nested", "s.md")); err != nil || string(got) != "skill" {
+		t.Errorf("nested file = %q, %v; want %q", got, err, "skill")
+	}
+
+	// Single file.
+	mustWrite(t, filepath.Join(src, "settings.local.json"), "{}")
+	if err := copyEntry(filepath.Join(src, "settings.local.json"), filepath.Join(dst, "settings.local.json")); err != nil {
+		t.Fatalf("copyEntry file: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dst, "settings.local.json")); err != nil || string(got) != "{}" {
+		t.Errorf("file = %q, %v; want %q", got, err, "{}")
+	}
+
+	// Missing source is an error, not a silent empty copy.
+	if err := copyEntry(filepath.Join(src, "nope"), filepath.Join(dst, "nope")); err == nil {
+		t.Errorf("copyEntry on missing source returned nil")
+	}
+}

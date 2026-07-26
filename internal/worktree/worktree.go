@@ -273,10 +273,36 @@ func LinkAgentConfig(repoRoot, worktreePath string) {
 				break
 			}
 			if err := os.Symlink(src, dst); err != nil {
-				log.Printf("worktree: link %s: %v", filepath.Join(dir, name), err)
+				// Windows needs Developer Mode or elevation to create a
+				// symlink, and without a fallback the whole feature is a
+				// no-op there. A copy loses the live-edit property — a
+				// skill changed in the main checkout won't reach an
+				// existing worktree — but stale config beats none.
+				if cerr := copyEntry(src, dst); cerr != nil {
+					log.Printf("worktree: link %s: %v (copy fallback: %v)",
+						filepath.Join(dir, name), err, cerr)
+				}
 			}
 		}
 	}
+}
+
+// copyEntry copies src to dst, recursing when src is a directory. Used
+// only as LinkAgentConfig's fallback when symlinking is unavailable, so
+// dst is always known-absent by the time we get here.
+func copyEntry(src, dst string) error {
+	st, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if st.IsDir() {
+		return os.CopyFS(dst, os.DirFS(src))
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, body, st.Mode().Perm())
 }
 
 // HasUncommitted reports whether the worktree has tracked changes,
