@@ -149,6 +149,25 @@ func revParseRemote(t *testing.T, bareRepo, branch string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// TestCreateWorktree_CancelledContext pins the cancellation contract
+// added when the git helpers stopped rooting their own
+// context.Background() timeouts: a cancelled caller ctx must abort the
+// add and leave no worktree behind.
+func TestCreateWorktree_CancelledContext(t *testing.T) {
+	skipNoGit(t)
+	repo := initRepo(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	wtPath := WorktreePath(repo, "cancelled")
+	if err := CreateWorktree(ctx, repo, "cancelled", wtPath); err == nil {
+		t.Fatal("CreateWorktree with a cancelled ctx: want error, got nil")
+	}
+	if _, err := os.Stat(wtPath); err == nil {
+		t.Errorf("worktree dir %s exists after a cancelled create", wtPath)
+	}
+}
+
 func TestCreateWorktree_PrefersUpstreamBase(t *testing.T) {
 	local, stale, fresh := initRepoWithUpstream(t)
 	if stale == fresh {

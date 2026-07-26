@@ -49,7 +49,8 @@ type createPlan struct {
 // the session starts so a crash mid-Create still surfaces the entry.
 //
 // ctx bounds the git and post-spawn-capture work; it must be
-// daemon-scoped, not per-connection (see attachSessionLocked).
+// daemon-scoped, not per-connection (see
+// startAgentSessionIDCaptureLocked).
 func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, error) {
 	p := r.resolveCreateTarget(spec)
 	r.planWorktreeAndName(spec, &p)
@@ -81,13 +82,16 @@ func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, er
 		// or kill it. Store the error so the GUI can surface it.
 		r.mu.Lock()
 		e.LastError = err.Error()
+		info := e.Info()
 		r.mu.Unlock()
-		r.broadcast(wire.SessionEventAdded, e.Info())
+		r.broadcast(wire.SessionEventAdded, info)
 		return e, err
 	}
 
-	r.attachSession(ctx, e, sess, spec, p)
-	r.broadcast(wire.SessionEventAdded, e.Info())
+	// Snapshot under the lock: attachSession starts the capture
+	// goroutine, which mutates AgentSessionID on this same entry.
+	info := r.attachSession(ctx, e, sess, spec, p)
+	r.broadcast(wire.SessionEventAdded, info)
 	go r.watchSessionExit(p.id, sess)
 	return e, nil
 }
@@ -280,8 +284,8 @@ func (r *Registry) renameAfterWorktreeFailure(e *Entry, spec wire.CreateSpec) {
 
 // attachSession binds the freshly spawned PTY to the entry, records
 // the worktree and agent-session ids, and kicks off the post-spawn
-// capture. Takes r.mu.
-func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Session, spec wire.CreateSpec, p createPlan) {
+// capture, and returns the info snapshot to broadcast. Takes r.mu.
+func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Session, spec wire.CreateSpec, p createPlan) wire.SessionInfo {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -313,6 +317,7 @@ func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Se
 	// caller-chosen ids (Codex). The cancel func is stored so
 	// watchSessionExit can stop the poll if the session dies first.
 	r.startAgentSessionIDCaptureLocked(ctx, e, p.cwd)
+	return e.Info()
 }
 
 // startAgentSessionIDCaptureLocked launches the per-agent capture
