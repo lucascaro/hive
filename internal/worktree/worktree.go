@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -255,7 +256,13 @@ func LinkAgentConfig(repoRoot, worktreePath string) {
 		for _, name := range agentConfigEntries {
 			src := filepath.Join(srcDir, name)
 			if _, err := os.Lstat(src); err != nil {
-				continue // nothing to link
+				// Absence is the normal case (most projects have only a
+				// couple of these); anything else means we're skipping
+				// config the user does have, so say so.
+				if !errors.Is(err, fs.ErrNotExist) {
+					log.Printf("worktree: stat %s: %v", src, err)
+				}
+				continue
 			}
 			dst := filepath.Join(dstDir, name)
 			if _, err := os.Lstat(dst); err == nil {
