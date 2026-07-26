@@ -50,10 +50,11 @@ if [[ ! "$version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
 fi
 
 if ! command -v wails >/dev/null 2>&1; then
-  # go install honors GOBIN when set, so look there first.
+  # go install honors GOBIN when set, so look there first. GOEXE
+  # covers the .exe suffix when running under Git Bash on Windows.
   gobin="$(go env GOBIN)"
   gobin="${gobin:-$(go env GOPATH)/bin}"
-  if [[ -x "$gobin/wails" ]]; then
+  if [[ -x "$gobin/wails$(go env GOEXE)" ]]; then
     export PATH="$gobin:$PATH"
   else
     echo "error: wails CLI not found. Install the pinned version with:" >&2
