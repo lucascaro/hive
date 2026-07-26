@@ -26,7 +26,9 @@ CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-r
 
 ## Success criteria
 
-- Ten consecutive `CI (Linux)` and `CI (macOS)` runs on unchanged `main` are green.
+- Ten consecutive `Build, Vet & Test (Linux)` and `(macOS)` runs on unchanged
+  `main` are green. (Check names as of the single-matrix `CI` workflow; they
+  were `CI (Linux)` / `CI (macOS)` when this spec was written.)
 - No spec depends on an unbounded "output reached the cap" precondition without either waiting for that condition deterministically or failing with a clear "precondition not met" skip.
 - If any spec is quarantined rather than fixed, it is skipped explicitly with a linked follow-up, not left failing.
 - A developer can tell from the check name alone whether a red gate implicates their diff.

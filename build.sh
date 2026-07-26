@@ -50,8 +50,11 @@ if [[ ! "$version" =~ ^[A-Za-z0-9._+-]+$ ]]; then
 fi
 
 if ! command -v wails >/dev/null 2>&1; then
-  if [[ -x "$(go env GOPATH)/bin/wails" ]]; then
-    export PATH="$(go env GOPATH)/bin:$PATH"
+  # go install honors GOBIN when set, so look there first.
+  gobin="$(go env GOBIN)"
+  gobin="${gobin:-$(go env GOPATH)/bin}"
+  if [[ -x "$gobin/wails" ]]; then
+    export PATH="$gobin:$PATH"
   else
     echo "error: wails CLI not found. Install the pinned version with:" >&2
     echo "  scripts/ci-bootstrap.sh" >&2

@@ -16,5 +16,8 @@ echo placeholder > cmd/hivegui/frontend/dist/.placeholder
 
 go install "github.com/wailsapp/wails/v2/cmd/wails@${WAILS_VERSION}"
 
-export PATH="$(go env GOPATH)/bin:$PATH"
-(cd cmd/hivegui && wails generate module)
+# go install honors GOBIN when set; run the freshly pinned binary
+# explicitly so a stale wails elsewhere on PATH can't win.
+BIN="$(go env GOBIN)"
+BIN="${BIN:-$(go env GOPATH)/bin}"
+(cd cmd/hivegui && "${BIN}/wails" generate module)
