@@ -19,7 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   immediately. Anything already present is left alone, so a committed
   `.claude/settings.json` is never clobbered, and per-checkout state in
   the same directories (lock files, task queues) is deliberately not
-  shared.
+  shared. Where symlinks aren't available — Windows without Developer
+  Mode or elevation — the entries are copied instead, which works but
+  won't pick up later edits from the main checkout. The linked config
+  doesn't count as uncommitted work, so a pristine worktree session still
+  closes without a "discard changes?" prompt.
 - GUI: back / forward navigation between sessions, like an editor or a
   browser. **⌃-** returns to the session you were in before this one and
   **⌃⇧-** goes forward again (**Ctrl+Alt+-** / **Ctrl+Alt+Shift+-** on
