@@ -613,3 +613,59 @@ func TestCopyEntry(t *testing.T) {
 		t.Errorf("copyEntry on missing source returned nil")
 	}
 }
+
+// The dirty check must not go blind to real work sitting at an
+// allowlisted path. Two ways that happens, both data loss if missed:
+// a project that COMMITS its agent config (LinkAgentConfig skips those
+// paths, so they were never ours), and a user replacing one of our
+// links with real local content.
+func TestHasUncommittedSeesRealWorkAtLinkedPaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+	repo := initRepo(t)
+	// Committed commands/ — plenty of projects share these in-repo.
+	mustMkdir(t, filepath.Join(repo, ".claude", "commands"))
+	mustWrite(t, filepath.Join(repo, ".claude", "commands", "c.md"), "committed")
+	mustMkdir(t, filepath.Join(repo, ".claude", "skills"))
+	mustWrite(t, filepath.Join(repo, ".claude", "skills", "s.md"), "skill")
+	for _, args := range [][]string{
+		{"add", "-A", ".claude/commands"},
+		{"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "commands"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	wt := filepath.Join(repo, ".worktrees", "wt")
+	if err := CreateWorktree(context.Background(), repo, "wt", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	LinkAgentConfig(repo, wt)
+	if dirty, err := HasUncommitted(wt); err != nil || dirty {
+		t.Fatalf("worktree dirty before any real edit: %v, %v", dirty, err)
+	}
+
+	// A tracked file under an allowlisted path — never linked, since git
+	// already checked it out — must still register when edited.
+	mustWrite(t, filepath.Join(wt, ".claude", "commands", "c.md"), "my real work")
+	if dirty, err := HasUncommitted(wt); err != nil || !dirty {
+		t.Errorf("edit to a committed allowlisted file reads clean: %v, %v", dirty, err)
+	}
+	mustWrite(t, filepath.Join(wt, ".claude", "commands", "c.md"), "committed")
+
+	// Replacing one of our links with real content must register too.
+	linked := filepath.Join(wt, ".claude", "skills")
+	if fi, err := os.Lstat(linked); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("precondition: %s is not a symlink (%v, %v)", linked, fi, err)
+	}
+	if err := os.Remove(linked); err != nil {
+		t.Fatal(err)
+	}
+	mustMkdir(t, linked)
+	mustWrite(t, filepath.Join(linked, "mine.md"), "my real work")
+	if dirty, err := HasUncommitted(wt); err != nil || !dirty {
+		t.Errorf("real content replacing a linked entry reads clean: %v, %v", dirty, err)
+	}
+}

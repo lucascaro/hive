@@ -315,6 +315,11 @@ func copyEntry(src, dst string) error {
 // them would make every pristine worktree refuse to close (see
 // registry.ErrWorktreeDirty). Projects that gitignore their agent
 // config never hit that; this covers the ones that don't.
+//
+// ponytail: only symlinks are excluded, so the copy fallback (Windows
+// without symlink privileges) still reads as dirty. Distinguishing a
+// fallback copy from the user's own file needs recorded provenance; a
+// spurious prompt there beats deleting real work.
 func HasUncommitted(worktreePath string) (bool, error) {
 	if _, err := os.Stat(worktreePath); err != nil {
 		return false, nil
@@ -325,7 +330,18 @@ func HasUncommitted(worktreePath string) (bool, error) {
 	args := []string{"-C", worktreePath, "status", "--porcelain", "-uall", "--", "."}
 	for _, dir := range agentConfigDirs {
 		for _, name := range agentConfigEntries {
-			args = append(args, ":(exclude)"+dir+"/"+name)
+			rel := dir + "/" + name
+			// Only exclude what is still a symlink. Excluding these paths
+			// by name would hide real work: a project that COMMITS
+			// .claude/commands sees LinkAgentConfig skip it (destination
+			// exists), so the path is not ours at all, and an edit to it
+			// must still count. Same if the user replaces a link with real
+			// local content.
+			fi, err := os.Lstat(filepath.Join(worktreePath, rel))
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			args = append(args, ":(exclude)"+rel)
 		}
 	}
 	cmd := exec.Command("git", args...)
