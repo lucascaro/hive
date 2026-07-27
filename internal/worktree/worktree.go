@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -212,15 +213,138 @@ func Cleanup(repoDir, worktreePath string) error {
 	return nil
 }
 
+// agentConfigDirs are the per-project agent config directories that
+// live in the main checkout but are typically untracked, so a fresh
+// `git worktree add` leaves them behind — taking the project's skills,
+// commands and local settings with them.
+var agentConfigDirs = []string{".claude", ".agents"}
+
+// agentConfigEntries is the allowlist of children linked when a config
+// dir already exists in the worktree. Deliberately an allowlist, not a
+// denylist: these dirs also hold per-run *state* (lock files, task
+// queues) which must stay private to each checkout, and the cost of
+// missing an entry (a skill doesn't show up) is far below the cost of
+// wrongly sharing state between worktrees.
+var agentConfigEntries = []string{
+	"agents", "commands", "hooks", "output-styles", "plugins", "skills",
+	"settings.local.json",
+}
+
+// LinkAgentConfig symlinks the repo's agent config (.claude, .agents)
+// into a freshly created worktree so sessions there see the same
+// skills, commands and local settings as the main checkout.
+//
+// Symlinks (not copies) so that a skill added or edited in the main
+// checkout is immediately visible from every existing worktree.
+//
+// Never clobbers: a destination path that already exists is skipped,
+// which is what keeps tracked files (e.g. a committed
+// .claude/settings.json that `git worktree add` already checked out)
+// untouched. Links are per-entry (see agentConfigEntries) rather than
+// whole-dir so per-checkout state in the same dirs stays unshared.
+// Best-effort — problems are logged, never returned.
+func LinkAgentConfig(repoRoot, worktreePath string) {
+	if repoRoot == "" || worktreePath == "" || repoRoot == worktreePath {
+		return
+	}
+	for _, dir := range agentConfigDirs {
+		srcDir := filepath.Join(repoRoot, dir)
+		if st, err := os.Stat(srcDir); err != nil || !st.IsDir() {
+			continue
+		}
+		dstDir := filepath.Join(worktreePath, dir)
+		for _, name := range agentConfigEntries {
+			src := filepath.Join(srcDir, name)
+			if _, err := os.Lstat(src); err != nil {
+				// Absence is the normal case (most projects have only a
+				// couple of these); anything else means we're skipping
+				// config the user does have, so say so.
+				if !errors.Is(err, fs.ErrNotExist) {
+					log.Printf("worktree: stat %s: %v", src, err)
+				}
+				continue
+			}
+			dst := filepath.Join(dstDir, name)
+			if _, err := os.Lstat(dst); err == nil {
+				continue // exists — leave it alone
+			}
+			if err := os.MkdirAll(dstDir, 0o755); err != nil {
+				log.Printf("worktree: mkdir %s: %v", dstDir, err)
+				break
+			}
+			if err := os.Symlink(src, dst); err != nil {
+				// Windows needs Developer Mode or elevation to create a
+				// symlink, and without a fallback the whole feature is a
+				// no-op there. A copy loses the live-edit property — a
+				// skill changed in the main checkout won't reach an
+				// existing worktree — but stale config beats none.
+				if cerr := copyEntry(src, dst); cerr != nil {
+					log.Printf("worktree: link %s: %v (copy fallback: %v)",
+						filepath.Join(dir, name), err, cerr)
+				}
+			}
+		}
+	}
+}
+
+// copyEntry copies src to dst, recursing when src is a directory. Used
+// only as LinkAgentConfig's fallback when symlinking is unavailable, so
+// dst is always known-absent by the time we get here.
+func copyEntry(src, dst string) error {
+	st, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if st.IsDir() {
+		return os.CopyFS(dst, os.DirFS(src))
+	}
+	body, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, body, st.Mode().Perm())
+}
+
 // HasUncommitted reports whether the worktree has tracked changes,
 // untracked files, or staged-but-uncommitted changes. Returns
 // (false, nil) when worktreePath is missing — a missing worktree
 // can't have uncommitted work to lose, so the caller should proceed.
+//
+// The agent config LinkAgentConfig planted is excluded: those entries
+// are hive's own doing, not the user's uncommitted work, and counting
+// them would make every pristine worktree refuse to close (see
+// registry.ErrWorktreeDirty). Projects that gitignore their agent
+// config never hit that; this covers the ones that don't.
+//
+// ponytail: only symlinks are excluded, so the copy fallback (Windows
+// without symlink privileges) still reads as dirty. Distinguishing a
+// fallback copy from the user's own file needs recorded provenance; a
+// spurious prompt there beats deleting real work.
 func HasUncommitted(worktreePath string) (bool, error) {
 	if _, err := os.Stat(worktreePath); err != nil {
 		return false, nil
 	}
-	cmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
+	// -uall is load-bearing: without it git collapses an untracked
+	// directory to a single "?? .claude/" entry and never descends far
+	// enough for the pathspec exclusions below to match.
+	args := []string{"-C", worktreePath, "status", "--porcelain", "-uall", "--", "."}
+	for _, dir := range agentConfigDirs {
+		for _, name := range agentConfigEntries {
+			rel := dir + "/" + name
+			// Only exclude what is still a symlink. Excluding these paths
+			// by name would hide real work: a project that COMMITS
+			// .claude/commands sees LinkAgentConfig skip it (destination
+			// exists), so the path is not ours at all, and an edit to it
+			// must still count. Same if the user replaces a link with real
+			// local content.
+			fi, err := os.Lstat(filepath.Join(worktreePath, rel))
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+				continue
+			}
+			args = append(args, ":(exclude)"+rel)
+		}
+	}
+	cmd := exec.Command("git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))

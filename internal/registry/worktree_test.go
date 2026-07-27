@@ -383,3 +383,44 @@ func TestRevive_UsesProjectCwd_NotCallerOpts(t *testing.T) {
 	}
 	_ = r.Kill(e.ID, true)
 }
+
+// Create must link the project's untracked agent config into the new
+// worktree, and doing so must not make the worktree look dirty — a
+// pristine session has to stay killable without force.
+func TestCreate_WorktreeLinksAgentConfig(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	skillsDir := filepath.Join(p.Cwd, ".claude", "skills")
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "s.md"), []byte("skill"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID:   p.ID,
+		Shell:       "/bin/bash",
+		UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if e.WorktreePath == "" {
+		t.Fatalf("worktree not created")
+	}
+
+	got, err := os.ReadFile(filepath.Join(e.WorktreePath, ".claude", "skills", "s.md"))
+	if err != nil || string(got) != "skill" {
+		t.Fatalf("skill not visible in worktree: %q, %v", got, err)
+	}
+
+	// The linked config must not register as uncommitted work: Kill
+	// without force would otherwise refuse with ErrWorktreeDirty on
+	// every pristine session.
+	time.Sleep(80 * time.Millisecond)
+	if err := r.Kill(e.ID, false); err != nil {
+		t.Fatalf("Kill(force=false) on a pristine worktree: %v", err)
+	}
+}
