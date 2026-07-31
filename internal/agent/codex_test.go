@@ -150,6 +150,55 @@ func TestCodexCaptureIgnoresPreexistingRolloutsInSameCwd(t *testing.T) {
 	}
 }
 
+// Regression test: a rollout file caught mid-write — first line
+// truncated, so the JSON doesn't parse — must NOT be permanently
+// negative-cached. Once the writer flushes the complete session_meta
+// record, the next poll has to re-read and match.
+func TestCodexCaptureRetriesPartiallyWrittenRollout(t *testing.T) {
+	root := t.TempDir()
+	swapCodexSessionsDir(t, root)
+	swapCodexPollInterval(t, 20*time.Millisecond)
+
+	cwd := "/tmp/proj-a"
+	uuid := "019d4d18-0b7d-7751-89ca-8a4386362f54"
+	dir := filepath.Join(root, "2026/05/08")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	path := filepath.Join(dir, "rollout-2026-05-08T12-00-00-"+uuid+".jsonl")
+
+	full := `{"timestamp":"2026-05-08T12:00:00.000Z","type":"session_meta","payload":{"id":"` + uuid +
+		`","cwd":"` + cwd + `","timestamp":"2026-05-08T12:00:00.000Z"}}` + "\n"
+
+	// Phase 1: file exists with a fresh mtime but the first line is
+	// cut short — exactly what a poll racing codex's write sees.
+	if err := os.WriteFile(path, []byte(full[:60]), 0o644); err != nil {
+		t.Fatalf("write partial rollout: %v", err)
+	}
+	now := time.Now()
+	if err := os.Chtimes(path, now, now); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	spawnedAt := time.Now()
+	go func() {
+		// Phase 2: writer finishes the record.
+		time.Sleep(80 * time.Millisecond)
+		_ = os.WriteFile(path, []byte(full), 0o644)
+		_ = os.Chtimes(path, time.Now(), time.Now())
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	got, err := codexCaptureSessionID(ctx, cwd, spawnedAt)
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	if got != uuid {
+		t.Errorf("got uuid %q, want %q (capture must not permanently reject a partially-written rollout)", got, uuid)
+	}
+}
+
 func TestCodexDefHasResumeArgsAndCapture(t *testing.T) {
 	d, ok := Get(IDCodex)
 	if !ok {
