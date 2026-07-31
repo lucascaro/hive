@@ -55,54 +55,26 @@ func copilotCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Tim
 		return "", errors.New("copilot session-state dir unresolved (no HOME)")
 	}
 	cutoff := spawnedAt.Add(-time.Second)
-	rejected := map[string]struct{}{}
-
-	ticker := time.NewTicker(copilotCapturePollInterval)
-	defer ticker.Stop()
-
-	for {
-		for _, m := range scanCopilotSessionDirs(copilotSessionStateDir, cutoff) {
-			if _, seen := rejected[m.path]; seen {
-				continue
-			}
-			switch readCopilotWorkspaceCwd(m.path, cwd) {
-			case copilotCwdMatch:
-				return m.uuid, nil
-			case copilotCwdMismatch:
-				// Definitive mismatch — this dir's `cwd:` field is
-				// present and not ours. Negative-cache so we don't
-				// re-read it on every poll.
-				rejected[m.path] = struct{}{}
-			case copilotCwdNotReady:
-				// File exists but `cwd:` not yet written, or a
-				// transient read/scan error. Leave uncached so the
-				// next poll re-reads.
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-type copilotSessionMatch struct {
-	path string // <session-state>/<UUID>
-	uuid string // directory basename, validated as UUID
+	return pollCaptureSessionID(ctx, copilotSessionStateDir, cutoff, copilotCapturePollInterval,
+		scanCopilotSessionDirs,
+		func(dirPath string) (string, cwdResult) {
+			// The session ID is the dir basename, validated as a UUID
+			// by the scanner.
+			return filepath.Base(dirPath), readCopilotWorkspaceCwd(dirPath, cwd)
+		},
+	)
 }
 
 // scanCopilotSessionDirs lists immediate subdirectories of root and
-// returns every <UUID> dir whose workspace.yaml mtime is at or after
-// cutoff. Missing workspace.yaml is treated as "not yet ready" and
-// skipped (no error).
-func scanCopilotSessionDirs(root string, cutoff time.Time) []copilotSessionMatch {
+// returns the path of every <UUID> dir whose workspace.yaml mtime is
+// at or after cutoff. Missing workspace.yaml is treated as "not yet
+// ready" and skipped (no error).
+func scanCopilotSessionDirs(root string, cutoff time.Time) []string {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil
 	}
-	var out []copilotSessionMatch
+	var out []string
 	for _, d := range entries {
 		if !d.IsDir() {
 			continue
@@ -120,36 +92,25 @@ func scanCopilotSessionDirs(root string, cutoff time.Time) []copilotSessionMatch
 		if info.ModTime().Before(cutoff) {
 			continue
 		}
-		out = append(out, copilotSessionMatch{path: dirPath, uuid: name})
+		out = append(out, dirPath)
 	}
 	return out
 }
 
-// copilotCwdResult is a tri-state for readCopilotWorkspaceCwd so the
-// caller can distinguish a definitive mismatch (negative-cache it)
-// from a transient "not ready / read error" (re-try next poll).
-type copilotCwdResult int
-
-const (
-	copilotCwdNotReady copilotCwdResult = iota // open/read/scan error or `cwd:` not yet written
-	copilotCwdMatch                            // `cwd:` present and equals wantCwd
-	copilotCwdMismatch                         // `cwd:` present and different from wantCwd
-)
-
 // readCopilotWorkspaceCwd reads <path>/workspace.yaml and reports
 // whether its top-level `cwd:` field matches wantCwd. Returns
-// copilotCwdNotReady for I/O errors, scan errors, or a file that
-// doesn't yet contain a `cwd:` line — caller must NOT negative-cache
-// these, since the file may still be partially written.
+// cwdNotReady for I/O errors, scan errors, or a file that doesn't yet
+// contain a `cwd:` line — caller must NOT negative-cache these, since
+// the file may still be partially written.
 //
 // We parse manually instead of pulling in a YAML dependency: the
 // file is small (always the same handful of top-level keys) and we
 // only care about one field.
-func readCopilotWorkspaceCwd(dirPath, wantCwd string) copilotCwdResult {
+func readCopilotWorkspaceCwd(dirPath, wantCwd string) cwdResult {
 	wsPath := filepath.Join(dirPath, "workspace.yaml")
 	f, err := os.Open(wsPath)
 	if err != nil {
-		return copilotCwdNotReady
+		return cwdNotReady
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -172,13 +133,13 @@ func readCopilotWorkspaceCwd(dirPath, wantCwd string) copilotCwdResult {
 		// strings; copilot writes unquoted, but be defensive).
 		val = strings.Trim(val, `"'`)
 		if val == wantCwd {
-			return copilotCwdMatch
+			return cwdMatch
 		}
-		return copilotCwdMismatch
+		return cwdMismatch
 	}
 	// Scan error or EOF without finding `cwd:`. Either way the file
 	// isn't (yet) authoritative — treat as not-ready so the caller
 	// retries on the next poll instead of permanently rejecting it.
 	_ = scanner.Err()
-	return copilotCwdNotReady
+	return cwdNotReady
 }

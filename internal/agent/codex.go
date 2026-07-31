@@ -48,7 +48,7 @@ var codexCapturePollInterval = 200 * time.Millisecond
 // definitively rejected, and read just the first line of each
 // remaining candidate to confirm the cwd. First cwd-match wins.
 // A file caught mid-write is "not ready", not rejected — see
-// codexCwdResult.
+// cwdResult.
 //
 // We deliberately do NOT snapshot "files seen on the first poll" as
 // pre-existing: codex frequently creates its rollout within
@@ -70,51 +70,19 @@ func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time)
 	// imprecise. A small backstep prevents skipping a file written
 	// in the same second we recorded.
 	cutoff := spawnedAt.Add(-time.Second)
-	// Negative-cache: candidate files whose first line we read and
-	// confirmed do NOT match cwd. Avoids re-reading on every poll.
-	rejected := map[string]struct{}{}
-
-	ticker := time.NewTicker(codexCapturePollInterval)
-	defer ticker.Stop()
-
-	for {
-		for _, m := range scanCodexRollouts(codexSessionsDir, cutoff) {
-			if _, seen := rejected[m.path]; seen {
-				continue
-			}
-			id, res := readCodexRolloutCwd(m.path, cwd)
-			switch res {
-			case codexCwdMatch:
-				return id, nil
-			case codexCwdMismatch:
-				// Definitive: the record parsed and it isn't ours.
-				// Negative-cache so we don't re-read it every poll.
-				rejected[m.path] = struct{}{}
-			case codexCwdNotReady:
-				// Unreadable or truncated mid-write. Leave uncached so
-				// the next poll re-reads it.
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-		}
-	}
+	return pollCaptureSessionID(ctx, codexSessionsDir, cutoff, codexCapturePollInterval,
+		scanCodexRollouts,
+		func(path string) (string, cwdResult) { return readCodexRolloutCwd(path, cwd) },
+	)
 }
 
-type codexRolloutMatch struct {
-	path string
-}
-
-// scanCodexRollouts walks the sessions tree and returns every rollout
-// file whose mtime is at or after cutoff. The directory layout is
-// sessions/YYYY/MM/DD/rollout-*.jsonl; we walk the whole tree
-// (cheap — only a few hundred files even on heavy users) so we don't
-// miss the day-boundary case where the spawn straddles midnight.
-func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
-	var out []codexRolloutMatch
+// scanCodexRollouts walks the sessions tree and returns the path of
+// every rollout file whose mtime is at or after cutoff. The directory
+// layout is sessions/YYYY/MM/DD/rollout-*.jsonl; we walk the whole
+// tree (cheap — only a few hundred files even on heavy users) so we
+// don't miss the day-boundary case where the spawn straddles midnight.
+func scanCodexRollouts(root string, cutoff time.Time) []string {
+	var out []string
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -134,37 +102,26 @@ func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
 		if info.ModTime().Before(cutoff) {
 			return nil
 		}
-		out = append(out, codexRolloutMatch{path: path})
+		out = append(out, path)
 		return nil
 	})
 	return out
 }
 
-// codexCwdResult is a tri-state for readCodexRolloutCwd so the caller
-// can distinguish a definitive mismatch (negative-cache it) from a
-// transient "not ready / unreadable" (re-try next poll).
-type codexCwdResult int
-
-const (
-	codexCwdNotReady codexCwdResult = iota // open error, truncated line, or unparseable JSON
-	codexCwdMatch                          // session_meta record whose payload.cwd equals wantCwd
-	codexCwdMismatch                       // record parsed and is definitively not ours
-)
-
 // readCodexRolloutCwd reads the first line of a rollout file and
-// returns (payload.id, codexCwdMatch) when payload.cwd matches the
-// given cwd. Keeping JSON parsing scoped to the first record keeps
-// this fast.
+// returns (payload.id, cwdMatch) when payload.cwd matches the given
+// cwd. Keeping JSON parsing scoped to the first record keeps this
+// fast.
 //
-// Returns codexCwdNotReady for I/O errors, a first line with no
-// terminating newline (codex is still writing it — a real rollout
-// always has records after session_meta), or JSON that doesn't parse.
-// Callers must NOT negative-cache these: the file may still be
-// partially written, and rejecting it for good loses the capture.
-func readCodexRolloutCwd(path, wantCwd string) (string, codexCwdResult) {
+// Returns cwdNotReady for I/O errors, a first line with no terminating
+// newline (codex is still writing it — a real rollout always has
+// records after session_meta), or JSON that doesn't parse. Callers
+// must NOT negative-cache these: the file may still be partially
+// written, and rejecting it for good loses the capture.
+func readCodexRolloutCwd(path, wantCwd string) (string, cwdResult) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", codexCwdNotReady
+		return "", cwdNotReady
 	}
 	defer f.Close()
 	// First line of a rollout is the session_meta record. Cap the
@@ -172,7 +129,7 @@ func readCodexRolloutCwd(path, wantCwd string) (string, codexCwdResult) {
 	br := bufio.NewReaderSize(f, 64*1024)
 	line, err := br.ReadString('\n')
 	if err != nil {
-		return "", codexCwdNotReady
+		return "", cwdNotReady
 	}
 	var rec struct {
 		Type    string `json:"type"`
@@ -182,10 +139,10 @@ func readCodexRolloutCwd(path, wantCwd string) (string, codexCwdResult) {
 		} `json:"payload"`
 	}
 	if jerr := json.Unmarshal([]byte(strings.TrimRight(line, "\n")), &rec); jerr != nil {
-		return "", codexCwdNotReady
+		return "", cwdNotReady
 	}
 	if rec.Type != "session_meta" || rec.Payload.Cwd != wantCwd {
-		return "", codexCwdMismatch
+		return "", cwdMismatch
 	}
-	return rec.Payload.ID, codexCwdMatch
+	return rec.Payload.ID, cwdMatch
 }
