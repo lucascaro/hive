@@ -39,12 +39,35 @@ without a reproducer" rule (cited in Phase 1) honest for a refactor too.
   mutex, so disk latency blocks all session ops. Verify and, if real, snapshot
   under lock + write outside it.
 
-## 3c. Dedupe codex/copilot session capture
+## 3c. Dedupe codex/copilot session capture — **done, rescoped**
 
-`internal/agent/codex.go` (:62/:106/:138) and `copilot.go` (:53/:100/:148)
-are structurally identical poll-newest-session-file scanners. Parameterize
-into one scanner (dir layout + filename pattern + cwd extractor) used by
-both. Third agent added later gets it free.
+The original item claimed `internal/agent/codex.go` and `copilot.go` were
+"structurally identical poll-newest-session-file scanners" and proposed one
+parameterized scanner. Reading both showed that premise is wrong — only the
+poll loop is shared:
+
+| | codex | copilot |
+|---|---|---|
+| scan | `WalkDir` over `YYYY/MM/DD`, filename regex, file mtime | `ReadDir` one level, dirname UUID, `workspace.yaml` mtime |
+| read | JSON first line, `session_meta` check | hand-rolled YAML top-level `cwd:` scan |
+| ID source | file body (`payload.id`) | scan (dir basename) |
+| result | 2-state `bool` | 3-state (`NotReady` deliberately not cached) |
+
+"Third agent gets it free" doesn't hold either: gemini uses pinning and claude
+uses a file-existence probe — 2 of 4 built-ins never poll.
+
+What shipped instead:
+
+1. **A real bug fix.** `readCodexRolloutCwd` returned a bare `false` for both
+   "not our cwd" and "unreadable / caught mid-write", and the caller
+   negative-cached it permanently. A poll tick landing while codex wrote the
+   first `session_meta` line rejected the file for the whole capture window,
+   losing the session ID. Codex now has copilot's tri-state.
+2. **The poll loop only** — ticker, negative cache, ctx handling, and the
+   "only cache a definitive mismatch" rule — extracted to
+   `pollCaptureSessionID` in `internal/agent/capture.go`. Both scanners and
+   both readers stay separate by design; unifying them would add a candidate
+   struct and a two-value callback to remove ~22 lines.
 
 ## 3d. Context propagation
 
@@ -63,10 +86,17 @@ registry in 3b.
 - Audit the ~78 `_ =` ignored errors in registry persistence paths only
   (teardown-path Close/Write ignores are fine).
 
-## 3f. Dependency trims (tiny, optional)
+## 3f. Dependency trims — **do not do; closed as documentation**
 
-- Drop `atotto/clipboard` — Wails already provides clipboard APIs
-  (`app.go:86` uses runtime clipboard elsewhere). One less dep.
+- **Do NOT drop `atotto/clipboard`.** The original claim ("Wails already
+  provides clipboard APIs") is wrong for writes: Wails'
+  `runtime.ClipboardSetText` is broken on Windows because the JS-bridged call
+  runs on a non-STA goroutine, so `OpenClipboard` silently fails and nothing
+  reaches the clipboard. `cmd/hivegui/app.go:58-72` documents this; atotto
+  shells out to `clip.exe` to sidestep the threading constraint. Reads
+  (`ClipboardGetText`) work because they don't need clipboard ownership —
+  which is why the runtime API appears elsewhere in the file. Removing the dep
+  re-breaks Windows copy.
 - Keep `google/uuid` (3 call sites, stable — not worth churn).
 
 ## Later / only-if-it-hurts (JS side, from the same audit)

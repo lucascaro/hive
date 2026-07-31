@@ -2,13 +2,13 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -23,9 +23,10 @@ var codexSessionsDir = func() string {
 	return filepath.Join(home, ".codex", "sessions")
 }()
 
-// codexRolloutPattern matches "rollout-<ISO-timestamp>-<UUID>.jsonl"
-// with the UUID captured. The UUID format is the canonical
-// 8-4-4-4-12 hex layout codex uses.
+// codexRolloutPattern matches "rollout-<ISO-timestamp>-<UUID>.jsonl".
+// The UUID format is the canonical 8-4-4-4-12 hex layout codex uses.
+// Used as a filename filter only — the session ID comes from the
+// file's session_meta record, not from the name.
 var codexRolloutPattern = regexp.MustCompile(
 	`^rollout-.+-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$`,
 )
@@ -38,15 +39,16 @@ var codexCapturePollInterval = 200 * time.Millisecond
 
 // codexCaptureSessionID polls codex's session-rollout directory for a
 // rollout file whose mtime is >= spawnedAt-1s and whose first line
-// records `payload.cwd == cwd`. Returns the UUID parsed from the
-// filename.
+// records `payload.cwd == cwd`. Returns that record's `payload.id`.
 //
 // Strategy: poll every codexCapturePollInterval until ctx is done.
 // Per poll, walk the directory, ignore files whose name doesn't
 // match the rollout pattern or whose mtime is older than
 // spawnedAt-1s (clock fuzz), skip files we've already inspected and
-// rejected, and read just the first line of each remaining candidate
-// to confirm the cwd. First cwd-match wins.
+// definitively rejected, and read just the first line of each
+// remaining candidate to confirm the cwd. First cwd-match wins.
+// A file caught mid-write is "not ready", not rejected — see
+// cwdResult.
 //
 // We deliberately do NOT snapshot "files seen on the first poll" as
 // pre-existing: codex frequently creates its rollout within
@@ -68,43 +70,19 @@ func codexCaptureSessionID(ctx context.Context, cwd string, spawnedAt time.Time)
 	// imprecise. A small backstep prevents skipping a file written
 	// in the same second we recorded.
 	cutoff := spawnedAt.Add(-time.Second)
-	// Negative-cache: candidate files whose first line we read and
-	// confirmed do NOT match cwd. Avoids re-reading on every poll.
-	rejected := map[string]struct{}{}
-
-	ticker := time.NewTicker(codexCapturePollInterval)
-	defer ticker.Stop()
-
-	for {
-		for _, m := range scanCodexRollouts(codexSessionsDir, cutoff) {
-			if _, seen := rejected[m.path]; seen {
-				continue
-			}
-			if id, ok := readCodexRolloutCwd(m.path, cwd); ok {
-				return id, nil
-			}
-			rejected[m.path] = struct{}{}
-		}
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-		}
-	}
+	return pollCaptureSessionID(ctx, codexSessionsDir, cutoff, codexCapturePollInterval,
+		scanCodexRollouts,
+		func(path string) (string, cwdResult) { return readCodexRolloutCwd(path, cwd) },
+	)
 }
 
-type codexRolloutMatch struct {
-	path string
-}
-
-// scanCodexRollouts walks the sessions tree and returns every rollout
-// file whose mtime is at or after cutoff. The directory layout is
-// sessions/YYYY/MM/DD/rollout-*.jsonl; we walk the whole tree
-// (cheap — only a few hundred files even on heavy users) so we don't
-// miss the day-boundary case where the spawn straddles midnight.
-func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
-	var out []codexRolloutMatch
+// scanCodexRollouts walks the sessions tree and returns the path of
+// every rollout file whose mtime is at or after cutoff. The directory
+// layout is sessions/YYYY/MM/DD/rollout-*.jsonl; we walk the whole
+// tree (cheap — only a few hundred files even on heavy users) so we
+// don't miss the day-boundary case where the spawn straddles midnight.
+func scanCodexRollouts(root string, cutoff time.Time) []string {
+	var out []string
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -112,9 +90,7 @@ func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
 		if d.IsDir() {
 			return nil
 		}
-		name := d.Name()
-		m := codexRolloutPattern.FindStringSubmatch(name)
-		if m == nil {
+		if !codexRolloutPattern.MatchString(d.Name()) {
 			return nil
 		}
 		info, ierr := d.Info()
@@ -124,29 +100,40 @@ func scanCodexRollouts(root string, cutoff time.Time) []codexRolloutMatch {
 		if info.ModTime().Before(cutoff) {
 			return nil
 		}
-		out = append(out, codexRolloutMatch{path: path})
+		out = append(out, path)
 		return nil
 	})
 	return out
 }
 
 // readCodexRolloutCwd reads the first line of a rollout file and
-// returns (uuid, true) when payload.cwd matches the given cwd. The
-// uuid is taken from the filename (already validated by the regex
-// when the file was scanned) — keeping JSON parsing scoped to the
-// cwd check keeps this fast.
-func readCodexRolloutCwd(path, wantCwd string) (string, bool) {
+// returns (payload.id, cwdMatch) when payload.cwd matches the given
+// cwd. Keeping JSON parsing scoped to the first record keeps this
+// fast.
+//
+// Returns cwdNotReady for I/O errors, a first line with no terminating
+// newline within 64KB (codex is still writing it — a real rollout
+// always has records after session_meta — or the file isn't a rollout
+// at all), or JSON that doesn't parse. Callers
+// must NOT negative-cache these: the file may still be partially
+// written, and rejecting it for good loses the capture.
+func readCodexRolloutCwd(path, wantCwd string) (string, cwdResult) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", false
+		return "", cwdNotReady
 	}
 	defer f.Close()
-	// First line of a rollout is the session_meta record. Cap the
-	// read so a runaway/binary file can't spike memory.
+	// First line of a rollout is the session_meta record. ReadSlice —
+	// not ReadString — is what actually bounds this: it never grows
+	// past the reader's buffer, returning ErrBufferFull when no
+	// newline turns up within 64KB, so a runaway or binary file can't
+	// spike memory. Every error, ErrBufferFull included, is
+	// cwdNotReady. line aliases the reader's buffer and must not
+	// outlive the Unmarshal below.
 	br := bufio.NewReaderSize(f, 64*1024)
-	line, err := br.ReadString('\n')
-	if err != nil && line == "" {
-		return "", false
+	line, err := br.ReadSlice('\n')
+	if err != nil {
+		return "", cwdNotReady
 	}
 	var rec struct {
 		Type    string `json:"type"`
@@ -155,11 +142,11 @@ func readCodexRolloutCwd(path, wantCwd string) (string, bool) {
 			Cwd string `json:"cwd"`
 		} `json:"payload"`
 	}
-	if jerr := json.Unmarshal([]byte(strings.TrimRight(line, "\n")), &rec); jerr != nil {
-		return "", false
+	if jerr := json.Unmarshal(bytes.TrimRight(line, "\n"), &rec); jerr != nil {
+		return "", cwdNotReady
 	}
 	if rec.Type != "session_meta" || rec.Payload.Cwd != wantCwd {
-		return "", false
+		return "", cwdMismatch
 	}
-	return rec.Payload.ID, true
+	return rec.Payload.ID, cwdMatch
 }
