@@ -2,13 +2,13 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -112,8 +112,9 @@ func scanCodexRollouts(root string, cutoff time.Time) []string {
 // fast.
 //
 // Returns cwdNotReady for I/O errors, a first line with no terminating
-// newline (codex is still writing it — a real rollout always has
-// records after session_meta), or JSON that doesn't parse. Callers
+// newline within 64KB (codex is still writing it — a real rollout
+// always has records after session_meta — or the file isn't a rollout
+// at all), or JSON that doesn't parse. Callers
 // must NOT negative-cache these: the file may still be partially
 // written, and rejecting it for good loses the capture.
 func readCodexRolloutCwd(path, wantCwd string) (string, cwdResult) {
@@ -122,10 +123,15 @@ func readCodexRolloutCwd(path, wantCwd string) (string, cwdResult) {
 		return "", cwdNotReady
 	}
 	defer f.Close()
-	// First line of a rollout is the session_meta record. Cap the
-	// read so a runaway/binary file can't spike memory.
+	// First line of a rollout is the session_meta record. ReadSlice —
+	// not ReadString — is what actually bounds this: it never grows
+	// past the reader's buffer, returning ErrBufferFull when no
+	// newline turns up within 64KB, so a runaway or binary file can't
+	// spike memory. Every error, ErrBufferFull included, is
+	// cwdNotReady. line aliases the reader's buffer and must not
+	// outlive the Unmarshal below.
 	br := bufio.NewReaderSize(f, 64*1024)
-	line, err := br.ReadString('\n')
+	line, err := br.ReadSlice('\n')
 	if err != nil {
 		return "", cwdNotReady
 	}
@@ -136,7 +142,7 @@ func readCodexRolloutCwd(path, wantCwd string) (string, cwdResult) {
 			Cwd string `json:"cwd"`
 		} `json:"payload"`
 	}
-	if jerr := json.Unmarshal([]byte(strings.TrimRight(line, "\n")), &rec); jerr != nil {
+	if jerr := json.Unmarshal(bytes.TrimRight(line, "\n"), &rec); jerr != nil {
 		return "", cwdNotReady
 	}
 	if rec.Type != "session_meta" || rec.Payload.Cwd != wantCwd {

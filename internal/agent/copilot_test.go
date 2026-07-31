@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -101,7 +102,10 @@ func TestCopilotCaptureRespectsContextCancel(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("got err %v, want context.Canceled", err)
+		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("capture did not return after context cancel")
 	}

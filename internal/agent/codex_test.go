@@ -1,9 +1,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -112,7 +115,10 @@ func TestCodexCaptureRespectsContextCancel(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("got err %v, want context.Canceled", err)
+		}
 	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("capture did not return after context cancel")
 	}
@@ -196,6 +202,37 @@ func TestCodexCaptureRetriesPartiallyWrittenRollout(t *testing.T) {
 	}
 	if got != uuid {
 		t.Errorf("got uuid %q, want %q (capture must not permanently reject a partially-written rollout)", got, uuid)
+	}
+}
+
+// A rollout-named file with no newline in the first 64KB must be
+// rejected as not-ready *without* being read into memory whole. The
+// verdict alone doesn't pin this — ReadString reached the same verdict
+// via io.EOF — so the test asserts the allocation bound too: ReadSlice
+// never grows past the reader's 64KB buffer, where ReadString
+// accumulated the whole file.
+func TestCodexReadRolloutBoundsOversizedFirstLine(t *testing.T) {
+	const fileSize = 4 << 20 // 4MB, no newline anywhere
+	const allocBudget = 1 << 20
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rollout-2026-05-08T12-00-00-019d4d18-0b7d-7751-89ca-8a4386362f54.jsonl")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), fileSize), 0o644); err != nil {
+		t.Fatalf("write oversized rollout: %v", err)
+	}
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	id, res := readCodexRolloutCwd(path, "/tmp/proj-a")
+	runtime.ReadMemStats(&after)
+
+	if res != cwdNotReady || id != "" {
+		t.Errorf("got (%q, %v), want (\"\", cwdNotReady) — an unterminated line must never match", id, res)
+	}
+	if used := after.TotalAlloc - before.TotalAlloc; used > allocBudget {
+		t.Errorf("read allocated %d bytes for a %d-byte newline-free file; want under %d (the read must stay bounded by the reader's buffer)",
+			used, fileSize, allocBudget)
 	}
 }
 
