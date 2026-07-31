@@ -23,9 +23,10 @@ var codexSessionsDir = func() string {
 	return filepath.Join(home, ".codex", "sessions")
 }()
 
-// codexRolloutPattern matches "rollout-<ISO-timestamp>-<UUID>.jsonl"
-// with the UUID captured. The UUID format is the canonical
-// 8-4-4-4-12 hex layout codex uses.
+// codexRolloutPattern matches "rollout-<ISO-timestamp>-<UUID>.jsonl".
+// The UUID format is the canonical 8-4-4-4-12 hex layout codex uses.
+// Used as a filename filter only — the session ID comes from the
+// file's session_meta record, not from the name.
 var codexRolloutPattern = regexp.MustCompile(
 	`^rollout-.+-([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$`,
 )
@@ -38,8 +39,7 @@ var codexCapturePollInterval = 200 * time.Millisecond
 
 // codexCaptureSessionID polls codex's session-rollout directory for a
 // rollout file whose mtime is >= spawnedAt-1s and whose first line
-// records `payload.cwd == cwd`. Returns the UUID parsed from the
-// filename.
+// records `payload.cwd == cwd`. Returns that record's `payload.id`.
 //
 // Strategy: poll every codexCapturePollInterval until ctx is done.
 // Per poll, walk the directory, ignore files whose name doesn't
@@ -90,9 +90,7 @@ func scanCodexRollouts(root string, cutoff time.Time) []string {
 		if d.IsDir() {
 			return nil
 		}
-		name := d.Name()
-		m := codexRolloutPattern.FindStringSubmatch(name)
-		if m == nil {
+		if !codexRolloutPattern.MatchString(d.Name()) {
 			return nil
 		}
 		info, ierr := d.Info()

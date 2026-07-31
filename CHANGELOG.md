@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Codex sessions no longer lose their session ID when Hive happens to read
+  the rollout file while codex is still writing it. The file was rejected
+  for good on the first unreadable poll, so nothing was captured and the
+  session couldn't be resumed after a restart.
 - GUI: fixed a startup slowdown that degraded to a freeze when several
   full-screen agent sessions (Claude, etc.) were open in grid view. On
   attach the daemon replayed each session's entire multi-MB scrollback
