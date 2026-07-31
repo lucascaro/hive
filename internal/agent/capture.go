@@ -60,6 +60,11 @@ func pollCaptureSessionID(
 			case cwdMismatch:
 				rejected[key] = struct{}{}
 			case cwdNotReady:
+				// ponytail: a candidate that never becomes readable —
+				// e.g. a file truncated by a crashed run, with an mtime
+				// inside the cutoff — is re-read every tick for the whole
+				// window. Bounded and tiny (~150 small reads); cap
+				// attempts per key if a real workload ever notices.
 			}
 		}
 
