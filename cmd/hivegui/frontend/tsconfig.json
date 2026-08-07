@@ -1,0 +1,30 @@
+{
+  // Incremental JS→TS migration. `allowJs` + `checkJs: false` is what keeps
+  // `tsc --noEmit` green while the tree is mixed: un-migrated .js files are
+  // still pulled into the program transitively by imports, but never checked.
+  //
+  // `include` is scoped to the directories already converted and widens one
+  // wave at a time — see docs/exec-plans/active/typescript-migration.md. Note
+  // that `include` does NOT bound the program (imports pull files in
+  // regardless); the green build comes from `checkJs: false`, with `include`
+  // as belt-and-braces. Don't widen it ahead of a wave.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    // The generated wailsjs/** and @xterm/* types are not ours to fix.
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  // test/unit is safe to include wholesale from wave 1: the un-converted
+  // *.test.js files land in the program but `checkJs: false` skips them, so
+  // each test starts being checked exactly when it's renamed to .ts.
+  "include": ["src/lib/**/*", "test/unit/**/*"],
+  "exclude": ["node_modules", "dist", "wailsjs"]
+}

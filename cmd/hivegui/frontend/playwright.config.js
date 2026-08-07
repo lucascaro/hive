@@ -6,7 +6,7 @@ import { defineConfig } from '@playwright/test';
 // events through window.__hive.
 export default defineConfig({
   testDir: './test/e2e',
-  testMatch: '**/*.spec.js',
+  testMatch: '**/*.spec.{js,ts}',
   fullyParallel: false,
   timeout: 30000,
   // One retry on CI so a one-off flake doesn't fail the required leg;

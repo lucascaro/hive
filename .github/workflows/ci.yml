@@ -65,6 +65,19 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
+      - name: Typecheck (frontend — tsc)
+        if: matrix.biome
+        # Platform-independent, so it rides the same single-leg flag as Biome.
+        # Placed right after the frontend build (and before the Go legs) so a
+        # type error fails fast. `npm run build` does NOT type-check — Vite
+        # transpiles .ts through esbuild without checking it, so this step is
+        # the only real gate while the tree migrates to TypeScript.
+        # From wave 4 on (when src/bridge.ts enters `include`) this needs the
+        # generated wailsjs/ bindings — the Bootstrap step above already
+        # produces them, so the ordering is right ahead of time.
+        working-directory: cmd/hivegui/frontend
+        run: npm run typecheck
+
       - name: Build
         run: go build ./...
 
