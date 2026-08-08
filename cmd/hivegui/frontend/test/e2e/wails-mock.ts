@@ -38,12 +38,15 @@ function emit(name: string, ...args: unknown[]) {
 // --- runtime ---
 
 export function EventsOn(name: string, handler: Handler) {
-  const arr = listeners.get(name) ?? [];
-  if (!listeners.has(name)) listeners.set(name, arr);
-  arr.push(handler);
+  const arr = listeners.get(name);
+  if (arr) arr.push(handler);
+  else listeners.set(name, [handler]);
+  // Re-look-up rather than closing over `arr` — EventsOff replaces the
+  // array, and the JS original unsubscribed against whatever is current.
   return () => {
-    const i = arr.indexOf(handler);
-    if (i >= 0) arr.splice(i, 1);
+    const cur = listeners.get(name) || [];
+    const i = cur.indexOf(handler);
+    if (i >= 0) cur.splice(i, 1);
   };
 }
 
