@@ -598,6 +598,37 @@ export class SessionTerm {
     this._replaysInFlight = 0;
     this._repinning = false;
 
+    // Pointer drag is user scroll intent too. xterm auto-scrolls the
+    // viewport while a selection drag is held past the top edge, and that
+    // scroll arrives with NO wheel and NO keydown — so the bottom re-pin
+    // below reads it as parse-driven drift and yanks the viewport back,
+    // which makes selecting text upwards impossible. (Only visible once
+    // the re-pin stopped being gated on an in-flight replay.)
+    //
+    // A boolean, not a timestamp: the auto-scroll repeats on xterm's own
+    // timer while the button is held STILL, so there is no second event to
+    // re-stamp from and a mousedown timestamp alone would go stale after
+    // USER_SCROLL_GRACE_MS mid-drag. onScroll refreshes the stamp while
+    // this is set.
+    this._pointerDown = false;
+    this.body.addEventListener(
+      'mousedown',
+      () => {
+        this._pointerDown = true;
+        this._lastUserScrollTs = nowMs();
+      },
+      { capture: true },
+    );
+    // Listen for the release on `window`: a drag that leaves the tile (or
+    // the window) releases outside `body`, and a stuck flag would make
+    // every later drift look user-driven.
+    this._onWindowMouseUp = () => {
+      if (!this._pointerDown) return;
+      this._pointerDown = false;
+      this._lastUserScrollTs = nowMs();
+    };
+    window.addEventListener('mouseup', this._onWindowMouseUp, true);
+
     // Keyboard scrollback (Shift+PageUp/Down, Shift+Home/End) is user
     // intent too. xterm handles these internally; we only timestamp them
     // so the onScroll below attributes the resulting move to the user.
@@ -624,6 +655,10 @@ export class SessionTerm {
       const to = buf.viewportY;
       this._lastViewportY = to;
       const now = nowMs();
+      // A held pointer is a live gesture for as long as it's held — keep
+      // the stamp fresh so a selection auto-scroll that spans more than
+      // USER_SCROLL_GRACE_MS stays attributed to the user.
+      if (this._pointerDown) this._lastUserScrollTs = now;
       // Only a recent user gesture may change follow-intent. A move with
       // no gesture behind it is parse-driven cap-trim drift — ignore it,
       // so a wobbling viewport never clears "follow the bottom".
@@ -1207,6 +1242,10 @@ export class SessionTerm {
     }
     if (this._onVisibility) {
       document.removeEventListener('visibilitychange', this._onVisibility);
+    }
+    if (this._onWindowMouseUp) {
+      window.removeEventListener('mouseup', this._onWindowMouseUp, true);
+      this._onWindowMouseUp = null;
     }
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.

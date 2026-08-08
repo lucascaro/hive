@@ -206,4 +206,57 @@ test.describe('#208 grid-mode scroll regressions', () => {
       await page.evaluate(() => window.__hive.replayCount()),
     ).toBeGreaterThan(0);
   });
+
+  // R-drag: the bottom re-pin must not fight a selection drag. xterm
+  // auto-scrolls the viewport while the button is held past the top edge,
+  // and that scroll carries no wheel and no keydown — so before the
+  // pointer-down latch, the re-pin classified it as parse drift and
+  // snapped straight back, making it impossible to select upwards.
+  // Confirmed by hand against a live PTY before this test was written.
+  test('R-drag: an upward viewport move with the pointer held is NOT re-pinned to the bottom', async ({
+    page,
+  }) => {
+    await bootWithSessions(page, 1);
+    await settleReplay(page);
+
+    await page.evaluate(async () => {
+      const st = window.__hive_state.terms.get(window.__hive_state.activeId);
+      await new Promise((r) => st.term.write('line\r\n'.repeat(500), r));
+      st.term.scrollToBottom();
+      st.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    // Hold well past USER_SCROLL_GRACE_MS (250ms) before the viewport
+    // moves. This is the case that needs the pointer-down latch rather
+    // than a mousedown timestamp: xterm's auto-scroll repeats on its own
+    // timer while the button is held STILL, so there is no later event to
+    // re-stamp from and the grace window would have expired.
+    await page.waitForTimeout(400);
+
+    const { viewportY, baseY, following } = await page.evaluate(() => {
+      const st = window.__hive_state.terms.get(window.__hive_state.activeId);
+      // Move the viewport the way the auto-scroll does — programmatically,
+      // with no wheel or key event of its own.
+      st.term.scrollLines(-30);
+      const buf = st.term.buffer.active;
+      return {
+        viewportY: buf.viewportY,
+        baseY: buf.baseY,
+        following: st._followBottom,
+      };
+    });
+    // Still up in history, and follow-intent released — a gesture-driven
+    // move away from the bottom is exactly what clears it.
+    expect(baseY - viewportY).toBeGreaterThan(1);
+    expect(following).toBe(false);
+
+    // Releasing outside the tile must clear the latch, or every later
+    // cap-trim drift would read as user-driven.
+    expect(
+      await page.evaluate(() => {
+        window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        return window.__hive_state.terms.get(window.__hive_state.activeId)
+          ._pointerDown;
+      }),
+    ).toBe(false);
+  });
 });
