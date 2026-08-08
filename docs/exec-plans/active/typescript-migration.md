@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–4 done, 1–3 merged; wave 5 next)
+- **Stage:** IMPLEMENT (waves 1–4 merged, wave 5a done; wave 5b next)
 - **Status:** active
 
 ## Summary
@@ -134,7 +134,11 @@ Wave notes:
   is not required for correctness. Leave `globalSetup.mjs`/`globalTeardown.mjs` as `.mjs`.
 - **5** — intra-wave edges only (`view`→`sidebar`→`modals/*`). Real `@xterm/*` types land
   **here**, not in wave 6: `test/dom/xterm-reflow.test.js:11` imports `@xterm/xterm`
-  directly. Splittable.
+  directly. **Split, as anticipated** — the whole wave produced 460 errors after the bulk
+  `git mv`. **5a** (landed): `banners`, `version-footer`, `modals/*` (5),
+  `test/unit/version-footer.test`, `test/dom/settings.test` — nothing in that set imports
+  anything else in the wave. **5b**: `sidebar`, `focus`, `view`,
+  `test/dom/{environment,selectors,xterm-reflow}.test`.
 - **6** — splittable into 2 PRs; no cycle exists. `session-term.js` (1,259 LOC) is the
   hardest file; expect the bulk of the errors.
 - **7** — last wave. No strictness ramp follows.
@@ -385,6 +389,50 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   `origin/main` at `87b70e3` fails **the same 5** with the diff stashed.
   Non-vacuity proved on all three converted files with planted errors
   (TS2322 in both harnesses, TS2304 in `bridge.ts`).
+
+- **2026-08-08** — Wave 5a complete: `banners`, `version-footer`, all five
+  `modals/*`, `test/unit/version-footer.test`, `test/dom/settings.test`.
+  `include` gained `test/dom/**/*` (invariant 6). The full wave was 460
+  errors, so it split along the one clean seam — nothing in 5a imports
+  anything else in wave 5.
+  - **`src/app/el.ts` is new, and the two wrappers in it are not
+    interchangeable.** dom.ts's private throwing `mustEl` moved there
+    unchanged; `pageEl<T>()` casts instead. Which one a module may use is
+    forced by its importers, not by taste: `keyboard.js` imports
+    `banners.js` and `view.js` imports `launcher.js`/`project-editor.js`,
+    so `attention-jump{,-integration}`, `nav-history` and `restart-hive`
+    pull those modules into jsdom mounting only the markup each test
+    exercises. A load-time throw would break tests for elements they
+    legitimately don't have. **Wave 5b and 6 inherit this constraint** —
+    check who imports a module before reaching for `mustEl`.
+  - **`DaemonStaleEvent` is hand-written** in `version-footer.ts`;
+    `banners.ts` imports it type-only. Same call as `SessionInfo`: the Go
+    struct crosses only via `EventsEmit`, never as a bound method's
+    return, so it is absent from the generated `models.ts` and invariant 3
+    doesn't apply. `UpdateInfo` / `CustomAgent`, which *are* generated,
+    come from `wailsjs/go/models` (type-only, erased before Vite).
+  - **Per-modal deps interfaces, not one shared type.** `help-overlay`
+    takes `focusActiveTerm`; the other three take `refocusActiveTerm`. A
+    union would loosen all four — the wave-2 lesson about narrower
+    parameter types, applied to injection.
+  - `splitCommand` is `(line: string | null)`: a test asserts
+    `splitCommand(null)` is `[]`, so `String(line || '')` is the contract.
+  - **Watch for `?.` erasure when converting.** Two optional-chained call
+    sites in `settings.ts` were rewritten to throwing lookups mid-pass and
+    put back. `?.` means the code tolerates absence; replacing it turns a
+    no-op focus into a TypeError. Same class as wave 2's `reset?.()`
+    regression, in the opposite direction.
+
+  Gates: typecheck/build/biome green, vitest 322 in 32 files (unchanged),
+  Playwright mock 79 passed + 1 skipped (unchanged) — itself the proof the
+  substitution still fires, since every one of those specs needs
+  `window.__hive`. e2e-real 7 passed / 5 failed, the same 5 wave 4
+  recorded against `main`. Non-vacuity proved with planted errors in
+  `banners.ts`, `launcher.ts` and `settings.test.ts`. The `dev-iso.sh` GUI
+  smoke was **not** run: 5a's whole surface (help overlay open/close + Tab
+  trap, version footer, launcher agent-select → create session, palette)
+  is already driven in a real browser by the mock e2e suite. It is still
+  owed for 5b and 6, which land `view`/`focus`/`keyboard`.
 
 ## Open questions
 
