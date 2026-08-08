@@ -10,9 +10,63 @@ import {
   serializeCollapsed,
   COLLAPSED_STORAGE_KEY,
 } from '../lib/collapsed.js';
-import { createNavHistory } from '../lib/nav-history.js';
+import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
+import type { ViewMode } from '../lib/view.js';
 
-export const state = {
+// Wire payloads from the daemon (internal/wire/control.go) are
+// snake_case; some paths also carry camelCase, so both spellings are
+// optional and call sites read `x_y ?? xY` (see selectors.ts). These
+// are NOT the generated wailsjs models — sessions/projects arrive over
+// EventsOn as raw JSON, so there is nothing generated to import.
+export interface SessionInfo {
+  id: string;
+  name?: string;
+  agent?: string;
+  color?: string;
+  order?: number;
+  alive?: boolean;
+  project_id?: string;
+  projectId?: string;
+  worktree_path?: string;
+  worktreePath?: string;
+  worktree_branch?: string;
+  worktreeBranch?: string;
+  // Why the dead-session overlay reads: events.js:131 and
+  // session-term.js:1173 both fall back off it.
+  last_error?: string;
+  lastError?: string;
+}
+
+export interface ProjectInfo {
+  id: string;
+  name?: string;
+  cwd?: string;
+  color?: string;
+  order?: number;
+}
+
+// SessionTerm (app/session-term.js) is still JS — wave 6. Until then the
+// registry is typed `unknown`, so wave-3 files can't pretend to know it.
+export interface AppState {
+  projects: ProjectInfo[];
+  sessions: SessionInfo[];
+  collapsed: Set<string>;
+  attention: Set<string>;
+  attentionReturnId: string | null;
+  attentionRestored: Set<string>;
+  nav: NavHistory;
+  minimized: Set<string>;
+  aliveById: Map<string, boolean>;
+  dismissedDead: Set<string>;
+  terms: Map<string, unknown>;
+  activeId: string | null;
+  currentProjectId: string | null;
+  view: ViewMode;
+  gridProjectId: string | null;
+  fontSize: number;
+}
+
+export const state: AppState = {
   projects: [], // ProjectInfo[] in display order
   sessions: [], // SessionInfo[] in display order
   collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
@@ -60,7 +114,7 @@ if (
   window.__hive_state = state;
 }
 
-export function loadSavedView() {
+export function loadSavedView(): ViewMode {
   try {
     return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY));
   } catch {
@@ -68,7 +122,7 @@ export function loadSavedView() {
   }
 }
 
-export function loadSavedCollapsed() {
+export function loadSavedCollapsed(): Set<string> {
   try {
     return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY));
   } catch {
@@ -76,7 +130,7 @@ export function loadSavedCollapsed() {
   }
 }
 
-export function saveCollapsed() {
+export function saveCollapsed(): void {
   try {
     localStorage.setItem(
       COLLAPSED_STORAGE_KEY,

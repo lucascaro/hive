@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (wave 1 done, unmerged)
+- **Stage:** IMPLEMENT (waves 1–3 merged; wave 4 next)
 - **Status:** active
 
 ## Summary
@@ -159,7 +159,11 @@ each split across waves.
 5. **Never widen `tsconfig.include` ahead of a wave.** The real mechanism: `include` does
    *not* bound the program — imported `.js` files enter it regardless — so the green `tsc`
    comes from `checkJs: false`, with `include` as belt-and-braces. The pair is what keeps
-   the staging honest.
+   the staging honest. **Corrected in wave 3:** "imported `.js` files enter it regardless"
+   only holds for files something in `include` actually imports. `src/lib/**` are leaves,
+   so nothing already in the program reaches `src/app/**` — it had to be added explicitly
+   (wave 3) or the converted files would be silently unchecked. Treat 6 as the general
+   rule and 5 as the narrow one.
 6. **But DO widen `include` in the same wave that converts a test directory.** The inverse
    of 5, and the sharper hazard: nothing imports a test file, so a `test/dom/*.test.ts`
    outside `include` never enters the program at all — it is silently unchecked, and `tsc`
@@ -312,6 +316,35 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
     carries three: `ReplayFlags` (bookkeeping only), `RebaselineTerm`
     (+ `term.cols`), `ReplayXterm` (`reset()` required). Optional means
     "the code branches on its absence" — nothing else.
+
+- **2026-08-08** — Wave 3 complete: `state`, `dom`, `selectors`, `trace`,
+  `inline-rename`, `modals/registry`, plus `src/globals.d.ts`. Two config
+  changes the plan didn't anticipate:
+  - **`include` had to gain `src/app/**/*`.** Invariant 5's "src/** is safe,
+    imports pull it in" is wrong for `src/app/`: the program roots are
+    `src/lib/**` + `test/unit/**`, and lib is leaves — nothing under them
+    imports app, so the wave-3 files would have sat outside the program,
+    silently unchecked with `tsc` green. Same trap as invariant 6, one
+    directory over. Every later wave must widen `include` with it.
+  - **`"types": []` → `["vite/client"]`.** `state.ts:57` gates the
+    `__hive_state` e2e affordance on `import.meta.env.VITE_WAILS_*`, which is
+    `TS2339` without it.
+  - `dom.ts` gained a 4-line `mustEl(id)` that throws: `getElementById`
+    returns `HTMLElement | null` and the three ids are index.html's contract,
+    not a runtime branch. Preferred over `!` because the throw names the id.
+  - `state.ts` now declares `SessionInfo` / `ProjectInfo` / `AppState`. These
+    are hand-written on purpose — sessions and projects arrive over `EventsOn`
+    as raw JSON and are **not** in the generated `wailsjs/go/models.ts` (which
+    holds only `AgentInfo`, `AttachInfo`, `CustomAgent`, `UpdateInfo`), so
+    invariant 3 doesn't apply. Both `snake_case` and `camelCase` spellings are
+    optional fields, matching the `x_y ?? xY` reads. `state.terms` is
+    `Map<string, unknown>` until `SessionTerm` is typed in wave 6.
+
+  Gates: typecheck/build/biome green, vitest 322 in 32 files (unchanged),
+  Playwright mock 79 passed + 1 skipped (unchanged). e2e-real fails 5 locally
+  — `main` at `1e82220` fails 6 of the same specs unstashed, so it's the known
+  local flake, not the diff. Non-vacuity re-proved with a planted
+  `const _probe: string = state.fontSize` in `selectors.ts` (TS2322).
 
 ## Open questions
 

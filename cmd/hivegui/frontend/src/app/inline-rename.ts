@@ -19,6 +19,16 @@
 //                      non-empty, changed value)
 //   onDone()        — called after every finish, commit or cancel
 //   beforeFocus()   — optional, run after mount but before focus/select
+export interface InlineRenameOpts {
+  mount: (input: HTMLInputElement) => void;
+  unmount: (input: HTMLInputElement) => void;
+  value: string;
+  className: string;
+  onCommit: (next: string) => void;
+  onDone?: () => void;
+  beforeFocus?: () => void;
+}
+
 export function beginInlineRename({
   mount,
   unmount,
@@ -27,7 +37,7 @@ export function beginInlineRename({
   onCommit,
   onDone,
   beforeFocus,
-}) {
+}: InlineRenameOpts): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = className;
@@ -37,7 +47,7 @@ export function beginInlineRename({
   input.focus();
   input.select();
   let done = false;
-  const finish = (commit) => {
+  const finish = (commit: boolean) => {
     if (done) return;
     done = true;
     const next = input.value.trim();

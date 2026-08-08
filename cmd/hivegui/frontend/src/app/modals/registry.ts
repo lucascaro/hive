@@ -6,12 +6,12 @@
 // replaces an explicit four-element classList check with the same
 // check over the registered set).
 
-const modals = [];
+const modals: Element[] = [];
 
-export function registerModal(el) {
+export function registerModal(el: Element | null | undefined): void {
   if (el) modals.push(el);
 }
 
-export function anyModalOpen() {
+export function anyModalOpen(): boolean {
   return modals.some((el) => !el.classList.contains('hidden'));
 }

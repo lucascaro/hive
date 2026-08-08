@@ -4,16 +4,27 @@
   // still pulled into the program transitively by imports, but never checked.
   //
   // `include` is scoped to the directories already converted and widens one
-  // wave at a time — see docs/exec-plans/active/typescript-migration.md. Note
-  // that `include` does NOT bound the program (imports pull files in
-  // regardless); the green build comes from `checkJs: false`, with `include`
-  // as belt-and-braces. Don't widen it ahead of a wave.
+  // wave at a time — see docs/exec-plans/active/typescript-migration.md.
+  //
+  // EVERY WAVE MUST WIDEN `include` WITH THE FILES IT CONVERTS. `include` does
+  // bound the program for any subtree nothing already in it imports, and the
+  // failure is silent: a converted file left outside never enters the program,
+  // so it goes unchecked while `tsc` stays green and the coverage claim reads
+  // as true. Wave 3 hit exactly this — `src/lib/**` are leaves, so nothing in
+  // the program reached `src/app/**`. Test dirs are the same trap: nothing
+  // imports a test file at all.
+  //
+  // The mixed tree stays green because of `checkJs: false` — un-migrated .js
+  // pulled in by imports is never checked — NOT because of `include`. So don't
+  // widen it ahead of a wave either; that just costs the belt-and-braces.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": [],
+    // vite/client supplies ImportMetaEnv (state.ts gates the __hive_state
+    // e2e affordance on import.meta.env.VITE_WAILS_*).
+    "types": ["vite/client"],
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
@@ -25,6 +36,11 @@
   // test/unit is safe to include wholesale from wave 1: the un-converted
   // *.test.js files land in the program but `checkJs: false` skips them, so
   // each test starts being checked exactly when it's renamed to .ts.
-  "include": ["src/lib/**/*", "test/unit/**/*"],
+  "include": [
+    "src/lib/**/*",
+    "src/app/**/*",
+    "src/globals.d.ts",
+    "test/unit/**/*"
+  ],
   "exclude": ["node_modules", "dist", "wailsjs"]
 }
