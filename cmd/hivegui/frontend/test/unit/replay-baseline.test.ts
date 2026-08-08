@@ -3,6 +3,7 @@ import {
   applyRebaseline,
   shouldRequestReplay,
   REPLAY_COL_THRESHOLD,
+  type ReplayTerm,
 } from '../../src/lib/scrollback.js';
 
 // Regression coverage for #208:
@@ -15,7 +16,17 @@ import {
 // applyRebaseline is the pure helper backing SessionTerm.rebaselineReplayCols.
 // These tests pin the contract so the fix can't quietly regress.
 
-function makeSt({ cols = 80, baseline, timer } = {}) {
+function makeSt({
+  cols = 80,
+  baseline,
+  timer,
+}: {
+  cols?: number;
+  baseline?: number;
+  timer?: number;
+} = {}): ReplayTerm & {
+  term: { cols: number };
+} {
   return {
     term: { cols },
     _replayBaselineCols: baseline,

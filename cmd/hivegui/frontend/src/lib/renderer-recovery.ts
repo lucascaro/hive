@@ -31,7 +31,10 @@ export function shouldRefreshOnVisibility(
 // when reattach failed.
 export interface ContextLossDeps {
   dispose(): void;
-  reattach(): boolean;
+  // Returns `unknown`, not `boolean`: the body coerces with `=== true`
+  // precisely so a reattach that accidentally returns the addon instance
+  // is treated as failure. Typing it `boolean` would delete that contract.
+  reattach(): unknown;
   refresh(): void;
 }
 

@@ -12,8 +12,8 @@ import {
 const all = () => true;
 // exists predicate over an explicit live set.
 const only =
-  (...ids) =>
-  (id) =>
+  (...ids: string[]) =>
+  (id: string) =>
     ids.includes(id);
 
 describe('pushNav', () => {

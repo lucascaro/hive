@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { emptyStateModel } from '../../src/lib/empty-state.js';
 
-const sess = (id, pid) => ({ id, project_id: pid });
+const sess = (id: string, pid: string) => ({ id, project_id: pid });
 
 describe('emptyStateModel', () => {
   it('first-run when there are no sessions at all', () => {
@@ -10,16 +10,16 @@ describe('emptyStateModel', () => {
       sessions: [],
       isMac: true,
     });
-    expect(m.kind).toBe('first-run');
-    expect(m.hint).toContain('⌘T');
-    expect(m.actions.map((a) => a.id)).toEqual(['new-session']);
+    expect(m?.kind).toBe('first-run');
+    expect(m?.hint).toContain('⌘T');
+    expect(m?.actions.map((a) => a.id)).toEqual(['new-session']);
   });
 
   it('first-run with zero projects also offers New Project', () => {
     const m = emptyStateModel({ projects: [], sessions: [], isMac: false });
-    expect(m.kind).toBe('first-run');
-    expect(m.hint).toContain('Ctrl+T');
-    expect(m.actions.map((a) => a.id)).toEqual(['new-session', 'new-project']);
+    expect(m?.kind).toBe('first-run');
+    expect(m?.hint).toContain('Ctrl+T');
+    expect(m?.actions.map((a) => a.id)).toEqual(['new-session', 'new-project']);
   });
 
   it('project-empty when the current project has no sessions', () => {
@@ -30,8 +30,8 @@ describe('emptyStateModel', () => {
       currentProjectId: 'p2',
       isMac: true,
     });
-    expect(m.kind).toBe('project-empty');
-    expect(m.actions.map((a) => a.id)).toEqual(['new-session']);
+    expect(m?.kind).toBe('project-empty');
+    expect(m?.actions.map((a) => a.id)).toEqual(['new-session']);
   });
 
   it('grid-project scopes to gridProjectId', () => {
@@ -42,7 +42,7 @@ describe('emptyStateModel', () => {
       gridProjectId: 'p2',
       isMac: true,
     });
-    expect(m.kind).toBe('project-empty');
+    expect(m?.kind).toBe('project-empty');
   });
 
   it('all-minimized in grid when every scoped session is minimized', () => {
@@ -54,8 +54,8 @@ describe('emptyStateModel', () => {
       minimized: new Set(['s1', 's2']),
       isMac: true,
     });
-    expect(m.kind).toBe('all-minimized');
-    expect(m.actions).toEqual([]);
+    expect(m?.kind).toBe('all-minimized');
+    expect(m?.actions).toEqual([]);
   });
 
   it('null when sessions are visible', () => {

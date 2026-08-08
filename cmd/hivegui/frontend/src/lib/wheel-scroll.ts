@@ -41,7 +41,7 @@ export function shouldScrollViewport({
   bufferType,
   mouseTrackingMode,
 }: {
-  bufferType?: string;
+  bufferType?: string | null;
   mouseTrackingMode?: string | null;
 }): boolean {
   if (bufferType !== 'normal') return false;

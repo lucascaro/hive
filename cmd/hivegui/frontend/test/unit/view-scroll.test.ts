@@ -1,8 +1,28 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
 import { snapVisibleTermsToBottom } from '../../src/lib/view-scroll.js';
 import { handleScrollbackEvent } from '../../src/lib/scrollback.js';
 
-function makeTerm({ attached = true, h = 200 } = {}) {
+// Local mock shape. Deliberately not `SnapTarget` / `ReplayTerm`: the
+// assertions need the concrete vi.fn() type, and structural
+// compatibility with the real params is proved at every call site
+// below. The `_replay*` / `_followBottom` fields are the mutations
+// under test, so they must be declared here to be readable after.
+interface MockTerm {
+  attached: boolean;
+  body: { clientHeight: number };
+  term: {
+    scrollToBottom: Mock<() => void>;
+    write?: Mock<(data: string, cb?: () => void) => void>;
+    reset?: Mock<() => void>;
+    scrollToLine?: Mock<(line: number) => void>;
+    buffer?: { active: { baseY: number; viewportY: number } };
+  };
+  _replayWantsBottom?: boolean;
+  _followBottom?: boolean;
+  _replayPrevFromBottom?: number;
+}
+
+function makeTerm({ attached = true, h = 200 } = {}): MockTerm {
   return {
     attached,
     body: { clientHeight: h },
@@ -106,14 +126,14 @@ describe('snapVisibleTermsToBottom', () => {
     // scrollToBottom alone leaves the viewport stranded off-bottom.
     // The snap must also enqueue a parse-ordered re-snap that runs
     // only after the queue flushes.
-    const queue = [];
-    const st = {
+    const queue: (() => void)[] = [];
+    const st: MockTerm = {
       attached: true,
       body: { clientHeight: 200 },
       term: {
         scrollToBottom: vi.fn(),
-        write: vi.fn((_data, cb) => {
-          queue.push(cb);
+        write: vi.fn((_data: string, cb?: () => void) => {
+          if (cb) queue.push(cb);
         }),
       },
     };
@@ -143,8 +163,8 @@ describe('snapVisibleTermsToBottom', () => {
     // can only win by deleting the captured distance — setting
     // wantsBottom=true arrives too late for the latched done. Mock an
     // xterm-like async write queue to pin that ordering down.
-    const queue = [];
-    const st = {
+    const queue: (() => void)[] = [];
+    const st: MockTerm = {
       attached: true,
       body: { clientHeight: 200 },
       term: {
@@ -152,8 +172,8 @@ describe('snapVisibleTermsToBottom', () => {
         reset: vi.fn(),
         scrollToBottom: vi.fn(),
         scrollToLine: vi.fn(),
-        write: vi.fn((_data, cb) => {
-          queue.push(cb);
+        write: vi.fn((_data: string, cb?: () => void) => {
+          if (cb) queue.push(cb);
         }),
       },
     };

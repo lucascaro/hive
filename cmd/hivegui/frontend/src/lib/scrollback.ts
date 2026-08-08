@@ -23,7 +23,7 @@ export const REPLAY_DEBOUNCE_MS = 100;
 export interface ReplayXterm {
   cols?: number;
   buffer?: { active?: { baseY?: number; viewportY?: number } };
-  reset(): void;
+  reset?(): void;
   write?(data: string, callback?: () => void): void;
   scrollToBottom?(): void;
   scrollToLine?(line: number): void;
@@ -238,11 +238,11 @@ export function handleScrollbackEvent(
       if (typeof term.write === 'function') {
         term.write('', () => {
           capture();
-          term.reset();
+          term.reset?.();
         });
       } else {
         capture();
-        term.reset();
+        term.reset?.();
       }
       // The decoder resets immediately: writeData decodes at event
       // time (queueing decoded strings), so decode order == event
