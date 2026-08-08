@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 // Boots `vite dev` with VITE_WAILS_MOCK=1, so the frontend loads
 // against the in-browser fake of the Wails bridge defined in
-// test/e2e/wails-mock.js. Tests drive the UI and can inject daemon
+// test/e2e/wails-mock.ts. Tests drive the UI and can inject daemon
 // events through window.__hive.
 export default defineConfig({
   testDir: './test/e2e',
