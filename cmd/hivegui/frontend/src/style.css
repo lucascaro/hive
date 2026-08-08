@@ -785,7 +785,8 @@ body.resizing-sidebar #app { transition: none; }
   border: 1px solid #2a2a2a;
   border-radius: 6px;
   padding: 4px;
-  min-width: 180px;
+  /* Wide enough that the filter box's placeholder isn't clipped. */
+  min-width: 220px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.6);
   /* Must clear #sidebar-resizer (z-index 20). Neither #sidebar
      (position: relative, no z-index) nor #app (plain grid, no
@@ -800,6 +801,21 @@ body.resizing-sidebar #app { transition: none; }
   font-size: 12.5px;
 }
 #launcher.hidden { display: none; }
+
+.launcher-search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #1f1f1f;
+  color: #eee;
+  font: inherit;
+  outline: none;
+}
+.launcher-search::placeholder { color: #666; }
 
 .launcher-item {
   display: flex;
