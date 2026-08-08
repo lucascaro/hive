@@ -3,22 +3,34 @@
 // Moved verbatim from main.js. ensureTerm is injected (session-term
 // imports this module, so the reverse edge must be a dep).
 
-import { state } from './state.js';
+import { state, type SessionInfo, type TermTile } from './state.js';
 import {
   decideFocusAction,
   ACTION_CLEAR,
   ACTION_PRESERVE,
   ACTION_FOCUS,
+  type FocusSnapshot,
 } from '../lib/focus.js';
 import { anyModalOpen } from './modals/registry.js';
 import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 
-let _deps = {
-  ensureTerm: () => {},
-};
+// Exported so main.js's injection site can be checked against it once
+// wave 7 converts the composition root.
+export interface FocusDeps {
+  ensureTerm: (info: SessionInfo) => TermTile;
+}
 
-export function initFocus(injected) {
+// `_deps` is currently write-only — main.js:218 injects ensureTerm and
+// nothing in this module reads it. Kept because removing it means editing
+// main.js, a wave-7 file; a deletion candidate for wave 6. Partial<> with
+// no stub rather than the old `{ ensureTerm: () => {} }`: that stub could
+// never satisfy FocusDeps (it returns void, not a TermTile), and since
+// nothing reads the field, dropping it is behavior-identical. A future
+// reader gets `ensureTerm?` and is forced to guard.
+let _deps: Partial<FocusDeps> = {};
+
+export function initFocus(injected: FocusDeps) {
   _deps = injected;
 }
 
@@ -33,7 +45,7 @@ export function initFocus(injected) {
 // flag stuck on and silently stop recording for the rest of the session.
 let _navSuppress = false;
 
-export function withoutNavHistory(fn) {
+export function withoutNavHistory<T>(fn: () => T): T {
   _navSuppress = true;
   try {
     return fn();
@@ -42,7 +54,7 @@ export function withoutNavHistory(fn) {
   }
 }
 
-export function setActive(id) {
+export function setActive(id: string | null) {
   // Record the DEPARTURE before activeId is overwritten. This lives in
   // setActive rather than switchTo because four selection paths reach
   // setActive directly and would otherwise go unrecorded: tile mousedown
@@ -104,9 +116,9 @@ export function setActive(id) {
 // keystroke's event-loop turn. It is armed only for a short window after a
 // real-tile focus request and only acts while that tile is still active and
 // no modal/rename legitimately owns the keyboard — so it never traps focus.
-let _focusGuard = null; // { id, until } | null
+let _focusGuard: { id: string; until: number } | null = null;
 
-function armFocusGuard(id) {
+function armFocusGuard(id: string) {
   _focusGuard = { id, until: performance.now() + 500 };
 }
 
@@ -123,7 +135,9 @@ document.addEventListener(
     if (focusSnapshot(g.id).modalOpen) return; // modal/rename owns keyboard
     const st = state.terms.get(g.id);
     if (!st) return;
-    const ta = st.host.querySelector('.xterm-helper-textarea');
+    const ta = st.host.querySelector<HTMLTextAreaElement>(
+      '.xterm-helper-textarea',
+    );
     if (!ta || e.target !== ta) return; // only when OUR textarea blurs
     // Only reclaim a transient blur to nothing/<body>; never override the
     // user intentionally focusing another control.
@@ -134,7 +148,7 @@ document.addEventListener(
   true,
 );
 
-export function setFocusedTile(id) {
+export function setFocusedTile(id: string | null) {
   // First decision: synchronous, before any rAF. If we already know we
   // should clear, do it immediately so a modal/null transition can't be
   // overtaken by a stale in-flight focus rAF.
@@ -152,7 +166,7 @@ export function setFocusedTile(id) {
   requestAnimationFrame(() => applyFocus(id, /*attempt=*/ 0));
 }
 
-function applyFocus(id, attempt) {
+function applyFocus(id: string, attempt: number) {
   const st = state.terms.get(id);
   if (!st) {
     sweepFocusBorder();
@@ -190,7 +204,9 @@ function applyFocus(id, attempt) {
   // synchronous display:none flip during renderGrid's parent class
   // swap (single → grid) fires focusout. ta.focus() drives the real
   // event; the follow-up term.focus() resyncs xterm's internal state.
-  const ta = st.host.querySelector('.xterm-helper-textarea');
+  const ta = st.host.querySelector<HTMLTextAreaElement>(
+    '.xterm-helper-textarea',
+  );
   // Only drive focus when it has actually drifted off the target
   // textarea. Re-focusing an already-focused xterm helper-textarea is
   // NOT a harmless no-op: it clears the textarea's pending input mid-
@@ -240,7 +256,7 @@ function sweepFocusBorder() {
   }
 }
 
-function focusSnapshot(id) {
+function focusSnapshot(id: string | null): FocusSnapshot {
   const ae = document.activeElement;
   return {
     id,
@@ -259,12 +275,14 @@ function debugFocusEnabled() {
   }
 }
 
-function scheduleFocusConsistencyCheck(id) {
+function scheduleFocusConsistencyCheck(id: string) {
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
       const st = state.terms.get(id);
       if (!st) return;
-      const ta = st.host.querySelector('.xterm-helper-textarea');
+      const ta = st.host.querySelector<HTMLTextAreaElement>(
+        '.xterm-helper-textarea',
+      );
       const ae = document.activeElement;
       const focusedHost = ae ? ae.closest('.term-host') : null;
       if (focusedHost !== st.host || ae !== ta) {

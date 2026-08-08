@@ -3,7 +3,7 @@ import { state } from '../../src/app/state.js';
 import { nextAttentionId } from '../../src/app/selectors.js';
 
 // Three sessions in one project, display order a → b → c.
-function seed(activeId, flagged = []) {
+function seed(activeId: string | null, flagged: string[] = []) {
   state.projects = [{ id: 'p1' }];
   state.sessions = [
     { id: 'a', project_id: 'p1', order: 0 },

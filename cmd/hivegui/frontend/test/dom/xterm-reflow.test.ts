@@ -10,15 +10,20 @@
 import { describe, it, expect } from 'vitest';
 import { Terminal } from '@xterm/xterm';
 
-function write(term, data) {
-  return new Promise((resolve) => term.write(data, resolve));
+function write(term: Terminal, data: string): Promise<void> {
+  return new Promise<void>((resolve) => term.write(data, resolve));
+}
+
+interface LogicalLine {
+  text: string;
+  rows: number;
 }
 
 // Count the physical rows a logical line occupies (1 + wrapped continuations)
 // and reconstruct its text across the wrap boundary.
-function logicalLines(term) {
+function logicalLines(term: Terminal): LogicalLine[] {
   const buf = term.buffer.active;
-  const lines = [];
+  const lines: LogicalLine[] = [];
   for (let i = 0; i < buf.length; i++) {
     const line = buf.getLine(i);
     if (!line) continue;
@@ -33,15 +38,23 @@ function logicalLines(term) {
   return lines.filter((l) => l.text.length);
 }
 
+// The wrapped 'xxx…' line must exist at every assertion point below.
+// Throwing here (rather than asserting on `undefined.text`) keeps a
+// missing line reading as a missing line — the old code got the same
+// failure from a TypeError.
+function xLine(term: Terminal): LogicalLine {
+  const found = logicalLines(term).find((l) => l.text.startsWith('x'));
+  if (!found) throw new Error('no wrapped x-line in the buffer');
+  return found;
+}
+
 describe('xterm.js native reflow on resize', () => {
   it('does not lose or corrupt a long line across widen + narrow', async () => {
     const term = new Terminal({ cols: 20, rows: 6, scrollback: 1000 });
     // 60 visible chars, no newline → wraps at width 20.
     const sixty = 'x'.repeat(60);
     await write(term, sixty);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
-      sixty,
-    );
+    expect(xLine(term).text).toBe(sixty);
 
     // Content must survive a resize in both directions (no data loss). NOTE:
     // whether xterm *re-wraps* (3 rows → 2 on widening) is renderer-dependent
@@ -49,13 +62,9 @@ describe('xterm.js native reflow on resize', () => {
     // verify reflow visually in a real browser before trusting it to replace
     // the daemon replay. Here we only assert the safe invariant: no corruption.
     term.resize(40, 6);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
-      sixty,
-    );
+    expect(xLine(term).text).toBe(sixty);
     term.resize(20, 6);
-    expect(logicalLines(term).find((l) => l.text.startsWith('x')).text).toBe(
-      sixty,
-    );
+    expect(xLine(term).text).toBe(sixty);
   });
 
   it('preserves scrollback content across a resize', async () => {

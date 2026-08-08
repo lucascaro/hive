@@ -137,7 +137,11 @@ export function activateLauncherSelection() {
   launchSelected(it.agent.id);
 }
 
-export function openLauncher(projectId: string | null, opts?: LauncherOpts) {
+// projectId is optional, not just nullable: main.js, keyboard.js and
+// view.ts all call openLauncher() bare and let the `|| activeProjectId()`
+// fallback below pick the project. Wave 5a typed it as required because
+// every one of those callers was still unchecked JS.
+export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   launcherState.projectId = projectId || activeProjectId();
   // Re-read the sticky pref each open so a one-shot forceWorktree from a
   // previous opening doesn't leak into the next regular open. forceWorktree

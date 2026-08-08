@@ -45,8 +45,34 @@ export interface ProjectInfo {
   order?: number;
 }
 
-// SessionTerm (app/session-term.js) is still JS — wave 6. Until then the
-// registry is typed `unknown`, so wave-3 files can't pretend to know it.
+// A structural view of SessionTerm (app/session-term.js), which is still
+// JS until wave 6. Wave 3 typed the registry `unknown` so its files
+// couldn't pretend to know the class; wave 5b reverses that, because
+// view.ts and focus.ts touch these members at ~30 sites and the
+// alternative is 12 unchecked `as` casts at the `state.terms.get()`
+// calls. This lists only what app modules actually reach for — wave 6
+// replaces it with SessionTerm's own type, which must then satisfy this
+// shape or widen it deliberately.
+//
+// `term` stays optional and structural rather than `import { Terminal }`
+// so a TermTile is still assignable to SnapTarget (lib/view-scroll.ts) —
+// which view.ts relies on at snapVisibleTermsToBottom(). The shared
+// `term` key is also what keeps that assignment out of TS's weak-type
+// check, since every SnapTarget member is optional.
+export interface TermTile {
+  host: HTMLElement;
+  termTitle?: string;
+  term?: {
+    focus?: () => void;
+    scrollToBottom?: () => void;
+    write?: (data: string, callback?: () => void) => void;
+  } | null;
+  show(): void;
+  hide(): void;
+  ensureAttached(): void;
+  rebaselineReplayCols(reason: string): void;
+}
+
 export interface AppState {
   projects: ProjectInfo[];
   sessions: SessionInfo[];
@@ -58,7 +84,7 @@ export interface AppState {
   minimized: Set<string>;
   aliveById: Map<string, boolean>;
   dismissedDead: Set<string>;
-  terms: Map<string, unknown>;
+  terms: Map<string, TermTile>;
   activeId: string | null;
   currentProjectId: string | null;
   view: ViewMode;

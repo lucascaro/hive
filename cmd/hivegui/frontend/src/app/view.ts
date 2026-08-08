@@ -6,31 +6,58 @@
 // and main.js.
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
-import { state } from './state.js';
+import { state, type SessionInfo, type TermTile } from './state.js';
 import { termsHost, setStatus } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
-import { buildGridLayout, computeSpatialMove } from '../lib/grid.js';
-import { VIEW_STORAGE_KEY } from '../lib/view.js';
+import {
+  buildGridLayout,
+  computeSpatialMove,
+  type GridLayout,
+} from '../lib/grid.js';
+import { VIEW_STORAGE_KEY, type ViewMode } from '../lib/view.js';
 import { filterMinimized } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { emptyStateModel } from '../lib/empty-state.js';
 import { isMac } from '../lib/platform.js';
+import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 
-let deps = {
-  ensureTerm: () => {},
+// Per-module deps (view wants focusActiveTerm where sidebar wants
+// refocusActiveTerm). Exported so wave 7 can check main.js's injection.
+export interface ViewDeps {
+  ensureTerm: (info: SessionInfo) => TermTile;
+  setActive: (id: string | null) => void;
+  focusActiveTerm: () => void;
+  // Only the two members this module reaches for, not the whole
+  // ScrollTrace: the real trace.ts export satisfies it, and so do the
+  // test stubs, which carry no ring/counters. Requiring more than the
+  // consumer uses is the same over-tightening 5a rejected for the modals.
+  scrollTrace: Pick<ScrollTrace, 'rec' | 'count'>;
+}
+
+let deps: ViewDeps = {
+  // Pre-initView stub. There is no TermTile to hand back, and the cast
+  // is confined to this default: every real path goes through
+  // initView(). Kept as a no-op rather than a throw because switchTo()
+  // discards the return value, so an uninjected call is a no-op today —
+  // renderGrid's `st.host` is what actually fails, as it already does.
+  ensureTerm: () => undefined as unknown as TermTile,
   setActive: () => {},
   focusActiveTerm: () => {},
-  scrollTrace: { rec: Object.assign(() => {}, { enabled: false }) },
+  // A real disabled tracer instead of a hand-rolled `{ rec }` literal:
+  // that literal was already missing `.count()`, which two call sites
+  // below use. enabled:false short-circuits inside both rec and count,
+  // so the no-op behavior is unchanged and the stub can't drift again.
+  scrollTrace: createScrollTrace({ enabled: false }),
 };
 
-export function initView(injected) {
+export function initView(injected: ViewDeps) {
   deps = injected;
 }
 
-export function showSingle(id) {
+export function showSingle(id: string | null) {
   termsHost.classList.add('single');
   termsHost.classList.remove('grid');
   // Hide everything except the active tile.
@@ -43,13 +70,13 @@ export function showSingle(id) {
   if (st) st.ensureAttached();
 }
 
-export function switchTo(id) {
+export function switchTo(id: string | null) {
   if (id === state.activeId && state.view === 'single') {
     deps.focusActiveTerm();
     return;
   }
   deps.setActive(id);
-  let info = null;
+  let info: SessionInfo | null | undefined = null;
   if (id) {
     info = state.sessions.find((s) => s.id === id);
     if (info) deps.ensureTerm(info);
@@ -63,7 +90,7 @@ export function switchTo(id) {
   if (state.view === 'single') showSingle(id);
   else renderGrid();
   updateSidebarSelection();
-  setStatus(info ? info.name : '');
+  setStatus(info ? (info.name ?? '') : '');
   updateAppTitle();
   // setActive() called focusActiveTerm() before ensureTerm() existed
   // for a brand-new session — re-focus now that the SessionTerm is
@@ -90,7 +117,7 @@ export function switchTo(id) {
 // or progress encoders can fire OSC 0/2 dozens of times per second,
 // and each WindowSetTitle is a Wails IPC round-trip. 100ms keeps the
 // title visibly responsive without flooding the bridge.
-let _appTitleTimer = null;
+let _appTitleTimer: number | null = null;
 export function updateAppTitle() {
   if (_appTitleTimer) return;
   _appTitleTimer = setTimeout(() => {
@@ -115,7 +142,7 @@ export function updateAppTitle() {
 // retargets the grid, and in any mode it makes the project's first
 // session the active one. Empty projects are still selectable —
 // currentProjectId is set so ⌘N targets them correctly.
-export function switchToProject(pid) {
+export function switchToProject(pid: string) {
   if (!pid) return;
   state.currentProjectId = pid;
   if (state.view === 'grid-project') state.gridProjectId = pid;
@@ -136,7 +163,7 @@ export function switchToProject(pid) {
 // to recompute. assignments[i] = { row, col, rowSpan } — tiles above
 // last-row empty cells extend downward to fill the grid (matches
 // current Hive's behavior). cellMap[row*cols + col] = session index.
-let gridLayout = {
+let gridLayout: GridLayout & { sessions: SessionInfo[] } = {
   rows: 1,
   cols: 1,
   sessions: [],
@@ -156,11 +183,11 @@ let gridLayout = {
 // scrolled up in history across a relayout.
 // requestIdleCallback isn't available in all webviews; fall back to a
 // short-timeout chain so the stagger still happens.
-const _ric = (cb) =>
+const _ric = (cb: () => void) =>
   typeof requestIdleCallback === 'function'
     ? requestIdleCallback(cb, { timeout: 500 })
     : setTimeout(cb, 16);
-function attachDeferred(terms) {
+function attachDeferred(terms: TermTile[]) {
   let i = 0;
   const step = () => {
     if (i >= terms.length) return;
@@ -227,7 +254,7 @@ export function renderGrid() {
   // Move tiles into the desired DOM order (row-major) so that flexbox
   // / CSS grid honors the navigation order without us having to set
   // grid-row/column explicitly.
-  const _deferred = [];
+  const _deferred: TermTile[] = [];
   for (const info of gridSessions) {
     const existed = state.terms.has(info.id);
     const st = deps.ensureTerm(info);
@@ -308,7 +335,7 @@ export function renderGrid() {
 // Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
 // 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
 // "right" from tile 2 lands on tile 1 instead of doing nothing.
-export function gridSpatialMove(dCol, dRow) {
+export function gridSpatialMove(dCol: number, dRow: number) {
   const { sessions } = gridLayout;
   if (sessions.length === 0) return;
   const idx = sessions.findIndex((s) => s.id === state.activeId);
@@ -323,10 +350,10 @@ export function gridSpatialMove(dCol, dRow) {
   deps.setActive(sessions[target].id);
   renderGrid();
   updateSidebarSelection();
-  setStatus(sessions[target].name);
+  setStatus(sessions[target].name ?? '');
 }
 
-export function shiftActiveProject(delta) {
+export function shiftActiveProject(delta: number) {
   if (state.projects.length === 0) return;
   const cur = activeProjectId();
   const i = state.projects.findIndex((p) => p.id === cur);
@@ -373,7 +400,7 @@ export function gridScopeSessions() {
 // state.minimized. The session stays alive; its tile is removed on the
 // next renderGrid(). Single-session mode is unaffected — the user can
 // still switch to a minimized session via the sidebar / palette / ⌘[/].
-export function minimizeSession(id) {
+export function minimizeSession(id: string | null) {
   if (!id || state.minimized.has(id)) return;
   state.minimized.add(id);
   // If the active session is the one being minimized while in grid
@@ -392,7 +419,7 @@ export function minimizeSession(id) {
 
 // restoreSession removes a session from state.minimized and switches
 // to it. Works from any view — switchTo handles the view-aware repaint.
-export function restoreSession(id) {
+export function restoreSession(id: string | null) {
   if (!id) return;
   state.minimized.delete(id);
   renderMinimizedTray();
@@ -453,7 +480,7 @@ export function renderMinimizedTray() {
 
     const name = document.createElement('span');
     name.className = 'min-chip-name';
-    name.textContent = info.name;
+    name.textContent = info.name ?? '';
     chip.append(name);
 
     const pid = info.projectId ?? info.project_id;
@@ -482,14 +509,21 @@ export function renderMinimizedTray() {
 // onto the #empty-state element. Cheap enough to call from every
 // repaint path — DOM is rebuilt only when the model changes.
 export function renderEmptyState() {
+  // getElementById + a guard, deliberately not el.ts's mustEl/pageEl:
+  // this runs on every repaint, not at load, so absence is a tolerated
+  // branch (keyboard.js imports this module into DOM tests that mount
+  // only the markup they exercise) rather than a contract to assert.
   const el = document.getElementById('empty-state');
   if (!el) return;
   const model = emptyStateModel({
     projects: state.projects,
     sessions: state.sessions,
     view: state.view,
-    currentProjectId: state.currentProjectId,
-    gridProjectId: state.gridProjectId,
+    // `?? undefined`, not a widening of EmptyStateInput to `| null`: its
+    // `= ''` parameter defaults fire on undefined only, so accepting null
+    // there would change which default applies.
+    currentProjectId: state.currentProjectId ?? undefined,
+    gridProjectId: state.gridProjectId ?? undefined,
     minimized: state.minimized,
     isMac,
   });
@@ -537,7 +571,7 @@ export function renderEmptyState() {
   el.classList.remove('hidden');
 }
 
-export function setView(view) {
+export function setView(view: ViewMode) {
   state.view = view;
   try {
     localStorage.setItem(VIEW_STORAGE_KEY, view);

@@ -6,14 +6,30 @@
 // live in main.js until later stages.
 
 import { UpdateSession, UpdateProject } from '../bridge.js';
-import { state, saveCollapsed } from './state.js';
+import {
+  state,
+  saveCollapsed,
+  type ProjectInfo,
+  type SessionInfo,
+} from './state.js';
 import { projectsUL, reportFailure } from './dom.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { beginInlineRename } from './inline-rename.js';
 
-let deps = {
+// Per-module, not a shared deps union: sidebar wants refocusActiveTerm
+// where view wants focusActiveTerm, and one union type would loosen both.
+// Exported so wave 7 can check main.js's injection site against it.
+export interface SidebarDeps {
+  switchTo: (id: string) => void;
+  switchToProject: (pid: string) => void;
+  confirmAndDeleteProject: (p: ProjectInfo) => void;
+  renderEmptyState: () => void;
+  refocusActiveTerm: () => void;
+}
+
+let deps: SidebarDeps = {
   switchTo: () => {},
   switchToProject: () => {},
   confirmAndDeleteProject: () => {},
@@ -21,7 +37,7 @@ let deps = {
   refocusActiveTerm: () => {},
 };
 
-export function initSidebar(injected) {
+export function initSidebar(injected: SidebarDeps) {
   deps = injected;
 }
 
@@ -42,13 +58,16 @@ export function renderSidebar() {
 // dblclick because the LI was a different node by the second click).
 export function updateSidebarSelection() {
   const activePID = activeProjectId();
-  for (const el of projectsUL.querySelectorAll('.project')) {
+  for (const el of projectsUL.querySelectorAll<HTMLElement>('.project')) {
     el.classList.toggle('active', el.dataset.pid === activePID);
   }
-  for (const el of projectsUL.querySelectorAll('.session-item')) {
+  for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
     const sid = el.dataset.sid;
     el.classList.toggle('selected', sid === state.activeId);
-    el.classList.toggle('attention', state.attention.has(sid));
+    // `sid ?? ''` rather than widening the Set: an unset data-sid and the
+    // empty string are both absent from state.attention, so this is the
+    // same false the old `has(undefined)` produced.
+    el.classList.toggle('attention', state.attention.has(sid ?? ''));
   }
   // The switch paths (switchTo / switchToProject / shiftActiveProject)
   // end here without a sidebar rebuild — re-evaluate the empty state
@@ -57,7 +76,7 @@ export function updateSidebarSelection() {
   deps.renderEmptyState();
 }
 
-function renderProject(p, activePID) {
+function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'project';
   li.dataset.pid = p.id;
@@ -94,8 +113,8 @@ function renderProject(p, activePID) {
 
   const name = document.createElement('span');
   name.className = 'project-name';
-  name.textContent = p.name;
-  name.title = p.cwd ? `${p.name} — ${p.cwd}` : p.name;
+  name.textContent = p.name ?? '';
+  name.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
 
   const actions = document.createElement('span');
   actions.className = 'project-actions';
@@ -132,7 +151,9 @@ function renderProject(p, activePID) {
     // not on buttons / caret / inline inputs. Each of those stops
     // propagation in its own handler so we shouldn't see them here,
     // but be defensive.
-    if (e.target.closest('.project-actions') || e.target === caret) return;
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    if (t.closest('.project-actions') || t === caret) return;
     deps.switchToProject(p.id);
   });
   header.addEventListener('dblclick', (e) => {
@@ -157,19 +178,21 @@ function renderProject(p, activePID) {
   // the project chrome (action buttons, rename input) we DO want to
   // abort, since the li itself is the closest draggable.
   li.addEventListener('dragstart', (e) => {
-    if (e.target.closest('.session-item')) {
-      // Bubbled from an inner session drag — leave it alone.
-      return;
+    const t = e.target;
+    if (t instanceof Element) {
+      if (t.closest('.session-item')) {
+        // Bubbled from an inner session drag — leave it alone.
+        return;
+      }
+      if (t.closest('.project-actions') || t.closest('.project-name-input')) {
+        e.preventDefault();
+        return;
+      }
     }
-    if (
-      e.target.closest('.project-actions') ||
-      e.target.closest('.project-name-input')
-    ) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/x-hive-project', p.id);
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    dt.effectAllowed = 'move';
+    dt.setData('text/x-hive-project', p.id);
     li.classList.add('dragging');
   });
   li.addEventListener('dragend', () => {
@@ -181,9 +204,10 @@ function renderProject(p, activePID) {
       });
   });
   li.addEventListener('dragover', (e) => {
-    if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
+    const dt = e.dataTransfer;
+    if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    dt.dropEffect = 'move';
     // Use the header's bounds (not the whole li): with sessions
     // expanded, the li is tall, the cursor is almost always above
     // its midpoint, and the indicator would land far from the
@@ -197,14 +221,17 @@ function renderProject(p, activePID) {
   li.addEventListener('dragleave', (e) => {
     // Only clear when leaving the li entirely; dragover into a child
     // re-fires and re-asserts the right class.
-    if (!li.contains(e.relatedTarget)) {
+    // `contains(null)` is false, so a relatedTarget that isn't a Node
+    // takes the same "left the li" branch it takes today.
+    if (!(e.relatedTarget instanceof Node) || !li.contains(e.relatedTarget)) {
       li.classList.remove('drop-above', 'drop-below');
     }
   });
   li.addEventListener('drop', (e) => {
-    if (!e.dataTransfer.types.includes('text/x-hive-project')) return;
+    const dt = e.dataTransfer;
+    if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
-    const pid = e.dataTransfer.getData('text/x-hive-project');
+    const pid = dt.getData('text/x-hive-project');
     li.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
@@ -218,7 +245,11 @@ function renderProject(p, activePID) {
 // Order index expected by UpdateProject. The daemon's moveProjectLocked
 // removes the dragged project then inserts at newOrder, so we
 // compensate when the source sits before the target.
-function reorderDroppedProject(draggedID, targetID, above) {
+function reorderDroppedProject(
+  draggedID: string,
+  targetID: string,
+  above: boolean,
+) {
   const ordered = [...state.projects].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
@@ -233,7 +264,7 @@ function reorderDroppedProject(draggedID, targetID, above) {
   );
 }
 
-function renderSession(s, projectColor) {
+function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'session-item';
   if (s.id === state.activeId) li.classList.add('selected');
@@ -250,12 +281,12 @@ function renderSession(s, projectColor) {
 
   const name = document.createElement('span');
   name.className = 'name';
-  name.textContent = s.name;
+  name.textContent = s.name ?? '';
 
   // Worktree glyph: shown when the session is backed by a git
   // worktree. Tooltip = branch name.
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
-  let glyph = null;
+  let glyph: HTMLSpanElement | null = null;
   if (wtBranch) {
     glyph = document.createElement('span');
     glyph.className = 'worktree-glyph';
@@ -268,8 +299,10 @@ function renderSession(s, projectColor) {
   const colorInput = document.createElement('input');
   colorInput.type = 'color';
   colorInput.value = s.color || '#888888';
-  colorInput.addEventListener('input', (e) => {
-    UpdateSession(s.id, '', e.target.value, -1).catch(
+  // Read the value off the in-scope input rather than narrowing e.target:
+  // the listener is bound to this element, so colorInput IS the target.
+  colorInput.addEventListener('input', () => {
+    UpdateSession(s.id, '', colorInput.value, -1).catch(
       reportFailure('color change'),
     );
   });
@@ -290,8 +323,10 @@ function renderSession(s, projectColor) {
   // Same-project drops only; cross-project moves are not supported
   // yet (would require also updating project_id on the wire).
   li.addEventListener('dragstart', (e) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/x-hive-session', s.id);
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    dt.effectAllowed = 'move';
+    dt.setData('text/x-hive-session', s.id);
     li.classList.add('dragging');
   });
   li.addEventListener('dragend', () => {
@@ -303,9 +338,10 @@ function renderSession(s, projectColor) {
       });
   });
   li.addEventListener('dragover', (e) => {
-    if (!e.dataTransfer.types.includes('text/x-hive-session')) return;
+    const dt = e.dataTransfer;
+    if (!dt?.types.includes('text/x-hive-session')) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+    dt.dropEffect = 'move';
     const r = li.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
     li.classList.toggle('drop-above', above);
@@ -316,7 +352,7 @@ function renderSession(s, projectColor) {
   });
   li.addEventListener('drop', (e) => {
     e.preventDefault();
-    const sid = e.dataTransfer.getData('text/x-hive-session');
+    const sid = e.dataTransfer?.getData('text/x-hive-session');
     li.classList.remove('drop-above', 'drop-below');
     if (!sid || sid === s.id) return;
     const dragged = state.sessions.find((x) => x.id === sid);
@@ -337,7 +373,11 @@ function renderSession(s, projectColor) {
 // r.order; we pick the global Order of whichever neighbor sits at
 // the project-relative drop slot (after pretending the dragged
 // session is gone).
-function reorderDroppedSession(draggedID, targetID, above) {
+function reorderDroppedSession(
+  draggedID: string,
+  targetID: string,
+  above: boolean,
+) {
   const target = state.sessions.find((s) => s.id === targetID);
   if (!target) return;
   const projID = target.projectId ?? target.project_id ?? '';
@@ -359,7 +399,7 @@ function reorderDroppedSession(draggedID, targetID, above) {
   const globalOrdered = [...state.sessions].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
-  let globalTargetIdx;
+  let globalTargetIdx: number;
   if (projIdx >= pretend.length) {
     // Drop after the last neighbor: land just past it.
     const last = pretend[pretend.length - 1];
@@ -381,10 +421,14 @@ function reorderDroppedSession(draggedID, targetID, above) {
   );
 }
 
-function beginRenameSession(sess, _li, nameEl) {
+function beginRenameSession(
+  sess: SessionInfo,
+  _li: HTMLLIElement,
+  nameEl: HTMLSpanElement,
+) {
   beginInlineRename({
     className: 'name-input',
-    value: sess.name,
+    value: sess.name ?? '',
     mount: (input) => nameEl.replaceWith(input),
     unmount: (input) => input.replaceWith(nameEl),
     onCommit: (next) =>
@@ -393,10 +437,10 @@ function beginRenameSession(sess, _li, nameEl) {
   });
 }
 
-function beginRenameProject(proj, nameEl) {
+function beginRenameProject(proj: ProjectInfo, nameEl: HTMLSpanElement) {
   beginInlineRename({
     className: 'project-name-input',
-    value: proj.name,
+    value: proj.name ?? '',
     mount: (input) => nameEl.replaceWith(input),
     unmount: (input) => input.replaceWith(nameEl),
     onCommit: (next) =>

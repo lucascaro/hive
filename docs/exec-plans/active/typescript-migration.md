@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–4 merged, wave 5a done; wave 5b next)
+- **Stage:** IMPLEMENT (waves 1–4 merged, wave 5 done; wave 6 next)
 - **Status:** active
 
 ## Summary
@@ -137,8 +137,8 @@ Wave notes:
   directly. **Split, as anticipated** — the whole wave produced 460 errors after the bulk
   `git mv`. **5a** (landed): `banners`, `version-footer`, `modals/*` (5),
   `test/unit/version-footer.test`, `test/dom/settings.test` — nothing in that set imports
-  anything else in the wave. **5b**: `sidebar`, `focus`, `view`,
-  `test/dom/{environment,selectors,xterm-reflow}.test`.
+  anything else in the wave. **5b** (landed): `sidebar`, `focus`, `view`,
+  `test/dom/{environment,selectors,xterm-reflow}.test` — 138 errors, one PR.
 - **6** — splittable into 2 PRs; no cycle exists. `session-term.js` (1,259 LOC) is the
   hardest file; expect the bulk of the errors.
 - **7** — last wave. No strictness ramp follows.
@@ -433,6 +433,83 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   trap, version footer, launcher agent-select → create session, palette)
   is already driven in a real browser by the mock e2e suite. It is still
   owed for 5b and 6, which land `view`/`focus`/`keyboard`.
+
+- **2026-08-08** — Wave 5b complete: `sidebar`, `focus`, `view`,
+  `test/dom/{environment,selectors,xterm-reflow}.test`. 138 errors after
+  the bulk `git mv` (TS7006 41, TS2339 35, TS18047 16, TS2322 15, TS2554
+  13, TS18046 8, rest single digits; view 58 / sidebar 43 / focus 21 /
+  tests 16) — under the pre-declared 250-total / 120-in-`view` split
+  threshold, so it landed as one PR. No `tsconfig` change: `include`
+  already covered `src/app/**/*` (wave 3) and `test/dom/**/*` (wave 5a).
+  - **`state.terms` is now `Map<string, TermTile>`, reversing wave 3's
+    `unknown`.** `TermTile` is a structural view of `SessionTerm` listing
+    only the members app modules touch (`host`, `termTitle`, `term?`,
+    `show`, `hide`, `ensureAttached`, `rebaselineReplayCols`). The
+    alternative was ~12 unchecked `as` casts at the `state.terms.get()`
+    sites in `view`/`focus`, each one a lie `tsc` can't verify. **Wave 6
+    replaces it with `SessionTerm`'s own type, which must structurally
+    satisfy this shape or widen it deliberately.** `term` is kept
+    optional-and-structural rather than `import { Terminal }` so a
+    `TermTile` stays assignable to `SnapTarget` (`lib/view-scroll.ts`) at
+    `snapVisibleTermsToBottom()`; the shared `term` key is also what keeps
+    that assignment out of TS's weak-type check.
+  - **Type a dep at the real export's type; make the stub satisfy it —
+    never trim the type to fit the stub.** `view`'s `scrollTrace` default
+    was a hand-rolled `{ rec: Object.assign(() => {}, { enabled: false }) }`
+    that had silently drifted: two call sites use `.count()`, which the
+    stub never had. Fixed by typing the dep off `ScrollTrace` and using
+    `createScrollTrace({ enabled: false })` as the default — `enabled:
+    false` short-circuits inside both `rec` and `count`, so the no-op
+    behavior is identical and the stub can't drift again. This is the
+    injection-side twin of wave 2's `reset?.()` lesson, and it applies
+    directly to wave 6's `events.js`/`keyboard.js` stubs.
+    Corollary from the same edit: the dep is `Pick<ScrollTrace, 'rec' |
+    'count'>`, not the whole interface. Requiring `ring`/`counters` the
+    module never reads would reject the DOM tests' stubs for no gain —
+    5a's narrower-parameter-types rule, applied to a dep field.
+  - **`view.ts` uses neither `mustEl` nor `pageEl`** for
+    `#minimized-tray` / `#empty-state`; `el.ts` isn't imported at all.
+    A third case for 5a's `el.ts` note: both lookups run on every repaint
+    rather than at load, so `mustEl` would throw on an ordinary render
+    instead of failing fast, and the absent case is genuinely reached —
+    `keyboard.js` imports `view.js` into DOM tests that mount only the
+    markup they exercise. When the guard is a real runtime branch, keep
+    `getElementById` + the guard. It produces zero type errors anyway.
+  - **Per-module deps interfaces** — `SidebarDeps`, `FocusDeps`,
+    `ViewDeps`, all exported for wave 7's `main.js` injection sites. No
+    shared union: sidebar takes `refocusActiveTerm` where view takes
+    `focusActiveTerm`, exactly the split 5a made for the modals.
+  - **`openLauncher`'s first parameter was wrong, and 5a couldn't see
+    it.** 5a typed it `projectId: string | null` (required); five callers
+    in `main.js`, `keyboard.js` and `view` call it bare and rely on the
+    `|| activeProjectId()` fallback. All five were unchecked JS at the
+    time. Corrected to `projectId?: string | null`. **Generalize: a
+    signature written while most callers are still `.js` is a hypothesis,
+    not a fact — expect later waves to correct earlier ones.**
+  - `?? undefined` at the `emptyStateModel` call site rather than
+    widening `EmptyStateInput` to `| null`: its `= ''` parameter defaults
+    fire on `undefined` only, so widening would change which default
+    applies. Same family as the `TermTile` call — fix the caller, not the
+    callee.
+  - `state.attention.has(sid ?? '')` rather than widening the `Set`, and
+    `?? ''` on optional names assigned to `textContent`/`title` (WebIDL
+    already coerces `undefined` to `''` there, so it is behavior-neutral).
+  - **`focus.ts`'s `_deps` is write-only** — `initFocus({ ensureTerm })`
+    (`main.js:218`) sets a field nothing reads. Now `Partial<FocusDeps> =
+    {}`; the old `{ ensureTerm: () => {} }` stub could never have
+    satisfied the interface (it returns void, not a `TermTile`) and no
+    reader exists to notice. Delete it with `main.js:218` in wave 6/7.
+  - `xterm-reflow.test`'s three `.find(...)!` sites became one throwing
+    `xLine()` helper: biome's recommended preset bans non-null
+    assertions, and a `?.` there would have compared `undefined` to the
+    expected string — still a failure, but one that reads as a mismatch
+    instead of a missing line.
+
+  Gates: typecheck/build/biome green, vitest 322 in 32 files (unchanged),
+  Playwright mock 79 passed + 1 skipped (unchanged), e2e-real 7 passed /
+  5 failed — the same 5, re-measured on this branch's baseline before the
+  `git mv`. Non-vacuity proved with a planted error in all six converted
+  files plus `state.ts`.
 
 ## Open questions
 
