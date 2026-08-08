@@ -688,3 +688,45 @@ func TestCreateWithExplicitCmdSkipsAgentSessionIDPin(t *testing.T) {
 		t.Errorf("AgentSessionID = %q, want empty (caller-supplied Cmd was not pinned)", got)
 	}
 }
+
+// Subscribing after Close used to panic with "assignment to entry in
+// nil map": Close nils r.listeners, and daemon.go spawns connection
+// handlers with an unsynchronized `go d.serve(ctx, conn)`, so a
+// connection accepted just before shutdown can reach Subscribe
+// afterwards. Both subscribe paths must hand back a closed channel
+// instead of writing to the nil map.
+func TestSubscribeAfterCloseDoesNotPanic(t *testing.T) {
+	r, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("Subscribe after Close: channel delivered an event; want closed")
+		}
+	default:
+		t.Fatal("Subscribe after Close: channel is open and empty; want closed")
+	}
+
+	pch, pUnsub := r.SubscribeProjects()
+	defer pUnsub()
+	select {
+	case _, ok := <-pch:
+		if ok {
+			t.Fatal("SubscribeProjects after Close: channel delivered an event; want closed")
+		}
+	default:
+		t.Fatal("SubscribeProjects after Close: channel is open and empty; want closed")
+	}
+
+	// The cleanup funcs must be safe too — a double close would panic.
+	unsub()
+	pUnsub()
+}
