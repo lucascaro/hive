@@ -14,11 +14,11 @@ const { formatBinary, renderVersionFooter } = await import(
 // Minimal stand-ins for the footer elements. renderVersionFooter takes
 // them injected precisely so this file needs no live document.
 function makeRoot() {
-  const classes = new Set();
+  const classes = new Set<string>();
   return {
     classes,
     classList: {
-      toggle(name, on) {
+      toggle(name: string, on: boolean) {
         if (on) classes.add(name);
         else classes.delete(name);
       },
@@ -26,8 +26,16 @@ function makeRoot() {
   };
 }
 
-let els;
-let root;
+// Annotated with the *fake* shapes, not VersionFooterEls: the assertions
+// read `root.classes` and dereference `els.gui`, neither of which survives
+// the nullable public interface. Assignability into renderVersionFooter is
+// what proves the fakes still satisfy the real contract.
+let els: {
+  root: ReturnType<typeof makeRoot>;
+  gui: { textContent: string };
+  daemon: { textContent: string; hidden: boolean };
+};
+let root: ReturnType<typeof makeRoot>;
 beforeEach(() => {
   root = makeRoot();
   els = {

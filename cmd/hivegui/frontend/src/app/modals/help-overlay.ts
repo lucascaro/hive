@@ -5,15 +5,23 @@
 import { isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
 import { registerModal } from './registry.js';
+import { pageEl } from '../el.js';
 
-let deps = {
+// Narrow on purpose: this overlay needs exactly two callbacks off the
+// focus pipeline, so it names those two rather than the whole module.
+export interface HelpOverlayDeps {
+  setFocusedTile: (id: string | null) => void;
+  focusActiveTerm: () => void;
+}
+
+let deps: HelpOverlayDeps = {
   setFocusedTile: () => {},
   focusActiveTerm: () => {},
 };
 
-export const helpEl = document.getElementById('help-overlay');
-const helpGroupsEl = document.getElementById('help-overlay-groups');
-const helpCloseBtn = document.getElementById('help-overlay-close');
+export const helpEl = pageEl('help-overlay');
+const helpGroupsEl = pageEl('help-overlay-groups');
+const helpCloseBtn = pageEl('help-overlay-close');
 let helpRendered = false;
 
 function renderHelpOverlay() {
@@ -63,7 +71,7 @@ export function toggleHelpOverlay() {
   else closeHelpOverlay();
 }
 
-export function initHelpOverlay(injected) {
+export function initHelpOverlay(injected: HelpOverlayDeps) {
   deps = injected;
   registerModal(helpEl);
   helpCloseBtn.addEventListener('click', closeHelpOverlay);

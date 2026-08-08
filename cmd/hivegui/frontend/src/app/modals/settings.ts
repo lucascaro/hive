@@ -12,20 +12,32 @@
 
 import { ListCustomAgents, SaveCustomAgents } from '../../bridge.js';
 import { registerModal } from './registry.js';
+import { pageEl } from '../el.js';
+// Type-only, so the generated module is erased before Vite resolves it.
+import type { main } from '../../../wailsjs/go/models';
 
-let deps = {
+// Narrow on purpose: this modal needs exactly two callbacks off the
+// focus pipeline, so it names those two rather than the whole module.
+export interface SettingsDeps {
+  setFocusedTile: (id: string | null) => void;
+  refocusActiveTerm: () => void;
+}
+
+let deps: SettingsDeps = {
   setFocusedTile: () => {},
   refocusActiveTerm: () => {},
 };
 
-export const settingsEl = document.getElementById('settings');
-const listEl = document.getElementById('settings-agents-list');
-const errorEl = document.getElementById('settings-error');
+export const settingsEl = pageEl('settings');
+const listEl = pageEl('settings-agents-list');
+const errorEl = pageEl('settings-error');
 
 const DEFAULT_COLOR = '#64748b';
 
-// draft is the in-progress edit; discarded on cancel.
-let draft = [];
+// draft is the in-progress edit; discarded on cancel. Rows are plain
+// objects, not main.CustomAgent instances — the generated class is a
+// data shape and Go re-slugs the ids on save.
+let draft: main.CustomAgent[] = [];
 
 // loading distinguishes "still fetching" from "genuinely empty" so the
 // empty state never renders over a list that is about to arrive.
@@ -49,15 +61,19 @@ let openToken = 0;
  * shape people actually type. agents.json stores a real array, so an
  * argument containing spaces stays hand-editable in the file. Upgrade
  * path if this bites: a real tokenizer here and in Go's validator.
+ *
+ * Takes `string | null` because a test asserts splitCommand(null) is [];
+ * the String(line || '') guard is part of the contract, not defensive
+ * padding around a narrower one.
  */
-export function splitCommand(line) {
+export function splitCommand(line: string | null): string[] {
   return String(line || '')
     .trim()
     .split(/\s+/)
     .filter(Boolean);
 }
 
-function showError(msg) {
+function showError(msg: string) {
   errorEl.textContent = msg;
   errorEl.classList.toggle('hidden', !msg);
 }
@@ -127,9 +143,13 @@ function render() {
       // <body> — from there the Tab trap has no boundary to wrap and
       // the next Tab walks behind the backdrop. Put focus back on the
       // row that took this one's place, or on "+ Add agent".
-      const dels = listEl.querySelectorAll('.settings-agent-delete');
-      const next = dels[Math.min(i, dels.length - 1)];
-      (next || document.getElementById('settings-agent-add'))?.focus();
+      const dels = listEl.querySelectorAll<HTMLElement>(
+        '.settings-agent-delete',
+      );
+      const next =
+        dels[Math.min(i, dels.length - 1)] ??
+        document.getElementById('settings-agent-add');
+      next?.focus();
     });
 
     row.append(color, name, cmd, del);
@@ -199,9 +219,9 @@ export function closeSettings() {
 
 // setEditingEnabled gates the controls that can mutate agents.json.
 // They stay disabled while a load is in flight or after one failed.
-function setEditingEnabled(on) {
-  const save = document.getElementById('settings-save');
-  const add = document.getElementById('settings-agent-add');
+function setEditingEnabled(on: boolean) {
+  const save = pageEl<HTMLButtonElement>('settings-save');
+  const add = pageEl<HTMLButtonElement>('settings-agent-add');
   if (save) save.disabled = !on;
   if (add) add.disabled = !on;
 }
@@ -220,28 +240,22 @@ function saveSettings() {
     .catch((err) => showError(String(err?.message || err)));
 }
 
-export function initSettings(injected) {
+export function initSettings(injected: SettingsDeps) {
   deps = injected;
   registerModal(settingsEl);
-  document
-    .getElementById('settings-close')
-    .addEventListener('click', closeSettings);
-  document
-    .getElementById('settings-cancel')
-    .addEventListener('click', closeSettings);
-  document
-    .getElementById('settings-save')
-    .addEventListener('click', saveSettings);
-  document
-    .getElementById('settings-agent-add')
-    .addEventListener('click', () => {
-      draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
-      showError('');
-      render();
-      listEl
-        .querySelector('.settings-agent-row:last-child .settings-agent-name')
-        ?.focus();
-    });
+  pageEl('settings-close').addEventListener('click', closeSettings);
+  pageEl('settings-cancel').addEventListener('click', closeSettings);
+  pageEl('settings-save').addEventListener('click', saveSettings);
+  pageEl('settings-agent-add').addEventListener('click', () => {
+    draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
+    showError('');
+    render();
+    listEl
+      .querySelector<HTMLElement>(
+        '.settings-agent-row:last-child .settings-agent-name',
+      )
+      ?.focus();
+  });
   settingsEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // Consume it. This listener fires before the window handler in
@@ -253,7 +267,7 @@ export function initSettings(injected) {
       closeSettings();
     } else if (
       e.key === 'Enter' &&
-      e.target.tagName === 'INPUT' &&
+      e.target instanceof HTMLInputElement &&
       e.target.type === 'text'
     ) {
       e.preventDefault();
@@ -265,10 +279,14 @@ export function initSettings(injected) {
       // two boundaries wrap. Without this, Tab past Save lands on a
       // terminal behind the backdrop and keystrokes leak into it.
       const focusable = [
-        ...settingsEl.querySelectorAll(
-          'button, input, [tabindex]:not([tabindex="-1"])',
-        ),
-      ].filter((el) => !el.disabled && el.offsetParent !== null);
+        ...settingsEl.querySelectorAll<
+          HTMLButtonElement | HTMLInputElement | HTMLElement
+        >('button, input, [tabindex]:not([tabindex="-1"])'),
+      ].filter(
+        (el) =>
+          !('disabled' in el && el.disabled) &&
+          (el as HTMLElement).offsetParent !== null,
+      );
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

@@ -5,16 +5,31 @@
 // initCommandPalette — this module owns only the palette UI.
 
 import { registerModal } from './registry.js';
+import { pageEl } from '../el.js';
 
-let deps = {
+// One row of the command table main.js builds and hands over.
+export interface PaletteCommand {
+  name: string;
+  shortcut: string;
+  run: () => void;
+}
+
+export interface CommandPaletteDeps {
+  focusActiveTerm: () => void;
+}
+
+let deps: CommandPaletteDeps = {
   focusActiveTerm: () => {},
 };
-let paletteCommands = [];
+let paletteCommands: PaletteCommand[] = [];
 
-export const paletteEl = document.getElementById('command-palette');
-const paletteInput = document.getElementById('command-palette-input');
-const paletteList = document.getElementById('command-palette-list');
-const paletteState = { items: [], selected: 0 };
+export const paletteEl = pageEl('command-palette');
+const paletteInput = pageEl<HTMLInputElement>('command-palette-input');
+const paletteList = pageEl('command-palette-list');
+const paletteState: { items: PaletteCommand[]; selected: number } = {
+  items: [],
+  selected: 0,
+};
 
 function renderPalette() {
   const q = paletteInput.value.trim().toLowerCase();
@@ -64,7 +79,7 @@ export function closeCommandPalette() {
   deps.focusActiveTerm();
 }
 
-function activatePalette(i) {
+function activatePalette(i: number) {
   const c = paletteState.items[i];
   if (!c) return;
   closeCommandPalette();
@@ -73,7 +88,10 @@ function activatePalette(i) {
   setTimeout(() => c.run(), 0);
 }
 
-export function initCommandPalette({ commands, ...injected }) {
+export function initCommandPalette({
+  commands,
+  ...injected
+}: CommandPaletteDeps & { commands: PaletteCommand[] }) {
   deps = injected;
   paletteCommands = commands;
   registerModal(paletteEl);
@@ -106,6 +124,6 @@ export function initCommandPalette({ commands, ...injected }) {
   });
   document.addEventListener('mousedown', (e) => {
     if (paletteEl.classList.contains('hidden')) return;
-    if (!paletteEl.contains(e.target)) closeCommandPalette();
+    if (!paletteEl.contains(e.target as Node)) closeCommandPalette();
   });
 }
