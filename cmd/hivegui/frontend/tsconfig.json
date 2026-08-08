@@ -13,7 +13,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": [],
+    // vite/client supplies ImportMetaEnv (state.ts gates the __hive_state
+    // e2e affordance on import.meta.env.VITE_WAILS_*).
+    "types": ["vite/client"],
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
@@ -25,6 +27,11 @@
   // test/unit is safe to include wholesale from wave 1: the un-converted
   // *.test.js files land in the program but `checkJs: false` skips them, so
   // each test starts being checked exactly when it's renamed to .ts.
-  "include": ["src/lib/**/*", "test/unit/**/*"],
+  "include": [
+    "src/lib/**/*",
+    "src/app/**/*",
+    "src/globals.d.ts",
+    "test/unit/**/*"
+  ],
   "exclude": ["node_modules", "dist", "wailsjs"]
 }

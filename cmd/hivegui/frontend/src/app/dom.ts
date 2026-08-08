@@ -4,30 +4,39 @@
 
 import { createStatus } from '../lib/status.js';
 
-export const termsHost = document.getElementById('terms');
+// index.html owns these three ids; a missing one means the document and
+// this module have drifted, which is a load-time bug, not a runtime
+// condition to branch on. Throwing here beats `!` — it names the id.
+function mustEl(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`missing #${id} in index.html`);
+  return el;
+}
+
+export const termsHost = mustEl('terms');
 termsHost.classList.add('single');
 
-export const projectsUL = document.getElementById('projects');
-export const status = document.getElementById('status');
+export const projectsUL = mustEl('projects');
+export const status = mustEl('status');
 
 const statusCtl = createStatus({
-  render: (text, isError) => {
+  render: (text: string, isError: boolean) => {
     status.textContent = text;
     status.classList.toggle('error', isError);
   },
-  setTimer: (fn, ms) => window.setTimeout(fn, ms),
-  clearTimer: (id) => window.clearTimeout(id),
+  setTimer: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
+  clearTimer: (id: number) => window.clearTimeout(id),
   now: () => Date.now(),
 });
 
 // setStatus owns the persistent slot: connection state, nav feedback.
-export function setStatus(text, isError = false) {
+export function setStatus(text: string, isError = false): void {
   statusCtl.set(text, isError);
 }
 
 // flashStatus owns transient per-action feedback; it auto-reverts to
 // the persistent slot (errors linger 6s, info 2.5s — see lib/status.js).
-export function flashStatus(text, isError = false) {
+export function flashStatus(text: string, isError = false): void {
   statusCtl.flash(text, isError);
 }
 
@@ -35,5 +44,5 @@ export function flashStatus(text, isError = false) {
 // action in the status bar. Wails mutation promises reject when the
 // daemon connection is down (or the call throws Go-side), which used
 // to be swallowed — the button click just silently did nothing.
-export const reportFailure = (what) => (err) =>
+export const reportFailure = (what: string) => (err: unknown) =>
   flashStatus(`${what} failed: ${err}`, true);

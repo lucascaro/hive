@@ -1,11 +1,11 @@
 // Read-only derivations over the shared state object. No DOM, no
 // bridge calls — pure lookups modules can share without cycles.
 
-import { state } from './state.js';
+import { state, type SessionInfo } from './state.js';
 
 // orderedSessions returns sessions sorted by (project order, session order)
 // so navigation always matches what the user sees.
-export function orderedSessions() {
+export function orderedSessions(): SessionInfo[] {
   const projOrder = new Map(state.projects.map((p, i) => [p.id, i]));
   return [...state.sessions].sort((a, b) => {
     const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
@@ -21,7 +21,7 @@ export function orderedSessions() {
 // explicitly — the full-circle walk ends back on it, and ⌘B must always
 // move you somewhere new (a flag on the session you're already looking
 // at is stale; setActive clears it on focus anyway).
-export function nextAttentionId() {
+export function nextAttentionId(): string | null {
   const ord = orderedSessions();
   const n = ord.length;
   if (n === 0) return null;
@@ -37,7 +37,7 @@ export function nextAttentionId() {
 // view: a session's worktree (preferred), otherwise the owning
 // project's cwd, otherwise the user's currently-selected project.
 // Empty string means "let the Go side fall back to launchDir".
-export function activeCwd() {
+export function activeCwd(): string {
   const id = state.activeId;
   const s = id ? state.sessions.find((x) => x.id === id) : null;
   if (s?.worktree_path) return s.worktree_path;
@@ -46,7 +46,7 @@ export function activeCwd() {
   return p?.cwd ?? '';
 }
 
-export function activeProjectId() {
+export function activeProjectId(): string {
   // currentProjectId is the user's explicit "I'm here" — set by
   // ⌘[/], project-header click, switchTo (synced to session's
   // project), and project events. Empty projects work because they
@@ -73,7 +73,9 @@ export function activeProjectId() {
 // internal/wire/control.go), so prefer those and fall back to the
 // camelCase variants for safety — this matches `s.projectId ??
 // s.project_id` used elsewhere in this file.
-export function resolveSessionCwd(sess) {
+export function resolveSessionCwd(
+  sess: SessionInfo | null | undefined,
+): string {
   if (!sess) return '';
   const wt = sess.worktree_path ?? sess.worktreePath;
   if (wt) return wt;

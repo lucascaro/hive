@@ -28,7 +28,7 @@ export const scrollTrace = createScrollTrace({
   // per-event tags in TEE_TAGS (never `resize`, which storms during a drag).
   // Best-effort: no bridge in tests / before the runtime is ready, and the
   // Wails binding returns a promise — swallow the throw and the rejection.
-  sink: (msg) => {
+  sink: (msg: string) => {
     try {
       LogFrontend(msg)?.catch?.(() => {});
     } catch {
@@ -61,7 +61,7 @@ const LASTJUMP_KEY = 'hive.scrolltrace.lastjump';
 // scroll-jump detector (SessionTerm.onScroll) when it records an
 // unexplained upward viewport move. Best-effort: storage may be full or
 // disabled — never throw into the scroll path.
-export function snapshotScrollJump() {
+export function snapshotScrollJump(): void {
   try {
     localStorage.setItem(
       LASTJUMP_KEY,
@@ -98,7 +98,7 @@ let _maxStallMs = 0;
 // throttled to ~1fps — the signature of an OS-occluded / unfocused window
 // rather than a busy loop. So every freeze probe now carries whether the
 // page is visible and whether the webview actually holds OS key focus.
-function winState() {
+function winState(): Record<string, unknown> {
   const ae = document.activeElement;
   return {
     vis: document.visibilityState,
@@ -162,7 +162,7 @@ if (typeof window !== 'undefined') {
   // observed main-thread stall. Best-effort copies the JSON to the
   // clipboard so a user hitting the bug can paste it straight back.
   window.__hive_dumpscroll = () => {
-    let lastJump = null;
+    let lastJump: unknown = null;
     try {
       lastJump = JSON.parse(localStorage.getItem(LASTJUMP_KEY) || 'null');
     } catch {
