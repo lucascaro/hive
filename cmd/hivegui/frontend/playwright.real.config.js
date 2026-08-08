@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test';
 // fully isolated temp paths (HOME / HIVE_STATE_DIR / HIVE_SOCKET) and
 // writes the bridge URL to process.env.WS_BRIDGE_URL. The Vite dev
 // server boots with VITE_WAILS_REAL=1, which makes vite resolve the
-// Wails App + runtime imports to test/e2e-real/wails-bridge.js
+// Wails App + runtime imports to test/e2e-real/wails-bridge.ts
 // instead of the in-browser mock.
 //
 // Specs read process.env.WS_BRIDGE_URL inside a Playwright addInitScript

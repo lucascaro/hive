@@ -1,7 +1,7 @@
 // Single re-export point for the Wails bridge surface.
 //
 // MUST stay a sibling of main.js: the vite plugin in vite.config.js
-// substitutes the test harnesses (wails-mock.js / wails-bridge.js) by
+// substitutes the test harnesses (wails-mock.ts / wails-bridge.ts) by
 // matching the EXACT literal specifiers '../wailsjs/go/main/App' and
 // '../wailsjs/runtime/runtime' — moving this file changes the relative
 // specifier and silently breaks both Playwright harnesses.

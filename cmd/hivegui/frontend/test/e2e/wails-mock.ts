@@ -4,9 +4,27 @@
 // native Wails runtime. Drives the UI through a tiny scripted
 // daemon-state machine that Playwright can poke via window.__hive.
 
-const listeners = new Map(); // event name -> [handler, ...]
+import type { ProjectInfo, SessionInfo } from '../../src/app/state.js';
+// Type-only, so it is erased before Vite ever sees it — the whole point of
+// this module is to stand in for wailsjs at runtime. Using the generated
+// shapes (invariant 3) is what makes the mock drift-detectable.
+import type { main } from '../../wailsjs/go/models';
 
-function emit(name, ...args) {
+type AgentInfo = main.AgentInfo;
+type CustomAgent = main.CustomAgent;
+
+// The wire shapes the daemon really sends carry a `created` stamp that no
+// app module reads, so it is not on SessionInfo/ProjectInfo. Intersect
+// rather than widen the source interfaces — the mock is the one that has
+// to match the app, not the other way round.
+type MockSession = SessionInfo & { created: string };
+type MockProject = ProjectInfo & { created: string };
+
+type Handler = (...args: unknown[]) => void;
+
+const listeners = new Map<string, Handler[]>(); // event name -> [handler, ...]
+
+function emit(name: string, ...args: unknown[]) {
   const arr = listeners.get(name) || [];
   for (const fn of arr) {
     try {
@@ -19,20 +37,20 @@ function emit(name, ...args) {
 
 // --- runtime ---
 
-export function EventsOn(name, handler) {
-  if (!listeners.has(name)) listeners.set(name, []);
-  listeners.get(name).push(handler);
+export function EventsOn(name: string, handler: Handler) {
+  const arr = listeners.get(name) ?? [];
+  if (!listeners.has(name)) listeners.set(name, arr);
+  arr.push(handler);
   return () => {
-    const arr = listeners.get(name) || [];
     const i = arr.indexOf(handler);
     if (i >= 0) arr.splice(i, 1);
   };
 }
 
-export function EventsOff(name) {
+export function EventsOff(name: string) {
   listeners.delete(name);
 }
-export function WindowSetTitle(t) {
+export function WindowSetTitle(t: string) {
   document.title = t;
 }
 
@@ -44,7 +62,7 @@ export async function ClipboardGetText() {
   maybeFail('ClipboardGetText');
   return clipboard;
 }
-export async function SetClipboardText(text) {
+export async function SetClipboardText(text: unknown) {
   maybeFail('SetClipboardText');
   clipboard = String(text ?? '');
 }
@@ -54,10 +72,10 @@ export async function SetClipboardText(text) {
 // window.__hive.failNext(method, message) arms a one-shot rejection for
 // the named binding, so E2E can assert that a failed daemon call
 // surfaces user-visible feedback instead of being silently swallowed.
-const failures = new Map(); // method name -> error message
-function maybeFail(method) {
-  if (failures.has(method)) {
-    const msg = failures.get(method);
+const failures = new Map<string, string>(); // method name -> error message
+function maybeFail(method: string) {
+  const msg = failures.get(method);
+  if (msg !== undefined) {
     failures.delete(method);
     throw new Error(msg);
   }
@@ -66,10 +84,10 @@ function maybeFail(method) {
 // window.__hive.delayNext(method, ms) arms a one-shot delay for the
 // named binding, so E2E can observe in-flight UI (loading rows,
 // spinners) that a microtask-fast mock would otherwise skip past.
-const delays = new Map(); // method name -> ms
-async function maybeDelay(method) {
-  if (delays.has(method)) {
-    const ms = delays.get(method);
+const delays = new Map<string, number>(); // method name -> ms
+async function maybeDelay(method: string) {
+  const ms = delays.get(method);
+  if (ms !== undefined) {
     delays.delete(method);
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -77,7 +95,7 @@ async function maybeDelay(method) {
 
 // --- App bindings ---
 
-const state = {
+const state: { projects: MockProject[]; sessions: MockSession[] } = {
   projects: [
     {
       id: 'p1',
@@ -116,53 +134,56 @@ export async function ConnectControl() {
   setTimeout(broadcast, 0);
   return '';
 }
-export async function OpenSession(id) {
+export async function OpenSession(id: string) {
   return id;
 }
-export async function CloseAttach(_id) {
+export async function CloseAttach(_id: string) {
   return '';
 }
-const stdinLog = []; // [{ id, b64, text }] — populated by WriteStdin so E2E can assert input routing.
-export async function WriteStdin(id, b64) {
+// Populated by WriteStdin so E2E can assert input routing.
+const stdinLog: { id: string; b64: string; text: string }[] = [];
+export async function WriteStdin(id: string, b64: string) {
   let text = '';
   try {
-    if (typeof atob === 'function' && typeof TextDecoder !== 'undefined') {
-      // atob() returns a Latin-1 "binary string" — feed each char's
-      // code unit into a Uint8Array, then decode as UTF-8 so non-ASCII
-      // input round-trips correctly in E2E assertions.
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      text = new TextDecoder('utf-8').decode(bytes);
-    } else {
-      text = Buffer.from(b64, 'base64').toString('utf-8');
-    }
-  } catch {}
+    // atob() returns a Latin-1 "binary string" — feed each char's
+    // code unit into a Uint8Array, then decode as UTF-8 so non-ASCII
+    // input round-trips correctly in E2E assertions. This module only
+    // ever loads in a browser (Vite substitution), so atob/TextDecoder
+    // are always there; the old Buffer fallback was dead.
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    text = new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    /* ignore decode errors — test hook only */
+  }
   stdinLog.push({ id, b64, text });
   return '';
 }
-export async function ResizeSession(_id, _cols, _rows) {
+export async function ResizeSession(_id: string, _cols: number, _rows: number) {
   return '';
 }
-const replayLog = []; // [{ id, t }] — populated by RequestScrollbackReplay so E2E can detect spurious replays after layout reflows.
-export async function RequestScrollbackReplay(id) {
+// Populated by RequestScrollbackReplay so E2E can detect spurious replays
+// after layout reflows.
+const replayLog: { id: string; t: number }[] = [];
+export async function RequestScrollbackReplay(id: string) {
   replayLog.push({ id, t: Date.now() });
   return '';
 }
 // Positional args matching the real Wails binding:
 // CreateSession(agentID, projectID, name, color, cols, rows, useWorktree).
 export async function CreateSession(
-  agentID,
-  projectID,
-  name,
-  color,
-  _cols,
-  _rows,
-  _useWorktree,
+  agentID: string,
+  projectID: string,
+  name: string,
+  color: string,
+  _cols: number,
+  _rows: number,
+  _useWorktree: boolean,
 ) {
   maybeFail('CreateSession');
   const id = `mock-${state.sessions.length + 1}`;
-  const s = {
+  const s: MockSession = {
     id,
     name: name || `s${state.sessions.length + 1}`,
     color: color || '#0af',
@@ -180,11 +201,15 @@ export async function CreateSession(
   return id;
 }
 // Positional: DuplicateSession(agentID, projectID, cwd).
-export async function DuplicateSession(agentID, projectID, _cwd) {
+export async function DuplicateSession(
+  agentID: string,
+  projectID: string,
+  _cwd: string,
+) {
   maybeFail('DuplicateSession');
   return CreateSession(agentID, projectID, 'dup', '', 0, 0, false);
 }
-export async function KillSession(id) {
+export async function KillSession(id: string) {
   maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i < 0) return '';
@@ -192,7 +217,7 @@ export async function KillSession(id) {
   emit('session:event', JSON.stringify({ kind: 'removed', session: removed }));
   return '';
 }
-export async function RestartSession(_id) {
+export async function RestartSession(_id: string) {
   maybeFail('RestartSession');
   return '';
 }
@@ -200,7 +225,12 @@ export async function RestartSession(_id) {
 // bridge): UpdateSession(id, name, color, order). Empty string / -1
 // mean "no change". The old object-shaped signature silently no-op'd
 // every rename driven through the UI.
-export async function UpdateSession(id, name, color, _order) {
+export async function UpdateSession(
+  id: string,
+  name: string,
+  color: string,
+  _order: number,
+) {
   maybeFail('UpdateSession');
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return '';
@@ -211,10 +241,10 @@ export async function UpdateSession(id, name, color, _order) {
 }
 // Custom agents start empty; the settings modal writes into this
 // module-level array so a save → reopen round-trip works in E2E.
-let customAgents = [];
+let customAgents: CustomAgent[] = [];
 // One real-shaped agent so launcher E2E can exercise the full
 // open → select → create flow (matches internal/agent's wire shape).
-export async function ListAgents() {
+export async function ListAgents(): Promise<AgentInfo[]> {
   await maybeDelay('ListAgents');
   maybeFail('ListAgents');
   // Mirrors Go's agent.All(): built-ins first, then custom agents.
@@ -242,7 +272,7 @@ export async function ListCustomAgents() {
   maybeFail('ListCustomAgents');
   return customAgents;
 }
-export async function SaveCustomAgents(list) {
+export async function SaveCustomAgents(list: CustomAgent[] | null) {
   await maybeDelay('SaveCustomAgents');
   maybeFail('SaveCustomAgents');
   // Mirror Go's id assignment so the mock round-trips like the real
@@ -264,10 +294,10 @@ export async function SaveCustomAgents(list) {
 // order). The old object-shaped/no-op forms silently no-op'd every
 // project create/save/delete driven through the UI — the same defect
 // UpdateSession had.
-export async function CreateProject(name, color, cwd) {
+export async function CreateProject(name: string, color: string, cwd: string) {
   maybeFail('CreateProject');
   const id = `p-${state.projects.length + 1}`;
-  const p = {
+  const p: MockProject = {
     id,
     name: name || 'new',
     color: color || '#0af',
@@ -279,7 +309,7 @@ export async function CreateProject(name, color, cwd) {
   emit('project:event', JSON.stringify({ kind: 'added', project: p }));
   return id;
 }
-export async function KillProject(id, killSessions) {
+export async function KillProject(id: string, killSessions: boolean) {
   maybeFail('KillProject');
   const i = state.projects.findIndex((p) => p.id === id);
   if (i < 0) return '';
@@ -297,7 +327,13 @@ export async function KillProject(id, killSessions) {
 }
 // Empty string / -1 mean "no change", mirroring UpdateSession (order is
 // accepted but not modelled, same as UpdateSession's _order).
-export async function UpdateProject(id, name, color, cwd, _order) {
+export async function UpdateProject(
+  id: string,
+  name: string,
+  color: string,
+  cwd: string,
+  _order: number,
+) {
   maybeFail('UpdateProject');
   const p = state.projects.find((x) => x.id === id);
   if (!p) return '';
@@ -321,27 +357,27 @@ export async function CloseWindow() {
   maybeFail('CloseWindow');
   return '';
 }
-export async function IsGitRepo(_dir) {
+export async function IsGitRepo(_dir: string) {
   return false;
 }
-export async function OpenURL(_url) {
+export async function OpenURL(_url: string) {
   maybeFail('OpenURL');
   return '';
 }
-export async function OpenTerminalAt(_dir) {
+export async function OpenTerminalAt(_dir: string) {
   maybeFail('OpenTerminalAt');
   return '';
 }
-export async function Notify(_title, _body) {
+export async function Notify(_title: string, _body: string) {
   return '';
 }
-export async function LogFrontend(_msg) {
+export async function LogFrontend(_msg: string) {
   return '';
 }
-export async function SetDebugTrace(_on) {
+export async function SetDebugTrace(_on: boolean) {
   return '';
 }
-export async function Confirm(_title, _body) {
+export async function Confirm(_title: string, _body: string) {
   return true;
 }
 export async function RestartDaemon() {
@@ -356,15 +392,15 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     state,
     emit,
-    addSession(name) {
+    addSession(name: string) {
       return CreateSession('', 'p1', name, '', 0, 0, false);
     },
-    killSession(id) {
+    killSession(id: string) {
       return KillSession(id);
     },
     listeners,
     stdinLog,
-    stdinText(id) {
+    stdinText(id?: string) {
       return stdinLog
         .filter((e) => id == null || e.id === id)
         .map((e) => e.text)
@@ -374,16 +410,16 @@ if (typeof window !== 'undefined') {
       stdinLog.length = 0;
     },
     replayLog,
-    replayCount(id) {
+    replayCount(id?: string) {
       return replayLog.filter((e) => id == null || e.id === id).length;
     },
     resetReplay() {
       replayLog.length = 0;
     },
-    failNext(method, message = 'injected failure') {
+    failNext(method: string, message = 'injected failure') {
       failures.set(method, message);
     },
-    delayNext(method, ms = 250) {
+    delayNext(method: string, ms = 250) {
       delays.set(method, ms);
     },
   };

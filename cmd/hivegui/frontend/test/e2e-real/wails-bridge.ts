@@ -1,6 +1,6 @@
 // Real-daemon Wails bridge for Layer B Playwright tests.
 //
-// Mirrors the export surface of test/e2e/wails-mock.js so the same
+// Mirrors the export surface of test/e2e/wails-mock.ts so the same
 // Vite resolveId substitution can pick this module when
 // VITE_WAILS_REAL=1 is set. Instead of running a fake state machine
 // in the browser, each method round-trips a JSON-RPC call to
@@ -10,11 +10,28 @@
 // The WS URL is read from window.__WS_BRIDGE_URL — Playwright injects
 // it via addInitScript before page.goto.
 
-const listeners = new Map();
-const pending = new Map();
+type Handler = (...args: unknown[]) => void;
+
+// One in-flight JSON-RPC call. `result` is whatever the bridge sends back —
+// each binding below narrows it (or ignores it).
+interface Pending {
+  resolve: (value: unknown) => void;
+  reject: (reason: Error | Event) => void;
+}
+
+// Frames from cmd/hived-ws-bridge: either an event push or a call reply.
+interface Frame {
+  event?: string;
+  args?: unknown[];
+  id?: number;
+  error?: string;
+  result?: unknown;
+}
+
+const listeners = new Map<string, Handler[]>();
+const pending = new Map<number, Pending>();
 let nextId = 1;
-let ws = null;
-let wsReady = null;
+let wsReady: Promise<WebSocket> | null = null;
 
 function getWsUrl() {
   if (typeof window === 'undefined') return null;
@@ -23,17 +40,17 @@ function getWsUrl() {
 
 function ensureWS() {
   if (wsReady) return wsReady;
-  wsReady = new Promise((resolve, reject) => {
+  wsReady = new Promise<WebSocket>((resolve, reject) => {
     const url = getWsUrl();
     if (!url) {
       reject(new Error('no WS bridge URL'));
       return;
     }
-    ws = new WebSocket(url);
-    ws.addEventListener('open', () => resolve(ws));
-    ws.addEventListener('error', (e) => reject(e));
-    ws.addEventListener('message', (m) => {
-      let msg;
+    const sock = new WebSocket(url);
+    sock.addEventListener('open', () => resolve(sock));
+    sock.addEventListener('error', (e) => reject(e));
+    sock.addEventListener('message', (m: MessageEvent) => {
+      let msg: Frame;
       try {
         msg = JSON.parse(m.data);
       } catch {
@@ -50,13 +67,14 @@ function ensureWS() {
         }
         return;
       }
+      if (msg.id === undefined) return;
       const p = pending.get(msg.id);
       if (!p) return;
       pending.delete(msg.id);
       if (msg.error) p.reject(new Error(msg.error));
       else p.resolve(msg.result);
     });
-    ws.addEventListener('close', () => {
+    sock.addEventListener('close', () => {
       for (const [, p] of pending) p.reject(new Error('ws closed'));
       pending.clear();
     });
@@ -64,30 +82,30 @@ function ensureWS() {
   return wsReady;
 }
 
-async function call(method, params) {
-  await ensureWS();
+async function call(method: string, params?: Record<string, unknown>) {
+  const sock = await ensureWS();
   const id = nextId++;
-  return new Promise((resolve, reject) => {
+  return new Promise<unknown>((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    ws.send(JSON.stringify({ id, method, params: params || {} }));
+    sock.send(JSON.stringify({ id, method, params: params || {} }));
   });
 }
 
-// --- runtime surface (matches wails-mock.js / wailsjs/runtime) ---
+// --- runtime surface (matches wails-mock.ts / wailsjs/runtime) ---
 
-export function EventsOn(name, handler) {
-  if (!listeners.has(name)) listeners.set(name, []);
-  listeners.get(name).push(handler);
+export function EventsOn(name: string, handler: Handler) {
+  const arr = listeners.get(name) ?? [];
+  if (!listeners.has(name)) listeners.set(name, arr);
+  arr.push(handler);
   return () => {
-    const arr = listeners.get(name) || [];
     const i = arr.indexOf(handler);
     if (i >= 0) arr.splice(i, 1);
   };
 }
-export function EventsOff(name) {
+export function EventsOff(name: string) {
   listeners.delete(name);
 }
-export function WindowSetTitle(t) {
+export function WindowSetTitle(t: string) {
   document.title = t;
 }
 
@@ -96,15 +114,15 @@ export function WindowSetTitle(t) {
 export async function ConnectControl() {
   return call('ConnectControl');
 }
-export async function OpenSession(id, cols, rows) {
+export async function OpenSession(id: string, cols: number, rows: number) {
   return call('OpenSession', { id, cols: cols || 0, rows: rows || 0 });
 }
-export async function CloseAttach(id) {
+export async function CloseAttach(id: string) {
   return call('CloseAttach', { id });
 }
 
-const stdinLog = [];
-export async function WriteStdin(id, b64) {
+const stdinLog: { id: string; b64: string; text: string }[] = [];
+export async function WriteStdin(id: string, b64: string) {
   let text = '';
   try {
     const bin = atob(b64);
@@ -117,20 +135,20 @@ export async function WriteStdin(id, b64) {
   stdinLog.push({ id, b64, text });
   return call('WriteStdin', { id, b64 });
 }
-export async function ResizeSession(id, cols, rows) {
+export async function ResizeSession(id: string, cols: number, rows: number) {
   return call('ResizeSession', { id, cols, rows });
 }
-export async function RequestScrollbackReplay(id) {
+export async function RequestScrollbackReplay(id: string) {
   return call('RequestScrollbackReplay', { id });
 }
 export async function CreateSession(
-  agentID,
-  projectID,
-  name,
-  color,
-  cols,
-  rows,
-  useWorktree,
+  agentID: string,
+  projectID: string,
+  name: string,
+  color: string,
+  cols: number,
+  rows: number,
+  useWorktree: boolean,
 ) {
   // The Wails signature uses positional args; map to the bridge's
   // CreateSpec shape.
@@ -147,13 +165,18 @@ export async function CreateSession(
 export async function DuplicateSession() {
   return CreateSession('', '', 'dup', '', 80, 24, false);
 }
-export async function KillSession(id, force) {
+export async function KillSession(id: string, force: boolean) {
   return call('KillSession', { session_id: id, force: !!force });
 }
-export async function RestartSession(_id) {
+export async function RestartSession(_id: string) {
   return '';
 }
-export async function UpdateSession(_id, _name, _color, _order) {
+export async function UpdateSession(
+  _id: string,
+  _name: string,
+  _color: string,
+  _order: number,
+) {
   return '';
 }
 export async function ListAgents() {
@@ -222,7 +245,7 @@ let clipboard = '';
 export async function ClipboardGetText() {
   return clipboard;
 }
-export async function SetClipboardText(text) {
+export async function SetClipboardText(text: unknown) {
   clipboard = String(text ?? '');
 }
 
@@ -231,7 +254,7 @@ export async function SetClipboardText(text) {
 if (typeof window !== 'undefined') {
   window.__hive = {
     stdinLog,
-    stdinText(id) {
+    stdinText(id?: string) {
       return stdinLog
         .filter((e) => id == null || e.id === id)
         .map((e) => e.text)
@@ -241,7 +264,7 @@ if (typeof window !== 'undefined') {
       stdinLog.length = 0;
     },
     listeners,
-    emit(name, ...args) {
+    emit(name: string, ...args: unknown[]) {
       const arr = listeners.get(name) || [];
       for (const fn of arr) {
         try {

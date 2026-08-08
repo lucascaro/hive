@@ -36,11 +36,18 @@
   // test/unit is safe to include wholesale from wave 1: the un-converted
   // *.test.js files land in the program but `checkJs: false` skips them, so
   // each test starts being checked exactly when it's renamed to .ts.
+  // The two harnesses are listed file-by-file, not as test/e2e{,-real}/**:
+  // nothing imports them (the Vite substitution is invisible to tsc), so they
+  // only get checked by being named here, and the *.spec.js siblings around
+  // them are wave 7's job.
   "include": [
     "src/lib/**/*",
     "src/app/**/*",
+    "src/bridge.ts",
     "src/globals.d.ts",
-    "test/unit/**/*"
+    "test/unit/**/*",
+    "test/e2e/wails-mock.ts",
+    "test/e2e-real/wails-bridge.ts"
   ],
   "exclude": ["node_modules", "dist", "wailsjs"]
 }

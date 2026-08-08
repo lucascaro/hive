@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–3 merged; wave 4 next)
+- **Stage:** IMPLEMENT (waves 1–4 done, 1–3 merged; wave 5 next)
 - **Status:** active
 
 ## Summary
@@ -147,8 +147,8 @@ each split across waves.
 1. **`vite.config.js` holds string literals at BOTH ends of the Wails substitution.** The
    specifiers (`:30-31`) must never change — renaming `bridge.js` → `bridge.ts` is safe,
    editing those two strings silently breaks both Playwright harnesses with no build error.
-   The substitution *targets* (`:17,19`) are hardcoded `.js` paths and must be updated in
-   wave 4. `bridge` must stay a sibling of `main` (its header documents why).
+   The substitution *targets* (`:17,19`) are hardcoded paths — updated to `.ts` in wave 4.
+   `bridge` must stay a sibling of `main` (its header documents why).
 2. **No explicit `any`** — `suspicious/noExplicitAny` fails `npm run ci`. Use `unknown` plus
    a narrow, or a per-file `biome-ignore` with a reason. Run `biome check --write` per wave
    to absorb autofixable TS rules (e.g. `style/useImportType`).
@@ -345,6 +345,46 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   — `main` at `1e82220` fails 6 of the same specs unstashed, so it's the known
   local flake, not the diff. Non-vacuity re-proved with a planted
   `const _probe: string = state.fontSize` in `selectors.ts` (TS2322).
+
+- **2026-08-08** — Wave 4 complete: `src/bridge.ts`, both Playwright
+  harnesses, and the two `path.resolve` targets in `vite.config.js`.
+  114 errors after the bulk `git mv`, all mechanical (implicit-any params,
+  untyped `Map`/array literals) — none in `bridge.ts`, which needed zero
+  annotations because it is pure re-export.
+  - **`include` gained three explicit file paths**, not `test/e2e/**`:
+    nothing imports either harness (the Vite substitution is invisible to
+    `tsc`), so they only get checked by being named — invariant 6 again.
+    Naming the files rather than the directories keeps the `*.spec.js`
+    siblings out until wave 7.
+  - **No structural conformance check between the harnesses and
+    `bridge.ts`.** The plan floated `Partial<typeof import('../../src/bridge')>`;
+    it was tried and dropped. The two harnesses deliberately diverge in
+    return type from the real bindings (`CreateSession` returns the new id in
+    the mock so `window.__hive.addSession` can use it; the real one is
+    `Promise<void>`), so any assertion strong enough to catch arity drift
+    would have to be defeated for the returns. Deferred, not free — a mock
+    whose parameter list drifts from `app.go` still silently no-ops, which is
+    the exact bug class `UpdateSession`/`UpdateProject` already hit twice.
+  - **Generated types used where they exist.** The mock's `ListAgents` /
+    custom-agent surface is typed off `main.AgentInfo` / `main.CustomAgent`
+    via a **type-only** import of `wailsjs/go/models` — erased before Vite
+    sees it, so the module still stands in for wailsjs at runtime.
+    Sessions/projects reuse `SessionInfo`/`ProjectInfo` from `state.ts`,
+    intersected with `{ created: string }` rather than widening the source
+    interfaces for the mock's benefit.
+  - `wails-mock.ts`'s `Buffer.from(b64, 'base64')` fallback was deleted, not
+    typed: the module only ever loads in a browser, so the `typeof atob`
+    guard could never take the other branch. Same for the now-unused
+    module-level `ws` in `wails-bridge.ts` (`call` awaits the socket).
+  - `globals.d.ts` gained `__WS_BRIDGE_URL`.
+
+  Gates: typecheck/build/biome green, vitest 322 in 32 files (unchanged),
+  Playwright mock 79 passed + 1 skipped (unchanged) — which is itself the
+  proof the substitution still fires on the renamed target, since every one
+  of those specs needs `window.__hive`. e2e-real 7 passed / 5 failed, and
+  `origin/main` at `87b70e3` fails **the same 5** with the diff stashed.
+  Non-vacuity proved on all three converted files with planted errors
+  (TS2322 in both harnesses, TS2304 in `bridge.ts`).
 
 ## Open questions
 
