@@ -432,7 +432,8 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   smoke was **not** run: 5a's whole surface (help overlay open/close + Tab
   trap, version footer, launcher agent-select → create session, palette)
   is already driven in a real browser by the mock e2e suite. It is still
-  owed for 5b and 6, which land `view`/`focus`/`keyboard`.
+  owed for 5b and 6, which land `view`/`focus`/`keyboard`. *(5b ran it —
+  see below. 6 still owes one.)*
 
 - **2026-08-08** — Wave 5b complete: `sidebar`, `focus`, `view`,
   `test/dom/{environment,selectors,xterm-reflow}.test`. 138 errors after
@@ -510,6 +511,20 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   5 failed — the same 5, re-measured on this branch's baseline before the
   `git mv`. Non-vacuity proved with a planted error in all six converted
   files plus `state.ts`.
+
+  The **`dev-iso.sh` GUI smoke was run** and passed, clearing the debt 5a
+  deferred. Covered, chosen by where the diff's risk actually sat rather
+  than by feature inventory: sidebar drag-reorder of a session and of a
+  project, above and below the target, with the drop indicator appearing
+  and clearing (the 11 `dataTransfer` accesses collapsed into 6 early
+  returns — the highest-risk edits in the wave, and the ones no automated
+  suite drives); ⌘⇧G in and out of grid with a keystroke typed
+  immediately after, for the focus guard; grid arrow spatial move;
+  minimize to tray chip and restore; the empty-state pane plus both of
+  its buttons, which is what exercises the corrected bare
+  `openLauncher()`; dblclick rename of a session and a project.
+  **Wave 6 owes its own smoke** — it lands `keyboard` and `session-term`,
+  neither of which this run touched.
 
 ## Open questions
 
