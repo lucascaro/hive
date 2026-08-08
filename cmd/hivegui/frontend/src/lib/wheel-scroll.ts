@@ -37,15 +37,37 @@ const DOM_DELTA_PAGE = 2;
 // When this returns false we let the event fall through to xterm's native
 // handling (forward-to-app, or Shift+wheel local scroll). Pure so the
 // buffer/mode matrix is unit-testable without xterm.
-export function shouldScrollViewport({ bufferType, mouseTrackingMode }) {
+export function shouldScrollViewport({
+  bufferType,
+  mouseTrackingMode,
+}: {
+  bufferType?: string;
+  mouseTrackingMode?: string | null;
+}): boolean {
   if (bufferType !== 'normal') return false;
   if (mouseTrackingMode && mouseTrackingMode !== 'none') return false;
   return true;
 }
 
-export function wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent }) {
-  let deltaY = e.deltaY;
-  let deltaMode = e.deltaMode;
+// Structural: `wheelDeltaY` is the deprecated WebKit field and is not on
+// TS's `WheelEvent`, and the unit tests build bare objects anyway.
+export interface WheelEventLike {
+  deltaY?: number;
+  deltaMode?: number;
+  wheelDeltaY?: number;
+}
+
+export function wheelToScrollLines(
+  e: WheelEventLike,
+  {
+    linesPerPixel,
+    maxLinesPerEvent,
+  }: { linesPerPixel: number; maxLinesPerEvent: number },
+): number {
+  // NaN, not 0, for an absent delta: it fails the same `Number.isFinite`
+  // guard the original relied on, so the legacy fallback still fires.
+  let deltaY = e.deltaY ?? Number.NaN;
+  let deltaMode = e.deltaMode ?? 0;
 
   // Legacy fallback: some WebKit builds leave the standard deltaY at 0
   // (or undefined) but still populate the deprecated wheelDeltaY, which
@@ -55,13 +77,14 @@ export function wheelToScrollLines(e, { linesPerPixel, maxLinesPerEvent }) {
     Number.isFinite(e.wheelDeltaY) &&
     e.wheelDeltaY !== 0
   ) {
-    deltaY = -e.wheelDeltaY;
+    // The `?? 0` is unreachable — the guard above proved it finite.
+    deltaY = -(e.wheelDeltaY ?? 0);
     deltaMode = 0; // wheelDeltaY is pixel-scale
   }
 
   if (!Number.isFinite(deltaY) || deltaY === 0) return 0;
 
-  let lines;
+  let lines: number;
   if (deltaMode === DOM_DELTA_LINE) {
     // deltaY is ALREADY a line count (one wheel notch ≈ 1–3 lines).
     lines = Math.round(deltaY);

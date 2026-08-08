@@ -20,19 +20,38 @@ export const FLASH_ERROR_MS = 6000;
 export const FLASH_INFO_MS = 2500;
 export const FLASH_MIN_MS = 1500;
 
-export function createStatus({ render, setTimer, clearTimer, now }) {
+export interface StatusDeps {
+  render: (text: string, isError: boolean) => void;
+  // Timer handles are opaque numbers so a test can inject a counter;
+  // the browser's setTimeout satisfies this too.
+  setTimer: (fn: () => void, ms: number) => number;
+  clearTimer: (id: number) => void;
+  now: () => number;
+}
+
+export interface Status {
+  set(text: string, isError?: boolean): void;
+  flash(text: string, isError?: boolean): void;
+}
+
+export function createStatus({
+  render,
+  setTimer,
+  clearTimer,
+  now,
+}: StatusDeps): Status {
   let persistent = { text: '', isError: false };
   let flashActive = false;
   let flashTimer = 0;
   let flashStarted = 0;
 
-  function endFlash() {
+  function endFlash(): void {
     flashActive = false;
     flashTimer = 0;
     render(persistent.text, persistent.isError);
   }
 
-  function set(text, isError = false) {
+  function set(text: string, isError = false): void {
     persistent = { text, isError };
     if (!flashActive) {
       render(text, isError);
@@ -46,7 +65,7 @@ export function createStatus({ render, setTimer, clearTimer, now }) {
     // renders when it expires.
   }
 
-  function flash(text, isError = false) {
+  function flash(text: string, isError = false): void {
     if (flashTimer) clearTimer(flashTimer);
     flashActive = true;
     flashStarted = now();

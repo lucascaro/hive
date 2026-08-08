@@ -11,7 +11,9 @@
 // We only repaint when the document is becoming visible (the stale
 // backbuffer is irrelevant while we're hidden, and we don't want to
 // thrash GPU on the way down).
-export function shouldRefreshOnVisibility(visibilityState) {
+export function shouldRefreshOnVisibility(
+  visibilityState: string | undefined,
+): boolean {
   return visibilityState === 'visible';
 }
 
@@ -27,7 +29,15 @@ export function shouldRefreshOnVisibility(visibilityState) {
 //
 // Returns { reattached } so callers can null out their addon handle
 // when reattach failed.
-export function recoverFromContextLoss(deps) {
+export interface ContextLossDeps {
+  dispose(): void;
+  reattach(): boolean;
+  refresh(): void;
+}
+
+export function recoverFromContextLoss(deps: ContextLossDeps): {
+  reattached: boolean;
+} {
   try {
     deps.dispose();
   } catch {
@@ -67,18 +77,36 @@ export function recoverFromContextLoss(deps) {
 // listener at destruction. Returns `null` when the platform doesn't
 // support matchMedia or the initial bind throws — callers can skip the
 // DPR path silently.
-export function bindDprWatcher(deps) {
-  let mql = null;
-  let handler = null;
-  const bind = () => {
+// Structural stand-in for MediaQueryList — tests inject a fake, and only
+// these two methods are used.
+export interface MqlLike {
+  addEventListener(type: 'change', handler: () => void): void;
+  removeEventListener(type: 'change', handler: () => void): void;
+}
+
+export interface DprWatcherDeps {
+  matchMedia(query: string): MqlLike;
+  getDpr(): number;
+  onChange(): void;
+}
+
+export function bindDprWatcher(
+  deps: DprWatcherDeps,
+): { teardown(): void } | null {
+  let mql: MqlLike | null = null;
+  let handler: (() => void) | null = null;
+  // Explicit return type: `bind` is recursive, so inference would circle.
+  const bind = (): boolean => {
     try {
       const dpr = deps.getDpr();
-      mql = deps.matchMedia(`(resolution: ${dpr}dppx)`);
-      handler = () => {
+      // Held in locals so the handler closes over non-null values; the
+      // module-level pair is only published once the bind succeeded.
+      const nextMql = deps.matchMedia(`(resolution: ${dpr}dppx)`);
+      const nextHandler = () => {
         // Tear down the now-stale MQL and rebind against the new DPR
         // before notifying, so further transitions keep firing.
         try {
-          mql.removeEventListener('change', handler);
+          nextMql.removeEventListener('change', nextHandler);
         } catch {
           /* ignore */
         }
@@ -89,7 +117,9 @@ export function bindDprWatcher(deps) {
           /* host handles its own errors */
         }
       };
-      mql.addEventListener('change', handler);
+      nextMql.addEventListener('change', nextHandler);
+      mql = nextMql;
+      handler = nextHandler;
       return true;
     } catch {
       mql = null;

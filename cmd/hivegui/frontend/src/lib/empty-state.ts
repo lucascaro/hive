@@ -5,15 +5,33 @@
 // scope, otherwise { kind, title, hint, actions } where actions is a
 // list of { id, label } the renderer turns into real buttons.
 
+// Only `.length` is read off projects, so its element type is irrelevant.
+export interface EmptyStateInput {
+  projects?: readonly unknown[];
+  sessions?: readonly { id: string; projectId?: string; project_id?: string }[];
+  view?: string;
+  currentProjectId?: string;
+  gridProjectId?: string;
+  minimized?: { has(id: string): boolean };
+  isMac?: boolean;
+}
+
+export interface EmptyState {
+  kind: 'first-run' | 'project-empty' | 'all-minimized';
+  title: string;
+  hint: string;
+  actions: { id: string; label: string }[];
+}
+
 export function emptyStateModel({
   projects = [],
   sessions = [],
   view = 'single',
   currentProjectId = '',
   gridProjectId = '',
-  minimized = new Set(),
+  minimized = new Set<string>(),
   isMac = true,
-} = {}) {
+}: EmptyStateInput = {}): EmptyState | null {
   const mod = isMac ? '⌘' : 'Ctrl+';
 
   if (sessions.length === 0) {

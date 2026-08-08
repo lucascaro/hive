@@ -4,7 +4,24 @@
 // without scrolling, biasing tile aspect toward typical terminal
 // proportions (~1.6 wide-to-tall). Small-n cases match user
 // expectation rather than the optimizer: n=2 is always side-by-side.
-export function computeGridDims(n, w, h) {
+export interface GridDims {
+  rows: number;
+  cols: number;
+}
+
+export interface TileAssignment {
+  row: number;
+  col: number;
+  rowSpan: number;
+}
+
+export interface GridLayout extends GridDims {
+  assignments: TileAssignment[];
+  // Row-major, length rows*cols; null = genuinely empty cell.
+  cellMap: (number | null)[];
+}
+
+export function computeGridDims(n: number, w: number, h: number): GridDims {
   if (n <= 0) return { rows: 1, cols: 1 };
   if (n === 1) return { rows: 1, cols: 1 };
   if (n === 2) return { rows: 1, cols: 2 };
@@ -29,9 +46,9 @@ export function computeGridDims(n, w, h) {
 // output. cellMap is row-major, length rows*cols, holding the
 // session index that owns each cell (including absorbed cells from
 // row-spans), or null for genuinely empty cells.
-export function buildGridLayout(n, w, h) {
+export function buildGridLayout(n: number, w: number, h: number): GridLayout {
   const { rows, cols } = computeGridDims(n, w, h);
-  const assignments = new Array(n);
+  const assignments: TileAssignment[] = new Array(n);
   for (let i = 0; i < n; i++) {
     assignments[i] = { row: Math.floor(i / cols), col: i % cols, rowSpan: 1 };
   }
@@ -42,7 +59,7 @@ export function buildGridLayout(n, w, h) {
       assignments[aboveIdx].rowSpan += 1;
     }
   }
-  const cellMap = new Array(rows * cols).fill(null);
+  const cellMap: (number | null)[] = new Array(rows * cols).fill(null);
   for (let i = 0; i < n; i++) {
     const a = assignments[i];
     for (let dr = 0; dr < a.rowSpan; dr++) {
@@ -60,7 +77,12 @@ export function buildGridLayout(n, w, h) {
 // Direction convention is screen-space: dCol>0 = right, dRow>0 =
 // down. The recent ctrl-arrow regression was a direction-sign bug;
 // this function locks the convention down.
-export function computeSpatialMove(layout, currentIdx, dCol, dRow) {
+export function computeSpatialMove(
+  layout: GridLayout,
+  currentIdx: number,
+  dCol: number,
+  dRow: number,
+): number | null {
   const { rows, cols, cellMap, assignments } = layout;
   if (!assignments || currentIdx < 0 || currentIdx >= assignments.length)
     return null;
