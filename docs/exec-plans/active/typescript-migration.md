@@ -302,6 +302,16 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
     `recoverFromContextLoss`'s `reattach(): unknown` (there is a test for a
     non-boolean return) and `shouldScrollViewport`'s `bufferType?: string |
     null`.
+  - **But never loosen a source interface just to make a mock compile.** The
+    review of #259 caught this: `ReplayXterm.reset` was made optional so
+    `applyRebaseline`'s `{ term: { cols } }` mock would fit, which silently
+    turned `handleScrollbackEvent`'s unconditional `reset()` into
+    `reset?.()` — a thrown TypeError became a skipped buffer wipe. The
+    correct move is a NARROWER parameter type for the helper that doesn't
+    need the field, not a looser type for every caller. `scrollback.ts` now
+    carries three: `ReplayFlags` (bookkeeping only), `RebaselineTerm`
+    (+ `term.cols`), `ReplayXterm` (`reset()` required). Optional means
+    "the code branches on its absence" — nothing else.
 
 ## Open questions
 
