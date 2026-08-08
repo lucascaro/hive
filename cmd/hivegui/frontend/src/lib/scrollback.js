@@ -43,10 +43,28 @@ export function shouldRequestReplay(
 //     no alt→normal re-sync handler, so keeping the old baseline lets the next
 //     normal-buffer resize still cross the threshold and send the corrective
 //     replay.
-//   - normal screen: replay, and advance the baseline to the new width.
-export function decideResizeReplay({ bufferType, cols, baselineCols }) {
+//   - normal screen, FOLLOWING the bottom: SKIP, and advance the baseline to
+//     the new width. The full-ring replay exists only to reflow user-facing
+//     HISTORY at the new width — but a follower is looking at the bottom, not
+//     history. Replaying anyway tears the buffer down and rebuilds it under
+//     live output, so on a high-output session the viewport thrashes for the
+//     whole multi-hundred-ms parse (the "lots of scrolling on mode switch"
+//     bug: many viewport-jumps, following:true, clustered on each replay).
+//     The post-fit scrollToBottom keeps the newest output correct; the
+//     tradeoff is that OLD history stays wrapped at the previous width until
+//     the next replay (i.e. until the user scrolls up AND a later resize
+//     crosses the threshold). Newest content is always right.
+//   - normal screen, scrolled UP into history: replay, and advance the
+//     baseline. This is the only case that actually needs the reflow.
+export function decideResizeReplay({
+  bufferType,
+  cols,
+  baselineCols,
+  followingBottom,
+}) {
   if (bufferType === 'alternate')
     return { replay: false, baseline: baselineCols };
+  if (followingBottom) return { replay: false, baseline: cols };
   return { replay: true, baseline: cols };
 }
 
@@ -108,6 +126,26 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
 // parse-driven cap-trim drift that #228 deliberately leaves alone.
 export function abandonReplays(st) {
   if (st) st._replaysInFlight = 0;
+}
+
+// resetFollowIntent re-latches "show me the latest": follow the bottom, and
+// drop any stale restore-into-history intent from a prior resize. Called at
+// every deliberate attach/focus (SessionTerm.ensureAttached) — the choke
+// point every tile passes through — so "land at bottom" holds regardless of
+// WHEN a deferred tile attaches or WHEN a multi-second restream finishes: the
+// replay-done handler (and the onScroll re-pin) already honor _followBottom,
+// so setting it here makes the bottom-snap timing-independent instead of
+// racing setView's one-shot snap timer.
+//
+// The inverse of applyRebaseline (which CANCELS a replay's bottom intent):
+// these run at opposite moments, so keep them separate. Mutates `st`, returns
+// it. Pure — no xterm import — so it's unit-testable against a plain object.
+export function resetFollowIntent(st) {
+  if (!st) return st;
+  st._followBottom = true;
+  delete st._replayWantsBottom;
+  delete st._replayPrevFromBottom;
+  return st;
 }
 
 // `trace` (optional) is scrollTrace.rec — when supplied, the replay

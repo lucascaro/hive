@@ -305,27 +305,31 @@ func (v *VT) pushHistory(b []byte) {
 }
 
 // InitialReplayBytes returns the payload to paint a freshly-attaching
-// client. On the ALTERNATE screen (full-screen TUIs: claude, vim, htop…)
-// there is no user-facing scrollback — the app repaints itself — so we
-// return only a one-screen RenderSnapshot instead of the multi-MB raw
-// ring. This is the fix for the many-tile startup flood: 8 alt-screen
-// sessions were each replaying an 8 MiB ring (~32 MB total) into xterm
-// on the main thread, dragging then halting the GUI.
+// client — a compact RenderSnapshot for BOTH screen types now (current
+// screen + up to historyRows of scrollback on the normal screen; a single
+// screen on the alt screen).
 //
-// On the normal screen we still return the full ring so deep scrollback
-// survives the attach (xterm can't reflow on resize, so the ring is how
-// width-changing resizes recover history — see appendRing).
-// The returned bool reports whether the snapshot (alt-screen) path was
-// taken — callers log it so hived.log proves which replay path ran (and
-// therefore which daemon build is live) without inferring from sizes.
+// It used to return the full multi-MB raw ring on the normal screen so deep
+// scrollback survived the attach. But the ring is 8 MiB (tens of thousands
+// of lines) while xterm.js keeps only `scrollback: 5000`, so the attach
+// streamed ~8× more than xterm could retain: on a high-output session the
+// client spent 13–38s parsing the whole ring on the main thread, visibly
+// animating the entire history scrolling past, only to discard ~90% of it.
+// That restream-on-every-attach is the "I see the entire history replay
+// every time I enter grid" report (each grid tile attaches → full ring).
+//
+// The snapshot paints near-instantly. Deep scrollback is still recoverable
+// on demand: RequestScrollbackReplay (EmitAtomicReplay) still returns the
+// full ring, and the client fires it when a width-changing resize happens
+// while the user is scrolled UP into history — the only time the reflow
+// actually matters. A follower never pays for history it isn't looking at.
+//
+// The returned bool reports whether a snapshot was sent; it is now always
+// true. Kept in the signature so callers' hived.log lines still record the
+// path (and so a future full-ring initial path could flip it) without an
+// API change.
 func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
-	v.mu.Lock()
-	onAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
-	v.mu.Unlock()
-	if onAlt {
-		return v.RenderSnapshot(), true
-	}
-	return v.RingBytes(), false
+	return v.RenderSnapshot(), true
 }
 
 // RingBytes returns a defensive copy of the raw-byte scrollback ring.

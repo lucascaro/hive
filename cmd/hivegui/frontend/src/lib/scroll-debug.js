@@ -10,16 +10,56 @@
 
 export const SCROLL_TRACE_CAP = 2000;
 
-export function createScrollTrace({ enabled, now, cap = SCROLL_TRACE_CAP }) {
+// Tags teed to the persistent log (hivegui.log) when a sink is wired. The
+// in-memory ring holds everything (heartbeat, wheel, focus, …) for a live
+// window.__hive_dumpscroll dump; only these low-rate, scroll-diagnostic tags
+// go to the log file so the exact sequence behind a jump survives a reload
+// without flooding the log. High-rate tags (wheel, focus-apply, heartbeat,
+// alive) are deliberately excluded.
+export const TEE_TAGS = new Set([
+  'viewport-jump',
+  'replay-restore',
+  'mode-snap',
+  'resize',
+]);
+
+export function createScrollTrace({
+  enabled,
+  now,
+  cap = SCROLL_TRACE_CAP,
+  sink,
+  teeTags = TEE_TAGS,
+}) {
   const ring = [];
   const clock =
     now || (() => (typeof performance !== 'undefined' ? performance.now() : 0));
   function rec(tag, data = {}) {
+    // Tee whitelisted low-rate tags to the persistent log ALWAYS — even when
+    // the in-memory tracer is disabled. The localStorage-gated ring dump kept
+    // coming back stale (the flag clears on relaunch, so window.__hive_dumpscroll
+    // returned a frozen old snapshot); the append-only log tee can't be fooled
+    // that way. Only the 4 diagnostic tags are teed, so this is a handful of
+    // lines per mode switch, not a flood. Best-effort — never throw into a
+    // scroll/resize path.
+    if (sink && teeTags.has(tag)) {
+      try {
+        sink(`scroll ${tag} ${JSON.stringify(data)}`);
+      } catch {
+        /* sink unavailable */
+      }
+    }
+    // The rich in-memory ring (all tags, for window.__hive_dumpscroll) stays
+    // gated on the debug flag.
     if (!enabled) return;
     ring.push({ t: Math.round(clock()), tag, ...data });
     if (ring.length > cap) ring.splice(0, ring.length - cap);
   }
-  rec.enabled = enabled;
+  // Call sites gate their (cheap) payload build on rec.enabled. Keep them
+  // firing whenever EITHER the ring is on (debug flag) OR a log sink is
+  // wired, so the always-on tee above actually receives the 4 diagnostic
+  // tags in production. The ring/counters/heartbeat still gate on the real
+  // `enabled` internally, so this adds only the teed lines, nothing else.
+  rec.enabled = enabled || !!sink;
   // Monotonic counters that survive ring rotation. Under a render/focus
   // storm the 2000-entry ring fills in ~1s and the early evidence scrolls
   // away; the counters keep the totals (how many renderGrid calls, focus

@@ -169,20 +169,40 @@ func TestInitialReplayBytesAltScreen(t *testing.T) {
 	}
 }
 
-// TestInitialReplayBytesNormalScreen verifies normal-screen sessions
-// still get the full ring on attach (deep scrollback survives; xterm
-// can't reflow on resize, so the ring is how history is preserved).
+// TestInitialReplayBytesNormalScreen verifies normal-screen sessions now
+// get a COMPACT snapshot on attach, not the full multi-MB ring. The ring
+// is 8 MiB (tens of thousands of lines) while xterm keeps only ~5000, so
+// dumping the ring on every attach animated the whole history past for
+// 10s+ only to discard most of it (the "entire history replays every time
+// I enter grid" report). The snapshot paints near-instantly; deep history
+// is recovered on demand via RequestScrollbackReplay when the user is
+// scrolled up and a width-changing resize fires.
 func TestInitialReplayBytesNormalScreen(t *testing.T) {
 	v := NewVT(80, 24)
-	if _, err := v.Write([]byte("hello world\r\n")); err != nil {
+	// Dump far more than one screen so scrollback exists and the ring is big.
+	big := bytes.Repeat([]byte("scrollback line\r\n"), 5000)
+	if _, err := v.Write(big); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got, snapshot := v.InitialReplayBytes()
-	if snapshot {
-		t.Error("normal-screen initial replay should report snapshot=false")
+	ring := v.RingBytes()
+	if len(ring) < 50_000 {
+		t.Fatalf("test setup: ring too small (%d) to prove the point", len(ring))
 	}
-	if want := v.RingBytes(); !bytes.Equal(got, want) {
-		t.Errorf("normal-screen initial replay must equal the ring; got %d B, want %d B", len(got), len(want))
+	got, snapshot := v.InitialReplayBytes()
+	if !snapshot {
+		t.Error("normal-screen initial replay should now report snapshot=true")
+	}
+	if len(got) >= len(ring) {
+		t.Errorf("normal-screen initial replay (%d B) should be far smaller than the ring (%d B)", len(got), len(ring))
+	}
+	// It must still carry recent scrollback (the snapshot's history block),
+	// so the user lands with context, not a bare single screen.
+	if !bytes.Contains(got, []byte("scrollback line")) {
+		t.Error("normal-screen snapshot should include recent scrollback history")
+	}
+	// And it must equal the RenderSnapshot (that's exactly what we send).
+	if want := v.RenderSnapshot(); !bytes.Equal(got, want) {
+		t.Errorf("normal-screen initial replay must equal RenderSnapshot; got %d B, want %d B", len(got), len(want))
 	}
 }
 

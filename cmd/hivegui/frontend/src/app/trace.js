@@ -1,4 +1,5 @@
 import { createScrollTrace } from '../lib/scroll-debug.js';
+import { LogFrontend } from '../bridge.js';
 
 // Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
 // focus consistency checker's switch). The gate is latched here at
@@ -6,14 +7,30 @@ import { createScrollTrace } from '../lib/scroll-debug.js';
 // reproduce, then dump window.__hive_scrolltrace. The e2e-real scroll
 // specs arm it via addInitScript (before main.js runs) and read the
 // ring to prove a scenario actually fired replays.
+// The real debug switch — gates the in-memory ring + heartbeat watchdog.
+// The log tee (below) is always on and independent of this.
+const DEBUG_ENABLED = (() => {
+  try {
+    return localStorage.getItem('hive.debug') === '1';
+  } catch {
+    return false;
+  }
+})();
+
 export const scrollTrace = createScrollTrace({
-  enabled: (() => {
+  enabled: DEBUG_ENABLED,
+  // Tee the scroll-diagnostic records to hivegui.log so the exact sequence
+  // behind a jump is recoverable after the fact (the in-memory ring rotates
+  // fast and needs a live window.__hive_dumpscroll). Only fires when enabled
+  // (hive.debug=1) and only for the whitelisted low-rate tags. Best-effort:
+  // no bridge in tests / before the runtime is ready.
+  sink: (msg) => {
     try {
-      return localStorage.getItem('hive.debug') === '1';
+      LogFrontend(msg);
     } catch {
-      return false;
+      /* bridge absent */
     }
-  })(),
+  },
 });
 // localStorage key holding the trace window snapshotted at the moment a
 // suspicious auto-up scroll was detected. The live ring is capped at
@@ -76,7 +93,7 @@ function winState() {
   };
 }
 
-if (scrollTrace.rec.enabled && typeof window !== 'undefined') {
+if (DEBUG_ENABLED && typeof window !== 'undefined') {
   let lastBeat = performance.now();
   // A hidden window throttles (or, on system sleep, pauses) background
   // timers, so the gap across a hide/sleep is NOT a main-thread stall —

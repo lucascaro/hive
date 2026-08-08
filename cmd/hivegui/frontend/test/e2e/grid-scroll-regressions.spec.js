@@ -13,10 +13,10 @@ import { test, expect } from '@playwright/test';
 //        4-col threshold against the now-stale baseline, again
 //        firing a spurious replay. Symptom: scrollback drops/dupes
 //        in the surviving tiles.
-//   R-control — A real window resize that crosses the threshold MUST
-//        still trigger a replay (the existing #200 behavior). The
-//        fix guards rebaseline to layout-driven contexts only; this
-//        test enforces that guard.
+//   R-follow — A real window resize must NOT replay a tile that is
+//        following the bottom (the bounce fix). The reflow-replay only
+//        matters for a reader scrolled up into history; for a follower it
+//        just thrashes the viewport under live output.
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
@@ -29,7 +29,7 @@ async function bootWithSessions(page, count = 2) {
     await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => window.__hive_state.sessions.length >= n,
     count,
   );
   await page.evaluate(() => {
@@ -121,7 +121,17 @@ test.describe('#208 grid-mode scroll regressions', () => {
     expect(replays).toBe(0);
   });
 
-  test('R-control: a real window resize that materially changes tile width still triggers a scrollback replay', async ({
+  // R-follow: the bounce fix. The reflow-replay (#200) re-wraps user-facing
+  // HISTORY at the new width — but a follower is looking at the newest output,
+  // not history, so replaying for them just tears the buffer down under live
+  // output and makes the viewport thrash (the "lots of scrolling on mode
+  // switch" report). New contract: a real width-changing resize does NOT
+  // replay a tile that is following the bottom. (The complementary case —
+  // a tile scrolled UP into history DOES replay — is covered at the unit
+  // level in scrollback.test.js `decideResizeReplay`, because the mock
+  // harness re-latches _followBottom to true through its resize path, so it
+  // can't hold a tile in the scrolled-up state across a viewport change.)
+  test('R-follow: a real window resize does NOT replay a tile that is following the bottom', async ({
     page,
   }) => {
     await bootWithSessions(page, 2);
@@ -129,17 +139,14 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await settleReplay(page);
     await page.evaluate(() => window.__hive.resetReplay());
 
-    // Bring up the viewport from a narrow size to a wide size; tile
-    // cols change by well over the 4-col threshold.
+    // Freshly-attached tiles are followers (_followBottom = true). A pure
+    // width change must not replay any of them.
     await page.setViewportSize({ width: 600, height: 600 });
     await page.waitForTimeout(50);
     await page.setViewportSize({ width: 1400, height: 800 });
-    // Allow the 100ms debounce + a margin to settle.
     await page.waitForTimeout(400);
 
     const replays = await page.evaluate(() => window.__hive.replayCount());
-    // At least one tile must have requested a replay — that's the
-    // intended #200 behavior. The fix must not have killed it.
-    expect(replays).toBeGreaterThan(0);
+    expect(replays).toBe(0);
   });
 });

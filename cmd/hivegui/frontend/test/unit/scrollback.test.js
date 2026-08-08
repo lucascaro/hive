@@ -7,6 +7,7 @@ import {
   handleScrollbackEvent,
   applyRebaseline,
   abandonReplays,
+  resetFollowIntent,
 } from '../../src/lib/scrollback.js';
 
 // Mock term with an xterm-like async write queue: write(data, cb)
@@ -75,14 +76,43 @@ describe('decideResizeReplay — alt-screen replay skip (freeze fix)', () => {
     ).toBe(232);
   });
 
-  it('replays and advances the baseline on the normal screen', () => {
+  it('replays and advances the baseline on the normal screen when scrolled up', () => {
+    // A reader in history needs the reflow — this is the only case that replays.
     expect(
       decideResizeReplay({
         bufferType: 'normal',
         cols: 100,
         baselineCols: 232,
+        followingBottom: false,
       }),
     ).toEqual({ replay: true, baseline: 100 });
+  });
+
+  it('SKIPS the replay on the normal screen when following the bottom, but advances the baseline', () => {
+    // The "lots of scrolling on mode switch" fix: a follower is looking at
+    // the newest output, not history, so the destructive full-ring replay is
+    // pure cost (buffer torn down + rebuilt under live output = viewport
+    // thrash). Skip it, but DO advance the baseline: the width really did
+    // change, and the post-fit scrollToBottom keeps newest output correct.
+    expect(
+      decideResizeReplay({
+        bufferType: 'normal',
+        cols: 100,
+        baselineCols: 232,
+        followingBottom: true,
+      }),
+    ).toEqual({ replay: false, baseline: 100 });
+  });
+
+  it('alt-screen skip wins even when following (baseline still untouched)', () => {
+    expect(
+      decideResizeReplay({
+        bufferType: 'alternate',
+        cols: 100,
+        baselineCols: 232,
+        followingBottom: true,
+      }),
+    ).toEqual({ replay: false, baseline: 232 });
   });
 });
 
@@ -407,6 +437,41 @@ describe('applyRebaseline clears stale restore intent (the pair)', () => {
     applyRebaseline(st, () => {});
     expect(st._replayWantsBottom).toBeUndefined();
     expect(st._replayPrevFromBottom).toBeUndefined();
+  });
+});
+
+describe('resetFollowIntent re-latches "land at bottom" at every attach/focus', () => {
+  it('sets _followBottom=true and clears the stale restore pair', () => {
+    // A tile that was scrolled up before a re-focus: stale intent must not
+    // survive into the deliberate "show me the latest" attach.
+    const st = {
+      _followBottom: false,
+      _replayWantsBottom: false,
+      _replayPrevFromBottom: 40,
+    };
+    const out = resetFollowIntent(st);
+    expect(out).toBe(st); // mutates in place, returns it
+    expect(st._followBottom).toBe(true);
+    expect(st._replayWantsBottom).toBeUndefined();
+    expect(st._replayPrevFromBottom).toBeUndefined();
+  });
+
+  it('is the inverse of applyRebaseline: it ARMS a bottom-snap (does not touch baseline/timer)', () => {
+    const st = {
+      _followBottom: false,
+      _replayBaselineCols: 80,
+      _replayTimer: 42,
+    };
+    resetFollowIntent(st);
+    expect(st._followBottom).toBe(true);
+    // Leaves the replay baseline + timer alone — that's applyRebaseline's job.
+    expect(st._replayBaselineCols).toBe(80);
+    expect(st._replayTimer).toBe(42);
+  });
+
+  it('tolerates a null st', () => {
+    expect(() => resetFollowIntent(null)).not.toThrow();
+    expect(resetFollowIntent(null)).toBe(null);
   });
 });
 

@@ -1,16 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createScrollTrace,
   SCROLL_TRACE_CAP,
+  TEE_TAGS,
   classifyViewportMove,
 } from '../../src/lib/scroll-debug.js';
 
 describe('createScrollTrace', () => {
-  it('records nothing when disabled', () => {
+  it('records nothing to the ring when disabled and no sink', () => {
     const { rec, ring } = createScrollTrace({ enabled: false });
     rec('resize', { cols: 80 });
     expect(ring).toEqual([]);
     expect(rec.enabled).toBe(false);
+  });
+
+  it('tees to the log even when the ring is disabled, without filling the ring', () => {
+    // The always-on log tee: a sink flips rec.enabled true (so call-site
+    // guards fire and build payloads) and whitelisted tags reach the sink,
+    // but the in-memory ring stays empty because enabled:false.
+    const sink = vi.fn();
+    const { rec, ring } = createScrollTrace({ enabled: false, sink });
+    expect(rec.enabled).toBe(true); // sink present ⇒ call sites fire
+    rec('resize', { cols: 80 });
+    expect(sink).toHaveBeenCalledWith('scroll resize {"cols":80}');
+    expect(ring).toEqual([]); // ring still gated on the real debug flag
   });
 
   it('records tag, payload and rounded injected-clock timestamp when enabled', () => {
@@ -72,6 +85,57 @@ describe('createScrollTrace', () => {
     // Ring dropped the oldest, but the counter kept every increment.
     expect(ring.length).toBe(3);
     expect(counters.renderGrid).toBe(10);
+  });
+
+  it('tees whitelisted tags to the sink with the tag + JSON payload', () => {
+    const sink = vi.fn();
+    const { rec } = createScrollTrace({ enabled: true, now: () => 0, sink });
+    rec('resize', { cols: 80 });
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenCalledWith('scroll resize {"cols":80}');
+  });
+
+  it('does not tee non-whitelisted (high-rate) tags to the sink', () => {
+    const sink = vi.fn();
+    const { rec } = createScrollTrace({ enabled: true, now: () => 0, sink });
+    rec('wheel', { deltaY: 3 });
+    rec('heartbeat-stall', { gap: 900 });
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  it('tees whitelisted tags whenever a sink is present, regardless of the debug flag', () => {
+    // The tee is intentionally NOT gated on `enabled` — it is the always-on
+    // production log path. (Non-whitelisted tags are still filtered; the ring
+    // still respects `enabled`, covered above.)
+    const sink = vi.fn();
+    const { rec } = createScrollTrace({ enabled: false, sink });
+    rec('resize', { cols: 80 });
+    expect(sink).toHaveBeenCalledWith('scroll resize {"cols":80}');
+    rec('wheel', { deltaY: 3 });
+    expect(sink).toHaveBeenCalledTimes(1); // wheel is not whitelisted
+  });
+
+  it('swallows a throwing sink so the trace path never throws', () => {
+    const sink = vi.fn(() => {
+      throw new Error('bridge down');
+    });
+    const { rec, ring } = createScrollTrace({
+      enabled: true,
+      now: () => 0,
+      sink,
+    });
+    expect(() => rec('mode-snap', { view: 'grid-all' })).not.toThrow();
+    // Ring still recorded it even though the tee threw.
+    expect(ring).toHaveLength(1);
+  });
+
+  it('TEE_TAGS is the four low-rate scroll-diagnostic tags', () => {
+    expect([...TEE_TAGS].sort()).toEqual([
+      'mode-snap',
+      'replay-restore',
+      'resize',
+      'viewport-jump',
+    ]);
   });
 });
 
