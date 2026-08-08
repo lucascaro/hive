@@ -42,17 +42,42 @@
 // The pair must be cleared together at every override site (here and
 // in applyRebaseline) — clearing only one leaves a stale half that a
 // later replay-done can act on.
-export function snapVisibleTermsToBottom(terms) {
+// Structural, not the real SessionTerm: this module is deliberately
+// xterm-free so it can be unit-tested against plain mocks, and the
+// mocks only carry these fields.
+export interface SnapTarget {
+  attached?: boolean;
+  body?: { clientHeight: number } | null;
+  term?: {
+    scrollToBottom?: () => void;
+    write?: (data: string, callback?: () => void) => void;
+  } | null;
+  _replayWantsBottom?: boolean;
+  _followBottom?: boolean;
+  _replayPrevFromBottom?: number;
+}
+
+export function snapVisibleTermsToBottom(
+  terms: Iterable<SnapTarget | null | undefined> | null | undefined,
+): void {
   if (!terms) return;
   for (const st of terms) {
     if (!st?.attached) continue;
     if (!st.body || st.body.clientHeight === 0) continue;
-    if (st.term && typeof st.term.scrollToBottom === 'function') {
-      st.term.scrollToBottom();
+    // Hoisted to a const so the callback below closes over a non-null
+    // `term`. This does change one thing from the original
+    // `st.term.scrollToBottom()`: the terminal OBJECT is now captured
+    // at snap time rather than re-read when the callback fires. Safe —
+    // `SessionTerm.term` is assigned once (app/session-term.js) and
+    // never reassigned or nulled. The `?.` still re-reads the method
+    // off that object at call time.
+    const term = st.term;
+    if (term && typeof term.scrollToBottom === 'function') {
+      term.scrollToBottom();
       // Parse-ordered re-snap: re-assert bottom after any in-flight
       // replay bytes finish parsing (see header comment).
-      if (typeof st.term.write === 'function') {
-        st.term.write('', () => st.term.scrollToBottom());
+      if (typeof term.write === 'function') {
+        term.write('', () => term.scrollToBottom?.());
       }
       st._replayWantsBottom = true;
       // A mode switch is a deliberate "land at the bottom" — resume

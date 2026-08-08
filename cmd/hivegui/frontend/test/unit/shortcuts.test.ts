@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { shortcutGroups, paletteShortcuts } from '../../src/lib/shortcuts.js';
+import {
+  shortcutGroups,
+  paletteShortcuts,
+  type ShortcutGroup,
+} from '../../src/lib/shortcuts.js';
 
 describe('shortcutGroups', () => {
   it('renders mac glyphs on mac and Ctrl+ words elsewhere', () => {
@@ -37,7 +41,7 @@ describe('shortcutGroups', () => {
   });
 
   it('mac-only clear-line entry appears only on mac', () => {
-    const labels = (groups) =>
+    const labels = (groups: ShortcutGroup[]) =>
       groups.flatMap((g) => g.items.map((i) => i.label));
     expect(labels(shortcutGroups({ isMac: true }))).toContain(
       'Clear input line',

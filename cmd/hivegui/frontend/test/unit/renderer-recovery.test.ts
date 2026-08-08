@@ -6,12 +6,12 @@ import {
 } from '../../src/lib/renderer-recovery.js';
 
 function makeFakeMql() {
-  const listeners = new Set();
+  const listeners = new Set<() => void>();
   return {
-    addEventListener: vi.fn((evt, fn) => {
+    addEventListener: vi.fn((evt: string, fn: () => void) => {
       if (evt === 'change') listeners.add(fn);
     }),
-    removeEventListener: vi.fn((evt, fn) => {
+    removeEventListener: vi.fn((evt: string, fn: () => void) => {
       if (evt === 'change') listeners.delete(fn);
     }),
     fire() {
@@ -167,7 +167,7 @@ describe('bindDprWatcher', () => {
     expect(mqls[1].listenerCount()).toBe(0);
     expect(mqls[2].listenerCount()).toBe(1);
 
-    watcher.teardown();
+    watcher?.teardown();
     expect(mqls[2].listenerCount()).toBe(0);
   });
 
@@ -179,10 +179,10 @@ describe('bindDprWatcher', () => {
       onChange: () => {},
     });
     expect(mql.listenerCount()).toBe(1);
-    watcher.teardown();
+    watcher?.teardown();
     expect(mql.listenerCount()).toBe(0);
     // Idempotent.
-    expect(() => watcher.teardown()).not.toThrow();
+    expect(() => watcher?.teardown()).not.toThrow();
   });
 
   it('returns null when matchMedia throws (unsupported platform)', () => {
@@ -211,6 +211,6 @@ describe('bindDprWatcher', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     // Rebind still happened despite onChange throwing.
     expect(mqls[1].listenerCount()).toBe(1);
-    watcher.teardown();
+    watcher?.teardown();
   });
 });

@@ -18,7 +18,7 @@ let active = 0;
 
 // Try to reserve a GL context slot. Returns true if the caller may build
 // a WebglAddon, false if the budget is exhausted (caller uses DOM renderer).
-export function acquireWebglSlot(budget = WEBGL_CONTEXT_BUDGET) {
+export function acquireWebglSlot(budget = WEBGL_CONTEXT_BUDGET): boolean {
   if (active >= budget) return false;
   active++;
   return true;
@@ -26,16 +26,16 @@ export function acquireWebglSlot(budget = WEBGL_CONTEXT_BUDGET) {
 
 // Release a previously-acquired slot. Floors at 0 so an over-release
 // (double dispose) can't hand out phantom slots.
-export function releaseWebglSlot() {
+export function releaseWebglSlot(): void {
   if (active > 0) active--;
 }
 
-export function activeWebglSlots() {
+export function activeWebglSlots(): number {
   return active;
 }
 
 // Test-only: reset the module-level counter between cases.
-export function _resetWebglBudget() {
+export function _resetWebglBudget(): void {
   active = 0;
 }
 
@@ -47,7 +47,18 @@ export function _resetWebglBudget() {
 // monotonic ms clock. Returns { count, stormed } — stormed=true means
 // the tile has lost its context more than `max` times within `windowMs`
 // and should give up on WebGL.
-export function recordWebglLoss(s, now, max, windowMs) {
+// Mutable per-tile state; both fields start absent on a fresh tile.
+export interface WebglLossState {
+  start?: number;
+  count?: number;
+}
+
+export function recordWebglLoss(
+  s: WebglLossState,
+  now: number,
+  max: number,
+  windowMs: number,
+): { count: number; stormed: boolean } {
   if (now - (s.start || 0) > windowMs) {
     s.start = now;
     s.count = 0;

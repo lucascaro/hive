@@ -17,7 +17,19 @@ export const ACTION_FOCUS = 'focus'; // focus the helper-textarea of `id`
 //   - knownTermIds: iterable of session ids that currently have a SessionTerm
 //
 // Returns { kind, id? }.
-export function decideFocusAction(snapshot) {
+export interface FocusSnapshot {
+  id?: string | null;
+  modalOpen?: boolean;
+  activeTag?: string;
+  activeClasses?: string | { contains?: (name: string) => boolean } | null;
+  knownTermIds?: { has(id: string): boolean } | string[] | null;
+}
+
+export type FocusAction =
+  | { kind: typeof ACTION_CLEAR | typeof ACTION_PRESERVE }
+  | { kind: typeof ACTION_FOCUS; id: string };
+
+export function decideFocusAction(snapshot: FocusSnapshot): FocusAction {
   const { id, modalOpen, activeTag, activeClasses, knownTermIds } = snapshot;
 
   if (modalOpen) return { kind: ACTION_CLEAR };
@@ -37,11 +49,14 @@ export function decideFocusAction(snapshot) {
   return { kind: ACTION_FOCUS, id };
 }
 
-function isRealInput(tag) {
+function isRealInput(tag: string | undefined): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
-function hasClass(classes, name) {
+function hasClass(
+  classes: FocusSnapshot['activeClasses'],
+  name: string,
+): boolean {
   if (!classes) return false;
   if (typeof classes === 'string') {
     return classes.split(/\s+/).includes(name);
@@ -50,9 +65,11 @@ function hasClass(classes, name) {
   return false;
 }
 
-function hasId(ids, id) {
+// Array check first so TS narrows the remaining branch to the Set-like;
+// arrays have no `.has`, so the reorder is behavior-preserving.
+function hasId(ids: FocusSnapshot['knownTermIds'], id: string): boolean {
   if (!ids) return false;
-  if (typeof ids.has === 'function') return ids.has(id);
   if (Array.isArray(ids)) return ids.includes(id);
+  if (typeof ids.has === 'function') return ids.has(id);
   return false;
 }

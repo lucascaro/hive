@@ -16,8 +16,24 @@
 //
 // Pure module: no DOM, unit-testable.
 
+export interface Shortcut {
+  keys: string;
+  label: string;
+}
+
+export interface ShortcutGroup {
+  title: string;
+  items: Shortcut[];
+}
+
+interface ModOpts {
+  shift?: boolean;
+}
+
 // key: a printable key or a symbolic name from KEYS below.
-const KEYS = {
+// Typed as a plain Record so an arbitrary printable key (`'T'`, `'['`)
+// indexes cleanly and falls through to the `k ? … : key` default.
+const KEYS: Record<string, { mac: string; other: string }> = {
   enter: { mac: '↩', other: 'Enter' },
   backspace: { mac: '⌫', other: 'Backspace' },
   up: { mac: '↑', other: 'Up' },
@@ -26,13 +42,17 @@ const KEYS = {
   right: { mac: '→', other: 'Right' },
 };
 
-function keyLabel(key, isMac) {
+function keyLabel(key: string, isMac: boolean): string {
   const k = KEYS[key];
   return k ? (isMac ? k.mac : k.other) : key;
 }
 
 // cmd ("⌘" / "Ctrl+"), optionally with shift ("⇧⌘" / "Ctrl+Shift+").
-function mod(isMac, key, { shift = false } = {}) {
+function mod(
+  isMac: boolean,
+  key: string,
+  { shift = false }: ModOpts = {},
+): string {
   const k = keyLabel(key, isMac);
   if (isMac) return (shift ? '⇧⌘' : '⌘') + k;
   return (shift ? 'Ctrl+Shift+' : 'Ctrl+') + k;
@@ -40,7 +60,11 @@ function mod(isMac, key, { shift = false } = {}) {
 
 // Ctrl on every platform (Ctrl+`, Ctrl+Shift+C/V/A — deliberately not
 // ⌘ on mac, see main.js comments).
-function ctrl(isMac, key, { shift = false } = {}) {
+function ctrl(
+  isMac: boolean,
+  key: string,
+  { shift = false }: ModOpts = {},
+): string {
   const k = keyLabel(key, isMac);
   if (isMac) return (shift ? '⌃⇧' : '⌃') + k;
   return (shift ? 'Ctrl+Shift+' : 'Ctrl+') + k;
@@ -50,7 +74,11 @@ function ctrl(isMac, key, { shift = false } = {}) {
 // "cmd on mac, ctrl elsewhere" or "ctrl everywhere": it is Ctrl on
 // macOS but Ctrl+Alt on Windows/Linux, because plain Ctrl+- is
 // already zoom-out there. See lib/keymap.js navHistoryKey.
-function ctrlAlt(isMac, key, { shift = false } = {}) {
+function ctrlAlt(
+  isMac: boolean,
+  key: string,
+  { shift = false }: ModOpts = {},
+): string {
   const k = keyLabel(key, isMac);
   if (isMac) return (shift ? '⌃⇧' : '⌃') + k;
   return (shift ? 'Ctrl+Alt+Shift+' : 'Ctrl+Alt+') + k;
@@ -59,14 +87,14 @@ function ctrlAlt(isMac, key, { shift = false } = {}) {
 // Arrow-key sequences: mac glyphs read fine run together (↑↓←→);
 // word labels need separators so non-mac renders "Up/Down/Left/Right"
 // instead of the unreadable "UpDownLeftRight".
-function arrowSeq(isMac, ...keys) {
+function arrowSeq(isMac: boolean, ...keys: string[]): string {
   return keys.map((k) => keyLabel(k, isMac)).join(isMac ? '' : '/');
 }
 
-export function shortcutGroups({ isMac }) {
-  const m = (key, opts) => mod(isMac, key, opts);
-  const c = (key, opts) => ctrl(isMac, key, opts);
-  const ca = (key, opts) => ctrlAlt(isMac, key, opts);
+export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
+  const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
+  const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
+  const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
   const arrows = arrowSeq(isMac, 'up', 'down', 'left', 'right');
   return [
     {
@@ -171,11 +199,15 @@ export function shortcutGroups({ isMac }) {
 
 // Shortcut strings for the command palette, by command id. On mac
 // these match the glyph style the palette has always used.
-export function paletteShortcuts({ isMac }) {
-  const m = (key, opts) => mod(isMac, key, opts);
-  const c = (key, opts) => ctrl(isMac, key, opts);
-  const ca = (key, opts) => ctrlAlt(isMac, key, opts);
-  const map = {
+export function paletteShortcuts({
+  isMac,
+}: {
+  isMac: boolean;
+}): Record<string, string> {
+  const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
+  const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
+  const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
+  const map: Record<string, string> = {
     'new-project': m('N'),
     'new-session': m('T'),
     'new-session-worktree': m('T', { shift: true }),

@@ -26,6 +26,16 @@
 // suppressed. The periodic "alive" line proves the loop is still running
 // (and carries window state) so a totally silent log = process wedged or
 // killed, not merely quiet.
+export interface BeatInput {
+  gap: number;
+  nominalMs: number;
+  visible: boolean;
+  // Arbitrary extra fields, formatted as `k=v` pairs.
+  state?: Record<string, unknown> | null;
+  beat: number;
+  aliveEvery: number;
+}
+
 export function classifyBeat({
   gap,
   nominalMs,
@@ -33,7 +43,7 @@ export function classifyBeat({
   state,
   beat,
   aliveEvery,
-}) {
+}: BeatInput): string | null {
   const stall = visible && gap > nominalMs * 2;
   if (stall) {
     return `hb STALL gap=${Math.round(gap)}ms ${fmtState(state)}`;
@@ -44,7 +54,7 @@ export function classifyBeat({
   return null;
 }
 
-function fmtState(state) {
+function fmtState(state: BeatInput['state']): string {
   if (!state) return '';
   return Object.entries(state)
     .map(([k, v]) => `${k}=${v}`)
@@ -58,7 +68,10 @@ function fmtState(state) {
 // JS heap only, not the process RSS that ballooned to ~1 GB (that lives
 // in the separate WebContent/GPU process), but a climbing JS heap is
 // still a useful leak signal where available.
-export function jsHeapMB(perf) {
+// `performance.memory` is Chromium-only and absent from TS's lib.dom.
+export function jsHeapMB(
+  perf: { memory?: { usedJSHeapSize?: number } } | null | undefined,
+): number | null {
   try {
     const m = perf?.memory;
     if (m && typeof m.usedJSHeapSize === 'number') {

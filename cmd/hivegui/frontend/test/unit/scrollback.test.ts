@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
 import {
   shouldRequestReplay,
   decideResizeReplay,
@@ -8,6 +8,8 @@ import {
   applyRebaseline,
   abandonReplays,
   resetFollowIntent,
+  type ReplayTerm,
+  type RebaselineTerm,
 } from '../../src/lib/scrollback.js';
 
 // Mock term with an xterm-like async write queue: write(data, cb)
@@ -15,22 +17,39 @@ import {
 // This models the property the handler now depends on — reset and
 // viewport placement are parse-ordered, not event-ordered. Shared at
 // module scope so every describe block below can build a mock term.
+// Local mock shape rather than ReplayTerm itself: the assertions need
+// the concrete vi.fn() types. Assignability to ReplayTerm is asserted
+// once, on the returned `st`, so the mock can't drift from the contract.
+interface MockXterm {
+  buffer: { active: { baseY: number; viewportY: number } };
+  reset: Mock<() => void>;
+  scrollToBottom: Mock<() => void>;
+  scrollToLine: Mock<(n: number) => void>;
+  write: Mock<(data: string, cb?: () => void) => void>;
+}
+
+type MockSt = ReplayTerm & { term: MockXterm };
+
 function makeSt({ baseY = 0, viewportY = 0 } = {}) {
-  const queue = [];
-  const order = [];
+  const queue: { data: string; cb?: () => void }[] = [];
+  const order: string[] = [];
   // Shared buffer object so scrollToLine can mutate viewportY
   // from within the term object literal (where `st` isn't in scope yet).
   const buf = { active: { baseY, viewportY } };
   const term = {
     buffer: buf,
-    reset: vi.fn(() => order.push('reset')),
-    scrollToBottom: vi.fn(() => order.push('scrollToBottom')),
-    scrollToLine: vi.fn((n) => {
+    reset: vi.fn(() => {
+      order.push('reset');
+    }),
+    scrollToBottom: vi.fn(() => {
+      order.push('scrollToBottom');
+    }),
+    scrollToLine: vi.fn((n: number) => {
       order.push(`scrollToLine:${n}`);
       // xterm's scrollToLine sets viewportY synchronously
       buf.active.viewportY = n;
     }),
-    write: vi.fn((data, cb) => {
+    write: vi.fn((data: string, cb?: () => void) => {
       queue.push({ data, cb });
       if (data) order.push(`parse:${data}`);
     }),
@@ -41,15 +60,11 @@ function makeSt({ baseY = 0, viewportY = 0 } = {}) {
       // A real parser would consume entry.data here; our `order`
       // log records data entries at enqueue time which is fine for
       // relative ordering because flush preserves queue order.
-      entry.cb?.();
+      entry?.cb?.();
     }
   };
-  return {
-    st: { term, decoder: new TextDecoder('utf-8') },
-    flush,
-    order,
-    queue,
-  };
+  const st: MockSt = { term, decoder: new TextDecoder('utf-8') };
+  return { st, flush, order, queue };
 }
 
 describe('decideResizeReplay — alt-screen replay skip (freeze fix)', () => {
@@ -302,7 +317,9 @@ describe('handleScrollbackEvent', () => {
   });
 
   it('falls back to synchronous behavior when term has no write()', () => {
-    const st = {
+    const st: ReplayTerm & {
+      term: { reset: Mock<() => void>; scrollToBottom: Mock<() => void> };
+    } = {
       term: { reset: vi.fn(), scrollToBottom: vi.fn() },
       decoder: new TextDecoder('utf-8'),
     };
@@ -433,7 +450,10 @@ describe('applyRebaseline clears stale restore intent (the pair)', () => {
   });
 
   it('is a no-op on the intent pair when both were unset', () => {
-    const st = { term: { cols: 100 }, _replayBaselineCols: 80 };
+    const st: RebaselineTerm = {
+      term: { cols: 100 },
+      _replayBaselineCols: 80,
+    };
     applyRebaseline(st, () => {});
     expect(st._replayWantsBottom).toBeUndefined();
     expect(st._replayPrevFromBottom).toBeUndefined();

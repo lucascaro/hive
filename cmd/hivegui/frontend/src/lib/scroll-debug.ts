@@ -32,17 +32,43 @@ export const TEE_TAGS = new Set([
   'mode-snap',
 ]);
 
+export interface ScrollTraceEntry {
+  t: number;
+  tag: string;
+  [key: string]: unknown;
+}
+
+// `rec` is an expando: call sites gate payload construction on
+// `rec.enabled` so a normal run builds nothing.
+export interface ScrollTraceRec {
+  (tag: string, data?: Record<string, unknown>): void;
+  enabled: boolean;
+}
+
+export interface ScrollTrace {
+  rec: ScrollTraceRec;
+  ring: ScrollTraceEntry[];
+  count(name: string, by?: number): void;
+  counters: Record<string, number>;
+}
+
 export function createScrollTrace({
   enabled,
   now,
   cap = SCROLL_TRACE_CAP,
   sink,
   teeTags = TEE_TAGS,
-}) {
-  const ring = [];
+}: {
+  enabled?: boolean;
+  now?: (() => number) | null;
+  cap?: number;
+  sink?: ((line: string) => void) | null;
+  teeTags?: { has(tag: string): boolean };
+}): ScrollTrace {
+  const ring: ScrollTraceEntry[] = [];
   const clock =
     now || (() => (typeof performance !== 'undefined' ? performance.now() : 0));
-  function rec(tag, data = {}) {
+  function rec(tag: string, data: Record<string, unknown> = {}): void {
     // Everything here — ring AND log tee — is gated on the debug flag. The
     // tracer's call sites live in the scroll and resize hot paths, so nothing
     // it does may cost anything in a normal run; a user hitting a scroll bug
@@ -69,8 +95,8 @@ export function createScrollTrace({
   // storm the 2000-entry ring fills in ~1s and the early evidence scrolls
   // away; the counters keep the totals (how many renderGrid calls, focus
   // re-applies, heartbeat stalls, …) legible in any later dump.
-  const counters = Object.create(null);
-  function count(name, by = 1) {
+  const counters: Record<string, number> = Object.create(null);
+  function count(name: string, by = 1): void {
     if (!enabled) return;
     counters[name] = (counters[name] || 0) + by;
   }
@@ -94,7 +120,13 @@ export function classifyViewportMove({
   lastUserScrollTs,
   now,
   userGraceMs = 250,
-}) {
+}: {
+  from: number;
+  to: number;
+  lastUserScrollTs?: number | null;
+  now?: number | null;
+  userGraceMs?: number;
+}): 'user-up' | 'auto-up' | null {
   if (!(to < from)) return null;
   const userDriven =
     typeof lastUserScrollTs === 'number' &&

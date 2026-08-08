@@ -63,7 +63,7 @@ describe('decideFocusAction', () => {
   });
 
   it('accepts a DOMTokenList-shaped activeClasses', () => {
-    const tokens = { contains: (n) => n === 'xterm-helper-textarea' };
+    const tokens = { contains: (n: string) => n === 'xterm-helper-textarea' };
     const a = decideFocusAction(
       snap({ activeTag: 'TEXTAREA', activeClasses: tokens }),
     );

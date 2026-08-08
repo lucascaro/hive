@@ -9,10 +9,10 @@ import {
 // Manual timer/clock harness — createStatus takes injected timers, so
 // no vi.useFakeTimers needed and the semantics are explicit.
 function harness() {
-  const rendered = []; // [{ text, isError }]
+  const rendered: { text: string; isError: boolean }[] = [];
   let clock = 0;
   let nextId = 1;
-  const timers = new Map(); // id -> { at, fn }
+  const timers = new Map<number, { at: number; fn: () => void }>();
   const ctl = createStatus({
     render: (text, isError) => rendered.push({ text, isError }),
     setTimer: (fn, ms) => {
@@ -23,7 +23,7 @@ function harness() {
     clearTimer: (id) => timers.delete(id),
     now: () => clock,
   });
-  const advance = (ms) => {
+  const advance = (ms: number) => {
     clock += ms;
     for (const [id, t] of [...timers]) {
       if (t.at <= clock) {
@@ -37,7 +37,7 @@ function harness() {
 }
 
 describe('createStatus', () => {
-  let h;
+  let h: ReturnType<typeof harness>;
   beforeEach(() => {
     h = harness();
   });

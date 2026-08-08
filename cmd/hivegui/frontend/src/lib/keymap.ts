@@ -21,7 +21,18 @@ export const NEWLINE_SEQ = '\x0a';
 // Cmd/Ctrl+Enter, carries no Cmd/Ctrl modifier, so it is not consumed by
 // the capture-phase window shortcut handler (which gates on Cmd/Ctrl) and
 // actually reaches the terminal. Plain Enter still submits.
-export function isShiftEnter(e) {
+// Structural, not `KeyboardEvent`: the unit tests build plain fakes.
+// `code` is optional — only navHistoryKey's layout fallback reads it.
+export interface KeyEventLike {
+  key: string;
+  code?: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+export function isShiftEnter(e: KeyEventLike): boolean {
   return (
     e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Enter'
   );
@@ -42,7 +53,7 @@ export function isShiftEnter(e) {
 // The Cmd/Ctrl modifier is required: a bare "?" is an ordinary character
 // that must reach the terminal, never the overlay. Callers that already
 // gate on cmdOrCtrl() still get the right answer, since this re-checks.
-export function isHelpOverlayKey(e) {
+export function isHelpOverlayKey(e: KeyEventLike): boolean {
   if (!(e.metaKey || e.ctrlKey)) return false;
   return e.key === '/' || e.key === '?';
 }
@@ -73,7 +84,10 @@ export function isHelpOverlayKey(e) {
 // setups, and breaking the binding outright on Linux is worse than the
 // narrow collision. If it is ever reported, the AltGraph check is the
 // fix. (VS Code carries the same tradeoff on the same chord.)
-export function navHistoryKey(e, isMac) {
+export function navHistoryKey(
+  e: KeyEventLike,
+  isMac: boolean,
+): 'back' | 'forward' | null {
   if (e.metaKey || !e.ctrlKey) return null;
   if (isMac ? e.altKey : !e.altKey) return null;
   if (!(e.key === '-' || e.key === '_' || e.code === 'Minus')) return null;

@@ -10,7 +10,7 @@ const REPLACEMENT = '�';
 // Encode `s` and split it at byte index `cut`. The first slice is
 // guaranteed to end mid-rune for any non-ASCII `s` with cut between 1
 // and bytes.length-1 chosen to land inside a multi-byte sequence.
-function splitMidRune(s) {
+function splitMidRune(s: string) {
   const bytes = new TextEncoder().encode(s);
   // Find a byte index that sits inside a multi-byte sequence.
   for (let i = 1; i < bytes.length; i++) {

@@ -15,16 +15,64 @@ export const REPLAY_COL_THRESHOLD = 4;
 // the final settled width sends a request.
 export const REPLAY_DEBOUNCE_MS = 100;
 
+// Structural stand-ins for the xterm Terminal — this module is
+// deliberately xterm-free so the state machine can be unit-tested
+// against plain mocks. lib/view-scroll.ts carries a smaller sibling
+// (SnapTarget) for the same reason; wave 3's globals.d.ts is where a
+// shared SessionTerm type belongs, not here.
+//
+// Split by what each helper actually touches, rather than one
+// everything-optional shape: an all-optional interface accepts `{}` as
+// a terminal, which would let `applyRebaseline` write an `undefined`
+// baseline that `decideResizeReplay` then reads as "never measured".
+// A field is optional here ONLY where the code branches on its absence.
+
+// The replay bookkeeping every helper below mutates. A real SessionTerm
+// satisfies this; so does a bare `{}` before its first replay.
+export interface ReplayFlags {
+  _replayBaselineCols?: number;
+  _replayTimer?: number;
+  _replayWantsBottom?: boolean;
+  _replayPrevFromBottom?: number;
+  _replaysInFlight?: number;
+  _followBottom?: boolean;
+}
+
+// applyRebaseline reads exactly one thing off the terminal.
+export interface RebaselineTerm extends ReplayFlags {
+  term?: { cols: number } | null;
+}
+
+// handleScrollbackEvent drives the terminal. `reset` is REQUIRED: the
+// begin handler calls it unconditionally, and a term that can't be
+// wiped would paint the replay on top of the existing buffer —
+// duplicated scrollback, silently. The rest are optional because the
+// code genuinely branches on them (`typeof … === 'function'`), and
+// there is a test for a term with no `write`.
+export interface ReplayXterm {
+  buffer?: { active?: { baseY?: number; viewportY?: number } };
+  reset(): void;
+  write?(data: string, callback?: () => void): void;
+  scrollToBottom?(): void;
+  scrollToLine?(line: number): void;
+}
+
+export interface ReplayTerm extends ReplayFlags {
+  term?: ReplayXterm | null;
+  info?: { id?: string };
+  decoder?: TextDecoder | null;
+}
+
 // Returns true when a resize from prevCols → nextCols should trigger
 // a scrollback replay request. Encapsulates "first measurement"
 // (prevCols falsy) as well: an undefined / 0 prev means we haven't
 // measured yet, so suppress — the initial attach already sent a
 // replay.
 export function shouldRequestReplay(
-  prevCols,
-  nextCols,
+  prevCols: number | undefined,
+  nextCols: number | undefined,
   threshold = REPLAY_COL_THRESHOLD,
-) {
+): boolean {
   if (!prevCols || !nextCols) return false;
   return Math.abs(nextCols - prevCols) >= threshold;
 }
@@ -61,7 +109,12 @@ export function decideResizeReplay({
   cols,
   baselineCols,
   followingBottom,
-}) {
+}: {
+  bufferType?: string;
+  cols: number;
+  baselineCols?: number;
+  followingBottom?: boolean;
+}): { replay: boolean; baseline: number | undefined } {
   if (bufferType === 'alternate')
     return { replay: false, baseline: baselineCols };
   if (followingBottom) return { replay: false, baseline: cols };
@@ -97,7 +150,10 @@ export function decideResizeReplay({
 // Mutates `st` in place and returns it. `st.term.cols` is required;
 // `st._replayTimer` is cleared via the injected clearTimer (defaults
 // to global clearTimeout) when present and truthy.
-export function applyRebaseline(st, clearTimer = clearTimeout) {
+export function applyRebaseline(
+  st: RebaselineTerm | null | undefined,
+  clearTimer: (id: number) => void = clearTimeout,
+): RebaselineTerm | null | undefined {
   if (!st?.term) return st;
   st._replayBaselineCols = st.term.cols;
   if (st._replayTimer) {
@@ -124,7 +180,7 @@ export function applyRebaseline(st, clearTimer = clearTimeout) {
 // done events will never arrive — so the count must be cleared here, or it
 // leaks >0 and pins the viewport to the bottom forever, re-correcting the
 // parse-driven cap-trim drift that #228 deliberately leaves alone.
-export function abandonReplays(st) {
+export function abandonReplays(st: ReplayFlags | null | undefined): void {
   if (st) st._replaysInFlight = 0;
 }
 
@@ -140,7 +196,9 @@ export function abandonReplays(st) {
 // The inverse of applyRebaseline (which CANCELS a replay's bottom intent):
 // these run at opposite moments, so keep them separate. Mutates `st`, returns
 // it. Pure — no xterm import — so it's unit-testable against a plain object.
-export function resetFollowIntent(st) {
+export function resetFollowIntent(
+  st: ReplayFlags | null | undefined,
+): ReplayFlags | null | undefined {
   if (!st) return st;
   st._followBottom = true;
   delete st._replayWantsBottom;
@@ -154,8 +212,15 @@ export function resetFollowIntent(st) {
 // resulting viewport). This is the smoking gun for the jump-up bug: a
 // `wantsBottom:false` restore to a target far above baseY while the user
 // was actually at the bottom shows the heuristic misfired.
-export function handleScrollbackEvent(st, kind, trace) {
+export function handleScrollbackEvent(
+  st: ReplayTerm | null | undefined,
+  kind: string,
+  trace?: ((tag: string, data?: Record<string, unknown>) => void) | null,
+): boolean {
   if (!st?.term) return false;
+  // Hoisted so the parse-ordered callbacks below close over a non-null
+  // terminal; `st.term` is never reassigned inside this function.
+  const term = st.term;
   switch (kind) {
     case 'scrollback_replay_begin': {
       // Capture the reader's position as a distance from the bottom
@@ -167,7 +232,7 @@ export function handleScrollbackEvent(st, kind, trace) {
       // any resize/mode-reflow replay dumped a reading user at the
       // bottom despite #213's wants-bottom flag.)
       const capture = () => {
-        const buf = st.term.buffer?.active;
+        const buf = term.buffer?.active;
         if (
           buf &&
           typeof buf.baseY === 'number' &&
@@ -192,14 +257,14 @@ export function handleScrollbackEvent(st, kind, trace) {
       // buffer. Measuring at reset time includes them, so the done-
       // restore lands on the content the reader was actually on
       // instead of a backlog's-worth of lines below it.
-      if (typeof st.term.write === 'function') {
-        st.term.write('', () => {
+      if (typeof term.write === 'function') {
+        term.write('', () => {
           capture();
-          st.term.reset();
+          term.reset();
         });
       } else {
         capture();
-        st.term.reset();
+        term.reset();
       }
       // The decoder resets immediately: writeData decodes at event
       // time (queueing decoded strings), so decode order == event
@@ -236,13 +301,12 @@ export function handleScrollbackEvent(st, kind, trace) {
         // This prevents the replay-done handler from overriding the
         // user's scroll intent — the root cause of the scroll-jump bug.
         if (wantsBottom && st._followBottom) {
-          if (typeof st.term.scrollToBottom === 'function')
-            st.term.scrollToBottom();
+          if (typeof term.scrollToBottom === 'function') term.scrollToBottom();
           // Replay landed at the bottom — keep following. (Without this,
           // a stale _followBottom=false could survive a snap-to-bottom.)
           st._followBottom = true;
           if (trace) {
-            const b = st.term.buffer?.active;
+            const b = term.buffer?.active;
             trace('replay-restore', {
               id: st.info?.id,
               wants: true,
@@ -257,21 +321,26 @@ export function handleScrollbackEvent(st, kind, trace) {
         // line counts can differ after the rewrap at the new width, so
         // this is an approximation — but it keeps the reader in
         // history near where they were instead of at the bottom.
-        const buf = st.term.buffer?.active;
-        let target;
+        const buf = term.buffer?.active;
+        let target: number | undefined;
         // Only restore when fromBottom > 0: the user was scrolled up
         // BEFORE the replay started. If fromBottom is 0 (user was at
         // bottom at replay start) and _followBottom is false (they
         // scrolled up mid-replay), do not yank them back — that would
         // reintroduce the scroll-jump we are fixing.
+        // The baseY/viewportY typeof checks mirror the begin handler's:
+        // without them an absent field made this compute
+        // scrollToLine(NaN) instead of skipping the restore.
         if (
           typeof fromBottom === 'number' &&
           fromBottom > 0 &&
           buf &&
-          typeof st.term.scrollToLine === 'function'
+          typeof buf.baseY === 'number' &&
+          typeof buf.viewportY === 'number' &&
+          typeof term.scrollToLine === 'function'
         ) {
           target = Math.max(0, buf.baseY - fromBottom);
-          st.term.scrollToLine(target);
+          term.scrollToLine(target);
           // Set _followBottom based on where the restore actually landed,
           // not on the pre-replay fromBottom value (which may be stale if
           // the user scrolled during the replay).
@@ -284,7 +353,7 @@ export function handleScrollbackEvent(st, kind, trace) {
             fromBottom,
             target,
             baseY: buf?.baseY,
-            viewportY: st.term.buffer?.active?.viewportY,
+            viewportY: term.buffer?.active?.viewportY,
           });
         }
       };
@@ -292,7 +361,7 @@ export function handleScrollbackEvent(st, kind, trace) {
       // be sitting in xterm's write queue — "done" must mean "fully
       // parsed" before the viewport is placed, or the restore target
       // is computed against a half-built buffer.
-      if (typeof st.term.write === 'function') st.term.write('', finish);
+      if (typeof term.write === 'function') term.write('', finish);
       else finish();
       return true;
     }

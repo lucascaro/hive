@@ -278,6 +278,40 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   `ci.yml` before the Go legs, and `src/lib/font.ts` + `test/unit/font.test.ts`.
   All gates green; counts unchanged from baseline (vitest 312 tests / 32 files;
   Playwright 77 passed + 1 skipped of 78 in 16 files; e2e-real 12 in 5 files).
+- **2026-08-07** — Wave 1 merged as #255.
+- **2026-08-08** — Wave 2 complete: the remaining 19 `src/lib/*.js` and 21
+  `test/unit/*.test.js` (all but `version-footer.test.js`, which is wave 5).
+  Bulk `git mv` first produced 174 errors, every one of them mechanical —
+  91 × TS7006 / 27 × TS7031 implicit-any, 39 × TS2554 from `shortcuts.js`'s
+  one-arg calls into two-param local helpers. Zero importer changes, and no
+  `tsconfig.json` change: `include` already covered `src/lib/**` and
+  `test/unit/**` from wave 1. Non-vacuity re-proved by planting deliberate
+  type errors in `font.test.ts` and `minimized.test.ts`.
+
+  Three notes for later waves:
+  - **Mock factories need a return-type annotation, not the real interface.**
+    `vitest`'s `Mock<T>` is invariant enough that `ReturnType<typeof vi.fn>`
+    won't satisfy a `() => void` field. Declare a local mock interface using
+    `Mock<(exact) => signature>` and let one assignment to the real type
+    (e.g. `const st: ReplayTerm & { term: MockXterm }`) pin the contract.
+  - **Test-visible mutations must be declared.** A mock literal's inferred
+    type has no `_followBottom`, so a test that reads a field the function
+    under test *added* fails to compile. Annotating the factory fixes it.
+  - **Type the contract the tests assert, not the happy path.** Two source
+    signatures had to widen because a test proved the wider contract:
+    `recoverFromContextLoss`'s `reattach(): unknown` (there is a test for a
+    non-boolean return) and `shouldScrollViewport`'s `bufferType?: string |
+    null`.
+  - **But never loosen a source interface just to make a mock compile.** The
+    review of #259 caught this: `ReplayXterm.reset` was made optional so
+    `applyRebaseline`'s `{ term: { cols } }` mock would fit, which silently
+    turned `handleScrollbackEvent`'s unconditional `reset()` into
+    `reset?.()` — a thrown TypeError became a skipped buffer wipe. The
+    correct move is a NARROWER parameter type for the helper that doesn't
+    need the field, not a looser type for every caller. `scrollback.ts` now
+    carries three: `ReplayFlags` (bookkeeping only), `RebaselineTerm`
+    (+ `term.cols`), `ReplayXterm` (`reset()` required). Optional means
+    "the code branches on its absence" — nothing else.
 
 ## Open questions
 
