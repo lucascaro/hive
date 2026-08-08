@@ -160,6 +160,11 @@ each split across waves.
    *not* bound the program — imported `.js` files enter it regardless — so the green `tsc`
    comes from `checkJs: false`, with `include` as belt-and-braces. The pair is what keeps
    the staging honest.
+6. **But DO widen `include` in the same wave that converts a test directory.** The inverse
+   of 5, and the sharper hazard: nothing imports a test file, so a `test/dom/*.test.ts`
+   outside `include` never enters the program at all — it is silently unchecked, and `tsc`
+   stays green while the coverage claim is false. `src/**` is safe (imports pull it in);
+   `test/dom/**` must be added to `include` in wave 5.
 
 ### Files to change
 
