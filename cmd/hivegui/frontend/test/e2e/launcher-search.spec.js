@@ -85,7 +85,7 @@ test('a query that matches nothing shows the empty row and Enter does nothing', 
 
   await page.keyboard.press('Enter');
   await expect(launcher).toBeVisible();
-  expect(
-    await page.evaluate(() => window.__hive.state.sessions.length),
-  ).toBe(before);
+  expect(await page.evaluate(() => window.__hive.state.sessions.length)).toBe(
+    before,
+  );
 });

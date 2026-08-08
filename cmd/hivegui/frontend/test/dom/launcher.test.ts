@@ -18,7 +18,13 @@ import type { main } from '../../wailsjs/go/models';
 import { isMac } from '../../src/lib/platform.js';
 
 const AGENTS: main.AgentInfo[] = [
-  { id: 'shell', name: 'Shell', color: '#888', available: true, installCmd: [] },
+  {
+    id: 'shell',
+    name: 'Shell',
+    color: '#888',
+    available: true,
+    installCmd: [],
+  },
   {
     id: 'claude',
     name: 'Claude',
@@ -47,7 +53,9 @@ function freshAgentsPromise() {
 }
 
 const listAgents = vi.fn((): Promise<main.AgentInfo[]> => freshAgentsPromise());
-const isGitRepo = vi.fn((_cwd: string): Promise<boolean> => Promise.resolve(true));
+const isGitRepo = vi.fn(
+  (_cwd: string): Promise<boolean> => Promise.resolve(true),
+);
 const createSession = vi.fn(
   (
     _agent: string,
@@ -63,7 +71,9 @@ const duplicateSession = vi.fn(
   (_agent: string, _project: string, _cwd: string): Promise<string> =>
     Promise.resolve('s2'),
 );
-const restartSession = vi.fn((_id: string): Promise<string> => Promise.resolve(''));
+const restartSession = vi.fn(
+  (_id: string): Promise<string> => Promise.resolve(''),
+);
 
 // Forwarded variadically off Parameters<>, not at a fixed arity: a mock
 // that drops an argument the real binding gained still satisfies
@@ -71,7 +81,8 @@ const restartSession = vi.fn((_id: string): Promise<string> => Promise.resolve('
 vi.mock('../../src/bridge.js', () => ({
   ListAgents: (...a: Parameters<typeof listAgents>) => listAgents(...a),
   IsGitRepo: (...a: Parameters<typeof isGitRepo>) => isGitRepo(...a),
-  CreateSession: (...a: Parameters<typeof createSession>) => createSession(...a),
+  CreateSession: (...a: Parameters<typeof createSession>) =>
+    createSession(...a),
   DuplicateSession: (...a: Parameters<typeof duplicateSession>) =>
     duplicateSession(...a),
   RestartSession: (...a: Parameters<typeof restartSession>) =>
@@ -118,7 +129,12 @@ function selectedName() {
 // keystroke into the focused filter box would.
 function press(key: string, init: KeyboardEventInit = {}) {
   searchBox().dispatchEvent(
-    new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }),
+    new KeyboardEvent('keydown', {
+      key,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    }),
   );
 }
 // Typing = set the value, then fire `input`. jsdom won't do the former
