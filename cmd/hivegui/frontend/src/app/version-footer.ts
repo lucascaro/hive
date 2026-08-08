@@ -26,7 +26,10 @@ import { EventsOn } from '../bridge.js';
 // field is a required string; daemonVersionEvent() fills all five and the
 // struct carries no omitempty.
 export interface DaemonStaleEvent {
-  severity: string;
+  // Closed set — daemonVersionEvent() in app.go emits exactly these
+  // three. A literal union catches a typo'd comparison at the three
+  // call sites in banners.ts / version-footer.ts.
+  severity: 'match' | 'mismatch' | 'unknown';
   guiBuild: string;
   daemonBuild: string;
   guiRelease: string;
