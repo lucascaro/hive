@@ -18,9 +18,15 @@ const saveCustomAgents = vi.fn(
   (_agents: main.CustomAgent[]): Promise<void> => Promise.resolve(),
 );
 
+// Forwarded variadically off Parameters<>, not at a fixed arity: a mock
+// that drops an argument the real binding gained still satisfies
+// toHaveBeenCalledWith, which is how UpdateSession/UpdateProject drifted
+// twice before.
 vi.mock('../../src/bridge.js', () => ({
-  ListCustomAgents: () => listCustomAgents(),
-  SaveCustomAgents: (agents: main.CustomAgent[]) => saveCustomAgents(agents),
+  ListCustomAgents: (...a: Parameters<typeof listCustomAgents>) =>
+    listCustomAgents(...a),
+  SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
+    saveCustomAgents(...a),
 }));
 
 const MARKUP = `
