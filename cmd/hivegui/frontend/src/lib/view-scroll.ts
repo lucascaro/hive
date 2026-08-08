@@ -64,9 +64,13 @@ export function snapVisibleTermsToBottom(
   for (const st of terms) {
     if (!st?.attached) continue;
     if (!st.body || st.body.clientHeight === 0) continue;
-    // Hoisted to a const so the callback below closes over a
-    // non-null `term`; the `?.()` inside it keeps the original
-    // late-lookup semantics (the method is re-read at call time).
+    // Hoisted to a const so the callback below closes over a non-null
+    // `term`. This does change one thing from the original
+    // `st.term.scrollToBottom()`: the terminal OBJECT is now captured
+    // at snap time rather than re-read when the callback fires. Safe —
+    // `SessionTerm.term` is assigned once (app/session-term.js) and
+    // never reassigned or nulled. The `?.` still re-reads the method
+    // off that object at call time.
     const term = st.term;
     if (term && typeof term.scrollToBottom === 'function') {
       term.scrollToBottom();

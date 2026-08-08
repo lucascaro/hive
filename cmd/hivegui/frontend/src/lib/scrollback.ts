@@ -15,30 +15,52 @@ export const REPLAY_COL_THRESHOLD = 4;
 // the final settled width sends a request.
 export const REPLAY_DEBOUNCE_MS = 100;
 
-// Structural stand-in for the xterm Terminal — this module is
+// Structural stand-ins for the xterm Terminal — this module is
 // deliberately xterm-free so the state machine can be unit-tested
 // against plain mocks. lib/view-scroll.ts carries a smaller sibling
 // (SnapTarget) for the same reason; wave 3's globals.d.ts is where a
 // shared SessionTerm type belongs, not here.
-export interface ReplayXterm {
-  cols?: number;
-  buffer?: { active?: { baseY?: number; viewportY?: number } };
-  reset?(): void;
-  write?(data: string, callback?: () => void): void;
-  scrollToBottom?(): void;
-  scrollToLine?(line: number): void;
-}
+//
+// Split by what each helper actually touches, rather than one
+// everything-optional shape: an all-optional interface accepts `{}` as
+// a terminal, which would let `applyRebaseline` write an `undefined`
+// baseline that `decideResizeReplay` then reads as "never measured".
+// A field is optional here ONLY where the code branches on its absence.
 
-export interface ReplayTerm {
-  term?: ReplayXterm | null;
-  info?: { id?: string };
-  decoder?: TextDecoder | null;
+// The replay bookkeeping every helper below mutates. A real SessionTerm
+// satisfies this; so does a bare `{}` before its first replay.
+export interface ReplayFlags {
   _replayBaselineCols?: number;
   _replayTimer?: number;
   _replayWantsBottom?: boolean;
   _replayPrevFromBottom?: number;
   _replaysInFlight?: number;
   _followBottom?: boolean;
+}
+
+// applyRebaseline reads exactly one thing off the terminal.
+export interface RebaselineTerm extends ReplayFlags {
+  term?: { cols: number } | null;
+}
+
+// handleScrollbackEvent drives the terminal. `reset` is REQUIRED: the
+// begin handler calls it unconditionally, and a term that can't be
+// wiped would paint the replay on top of the existing buffer —
+// duplicated scrollback, silently. The rest are optional because the
+// code genuinely branches on them (`typeof … === 'function'`), and
+// there is a test for a term with no `write`.
+export interface ReplayXterm {
+  buffer?: { active?: { baseY?: number; viewportY?: number } };
+  reset(): void;
+  write?(data: string, callback?: () => void): void;
+  scrollToBottom?(): void;
+  scrollToLine?(line: number): void;
+}
+
+export interface ReplayTerm extends ReplayFlags {
+  term?: ReplayXterm | null;
+  info?: { id?: string };
+  decoder?: TextDecoder | null;
 }
 
 // Returns true when a resize from prevCols → nextCols should trigger
@@ -129,9 +151,9 @@ export function decideResizeReplay({
 // `st._replayTimer` is cleared via the injected clearTimer (defaults
 // to global clearTimeout) when present and truthy.
 export function applyRebaseline(
-  st: ReplayTerm | null | undefined,
+  st: RebaselineTerm | null | undefined,
   clearTimer: (id: number) => void = clearTimeout,
-): ReplayTerm | null | undefined {
+): RebaselineTerm | null | undefined {
   if (!st?.term) return st;
   st._replayBaselineCols = st.term.cols;
   if (st._replayTimer) {
@@ -158,7 +180,7 @@ export function applyRebaseline(
 // done events will never arrive — so the count must be cleared here, or it
 // leaks >0 and pins the viewport to the bottom forever, re-correcting the
 // parse-driven cap-trim drift that #228 deliberately leaves alone.
-export function abandonReplays(st: ReplayTerm | null | undefined): void {
+export function abandonReplays(st: ReplayFlags | null | undefined): void {
   if (st) st._replaysInFlight = 0;
 }
 
@@ -175,8 +197,8 @@ export function abandonReplays(st: ReplayTerm | null | undefined): void {
 // these run at opposite moments, so keep them separate. Mutates `st`, returns
 // it. Pure — no xterm import — so it's unit-testable against a plain object.
 export function resetFollowIntent(
-  st: ReplayTerm | null | undefined,
-): ReplayTerm | null | undefined {
+  st: ReplayFlags | null | undefined,
+): ReplayFlags | null | undefined {
   if (!st) return st;
   st._followBottom = true;
   delete st._replayWantsBottom;
@@ -238,11 +260,11 @@ export function handleScrollbackEvent(
       if (typeof term.write === 'function') {
         term.write('', () => {
           capture();
-          term.reset?.();
+          term.reset();
         });
       } else {
         capture();
-        term.reset?.();
+        term.reset();
       }
       // The decoder resets immediately: writeData decodes at event
       // time (queueing decoded strings), so decode order == event

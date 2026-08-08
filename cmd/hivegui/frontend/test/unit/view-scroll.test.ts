@@ -22,6 +22,24 @@ interface MockTerm {
   _replayPrevFromBottom?: number;
 }
 
+// Spelled out rather than intersected with MockTerm: the one test that
+// also drives handleScrollbackEvent needs `reset` REQUIRED (ReplayXterm
+// demands it), and intersecting two Mock types defeats vi.fn() inference.
+interface MockReplayTerm {
+  attached: boolean;
+  body: { clientHeight: number };
+  term: {
+    buffer: { active: { baseY: number; viewportY: number } };
+    reset: Mock<() => void>;
+    scrollToBottom: Mock<() => void>;
+    scrollToLine: Mock<(n: number) => void>;
+    write: Mock<(data: string, cb?: () => void) => void>;
+  };
+  _replayWantsBottom?: boolean;
+  _followBottom?: boolean;
+  _replayPrevFromBottom?: number;
+}
+
 function makeTerm({ attached = true, h = 200 } = {}): MockTerm {
   return {
     attached,
@@ -164,7 +182,7 @@ describe('snapVisibleTermsToBottom', () => {
     // wantsBottom=true arrives too late for the latched done. Mock an
     // xterm-like async write queue to pin that ordering down.
     const queue: (() => void)[] = [];
-    const st: MockTerm = {
+    const st: MockReplayTerm = {
       attached: true,
       body: { clientHeight: 200 },
       term: {

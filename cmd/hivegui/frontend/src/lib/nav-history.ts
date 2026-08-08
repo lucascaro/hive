@@ -77,9 +77,10 @@ function step(
   currentId: string | null | undefined,
   exists: ExistsFn,
 ): string | null {
-  while (from.length) {
-    const id = from.pop();
-    if (id === undefined) continue; // unreachable: from.length gated the pop
+  // for-with-pop rather than `while (from.length)`: it gives TS a
+  // non-undefined `id` without a dead `if (id === undefined)` branch,
+  // and `continue` still pops the next entry via the update clause.
+  for (let id = from.pop(); id !== undefined; id = from.pop()) {
     if (!exists(id)) continue; // session died while it sat on the stack
     if (id === currentId) continue; // can't "go" to where we already are
     if (currentId && to[to.length - 1] !== currentId) to.push(currentId);

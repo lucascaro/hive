@@ -9,6 +9,7 @@ import {
   abandonReplays,
   resetFollowIntent,
   type ReplayTerm,
+  type RebaselineTerm,
 } from '../../src/lib/scrollback.js';
 
 // Mock term with an xterm-like async write queue: write(data, cb)
@@ -449,7 +450,10 @@ describe('applyRebaseline clears stale restore intent (the pair)', () => {
   });
 
   it('is a no-op on the intent pair when both were unset', () => {
-    const st: ReplayTerm = { term: { cols: 100 }, _replayBaselineCols: 80 };
+    const st: RebaselineTerm = {
+      term: { cols: 100 },
+      _replayBaselineCols: 80,
+    };
     applyRebaseline(st, () => {});
     expect(st._replayWantsBottom).toBeUndefined();
     expect(st._replayPrevFromBottom).toBeUndefined();

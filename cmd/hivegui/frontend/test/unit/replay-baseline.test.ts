@@ -3,7 +3,7 @@ import {
   applyRebaseline,
   shouldRequestReplay,
   REPLAY_COL_THRESHOLD,
-  type ReplayTerm,
+  type RebaselineTerm,
 } from '../../src/lib/scrollback.js';
 
 // Regression coverage for #208:
@@ -24,7 +24,7 @@ function makeSt({
   cols?: number;
   baseline?: number;
   timer?: number;
-} = {}): ReplayTerm & {
+} = {}): RebaselineTerm & {
   term: { cols: number };
 } {
   return {
