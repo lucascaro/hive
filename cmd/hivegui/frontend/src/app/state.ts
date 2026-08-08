@@ -31,6 +31,10 @@ export interface SessionInfo {
   worktreePath?: string;
   worktree_branch?: string;
   worktreeBranch?: string;
+  // Why the dead-session overlay reads: events.js:131 and
+  // session-term.js:1173 both fall back off it.
+  last_error?: string;
+  lastError?: string;
 }
 
 export interface ProjectInfo {

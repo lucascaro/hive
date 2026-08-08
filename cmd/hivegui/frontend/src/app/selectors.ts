@@ -40,7 +40,12 @@ export function nextAttentionId(): string | null {
 export function activeCwd(): string {
   const id = state.activeId;
   const s = id ? state.sessions.find((x) => x.id === id) : null;
-  if (s?.worktree_path) return s.worktree_path;
+  // Both spellings, like resolveSessionCwd below — a camelCase-only
+  // session used to fall through to the project cwd here, so ⌘N landed
+  // in the repo root instead of the worktree. Not delegating to
+  // resolveSessionCwd: its project fallback skips activeProjectId().
+  const wt = s?.worktree_path ?? s?.worktreePath;
+  if (wt) return wt;
   const pid = (s?.projectId ?? s?.project_id) || activeProjectId();
   const p = pid ? state.projects.find((x) => x.id === pid) : null;
   return p?.cwd ?? '';
@@ -71,8 +76,10 @@ export function activeProjectId(): string {
 //
 // Wire payloads from the daemon use snake_case (see
 // internal/wire/control.go), so prefer those and fall back to the
-// camelCase variants for safety — this matches `s.projectId ??
-// s.project_id` used elsewhere in this file.
+// camelCase variants for safety. Both spellings are read everywhere in
+// this file; only the ordering varies, and it doesn't matter — no
+// payload carries both (test/e2e/payload-shapes.spec.js pins the two
+// shapes separately).
 export function resolveSessionCwd(
   sess: SessionInfo | null | undefined,
 ): string {
