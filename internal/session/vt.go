@@ -29,15 +29,23 @@ const (
 )
 
 // historyRows caps the number of evicted rows we keep for prepending to
-// the snapshot. Matched to xterm.js's client-side `scrollback: 5000` — the
-// snapshot is now the ONLY history a normal-screen attach receives (see
-// InitialReplayBytes), so anything less silently truncates what the user
-// could previously scroll back through. ~80 cols × 5000 rows × ~100
-// bytes/row ≈ 500 KiB worst case per session, still ~16× under the 8 MiB
-// raw ring it replaces on attach.
+// the snapshot. ~80 cols × 500 rows × ~100 bytes/row ≈ 50 KiB worst case.
 //
-// Keep in sync with the xterm `scrollback` option in session-term.js.
-const historyRows = 5000
+// Deliberately far below xterm's own `scrollback: 5000`, and the reason is
+// counter-intuitive: this payload is PAINTED, not handed over. xterm parses
+// it in ~4 KiB slices across frames, so every line in it scrolls the
+// viewport on its way in. Measured on a live session, 5000 rows is a
+// 340–680 KiB attach that visibly animates for seconds on every grid entry
+// — the same defect as the multi-MB ring this snapshot replaced, just
+// quieter. 0 / 500 / 5000 is one dial from "instant" to "thrashes", and
+// there is no value on it that is both instant and complete.
+//
+// So the cap stays at the size that paints without a visible scroll, and
+// deep scrollback is a separate problem: it wants to arrive on demand when
+// the user scrolls up, over the RequestScrollbackReplay path that already
+// exists, rather than being pushed at every attach. Until that lands, an
+// attach shows the most recent 500 lines.
+const historyRows = 500
 
 // ringCap is the default size of the raw-byte scrollback ring. 8 MiB ≈
 // tens of thousands of lines of typical agent output. The ring lets us
@@ -404,8 +412,8 @@ func (v *VT) historyTail() [][]byte {
 
 // InitialReplayBytes returns the payload to paint a freshly-attaching
 // client — a compact RenderSnapshot for BOTH screen types now (current
-// screen + up to historyRows (== xterm's scrollback) of history on the
-// normal screen; a single screen on the alt screen).
+// screen + up to historyRows of recent history on the normal screen; a
+// single screen on the alt screen).
 //
 // It used to return the full multi-MB raw ring on the normal screen so deep
 // scrollback survived the attach. But the ring is 8 MiB (tens of thousands
@@ -416,12 +424,18 @@ func (v *VT) historyTail() [][]byte {
 // That restream-on-every-attach is the "I see the entire history replay
 // every time I enter grid" report (each grid tile attaches → full ring).
 //
-// The snapshot paints near-instantly and is NOT lossy from the user's point
-// of view: historyRows is pinned to xterm's own `scrollback: 5000`, so the
-// snapshot carries every line the client could have retained anyway. What
-// the ring cost was the ~90% of parsed bytes xterm discarded on the way,
-// plus every intermediate repaint animating past — the actual source of the
-// 13–38s stall, not the byte count.
+// The snapshot paints without a visible scroll, which is the property that
+// actually matters here: this payload is painted into a live xterm, so its
+// SIZE is the stall — every line in it scrolls the viewport on the way in.
+// That is why the fix is not "send fewer bytes than the ring" but "send few
+// enough that the paint is invisible"; see historyRows for the measurements
+// behind the cap, and note that it deliberately does NOT try to cover
+// xterm's full 5000-line scrollback.
+//
+// The consequence is honest and known: an attach shows the most recent
+// historyRows lines, not everything the session ever printed. Restoring
+// deep scrollback wants an on-demand fetch when the user scrolls up (over
+// the RequestScrollbackReplay path below), not a bigger attach payload.
 //
 // The raw ring is still there for the one case that needs it: reflow.
 // RequestScrollbackReplay (EmitAtomicReplay) returns it, and the client

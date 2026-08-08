@@ -212,17 +212,31 @@ func (a *App) dialHandshake(hello wire.Hello) (*wire.Client, error) {
 	return wire.Handshake(conn, hello)
 }
 
-// ConnectControl opens (or reuses) the control connection. The
-// daemon will push an unsolicited SESSIONS snapshot followed by
-// SESSION_EVENT messages — these are forwarded to the frontend as
-// "session:list" and "session:event" events.
+// ConnectControl opens a fresh control connection, replacing any existing
+// one. The daemon pushes an unsolicited PROJECTS + SESSIONS snapshot on
+// handshake, followed by SESSION_EVENT messages — forwarded to the frontend
+// as "session:list" and "session:event" events.
+//
+// It REPLACES rather than reuses, and that is the whole point. Every caller
+// is a frontend with no session state that needs the snapshot: main.js runs
+// this once per page load, and the reconnect loop runs it after a drop. The
+// snapshot only ever arrives on handshake, so reusing a live connection
+// returned success while leaving a freshly-loaded page with a permanently
+// empty session list — the "no sessions" screen after any location.reload(),
+// which in practice means every time the Debug menu's trace toggle is used
+// (the only reload in the app). A redial is cheap; a silently empty UI is
+// not.
+//
+// The webview surviving a reload while the Go process does not is exactly
+// what makes this reachable: a.control outlives the page that opened it.
 func (a *App) ConnectControl() error {
-	a.mu.Lock()
-	if a.control != nil {
-		a.mu.Unlock()
-		return nil
+	// Detach the old connection BEFORE closing it, so its read loop sees
+	// itself superseded and stays quiet — see controlReadLoop. Closing it
+	// while still installed would emit control:disconnect, which starts the
+	// reconnect loop, which calls back into here: an endless redial.
+	if old := a.detachControl(); old != nil {
+		_ = old.Close()
 	}
-	a.mu.Unlock()
 
 	cs, err := a.dialHandshake(wire.Hello{
 		Client:  "hivegui/0.2",
@@ -384,15 +398,43 @@ func (a *App) RestartDaemon() error {
 	return nil
 }
 
+// detachControl clears the installed control connection and returns it, so
+// the caller can close a connection that no read loop still considers
+// current. Returns nil when there was none.
+func (a *App) detachControl() *wire.Client {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	old := a.control
+	a.control = nil
+	return old
+}
+
+// retireControl clears cs if it is still the installed control connection,
+// and reports whether it was. False means cs was superseded — ConnectControl
+// already replaced it deliberately, so its ending is not a lost daemon and
+// must not be announced as one.
+func (a *App) retireControl(cs *wire.Client) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.control != cs {
+		return false
+	}
+	a.control = nil
+	return true
+}
+
 func (a *App) controlReadLoop(cs *wire.Client) {
 	defer func() {
-		a.mu.Lock()
-		if a.control == cs {
-			a.control = nil
-		}
-		a.mu.Unlock()
+		current := a.retireControl(cs)
 		_ = cs.Close()
-		wruntime.EventsEmit(a.ctx, "control:disconnect", "")
+		// Only the CURRENT connection ending means the GUI lost the daemon.
+		// A superseded one was closed deliberately by ConnectControl, and
+		// announcing that as a disconnect would start the reconnect loop,
+		// which redials, which supersedes again — a redial that never
+		// settles. Stay quiet: a live replacement is already installed.
+		if current {
+			wruntime.EventsEmit(a.ctx, "control:disconnect", "")
+		}
 	}()
 	for {
 		ft, payload, err := cs.ReadFrame()
