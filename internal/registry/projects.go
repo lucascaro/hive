@@ -311,6 +311,12 @@ func (r *Registry) SubscribeProjects() (ProjectListener, func()) {
 	// event per project under lock.
 	ch := make(ProjectListener, 64)
 	r.mu.Lock()
+	if r.projectListeners == nil {
+		// Post-Close subscribe; see the matching guard in Subscribe.
+		r.mu.Unlock()
+		close(ch)
+		return ch, func() {}
+	}
 	r.projectListeners[ch] = struct{}{}
 	r.mu.Unlock()
 	return ch, func() {

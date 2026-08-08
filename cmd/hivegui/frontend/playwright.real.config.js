@@ -13,7 +13,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './test/e2e-real',
-  testMatch: '**/*.spec.js',
+  testMatch: '**/*.spec.{js,ts}',
   fullyParallel: false,
   // Real-daemon tests are slower than the mock — give them more room.
   timeout: 90000,

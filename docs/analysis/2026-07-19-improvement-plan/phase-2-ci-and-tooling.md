@@ -39,6 +39,14 @@ socket bridge; spec 245 already scopes it out).
 
 ### TypeScript migration (decided 2026-07-25 — its own workstream)
 
+> **IN PROGRESS 2026-08-07** — now tracked in
+> [docs/exec-plans/active/typescript-migration.md](../../exec-plans/active/typescript-migration.md).
+> That plan supersedes this section on two points: **tests migrate too** (`test/` as well
+> as `src/`), and **`strict: true` lands in PR 1** rather than in a final ramp wave —
+> `checkJs: false` already covers the "don't block CI on pre-existing holes" rationale
+> below, so staged strictness would only buy a terminal wave that re-touches every
+> migrated file at once. Reasoning is in that plan's decision log.
+
 Full TS migration was chosen over the cheap `@ts-check`-per-file path. Scope
 honestly: this is **M–L**, not a config add, and should NOT ride the Biome PR.
 
@@ -48,9 +56,13 @@ honestly: this is **M–L**, not a config add, and should NOT ride the Biome PR.
   + `checkJs: false`, then convert file-by-file (leaf modules in `src/lib/`
   first — they're pure and already unit-tested). The Wails bindings in
   `wailsjs/` already ship `.d.ts` to lean on.
-- **Gate strictness in stages**: land with loose settings, tighten
+- ~~**Gate strictness in stages**: land with loose settings, tighten
   (`strict: true`, `noImplicitAny`) once the bulk is converted, so CI doesn't
-  block on hundreds of pre-existing type holes on day one.
+  block on hundreds of pre-existing type holes on day one.~~ **Superseded
+  2026-08-07** — `strict: true` lands in PR 1. The "pre-existing type holes"
+  risk this bullet guards against comes entirely from `checkJs: true`, which
+  the bullet above already rules out; staged strictness would only buy a
+  terminal wave re-touching every migrated file at once.
 - **Vite already handles `.ts`** — no bundler change; the build stays the same.
 - Track this as a separate exec-plan; it's too big to be a Phase 2 bullet in
   practice, listed here only because the tooling decision lives in Phase 2.

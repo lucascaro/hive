@@ -22,6 +22,19 @@ func (r *Registry) Subscribe() (Listener, func()) {
 	// overflow a small buffer and get dropped.
 	ch := make(Listener, 64)
 	r.mu.Lock()
+	if r.listeners == nil {
+		// Close() ran first — it nils the map after closing every
+		// listener. serve() goroutines are spawned unsynchronized
+		// (daemon.go: `go d.serve(ctx, conn)`), so a connection
+		// accepted just before shutdown can land here afterwards and
+		// used to panic with "assignment to entry in nil map".
+		// Hand back an already-closed channel: the caller's range
+		// loop drains and exits at once, which is what a subscriber
+		// to a dead registry should see.
+		r.mu.Unlock()
+		close(ch)
+		return ch, func() {}
+	}
 	r.listeners[ch] = struct{}{}
 	r.mu.Unlock()
 	return ch, func() {
