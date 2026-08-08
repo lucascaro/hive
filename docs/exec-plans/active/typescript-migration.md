@@ -48,8 +48,10 @@ annotation work.
   `testMatch '**/*.spec.js'`. `playwright.real.config.js:24-25` hardcode
   `./test/e2e-real/globalSetup.mjs` / `globalTeardown.mjs`.
 - `.github/workflows/ci.yml` — `./scripts/ci-bootstrap.sh` at `:58`, `npm install` at `:65`,
-  "Build frontend" ending `:66`, Biome at `:93-100` guarded by `if: matrix.biome` (`:94`;
-  the key is set only on the Linux row, `:22`). **No type-check step exists.**
+  "Build frontend" ending `:66`. As of wave 1 the typecheck step is `:68-79` and Biome is
+  `:106-113`, both guarded by `if: matrix.biome` (the key is set only on the Linux row,
+  `:22`). Before wave 1 there was no type-check step at all — `npm run build` is not one,
+  since Vite transpiles `.ts` through esbuild without checking it.
 - `biome.json:8` includes `**` with no `.ts` exclusion, so `.ts` is linted and formatted
   from PR 1 with no config change. The recommended preset includes
   `suspicious/noExplicitAny` — explicit `any` fails `npm run ci`.
@@ -113,7 +115,7 @@ importers of a converted file are untouched.
 
 | # | Source files | Tests converted with them | ~LOC |
 |---|---|---|---|
-| 1 | `src/lib/font.js` + all scaffolding (below) | `test/unit/font.test.js` | ~10 |
+| 1 | `src/lib/font.ts` + all scaffolding (below) | `test/unit/font.test.ts` | ~10 |
 | 2 | rest of `src/lib/` (19 files) | `test/unit/**` **except** `version-footer.test.js` | 1.5k + ~3k |
 | 3 | `state.js`, `dom.js`, `selectors.js`, `trace.js`, `modals/registry.js`, `inline-rename.js` | — | ~350 |
 | 4 | `bridge.js`, `test/e2e/wails-mock.js`, `test/e2e-real/wails-bridge.js`, + the two `path.resolve` literals in `vite.config.js:17,19` | — | ~150 |
@@ -201,7 +203,7 @@ No new test *cases*. The existing 8,454 LOC of vitest + Playwright suites are th
 regression net. Per wave, from `cmd/hivegui/frontend/` (needs `wailsjs/` present — run
 `scripts/ci-bootstrap.sh` once, or `cd cmd/hivegui && wails generate module`):
 
-```
+```shell
 npm run typecheck        # tsc --noEmit — the only real type gate
 npm run build            # vite; proves the bundle builds (NOT a type check)
 npm run ci               # biome
@@ -276,6 +278,6 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
 
 - **Issue number** — none filed. `in-house-vt-emulator.md` is precedent for an unnumbered
   active plan; file one only if the user wants it tracked on GitHub.
-- **Wave 1's resolution result** decides wave *sizes*: if `./font.js` specifiers do not
-  survive the rename, every importer of every converted file changes too. Answer it in PR 1
-  before sizing waves 2+.
+- ~~**Wave 1's resolution result** decides wave *sizes*.~~ **Resolved 2026-08-07** —
+  specifiers survive the rename under both `tsc` and Vite, so no importer changes and the
+  wave sizes in the table stand. See the pilot note above.
