@@ -3,16 +3,12 @@
 // rather than re-querying the document.
 
 import { createStatus } from '../lib/status.js';
+import { mustEl } from './el.js';
 
 // index.html owns these three ids; a missing one means the document and
 // this module have drifted, which is a load-time bug, not a runtime
-// condition to branch on. Throwing here beats `!` — it names the id.
-function mustEl(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`missing #${id} in index.html`);
-  return el;
-}
-
+// condition to branch on. mustEl throws rather than using `!` — it names
+// the id. See el.ts for why the modals use the non-throwing pageEl().
 export const termsHost = mustEl('terms');
 termsHost.classList.add('single');
 

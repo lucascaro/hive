@@ -46,6 +46,7 @@
     "src/bridge.ts",
     "src/globals.d.ts",
     "test/unit/**/*",
+    "test/dom/**/*",
     "test/e2e/wails-mock.ts",
     "test/e2e-real/wails-bridge.ts"
   ],

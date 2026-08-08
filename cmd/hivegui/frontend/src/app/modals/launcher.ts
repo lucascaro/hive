@@ -15,14 +15,45 @@ import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
 import { registerModal } from './registry.js';
+import { pageEl } from '../el.js';
+import type { SessionInfo } from '../state.js';
+// Type-only, so the generated module is erased before Vite resolves it.
+import type { main } from '../../../wailsjs/go/models';
 
-let deps = {
+// Narrow on purpose: this modal needs exactly two callbacks off the
+// focus pipeline, so it names those two rather than the whole module.
+export interface LauncherDeps {
+  setFocusedTile: (id: string | null) => void;
+  refocusActiveTerm: () => void;
+}
+
+// One rendered agent row, paired with the element that draws it so
+// highlightLauncherSelection can toggle .selected without re-querying.
+interface LauncherItem {
+  agent: main.AgentInfo;
+  el: HTMLElement;
+}
+
+export interface LauncherOpts {
+  forceWorktree?: boolean;
+  duplicateFrom?: SessionInfo | null;
+  duplicateCwd?: string;
+}
+
+let deps: LauncherDeps = {
   setFocusedTile: () => {},
   refocusActiveTerm: () => {},
 };
 
-export const launcherEl = document.getElementById('launcher');
-export const launcherState = {
+export const launcherEl = pageEl('launcher');
+export const launcherState: {
+  items: LauncherItem[];
+  selected: number;
+  projectId: string | null;
+  useWorktree: boolean;
+  duplicateFrom: SessionInfo | null;
+  duplicateCwd: string;
+} = {
   items: [],
   selected: 0,
   projectId: null,
@@ -38,14 +69,18 @@ export const launcherState = {
   duplicateCwd: '',
 };
 
-function loadAgentUsage() {
+// Agent id → launch count, persisted in localStorage. Read back as
+// unknown JSON, so every lookup is `|| 0`.
+type AgentUsage = Record<string, number>;
+
+function loadAgentUsage(): AgentUsage {
   try {
     return JSON.parse(localStorage.getItem('hive.agentUsage') || '{}') || {};
   } catch {
     return {};
   }
 }
-export function bumpAgentUsage(id) {
+export function bumpAgentUsage(id: string | undefined) {
   if (!id) return;
   const u = loadAgentUsage();
   u[id] = (u[id] || 0) + 1;
@@ -62,7 +97,7 @@ function highlightLauncherSelection() {
   });
 }
 
-export function moveLauncherSelection(delta) {
+export function moveLauncherSelection(delta: number) {
   const n = launcherState.items.length;
   if (n === 0) return;
   launcherState.selected = (launcherState.selected + delta + n) % n;
@@ -73,7 +108,7 @@ export function moveLauncherSelection(delta) {
 // the keyboard-select path (activateLauncherSelection) and the
 // per-item click handler in openLauncher: bump usage, flash status,
 // call the daemon, close the launcher.
-function launchSelected(agentId) {
+function launchSelected(agentId: string) {
   bumpAgentUsage(agentId);
   flashStatus('creating session…');
   if (launcherState.duplicateFrom) {
@@ -102,7 +137,7 @@ export function activateLauncherSelection() {
   launchSelected(it.agent.id);
 }
 
-export function openLauncher(projectId, opts) {
+export function openLauncher(projectId: string | null, opts?: LauncherOpts) {
   launcherState.projectId = projectId || activeProjectId();
   // Re-read the sticky pref each open so a one-shot forceWorktree from a
   // previous opening doesn't leak into the next regular open. forceWorktree
@@ -179,8 +214,9 @@ export function openLauncher(projectId, opts) {
         wtLabel.textContent = 'Create in git worktree';
         wtRow.append(wtBox, wtLabel);
         wtBox.addEventListener('change', (e) => {
-          launcherState.useWorktree = e.target.checked;
-          localStorage.setItem('hive.worktree', e.target.checked ? '1' : '0');
+          const box = e.target as HTMLInputElement;
+          launcherState.useWorktree = box.checked;
+          localStorage.setItem('hive.worktree', box.checked ? '1' : '0');
         });
         launcherEl.appendChild(wtRow);
         if (projCwd) {
@@ -316,11 +352,12 @@ export function duplicateActiveSessionChooseTool() {
   openLauncher(pid, { duplicateFrom: s, duplicateCwd: cwd });
 }
 
-export function initLauncher(injected) {
+export function initLauncher(injected: LauncherDeps) {
   deps = injected;
   registerModal(launcherEl);
   document.addEventListener('click', (e) => {
-    const inAction = e.target.closest('.project-actions');
-    if (!launcherEl.contains(e.target) && !inAction) closeLauncher();
+    const target = e.target as Element | null;
+    const inAction = target?.closest('.project-actions');
+    if (!launcherEl.contains(target) && !inAction) closeLauncher();
   });
 }

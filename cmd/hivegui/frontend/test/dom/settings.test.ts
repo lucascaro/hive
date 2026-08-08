@@ -7,13 +7,26 @@
 // the agent id, so a changed id breaks revive), and a save rejected by
 // Go must surface its error instead of closing the modal.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
+// Type-only: erased, so the generated module is never resolved at runtime.
+import type { main } from '../../wailsjs/go/models';
 
-const listCustomAgents = vi.fn(() => Promise.resolve([]));
-const saveCustomAgents = vi.fn(() => Promise.resolve());
+const listCustomAgents = vi.fn(
+  (): Promise<main.CustomAgent[]> => Promise.resolve([]),
+);
+const saveCustomAgents = vi.fn(
+  (_agents: main.CustomAgent[]): Promise<void> => Promise.resolve(),
+);
 
+// Forwarded variadically off Parameters<>, not at a fixed arity: a mock
+// that drops an argument the real binding gained still satisfies
+// toHaveBeenCalledWith, which is how UpdateSession/UpdateProject drifted
+// twice before.
 vi.mock('../../src/bridge.js', () => ({
-  ListCustomAgents: (...a) => listCustomAgents(...a),
-  SaveCustomAgents: (...a) => saveCustomAgents(...a),
+  ListCustomAgents: (...a: Parameters<typeof listCustomAgents>) =>
+    listCustomAgents(...a),
+  SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
+    saveCustomAgents(...a),
 }));
 
 const MARKUP = `
@@ -32,8 +45,18 @@ const MARKUP = `
     </div>
   </div>`;
 
-let openSettings, closeSettings, initSettings, splitCommand;
-let refocusActiveTerm, setFocusedTile;
+// Typed off the module itself rather than restated, so a changed export
+// signature fails here instead of silently widening to any.
+type SettingsModule = typeof import('../../src/app/modals/settings.js');
+let openSettings: SettingsModule['openSettings'];
+let closeSettings: SettingsModule['closeSettings'];
+let initSettings: SettingsModule['initSettings'];
+let splitCommand: SettingsModule['splitCommand'];
+// Declared with their exact signatures, not ReturnType<typeof vi.fn>:
+// vitest's Mock<T> is invariant enough that the bare form won't satisfy
+// the SettingsDeps fields initSettings expects.
+let refocusActiveTerm: Mock<() => void>;
+let setFocusedTile: Mock<(id: string | null) => void>;
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
@@ -50,15 +73,27 @@ beforeEach(() => {
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
-  document.getElementById('settings').classList.add('hidden');
+  el('settings').classList.add('hidden');
 });
 
-const el = (id) => document.getElementById(id);
-const rows = () => [...document.querySelectorAll('.settings-agent-row')];
+// MARKUP above is this file's contract, so a missing id is a bug in the
+// fixture, not a case to branch on — cast rather than null-check at 40
+// call sites. The type parameter names the element kind the markup
+// declares (a <button>, an <input>) so .disabled / .value resolve.
+const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
+  document.getElementById(id) as T;
+const rows = () => [
+  ...document.querySelectorAll<HTMLElement>('.settings-agent-row'),
+];
+// Same contract, one level down: render() always builds all four cells.
+const cell = <T extends HTMLElement = HTMLInputElement>(
+  row: Element,
+  sel: string,
+): T => row.querySelector(sel) as T;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 // Drives an <input> the way a user does: set the value, fire 'input'.
-function type(input, value) {
+function type(input: HTMLInputElement, value: string) {
   input.value = value;
   input.dispatchEvent(new window.Event('input', { bubbles: true }));
 }
@@ -100,10 +135,8 @@ describe('settings modal', () => {
     await flush();
 
     expect(rows()).toHaveLength(1);
-    expect(rows()[0].querySelector('.settings-agent-name').value).toBe(
-      'Claude Lite',
-    );
-    expect(rows()[0].querySelector('.settings-agent-cmd').value).toBe(
+    expect(cell(rows()[0], '.settings-agent-name').value).toBe('Claude Lite');
+    expect(cell(rows()[0], '.settings-agent-cmd').value).toBe(
       'claude --model haiku',
     );
 
@@ -118,11 +151,8 @@ describe('settings modal', () => {
 
     el('settings-agent-add').click();
     expect(rows()).toHaveLength(1);
-    type(rows()[0].querySelector('.settings-agent-name'), 'Claude Lite');
-    type(
-      rows()[0].querySelector('.settings-agent-cmd'),
-      'claude --model haiku',
-    );
+    type(cell(rows()[0], '.settings-agent-name'), 'Claude Lite');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'claude --model haiku');
 
     el('settings-save').click();
     await flush();
@@ -153,7 +183,7 @@ describe('settings modal', () => {
     openSettings();
     await flush();
 
-    type(rows()[0].querySelector('.settings-agent-name'), 'Claude Litest');
+    type(cell(rows()[0], '.settings-agent-name'), 'Claude Litest');
     el('settings-save').click();
     await flush();
 
@@ -172,7 +202,7 @@ describe('settings modal', () => {
     await flush();
     expect(rows()).toHaveLength(3);
 
-    rows()[1].querySelector('.settings-agent-delete').click();
+    cell(rows()[1], '.settings-agent-delete').click();
     expect(rows()).toHaveLength(2);
 
     el('settings-save').click();
@@ -187,8 +217,8 @@ describe('settings modal', () => {
     await flush();
 
     el('settings-agent-add').click();
-    type(rows()[0].querySelector('.settings-agent-name'), 'Real');
-    type(rows()[0].querySelector('.settings-agent-cmd'), 'realtool');
+    type(cell(rows()[0], '.settings-agent-name'), 'Real');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'realtool');
     el('settings-agent-add').click(); // left entirely blank
 
     el('settings-save').click();
@@ -207,8 +237,8 @@ describe('settings modal', () => {
     await flush();
 
     el('settings-agent-add').click();
-    type(rows()[0].querySelector('.settings-agent-name'), 'Claude');
-    type(rows()[0].querySelector('.settings-agent-cmd'), 'claude');
+    type(cell(rows()[0], '.settings-agent-name'), 'Claude');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'claude');
     el('settings-save').click();
     await flush();
 
@@ -232,7 +262,7 @@ describe('settings modal', () => {
     ]);
     openSettings();
     await flush();
-    type(rows()[0].querySelector('.settings-agent-name'), 'Scribbled');
+    type(cell(rows()[0], '.settings-agent-name'), 'Scribbled');
 
     el('settings-cancel').click();
     expect(el('settings').classList.contains('hidden')).toBe(true);
@@ -241,7 +271,7 @@ describe('settings modal', () => {
     // Reopening re-reads from disk rather than showing the discarded draft.
     openSettings();
     await flush();
-    expect(rows()[0].querySelector('.settings-agent-name').value).toBe('Keep');
+    expect(cell(rows()[0], '.settings-agent-name').value).toBe('Keep');
   });
 
   it('closes on Escape', async () => {
@@ -268,8 +298,8 @@ describe('failed load', () => {
 
     expect(el('settings-error').classList.contains('hidden')).toBe(false);
     expect(el('settings-error').textContent).toMatch(/agents\.json/);
-    expect(el('settings-save').disabled).toBe(true);
-    expect(el('settings-agent-add').disabled).toBe(true);
+    expect(el<HTMLButtonElement>('settings-save').disabled).toBe(true);
+    expect(el<HTMLButtonElement>('settings-agent-add').disabled).toBe(true);
 
     el('settings-save').click();
     await flush();
@@ -288,15 +318,15 @@ describe('failed load', () => {
     listCustomAgents.mockResolvedValue([]);
     openSettings();
     await flush();
-    expect(el('settings-save').disabled).toBe(false);
-    expect(el('settings-agent-add').disabled).toBe(false);
+    expect(el<HTMLButtonElement>('settings-save').disabled).toBe(false);
+    expect(el<HTMLButtonElement>('settings-agent-add').disabled).toBe(false);
     closeSettings();
   });
 });
 
 describe('load race', () => {
   it('does not clobber a draft with a stale response from a previous open', async () => {
-    let resolveFirst;
+    let resolveFirst: (v: main.CustomAgent[]) => void = () => {};
     listCustomAgents.mockReturnValue(
       new Promise((r) => {
         resolveFirst = r;
@@ -317,7 +347,7 @@ describe('load race', () => {
     await flush();
 
     expect(rows()).toHaveLength(1);
-    expect(rows()[0].querySelector('.settings-agent-name').value).toBe('Kept');
+    expect(cell(rows()[0], '.settings-agent-name').value).toBe('Kept');
     closeSettings();
   });
 });
@@ -331,7 +361,7 @@ describe('focus containment', () => {
     openSettings();
     await flush();
 
-    const del = rows()[0].querySelector('.settings-agent-delete');
+    const del = cell(rows()[0], '.settings-agent-delete');
     del.focus();
     del.click();
 
@@ -342,7 +372,7 @@ describe('focus containment', () => {
     expect(el('settings').contains(document.activeElement)).toBe(true);
 
     // Deleting the last remaining row falls back to "+ Add agent".
-    rows()[0].querySelector('.settings-agent-delete').click();
+    cell(rows()[0], '.settings-agent-delete').click();
     expect(rows()).toHaveLength(0);
     expect(document.activeElement).toBe(el('settings-agent-add'));
     closeSettings();

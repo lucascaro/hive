@@ -15,6 +15,10 @@ import {
   OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
+import { pageEl } from './el.js';
+// Type-only, so the generated module is erased before Vite resolves it.
+import type { main } from '../../wailsjs/go/models';
+import type { DaemonStaleEvent } from './version-footer.js';
 
 export function isDaemonRestarting() {
   return daemonRestarting;
@@ -30,14 +34,14 @@ export function isDaemonRestarting() {
 // Dismissal is keyed on the specific daemonBuild that was dismissed,
 // so a *different* mismatched build later will still surface. A "match"
 // reconnect clears the dismissal flag too.
-const daemonBannerEl = document.getElementById('daemon-banner');
-const daemonBannerText = document.getElementById('daemon-banner-text');
-const daemonBannerRestart = document.getElementById('daemon-banner-restart');
-const daemonBannerDismiss = document.getElementById('daemon-banner-dismiss');
-let daemonBannerDismissedFor = null;
+const daemonBannerEl = pageEl('daemon-banner');
+const daemonBannerText = pageEl('daemon-banner-text');
+const daemonBannerRestart = pageEl<HTMLButtonElement>('daemon-banner-restart');
+const daemonBannerDismiss = pageEl('daemon-banner-dismiss');
+let daemonBannerDismissedFor: string | null = null;
 let daemonRestarting = false;
 
-function showDaemonBanner(text) {
+function showDaemonBanner(text: string) {
   daemonBannerText.textContent = text;
   daemonBannerEl.classList.remove('hidden');
 }
@@ -97,7 +101,7 @@ function wireDaemonBanner() {
   });
   daemonBannerRestart.addEventListener('click', restartHive);
 
-  EventsOn('daemon:stale', (ev) => {
+  EventsOn('daemon:stale', (ev: DaemonStaleEvent | null) => {
     if (!ev) return;
     daemonBannerEl.dataset.daemonBuild = ev.daemonBuild || '';
     if (ev.severity === 'match') {
@@ -130,15 +134,15 @@ function wireDaemonBanner() {
 // responsive. Dismissals are remembered per-version in localStorage
 // so the 6h tick doesn't re-nag for a release the user has already
 // seen.
-const updateBannerEl = document.getElementById('update-banner');
-const updateBannerText = document.getElementById('update-banner-text');
-const updateBannerDownload = document.getElementById('update-banner-download');
-const updateBannerDismiss = document.getElementById('update-banner-dismiss');
+const updateBannerEl = pageEl('update-banner');
+const updateBannerText = pageEl('update-banner-text');
+const updateBannerDownload = pageEl('update-banner-download');
+const updateBannerDismiss = pageEl('update-banner-dismiss');
 const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
-let updateBannerAutoHideTimer = null;
+let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
 
 function showUpdateBanner(
-  text,
+  text: string,
   { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {},
 ) {
   updateBannerText.textContent = text;
@@ -171,7 +175,10 @@ function hideUpdateBanner() {
 // stays sticky — it has a Download button the user actually needs.
 const UPDATE_TRANSIENT_MS = 4000;
 
-function applyUpdateInfo(info, { manual = false } = {}) {
+function applyUpdateInfo(
+  info: main.UpdateInfo | null,
+  { manual = false }: { manual?: boolean } = {},
+) {
   if (!info) return;
   if (info.skipped) {
     if (manual) {
@@ -224,7 +231,9 @@ function wireUpdateBanner() {
     hideUpdateBanner();
   });
 
-  EventsOn('update:available', (info) => applyUpdateInfo(info));
+  EventsOn('update:available', (info: main.UpdateInfo | null) =>
+    applyUpdateInfo(info),
+  );
 
   // Pull once on load. The Go side's periodic loop only fires every
   // 6h, so without this the user wouldn't see an "available" banner

@@ -10,20 +10,30 @@ import {
 } from '../../bridge.js';
 import { reportFailure } from '../dom.js';
 import { registerModal } from './registry.js';
+import { pageEl } from '../el.js';
+import type { ProjectInfo } from '../state.js';
 
-let deps = {
+// Narrow on purpose: this modal needs exactly two callbacks off the
+// focus pipeline, so it names those two rather than the whole module.
+export interface ProjectEditorDeps {
+  setFocusedTile: (id: string | null) => void;
+  refocusActiveTerm: () => void;
+}
+
+let deps: ProjectEditorDeps = {
   setFocusedTile: () => {},
   refocusActiveTerm: () => {},
 };
 
-export const editorEl = document.getElementById('project-editor');
-const editorTitle = document.getElementById('project-editor-title');
-const editorName = document.getElementById('project-editor-name');
-const editorCwd = document.getElementById('project-editor-cwd');
-const editorColor = document.getElementById('project-editor-color');
-const editorState = { editing: null }; // null = create; else project object
+export const editorEl = pageEl('project-editor');
+const editorTitle = pageEl('project-editor-title');
+const editorName = pageEl<HTMLInputElement>('project-editor-name');
+const editorCwd = pageEl<HTMLInputElement>('project-editor-cwd');
+const editorColor = pageEl<HTMLInputElement>('project-editor-color');
+// null = create; else the project being edited
+const editorState: { editing: ProjectInfo | null } = { editing: null };
 
-export function openProjectEditor(project) {
+export function openProjectEditor(project: ProjectInfo | null) {
   editorState.editing = project || null;
   editorTitle.textContent = project ? 'Edit project' : 'New project';
   editorName.value = project?.name ?? '';
@@ -67,25 +77,19 @@ function saveProjectEditor() {
   closeProjectEditor();
 }
 
-export function initProjectEditor(injected) {
+export function initProjectEditor(injected: ProjectEditorDeps) {
   deps = injected;
   registerModal(editorEl);
-  document
-    .getElementById('project-editor-cancel')
-    .addEventListener('click', closeProjectEditor);
-  document
-    .getElementById('project-editor-save')
-    .addEventListener('click', saveProjectEditor);
-  document
-    .getElementById('project-editor-browse')
-    .addEventListener('click', async () => {
-      try {
-        const picked = await PickDirectory(editorCwd.value || '');
-        if (picked) editorCwd.value = picked;
-      } catch (_err) {
-        // Silently ignore (user cancelled, or platform refused).
-      }
-    });
+  pageEl('project-editor-cancel').addEventListener('click', closeProjectEditor);
+  pageEl('project-editor-save').addEventListener('click', saveProjectEditor);
+  pageEl('project-editor-browse').addEventListener('click', async () => {
+    try {
+      const picked = await PickDirectory(editorCwd.value || '');
+      if (picked) editorCwd.value = picked;
+    } catch (_err) {
+      // Silently ignore (user cancelled, or platform refused).
+    }
+  });
   editorEl.addEventListener('keydown', (e) => {
     if (
       e.key === 'Enter' &&
@@ -97,7 +101,7 @@ export function initProjectEditor(injected) {
       closeProjectEditor();
     }
   });
-  document
-    .getElementById('new-project-btn')
-    .addEventListener('click', () => openProjectEditor(null));
+  pageEl('new-project-btn').addEventListener('click', () =>
+    openProjectEditor(null),
+  );
 }
