@@ -249,11 +249,12 @@ func (s *Session) fanoutClose() {
 func (s *Session) SubscribeWithAtomicReplay(sink Sink, writeFn func(replay []byte) error) (unsubscribe func(), err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Initial attach uses InitialReplayBytes, not the raw ring: alt-screen
-	// sessions (claude et al.) return a one-screen snapshot with no
-	// scrollback, avoiding the many-tile startup flood. Normal-screen
-	// sessions still get the full ring here. The resize-driven re-replay
-	// (EmitAtomicReplay) keeps using the ring for reflow recovery.
+	// Initial attach uses InitialReplayBytes, not the raw ring: both screen
+	// types get a compact snapshot (alt-screen: one screen, no scrollback;
+	// normal: one screen + historyRows of history, sized to match xterm's
+	// own scrollback cap), avoiding the many-tile startup flood. Only the
+	// resize-driven re-replay (EmitAtomicReplay) still streams the raw ring,
+	// and only for reflow recovery.
 	replay, snapshot := s.vt.InitialReplayBytes()
 	// Logged so hived.log proves which path ran per attach — a snapshot
 	// line here (vs a multi-MB ring) is the unconfounded signal that the

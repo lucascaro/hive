@@ -70,6 +70,15 @@ export function switchTo(id) {
   // created and visible. Without this, typing after creating a
   // session lands in whichever terminal had focus before.
   if (id) deps.focusActiveTerm();
+  // Focusing a pane is a deliberate "show me the latest". ensureAttached
+  // (via showSingle/renderGrid above) already re-latched _followBottom;
+  // this makes the move visible immediately for an already-attached tile
+  // whose attach replay won't re-fire. Skips detached/zero-height terms,
+  // so a still-deferring tile is a no-op here (Change A catches it on attach).
+  if (id) {
+    const st = state.terms.get(id);
+    if (st) snapVisibleTermsToBottom([st]);
+  }
 }
 
 // updateAppTitle composes "Hive — <session> — <termTitle>" and pushes
@@ -137,8 +146,14 @@ let gridLayout = {
 
 // attachDeferred attaches non-active grid tiles one per idle callback so
 // the first paint isn't blocked by N synchronous fit()+replay passes.
-// ensureAttached is idempotent (returns early if already attached), so
-// re-running renderGrid — which re-queues everything — is harmless.
+// ensureAttached is idempotent for the ATTACH itself (it returns early once
+// attached), so re-running renderGrid — which re-queues everything — never
+// re-opens a session. It is NOT side-effect-free though: ensureAttached
+// re-latches follow-intent and snaps to the bottom on every call, so each
+// renderGrid pass (switch, minimize, container resize, …) re-anchors every
+// grid tile to the newest output. That is the intended "grid always shows
+// the latest" behavior — the cost is that a background tile can't be parked
+// scrolled up in history across a relayout.
 // requestIdleCallback isn't available in all webviews; fall back to a
 // short-timeout chain so the stagger still happens.
 const _ric = (cb) =>
@@ -167,6 +182,25 @@ export function renderGrid() {
   const gridSessions = gridScopeSessions();
   const gridIDs = new Set(gridSessions.map((s) => s.id));
   const n = gridSessions.length;
+
+  // Pick (rows, cols) that fills the container and apply the grid template
+  // BEFORE the attach loop. The active tile's ensureAttached() runs a
+  // synchronous fit.fit() that measures its body box — if the template
+  // isn't set yet, it measures the pre-grid (single/stale) width and
+  // rebaselineReplayCols('first-attach') anchors the replay baseline to
+  // that wrong width. The tile's ResizeObserver then fires once the
+  // template lays it out, sees a >=REPLAY_COL_THRESHOLD delta vs the stale
+  // baseline, and arms a SECOND scrollback replay on top of the attach
+  // replay — the double-restream that visibly jumps the active tile on
+  // grid entry. buildGridLayout only reads container dims + n, so it has
+  // no dependency on the attach loop. (Per-tile rowSpan is applied below,
+  // after ensureTerm creates the terms — it only affects row height, not
+  // the cols-driven replay trigger.)
+  const w = termsHost.clientWidth || 800;
+  const h = termsHost.clientHeight || 600;
+  const { rows, cols, assignments, cellMap } = buildGridLayout(n, w, h);
+  termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 
   // Startup-fan-out probe: how many tiles this pass builds+attaches and
   // the synchronous cost of the loop. grid-all attaches every session at
@@ -233,16 +267,6 @@ export function renderGrid() {
       st.host.style.gridColumn = '';
     }
   }
-
-  // Pick (rows, cols) that fills the container, then derive
-  // per-tile assignments + the cellMap used by spatial nav. Pure
-  // logic lives in lib/grid.js so it can be unit-tested.
-  const w = termsHost.clientWidth || 800;
-  const h = termsHost.clientHeight || 600;
-  const { rows, cols, assignments, cellMap } = buildGridLayout(n, w, h);
-
-  termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
 
   // Apply each tile's row span. CSS grid 1-based; row indices are
   // implicit row-major, so we only need to span when rowSpan > 1.

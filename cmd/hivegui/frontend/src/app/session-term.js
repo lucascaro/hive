@@ -58,6 +58,7 @@ import {
   decideResizeReplay,
   REPLAY_DEBOUNCE_MS,
   applyRebaseline,
+  resetFollowIntent,
 } from '../lib/scrollback.js';
 import { scrollTrace, snapshotScrollJump } from './trace.js';
 import { classifyViewportMove } from '../lib/scroll-debug.js';
@@ -597,6 +598,37 @@ export class SessionTerm {
     this._replaysInFlight = 0;
     this._repinning = false;
 
+    // Pointer drag is user scroll intent too. xterm auto-scrolls the
+    // viewport while a selection drag is held past the top edge, and that
+    // scroll arrives with NO wheel and NO keydown — so the bottom re-pin
+    // below reads it as parse-driven drift and yanks the viewport back,
+    // which makes selecting text upwards impossible. (Only visible once
+    // the re-pin stopped being gated on an in-flight replay.)
+    //
+    // A boolean, not a timestamp: the auto-scroll repeats on xterm's own
+    // timer while the button is held STILL, so there is no second event to
+    // re-stamp from and a mousedown timestamp alone would go stale after
+    // USER_SCROLL_GRACE_MS mid-drag. onScroll refreshes the stamp while
+    // this is set.
+    this._pointerDown = false;
+    this.body.addEventListener(
+      'mousedown',
+      () => {
+        this._pointerDown = true;
+        this._lastUserScrollTs = nowMs();
+      },
+      { capture: true },
+    );
+    // Listen for the release on `window`: a drag that leaves the tile (or
+    // the window) releases outside `body`, and a stuck flag would make
+    // every later drift look user-driven.
+    this._onWindowMouseUp = () => {
+      if (!this._pointerDown) return;
+      this._pointerDown = false;
+      this._lastUserScrollTs = nowMs();
+    };
+    window.addEventListener('mouseup', this._onWindowMouseUp, true);
+
     // Keyboard scrollback (Shift+PageUp/Down, Shift+Home/End) is user
     // intent too. xterm handles these internally; we only timestamp them
     // so the onScroll below attributes the resulting move to the user.
@@ -623,6 +655,10 @@ export class SessionTerm {
       const to = buf.viewportY;
       this._lastViewportY = to;
       const now = nowMs();
+      // A held pointer is a live gesture for as long as it's held — keep
+      // the stamp fresh so a selection auto-scroll that spans more than
+      // USER_SCROLL_GRACE_MS stays attributed to the user.
+      if (this._pointerDown) this._lastUserScrollTs = now;
       // Only a recent user gesture may change follow-intent. A move with
       // no gesture behind it is parse-driven cap-trim drift — ignore it,
       // so a wobbling viewport never clears "follow the bottom".
@@ -631,18 +667,22 @@ export class SessionTerm {
         this._followBottom = buf.baseY - to <= STICKY_BOTTOM_LINES;
       }
 
-      // Keep a FOLLOWING viewport glued to the bottom for the WHOLE replay
-      // restream, not just at replay-done. A full-buffer restream spans many
-      // frames; the begin handler's term.reset() wipes the viewport to the
-      // top and cap-trim then strands it in history, so without this the
-      // viewport drifts up mid-restream and only re-snaps at done — a visible
-      // scroll-jump (the user-reported signature: following:true, tiny
-      // sinceReplayMs). Re-pin only a genuine follower (never a reader
-      // scrolled up: _followBottom is false for them, and a user gesture this
-      // tick set it above). Reentrancy-guarded — scrollToBottom re-enters
-      // onScroll, which then sees us at the bottom and stops.
+      // Keep a FOLLOWING viewport glued to the bottom against ANY non-user
+      // upward drift — during a replay restream AND in steady state under a
+      // high-output ("firehose") session. Two mechanisms strand a follower
+      // off the bottom with no user gesture:
+      //   1. replay: begin's term.reset() wipes the viewport to the top and
+      //      cap-trim leaves it in history until done re-snaps it;
+      //   2. cap-trim drift: at the 5000-line scrollback cap, heavy output
+      //      shifts baseY faster than xterm updates viewportY, so xterm
+      //      loses bottom-follow and the viewport slides up on its own.
+      // #228 deliberately left (2) uncorrected — but on a real firehose
+      // (multi-MB/s, e.g. Pi) that drift IS the "constant scrolling, never
+      // anchored to the bottom" report, so we now re-pin it too. Safe: a
+      // genuine reader has _followBottom=false (a user gesture this tick set
+      // it above), so we never fight them; the _repinning guard absorbs the
+      // scrollToBottom → onScroll re-entry.
       if (
-        this._replaysInFlight > 0 &&
         this._followBottom &&
         !this._repinning &&
         buf.baseY - to > STICKY_BOTTOM_LINES &&
@@ -1048,18 +1088,36 @@ export class SessionTerm {
         // helper so the skip + baseline-untouched behavior is unit-tested.
         // Checked at fire time so a just-attached session that has since
         // entered the alt screen via its snapshot is caught too.
+        // Re-read follow-intent at FIRE time and re-stamp the wants-bottom
+        // flag from that same read. The flag was stamped from `wasAtBottom`
+        // one debounce interval ago; a scroll during that interval would
+        // otherwise leave the skip decision (fresh) and the restore decision
+        // (stale) disagreeing — e.g. a user who scrolled up mid-debounce gets
+        // a replay AND gets yanked back to the bottom by its done handler.
+        const following = this._followBottom;
+        this._replayWantsBottom = following;
         const { replay, baseline } = decideResizeReplay({
           bufferType: this.term.buffer.active.type,
           cols: this.term.cols,
           baselineCols: this._replayBaselineCols,
+          // A follower doesn't need history reflowed — skip the destructive
+          // full-ring replay that makes the viewport thrash under live output.
+          followingBottom: following,
         });
         this._replayBaselineCols = baseline;
         if (!replay) {
           delete this._replayWantsBottom;
+          // Already re-latched by the earlier scrollToBottom; assert it once
+          // more so a follower we skipped the replay for stays glued to the
+          // newest output after the fit settles.
+          if (following && typeof this.term.scrollToBottom === 'function')
+            this.term.scrollToBottom();
           if (scrollTrace.rec.enabled) {
-            scrollTrace.rec('replay-skip-alt', {
+            scrollTrace.rec('replay-skip', {
               id: this.info.id,
               cols: this.term.cols,
+              following,
+              bufType: this.term.buffer.active.type,
             });
           }
           return;
@@ -1091,7 +1149,22 @@ export class SessionTerm {
   }
 
   async ensureAttached() {
-    if (this.attached) return;
+    // A deliberate attach/focus means "show me the latest": re-latch
+    // follow-intent and drop any stale restore-into-history intent from a
+    // prior resize. BEFORE the attached-guard so re-focusing an ALREADY-live
+    // tile (which early-returns below) also re-pins — otherwise a stale
+    // _followBottom=false from an earlier scroll-up would strand it in
+    // history. This is the choke point every path goes through (active tile,
+    // deferred idle-callback attach, focus, restore), so setting the latch
+    // here makes the bottom-snap timing-independent — see resetFollowIntent.
+    resetFollowIntent(this);
+    if (this.attached) {
+      // Already live: no replay will re-fire to carry the latch to the
+      // bottom, so snap synchronously for instant feedback on focus.
+      if (typeof this.term?.scrollToBottom === 'function')
+        this.term.scrollToBottom();
+      return;
+    }
     // Don't attempt to attach to a session known to be dead — the daemon
     // will refuse. Show the dead overlay with the error reason instead.
     if (state.aliveById.get(this.info.id) === false) {
@@ -1111,11 +1184,8 @@ export class SessionTerm {
     const _fitStart = nowMs();
     this.fit.fit();
     const _fitMs = nowMs() - _fitStart;
-    // Reset _followBottom on attach: it may be stale from a previous
-    // session (user scrolled up, closed Hive, reopened). The initial
-    // attach replay must snap to bottom — _followBottom = true ensures
-    // the replay-done handler doesn't skip the snap via the restore path.
-    this._followBottom = true;
+    // _followBottom was already re-latched at the top of ensureAttached
+    // (resetFollowIntent), so the initial attach replay snaps to bottom.
     try {
       const _openStart = nowMs();
       await OpenSession(this.info.id, this.term.cols, this.term.rows);
@@ -1172,6 +1242,10 @@ export class SessionTerm {
     }
     if (this._onVisibility) {
       document.removeEventListener('visibilitychange', this._onVisibility);
+    }
+    if (this._onWindowMouseUp) {
+      window.removeEventListener('mouseup', this._onWindowMouseUp, true);
+      this._onWindowMouseUp = null;
     }
     // Release the GL context proactively so a many-tile session doesn't
     // sit on it until GC and push another tile over the browser cap.

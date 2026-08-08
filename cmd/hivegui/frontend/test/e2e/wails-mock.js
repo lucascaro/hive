@@ -338,6 +338,9 @@ export async function Notify(_title, _body) {
 export async function LogFrontend(_msg) {
   return '';
 }
+export async function SetDebugTrace(_on) {
+  return '';
+}
 export async function Confirm(_title, _body) {
   return true;
 }

@@ -129,13 +129,22 @@ func buildAppMenu(a *App) *menu.Menu {
 	// Debug submenu — surfaces the hive.debug tracer (scroll/replay,
 	// grid relayout, focus reconciliation, keydown routing, and a
 	// main-thread heartbeat) without requiring devtools (production
-	// WKWebView builds ship with the web inspector disabled). "Toggle
-	// Debug Trace" arms the tracer and reloads (the tracer latches its
-	// on/off at page load); "Copy Debug Trace" puts the captured event
-	// ring + counters on the clipboard so it can be pasted straight into
-	// a bug report — no console needed.
+	// WKWebView builds ship with the web inspector disabled). The toggle
+	// arms the tracer and reloads (the tracer latches its on/off at page
+	// load); "Copy Debug Trace" puts the captured event ring + counters on
+	// the clipboard so it can be pasted straight into a bug report — no
+	// console needed.
+	//
+	// The label names the state the item MOVES to, so it also reports the
+	// current one — an armed tracer has no other visible sign. a.debugTrace
+	// is pushed up by the frontend at startup (App.SetDebugTrace), which
+	// rebuilds this menu.
 	debug := m.AddSubmenu("Debug")
-	debug.AddText("Toggle Debug Trace (Reloads)", nil, emit("menu:toggle-scroll-debug"))
+	traceLabel := "Turn Debug Trace On (Reloads)"
+	if a.debugTrace {
+		traceLabel = "Turn Debug Trace Off (Reloads)"
+	}
+	debug.AddText(traceLabel, nil, emit("menu:toggle-scroll-debug"))
 	debug.AddText("Copy Debug Trace", nil, emit("menu:copy-scroll-trace"))
 
 	// Help submenu — macOS auto-injects a Search field that

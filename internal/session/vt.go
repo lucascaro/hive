@@ -30,6 +30,21 @@ const (
 
 // historyRows caps the number of evicted rows we keep for prepending to
 // the snapshot. ~80 cols × 500 rows × ~100 bytes/row ≈ 50 KiB worst case.
+//
+// Deliberately far below xterm's own `scrollback: 5000`, and the reason is
+// counter-intuitive: this payload is PAINTED, not handed over. xterm parses
+// it in ~4 KiB slices across frames, so every line in it scrolls the
+// viewport on its way in. Measured on a live session, 5000 rows is a
+// 340–680 KiB attach that visibly animates for seconds on every grid entry
+// — the same defect as the multi-MB ring this snapshot replaced, just
+// quieter. 0 / 500 / 5000 is one dial from "instant" to "thrashes", and
+// there is no value on it that is both instant and complete.
+//
+// So the cap stays at the size that paints without a visible scroll, and
+// deep scrollback is a separate problem: it wants to arrive on demand when
+// the user scrolls up, over the RequestScrollbackReplay path that already
+// exists, rather than being pushed at every attach. Until that lands, an
+// attach shows the most recent 500 lines.
 const historyRows = 500
 
 // ringCap is the default size of the raw-byte scrollback ring. 8 MiB ≈
@@ -56,6 +71,10 @@ type VT struct {
 	mu      sync.Mutex
 	term    vt10x.Terminal
 	history [][]byte
+
+	// preScratch is the reusable pre-write glyph grid used by writeChunk.
+	// Guarded by mu; re-allocated only when the terminal is resized.
+	preScratch [][]vt10x.Glyph
 
 	// ring holds the raw PTY bytes seen so far, capped at ringCap. On
 	// overflow we drop the oldest bytes but advance to a safe boundary
@@ -100,29 +119,103 @@ func (v *VT) Write(p []byte) (int, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
+	v.appendRing(p)
+
 	cols, rows := v.term.Size()
+	// The eviction heuristic can only see rows-1 lines of scroll per pass
+	// (it looks for the pre-write row that became the new top row). A PTY
+	// read is up to 64 KiB — on a high-output session that is hundreds of
+	// lines in one Write, which scrolls the whole screen past and leaves
+	// NO matching row, so the entire chunk is dropped from history. That
+	// was survivable while attach streamed the raw ring; now the snapshot
+	// is the only history a normal-screen attach gets, so it would strand
+	// exactly the firehose sessions with an empty scrollback.
+	//
+	// Feeding the emulator in sub-screen slices keeps every pass inside
+	// the heuristic's window. vt10x's parser is stateful across Write
+	// calls, so any split point is safe; we cut on \n anyway.
+	//
+	// The window is rows-2, not rows-1: the chunk's first line overwrites
+	// the pre-write bottom row before the screen scrolls, so at rows-1
+	// newlines the new top row is that fresh line and matches nothing in
+	// preRows. Capture then drops to ZERO rather than degrading — measured
+	// on a 40-row terminal, 38 lines/chunk captures everything and 39
+	// captures nothing. Keep the slack.
+	total := 0
+	for _, chunk := range splitByLines(p, rows-2) {
+		n, err := v.writeChunk(chunk, cols, rows)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// writeChunk feeds one sub-screen slice to the emulator and runs the
+// eviction heuristic across it. Caller holds v.mu.
+func (v *VT) writeChunk(p []byte, cols, rows int) (int, error) {
 	preAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
 
 	var preRows [][]vt10x.Glyph
 	if !preAlt && cols > 0 && rows > 0 {
-		preRows = make([][]vt10x.Glyph, rows)
+		// Reuse the scratch grid across chunks. A firehose read is split
+		// into dozens of sub-screen chunks (see Write), and a fresh
+		// rows×cols glyph grid per chunk is pure GC churn — captureEvictions
+		// copies out what it keeps (captureRowANSI allocates its own bytes),
+		// so the grid is dead the moment it returns.
+		if len(v.preScratch) != rows || (rows > 0 && len(v.preScratch[0]) != cols) {
+			v.preScratch = make([][]vt10x.Glyph, rows)
+			for y := range rows {
+				v.preScratch[y] = make([]vt10x.Glyph, cols)
+			}
+		}
+		preRows = v.preScratch
 		for y := range rows {
-			row := make([]vt10x.Glyph, cols)
+			row := preRows[y]
 			for x := range cols {
 				row[x] = v.term.Cell(x, y)
 			}
-			preRows[y] = row
 		}
 	}
 
 	n, err := v.term.Write(p)
-	v.appendRing(p)
 
 	postAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
 	if preRows != nil && !postAlt {
 		v.captureEvictions(preRows, cols, rows)
 	}
 	return n, err
+}
+
+// splitByLines cuts p into slices of at most maxLines newlines each,
+// always breaking immediately after a \n so no line is split in two.
+// Returns p whole when it already fits (the overwhelmingly common case:
+// interactive output arrives a few lines at a time) so the fast path
+// allocates nothing.
+func splitByLines(p []byte, maxLines int) [][]byte {
+	if maxLines < 1 || len(p) == 0 {
+		return [][]byte{p}
+	}
+	if bytes.Count(p, []byte{'\n'}) <= maxLines {
+		return [][]byte{p}
+	}
+	var out [][]byte
+	start, seen := 0, 0
+	for i, b := range p {
+		if b != '\n' {
+			continue
+		}
+		seen++
+		if seen == maxLines {
+			out = append(out, p[start:i+1])
+			start, seen = i+1, 0
+		}
+	}
+	if start < len(p) {
+		out = append(out, p[start:])
+	}
+	return out
 }
 
 // captureEvictions runs the post-write heuristic and pushes evicted
@@ -295,37 +388,67 @@ func insideUnterminatedEscape(b []byte, pos int, back int) bool {
 // over capacity. Caller holds v.mu.
 func (v *VT) pushHistory(b []byte) {
 	v.history = append(v.history, b)
-	if len(v.history) > historyRows {
-		// Drop oldest. A sliding slice (re-allocate when too small) keeps
-		// memory bounded; for 500 entries the periodic re-slice cost is
-		// negligible vs the per-Write parsing cost.
-		drop := len(v.history) - historyRows
-		v.history = append([][]byte(nil), v.history[drop:]...)
+	// Compact in batches, not per row. Re-slicing on every push is O(n) per
+	// row — at historyRows=5000 that is a 5000-element copy for each of the
+	// ~1500 rows in a single 64 KiB firehose read, which measured as an 18×
+	// throughput cliff. Letting the slice run to 2× and then trimming back
+	// makes it amortized O(1) at the cost of ≤ historyRows extra retained
+	// rows (~500 KiB worst case). Readers must take the LAST historyRows
+	// entries, not the whole slice — see RenderSnapshot.
+	if len(v.history) > 2*historyRows {
+		v.history = append([][]byte(nil), v.history[len(v.history)-historyRows:]...)
 	}
 }
 
-// InitialReplayBytes returns the payload to paint a freshly-attaching
-// client. On the ALTERNATE screen (full-screen TUIs: claude, vim, htop…)
-// there is no user-facing scrollback — the app repaints itself — so we
-// return only a one-screen RenderSnapshot instead of the multi-MB raw
-// ring. This is the fix for the many-tile startup flood: 8 alt-screen
-// sessions were each replaying an 8 MiB ring (~32 MB total) into xterm
-// on the main thread, dragging then halting the GUI.
-//
-// On the normal screen we still return the full ring so deep scrollback
-// survives the attach (xterm can't reflow on resize, so the ring is how
-// width-changing resizes recover history — see appendRing).
-// The returned bool reports whether the snapshot (alt-screen) path was
-// taken — callers log it so hived.log proves which replay path ran (and
-// therefore which daemon build is live) without inferring from sizes.
-func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
-	v.mu.Lock()
-	onAlt := v.term.Mode()&vt10x.ModeAltScreen != 0
-	v.mu.Unlock()
-	if onAlt {
-		return v.RenderSnapshot(), true
+// historyTail returns the newest historyRows entries — the window callers
+// must render. pushHistory lets the slice overshoot to amortize compaction,
+// so len(v.history) can exceed historyRows between trims. Caller holds v.mu.
+func (v *VT) historyTail() [][]byte {
+	if len(v.history) <= historyRows {
+		return v.history
 	}
-	return v.RingBytes(), false
+	return v.history[len(v.history)-historyRows:]
+}
+
+// InitialReplayBytes returns the payload to paint a freshly-attaching
+// client — a compact RenderSnapshot for BOTH screen types now (current
+// screen + up to historyRows of recent history on the normal screen; a
+// single screen on the alt screen).
+//
+// It used to return the full multi-MB raw ring on the normal screen so deep
+// scrollback survived the attach. But the ring is 8 MiB (tens of thousands
+// of lines) while xterm.js keeps only `scrollback: 5000`, so the attach
+// streamed ~8× more than xterm could retain: on a high-output session the
+// client spent 13–38s parsing the whole ring on the main thread, visibly
+// animating the entire history scrolling past, only to discard ~90% of it.
+// That restream-on-every-attach is the "I see the entire history replay
+// every time I enter grid" report (each grid tile attaches → full ring).
+//
+// The snapshot paints without a visible scroll, which is the property that
+// actually matters here: this payload is painted into a live xterm, so its
+// SIZE is the stall — every line in it scrolls the viewport on the way in.
+// That is why the fix is not "send fewer bytes than the ring" but "send few
+// enough that the paint is invisible"; see historyRows for the measurements
+// behind the cap, and note that it deliberately does NOT try to cover
+// xterm's full 5000-line scrollback.
+//
+// The consequence is honest and known: an attach shows the most recent
+// historyRows lines, not everything the session ever printed. Restoring
+// deep scrollback wants an on-demand fetch when the user scrolls up (over
+// the RequestScrollbackReplay path below), not a bigger attach payload.
+//
+// The raw ring is still there for the one case that needs it: reflow.
+// RequestScrollbackReplay (EmitAtomicReplay) returns it, and the client
+// fires that when a width-changing resize happens while the user is
+// scrolled UP into history. A follower never pays for a reflow of history
+// it isn't looking at.
+//
+// The returned bool reports whether a snapshot was sent; it is now always
+// true. Kept in the signature so callers' hived.log lines still record the
+// path (and so a future full-ring initial path could flip it) without an
+// API change.
+func (v *VT) InitialReplayBytes() (replay []byte, snapshot bool) {
+	return v.RenderSnapshot(), true
 }
 
 // RingBytes returns a defensive copy of the raw-byte scrollback ring.
@@ -393,8 +516,8 @@ func (v *VT) RenderSnapshot() []byte {
 	// History block (normal screen only). Each ring entry is already a
 	// self-contained `\x1b[m...\x1b[K` byte string, so we just join them
 	// with \r\n and add a trailing \r\n before the visible block.
-	if !onAlt && len(v.history) > 0 {
-		for i, line := range v.history {
+	if hist := v.historyTail(); !onAlt && len(hist) > 0 {
+		for i, line := range hist {
 			if i > 0 {
 				buf.WriteString("\r\n")
 			}

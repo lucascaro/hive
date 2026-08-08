@@ -1,16 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createScrollTrace,
   SCROLL_TRACE_CAP,
+  TEE_TAGS,
   classifyViewportMove,
 } from '../../src/lib/scroll-debug.js';
 
 describe('createScrollTrace', () => {
-  it('records nothing when disabled', () => {
+  it('records nothing to the ring when disabled and no sink', () => {
     const { rec, ring } = createScrollTrace({ enabled: false });
     rec('resize', { cols: 80 });
     expect(ring).toEqual([]);
     expect(rec.enabled).toBe(false);
+  });
+
+  it('stays completely silent when disabled, even with a sink wired', () => {
+    // The tracer's call sites sit in the scroll/resize hot paths, so a
+    // normal (non-debug) run must cost nothing: no ring, no log tee, and
+    // rec.enabled false so call sites don't even build their payloads.
+    const sink = vi.fn();
+    const { rec, ring } = createScrollTrace({ enabled: false, sink });
+    expect(rec.enabled).toBe(false);
+    rec('mode-snap', { view: 'grid-all' });
+    expect(sink).not.toHaveBeenCalled();
+    expect(ring).toEqual([]);
   });
 
   it('records tag, payload and rounded injected-clock timestamp when enabled', () => {
@@ -72,6 +85,50 @@ describe('createScrollTrace', () => {
     // Ring dropped the oldest, but the counter kept every increment.
     expect(ring.length).toBe(3);
     expect(counters.renderGrid).toBe(10);
+  });
+
+  it('tees whitelisted tags to the sink with the tag + JSON payload', () => {
+    const sink = vi.fn();
+    const { rec } = createScrollTrace({ enabled: true, now: () => 0, sink });
+    rec('mode-snap', { view: 'grid-all' });
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenCalledWith('scroll mode-snap {"view":"grid-all"}');
+  });
+
+  it('does not tee non-whitelisted (high-rate) tags to the sink', () => {
+    // `resize` is the important one: _onBodyResize fires per tile per frame
+    // during a window/sidebar drag, so teeing it would bury the log.
+    const sink = vi.fn();
+    const { rec } = createScrollTrace({ enabled: true, now: () => 0, sink });
+    rec('resize', { cols: 80 });
+    rec('wheel', { deltaY: 3 });
+    rec('heartbeat-stall', { gap: 900 });
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  it('swallows a throwing sink so the trace path never throws', () => {
+    const sink = vi.fn(() => {
+      throw new Error('bridge down');
+    });
+    const { rec, ring } = createScrollTrace({
+      enabled: true,
+      now: () => 0,
+      sink,
+    });
+    expect(() => rec('mode-snap', { view: 'grid-all' })).not.toThrow();
+    // Ring still recorded it even though the tee threw.
+    expect(ring).toHaveLength(1);
+  });
+
+  it('TEE_TAGS holds only per-event tags — never per-frame `resize`', () => {
+    expect([...TEE_TAGS].sort()).toEqual([
+      'mode-snap',
+      'replay-request',
+      'replay-restore',
+      'replay-skip',
+      'viewport-jump',
+    ]);
+    expect(TEE_TAGS.has('resize')).toBe(false);
   });
 });
 
