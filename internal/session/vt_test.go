@@ -179,30 +179,70 @@ func TestInitialReplayBytesAltScreen(t *testing.T) {
 // scrolled up and a width-changing resize fires.
 func TestInitialReplayBytesNormalScreen(t *testing.T) {
 	v := NewVT(80, 24)
-	// Dump far more than one screen so scrollback exists and the ring is big.
-	big := bytes.Repeat([]byte("scrollback line\r\n"), 5000)
-	if _, err := v.Write(big); err != nil {
-		t.Fatalf("write: %v", err)
+	// A long-running session: many times more lines than xterm (or our
+	// snapshot window) can retain, so the ring is megabytes.
+	line := append(bytes.Repeat([]byte("scrollback line "), 5), '\r', '\n')
+	for range 40_000 {
+		if _, err := v.Write(line); err != nil {
+			t.Fatalf("write: %v", err)
+		}
 	}
 	ring := v.RingBytes()
-	if len(ring) < 50_000 {
-		t.Fatalf("test setup: ring too small (%d) to prove the point", len(ring))
+	if len(ring) < 2<<20 {
+		t.Fatalf("test setup: ring too small (%d B) to prove the point", len(ring))
 	}
 	got, snapshot := v.InitialReplayBytes()
 	if !snapshot {
 		t.Error("normal-screen initial replay should now report snapshot=true")
 	}
-	if len(got) >= len(ring) {
+	// The whole point: an attach no longer streams the multi-MB ring. The
+	// snapshot is bounded by the history window (historyRows × line width)
+	// however long the session runs.
+	if len(got) >= len(ring)/4 {
 		t.Errorf("normal-screen initial replay (%d B) should be far smaller than the ring (%d B)", len(got), len(ring))
 	}
-	// It must still carry recent scrollback (the snapshot's history block),
-	// so the user lands with context, not a bare single screen.
-	if !bytes.Contains(got, []byte("scrollback line")) {
-		t.Error("normal-screen snapshot should include recent scrollback history")
+	// It must carry a full scrollback window, not just the visible screen —
+	// the snapshot is now the ONLY history an attach delivers. Counting
+	// lines matters: `bytes.Contains` alone passes on the visible screen
+	// and would not notice history capture collapsing to zero.
+	if got, want := bytes.Count(got, []byte("scrollback line")), historyRows; got < want {
+		t.Errorf("normal-screen snapshot carries %d history lines, want >= %d", got, want)
 	}
 	// And it must equal the RenderSnapshot (that's exactly what we send).
 	if want := v.RenderSnapshot(); !bytes.Equal(got, want) {
 		t.Errorf("normal-screen initial replay must equal RenderSnapshot; got %d B, want %d B", len(got), len(want))
+	}
+}
+
+// TestSnapshotCapturesHistoryAcrossPTYChunkSizes pins the eviction window.
+//
+// captureEvictions can only see a scroll it can anchor: it looks for the
+// pre-write row that became the new top row. Once a single Write scrolls
+// the screen by rows-1 or more, nothing matches and the WHOLE chunk is
+// dropped — a cliff, not a graceful degradation (measured: 38 lines/write
+// on a 40-row terminal captured everything, 39 captured nothing).
+//
+// A PTY read is up to 64 KiB, i.e. well over a thousand lines on a
+// high-output session, so without Write's line-splitting a firehose
+// session accumulates ZERO scrollback. That was invisible while attach
+// streamed the raw ring; now the snapshot is the only history there is.
+func TestSnapshotCapturesHistoryAcrossPTYChunkSizes(t *testing.T) {
+	const cols, rows = 80, 40
+	// Straddle the rows-1 cliff and go far past it, up to a realistic
+	// 64 KiB PTY read.
+	for _, linesPerWrite := range []int{1, 10, rows - 2, rows - 1, rows, 100, 1500} {
+		v := NewVT(cols, rows)
+		const totalLines = 6000
+		for i := 0; i < totalLines; i += linesPerWrite {
+			chunk := bytes.Repeat([]byte("scrollback line\r\n"), linesPerWrite)
+			if _, err := v.Write(chunk); err != nil {
+				t.Fatalf("linesPerWrite=%d: write: %v", linesPerWrite, err)
+			}
+		}
+		if got := len(v.historyTail()); got != historyRows {
+			t.Errorf("linesPerWrite=%d: captured %d history rows, want %d",
+				linesPerWrite, got, historyRows)
+		}
 	}
 }
 
@@ -317,8 +357,15 @@ func TestVTSnapshotScrollbackCappedAtHistoryRows(t *testing.T) {
 			t.Fatalf("write line %d: %v", i, err)
 		}
 	}
-	if got := len(v.history); got != historyRows {
-		t.Errorf("history len = %d, want %d", got, historyRows)
+	// The rendered window is exactly historyRows. The backing slice may
+	// overshoot between batch compactions (pushHistory amortizes the trim
+	// to keep the firehose path O(1) per row), but never past 2×, and
+	// historyTail is what RenderSnapshot actually reads.
+	if got := len(v.historyTail()); got != historyRows {
+		t.Errorf("history tail len = %d, want %d", got, historyRows)
+	}
+	if got := len(v.history); got > 2*historyRows {
+		t.Errorf("history backing slice = %d, want <= %d", got, 2*historyRows)
 	}
 	snap := string(v.RenderSnapshot())
 	// The first `extra` lines must have been dropped from the ring.

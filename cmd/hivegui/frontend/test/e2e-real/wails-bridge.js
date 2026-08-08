@@ -201,6 +201,9 @@ export async function Notify() {
 export async function LogFrontend() {
   return '';
 }
+export async function SetDebugTrace() {
+  return '';
+}
 export async function Confirm() {
   return true;
 }

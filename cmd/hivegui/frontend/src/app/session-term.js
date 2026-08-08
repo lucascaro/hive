@@ -1053,13 +1053,21 @@ export class SessionTerm {
         // helper so the skip + baseline-untouched behavior is unit-tested.
         // Checked at fire time so a just-attached session that has since
         // entered the alt screen via its snapshot is caught too.
+        // Re-read follow-intent at FIRE time and re-stamp the wants-bottom
+        // flag from that same read. The flag was stamped from `wasAtBottom`
+        // one debounce interval ago; a scroll during that interval would
+        // otherwise leave the skip decision (fresh) and the restore decision
+        // (stale) disagreeing — e.g. a user who scrolled up mid-debounce gets
+        // a replay AND gets yanked back to the bottom by its done handler.
+        const following = this._followBottom;
+        this._replayWantsBottom = following;
         const { replay, baseline } = decideResizeReplay({
           bufferType: this.term.buffer.active.type,
           cols: this.term.cols,
           baselineCols: this._replayBaselineCols,
           // A follower doesn't need history reflowed — skip the destructive
           // full-ring replay that makes the viewport thrash under live output.
-          followingBottom: this._followBottom,
+          followingBottom: following,
         });
         this._replayBaselineCols = baseline;
         if (!replay) {
@@ -1067,16 +1075,13 @@ export class SessionTerm {
           // Already re-latched by the earlier scrollToBottom; assert it once
           // more so a follower we skipped the replay for stays glued to the
           // newest output after the fit settles.
-          if (
-            this._followBottom &&
-            typeof this.term.scrollToBottom === 'function'
-          )
+          if (following && typeof this.term.scrollToBottom === 'function')
             this.term.scrollToBottom();
           if (scrollTrace.rec.enabled) {
             scrollTrace.rec('replay-skip', {
               id: this.info.id,
               cols: this.term.cols,
-              following: this._followBottom,
+              following,
               bufType: this.term.buffer.active.type,
             });
           }

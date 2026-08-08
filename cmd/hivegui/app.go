@@ -48,6 +48,34 @@ type App struct {
 	// session then fan-outs every byte (and the scrollback snapshot)
 	// twice, producing visibly duplicated output in xterm.
 	openMu sync.Mutex
+
+	// debugTrace mirrors the frontend's `hive.debug` localStorage flag so
+	// the Debug menu can say which state it will move to. Owned by the main
+	// thread: written only by SetDebugTrace (a Wails binding call, which
+	// Wails dispatches on the main thread), read only by buildAppMenu.
+	debugTrace bool
+}
+
+// SetDebugTrace records whether the frontend's scroll/replay tracer is
+// currently armed and relabels the Debug menu accordingly.
+//
+// The flag lives in the webview's localStorage, which Go cannot read, so the
+// frontend pushes it up at startup — and the toggle reloads the page, so the
+// new value arrives the same way. Without this the item read "Toggle Debug
+// Trace" forever with no way to tell whether tracing was already on; the
+// tracer is deliberately invisible when armed, so the menu is the only
+// indicator there is.
+func (a *App) SetDebugTrace(on bool) {
+	a.debugTrace = on
+	if a.ctx == nil {
+		return
+	}
+	m := buildAppMenu(a)
+	if m == nil {
+		return // no native menu on this platform — see menu_other.go
+	}
+	wruntime.MenuSetApplicationMenu(a.ctx, m)
+	wruntime.MenuUpdateApplicationMenu(a.ctx)
 }
 
 // Notify fires a native OS notification. Wails' webview lacks the HTML5

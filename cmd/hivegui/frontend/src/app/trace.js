@@ -1,5 +1,5 @@
 import { createScrollTrace } from '../lib/scroll-debug.js';
-import { LogFrontend } from '../bridge.js';
+import { LogFrontend, SetDebugTrace } from '../bridge.js';
 
 // Scroll/replay tracer — gated on localStorage hive.debug = '1' (the
 // focus consistency checker's switch). The gate is latched here at
@@ -7,9 +7,11 @@ import { LogFrontend } from '../bridge.js';
 // reproduce, then dump window.__hive_scrolltrace. The e2e-real scroll
 // specs arm it via addInitScript (before main.js runs) and read the
 // ring to prove a scenario actually fired replays.
-// The real debug switch — gates the in-memory ring + heartbeat watchdog.
-// The log tee (below) is always on and independent of this.
-const DEBUG_ENABLED = (() => {
+// The debug switch — gates EVERYTHING the tracer does: the in-memory ring,
+// the heartbeat watchdog, the scroll-jump detector, and the log tee below.
+// Exported so the debug-only hot-path call sites and the menu (which reports
+// whether debugging is currently armed) read the same latched value.
+export const DEBUG_ENABLED = (() => {
   try {
     return localStorage.getItem('hive.debug') === '1';
   } catch {
@@ -20,18 +22,32 @@ const DEBUG_ENABLED = (() => {
 export const scrollTrace = createScrollTrace({
   enabled: DEBUG_ENABLED,
   // Tee the scroll-diagnostic records to hivegui.log so the exact sequence
-  // behind a jump is recoverable after the fact (the in-memory ring rotates
-  // fast and needs a live window.__hive_dumpscroll). Only fires when enabled
-  // (hive.debug=1) and only for the whitelisted low-rate tags. Best-effort:
-  // no bridge in tests / before the runtime is ready.
+  // behind a jump is recoverable after the fact — the in-memory ring rotates
+  // fast, needs a live window.__hive_dumpscroll, and comes back stale once
+  // the app relaunches. Fires only when DEBUG_ENABLED and only for the
+  // per-event tags in TEE_TAGS (never `resize`, which storms during a drag).
+  // Best-effort: no bridge in tests / before the runtime is ready, and the
+  // Wails binding returns a promise — swallow the throw and the rejection.
   sink: (msg) => {
     try {
-      LogFrontend(msg);
+      LogFrontend(msg)?.catch?.(() => {});
     } catch {
       /* bridge absent */
     }
   },
 });
+
+// Mirror the latched flag to the Go side so the Debug menu can label itself
+// "Turn Debug Trace On/Off" instead of an ambiguous "Toggle". Go can't read
+// the webview's localStorage, and the toggle reloads the page, so this one
+// push at module load covers both directions. Best-effort — the same
+// bridge-absent and promise-rejection cases as the sink above.
+try {
+  SetDebugTrace(DEBUG_ENABLED)?.catch?.(() => {});
+} catch {
+  /* bridge absent */
+}
+
 // localStorage key holding the trace window snapshotted at the moment a
 // suspicious auto-up scroll was detected. The live ring is capped at
 // 2000 entries and heavy agent output rotates it fast — by the time a

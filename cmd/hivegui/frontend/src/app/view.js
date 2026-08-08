@@ -146,8 +146,14 @@ let gridLayout = {
 
 // attachDeferred attaches non-active grid tiles one per idle callback so
 // the first paint isn't blocked by N synchronous fit()+replay passes.
-// ensureAttached is idempotent (returns early if already attached), so
-// re-running renderGrid — which re-queues everything — is harmless.
+// ensureAttached is idempotent for the ATTACH itself (it returns early once
+// attached), so re-running renderGrid — which re-queues everything — never
+// re-opens a session. It is NOT side-effect-free though: ensureAttached
+// re-latches follow-intent and snaps to the bottom on every call, so each
+// renderGrid pass (switch, minimize, container resize, …) re-anchors every
+// grid tile to the newest output. That is the intended "grid always shows
+// the latest" behavior — the cost is that a background tile can't be parked
+// scrolled up in history across a relayout.
 // requestIdleCallback isn't available in all webviews; fall back to a
 // short-timeout chain so the stagger still happens.
 const _ric = (cb) =>

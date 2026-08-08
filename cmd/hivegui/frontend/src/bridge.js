@@ -42,6 +42,7 @@ export {
   CheckForUpdate,
   SetClipboardText,
   LogFrontend,
+  SetDebugTrace,
 } from '../wailsjs/go/main/App';
 export {
   EventsOn,
