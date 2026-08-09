@@ -167,11 +167,11 @@ each split across waves.
 
 Taken 2026-08-08 on `ts-wave-6c`, so wave 7 executes without re-discovery.
 
-**23 files convert.** `src/main.js` (419), `test/e2e/fixtures/xterm-reflow.js`, the 16
+**24 files convert.** `src/main.js` (419), `test/e2e/fixtures/xterm-reflow.js`, the 17
 `test/e2e/*.spec.js`, and the 5 `test/e2e-real/*.spec.js`.
 
 **7 files stay JS, and the list in "Files to change" is complete** — `find frontend -name
-'*.js' -o -name '*.mjs'` returns exactly the 23 above plus `vite.config.js`,
+'*.js' -o -name '*.mjs'` returns exactly the 24 above plus `vite.config.js`,
 `vitest.config.js`, `playwright.config.js`, `playwright.real.config.js`,
 `globalSetup.mjs`, `globalTeardown.mjs`, and `scripts/check-spec-discovery.mjs` (and
 gitignored `dist/`, `wailsjs/`). Nothing sits in neither bucket. The fixture is *not* config despite living beside tests: it is a real
@@ -356,7 +356,8 @@ Config files (`vite.config.js`, `vitest.config.js`, `playwright*.config.js`,
 so converting it is a coin flip on Playwright's CJS transform for zero gain.
 `scripts/check-spec-discovery.mjs` joins them on the same rule: it drives the Playwright
 CLI and is not in `tsconfig.include`. **List re-confirmed complete at wave 7** — those
-seven plus the 23 wave-7 files are every remaining `.js`/`.mjs` under `frontend/`.
+seven plus the 24 wave-7 files are every remaining `.js`/`.mjs` under `frontend/` — 31
+in total, verified by `find` against the tree rather than by adding up this list.
 
 ### New files
 

@@ -24,6 +24,13 @@
 
 import { execSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Every path below is relative to the frontend root, so anchor there rather
+// than inheriting the caller's cwd — run from the repo root this would
+// otherwise die on a bare `ENOENT: test/e2e` that reads like a missing
+// directory rather than a wrong working directory.
+process.chdir(join(import.meta.dirname, '..'));
 
 const SUITES = [
   ['playwright.config.js', 'test/e2e'],
