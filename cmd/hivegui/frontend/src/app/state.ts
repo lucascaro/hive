@@ -32,8 +32,8 @@ export interface SessionInfo {
   worktreePath?: string;
   worktree_branch?: string;
   worktreeBranch?: string;
-  // Why the dead-session overlay reads: events.js:131 and
-  // session-term.js:1173 both fall back off it.
+  // Why the dead-session overlay reads: events.ts:174 and
+  // session-term.ts:1269 both fall back off it.
   last_error?: string;
   lastError?: string;
 }
@@ -46,14 +46,18 @@ export interface ProjectInfo {
   order?: number;
 }
 
-// A structural view of SessionTerm (app/session-term.js), which is still
-// JS until wave 6. Wave 3 typed the registry `unknown` so its files
-// couldn't pretend to know the class; wave 5b reverses that, because
-// view.ts and focus.ts touch these members at ~30 sites and the
-// alternative is 12 unchecked `as` casts at the `state.terms.get()`
-// calls. This lists only what app modules actually reach for — wave 6
-// replaces it with SessionTerm's own type, which must then satisfy this
-// shape or widen it deliberately.
+// A structural view of SessionTerm (app/session-term.ts). Wave 3 typed
+// the registry `unknown` so its files couldn't pretend to know the class;
+// wave 5b reversed that, because view.ts and focus.ts touch these members
+// at ~30 sites and the alternative is 12 unchecked `as` casts at the
+// `state.terms.get()` calls.
+//
+// Wave 6 was expected to replace this with SessionTerm's own type once
+// that file converted. It deliberately did NOT: `Map<string, SessionTerm>`
+// would force every DOM-test stub to spell out 53 fields instead of 16.
+// The interface stays, listing only what app modules actually reach for,
+// and SessionTerm satisfies it structurally — which is the check
+// `state.terms.set()` already performs at every insertion site.
 //
 // `term` stays optional and structural rather than `import { Terminal }`
 // so a TermTile is still assignable to SnapTarget (lib/view-scroll.ts) —
@@ -68,13 +72,13 @@ export interface ProjectInfo {
 export interface TermTile extends ReplayFlags {
   host: HTMLElement;
   termTitle?: string;
-  // Required, not optional: session-term.js:426,432 always initializes
+  // Required, not optional: session-term.ts:514,520 always initializes
   // both and every reader branches on the value, never on absence
   // (scrollback.ts:28 states the rule).
   attached: boolean;
   needsReattach: boolean;
   // Timestamp of the last replay event, used by the scroll-jump
-  // detector to label a following up-move (session-term.js:594,728).
+  // detector to label a following up-move (session-term.ts:682,816).
   _lastReplayTs?: number;
   // `options` is here for applyFontSize (session-term.ts), the one app-side
   // writer of xterm's live config. Optional like the rest of the
@@ -86,7 +90,7 @@ export interface TermTile extends ReplayFlags {
       })
     | null;
   // Dead-session overlay. Required for the same reason as `attached`:
-  // session-term.js:525 initializes it and setDead writes it on every
+  // session-term.ts:613 initializes it and setDead writes it on every
   // transition, so readers branch on the value, never on absence.
   // keyboard.ts routes Enter/Escape to the two handlers when it's shown.
   deadOverlayShown: boolean;
