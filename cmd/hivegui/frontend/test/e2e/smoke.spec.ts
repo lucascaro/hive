@@ -18,7 +18,7 @@ test('boots, shows project & session, then reflects a new session', async ({
   await expect(sidebar.locator('li[data-pid="p1"]').first()).toBeVisible();
 
   // Drive the mock: add a session, ensure the sidebar picks it up.
-  await page.evaluate(() => window.__hive.addSession('via-mock'));
+  await page.evaluate(() => window.__hive.addSession?.('via-mock'));
 
   await expect(
     page.locator('#projects').getByText('via-mock').first(),
@@ -34,8 +34,10 @@ test('toggles grid view', async ({ page }) => {
   );
 
   // Add a second session so the grid is non-trivial.
-  await page.evaluate(() => window.__hive.addSession('two'));
-  await page.waitForFunction(() => window.__hive.state.sessions.length >= 2);
+  await page.evaluate(() => window.__hive.addSession?.('two'));
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
 
   // ⌘G / Ctrl+G toggles grid mode.
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -50,7 +52,7 @@ test('toggles grid view', async ({ page }) => {
 test('clean boot produces no console errors or unhandled rejections', async ({
   page,
 }) => {
-  const errors = [];
+  const errors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
   });
@@ -64,8 +66,10 @@ test('clean boot produces no console errors or unhandled rejections', async ({
   // Exercise a few common UI paths so the assertion covers more than
   // just the first paint.
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
-  await page.evaluate(() => window.__hive.addSession('two'));
-  await page.waitForFunction(() => window.__hive.state.sessions.length >= 2);
+  await page.evaluate(() => window.__hive.addSession?.('two'));
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
   await page.keyboard.press(`${mod}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
   await page.keyboard.press(`${mod}+Shift+g`);

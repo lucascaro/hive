@@ -1,13 +1,13 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E for the silent-failure surfacing pass: when a daemon call fails,
 // the status bar must show a user-visible error instead of the action
 // silently doing nothing. Failures are injected one-shot via the
-// Wails-mock's window.__hive.failNext(method, message).
+// Wails-mock's window.__hive.failNext?.(method, message).
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function boot(page) {
+async function boot(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -26,9 +26,11 @@ test('failed CreateSession via launcher shows an error and adds no session', asy
   page,
 }) => {
   await boot(page);
-  const before = await page.evaluate(() => window.__hive.state.sessions.length);
+  const before = await page.evaluate(
+    () => window.__hive.state?.sessions.length ?? 0,
+  );
   await page.evaluate(() =>
-    window.__hive.failNext('CreateSession', 'daemon went away'),
+    window.__hive.failNext?.('CreateSession', 'daemon went away'),
   );
 
   // ⌘T opens the launcher; Enter activates the selected agent row.
@@ -40,16 +42,16 @@ test('failed CreateSession via launcher shows an error and adds no session', asy
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
   await expect(status).toHaveText(/new session failed:.*daemon went away/);
-  expect(await page.evaluate(() => window.__hive.state.sessions.length)).toBe(
-    before,
-  );
+  expect(
+    await page.evaluate(() => window.__hive.state?.sessions.length ?? 0),
+  ).toBe(before);
 });
 
 test('failed KillSession shows an error and the session survives', async ({
   page,
 }) => {
   await boot(page);
-  await page.evaluate(() => window.__hive.failNext('KillSession', 'boom'));
+  await page.evaluate(() => window.__hive.failNext?.('KillSession', 'boom'));
 
   await page.keyboard.press(`${mod}+w`);
 
@@ -63,7 +65,7 @@ test('failed KillSession shows an error and the session survives', async ({
 test('failed rename shows an error', async ({ page }) => {
   await boot(page);
   await page.evaluate(() =>
-    window.__hive.failNext('UpdateSession', 'no daemon'),
+    window.__hive.failNext?.('UpdateSession', 'no daemon'),
   );
 
   const row = page.locator('#projects li[data-sid="s1"] .name');
@@ -89,7 +91,7 @@ test('failed tile rename shows an error (regression: UpdateSession import)', asy
   // already had the import.
   await boot(page);
   await page.evaluate(() =>
-    window.__hive.failNext('UpdateSession', 'no daemon'),
+    window.__hive.failNext?.('UpdateSession', 'no daemon'),
   );
 
   const tileName = page.locator('.term-host[data-sid="s1"] .tile-name');
@@ -122,7 +124,9 @@ test('tile rename commits on Enter', async ({ page }) => {
 
 test('error flash auto-reverts to the persistent status', async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => window.__hive.failNext('KillSession', 'transient'));
+  await page.evaluate(() =>
+    window.__hive.failNext?.('KillSession', 'transient'),
+  );
   await page.keyboard.press(`${mod}+w`);
   await expect(page.locator('#status')).toHaveText(/close failed/);
   // FLASH_ERROR_MS is 6s — after expiry the persistent slot (the
@@ -159,14 +163,16 @@ test('launcher selects an agent and creates a session on the happy path', async 
   page,
 }) => {
   await boot(page);
-  const before = await page.evaluate(() => window.__hive.state.sessions.length);
+  const before = await page.evaluate(
+    () => window.__hive.state?.sessions.length ?? 0,
+  );
   await page.keyboard.press(`${mod}+t`);
   await expect(page.locator('#launcher .launcher-item').first()).toContainText(
     'Shell',
   );
   await page.keyboard.press('Enter');
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length === n + 1,
+    (n) => (window.__hive.state?.sessions.length ?? 0) === n + 1,
     before,
   );
   await expect(page.locator('#launcher')).toBeHidden();

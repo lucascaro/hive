@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Layer C: scrollback invariants beyond the specific #208 regressions
-// already covered in grid-scroll-regressions.spec.js. These tests pin
+// already covered in grid-scroll-regressions.spec.ts. These tests pin
 // generic invariants the replay path must uphold, so future refactors
 // can't quietly re-introduce a regression in an adjacent code path.
 //
@@ -20,30 +20,30 @@ import { test, expect } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   await page.evaluate(() => {
     window.__hive.resetStdin();
-    window.__hive.resetReplay();
+    window.__hive.resetReplay?.();
   });
 }
 
-async function enterGridAll(page) {
+async function enterGridAll(page: Page) {
   await page.keyboard.press(`${MOD}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 }
 
-async function settleReplay(page) {
+async function settleReplay(page: Page) {
   // REPLAY_DEBOUNCE_MS is 100ms; 250ms is comfortably past that.
   await page.waitForTimeout(250);
 }
@@ -55,23 +55,23 @@ test.describe('scrollback replay invariants', () => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Existing-tile IDs captured before the addition.
     const existing = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.term-host.in-grid')).map(
-        (t) => t.dataset.sid,
-      ),
+      Array.from(
+        document.querySelectorAll<HTMLElement>('.term-host.in-grid'),
+      ).map((t) => t.dataset.sid),
     );
     expect(existing).toHaveLength(2);
 
-    await page.evaluate(() => window.__hive.addSession('grew'));
+    await page.evaluate(() => window.__hive.addSession?.('grew'));
     await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await settleReplay(page);
 
     // No replay should have fired in either of the two prior tiles.
     const replays = await page.evaluate((ids) => {
-      return ids.map((id) => window.__hive.replayCount(id));
+      return ids.map((id) => window.__hive.replayCount?.(id));
     }, existing);
     expect(replays).toEqual([0, 0]);
   });
@@ -88,22 +88,23 @@ test.describe('scrollback replay invariants', () => {
     const tiles = page.locator('.term-host.in-grid');
     await tiles.first().click();
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     const sids = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('.term-host.in-grid')).map(
-        (t) => t.dataset.sid,
-      ),
+      Array.from(
+        document.querySelectorAll<HTMLElement>('.term-host.in-grid'),
+      ).map((t) => t.dataset.sid),
     );
     const victim = sids[2];
+    if (!victim) throw new Error('expected a third grid tile with a data-sid');
     const survivors = [sids[0], sids[1]];
 
-    await page.evaluate((id) => window.__hive.killSession(id), victim);
+    await page.evaluate((id) => window.__hive.killSession?.(id), victim);
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);
 
     const replays = await page.evaluate(
-      (ids) => ids.map((id) => window.__hive.replayCount(id)),
+      (ids) => ids.map((id) => window.__hive.replayCount?.(id)),
       survivors,
     );
     expect(replays).toEqual([0, 0]);
@@ -114,13 +115,13 @@ test.describe('scrollback replay invariants', () => {
   }) => {
     await bootWithSessions(page, 2);
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Note the active session ID.
     const activeId = await page.evaluate(() => {
       const a =
-        document.querySelector('.term-host.active') ||
-        document.querySelector('.term-host');
+        document.querySelector<HTMLElement>('.term-host.active') ||
+        document.querySelector<HTMLElement>('.term-host');
       return a ? a.dataset.sid : null;
     });
     expect(activeId).not.toBeNull();
@@ -139,8 +140,8 @@ test.describe('scrollback replay invariants', () => {
     // way into grid; what we lock in is that we do NOT loop or pile
     // up replays after the geometry has settled.
     const replays = await page.evaluate(
-      (id) => window.__hive.replayCount(id),
-      activeId,
+      (id) => window.__hive.replayCount?.(id),
+      activeId ?? undefined,
     );
     expect(replays).toBeLessThanOrEqual(2);
   });
@@ -157,9 +158,9 @@ test.describe('scrollback replay invariants', () => {
     await expect(page.locator('#terms')).toHaveClass(/grid/);
     // Allow initial-attach + RO cascades to settle, then steady-state.
     await page.waitForTimeout(400);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
     await page.waitForTimeout(300);
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBe(0);
   });
 
@@ -169,7 +170,7 @@ test.describe('scrollback replay invariants', () => {
     await bootWithSessions(page, 2);
     await expect(page.locator('#terms')).not.toHaveClass(/grid/);
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Toggle sidebar off, settle, then on.
     await page.keyboard.press(`${MOD}+s`);
@@ -182,7 +183,7 @@ test.describe('scrollback replay invariants', () => {
     // viewport. The intent of this test is the WEAKER invariant: total
     // replay count should not exceed one per material width change
     // (off, then on = at most 2). Looping/cascading is the bug.
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBeLessThanOrEqual(2);
   });
 });

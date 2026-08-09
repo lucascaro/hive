@@ -13,7 +13,7 @@ import { test, expect } from '@playwright/test';
 //
 // Verified to FAIL at the old z-index 10 (the overlap pixel comes back
 // amber) and PASS once #launcher clears the strip.
-const isAmber = ([r, _g, b]) => r > 60 && r > b + 30; // warm + clearly not gray
+const isAmber = ([r, _g, b]: number[]) => r > 60 && r > b + 30; // warm + clearly not gray
 
 test('agent launcher paints above the sidebar resize bar (even when hovered)', async ({
   page,
@@ -30,10 +30,15 @@ test('agent launcher paints above the sidebar resize bar (even when hovered)', a
   });
 
   const pts = await page.evaluate(() => {
-    const L = document.getElementById('launcher').getBoundingClientRect();
-    const R = document
-      .getElementById('sidebar-resizer')
-      .getBoundingClientRect();
+    const launcher = document.getElementById('launcher');
+    const resizer = document.getElementById('sidebar-resizer');
+    // Both are index.html's contract, not a runtime branch — the same call
+    // src/app/el.ts's mustEl makes, inlined because a page.evaluate body
+    // cannot close over an import.
+    if (!launcher || !resizer)
+      throw new Error('#launcher / #sidebar-resizer missing');
+    const L = launcher.getBoundingClientRect();
+    const R = resizer.getBoundingClientRect();
     const overlapX =
       (Math.max(L.left, R.left) + Math.min(L.right, R.right)) / 2;
     const overlapY =
@@ -72,8 +77,9 @@ test('agent launcher paints above the sidebar resize bar (even when hovered)', a
       c.width = img.width;
       c.height = img.height;
       const ctx = c.getContext('2d');
+      if (!ctx) throw new Error('no 2d canvas context');
       ctx.drawImage(img, 0, 0);
-      const px = (x, y) =>
+      const px = (x: number, y: number) =>
         Array.from(ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data);
       return {
         overOverlap: px(pts.overlapX, pts.overlapY),

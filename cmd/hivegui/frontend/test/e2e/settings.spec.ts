@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E for the settings modal and custom agents: the ⌘, binding, the
 // native menu:settings event, and the round-trip that puts a custom
@@ -8,14 +8,14 @@ import { test, expect } from '@playwright/test';
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function boot(page) {
+async function boot(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
 }
 
-async function addAgent(page, name, cmd) {
+async function addAgent(page: Page, name: string, cmd: string) {
   await page.locator('#settings-agent-add').click();
   const row = page.locator('.settings-agent-row').last();
   await row.locator('.settings-agent-name').fill(name);
@@ -90,9 +90,11 @@ test('Tab stays inside the dialog but still walks the form fields', async ({
   for (let i = 0; i < 12; i++) await page.keyboard.press('Tab');
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        document.getElementById('settings').contains(document.activeElement),
-      ),
+      page.evaluate(() => {
+        const settings = document.getElementById('settings');
+        if (!settings) throw new Error('#settings missing');
+        return settings.contains(document.activeElement);
+      }),
     )
     .toBe(true);
 });
@@ -129,6 +131,7 @@ test('a drag that starts in a field and ends on the backdrop does not close', as
   // — which used to close the modal and discard the draft.
   const field = page.locator('.settings-agent-name').first();
   const box = await field.boundingBox();
+  if (!box) throw new Error('the settings agent-name field has no box');
   await page.mouse.move(box.x + 5, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Layer C: integration smoke for the WebGL context-loss recovery
 // path (#190 / #198). The recovery helpers themselves are unit-
@@ -11,22 +11,22 @@ import { test, expect } from '@playwright/test';
 // Chromium without an image diff stack, so we lean on behavioural
 // invariants: typing still routes to stdin after the context loss.
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   await page.evaluate(() => window.__hive.resetStdin());
 }
 
-async function waitForHelperFocus(page, timeout = 2000) {
+async function waitForHelperFocus(page: Page, timeout = 2000) {
   await page.waitForFunction(
     () => {
       const ae = document.activeElement;
@@ -41,7 +41,7 @@ test.describe('renderer context-loss recovery', () => {
   test('simulated WebGL context loss does not break input or surface errors', async ({
     page,
   }) => {
-    const consoleErrors = [];
+    const consoleErrors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
@@ -59,8 +59,10 @@ test.describe('renderer context-loss recovery', () => {
     // the recovery helper's contract.
     const lost = await page.evaluate(() => {
       const canvas =
-        document.querySelector('.term-host.active .xterm canvas') ||
-        document.querySelector('.term-host .xterm canvas');
+        document.querySelector<HTMLCanvasElement>(
+          '.term-host.active .xterm canvas',
+        ) ||
+        document.querySelector<HTMLCanvasElement>('.term-host .xterm canvas');
       if (!canvas) return false;
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       if (!gl) return false;

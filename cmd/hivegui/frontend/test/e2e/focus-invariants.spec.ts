@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Layer C: focus invariants across UI actions that aren't already
-// covered by focus.spec.js (single↔grid + keystrokes) or by
-// sidebar-focus-regression.spec.js (#208 R3 in grid mode).
+// covered by focus.spec.ts (single↔grid + keystrokes) or by
+// sidebar-focus-regression.spec.ts (#208 R3 in grid mode).
 //
 // The contract we lock in: after ANY layout-mutating UI action,
 // document.activeElement is the live xterm-helper-textarea inside a
@@ -21,27 +21,27 @@ import { test, expect } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   await page.evaluate(() => window.__hive.resetStdin());
 }
 
-async function enterGridAll(page) {
+async function enterGridAll(page: Page) {
   await page.keyboard.press(`${MOD}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 }
 
-async function waitForHelperFocus(page, timeout = 2000) {
+async function waitForHelperFocus(page: Page, timeout = 2000) {
   await page.waitForFunction(
     () => {
       const ae = document.activeElement;
@@ -54,7 +54,7 @@ async function waitForHelperFocus(page, timeout = 2000) {
 
 // Assert focus is on a helper-textarea inside a tile carrying
 // .term-focused (the unified keyboard+visual contract).
-async function assertAlignedFocus(page, timeout = 2000) {
+async function assertAlignedFocus(page: Page, timeout = 2000) {
   await page.waitForFunction(
     () => {
       const ae = document.activeElement;
@@ -80,7 +80,7 @@ test.describe('focus invariants', () => {
     await enterGridAll(page);
     await waitForHelperFocus(page);
 
-    await page.evaluate(() => window.__hive.addSession('newcomer'));
+    await page.evaluate(() => window.__hive.addSession?.('newcomer'));
     await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await assertAlignedFocus(page);
   });
@@ -97,19 +97,20 @@ test.describe('focus invariants', () => {
     await tiles.first().click();
     await waitForHelperFocus(page);
     const activeSid = await page.evaluate(() => {
-      const host = document.activeElement?.closest('.term-host');
+      const host = document.activeElement?.closest<HTMLElement>('.term-host');
       return host ? host.dataset.sid : null;
     });
 
     // Kill a different (non-active) session.
     const victim = await tiles.nth(2).evaluate((el) => el.dataset.sid);
+    if (!victim) throw new Error('the third grid tile carries no data-sid');
     expect(victim).not.toBe(activeSid);
-    await page.evaluate((id) => window.__hive.killSession(id), victim);
+    await page.evaluate((id) => window.__hive.killSession?.(id), victim);
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await assertAlignedFocus(page);
 
     const after = await page.evaluate(() => {
-      const host = document.activeElement?.closest('.term-host');
+      const host = document.activeElement?.closest<HTMLElement>('.term-host');
       return host ? host.dataset.sid : null;
     });
     expect(after).toBe(activeSid);

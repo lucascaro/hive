@@ -17,8 +17,9 @@ type CustomAgent = main.CustomAgent;
 // app module reads, so it is not on SessionInfo/ProjectInfo. Intersect
 // rather than widen the source interfaces — the mock is the one that has
 // to match the app, not the other way round.
-type MockSession = SessionInfo & { created: string };
-type MockProject = ProjectInfo & { created: string };
+// Exported for hive-global.d.ts, which types window.__hive.state off them.
+export type MockSession = SessionInfo & { created: string };
+export type MockProject = ProjectInfo & { created: string };
 
 type Handler = (...args: unknown[]) => void;
 
