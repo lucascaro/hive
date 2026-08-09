@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Return-slot semantics for ⌘B / ⇧⌘B (src/app/keyboard.js).
+// Return-slot semantics for ⌘B / ⇧⌘B (src/app/keyboard.ts).
 //
 // ⇧⌘B means "back to the work I was doing before the FIRST ⌘B", so the
 // anchor is written only when the slot is empty and released on use.
@@ -15,6 +15,7 @@ import {
   beforeAll,
   beforeEach,
   afterEach,
+  type MockedFunction,
 } from 'vitest';
 
 vi.mock('../../src/bridge.js', () => {
@@ -54,7 +55,7 @@ vi.mock('../../src/bridge.js', () => {
 });
 
 // switchTo owns real DOM/xterm work; the slot logic is what's under test.
-// The real chain is covered end-to-end in attention-jump-integration.test.js.
+// The real chain is covered end-to-end in attention-jump-integration.test.ts.
 vi.mock('../../src/app/view.js', () => ({
   switchTo: vi.fn(),
   setView: vi.fn(),
@@ -64,7 +65,15 @@ vi.mock('../../src/app/view.js', () => ({
   minimizeSession: vi.fn(),
 }));
 
-let state, jumpToAttention, jumpBack, switchTo, restoreSession;
+type View = typeof import('../../src/app/view.js');
+
+let state: typeof import('../../src/app/state.js').state;
+let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
+let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
+// vi.mocked over a `Mock<…>` annotation: the module is vi.mock'd above,
+// so the mock signature is the real export's and can't drift from it.
+let switchTo: MockedFunction<View['switchTo']>;
+let restoreSession: MockedFunction<View['restoreSession']>;
 
 beforeAll(async () => {
   // The keydown handler consults every modal's visibility before it
@@ -78,7 +87,9 @@ beforeAll(async () => {
     <div id="command-palette" class="hidden"></div>
     <div id="help-overlay" class="hidden"></div>`;
   ({ state } = await import('../../src/app/state.js'));
-  ({ switchTo, restoreSession } = await import('../../src/app/view.js'));
+  const view = await import('../../src/app/view.js');
+  switchTo = vi.mocked(view.switchTo);
+  restoreSession = vi.mocked(view.restoreSession);
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
 });
 
@@ -180,11 +191,11 @@ describe('jumpBack', () => {
 });
 
 // Everything above calls the exported functions directly, which leaves the
-// actual binding untested: importing keyboard.js installs a capture-phase
+// actual binding untested: importing keyboard.ts installs a capture-phase
 // window keydown listener, and swapping the shift branches or dropping
 // swallow() would ship green. These drive real KeyboardEvents instead.
 describe('⌘B / ⇧⌘B key dispatch', () => {
-  const press = (opts) => {
+  const press = (opts: KeyboardEventInit) => {
     const e = new KeyboardEvent('keydown', {
       key: 'b',
       bubbles: true,
@@ -231,7 +242,7 @@ describe('⌘B / ⇧⌘B key dispatch', () => {
 describe('menu action ids', () => {
   it('registers the ids menu_darwin.go emits', async () => {
     const { EventsOn } = await import('../../src/bridge.js');
-    const registered = EventsOn.mock.calls.map(([name]) => name);
+    const registered = vi.mocked(EventsOn).mock.calls.map(([name]) => name);
     expect(registered).toContain('menu:next-attention');
     expect(registered).toContain('menu:jump-back');
   });

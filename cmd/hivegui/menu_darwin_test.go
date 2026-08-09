@@ -27,10 +27,10 @@ func findItem(items []*menu.MenuItem, label string) *menu.MenuItem {
 // TestSessionMenuAttentionItems pins the ⌘B / ⇧⌘B menu entries.
 //
 // The menu reaches the frontend by emitting bare event-name strings that
-// app/keyboard.js registers in its menuActions map — a contract no
+// app/keyboard.ts registers in its menuActions map — a contract no
 // compiler checks. Renaming one side leaves the menu item wired to
 // nothing, and the app still builds and runs. The JS mirror of this
-// assertion lives in frontend/test/dom/attention-jump.test.js
+// assertion lives in frontend/test/dom/attention-jump.test.ts
 // ("menu action ids").
 func TestSessionMenuAttentionItems(t *testing.T) {
 	m := buildAppMenu(&App{})

@@ -160,7 +160,7 @@ func buildAppMenu(a *App) *menu.Menu {
 	// keys.Combo("/", CmdOrCtrlKey, ShiftKey): that would narrow the mask
 	// to require Shift and stop plain ⌘/ from matching here.
 	//
-	// The '?' branch in app/keyboard.js is therefore unreachable on
+	// The '?' branch in app/keyboard.ts is therefore unreachable on
 	// darwin (the menu consumes the chord first) and exists for
 	// Windows/Linux, where buildAppMenu returns nil and there is no menu
 	// to handle it.

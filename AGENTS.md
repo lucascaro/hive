@@ -128,13 +128,13 @@ Always apply these principles when adding or modifying UI elements in the GUI:
 
 ## Keybindings Policy
 
-Key bindings live in the frontend keymap (`cmd/hivegui/frontend/src/lib/keymap.js`
-and `src/app/keyboard.js`). Every change must update all surfaces below —
+Key bindings live in the frontend keymap (`cmd/hivegui/frontend/src/lib/keymap.ts`
+and `src/app/keyboard.ts`). Every change must update all surfaces below —
 omitting one creates drift that confuses users and other contributors.
 
 ### Required updates for any new or changed keybinding
 
-1. **Keymap** — add or update the binding in `src/lib/keymap.js`. Use the
+1. **Keymap** — add or update the binding in `src/lib/keymap.ts`. Use the
    platform helpers in `src/lib/platform.js` (⌘ on macOS, Ctrl elsewhere)
    rather than hard-coding a modifier.
 2. **Help overlay + command palette** — make sure the action appears with its

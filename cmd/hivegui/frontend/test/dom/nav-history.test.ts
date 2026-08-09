@@ -17,7 +17,9 @@ import {
   beforeAll,
   beforeEach,
   afterEach,
+  type MockedFunction,
 } from 'vitest';
+import type { SessionInfo } from '../../src/app/state.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -63,33 +65,44 @@ vi.mock('../../src/app/view.js', async () => {
   const { setActive } = await import('../../src/app/focus.js');
   const { state } = await import('../../src/app/state.js');
   return {
-    switchTo: vi.fn((id) => setActive(id)),
+    switchTo: vi.fn((id: string | null) => setActive(id)),
     setView: vi.fn(),
     gridSpatialMove: vi.fn(),
     shiftActiveProject: vi.fn(),
     // Mirrors the real restoreSession (view.js): un-minimize, then switchTo.
-    restoreSession: vi.fn((id) => {
-      state.minimized.delete(id);
+    restoreSession: vi.fn((id: string | null) => {
+      if (id) state.minimized.delete(id);
       setActive(id);
     }),
     minimizeSession: vi.fn(),
   };
 });
 
-let state,
-  setActive,
-  withoutNavHistory,
-  navBack,
-  navForward,
-  switchTo,
-  restoreSession,
-  isMac;
+type View = typeof import('../../src/app/view.js');
+type Focus = typeof import('../../src/app/focus.js');
+type Keyboard = typeof import('../../src/app/keyboard.js');
 
-const session = (id) => ({ id, name: id, projectId: 'p1', order: 0 });
+let state: typeof import('../../src/app/state.js').state;
+let setActive: Focus['setActive'];
+let withoutNavHistory: Focus['withoutNavHistory'];
+let navBack: Keyboard['navBack'];
+let navForward: Keyboard['navForward'];
+// vi.mocked over a hand-written signature: view.js is vi.mock'd above, so
+// the mock types stay pinned to the real exports.
+let switchTo: MockedFunction<View['switchTo']>;
+let restoreSession: MockedFunction<View['restoreSession']>;
+let isMac: boolean;
+
+const session = (id: string): SessionInfo => ({
+  id,
+  name: id,
+  projectId: 'p1',
+  order: 0,
+});
 
 beforeAll(async () => {
   // The keydown handler dereferences every modal element without null
-  // guards; keyboard.js throws on import-time wiring without them.
+  // guards; keyboard.ts throws on import-time wiring without them.
   document.body.innerHTML = `
     <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
     <div id="launcher" class="hidden"></div>
@@ -98,10 +111,12 @@ beforeAll(async () => {
     <div id="help-overlay" class="hidden"></div>`;
   ({ state } = await import('../../src/app/state.js'));
   ({ setActive, withoutNavHistory } = await import('../../src/app/focus.js'));
-  ({ switchTo, restoreSession } = await import('../../src/app/view.js'));
+  const view = await import('../../src/app/view.js');
+  switchTo = vi.mocked(view.switchTo);
+  restoreSession = vi.mocked(view.restoreSession);
   const kb = await import('../../src/app/keyboard.js');
   ({ navBack, navForward } = kb);
-  // main.js injects the focus pipeline into keyboard.js so the modules
+  // main.js injects the focus pipeline into keyboard.ts so the modules
   // stay acyclic; this harness has to do the same or the suppression
   // that stops back/forward ping-ponging is never wired.
   kb.initKeyboard({
@@ -228,7 +243,7 @@ describe('navBack / navForward', () => {
   });
 
   it('is reachable from a real keydown, and swallows the event', () => {
-    // Placement guard. keyboard.js gates most bindings behind
+    // Placement guard. keyboard.ts gates most bindings behind
     // cmdOrCtrl(), which rejects plain Ctrl on macOS — a dispatch added
     // after that gate would never fire there. This asserts the binding
     // is wired ahead of it, and that preventDefault runs so the chord
@@ -276,7 +291,7 @@ describe('navBack / navForward', () => {
     // would make the session active with no tile: sidebar selection
     // moves, nothing appears, and keyboard focus lands on <body> where
     // keystrokes are silently dropped. ⌘B already restores on the way
-    // in (keyboard.js jumpToAttention); back/forward must match.
+    // in (keyboard.ts jumpToAttention); back/forward must match.
     switchTo('a');
     state.minimized.add('a');
     switchTo('b');
