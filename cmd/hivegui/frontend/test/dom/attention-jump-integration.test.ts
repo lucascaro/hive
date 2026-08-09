@@ -54,7 +54,6 @@ let state: typeof import('../../src/app/state.js').state;
 let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
 let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
 let initView: typeof import('../../src/app/view.js').initView;
-let initFocus: typeof import('../../src/app/focus.js').initFocus;
 let setActive: typeof import('../../src/app/focus.js').setActive;
 
 // Each session needs a SessionTerm-shaped stub: setActive and renderGrid
@@ -110,13 +109,12 @@ beforeAll(async () => {
   const view = await import('../../src/app/view.js');
   const focus = await import('../../src/app/focus.js');
   ({ initView } = view);
-  ({ initFocus, setActive } = focus);
+  ({ setActive } = focus);
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
 
-  // Real view.js + focus.js, stubbed at their injection seams.
+  // Real view.js + focus.js, with view stubbed at its injection seam.
   // ensureTerm is declared to return a TermTile; beforeEach populates
   // state.terms for every session, so tile() asserts rather than casts.
-  initFocus({ ensureTerm: (info) => tile(info.id) });
   initView({
     ensureTerm: (info) => tile(info.id),
     setActive,

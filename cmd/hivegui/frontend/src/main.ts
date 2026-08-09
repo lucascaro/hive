@@ -69,7 +69,6 @@ import {
   setFocusedTile,
   focusActiveTerm,
   refocusActiveTerm,
-  initFocus,
   withoutNavHistory,
 } from './app/focus.js';
 
@@ -215,7 +214,6 @@ initKeyboard({
   focusActiveTerm,
   withoutNavHistory,
 });
-initFocus({ ensureTerm });
 wireDaemonEvents({
   switchTo,
   renderMinimizedTray,
@@ -241,9 +239,12 @@ initVersionFooter();
   const app = document.getElementById('app');
   const handle = document.getElementById('sidebar-resizer');
   if (!app || !handle) return;
+  // Preserve the successful narrowing inside nested callbacks.
+  const appEl = app;
+  const handleEl = handle;
   const saved = parseInt(localStorage.getItem('hive.sidebarWidth') || '', 10);
   if (Number.isFinite(saved)) {
-    app.style.setProperty(
+    appEl.style.setProperty(
       '--sidebar-width',
       `${Math.max(MIN, Math.min(MAX, saved))}px`,
     );
@@ -254,8 +255,8 @@ initVersionFooter();
     if (!dragging) return;
     dragging = false;
     document.body.classList.remove('resizing-sidebar');
-    handle.classList.remove('dragging');
-    const px = app.style.getPropertyValue('--sidebar-width');
+    handleEl.classList.remove('dragging');
+    const px = appEl.style.getPropertyValue('--sidebar-width');
     const w = parseInt(px, 10);
     if (Number.isFinite(w))
       localStorage.setItem('hive.sidebarWidth', String(w));
@@ -263,21 +264,21 @@ initVersionFooter();
     // tile body's ResizeObserver fits its xterm; the termsHost RO
     // re-picks (rows, cols) for the grid.
   }
-  handle.addEventListener('pointerdown', (e) => {
+  handleEl.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     dragging = true;
     document.body.classList.add('resizing-sidebar');
-    handle.classList.add('dragging');
+    handleEl.classList.add('dragging');
     // Capture so we keep getting moves/ups even if the cursor leaves the window.
-    handle.setPointerCapture(e.pointerId);
+    handleEl.setPointerCapture(e.pointerId);
   });
-  handle.addEventListener('pointermove', (e) => {
+  handleEl.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     const w = Math.max(MIN, Math.min(MAX, e.clientX));
-    app.style.setProperty('--sidebar-width', `${w}px`);
+    appEl.style.setProperty('--sidebar-width', `${w}px`);
   });
-  handle.addEventListener('pointerup', endDrag);
-  handle.addEventListener('pointercancel', endDrag);
+  handleEl.addEventListener('pointerup', endDrag);
+  handleEl.addEventListener('pointercancel', endDrag);
   // Belt-and-braces: if focus leaves the window mid-drag, end the drag so a
   // stray mousemove on return doesn't snap the sidebar to the cursor.
   window.addEventListener('blur', endDrag);
@@ -285,17 +286,17 @@ initVersionFooter();
   // Keyboard a11y: when the resizer has focus, arrow keys adjust width
   // (Shift = larger step). The width change reflows the main pane;
   // tile-body and termsHost ResizeObservers handle the rest.
-  function nudge(delta) {
+  function nudge(delta: number) {
     const cur = parseInt(
-      getComputedStyle(app).getPropertyValue('--sidebar-width'),
+      getComputedStyle(appEl).getPropertyValue('--sidebar-width'),
       10,
     );
     const base = Number.isFinite(cur) ? cur : 200;
     const w = Math.max(MIN, Math.min(MAX, base + delta));
-    app.style.setProperty('--sidebar-width', `${w}px`);
+    appEl.style.setProperty('--sidebar-width', `${w}px`);
     localStorage.setItem('hive.sidebarWidth', String(w));
   }
-  handle.addEventListener('keydown', (e) => {
+  handleEl.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 50 : 10;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
@@ -335,7 +336,7 @@ initVersionFooter();
   })();
   let beat = 0;
   setInterval(() => {
-    let now;
+    let now: number;
     try {
       now = performance.now();
     } catch {
@@ -347,7 +348,7 @@ initVersionFooter();
     const heap = jsHeapMB(
       typeof performance !== 'undefined' ? performance : null,
     );
-    const st = {
+    const st: Record<string, string | number> = {
       vis: document.visibilityState,
       focus:
         typeof document.hasFocus === 'function'

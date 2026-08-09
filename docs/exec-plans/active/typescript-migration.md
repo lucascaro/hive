@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–5 merged, wave 6 done; wave 7 next — the last)
+- **Stage:** IMPLEMENT (waves 1–6 merged, wave 7a done; wave 7b next — the last)
 - **Status:** active
 
 ## Summary
@@ -795,19 +795,30 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   every later wave's input-path smoke needs a human at the keyboard, or it
   isn't a smoke.
 
+- **2026-08-08** — Wave 7a complete: converted the composition root to
+  `src/main.ts`, updated the HTML entrypoint, and added the otherwise-unreachable
+  root to `tsconfig.include`. Removed focus's write-only `initFocus` injection,
+  added the command palette's runtime `id` to `PaletteCommand`, typed sidebar
+  resizing and heartbeat state, and widened `jsHeapMB`'s input to the real
+  browser contract (`object | null`) while keeping the Chromium-only memory
+  field behind one narrow cast. The attention-jump integration test no longer
+  initializes the deleted no-op seam.
+
+  Gates: typecheck/build/biome green, vitest 344 in 33 files (unchanged),
+  Playwright mock 84 passed + 1 skipped (unchanged). e2e-real discovered all 12
+  tests and finished 9 passed / 3 failed; all three are members of the known
+  flaky baseline set recorded above, and no source behavior changed beyond
+  deleting the write-only injection. No separate GUI smoke: the mock suite boots
+  through the renamed HTML entrypoint, so its 84 passing tests non-vacuously
+  verify the load-bearing `main.ts` path.
+
 ## Follow-ups
 
-Open items carried out of waves 1–6. Each is a decision or a task, not a finding — the
+Open items carried out of waves 1–7a. Each is a decision or a task, not a finding — the
 findings live in the wave notes above.
 
-- **Wave 7 should be two PRs, not one** (recommended 2026-08-08, not yet accepted). **7a**:
-  `src/main.ts`, `index.html:106`, the `tsconfig.include` widening, and the two injection-site
-  corrections (`initFocus` deletion, `PaletteCommand.id`). **7b**: the 22 spec files, the
-  fixture pair, and the stale-path sweep. The seam is that 7a is ~420 LOC of the only file
-  with no test coverage at all, while 7b is 3.6k LOC that is nothing but test coverage —
-  and `index.html:106` is the single change in the whole migration that no gate catches
-  (wrong path builds green and ships a blank window). Reviewing that line inside a 4k-LOC
-  diff is how it gets missed. If wave 7 lands as one PR anyway, review `index.html` first.
+- ~~**Wave 7 should be two PRs, not one.**~~ **Accepted 2026-08-08.** Wave 7a
+  is complete; wave 7b owns the 22 spec files, fixture pair, and stale-path sweep.
 - **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
   #267's review, deferred by the user). It turns what would have been a `TypeError` on a
   tile with no `term` into a silent no-op. Unreachable in production — the constructor

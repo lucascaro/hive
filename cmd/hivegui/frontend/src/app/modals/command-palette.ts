@@ -9,6 +9,7 @@ import { pageEl } from '../el.js';
 
 // One row of the command table main.js builds and hands over.
 export interface PaletteCommand {
+  id: string;
   name: string;
   shortcut: string;
   run: () => void;
