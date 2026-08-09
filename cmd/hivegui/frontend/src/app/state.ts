@@ -76,7 +76,15 @@ export interface TermTile extends ReplayFlags {
   // Timestamp of the last replay event, used by the scroll-jump
   // detector to label a following up-move (session-term.js:594,728).
   _lastReplayTs?: number;
-  term?: (ReplayXterm & { focus?: () => void }) | null;
+  // `options` is here for applyFontSize (session-term.ts), the one app-side
+  // writer of xterm's live config. Optional like the rest of the
+  // intersection: the DOM-test stubs omit `term` entirely.
+  term?:
+    | (ReplayXterm & {
+        focus?: () => void;
+        options?: { fontSize?: number };
+      })
+    | null;
   // Dead-session overlay. Required for the same reason as `attached`:
   // session-term.js:525 initializes it and setDead writes it on every
   // transition, so readers branch on the value, never on absence.
@@ -88,6 +96,10 @@ export interface TermTile extends ReplayFlags {
   hide(): void;
   ensureAttached(): void;
   rebaselineReplayCols(reason: string): void;
+  // The single resize entry point. applyFontSize (session-term.ts) calls it
+  // explicitly because a font-size change doesn't resize the body box, so
+  // the ResizeObserver never fires on its own.
+  _onBodyResize(): void;
   setInfo(info: SessionInfo): void;
   // Both params are optional because the implementation defaults them
   // (`name || ''`, `color || '#888'`) and ProjectInfo's fields are optional.
