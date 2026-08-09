@@ -49,6 +49,11 @@ Thumbs.db
 # Playwright e2e artifacts
 /cmd/hivegui/frontend/test-results/
 
+# Playwright browser downloads. CI pins PLAYWRIGHT_BROWSERS_PATH here so one
+# actions/cache entry covers all three OSes; a local run with the same env
+# var set would otherwise leave a few hundred MB untracked in the worktree.
+/.playwright-browsers/
+
 # hivesmith local tooling config
 .hivesmith/
 
