@@ -87,6 +87,13 @@ below.
   specs silently *stop running* — Playwright reports zero-match files as absent, not as
   failures; (3) `npm run build` succeeding proves nothing about types. So the per-wave
   check compares **spec counts before vs. after**, not just exit codes.
+  **(2) is now enforced in CI**, ahead of wave 7 renaming all 22 spec files at once:
+  `frontend/scripts/check-spec-discovery.mjs` asserts that the set of `*.spec.*` files on
+  disk equals the set each Playwright config actually collects via `--list`. Sets, not
+  counts, so no expected number needs maintaining. It does not replace the before/after
+  comparison — a rename that stops the file looking like a spec at all drops off both sides
+  — but it catches the case neither `git status` nor a count can see: the file renamed
+  correctly and the *config* left stale.
 - A wave that turns out bigger than expected gets **split, never merged half-done**.
 
 ### Strictness: `strict: true` from PR 1
@@ -146,18 +153,152 @@ Wave notes:
   `session-term.js` (1,333 LOC) alone — the hardest file, and it did carry the
   bulk of the errors (388), though 352 were one missing-field-declaration
   error repeated across 53 fields.
-- **7** — last wave. No strictness ramp follows. Also carries the **cross-language
-  stale-path sweep**: a rename here leaves dead paths in files no wave touches — Go
-  comments (`cmd/hivegui/menu_darwin{,_test}.go`), `AGENTS.md`'s Keybindings Policy,
-  `docs/`. 6b fixed the four it caused, but three waves in a row have produced some, so
-  the last wave ends with one `grep -rn` for `\.js` across `AGENTS.md`, `cmd/hivegui/*.go`
-  and `docs/` (excluding `docs/exec-plans/`, whose mentions are dated records and stay).
-  Deferred to 7 rather than swept per-wave because until `main.js` converts, a `.js` path
-  in a comment can still be correct — the sweep only becomes a clean yes/no once every
-  file has moved.
+- **7** — last wave. No strictness ramp follows. `main.js` + 21 `*.spec.js` + one fixture,
+  plus the **cross-language stale-path sweep** deferred here because until `main.js`
+  converts, a `.js` path in a comment can still be correct — the sweep only becomes a clean
+  yes/no once every file has moved. Fully inventoried below; the one-line version is that
+  the sweep is four times wider than this bullet assumed (104 of the stale refs are inside
+  the frontend's own `.ts` comments, which the planned `grep` scope excluded).
 
 Tests are assigned **by what they import, not by directory** — `test/unit/` and `test/dom/`
 each split across waves.
+
+### Wave 7 inventory
+
+Taken 2026-08-08 on `ts-wave-6c`, so wave 7 executes without re-discovery.
+
+**23 files convert.** `src/main.js` (419), `test/e2e/fixtures/xterm-reflow.js`, the 16
+`test/e2e/*.spec.js`, and the 5 `test/e2e-real/*.spec.js`.
+
+**6 files stay JS, and the list in "Files to change" is complete** — `find frontend -name
+'*.js' -o -name '*.mjs'` returns exactly the 23 above plus `vite.config.js`,
+`vitest.config.js`, `playwright.config.js`, `playwright.real.config.js`,
+`globalSetup.mjs`, `globalTeardown.mjs` (and gitignored `dist/`, `wailsjs/`). Nothing sits
+in neither bucket. The fixture is *not* config despite living beside tests: it is a real
+xterm harness (`fixtures/xterm-reflow.js:6` `import { Terminal }`) and converts.
+
+**`tsconfig.include` gains three entries, and the first is the trap.** `src/main.js` is not
+in `include` today (`tsconfig.json:43-52` names `src/lib/**`, `src/app/**`, `src/bridge.ts`,
+`src/globals.d.ts`) and nothing imports it — so `src/main.ts` would sit outside the program,
+unchecked, with `tsc` green. Invariant 6, third occurrence after waves 3 and 4. Add
+`src/main.ts`, and replace the two file-by-file harness paths at `:50-51` with
+`test/e2e/**/*` + `test/e2e-real/**/*`, which the `*.spec.ts` siblings now need.
+
+**Load-bearing `.js` strings** — changing them wrong (or not at all) breaks something no
+type or lint gate sees:
+
+- `index.html:106` `./src/main.js` — Vite's HTML entry. Wrong path builds fine and ships a
+  blank window; the only detector is that every Playwright spec dies.
+- `test/e2e/fixtures/xterm-reflow.html:15` `./xterm-reflow.js` — served by `vite dev`
+  (`xterm-reflow.spec.js:8` navigates `/test/e2e/fixtures/xterm-reflow.html`). The mock
+  suite never runs `vite build`, so a `.ts` src is transformed on the fly. Fails loudly:
+  3 specs.
+- `vite.config.js:17,19` — **already `.ts`, verified**; wave 4 did it. Nothing to do in 7.
+- `vitest.config.js:29,37`, `playwright.config.js:9`, `playwright.real.config.js:16` —
+  `{js,ts}` braces since wave 1, verified. Nothing to change, but the spec-count comparison
+  is still the only thing that would catch a regression here.
+- `playwright.real.config.js:24-25` (`globalSetup.mjs` / `globalTeardown.mjs`) and
+  `package.json:13` (`--config=playwright.real.config.js`) point at files that stay JS.
+- `cmd/hivegui/main.go:17` `//go:embed all:frontend/dist` is directory-level and
+  extension-agnostic.
+
+Searched and found nothing else: no dynamic `import()` of a `.js` path in `src/` (the only
+`import()`s are vitest mocks under `test/**`, which resolve by the rule the pilot proved),
+no string-built module paths, no `.js` glob in `biome.json:8` (`**`), `ci.yml`, or
+`scripts/*.sh`.
+
+**Injection sites in `main.js`** — every one is checked against its interface for the first
+time in this wave.
+
+| main.js | interface | verdict |
+|---|---|---|
+| `:198` `initLauncher` | `LauncherDeps` (`launcher.ts:26`) | ok |
+| `:199` `initProjectEditor` | `ProjectEditorDeps` (`project-editor.ts:18`) | ok |
+| `:200` `initCommandPalette` | `CommandPaletteDeps & { commands: PaletteCommand[] }` (`command-palette.ts:17,11,91-94`) | **watch** |
+| `:201` `initSettings` | `SettingsDeps` (`settings.ts:21`) | ok |
+| `:202` `initHelpOverlay` | `HelpOverlayDeps` (`help-overlay.ts:12`) | ok — `focusActiveTerm`, not `refocus`; 5a's split holds |
+| `:203-209` `initSidebar` | `SidebarDeps` (`sidebar.ts:24`) | ok |
+| `:210` `initBanners` | — | no deps |
+| `:211` `initView` | `ViewDeps` (`view.ts:29`) | ok |
+| `:212-217` `initKeyboard` | `KeyboardDeps` (`keyboard.ts:60`) | ok |
+| `:218` `initFocus` | `FocusDeps` (`focus.ts:20`) | **dead — delete** |
+| `:219-227` `wireDaemonEvents` | `EventsDeps` (`events.ts:26`) | ok |
+| `:231` `initVersionFooter` | — | no deps |
+
+The two non-ok rows. `initFocus({ ensureTerm })` at `main.js:218` — **line number
+confirmed** — feeds `focus.ts`'s write-only `_deps` (`focus.ts:24-31`); delete the call,
+`initFocus`, `FocusDeps` and `_deps` together, in one edit. The palette is the one to expect
+trouble from: `PaletteCommand` (`command-palette.ts:11-15`) has `name`/`shortcut`/`run` and
+no `id`, while `main.js:82-190` builds a 30+-element heterogeneous array literal carrying
+`id`, then `.map`s it. The extra field survives only because the argument is a `.map` result
+rather than a fresh literal (no excess-property check); if the inferred element union
+doesn't collapse to one object type, it is `TS2322`. Widen `PaletteCommand` with `id: string`
+— `main.js:190` reads `c.id` — rather than casting the array.
+
+Two errors are already readable off the source, before the `git mv`: `main.js:361`
+`st.heapMB = heap` is `TS2339` (`st` at `:350` is a literal without the field), and
+`main.js:347-349` passes `performance` to `jsHeapMB`, whose parameter
+(`lib/freeze-heartbeat.ts:72-74`) is the all-optional weak type `{ memory?: … } | null`,
+which DOM's `Performance` has no property in common with — `TS2559`. Fix at the callee
+(the Chromium-only `memory` field *is* the real contract) rather than casting the call site.
+Plus the usual implicit-anys, e.g. `nudge(delta)` at `:288`.
+
+Note also 5b's generalization applied to this wave: `switchTo` is `(id: string | null)`
+(`view.ts:73`) against `SidebarDeps`/`EventsDeps`'s `(id: string)`, and
+`confirmAndDeleteProject` is `(proj: ProjectInfo | undefined | null)` (`keyboard.ts:607`)
+against `SidebarDeps`'s `(p: ProjectInfo)`. Both are wider-param functions assigned to
+narrower types, which is legal and correct — do not "fix" either.
+
+**Stale-path sweep.** Three populations, each verified against the current tree:
+
+1. *Already stale* — the target was renamed in waves 1–6. `AGENTS.md:138`
+   `src/lib/platform.js` (a line the Keybindings Policy missed while `:131-132,:137` were
+   updated to `keymap.ts`/`keyboard.ts`); `cmd/hivegui/app.go:135` and
+   `internal/activity/activity.go:5` (`session-term.js`); `cmd/hived-ws-bridge/main.go:10`
+   (`wails-bridge.js`, wave 4); `index.html:29` (`app/version-footer.js`, 5a);
+   `docs/analysis/2026-07-19-improvement-plan/00-overview.md:32,61` and
+   `phase-3-go-consolidation.md:104,112`.
+2. *Goes stale when wave 7 renames.* `cmd/hivegui/menu_darwin.go:18` and
+   `menu_other.go:18` (`frontend/src/main.js`) — `menu_darwin_test.go:29-33` is **already
+   correct** (`app/keyboard.ts`, `attention-jump.test.ts`), so only the two non-test files;
+   `cmd/hivegui/app.go:221`; `scripts/ci-bootstrap.sh:8`;
+   `docs/analysis/2026-07-19-improvement-plan/phase-1-unblock-ci.md:9,10,11,24`
+   (`*.spec.js`); plus the two load-bearing HTML srcs above.
+3. *Inside the frontend's own `.ts` comments* — **104 references across 30 files**, the
+   population the original bullet's `grep` scope missed entirely. 60 already point at
+   renamed files (`keyboard.js`, `view.js`, `session-term.js`, `keymap.js`, `platform.js`,
+   `state.js`, `events.js`, `focus.js`, `banners.js`, `trace.js`, `scrollback.js`,
+   `dom.js`, `settings.js`, `launcher.js`, `status.js`, `empty-state.js`,
+   `wheel-scroll.js`, `renderer-recovery.js`, `nav-history.js`, `keymap.test.js`), 43 name
+   `main.js`, 1 names a spec. `src/lib/shortcuts.ts:9-15` is the sharpest: it is the
+   canonical five-file drift checklist for a keybinding change and three of its five
+   entries are wrong. `playwright.real.config.js:12` and `src/bridge.ts:3` are in this set
+   too. Judgment applies to the `main.js` ones — "Moved verbatim from main.js" is
+   provenance, not a path, and stays as-is once retargeted or dropped.
+
+So the sweep command in the wave-7 bullet is wrong in scope. Use, from the repo root:
+`grep -rn '\.js\b' AGENTS.md README.md cmd/ internal/ scripts/ .github/ docs/analysis/
+cmd/hivegui/frontend/src cmd/hivegui/frontend/test cmd/hivegui/frontend/index.html`,
+filtering `xterm.js` (the library), `*.json`, and import specifiers (which stay `.js` — the
+pilot's result).
+
+**`docs/product-specs/`, `docs/native-rewrite/` and `CHANGELOG.md` are excluded, on the same
+rule as `docs/exec-plans/`: dated records.** Evidence that they are records and not
+pointers: `docs/product-specs/217-…:13,34` cites `main.js:2768` and `main.js:243`, and
+`main.js` is 419 lines — those were dead before this migration started, and "fixing" the
+extension would make a wrong reference look current.
+
+**Baselines for the before/after comparison**, measured on this branch, not copied:
+
+- `npx vitest run` — **344 tests / 33 files**.
+- `npx playwright test` — **85 tests / 17 files** (84 passed + 1 skipped).
+- `npx playwright test --config=playwright.real.config.js` — **12 tests / 5 files**,
+  7 passed / 5 failed. The 5, by name: `glyph-utf8.spec.js:25`, `lifecycle.spec.js:24`,
+  `scroll-codex.spec.js:189`, `scroll-codex.spec.js:236`,
+  `scroll-restream-strand.spec.js:82`. **This set is not stable and must be re-measured on
+  the stashed tree in the same run** — `docs/product-specs/245-…:15-17` fingers all five
+  `wheel-scroll.spec.js` cases as the flakes, and all five of those passed here. The count
+  (5) has held since wave 4; the membership has not.
 
 ### Invariants
 
@@ -198,6 +339,9 @@ each split across waves.
 - `cmd/hivegui/frontend/vite.config.js` — the two `path.resolve` targets at `:17,19` (wave 4)
 - `cmd/hivegui/frontend/index.html:106`, `test/e2e/fixtures/xterm-reflow.html:15` — script
   `src` (wave 7)
+- `cmd/hivegui/frontend/tsconfig.json:43-52` — `include` gains `src/main.ts` (nothing
+  imports it, so it is otherwise outside the program) and swaps the two named harness paths
+  for `test/e2e/**/*` + `test/e2e-real/**/*` (wave 7)
 - `.github/workflows/ci.yml` — `npm run typecheck` step immediately after "Build frontend"
   (`:66`), guarded by `if: matrix.biome` (copy the pattern at `:94` rather than adding a
   matrix key; same "platform-independent, Linux leg only" rationale). Placed there it fails
@@ -209,7 +353,9 @@ each split across waves.
 Config files (`vite.config.js`, `vitest.config.js`, `playwright*.config.js`,
 `globalSetup.mjs`, `globalTeardown.mjs`) stay JS: no type surface worth checking, and
 `globalSetup.mjs:16` uses `import.meta.url` with no `"type": "module"` in `package.json`,
-so converting it is a coin flip on Playwright's CJS transform for zero gain.
+so converting it is a coin flip on Playwright's CJS transform for zero gain. **List
+re-confirmed complete at wave 7** — those six plus the 23 wave-7 files are every remaining
+`.js`/`.mjs` under `frontend/`.
 
 ### New files
 
