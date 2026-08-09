@@ -1,9 +1,9 @@
 // ---------- focus pipeline ----------
 //
-// Moved verbatim from main.js. ensureTerm is injected (session-term
-// imports this module, so the reverse edge must be a dep).
+// Moved from the original composition root. This module stays independent
+// of session-term because session-term imports the focus pipeline.
 
-import { state, type SessionInfo, type TermTile } from './state.js';
+import { state } from './state.js';
 import {
   decideFocusAction,
   ACTION_CLEAR,
@@ -14,25 +14,6 @@ import {
 import { anyModalOpen } from './modals/registry.js';
 import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
-
-// Exported so main.js's injection site can be checked against it once
-// wave 7 converts the composition root.
-export interface FocusDeps {
-  ensureTerm: (info: SessionInfo) => TermTile;
-}
-
-// `_deps` is currently write-only — main.js:218 injects ensureTerm and
-// nothing in this module reads it. Kept because removing it means editing
-// main.js, a wave-7 file; a deletion candidate for wave 6. Partial<> with
-// no stub rather than the old `{ ensureTerm: () => {} }`: that stub could
-// never satisfy FocusDeps (it returns void, not a TermTile), and since
-// nothing reads the field, dropping it is behavior-identical. A future
-// reader gets `ensureTerm?` and is forced to guard.
-let _deps: Partial<FocusDeps> = {};
-
-export function initFocus(injected: FocusDeps) {
-  _deps = injected;
-}
 
 // setActive centralizes "the focused session changed" so every code
 // path (click, arrow nav, project switch, switchTo) clears the bell

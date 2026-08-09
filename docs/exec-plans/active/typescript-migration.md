@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–5 merged, wave 6 done; wave 7 next — the last)
+- **Stage:** IMPLEMENT (waves 1–6 merged, wave 7a done; wave 7b next — the last)
 - **Status:** active
 
 ## Summary
@@ -794,6 +794,51 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   Recorded because a WKWebView window can't be driven from the agent side:
   every later wave's input-path smoke needs a human at the keyboard, or it
   isn't a smoke.
+
+- **2026-08-08** — Wave 7a complete: converted the composition root to
+  `src/main.ts`, updated the HTML entrypoint, and added the otherwise-unreachable
+  root to `tsconfig.include`. Removed focus's write-only `initFocus` injection,
+  added the command palette's runtime `id` to `PaletteCommand`, typed sidebar
+  resizing and heartbeat state, and widened `jsHeapMB`'s input to the real
+  browser contract (`object | null`) while keeping the Chromium-only memory
+  field behind one narrow cast. The attention-jump integration test no longer
+  initializes the deleted no-op seam.
+
+  Gates: typecheck/build/biome green, vitest 344 in 33 files (unchanged),
+  Playwright mock 84 passed + 1 skipped (unchanged). e2e-real discovered all 12
+  tests and finished 9 passed / 3 failed; all three are members of the known
+  flaky baseline set recorded above, and no source behavior changed beyond
+  deleting the write-only injection. No separate GUI smoke: the mock suite boots
+  through the renamed HTML entrypoint, so its 84 passing tests non-vacuously
+  verify the load-bearing `main.ts` path.
+
+## Follow-ups
+
+Open items carried out of waves 1–7a. Each is a decision or a task, not a finding — the
+findings live in the wave notes above.
+
+- ~~**Wave 7 should be two PRs, not one.**~~ **Accepted 2026-08-08.** Wave 7a
+  is complete; wave 7b owns the 22 spec files, fixture pair, and stale-path sweep.
+- **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
+  #267's review, deferred by the user). It turns what would have been a `TypeError` on a
+  tile with no `term` into a silent no-op. Unreachable in production — the constructor
+  unconditionally does `new Terminal(...)` — and the optionality exists only because the
+  DOM-test stubs omit `term`. Leave it, or make it throw with a named message; either is
+  defensible, nobody has picked. Not worth its own PR; fold into wave 7 if the answer is
+  "make it loud".
+- **The e2e-real flake list in `docs/product-specs/245-…:15-17` is wrong** and was not
+  corrected here. It names all five `wheel-scroll.spec.js` cases; those pass, and the five
+  that actually fail are the ones recorded in the wave-7 inventory. Fixing it needs a run
+  on `main` to establish which set is real, so it is a task for whoever next debugs that
+  suite — not for wave 7, which only needs the names as a same-run baseline.
+- **On wave 7 landing**: mark §2c's TypeScript subsection DONE in
+  `docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md:40-43` (it currently
+  reads IN PROGRESS and points here), and move this plan to `docs/exec-plans/completed/`.
+  Nothing else references it.
+
+CI follow-ups this migration surfaced but that are **not** TypeScript work — Playwright
+browser-cache scoping and the caret/exact dependency-pin split — are recorded in
+`phase-2-ci-and-tooling.md` §2e, where the CI tooling decisions live.
 
 ## Open questions
 

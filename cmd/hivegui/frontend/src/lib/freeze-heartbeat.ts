@@ -69,11 +69,13 @@ function fmtState(state: BeatInput['state']): string {
 // in the separate WebContent/GPU process), but a climbing JS heap is
 // still a useful leak signal where available.
 // `performance.memory` is Chromium-only and absent from TS's lib.dom.
-export function jsHeapMB(
-  perf: { memory?: { usedJSHeapSize?: number } } | null | undefined,
-): number | null {
+interface PerformanceWithMemory {
+  memory?: { usedJSHeapSize?: number };
+}
+
+export function jsHeapMB(perf: object | null | undefined): number | null {
   try {
-    const m = perf?.memory;
+    const m = (perf as PerformanceWithMemory | null | undefined)?.memory;
     if (m && typeof m.usedJSHeapSize === 'number') {
       return Math.round(m.usedJSHeapSize / (1024 * 1024));
     }
