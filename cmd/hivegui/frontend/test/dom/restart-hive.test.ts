@@ -19,7 +19,20 @@ const bridge = vi.hoisted(() => ({
 
 vi.mock('../../src/bridge.js', () => bridge);
 
-let restartHive, isDaemonRestarting, bannerEl, bannerText;
+let restartHive: typeof import('../../src/app/banners.js').restartHive;
+let isDaemonRestarting: typeof import('../../src/app/banners.js').isDaemonRestarting;
+let bannerEl: HTMLElement;
+let bannerText: HTMLElement;
+
+// Throwing lookup rather than `!`: biome's recommended preset bans
+// non-null assertions, and a missing scaffold element should name
+// itself instead of surfacing as a null-property TypeError three
+// assertions later.
+function mustEl(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`missing #${id} in test scaffold`);
+  return el;
+}
 
 beforeAll(async () => {
   // dom.js runs side effects on import (it decorates #terms), and
@@ -41,8 +54,8 @@ beforeAll(async () => {
   ({ restartHive, isDaemonRestarting } = await import(
     '../../src/app/banners.js'
   ));
-  bannerEl = document.getElementById('daemon-banner');
-  bannerText = document.getElementById('daemon-banner-text');
+  bannerEl = mustEl('daemon-banner');
+  bannerText = mustEl('daemon-banner-text');
 });
 
 beforeEach(() => {
@@ -89,7 +102,7 @@ describe('restartHive', () => {
 // spawn the replacement GUI twice).
 describe('restartHive re-entrancy', () => {
   it('ignores a second invocation while one is in flight', async () => {
-    let releaseConfirm;
+    let releaseConfirm: (() => void) | undefined;
     bridge.Confirm.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -99,6 +112,9 @@ describe('restartHive re-entrancy', () => {
 
     const first = restartHive();
     const second = restartHive(); // must be a no-op, not a second run
+    // Not `releaseConfirm?.()` — an unset releaser means Confirm was
+    // never reached, which is the bug this test exists to catch.
+    if (!releaseConfirm) throw new Error('Confirm was never called');
     releaseConfirm();
     await Promise.all([first, second]);
 
