@@ -795,6 +795,40 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   every later wave's input-path smoke needs a human at the keyboard, or it
   isn't a smoke.
 
+## Follow-ups
+
+Open items carried out of waves 1–6. Each is a decision or a task, not a finding — the
+findings live in the wave notes above.
+
+- **Wave 7 should be two PRs, not one** (recommended 2026-08-08, not yet accepted). **7a**:
+  `src/main.ts`, `index.html:106`, the `tsconfig.include` widening, and the two injection-site
+  corrections (`initFocus` deletion, `PaletteCommand.id`). **7b**: the 22 spec files, the
+  fixture pair, and the stale-path sweep. The seam is that 7a is ~420 LOC of the only file
+  with no test coverage at all, while 7b is 3.6k LOC that is nothing but test coverage —
+  and `index.html:106` is the single change in the whole migration that no gate catches
+  (wrong path builds green and ships a blank window). Reviewing that line inside a 4k-LOC
+  diff is how it gets missed. If wave 7 lands as one PR anyway, review `index.html` first.
+- **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
+  #267's review, deferred by the user). It turns what would have been a `TypeError` on a
+  tile with no `term` into a silent no-op. Unreachable in production — the constructor
+  unconditionally does `new Terminal(...)` — and the optionality exists only because the
+  DOM-test stubs omit `term`. Leave it, or make it throw with a named message; either is
+  defensible, nobody has picked. Not worth its own PR; fold into wave 7 if the answer is
+  "make it loud".
+- **The e2e-real flake list in `docs/product-specs/245-…:15-17` is wrong** and was not
+  corrected here. It names all five `wheel-scroll.spec.js` cases; those pass, and the five
+  that actually fail are the ones recorded in the wave-7 inventory. Fixing it needs a run
+  on `main` to establish which set is real, so it is a task for whoever next debugs that
+  suite — not for wave 7, which only needs the names as a same-run baseline.
+- **On wave 7 landing**: mark §2c's TypeScript subsection DONE in
+  `docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md:40-43` (it currently
+  reads IN PROGRESS and points here), and move this plan to `docs/exec-plans/completed/`.
+  Nothing else references it.
+
+CI follow-ups this migration surfaced but that are **not** TypeScript work — Playwright
+browser-cache scoping and the caret/exact dependency-pin split — are recorded in
+`phase-2-ci-and-tooling.md` §2e, where the CI tooling decisions live.
+
 ## Open questions
 
 - **Issue number** — none filed. `in-house-vt-emulator.md` is precedent for an unnumbered

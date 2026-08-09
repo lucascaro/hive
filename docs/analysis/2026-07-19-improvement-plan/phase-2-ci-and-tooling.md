@@ -72,3 +72,43 @@ honestly: this is **M–L**, not a config add, and should NOT ride the Biome PR.
 `playwright.config.js` and `playwright.real.config.js` share ~80% boilerplate
 — extract a `playwright.base.js` both spread from. Only worth it while
 already touching the configs in Phase 1.
+
+## 2e. CI caching and dependency pinning (landed 2026-08-08 in #268; two follow-ups)
+
+Playwright browser downloads were the single biggest cost in CI — **219s of Windows's
+6m48s**, versus 25s on Linux and 13s on macOS, so it is a Windows unzip pathology rather
+than bandwidth. There was no caching of any kind in `ci.yml`. #268 added an
+`actions/cache` entry over a `PLAYWRIGHT_BROWSERS_PATH` pinned to one workspace-relative
+path, which is what lets a single cache config serve all three OSes (their defaults differ:
+`~/.cache`, `~/Library/Caches`, `%LOCALAPPDATA%`).
+
+Two things that cost a round of review each, recorded so they are not re-derived:
+
+- **The cache key only works because `@playwright/test` is pinned exactly.** It was
+  `^1.48.0` while the resolved version was 1.62.1, so `hashFiles(package.json)` was a
+  constant across 14 minors of differing browser revisions. That failure is silent and
+  self-perpetuating: the stale hit restores revision X, `playwright install` re-downloads
+  Y, and `actions/cache` skips the save because the key already exists — so the cost
+  returns permanently behind a green check. Keying on `package-lock.json` is **not** an
+  option here: it is gitignored (`frontend/.gitignore:3`) and CI runs `npm install`, not
+  `npm ci`, so `hashFiles` would return empty and the key would go constant in the other
+  direction. The exact pin is what makes the version observable at all.
+- **Actions caches are scoped by ref, and a PR-scoped cache is invisible to `main`.**
+  Measured: identical keys existed under `refs/pull/268/merge` and `refs/heads/main` as
+  separate 299MB entries, and the post-merge `main` run missed on all three legs and
+  re-saved. Caches written on the default branch *are* inherited by branches cut from it,
+  so the steady state is right — but the first run after any Playwright bump pays full
+  price on `main` before any PR benefits. That is inherent to the scoping; no config
+  change fixes it. Don't read a cold `main` run as a broken cache.
+
+**Follow-up: finish the pinning convention.** `@biomejs/biome` (2.5.5), `typescript`
+(7.0.2), `ws` (8.21.0) and now `@playwright/test` (1.62.1) are exact; `jsdom`, `vite`,
+`vitest` and all four `@xterm/*` are still caret ranges (`package.json:20-33`). The reason
+the first four are pinned applies verbatim to the rest — the lockfile is gitignored and CI
+runs a bare `npm install`, so a caret floats and CI is not reproducible run to run. The
+`@xterm/*` ones matter most: they are runtime dependencies of the shipped app, not tooling.
+
+**Follow-up: the browser cache key over-invalidates.** It hashes all of `package.json`, so
+bumping `jsdom` evicts the browsers. `restore-keys` absorbs most of the cost and
+over-invalidating is the safe direction, so this is deliberate — revisit only if the
+partial-restore path turns out to be slow in practice.
