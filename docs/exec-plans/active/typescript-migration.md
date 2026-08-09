@@ -170,11 +170,11 @@ Taken 2026-08-08 on `ts-wave-6c`, so wave 7 executes without re-discovery.
 **23 files convert.** `src/main.js` (419), `test/e2e/fixtures/xterm-reflow.js`, the 16
 `test/e2e/*.spec.js`, and the 5 `test/e2e-real/*.spec.js`.
 
-**6 files stay JS, and the list in "Files to change" is complete** — `find frontend -name
+**7 files stay JS, and the list in "Files to change" is complete** — `find frontend -name
 '*.js' -o -name '*.mjs'` returns exactly the 23 above plus `vite.config.js`,
 `vitest.config.js`, `playwright.config.js`, `playwright.real.config.js`,
-`globalSetup.mjs`, `globalTeardown.mjs` (and gitignored `dist/`, `wailsjs/`). Nothing sits
-in neither bucket. The fixture is *not* config despite living beside tests: it is a real
+`globalSetup.mjs`, `globalTeardown.mjs`, and `scripts/check-spec-discovery.mjs` (and
+gitignored `dist/`, `wailsjs/`). Nothing sits in neither bucket. The fixture is *not* config despite living beside tests: it is a real
 xterm harness (`fixtures/xterm-reflow.js:6` `import { Terminal }`) and converts.
 
 **`tsconfig.include` gains three entries, and the first is the trap.** `src/main.js` is not
@@ -353,9 +353,10 @@ extension would make a wrong reference look current.
 Config files (`vite.config.js`, `vitest.config.js`, `playwright*.config.js`,
 `globalSetup.mjs`, `globalTeardown.mjs`) stay JS: no type surface worth checking, and
 `globalSetup.mjs:16` uses `import.meta.url` with no `"type": "module"` in `package.json`,
-so converting it is a coin flip on Playwright's CJS transform for zero gain. **List
-re-confirmed complete at wave 7** — those six plus the 23 wave-7 files are every remaining
-`.js`/`.mjs` under `frontend/`.
+so converting it is a coin flip on Playwright's CJS transform for zero gain.
+`scripts/check-spec-discovery.mjs` joins them on the same rule: it drives the Playwright
+CLI and is not in `tsconfig.include`. **List re-confirmed complete at wave 7** — those
+seven plus the 23 wave-7 files are every remaining `.js`/`.mjs` under `frontend/`.
 
 ### New files
 

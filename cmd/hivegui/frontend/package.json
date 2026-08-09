@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5",
-    "@playwright/test": "^1.48.0",
+    "@playwright/test": "1.62.1",
     "jsdom": "^25.0.0",
     "typescript": "7.0.2",
     "vite": "^8.0.10",

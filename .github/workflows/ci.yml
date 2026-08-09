@@ -127,17 +127,28 @@ jobs:
         if: matrix.e2e_mock
         # The single biggest cost in CI: this download was 219s of Windows's
         # 6m48s (vs 25s Linux, 13s macOS — Windows unzip is the outlier).
-        # Keyed on package.json because that is where the @playwright/test
-        # pin lives; it over-invalidates on any dependency bump, which is the
-        # safe direction. The install step below still runs on a hit — it is
-        # a fast no-op when the browsers are already present, and skipping it
-        # on cache-hit would leave a leg with no browser if the cache were
-        # ever partial. On Linux it also installs the apt deps, which are not
-        # cacheable.
+        #
+        # Keyed on package.json, which works ONLY because @playwright/test is
+        # pinned exactly there. A caret range would make this key constant
+        # across every version bump, and the failure is silent and total: the
+        # stale hit restores browser revision X, `playwright install`
+        # re-downloads Y, and actions/cache skips the save because the key
+        # already exists — so the 219s comes back forever behind a green
+        # check. package-lock.json is gitignored here, so it cannot be the
+        # key; the exact pin is what makes the version observable at all.
+        # restore-keys warms a partial dir on the bump itself, where the
+        # primary key correctly misses and a fresh entry does get saved.
+        #
+        # The install step below still runs on a hit — it is a fast no-op
+        # when the browsers are present, and skipping it on cache-hit would
+        # leave a leg with no browser if a cache were ever partial. On Linux
+        # it also installs the apt deps, which are not cacheable.
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.playwright-browsers
           key: playwright-${{ runner.os }}-${{ hashFiles('cmd/hivegui/frontend/package.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
         if: matrix.e2e_mock

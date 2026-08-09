@@ -53,8 +53,11 @@ for (const [config, dir] of SUITES) {
     .filter((f) => IS_SPEC.test(f))
     .sort();
 
+  // The local bin, not `npx`, matching every Playwright step in ci.yml —
+  // `npx` can reach the network on a resolution miss, which a check that
+  // exists to be deterministic should never do.
   const out = execSync(
-    `npx playwright test --config=${config} --list --reporter=json`,
+    `./node_modules/.bin/playwright test --config=${config} --list --reporter=json`,
     {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
