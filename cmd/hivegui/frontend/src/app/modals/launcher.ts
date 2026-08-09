@@ -60,6 +60,16 @@ export const launcherEl = pageEl('launcher');
 // never filled in.
 let searchEl: HTMLInputElement | null = null;
 let listEl: HTMLElement | null = null;
+// Bumped on every open. A ListAgents promise captures the value it was
+// issued under and bails if it no longer matches, so a slow response
+// can't land in a launcher that has since been reopened.
+//
+// This used to be implicit: the old .then began by wiping #launcher, so
+// a late resolve just rebuilt everything. The wipe had to go (it would
+// destroy the focused filter box), which turned "harmlessly redundant"
+// into "inserts a second worktree row" — the `hidden` check alone
+// doesn't catch a reopen, because the launcher is visible again by then.
+let openGeneration = 0;
 // The usage-ordered agent list ListAgents returned, kept so filtering
 // re-renders from memory instead of refetching.
 let allAgents: main.AgentInfo[] = [];
@@ -164,7 +174,13 @@ function activateLauncherSelection() {
 // first filled-in render.
 function renderLauncherList() {
   if (!listEl) return;
-  const q = (searchEl?.value ?? '').trim().toLowerCase();
+  // Two readings of the same box, on purpose. `raw` decides whether the
+  // user is typing — it must agree with the digit handler, which also
+  // tests the raw value, or a lone space would show [n] hints that no
+  // longer fire. `q` decides what matches, where surrounding whitespace
+  // is just noise.
+  const raw = searchEl?.value ?? '';
+  const q = raw.trim().toLowerCase();
   listEl.innerHTML = '';
   launcherState.items = [];
   const matches = q
@@ -190,7 +206,7 @@ function renderLauncherList() {
     // type into it instead of selecting, so the hints come off — a
     // visible [n] that does nothing is worse than none (AGENTS.md,
     // Key Discoverability).
-    num.textContent = !q && idx < 9 ? String(idx + 1) : '';
+    num.textContent = !raw && idx < 9 ? String(idx + 1) : '';
     const dot = document.createElement('span');
     dot.className = 'agent-dot';
     const name = document.createElement('span');
@@ -290,11 +306,15 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // which only sees them while focus is inside #launcher.
   searchEl.focus();
 
+  const gen = ++openGeneration;
   ListAgents()
     .then((agents) => {
       // The user may have dismissed the launcher while the list was in
       // flight — don't resurrect it.
       if (launcherEl.classList.contains('hidden')) return;
+      // ...or reopened it, in which case this response belongs to a
+      // launcher that no longer exists and a newer request owns the DOM.
+      if (gen !== openGeneration) return;
 
       // Worktree toggle row at the top of the menu. Disabled (and
       // visually muted) when the active project's cwd isn't a git
@@ -372,7 +392,11 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
     // nothing happened, with no trace. Close the loading shell too:
     // an empty popup with stale "Loading agents…" would be worse.
     .catch((err) => {
+      // Same staleness rule as the success path: a rejection from a
+      // superseded request must not close the launcher the user just
+      // reopened. Still reported — the failure was real.
       reportFailure('launcher')(err);
+      if (gen !== openGeneration) return;
       closeLauncher();
     });
 }

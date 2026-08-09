@@ -127,8 +127,10 @@ function selectedName() {
 // The launcher owns its keys via a listener on #launcher, so events
 // must be dispatched from inside it (bubbling), exactly as a real
 // keystroke into the focused filter box would.
+// Returns false when the handler called preventDefault — i.e. when the
+// launcher consumed the key rather than letting it reach the input.
 function press(key: string, init: KeyboardEventInit = {}) {
-  searchBox().dispatchEvent(
+  return searchBox().dispatchEvent(
     new KeyboardEvent('keydown', {
       key,
       bubbles: true,
@@ -249,10 +251,26 @@ describe('launcher keyboard', () => {
   it('types the digit into the query once the query is non-empty', async () => {
     await open();
     type('c');
-    press('2');
+    // Not consumed: dispatchEvent returns true, so a real browser would
+    // insert "2" into the box. jsdom won't do that for us, hence the
+    // explicit assertion rather than checking the value.
+    expect(press('2')).toBe(true);
     expect(createSession).not.toHaveBeenCalled();
-    // preventDefault was NOT called, so the browser would insert "2".
     expect(names()).toEqual(['Claude', 'Codex CLI']);
+  });
+
+  it('treats a whitespace-only query as typing, not as an empty box', async () => {
+    await open();
+    // A lone space trims away for matching (the full list still shows)
+    // but must still count as "the user is typing": hints off, digits
+    // inert. Hint state and shortcut state read the same raw value.
+    type(' ');
+    expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
+    expect(
+      rows().map((r) => r.querySelector('.agent-num')?.textContent),
+    ).toEqual(['', '', '']);
+    expect(press('2')).toBe(true);
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it('hides row numbers while the query is non-empty', async () => {
@@ -335,6 +353,48 @@ describe('launcher worktree row', () => {
       'launcher-worktree',
       'launcher-list',
     ]);
+  });
+});
+
+describe('launcher stale-response handling', () => {
+  it('ignores a ListAgents resolve from a superseded open', async () => {
+    // Reopening while the first request is in flight. Both resolve; the
+    // stale one must not touch the DOM the second open now owns. The
+    // `hidden` guard alone can't catch this — the launcher is visible
+    // again by the time the first response lands.
+    openLauncher('p1');
+    const resolveFirst = resolveAgents;
+    const first = agentsPromise;
+    openLauncher('p1');
+    const resolveSecond = resolveAgents;
+    const second = agentsPromise;
+
+    resolveFirst(AGENTS);
+    await first;
+    await Promise.resolve();
+    resolveSecond(AGENTS);
+    await second;
+    await Promise.resolve();
+
+    expect(launcher().querySelectorAll('.launcher-worktree')).toHaveLength(1);
+    expect(Array.from(launcher().children).map((c) => c.className)).toEqual([
+      'launcher-search',
+      'launcher-worktree',
+      'launcher-list',
+    ]);
+    expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
+  });
+
+  it('does not close a reopened launcher when a superseded request rejects', async () => {
+    listAgents.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    openLauncher('p1');
+    openLauncher('p1');
+    resolveAgents(AGENTS);
+    await agentsPromise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(launcher().classList.contains('hidden')).toBe(false);
+    expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
   });
 });
 
