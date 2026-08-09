@@ -2,7 +2,7 @@
 //
 // ⌘B / ⇧⌘B against the REAL switchTo → setActive chain.
 //
-// The sibling attention-jump.test.js mocks view.js to isolate the
+// The sibling attention-jump.test.ts mocks view.js to isolate the
 // return-slot logic, which means the thing ⌘B's correctness actually
 // rests on — setActive clearing the target's attention flag — is
 // simulated there, not executed. If setActive stopped deleting from
@@ -11,6 +11,8 @@
 // green. So this file wires the real modules with stub *dependencies*
 // (no xterm, no Wails) and asserts the end-to-end effects.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { createScrollTrace } from '../../src/lib/scroll-debug.js';
+import type { TermTile } from '../../src/app/state.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -48,19 +50,46 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
-let state, jumpToAttention, jumpBack, initView, initFocus, setActive;
+let state: typeof import('../../src/app/state.js').state;
+let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
+let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
+let initView: typeof import('../../src/app/view.js').initView;
+let initFocus: typeof import('../../src/app/focus.js').initFocus;
+let setActive: typeof import('../../src/app/focus.js').setActive;
 
 // Each session needs a SessionTerm-shaped stub: setActive and renderGrid
 // reach for `.host.classList` to move the .attention / .active classes.
-function fakeTerm() {
+// Every other member is a no-op, but they are all spelled out so the
+// stub really satisfies TermTile rather than being cast into it — a
+// member added to the interface then shows up here as an error instead
+// of as a runtime TypeError in whichever path first reaches for it.
+function fakeTerm(): TermTile {
   return {
     host: document.createElement('div'),
+    attached: true,
+    needsReattach: false,
+    deadOverlayShown: false,
     ensureAttached() {},
     show() {},
     hide() {},
-    fit() {},
-    focus() {},
+    rebaselineReplayCols() {},
+    setInfo() {},
+    setProject() {},
+    setDead() {},
+    writeData() {},
+    destroy() {},
+    _closeDead() {},
+    _dismissDead() {},
   };
+}
+
+// term lookups in the assertions below: every id asserted on is in
+// state.sessions, so the tile exists — this turns the `| undefined`
+// into a failed expect() rather than a cast that hides a real miss.
+function tile(id: string): TermTile {
+  const t = state.terms.get(id);
+  expect(t, `no term stub for ${id}`).toBeDefined();
+  return t as TermTile;
 }
 
 beforeAll(async () => {
@@ -71,7 +100,7 @@ beforeAll(async () => {
     observe() {}
     unobserve() {}
     disconnect() {}
-  };
+  } as unknown as typeof ResizeObserver;
   document.body.innerHTML = `
     <div id="app"><ul id="projects"></ul><div id="status"></div>
     <div id="terms"></div><div id="minimized-tray"></div>
@@ -84,15 +113,16 @@ beforeAll(async () => {
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
 
   // Real view.js + focus.js, stubbed at their injection seams.
-  initFocus({ ensureTerm: (info) => state.terms.get(info.id) });
+  // ensureTerm is declared to return a TermTile; beforeEach populates
+  // state.terms for every session, so tile() asserts rather than casts.
+  initFocus({ ensureTerm: (info) => tile(info.id) });
   initView({
-    ensureTerm: (info) => state.terms.get(info.id),
+    ensureTerm: (info) => tile(info.id),
     setActive,
     focusActiveTerm: () => {},
-    scrollTrace: {
-      rec: Object.assign(() => {}, { enabled: false }),
-      count: () => {},
-    },
+    // A real disabled tracer, not a hand-rolled `{ rec }` literal, so the
+    // stub can't drift out of Pick<ScrollTrace, 'rec' | 'count'>.
+    scrollTrace: createScrollTrace({ enabled: false }),
   });
 });
 
@@ -124,11 +154,9 @@ describe('⌘B through the real switchTo/setActive chain', () => {
 
   it('drops the .attention class from the landed-on tile', () => {
     state.attention = new Set(['b']);
-    state.terms.get('b').host.classList.add('attention');
+    tile('b').host.classList.add('attention');
     jumpToAttention();
-    expect(state.terms.get('b').host.classList.contains('attention')).toBe(
-      false,
-    );
+    expect(tile('b').host.classList.contains('attention')).toBe(false);
   });
 
   it('syncs currentProjectId when the flagged session is in another project', () => {

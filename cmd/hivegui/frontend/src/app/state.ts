@@ -77,6 +77,13 @@ export interface TermTile extends ReplayFlags {
   // detector to label a following up-move (session-term.js:594,728).
   _lastReplayTs?: number;
   term?: (ReplayXterm & { focus?: () => void }) | null;
+  // Dead-session overlay. Required for the same reason as `attached`:
+  // session-term.js:525 initializes it and setDead writes it on every
+  // transition, so readers branch on the value, never on absence.
+  // keyboard.ts routes Enter/Escape to the two handlers when it's shown.
+  deadOverlayShown: boolean;
+  _closeDead(): void;
+  _dismissDead(): void;
   show(): void;
   hide(): void;
   ensureAttached(): void;

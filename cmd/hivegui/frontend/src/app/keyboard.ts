@@ -58,12 +58,21 @@ import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
+import { mustEl } from './el.js';
+import type { ProjectInfo } from './state.js';
 
-let deps = {
+export interface KeyboardDeps {
+  bumpFontSize: (delta: number) => void;
+  resetFontSize: () => void;
+  focusActiveTerm: () => void;
+  withoutNavHistory: (fn: () => void) => void;
+}
+
+let deps: KeyboardDeps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
-  // Injected from main.js like focusActiveTerm above: keyboard.js must
+  // Injected from main.js like focusActiveTerm above: keyboard.ts must
   // not import the focus pipeline directly (see the acyclic-modules
   // note at the wiring block in main.js). The default still RUNS fn —
   // an un-wired harness gets working navigation without suppression,
@@ -71,7 +80,7 @@ let deps = {
   withoutNavHistory: (fn) => fn(),
 };
 
-export function initKeyboard(injected) {
+export function initKeyboard(injected: KeyboardDeps) {
   deps = injected;
 }
 
@@ -102,7 +111,7 @@ window.addEventListener(
       });
     }
     if (!launcherEl.classList.contains('hidden')) {
-      const handle = (fn) => {
+      const handle = (fn: () => void) => {
         e.preventDefault();
         e.stopPropagation();
         fn();
@@ -357,7 +366,7 @@ window.addEventListener(
 // here AND in menu.go.
 
 export function toggleSidebar() {
-  document.getElementById('app').classList.toggle('sidebar-hidden');
+  mustEl('app').classList.toggle('sidebar-hidden');
   // Layout reflow → tile bodies resize → ResizeObserver fits xterm,
   // and fit.fit() can synchronously fire focusout on the helper-
   // textarea as the canvas re-sizes. Without re-asserting focus,
@@ -383,7 +392,7 @@ export function toggleAllGrid() {
   setView(state.view === 'grid-all' ? 'single' : 'grid-all');
 }
 
-export function navSession(delta) {
+export function navSession(delta: number) {
   if (state.view !== 'single') {
     gridSpatialMove(delta > 0 ? +1 : -1, 0);
   } else {
@@ -391,7 +400,7 @@ export function navSession(delta) {
   }
 }
 
-export function reorderActive(delta) {
+export function reorderActive(delta: number) {
   if (state.view === 'single') moveActiveSession(delta, true);
   else gridSpatialMove(delta > 0 ? +1 : -1, 0);
 }
@@ -464,7 +473,7 @@ export function jumpBack() {
 // session ⌘B pulled out of the minimized tray during the round. Sessions
 // killed while you were away are dropped rather than re-minimized —
 // adding a dead id to state.minimized would strand a chip in the tray.
-function endRound({ reminimize }) {
+function endRound({ reminimize }: { reminimize: boolean }) {
   state.attentionReturnId = null;
   if (reminimize) {
     for (const rid of state.attentionRestored) {
@@ -484,7 +493,7 @@ function endRound({ reminimize }) {
 // sessionExists mirrors jumpBack's still-exists guard: a session on the
 // stack can be killed while you are elsewhere, and the stack walk skips
 // it rather than dead-ending.
-const sessionExists = (id) => state.sessions.some((s) => s.id === id);
+const sessionExists = (id: string) => state.sessions.some((s) => s.id === id);
 
 // navGo performs the switch a history step resolved to. A minimized
 // session has to be restored on the way in, exactly as ⌘B does at
@@ -497,7 +506,7 @@ const sessionExists = (id) => state.sessions.some((s) => s.id === id);
 // that set exists so ⇧⌘B can re-minimize sessions a bell round pulled
 // out on your behalf. Going back here is a deliberate "put me in that
 // session", so it stays restored.
-function navGo(id) {
+function navGo(id: string) {
   deps.withoutNavHistory(() => {
     if (state.minimized.has(id))
       restoreSession(id); // un-minimize, then switchTo
@@ -523,7 +532,7 @@ export function navForward() {
   navGo(id);
 }
 
-export function switchToNthSession(n) {
+export function switchToNthSession(n: number) {
   const ord = orderedSessions();
   if (n - 1 < ord.length) switchTo(ord[n - 1].id);
 }
@@ -623,7 +632,9 @@ for (let i = 1; i <= 9; i++) {
 // confirmAndDeleteProject is the single confirm + KillProject path
 // shared by the sidebar ✕ button and the ⇧⌘⌫ shortcut. Kept as one
 // function so the prompt text and killSessions logic can't drift.
-export async function confirmAndDeleteProject(proj) {
+export async function confirmAndDeleteProject(
+  proj: ProjectInfo | undefined | null,
+) {
   if (!proj) return;
   const sessions = state.sessions.filter(
     (s) => (s.projectId ?? s.project_id) === proj.id,
@@ -645,7 +656,7 @@ export function deleteActiveProject() {
 
 // moveActiveSession walks the (project_order, session_order) list.
 // reorder=true moves the session within its project only.
-export function moveActiveSession(delta, reorder) {
+export function moveActiveSession(delta: number, reorder: boolean) {
   const ord = orderedSessions();
   const n = ord.length;
   if (n === 0) return;
@@ -656,15 +667,21 @@ export function moveActiveSession(delta, reorder) {
   }
   if (reorder) {
     const cur = state.sessions.find((s) => s.id === state.activeId);
+    // idx >= 0 already proves the active session is in the ordered list,
+    // so this can't miss — but the guard is what tells tsc that, and it
+    // replaces the TypeError the old code would have thrown on the
+    // impossible branch. cur.id is state.activeId, non-null by the same
+    // argument, so the UpdateSession call reads it off cur.
+    if (!cur) return;
     const sib = state.sessions
       .filter(
         (s) =>
           (s.projectId ?? s.project_id) === (cur.projectId ?? cur.project_id),
       )
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const sIdx = sib.findIndex((s) => s.id === state.activeId);
+    const sIdx = sib.findIndex((s) => s.id === cur.id);
     const next = (sIdx + delta + sib.length) % sib.length;
-    UpdateSession(state.activeId, '', '', next).catch(reportFailure('reorder'));
+    UpdateSession(cur.id, '', '', next).catch(reportFailure('reorder'));
     return;
   }
   const next = (idx + delta + n) % n;
