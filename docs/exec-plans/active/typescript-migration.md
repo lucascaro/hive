@@ -139,9 +139,20 @@ Wave notes:
   `test/unit/version-footer.test`, `test/dom/settings.test` — nothing in that set imports
   anything else in the wave. **5b** (landed): `sidebar`, `focus`, `view`,
   `test/dom/{environment,selectors,xterm-reflow}.test` — 138 errors, one PR.
-- **6** — splittable into 2 PRs; no cycle exists. `session-term.js` (1,259 LOC) is the
-  hardest file; expect the bulk of the errors.
-- **7** — last wave. No strictness ramp follows.
+- **6** — split into 3 PRs, not 2; no cycle exists. **6a** (landed, #265): `events`,
+  `test/dom/{events-focus,restart-hive}.test` — 67 errors, all mechanical. **6b** (landed,
+  #266): `keyboard` + all three of the remaining DOM tests, which import `keyboard.js` and
+  nothing from `session-term.js`, so they belong with it. **6c**: `session-term.js`
+  (1,333 LOC) alone — the hardest file; expect the bulk of the errors.
+- **7** — last wave. No strictness ramp follows. Also carries the **cross-language
+  stale-path sweep**: a rename here leaves dead paths in files no wave touches — Go
+  comments (`cmd/hivegui/menu_darwin{,_test}.go`), `AGENTS.md`'s Keybindings Policy,
+  `docs/`. 6b fixed the four it caused, but three waves in a row have produced some, so
+  the last wave ends with one `grep -rn` for `\.js` across `AGENTS.md`, `cmd/hivegui/*.go`
+  and `docs/` (excluding `docs/exec-plans/`, whose mentions are dated records and stay).
+  Deferred to 7 rather than swept per-wave because until `main.js` converts, a `.js` path
+  in a comment can still be correct — the sweep only becomes a clean yes/no once every
+  file has moved.
 
 Tests are assigned **by what they import, not by directory** — `test/unit/` and `test/dom/`
 each split across waves.
@@ -525,6 +536,36 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   `openLauncher()`; dblclick rename of a session and a project.
   **Wave 6 owes its own smoke** — it lands `keyboard` and `session-term`,
   neither of which this run touched.
+
+- **Wave 6b** (#266) — `keyboard.ts` + `test/dom/{attention-jump,
+  attention-jump-integration,nav-history}.test.ts`. `TermTile` grows
+  `deadOverlayShown` / `_closeDead()` / `_dismissDead()`, required not
+  optional for 6a's reason: `session-term.js:525` initializes the flag
+  and `setDead` writes it on every transition, so readers branch on the
+  value, never on absence.
+
+  Two edits that are not annotation-only, both where `tsc` could not see
+  a runtime invariant. `toggleSidebar` moved to `mustEl('app')` — a
+  missing `#app` is document drift, and `el.ts`'s throwing wrapper is
+  safe in a function body. `moveActiveSession` gained `if (!cur) return`:
+  `idx >= 0` already proves the active session is in the ordered list, so
+  the branch is unreachable, but the guard is what states that to the
+  compiler, and it replaces the `TypeError` the old code would have
+  thrown. `UpdateSession` then reads `cur.id` rather than nullable
+  `state.activeId` — same value, non-null by the same argument.
+
+  Test-side lesson, the stub twin of 5b's inject-side rule: the
+  integration test's `fakeTerm()` spells out **every** `TermTile` member
+  rather than casting into the interface, so an added member surfaces as
+  a compile error there instead of as a runtime `TypeError` in whichever
+  path first reaches for it. Mocked exports are typed
+  `MockedFunction<View['switchTo']>` via `vi.mocked`, which pins the mock
+  signature to the real export.
+
+  Gates: typecheck/build/biome green, vitest 322 in 32 files (unchanged),
+  Playwright mock 79 passed + 1 skipped (unchanged). The **`dev-iso.sh`
+  GUI smoke was run** and passed, clearing half of wave 6's debt —
+  `session-term` still owes its own in 6c.
 
 ## Open questions
 
