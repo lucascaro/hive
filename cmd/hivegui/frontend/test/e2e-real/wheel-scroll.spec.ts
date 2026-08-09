@@ -1,4 +1,24 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+// `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
+// view app modules use (app/state.ts). These specs poke the concrete tile the
+// map actually holds, which is what carries the real xterm Terminal, so they
+// assert SessionTerm rather than widening TermTile for every app caller and
+// DOM-test stub (wave 5b's rule).
+import type { SessionTerm } from '../../src/app/session-term.js';
+
+// `wheelDeltaY` is a legacy read-only getter, not a WheelEventInit member, so
+// it rides along here and is installed on the instance (see dispatchWheel).
+// `view` is omitted because comparing the app's augmented Window back to lib
+// DOM's Window trips a structural check in the clipboard types; no spec passes
+// it, and the event's default view is the page's own.
+type WheelInit = Omit<WheelEventInit, 'view'> & { wheelDeltaY?: number };
+
+// The scrollLines spy below lives only for the duration of one spec. Local
+// types rather than a `declare global`: these are not part of the app's
+// runtime surface, and a global declaration would advertise them to src/ too
+// (see test/e2e/hive-global.d.ts on why that file's globals are program-wide).
+type SpyWindow = Window & { __takeoverCalls?: number };
+type SpyTerm = SessionTerm & { __wheelWrapped?: boolean };
 
 // Repro for "the terminal won't scroll by mouse wheel or trackpad on one of my
 // Macs" (selection-drag still scrolls). PR #229 theorized a WKWebView quirk
@@ -55,7 +75,7 @@ test.afterEach(async ({ page }, testInfo) => {
   }
 });
 
-async function bootWithTerm(page) {
+async function bootWithTerm(page: Page) {
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set — globalSetup did not run');
   await page.goto('/');
   await page.waitForFunction(
@@ -70,8 +90,15 @@ async function bootWithTerm(page) {
   );
   await page.evaluate(() => {
     const helper =
-      document.querySelector('.term-host.active .xterm-helper-textarea') ||
-      document.querySelector('.term-host .xterm-helper-textarea');
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host.active .xterm-helper-textarea',
+      ) ||
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host .xterm-helper-textarea',
+      );
+    // The waitForFunction above already proved it exists; throwing here says
+    // so rather than turning a broken wait into a silently unfocused term.
+    if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
   await page.keyboard.type('stty -echo\n');
@@ -81,15 +108,17 @@ async function bootWithTerm(page) {
 // Bounded high-rate marker pump (bursty: flood, sleep) — fills scrollback so
 // there is history above the viewport to scroll INTO, then stops so the read
 // position is stable.
-async function startMarkerPump(page, count, burst = 40) {
+async function startMarkerPump(page: Page, count: number, burst = 40) {
   await page.keyboard.type(
     `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo HIVE_PUMP_DONE\n`,
   );
 }
 
-function bufferLines(page) {
+function bufferLines(page: Page) {
   return page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
+    const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+      | SessionTerm
+      | undefined;
     const buf = st?.term?.buffer?.active;
     if (!buf) return [];
     const out = [];
@@ -100,13 +129,25 @@ function bufferLines(page) {
   });
 }
 
-function scrollState(page) {
+function scrollState(page: Page) {
   return page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
+    const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+      | SessionTerm
+      | undefined;
     const buf = st?.term?.buffer?.active;
     if (!buf) return null;
     return { viewportY: buf.viewportY, baseY: buf.baseY, type: buf.type };
   });
+}
+
+// Every direct-assertion site below has already waited for the term to attach,
+// so a null there is a broken wait rather than a state worth asserting on.
+// expect.poll() keeps using scrollState(), which must tolerate the
+// not-yet-attached window.
+async function mustScrollState(page: Page) {
+  const s = await scrollState(page);
+  if (!s) throw new Error('no term buffer — the boot wait did not hold');
+  return s;
 }
 
 // Dispatch a real WheelEvent at the element actually under the terminal's
@@ -114,12 +155,13 @@ function scrollState(page) {
 // event must propagate up through the capture phase to SessionTerm's listener
 // on .term-host. This is faithful to a webview-delivered gesture: it exercises
 // not just the handler math but that the event PATH reaches the handler at all.
-async function dispatchWheel(page, init, times = 6) {
+async function dispatchWheel(page: Page, init: WheelInit, times = 6) {
   await page.evaluate(
     ({ init, times }) => {
       const host =
-        document.querySelector('.term-host.active') ||
-        document.querySelector('.term-host');
+        document.querySelector<HTMLElement>('.term-host.active') ||
+        document.querySelector<HTMLElement>('.term-host');
+      if (!host) throw new Error('no .term-host to dispatch the wheel at');
       const r = host.getBoundingClientRect();
       const target =
         document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) ||
@@ -152,30 +194,35 @@ async function dispatchWheel(page, init, times = 6) {
 // dispatched gesture. Distinguishes "handler bailed, event went to the app"
 // (count 0 — correct under mouse tracking / alt buffer) from "handler ran"
 // (count > 0). Wraps scrollLines once per session and resets the counter per call.
-async function countTakeover(page, init) {
+async function countTakeover(page: Page, init: WheelInit) {
   await page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
-    window.__takeoverCalls = 0;
+    const w = window as SpyWindow;
+    const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+      | SpyTerm
+      | undefined;
+    w.__takeoverCalls = 0;
     if (st && !st.__wheelWrapped) {
       const orig = st.term.scrollLines.bind(st.term);
-      st.term.scrollLines = (n) => {
-        window.__takeoverCalls++;
+      st.term.scrollLines = (n: number) => {
+        w.__takeoverCalls = (w.__takeoverCalls ?? 0) + 1;
         return orig(n);
       };
       st.__wheelWrapped = true;
     }
   });
   await dispatchWheel(page, init);
-  return page.evaluate(() => window.__takeoverCalls);
+  return page.evaluate(() => (window as SpyWindow).__takeoverCalls ?? 0);
 }
 
 // Make the running program enable mouse tracking (DECSET 1000), as Claude/vim
 // do. The bytes flow shell → pty → xterm, which sets term.modes.mouseTrackingMode.
-async function enableMouseTracking(page) {
+async function enableMouseTracking(page: Page) {
   await page.keyboard.type("printf '\\033[?1000h'\n");
   await page.waitForFunction(
     () => {
-      const st = [...(window.__hive_state?.terms?.values() || [])][0];
+      const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+        | SessionTerm
+        | undefined;
       return (
         st?.term?.modes?.mouseTrackingMode &&
         st.term.modes.mouseTrackingMode !== 'none'
@@ -188,11 +235,13 @@ async function enableMouseTracking(page) {
 
 // Switch the session into the alternate screen buffer (DECSET 1049), as a
 // full-screen TUI does — there is no scrollback there, so scrollLines is a no-op.
-async function enterAltBuffer(page) {
+async function enterAltBuffer(page: Page) {
   await page.keyboard.type("printf '\\033[?1049h'\n");
   await page.waitForFunction(
     () => {
-      const st = [...(window.__hive_state?.terms?.values() || [])][0];
+      const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+        | SessionTerm
+        | undefined;
       return st?.term?.buffer?.active?.type === 'alternate';
     },
     null,
@@ -202,7 +251,7 @@ async function enterAltBuffer(page) {
 
 // Fill scrollback and confirm the viewport is following the bottom, so any
 // subsequent upward move is unambiguously the wheel gesture's doing.
-async function primeScrollback(page) {
+async function primeScrollback(page: Page) {
   await bootWithTerm(page);
   await startMarkerPump(page, 200);
   await expect
@@ -211,7 +260,7 @@ async function primeScrollback(page) {
       intervals: [250, 500],
     })
     .toContain('HIVE_PUMP_DONE');
-  const at = await scrollState(page);
+  const at = await mustScrollState(page);
   expect(at.baseY, 'scrollback should be populated').toBeGreaterThan(0);
   expect(at.viewportY, 'viewport should start at the bottom').toBe(at.baseY);
 }
@@ -225,7 +274,7 @@ test('pixel-mode wheel scrolls into history (control — the working path)', asy
 }) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 0, deltaY: -300 });
-  const after = await scrollState(page);
+  const after = await mustScrollState(page);
   expect(after.viewportY, 'pixel wheel did not scroll up').toBeLessThan(
     after.baseY,
   );
@@ -236,7 +285,7 @@ test('pixel-mode wheel scrolls into history (control — the working path)', asy
 test('line-mode wheel scrolls into history (deltaMode 1)', async ({ page }) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 1, deltaY: -3 });
-  const after = await scrollState(page);
+  const after = await mustScrollState(page);
   expect(after.viewportY, 'line-mode wheel did not scroll up').toBeLessThan(
     after.baseY,
   );
@@ -249,7 +298,7 @@ test('legacy wheelDeltaY-only wheel scrolls into history (deltaY 0)', async ({
 }) => {
   await primeScrollback(page);
   await dispatchWheel(page, { deltaMode: 0, deltaY: 0, wheelDeltaY: 120 });
-  const after = await scrollState(page);
+  const after = await mustScrollState(page);
   expect(
     after.viewportY,
     'wheelDeltaY-only wheel did not scroll up',

@@ -2,7 +2,8 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–6 merged, wave 7a done; wave 7b next — the last)
+- **Stage:** IMPLEMENT (waves 1–7c done — every file converted; wave 7d, the
+  stale-path sweep + closeout, is the last)
 - **Status:** active
 
 ## Summary
@@ -812,13 +813,65 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   through the renamed HTML entrypoint, so its 84 passing tests non-vacuously
   verify the load-bearing `main.ts` path.
 
+- **2026-08-09** — Wave 7c complete: the 5 `test/e2e-real/*.spec.ts`, and
+  `tsconfig.include` swapped `test/e2e-real/wails-bridge.ts` for
+  `test/e2e-real/**/*` (invariant 6 — nothing imports a spec). 78 errors after
+  the `git mv`, all but four families mechanical implicit-anys and
+  `possibly null` DOM lookups.
+  - **`@types/ws` was installed and then reverted — do not reach for it.**
+    `scroll-codex.spec` falls back to the `ws` package on Node < 22 (no global
+    `WebSocket`), which is `TS7016` untyped. `@types/ws` depends on
+    `@types/node`, whose globals are program-wide: `setTimeout` starts
+    returning `NodeJS.Timeout` and `src/app/{session-term,view}.ts` — files this
+    wave never touched — stop compiling. Replaced with a 2-line
+    `test/e2e-real/ws-shim.d.ts` declaring only the constructor, the same call
+    `test/e2e/hive-global.d.ts` made for `process`.
+  - **The specs assert `SessionTerm`, following 7b's precedent.** `state.terms`
+    is `Map<string, TermTile>`, whose `term` is the narrow structural stub; every
+    e2e-real buffer probe (`buffer.active.getLine`, `scrollLines`, `modes`) needs
+    the real xterm `Terminal`, which only the concrete tile carries. One cast per
+    probe site, never a widened `TermTile`.
+  - **Test-only spies stay local types, not `declare global`.**
+    `wheel-scroll.spec`'s `__takeoverCalls` / `__wheelWrapped` are
+    `Window & {…}` / `SessionTerm & {…}` aliases used at the cast site.
+    A `declare global` in an included file is visible to `src/**` too —
+    `hive-global.d.ts` says so about its own contents, and a spy that exists for
+    the length of one spec has no business in the app's surface.
+  - `WheelInit` is `Omit<WheelEventInit, 'view'> & { wheelDeltaY?: number }`.
+    `wheelDeltaY` is a legacy getter, not a ctor member (it is installed on the
+    instance); `view` is omitted because structurally comparing the augmented
+    `Window` back to lib DOM's `Window` fails deep inside the clipboard types.
+  - `mustScrollState()` wraps the nullable `scrollState()` for the direct
+    assertion sites, which have all already waited for the term; `expect.poll()`
+    keeps the nullable form, since tolerating the not-yet-attached window is the
+    whole point of polling. Same for the four `helper.focus()` sites, which now
+    throw a named error instead of silently focusing nothing.
+
+  Gates: typecheck/build/biome green, vitest 344 in 33 files (unchanged),
+  Playwright mock 84 passed + 1 skipped (unchanged), `check-spec-discovery`
+  collects all 17 + all 5. e2e-real 12 discovered, 9 passed / 3 failed — the
+  same three specs, and the same result as the baseline measured on this branch
+  before the `git mv`. Non-vacuity proved in all five converted files with a
+  planted `const _probe: string = 1`.
+
+  **The stale-path sweep is NOT in this wave** — see the follow-up below.
+
 ## Follow-ups
 
 Open items carried out of waves 1–7a. Each is a decision or a task, not a finding — the
 findings live in the wave notes above.
 
-- ~~**Wave 7 should be two PRs, not one.**~~ **Accepted 2026-08-08.** Wave 7a
-  is complete; wave 7b owns the 22 spec files, fixture pair, and stale-path sweep.
+- ~~**Wave 7 should be two PRs, not one.**~~ **Accepted 2026-08-08**, and it
+  became three: 7a (composition root), 7b (17 mock specs + fixture pair), 7c
+  (5 e2e-real specs). Every `.js`/`.mjs` that was ever going to convert has.
+- **The stale-path sweep is all that is left of the migration**, and it is now a
+  wave of its own (7d) — it touches no `.ts` and cannot break a build, so
+  bundling it with a spec conversion only made both harder to review. Populations
+  1–3 in the wave-7 inventory still stand as written; spot-checked 2026-08-09,
+  `AGENTS.md:138`, `cmd/hivegui/{app.go:135,221, menu_darwin.go:18,
+  menu_other.go:18}`, `index.html:29`, `playwright.real.config.js:12` and the
+  in-frontend comment population are all still stale. Land it with the two
+  closeout items below.
 - **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
   #267's review, deferred by the user). It turns what would have been a `TypeError` on a
   tile with no `term` into a silent no-op. Unreachable in production — the constructor

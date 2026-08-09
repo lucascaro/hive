@@ -41,10 +41,8 @@
   // substitution is invisible to tsc), so they are checked only by being named
   // here — the trap the comment above describes, and the reason the glob
   // widened in the same commit as the rename.
-  //
-  // test/e2e-real is still file-by-file: its 5 *.spec.js are wave 7c's job,
-  // and widening ahead of the wave that converts them would cost the
-  // belt-and-braces for nothing.
+  // test/e2e-real joined them in wave 7c, the last of the migration. Its
+  // globalSetup/globalTeardown stay .mjs and are skipped by `checkJs: false`.
   "include": [
     "src/lib/**/*",
     "src/app/**/*",
@@ -54,7 +52,7 @@
     "test/unit/**/*",
     "test/dom/**/*",
     "test/e2e/**/*",
-    "test/e2e-real/wails-bridge.ts"
+    "test/e2e-real/**/*"
   ],
   "exclude": ["node_modules", "dist", "wailsjs"]
 }

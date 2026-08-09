@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+// `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
+// view app modules use (app/state.ts). These specs poke the concrete tile the
+// map actually holds, which is what carries the real xterm Terminal, so they
+// assert SessionTerm rather than widening TermTile for every app caller and
+// DOM-test stub (wave 5b's rule).
+import type { SessionTerm } from '../../src/app/session-term.js';
 
 // Layer B smoke: real-daemon end-to-end. Boots the frontend against a
 // real hived daemon (via hived-ws-bridge), waits for the bootstrap
@@ -52,8 +58,15 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
   // alongside the output — keeps the assertion robust.
   await page.evaluate(async () => {
     const helper =
-      document.querySelector('.term-host.active .xterm-helper-textarea') ||
-      document.querySelector('.term-host .xterm-helper-textarea');
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host.active .xterm-helper-textarea',
+      ) ||
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host .xterm-helper-textarea',
+      );
+    // The waitForFunction above already proved it exists; throwing here says
+    // so rather than turning a broken wait into a silently unfocused term.
+    if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
   await page.keyboard.type('stty -echo\n');
@@ -74,7 +87,7 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
           if (!terms) return null;
           const out = [];
           for (const st of terms.values()) {
-            const buf = st.term?.buffer?.active;
+            const buf = (st as SessionTerm).term.buffer.active;
             if (!buf) continue;
             for (let i = 0; i < buf.length; i++) {
               out.push(buf.getLine(i)?.translateToString(true) || '');
