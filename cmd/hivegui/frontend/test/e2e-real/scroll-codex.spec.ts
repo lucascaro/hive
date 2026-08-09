@@ -275,8 +275,12 @@ test('viewport converges to the bottom after a mode switch under continuous outp
   // lags (the parse-ordered re-snap lands when the queue drains). The
   // bug class this guards against -- a stale restore pinning the
   // viewport in history forever -- still fails convergence.
+  // Deliberately the nullable scrollState, not mustScrollState: this is an
+  // expect.poll() callback, and Playwright calls the value function outside
+  // its retry try/catch — a throw here would abort the poll on the first tick
+  // instead of letting a momentarily unreadable term recover within the 20s.
   const atBottom = async () => {
-    const s = await mustScrollState(page);
+    const s = await scrollState(page);
     return s ? s.baseY - s.viewportY : NaN;
   };
 

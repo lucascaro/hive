@@ -7,7 +7,11 @@
 // test/e2e/hive-global.d.ts hand-writes `process` instead.
 //
 // The spec only ever calls the constructor, and only through the DOM
-// WebSocket surface, so that is all this declares.
+// WebSocket surface, so that is all this declares. The lie runs one way:
+// `ws`-only APIs (ws.on('message')) correctly fail to compile, while
+// DOM-only ones `ws` never implemented (dispatchEvent, binaryType 'blob')
+// would typecheck and throw on the Node < 22 path. Keep the call site to
+// the members below and that stays theoretical.
 declare module 'ws' {
   export const WebSocket: typeof globalThis.WebSocket;
 }
