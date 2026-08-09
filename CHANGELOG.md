@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The new-session popup (⌘T) now filters as you type. A filter box sits at
+  the top of the agent list and narrows it to agents whose name contains what
+  you typed. The `1`–`9` row shortcuts still work while the box is empty; once
+  you start typing, digits go into the query and the row numbers disappear
+  rather than advertising a shortcut that no longer fires. Escape still closes
+  the popup, and every opening starts with an empty filter.
+
 - Worktree sessions now inherit the project's agent config. A fresh `git
   worktree add` only materializes tracked files, so an untracked
   `.claude/skills` (or `.agents/skills`, `commands`, `hooks`, `plugins`,

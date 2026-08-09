@@ -261,6 +261,17 @@ export async function ListAgents(): Promise<AgentInfo[]> {
       available: true,
       installCmd: [],
     },
+    // Second built-in so the launcher's filter box has something to
+    // narrow. Order matters: several specs assert the FIRST
+    // .launcher-item is "Shell", and a fresh browser context has an
+    // empty hive.agentUsage, so the usage sort is a no-op here.
+    {
+      id: 'claude',
+      name: 'Claude',
+      color: '#d97757',
+      available: true,
+      installCmd: [],
+    },
     ...customAgents.map((a) => ({
       id: a.id,
       name: a.name,

@@ -27,11 +27,7 @@ import {
 import { cmdOrCtrl, isMac } from '../lib/platform.js';
 import {
   launcherEl,
-  launcherState,
-  moveLauncherSelection,
-  activateLauncherSelection,
   openLauncher,
-  closeLauncher,
   duplicateActiveSession,
   duplicateActiveSessionChooseTool,
   restartActiveSession,
@@ -111,31 +107,7 @@ window.addEventListener(
       });
     }
     if (!launcherEl.classList.contains('hidden')) {
-      const handle = (fn: () => void) => {
-        e.preventDefault();
-        e.stopPropagation();
-        fn();
-      };
-      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey))
-        return handle(() => moveLauncherSelection(+1));
-      if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey))
-        return handle(() => moveLauncherSelection(-1));
-      if (e.key === 'Enter') return handle(activateLauncherSelection);
-      if (e.key === 'Escape') return handle(closeLauncher);
-      if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N'))
-        return handle(closeLauncher);
-      // Digit shortcut: 1–9 picks the corresponding row. Skipped when
-      // a modifier is held so things like ⌘1 (browser tab switch) and
-      // ⌘+ aren't swallowed.
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-        const i = parseInt(e.key, 10) - 1;
-        if (i < launcherState.items.length) {
-          return handle(() => {
-            launcherState.selected = i;
-            activateLauncherSelection();
-          });
-        }
-      }
+      return; // launcher's own listener handles keys
     }
     if (!editorEl.classList.contains('hidden')) {
       return; // editor's own listener handles keys
