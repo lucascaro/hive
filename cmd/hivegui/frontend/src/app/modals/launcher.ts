@@ -71,8 +71,15 @@ let listEl: HTMLElement | null = null;
 // doesn't catch a reopen, because the launcher is visible again by then.
 let openGeneration = 0;
 // The usage-ordered agent list ListAgents returned, kept so filtering
-// re-renders from memory instead of refetching.
+// re-renders from memory instead of refetching. Reset per open, not
+// just per close: a ⌘T over an already-open launcher would otherwise
+// filter the previous opening's list until the new response lands.
 let allAgents: main.AgentInfo[] = [];
+// True from the moment a request is issued until it settles. Without
+// it, an empty allAgents is indistinguishable from "the query excluded
+// everything", and the first character typed during the round trip
+// would replace the loading row with "No agents match".
+let agentsLoading = false;
 export const launcherState: {
   items: LauncherItem[];
   selected: number;
@@ -188,11 +195,16 @@ function renderLauncherList() {
     : allAgents;
   if (matches.length === 0) {
     const none = document.createElement('div');
-    none.className = 'launcher-empty';
-    // Two different facts: the daemon returned nothing, vs the query
-    // excluded everything. Saying "No agents found" while filtering
-    // would read as an agent list that broke.
-    none.textContent = q ? 'No agents match' : 'No agents found';
+    // Three different facts, and conflating any two of them misreads as
+    // a broken agent list: the request is still in flight, the daemon
+    // returned nothing, or the query excluded everything.
+    if (agentsLoading) {
+      none.className = 'launcher-loading';
+      none.textContent = 'Loading agents…';
+    } else {
+      none.className = 'launcher-empty';
+      none.textContent = q ? 'No agents match' : 'No agents found';
+    }
     listEl.appendChild(none);
   }
   matches.forEach((a, idx) => {
@@ -295,10 +307,14 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   listEl = document.createElement('div');
   listEl.className = 'launcher-list';
   launcherEl.append(searchEl, listEl);
-  const loading = document.createElement('div');
-  loading.className = 'launcher-loading';
-  loading.textContent = 'Loading agents…';
-  listEl.appendChild(loading);
+  // Reset before the first render so neither the previous opening's
+  // agents nor its loading state leak into this one.
+  allAgents = [];
+  agentsLoading = true;
+  // Draws the loading row through the same path every keystroke uses,
+  // so typing during the round trip can't render something the initial
+  // paint wouldn't have.
+  renderLauncherList();
   launcherEl.classList.remove('hidden');
   // Drop the active tile's visual focus — modal owns the keyboard.
   deps.setFocusedTile(null);
@@ -315,6 +331,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
       // ...or reopened it, in which case this response belongs to a
       // launcher that no longer exists and a newer request owns the DOM.
       if (gen !== openGeneration) return;
+      agentsLoading = false;
 
       // Worktree toggle row at the top of the menu. Disabled (and
       // visually muted) when the active project's cwd isn't a git
@@ -403,6 +420,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
       // reopened. Still reported — the failure was real.
       reportFailure('launcher')(err);
       if (gen !== openGeneration) return;
+      agentsLoading = false;
       closeLauncher();
     });
 }
@@ -532,6 +550,24 @@ export function initLauncher(injected: LauncherDeps) {
     if (target === searchEl) return;
     if (target?.closest('.launcher-worktree')) return;
     e.preventDefault();
+  });
+  // Focus leaving the launcher closes it. keyboard.js now bails out for
+  // the whole window whenever #launcher is visible, and this module's
+  // own keydown listener only fires while focus is inside it — so a
+  // launcher that stays visible after focus moves away is a launcher
+  // nobody is listening for, Escape included.
+  //
+  // The .project-actions buttons are how you get there: each one calls
+  // stopPropagation, so the outside-click handler below never sees them
+  // (its .project-actions exemption has always been unreachable for
+  // that reason), but clicking ✎ or ✕ still moves focus out.
+  //
+  // relatedTarget null means focus went nowhere — that's closeLauncher's
+  // own blur, so ignore it rather than recursing.
+  launcherEl.addEventListener('focusout', (e) => {
+    if (launcherEl.classList.contains('hidden')) return;
+    const next = (e as FocusEvent).relatedTarget as Node | null;
+    if (next && !launcherEl.contains(next)) closeLauncher();
   });
   document.addEventListener('click', (e) => {
     const target = e.target as Element | null;

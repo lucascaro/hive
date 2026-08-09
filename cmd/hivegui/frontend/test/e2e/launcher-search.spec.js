@@ -97,6 +97,24 @@ test('closing the launcher restores terminal focus even from the worktree checkb
   await expect.poll(helperFocused).toBe(true);
 });
 
+// keyboard.js bails out unconditionally while the launcher is open and
+// the launcher's own listener is scoped to #launcher, so any click that
+// leaves the launcher visible while moving focus out of it would strand
+// the keyboard with no handler at all — Escape included.
+test('clicking a project action other than + closes the launcher', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+t`);
+  await expect(page.locator('#launcher')).toBeVisible();
+
+  await page
+    .locator('#projects .project-actions button', { hasText: '✎' })
+    .first()
+    .click();
+  await expect(page.locator('#launcher')).toBeHidden();
+});
+
 test('a query that matches nothing shows the empty row and Enter does nothing', async ({
   page,
 }) => {

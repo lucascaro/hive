@@ -213,6 +213,34 @@ describe('launcher filter box', () => {
     );
   });
 
+  it('keeps showing the loading row when the user types before agents arrive', async () => {
+    openLauncher('p1');
+    expect(launcher().querySelector('.launcher-loading')).not.toBeNull();
+    // The keystroke re-renders the list. While the request is in flight
+    // there are no agents to filter, and an empty result must not be
+    // reported as "No agents match" — the list isn't in yet.
+    type('cla');
+    expect(launcher().querySelector('.launcher-loading')?.textContent).toBe(
+      'Loading agents…',
+    );
+    expect(launcher().querySelector('.launcher-empty')).toBeNull();
+    resolveAgents(AGENTS);
+    await agentsPromise;
+    await Promise.resolve();
+    expect(launcher().querySelector('.launcher-loading')).toBeNull();
+    expect(names()).toEqual(['Claude']);
+  });
+
+  it('does not filter the previous opening list when reopened', async () => {
+    await open();
+    // Reopen without closing: until the new response lands there is no
+    // list yet, so the stale one must not be what the query filters.
+    openLauncher('p1');
+    type('cla');
+    expect(rows()).toHaveLength(0);
+    expect(launcher().querySelector('.launcher-loading')).not.toBeNull();
+  });
+
   it('honors a query typed while ListAgents is still in flight', async () => {
     openLauncher('p1');
     // Still loading — the filter box is already on screen and focused.
@@ -326,10 +354,14 @@ describe('launcher keyboard', () => {
     await open();
     searchBox().focus();
     const box = searchBox();
+    // Cleared AFTER opening: beforeEach calls closeLauncher(), which
+    // already ran refocusActiveTerm once, so a bare toHaveBeenCalled()
+    // here would pass even if Escape did nothing.
+    refocusActiveTerm.mockClear();
     press('Escape');
     expect(launcher().classList.contains('hidden')).toBe(true);
     expect(document.activeElement).not.toBe(box);
-    expect(refocusActiveTerm).toHaveBeenCalled();
+    expect(refocusActiveTerm).toHaveBeenCalledTimes(1);
   });
 });
 
