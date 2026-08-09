@@ -73,7 +73,7 @@ test('a digit selects a row only while the filter box is empty', async ({
 // e2e layer: the bug only exists because hiding an element does not
 // synchronously clear document.activeElement in a real engine, and
 // jsdom has no layout, so the dom suite's Escape test passes either way.
-test('closing the launcher restores terminal focus even from the worktree checkbox', async ({
+test('the worktree checkbox toggles without stealing focus from the filter box', async ({
   page,
 }) => {
   await boot(page);
@@ -83,15 +83,23 @@ test('closing the launcher restores terminal focus even from the worktree checkb
     );
 
   await page.keyboard.press(`${mod}+t`);
-  await expect(page.locator('#launcher .launcher-search')).toBeFocused();
-  // The mousedown handler deliberately exempts the worktree row so its
-  // checkbox stays clickable — which means focus really does land on
-  // the checkbox, not the filter box.
-  await page.locator('#launcher .launcher-worktree input').click();
-  await expect(
-    page.locator('#launcher .launcher-worktree input'),
-  ).toBeFocused();
+  const search = page.locator('#launcher .launcher-search');
+  const box = page.locator('#launcher .launcher-worktree input');
+  await expect(search).toBeFocused();
+  const wasChecked = await box.isChecked();
 
+  // mousedown preventDefault blocks the focus shift but not the click
+  // activation, so the box still toggles...
+  await box.click();
+  await expect(box).toBeChecked({ checked: !wasChecked });
+  // ...and the filter box still owns the keyboard, so search-as-you-type
+  // keeps working after touching the checkbox.
+  await expect(search).toBeFocused();
+  await page.keyboard.type('cla');
+  await expect(search).toHaveValue('cla');
+  await expect(page.locator('#launcher .launcher-item')).toHaveCount(1);
+
+  // And closing still hands the keyboard back to the terminal.
   await page.keyboard.press('Escape');
   await expect(page.locator('#launcher')).toBeHidden();
   await expect.poll(helperFocused).toBe(true);

@@ -426,16 +426,22 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
 }
 
 export function closeLauncher() {
+  // Idempotent: an outside click on a focusable element closes twice —
+  // once from focusout at mousedown, once from the document click
+  // handler — and running refocusActiveTerm() twice is pointless work
+  // against the terminal. Also makes the ListAgents rejection path safe
+  // when it fires against a launcher that is already closed.
+  if (launcherEl.classList.contains('hidden')) return;
   // Blur first: refocusActiveTerm() bails when activeElement is an
   // INPUT (lib/focus.ts), and hiding the launcher via CSS does not
   // synchronously move focus out of it in a real engine.
   //
-  // Whatever holds focus, not just the filter box — the worktree
-  // checkbox is exempt from the mousedown preventDefault below, so
-  // clicking it really does take focus, and it is an <input> too. Only
-  // blurring searchEl left the terminal unfocused after ⌘T → click the
-  // checkbox → Escape. jsdom can't catch that one (no layout), so the
-  // regression test for it lives in test/e2e/launcher-search.spec.js.
+  // Whatever holds focus, not just searchEl. In practice the mousedown
+  // handler below keeps focus on searchEl, so those are the same thing
+  // today — this stays general so that adding one focusable control to
+  // the popup later can't quietly resurrect the bug it was written for
+  // (terminal never refocused, because activeElement was still an
+  // <input> the launcher owned).
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && launcherEl.contains(focused))
     focused.blur();
@@ -540,15 +546,21 @@ export function initLauncher(injected: LauncherDeps) {
       }
     }
   });
-  // Clicking an agent row would otherwise blur the filter box and
-  // strand the keyboard outside #launcher, where the listener above
-  // never sees it. Rows aren't focusable, so suppressing the default
-  // mousedown focus shift costs nothing; the row's click handler still
-  // fires. The worktree row is exempt — its checkbox needs the default.
+  // Nothing but the filter box may take focus. Clicking anything else
+  // would blur it, and the keydown listener above only fires while
+  // focus is inside #launcher — so the search would silently stop
+  // responding to typing.
+  //
+  // preventDefault on mousedown suppresses only the focus shift and
+  // text selection: click still fires, so agent rows still launch and
+  // the worktree checkbox still toggles (a checkbox toggles on click
+  // activation, not on focus). The checkbox used to be exempt here,
+  // which meant clicking it moved focus onto it and every subsequent
+  // keystroke went to the checkbox instead of the query — the list just
+  // stopped narrowing, with nothing on screen to explain why.
   launcherEl.addEventListener('mousedown', (e) => {
     const target = e.target as Element | null;
     if (target === searchEl) return;
-    if (target?.closest('.launcher-worktree')) return;
     e.preventDefault();
   });
   // Focus leaving the launcher closes it. keyboard.js now bails out for
