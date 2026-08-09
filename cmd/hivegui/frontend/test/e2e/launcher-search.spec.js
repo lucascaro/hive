@@ -69,6 +69,34 @@ test('a digit selects a row only while the filter box is empty', async ({
   await expect(launcher).toBeHidden();
 });
 
+// Focus restore after the launcher closes. This one MUST live in the
+// e2e layer: the bug only exists because hiding an element does not
+// synchronously clear document.activeElement in a real engine, and
+// jsdom has no layout, so the dom suite's Escape test passes either way.
+test('closing the launcher restores terminal focus even from the worktree checkbox', async ({
+  page,
+}) => {
+  await boot(page);
+  const helperFocused = () =>
+    page.evaluate(() =>
+      document.activeElement?.classList?.contains('xterm-helper-textarea'),
+    );
+
+  await page.keyboard.press(`${mod}+t`);
+  await expect(page.locator('#launcher .launcher-search')).toBeFocused();
+  // The mousedown handler deliberately exempts the worktree row so its
+  // checkbox stays clickable — which means focus really does land on
+  // the checkbox, not the filter box.
+  await page.locator('#launcher .launcher-worktree input').click();
+  await expect(
+    page.locator('#launcher .launcher-worktree input'),
+  ).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#launcher')).toBeHidden();
+  await expect.poll(helperFocused).toBe(true);
+});
+
 test('a query that matches nothing shows the empty row and Enter does nothing', async ({
   page,
 }) => {

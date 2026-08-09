@@ -346,6 +346,12 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
         if (projCwd) {
           IsGitRepo(projCwd)
             .then((ok) => {
+              // Same staleness rule as ListAgents above: without this, a
+              // late "not a git repo" answer for the project this open
+              // was anchored to could set useWorktree = false under a
+              // launcher since reopened on a git-backed project, leaving
+              // a checked box whose state says off.
+              if (gen !== openGeneration) return;
               if (!ok) {
                 wtRow.classList.add('disabled');
                 wtBox.disabled = true;
@@ -403,10 +409,18 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
 
 export function closeLauncher() {
   // Blur first: refocusActiveTerm() bails when activeElement is an
-  // INPUT, and hiding the launcher via CSS doesn't move focus off the
-  // filter box. Optional because this is reachable before any open —
-  // the ListAgents rejection path closes a launcher it never filled.
-  searchEl?.blur();
+  // INPUT (lib/focus.ts), and hiding the launcher via CSS does not
+  // synchronously move focus out of it in a real engine.
+  //
+  // Whatever holds focus, not just the filter box — the worktree
+  // checkbox is exempt from the mousedown preventDefault below, so
+  // clicking it really does take focus, and it is an <input> too. Only
+  // blurring searchEl left the terminal unfocused after ⌘T → click the
+  // checkbox → Escape. jsdom can't catch that one (no layout), so the
+  // regression test for it lives in test/e2e/launcher-search.spec.js.
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && launcherEl.contains(focused))
+    focused.blur();
   launcherEl.classList.add('hidden');
   searchEl = null;
   listEl = null;
