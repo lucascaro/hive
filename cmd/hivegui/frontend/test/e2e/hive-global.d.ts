@@ -2,6 +2,12 @@
 // src/globals.d.ts on purpose: nothing under src/ reads them, and the types
 // belong beside the harnesses that inject them.
 //
+// Location is documentation, not enforcement. This file is in the program
+// (tsconfig includes test/e2e/**/*), so its `declare global` block is visible
+// to src/** too — `window.__hive` is non-optional and `process` exists
+// everywhere, not just here. Nothing under src/ touches either today, so it
+// is inert; do not mistake the directory for a scope.
+//
 // `__hive` is injected by BOTH bridges, and their surfaces differ:
 // test/e2e/wails-mock.ts assigns all thirteen members, test/e2e-real/
 // wails-bridge.ts only the five that don't need a scripted state machine
@@ -46,13 +52,20 @@ declare global {
     __reflowReady?: boolean;
   }
 
-  // Playwright specs run in node and read process.env / process.platform, but
-  // tsconfig's `types` is ["vite/client"] — deliberately no @types/node. That
-  // array is program-global, so pulling node types in to reach `process` would
-  // also swap setTimeout's return type under src/ (NodeJS.Timeout vs number)
-  // and put errors in files this wave never touched. Four lines instead.
+  // Playwright specs run in node and read process.platform (and process.env
+  // once wave 7c converts test/e2e-real), but tsconfig's `types` is
+  // ["vite/client"] — deliberately no @types/node. That array is
+  // program-global, so pulling node types in to reach `process` would also
+  // swap setTimeout's return type under src/ (NodeJS.Timeout vs number) and
+  // put errors in files this wave never touched. A few lines instead.
   const process: {
-    platform: string;
+    // A union, not `string`, and that is the whole point of hand-writing it:
+    // `process.platform === 'darwin'` is the modifier-key switch in 16 specs,
+    // and against `string` a typo ('Darwin', 'macos') compiles clean, sends
+    // Control instead of Meta on every mac run, and still passes on Linux CI
+    // — so the mac-only path silently stops being exercised. Narrowed, that
+    // typo is TS2367. Listed values are this repo's CI matrix.
+    platform: 'darwin' | 'linux' | 'win32';
     env: Record<string, string | undefined>;
   };
 }
