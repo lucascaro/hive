@@ -68,8 +68,11 @@ export interface ProjectInfo {
 export interface TermTile extends ReplayFlags {
   host: HTMLElement;
   termTitle?: string;
-  attached?: boolean;
-  needsReattach?: boolean;
+  // Required, not optional: session-term.js:426,432 always initializes
+  // both and every reader branches on the value, never on absence
+  // (scrollback.ts:28 states the rule).
+  attached: boolean;
+  needsReattach: boolean;
   // Timestamp of the last replay event, used by the scroll-jump
   // detector to label a following up-move (session-term.js:594,728).
   _lastReplayTs?: number;
