@@ -73,6 +73,7 @@ function fakeTerm(): TermTile {
     show() {},
     hide() {},
     rebaselineReplayCols() {},
+    _onBodyResize() {},
     setInfo() {},
     setProject() {},
     setDead() {},

@@ -20,8 +20,9 @@ import {
   OpenURL,
   UpdateSession,
 } from '../bridge.js';
-import { state } from './state.js';
+import { state, type SessionInfo } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
+import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
 import { isMac } from '../lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from '../lib/keymap.js';
@@ -35,6 +36,7 @@ import {
   acquireWebglSlot,
   releaseWebglSlot,
   recordWebglLoss,
+  type WebglLossState,
 } from '../lib/webgl-budget.js';
 import { LogFrontend } from '../bridge.js';
 
@@ -47,7 +49,7 @@ const WEBGL_LOSS_STORM_WINDOW_MS = 10000;
 
 // Best-effort disk log — the webview console is /dev/null under
 // LaunchServices, so renderer/freeze evidence has nowhere else to land.
-function feLog(msg) {
+function feLog(msg: string) {
   try {
     LogFrontend(msg);
   } catch {
@@ -66,6 +68,7 @@ import { classifyViewportMove } from '../lib/scroll-debug.js';
 import {
   wheelToScrollLines,
   shouldScrollViewport,
+  type WheelEventLike,
 } from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
 import {
@@ -94,7 +97,7 @@ function nowMs() {
 // radius, used by both the link-activation and click-to-position
 // hit-tests below.
 const CLICK_RADIUS_SQ = 25;
-function isClick(dx, dy) {
+function isClick(dx: number, dy: number) {
   return dx * dx + dy * dy < CLICK_RADIUS_SQ;
 }
 
@@ -106,8 +109,91 @@ const STICKY_BOTTOM_LINES = 2;
 // count as user-driven (vs parse-driven cap-trim drift).
 const USER_SCROLL_GRACE_MS = 250;
 
+// The link the Linkifier currently has under the cursor, reached through
+// xterm's private `_core`: the public API exposes no way to ask "is a
+// link here?", and the mouse-protocol workaround below needs exactly that.
+interface TermLink {
+  text: string;
+  activate(event: MouseEvent, text: string): void;
+}
+type LinkifierPeek = {
+  _core?: { linkifier?: { currentLink?: { link?: TermLink } | null } | null };
+};
+
 export class SessionTerm {
-  constructor(info) {
+  info: SessionInfo;
+  decoder: TextDecoder;
+  host: HTMLDivElement;
+  header: HTMLDivElement;
+  body: HTMLDivElement;
+  tileColor: HTMLSpanElement;
+  tileName: HTMLSpanElement;
+  tileWorktree: HTMLSpanElement;
+  tileProject: HTMLSpanElement;
+  tileTermTitle: HTMLSpanElement;
+  tileMinimize: HTMLButtonElement;
+  term: Terminal;
+  fit: FitAddon;
+  ro: ResizeObserver;
+  attached: boolean;
+  needsReattach: boolean;
+  termTitle: string;
+  // Assigned in the constructor body (it closes over `this.info`), so no
+  // initializer — unlike the fields below, which are written by helpers
+  // the constructor calls and would otherwise trip strictPropertyInitialization.
+  _writePty: (data: string) => void;
+
+  // Dead-session overlay.
+  deadOverlay: HTMLDivElement;
+  deadCloseBtn: HTMLButtonElement;
+  deadDismissBtn: HTMLButtonElement;
+  deadOverlayShown: boolean;
+
+  // Renderer.
+  webgl: WebglAddon | null = null;
+  _hasWebglSlot = false;
+  _webglGaveUp = false;
+  _webglLoss?: WebglLossState;
+  _dprWatcher: { teardown(): void } | null = null;
+  _onVisibility: (() => void) | null = null;
+
+  // Attach / geometry.
+  _pendingAttach = false;
+  _revealRaf = 0;
+  // Optional (not `= 0`) because the code branches on `=== undefined` to
+  // mean "no baseline measured yet".
+  _replayBaselineCols?: number;
+  _replayTimer = 0;
+  // Deleted, not zeroed, at every cancel site — so it must be optional.
+  _replayWantsBottom?: boolean;
+  _replaysInFlight = 0;
+
+  // Scroll follow-intent.
+  _followBottom = true;
+  _lastUserScrollTs = -Infinity;
+  _lastReplayTs = -Infinity;
+  _lastViewportY = 0;
+  _repinning = false;
+  _pointerDown = false;
+  _onWindowMouseUp: (() => void) | null = null;
+
+  // Link / click-to-position hit-testing.
+  _pendingLink: TermLink | null = null;
+  _pendingLinkX = 0;
+  _pendingLinkY = 0;
+  _pendingClick = false;
+  _pendingClickX = 0;
+  _pendingClickY = 0;
+
+  _renameInput: HTMLInputElement | null = null;
+
+  // writeData burst probe.
+  _wroteBytes = 0;
+  _wroteCount = 0;
+  _writeWindowStart?: number;
+  _writeBurstLogged = false;
+
+  constructor(info: SessionInfo) {
     this.info = info;
     // Per-session UTF-8 decoder. Streaming mode buffers partial multi-byte
     // sequences at chunk boundaries; sharing one decoder across sessions
@@ -128,7 +214,7 @@ export class SessionTerm {
     this.tileColor.className = 'tile-color';
     this.tileName = document.createElement('span');
     this.tileName.className = 'tile-name';
-    this.tileName.textContent = info.name;
+    this.tileName.textContent = info.name ?? '';
     this.tileWorktree = document.createElement('span');
     this.tileWorktree.className = 'worktree-glyph';
     this.tileWorktree.textContent = '⎇';
@@ -175,7 +261,7 @@ export class SessionTerm {
     this.body.className = 'term-body';
 
     this.host.append(this.header, this.body);
-    document.getElementById('terms').appendChild(this.host);
+    mustEl('terms').appendChild(this.host);
 
     this.term = new Terminal({
       fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
@@ -246,12 +332,13 @@ export class SessionTerm {
     // is under the cursor, suppress the event so it doesn't reach the
     // mouse protocol handler, letting the Linkifier's own handlers
     // process it and call activate.
-    const screen = this.body.querySelector('.xterm-screen');
+    const screen = this.body.querySelector<HTMLElement>('.xterm-screen');
     if (screen) {
       screen.addEventListener(
         'mousedown',
         (e) => {
-          const link = this.term._core?.linkifier?.currentLink;
+          const link = (this.term as Terminal & LinkifierPeek)._core?.linkifier
+            ?.currentLink;
           if (link?.link) {
             this._pendingLink = link.link;
             this._pendingLinkX = e.clientX;
@@ -571,7 +658,7 @@ export class SessionTerm {
             id: this.info.id,
             deltaY: e.deltaY,
             deltaMode: e.deltaMode,
-            wheelDeltaY: e.wheelDeltaY,
+            wheelDeltaY: (e as WheelEventLike).wheelDeltaY,
             lines,
           });
         }
@@ -843,21 +930,26 @@ export class SessionTerm {
       scrollTrace.rec('webgl-recover', { id: this.info.id, reattached });
   }
 
-  _installRendererRecoveryListeners() {
-    // Clear the glyph atlas and force a full repaint. Cheap; safe to
-    // call when no WebGL addon is loaded (DOM renderer ignores the
-    // atlas hint and still benefits from the refresh).
-    this._refreshRenderer = () => {
-      if (scrollTrace.rec.enabled)
-        scrollTrace.rec('renderer-refresh', { id: this.info.id });
-      try {
-        this.webgl?.clearTextureAtlas();
-      } catch {}
-      try {
-        this.term.refresh(0, this.term.rows - 1);
-      } catch {}
-    };
+  // Clear the glyph atlas and force a full repaint. Cheap; safe to
+  // call when no WebGL addon is loaded (DOM renderer ignores the
+  // atlas hint and still benefits from the refresh).
+  //
+  // A method rather than the constructor-assigned closure it used to be:
+  // it is only ever reached through `this`, so the field bought nothing
+  // and would have needed a throwaway initializer to satisfy
+  // strictPropertyInitialization.
+  _refreshRenderer() {
+    if (scrollTrace.rec.enabled)
+      scrollTrace.rec('renderer-refresh', { id: this.info.id });
+    try {
+      this.webgl?.clearTextureAtlas();
+    } catch {}
+    try {
+      this.term.refresh(0, this.term.rows - 1);
+    } catch {}
+  }
 
+  _installRendererRecoveryListeners() {
     // DPR change: move-to-different-display or OS zoom. A
     // `(resolution: Xdppx)` MQL only fires `change` on the single
     // transition away from X, so the helper rebinds against the new
@@ -878,10 +970,10 @@ export class SessionTerm {
     document.addEventListener('visibilitychange', this._onVisibility);
   }
 
-  setInfo(info) {
+  setInfo(info: SessionInfo) {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
-    this.tileName.textContent = info.name;
+    this.tileName.textContent = info.name ?? '';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
     const wtBranch = info.worktreeBranch ?? info.worktree_branch;
     if (wtBranch) {
@@ -916,13 +1008,16 @@ export class SessionTerm {
     if (this._renameInput) return; // already editing
     beginInlineRename({
       className: 'tile-name-input',
-      value: this.info.name,
+      value: this.info.name ?? '',
       mount: (input) => {
         // Set the reentrancy guard here (mount runs before focus/select)
         // to match the original's ordering: guard set, then focus stolen.
         this._renameInput = input;
         this.tileName.style.display = 'none';
-        this.tileName.parentNode.insertBefore(input, this.tileName);
+        // `this.header` rather than `tileName.parentNode`: the span is
+        // appended to the header in the constructor and never reparented,
+        // so this is the same node with no nullable indirection.
+        this.header.insertBefore(input, this.tileName);
       },
       // Drop the visual focus border before stealing keyboard focus —
       // setFocusedTile is the only writer of .term-focused, so without
@@ -941,7 +1036,7 @@ export class SessionTerm {
     });
   }
 
-  setProject(name, color) {
+  setProject(name?: string, color?: string) {
     this.tileProject.textContent = name || '';
     this.host.style.setProperty('--project-color', color || '#888');
   }
@@ -1145,7 +1240,7 @@ export class SessionTerm {
   // re-fitted, so triggering shouldRequestReplay would be spurious and
   // visibly drops or duplicates content. Pure window resize is handled
   // by the threshold path in _onBodyResize and must not call this.
-  rebaselineReplayCols(_reason) {
+  rebaselineReplayCols(_reason: string) {
     applyRebaseline(this);
   }
 
@@ -1209,7 +1304,7 @@ export class SessionTerm {
     }
   }
 
-  writeData(b64) {
+  writeData(b64: string) {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -1262,7 +1357,7 @@ export class SessionTerm {
     this.host.remove();
   }
 
-  setDead(isDead, reason) {
+  setDead(isDead: boolean, reason?: string) {
     this.deadOverlayShown = isDead;
     this.deadOverlay.hidden = !isDead;
     this.host.classList.toggle('dead', isDead);
@@ -1300,7 +1395,11 @@ export class SessionTerm {
 
 export function applyFontSize() {
   for (const st of state.terms.values()) {
-    st.term.options.fontSize = state.fontSize;
+    // Guarded rather than `st.term.options.fontSize = …`: TermTile's `term`
+    // is optional because the DOM-test stubs omit it. Every real tile has
+    // one, so this is the same write on every path that matters.
+    const opts = st.term?.options;
+    if (opts) opts.fontSize = state.fontSize;
     // Body box doesn't change on font-size change, so ResizeObserver
     // won't fire — call the resize handler explicitly so fit.fit()
     // recomputes (cols, rows) from new char metrics.
@@ -1309,7 +1408,7 @@ export function applyFontSize() {
   localStorage.setItem('hive.fontSize', String(state.fontSize));
 }
 
-export function bumpFontSize(delta) {
+export function bumpFontSize(delta: number) {
   const next = clampFont(state.fontSize + delta);
   if (next === state.fontSize) return;
   state.fontSize = next;
@@ -1326,7 +1425,7 @@ export function resetFontSize() {
   flashStatus(`font ${state.fontSize}px`);
 }
 
-export function ensureTerm(info) {
+export function ensureTerm(info: SessionInfo) {
   let st = state.terms.get(info.id);
   if (!st) {
     st = new SessionTerm(info);

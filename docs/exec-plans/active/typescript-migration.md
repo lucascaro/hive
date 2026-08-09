@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–4 merged, wave 5 done; wave 6 next)
+- **Stage:** IMPLEMENT (waves 1–5 merged, wave 6 done; wave 7 next — the last)
 - **Status:** active
 
 ## Summary
@@ -142,8 +142,10 @@ Wave notes:
 - **6** — split into 3 PRs, not 2; no cycle exists. **6a** (landed, #265): `events`,
   `test/dom/{events-focus,restart-hive}.test` — 67 errors, all mechanical. **6b** (landed,
   #266): `keyboard` + all three of the remaining DOM tests, which import `keyboard.js` and
-  nothing from `session-term.js`, so they belong with it. **6c**: `session-term.js`
-  (1,333 LOC) alone — the hardest file; expect the bulk of the errors.
+  nothing from `session-term.js`, so they belong with it. **6c** (landed):
+  `session-term.js` (1,333 LOC) alone — the hardest file, and it did carry the
+  bulk of the errors (388), though 352 were one missing-field-declaration
+  error repeated across 53 fields.
 - **7** — last wave. No strictness ramp follows. Also carries the **cross-language
   stale-path sweep**: a rename here leaves dead paths in files no wave touches — Go
   comments (`cmd/hivegui/menu_darwin{,_test}.go`), `AGENTS.md`'s Keybindings Policy,
@@ -566,6 +568,84 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
   Playwright mock 79 passed + 1 skipped (unchanged). The **`dev-iso.sh`
   GUI smoke was run** and passed, clearing half of wave 6's debt —
   `session-term` still owes its own in 6c.
+
+- **2026-08-08** — Wave 6c complete: `session-term.ts` (1,333 LOC), the last
+  file in wave 6. 388 errors after the `git mv`, but **352 of them were one
+  error repeated**: `TS2339 Property 'x' does not exist on type 'SessionTerm'`
+  across 53 distinct fields. A class body is not a type — every field a JS
+  class assigns through `this` has to be declared. One declaration block took
+  the count 388 → 42, and the remaining 42 were the usual implicit-anys.
+  **This is the shape of every remaining class conversion**: count the
+  distinct field names, not the errors.
+  - **`strictPropertyInitialization` decides where a field may be written.**
+    Fields assigned in the constructor body need no initializer; fields
+    written by a helper the constructor calls (`_attachWebgl`,
+    `_installRendererRecoveryListeners`) are invisible to the check and need
+    one. Rather than sprinkle throwaway defaults, `_refreshRenderer` became a
+    real **method** — it was a constructor-assigned closure only ever reached
+    through `this`, so the field bought nothing. `_dprWatcher` /
+    `_onVisibility` / `_onWindowMouseUp` stay fields (`removeEventListener`
+    needs the stable reference) and take `| null = null`, which is what
+    `destroy()`'s guards already assumed.
+  - **Optional vs. initialized is dictated by `delete`.** `_replayWantsBottom`
+    must be `?:` because the class deletes it; `_replayBaselineCols` because
+    the code reads `=== undefined` as "never measured". `_replayTimer` is
+    `= 0` — it is zeroed, never deleted, and 0 is the falsy the `if` already
+    relied on. Same rule as wave 2's: optional means the code branches on
+    absence.
+  - **`TermTile` survived, and gained exactly two members.** The plan floated
+    replacing it with `SessionTerm`'s own type; that was tried in thought and
+    dropped — `state.terms: Map<string, SessionTerm>` would force every DOM
+    test stub to spell out 53 fields instead of 16. Instead `_onBodyResize()`
+    and `term.options` were added, both genuinely present on every tile in the
+    map, and `SessionTerm` structurally satisfies the interface with no cast —
+    which is the assignability check `state.terms.set()` performs for free.
+    The wave-6b `fakeTerm()` did exactly what its comment promised: adding
+    `_onBodyResize` surfaced as one compile error there.
+  - **Three edits that are not annotation-only**, all where `tsc` saw a
+    nullable the runtime cannot produce. `getElementById('terms')` →
+    `mustEl('terms')` (function body, 6b's precedent). `tileName.parentNode
+    .insertBefore` → `this.header.insertBefore` — same node, the span is
+    appended in the constructor and never reparented, and the nullable
+    disappears rather than being asserted away. `applyFontSize` guards
+    `st.term?.options` because `TermTile.term` is optional *for the stubs'
+    sake*; every real tile has one, so it is the same write on every path
+    that matters.
+  - **Two casts, both narrow and commented.** `this.term._core?.linkifier
+    ?.currentLink` goes through a local `LinkifierPeek` type — the public
+    xterm API has no "is a link under the cursor?" query and the
+    mouse-reporting workaround needs one. `e.wheelDeltaY` in the wheel trace
+    reuses `WheelEventLike` from `lib/wheel-scroll.ts`, which already exists
+    for exactly this non-standard field. `querySelector<HTMLElement>` fixes
+    the `.xterm-screen` handlers: `Element.addEventListener` has no
+    `HTMLElementEventMap` overload, so every `e` was `Event` and every
+    `clientX` an error.
+
+  Gates: typecheck/build/biome green, vitest 344 in 33 files (unchanged),
+  Playwright mock 84 passed + 1 skipped — re-measured on the stashed baseline
+  in this same run, not copied from an earlier wave. e2e-real 7 passed /
+  5 failed, the same 5 waves 4/5a/5b recorded against `main`. Non-vacuity
+  proved with a planted `const _probe: string = DEFAULT_FONT_SIZE` (TS2322).
+
+  The **`dev-iso.sh` GUI smoke was run** and passed, clearing wave 6's
+  remaining debt. Two halves, verified separately.
+
+  The automated half, from the frontend disk log: the whole boot path on a real
+  WKWebView — construction, `ensureAttached` (fit + OpenSession), the initial
+  `writeData` burst, `_onBodyResize` firing a `replay-skip` with
+  `following:true` when a second tile reflowed the grid, and
+  `replay-restore` — with no error, panic, or renderer fallback logged.
+  That covers the constructor, the attach path and the resize/replay state
+  machine, which is where the field-declaration work could plausibly have
+  broken something.
+
+  The input surface — wheel scrolling in a full buffer, click-to-position,
+  link activation, ⌘Backspace / Shift+Enter / Ctrl+Shift+C-V-A, dblclick
+  rename on a tile name, the dead-session overlay — is not reachable from a
+  log and was **checked by hand by the user** in the same isolated app.
+  Recorded because a WKWebView window can't be driven from the agent side:
+  every later wave's input-path smoke needs a human at the keyboard, or it
+  isn't a smoke.
 
 ## Open questions
 
