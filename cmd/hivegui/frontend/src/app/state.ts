@@ -12,6 +12,7 @@ import {
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { ViewMode } from '../lib/view.js';
+import type { ReplayFlags, ReplayXterm } from '../lib/scrollback.js';
 
 // Wire payloads from the daemon (internal/wire/control.go) are
 // snake_case; some paths also carry camelCase, so both spellings are
@@ -59,18 +60,31 @@ export interface ProjectInfo {
 // which view.ts relies on at snapVisibleTermsToBottom(). The shared
 // `term` key is also what keeps that assignment out of TS's weak-type
 // check, since every SnapTarget member is optional.
-export interface TermTile {
+//
+// Extends ReplayFlags and types `term` as ReplayXterm so a TermTile is
+// accepted where lib/scrollback.ts wants a ReplayTerm — events.ts hands
+// tiles straight to handleScrollbackEvent/abandonReplays, and the
+// alternative was a cast at each of those five call sites.
+export interface TermTile extends ReplayFlags {
   host: HTMLElement;
   termTitle?: string;
-  term?: {
-    focus?: () => void;
-    scrollToBottom?: () => void;
-    write?: (data: string, callback?: () => void) => void;
-  } | null;
+  attached?: boolean;
+  needsReattach?: boolean;
+  // Timestamp of the last replay event, used by the scroll-jump
+  // detector to label a following up-move (session-term.js:594,728).
+  _lastReplayTs?: number;
+  term?: (ReplayXterm & { focus?: () => void }) | null;
   show(): void;
   hide(): void;
   ensureAttached(): void;
   rebaselineReplayCols(reason: string): void;
+  setInfo(info: SessionInfo): void;
+  // Both params are optional because the implementation defaults them
+  // (`name || ''`, `color || '#888'`) and ProjectInfo's fields are optional.
+  setProject(name?: string, color?: string): void;
+  setDead(isDead: boolean, reason?: string): void;
+  writeData(b64: string): void;
+  destroy(): void;
 }
 
 export interface AppState {

@@ -8,6 +8,7 @@
 // This test drives the real handler through a real DOM 'focus' event
 // so any missed deps.* substitution in that path throws here.
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { createScrollTrace } from '../../src/lib/scroll-debug.js';
 
 // The bridge re-exports the Wails runtime, which doesn't exist under
 // vitest (the vite-plugin substitution only applies to the Playwright
@@ -51,7 +52,8 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
-let state, wireDaemonEvents;
+let state: typeof import('../../src/app/state.js').state;
+let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
 
 beforeAll(async () => {
   // dom.js dereferences #terms at import time; give it the singletons.
@@ -71,7 +73,10 @@ describe('wireDaemonEvents window-focus handler', () => {
       focusActiveTerm: vi.fn(),
       refocusActiveTerm,
       isDaemonRestarting: () => false,
-      scrollTrace: { rec: Object.assign(() => {}, { enabled: false }) },
+      // A real disabled tracer, not a hand-rolled `{ rec }` literal: the
+      // pty:data path also reads .count()/.counters, which the literal
+      // never had (wave 5b's view.ts lesson).
+      scrollTrace: createScrollTrace({ enabled: false }),
     });
 
     state.activeId = 'sess-1';

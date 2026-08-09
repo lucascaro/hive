@@ -13,22 +13,65 @@ import {
   LogFrontend,
 } from '../bridge.js';
 import { state, saveCollapsed } from './state.js';
+import type { SessionInfo, ProjectInfo } from './state.js';
 import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
 import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
+import { createScrollTrace } from '../lib/scroll-debug.js';
+import type { ScrollTrace } from '../lib/scroll-debug.js';
 
-let deps = {
+export interface EventsDeps {
+  switchTo: (id: string) => void;
+  renderMinimizedTray: () => void;
+  updateAppTitle: () => void;
+  focusActiveTerm: () => void;
+  refocusActiveTerm: () => void;
+  isDaemonRestarting: () => boolean;
+  // Unlike view.ts's Pick<…, 'rec' | 'count'>, the pty:data probe also
+  // reads `counters` directly.
+  scrollTrace: Pick<ScrollTrace, 'rec' | 'count' | 'counters'>;
+}
+
+// Pre-wireDaemonEvents stub. A real disabled tracer rather than a
+// hand-rolled `{ rec }` literal, same as view.ts: enabled:false
+// short-circuits inside rec/count, so the no-op behavior is identical
+// and the stub can't drift out of the interface.
+let deps: EventsDeps = {
   switchTo: () => {},
   renderMinimizedTray: () => {},
   updateAppTitle: () => {},
   focusActiveTerm: () => {},
   refocusActiveTerm: () => {},
   isDaemonRestarting: () => false,
-  scrollTrace: { rec: Object.assign(() => {}, { enabled: false }) },
+  scrollTrace: createScrollTrace({ enabled: false }),
 };
+
+// Wire payloads the daemon pushes over EventsOn. Hand-written for the
+// same reason SessionInfo is (state.ts): these cross as raw JSON, never
+// as a bound method's return, so they are absent from wailsjs/go/models.
+interface ProjectEvent {
+  kind: 'added' | 'removed' | 'updated';
+  project: ProjectInfo;
+}
+
+interface SessionEvent {
+  kind: 'added' | 'removed' | 'updated';
+  session: SessionInfo;
+}
+
+interface ControlError {
+  code?: string;
+  message?: string;
+  session_id?: string;
+}
+
+interface PtyError {
+  code?: string;
+  message?: string;
+}
 
 // Control-connection reconnect loop. Guarded so overlapping disconnect
 // events don't spawn parallel loops. Backoff climbs 500ms → 5s cap so a
@@ -73,7 +116,7 @@ async function reconnectControl() {
 // only on the transition from no-attention → attention, so a session
 // emitting bells in a tight loop doesn't spam the OS notification
 // center.
-export function onSessionBell(info) {
+export function onSessionBell(info: SessionInfo) {
   const isActive = info.id === state.activeId;
   const windowFocused = document.hasFocus();
   if (isActive && windowFocused) return;
@@ -89,7 +132,7 @@ export function onSessionBell(info) {
   if (!alreadyAttention) fireBellNotification(info);
 }
 
-export function clearAttention(sessionId) {
+export function clearAttention(sessionId: string) {
   if (state.attention.delete(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
     updateSidebarSelection();
@@ -102,7 +145,7 @@ export function clearAttention(sessionId) {
 // toast). The session id is passed as the tag so the OS can dedupe
 // repeated bells from the same session and the click handler knows
 // which session to switch to.
-function fireBellNotification(info) {
+function fireBellNotification(info: SessionInfo) {
   const proj = state.projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
@@ -119,7 +162,7 @@ function fireBellNotification(info) {
 // onSessionDeath fires once when a session transitions Alive→dead.
 // Shows the in-tile overlay, marks attention, and posts a desktop
 // notification distinct from a normal bell.
-function onSessionDeath(info) {
+function onSessionDeath(info: SessionInfo) {
   state.dismissedDead.delete(info.id);
   const t = state.terms.get(info.id);
   if (t) {
@@ -148,7 +191,7 @@ function onSessionDeath(info) {
   ).catch(() => {});
 }
 
-export function wireDaemonEvents(injected) {
+export function wireDaemonEvents(injected: EventsDeps) {
   deps = injected;
 
   // Whenever the window regains focus, clear the active session's
@@ -161,8 +204,8 @@ export function wireDaemonEvents(injected) {
     deps.refocusActiveTerm();
   });
 
-  EventsOn('project:list', (jsonStr) => {
-    const { projects } = JSON.parse(jsonStr);
+  EventsOn('project:list', (jsonStr: string) => {
+    const { projects } = JSON.parse(jsonStr) as { projects?: ProjectInfo[] };
     state.projects = projects || [];
     if (!state.currentProjectId && state.projects[0]) {
       state.currentProjectId = state.projects[0].id;
@@ -180,8 +223,8 @@ export function wireDaemonEvents(injected) {
     renderSidebar();
   });
 
-  EventsOn('project:event', (jsonStr) => {
-    const ev = JSON.parse(jsonStr);
+  EventsOn('project:event', (jsonStr: string) => {
+    const ev = JSON.parse(jsonStr) as ProjectEvent;
     const i = state.projects.findIndex((p) => p.id === ev.project.id);
     if (ev.kind === 'added') {
       if (i < 0) state.projects.push(ev.project);
@@ -213,7 +256,7 @@ export function wireDaemonEvents(injected) {
   // known value for this session and fires the death/revive side
   // effects on the boundary. First sight of a session (no prior entry)
   // just records the value without firing anything.
-  function processAliveTransition(info) {
+  function processAliveTransition(info: SessionInfo) {
     const prev = state.aliveById.get(info.id);
     state.aliveById.set(info.id, !!info.alive);
     if (prev === true && info.alive === false) {
@@ -229,7 +272,7 @@ export function wireDaemonEvents(injected) {
         // session's prompt lands on a clean screen instead of stacking on
         // the old cursor position.
         try {
-          t.term.reset();
+          t.term?.reset();
         } catch {}
         abandonReplays(t); // the wipe abandons any in-flight restream
         t.attached = false;
@@ -238,8 +281,8 @@ export function wireDaemonEvents(injected) {
     }
   }
 
-  EventsOn('session:list', (jsonStr) => {
-    const { sessions } = JSON.parse(jsonStr);
+  EventsOn('session:list', (jsonStr: string) => {
+    const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     state.sessions = sessions || [];
     for (const s of state.sessions) processAliveTransition(s);
     // Drop any minimized ids whose sessions no longer exist (e.g. after
@@ -256,8 +299,8 @@ export function wireDaemonEvents(injected) {
     }
   });
 
-  EventsOn('session:event', (jsonStr) => {
-    const ev = JSON.parse(jsonStr);
+  EventsOn('session:event', (jsonStr: string) => {
+    const ev = JSON.parse(jsonStr) as SessionEvent;
     const i = state.sessions.findIndex((s) => s.id === ev.session.id);
     if (ev.kind === 'added' || ev.kind === 'updated') {
       processAliveTransition(ev.session);
@@ -313,7 +356,7 @@ export function wireDaemonEvents(injected) {
         if (st.needsReattach && ev.session.alive) {
           st.needsReattach = false;
           try {
-            st.term.reset();
+            st.term?.reset();
           } catch {}
           abandonReplays(st); // the wipe abandons any in-flight restream
           const visible =
@@ -332,7 +375,7 @@ export function wireDaemonEvents(injected) {
       deps.renderMinimizedTray();
   });
 
-  EventsOn('pty:data', (id, b64) => {
+  EventsOn('pty:data', (id: string, b64: string) => {
     // Daemon-traffic probe: is the freeze the daemon flooding us? Count
     // every inbound frame + (base64) byte volume, and drop a timestamped
     // checkpoint every 200 frames so a flood shows as a steep bytes/sec
@@ -352,9 +395,9 @@ export function wireDaemonEvents(injected) {
     state.terms.get(id)?.writeData(b64);
   });
 
-  EventsOn('pty:event', (id, jsonStr) => {
+  EventsOn('pty:event', (id: string, jsonStr: string) => {
     try {
-      const ev = JSON.parse(jsonStr);
+      const ev = JSON.parse(jsonStr) as { kind: string };
       const st = state.terms.get(id);
       if (!st) return;
       // Begin: wipe xterm so replay paints onto a clean slate (otherwise
@@ -395,7 +438,7 @@ export function wireDaemonEvents(injected) {
     }
   });
 
-  EventsOn('pty:disconnect', (id) => {
+  EventsOn('pty:disconnect', (id: string) => {
     const st = state.terms.get(id);
     if (st) {
       st.attached = false;
@@ -410,12 +453,12 @@ export function wireDaemonEvents(injected) {
     }
   });
 
-  EventsOn('pty:error', (id, jsonStr) => {
+  EventsOn('pty:error', (id: string, jsonStr: string) => {
     const st = state.terms.get(id);
     if (st) {
       try {
-        const e = JSON.parse(jsonStr);
-        st.term.write(
+        const e = JSON.parse(jsonStr) as PtyError;
+        st.term?.write?.(
           `\r\n\x1b[31m[hived: ${e.code}: ${e.message}]\x1b[0m\r\n`,
         );
       } catch {}
@@ -441,7 +484,7 @@ export function wireDaemonEvents(injected) {
   // User clicked a notification toast. Route to that session in the
   // current view (single keeps single, grid keeps grid) without toggling
   // modes. switchTo handles the view-aware repaint.
-  EventsOn('bell-click', (sessionId) => {
+  EventsOn('bell-click', (sessionId: string) => {
     if (!sessionId) return;
     const info = state.sessions.find((s) => s.id === sessionId);
     if (!info) return;
@@ -449,10 +492,10 @@ export function wireDaemonEvents(injected) {
     clearAttention(sessionId);
   });
 
-  EventsOn('control:error', async (jsonStr) => {
-    let e;
+  EventsOn('control:error', async (jsonStr: string) => {
+    let e: ControlError;
     try {
-      e = JSON.parse(jsonStr);
+      e = JSON.parse(jsonStr) as ControlError;
     } catch {
       flashStatus('hived error', true);
       return;
