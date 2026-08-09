@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E coverage for #217: Shift+Enter inserts a newline in the agent's
 // input (Ctrl+J / 0x0a) instead of submitting, while plain Enter still
@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 // key handler runs exactly as in production and WriteStdin records the
 // bytes that reach the PTY.
 
-async function bootFocused(page) {
+async function bootFocused(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -24,9 +24,11 @@ test.describe('#217 Shift+Enter newline', () => {
   }) => {
     await bootFocused(page);
     await page.evaluate(() => window.__hive.resetStdin());
-    const viewBefore = await page.evaluate(
-      () => document.getElementById('terms').className,
-    );
+    const viewBefore = await page.evaluate(() => {
+      const terms = document.getElementById('terms');
+      if (!terms) throw new Error('#terms missing');
+      return terms.className;
+    });
 
     await page.keyboard.press('Shift+Enter');
 
@@ -40,9 +42,11 @@ test.describe('#217 Shift+Enter newline', () => {
 
     // Shift+Enter must not trigger any view change (it carries no Cmd/Ctrl,
     // so the capture-phase window shortcut handler ignores it).
-    const viewAfter = await page.evaluate(
-      () => document.getElementById('terms').className,
-    );
+    const viewAfter = await page.evaluate(() => {
+      const terms = document.getElementById('terms');
+      if (!terms) throw new Error('#terms missing');
+      return terms.className;
+    });
     expect(viewAfter).toBe(viewBefore);
   });
 

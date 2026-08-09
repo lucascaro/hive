@@ -1,4 +1,5 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import type { SessionTerm } from '../../src/app/session-term.js';
 
 // Regression coverage for #208 (R1, R2) plus both halves of the
 // resize-replay contract — R-follow (must not replay a follower) and
@@ -24,25 +25,25 @@ import { test, expect } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   await page.evaluate(() => {
     window.__hive.resetStdin();
-    window.__hive.resetReplay();
+    window.__hive.resetReplay?.();
   });
 }
 
-async function enterGridAll(page) {
+async function enterGridAll(page: Page) {
   await page.keyboard.press(`${MOD}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 }
@@ -50,7 +51,7 @@ async function enterGridAll(page) {
 // Pause long enough for any debounced replay (REPLAY_DEBOUNCE_MS = 100ms)
 // to have fired or been cancelled. 250ms is comfortably past that window
 // while still keeping the test fast.
-async function settleReplay(page) {
+async function settleReplay(page: Page) {
   await page.waitForTimeout(250);
 }
 
@@ -74,12 +75,12 @@ test.describe('#208 grid-mode scroll regressions', () => {
     // Let initial-attach + RO cascades settle, then reset the
     // counter and measure steady-state.
     await page.waitForTimeout(400);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
     // After settle, idle ResizeObserver re-fires must not produce
     // any further replays. Pre-fix this could fire repeatedly as
     // DPR / fit jitter kept crossing the stale baseline.
     await page.waitForTimeout(300);
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBe(0);
   });
 
@@ -91,7 +92,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
     // Let initial-attach replays (if any) settle, then reset the
     // counter so the minimize step is measured in isolation.
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Minimize the first tile. The remaining two tiles' column widths
     // change as the grid reflows — pre-fix this triggered replay.
@@ -100,7 +101,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);
 
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBe(0);
   });
 
@@ -114,14 +115,14 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await firstTile.locator('.tile-minimize').click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Restore from tray; remaining tiles narrow again.
     await page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`).click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await settleReplay(page);
 
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBe(0);
   });
 
@@ -138,7 +139,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
     await settleReplay(page);
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Freshly-attached tiles are followers (_followBottom = true). A pure
     // width change must not replay any of them.
@@ -147,7 +148,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await page.setViewportSize({ width: 1400, height: 800 });
     await page.waitForTimeout(400);
 
-    const replays = await page.evaluate(() => window.__hive.replayCount());
+    const replays = await page.evaluate(() => window.__hive.replayCount?.());
     expect(replays).toBe(0);
   });
 
@@ -175,9 +176,18 @@ test.describe('#208 grid-mode scroll regressions', () => {
     // gesture — the app's own capture-phase handler is what stamps
     // _lastUserScrollTs, and only a gesture-attributed move may clear
     // follow-intent (parse-driven drift deliberately cannot).
+    // `terms` is a Map<string, TermTile> — the deliberately narrow structural
+    // view app modules use (state.ts). A spec pokes the concrete tile, so it
+    // asserts SessionTerm: that is what the map actually holds (6c proved the
+    // class satisfies TermTile) and it is what carries the real xterm
+    // Terminal, `body` and `_pointerDown`. Widening TermTile/ReplayXterm to
+    // suit the specs would loosen the source types for every app caller and
+    // every DOM-test stub — wave 2's rule, in the other direction.
     const scrolledUp = await page.evaluate(async () => {
-      const st = window.__hive_state.terms.get(window.__hive_state.activeId);
-      await new Promise((r) => st.term.write('line\r\n'.repeat(500), r));
+      const app = window.__hive_state;
+      const st = app?.terms.get(app.activeId ?? '') as SessionTerm | undefined;
+      if (!st) throw new Error('R-reader: no tile for the active session');
+      await new Promise<void>((r) => st.term.write('line\r\n'.repeat(500), r));
       st.host.dispatchEvent(
         new WheelEvent('wheel', {
           deltaY: -600,
@@ -190,20 +200,23 @@ test.describe('#208 grid-mode scroll regressions', () => {
     });
     expect(scrolledUp).toBe(false);
 
-    await page.evaluate(() => window.__hive.resetReplay());
+    await page.evaluate(() => window.__hive.resetReplay?.());
     await page.setViewportSize({ width: 1400, height: 800 });
     await page.waitForTimeout(400);
 
     // Still a reader (nothing yanked them back), and the reflow replay fired.
     expect(
-      await page.evaluate(
-        () =>
-          window.__hive_state.terms.get(window.__hive_state.activeId)
-            ._followBottom,
-      ),
+      await page.evaluate(() => {
+        const app = window.__hive_state;
+        const st = app?.terms.get(app.activeId ?? '') as
+          | SessionTerm
+          | undefined;
+        if (!st) throw new Error('R-reader: no tile for the active session');
+        return st._followBottom;
+      }),
     ).toBe(false);
     expect(
-      await page.evaluate(() => window.__hive.replayCount()),
+      await page.evaluate(() => window.__hive.replayCount?.()),
     ).toBeGreaterThan(0);
   });
 
@@ -220,8 +233,10 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await settleReplay(page);
 
     await page.evaluate(async () => {
-      const st = window.__hive_state.terms.get(window.__hive_state.activeId);
-      await new Promise((r) => st.term.write('line\r\n'.repeat(500), r));
+      const app = window.__hive_state;
+      const st = app?.terms.get(app.activeId ?? '') as SessionTerm | undefined;
+      if (!st) throw new Error('R-drag: no tile for the active session');
+      await new Promise<void>((r) => st.term.write('line\r\n'.repeat(500), r));
       st.term.scrollToBottom();
       st.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     });
@@ -233,7 +248,9 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await page.waitForTimeout(400);
 
     const { viewportY, baseY, following } = await page.evaluate(() => {
-      const st = window.__hive_state.terms.get(window.__hive_state.activeId);
+      const app = window.__hive_state;
+      const st = app?.terms.get(app.activeId ?? '') as SessionTerm | undefined;
+      if (!st) throw new Error('R-drag: no tile for the active session');
       // Move the viewport the way the auto-scroll does — programmatically,
       // with no wheel or key event of its own.
       st.term.scrollLines(-30);
@@ -254,8 +271,12 @@ test.describe('#208 grid-mode scroll regressions', () => {
     expect(
       await page.evaluate(() => {
         window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        return window.__hive_state.terms.get(window.__hive_state.activeId)
-          ._pointerDown;
+        const app = window.__hive_state;
+        const st = app?.terms.get(app.activeId ?? '') as
+          | SessionTerm
+          | undefined;
+        if (!st) throw new Error('R-drag: no tile for the active session');
+        return st._pointerDown;
       }),
     ).toBe(false);
   });

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E coverage for the grid-mode focus pipeline (#159, #181, #186).
 // The Wails mock loads a real xterm so .xterm-helper-textarea exists
@@ -7,16 +7,16 @@ import { test, expect } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   // Reset stdinLog so the count starts fresh.
@@ -25,11 +25,11 @@ async function bootWithSessions(page, count = 2) {
 
 // Inspect live focus state. Returns:
 //   { termsClass, focusedHosts, activeIsHelper, activeInsideFocusedHost }
-async function focusState(page) {
+async function focusState(page: Page) {
   return page.evaluate(() => {
     const terms = document.getElementById('terms');
     const focusedHosts = Array.from(
-      document.querySelectorAll('.term-host.term-focused'),
+      document.querySelectorAll<HTMLElement>('.term-host.term-focused'),
     ).map(
       (h) => h.dataset.sessionId || h.getAttribute('data-id') || '<unknown>',
     );

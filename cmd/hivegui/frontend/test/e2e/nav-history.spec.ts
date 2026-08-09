@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Session back/forward (Ctrl+- / Ctrl+Shift+-) in a real browser.
 //
@@ -21,23 +21,24 @@ const MOD = isMac ? 'Meta' : 'Control';
 const BACK = isMac ? 'Control+-' : 'Control+Alt+-';
 const FORWARD = isMac ? 'Control+Shift+-' : 'Control+Alt+Shift+-';
 
-async function bootWithSessions(page, count) {
+async function bootWithSessions(page: Page, count: number) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive_state.sessions.length >= n,
+    (n) => (window.__hive_state?.sessions.length ?? 0) >= n,
     count,
   );
 }
 
-const activeId = (page) => page.evaluate(() => window.__hive_state.activeId);
-const sessionIds = (page) =>
-  page.evaluate(() => window.__hive_state.sessions.map((s) => s.id));
+const activeId = (page: Page) =>
+  page.evaluate(() => window.__hive_state?.activeId ?? null);
+const sessionIds = (page: Page) =>
+  page.evaluate(() => window.__hive_state?.sessions.map((s) => s.id) ?? []);
 
 test.describe('session back / forward history', () => {
   test('walks back and forward through clicked sessions', async ({ page }) => {
@@ -71,10 +72,12 @@ test.describe('session back / forward history', () => {
     await page.click(`#projects li[data-sid="${b}"]`);
     await expect.poll(() => activeId(page)).toBe(b);
 
-    const before = await page.evaluate(() => window.__hive_state.fontSize);
+    const before = await page.evaluate(() => window.__hive_state?.fontSize);
+    if (before === undefined)
+      throw new Error('no __hive_state to read fontSize from');
     await page.keyboard.press(`${MOD}+-`);
     await expect
-      .poll(() => page.evaluate(() => window.__hive_state.fontSize))
+      .poll(() => page.evaluate(() => window.__hive_state?.fontSize))
       .toBe(before - 1);
     expect(await activeId(page)).toBe(b); // did not navigate
 
@@ -94,7 +97,7 @@ test.describe('session back / forward history', () => {
     const [a, b, c] = await sessionIds(page);
 
     await page.click(`#projects li[data-sid="${a}"]`);
-    await page.evaluate((id) => window.__hive_state.minimized.add(id), a);
+    await page.evaluate((id) => window.__hive_state?.minimized.add(id), a);
     await page.click(`#projects li[data-sid="${b}"]`);
     await page.click(`#projects li[data-sid="${c}"]`);
     await page.keyboard.press(`${MOD}+Shift+g`); // grid-all
@@ -107,10 +110,10 @@ test.describe('session back / forward history', () => {
     await expect
       .poll(() =>
         page.evaluate((id) => {
-          const host = window.__hive_state.terms.get(id)?.host;
+          const host = window.__hive_state?.terms.get(id)?.host;
           const box = host?.getBoundingClientRect();
           return {
-            minimized: window.__hive_state.minimized.has(id),
+            minimized: window.__hive_state?.minimized.has(id),
             inGrid: !!host?.classList.contains('in-grid'),
             hasArea: !!(box && box.width > 0 && box.height > 0),
           };

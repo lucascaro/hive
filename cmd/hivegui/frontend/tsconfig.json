@@ -36,10 +36,15 @@
   // test/unit is safe to include wholesale from wave 1: the un-converted
   // *.test.js files land in the program but `checkJs: false` skips them, so
   // each test starts being checked exactly when it's renamed to .ts.
-  // The two harnesses are listed file-by-file, not as test/e2e{,-real}/**:
-  // nothing imports them (the Vite substitution is invisible to tsc), so they
-  // only get checked by being named here, and the *.spec.js siblings around
-  // them are wave 7's job.
+  // test/e2e is wholesale as of wave 7b, which converted its 17 specs and the
+  // xterm-reflow fixture. Nothing imports a spec or a harness (the Vite
+  // substitution is invisible to tsc), so they are checked only by being named
+  // here — the trap the comment above describes, and the reason the glob
+  // widened in the same commit as the rename.
+  //
+  // test/e2e-real is still file-by-file: its 5 *.spec.js are wave 7c's job,
+  // and widening ahead of the wave that converts them would cost the
+  // belt-and-braces for nothing.
   "include": [
     "src/lib/**/*",
     "src/app/**/*",
@@ -48,7 +53,7 @@
     "src/main.ts",
     "test/unit/**/*",
     "test/dom/**/*",
-    "test/e2e/wails-mock.ts",
+    "test/e2e/**/*",
     "test/e2e-real/wails-bridge.ts"
   ],
   "exclude": ["node_modules", "dist", "wailsjs"]

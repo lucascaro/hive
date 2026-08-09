@@ -78,7 +78,7 @@ export function activeProjectId(): string {
 // internal/wire/control.go), so prefer those and fall back to the
 // camelCase variants for safety. Both spellings are read everywhere in
 // this file; only the ordering varies, and it doesn't matter — no
-// payload carries both (test/e2e/payload-shapes.spec.js pins the two
+// payload carries both (test/e2e/payload-shapes.spec.ts pins the two
 // shapes separately).
 export function resolveSessionCwd(
   sess: SessionInfo | null | undefined,

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Layer C: payload-shape parity. The real hived daemon emits JSON
 // with snake_case keys (SessionInfo.project_id, .worktree_branch,
@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 const SHAPES = [
   {
     kind: 'snake_case',
-    shape: (id) => ({
+    shape: (id: string) => ({
       id,
       name: `shape-${id}`,
       color: '#0af',
@@ -30,7 +30,7 @@ const SHAPES = [
   },
   {
     kind: 'camelCase',
-    shape: (id) => ({
+    shape: (id: string) => ({
       id,
       name: `shape-${id}`,
       color: '#0af',
@@ -46,7 +46,7 @@ const SHAPES = [
   },
 ];
 
-async function bootMinimal(page) {
+async function bootMinimal(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -61,7 +61,7 @@ for (const { kind, shape } of SHAPES) {
     // for broadcasts) with the shape under test.
     const id = `inject-${kind}`;
     await page.evaluate((info) => {
-      window.__hive.state.sessions.push(info);
+      window.__hive.state?.sessions.push(info);
       window.__hive.emit(
         'session:event',
         JSON.stringify({ kind: 'added', session: info }),
@@ -85,7 +85,7 @@ for (const { kind, shape } of SHAPES) {
     await bootMinimal(page);
     const id = `route-${kind}`;
     await page.evaluate((info) => {
-      window.__hive.state.sessions.push(info);
+      window.__hive.state?.sessions.push(info);
       window.__hive.emit(
         'session:event',
         JSON.stringify({ kind: 'added', session: info }),

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Regression coverage for #208 R3: after resizing the window,
 // toggling the sidebar (⌘S off then on) leaves focus on
@@ -10,27 +10,27 @@ import { test, expect } from '@playwright/test';
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
   await page.evaluate(() => window.__hive.resetStdin());
 }
 
-async function enterGridAll(page) {
+async function enterGridAll(page: Page) {
   await page.keyboard.press(`${MOD}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 }
 
-async function waitForHelperFocus(page, timeout = 2000) {
+async function waitForHelperFocus(page: Page, timeout = 2000) {
   await page.waitForFunction(
     () => {
       const ae = document.activeElement;
@@ -100,14 +100,18 @@ test.describe('#208 sidebar toggle preserves typing focus', () => {
     await enterGridAll(page);
     await waitForHelperFocus(page);
 
-    const before = await page.evaluate(() =>
-      document.getElementById('app').classList.contains('sidebar-hidden'),
-    );
+    const before = await page.evaluate(() => {
+      const app = document.getElementById('app');
+      if (!app) throw new Error('#app missing');
+      return app.classList.contains('sidebar-hidden');
+    });
     await page.keyboard.press(`${MOD}+s`);
     await page.waitForTimeout(80);
-    const after = await page.evaluate(() =>
-      document.getElementById('app').classList.contains('sidebar-hidden'),
-    );
+    const after = await page.evaluate(() => {
+      const app = document.getElementById('app');
+      if (!app) throw new Error('#app missing');
+      return app.classList.contains('sidebar-hidden');
+    });
     expect(after).toBe(!before);
   });
 });

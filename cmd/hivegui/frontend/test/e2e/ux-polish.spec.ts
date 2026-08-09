@@ -1,11 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E for the UX polish pass: ⌘/ help overlay, empty states, launcher
 // loading row, collapse persistence, and the a11y attributes.
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function boot(page) {
+async function boot(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -94,7 +94,7 @@ test('killing the last session shows an actionable empty state', async ({
   page,
 }) => {
   await boot(page);
-  await page.evaluate(() => window.__hive.killSession('s1'));
+  await page.evaluate(() => window.__hive.killSession?.('s1'));
   const empty = page.locator('#empty-state');
   await expect(empty).toBeVisible();
   await expect(empty).toHaveAttribute('data-kind', 'first-run');
@@ -109,7 +109,7 @@ test('killing the last session shows an actionable empty state', async ({
 test('launcher shows a loading row before agents resolve', async ({ page }) => {
   await boot(page);
   // Stall ListAgents so the in-flight loading row is observable.
-  await page.evaluate(() => window.__hive.delayNext('ListAgents', 500));
+  await page.evaluate(() => window.__hive.delayNext?.('ListAgents', 500));
   await page.keyboard.press(`${mod}+t`);
   const launcher = page.locator('#launcher');
   await expect(launcher).toBeVisible();
@@ -159,7 +159,7 @@ test('first-run empty state updates when projects change without a kind change',
   page,
 }) => {
   await boot(page);
-  await page.evaluate(() => window.__hive.killSession('s1'));
+  await page.evaluate(() => window.__hive.killSession?.('s1'));
   const empty = page.locator('#empty-state');
   await expect(empty).toHaveAttribute('data-kind', 'first-run');
   await expect(empty.getByRole('button', { name: /New project/ })).toHaveCount(
@@ -168,7 +168,7 @@ test('first-run empty state updates when projects change without a kind change',
   // Remove the only project: same kind, but the model now offers a
   // New project action too.
   await page.evaluate(() => {
-    const p = window.__hive.state.projects[0];
+    const p = window.__hive.state?.projects[0];
     window.__hive.emit(
       'project:event',
       JSON.stringify({ kind: 'removed', project: p }),
@@ -279,6 +279,7 @@ test('sidebar footer shows hive/hived version and build', async ({ page }) => {
   // because the render also blanks the text.
   await page.evaluate(() => {
     const el = document.getElementById('ver-daemon');
+    if (!el) throw new Error('#ver-daemon missing');
     el.textContent = 'hived v9.9.9 (deadbee)';
     el.hidden = true;
   });
@@ -292,7 +293,9 @@ test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
   // an ellipsis, which would have truncated the build hash the footer
   // exists to show.
   await page.evaluate(() => {
-    document.getElementById('sidebar').style.width = '150px';
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) throw new Error('#sidebar missing');
+    sidebar.style.width = '150px';
     window.__hive.emit('daemon:stale', {
       severity: 'mismatch',
       guiBuild: 'a3f9c1d',
@@ -305,6 +308,7 @@ test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
   const overflow = await page.evaluate(() => {
     const el = document.getElementById('sidebar-hints');
     const sidebar = document.getElementById('sidebar');
+    if (!el || !sidebar) throw new Error('#sidebar-hints / #sidebar missing');
     return {
       footerRight: el.getBoundingClientRect().right,
       sidebarRight: sidebar.getBoundingClientRect().right,
@@ -360,7 +364,7 @@ test('a11y attributes: palette input label, alertdialog dead overlay, caret butt
   // Drive a session death through the mock and check the overlay role.
   await page.evaluate(() => {
     const s = {
-      ...window.__hive.state.sessions[0],
+      ...window.__hive.state?.sessions[0],
       alive: false,
       last_error: 'boom',
     };

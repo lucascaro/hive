@@ -1,24 +1,24 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // E2E coverage for the session-minimize feature (#202).
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithSessions(page, count = 2) {
+async function bootWithSessions(page: Page, count = 2) {
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
   for (let i = 1; i < count; i++) {
-    await page.evaluate((n) => window.__hive.addSession(n), `s${i + 1}`);
+    await page.evaluate((n) => window.__hive.addSession?.(n), `s${i + 1}`);
   }
   await page.waitForFunction(
-    (n) => window.__hive.state.sessions.length >= n,
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     count,
   );
 }
 
-async function enterGridAll(page) {
+async function enterGridAll(page: Page) {
   await page.keyboard.press(`${MOD}+Shift+g`);
   await expect(page.locator('#terms')).toHaveClass(/grid/);
 }
@@ -41,6 +41,7 @@ test.describe('session minimize', () => {
     // Click the minimize button on the first tile.
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
+    if (!sid) throw new Error('the first tile carries no data-sid');
     await firstTile.locator('.tile-minimize').click();
 
     // The tile is removed from the grid.
@@ -87,7 +88,7 @@ test.describe('session minimize', () => {
 
     // Active session should no longer be the minimized one.
     const activeId = await page.evaluate(() => {
-      const a = document.querySelector('.term-host.active');
+      const a = document.querySelector<HTMLElement>('.term-host.active');
       return a ? a.dataset.sid : null;
     });
     expect(activeId).not.toBe(firstSid);
@@ -101,12 +102,13 @@ test.describe('session minimize', () => {
     await enterGridAll(page);
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
+    if (!sid) throw new Error('the first tile carries no data-sid');
     await firstTile.locator('.tile-minimize').click();
     await expect(
       page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
     ).toBeVisible();
 
-    await page.evaluate((id) => window.__hive.killSession(id), sid);
+    await page.evaluate((id) => window.__hive.killSession?.(id), sid);
     await expect(
       page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
     ).toHaveCount(0);
