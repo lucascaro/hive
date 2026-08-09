@@ -22,6 +22,7 @@ import {
 } from '../bridge.js';
 import { state } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
+import { anyModalOpen } from './modals/registry.js';
 import { isMac } from '../lib/platform.js';
 import { isShiftEnter, NEWLINE_SEQ } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
@@ -1272,8 +1273,16 @@ export class SessionTerm {
       }
       // Defer focus so it lands after the visibility flip and after
       // any pending blur from the dying xterm.
+      //
+      // Never while a modal is open. A session can die at any moment —
+      // the daemon drives this, not the user — and stealing focus out
+      // of a modal mid-keystroke is hostile in every case: it drops
+      // what you were typing into the project editor or the command
+      // palette. For the launcher it is worse than that, because the
+      // launcher closes when focus leaves it, so an unrelated session
+      // exiting would make the popup and its query vanish outright.
       setTimeout(() => {
-        if (this.deadOverlayShown) this.deadCloseBtn.focus();
+        if (this.deadOverlayShown && !anyModalOpen()) this.deadCloseBtn.focus();
       }, 0);
     }
   }
