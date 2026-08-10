@@ -39,8 +39,8 @@ export function setActive(id: string | null) {
   // Record the DEPARTURE before activeId is overwritten. This lives in
   // setActive rather than switchTo because four selection paths reach
   // setActive directly and would otherwise go unrecorded: tile mousedown
-  // (session-term.js), gridSpatialMove / shiftActiveProject /
-  // minimizeSession (view.js). "No matter how you switched" is the
+  // (session-term.ts), gridSpatialMove / shiftActiveProject /
+  // minimizeSession (view.ts). "No matter how you switched" is the
   // feature, so the hook has to sit on the choke point.
   if (!_navSuppress && id && id !== state.activeId)
     pushNav(state.nav, state.activeId);

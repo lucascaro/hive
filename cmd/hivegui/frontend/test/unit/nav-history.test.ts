@@ -24,8 +24,8 @@ describe('pushNav', () => {
   });
 
   it('ignores a falsy id — "no active session" is not a history entry', () => {
-    // Landing on an empty project (view.js) or a just-killed session
-    // (events.js) sets activeId to null; those must not stack entries.
+    // Landing on an empty project (view.ts) or a just-killed session
+    // (events.ts) sets activeId to null; those must not stack entries.
     const h = createNavHistory();
     pushNav(h, null);
     pushNav(h, undefined);

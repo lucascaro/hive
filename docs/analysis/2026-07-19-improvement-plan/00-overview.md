@@ -29,7 +29,7 @@ deliberate `ponytail:` markers only).
    v2.12.0 in CI but `@latest` in build.sh. → Phase 2.
 6. **God-files**: `internal/registry/registry.go` (1123, `Create` alone is 225
    lines), `cmd/hivegui/app.go` (912),
-   `cmd/hivegui/frontend/src/app/session-term.js` (996),
+   `cmd/hivegui/frontend/src/app/session-term.ts` (996),
    `cmd/hivegui/frontend/src/style.css` (1488). → Phase 3 (Go), Later (JS/CSS).
 7. **Docs drift**: README says v2.0.0-alpha.1 / Go 1.22 / nonexistent `spikes/`;
    CONTRIBUTING still documents the v1 TUI build; AGENTS.md links 6 missing
@@ -58,6 +58,6 @@ deliberate `ponytail:` markers only).
 - Frontend framework migration — vanilla + modules is working fine.
 - Replacing the shared `state` singleton — documented as intentional; only
   revisit if it starts causing real bugs.
-- Splitting `style.css` / `session-term.js` — cosmetic until they cause merge
+- Splitting `style.css` / `session-term.ts` — cosmetic until they cause merge
   pain; noted in phase 3 as optional.
 - Dropping `google/uuid` — 3 call sites, stable dep, not worth the churn.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// restartHive (src/app/banners.js) used to be an anonymous click
+// restartHive (src/app/banners.ts) used to be an anonymous click
 // handler on the daemon-stale banner's button — the only trigger in
 // the whole app. With matching GUI/daemon builds the banner never
 // renders, so there was no way to restart Hive at all. It is now an
@@ -35,8 +35,8 @@ function mustEl(id: string): HTMLElement {
 }
 
 beforeAll(async () => {
-  // dom.js runs side effects on import (it decorates #terms), and
-  // banners.js pulls it in for flashStatus — so the scaffold needs
+  // dom.ts runs side effects on import (it decorates #terms), and
+  // banners.ts pulls it in for flashStatus — so the scaffold needs
   // those elements even though this file never touches them.
   document.body.innerHTML = `
     <div id="terms"></div><ul id="projects"></ul>
@@ -88,7 +88,7 @@ describe('restartHive', () => {
     );
   });
 
-  // events.js reads this to suppress the red "control disconnected"
+  // events.ts reads this to suppress the red "control disconnected"
   // status while a restart is deliberately tearing the conn down.
   it('clears the restarting flag when the call settles', async () => {
     await restartHive();

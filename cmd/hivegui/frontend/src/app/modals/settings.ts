@@ -161,7 +161,7 @@ export function openSettings() {
   // Re-entry must not discard an in-progress draft. This is reachable
   // on macOS: the native File ▸ Settings… accelerator consumes ⌘,
   // before the webview's keydown listener sees it (same precedence
-  // that makes the '?' branch in keyboard.js dead on darwin, per
+  // that makes the '?' branch in keyboard.ts dead on darwin, per
   // menu_darwin.go), so pressing ⌘, with the modal already open
   // arrives here as menu:settings rather than as the toggle-to-close
   // in the keydown gate. Without this guard the `draft = []` below
@@ -259,7 +259,7 @@ export function initSettings(injected: SettingsDeps) {
   settingsEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // Consume it. This listener fires before the window handler in
-      // keyboard.js, which would otherwise see an already-hidden
+      // keyboard.ts, which would otherwise see an already-hidden
       // dialog, fall past its settings gate, and spend the same
       // Escape on whatever is behind the modal.
       e.preventDefault();

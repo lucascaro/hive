@@ -2,7 +2,7 @@
 //
 // Moved verbatim from main.js. wireDaemonEvents(deps) registers every
 // EventsOn handler; view/focus callbacks and the scroll tracer are
-// injected because they live in main.js until later stages.
+// injected because they live in main.ts until later stages.
 
 import {
   EventsOn,

@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 // Layer C: integration smoke for the WebGL context-loss recovery
 // path (#190 / #198). The recovery helpers themselves are unit-
-// tested in test/unit/renderer-recovery.test.js — this spec covers
+// tested in test/unit/renderer-recovery.test.ts — this spec covers
 // the missing piece: that a real WEBGL_lose_context event on a real
 // xterm canvas, in a real DOM, doesn't throw, doesn't leave the
 // terminal mute, and doesn't surface console errors.

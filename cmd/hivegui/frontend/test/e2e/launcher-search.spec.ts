@@ -109,7 +109,7 @@ test('the worktree checkbox toggles without stealing focus from the filter box',
   await expect.poll(helperFocused).toBe(true);
 });
 
-// keyboard.js bails out unconditionally while the launcher is open and
+// keyboard.ts bails out unconditionally while the launcher is open and
 // the launcher's own listener is scoped to #launcher, so any click that
 // leaves the launcher visible while moving focus out of it would strand
 // the keyboard with no handler at all — Escape included.

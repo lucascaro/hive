@@ -68,9 +68,9 @@ let deps: KeyboardDeps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
-  // Injected from main.js like focusActiveTerm above: keyboard.ts must
+  // Injected from main.ts like focusActiveTerm above: keyboard.ts must
   // not import the focus pipeline directly (see the acyclic-modules
-  // note at the wiring block in main.js). The default still RUNS fn —
+  // note at the wiring block in main.ts). The default still RUNS fn —
   // an un-wired harness gets working navigation without suppression,
   // not a silently swallowed switch.
   withoutNavHistory: (fn) => fn(),
@@ -509,7 +509,7 @@ export function switchToNthSession(n: number) {
   if (n - 1 < ord.length) switchTo(ord[n - 1].id);
 }
 
-// Debug: arm/disarm the scroll tracer. trace.js latches hive.debug at
+// Debug: arm/disarm the scroll tracer. trace.ts latches hive.debug at
 // module load, so the new state only takes effect after a reload — do it
 // here so the user never needs the devtools console to flip the gate.
 function toggleScrollDebug() {
@@ -524,7 +524,7 @@ function toggleScrollDebug() {
   } catch {
     /* storage off */
   }
-  // The reload is intentional and unavoidable: trace.js reads hive.debug
+  // The reload is intentional and unavoidable: trace.ts reads hive.debug
   // once at module load, so the new state only takes effect on a fresh load.
   // The menu label says "(Reloads)" so this isn't a surprise.
   location.reload();
@@ -532,7 +532,7 @@ function toggleScrollDebug() {
 
 // Debug: copy the captured scroll trace to the clipboard via the Go side
 // (works without devtools and without a clipboard user-gesture). Reuses
-// window.__hive_dumpscroll (trace.js) so the dump shape matches what the
+// window.__hive_dumpscroll (trace.ts) so the dump shape matches what the
 // e2e harness and bug reports expect.
 function copyScrollTrace() {
   const dump =

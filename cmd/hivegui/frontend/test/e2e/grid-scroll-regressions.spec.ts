@@ -164,7 +164,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
   // routes a viewport change through renderGrid → ensureAttached, which
   // re-latches _followBottom to true for every tile (see attachDeferred) —
   // so a grid tile cannot be held scrolled-up across a resize by design.
-  // The single-view observer early-returns (view.js), so the scrolled-up
+  // The single-view observer early-returns (view.ts), so the scrolled-up
   // state survives and the real wiring is exercised end to end.
   test('R-reader: a real window resize DOES replay a tile scrolled up into history', async ({
     page,

@@ -1,5 +1,5 @@
 // Modal registry — the seam that lets the focus pipeline ask "does a
-// modal own the keyboard?" without main.js hard-coding every modal
+// modal own the keyboard?" without main.ts hard-coding every modal
 // element. Each modal module registers its root element at init;
 // anyModalOpen() is consumed by focusSnapshot (and is the ONLY
 // intentional behavior-adjacent edit of the modularization — it

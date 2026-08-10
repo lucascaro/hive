@@ -1,13 +1,13 @@
 // ---------- command palette ----------
 //
-// Moved verbatim from main.js. The command table is BUILT by main.js
+// Moved verbatim from main.js. The command table is BUILT by main.ts
 // (the actions live there until later stages) and handed to
 // initCommandPalette — this module owns only the palette UI.
 
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
 
-// One row of the command table main.js builds and hands over.
+// One row of the command table main.ts builds and hands over.
 export interface PaletteCommand {
   id: string;
   name: string;

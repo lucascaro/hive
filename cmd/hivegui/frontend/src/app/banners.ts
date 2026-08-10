@@ -2,10 +2,10 @@
 //
 // Moved verbatim from main.js. initBanners() performs the listener
 // and EventsOn registrations plus the boot-time update poll — the
-// module has no side effects on import, matching events.js's
+// module has no side effects on import, matching events.ts's
 // wireDaemonEvents pattern.
 // isDaemonRestarting() is read by the control:disconnect handler in
-// events.js so a user-initiated restart doesn't flash a red status.
+// events.ts so a user-initiated restart doesn't flash a red status.
 
 import {
   EventsOn,

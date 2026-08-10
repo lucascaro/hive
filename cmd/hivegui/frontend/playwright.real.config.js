@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 // Layer B: Playwright suite running against a REAL hived daemon via
-// hived-ws-bridge. globalSetup.js spawns the daemon + bridge with
+// hived-ws-bridge. globalSetup.mjs spawns the daemon + bridge with
 // fully isolated temp paths (HOME / HIVE_STATE_DIR / HIVE_SOCKET) and
 // writes the bridge URL to process.env.WS_BRIDGE_URL. The Vite dev
 // server boots with VITE_WAILS_REAL=1, which makes vite resolve the
@@ -9,7 +9,7 @@ import { defineConfig } from '@playwright/test';
 // instead of the in-browser mock.
 //
 // Specs read process.env.WS_BRIDGE_URL inside a Playwright addInitScript
-// to install window.__WS_BRIDGE_URL before main.js loads.
+// to install window.__WS_BRIDGE_URL before main.ts loads.
 
 export default defineConfig({
   testDir: './test/e2e-real',

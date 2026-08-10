@@ -496,7 +496,7 @@ describe('resetFollowIntent re-latches "land at bottom" at every attach/focus', 
 });
 
 describe('shouldRequestReplay against baseline (debounce edge case)', () => {
-  // Simulates main.js's baseline-relative debounce: compare *current*
+  // Simulates main.ts's baseline-relative debounce: compare *current*
   // cols against baseline-at-last-replay (not just-previous
   // measurement). The reviewer flagged r614 — 80→84→83 should NOT
   // trigger (final delta 3 < threshold 4). Conversely 80→90→89 SHOULD
@@ -620,7 +620,7 @@ describe('stale _followBottom bug — initial attach must snap to bottom', () =>
   // the middle instead of the bottom. The fix: reset _followBottom = true
   // in ensureAttached() before OpenSession().
   //
-  // These tests verify the scrollback.js side: when _followBottom is
+  // These tests verify the scrollback.ts side: when _followBottom is
   // true (as it should be after the ensureAttached fix), the replay
   // snaps to bottom.
 

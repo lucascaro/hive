@@ -7,7 +7,7 @@
 // It exists to make the Wails-fronted GUI testable end-to-end against
 // the real daemon without spawning the native Wails process — the
 // Vite-dev frontend imports a thin JS bridge (test/e2e-real/
-// wails-bridge.js) that talks to this shim over WS, in place of the
+// wails-bridge.ts) that talks to this shim over WS, in place of the
 // generated Wails runtime + App bindings.
 //
 // Isolation contract: this binary refuses to start unless HIVE_SOCKET

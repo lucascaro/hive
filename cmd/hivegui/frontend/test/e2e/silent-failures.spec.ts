@@ -84,10 +84,10 @@ test('failed tile rename shows an error (regression: UpdateSession import)', asy
 }) => {
   // Locks the fix for a latent ReferenceError: SessionTerm's
   // _beginRename commit handler called UpdateSession without it being
-  // imported in session-term.js, so the rename input closed but the
+  // imported in session-term.ts, so the rename input closed but the
   // daemon call never fired and nothing surfaced. This is the
   // tile-header rename path — distinct from the sidebar rename test
-  // above, which exercises sidebar.js's beginRenameSession instead and
+  // above, which exercises sidebar.ts's beginRenameSession instead and
   // already had the import.
   await boot(page);
   await page.evaluate(() =>

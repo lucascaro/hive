@@ -23,7 +23,7 @@ type SpyTerm = SessionTerm & { __wheelWrapped?: boolean };
 // Repro for "the terminal won't scroll by mouse wheel or trackpad on one of my
 // Macs" (selection-drag still scrolls). PR #229 theorized a WKWebView quirk
 // (deltaMode LINE/PAGE or deltaY=0 with the value only in legacy wheelDeltaY)
-// and normalized the math in lib/wheel-scroll.js — yet the Mac still doesn't
+// and normalized the math in lib/wheel-scroll.ts — yet the Mac still doesn't
 // scroll, which means the root cause is OUTSIDE that pure function.
 //
 // The existing scroll-codex.spec drives scrolling via page.mouse.wheel, which
@@ -50,7 +50,7 @@ test.beforeEach(async ({ page }) => {
   test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
-    // Arm the scroll tracer (window.__hive_scrolltrace) before main.js loads,
+    // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads,
     // so a failure attaches the derived `lines` per wheel event below.
     try {
       localStorage.setItem('hive.debug', '1');

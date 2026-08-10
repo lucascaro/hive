@@ -18,7 +18,7 @@ export const SCROLL_TRACE_CAP = 2000;
 //
 // The whitelist is per-EVENT, not per-frame. `resize` is deliberately absent:
 // _onBodyResize fires continuously for every tile during a window or sidebar
-// drag (see its own comment in session-term.js), so teeing it writes hundreds
+// drag (see its own comment in session-term.ts), so teeing it writes hundreds
 // of lines per second and drowns the records that matter. Its diagnostic
 // payload is redundant anyway — the debounced outcome it leads to is captured
 // by `replay-request` / `replay-skip`, which fire at most once per drag.

@@ -135,7 +135,7 @@ omitting one creates drift that confuses users and other contributors.
 ### Required updates for any new or changed keybinding
 
 1. **Keymap** — add or update the binding in `src/lib/keymap.ts`. Use the
-   platform helpers in `src/lib/platform.js` (⌘ on macOS, Ctrl elsewhere)
+   platform helpers in `src/lib/platform.ts` (⌘ on macOS, Ctrl elsewhere)
    rather than hard-coding a modifier.
 2. **Help overlay + command palette** — make sure the action appears with its
    binding in the `⌘/` keyboard-shortcuts overlay and the command palette.

@@ -3,7 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 // Layer C: payload-shape parity. The real hived daemon emits JSON
 // with snake_case keys (SessionInfo.project_id, .worktree_branch,
 // .worktree_path); some Wails / consumer paths historically emitted
-// camelCase. main.js reads both via `snake_case ?? camelCase` (or
+// camelCase. main.ts reads both via `snake_case ?? camelCase` (or
 // vice versa). These tests pin BOTH shapes so a future refactor
 // that drops one branch surfaces here, not in production where a
 // daemon update silently breaks the sidebar.
@@ -73,7 +73,7 @@ for (const { kind, shape } of SHAPES) {
     await expect(row).toBeVisible({ timeout: 2000 });
     // Name renders.
     await expect(row).toContainText(`shape-${id}`);
-    // Worktree glyph (main.js:1119, className 'worktree-glyph') is
+    // Worktree glyph (app/sidebar.ts, className 'worktree-glyph') is
     // rendered iff `s.worktreeBranch ?? s.worktree_branch` resolves —
     // this is the read-both pattern under test.
     await expect(row.locator('.worktree-glyph')).toBeVisible();
@@ -94,7 +94,7 @@ for (const { kind, shape } of SHAPES) {
 
     // The session must end up under its project's <li.project
     // data-pid="p1"> in the sidebar — the routing read is
-    // `projectId ?? project_id` (main.js:798 / 870 / 1013). If a
+    // `projectId ?? project_id` (app/sidebar.ts, app/view.ts). If a
     // future refactor drops one branch, the session would orphan
     // out of its project subtree and this assertion fails.
     const sessionRow = page.locator(

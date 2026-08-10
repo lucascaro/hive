@@ -621,7 +621,7 @@ export class SessionTerm {
     // from firing. wheelToScrollLines normalizes deltaMode / legacy
     // wheelDeltaY so the cap math doesn't collapse to zero (and the
     // terminal become unscrollable) on WKWebView builds that report
-    // wheel events in line/page mode — see lib/wheel-scroll.js.
+    // wheel events in line/page mode — see lib/wheel-scroll.ts.
     const linesPerPixel = 1 / 14; // ~one line per ~14 px of delta
     const maxLinesPerEvent = 8; // about half a screen on a small tile
     this.host.addEventListener(
@@ -872,7 +872,7 @@ export class SessionTerm {
   _onWebglContextLoss() {
     // The current addon's context died (commonly: too many WebGL
     // contexts process-wide). Recovery logic — dispose, reattach, fall
-    // back to refresh — lives in lib/renderer-recovery.js so it can be
+    // back to refresh — lives in lib/renderer-recovery.ts so it can be
     // unit-tested without xterm or a real WebGL context.
     const dead = this.webgl;
     this.webgl = null;

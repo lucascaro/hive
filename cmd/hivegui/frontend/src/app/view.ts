@@ -3,7 +3,7 @@
 // Moved verbatim from main.js. ensureTerm / setActive /
 // focusActiveTerm and the scroll tracer are injected via
 // initView(deps) — they live in session-term/focus modules (stage 6)
-// and main.js.
+// and main.ts.
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
 import { state, type SessionInfo, type TermTile } from './state.js';
@@ -25,7 +25,7 @@ import { isMac } from '../lib/platform.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
-// refocusActiveTerm). Exported so wave 7 can check main.js's injection.
+// refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
 export interface ViewDeps {
   ensureTerm: (info: SessionInfo) => TermTile;
   setActive: (id: string | null) => void;
@@ -505,13 +505,13 @@ export function renderMinimizedTray() {
 
 // renderEmptyState shows an actionable hint pane when the current
 // scope has nothing to display (first run, empty project, everything
-// minimized). Pure model in lib/empty-state.js; this just projects it
+// minimized). Pure model in lib/empty-state.ts; this just projects it
 // onto the #empty-state element. Cheap enough to call from every
 // repaint path — DOM is rebuilt only when the model changes.
 export function renderEmptyState() {
   // getElementById + a guard, deliberately not el.ts's mustEl/pageEl:
   // this runs on every repaint, not at load, so absence is a tolerated
-  // branch (keyboard.js imports this module into DOM tests that mount
+  // branch (keyboard.ts imports this module into DOM tests that mount
   // only the markup they exercise) rather than a contract to assert.
   const el = document.getElementById('empty-state');
   if (!el) return;

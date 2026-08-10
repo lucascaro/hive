@@ -5,7 +5,7 @@ import { LogFrontend, SetDebugTrace } from '../bridge.js';
 // focus consistency checker's switch). The gate is latched here at
 // module init: users hitting scroll-jump bugs set the key, RELOAD,
 // reproduce, then dump window.__hive_scrolltrace. The e2e-real scroll
-// specs arm it via addInitScript (before main.js runs) and read the
+// specs arm it via addInitScript (before main.ts runs) and read the
 // ring to prove a scenario actually fired replays.
 // The debug switch — gates EVERYTHING the tracer does: the in-memory ring,
 // the heartbeat watchdog, the scroll-jump detector, and the log tee below.

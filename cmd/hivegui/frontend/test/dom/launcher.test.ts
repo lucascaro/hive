@@ -90,7 +90,7 @@ vi.mock('../../src/bridge.js', () => ({
 }));
 
 // #terms / #projects / #status are the app singletons app/dom.ts
-// resolves with mustEl at import time — launcher.ts pulls dom.js in for
+// resolves with mustEl at import time — launcher.ts pulls dom.ts in for
 // flashStatus, so they must exist before the dynamic import below even
 // though this suite never touches them.
 const MARKUP = `
@@ -338,7 +338,7 @@ describe('launcher keyboard', () => {
     await open();
     type('cla');
     expect(names()).toEqual(['Claude']);
-    // keyboard.js bails out entirely while the launcher is open, so
+    // keyboard.ts bails out entirely while the launcher is open, so
     // this binding only still works because the launcher repeats it.
     // cmdOrCtrl() rejects the cross-platform combo outright, so the
     // modifier has to match the platform the module resolved at load.

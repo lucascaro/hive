@@ -1,4 +1,4 @@
-// Empty-state model for the terminals pane. Pure — main.js renders
+// Empty-state model for the terminals pane. Pure — main.ts renders
 // whatever this returns, tests assert on the model.
 //
 // Returns null when at least one session is visible in the current

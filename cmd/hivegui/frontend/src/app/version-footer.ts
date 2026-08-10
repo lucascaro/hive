@@ -12,7 +12,7 @@
 // and no extra Wails-bound method to call.
 //
 // This module takes its OWN EventsOn subscription rather than extending
-// the handler in banners.js: that one early-returns on severity ===
+// the handler in banners.ts: that one early-returns on severity ===
 // 'match', which is exactly the case this footer must render (and the
 // overwhelmingly common one). Wails supports multiple listeners per
 // event, so the banner's control flow is left untouched.

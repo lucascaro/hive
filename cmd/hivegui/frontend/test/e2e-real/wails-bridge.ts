@@ -240,7 +240,7 @@ export async function CheckForUpdate() {
   return null;
 }
 
-// Clipboard bindings. main.js imports ClipboardGetText (runtime) and
+// Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
 // SetClipboardText (App), both aliased to this bridge under
 // VITE_WAILS_REAL=1; without these exports the ESM import throws at
 // module load and the app never boots. In-memory is sufficient here.

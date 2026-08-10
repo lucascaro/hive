@@ -15,7 +15,7 @@
 // would spawn a real hived — verified, not assumed).
 //
 // Blind spot, stated so nobody trusts it further than it goes: a rename that
-// stops the file LOOKING like a spec at all (`x.spec.js` → `x.speec.js`)
+// stops the file LOOKING like a spec at all (`x.spec.ts` → `x.speec.ts`)
 // drops off both sides of the comparison and passes. Guarding that needs a
 // baseline of what used to be a spec, which is what `git status` and the
 // per-wave count comparison already are. What this catches is the case those

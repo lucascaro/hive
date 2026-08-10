@@ -1,7 +1,7 @@
 // Layer B globalSetup: build hived + hived-ws-bridge, spawn both
 // against fully-isolated temp dirs, write the bridge URL to a temp
 // file so individual specs (and the Vite server) can pick it up.
-// Teardown runs in globalTeardown.js.
+// Teardown runs in globalTeardown.mjs.
 //
 // Isolation invariants (mirroring the Layer A Go side):
 //   HOME, HIVE_STATE_DIR, HIVE_SOCKET → fresh mktemp paths each run.
@@ -114,7 +114,7 @@ export default async function globalSetup() {
 
   // Pass state to the spec process(es) and to the Vite dev server. The
   // tests use process.env.WS_BRIDGE_URL inside addInitScript to install
-  // window.__WS_BRIDGE_URL before main.js loads.
+  // window.__WS_BRIDGE_URL before main.ts loads.
   process.env.WS_BRIDGE_URL = wsUrl.trim();
   process.env.HIVE_E2E_REAL_TMP = tmp;
   process.env.HIVE_E2E_REAL_PIDS = JSON.stringify({

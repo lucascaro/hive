@@ -19,7 +19,7 @@
 //     keeps baseY pinned at the scrollback cap while the viewport
 //     drifts off-bottom). The empty-write callback re-asserts bottom
 //     only after the write queue drains, mirroring the parse-ordered
-//     discipline in scrollback.js.
+//     discipline in scrollback.ts.
 //
 // Pure helper — no xterm.js import — so it can be unit-tested in
 // jsdom against plain mocks. Accepts any iterable (array, Map.values()).
@@ -68,7 +68,7 @@ export function snapVisibleTermsToBottom(
     // `term`. This does change one thing from the original
     // `st.term.scrollToBottom()`: the terminal OBJECT is now captured
     // at snap time rather than re-read when the callback fires. Safe —
-    // `SessionTerm.term` is assigned once (app/session-term.js) and
+    // `SessionTerm.term` is assigned once (app/session-term.ts) and
     // never reassigned or nulled. The `?.` still re-reads the method
     // off that object at call time.
     const term = st.term;
