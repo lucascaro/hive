@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Session back/forward (Ctrl+- / Ctrl+Shift+-) end-to-end through the
-// real recording hook: app/focus.js setActive → lib/nav-history.
+// real recording hook: app/focus.ts setActive → lib/nav-history.
 //
 // The hook lives in setActive rather than switchTo precisely because
 // four selection paths (tile mousedown, gridSpatialMove,
@@ -59,7 +59,7 @@ vi.mock('../../src/bridge.js', () => {
 
 // The real switchTo owns xterm/DOM work we don't need here, but it
 // MUST still funnel through setActive — that is the contract this
-// feature depends on (view.js:51). The stub preserves exactly that
+// feature depends on (view.ts:51). The stub preserves exactly that
 // edge and nothing else.
 vi.mock('../../src/app/view.js', async () => {
   const { setActive } = await import('../../src/app/focus.js');
@@ -69,7 +69,7 @@ vi.mock('../../src/app/view.js', async () => {
     setView: vi.fn(),
     gridSpatialMove: vi.fn(),
     shiftActiveProject: vi.fn(),
-    // Mirrors the real restoreSession (view.js): un-minimize, then switchTo.
+    // Mirrors the real restoreSession (view.ts): un-minimize, then switchTo.
     restoreSession: vi.fn((id: string | null) => {
       if (id) state.minimized.delete(id);
       setActive(id);
@@ -87,7 +87,7 @@ let setActive: Focus['setActive'];
 let withoutNavHistory: Focus['withoutNavHistory'];
 let navBack: Keyboard['navBack'];
 let navForward: Keyboard['navForward'];
-// vi.mocked over a hand-written signature: view.js is vi.mock'd above, so
+// vi.mocked over a hand-written signature: view.ts is vi.mock'd above, so
 // the mock types stay pinned to the real exports.
 let switchTo: MockedFunction<View['switchTo']>;
 let restoreSession: MockedFunction<View['restoreSession']>;
@@ -116,7 +116,7 @@ beforeAll(async () => {
   restoreSession = vi.mocked(view.restoreSession);
   const kb = await import('../../src/app/keyboard.js');
   ({ navBack, navForward } = kb);
-  // main.js injects the focus pipeline into keyboard.ts so the modules
+  // main.ts injects the focus pipeline into keyboard.ts so the modules
   // stay acyclic; this harness has to do the same or the suppression
   // that stops back/forward ping-ponging is never wired.
   kb.initKeyboard({
@@ -158,7 +158,7 @@ describe('recording', () => {
   });
 
   it('records a bare setActive — the tile-mousedown / grid-arrow path', () => {
-    // session-term.js:386 and view.js:262 call setActive directly and
+    // session-term.ts:386 and view.ts:262 call setActive directly and
     // never touch switchTo. Losing these is the failure mode this
     // design exists to prevent, so assert on setActive itself.
     setActive('a');

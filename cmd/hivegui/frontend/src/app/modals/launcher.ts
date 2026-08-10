@@ -2,7 +2,7 @@
 //
 // Moved verbatim from main.js. Focus-pipeline callbacks are injected
 // via initLauncher(deps) — the launcher must never import the focus
-// pipeline directly (main.js owns that wiring).
+// pipeline directly (main.ts owns that wiring).
 
 import {
   CreateSession,
@@ -247,7 +247,7 @@ function renderLauncherList() {
   highlightLauncherSelection();
 }
 
-// projectId is optional, not just nullable: main.js, keyboard.js and
+// projectId is optional, not just nullable: main.ts, keyboard.ts and
 // view.ts all call openLauncher() bare and let the `|| activeProjectId()`
 // fallback below pick the project. Wave 5a typed it as required because
 // every one of those callers was still unchecked JS.
@@ -497,7 +497,7 @@ export function initLauncher(injected: LauncherDeps) {
   // The launcher owns its keyboard while open, the way the command
   // palette and settings do — it has to, now that the filter box holds
   // focus and lib/focus.ts hands the keyboard to a focused <input>.
-  // keyboard.js bails out for #launcher for the same reason.
+  // keyboard.ts bails out for #launcher for the same reason.
   launcherEl.addEventListener('keydown', (e) => {
     const handle = (fn: () => void) => {
       e.preventDefault();
@@ -513,13 +513,13 @@ export function initLauncher(injected: LauncherDeps) {
     if (cmdOrCtrl(e) && (e.key === 'n' || e.key === 'N'))
       return handle(closeLauncher);
     // ⌘T / ⇧⌘T while already open re-opens (and so clears the query).
-    // keyboard.js used to give us this for free — its launcher block
+    // keyboard.ts used to give us this for free — its launcher block
     // fell through on unhandled keys and hit the global ⌘T binding
     // further down. Now that it bails out for #launcher entirely, the
     // binding has to be repeated here or it would silently stop working.
     if (cmdOrCtrl(e) && (e.key === 't' || e.key === 'T'))
       return handle(() => {
-        // Same two calls as the global binding in keyboard.js — passing
+        // Same two calls as the global binding in keyboard.ts — passing
         // undefined re-resolves the active project rather than pinning
         // the one this opening was anchored to.
         if (e.shiftKey) openLauncher(undefined, { forceWorktree: true });
@@ -563,7 +563,7 @@ export function initLauncher(injected: LauncherDeps) {
     if (target === searchEl) return;
     e.preventDefault();
   });
-  // Focus leaving the launcher closes it. keyboard.js now bails out for
+  // Focus leaving the launcher closes it. keyboard.ts now bails out for
   // the whole window whenever #launcher is visible, and this module's
   // own keydown listener only fires while focus is inside it — so a
   // launcher that stays visible after focus moves away is a launcher

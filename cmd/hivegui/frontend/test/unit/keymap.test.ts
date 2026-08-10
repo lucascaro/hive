@@ -132,7 +132,7 @@ describe('navHistoryKey', () => {
 
   describe('Windows / Linux — Ctrl+Alt+- / Ctrl+Alt+Shift+-', () => {
     it('does NOT fire for plain Ctrl+- — that is zoom out', () => {
-      // Load-bearing negative. On non-mac, app/keyboard.js binds Ctrl+-
+      // Load-bearing negative. On non-mac, app/keyboard.ts binds Ctrl+-
       // to bumpFontSize(-1) via the cmdOrCtrl gate. Claiming it here
       // would silently remove zoom out on two of three platforms.
       expect(navHistoryKey(ev({ ctrlKey: true, key: '-' }), false)).toBe(null);

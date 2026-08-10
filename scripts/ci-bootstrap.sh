@@ -5,7 +5,7 @@
 # empty frontend/dist (the //go:embed all:frontend/dist directive in
 # cmd/hivegui/main.go needs something to read before the real vite
 # build overwrites it), installs the Wails CLI, and generates the
-# wailsjs/ bindings that main.js imports.
+# wailsjs/ bindings that main.ts imports.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

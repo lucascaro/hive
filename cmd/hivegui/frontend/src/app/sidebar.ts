@@ -3,7 +3,7 @@
 // Moved verbatim from main.js. View/focus callbacks (switchTo,
 // switchToProject, confirmAndDeleteProject, renderEmptyState,
 // refocusActiveTerm) are injected via initSidebar(deps) — they still
-// live in main.js until later stages.
+// live in main.ts until later stages.
 
 import { UpdateSession, UpdateProject } from '../bridge.js';
 import {
@@ -20,7 +20,7 @@ import { beginInlineRename } from './inline-rename.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
-// Exported so wave 7 can check main.js's injection site against it.
+// Exported so wave 7 can check main.ts's injection site against it.
 export interface SidebarDeps {
   switchTo: (id: string) => void;
   switchToProject: (pid: string) => void;

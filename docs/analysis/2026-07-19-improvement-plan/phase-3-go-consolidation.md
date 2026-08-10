@@ -101,7 +101,7 @@ registry in 3b.
 
 ## Later / only-if-it-hurts (JS side, from the same audit)
 
-- Split `cmd/hivegui/frontend/src/app/session-term.js` (996 lines: lifecycle,
+- Split `cmd/hivegui/frontend/src/app/session-term.ts` (996 lines: lifecycle,
   scroll/replay, wheel, link hit-testing in one class) — do it the next time a
   change there goes wrong, not before.
 - Split `cmd/hivegui/frontend/src/style.css` (1488 lines) — cosmetic; only if
@@ -109,7 +109,7 @@ registry in 3b.
 - Fire-and-forget Wails-binding calls wrapped in `try/catch` only catch the
   *synchronous* failure (binding absent in tests); an async **rejection** of
   the returned promise still escapes as an unhandled rejection. Affects
-  `LogFrontend(...)` in `src/main.js` and `src/app/events.js`, and any similar
+  `LogFrontend(...)` in `src/main.ts` and `src/app/events.ts`, and any similar
   fire-and-forget binding call. Fix once with a tiny `fireAndForget(p)` helper
   (`p?.catch(() => {})`) applied at every call site — not per-line. Surfaced by
   CodeRabbit on PR #249 (the Biome PR); deferred out of that formatting PR to

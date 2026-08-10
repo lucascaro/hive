@@ -15,7 +15,7 @@ import (
 // keyboard behavior by going through one code path.
 //
 // Requirement: every keyboard shortcut in
-// cmd/hivegui/frontend/src/main.js MUST be reachable from this menu.
+// cmd/hivegui/frontend/src/main.ts MUST be reachable from this menu.
 // macOS shows only one accelerator per item; alternate keys (e.g.
 // ⌘← as another way to trigger Previous Session) are still wired in
 // the JS keyboard handler.

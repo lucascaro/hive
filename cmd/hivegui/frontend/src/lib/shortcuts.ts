@@ -2,16 +2,16 @@
 // (⌘/) renders shortcutGroups(); the command palette pulls its
 // shortcut column from paletteShortcuts() — both consume this module,
 // so the two surfaces cannot drift from each other. (They can still
-// drift from the actual handlers in main.js/menu.go, which is why
+// drift from the actual handlers in main.ts/menu.go, which is why
 // every binding change must touch this file too — see AGENTS.md.)
 //
 // The full drift surface for a GUI binding change is five files:
-//   1. the handler — app/keyboard.js (+ lib/keymap.js for a predicate)
+//   1. the handler — app/keyboard.ts (+ lib/keymap.ts for a predicate)
 //   2. this file — shortcutGroups() AND paletteShortcuts()
-//   3. the palette command table — main.js
+//   3. the palette command table — main.ts
 //   4. the native macOS menu — cmd/hivegui/menu_darwin.go (⌘ chords only;
 //      Ctrl-only chords are deliberately JS-side, see the Ctrl+` comment
-//      in app/keyboard.js)
+//      in app/keyboard.ts)
 //   5. the user-facing shortcut table in README.md
 //
 // Pure module: no DOM, unit-testable.
@@ -59,7 +59,7 @@ function mod(
 }
 
 // Ctrl on every platform (Ctrl+`, Ctrl+Shift+C/V/A — deliberately not
-// ⌘ on mac, see main.js comments).
+// ⌘ on mac, see main.ts comments).
 function ctrl(
   isMac: boolean,
   key: string,
@@ -73,7 +73,7 @@ function ctrl(
 // Session back/forward is the one binding that is not simply
 // "cmd on mac, ctrl elsewhere" or "ctrl everywhere": it is Ctrl on
 // macOS but Ctrl+Alt on Windows/Linux, because plain Ctrl+- is
-// already zoom-out there. See lib/keymap.js navHistoryKey.
+// already zoom-out there. See lib/keymap.ts navHistoryKey.
 function ctrlAlt(
   isMac: boolean,
   key: string,

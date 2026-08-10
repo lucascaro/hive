@@ -1,7 +1,7 @@
 // ---------- app state ----------
 //
 // The single shared mutable state object. Every app module imports it
-// from here; main.js stays the composition root that wires behavior.
+// from here; main.ts stays the composition root that wires behavior.
 
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import { normalizeView, VIEW_STORAGE_KEY } from '../lib/view.js';
@@ -148,7 +148,7 @@ export const state: AppState = {
   //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
   //   persisted, unlike `collapsed`: the terminals
   //   are gone after a restart anyway. Written from
-  //   setActive (app/focus.js), the sole writer of
+  //   setActive (app/focus.ts), the sole writer of
   //   activeId, so every switch path is recorded.
   minimized: new Set(), // session ids hidden from grid views; restored via tray
   aliveById: new Map(), // session id -> last-seen Alive bool (for transition detection)

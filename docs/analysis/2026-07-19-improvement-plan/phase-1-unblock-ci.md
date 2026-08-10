@@ -6,9 +6,9 @@
 `docs/product-specs/245-flaky-e2e-real-suite-blocks-every-pr.md`.
 
 All failures cluster in three specs:
-- `cmd/hivegui/frontend/test/e2e-real/wheel-scroll.spec.js`
-- `cmd/hivegui/frontend/test/e2e-real/scroll-codex.spec.js`
-- `cmd/hivegui/frontend/test/e2e-real/scroll-restream-strand.spec.js`
+- `cmd/hivegui/frontend/test/e2e-real/wheel-scroll.spec.ts`
+- `cmd/hivegui/frontend/test/e2e-real/scroll-codex.spec.ts`
+- `cmd/hivegui/frontend/test/e2e-real/scroll-restream-strand.spec.ts`
 
 ## Step 1 — Immediate: quarantine (same day, tiny diff)
 
@@ -21,7 +21,7 @@ not stay a required gate while being diagnosed.
 
 ## Step 2 — Root cause the setup-fragility
 
-Known concrete thread (from spec 245): `scroll-codex.spec.js` ~:244/:286
+Known concrete thread (from spec 245): `scroll-codex.spec.ts` ~:244/:286
 asserts `expect(baseY).toBeGreaterThan(4500)` as a *precondition* — it needs
 "output filled the scrollback cap" but relies on wall-clock output volume, so
 under CI CPU contention the test fails its own setup (`got 1624`), not its

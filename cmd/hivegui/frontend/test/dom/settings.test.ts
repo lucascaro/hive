@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Covers the settings modal (src/app/modals/settings.js): the
+// Covers the settings modal (src/app/modals/settings.ts): the
 // add/edit/delete round-trip, the exact payload handed to
 // SaveCustomAgents, and the two behaviors that carry real risk —
 // existing ids must survive a rename (registry entries persist only

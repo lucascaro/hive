@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// version-footer.js imports EventsOn from the bridge, which re-exports
+// version-footer.ts imports EventsOn from the bridge, which re-exports
 // the Wails runtime — absent under vitest (the vite-plugin substitution
 // only applies to the Playwright harnesses). Only EventsOn is needed
 // here; the functions under test are pure and take their elements

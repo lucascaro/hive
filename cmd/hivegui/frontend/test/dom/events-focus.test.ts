@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Regression test for the window-focus handler registered by
-// wireDaemonEvents (src/app/events.js). The stage-3/4 modularization
+// wireDaemonEvents (src/app/events.ts). The stage-3/4 modularization
 // once mangled `refocusActiveTerm()` into `redeps.focusActiveTerm()`
 // during the verbatim move — a ReferenceError on every window focus
 // that silently killed both attention-clearing and xterm refocus.
@@ -56,7 +56,7 @@ let state: typeof import('../../src/app/state.js').state;
 let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
 
 beforeAll(async () => {
-  // dom.js dereferences #terms at import time; give it the singletons.
+  // dom.ts dereferences #terms at import time; give it the singletons.
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"></div>';
   ({ state } = await import('../../src/app/state.js'));

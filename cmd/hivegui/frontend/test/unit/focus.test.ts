@@ -91,7 +91,7 @@ describe('decideFocusAction', () => {
   });
 
   it('clears when the command palette is the open modal', () => {
-    // focusSnapshot() in main.js ORs launcher/editor/palette visibility
+    // focusSnapshot() in main.ts ORs launcher/editor/palette visibility
     // into modalOpen; decideFocusAction only sees the resulting flag.
     // This locks in that any palette-open snapshot yields ACTION_CLEAR
     // even when a tile would otherwise be a valid focus target.

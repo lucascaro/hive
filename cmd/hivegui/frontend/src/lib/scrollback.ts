@@ -1,5 +1,5 @@
 // Scrollback-replay decision helpers. Pure functions so the resize-
-// driven replay logic in main.js can be unit-tested without dragging
+// driven replay logic in main.ts can be unit-tested without dragging
 // xterm.js or the Wails bridge into jsdom.
 
 // A viewport within this many lines of the bottom counts as "at the

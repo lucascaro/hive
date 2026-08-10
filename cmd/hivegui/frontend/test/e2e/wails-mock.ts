@@ -58,7 +58,7 @@ export function WindowSetTitle(t: string) {
   document.title = t;
 }
 
-// Clipboard bindings. main.js imports ClipboardGetText (runtime) and
+// Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
 // SetClipboardText (App), both aliased here. The mock keeps an in-memory
 // clipboard so copy/paste paths don't throw at module load.
 let clipboard = '';

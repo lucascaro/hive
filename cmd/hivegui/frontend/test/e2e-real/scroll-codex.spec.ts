@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
-    // Arm the scroll tracer (window.__hive_scrolltrace) before main.js loads.
+    // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads.
     try {
       localStorage.setItem('hive.debug', '1');
     } catch {}

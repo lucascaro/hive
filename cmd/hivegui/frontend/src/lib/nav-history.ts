@@ -1,13 +1,13 @@
 // Back / forward navigation history over visited sessions.
 //
 // Pure module: no DOM, no imports, unit-testable — same idiom as
-// lib/collapsed.js and lib/minimized.js. Operates on a plain history
+// lib/collapsed.ts and lib/minimized.ts. Operates on a plain history
 // object `{ back: [], fwd: [] }` passed in by the caller (it lives on
-// app/state.js as state.nav).
+// app/state.ts as state.nav).
 //
 // Semantics are VS Code's, not alt-tab's: `back` is a stack of
 // DEPARTED session ids, and navigating somewhere new discards the
-// forward branch. app/focus.js records a departure from setActive —
+// forward branch. app/focus.ts records a departure from setActive —
 // the sole writer of state.activeId — so every way of changing the
 // active session is captured, including the paths that never go
 // through switchTo (tile mousedown, gridSpatialMove).

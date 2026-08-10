@@ -74,7 +74,7 @@ import {
 
 // ---------- command palette table ----------
 
-// Shortcut strings come from lib/shortcuts.js so the palette and the
+// Shortcut strings come from lib/shortcuts.ts so the palette and the
 // ⌘/ help overlay can't drift from each other.
 const PALETTE_KEYS = paletteShortcuts({ isMac });
 

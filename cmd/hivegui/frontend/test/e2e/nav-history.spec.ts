@@ -4,12 +4,12 @@ import { test, expect, type Page } from '@playwright/test';
 //
 // This exists because the jsdom test can't cover the chord that
 // actually ships on macOS. jsdom reports a non-mac navigator, so
-// lib/platform.js isMac is false there and only the Ctrl+Alt+- branch
+// lib/platform.ts isMac is false there and only the Ctrl+Alt+- branch
 // is exercised. Chromium on darwin reports "MacIntel", so this spec
 // drives the real mac chord — plain Ctrl+-, no Alt — through the real
 // capture-phase keydown listener.
 //
-// The load-bearing detail: app/keyboard.js gates most bindings behind
+// The load-bearing detail: app/keyboard.ts gates most bindings behind
 // cmdOrCtrl(), which rejects plain Ctrl on macOS. The nav dispatch is
 // placed AHEAD of that gate for exactly this reason. A regression that
 // moves it below the gate passes every unit test and silently kills

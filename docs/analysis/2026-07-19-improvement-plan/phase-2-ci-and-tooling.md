@@ -39,8 +39,8 @@ socket bridge; spec 245 already scopes it out).
 
 ### TypeScript migration (decided 2026-07-25 — its own workstream)
 
-> **IN PROGRESS 2026-08-07** — now tracked in
-> [docs/exec-plans/active/typescript-migration.md](../../exec-plans/active/typescript-migration.md).
+> **DONE 2026-08-09** — the frontend is fully TypeScript and `tsc --noEmit` gates CI.
+> Executed in [docs/exec-plans/completed/typescript-migration.md](../../exec-plans/completed/typescript-migration.md).
 > That plan supersedes this section on two points: **tests migrate too** (`test/` as well
 > as `src/`), and **`strict: true` lands in PR 1** rather than in a final ramp wave —
 > `checkJs: false` already covers the "don't block CI on pre-existing holes" rationale

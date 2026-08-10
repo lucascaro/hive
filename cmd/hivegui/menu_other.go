@@ -15,7 +15,7 @@ import (
 // Ctrl+Down/Up advanced two steps and felt reversed, etc. The native
 // menu adds no user-facing value on those platforms (Wails surfaces it
 // only as a hidden accelerator table), so we drop it and let the JS
-// keyboard handler in cmd/hivegui/frontend/src/main.js own every
+// keyboard handler in cmd/hivegui/frontend/src/main.ts own every
 // shortcut. Adding a new shortcut on Windows/Linux is therefore a
 // frontend-only change.
 func buildAppMenu(_ *App) *menu.Menu { return nil }

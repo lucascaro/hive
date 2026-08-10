@@ -37,7 +37,7 @@ test('⌘, opens settings, Esc closes it, typing reaches the terminal again', as
   // proves the class flipped, which is synchronous — but closeSettings
   // restores focus through setFocusedTile, which defers the real
   // focus() into a requestAnimationFrame with a retry chain
-  // (src/app/focus.js). Typing in that gap sends the keys nowhere and
+  // (src/app/focus.ts). Typing in that gap sends the keys nowhere and
   // the assertion below fails with an empty stdin, which is what this
   // test did once on a loaded macOS CI runner.
   await expect(

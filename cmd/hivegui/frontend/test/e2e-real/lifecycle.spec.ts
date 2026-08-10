@@ -20,7 +20,7 @@ import type { SessionTerm } from '../../src/app/session-term.js';
 const WS_URL = process.env.WS_BRIDGE_URL;
 
 test.beforeEach(async ({ page }) => {
-  // Inject the bridge URL BEFORE main.js loads so the bridge module's
+  // Inject the bridge URL BEFORE main.ts loads so the bridge module's
   // ensureWS() can resolve it.
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;

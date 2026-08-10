@@ -2,7 +2,7 @@
 //
 // ⌘B / ⇧⌘B against the REAL switchTo → setActive chain.
 //
-// The sibling attention-jump.test.ts mocks view.js to isolate the
+// The sibling attention-jump.test.ts mocks view.ts to isolate the
 // return-slot logic, which means the thing ⌘B's correctness actually
 // rests on — setActive clearing the target's attention flag — is
 // simulated there, not executed. If setActive stopped deleting from
@@ -93,7 +93,7 @@ function tile(id: string): TermTile {
 }
 
 beforeAll(async () => {
-  // view.js installs a container ResizeObserver at module load; jsdom
+  // view.ts installs a container ResizeObserver at module load; jsdom
   // has no implementation. The grid-reflow path it drives is not what
   // this file tests, so a no-op stub is enough.
   globalThis.ResizeObserver = class {
@@ -112,7 +112,7 @@ beforeAll(async () => {
   ({ setActive } = focus);
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
 
-  // Real view.js + focus.js, with view stubbed at its injection seam.
+  // Real view.ts + focus.ts, with view stubbed at its injection seam.
   // ensureTerm is declared to return a TermTile; beforeEach populates
   // state.terms for every session, so tile() asserts rather than casts.
   initView({

@@ -2,9 +2,8 @@
 
 - **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
 - **Issue:** TBD
-- **Stage:** IMPLEMENT (waves 1–7c done — every file converted; wave 7d, the
-  stale-path sweep + closeout, is the last)
-- **Status:** active
+- **Stage:** DONE (waves 1–7d, 2026-08-07 → 2026-08-09)
+- **Status:** completed
 
 ## Summary
 
@@ -856,6 +855,38 @@ Check: session opens and renders, scrollback scrolls, keyboard shortcuts fire, m
 
   **The stale-path sweep is NOT in this wave** — see the follow-up below.
 
+- **2026-08-09** — Wave 7d complete: the stale-path sweep and closeout. 126
+  lines across 64 files, **comments and docs only** — no runtime line changed,
+  which is why the flaky e2e-real suite was not re-run for it.
+  - **Specifier vs. reference is the whole distinction.** `from './x.js'`,
+    `vi.mock('../x.js')` and `await import('../x.js')` all stay `.js`; a comment
+    that *names* a module gets retargeted. The multi-line `await import(\n
+    '../../src/app/banners.js'\n)` form in `test/dom/{restart-hive,settings}` and
+    `test/unit/version-footer` slipped past the specifier filter and `tsc` caught
+    all three as `TS5097` — the reason typecheck runs before the docs edits, not
+    after.
+  - **Provenance is not a path.** "Moved verbatim from main.js" / "Extracted from
+    main.js" name the file as it was at extraction time and are left alone (13
+    sites). Every pointer to the *current* composition root became `main.ts`.
+  - **Dead line cites were retargeted to modules, not re-numbered.**
+    `payload-shapes.spec.ts` cited `main.js:1119` and `main.js:798 / 870 / 1013`
+    into a file that is now 419 lines; both now name `app/sidebar.ts` /
+    `app/view.ts`, where the reads actually live. Line numbers in cites to files
+    that merely *renamed* (`state.ts:43`, `view.ts:51`) were left as-is — that
+    drift predates this migration.
+  - Out of scope, deliberately: `playwright*.config.js`, `vite.config.js`,
+    `vitest.config.js` and `scripts/*.mjs` are real filenames and stay;
+    `vitest.config.js:16-19` documents matching *both* extensions and stays;
+    `docs/product-specs/`, `docs/native-rewrite/`, `CHANGELOG.md` are dated
+    records. Two genuine pre-existing errors fixed on the way past:
+    `globalSetup.js`/`globalTeardown.js` are `.mjs`.
+  - `src/lib/shortcuts.ts:9-15`, the five-file drift checklist, is now correct in
+    all five entries.
+
+  Gates: typecheck/build/biome green, `go build ./...` + `go vet ./...` green,
+  vitest 344 in 33 files (unchanged), Playwright mock 84 passed + 1 skipped
+  (unchanged), `check-spec-discovery` collects all 17 + all 5.
+
 ## Follow-ups
 
 Open items carried out of waves 1–7a. Each is a decision or a task, not a finding — the
@@ -864,14 +895,11 @@ findings live in the wave notes above.
 - ~~**Wave 7 should be two PRs, not one.**~~ **Accepted 2026-08-08**, and it
   became three: 7a (composition root), 7b (17 mock specs + fixture pair), 7c
   (5 e2e-real specs). Every `.js`/`.mjs` that was ever going to convert has.
-- **The stale-path sweep is all that is left of the migration**, and it is now a
-  wave of its own (7d) — it touches no `.ts` and cannot break a build, so
-  bundling it with a spec conversion only made both harder to review. Populations
-  1–3 in the wave-7 inventory still stand as written; spot-checked 2026-08-09,
-  `AGENTS.md:138`, `cmd/hivegui/{app.go:135,221, menu_darwin.go:18,
-  menu_other.go:18}`, `index.html:29`, `playwright.real.config.js:12` and the
-  in-frontend comment population are all still stale. Land it with the two
-  closeout items below.
+- ~~**The stale-path sweep is all that is left of the migration**, and it is now
+  a wave of its own (7d).~~ **Done 2026-08-09** — all three populations swept;
+  see the wave-7d note above. One correction to the inventory: it *does* touch
+  `.ts`, in comments, and it *can* break the build — three multi-line dynamic
+  imports were rewritten and `tsc` caught them.
 - **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
   #267's review, deferred by the user). It turns what would have been a `TypeError` on a
   tile with no `term` into a silent no-op. Unreachable in production — the constructor
@@ -884,10 +912,14 @@ findings live in the wave notes above.
   that actually fail are the ones recorded in the wave-7 inventory. Fixing it needs a run
   on `main` to establish which set is real, so it is a task for whoever next debugs that
   suite — not for wave 7, which only needs the names as a same-run baseline.
-- **On wave 7 landing**: mark §2c's TypeScript subsection DONE in
-  `docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md:40-43` (it currently
-  reads IN PROGRESS and points here), and move this plan to `docs/exec-plans/completed/`.
-  Nothing else references it.
+- ~~**On wave 7 landing**: mark §2c's TypeScript subsection DONE and move this
+  plan to `docs/exec-plans/completed/`.~~ **Done in 7d.** §2c now reads DONE and
+  links here; that link is the only reference to this file in the tree.
+
+**Still open after closeout** — the two items above that 7d did not resolve (the
+`applyFontSize` guard, and the wrong e2e-real flake list in
+`docs/product-specs/245-…:15-17`). Neither is TypeScript work; both need a run on
+`main` or a user decision, and they outlive this plan.
 
 CI follow-ups this migration surfaced but that are **not** TypeScript work — Playwright
 browser-cache scoping and the caret/exact dependency-pin split — are recorded in

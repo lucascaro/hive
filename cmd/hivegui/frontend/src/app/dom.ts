@@ -31,7 +31,7 @@ export function setStatus(text: string, isError = false): void {
 }
 
 // flashStatus owns transient per-action feedback; it auto-reverts to
-// the persistent slot (errors linger 6s, info 2.5s — see lib/status.js).
+// the persistent slot (errors linger 6s, info 2.5s — see lib/status.ts).
 export function flashStatus(text: string, isError = false): void {
   statusCtl.flash(text, isError);
 }

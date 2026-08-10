@@ -1,8 +1,8 @@
 // Pure key-decision helpers for the terminal's custom key handler.
 //
 // Extracted from main.js so the decision logic can be unit-tested with
-// fake event objects (see test/unit/keymap.test.js), mirroring the
-// platform.js idiom. main.js keeps only the imperative wiring.
+// fake event objects (see test/unit/keymap.test.ts), mirroring the
+// platform.ts idiom. main.ts keeps only the imperative wiring.
 
 // Byte written to the PTY to insert a newline in the agent's input
 // without submitting. This is Ctrl+J (LF, 0x0a) — the one newline
@@ -42,7 +42,7 @@ export function isShiftEnter(e: KeyEventLike): boolean {
 // keyboard-shortcuts panel. Both ⌘/ and ⌘? are accepted: "?" is Shift+/
 // on a US layout, so e.key is already "?" when shift is held and no
 // separate shiftKey check is needed — the same shape as the '=' / '+'
-// zoom pair in app/keyboard.js.
+// zoom pair in app/keyboard.ts.
 //
 // The '?' branch only ever fires on Windows/Linux. On macOS the Help
 // menu item's ⌘/ accelerator already matches both chords (AppKit matches
@@ -65,13 +65,13 @@ export function isHelpOverlayKey(e: KeyEventLike): boolean {
 //   Win / Linux   Ctrl+Alt+-    / Ctrl+Alt+Shift+-
 //
 // The split mirrors VS Code, and for the same reason: on Windows and
-// Linux the app's primary modifier is Ctrl (see lib/platform.js
+// Linux the app's primary modifier is Ctrl (see lib/platform.ts
 // cmdOrCtrl), so Ctrl+- and Ctrl+= are ALREADY zoom out / in in
-// app/keyboard.js. Requiring Alt there keeps zoom intact; the
+// app/keyboard.ts. Requiring Alt there keeps zoom intact; the
 // !e.altKey branch on mac keeps ⌥⌃- free for the terminal.
 //
 // Callers must dispatch this BEFORE the cmdOrCtrl() gate in
-// app/keyboard.js — on macOS that gate rejects plain Ctrl outright.
+// app/keyboard.ts — on macOS that gate rejects plain Ctrl outright.
 //
 // Key matching accepts '-' and '_' (shifted '-' on a US layout, the
 // same shape as the '=' / '+' zoom pair) and falls back to the

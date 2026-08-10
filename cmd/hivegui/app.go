@@ -132,7 +132,7 @@ func (a *App) startup(ctx context.Context) {
 	// Opt out of macOS App Nap / activity-based timer throttling. Defensive
 	// hygiene so a backgrounded webview keeps streaming PTY output and
 	// repainting — NOT the fix for the reported freeze (that was a synchronous
-	// full-ring scrollback replay; see session-term.js). See internal/activity.
+	// full-ring scrollback replay; see session-term.ts). See internal/activity.
 	activity.DisableThrottling()
 	if a.haveInitialPos {
 		wruntime.WindowSetPosition(ctx, a.initialX, a.initialY)
@@ -218,7 +218,7 @@ func (a *App) dialHandshake(hello wire.Hello) (*wire.Client, error) {
 // as "session:list" and "session:event" events.
 //
 // It REPLACES rather than reuses, and that is the whole point. Every caller
-// is a frontend with no session state that needs the snapshot: main.js runs
+// is a frontend with no session state that needs the snapshot: main.ts runs
 // this once per page load, and the reconnect loop runs it after a drop. The
 // snapshot only ever arrives on handshake, so reusing a live connection
 // returned success while leaving a freshly-loaded page with a permanently
