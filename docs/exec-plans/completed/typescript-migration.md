@@ -900,26 +900,33 @@ findings live in the wave notes above.
   see the wave-7d note above. One correction to the inventory: it *does* touch
   `.ts`, in comments, and it *can* break the build — three multi-line dynamic
   imports were rewritten and `tsc` caught them.
-- **`applyFontSize`'s `st.term?.options` guard is undecided** (`session-term.ts`, raised in
-  #267's review, deferred by the user). It turns what would have been a `TypeError` on a
-  tile with no `term` into a silent no-op. Unreachable in production — the constructor
-  unconditionally does `new Terminal(...)` — and the optionality exists only because the
-  DOM-test stubs omit `term`. Leave it, or make it throw with a named message; either is
-  defensible, nobody has picked. Not worth its own PR; fold into wave 7 if the answer is
-  "make it loud".
-- **The e2e-real flake list in `docs/product-specs/245-…:15-17` is wrong** and was not
-  corrected here. It names all five `wheel-scroll.spec.js` cases; those pass, and the five
-  that actually fail are the ones recorded in the wave-7 inventory. Fixing it needs a run
-  on `main` to establish which set is real, so it is a task for whoever next debugs that
-  suite — not for wave 7, which only needs the names as a same-run baseline.
+- ~~**`applyFontSize`'s `st.term?.options` guard is undecided**~~ **Decided
+  2026-08-09 by the user: leave it as-is, no code change.** The optional chain
+  stays. It turns what would have been a `TypeError` on a tile with no `term`
+  into a silent no-op, but that branch is unreachable in production — the
+  constructor unconditionally does `new Terminal(...)` — and the optionality
+  exists only because the DOM-test stubs omit `term`. Raised in #267's review;
+  closed without a change, not deferred again.
+- ~~**The e2e-real flake list in `docs/product-specs/245-…` is wrong**~~
+  **Corrected 2026-08-09** from three consecutive runs on `main` (`f5f9665`),
+  macOS: 9 passed / 3 failed, the same three every time —
+  `scroll-codex.spec.ts:215`, `:262`, `scroll-restream-strand.spec.ts:97`. All
+  five `wheel-scroll` cases pass, as does the `scroll-codex` case the old list
+  singled out as the concrete thread (`unscrolled user is not stranded`). Two
+  findings folded into the spec: the failures are **deterministic** on an idle
+  machine, and CI's green streak is the `test.skip(!!process.env.CI)` quarantine
+  (2 of 12 tests run there), not a fix.
 - ~~**On wave 7 landing**: mark §2c's TypeScript subsection DONE and move this
   plan to `docs/exec-plans/completed/`.~~ **Done in 7d.** §2c now reads DONE and
   links here; that link is the only reference to this file in the tree.
 
-**Still open after closeout** — the two items above that 7d did not resolve (the
-`applyFontSize` guard, and the wrong e2e-real flake list in
-`docs/product-specs/245-…:15-17`). Neither is TypeScript work; both need a run on
-`main` or a user decision, and they outlive this plan.
+**No follow-ups are open after closeout** (the issue-number question under *Open
+questions* below is still unanswered, and is the only unresolved item in this
+file). Both non-TypeScript carry-overs were resolved on 2026-08-09: the
+`applyFontSize` guard stays as-is by user decision, and the spec-245 flake list
+was re-measured and corrected. What that measurement
+*surfaced* — three deterministic e2e-real failures, and a CI quarantine hiding 10
+of 12 tests — belongs to spec 245, not here.
 
 CI follow-ups this migration surfaced but that are **not** TypeScript work — Playwright
 browser-cache scoping and the caret/exact dependency-pin split — are recorded in
