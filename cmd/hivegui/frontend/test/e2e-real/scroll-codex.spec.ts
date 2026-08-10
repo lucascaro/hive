@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+// `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
+// view app modules use (app/state.ts). These specs poke the concrete tile the
+// map actually holds, which is what carries the real xterm Terminal, so they
+// assert SessionTerm rather than widening TermTile for every app caller and
+// DOM-test stub (wave 5b's rule).
+import type { SessionTerm } from '../../src/app/session-term.js';
 
 // Repro harness for the "scrolling jumps around with Codex when
 // switching to grid mode or back" report. The mock-Wails e2e layer
@@ -58,7 +64,7 @@ test.afterEach(async ({ page }, testInfo) => {
 
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-async function bootWithTerm(page) {
+async function bootWithTerm(page: Page) {
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set — globalSetup did not run');
   await page.goto('/');
   await page.waitForFunction(
@@ -76,11 +82,18 @@ async function bootWithTerm(page) {
   await page.waitForTimeout(200);
 }
 
-async function focusFirstTerm(page) {
+async function focusFirstTerm(page: Page) {
   await page.evaluate(() => {
     const helper =
-      document.querySelector('.term-host.active .xterm-helper-textarea') ||
-      document.querySelector('.term-host .xterm-helper-textarea');
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host.active .xterm-helper-textarea',
+      ) ||
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host .xterm-helper-textarea',
+      );
+    // The waitForFunction above already proved it exists; throwing here says
+    // so rather than turning a broken wait into a silently unfocused term.
+    if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
 }
@@ -92,18 +105,21 @@ async function focusFirstTerm(page) {
 // broadcasts session:event(added) to every control conn, so the
 // page's sidebar updates on its own. With two tiles, grid mode splits
 // the width and the col delta always crosses REPLAY_COL_THRESHOLD.
-async function addSecondSession(page) {
-  // Node < 22 has no global WebSocket; fall back to the ws package.
+async function addSecondSession(page: Page) {
+  if (!WS_URL)
+    throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
+  // Node < 22 has no global WebSocket; fall back to the ws package, typed by
+  // the hand-written ws-shim.d.ts (see there for why not @types/ws).
   const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
   const ws = new WS(WS_URL);
   await new Promise((res, rej) => {
     ws.onopen = res;
     ws.onerror = rej;
   });
-  const send = (id, method, params = {}) =>
+  const send = (id: number, method: string, params: object = {}) =>
     ws.send(JSON.stringify({ id, method, params }));
-  const waitFor = (id) =>
-    new Promise((res) => {
+  const waitFor = (id: number) =>
+    new Promise<{ id: number; error?: string }>((res) => {
       ws.addEventListener('message', function h(ev) {
         const m = JSON.parse(ev.data);
         if (m.id === id) {
@@ -135,14 +151,14 @@ async function addSecondSession(page) {
 
 // Reads the FIRST session's buffer as text lines via xterm's buffer
 // API (WebGL paints to canvas; the DOM holds nothing readable).
-function bufferLines(page) {
+function bufferLines(page: Page) {
   return page.evaluate(() => {
     const terms = window.__hive_state?.terms;
     if (!terms) return [];
-    const st = [...terms.values()][0];
+    const st = [...terms.values()][0] as SessionTerm | undefined;
     const buf = st?.term?.buffer?.active;
     if (!buf) return [];
-    const out = [];
+    const out: string[] = [];
     for (let i = 0; i < buf.length; i++) {
       out.push(buf.getLine(i)?.translateToString(true) || '');
     }
@@ -150,17 +166,27 @@ function bufferLines(page) {
   });
 }
 
-function scrollState(page) {
+function scrollState(page: Page) {
   return page.evaluate(() => {
     const terms = window.__hive_state?.terms;
-    const st = terms ? [...terms.values()][0] : null;
+    const st = terms ? ([...terms.values()][0] as SessionTerm) : null;
     const buf = st?.term?.buffer?.active;
     if (!buf) return null;
     return { viewportY: buf.viewportY, baseY: buf.baseY, type: buf.type };
   });
 }
 
-function traceTags(page, tag) {
+// Every direct-assertion site below has already waited for the term to attach,
+// so a null there is a broken wait rather than a state worth asserting on.
+// expect.poll() keeps using scrollState(), which must tolerate the
+// not-yet-attached window.
+async function mustScrollState(page: Page) {
+  const s = await scrollState(page);
+  if (!s) throw new Error('no term buffer — the boot wait did not hold');
+  return s;
+}
+
+function traceTags(page: Page, tag: string) {
   return page.evaluate(
     (t) => (window.__hive_scrolltrace || []).filter((e) => e.tag === t).length,
     tag,
@@ -171,14 +197,14 @@ function traceTags(page, tag) {
 // Bursty: awk floods `burst` lines flat-out, then sleeps — keeps
 // xterm's async write queue loaded the way codex output does, without
 // an unbounded loop that could leak past teardown.
-async function startMarkerPump(page, count, burst = 40) {
+async function startMarkerPump(page: Page, count: number, burst = 40) {
   await page.keyboard.type(
     `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo HIVE_PUMP_DONE\n`,
   );
 }
 
-function extractMarkers(lines) {
-  const out = [];
+function extractMarkers(lines: string[]) {
+  const out: number[] = [];
   for (const l of lines) {
     const m = l.match(/HIVE_SCROLL_(\d{6})/);
     if (m) out.push(parseInt(m[1], 10));
@@ -249,6 +275,10 @@ test('viewport converges to the bottom after a mode switch under continuous outp
   // lags (the parse-ordered re-snap lands when the queue drains). The
   // bug class this guards against -- a stale restore pinning the
   // viewport in history forever -- still fails convergence.
+  // Deliberately the nullable scrollState, not mustScrollState: this is an
+  // expect.poll() callback, and Playwright calls the value function outside
+  // its retry try/catch — a throw here would abort the poll on the first tick
+  // instead of letting a momentarily unreadable term recover within the 20s.
   const atBottom = async () => {
     const s = await scrollState(page);
     return s ? s.baseY - s.viewportY : NaN;
@@ -324,7 +354,7 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
 
   await page.waitForTimeout(1500); // let the last replay land
 
-  const s = await scrollState(page);
+  const s = await mustScrollState(page);
   const restores = await page.evaluate(() =>
     (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
   );
@@ -372,7 +402,7 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
     await page.mouse.wheel(0, -300);
     await page.waitForTimeout(50);
   }
-  const before = await scrollState(page);
+  const before = await mustScrollState(page);
   expect(before.viewportY).toBeLessThan(before.baseY);
 
   // A viewport resize big enough to cross REPLAY_COL_THRESHOLD fires a
@@ -381,7 +411,7 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
   await page.waitForTimeout(1500);
 
   expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
-  const after = await scrollState(page);
+  const after = await mustScrollState(page);
   expect(
     after.viewportY,
     'replay-done yanked the reader to the bottom',

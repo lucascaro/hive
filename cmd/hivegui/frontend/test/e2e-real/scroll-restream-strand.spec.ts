@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+// `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
+// view app modules use (app/state.ts). These specs poke the concrete tile the
+// map actually holds, which is what carries the real xterm Terminal, so they
+// assert SessionTerm rather than widening TermTile for every app caller and
+// DOM-test stub (wave 5b's rule).
+import type { SessionTerm } from '../../src/app/session-term.js';
 
 // Regression guard for the restream strand: a FOLLOWING viewport must stay
 // pinned to the bottom for the WHOLE resize-replay restream, not just end
@@ -37,7 +43,7 @@ test.afterEach(async ({ page }, testInfo) => {
   }
 });
 
-async function bootWithTerm(page) {
+async function bootWithTerm(page: Page) {
   // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
   // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
   test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
@@ -55,24 +61,33 @@ async function bootWithTerm(page) {
   );
   await page.evaluate(() => {
     const h =
-      document.querySelector('.term-host.active .xterm-helper-textarea') ||
-      document.querySelector('.term-host .xterm-helper-textarea');
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host.active .xterm-helper-textarea',
+      ) ||
+      document.querySelector<HTMLTextAreaElement>(
+        '.term-host .xterm-helper-textarea',
+      );
+    // The waitForFunction above already proved it exists; throwing here says
+    // so rather than turning a broken wait into a silently unfocused term.
+    if (!h) throw new Error('no xterm helper textarea to focus');
     h.focus();
   });
   await page.keyboard.type('stty -echo\n');
   await page.waitForTimeout(200);
 }
 
-function scrollState(page) {
+function scrollState(page: Page) {
   return page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0];
+    const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+      | SessionTerm
+      | undefined;
     const buf = st?.term?.buffer?.active;
     if (!buf) return null;
     return { viewportY: buf.viewportY, baseY: buf.baseY, type: buf.type };
   });
 }
 
-function traceTags(page, tag) {
+function traceTags(page: Page, tag: string) {
   return page.evaluate(
     (t) => (window.__hive_scrolltrace || []).filter((e) => e.tag === t).length,
     tag,
@@ -110,7 +125,9 @@ test('single full-buffer session: no transient viewport-jump on threshold-crossi
     for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(90);
       const s = await page.evaluate(() => {
-        const st = [...(window.__hive_state?.terms?.values() || [])][0];
+        const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+          | SessionTerm
+          | undefined;
         const buf = st?.term?.buffer?.active;
         if (!buf) return null;
         return {
@@ -144,7 +161,9 @@ test('single full-buffer session: no transient viewport-jump on threshold-crossi
     .poll(
       async () =>
         page.evaluate(() => {
-          const st = [...(window.__hive_state?.terms?.values() || [])][0];
+          const st = [...(window.__hive_state?.terms?.values() || [])][0] as
+            | SessionTerm
+            | undefined;
           const buf = st?.term?.buffer?.active;
           return buf ? buf.baseY - buf.viewportY : null;
         }),
