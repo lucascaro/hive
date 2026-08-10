@@ -907,11 +907,12 @@ findings live in the wave notes above.
   constructor unconditionally does `new Terminal(...)` — and the optionality
   exists only because the DOM-test stubs omit `term`. Raised in #267's review;
   closed without a change, not deferred again.
-- ~~**The e2e-real flake list in `docs/product-specs/245-…:15-17` is wrong**~~
+- ~~**The e2e-real flake list in `docs/product-specs/245-…` is wrong**~~
   **Corrected 2026-08-09** from three consecutive runs on `main` (`f5f9665`),
-  macOS: 9 passed / 3 failed, the same three every time — `scroll-codex.ts:215`,
-  `:262`, `scroll-restream-strand.ts:97`. All five `wheel-scroll` cases pass, as
-  do the two `scroll-codex` cases the old list named as the concrete thread. Two
+  macOS: 9 passed / 3 failed, the same three every time —
+  `scroll-codex.spec.ts:215`, `:262`, `scroll-restream-strand.spec.ts:97`. All
+  five `wheel-scroll` cases pass, as does the `scroll-codex` case the old list
+  singled out as the concrete thread (`unscrolled user is not stranded`). Two
   findings folded into the spec: the failures are **deterministic** on an idle
   machine, and CI's green streak is the `test.skip(!!process.env.CI)` quarantine
   (2 of 12 tests run there), not a fix.
@@ -919,9 +920,11 @@ findings live in the wave notes above.
   plan to `docs/exec-plans/completed/`.~~ **Done in 7d.** §2c now reads DONE and
   links here; that link is the only reference to this file in the tree.
 
-**Nothing is open after closeout.** Both non-TypeScript carry-overs were resolved
-on 2026-08-09: the `applyFontSize` guard stays as-is by user decision, and the
-spec-245 flake list was re-measured and corrected. What that measurement
+**No follow-ups are open after closeout** (the issue-number question under *Open
+questions* below is still unanswered, and is the only unresolved item in this
+file). Both non-TypeScript carry-overs were resolved on 2026-08-09: the
+`applyFontSize` guard stays as-is by user decision, and the spec-245 flake list
+was re-measured and corrected. What that measurement
 *surfaced* — three deterministic e2e-real failures, and a CI quarantine hiding 10
 of 12 tests — belongs to spec 245, not here.
 

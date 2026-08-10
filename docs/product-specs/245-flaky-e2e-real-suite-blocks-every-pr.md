@@ -24,10 +24,13 @@ All three runs produced the *same* 9 passed / 3 failed:
 - `test/e2e-real/scroll-codex.spec.ts:262` — viewport converges to the bottom after a mode switch under continuous output
 - `test/e2e-real/scroll-restream-strand.spec.ts:97` — single full-buffer session: no transient viewport-jump on threshold-crossing resizes
 
-Everything else passes, including **all five `wheel-scroll` cases** and the
-other two `scroll-codex` cases (`unscrolled user not stranded by a resize under
-load`, `scrolled reader not yanked to the bottom`) — the two the original list
-called out by name as the concrete thread.
+Everything else passes, including **all five `wheel-scroll` cases** and the other
+two `scroll-codex` cases: `full scrollback: an unscrolled user is not stranded in
+history by a resize under load` (now `:320`, was `:244`) and `a reader scrolled
+into history is not yanked to the bottom by a resize replay` (now `:385`, was
+`:300`). The first of those is the one the original list singled out as *the
+concrete thread* — the `baseY`-precondition failure quoted below. It passes here,
+3/3.
 
 Two things this measurement changes about the problem statement above:
 
@@ -43,15 +46,19 @@ Two things this measurement changes about the problem statement above:
    The last 8 `main` runs being green is the quarantine working, and is not
    evidence toward this spec's success criteria.
 
-Line numbers are as of the TypeScript conversion (waves 7c/7d) — the specs are
-`.ts` now, and every line number in the original list predates that rename.
+Line numbers above are as of `f5f9665`. The original list's numbers had already
+drifted before the TypeScript rename — the quarantine commit (`428e43d`) and the
+Biome reformat (`63a86fd`) moved `scroll-codex`'s four tests from
+`166/203/244/300` to `189/236/290/355` while the file was still `.js`; the rename
+(wave 7c) then added the last ~26. Do not read the old numbers as "the `.js` line,
+before the rename" — they are older than that.
 
 > **Original failure list (superseded).** Recorded against the `.js` specs before
 > the TS migration: `wheel-scroll.spec.js` `:185`/`:194`/`:203`/`:215`/`:228`;
 > `scroll-codex.spec.js` `:166`/`:203`/`:244`/`:300`;
 > `scroll-restream-strand.spec.js` `:59`.
 
-The failures are load- and timing-dependent, not deterministic: `scroll-codex.spec.js:244` fails with `baseY` at 1624 against an `expect(...).toBeGreaterThan(4500)` precondition — the buffer never reached the scrollback cap the assertion depends on, so the test is failing its *setup*, not its invariant. Several of these were introduced alongside the scroll/replay fixes in the current `[Unreleased]` block, which is where the flakiness likely entered.
+~~The failures are load- and timing-dependent, not deterministic:~~ **Superseded by the 2026-08-09 baseline above** — the three failures that remain are deterministic on an idle machine, and the test this paragraph describes now passes. Kept because the *mechanism* it identifies is still the best hypothesis for the CI-side behavior: `scroll-codex.spec.js:244` (the `unscrolled user is not stranded` case, today `scroll-codex.spec.ts:320`) failed on CI with `baseY` at 1624 against an `expect(...).toBeGreaterThan(4500)` precondition — the buffer never reached the scrollback cap the assertion depends on, so the test was failing its *setup*, not its invariant. Several of these were introduced alongside the scroll/replay fixes in the then-current `[Unreleased]` block, which is where the flakiness likely entered.
 
 Observed twice on PR #244 in a way that isolates the cause from any code change: Linux flipped green → red across `b404d1c`, and macOS flipped green → red across `365ec37`. **Both are documentation-only commits.** A subsequent re-run of the identical macOS commit passed with no changes at all.
 
@@ -78,4 +85,6 @@ CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-r
 
 Surfaced while driving PR #244 (Restart Hive) through `/hs-review-loop`. That PR's own Windows failure *was* real and was fixed; these are not. Evidence is recorded in `docs/exec-plans/completed/243-restart-hive-doesnt-reliably-restart-daemon.md` under `## CI note`.
 
-Root cause is **not** diagnosed here — this spec records the evidence and the impact. The load-dependent `baseY` precondition in `scroll-codex.spec.js:286` is the most concrete starting thread: a runner under CPU contention produces less output in the same wall-clock window, which fits every observation, including why the failure set grows on the slower/busier runs.
+Root cause is **not** diagnosed here — this spec records the evidence and the impact. The load-dependent `baseY` precondition originally cited as `scroll-codex.spec.js:286` (today `scroll-codex.spec.ts:366`, the cap assertion inside the `unscrolled user is not stranded` test) was the most concrete starting thread *for the CI-side flakiness*: a runner under CPU contention produces less output in the same wall-clock window, which fits every CI observation, including why the failure set grows on the slower/busier runs.
+
+**As of the 2026-08-09 baseline that thread is no longer the best place to start.** That test passes 3/3 locally; the three that fail do so deterministically on an idle machine, so they can be debugged directly without reproducing runner contention at all. Start there.
