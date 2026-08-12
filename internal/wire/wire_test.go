@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -181,5 +182,34 @@ func TestFrameTypeStringUnknown(t *testing.T) {
 	s := FrameType(0xab).String()
 	if !strings.Contains(s, "0xab") {
 		t.Errorf("unknown stringer = %q", s)
+	}
+}
+
+// TestCreateSpecInsertAfterSnakeCase pins the wire spelling of the
+// insert-anchor field: JS readers key off the snake_case name, and an
+// older daemon must not see a stray empty field.
+func TestCreateSpecInsertAfterSnakeCase(t *testing.T) {
+	blob, err := json.Marshal(CreateSpec{Name: "s", InsertAfterSessionID: "abc"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(blob), `"insert_after_session_id":"abc"`) {
+		t.Errorf("marshal: got %s, want an insert_after_session_id key", blob)
+	}
+
+	empty, err := json.Marshal(CreateSpec{Name: "s"})
+	if err != nil {
+		t.Fatalf("marshal empty: %v", err)
+	}
+	if strings.Contains(string(empty), "insert_after_session_id") {
+		t.Errorf("empty anchor should be omitted, got %s", empty)
+	}
+
+	var back CreateSpec
+	if err := json.Unmarshal([]byte(`{"insert_after_session_id":"xyz"}`), &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.InsertAfterSessionID != "xyz" {
+		t.Errorf("unmarshal: got %q, want %q", back.InsertAfterSessionID, "xyz")
 	}
 }
