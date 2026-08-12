@@ -53,6 +53,7 @@ import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { goBack, goForward } from '../lib/nav-history.js';
+import { reorderTarget } from '../lib/reorder.js';
 import { scrollTrace } from './trace.js';
 import { mustEl } from './el.js';
 import type { ProjectInfo } from './state.js';
@@ -638,22 +639,13 @@ export function moveActiveSession(delta: number, reorder: boolean) {
     return;
   }
   if (reorder) {
-    const cur = state.sessions.find((s) => s.id === state.activeId);
-    // idx >= 0 already proves the active session is in the ordered list,
-    // so this can't miss — but the guard is what tells tsc that, and it
-    // replaces the TypeError the old code would have thrown on the
-    // impossible branch. cur.id is state.activeId, non-null by the same
-    // argument, so the UpdateSession call reads it off cur.
-    if (!cur) return;
-    const sib = state.sessions
-      .filter(
-        (s) =>
-          (s.projectId ?? s.project_id) === (cur.projectId ?? cur.project_id),
-      )
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const sIdx = sib.findIndex((s) => s.id === cur.id);
-    const next = (sIdx + delta + sib.length) % sib.length;
-    UpdateSession(cur.id, '', '', next).catch(reportFailure('reorder'));
+    // reorderTarget returns an index into the GLOBAL ordered list, which
+    // is the index space the daemon's Update expects. Sending a
+    // per-project index here is what used to scatter sessions across
+    // project boundaries.
+    const target = reorderTarget(ord, state.activeId, delta);
+    if (target == null) return;
+    UpdateSession(ord[idx].id, '', '', target).catch(reportFailure('reorder'));
     return;
   }
   const next = (idx + delta + n) % n;
