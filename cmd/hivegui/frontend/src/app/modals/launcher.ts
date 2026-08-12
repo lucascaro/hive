@@ -145,11 +145,16 @@ function moveLauncherSelection(delta: number) {
 function launchSelected(agentId: string) {
   bumpAgentUsage(agentId);
   flashStatus('creating session…');
+  // Anchor the new session under the one it came from (duplicate) or
+  // under the active one, so it lands next to its context instead of at
+  // the bottom of the sidebar.
+  const anchor = launcherState.duplicateFrom?.id || state.activeId || '';
   if (launcherState.duplicateFrom) {
     DuplicateSession(
       agentId,
       launcherState.projectId || '',
       launcherState.duplicateCwd,
+      anchor,
     ).catch(reportFailure('duplicate session'));
   } else {
     CreateSession(
@@ -160,6 +165,7 @@ function launchSelected(agentId: string) {
       0,
       0,
       !!launcherState.useWorktree,
+      anchor,
     ).catch(reportFailure('new session'));
   }
   closeLauncher();
@@ -465,7 +471,7 @@ export function duplicateActiveSession() {
   }
   const pid = s.projectId ?? s.project_id ?? '';
   if (s.agent) bumpAgentUsage(s.agent);
-  DuplicateSession(s.agent || '', pid, cwd).catch(
+  DuplicateSession(s.agent || '', pid, cwd, s.id).catch(
     reportFailure('duplicate session'),
   );
 }

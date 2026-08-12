@@ -532,19 +532,22 @@ func (a *App) SaveCustomAgents(list []CustomAgent) error {
 // <gitRoot>/.worktrees/. The daemon broadcasts a SESSION_EVENT(added)
 // over the control connection; the frontend updates the sidebar from
 // that.
-func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool) error {
+// insertAfter names the session the new one should sit directly beneath
+// in the display order (usually the active session); "" appends.
+func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter string) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Agent:       agentID,
-		ProjectID:   projectID,
-		Name:        name,
-		Color:       color,
-		Cols:        cols,
-		Rows:        rows,
-		UseWorktree: useWorktree,
+		Agent:                agentID,
+		ProjectID:            projectID,
+		Name:                 name,
+		Color:                color,
+		Cols:                 cols,
+		Rows:                 rows,
+		UseWorktree:          useWorktree,
+		InsertAfterSessionID: insertAfter,
 	})
 }
 
@@ -557,16 +560,19 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 // UseWorktree is forced to false here: when cwd already points inside a
 // worktree, we want to *reuse* it, not stack a nested worktree on top.
 // Passing agentID="" creates a generic shell session.
-func (a *App) DuplicateSession(agentID, projectID, cwd string) error {
+// insertAfter is normally the id of the session being duplicated, so
+// the copy lands directly beneath its source; "" appends.
+func (a *App) DuplicateSession(agentID, projectID, cwd string, insertAfter string) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Agent:       agentID,
-		ProjectID:   projectID,
-		Cwd:         cwd,
-		UseWorktree: false,
+		Agent:                agentID,
+		ProjectID:            projectID,
+		Cwd:                  cwd,
+		UseWorktree:          false,
+		InsertAfterSessionID: insertAfter,
 	})
 }
 
