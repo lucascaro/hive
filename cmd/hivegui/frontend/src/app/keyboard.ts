@@ -305,21 +305,17 @@ window.addEventListener(
         switchTo(ord[idx].id);
       }
     } else if (e.key === 'ArrowLeft') {
-      swallow();
-      if (state.view !== 'single') gridSpatialMove(-1, 0);
-      else moveActiveSession(-1, e.shiftKey);
+      // Horizontal arrows are only ours in grid mode; handleArrow says
+      // so by returning false, and we leave the key to the terminal.
+      if (handleArrow(-1, 0, e.shiftKey)) swallow();
     } else if (e.key === 'ArrowRight') {
-      swallow();
-      if (state.view !== 'single') gridSpatialMove(+1, 0);
-      else moveActiveSession(+1, e.shiftKey);
+      if (handleArrow(+1, 0, e.shiftKey)) swallow();
     } else if (e.key === 'ArrowUp') {
       swallow();
-      if (state.view !== 'single') gridSpatialMove(0, -1);
-      else moveActiveSession(-1, e.shiftKey);
+      handleArrow(0, -1, e.shiftKey);
     } else if (e.key === 'ArrowDown') {
       swallow();
-      if (state.view !== 'single') gridSpatialMove(0, +1);
-      else moveActiveSession(+1, e.shiftKey);
+      handleArrow(0, +1, e.shiftKey);
     } else if (e.key === '[') {
       swallow();
       shiftActiveProject(-1);
@@ -365,17 +361,37 @@ export function toggleAllGrid() {
   setView(state.view === 'grid-all' ? 'single' : 'grid-all');
 }
 
-export function navSession(delta: number) {
+// handleArrow is the single implementation behind both the ⌘-arrow
+// keydowns and the Session-menu events, so the two can't drift (they
+// had: the menu's next/prev-session mapped ⌘↓ to a horizontal grid
+// move).
+//
+// Returns true when the app consumed the key. Horizontal arrows in
+// focused mode return false: ⌘←/⌘→ and ⇧⌘←/⇧⌘→ are start/end-of-line
+// (and select-to-start/end) in the terminal, and the app must not take
+// them.
+export function handleArrow(
+  dCol: number,
+  dRow: number,
+  shift: boolean,
+): boolean {
   if (state.view !== 'single') {
-    gridSpatialMove(delta > 0 ? +1 : -1, 0);
-  } else {
-    moveActiveSession(delta, false);
+    gridSpatialMove(dCol, dRow);
+    return true;
   }
+  if (dCol !== 0) return false; // ⌘←/→ belong to the terminal in focused mode
+  moveActiveSession(dRow, shift);
+  return true;
 }
 
+export function navSession(delta: number) {
+  handleArrow(0, delta, false);
+}
+
+// A menu item labelled "Move Session Forward" must reorder in every
+// view — it used to silently become a horizontal grid move.
 export function reorderActive(delta: number) {
-  if (state.view === 'single') moveActiveSession(delta, true);
-  else gridSpatialMove(delta > 0 ? +1 : -1, 0);
+  moveActiveSession(delta, true);
 }
 
 // jumpToAttention (⌘B) goes to the next session with an unread bell,
