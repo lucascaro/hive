@@ -174,8 +174,26 @@ export async function RequestScrollbackReplay(id: string) {
   replayLog.push({ id, t: Date.now() });
   return '';
 }
+// state.sessions IS the order, mirroring the daemon's single global
+// r.order list; renumber rewrites each session's .order to its index,
+// the same invariant registry.renumberLocked keeps.
+function renumber() {
+  state.sessions.forEach((s, i) => {
+    s.order = i;
+  });
+}
+// emitUpdatedExcept mirrors the daemon's post-reorder fan-out: every
+// session whose .order shifted is broadcast so clients don't keep stale
+// values.
+function emitUpdatedExcept(skipId: string) {
+  for (const other of state.sessions) {
+    if (other.id === skipId) continue;
+    emit('session:event', JSON.stringify({ kind: 'updated', session: other }));
+  }
+}
 // Positional args matching the real Wails binding:
-// CreateSession(agentID, projectID, name, color, cols, rows, useWorktree).
+// CreateSession(agentID, projectID, name, color, cols, rows, useWorktree,
+// insertAfter).
 export async function CreateSession(
   agentID: string,
   projectID: string,
@@ -184,9 +202,11 @@ export async function CreateSession(
   _cols: number,
   _rows: number,
   _useWorktree: boolean,
+  insertAfter?: string,
 ) {
   maybeFail('CreateSession');
   const id = `mock-${state.sessions.length + 1}`;
+  const pid = projectID || 'p1';
   const s: MockSession = {
     id,
     name: name || `s${state.sessions.length + 1}`,
@@ -195,23 +215,34 @@ export async function CreateSession(
     created: new Date().toISOString(),
     alive: true,
     agent: agentID || '',
-    project_id: projectID || 'p1',
+    project_id: pid,
     worktree_path: '',
     worktree_branch: '',
     last_error: '',
   };
-  state.sessions.push(s);
+  // Splice after the anchor only when it exists AND shares the new
+  // session's project — exactly registry.insertEntry's guard.
+  const anchorIdx = insertAfter
+    ? state.sessions.findIndex(
+        (x) => x.id === insertAfter && x.project_id === pid,
+      )
+    : -1;
+  const pos = anchorIdx >= 0 ? anchorIdx + 1 : state.sessions.length;
+  state.sessions.splice(pos, 0, s);
+  renumber();
+  if (pos !== state.sessions.length - 1) emitUpdatedExcept(id);
   emit('session:event', JSON.stringify({ kind: 'added', session: s }));
   return id;
 }
-// Positional: DuplicateSession(agentID, projectID, cwd).
+// Positional: DuplicateSession(agentID, projectID, cwd, insertAfter).
 export async function DuplicateSession(
   agentID: string,
   projectID: string,
   _cwd: string,
+  insertAfter?: string,
 ) {
   maybeFail('DuplicateSession');
-  return CreateSession(agentID, projectID, 'dup', '', 0, 0, false);
+  return CreateSession(agentID, projectID, 'dup', '', 0, 0, false, insertAfter);
 }
 export async function KillSession(id: string) {
   maybeFail('KillSession');
@@ -233,13 +264,24 @@ export async function UpdateSession(
   id: string,
   name: string,
   color: string,
-  _order: number,
+  order: number,
 ) {
   maybeFail('UpdateSession');
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return '';
   if (name) s.name = name;
   if (color) s.color = color;
+  if (order >= 0) {
+    // Delete-then-clamp-then-insert, the same shape as
+    // registry.moveInOrder — which is what makes the target index the
+    // frontend sends meaningful.
+    const cur = state.sessions.indexOf(s);
+    state.sessions.splice(cur, 1);
+    const at = Math.min(Math.max(order, 0), state.sessions.length);
+    state.sessions.splice(at, 0, s);
+    renumber();
+    emitUpdatedExcept(id);
+  }
   emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
   return '';
 }
@@ -407,8 +449,8 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     state,
     emit,
-    addSession(name: string) {
-      return CreateSession('', 'p1', name, '', 0, 0, false);
+    addSession(name: string, insertAfter?: string) {
+      return CreateSession('', 'p1', name, '', 0, 0, false, insertAfter);
     },
     killSession(id: string) {
       return KillSession(id);
