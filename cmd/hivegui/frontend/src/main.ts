@@ -46,6 +46,8 @@ import {
   renderMinimizedTray,
   renderEmptyState,
   shiftActiveProject,
+  renderGrid,
+  enforceViewFloor,
   initView,
 } from './app/view.js';
 import {
@@ -217,6 +219,8 @@ initKeyboard({
 wireDaemonEvents({
   switchTo,
   renderMinimizedTray,
+  renderGrid,
+  enforceViewFloor,
   updateAppTitle,
   focusActiveTerm,
   refocusActiveTerm,

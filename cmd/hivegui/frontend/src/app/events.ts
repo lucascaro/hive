@@ -26,6 +26,11 @@ import type { ScrollTrace } from '../lib/scroll-debug.js';
 export interface EventsDeps {
   switchTo: (id: string) => void;
   renderMinimizedTray: () => void;
+  // renderGrid / enforceViewFloor come through the deps seam rather
+  // than a direct view.ts import: view.ts pulls in sidebar and the
+  // modals, and events.ts is deliberately kept out of that graph.
+  renderGrid: () => void;
+  enforceViewFloor: () => void;
   updateAppTitle: () => void;
   focusActiveTerm: () => void;
   refocusActiveTerm: () => void;
@@ -42,6 +47,8 @@ export interface EventsDeps {
 let deps: EventsDeps = {
   switchTo: () => {},
   renderMinimizedTray: () => {},
+  renderGrid: () => {},
+  enforceViewFloor: () => {},
   updateAppTitle: () => {},
   focusActiveTerm: () => {},
   refocusActiveTerm: () => {},
@@ -335,8 +342,19 @@ export function wireDaemonEvents(injected: EventsDeps) {
         state.activeId = null;
         if (nextId) deps.switchTo(nextId);
       }
+      // Killing the second-to-last tile leaves a one-tile grid, which is
+      // the degenerate state setView refuses to enter.
+      deps.enforceViewFloor();
     } else if (ev.kind === 'updated') {
+      // A reorder arrives as `updated` events carrying new .order
+      // values. renderGrid appends tiles in gridScopeSessions order, so
+      // without a repaint the sidebar reorders while the tiles keep
+      // their stale DOM order.
+      const prevOrder = i >= 0 ? state.sessions[i].order : undefined;
       if (i >= 0) state.sessions[i] = ev.session;
+      if (prevOrder !== ev.session.order && state.view !== 'single') {
+        deps.renderGrid();
+      }
       // Push the new name/color/worktree branch into the cached
       // SessionTerm so the grid tile-header refreshes immediately.
       // Without this, renames look broken in grid mode — the sidebar
