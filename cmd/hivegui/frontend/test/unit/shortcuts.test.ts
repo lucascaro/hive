@@ -55,16 +55,22 @@ describe('shortcutGroups', () => {
     const keys = shortcutGroups({ isMac: false })
       .flatMap((g) => g.items.map((i) => i.keys))
       .join(' ');
-    expect(keys).toContain('Ctrl+Up/Down/Left/Right');
-    expect(keys).toContain('Ctrl+Shift+Up/Down/Left/Right');
+    // The vertical and horizontal arrows are advertised separately: they
+    // no longer do the same thing (⌘←/→ reach the terminal in focused
+    // mode, and reorder is ⇧⌘↑/↓ only).
+    expect(keys).toContain('Ctrl+Up/Down');
+    expect(keys).toContain('Ctrl+Left/Right');
+    expect(keys).toContain('Ctrl+Shift+Up/Down');
+    expect(keys).not.toContain('Ctrl+Shift+Left/Right');
     expect(keys).toContain('Up/Down / Tab');
-    expect(keys).toContain('Left/Right');
     expect(keys).not.toMatch(/UpDown|LeftRight/);
     // Mac glyphs stay run together — the conventional rendering.
     const macKeys = shortcutGroups({ isMac: true })
       .flatMap((g) => g.items.map((i) => i.keys))
       .join(' ');
-    expect(macKeys).toContain('⌘↑↓←→');
+    expect(macKeys).toContain('⌘↑↓');
+    expect(macKeys).toContain('⌘←→');
+    expect(macKeys).toContain('⇧⌘↑↓');
   });
 });
 

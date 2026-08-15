@@ -95,7 +95,8 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
   const m = (key: string, opts?: ModOpts) => mod(isMac, key, opts);
   const c = (key: string, opts?: ModOpts) => ctrl(isMac, key, opts);
   const ca = (key: string, opts?: ModOpts) => ctrlAlt(isMac, key, opts);
-  const arrows = arrowSeq(isMac, 'up', 'down', 'left', 'right');
+  const vArrows = arrowSeq(isMac, 'up', 'down');
+  const hArrows = arrowSeq(isMac, 'left', 'right');
   return [
     {
       title: 'Sessions',
@@ -110,12 +111,17 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         { keys: m('W'), label: 'Close session' },
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
         {
-          keys: `${isMac ? '⌘' : 'Ctrl+'}${arrows}`,
-          label: 'Next / previous session (spatial move in grid)',
+          keys: `${isMac ? '⌘' : 'Ctrl+'}${vArrows}`,
+          label: 'Next / previous session (grid: move between tiles)',
         },
         {
-          keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${arrows}`,
-          label: 'Reorder session',
+          keys: `${isMac ? '⌘' : 'Ctrl+'}${hArrows}`,
+          label:
+            'Grid: move between tiles — in focused mode these reach the terminal (start / end of line)',
+        },
+        {
+          keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${vArrows}`,
+          label: 'Reorder session within its project (wraps)',
         },
         { keys: ca('-'), label: 'Go back to the previously visited session' },
         { keys: ca('-', { shift: true }), label: 'Go forward again' },
