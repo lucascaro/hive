@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"log"
+	"slices"
 	"strings"
 	"time"
 
@@ -202,14 +203,33 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 	}
 	e := &Entry{
 		ID: p.id, Name: p.name, Color: p.color,
-		Order: len(r.order), Created: time.Now().UTC(),
-		Agent: spec.Agent, ProjectID: projectID,
+		Created: time.Now().UTC(),
+		Agent:   spec.Agent, ProjectID: projectID,
 	}
 	r.entries[p.id] = e
-	r.order = append(r.order, p.id)
+	// Place the new session right after its anchor when the anchor is a
+	// live sibling in the same project; otherwise append. r.order is one
+	// global list across all projects, so a cross-project anchor would
+	// land the entry inside another project's index range.
+	pos := len(r.order)
+	if a := r.entries[spec.InsertAfterSessionID]; a != nil && a.ProjectID == projectID {
+		if i := slices.Index(r.order, a.ID); i >= 0 {
+			pos = i + 1
+		}
+	}
+	r.order = slices.Insert(r.order, pos, p.id)
+	if pos == len(r.order)-1 {
+		// Plain append: nobody else's Order moved, so skip renumbering —
+		// renumberLocked re-persists every entry, and doing that under
+		// r.mu on every session create is O(n) disk writes for nothing.
+		e.Order = pos
+	} else {
+		r.renumberLocked()
+	}
 	rollback := func() {
 		delete(r.entries, p.id)
-		r.order = r.order[:len(r.order)-1]
+		r.order = slices.Delete(r.order, pos, pos+1)
+		r.renumberLocked()
 	}
 	if err := r.persistEntryLocked(e); err != nil {
 		rollback()
@@ -218,6 +238,16 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 	if err := r.persistIndexLocked(); err != nil {
 		rollback()
 		return nil, err
+	}
+	// A mid-list splice shifted every later entry's Order, so the
+	// clients' cached values are stale — same fan-out Update does. A
+	// plain append shifts nothing and stays quiet.
+	if pos != len(r.order)-1 {
+		for _, sid := range r.order {
+			if other := r.entries[sid]; other != nil && other.ID != e.ID {
+				r.broadcastLocked(wire.SessionEventUpdated, other.Info())
+			}
+		}
 	}
 	return e, nil
 }

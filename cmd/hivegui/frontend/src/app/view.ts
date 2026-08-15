@@ -7,7 +7,7 @@
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
 import { state, type SessionInfo, type TermTile } from './state.js';
-import { termsHost, setStatus } from './dom.js';
+import { termsHost, setStatus, flashStatus } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
@@ -17,7 +17,7 @@ import {
   computeSpatialMove,
   type GridLayout,
 } from '../lib/grid.js';
-import { VIEW_STORAGE_KEY, type ViewMode } from '../lib/view.js';
+import { VIEW_STORAGE_KEY, resolveView, type ViewMode } from '../lib/view.js';
 import { filterMinimized } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { emptyStateModel } from '../lib/empty-state.js';
@@ -380,20 +380,26 @@ export function shiftActiveProject(delta: number) {
   setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
-// gridScopeSessions returns the list of sessions that should be tiled
-// in the current grid view.
-export function gridScopeSessions() {
-  if (state.view === 'grid-all') {
+// gridScopeFor returns the sessions a given grid view would tile, for a
+// view the app is not necessarily in yet — setView needs the count
+// before it commits to the mode.
+export function gridScopeFor(view: ViewMode, projectId?: string) {
+  if (view === 'grid-all') {
     return filterMinimized(orderedSessions(), state.minimized);
   }
-  if (state.view === 'grid-project') {
-    const pid = state.gridProjectId || activeProjectId();
+  if (view === 'grid-project') {
     const scoped = state.sessions
-      .filter((s) => (s.projectId ?? s.project_id) === pid)
+      .filter((s) => (s.projectId ?? s.project_id) === projectId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return filterMinimized(scoped, state.minimized);
   }
   return [];
+}
+
+// gridScopeSessions returns the list of sessions that should be tiled
+// in the current grid view.
+export function gridScopeSessions() {
+  return gridScopeFor(state.view, state.gridProjectId || activeProjectId());
 }
 
 // minimizeSession hides a session from grid views by adding its id to
@@ -415,6 +421,16 @@ export function minimizeSession(id: string | null) {
     rebaselineGridReplayCols();
   }
   renderMinimizedTray();
+  enforceViewFloor();
+}
+
+// enforceViewFloor drops back to focused mode when the current grid's
+// scope has fallen below two tiles (last sibling killed, or minimized
+// away) — the same degenerate one-tile grid setView refuses to enter.
+export function enforceViewFloor() {
+  if (state.view === 'single') return;
+  if (gridScopeSessions().length >= 2) return;
+  setView('single');
 }
 
 // restoreSession removes a session from state.minimized and switches
@@ -572,6 +588,15 @@ export function renderEmptyState() {
 }
 
 export function setView(view: ViewMode) {
+  // A grid of one tile looks like focused mode but loses the focused-mode
+  // keybindings, so ⌘G / ⇧⌘G / ⌘↩ below the floor stay where they are.
+  // The startup restore of a persisted view goes through here too.
+  const target = resolveView(
+    view,
+    view === 'single' ? 0 : gridScopeFor(view, activeProjectId()).length,
+  );
+  if (target !== view) flashStatus('only one session — staying focused');
+  view = target;
   state.view = view;
   try {
     localStorage.setItem(VIEW_STORAGE_KEY, view);

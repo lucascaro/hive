@@ -31,7 +31,11 @@ interface HiveTestApi {
 
   // --- Mock only (test/e2e/wails-mock.ts). Absent under VITE_WAILS_REAL. ---
   state?: { projects: MockProject[]; sessions: MockSession[] };
-  addSession?(name: string): Promise<string>;
+  addSession?(
+    name: string,
+    insertAfter?: string,
+    projectId?: string,
+  ): Promise<string>;
   killSession?(id: string): Promise<string>;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;
@@ -48,6 +52,10 @@ declare global {
     // Assigned by test/e2e/fixtures/xterm-reflow.ts, read by its spec through
     // the fixture page only — hence optional, like the debug globals in
     // src/globals.d.ts.
+    // Set by test/e2e/ordering.spec.ts to record whether anything
+    // consumed a ⌘-arrow keydown. Optional for the same reason as
+    // __reflow: only that one spec assigns it.
+    __arrowPrevented?: boolean | null;
     __reflow?: ReflowApi;
     __reflowReady?: boolean;
   }

@@ -69,6 +69,8 @@ describe('wireDaemonEvents window-focus handler', () => {
     wireDaemonEvents({
       switchTo: vi.fn(),
       renderMinimizedTray: vi.fn(),
+      renderGrid: vi.fn(),
+      enforceViewFloor: vi.fn(),
       updateAppTitle: vi.fn(),
       focusActiveTerm: vi.fn(),
       refocusActiveTerm,

@@ -40,6 +40,13 @@ type CreateSpec struct {
 	// Branch is an optional branch name for the worktree. When empty,
 	// a random adjective-noun is generated.
 	Branch string `json:"branch,omitempty"`
+
+	// InsertAfterSessionID, when it names an existing session in the
+	// same project as the new one, places the new session immediately
+	// after it in the display order instead of appending it last.
+	// Ignored (append) when empty, unknown, or owned by a different
+	// project.
+	InsertAfterSessionID string `json:"insert_after_session_id,omitempty"`
 }
 
 // Hello is the first frame the client sends after connecting.

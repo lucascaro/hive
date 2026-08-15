@@ -53,18 +53,34 @@ test.describe('session minimize', () => {
     await expect(tray.locator(`.min-chip[data-sid="${sid}"]`)).toBeVisible();
   });
 
+  // Three sessions, not two: a grid that drops below two tiles now
+  // returns to focused mode (see ordering.spec.ts), so minimizing one of
+  // a pair would leave no grid to restore into.
   test('restore from tray returns session to grid', async ({ page }) => {
-    await bootWithSessions(page, 2);
+    await bootWithSessions(page, 3);
     await enterGridAll(page);
 
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
     await firstTile.locator('.tile-minimize').click();
-    await expect(page.locator('.term-host.in-grid')).toHaveCount(1);
+    await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
 
     await page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`).click();
-    await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
+    await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
+  });
+
+  test('minimizing a grid down to one tile returns to focused mode', async ({
+    page,
+  }) => {
+    await bootWithSessions(page, 2);
+    await enterGridAll(page);
+    await page
+      .locator('.term-host.in-grid')
+      .first()
+      .locator('.tile-minimize')
+      .click();
+    await expect(page.locator('#terms')).not.toHaveClass(/grid/);
   });
 
   test('minimizing the active session moves focus to another visible tile', async ({

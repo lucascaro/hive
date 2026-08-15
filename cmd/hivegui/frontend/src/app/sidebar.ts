@@ -369,6 +369,13 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
 
 // reorderDroppedSession converts a drop position ("above" or "below"
 // the target row) into a global Order argument for UpdateSession.
+//
+// Kept separate from lib/reorder.ts's reorderTarget on purpose: that one
+// answers "swap with the adjacent sibling" (⇧⌘↑/↓) and can name the
+// target's own .order directly, while a drop can land between any two
+// rows and needs the shift compensation below. Both rely on the same
+// invariant — .order IS the index into the daemon's r.order — so if you
+// change that assumption, change it in both.
 // The daemon's moveLocked treats the argument as a global index into
 // r.order; we pick the global Order of whichever neighbor sits at
 // the project-relative drop slot (after pretending the dragged

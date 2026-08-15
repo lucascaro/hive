@@ -152,6 +152,7 @@ export async function CreateSession(
   cols: number,
   rows: number,
   useWorktree: boolean,
+  insertAfter?: string,
 ) {
   // The Wails signature uses positional args; map to the bridge's
   // CreateSpec shape.
@@ -163,10 +164,16 @@ export async function CreateSession(
     cols: cols || 80,
     rows: rows || 24,
     use_worktree: !!useWorktree,
+    insert_after_session_id: insertAfter || '',
   });
 }
-export async function DuplicateSession() {
-  return CreateSession('', '', 'dup', '', 80, 24, false);
+export async function DuplicateSession(
+  _agentID?: string,
+  _projectID?: string,
+  _cwd?: string,
+  insertAfter?: string,
+) {
+  return CreateSession('', '', 'dup', '', 80, 24, false, insertAfter);
 }
 export async function KillSession(id: string, force: boolean) {
   return call('KillSession', { session_id: id, force: !!force });

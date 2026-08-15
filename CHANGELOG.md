@@ -44,6 +44,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI: ⌘← and ⌘→ (and ⇧⌘← / ⇧⌘→) now reach the terminal in focused mode, so
+  they move the cursor to the start / end of the line — and select to it —
+  the way they do everywhere else. Grid view still uses all four arrows to
+  move between tiles. On macOS these were also registered as native menu
+  accelerators, which consumed them before the app ever saw them; those four
+  duplicate menu items are gone.
+- GUI: ⌘G, ⇧⌘G and ⌘Enter no longer enter a "grid" holding a single tile —
+  a view that looks like focused mode but loses its keybindings. They stay
+  in focused mode instead, and a grid that shrinks to one tile (the other
+  session killed or minimized) returns to focused mode on its own.
+- GUI: ⇧⌘↑ / ⇧⌘↓ now move a session one row at a time within its project,
+  wrapping at the ends, and never disturb another project. They previously
+  sent a position from the project's own list while the daemon read it as a
+  position in its global list, so a session in any project but the first
+  jumped to an unrelated spot — and sessions created alternately across two
+  projects would not move at all.
+- GUI: a new or duplicated session (⌘T / ⌘P) now appears directly beneath the
+  session it was created from, instead of at the very bottom of the sidebar.
 - Codex sessions no longer lose their session ID when Hive happens to read
   the rollout file while codex is still writing it. The file was rejected
   for good on the first unreadable poll, so nothing was captured and the

@@ -94,8 +94,6 @@ func buildAppMenu(a *App) *menu.Menu {
 	sess := m.AddSubmenu("Session")
 	sess.AddText("Next Session", keys.CmdOrCtrl("down"), emit("menu:next-session"))
 	sess.AddText("Previous Session", keys.CmdOrCtrl("up"), emit("menu:prev-session"))
-	sess.AddText("Next Session (⌘→ alternate)", keys.CmdOrCtrl("right"), emit("menu:next-session"))
-	sess.AddText("Previous Session (⌘← alternate)", keys.CmdOrCtrl("left"), emit("menu:prev-session"))
 	sess.AddSeparator()
 	sess.AddText("Next Session Needing Attention",
 		keys.CmdOrCtrl("b"), emit("menu:next-attention"))
@@ -108,12 +106,6 @@ func buildAppMenu(a *App) *menu.Menu {
 		emit("menu:move-session-forward"))
 	sess.AddText("Move Session Backward",
 		keys.Combo("up", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:move-session-backward"))
-	sess.AddText("Move Session Forward (⇧⌘→ alternate)",
-		keys.Combo("right", keys.ShiftKey, keys.CmdOrCtrlKey),
-		emit("menu:move-session-forward"))
-	sess.AddText("Move Session Backward (⇧⌘← alternate)",
-		keys.Combo("left", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:move-session-backward"))
 	sess.AddSeparator()
 	sess.AddText("Next Project", keys.CmdOrCtrl("]"), emit("menu:next-project"))

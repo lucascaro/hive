@@ -74,3 +74,46 @@ func TestSessionMenuAttentionItems(t *testing.T) {
 		}
 	}
 }
+
+// walkAccelerators collects every (label, accelerator) pair in the menu
+// tree. findItem above searches by label and so can't express "no item
+// binds this key", which is exactly the assertion below.
+func walkAccelerators(items []*menu.MenuItem, out map[string]*keys.Accelerator) {
+	for _, it := range items {
+		if it.Accelerator != nil {
+			out[it.Label] = it.Accelerator
+		}
+		if it.SubMenu != nil {
+			walkAccelerators(it.SubMenu.Items, out)
+		}
+	}
+}
+
+// TestMenuHasNoArrowLeftRightAccelerators keeps ⌘←/⌘→ (and their shifted
+// forms) out of the native menu. AppKit consumes a registered key
+// equivalent before the webview ever sees a keydown, so a menu item here
+// steals start/end-of-line from the terminal no matter what the frontend
+// does with the event.
+func TestMenuHasNoArrowLeftRightAccelerators(t *testing.T) {
+	m := buildAppMenu(&App{})
+	if m == nil {
+		t.Fatal("buildAppMenu returned nil on darwin")
+	}
+	accels := map[string]*keys.Accelerator{}
+	walkAccelerators(m.Items, accels)
+	for label, acc := range accels {
+		if acc.Key == "left" || acc.Key == "right" {
+			t.Errorf("menu item %q binds %q; ⌘←/⌘→ must reach the terminal", label, acc.Key)
+		}
+	}
+	// Guard the walker itself: the vertical twins must still be there.
+	var down bool
+	for _, acc := range accels {
+		if acc.Key == "down" {
+			down = true
+		}
+	}
+	if !down {
+		t.Error("walkAccelerators found no 'down' binding; the walker is broken")
+	}
+}

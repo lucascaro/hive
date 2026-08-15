@@ -26,3 +26,12 @@ export function normalizeView(v: unknown): ViewMode {
     ? (v as ViewMode)
     : VIEW_SINGLE;
 }
+
+// resolveView downgrades a grid request to 'single' when the grid would
+// contain fewer than two tiles. A one-tile grid is visually identical to
+// focused mode but loses the focused-mode keybindings, so entering one is
+// never what the user meant.
+export function resolveView(requested: ViewMode, scopeCount: number): ViewMode {
+  if (requested !== VIEW_SINGLE && scopeCount < 2) return VIEW_SINGLE;
+  return requested;
+}
