@@ -218,7 +218,14 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 		}
 	}
 	r.order = slices.Insert(r.order, pos, p.id)
-	r.renumberLocked()
+	if pos == len(r.order)-1 {
+		// Plain append: nobody else's Order moved, so skip renumbering —
+		// renumberLocked re-persists every entry, and doing that under
+		// r.mu on every session create is O(n) disk writes for nothing.
+		e.Order = pos
+	} else {
+		r.renumberLocked()
+	}
 	rollback := func() {
 		delete(r.entries, p.id)
 		r.order = slices.Delete(r.order, pos, pos+1)
