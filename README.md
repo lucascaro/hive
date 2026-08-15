@@ -102,7 +102,7 @@ build.sh           # macOS universal build
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
 | ⌘Enter | Toggle grid / single |
 | ⌘↑ / ⌘↓ | Previous / next session (focused) / move between tiles vertically (grid) |
-| ⌘← / ⌘→ | Spatial nav between tiles in grid view. In focused mode these go to the terminal (start / end of line), as do ⇧⌘← / ⇧⌘→ |
+| ⌘← / ⌘→ | Spatial nav between tiles in grid view. In focused mode they move the cursor to the start / end of the line (macOS; ⇧⌘← / ⇧⌘→ do the same). On Windows and Linux use Ctrl+← / Ctrl+→ for word-wise movement, as in any terminal |
 | ⇧⌘↑ / ⇧⌘↓ | Move the session up / down within its project (wraps) |
 | ⌃- / ⌃⇧- | Back / forward through recently visited sessions (Ctrl+Alt+- / Ctrl+Alt+Shift+- on Windows and Linux, where ⌃- is zoom) |
 | ⌘B | Next session needing attention (rang the bell) |
