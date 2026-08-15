@@ -25,7 +25,7 @@ import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
 import { isMac } from '../lib/platform.js';
-import { isShiftEnter, NEWLINE_SEQ } from '../lib/keymap.js';
+import { isShiftEnter, macLineEditSeq, NEWLINE_SEQ } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import {
   shouldRefreshOnVisibility,
@@ -446,6 +446,17 @@ export class SessionTerm {
       ) {
         e.preventDefault();
         this._writePty('\x15');
+        return false;
+      }
+      // macOS ⌘←/⌘→ → start / end of line. Same reason as ⌘⌫ above: the
+      // chord is an emulator-level mapping everywhere else, and xterm
+      // emits nothing at all for a meta-modified arrow, so releasing the
+      // key from the app's shortcut handler (which grid mode still uses)
+      // only produces silence unless we write the bytes here.
+      const lineEdit = macLineEditSeq(e, isMac);
+      if (lineEdit) {
+        e.preventDefault();
+        this._writePty(lineEdit);
         return false;
       }
       // Shift+Enter → insert a newline in the agent's input instead of

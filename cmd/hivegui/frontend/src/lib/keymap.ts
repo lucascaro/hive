@@ -32,6 +32,42 @@ export interface KeyEventLike {
   shiftKey: boolean;
 }
 
+// Bytes for "jump to start / end of the current line": Ctrl+A and
+// Ctrl+E, the readline (emacs-mode) bindings that bash, zsh, fish and
+// the agent CLIs all honour with no per-terminal configuration. This is
+// what iTerm2's "Natural Text Editing" preset sends for the same chord.
+// Escape sequences (Home/End, \x1bOH / \x1bOF) were the alternative;
+// they are honoured by fewer inner programs, and a shell in vi-mode is
+// the only place they'd win.
+export const LINE_START_SEQ = '\x01';
+export const LINE_END_SEQ = '\x05';
+
+// macLineEditSeq maps ⌘← / ⌘→ to those bytes, or null when the event
+// isn't ours.
+//
+// Why this has to exist: xterm.js deliberately emits NOTHING for a
+// meta-modified arrow key — its handler reads `case 37: if (e.metaKey)
+// break` — and the browser doesn't translate the chord either. macOS
+// terminals implement ⌘←/→ as an emulator-level key mapping, not as
+// something the PTY provides. So merely letting the key through to the
+// terminal (which is all the app can do) produces silence; the sequence
+// has to be written explicitly, the same way ⌘⌫ → Ctrl+U already is.
+//
+// Mac-only: on Windows/Linux the equivalent chord is Ctrl+←/→, which
+// means word-wise movement and which xterm already encodes correctly as
+// \x1b[1;5D / \x1b[1;5C. Remapping it there would break word jumps.
+//
+// Shift is allowed through as a plain move: ⇧⌘← is select-to-line-start
+// in a text field, but a PTY has no selection for us to extend, so the
+// cursor move is the closest honest thing. Ctrl and Alt are not — ⌥←/→
+// is word-wise movement and ⌃←/→ belongs to tmux and friends.
+export function macLineEditSeq(e: KeyEventLike, isMac: boolean): string | null {
+  if (!isMac || !e.metaKey || e.ctrlKey || e.altKey) return null;
+  if (e.key === 'ArrowLeft') return LINE_START_SEQ;
+  if (e.key === 'ArrowRight') return LINE_END_SEQ;
+  return null;
+}
+
 export function isShiftEnter(e: KeyEventLike): boolean {
   return (
     e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Enter'

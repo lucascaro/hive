@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   isShiftEnter,
+  macLineEditSeq,
+  LINE_START_SEQ,
+  LINE_END_SEQ,
   isHelpOverlayKey,
   navHistoryKey,
   NEWLINE_SEQ,
@@ -178,5 +181,70 @@ describe('NEWLINE_SEQ', () => {
   it('is Ctrl+J / LF (0x0a) — the byte agents accept as a newline', () => {
     expect(NEWLINE_SEQ).toBe('\x0a');
     expect(NEWLINE_SEQ.charCodeAt(0)).toBe(10);
+  });
+});
+
+// ⌘←/⌘→ are start/end of line in every macOS terminal, but nothing
+// produces those bytes for us: xterm.js explicitly emits NOTHING for a
+// meta-modified arrow (`case 37: if (e.metaKey) break` in its key
+// handler), and the browser does not translate the chord either. So the
+// GUI has to do it, exactly as it already does for Cmd+Backspace -> Ctrl+U.
+describe('macLineEditSeq', () => {
+  const cmdLeft = ev({ metaKey: true, key: 'ArrowLeft' });
+  const cmdRight = ev({ metaKey: true, key: 'ArrowRight' });
+
+  it('maps cmd+left to start-of-line and cmd+right to end-of-line on mac', () => {
+    expect(macLineEditSeq(cmdLeft, true)).toBe(LINE_START_SEQ);
+    expect(macLineEditSeq(cmdRight, true)).toBe(LINE_END_SEQ);
+  });
+
+  it('sends the readline control bytes, not an escape sequence', () => {
+    // Ctrl+A / Ctrl+E: what iTerm2's "Natural Text Editing" preset sends,
+    // and what bash, zsh, and the agent CLIs all understand unconfigured.
+    expect(LINE_START_SEQ).toBe('\x01');
+    expect(LINE_END_SEQ).toBe('\x05');
+  });
+
+  it('does nothing off mac — ctrl+arrows are word-wise there and xterm emits them', () => {
+    expect(
+      macLineEditSeq(ev({ ctrlKey: true, key: 'ArrowLeft' }), false),
+    ).toBeNull();
+    expect(
+      macLineEditSeq(ev({ metaKey: true, key: 'ArrowLeft' }), false),
+    ).toBeNull();
+  });
+
+  it('ignores other arrows and unmodified arrows', () => {
+    expect(
+      macLineEditSeq(ev({ metaKey: true, key: 'ArrowUp' }), true),
+    ).toBeNull();
+    expect(macLineEditSeq(ev({ key: 'ArrowLeft' }), true)).toBeNull();
+  });
+
+  it('does not fire when Ctrl or Alt is also held', () => {
+    // opt+left is word-left and ctrl+left is a pane binding — neither is ours.
+    expect(
+      macLineEditSeq(
+        ev({ metaKey: true, altKey: true, key: 'ArrowLeft' }),
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      macLineEditSeq(
+        ev({ metaKey: true, ctrlKey: true, key: 'ArrowLeft' }),
+        true,
+      ),
+    ).toBeNull();
+  });
+
+  it('fires with Shift held so shift+cmd+arrows at least move the cursor', () => {
+    // A PTY has no selection to extend, so shift can only be honored as
+    // the plain move. Doing nothing would be the more surprising outcome.
+    expect(
+      macLineEditSeq(
+        ev({ metaKey: true, shiftKey: true, key: 'ArrowLeft' }),
+        true,
+      ),
+    ).toBe(LINE_START_SEQ);
   });
 });

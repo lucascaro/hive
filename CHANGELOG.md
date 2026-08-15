@@ -44,12 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- GUI: ⌘← and ⌘→ (and ⇧⌘← / ⇧⌘→) now reach the terminal in focused mode, so
-  they move the cursor to the start / end of the line — and select to it —
-  the way they do everywhere else. Grid view still uses all four arrows to
-  move between tiles. On macOS these were also registered as native menu
-  accelerators, which consumed them before the app ever saw them; those four
-  duplicate menu items are gone.
+- GUI: ⌘← and ⌘→ (and ⇧⌘← / ⇧⌘→) now move the cursor to the start / end of
+  the line in focused mode, the way they do in any macOS terminal. Grid view
+  still uses all four arrows to move between tiles. Two things were in the
+  way: the app swallowed the keys, and on macOS they were also registered as
+  native menu accelerators that consumed them before the app ever saw them —
+  those four duplicate menu items are gone. Since a terminal has no text
+  selection to extend, the shifted pair moves the cursor rather than
+  selecting.
 - GUI: ⌘G, ⇧⌘G and ⌘Enter no longer enter a "grid" holding a single tile —
   a view that looks like focused mode but loses its keybindings. They stay
   in focused mode instead, and a grid that shrinks to one tile (the other
