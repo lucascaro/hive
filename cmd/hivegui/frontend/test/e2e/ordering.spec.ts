@@ -141,6 +141,71 @@ test.describe('session ordering', () => {
       .toEqual([before[1], before[2], before[0]]);
   });
 
+  // The regression the unit suite pins at the pure-function level, run
+  // end to end: alternate creates across two projects so the daemon's
+  // flat order interleaves them and every session's display position
+  // stops matching its .order. Sending a display position here used to
+  // be accepted and change nothing.
+  test('reorders correctly when projects interleave in the daemon order', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.waitForFunction(
+      () => document.querySelectorAll('#projects li').length > 0,
+    );
+    // Second project, announced the way the daemon would.
+    await page.evaluate(() => {
+      const p = {
+        id: 'p2',
+        name: 'other',
+        color: '#f80',
+        cwd: '',
+        order: 1,
+        created: new Date().toISOString(),
+      };
+      window.__hive.state?.projects.push(p);
+      window.__hive.emit?.(
+        'project:event',
+        JSON.stringify({ kind: 'added', project: p }),
+      );
+    });
+    // r.order ends up p1, p2, p1, p2, p1 — interleaved.
+    await page.evaluate(async () => {
+      await window.__hive.addSession?.('t1', undefined, 'p2');
+      await window.__hive.addSession?.('s2', undefined, 'p1');
+      await window.__hive.addSession?.('t2', undefined, 'p2');
+      await window.__hive.addSession?.('s3', undefined, 'p1');
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__hive.state?.sessions.length ?? 0),
+      )
+      .toBe(5);
+
+    const idsIn = (pid: string) =>
+      page.evaluate(
+        (p) =>
+          Array.from(
+            document.querySelectorAll<HTMLElement>(
+              `li.project[data-pid="${p}"] li.session-item`,
+            ),
+          ).map((li) => li.dataset.sid ?? ''),
+        pid,
+      );
+    const p1Before = await idsIn('p1');
+    expect(p1Before).toHaveLength(3);
+    const p2Before = await idsIn('p2');
+
+    // Move the middle session of p1 down one row.
+    await activate(page, p1Before[1]);
+    await page.keyboard.press(`${MOD}+Shift+ArrowDown`);
+    await expect
+      .poll(() => idsIn('p1'))
+      .toEqual([p1Before[0], p1Before[2], p1Before[1]]);
+    // The other project is untouched.
+    expect(await idsIn('p2')).toEqual(p2Before);
+  });
+
   test('reordering while in grid mode reorders the tiles', async ({ page }) => {
     await boot(page, 3);
     const before = await sidebarIds(page);
@@ -164,16 +229,24 @@ test.describe('keybinding regressions', () => {
     await boot(page, 3);
     const before = await sidebarIds(page);
     await activate(page, before[1]);
-    // Record whether anything consumed the key. The app's listener is
-    // capture-phase, so a window-level listener at the bubble end sees
-    // the final verdict.
+    // Record the APP's verdict on the key, in the capture phase. It must
+    // be capture, not bubble: on Linux MOD is Control and xterm handles
+    // Ctrl+← itself, calling preventDefault + stopPropagation on the
+    // textarea — which is the outcome we want, but a bubble listener
+    // never runs to see it. Capture on window fires before any deeper
+    // handler, and after the app's own capture listener (registered at
+    // import time), so what it reads is exactly what the app decided.
     await page.evaluate(() => {
       window.__arrowPrevented = null;
-      window.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-          window.__arrowPrevented = e.defaultPrevented;
-        }
-      });
+      window.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            window.__arrowPrevented = e.defaultPrevented;
+          }
+        },
+        true,
+      );
     });
     await page.keyboard.press(`${MOD}+ArrowLeft`);
     await expect

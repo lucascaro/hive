@@ -449,8 +449,20 @@ if (typeof window !== 'undefined') {
   window.__hive = {
     state,
     emit,
-    addSession(name: string, insertAfter?: string) {
-      return CreateSession('', 'p1', name, '', 0, 0, false, insertAfter);
+    // projectId defaults to the seed project; pass it to build an
+    // r.order that interleaves projects, which is where display position
+    // and .order diverge.
+    addSession(name: string, insertAfter?: string, projectId?: string) {
+      return CreateSession(
+        '',
+        projectId || 'p1',
+        name,
+        '',
+        0,
+        0,
+        false,
+        insertAfter,
+      );
     },
     killSession(id: string) {
       return KillSession(id);

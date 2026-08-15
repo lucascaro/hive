@@ -31,7 +31,11 @@ interface HiveTestApi {
 
   // --- Mock only (test/e2e/wails-mock.ts). Absent under VITE_WAILS_REAL. ---
   state?: { projects: MockProject[]; sessions: MockSession[] };
-  addSession?(name: string, insertAfter?: string): Promise<string>;
+  addSession?(
+    name: string,
+    insertAfter?: string,
+    projectId?: string,
+  ): Promise<string>;
   killSession?(id: string): Promise<string>;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;

@@ -1,20 +1,37 @@
 import { describe, it, expect } from 'vitest';
 import { reorderTarget } from '../../src/lib/reorder.js';
 
-// Display order: sorted by project, then by session order. Global
-// indices are the array indices, which is the index space the daemon's
-// Update expects.
+// `order` is the session's index in the daemon's r.order — the value
+// reorderTarget must return. The fixtures below deliberately separate
+// that from array position, because the two coincide only when the
+// daemon's flat list happens to be grouped by project.
+//
+// Grouped case: display position == .order.
 const ordered = [
-  { id: 'a0', projectId: 'A' },
-  { id: 'a1', projectId: 'A' },
-  { id: 'b0', projectId: 'B' },
-  { id: 'b1', projectId: 'B' },
-  { id: 'b2', projectId: 'B' },
+  { id: 'a0', projectId: 'A', order: 0 },
+  { id: 'a1', projectId: 'A', order: 1 },
+  { id: 'b0', projectId: 'B', order: 2 },
+  { id: 'b1', projectId: 'B', order: 3 },
+  { id: 'b2', projectId: 'B', order: 4 },
 ];
+
+// moveInOrder is a faithful copy of internal/registry's delete-then-
+// clamp-then-insert. The interleaved test below runs the returned index
+// through it, so the assertion is about the resulting session order and
+// not about a number whose meaning could quietly change.
+function moveInOrder(order: string[], id: string, newOrder: number): string[] {
+  const cur = order.indexOf(id);
+  if (cur < 0) return order;
+  const out = order.slice();
+  out.splice(cur, 1);
+  const at = Math.min(Math.max(newOrder, 0), out.length);
+  out.splice(at, 0, id);
+  return out;
+}
 
 describe('reorderTarget', () => {
   it('moves down within the project', () => {
-    // b1 swaps with b2, whose current global index is 4.
+    // b1 swaps with b2, whose index in r.order is 4.
     expect(reorderTarget(ordered, 'b1', +1)).toBe(4);
   });
 
@@ -31,20 +48,9 @@ describe('reorderTarget', () => {
   });
 
   it('returns null for a project with a single session', () => {
-    const solo = [{ id: 'a0', projectId: 'A' }, ...ordered.slice(2)];
+    const solo = [{ id: 'a0', projectId: 'A', order: 0 }, ...ordered.slice(2)];
     expect(reorderTarget(solo, 'a0', +1)).toBeNull();
     expect(reorderTarget(solo, 'a0', -1)).toBeNull();
-  });
-
-  it('resolves correctly when projects are interleaved in the global order', () => {
-    const mixed = [
-      { id: 'b0', projectId: 'B' },
-      { id: 'a0', projectId: 'A' },
-      { id: 'b1', projectId: 'B' },
-    ];
-    // b0 down targets b1's global index 2 — it must skip over a0.
-    expect(reorderTarget(mixed, 'b0', +1)).toBe(2);
-    expect(reorderTarget(mixed, 'b1', -1)).toBe(0);
   });
 
   it('returns null for an unknown or null active session', () => {
@@ -55,10 +61,77 @@ describe('reorderTarget', () => {
 
   it('reads both projectId and project_id spellings', () => {
     const snake = [
-      { id: 'b0', project_id: 'B' },
-      { id: 'a0', projectId: 'A' },
-      { id: 'b1', project_id: 'B' },
+      { id: 'b0', project_id: 'B', order: 0 },
+      { id: 'a0', projectId: 'A', order: 1 },
+      { id: 'b1', project_id: 'B', order: 2 },
     ];
     expect(reorderTarget(snake, 'b0', +1)).toBe(2);
+  });
+
+  // The regression this file exists for. The daemon's r.order is one
+  // flat creation-order list; alternating creates across two projects
+  // interleave them, so every session's DISPLAY position (project-major)
+  // differs from its .order. Returning a display position here produced
+  // a silent no-op — the move was accepted and changed nothing.
+  describe('when projects interleave in the daemon order', () => {
+    // r.order: s1(A) t1(B) s2(A) t2(B) s3(A)  →  .order 0..4
+    // display: s1 s2 s3 t1 t2                 →  positions 0..4
+    const raw = ['s1', 't1', 's2', 't2', 's3'];
+    const proj: Record<string, string> = {
+      s1: 'A',
+      t1: 'B',
+      s2: 'A',
+      t2: 'B',
+      s3: 'A',
+    };
+    // Project-major, then by .order — what orderedSessions() produces.
+    const display = raw
+      .map((id, i) => ({ id, projectId: proj[id], order: i }))
+      .sort((a, b) =>
+        a.projectId === b.projectId
+          ? a.order - b.order
+          : a.projectId.localeCompare(b.projectId),
+      );
+    const inProject = (order: string[], pid: string) =>
+      order.filter((id) => proj[id] === pid);
+
+    it('targets the sibling by its daemon index, not its display position', () => {
+      // s3 sits at display position 2 but at r.order index 4.
+      expect(reorderTarget(display, 's2', +1)).toBe(4);
+    });
+
+    it('actually swaps the pair when the daemon applies it', () => {
+      const target = reorderTarget(display, 's2', +1);
+      expect(target).not.toBeNull();
+      const after = moveInOrder(raw, 's2', target as number);
+      expect(inProject(after, 'A')).toEqual(['s1', 's3', 's2']);
+      // The other project is left exactly as it was.
+      expect(inProject(after, 'B')).toEqual(['t1', 't2']);
+    });
+
+    it('swaps back on the reverse move', () => {
+      const down = reorderTarget(display, 's2', +1) as number;
+      const moved = moveInOrder(raw, 's2', down);
+      // Re-derive the display list from the new r.order.
+      const display2 = moved
+        .map((id, i) => ({ id, projectId: proj[id], order: i }))
+        .sort((a, b) =>
+          a.projectId === b.projectId
+            ? a.order - b.order
+            : a.projectId.localeCompare(b.projectId),
+        );
+      const up = reorderTarget(display2, 's2', -1) as number;
+      const back = moveInOrder(moved, 's2', up);
+      expect(inProject(back, 'A')).toEqual(['s1', 's2', 's3']);
+      expect(inProject(back, 'B')).toEqual(['t1', 't2']);
+    });
+
+    it('wraps within the project without touching the other one', () => {
+      // s3 is last in A; moving it down wraps to A's first slot.
+      const target = reorderTarget(display, 's3', +1) as number;
+      const after = moveInOrder(raw, 's3', target);
+      expect(inProject(after, 'A')).toEqual(['s3', 's1', 's2']);
+      expect(inProject(after, 'B')).toEqual(['t1', 't2']);
+    });
   });
 });

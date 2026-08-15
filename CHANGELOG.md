@@ -55,9 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in focused mode instead, and a grid that shrinks to one tile (the other
   session killed or minimized) returns to focused mode on its own.
 - GUI: ⇧⌘↑ / ⇧⌘↓ now move a session one row at a time within its project,
-  wrapping at the ends. They previously sent a position from the project's
-  own list while the daemon read it as a position in its global list, so a
-  session in any project but the first jumped to an unrelated spot.
+  wrapping at the ends, and never disturb another project. They previously
+  sent a position from the project's own list while the daemon read it as a
+  position in its global list, so a session in any project but the first
+  jumped to an unrelated spot — and sessions created alternately across two
+  projects would not move at all.
 - GUI: a new or duplicated session (⌘T / ⌘P) now appears directly beneath the
   session it was created from, instead of at the very bottom of the sidebar.
 - Codex sessions no longer lose their session ID when Hive happens to read
