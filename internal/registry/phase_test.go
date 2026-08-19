@@ -53,6 +53,27 @@ func (p *phaseLog) firstAdded() string {
 	return ""
 }
 
+// waitEventsFor blocks until at least n events about id have been
+// recorded, then returns them.
+//
+// Required, not defensive: the log is filled by the watch goroutine
+// draining a buffered channel, which is NOT synchronized with the
+// registry call that produced the event. Asserting straight after the
+// state change reads a log that can still be a beat behind — invisible
+// on a fast machine, reliably fatal under a loaded CI runner (or
+// GOMAXPROCS=1, which reproduces it on demand).
+func (p *phaseLog) waitEventsFor(t *testing.T, id string, n int) []string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got := p.phasesFor(id)
+		if len(got) >= n || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // watch subscribes and records every event until the returned stop is
 // called.
 func watch(t *testing.T, r *Registry) (*phaseLog, func()) {
@@ -115,9 +136,6 @@ func TestCreatePhaseSequence(t *testing.T) {
 	}
 	defer func() { _ = r.Kill(e.ID, true) }()
 
-	waitFor(t, "ready phase", func() bool { return r.Phase(e.ID) == wire.PhaseReady })
-
-	got := log.phasesFor(e.ID)
 	want := []string{
 		"added:" + wire.PhaseStarting,
 		"updated:" + wire.PhaseFetching,
@@ -125,6 +143,7 @@ func TestCreatePhaseSequence(t *testing.T) {
 		"updated:" + wire.PhaseSpawning,
 		"updated:" + wire.PhaseReady,
 	}
+	got := log.waitEventsFor(t, e.ID, len(want))
 	if len(got) != len(want) {
 		t.Fatalf("phase sequence: got %s, want %s", joined(got), joined(want))
 	}
@@ -200,9 +219,8 @@ func TestCreateBornDeadEndsReady(t *testing.T) {
 	if e == nil {
 		t.Fatal("Create: entry should be stranded, not dropped")
 	}
-	waitFor(t, "ready phase", func() bool { return r.Phase(e.ID) == wire.PhaseReady })
-
-	got := log.phasesFor(e.ID)
+	// added(starting) then the updated(ready) carrying the failure.
+	got := log.waitEventsFor(t, e.ID, 2)
 	if len(got) == 0 || got[0] != "added:"+wire.PhaseStarting {
 		t.Fatalf("first event: got %s", joined(got))
 	}
@@ -235,11 +253,12 @@ func TestKillPhaseSequence(t *testing.T) {
 	if err := r.Kill(e.ID, false); err != nil {
 		t.Fatalf("Kill: %v", err)
 	}
-	got := log.phasesFor(e.ID)
 	want := []string{
 		"updated:" + wire.PhaseChecking,
 		"updated:" + wire.PhaseClosing,
 	}
+	// ...plus the `removed` that must follow them.
+	got := log.waitEventsFor(t, e.ID, len(want)+1)
 	for i, w := range want {
 		if i >= len(got) || got[i] != w {
 			t.Fatalf("kill sequence: got %s, want %s → removed", joined(got), joined(want))
@@ -279,8 +298,8 @@ func TestKillDirtyRefusalRestoresReady(t *testing.T) {
 	if got := r.Phase(e.ID); got != wire.PhaseReady {
 		t.Errorf("phase after refusal: got %q, want ready", got)
 	}
-	got := log.phasesFor(e.ID)
 	want := []string{"updated:" + wire.PhaseChecking, "updated:" + wire.PhaseReady}
+	got := log.waitEventsFor(t, e.ID, len(want))
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("refusal sequence: got %s, want %s", joined(got), joined(want))
 	}
@@ -465,8 +484,17 @@ func TestKillDuringCreate_SpawnFails(t *testing.T) {
 	if err := <-createDone; err != ErrNotFound {
 		t.Errorf("Create after mid-create kill: got %v, want ErrNotFound", err)
 	}
-	// The last word about this session must be `removed`.
-	got := log.phasesFor(id)
+	// The last word about this session must be `removed`: added,
+	// the create phases, the kill phases, then removed.
+	got := log.waitEventsFor(t, id, 2)
+	waitFor(t, "the removed event", func() bool {
+		ev := log.phasesFor(id)
+		return len(ev) > 0 && strings.HasPrefix(ev[len(ev)-1], "removed")
+	})
+	// Settle: give a stray post-removal broadcast time to land, so
+	// this asserts nothing follows rather than merely getting there first.
+	time.Sleep(50 * time.Millisecond)
+	got = log.phasesFor(id)
 	if len(got) == 0 {
 		t.Fatalf("no events for %s", id)
 	}
