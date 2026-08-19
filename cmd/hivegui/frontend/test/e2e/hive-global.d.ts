@@ -37,11 +37,13 @@ interface HiveTestApi {
     projectId?: string,
   ): Promise<string>;
   killSession?(id: string): Promise<string>;
+  createSessionWithWorktree?(name: string): Promise<string>;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;
   resetReplay?(): void;
   failNext?(method: string, message?: string): void;
   delayNext?(method: string, ms?: number): void;
+  phaseHold?(ms?: number): void;
 }
 
 declare global {

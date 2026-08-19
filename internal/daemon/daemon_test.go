@@ -144,6 +144,50 @@ func drainFor(conn net.Conn, out *bytes.Buffer, d time.Duration) {
 }
 
 // firstSessionID grabs the bootstrap session via the registry helper.
+// readControlFrame reads until a frame of type want arrives, skipping
+// anything else. Session lifecycle phases ride SESSION_EVENT frames
+// that can interleave with a request's reply, so a control test that
+// wants the reply has to filter rather than assume it's next.
+func readControlFrame(t *testing.T, conn net.Conn, want wire.FrameType, timeout time.Duration) []byte {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(deadline)
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			t.Fatalf("read %s: %v", want, err)
+		}
+		if ft == want {
+			return payload
+		}
+	}
+	t.Fatalf("timed out waiting for %s", want)
+	return nil
+}
+
+// awaitSessionEvent reads SESSION_EVENTs until pred matches.
+func awaitSessionEvent(t *testing.T, conn net.Conn, pred func(wire.SessionEvent) bool, timeout time.Duration) wire.SessionEvent {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(deadline)
+		ft, payload, err := wire.ReadFrame(conn)
+		if err != nil {
+			t.Fatalf("read session event: %v", err)
+		}
+		if ft != wire.FrameSessionEvent {
+			continue
+		}
+		var ev wire.SessionEvent
+		_ = jsonUnmarshal(payload, &ev)
+		if pred(ev) {
+			return ev
+		}
+	}
+	t.Fatalf("timed out waiting for a matching SESSION_EVENT")
+	return wire.SessionEvent{}
+}
+
 func firstSessionID(t *testing.T, d *Daemon) string {
 	t.Helper()
 	list := d.Registry().List()
@@ -232,30 +276,22 @@ func TestControlListAndCreate(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	// Expect a SESSION_EVENT added.
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	ft, payload, err = wire.ReadFrame(conn)
-	if err != nil {
-		t.Fatalf("read event: %v", err)
-	}
-	if ft != wire.FrameSessionEvent {
-		t.Fatalf("expected SESSION_EVENT, got %s", ft)
-	}
-	var ev wire.SessionEvent
-	_ = jsonUnmarshal(payload, &ev)
-	if ev.Kind != wire.SessionEventAdded || ev.Session.Name != "extra" {
+	// Expect a SESSION_EVENT added. It arrives before the PTY exists —
+	// the entry is announced in wire.PhaseStarting so the client can
+	// paint a tile while the worktree/shell are still coming up.
+	ev := awaitSessionEvent(t, conn, func(ev wire.SessionEvent) bool {
+		return ev.Kind == wire.SessionEventAdded
+	}, 2*time.Second)
+	if ev.Session.Name != "extra" {
 		t.Errorf("event: %+v", ev)
+	}
+	if ev.Session.Phase != wire.PhaseStarting {
+		t.Errorf("added phase: got %q, want %q", ev.Session.Phase, wire.PhaseStarting)
 	}
 
 	// LIST_SESSIONS now sees both.
 	_ = wire.WriteJSON(conn, wire.FrameListSessions, wire.ListSessionsReq{})
-	ft, payload, err = wire.ReadFrame(conn)
-	if err != nil {
-		t.Fatalf("read list: %v", err)
-	}
-	if ft != wire.FrameSessions {
-		t.Fatalf("expected SESSIONS, got %s", ft)
-	}
+	payload = readControlFrame(t, conn, wire.FrameSessions, 2*time.Second)
 	_ = jsonUnmarshal(payload, &snap)
 	if len(snap.Sessions) != 2 {
 		t.Errorf("expected 2 sessions, got %+v", snap)
@@ -431,7 +467,10 @@ func TestKill_DirtyWorktree_FrameError(t *testing.T) {
 		if ft == wire.FrameSessionEvent {
 			var ev wire.SessionEvent
 			_ = jsonUnmarshal(payload, &ev)
-			if ev.Kind == wire.SessionEventAdded && ev.Session.WorktreePath != "" {
+			// The worktree path is only known once the create tail has
+			// run, so it rides the PhaseReady `updated` event, not the
+			// `added` one.
+			if ev.Session.WorktreePath != "" && ev.Session.Phase == wire.PhaseReady {
 				sessionID = ev.Session.ID
 			}
 		}
@@ -456,14 +495,9 @@ func TestKill_DirtyWorktree_FrameError(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("KillSession: %v", err)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	ft, payload, err := wire.ReadFrame(conn)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if ft != wire.FrameError {
-		t.Fatalf("expected FrameError, got %s", ft)
-	}
+	// The refusal is preceded by the checking/ready phase events the
+	// kill emits while it runs `git status`.
+	payload := readControlFrame(t, conn, wire.FrameError, 3*time.Second)
 	var werr wire.Error
 	_ = jsonUnmarshal(payload, &werr)
 	if werr.Code != wire.ErrCodeWorktreeDirty {
@@ -475,6 +509,11 @@ func TestKill_DirtyWorktree_FrameError(t *testing.T) {
 	// Session must still be alive after a refused kill.
 	if d.Registry().Get(sessionID) == nil {
 		t.Errorf("session vanished after refused kill")
+	}
+	// ...and back in the ready phase, so the GUI's tile doesn't stay
+	// stuck on "Closing…" when the user cancels the confirm dialog.
+	if got := d.Registry().Phase(sessionID); got != wire.PhaseReady {
+		t.Errorf("phase after refused kill: got %q, want ready", got)
 	}
 
 	// 2. Kill with force → succeeds; expect SESSION_EVENT(removed).
@@ -600,9 +639,9 @@ func TestAttachUnknownSession(t *testing.T) {
 	conn := dial(t, d)
 	defer conn.Close()
 	if err := wire.WriteJSON(conn, wire.FrameHello, wire.Hello{
-		Version: wire.PROTOCOL_VERSION,
-		Client:  "test/0",
-		Mode:    wire.ModeAttach,
+		Version:   wire.PROTOCOL_VERSION,
+		Client:    "test/0",
+		Mode:      wire.ModeAttach,
 		SessionID: "deadbeef-not-a-real-id",
 	}); err != nil {
 		t.Fatalf("write hello: %v", err)

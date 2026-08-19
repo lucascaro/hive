@@ -57,6 +57,17 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
 - **Wire JSON is `snake_case` on the wire, `CamelCase` in Go.** Every field in `internal/wire/` carries an explicit `json:"snake_case"` tag. JS readers in `hivegui/frontend/` use `snake_case ?? camelCase` at the boundary.
 - **The GUI never opens a PTY.** All PTY operations go through the wire protocol. Grep guard: no `os/exec`, `creack/pty`, or `internal/session` imports in `cmd/hivegui/` or `hivegui/`.
 - **The registry is the only writer of persisted state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates.
+- **`SESSION_EVENT(added)` means "the entry exists", not "you may attach".**
+  A session carries a lifecycle phase (`wire.Phase*`, in-memory on the daemon,
+  never persisted); it is attachable only when `alive == true` **and** the
+  phase is `PhaseReady`. Attaching earlier is answered with
+  `wire.ErrCodeSessionStarting`, not an error the client should treat as death.
+- **Control-frame handlers that shell out to git run off the read loop.**
+  `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, and `KILL_PROJECT` are
+  dispatched to goroutines owned by the daemon (drained in `Close`), so a slow
+  `git worktree add`/`remove` can't stall every other client request. The git
+  subprocesses themselves are serialized by the registry, and its lock
+  ordering rule is one-way: never take that git lock while holding `r.mu`.
 - **Wire mode is immutable for the connection.** Whatever mode a client picks in HELLO (`control` / `attach` / `create`) is the mode for the connection's lifetime. Daemon dispatch must reject frames that don't belong to the negotiated mode.
 - **No I/O in `internal/wire/`.** Types and frame encoding only — no sockets, no filesystem, no `os.Getenv`. Keeps dependency direction clean and lets the protocol be tested in isolation.
 - **Cross-platform parity is verified per release.** `notify`, `worktree`, `os_terminal`, and PTY paths all have platform splits — every release exercises macOS, Linux, and Windows builds (`scripts/release.sh`). No `runtime.GOOS == "darwin"` shortcuts in domain code; gate at the package boundary.

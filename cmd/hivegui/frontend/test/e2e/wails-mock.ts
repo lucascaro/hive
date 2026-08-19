@@ -85,6 +85,16 @@ function maybeFail(method: string) {
   }
 }
 
+// window.__hive.phaseHold(ms) stretches the session lifecycle phases
+// the daemon walks (create: starting -> worktree -> ready; kill:
+// closing -> removed) so E2E can observe the loading panel and the
+// closing state. Zero (the default) still goes through the same
+// phases, one task apart, so every spec exercises the real ordering.
+let phaseHoldMs = 0;
+function afterPhaseHold(fn: () => void) {
+  setTimeout(fn, phaseHoldMs);
+}
+
 // window.__hive.delayNext(method, ms) arms a one-shot delay for the
 // named binding, so E2E can observe in-flight UI (loading rows,
 // spinners) that a microtask-fast mock would otherwise skip past.
@@ -139,6 +149,14 @@ export async function ConnectControl() {
   return '';
 }
 export async function OpenSession(id: string) {
+  // The real daemon replays the session's scrollback on every attach
+  // and brackets it with these events. The GUI uses replay_done as the
+  // cue to drop the loading panel, so a mock that never replays would
+  // leave every tile spinning until the fallback timer.
+  queueMicrotask(() => {
+    emit('pty:event', id, JSON.stringify({ kind: 'scrollback_replay_begin' }));
+    emit('pty:event', id, JSON.stringify({ kind: 'scrollback_replay_done' }));
+  });
   return id;
 }
 export async function CloseAttach(_id: string) {
@@ -213,7 +231,8 @@ export async function CreateSession(
     color: color || '#0af',
     order: state.sessions.length,
     created: new Date().toISOString(),
-    alive: true,
+    alive: false,
+    phase: 'starting',
     agent: agentID || '',
     project_id: pid,
     worktree_path: '',
@@ -231,7 +250,25 @@ export async function CreateSession(
   state.sessions.splice(pos, 0, s);
   renumber();
   if (pos !== state.sessions.length - 1) emitUpdatedExcept(id);
+  // The daemon announces the entry before the worktree and PTY exist
+  // (wire.PhaseStarting) and only later reports it ready. Mirror that
+  // ordering: the GUI gates its attach on it.
   emit('session:event', JSON.stringify({ kind: 'added', session: s }));
+  afterPhaseHold(() => {
+    if (!state.sessions.includes(s)) return; // killed mid-create
+    if (_useWorktree) {
+      s.phase = 'worktree';
+      s.worktree_branch = s.name;
+      s.worktree_path = `/mock/.worktrees/${s.name}`;
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    }
+    afterPhaseHold(() => {
+      if (!state.sessions.includes(s)) return;
+      s.phase = '';
+      s.alive = true;
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    });
+  });
   return id;
 }
 // Positional: DuplicateSession(agentID, projectID, cwd, insertAfter).
@@ -248,8 +285,20 @@ export async function KillSession(id: string) {
   maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i < 0) return '';
-  const [removed] = state.sessions.splice(i, 1);
-  emit('session:event', JSON.stringify({ kind: 'removed', session: removed }));
+  const doomed = state.sessions[i];
+  // Teardown is announced (wire.PhaseClosing) before the session is
+  // gone: on a real worktree the git cleanup in between takes seconds.
+  doomed.phase = 'closing';
+  emit('session:event', JSON.stringify({ kind: 'updated', session: doomed }));
+  afterPhaseHold(() => {
+    const j = state.sessions.findIndex((s) => s.id === id);
+    if (j < 0) return;
+    const [removed] = state.sessions.splice(j, 1);
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'removed', session: removed }),
+    );
+  });
   return '';
 }
 export async function RestartSession(_id: string) {
@@ -464,6 +513,9 @@ if (typeof window !== 'undefined') {
         insertAfter,
       );
     },
+    createSessionWithWorktree(name: string) {
+      return CreateSession('', 'p1', name, '', 0, 0, true);
+    },
     killSession(id: string) {
       return KillSession(id);
     },
@@ -490,6 +542,9 @@ if (typeof window !== 'undefined') {
     },
     delayNext(method: string, ms = 250) {
       delays.set(method, ms);
+    },
+    phaseHold(ms = 250) {
+      phaseHoldMs = ms;
     },
   };
 }

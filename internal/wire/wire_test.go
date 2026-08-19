@@ -213,3 +213,51 @@ func TestCreateSpecInsertAfterSnakeCase(t *testing.T) {
 		t.Errorf("unmarshal: got %q, want %q", back.InsertAfterSessionID, "xyz")
 	}
 }
+
+// TestSessionInfoRoundTrip populates every SessionInfo field —
+// including the lifecycle Phase — and asserts an exact round trip.
+// The table above only checks frame types; this is the field-level
+// contract test golden principle 6 asks for.
+func TestSessionInfoRoundTrip(t *testing.T) {
+	want := SessionInfo{
+		ID:             "sess-1",
+		Name:           "stone-valley claude",
+		Color:          "#fa0",
+		Order:          3,
+		Created:        "2026-04-30T00:00:00Z",
+		Alive:          true,
+		Agent:          "claude",
+		ProjectID:      "proj-1",
+		WorktreePath:   "/repo/.worktrees/stone-valley",
+		WorktreeBranch: "stone-valley",
+		LastError:      "boom",
+		Phase:          PhaseWorktree,
+	}
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, FrameSessionEvent, SessionEvent{
+		Kind: SessionEventUpdated, Session: want,
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var got SessionEvent
+	if _, err := ReadJSON(&buf, &got); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got.Session != want {
+		t.Errorf("round trip:\n got %+v\nwant %+v", got.Session, want)
+	}
+}
+
+// TestSessionInfoPhaseReadyOmitted pins the back-compat property that
+// makes PhaseReady the empty string: a ready session puts no "phase"
+// key on the wire at all, so a client predating the field is
+// unaffected and a decoded zero value means ready.
+func TestSessionInfoPhaseReadyOmitted(t *testing.T) {
+	b, err := json.Marshal(SessionInfo{ID: "1", Phase: PhaseReady})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if bytes.Contains(b, []byte("phase")) {
+		t.Errorf("PhaseReady must be omitted from the wire, got %s", b)
+	}
+}

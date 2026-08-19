@@ -36,6 +36,9 @@ export interface SessionInfo {
   // session-term.ts:1269 both fall back off it.
   last_error?: string;
   lastError?: string;
+  // Lifecycle phase (internal/wire/control.go Phase*). Absent/empty
+  // means ready — the daemon omits it in the steady state.
+  phase?: string;
 }
 
 export interface ProjectInfo {
@@ -109,6 +112,14 @@ export interface TermTile extends ReplayFlags {
   // (`name || ''`, `color || '#888'`) and ProjectInfo's fields are optional.
   setProject(name?: string, color?: string): void;
   setDead(isDead: boolean, reason?: string): void;
+  // Lifecycle phase (lib/phase-steps.ts). `phase` is required for the
+  // same reason as `attached`: SessionTerm initializes it and every
+  // reader branches on the value.
+  phase: string;
+  setPhase(phase: string): void;
+  // Called on scrollback_replay_done to drop the loading panel once
+  // the terminal has painted.
+  revealAfterReplay(): void;
   writeData(b64: string): void;
   destroy(): void;
 }
@@ -123,6 +134,7 @@ export interface AppState {
   nav: NavHistory;
   minimized: Set<string>;
   aliveById: Map<string, boolean>;
+  phaseById: Map<string, string>;
   dismissedDead: Set<string>;
   terms: Map<string, TermTile>;
   activeId: string | null;
@@ -152,6 +164,7 @@ export const state: AppState = {
   //   activeId, so every switch path is recorded.
   minimized: new Set(), // session ids hidden from grid views; restored via tray
   aliveById: new Map(), // session id -> last-seen Alive bool (for transition detection)
+  phaseById: new Map(), // session id -> last-seen lifecycle phase (see lib/phase-steps.ts)
   dismissedDead: new Set(), // session ids whose dead overlay user dismissed
   terms: new Map(), // session id -> SessionTerm
   activeId: null,

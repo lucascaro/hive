@@ -13,6 +13,7 @@ import {
   type SessionInfo,
 } from './state.js';
 import { projectsUL, reportFailure } from './dom.js';
+import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
@@ -268,7 +269,12 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'session-item';
   if (s.id === state.activeId) li.classList.add('selected');
-  if (!s.alive) li.classList.add('dead');
+  // A session that hasn't finished starting isn't dead — it has no PTY
+  // yet. Marking it dead would grey the row out for the whole create.
+  const phase = phaseOf(s);
+  if (!s.alive && isReady(phase)) li.classList.add('dead');
+  if (isStarting(phase)) li.classList.add('starting');
+  if (isClosing(phase)) li.classList.add('closing');
   if (state.attention.has(s.id)) li.classList.add('attention');
   li.style.setProperty('--session-color', s.color || '#888');
   li.style.setProperty('--project-color', projectColor || '#888');
@@ -278,6 +284,11 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
 
   const dot = document.createElement('span');
   dot.className = 'dot';
+  if (!isReady(phase)) {
+    // Same vocabulary as the tile's loading panel, so the row and the
+    // pane never disagree about what the session is doing.
+    dot.title = isClosing(phase) ? 'Closing…' : 'Starting…';
+  }
 
   const name = document.createElement('span');
   name.className = 'name';

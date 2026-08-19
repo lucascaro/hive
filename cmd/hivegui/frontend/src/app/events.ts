@@ -18,6 +18,7 @@ import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
+import { phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 import { createScrollTrace } from '../lib/scroll-debug.js';
@@ -198,6 +199,16 @@ function onSessionDeath(info: SessionInfo) {
   ).catch(() => {});
 }
 
+// neighbourOf returns the session to focus when `id` goes away: the
+// one before it in display order, or the one after when it's first.
+function neighbourOf(id: string): string | null {
+  const ord = orderedSessions();
+  const idx = ord.findIndex((s) => s.id === id);
+  if (idx < 0) return null;
+  const nb = idx > 0 ? ord[idx - 1] : ord[idx + 1];
+  return nb?.id ?? null;
+}
+
 export function wireDaemonEvents(injected: EventsDeps) {
   deps = injected;
 
@@ -265,11 +276,25 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // just records the value without firing anything.
   function processAliveTransition(info: SessionInfo) {
     const prev = state.aliveById.get(info.id);
+    const phase = phaseOf(info);
+    const prevPhase = state.phaseById.get(info.id);
+    const wasPending = prevPhase !== undefined && !isReady(prevPhase);
     state.aliveById.set(info.id, !!info.alive);
+    state.phaseById.set(info.id, phase);
+    // A session that hasn't finished starting is not dead — it has no
+    // PTY *yet*. Death is only meaningful once the daemon says ready.
+    if (!isReady(phase)) return;
     if (prev === true && info.alive === false) {
       onSessionDeath(info);
     } else if (prev === undefined && info.alive === false) {
       // Session was born dead (e.g. agent binary not found).
+      onSessionDeath(info);
+    } else if (prev === false && info.alive === false && wasPending) {
+      // Reached ready still dead: the spawn failed. Alive-transition
+      // detection can't see this — `added` already recorded
+      // alive:false while the session was merely starting, so this is
+      // false→false — and without the explicit call a born-dead
+      // session would sit under the loading panel forever.
       onSessionDeath(info);
     } else if (prev === false && info.alive === true) {
       state.dismissedDead.delete(info.id);
@@ -291,12 +316,24 @@ export function wireDaemonEvents(injected: EventsDeps) {
   EventsOn('session:list', (jsonStr: string) => {
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     state.sessions = sessions || [];
-    for (const s of state.sessions) processAliveTransition(s);
-    // Drop any minimized ids whose sessions no longer exist (e.g. after
-    // a daemon restart or list reset) so the tray doesn't leak stale chips.
+    for (const s of state.sessions) {
+      processAliveTransition(s);
+      state.terms.get(s.id)?.setPhase(phaseOf(s));
+    }
+    // Drop any ids whose sessions no longer exist (e.g. after a daemon
+    // restart or list reset) so the tray doesn't leak stale chips and
+    // the transition-detection maps don't grow for the life of the
+    // process. A snapshot is the only path that can retire a session
+    // without a per-session `removed` event.
     const liveIds = new Set(state.sessions.map((s) => s.id));
     for (const id of Array.from(state.minimized)) {
       if (!liveIds.has(id)) state.minimized.delete(id);
+    }
+    for (const id of Array.from(state.aliveById.keys())) {
+      if (!liveIds.has(id)) state.aliveById.delete(id);
+    }
+    for (const id of Array.from(state.phaseById.keys())) {
+      if (!liveIds.has(id)) state.phaseById.delete(id);
     }
     pruneNav(state.nav, (id) => liveIds.has(id));
     renderSidebar();
@@ -318,17 +355,23 @@ export function wireDaemonEvents(injected: EventsDeps) {
       deps.switchTo(ev.session.id);
       return;
     }
+    if (ev.kind === 'updated' && isClosing(phaseOf(ev.session))) {
+      // Don't make the user watch a teardown: the moment the daemon
+      // starts closing, hand focus to the neighbour. The tile itself
+      // stays (dimmed) until `removed` lands, which can be seconds
+      // later on a big worktree.
+      if (state.activeId === ev.session.id) {
+        const next = neighbourOf(ev.session.id);
+        if (next) deps.switchTo(next);
+      }
+    }
     if (ev.kind === 'removed') {
       state.aliveById.delete(ev.session.id);
+      state.phaseById.delete(ev.session.id);
       state.dismissedDead.delete(ev.session.id);
       state.minimized.delete(ev.session.id);
-      let nextId = null;
-      if (state.activeId === ev.session.id) {
-        const ord = orderedSessions();
-        const idx = ord.findIndex((s) => s.id === ev.session.id);
-        const nb = idx > 0 ? ord[idx - 1] : ord[idx + 1];
-        nextId = nb?.id ?? null;
-      }
+      const nextId =
+        state.activeId === ev.session.id ? neighbourOf(ev.session.id) : null;
       if (i >= 0) state.sessions.splice(i, 1);
       const t = state.terms.get(ev.session.id);
       if (t) {
@@ -345,6 +388,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // Killing the second-to-last tile leaves a one-tile grid, which is
       // the degenerate state setView refuses to enter.
       deps.enforceViewFloor();
+      // Repaint the grid: one of its cells just went away. Previously
+      // the only repaint on this path was the switchTo above, which
+      // fires solely when the *active* tile was the one killed — so a
+      // grid that lost any other tile kept a stale layout. Focus now
+      // moves at `closing`, so by the time `removed` lands the active
+      // id is already the neighbour and switchTo never runs; without
+      // this, closing a session never refreshed the grid at all.
+      if (state.view !== 'single') deps.renderGrid();
     } else if (ev.kind === 'updated') {
       // A reorder arrives as `updated` events carrying new .order
       // values. renderGrid appends tiles in gridScopeSessions order, so
@@ -362,6 +413,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
       const st = state.terms.get(ev.session.id);
       if (st) {
         st.setInfo(ev.session);
+        // Phase drives the loading panel and the attach gate. Set it
+        // after setInfo so the panel's labels (branch, agent) come
+        // from the fresh info.
+        st.setPhase(phaseOf(ev.session));
         const pid = ev.session.projectId ?? ev.session.project_id;
         const proj = state.projects.find((p) => p.id === pid);
         st.setProject(proj?.name ?? '', proj?.color ?? '');
@@ -451,6 +506,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
         ev.kind,
         deps.scrollTrace.rec.enabled ? deps.scrollTrace.rec : undefined,
       );
+      // Replay done = the daemon has finished painting the settled
+      // screen, which is the cue to drop the loading panel.
+      if (ev.kind === 'scrollback_replay_done') st.revealAfterReplay();
     } catch {
       /* ignore */
     }
@@ -460,6 +518,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const st = state.terms.get(id);
     if (st) {
       st.attached = false;
+      if (isClosing(st.phase)) {
+        // The daemon killed this PTY on its way to removing the
+        // session. Marking it for reattach would send us dialing a
+        // session that is being deleted.
+        abandonReplays(st);
+        return;
+      }
       // The connection dropped: any in-flight replay's done will never
       // arrive, so clear the in-flight count (else it pins the viewport
       // to the bottom forever after reattach).
@@ -473,7 +538,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
 
   EventsOn('pty:error', (id: string, jsonStr: string) => {
     const st = state.terms.get(id);
-    if (st) {
+    // A session mid-create or mid-teardown is *expected* to refuse
+    // (session_starting / no_such_session); painting that in red into
+    // the pane is how a normal close used to look broken.
+    if (st && isReady(st.phase)) {
       try {
         const e = JSON.parse(jsonStr) as PtyError;
         st.term?.write?.(
