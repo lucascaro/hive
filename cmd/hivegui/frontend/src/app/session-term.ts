@@ -25,6 +25,13 @@ import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
 import { isMac } from '../lib/platform.js';
+import {
+  PHASE,
+  phaseOf,
+  isReady,
+  isClosing,
+  phasePanel,
+} from '../lib/phase-steps.js';
 import { isShiftEnter, macLineEditSeq, NEWLINE_SEQ } from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import {
@@ -109,6 +116,12 @@ const STICKY_BOTTOM_LINES = 2;
 // count as user-driven (vs parse-driven cap-trim drift).
 const USER_SCROLL_GRACE_MS = 250;
 
+// How long the loading panel is held past PhaseReady while waiting for
+// the attach replay to paint. Only a fallback: a tile that never
+// attaches (hidden, minimized) gets no replay, and must not keep a
+// spinner forever.
+const PHASE_REVEAL_CAP_MS = 2000;
+
 // The link the Linkifier currently has under the cursor, reached through
 // xterm's private `_core`: the public API exposes no way to ask "is a
 // link here?", and the mouse-protocol workaround below needs exactly that.
@@ -148,6 +161,18 @@ export class SessionTerm {
   deadCloseBtn: HTMLButtonElement;
   deadDismissBtn: HTMLButtonElement;
   deadOverlayShown: boolean;
+
+  // Lifecycle-phase overlay: the loading panel shown while the daemon
+  // is still creating (or tearing down) this session. See
+  // lib/phase-steps.ts for the model.
+  phaseOverlay: HTMLDivElement;
+  phaseStatus: HTMLDivElement;
+  phaseSteps: HTMLUListElement;
+  phase: string = PHASE.ready;
+  // The panel outlives PhaseReady until the terminal has painted (see
+  // _revealAfterPhase), so "is the overlay up" is its own flag.
+  phaseOverlayShown = false;
+  _phaseRevealTimer = 0;
 
   // Renderer.
   webgl: WebglAddon | null = null;
@@ -622,6 +647,28 @@ export class SessionTerm {
     this.deadOverlay.append(card);
     this.host.append(this.deadOverlay);
     this.deadOverlayShown = false;
+
+    // Phase overlay: opaque panel over the terminal body while the
+    // session is being created. It covers the window in which the
+    // shell paints its startup output, so the user lands on a settled
+    // screen instead of watching rc-files scroll past.
+    this.phaseOverlay = document.createElement('div');
+    this.phaseOverlay.className = 'phase-overlay';
+    this.phaseOverlay.setAttribute('role', 'status');
+    this.phaseOverlay.setAttribute('aria-live', 'polite');
+    this.phaseOverlay.hidden = true;
+    const phaseCard = document.createElement('div');
+    phaseCard.className = 'phase-card';
+    const spinner = document.createElement('div');
+    spinner.className = 'phase-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    this.phaseStatus = document.createElement('div');
+    this.phaseStatus.className = 'phase-status';
+    this.phaseSteps = document.createElement('ul');
+    this.phaseSteps.className = 'phase-steps';
+    phaseCard.append(spinner, this.phaseStatus, this.phaseSteps);
+    this.phaseOverlay.append(phaseCard);
+    this.host.append(this.phaseOverlay);
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum
@@ -1272,6 +1319,16 @@ export class SessionTerm {
         this.term.scrollToBottom();
       return;
     }
+    // Don't attach while the daemon is still creating or tearing down
+    // this session: it would refuse (`session_starting`/`no_such_session`)
+    // and the failure used to be painted as red text into the very pane
+    // that was about to appear or vanish. Every attach path funnels
+    // through here — grid render, deferred idle attach, focus, resize —
+    // so this one guard covers them all. setPhase re-enters on ready.
+    if (!isReady(this.phase)) {
+      this._pendingAttach = true;
+      return;
+    }
     // Don't attempt to attach to a session known to be dead — the daemon
     // will refuse. Show the dead overlay with the error reason instead.
     if (state.aliveById.get(this.info.id) === false) {
@@ -1311,7 +1368,12 @@ export class SessionTerm {
       // and fires a spurious scrollback replay on first grid entry.
       this.rebaselineReplayCols('first-attach');
     } catch (err) {
-      this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
+      // A session that started closing (or restarting) while the dial
+      // was in flight is *expected* to refuse. Only a genuine failure
+      // on a ready session is worth painting into the pane.
+      if (isReady(this.phase)) {
+        this.term.write(`\r\n\x1b[31m[attach failed: ${err}]\x1b[0m\r\n`);
+      }
     }
   }
 
@@ -1340,6 +1402,7 @@ export class SessionTerm {
     // gone; a failed CloseAttach has nothing for the user to act on.
     CloseAttach(this.info.id).catch(() => {});
     if (this._revealRaf) cancelAnimationFrame(this._revealRaf);
+    if (this._phaseRevealTimer) clearTimeout(this._phaseRevealTimer);
     this.ro.disconnect();
     if (this._dprWatcher) {
       try {
@@ -1393,6 +1456,109 @@ export class SessionTerm {
     }
   }
 
+  /**
+   * Apply a lifecycle phase from the daemon.
+   *
+   * Two edges matter. Entering a transient phase raises the loading
+   * panel (and the attach gate in ensureAttached keeps the terminal
+   * out of it). Reaching ready has to *drive* the attach: nothing else
+   * would — _pendingAttach is only re-entered by the ResizeObserver,
+   * and a phase change fires no resize.
+   */
+  setPhase(phase: string) {
+    const prev = this.phase;
+    this.phase = phase;
+    this.host.classList.toggle('closing', isClosing(phase));
+    if (!isReady(phase)) {
+      this._showPhaseOverlay();
+      return;
+    }
+    if (isReady(prev)) return; // no edge
+    if (state.aliveById.get(this.info.id) === false) {
+      // Ready but dead: the spawn failed. There is no terminal coming,
+      // so drop the panel at once and let the dead overlay (which
+      // events.ts raises on this same edge) own the tile — otherwise
+      // the spinner would sit on top of it until the fallback timer.
+      this._hidePhaseOverlay();
+      return;
+    }
+    // Ready: attach now (we refused to while pending), and hold the
+    // panel until the terminal has something to show.
+    void this.ensureAttached();
+    this._revealAfterPhase();
+  }
+
+  _showPhaseOverlay() {
+    const panel = phasePanel({
+      phase: this.phase,
+      agent: this.info.agent,
+      worktreeBranch: this.info.worktreeBranch ?? this.info.worktree_branch,
+    });
+    if (!panel) {
+      this._hidePhaseOverlay();
+      return;
+    }
+    if (this._phaseRevealTimer) {
+      clearTimeout(this._phaseRevealTimer);
+      this._phaseRevealTimer = 0;
+    }
+    this.phaseStatus.textContent = panel.status;
+    this.phaseSteps.replaceChildren(
+      ...panel.steps.map((step) => {
+        const li = document.createElement('li');
+        li.className = `phase-step ${step.state}`;
+        li.textContent = step.label;
+        return li;
+      }),
+    );
+    this.phaseOverlayShown = true;
+    this.phaseOverlay.hidden = false;
+    this.phaseOverlay.classList.remove('fading');
+  }
+
+  _hidePhaseOverlay() {
+    if (this._phaseRevealTimer) {
+      clearTimeout(this._phaseRevealTimer);
+      this._phaseRevealTimer = 0;
+    }
+    if (!this.phaseOverlayShown) return;
+    this.phaseOverlayShown = false;
+    this.phaseOverlay.hidden = true;
+    this.phaseOverlay.classList.remove('fading');
+  }
+
+  /**
+   * Hold the panel past PhaseReady until the terminal has painted, so
+   * the reveal lands on a settled screen.
+   *
+   * The signal is the daemon's scrollback_replay_done — attaching
+   * always replays the buffer, and "replay finished" is exactly "the
+   * screen is as settled as it is going to get". Waiting for the PTY
+   * to go quiet instead would never fire for an agent TUI, which
+   * animates continuously. The timer is the fallback for a tile that
+   * never replays (hidden/minimized, so never attached).
+   */
+  _revealAfterPhase() {
+    if (!this.phaseOverlayShown) return;
+    if (this._phaseRevealTimer) clearTimeout(this._phaseRevealTimer);
+    this._phaseRevealTimer = window.setTimeout(() => {
+      this._phaseRevealTimer = 0;
+      this.revealAfterReplay();
+    }, PHASE_REVEAL_CAP_MS);
+  }
+
+  /**
+   * Drop the loading panel now that the terminal has content. Called
+   * on scrollback_replay_done and by the cap timer above; a no-op
+   * while the session is still in a transient phase, so a replay
+   * arriving mid-restart can't unveil a session that isn't back yet.
+   */
+  revealAfterReplay() {
+    if (!this.phaseOverlayShown || !isReady(this.phase)) return;
+    this.phaseOverlay.classList.add('fading');
+    this._hidePhaseOverlay();
+  }
+
   _closeDead() {
     KillSession(this.info.id, true).catch(reportFailure('close'));
   }
@@ -1444,6 +1610,12 @@ export function ensureTerm(info: SessionInfo) {
   } else {
     st.setInfo(info);
   }
+  // Seed the phase from the info we were handed. A tile created for a
+  // session that is still starting (the common case now — `added`
+  // fires before the PTY exists) must come up showing the loading
+  // panel, with its attach gated, not attach immediately and get
+  // refused.
+  st.setPhase(phaseOf(info));
   const proj = state.projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );

@@ -282,3 +282,47 @@ func TestSessionInfo_JSONShape(t *testing.T) {
 		}
 	}
 }
+
+func TestClient_AwaitSessionReady_SkipsStartingAndDead(t *testing.T) {
+	fd := newFakeDaemon(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cli, err := Dial(ctx, fd.sockPath())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer cli.Close()
+	fd.waitAccept(t)
+
+	go func() {
+		var hello wire.Hello
+		_, _ = wire.ReadJSON(fd.conn, &hello)
+		_ = wire.WriteJSON(fd.conn, wire.FrameWelcome, wire.Welcome{Version: wire.PROTOCOL_VERSION})
+		// added(starting): the entry exists but has no PTY yet.
+		_ = wire.WriteJSON(fd.conn, wire.FrameSessionEvent, wire.SessionEvent{
+			Kind:    wire.SessionEventAdded,
+			Session: wire.SessionInfo{ID: "s1", Phase: wire.PhaseStarting},
+		})
+		// updated(spawning): still not attachable.
+		_ = wire.WriteJSON(fd.conn, wire.FrameSessionEvent, wire.SessionEvent{
+			Kind:    wire.SessionEventUpdated,
+			Session: wire.SessionInfo{ID: "s1", Phase: wire.PhaseSpawning},
+		})
+		// updated(ready, alive): this is the attachable edge.
+		_ = wire.WriteJSON(fd.conn, wire.FrameSessionEvent, wire.SessionEvent{
+			Kind:    wire.SessionEventUpdated,
+			Session: wire.SessionInfo{ID: "s1", Alive: true, Phase: wire.PhaseReady},
+		})
+	}()
+
+	if _, err := cli.Handshake(wire.Hello{Mode: wire.ModeControl}); err != nil {
+		t.Fatalf("handshake: %v", err)
+	}
+	ev, err := cli.AwaitSessionReady(2 * time.Second)
+	if err != nil {
+		t.Fatalf("AwaitSessionReady: %v", err)
+	}
+	if !ev.Session.Alive || ev.Session.Phase != wire.PhaseReady {
+		t.Errorf("got %+v, want an alive+ready session", ev.Session)
+	}
+}

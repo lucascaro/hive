@@ -446,9 +446,11 @@ func TestE2E_MultiSessionIsolation(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("create %d: %v", i, err)
 		}
-		ev, err := ctl.AwaitSessionEvent(wire.SessionEventAdded, 3*time.Second)
+		// Ready, not added: these ids are attached to below, and
+		// `added` now precedes the PTY.
+		ev, err := ctl.AwaitSessionReady(5 * time.Second)
 		if err != nil {
-			t.Fatalf("await added %d: %v", i, err)
+			t.Fatalf("await ready %d: %v", i, err)
 		}
 		ids[i] = ev.Session.ID
 	}
@@ -509,9 +511,9 @@ func TestE2E_DaemonRestart(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	ev, err := ctl.AwaitSessionEvent(wire.SessionEventAdded, 3*time.Second)
+	ev, err := ctl.AwaitSessionReady(5 * time.Second)
 	if err != nil {
-		t.Fatalf("await added: %v", err)
+		t.Fatalf("await ready: %v", err)
 	}
 	createdID := ev.Session.ID
 	_ = ctl.Close()

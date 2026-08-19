@@ -134,6 +134,12 @@ collect:
 		case ev := <-listener:
 			switch ev.Kind {
 			case wire.SessionEventUpdated:
+				// The new session emits its own updated events as it
+				// walks the create phases; this test is about the
+				// order shift on its *siblings*.
+				if ev.Session.ID == n.ID {
+					continue
+				}
 				updated[ev.Session.ID] = ev.Session.Order
 			case wire.SessionEventAdded:
 				added++
@@ -179,13 +185,12 @@ func TestCreateAppendEmitsNoShiftedUpdates(t *testing.T) {
 	for {
 		select {
 		case ev := <-listener:
-			if ev.Kind != wire.SessionEventAdded {
+			if ev.Session.ID != n.ID {
 				t.Errorf("unexpected %s event for %s on a plain append", ev.Kind, ev.Session.ID)
 				continue
 			}
-			if ev.Session.ID != n.ID {
-				t.Errorf("added event for %s, want %s", ev.Session.ID, n.ID)
-			}
+			// The new session's own added + phase updates are
+			// expected; nobody else may be touched by a plain append.
 		default:
 			return
 		}

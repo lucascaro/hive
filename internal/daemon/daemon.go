@@ -50,6 +50,28 @@ type Daemon struct {
 	// to avoid.
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+
+	// ops tracks the goroutines that run session lifecycle work
+	// (create/kill/restart) off the control read loop. Close waits on
+	// it so a shutting-down daemon doesn't abandon a `git worktree
+	// add` halfway. Deliberately NOT waited in Shutdown: Shutdown is
+	// called from the control read loop itself (FrameShutdown) and is
+	// sync.Once-guarded, so waiting there would both block a GUI
+	// restart behind a slow git and fail to be a barrier for the
+	// second caller.
+	ops sync.WaitGroup
+}
+
+// runOp runs one session lifecycle operation off the control read
+// loop. Create/Kill/Restart shell out to git, which used to block
+// every other client request for the duration (golden principle 5:
+// the goroutine has an explicit owner — d.ops, drained by Close).
+func (d *Daemon) runOp(fn func()) {
+	d.ops.Add(1)
+	go func() {
+		defer d.ops.Done()
+		fn()
+	}()
 }
 
 // New binds the socket, opens the registry, and (if configured)
@@ -179,6 +201,10 @@ func (d *Daemon) Registry() *registry.Registry { return d.reg }
 
 // Close terminates every session, closes listeners, removes the socket.
 func (d *Daemon) Close() error {
+	// Let in-flight create/kill work finish first: a half-created
+	// worktree with no session entry is an orphan the next boot has to
+	// reclaim.
+	d.ops.Wait()
 	d.mu.Lock()
 	for c := range d.clients {
 		_ = c.Close()
@@ -343,35 +369,45 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if _, err := d.reg.Create(ctx, spec); err != nil {
-				sendError("create_failed", err.Error())
-			}
+			d.runOp(func() {
+				// ErrNotFound here means the user killed the session
+				// while it was still being created — an ordinary
+				// outcome, not something to flash at them.
+				if _, err := d.reg.Create(ctx, spec); err != nil &&
+					!errors.Is(err, registry.ErrNotFound) {
+					sendError("create_failed", err.Error())
+				}
+			})
 		case wire.FrameKillSession:
 			var req wire.KillSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if err := d.reg.Kill(req.SessionID, req.Force); err != nil {
-				if errors.Is(err, registry.ErrWorktreeDirty) {
-					_ = writeJSON(wire.FrameError, wire.Error{
-						Code:      wire.ErrCodeWorktreeDirty,
-						Message:   "worktree has uncommitted changes",
-						SessionID: req.SessionID,
-					})
-				} else {
-					sendError("kill_failed", err.Error())
+			d.runOp(func() {
+				if err := d.reg.Kill(req.SessionID, req.Force); err != nil {
+					if errors.Is(err, registry.ErrWorktreeDirty) {
+						_ = writeJSON(wire.FrameError, wire.Error{
+							Code:      wire.ErrCodeWorktreeDirty,
+							Message:   "worktree has uncommitted changes",
+							SessionID: req.SessionID,
+						})
+					} else {
+						sendError("kill_failed", err.Error())
+					}
 				}
-			}
+			})
 		case wire.FrameRestartSession:
 			var req wire.RestartSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if err := d.reg.Restart(req.SessionID); err != nil {
-				sendError("restart_failed", err.Error())
-			}
+			d.runOp(func() {
+				if err := d.reg.Restart(req.SessionID); err != nil {
+					sendError("restart_failed", err.Error())
+				}
+			})
 		case wire.FrameUpdateSession:
 			var req wire.UpdateSessionReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
@@ -398,9 +434,11 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				sendError("bad_payload", err.Error())
 				continue
 			}
-			if err := d.reg.KillProject(req.ProjectID, req.KillSessions); err != nil {
-				sendError("kill_project_failed", err.Error())
-			}
+			d.runOp(func() {
+				if err := d.reg.KillProject(req.ProjectID, req.KillSessions); err != nil {
+					sendError("kill_project_failed", err.Error())
+				}
+			})
 		case wire.FrameUpdateProject:
 			var req wire.UpdateProjectReq
 			if err := jsonUnmarshal(payload, &req); err != nil {
@@ -427,6 +465,18 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 		return
 	}
 	if entry.Session() == nil {
+		// Distinguish "not spawned yet" from "dead". SESSION_EVENT
+		// (added) now fires before the PTY exists, so an eager attach
+		// is a normal race, not a failure: the client should wait for
+		// the event that moves the session to wire.PhaseReady.
+		if d.reg.Phase(sessionID) != wire.PhaseReady {
+			_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+				Code:      wire.ErrCodeSessionStarting,
+				Message:   "session is still starting",
+				SessionID: sessionID,
+			})
+			return
+		}
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    "session_dead",
 			Message: "session has no live PTY (daemon-restart resume not implemented yet)",

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sessions now show what they are doing while they start. Opening a session
+  used to leave the tile blank — often for many seconds when a git worktree
+  had to be created — and then hand you a terminal already painting your
+  shell's startup output. The session's area now shows a loading panel with
+  the live step list (registered → fetching origin → creating the worktree →
+  starting the agent) and only reveals the terminal once it has settled, so
+  you land on a clean prompt and can see which step is slow. Restarting a
+  session says "Restarting…" the same way.
+
 - The new-session popup (⌘T) now filters as you type. A filter box sits at
   the top of the agent list and narrows it to agents whose name contains what
   you typed. The `1`–`9` row shortcuts still work while the box is empty; once
@@ -43,6 +52,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Go Back** / **Go Forward**.
 
 ### Fixed
+- Closing a session in grid mode now repaints the grid. The only repaint on
+  the removal path fired when the *active* session was the one closed, so
+  closing any other tile left the layout with a hole where it used to be.
+
+- Closing a session no longer leaves a broken tile behind. The daemon
+  announces the teardown up front, so focus moves to the next session
+  immediately and the closing tile is dimmed instead of frozen — and the red
+  `[attach failed: …]` / `[hived: no_such_session: …]` lines that used to be
+  painted into a pane on its way out are gone.
+
+- Creating or closing a session no longer freezes the rest of the app. Both
+  ran on the daemon's single control connection loop, so every other action
+  in every window — renaming, switching projects, opening another session —
+  waited behind `git fetch`, `git worktree add`, or `git worktree remove`.
+  That work now runs off the loop, with git serialized so concurrent
+  sessions in one repo can't collide.
 
 - GUI: ⌘← and ⌘→ (and ⇧⌘← / ⇧⌘→) now move the cursor to the start / end of
   the line in focused mode, the way they do in any macOS terminal. Grid view

@@ -53,23 +53,55 @@ type createPlan struct {
 // daemon-scoped, not per-connection (see
 // startAgentSessionIDCaptureLocked).
 func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, error) {
+	e, p, err := r.beginCreate(spec)
+	if err != nil {
+		return nil, err
+	}
+	return e, r.finishCreate(ctx, e, spec, p)
+}
+
+// beginCreate is Create's synchronous prefix: it resolves the plan,
+// registers and persists the entry, and broadcasts SESSION_EVENT(added)
+// with PhaseStarting so the client can paint a tile immediately — long
+// before the worktree and PTY exist.
+//
+// The whole prefix runs under createMu so concurrent creates (the
+// daemon runs them off its read loop) can't interleave their order
+// splicing and land in a surprising sidebar order.
+func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error) {
+	r.createMu.Lock()
+	defer r.createMu.Unlock()
+
 	p := r.resolveCreateTarget(spec)
 	r.planWorktreeAndName(spec, &p)
 
 	e, err := r.insertEntry(spec, p)
 	if err != nil {
-		return nil, err
+		return nil, p, err
 	}
+	r.mu.Lock()
+	e.Phase = wire.PhaseStarting
+	info := e.Info()
+	r.broadcastLocked(wire.SessionEventAdded, info)
+	r.mu.Unlock()
+	return e, p, nil
+}
 
-	// Everything below runs outside the lock so neither `git worktree
-	// add` nor the PTY fork blocks the registry.
+// finishCreate is Create's slow tail: `git worktree add` and the PTY
+// fork, neither of which may run under r.mu. It reports progress via
+// setPhase and ends on PhaseReady — the edge at which the session
+// becomes attachable. The daemon runs this off the control read loop
+// (see internal/daemon), so a slow git can no longer stall every other
+// client request.
+func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
 	cmd := resolveAgentCmd(spec, p.id)
 	r.materializeWorktree(ctx, &p)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)
 	}
 
-	sess, err := startSession(session.Options{
+	r.setPhase(p.id, wire.PhaseSpawning)
+	sess, err := spawn(session.Options{
 		Shell: spec.Shell,
 		Cmd:   cmd,
 		Cwd:   p.cwd,
@@ -80,21 +112,53 @@ func (r *Registry) Create(ctx context.Context, spec wire.CreateSpec) (*Entry, er
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
 			e.ID, spec.Agent, cmd, err)
 		// Strand the metadata as a dead entry. The user can recreate
-		// or kill it. Store the error so the GUI can surface it.
+		// or kill it. Store the error so the GUI can surface it. The
+		// event is `updated`, not `added` — beginCreate already
+		// announced this entry.
 		r.mu.Lock()
 		e.LastError = err.Error()
+		e.Phase = wire.PhaseReady
 		info := e.Info()
+		r.broadcastLocked(wire.SessionEventUpdated, info)
 		r.mu.Unlock()
-		r.broadcast(wire.SessionEventAdded, info)
-		return e, err
+		return err
 	}
 
 	// Snapshot under the lock: attachSession starts the capture
 	// goroutine, which mutates AgentSessionID on this same entry.
-	info := r.attachSession(ctx, e, sess, spec, p)
-	r.broadcast(wire.SessionEventAdded, info)
+	info, live := r.attachSession(ctx, e, sess, spec, p)
+	if !live {
+		// Killed mid-create. The kill saw e.sess == nil and could not
+		// close this PTY, and the entry carried no worktree path yet,
+		// so cleaning both up is our job. Best-effort: a worktree that
+		// survives is reclaimed by ReclaimOrphanWorktrees on the next
+		// daemon start.
+		log.Printf("registry: create %s: entry removed mid-create; discarding the spawned session", p.id)
+		_ = sess.Close()
+		r.discardWorktree(p)
+		return ErrNotFound
+	}
+	r.broadcast(wire.SessionEventUpdated, info)
 	go r.watchSessionExit(p.id, sess)
-	return e, nil
+	return nil
+}
+
+// discardWorktree removes a worktree that finishCreate materialized
+// for an entry that no longer exists. Never runs for an adopted
+// worktree — that directory belongs to a sibling session.
+func (r *Registry) discardWorktree(p createPlan) {
+	if p.wtPath == "" || p.adoptedPath != "" {
+		return
+	}
+	root, err := worktree.Root(p.wtPath)
+	if err != nil {
+		return
+	}
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	if err := worktree.Cleanup(root, p.wtPath); err != nil {
+		log.Printf("registry: discarding worktree %s after mid-create kill: %v", p.wtPath, err)
+	}
 }
 
 // resolveCreateTarget picks the id, owning project, color and cwd for
@@ -291,12 +355,20 @@ func (r *Registry) materializeWorktree(ctx context.Context, p *createPlan) {
 		p.wtPath, p.wtBranch = "", ""
 		return
 	}
+	// gitMu serializes the worktree subprocesses across concurrent
+	// creates/kills. Taken before setPhase so the phase the client
+	// sees is "we are actually working", not "we are queued" — and
+	// never while holding r.mu (see Registry.gitMu).
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	r.setPhase(p.id, wire.PhaseFetching)
 	if cerr := worktree.CreateWorktree(ctx, root, p.wtBranch, p.wtPath); cerr != nil {
 		log.Printf("registry: worktree create failed (falling back to plain session): %v", cerr)
 		p.wtPath, p.wtBranch = "", ""
 		return
 	}
 	p.cwd = p.wtPath
+	r.setPhase(p.id, wire.PhaseWorktree)
 	worktree.EnsureGitignore(root)
 	worktree.LinkAgentConfig(root, p.wtPath)
 	log.Printf("registry: created worktree %s on branch %s", p.wtPath, p.wtBranch)
@@ -309,16 +381,34 @@ func (r *Registry) materializeWorktree(ctx context.Context, p *createPlan) {
 func (r *Registry) renameAfterWorktreeFailure(e *Entry, spec wire.CreateSpec) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The entry can have been killed while the worktree attempt ran.
+	// Persisting now would write its metadata back out after Kill
+	// removed it, resurrecting a ghost session on the next daemon boot.
+	if _, ok := r.entries[e.ID]; !ok {
+		return
+	}
 	e.Name = agent.RandomName(agent.ID(spec.Agent))
 	r.persistEntryLoggedLocked(e, "create (rename fallback)")
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 }
 
 // attachSession binds the freshly spawned PTY to the entry, records
-// the worktree and agent-session ids, and kicks off the post-spawn
-// capture, and returns the info snapshot to broadcast. Takes r.mu.
-func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Session, spec wire.CreateSpec, p createPlan) wire.SessionInfo {
+// the worktree and agent-session ids, kicks off the post-spawn
+// capture, moves the entry to PhaseReady, and returns the info
+// snapshot to broadcast. Takes r.mu.
+//
+// Returns live=false when the entry was killed while the tail was
+// running. The check has to happen inside this critical section, not
+// before it: Kill deletes the entry and reads e.sess to close the PTY,
+// so a check that released r.mu before binding e.sess would let a kill
+// slip through the gap and leak the process.
+func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Session, spec wire.CreateSpec, p createPlan) (wire.SessionInfo, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if _, ok := r.entries[p.id]; !ok {
+		return wire.SessionInfo{}, false
+	}
 
 	// The session.Session uses its own UUID; we override with the
 	// registry id so the registry id is the public identity.
@@ -348,7 +438,8 @@ func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Se
 	// caller-chosen ids (Codex). The cancel func is stored so
 	// watchSessionExit can stop the poll if the session dies first.
 	r.startAgentSessionIDCaptureLocked(ctx, e, p.cwd)
-	return e.Info()
+	e.Phase = wire.PhaseReady
+	return e.Info(), true
 }
 
 // startAgentSessionIDCaptureLocked launches the per-agent capture

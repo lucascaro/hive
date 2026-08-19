@@ -38,11 +38,12 @@ import (
 //     the Begin → DATA → Done replay envelope.
 //   - sessions / projects: control-mode broadcast channels.
 //   - snaps:    one-shot frames (WELCOME, ERROR, SESSIONS, PROJECTS).
+//
 // Write and Await methods require a successful Handshake first; they
 // panic on a client that has only been dialed.
 type Client struct {
-	conn net.Conn        // raw conn; owned by cli after Handshake
-	cli  *wire.Client    // shared protocol client; nil until Handshake
+	conn net.Conn     // raw conn; owned by cli after Handshake
+	cli  *wire.Client // shared protocol client; nil until Handshake
 
 	stream   chan frameMsg
 	sessions chan wire.SessionEvent
@@ -202,24 +203,48 @@ func (c *Client) AwaitReplayBoundary(timeout time.Duration) ([]byte, error) {
 
 // AwaitSessionEvent reads SESSION_EVENTs until one matches kind (or
 // kind == "" matches any), or timeout. The matched event is returned.
+//
+// Note that SESSION_EVENT(added) fires before the session's PTY
+// exists — it means "the entry is registered", not "you may attach".
+// Callers that go on to attach want AwaitSessionReady instead.
 func (c *Client) AwaitSessionEvent(kind string, timeout time.Duration) (wire.SessionEvent, error) {
+	return c.AwaitSessionEventFunc(func(ev wire.SessionEvent) bool {
+		return kind == "" || ev.Kind == kind
+	}, timeout, fmt.Sprintf("SESSION_EVENT(%s)", kind))
+}
+
+// AwaitSessionEventFunc reads SESSION_EVENTs until pred matches, or
+// timeout. want names what is being waited for, for the timeout error.
+func (c *Client) AwaitSessionEventFunc(pred func(wire.SessionEvent) bool, timeout time.Duration, want string) (wire.SessionEvent, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return wire.SessionEvent{}, fmt.Errorf("testclient: timeout waiting for SESSION_EVENT(%s)", kind)
+			return wire.SessionEvent{}, fmt.Errorf("testclient: timeout waiting for %s", want)
 		}
 		select {
 		case ev := <-c.sessions:
-			if kind == "" || ev.Kind == kind {
+			if pred(ev) {
 				return ev, nil
 			}
 		case err := <-c.errs:
 			return wire.SessionEvent{}, err
 		case <-time.After(remaining):
-			return wire.SessionEvent{}, fmt.Errorf("testclient: timeout waiting for SESSION_EVENT(%s)", kind)
+			return wire.SessionEvent{}, fmt.Errorf("testclient: timeout waiting for %s", want)
 		}
 	}
+}
+
+// AwaitSessionReady waits for a session to become attachable: alive
+// with a live PTY and back in wire.PhaseReady. This is the event to
+// wait on before dialing an attach connection — `added` arrives while
+// the worktree and shell are still being created, and attaching then
+// is answered with wire.ErrCodeSessionStarting.
+func (c *Client) AwaitSessionReady(timeout time.Duration) (wire.SessionEvent, error) {
+	return c.AwaitSessionEventFunc(func(ev wire.SessionEvent) bool {
+		return ev.Kind != wire.SessionEventRemoved &&
+			ev.Session.Alive && ev.Session.Phase == wire.PhaseReady
+	}, timeout, "SESSION_EVENT(ready)")
 }
 
 // AwaitSessionsSnapshot consumes the next SESSIONS frame.

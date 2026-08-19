@@ -45,9 +45,11 @@ func TestE2E_CustomAgentLaunches(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	ev, err := ctl.AwaitSessionEvent(wire.SessionEventAdded, 3*time.Second)
+	// Ready, not added: `added` fires before the PTY exists, and this
+	// test attaches immediately afterwards.
+	ev, err := ctl.AwaitSessionReady(5 * time.Second)
 	if err != nil {
-		t.Fatalf("await added: %v", err)
+		t.Fatalf("await ready: %v", err)
 	}
 	if ev.Session.Agent != "e2e-tool" {
 		t.Errorf("session agent = %q, want %q", ev.Session.Agent, "e2e-tool")
@@ -81,9 +83,11 @@ func TestE2E_MalformedCustomAgentsDoesNotBreakDaemon(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create with a corrupt agents.json: %v", err)
 	}
-	ev, err := ctl.AwaitSessionEvent(wire.SessionEventAdded, 3*time.Second)
+	// Ready, not added: `added` fires before the PTY exists, and this
+	// test attaches immediately afterwards.
+	ev, err := ctl.AwaitSessionReady(5 * time.Second)
 	if err != nil {
-		t.Fatalf("await added: %v", err)
+		t.Fatalf("await ready: %v", err)
 	}
 
 	a := dialAttach(t, d, ev.Session.ID)

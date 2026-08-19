@@ -100,7 +100,34 @@ type SessionInfo struct {
 	WorktreePath   string `json:"worktree_path,omitempty"`   // absolute path; "" = no worktree
 	WorktreeBranch string `json:"worktree_branch,omitempty"` // branch backing the worktree
 	LastError      string `json:"last_error,omitempty"`      // human-readable error from last failed Start/Revive
+	// Phase is the session's lifecycle phase. Empty means ready (the
+	// steady state), which keeps the field omitempty on the wire and
+	// makes every entry loaded from disk ready by default. See the
+	// Phase* constants below.
+	Phase string `json:"phase,omitempty"`
 }
+
+// Session lifecycle phases, carried by SessionInfo.Phase. The daemon
+// owns them; clients render them. They are in-memory only — nothing
+// persists a phase, so a daemon restart can never strand a session in
+// a transient one.
+//
+//	create:  starting → fetching → worktree → spawning → ready
+//	kill:    ready → checking → closing → (removed)
+//	restart: ready → restarting → ready
+//
+// A session is attachable only when Alive is true AND Phase is ready.
+// SESSION_EVENT(added) means "the entry exists", not "you may attach".
+const (
+	PhaseReady      = ""           // steady state; attachable when Alive
+	PhaseStarting   = "starting"   // entry registered, nothing spawned yet
+	PhaseFetching   = "fetching"   // git fetch origin, ahead of the worktree add
+	PhaseWorktree   = "worktree"   // git worktree add + agent-config linking
+	PhaseSpawning   = "spawning"   // forking the PTY / shell
+	PhaseChecking   = "checking"   // kill: checking the worktree for uncommitted changes
+	PhaseClosing    = "closing"    // kill: PTY teardown + worktree removal
+	PhaseRestarting = "restarting" // restart: PTY recycled in place
+)
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).
 type ListSessionsReq struct{}
@@ -247,6 +274,11 @@ type Error struct {
 // Well-known error codes.
 const (
 	ErrCodeWorktreeDirty = "worktree_dirty"
+	// ErrCodeSessionStarting is returned by an attach that arrives
+	// while the session is still being created. The entry exists but
+	// has no PTY yet; the client should wait for the SESSION_EVENT
+	// that moves it to PhaseReady rather than treating it as dead.
+	ErrCodeSessionStarting = "session_starting"
 )
 
 // WriteJSON marshals v and writes it as a frame of type t.

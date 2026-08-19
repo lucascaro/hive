@@ -72,16 +72,25 @@ func TestCreateListKill(t *testing.T) {
 		t.Fatalf("Create beta: %v", err)
 	}
 
+	// Skips the lifecycle-phase `updated` events that create and kill
+	// emit on their way through (covered by TestCreatePhaseSequence /
+	// TestKillPhaseSequence); this test is about added/removed.
 	expectEvent := func(kind string) wire.SessionEvent {
-		select {
-		case ev := <-listener:
-			if ev.Kind != kind {
-				t.Errorf("event kind: got %s, want %s", ev.Kind, kind)
+		deadline := time.After(2 * time.Second)
+		for {
+			select {
+			case ev := <-listener:
+				if ev.Kind == wire.SessionEventUpdated && kind != wire.SessionEventUpdated {
+					continue
+				}
+				if ev.Kind != kind {
+					t.Errorf("event kind: got %s, want %s", ev.Kind, kind)
+				}
+				return ev
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s event", kind)
+				return wire.SessionEvent{}
 			}
-			return ev
-		case <-time.After(time.Second):
-			t.Fatalf("timed out waiting for %s event", kind)
-			return wire.SessionEvent{}
 		}
 	}
 	expectEvent("added") // alpha

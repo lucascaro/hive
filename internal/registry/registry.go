@@ -31,6 +31,37 @@ var ErrNotFound = errors.New("registry: session not found")
 // returned *session.Session behaves normally.
 var startSession = session.Start
 
+// startSessionMu guards the seam itself. Creates now run concurrently
+// (the daemon dispatches them off its control read loop), so a test
+// swapping the seam races the in-flight create that is reading it.
+var startSessionMu sync.RWMutex
+
+// spawn calls the current seam. Every production call site goes
+// through here.
+func spawn(opts session.Options) (*session.Session, error) {
+	startSessionMu.RLock()
+	fn := startSession
+	startSessionMu.RUnlock()
+	return fn(opts)
+}
+
+// SetStartSessionForTest swaps the PTY spawn seam and returns a
+// restore func. Test-only, and exported because the daemon's own
+// tests (a different package) need to hold a create open long enough
+// to prove the control loop keeps serving other clients. Mirrors the
+// existing Daemon.Registry() "exposed for tests" escape hatch.
+func SetStartSessionForTest(fn func(session.Options) (*session.Session, error)) func() {
+	startSessionMu.Lock()
+	prev := startSession
+	startSession = fn
+	startSessionMu.Unlock()
+	return func() {
+		startSessionMu.Lock()
+		startSession = prev
+		startSessionMu.Unlock()
+	}
+}
+
 // ErrWorktreeDirty is returned by Kill when the session is backed by
 // a worktree with uncommitted changes and force=false. Callers (the
 // daemon) translate this into a wire.FrameError with code
@@ -59,6 +90,12 @@ type Entry struct {
 	AgentSessionID string
 	LastError      string           // human-readable error from last failed Start/Revive; cleared on success
 	sess           *session.Session // nil ⇔ not running this lifetime
+
+	// Phase is the lifecycle phase surfaced to clients (see the
+	// wire.Phase* constants). In-memory only: never persisted, so a
+	// daemon restart can't strand an entry mid-create. The zero value
+	// is wire.PhaseReady.
+	Phase string
 
 	// captureCancel cancels the post-spawn AgentSessionID capture
 	// goroutine when the session exits before capture completes.
@@ -108,6 +145,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreePath:   e.WorktreePath,
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
+		Phase:          e.Phase,
 	}
 }
 
@@ -135,6 +173,56 @@ type Registry struct {
 	// separate from listeners so a sidebar can subscribe to both
 	// streams without filtering.
 	projectListeners map[ProjectListener]struct{}
+
+	// createMu serializes the synchronous prefix of Create (id/color
+	// resolution, name planning, order splicing). The daemon now runs
+	// Create off its control read loop, so without this two rapid ⌘N
+	// presses could interleave and land in a surprising order.
+	createMu sync.Mutex
+
+	// gitMu serializes the git subprocesses that create and remove
+	// worktrees. Concurrent `git worktree add`/`remove` in one repo
+	// collide on index.lock.
+	//
+	// Lock ordering rule: NEVER acquire gitMu while holding r.mu. The
+	// create tail takes gitMu and then setPhase takes r.mu, so the
+	// reverse order anywhere is an ABBA deadlock.
+	//
+	// ponytail: one global git lock; key it per repo root if
+	// multi-repo create throughput ever matters.
+	gitMu sync.Mutex
+}
+
+// Phase reports the entry's current lifecycle phase (wire.Phase*), or
+// wire.PhaseReady when the id is unknown. Race-free accessor for
+// readers outside the package — Entry.Phase itself is written under
+// r.mu by the create/kill/restart paths.
+func (r *Registry) Phase(id string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[id]; ok {
+		return e.Phase
+	}
+	return wire.PhaseReady
+}
+
+// setPhase records a lifecycle phase and broadcasts it. Takes r.mu, so
+// callers must not already hold it (and must not hold gitMu ordering
+// backwards — see Registry.gitMu). No-op when the entry is gone or
+// already in that phase, so a redundant transition costs no event.
+func (r *Registry) setPhase(id, phase string) {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok || e.Phase == phase {
+		r.mu.Unlock()
+		return
+	}
+	e.Phase = phase
+	info := e.Info()
+	// broadcastLocked, not broadcast: broadcast takes r.mu and
+	// sync.Mutex is not reentrant.
+	r.broadcastLocked(wire.SessionEventUpdated, info)
+	r.mu.Unlock()
 }
 
 // Open creates or loads a Registry rooted at stateDir. Existing
@@ -351,7 +439,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		}
 	}
 
-	sess, err := startSession(opts)
+	sess, err := spawn(opts)
 	if err != nil {
 		r.mu.Lock()
 		e.LastError = err.Error()
@@ -398,6 +486,8 @@ func (r *Registry) Restart(id string) error {
 	if p, ok := r.projects[e.ProjectID]; ok {
 		projectCwd = p.Cwd
 	}
+	e.Phase = wire.PhaseRestarting
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 	r.mu.Unlock()
 
 	// Tear down the current PTY. watchSessionExit also observes the
@@ -456,6 +546,11 @@ func (r *Registry) Restart(id string) error {
 	// leaves opts.Cwd alone — projectCwd is what session.Start should use.
 	opts.Cwd = projectCwd
 
+	// Back to ready BEFORE Revive: Revive broadcasts alive:true from
+	// inside, and a client gating attach on ready would otherwise see
+	// alive:true + phase:"restarting" with no later event to unstick
+	// it. Clearing here means ready and alive:true ride the same event.
+	r.setPhase(id, wire.PhaseReady)
 	return r.Revive(id, opts)
 }
 
@@ -529,12 +624,24 @@ func (r *Registry) Kill(id string, force bool) error {
 	// the check when other sessions still live in the worktree —
 	// killing this one won't remove the directory, so dirtiness is
 	// irrelevant.
+	//
+	// `git status` on a large worktree is slow enough to look like a
+	// hang, so the client is told we're checking; a refusal puts the
+	// entry back to ready so a cancelled confirm leaves no stuck tile.
 	if wtPath != "" && !worktreeShared && !force {
+		r.setPhase(id, wire.PhaseChecking)
+		r.gitMu.Lock()
 		dirty, _ := worktree.HasUncommitted(wtPath)
+		r.gitMu.Unlock()
 		if dirty {
+			r.setPhase(id, wire.PhaseReady)
 			return ErrWorktreeDirty
 		}
 	}
+	// Announce the teardown while the entry still exists: after the
+	// delete below there is nothing left for List() to return, so a
+	// client connecting mid-kill would otherwise see nothing at all.
+	r.setPhase(id, wire.PhaseClosing)
 
 	r.mu.Lock()
 	// Re-resolve the entry — the world may have changed while we were
@@ -571,16 +678,20 @@ func (r *Registry) Kill(id string, force bool) error {
 	// SessionEventUpdated for sessions the user didn't touch.
 	r.persistIndexLoggedLocked("kill")
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
+	// Snapshot the PTY under the lock. Reading e.sess after the unlock
+	// races the create tail, which binds it under r.mu.
+	sess := e.sess
 	r.mu.Unlock()
 
 	// Order: PTY first (releases any FD/cwd handles into the
 	// worktree), worktree second (now safe to git worktree remove),
 	// metadata last (so a crash mid-cleanup leaves a recoverable
 	// orphan that the next daemon-startup scan reclaims).
-	if e.sess != nil {
-		_ = e.sess.Close()
+	if sess != nil {
+		_ = sess.Close()
 	}
 	if wtPath != "" && !worktreeShared {
+		r.gitMu.Lock()
 		root, err := worktree.Root(projectCwd)
 		switch {
 		case err != nil:
@@ -597,6 +708,7 @@ func (r *Registry) Kill(id string, force bool) error {
 				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
 			}
 		}
+		r.gitMu.Unlock()
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
