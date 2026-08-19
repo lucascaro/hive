@@ -17,6 +17,13 @@ export interface PhaseCarrier {
 // Session lifecycle phases, mirroring wire.Phase* in
 // internal/wire/control.go. Ready is the empty string: a session with
 // no phase on the wire (an older daemon, or the steady state) is ready.
+//
+// Hand-mirrored, not generated — the wire is JSON, so nothing checks
+// these against the Go side at build time. A rename there would just
+// make phasePanel() return null here (no overlay, no error), so
+// TestPhaseConstantsMatchFrontend in internal/wire/ asserts every
+// wire.Phase* string still appears in this file. Keep CREATE_ORDER
+// below in sync too.
 export const PHASE = {
   ready: '',
   starting: 'starting',

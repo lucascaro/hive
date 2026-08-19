@@ -111,11 +111,25 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 	if err != nil {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
 			e.ID, spec.Agent, cmd, err)
+		r.mu.Lock()
+		if _, ok := r.entries[p.id]; !ok {
+			// Killed while the spawn was failing. Same tombstone rule
+			// as attachSession below: broadcasting here would emit an
+			// `updated` for an id the clients already saw `removed`,
+			// which a client tracking liveness reads as a session
+			// dying (the GUI pops a "Session ended" notification for a
+			// session the user just closed). The worktree is ours to
+			// clean up too — the entry never carried its path, so Kill
+			// could not have removed it.
+			r.mu.Unlock()
+			log.Printf("registry: create %s: entry removed mid-create; discarding the failed session", p.id)
+			r.discardWorktree(p)
+			return ErrNotFound
+		}
 		// Strand the metadata as a dead entry. The user can recreate
 		// or kill it. Store the error so the GUI can surface it. The
 		// event is `updated`, not `added` — beginCreate already
 		// announced this entry.
-		r.mu.Lock()
 		e.LastError = err.Error()
 		e.Phase = wire.PhaseReady
 		info := e.Info()

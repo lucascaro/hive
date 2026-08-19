@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,18 @@ func (p *phaseLog) phasesFor(id string) []string {
 		out = append(out, ev.Kind+":"+ev.Session.Phase)
 	}
 	return out
+}
+
+// firstAdded returns the id from the first `added` event seen, or "".
+func (p *phaseLog) firstAdded() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, ev := range p.events {
+		if ev.Kind == wire.SessionEventAdded {
+			return ev.Session.ID
+		}
+	}
+	return ""
 }
 
 // watch subscribes and records every event until the returned stop is
@@ -292,7 +305,19 @@ func TestKillDuringCreate(t *testing.T) {
 		}
 		return s, err
 	})
-	t.Cleanup(restore)
+	// Release on EVERY exit path: a t.Fatalf before the close below
+	// would otherwise strand the create goroutine on <-release forever.
+	var released bool
+	releaseOnce := func() {
+		if !released {
+			released = true
+			close(release)
+		}
+	}
+	t.Cleanup(func() {
+		releaseOnce()
+		restore()
+	})
 
 	listener, unsub := r.Subscribe()
 	defer unsub()
@@ -316,7 +341,7 @@ func TestKillDuringCreate(t *testing.T) {
 	if err := r.Kill(id, true); err != nil {
 		t.Fatalf("Kill: %v", err)
 	}
-	close(release)
+	releaseOnce()
 
 	if err := <-createDone; err != ErrNotFound {
 		t.Errorf("Create after mid-create kill: got %v, want ErrNotFound", err)
@@ -368,4 +393,103 @@ func TestConcurrentCreatesInOneRepo(t *testing.T) {
 	if entries[0].WorktreePath == entries[1].WorktreePath {
 		t.Errorf("both creates landed in the same worktree %q", entries[0].WorktreePath)
 	}
+}
+
+// TestKillDuringCreate_SpawnFails covers the other half of the
+// mid-create kill: the spawn doesn't just get orphaned, it fails.
+//
+// Two things must not happen. The entry is already gone, so a
+// broadcast here would emit an `updated` after the `removed` clients
+// have seen — which a liveness-tracking client reads as a session
+// dying (the GUI fires a "Session ended" notification for a session
+// the user just closed). And the worktree created moments earlier is
+// nobody else's to clean up: Kill ran before attachSession recorded
+// the path on the entry, so it saw no worktree at all.
+func TestKillDuringCreate_SpawnFails(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	atSpawn := make(chan string, 1)
+	release := make(chan struct{})
+	restore := SetStartSessionForTest(func(session.Options) (*session.Session, error) {
+		atSpawn <- "" // the worktree exists by now; the PTY does not
+		<-release
+		return nil, os.ErrNotExist
+	})
+	var released bool
+	releaseOnce := func() {
+		if !released {
+			released = true
+			close(release)
+		}
+	}
+	t.Cleanup(func() {
+		releaseOnce()
+		restore()
+	})
+
+	log, stop := watch(t, r)
+	defer stop()
+
+	createDone := make(chan error, 1)
+	go func() {
+		_, err := r.Create(context.Background(), wire.CreateSpec{
+			ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+		})
+		createDone <- err
+	}()
+
+	// Wait until the create is parked in the spawn: the worktree is on
+	// disk and the entry is registered, which is the exact window a
+	// user's ⌘W lands in.
+	select {
+	case <-atSpawn:
+	case <-time.After(5 * time.Second):
+		t.Fatal("create never reached the spawn")
+	}
+	id := ""
+	waitFor(t, "the added event", func() bool {
+		id = log.firstAdded()
+		return id != ""
+	})
+	wtDirs := worktreeDirs(t, p.Cwd)
+	if len(wtDirs) != 1 {
+		t.Fatalf("expected exactly one worktree before the kill, got %v", wtDirs)
+	}
+
+	if err := r.Kill(id, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	releaseOnce()
+
+	if err := <-createDone; err != ErrNotFound {
+		t.Errorf("Create after mid-create kill: got %v, want ErrNotFound", err)
+	}
+	// The last word about this session must be `removed`.
+	got := log.phasesFor(id)
+	if len(got) == 0 {
+		t.Fatalf("no events for %s", id)
+	}
+	if last := got[len(got)-1]; !strings.HasPrefix(last, "removed") {
+		t.Errorf("events after the kill: %s — nothing may follow `removed`", joined(got))
+	}
+	// ...and the worktree it made must not outlive it.
+	waitFor(t, "the orphaned worktree to be discarded", func() bool {
+		return len(worktreeDirs(t, p.Cwd)) == 0
+	})
+}
+
+// worktreeDirs lists the entries under <repo>/.worktrees, or nothing
+// when the directory doesn't exist yet.
+func worktreeDirs(t *testing.T, repo string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(repo, ".worktrees"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
 }

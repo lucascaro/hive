@@ -320,11 +320,20 @@ export function wireDaemonEvents(injected: EventsDeps) {
       processAliveTransition(s);
       state.terms.get(s.id)?.setPhase(phaseOf(s));
     }
-    // Drop any minimized ids whose sessions no longer exist (e.g. after
-    // a daemon restart or list reset) so the tray doesn't leak stale chips.
+    // Drop any ids whose sessions no longer exist (e.g. after a daemon
+    // restart or list reset) so the tray doesn't leak stale chips and
+    // the transition-detection maps don't grow for the life of the
+    // process. A snapshot is the only path that can retire a session
+    // without a per-session `removed` event.
     const liveIds = new Set(state.sessions.map((s) => s.id));
     for (const id of Array.from(state.minimized)) {
       if (!liveIds.has(id)) state.minimized.delete(id);
+    }
+    for (const id of Array.from(state.aliveById.keys())) {
+      if (!liveIds.has(id)) state.aliveById.delete(id);
+    }
+    for (const id of Array.from(state.phaseById.keys())) {
+      if (!liveIds.has(id)) state.phaseById.delete(id);
     }
     pruneNav(state.nav, (id) => liveIds.has(id));
     renderSidebar();
