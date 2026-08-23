@@ -478,6 +478,15 @@ func TestManagedPath(t *testing.T) {
 	if _, err := managedPath(root, ok); err != nil {
 		t.Errorf("managedPath rejected a legitimate worktree: %v", err)
 	}
+	// A symlink inside .worktrees/ pointing outside is the sharpest
+	// version of the escape: the path looks managed until it is
+	// resolved. managedPath resolves before comparing; pin that.
+	escape := filepath.Join(root, ".worktrees", "escape")
+	outside := t.TempDir()
+	if err := os.Symlink(outside, escape); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, bad := range []string{
 		"",
 		root,
@@ -485,6 +494,8 @@ func TestManagedPath(t *testing.T) {
 		filepath.Join(root, ".worktrees-evil"),
 		filepath.Join(root, "other"),
 		filepath.Join(root, ".worktrees", "..", "..", "escape"),
+		escape,
+		filepath.Join(escape, "nested"),
 		"/",
 	} {
 		if _, err := managedPath(root, bad); err == nil {
@@ -607,5 +618,117 @@ func TestDeleteBranch_UnknownBranchAndEmptyName(t *testing.T) {
 	}
 	if err := r.DeleteBranch(p.ID, "   ", true); err == nil {
 		t.Error("empty branch name accepted")
+	}
+}
+
+// A project whose cwd IS a linked worktree — which is how hive gets run
+// from inside its own .worktrees/. A plain session there must not claim
+// that checkout as a hive-managed worktree, because Kill deletes what it
+// claims: this reproduced as "close a session, lose your working
+// directory and everything committed in it".
+func TestCreate_DoesNotAdoptTheProjectsOwnCheckout(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	repo := initGitRepo(t)
+	// Committed and merged, so the worktree is PRISTINE — precisely the
+	// state in which Kill removes what it believes it owns.
+	mustWriteFile(t, filepath.Join(repo, "precious.txt"), "the user's work")
+	runGit(t, repo, "add", "precious.txt")
+	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+	linked := filepath.Join(repo, ".worktrees", "my-feature")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "my-feature", linked)
+
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "inside-a-worktree", Cwd: linked})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	time.Sleep(120 * time.Millisecond)
+
+	if e.WorktreePath != "" {
+		t.Errorf("plain session claimed the project's own checkout: %q", e.WorktreePath)
+	}
+	if err := r.Kill(e.ID, false); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(linked, "precious.txt")); err != nil {
+		t.Fatalf("the user's checkout was deleted by closing a session: %v", err)
+	}
+}
+
+// The same containment, one layer down: even if something upstream
+// wrongly sets WorktreePath to a directory hive does not own, teardown
+// must refuse to delete it. Kill is the last place a bug can still cost
+// someone their working directory, so it does not trust the field.
+func TestKill_RefusesToDeleteAnUnmanagedWorktreePath(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	// A worktree of the same repo, but outside .worktrees/ — the shape
+	// of a checkout the user made themselves.
+	outside := filepath.Join(t.TempDir(), "their-own-checkout")
+	runGit(t, p.Cwd, "worktree", "add", "-q", "-b", "theirs", outside)
+	mustWriteFile(t, filepath.Join(outside, "keep.txt"), "not hive's to delete")
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash",
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	// Force the bad state directly, standing in for any upstream bug.
+	r.mu.Lock()
+	r.entries[e.ID].WorktreePath = outside
+	r.mu.Unlock()
+
+	if err := r.Kill(e.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep.txt")); err != nil {
+		t.Fatalf("Kill deleted a worktree hive does not manage: %v", err)
+	}
+}
+
+// projectRoot must resolve the MAIN checkout. When it resolved the
+// linked worktree instead, .worktrees/ pointed at the wrong place and
+// every legitimate path was refused — the browser was inert.
+func TestListWorktrees_WorksWhenTheProjectCwdIsALinkedWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	repo := initGitRepo(t)
+	linked := filepath.Join(repo, ".worktrees", "project-home")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "project-home", linked)
+	sibling := filepath.Join(repo, ".worktrees", "sibling")
+	runGit(t, repo, "worktree", "add", "-q", "-b", "sibling", sibling)
+
+	p, err := r.CreateProject(wire.CreateProjectReq{Name: "linked", Cwd: linked})
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	resp, err := r.ListWorktrees(p.ID)
+	if err != nil {
+		t.Fatalf("ListWorktrees: %v", err)
+	}
+	if worktree.ResolvePath(resp.RepoRoot) != worktree.ResolvePath(repo) {
+		t.Errorf("RepoRoot = %q, want the main checkout %q", resp.RepoRoot, repo)
+	}
+	// The real checkout is the main row, not the worktree the project
+	// happens to sit in.
+	main := findWT(resp, repo)
+	if main == nil || !main.IsMain {
+		t.Errorf("main checkout missing or unflagged: %+v", resp.Worktrees)
+	}
+	if row := findWT(resp, linked); row == nil || row.IsMain {
+		t.Errorf("the project's own worktree should be an ordinary row: %+v", row)
+	}
+	// And removal of a sibling still works — managedPath's base was
+	// wrong before, so this was refused outright.
+	if err := r.RemoveWorktree(p.ID, sibling, false, false); err != nil {
+		t.Fatalf("RemoveWorktree on a sibling worktree: %v", err)
 	}
 }

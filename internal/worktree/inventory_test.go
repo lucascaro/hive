@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -528,14 +529,20 @@ func TestInventoryGuards(t *testing.T) {
 
 // aheadCount's unresolvable-base path: an empty base means "no
 // comparison possible", which must read as 0 rather than guessing.
+// An unanswerable count must report ok=false, not 0. A caller that
+// cannot tell those apart deletes commits it thinks are not there.
 func TestAheadCount_UnresolvableBase(t *testing.T) {
 	skipNoGit(t)
 	repo := initRepo(t)
-	if got := aheadCount(repo, "main", ""); got != 0 {
-		t.Errorf("aheadCount with no base = %d, want 0", got)
+	if got, ok := aheadCount(repo, "main", ""); got != 0 || ok {
+		t.Errorf("aheadCount with no base = (%d, %v), want (0, false)", got, ok)
 	}
-	if got := aheadCount(repo, "main", "no-such-ref"); got != 0 {
-		t.Errorf("aheadCount against a missing ref = %d, want 0", got)
+	if got, ok := aheadCount(repo, "main", "no-such-ref"); got != 0 || ok {
+		t.Errorf("aheadCount against a missing ref = (%d, %v), want (0, false)", got, ok)
+	}
+	// The answerable case still answers.
+	if got, ok := aheadCount(repo, "main", "main"); got != 0 || !ok {
+		t.Errorf("aheadCount(main..main) = (%d, %v), want (0, true)", got, ok)
 	}
 }
 
@@ -553,5 +560,93 @@ func TestParseWorktreeList_EdgeShapes(t *testing.T) {
 	got = parseWorktreeList("worktree /a\r\nHEAD abc\r\nbranch refs/heads/b\r\n")
 	if len(got) != 1 || got[0].Branch != "b" {
 		t.Errorf("CRLF record parsed as %+v", got)
+	}
+}
+
+// A stat failure is not the same as "there is nothing there". Only a
+// genuinely missing directory is disposable; anything we could not look
+// at must read as holding work, or the caller deletes it.
+func TestInspect_UnreadableWorktreeIsNotPristine(t *testing.T) {
+	skipNoGit(t)
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: mode bits do not deny access")
+	}
+	repo := initRepo(t)
+	wt := WorktreePath(repo, "unreadable")
+	if err := CreateWorktree(context.Background(), repo, "unreadable", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	// Deny traversal of the parent so stat on the worktree fails with
+	// EACCES rather than ENOENT.
+	parent := filepath.Dir(wt)
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
+
+	s, err := Inspect(repo, wt)
+	if err == nil {
+		t.Error("Inspect on an unreadable worktree returned no error")
+	}
+	if !s.Unknown {
+		t.Errorf("Unknown = false for an unreadable worktree (%+v)", s)
+	}
+	if s.Pristine() {
+		t.Error("an unreadable worktree read as pristine — it would be deleted")
+	}
+}
+
+// IsManaged is the single definition of "a worktree hive owns". Every
+// destructive path asks it, so its edges are the containment contract.
+func TestIsManaged(t *testing.T) {
+	root := t.TempDir()
+	managed := filepath.Join(root, ".worktrees", "feature")
+	if err := os.MkdirAll(managed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !IsManaged(root, managed) {
+		t.Errorf("IsManaged rejected a legitimate worktree %q", managed)
+	}
+	// A nested path under a managed worktree is still inside the
+	// managed dir, which is what the removal guard cares about.
+	if !IsManaged(root, filepath.Join(managed, "sub")) {
+		t.Errorf("IsManaged rejected a path nested under a managed worktree")
+	}
+	for _, bad := range []string{
+		"",
+		root,
+		filepath.Join(root, ".worktrees"),
+		// A prefix test would wrongly accept this one.
+		filepath.Join(root, ".worktrees-evil"),
+		filepath.Join(root, "other"),
+		filepath.Join(root, ".worktrees", "..", "..", "escape"),
+		t.TempDir(),
+	} {
+		if IsManaged(root, bad) {
+			t.Errorf("IsManaged accepted %q", bad)
+		}
+	}
+	if IsManaged("", managed) {
+		t.Error("IsManaged accepted an empty root")
+	}
+}
+
+// A symlink inside .worktrees/ pointing outside must not read as
+// managed — otherwise it is a way to aim the remover at any directory.
+func TestIsManaged_RejectsASymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".worktrees"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, ".worktrees", "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if IsManaged(root, link) {
+		t.Errorf("IsManaged accepted a symlink escaping to %q", outside)
 	}
 }

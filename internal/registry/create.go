@@ -33,6 +33,11 @@ type createPlan struct {
 	adoptedPath   string
 	adoptedBranch string
 
+	// projectCwd is the owning project's own working directory. Kept
+	// apart from cwd because a session may run elsewhere, and because
+	// adoption must never claim it (see adoptDetachedWorktree).
+	projectCwd string
+
 	// wtPath/wtBranch are the worktree this session should end up in,
 	// pre-resolved before naming and cleared if `git worktree add`
 	// later fails.
@@ -192,6 +197,7 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	var projectColor string
 	if proj, ok := r.projects[p.projectID]; ok {
 		projectColor = proj.Color
+		p.projectCwd = proj.Cwd
 	}
 	// Color is reserved for project/session identity; agent identity
 	// is conveyed by the badge/icon. So skip the agent-default tier
@@ -263,10 +269,26 @@ func (r *Registry) adoptDetachedWorktree(p *createPlan) {
 	}
 	cwd := worktree.ResolvePath(p.cwd)
 	for _, t := range trees {
-		// The repo root is a worktree too, but a session in the main
-		// checkout is a plain session, not a worktree-backed one.
-		if t.Path != cwd || t.Path == worktree.ResolvePath(root) {
+		if t.Path != cwd {
 			continue
+		}
+		// Adoption means "Kill deletes this when the last session
+		// leaves", so it is only ever correct for a worktree hive made
+		// to hold sessions. Two things are therefore never adopted:
+		//
+		//  - anything outside <mainRoot>/.worktrees/ — the user's own
+		//    checkout, or a worktree they created themselves;
+		//  - the project's own working directory, even when that sits
+		//    under .worktrees/. Running hived from inside a linked
+		//    worktree makes project.Cwd that worktree, so without this
+		//    every plain session would claim it and closing the last
+		//    one would delete the directory the user works in.
+		if !worktree.IsManaged(root, t.Path) {
+			return
+		}
+		if p.projectCwd != "" &&
+			worktree.ResolvePath(p.projectCwd) == t.Path {
+			return
 		}
 		p.adoptedPath, p.adoptedBranch = t.Path, t.Branch
 		return

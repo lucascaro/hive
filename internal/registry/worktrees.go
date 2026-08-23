@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -46,7 +45,12 @@ func (r *Registry) projectRoot(projectID string) (string, error) {
 	if cwd == "" || !worktree.IsGitRepo(cwd) {
 		return "", ErrNotAGitRepo
 	}
-	root, err := worktree.Root(cwd)
+	// MainRoot, not Root: when a project's cwd is itself a linked
+	// worktree, Root reports that worktree's own top level — which
+	// would put .worktrees/ in the wrong place, render the real
+	// checkout as a removable row, and make managedPath refuse every
+	// legitimate path.
+	root, err := worktree.MainRoot(cwd)
 	if err != nil {
 		return "", ErrNotAGitRepo
 	}
@@ -154,16 +158,10 @@ func managedPath(root, path string) (string, error) {
 	if path == "" {
 		return "", errors.New("registry: empty worktree path")
 	}
-	resolved := worktree.ResolvePath(path)
-	base := worktree.ResolvePath(filepath.Join(root, ".worktrees"))
-	// filepath.Rel + the ".." check rejects both siblings of the
-	// worktrees dir and traversal out of it; a plain HasPrefix would
-	// accept "<root>/.worktrees-evil".
-	rel, err := filepath.Rel(base, resolved)
-	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !worktree.IsManaged(root, path) {
 		return "", fmt.Errorf("registry: %s is not a hive-managed worktree of %s", path, root)
 	}
-	return resolved, nil
+	return worktree.ResolvePath(path), nil
 }
 
 // liveSessionsIn returns the ids of live sessions occupying path.
@@ -197,6 +195,14 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bo
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 
+	// Re-check under the git lock. Creates and removes both run off the
+	// daemon's read loop, so a session can start occupying this
+	// worktree between the check above and the removal below — which
+	// would leave a live shell in a directory that no longer exists.
+	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
+		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
+	}
+
 	st, err := worktree.Inspect(root, resolved)
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
@@ -217,11 +223,14 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bo
 		return fmt.Errorf("remove worktree: %w", err)
 	}
 	if deleteBranch && branch != "" {
-		// force here mirrors the user's confirmed intent: without it
-		// git refuses to delete a branch holding unmerged commits,
-		// which would leave the ref behind after the user explicitly
-		// asked for it to go.
-		if err := worktree.DeleteBranch(root, branch, force || st.Unpushed > 0); err != nil {
+		// force mirrors the user's confirmed intent: without it git
+		// refuses to delete a branch holding unmerged commits, which
+		// would leave the ref behind after the user explicitly asked
+		// for it to go. No `|| st.Unpushed > 0` here — reaching this
+		// line with force=false means the gate above already proved
+		// Unpushed is 0, so that clause read as a safety net while
+		// being unreachable.
+		if err := worktree.DeleteBranch(root, branch, force); err != nil {
 			return fmt.Errorf("worktree removed, but deleting branch %s failed: %w", branch, err)
 		}
 	}
@@ -341,6 +350,12 @@ func (r *Registry) RenameWorktree(projectID, path, newBranch string) error {
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
+
+	// Same race as RemoveWorktree: moving the directory out from under
+	// a session that started in the gap breaks that session's cwd.
+	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
+		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
+	}
 
 	st, err := worktree.Inspect(root, resolved)
 	if err != nil {

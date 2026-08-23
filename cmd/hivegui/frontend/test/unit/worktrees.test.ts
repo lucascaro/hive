@@ -267,6 +267,13 @@ describe('deleteConfirmMessage', () => {
     expect(msg).toContain('cannot be undone');
   });
 
+  // The note must not argue against the blocker above it: keeping the
+  // branch preserves commits, and nothing preserves uncommitted work.
+  it('does not promise recoverability when uncommitted work will die', () => {
+    const msg = deleteConfirmMessage(wt({ uncommitted: true }), false);
+    expect(msg).toContain('uncommitted changes');
+  });
+
   it('lists every blocker so nothing is lost silently', () => {
     const msg = deleteConfirmMessage(
       wt({ uncommitted: true, unpushed: 2 }),

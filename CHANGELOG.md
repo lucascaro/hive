@@ -78,6 +78,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Closing a session could delete the directory you were working in. When
+  a project's working directory is itself a git worktree — which is how
+  hive is often run, from inside its own `.worktrees/` — a session there
+  claimed that directory as hive's own, and closing the last session
+  removed it along with everything committed in it. Hive now only ever
+  deletes worktrees it created, and never the directory a project lives
+  in. Introduced during this release; no tagged version shipped it.
+
+- Worktrees are no longer deleted on the strength of a check that could
+  not be completed. A permissions or I/O error while inspecting a
+  worktree, or a failure to compare a branch against its remote, now
+  count as "may hold work" instead of silently reading as clean.
+
 - Modal dialogs no longer strand the keyboard. Tab now stays inside the
   worktree browser, the settings form, the help overlay and any
   confirmation dialog instead of walking into the page behind them

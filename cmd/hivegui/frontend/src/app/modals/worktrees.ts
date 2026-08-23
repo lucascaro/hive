@@ -398,12 +398,30 @@ async function askDelete(w: WorktreeInfo): Promise<DeleteChoice> {
       : 'Delete this worktree?',
     detail: w.path,
     bullets: deleteBlockers(w).map((b) => b.reason),
-    note: w.branch
-      ? `Keeping the branch “${w.branch}” leaves its commits recoverable. Deleting both cannot be undone.`
-      : 'This worktree has no branch. Deleting it cannot be undone.',
+    // Careful with this wording: keeping the branch preserves the
+    // COMMITS, and says nothing about uncommitted changes, which the
+    // directory removal destroys either way. Promising recoverability
+    // flatly would argue against the blocker listed right above it.
+    note: noteFor(w),
     choices,
   });
   return answer as DeleteChoice;
+}
+
+// noteFor is the dialog's closing line. It has to stay honest about
+// which half of the work is recoverable: the branch keeps the commits,
+// nothing keeps uncommitted changes.
+function noteFor(w: WorktreeInfo): string {
+  if (!w.branch) {
+    return 'This worktree has no branch. Deleting it cannot be undone.';
+  }
+  if (w.uncommitted) {
+    return (
+      `Its uncommitted changes are destroyed either way — nothing keeps those. ` +
+      `Keeping the branch “${w.branch}” preserves only the commits already made.`
+    );
+  }
+  return `Keeping the branch “${w.branch}” leaves its commits recoverable. Deleting both cannot be undone.`;
 }
 
 // askDeleteBranch confirms removing an orphaned branch — the last

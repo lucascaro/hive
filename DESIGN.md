@@ -74,7 +74,7 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
 - **Control-frame handlers that shell out to git run off the read loop.**
   `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`, and the
   worktree frames (`LIST_WORKTREES`, `REMOVE_WORKTREE`, `CREATE_WORKTREE`,
-  `RENAME_WORKTREE`) are
+  `RENAME_WORKTREE`, `DELETE_BRANCH`) are
   dispatched to goroutines owned by the daemon (drained in `Close`), so a slow
   `git worktree add`/`remove`/`list` can't stall every other client request. The git
   subprocesses themselves are serialized by the registry, and its lock

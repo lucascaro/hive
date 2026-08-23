@@ -442,6 +442,26 @@ describe('deleting', () => {
     );
   });
 
+  // The closing line has to stay honest: the branch preserves the
+  // commits and nothing preserves uncommitted changes, so promising
+  // recoverability flatly would contradict the blocker listed above it
+  // — while "Delete, keep branch" is the non-danger button.
+  it('does not promise recoverability when uncommitted work will die', async () => {
+    await openWith(payload({ worktrees: [dirty] }));
+    button(rows()[0], 'Delete').click();
+    await flush();
+    const text = dialog()?.textContent ?? '';
+    expect(text).toContain('destroyed either way');
+    expect(text).not.toContain('leaves its commits recoverable');
+  });
+
+  it('still promises recoverability for a clean worktree', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    button(rows()[0], 'Delete').click();
+    await flush();
+    expect(dialog()?.textContent ?? '').toContain('commits recoverable');
+  });
+
   it('names what would be lost, in the dialog itself', async () => {
     await openWith(payload({ worktrees: [{ ...dirty, unpushed: 2 }] }));
     button(rows()[0], 'Delete').click();

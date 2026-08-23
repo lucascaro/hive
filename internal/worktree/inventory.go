@@ -137,6 +137,35 @@ func ResolvePath(p string) string {
 	return filepath.Join(ResolvePath(dir), base)
 }
 
+// ManagedDir is where hive keeps the worktrees it owns. Anything
+// outside it belongs to the user — their main checkout, or a worktree
+// they made themselves — and hive must never delete it.
+func ManagedDir(root string) string {
+	return filepath.Join(root, ".worktrees")
+}
+
+// IsManaged reports whether path is a worktree hive owns: a direct
+// entry under <root>/.worktrees. This is the single definition of that
+// boundary; the registry's removal, rename and adoption paths all ask
+// here rather than each rolling their own prefix check.
+//
+// filepath.Rel rather than a string prefix: a prefix test accepts
+// "<root>/.worktrees-evil" and cannot see through "..". Both paths are
+// symlink-resolved first so a /var vs /private/var mismatch (macOS)
+// does not read as an escape.
+func IsManaged(root, path string) bool {
+	if root == "" || path == "" {
+		return false
+	}
+	base := ResolvePath(ManagedDir(root))
+	rel, err := filepath.Rel(base, ResolvePath(path))
+	if err != nil || rel == "." || rel == ".." ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
 // MainRoot returns the main checkout's root for the repository
 // containing dir — even when dir is itself a linked worktree, where
 // Root reports that worktree's own top level rather than the repo's.
@@ -201,7 +230,10 @@ func ListBranches(repoRoot string) ([]BranchInfo, error) {
 			HasWorktree: parts[2] != "",
 			Merged:      merged[parts[0]],
 		}
-		b.Ahead = aheadCount(repoRoot, b.Name, comparisonBase(b.Upstream, base))
+		// Display only: an unanswerable count shows as 0 ahead here. The
+		// deletion decision does not come from this list — it comes from
+		// Inspect, which treats the same failure as Unknown.
+		b.Ahead, _ = aheadCount(repoRoot, b.Name, comparisonBase(b.Upstream, base))
 		list = append(list, b)
 	}
 	return list, nil
@@ -254,24 +286,30 @@ func mergedBranches(repoRoot, base string) map[string]bool {
 	return set
 }
 
-// aheadCount returns how many commits ref has that base does not.
-// Returns 0 when base is empty or the range can't be resolved; callers
-// that need to distinguish "zero" from "unknown" check the base first
-// (see Inspect).
-func aheadCount(repoRoot, ref, base string) int {
+// aheadCount returns how many commits ref has that base does not, and
+// whether the question could be answered at all.
+//
+// ok=false is NOT the same as 0: an ambiguous ref, a pruned
+// remote-tracking base or a damaged pack all make the count
+// unavailable, and a caller that reads that as "nothing unpushed" will
+// happily delete the commits. Inspect turns ok=false into
+// Status.Unknown, which is not pristine.
+func aheadCount(repoRoot, ref, base string) (int, bool) {
 	if base == "" {
-		return 0
+		return 0, false
 	}
+	// `--` separates revisions from paths: without it a ref that also
+	// names a file on disk is ambiguous and git refuses.
 	out, err := git(context.Background(), readTimeout, repoRoot,
-		"rev-list", "--count", base+".."+ref)
+		"rev-list", "--count", base+".."+ref, "--")
 	if err != nil {
-		return 0
+		return 0, false
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
 	if err != nil {
-		return 0
+		return 0, false
 	}
-	return n
+	return n, true
 }
 
 // Status is the safety verdict for one worktree: everything a caller
@@ -299,7 +337,15 @@ func (s Status) Pristine() bool {
 func Inspect(repoRoot, worktreePath string) (Status, error) {
 	var s Status
 	if _, err := os.Stat(worktreePath); err != nil {
-		return s, nil
+		if os.IsNotExist(err) {
+			// Genuinely gone: nothing left to lose, so it is disposable.
+			return s, nil
+		}
+		// Anything else (EACCES after a parent's mode changed, EIO on a
+		// network filesystem) means we could not look — which is not the
+		// same as "there is nothing there". Fail closed.
+		s.Unknown = true
+		return s, fmt.Errorf("stat worktree: %w", err)
 	}
 	dirty, err := HasUncommitted(worktreePath)
 	if err != nil {
@@ -331,7 +377,13 @@ func Inspect(repoRoot, worktreePath string) (Status, error) {
 		s.Unknown = true
 		return s, nil
 	}
-	s.Unpushed = aheadCount(repoRoot, s.Branch, base)
+	n, ok := aheadCount(repoRoot, s.Branch, base)
+	if !ok {
+		// Could not compare: treat as holding work, never as clean.
+		s.Unknown = true
+		return s, nil
+	}
+	s.Unpushed = n
 	return s, nil
 }
 

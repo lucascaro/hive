@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -702,12 +701,15 @@ func (r *Registry) Kill(id string, force bool) error {
 		case err != nil:
 			log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
 			_ = os.RemoveAll(wtPath)
-		case !strings.HasPrefix(wtPath, root):
-			// The worktree path lives outside the current project
-			// repo (project cwd was changed). Don't run `git worktree
-			// remove` against an unrelated repo; just rm -rf.
-			log.Printf("registry: kill %s: worktree %s lives outside current project repo %s; using RemoveAll only", id, wtPath, root)
-			_ = os.RemoveAll(wtPath)
+		case !worktree.IsManaged(root, wtPath):
+			// Second guard, independent of whatever set WorktreePath:
+			// only ever delete a worktree hive owns. An entry pointing
+			// at the user's own checkout — their main clone, or a
+			// worktree they created themselves — is left strictly
+			// alone. Teardown is the last place a bug upstream can
+			// still cost someone their working directory, so it does
+			// not trust the field it was handed.
+			log.Printf("registry: kill %s: worktree %s is not a hive-managed worktree of %s; leaving it on disk", id, wtPath, root)
 		default:
 			// Prune only a pristine worktree. Anything holding
 			// uncommitted changes or unpushed commits outlives the
