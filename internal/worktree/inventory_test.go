@@ -454,9 +454,18 @@ func TestResolvePath_EmptyAndRoot(t *testing.T) {
 	if ResolvePath("") != "" {
 		t.Error(`ResolvePath("") should stay empty`)
 	}
-	// Must terminate rather than recurse forever on a filesystem root.
-	if got := ResolvePath("/"); got != "/" {
-		t.Errorf(`ResolvePath("/") = %q, want /`, got)
+	// The property under test is termination: ResolvePath recurses on
+	// its parent directory, so a filesystem root must be a fixed point
+	// rather than recursing forever. The exact spelling is
+	// platform-dependent (Windows normalizes "/" to `\`), so assert
+	// non-empty and stable rather than an exact separator.
+	root := filepath.Clean(string(filepath.Separator))
+	got := ResolvePath(root)
+	if got == "" {
+		t.Fatalf("ResolvePath(%q) returned empty", root)
+	}
+	if again := ResolvePath(got); again != got {
+		t.Errorf("ResolvePath is not stable at the root: %q -> %q", got, again)
 	}
 }
 

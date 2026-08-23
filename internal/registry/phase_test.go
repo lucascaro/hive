@@ -64,11 +64,21 @@ func (p *phaseLog) firstAdded() string {
 // GOMAXPROCS=1, which reproduces it on demand).
 func (p *phaseLog) waitEventsFor(t *testing.T, id string, n int) []string {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	// 10s, not 3: this package now runs a lot of real git subprocesses
+	// (the worktree inventory tests), so a create's event can land well
+	// past three seconds on a loaded machine. The wait is a bound on
+	// hanging, not a performance assertion — a passing run still
+	// returns as soon as the events arrive.
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		got := p.phasesFor(id)
-		if len(got) >= n || time.Now().After(deadline) {
+		if len(got) >= n {
 			return got
+		}
+		if time.Now().After(deadline) {
+			// Say so rather than returning a short slice and letting the
+			// caller fail on a confusing "first event: got []".
+			t.Fatalf("timed out waiting for %d events for %s; got %s", n, id, joined(got))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -95,7 +105,12 @@ func watch(t *testing.T, r *Registry) (*phaseLog, func()) {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	// 10s, not 3: this package now runs a lot of real git subprocesses
+	// (the worktree inventory tests), so a create's event can land well
+	// past three seconds on a loaded machine. The wait is a bound on
+	// hanging, not a performance assertion — a passing run still
+	// returns as soon as the events arrive.
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return

@@ -85,17 +85,14 @@ export default async function globalSetup() {
   fs.mkdirSync(projectRepo, { recursive: true });
   for (const args of [
     ['init', '-q', '-b', 'main'],
-    [
-      '-c',
-      'user.email=e2e@test',
-      '-c',
-      'user.name=e2e',
-      'commit',
-      '--allow-empty',
-      '-q',
-      '-m',
-      'init',
-    ],
+    // Identity on the REPO, not just on the seed commit: HOME is a
+    // fresh temp dir, so there is no global gitconfig, and any commit a
+    // spec makes later would fail with "please tell me who you are".
+    // That only showed up on CI — a developer machine has a global
+    // identity that masks it.
+    ['config', 'user.email', 'e2e@test'],
+    ['config', 'user.name', 'e2e'],
+    ['commit', '--allow-empty', '-q', '-m', 'init'],
   ]) {
     const r = spawnSync('git', ['-C', projectRepo, ...args], {
       stdio: ['ignore', 'inherit', 'inherit'],

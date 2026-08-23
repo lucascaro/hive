@@ -181,6 +181,7 @@ test.describe('worktree browser against real hived', () => {
   // git's own `branch -d`, so a mock cannot prove this one.
   test('deleting a merged orphan branch removes the ref', async ({ page }) => {
     const branch = 'real-merged-orphan';
+    cleanupWorktree(branch);
     // Points at the current commit, so it is merged by definition.
     git('branch', branch);
     try {
@@ -205,6 +206,7 @@ test.describe('worktree browser against real hived', () => {
   // Cancelling must leave the ref alone.
   test('cancelling a branch delete keeps the branch', async ({ page }) => {
     const branch = 'real-kept-orphan';
+    cleanupWorktree(branch);
     git('branch', branch);
     try {
       await boot(page);
@@ -229,6 +231,12 @@ test.describe('worktree browser against real hived', () => {
     page,
   }) => {
     const branch = 'real-unmerged-orphan';
+    // Playwright retries a failed test in the same repo, so setup has
+    // to tolerate leftovers from the attempt before — including a
+    // half-finished attempt that left the repo ON this branch, which
+    // would make `git branch -D` refuse.
+    git('checkout', '-q', 'main');
+    cleanupWorktree(branch);
     git('checkout', '-q', '-b', branch);
     git('commit', '--allow-empty', '-q', '-m', 'work only here');
     git('checkout', '-q', 'main');
