@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -259,5 +260,165 @@ func TestSessionInfoPhaseReadyOmitted(t *testing.T) {
 	}
 	if bytes.Contains(b, []byte("phase")) {
 		t.Errorf("PhaseReady must be omitted from the wire, got %s", b)
+	}
+}
+
+// TestWorktreeFrameRoundTrips satisfies golden principle 6 for the
+// worktree frames: every field populated with a non-zero value,
+// encoded, decoded, and compared for deep equality. A missing or
+// misspelled json tag shows up here as a zeroed field rather than as a
+// silent GUI bug months later.
+func TestWorktreeFrameRoundTrips(t *testing.T) {
+	cases := []struct {
+		name string
+		ft   FrameType
+		v    any
+		into func() any
+	}{
+		{
+			"list", FrameListWorktrees,
+			ListWorktreesReq{ProjectID: "p1"},
+			func() any { return &ListWorktreesReq{} },
+		},
+		{
+			"worktrees", FrameWorktrees,
+			WorktreesResp{
+				ProjectID: "p1",
+				RepoRoot:  "/repo",
+				Worktrees: []WorktreeInfo{{
+					Path:        "/repo/.worktrees/feat",
+					Branch:      "feat",
+					Detached:    true,
+					IsMain:      true,
+					Uncommitted: true,
+					Unpushed:    3,
+					Unknown:     true,
+					SessionIDs:  []string{"s1", "s2"},
+				}},
+				OrphanBranches: []BranchInfo{{
+					Name: "old", Upstream: "origin/old", Ahead: 2, Merged: true,
+				}},
+			},
+			func() any { return &WorktreesResp{} },
+		},
+		{
+			"remove", FrameRemoveWorktree,
+			RemoveWorktreeReq{ProjectID: "p1", Path: "/repo/.worktrees/x", Force: true, DeleteBranch: true},
+			func() any { return &RemoveWorktreeReq{} },
+		},
+		{
+			"create", FrameCreateWorktree,
+			CreateWorktreeReq{ProjectID: "p1", Branch: "resurrect-me"},
+			func() any { return &CreateWorktreeReq{} },
+		},
+		{
+			"delete-branch", FrameDeleteBranch,
+			DeleteBranchReq{ProjectID: "p1", Branch: "stale", Force: true},
+			func() any { return &DeleteBranchReq{} },
+		},
+		{
+			"rename", FrameRenameWorktree,
+			RenameWorktreeReq{ProjectID: "p1", Path: "/repo/.worktrees/a", NewBranch: "b"},
+			func() any { return &RenameWorktreeReq{} },
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteJSON(&buf, tc.ft, tc.v); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			got := tc.into()
+			ft, err := ReadJSON(&buf, got)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			if ft != tc.ft {
+				t.Errorf("type: got %s, want %s", ft, tc.ft)
+			}
+			// got is a pointer; compare the pointee to the value.
+			if !reflect.DeepEqual(reflect.ValueOf(got).Elem().Interface(), tc.v) {
+				t.Errorf("round-trip mismatch:\n got %#v\nwant %#v",
+					reflect.ValueOf(got).Elem().Interface(), tc.v)
+			}
+		})
+	}
+}
+
+// The wire contract is snake_case; a camelCase tag would decode as
+// zero on the JS side, which reads as "no worktree" — the exact
+// silent-drift failure principle 6 exists to prevent.
+func TestWorktreePayloadsUseSnakeCase(t *testing.T) {
+	cases := []struct {
+		v    any
+		want []string
+	}{
+		{WorktreesResp{ProjectID: "p", RepoRoot: "/r"}, []string{`"project_id"`, `"repo_root"`}},
+		{WorktreeInfo{Path: "/p", IsMain: true, Unpushed: 1, SessionIDs: []string{"s"}},
+			[]string{`"is_main"`, `"session_ids"`}},
+		{RemoveWorktreeReq{ProjectID: "p", Path: "/p", DeleteBranch: true},
+			[]string{`"project_id"`, `"delete_branch"`}},
+		{RenameWorktreeReq{ProjectID: "p", Path: "/p", NewBranch: "b"}, []string{`"new_branch"`}},
+		{DeleteBranchReq{ProjectID: "p", Branch: "b", Force: true}, []string{`"project_id"`, `"branch"`, `"force"`}},
+		{CreateSpec{WorktreePath: "/p"}, []string{`"worktree_path"`}},
+	}
+	for _, tc := range cases {
+		b, err := json.Marshal(tc.v)
+		if err != nil {
+			t.Fatalf("marshal %T: %v", tc.v, err)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(string(b), want) {
+				t.Errorf("%T encoded as %s, missing %s", tc.v, b, want)
+			}
+		}
+	}
+}
+
+// The frame bytes are the protocol's identity — reassigning one
+// silently reinterprets an old client's frames as a different command.
+func TestWorktreeFrameTypeValues(t *testing.T) {
+	cases := map[FrameType]struct {
+		b    byte
+		name string
+	}{
+		FrameListWorktrees:  {0x16, "LIST_WORKTREES"},
+		FrameWorktrees:      {0x17, "WORKTREES"},
+		FrameRemoveWorktree: {0x18, "REMOVE_WORKTREE"},
+		FrameCreateWorktree: {0x19, "CREATE_WORKTREE"},
+		FrameRenameWorktree: {0x1a, "RENAME_WORKTREE"},
+		FrameDeleteBranch:   {0x1b, "DELETE_BRANCH"},
+	}
+	for ft, want := range cases {
+		if byte(ft) != want.b {
+			t.Errorf("%s = 0x%02x, want 0x%02x", want.name, byte(ft), want.b)
+		}
+		if ft.String() != want.name {
+			t.Errorf("String() = %q, want %q", ft.String(), want.name)
+		}
+	}
+}
+
+// The GUI fans control frames out by event name; a missing mapping
+// means the browser never hears the reply it is waiting for.
+func TestWorktreesHasControlEventName(t *testing.T) {
+	name, ok := ControlEventName(FrameWorktrees)
+	if !ok {
+		t.Fatal("FrameWorktrees has no control event name")
+	}
+	if name != "worktree:list" {
+		t.Errorf("ControlEventName(FrameWorktrees) = %q, want worktree:list", name)
+	}
+	// Request frames are client → server; they must NOT be fanned out.
+	for _, ft := range []FrameType{
+		FrameListWorktrees,
+		FrameRemoveWorktree,
+		FrameCreateWorktree,
+		FrameRenameWorktree,
+		FrameDeleteBranch,
+	} {
+		if _, ok := ControlEventName(ft); ok {
+			t.Errorf("%s is client→server but has a control event name", ft)
+		}
 	}
 }

@@ -15,6 +15,7 @@ import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
 import { registerModal } from './registry.js';
+import { releaseFocus } from './focus-trap.js';
 import { pageEl } from '../el.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
 import type { SessionInfo } from '../state.js';
@@ -39,6 +40,10 @@ export interface LauncherOpts {
   forceWorktree?: boolean;
   duplicateFrom?: SessionInfo | null;
   duplicateCwd?: string;
+  // worktreePath switches the launcher into "resume this worktree"
+  // mode: the session runs in a worktree that already exists, so no
+  // worktree row and no branch input are shown.
+  worktreePath?: string;
 }
 
 let deps: LauncherDeps = {
@@ -60,6 +65,10 @@ export const launcherEl = pageEl('launcher');
 // never filled in.
 let searchEl: HTMLInputElement | null = null;
 let listEl: HTMLElement | null = null;
+// The branch-name box, when the worktree toggle is on. Module-level for
+// the same reason searchEl is: the mousedown and keydown handlers below
+// are installed once at init and have to recognise it.
+let branchEl: HTMLInputElement | null = null;
 // Bumped on every open. A ListAgents promise captures the value it was
 // issued under and bails if it no longer matches, so a slow response
 // can't land in a launcher that has since been reopened.
@@ -85,12 +94,20 @@ export const launcherState: {
   selected: number;
   projectId: string | null;
   useWorktree: boolean;
+  branch: string;
+  worktreePath: string;
   duplicateFrom: SessionInfo | null;
   duplicateCwd: string;
 } = {
   items: [],
   selected: 0,
   projectId: null,
+  // branch names the worktree to create. Empty lets the daemon
+  // generate an adjective-noun, which is the long-standing default.
+  branch: '',
+  // worktreePath, when set, runs the session in an EXISTING worktree
+  // instead of creating one.
+  worktreePath: '',
   // useWorktree is sticky across launcher opens, persisted in
   // localStorage. ⌃⌘N opens the launcher with this forced to true
   // for the duration of that opening.
@@ -166,6 +183,8 @@ function launchSelected(agentId: string) {
       0,
       !!launcherState.useWorktree,
       anchor,
+      launcherState.branch,
+      launcherState.worktreePath,
     ).catch(reportFailure('new session'));
   }
   closeLauncher();
@@ -270,7 +289,12 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // session into the same cwd — never a new worktree.
   launcherState.duplicateFrom = opts?.duplicateFrom || null;
   launcherState.duplicateCwd = opts?.duplicateCwd || '';
-  if (launcherState.duplicateFrom) {
+  // Reset per open: a branch typed for one session must never leak
+  // into the next one, which would silently reuse (or collide with)
+  // the previous name.
+  launcherState.branch = '';
+  launcherState.worktreePath = opts?.worktreePath || '';
+  if (launcherState.duplicateFrom || launcherState.worktreePath) {
     launcherState.useWorktree = false;
   }
   // Open the shell synchronously with a loading row so the popup
@@ -278,6 +302,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // when ListAgents resolves. Kills the old open-blank-then-populate
   // flash (and the launcher not appearing at all if the list is slow).
   launcherEl.innerHTML = '';
+  branchEl = null;
   launcherState.items = [];
   // Anchor next to the resolved project's + button so the user
   // can see which project the new session lands in. Falls back
@@ -349,7 +374,9 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
       const projCwd = proj?.cwd ?? '';
       // In duplicate mode the cwd is fixed to the source session, so
       // the worktree toggle is meaningless — skip the row entirely.
-      if (!launcherState.duplicateFrom) {
+      // In resume mode the worktree already exists, so neither the
+      // toggle nor the branch input has anything to decide.
+      if (!launcherState.duplicateFrom && !launcherState.worktreePath) {
         const wtRow = document.createElement('label');
         wtRow.className = 'launcher-worktree';
         const wtBox = document.createElement('input');
@@ -361,10 +388,34 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
         // Between the filter box and the list, not appended at the
         // end — #launcher already holds both by the time this runs.
         launcherEl.insertBefore(wtRow, listEl);
+
+        // Branch name, revealed only while the toggle is on: it is
+        // meaningless otherwise, and an always-visible field would push
+        // the agent list down on every open.
+        const branchInput = document.createElement('input');
+        branchEl = branchInput;
+        branchInput.type = 'text';
+        branchInput.className = 'launcher-branch';
+        branchInput.placeholder = 'branch name (optional)';
+        branchInput.setAttribute('aria-label', 'Worktree branch name');
+        branchInput.value = launcherState.branch;
+        const syncBranchVisibility = () => {
+          branchInput.classList.toggle('hidden', !launcherState.useWorktree);
+        };
+        syncBranchVisibility();
+        launcherEl.insertBefore(branchInput, listEl);
+        branchInput.addEventListener('input', () => {
+          launcherState.branch = branchInput.value.trim();
+        });
         wtBox.addEventListener('change', (e) => {
           const box = e.target as HTMLInputElement;
           launcherState.useWorktree = box.checked;
           localStorage.setItem('hive.worktree', box.checked ? '1' : '0');
+          syncBranchVisibility();
+          if (!box.checked) {
+            branchInput.value = '';
+            launcherState.branch = '';
+          }
         });
         if (projCwd) {
           IsGitRepo(projCwd)
@@ -380,6 +431,9 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
                 wtBox.disabled = true;
                 wtBox.checked = false;
                 launcherState.useWorktree = false;
+                launcherState.branch = '';
+                branchInput.value = '';
+                branchInput.classList.add('hidden');
                 wtLabel.textContent = 'Worktree (project is not a git repo)';
               }
             })
@@ -448,12 +502,11 @@ export function closeLauncher() {
   // the popup later can't quietly resurrect the bug it was written for
   // (terminal never refocused, because activeElement was still an
   // <input> the launcher owned).
-  const focused = document.activeElement;
-  if (focused instanceof HTMLElement && launcherEl.contains(focused))
-    focused.blur();
+  releaseFocus(launcherEl);
   launcherEl.classList.add('hidden');
   searchEl = null;
   listEl = null;
+  branchEl = null;
   allAgents = [];
   launcherState.items = [];
   launcherState.duplicateFrom = null;
@@ -541,7 +594,11 @@ export function initLauncher(injected: LauncherDeps) {
       !e.ctrlKey &&
       !e.altKey &&
       /^[1-9]$/.test(e.key) &&
-      searchEl?.value === ''
+      searchEl?.value === '' &&
+      // A digit typed into the branch box is part of the branch name
+      // (`fix-2`), not a row shortcut. Without this the box silently
+      // drops every number the user types.
+      e.target !== branchEl
     ) {
       const i = parseInt(e.key, 10) - 1;
       if (i < launcherState.items.length) {
@@ -566,7 +623,12 @@ export function initLauncher(injected: LauncherDeps) {
   // stopped narrowing, with nothing on screen to explain why.
   launcherEl.addEventListener('mousedown', (e) => {
     const target = e.target as Element | null;
-    if (target === searchEl) return;
+    // Both text boxes are exempt: they exist to be typed into, so they
+    // must be able to take focus from a click. Everything else stays
+    // blocked — see the checkbox rationale above. The launcher's own
+    // keydown handler covers the whole popup, so Enter/Escape/arrows
+    // still work while focus sits in either box.
+    if (target === searchEl || target === branchEl) return;
     e.preventDefault();
   });
   // Focus leaving the launcher closes it. keyboard.ts now bails out for
@@ -589,7 +651,14 @@ export function initLauncher(injected: LauncherDeps) {
   });
   document.addEventListener('click', (e) => {
     const target = e.target as Element | null;
-    const inAction = target?.closest('.project-actions');
+    // A click that OPENS the launcher must not also close it: this
+    // handler runs after the opener's own handler, on the same event.
+    // The sidebar's project actions are exempt for that reason, and
+    // any other opener opts in with data-opens-launcher (the worktree
+    // browser's "Open session" button does).
+    const inAction =
+      target?.closest('.project-actions') ??
+      target?.closest('[data-opens-launcher]');
     if (!launcherEl.contains(target) && !inAction) closeLauncher();
   });
 }

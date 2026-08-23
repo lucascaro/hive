@@ -24,6 +24,7 @@ import { state, type SessionInfo } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
+import { openWorktrees } from './modals/worktrees.js';
 import { isMac } from '../lib/platform.js';
 import {
   PHASE,
@@ -241,12 +242,25 @@ export class SessionTerm {
     this.tileName.className = 'tile-name';
     this.tileName.textContent = info.name ?? '';
     this.tileWorktree = document.createElement('span');
-    this.tileWorktree.className = 'worktree-glyph';
+    this.tileWorktree.className = 'worktree-glyph clickable';
     this.tileWorktree.textContent = '⎇';
+    this.tileWorktree.setAttribute('role', 'button');
+    // Clicking the worktree marker opens the worktree browser for this
+    // session's project — the same thing the identical glyph does in
+    // the sidebar and on the project row. An indicator that looks like
+    // a control but ignores clicks reads as broken.
+    this.tileWorktree.addEventListener('click', (e) => {
+      // The tile header also focuses/activates the tile; this click is
+      // about the worktree, not about switching sessions.
+      e.stopPropagation();
+      const pid = this.info?.projectId ?? this.info?.project_id ?? '';
+      const proj = state.projects.find((p) => p.id === pid);
+      if (proj) openWorktrees(proj);
+    });
     {
       const wtBranch = info.worktreeBranch ?? info.worktree_branch;
       if (wtBranch) {
-        this.tileWorktree.title = `Worktree: ${wtBranch}`;
+        this.tileWorktree.title = `Worktree: ${wtBranch} — click to manage worktrees`;
       } else {
         this.tileWorktree.style.display = 'none';
       }
@@ -1036,7 +1050,7 @@ export class SessionTerm {
     const wtBranch = info.worktreeBranch ?? info.worktree_branch;
     if (wtBranch) {
       this.tileWorktree.style.display = '';
-      this.tileWorktree.title = `Worktree: ${wtBranch}`;
+      this.tileWorktree.title = `Worktree: ${wtBranch} — click to manage worktrees`;
     } else {
       this.tileWorktree.style.display = 'none';
       this.tileWorktree.title = '';

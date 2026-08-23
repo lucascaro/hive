@@ -135,11 +135,11 @@ type rpcReq struct {
 }
 
 type rpcResp struct {
-	ID     int         `json:"id,omitempty"`
-	Result any `json:"result,omitempty"`
-	Error  string      `json:"error,omitempty"`
-	Event  string      `json:"event,omitempty"`
-	Args   []any       `json:"args,omitempty"`
+	ID     int    `json:"id,omitempty"`
+	Result any    `json:"result,omitempty"`
+	Error  string `json:"error,omitempty"`
+	Event  string `json:"event,omitempty"`
+	Args   []any  `json:"args,omitempty"`
 }
 
 func (s *session) respond(id int, result any, err error) {
@@ -196,6 +196,41 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameKillSession, p))
+	case "ListWorktrees":
+		var p wire.ListWorktreesReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListWorktrees, p))
+	case "RemoveWorktree":
+		var p wire.RemoveWorktreeReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRemoveWorktree, p))
+	case "CreateWorktree":
+		var p wire.CreateWorktreeReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameCreateWorktree, p))
+	case "DeleteBranch":
+		var p wire.DeleteBranchReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameDeleteBranch, p))
+	case "RenameWorktree":
+		var p wire.RenameWorktreeReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRenameWorktree, p))
 	case "OpenSession":
 		var p struct {
 			ID   string `json:"id"`

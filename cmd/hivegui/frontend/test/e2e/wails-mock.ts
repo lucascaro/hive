@@ -109,7 +109,30 @@ async function maybeDelay(method: string) {
 
 // --- App bindings ---
 
-const state: { projects: MockProject[]; sessions: MockSession[] } = {
+// MockWorktree mirrors wire.WorktreeInfo (snake_case on the wire).
+export type MockWorktree = {
+  path: string;
+  branch?: string;
+  detached?: boolean;
+  is_main?: boolean;
+  uncommitted?: boolean;
+  unpushed?: number;
+  unknown?: boolean;
+  session_ids?: string[];
+};
+export type MockBranch = {
+  name: string;
+  upstream?: string;
+  ahead?: number;
+  merged?: boolean;
+};
+
+const state: {
+  projects: MockProject[];
+  sessions: MockSession[];
+  worktrees: MockWorktree[];
+  orphanBranches: MockBranch[];
+} = {
   projects: [
     {
       id: 'p1',
@@ -135,6 +158,10 @@ const state: { projects: MockProject[]; sessions: MockSession[] } = {
       last_error: '',
     },
   ],
+  // Seeded empty: specs that need worktrees push them via
+  // window.__hive.seedWorktrees so each spec owns its own fixture.
+  worktrees: [],
+  orphanBranches: [],
 };
 
 function broadcast() {
@@ -211,7 +238,7 @@ function emitUpdatedExcept(skipId: string) {
 }
 // Positional args matching the real Wails binding:
 // CreateSession(agentID, projectID, name, color, cols, rows, useWorktree,
-// insertAfter).
+// insertAfter, branch, worktreePath).
 export async function CreateSession(
   agentID: string,
   projectID: string,
@@ -221,6 +248,8 @@ export async function CreateSession(
   _rows: number,
   _useWorktree: boolean,
   insertAfter?: string,
+  branch?: string,
+  worktreePath?: string,
 ) {
   maybeFail('CreateSession');
   const id = `mock-${state.sessions.length + 1}`;
@@ -256,10 +285,25 @@ export async function CreateSession(
   emit('session:event', JSON.stringify({ kind: 'added', session: s }));
   afterPhaseHold(() => {
     if (!state.sessions.includes(s)) return; // killed mid-create
-    if (_useWorktree) {
+    if (worktreePath) {
+      // Resuming an existing worktree: the daemon ADOPTS it rather
+      // than creating one, and the entry must carry the path — an
+      // unclaimed worktree is what the startup reclaim deletes.
+      const existing = state.worktrees.find((w) => w.path === worktreePath);
+      s.worktree_path = worktreePath;
+      s.worktree_branch = existing?.branch || '';
+      if (existing)
+        existing.session_ids = [...(existing.session_ids ?? []), id];
+      emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+    } else if (_useWorktree) {
       s.phase = 'worktree';
-      s.worktree_branch = s.name;
-      s.worktree_path = `/mock/.worktrees/${s.name}`;
+      s.worktree_branch = branch || s.name;
+      s.worktree_path = `/mock/.worktrees/${s.worktree_branch}`;
+      state.worktrees.push({
+        path: s.worktree_path,
+        branch: s.worktree_branch,
+        session_ids: [id],
+      });
       emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
     }
     afterPhaseHold(() => {
@@ -493,6 +537,139 @@ export async function CheckForUpdate() {
   return null;
 }
 
+// --- worktrees ---
+//
+// A small stand-in for the daemon's inventory. Every mutation replies
+// with a fresh worktree:list event, exactly as the daemon replies with
+// a WORKTREES frame — so the modal's refresh path is what the tests
+// exercise, not a shortcut.
+
+function worktreesPayload(projectID: string) {
+  return {
+    project_id: projectID,
+    repo_root: '/mock',
+    worktrees: [
+      { path: '/mock', branch: 'main', is_main: true },
+      ...state.worktrees,
+    ],
+    orphan_branches: state.orphanBranches,
+  };
+}
+
+function emitWorktrees(projectID: string) {
+  emit('worktree:list', JSON.stringify(worktreesPayload(projectID)));
+}
+
+export async function ListWorktrees(projectID: string) {
+  maybeFail('ListWorktrees');
+  await maybeDelay('ListWorktrees');
+  emitWorktrees(projectID);
+  return '';
+}
+
+export async function RemoveWorktree(
+  projectID: string,
+  path: string,
+  force: boolean,
+  deleteBranch: boolean,
+) {
+  maybeFail('RemoveWorktree');
+  const i = state.worktrees.findIndex((w) => w.path === path);
+  if (i < 0) return '';
+  const w = state.worktrees[i];
+  // Mirror the daemon's refusal order so the GUI's confirm-and-retry
+  // path is exercised against the same codes it sees in production.
+  if ((w.session_ids ?? []).length > 0) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_in_use',
+        message: 'sessions are running',
+      }),
+    );
+    return '';
+  }
+  if (!force && w.uncommitted) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_dirty',
+        message: 'uncommitted changes',
+      }),
+    );
+    return '';
+  }
+  if (!force && ((w.unpushed ?? 0) > 0 || w.unknown)) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_unpushed',
+        message: 'unpushed commits',
+      }),
+    );
+    return '';
+  }
+  state.worktrees.splice(i, 1);
+  if (w.branch && !deleteBranch) {
+    state.orphanBranches.push({ name: w.branch });
+  }
+  emitWorktrees(projectID);
+  return '';
+}
+
+export async function CreateWorktree(projectID: string, branch: string) {
+  maybeFail('CreateWorktree');
+  const i = state.orphanBranches.findIndex((b) => b.name === branch);
+  if (i >= 0) state.orphanBranches.splice(i, 1);
+  state.worktrees.push({ path: `/mock/.worktrees/${branch}`, branch });
+  emitWorktrees(projectID);
+  return '';
+}
+
+export async function DeleteBranch(
+  projectID: string,
+  branch: string,
+  force: boolean,
+) {
+  maybeFail('DeleteBranch');
+  const i = state.orphanBranches.findIndex((b) => b.name === branch);
+  if (i < 0) return '';
+  if (!force && !state.orphanBranches[i].merged) {
+    emit(
+      'control:error',
+      JSON.stringify({ code: 'branch_unmerged', message: 'unmerged commits' }),
+    );
+    return '';
+  }
+  state.orphanBranches.splice(i, 1);
+  emitWorktrees(projectID);
+  return '';
+}
+
+export async function RenameWorktree(
+  projectID: string,
+  path: string,
+  newBranch: string,
+) {
+  maybeFail('RenameWorktree');
+  const w = state.worktrees.find((x) => x.path === path);
+  if (!w) return '';
+  if ((w.session_ids ?? []).length > 0) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_in_use',
+        message: 'sessions are running',
+      }),
+    );
+    return '';
+  }
+  w.branch = newBranch;
+  w.path = `/mock/.worktrees/${newBranch}`;
+  emitWorktrees(projectID);
+  return '';
+}
+
 // Test hook: lets Playwright inject events / inspect state.
 if (typeof window !== 'undefined') {
   window.__hive = {
@@ -513,8 +690,14 @@ if (typeof window !== 'undefined') {
         insertAfter,
       );
     },
-    createSessionWithWorktree(name: string) {
-      return CreateSession('', 'p1', name, '', 0, 0, true);
+    createSessionWithWorktree(name: string, branch?: string) {
+      return CreateSession('', 'p1', name, '', 0, 0, true, undefined, branch);
+    },
+    seedWorktrees(worktrees: MockWorktree[], branches: MockBranch[] = []) {
+      state.worktrees.length = 0;
+      state.worktrees.push(...worktrees);
+      state.orphanBranches.length = 0;
+      state.orphanBranches.push(...branches);
     },
     killSession(id: string) {
       return KillSession(id);

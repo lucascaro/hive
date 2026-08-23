@@ -534,10 +534,20 @@ func (a *App) SaveCustomAgents(list []CustomAgent) error {
 // that.
 // insertAfter names the session the new one should sit directly beneath
 // in the display order (usually the active session); "" appends.
-func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter string) error {
+// branch names the worktree's branch when useWorktree is set ("" lets
+// the daemon generate one). worktreePath runs the session in an
+// EXISTING worktree instead of creating one — the worktree browser's
+// "open a session here" action — and takes precedence over
+// useWorktree.
+func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter, branch, worktreePath string) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
+	}
+	if worktreePath != "" {
+		// Resuming existing work never creates a worktree; asking for
+		// both would stack a nested one inside it.
+		useWorktree = false
 	}
 	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
 		Agent:                agentID,
@@ -547,7 +557,74 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 		Cols:                 cols,
 		Rows:                 rows,
 		UseWorktree:          useWorktree,
+		Branch:               branch,
+		WorktreePath:         worktreePath,
 		InsertAfterSessionID: insertAfter,
+	})
+}
+
+// ListWorktrees asks the daemon for the project's worktree inventory.
+// The reply arrives asynchronously as the "worktree:list" event on the
+// control connection — the same fanout every other control response
+// uses — so the browser re-renders from the event, not from a return
+// value.
+func (a *App) ListWorktrees(projectID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameListWorktrees, wire.ListWorktreesReq{ProjectID: projectID})
+}
+
+// RemoveWorktree deletes a worktree. The daemon refuses with
+// "worktree_in_use", "worktree_dirty" or "worktree_unpushed" on the
+// control:error channel; the GUI confirms and retries with force for
+// the latter two. force never overrides the in-use refusal.
+// deleteBranch additionally removes the branch the worktree was on.
+func (a *App) RemoveWorktree(projectID, path string, force, deleteBranch bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameRemoveWorktree, wire.RemoveWorktreeReq{
+		ProjectID: projectID, Path: path, Force: force, DeleteBranch: deleteBranch,
+	})
+}
+
+// CreateWorktree materializes a worktree for a branch — normally one
+// that already exists with no worktree (an orphaned branch).
+func (a *App) CreateWorktree(projectID, branch string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameCreateWorktree, wire.CreateWorktreeReq{
+		ProjectID: projectID, Branch: branch,
+	})
+}
+
+// DeleteBranch removes a local branch that has no worktree. The daemon
+// refuses with "branch_unmerged" when the branch holds commits that are
+// not merged; the GUI confirms and retries with force.
+func (a *App) DeleteBranch(projectID, branch string, force bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameDeleteBranch, wire.DeleteBranchReq{
+		ProjectID: projectID, Branch: branch, Force: force,
+	})
+}
+
+// RenameWorktree renames a worktree's branch and moves its directory
+// to match. Refused while a session is running inside it.
+func (a *App) RenameWorktree(projectID, path, newBranch string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameRenameWorktree, wire.RenameWorktreeReq{
+		ProjectID: projectID, Path: path, NewBranch: newBranch,
 	})
 }
 

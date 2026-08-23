@@ -76,6 +76,35 @@ export default async function globalSetup() {
   const home = path.join(tmp, 'home');
   fs.mkdirSync(home, { recursive: true });
 
+  // A throwaway git repo for the daemon's default project. Without an
+  // explicit --cwd, hived adopts the process cwd — which is inside the
+  // real hive checkout — and any worktree these specs create would
+  // land in the developer's own repo. Isolation here is the same
+  // contract HIVE_STATE_DIR / HIVE_SOCKET carry.
+  const projectRepo = path.join(tmp, 'project');
+  fs.mkdirSync(projectRepo, { recursive: true });
+  for (const args of [
+    ['init', '-q', '-b', 'main'],
+    [
+      '-c',
+      'user.email=e2e@test',
+      '-c',
+      'user.name=e2e',
+      'commit',
+      '--allow-empty',
+      '-q',
+      '-m',
+      'init',
+    ],
+  ]) {
+    const r = spawnSync('git', ['-C', projectRepo, ...args], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+    });
+    if (r.status !== 0) {
+      throw new Error(`git ${args.join(' ')} failed in the e2e project repo`);
+    }
+  }
+
   const env = {
     ...process.env,
     HOME: home,
@@ -94,7 +123,18 @@ export default async function globalSetup() {
   // Spawn hived. The wire-protocol log tee lands under stateDir.
   const hived = spawn(
     hivedBin,
-    ['--socket', sock, '--shell', '/bin/bash', '--cols', '80', '--rows', '24'],
+    [
+      '--socket',
+      sock,
+      '--shell',
+      '/bin/bash',
+      '--cwd',
+      projectRepo,
+      '--cols',
+      '80',
+      '--rows',
+      '24',
+    ],
     {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -117,6 +157,9 @@ export default async function globalSetup() {
   // window.__WS_BRIDGE_URL before main.ts loads.
   process.env.WS_BRIDGE_URL = wsUrl.trim();
   process.env.HIVE_E2E_REAL_TMP = tmp;
+  // The worktree specs need the repo path to assert against the real
+  // .worktrees/ directory on disk.
+  process.env.HIVE_E2E_PROJECT_REPO = projectRepo;
   process.env.HIVE_E2E_REAL_PIDS = JSON.stringify({
     hived: hived.pid,
     bridge: bridge.pid,

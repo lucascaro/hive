@@ -211,6 +211,13 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 			p.cwd = proj.Cwd
 		}
 	}
+	// An explicit worktree path is the "resume this work" path from
+	// the worktree browser: run in a worktree that already exists on
+	// disk, whether or not any session currently occupies it. It wins
+	// over cwd, and it turns off worktree creation.
+	if spec.WorktreePath != "" {
+		p.cwd = spec.WorktreePath
+	}
 	// Detect when cwd already lives in a worktree owned by another
 	// session in the same project (e.g. ⌘P duplicate). The new entry
 	// adopts that worktree's path+branch so the sidebar shows the
@@ -228,11 +235,52 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	return p
 }
 
+// adoptDetachedWorktree claims a worktree that exists on disk but has
+// no session in it — the case resolveCreateTarget's sibling scan can't
+// see. Without this the entry's WorktreePath stays empty, the worktree
+// looks unclaimed to ReclaimOrphanWorktrees, and the work the user
+// just resumed is deleted at the next daemon start.
+//
+// Does not take r.mu (it shells out to git); called from
+// planWorktreeAndName, which also runs lock-free.
+func (r *Registry) adoptDetachedWorktree(p *createPlan) {
+	if p.adoptedPath != "" || p.cwd == "" || !worktree.IsGitRepo(p.cwd) {
+		return
+	}
+	// MainRoot, not Root: p.cwd is typically a linked worktree here,
+	// and Root would report that worktree's own top level — which
+	// would then look like the main checkout and be skipped below.
+	root, err := worktree.MainRoot(p.cwd)
+	if err != nil {
+		return
+	}
+	r.gitMu.Lock()
+	trees, lerr := worktree.List(root)
+	r.gitMu.Unlock()
+	if lerr != nil {
+		log.Printf("registry: worktree.List while adopting %s: %v", p.cwd, lerr)
+		return
+	}
+	cwd := worktree.ResolvePath(p.cwd)
+	for _, t := range trees {
+		// The repo root is a worktree too, but a session in the main
+		// checkout is a plain session, not a worktree-backed one.
+		if t.Path != cwd || t.Path == worktree.ResolvePath(root) {
+			continue
+		}
+		p.adoptedPath, p.adoptedBranch = t.Path, t.Branch
+		return
+	}
+}
+
 // planWorktreeAndName pre-resolves the worktree branch+path so the
 // session name can match the worktree directory, then picks the name.
 // ResolveBranchAndPath only picks a free name; the actual `git worktree
 // add` happens in materializeWorktree. Does not take r.mu.
 func (r *Registry) planWorktreeAndName(spec wire.CreateSpec, p *createPlan) {
+	if !spec.UseWorktree {
+		r.adoptDetachedWorktree(p)
+	}
 	if p.adoptedPath != "" {
 		p.wtPath, p.wtBranch = p.adoptedPath, p.adoptedBranch
 	}

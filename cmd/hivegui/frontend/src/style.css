@@ -877,6 +877,39 @@ body.resizing-sidebar #app { transition: none; }
   cursor: default;
 }
 
+/* Branch name for a new worktree. Only rendered while the worktree
+   toggle above it is on — hidden, not removed, so toggling doesn't
+   reflow the agent list twice. */
+.launcher-branch {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 0 8px 6px;
+  padding: 4px 6px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 11.5px;
+  font-family: inherit;
+}
+.launcher-branch.hidden { display: none; }
+.launcher-branch:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+/* Inline rename inside a worktree row. */
+.worktree-rename {
+  width: 100%;
+  padding: 3px 6px;
+  background: #141414;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 12px;
+  font-family: inherit;
+}
+
 /* Worktree glyph: shown next to a session name when the session
    is backed by a git worktree. Sidebar + grid tile share the rule. */
 .worktree-glyph {
@@ -1595,3 +1628,274 @@ body.resizing-sidebar #app { transition: none; }
   outline: 2px solid #f59e0b;
   outline-offset: 1px;
 }
+
+/* ---------- worktrees browser ---------- */
+
+#worktrees {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 7vh;
+}
+#worktrees.hidden { display: none; }
+#worktrees-panel {
+  width: 720px;
+  max-width: 94vw;
+  max-height: 80vh;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 13px;
+}
+#worktrees-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a2a2a;
+}
+#worktrees-panel h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #ddd;
+}
+.worktrees-project {
+  color: #777;
+  font-weight: normal;
+}
+#worktrees-close {
+  background: transparent;
+  border: 0;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+#worktrees-close:hover { color: #fff; }
+#worktrees-close:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+#worktrees-panel section {
+  overflow-y: auto;
+  padding: 12px 14px 4px;
+}
+#worktrees-section-trees { flex: 1 1 auto; }
+#worktrees-section-branches { flex: 0 1 auto; border-top: 1px solid #1e1e1e; }
+#worktrees-panel section.hidden { display: none; }
+
+/* Loading / empty state. Mirrors the session tile's phase overlay —
+   centered card, same spinner — so waiting for the inventory looks like
+   waiting for a session rather than a stray line of text.
+   The .hidden rule is load-bearing: this codebase has no global
+   `.hidden { display: none }`, every element declares its own, and
+   without this one the "Loading…" card stayed on screen under the list
+   it was supposed to precede. */
+#worktrees-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 18px;
+}
+#worktrees-empty.hidden { display: none; }
+.worktrees-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 40ch;
+  text-align: center;
+  font-size: 12.5px;
+  color: #999;
+  line-height: 1.5;
+}
+/* The spinner only belongs to the loading state; the "not a git repo"
+   message is a settled answer, not a wait. */
+.worktrees-empty-card .phase-spinner {
+  --session-color: #f59e0b;
+}
+.worktrees-empty-card .phase-spinner.hidden { display: none; }
+#worktrees-panel h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+.worktrees-hint {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #777;
+  line-height: 1.45;
+}
+.worktrees-footer {
+  padding: 8px 14px;
+  border-top: 1px solid #2a2a2a;
+}
+.worktrees-footer .worktrees-hint { margin: 0; }
+.worktree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #1e1e1e;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #141414;
+}
+.worktree-row .worktree-main { flex: 1; min-width: 0; }
+.worktree-name {
+  display: block;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.worktree-status {
+  display: block;
+  font-size: 11px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Status colour carries the same ranking the list is sorted by, so a
+   row that holds work is visible without reading the text. */
+.worktree-row[data-kind='active'] { border-color: #2f4858; }
+.worktree-row[data-kind='active'] .worktree-status { color: #7fb3d5; }
+.worktree-row[data-kind='holding'] { border-color: #4a3a1a; }
+.worktree-row[data-kind='holding'] .worktree-status { color: #f0b357; }
+.worktree-row[data-kind='main'] { background: #101010; }
+.worktree-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.worktree-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.worktree-actions button {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.worktree-actions button:hover:not(:disabled) { background: #2a2a2a; }
+.worktree-actions button:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+.worktree-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.worktree-actions button.danger { color: #e08585; }
+.worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; }
+
+/* The worktree glyph is a control wherever it appears (project row,
+   sidebar session, grid tile) — it must look like one. */
+.worktree-glyph.clickable {
+  cursor: pointer;
+}
+.worktree-glyph.clickable:hover {
+  color: #fff;
+}
+.worktree-glyph.clickable:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+/* ---------- choice dialog ---------- */
+/* In-DOM rather than a native Confirm: some of these questions are
+   three-way (delete both / keep the branch / cancel), which a yes-no
+   alert cannot express without asking twice — and where work is at
+   stake the consequences need more room than an OS alert gives. Shared
+   by the worktree browser and the dirty-session close prompt. */
+.choice-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above every modal (they sit at 30): the dialog is mounted on
+     <body>, so it has to out-rank whatever asked the question. */
+  z-index: 60;
+}
+.choice-dialog-box {
+  width: 460px;
+  max-width: 88%;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.7);
+  padding: 16px 18px;
+}
+.choice-dialog-box h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #eee;
+}
+.choice-dialog-detail {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  color: #888;
+  word-break: break-all;
+}
+.choice-dialog-bullets {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 12px;
+  color: #f0b357;
+  line-height: 1.5;
+}
+.choice-dialog-note {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  color: #999;
+  line-height: 1.5;
+}
+.choice-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.choice-dialog-actions button {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.choice-dialog-actions button:hover { background: #2a2a2a; }
+.choice-dialog-actions button:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+}
+.choice-dialog-actions button.danger {
+  color: #e08585;
+  border-color: #4a2626;
+}
+.choice-dialog-actions button.danger:hover { background: #3a1f1f; }
+.choice-dialog-actions button:first-child { font-weight: 600; }

@@ -63,6 +63,34 @@
       <button id="project-editor-save" class="primary">Save</button>
     </div>
   </div>
+  <div id="worktrees" class="hidden" role="dialog" aria-modal="true" aria-label="Worktrees">
+    <div id="worktrees-panel">
+      <header>
+        <h3>Worktrees <span id="worktrees-project" class="worktrees-project"></span></h3>
+        <button id="worktrees-close" type="button" aria-label="Close">×</button>
+      </header>
+      <div id="worktrees-empty" class="worktrees-empty hidden">
+        <div class="worktrees-empty-card">
+          <span id="worktrees-empty-spinner" class="phase-spinner"></span>
+          <span id="worktrees-empty-text"></span>
+        </div>
+      </div>
+      <section id="worktrees-section-trees">
+        <h4>Worktrees</h4>
+        <div id="worktrees-list"></div>
+      </section>
+      <section id="worktrees-section-branches">
+        <h4>Branches with no worktree</h4>
+        <p class="worktrees-hint">
+          Create a worktree to pick this work back up.
+        </p>
+        <div id="worktrees-branches"></div>
+      </section>
+      <footer class="worktrees-footer">
+        <span class="worktrees-hint">[esc] close · (r) refresh</span>
+      </footer>
+    </div>
+  </div>
   <div id="settings" class="hidden" role="dialog" aria-modal="true" aria-label="Settings">
     <div id="settings-panel">
       <header>

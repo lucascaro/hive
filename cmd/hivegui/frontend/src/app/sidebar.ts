@@ -17,7 +17,9 @@ import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
+import { openWorktrees } from './modals/worktrees.js';
 import { beginInlineRename } from './inline-rename.js';
+import { readProjectId } from '../lib/wire.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
@@ -128,6 +130,15 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     openLauncher(p.id);
   });
 
+  const wtBtn = document.createElement('button');
+  wtBtn.textContent = '⎇';
+  // The binding is shown inline, per the key-discoverability rule.
+  wtBtn.title = 'Worktrees in this project (⌘E)';
+  wtBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openWorktrees(p);
+  });
+
   const editBtn = document.createElement('button');
   editBtn.textContent = '✎';
   editBtn.title = 'Edit project';
@@ -144,7 +155,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     deps.confirmAndDeleteProject(p);
   });
 
-  actions.append(newBtn, editBtn, delBtn);
+  actions.append(newBtn, wtBtn, editBtn, delBtn);
 
   header.append(caret, colorEl, name, actions);
   header.addEventListener('click', (e) => {
@@ -300,9 +311,19 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   let glyph: HTMLSpanElement | null = null;
   if (wtBranch) {
     glyph = document.createElement('span');
-    glyph.className = 'worktree-glyph';
+    glyph.className = 'worktree-glyph clickable';
     glyph.textContent = '⎇';
-    glyph.title = `Worktree: ${wtBranch}`;
+    // The same glyph marks the project row's worktree button, so it
+    // has to do the same thing here — an indicator that looks like the
+    // control next to it but ignores clicks reads as broken.
+    glyph.title = `Worktree: ${wtBranch} — click to manage worktrees`;
+    glyph.setAttribute('role', 'button');
+    glyph.addEventListener('click', (e) => {
+      // Don't also switch to the session the glyph sits on.
+      e.stopPropagation();
+      const proj = state.projects.find((p) => p.id === readProjectId(s));
+      if (proj) openWorktrees(proj);
+    });
   }
 
   const swatch = document.createElement('span');

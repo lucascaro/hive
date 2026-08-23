@@ -582,9 +582,14 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 }
 
 // Kill terminates the session and removes its entry from the registry.
-// The on-disk metadata directory is also removed. If the session is
-// backed by a git worktree, the worktree is also cleaned up
-// (`git worktree remove --force`, `os.RemoveAll`, `git worktree prune`).
+// The on-disk metadata directory is also removed.
+//
+// A backing git worktree is removed ONLY when it is pristine — no
+// uncommitted changes and no unpushed commits (worktree.Status.
+// Pristine). A worktree holding work survives the session and stays
+// visible in the worktree browser, where RemoveWorktree can delete it
+// deliberately. force therefore skips the confirm, not the work check:
+// it lets the session close, it never destroys the worktree.
 //
 // When force is false and the worktree has uncommitted changes,
 // returns ErrWorktreeDirty without modifying any state. Callers can
@@ -704,8 +709,22 @@ func (r *Registry) Kill(id string, force bool) error {
 			log.Printf("registry: kill %s: worktree %s lives outside current project repo %s; using RemoveAll only", id, wtPath, root)
 			_ = os.RemoveAll(wtPath)
 		default:
-			if err := worktree.Cleanup(root, wtPath); err != nil {
-				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			// Prune only a pristine worktree. Anything holding
+			// uncommitted changes or unpushed commits outlives the
+			// session and shows up in the worktree browser, where
+			// removing it is an explicit, confirmed act. Closing a
+			// session must never be the thing that destroys work.
+			st, ierr := worktree.Inspect(root, wtPath)
+			switch {
+			case ierr != nil:
+				log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
+			case !st.Pristine():
+				log.Printf("registry: kill %s: keeping worktree %s (branch=%s, uncommitted=%v unpushed=%d unknown=%v)",
+					id, wtPath, wtBranch, st.Uncommitted, st.Unpushed, st.Unknown)
+			default:
+				if err := worktree.Cleanup(root, wtPath); err != nil {
+					log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+				}
 			}
 		}
 		r.gitMu.Unlock()

@@ -7,7 +7,6 @@
 import {
   EventsOn,
   Notify,
-  Confirm,
   KillSession,
   ConnectControl,
   LogFrontend,
@@ -18,6 +17,9 @@ import { setStatus, flashStatus, reportFailure } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
+import { handleWorktreesPayload } from './modals/worktrees.js';
+import { openChoiceDialog } from './modals/choice-dialog.js';
+import type { WorktreesPayload } from '../lib/worktrees.js';
 import { phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
@@ -239,6 +241,21 @@ export function wireDaemonEvents(injected: EventsDeps) {
       saveCollapsed();
     }
     renderSidebar();
+  });
+
+  // The daemon answers LIST_WORKTREES — and every worktree mutation —
+  // with a WORKTREES frame, fanned out as this event. The browser
+  // re-renders from it; nothing else in the app reads worktree
+  // inventory.
+  EventsOn('worktree:list', (jsonStr: string) => {
+    let payload: WorktreesPayload;
+    try {
+      payload = JSON.parse(jsonStr) as WorktreesPayload;
+    } catch {
+      flashStatus('bad worktree payload', true);
+      return;
+    }
+    handleWorktreesPayload(payload);
   });
 
   EventsOn('project:event', (jsonStr: string) => {
@@ -593,18 +610,35 @@ export function wireDaemonEvents(injected: EventsDeps) {
       const sess = state.sessions.find((s) => s.id === e.session_id);
       const branch =
         sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
-      const ok = await Confirm(
-        'Discard uncommitted changes?',
-        `${sess?.name ?? 'Session'} has uncommitted changes in ${branch}.\n\n` +
-          `Discard them and remove the worktree?`,
-      );
-      if (!ok) return;
-      // Confirm() is async + modal; the session may have been removed
+      const answer = await openChoiceDialog({
+        title: 'Close this session anyway?',
+        detail: sess?.name ?? 'Session',
+        bullets: [`It has uncommitted changes in ${branch}.`],
+        note:
+          'The worktree and its changes are kept. You can find it under ' +
+          'Worktrees (⌘E) to resume the work or delete it later.',
+        choices: [
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Close session', value: 'close' },
+        ],
+      });
+      if (answer !== 'close') return;
+      // The dialog is async + modal; the session may have been removed
       // (or its worktree resolved) while the dialog was open. Re-check
       // before issuing a second kill that would just produce a confusing
       // "no_such_session" control error.
       if (!state.sessions.find((s) => s.id === e.session_id)) return;
       KillSession(e.session_id, true).catch(reportFailure('force kill'));
+      return;
+    }
+    // Worktree-browser refusals. worktree_in_use is not overridable,
+    // so there is nothing to confirm — say what to do instead.
+    if (e.code === 'worktree_in_use') {
+      flashStatus('close the sessions in that worktree first', true);
+      return;
+    }
+    if (e.code === 'worktree_unpushed' || e.code === 'worktree_dirty') {
+      flashStatus(`worktree kept: ${e.message}`, true);
       return;
     }
     flashStatus(`${e.code}: ${e.message}`, true);

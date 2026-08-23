@@ -29,6 +29,27 @@ export interface InlineRenameOpts {
   beforeFocus?: () => void;
 }
 
+// The rename currently on screen, if any. An inline editor owns the
+// keyboard while it is open — Escape cancels the edit, it does not
+// close whatever is behind it — but keyboard.ts listens in the CAPTURE
+// phase, so it sees every key before the input does and stopPropagation
+// from the input cannot win the race. keyboard.ts therefore asks here
+// first. (Sidebar renames never hit this because nothing global claims
+// bare Escape at that level; a rename inside a modal does.)
+let active: { input: HTMLInputElement; cancel: () => void } | null = null;
+
+export function inlineRenameActive(): boolean {
+  return active !== null;
+}
+
+// cancelInlineRename aborts the open rename and reports whether there
+// was one.
+export function cancelInlineRename(): boolean {
+  if (!active) return false;
+  active.cancel();
+  return true;
+}
+
 export function beginInlineRename({
   mount,
   unmount,
@@ -38,6 +59,12 @@ export function beginInlineRename({
   onDone,
   beforeFocus,
 }: InlineRenameOpts): HTMLInputElement {
+  // Whatever had focus when the edit began — usually the button or row
+  // the user activated. An edit is a detour: finishing it should put
+  // them back, not drop focus on <body> for the surrounding modal's
+  // trap to grab at random on the next key.
+  const opener = document.activeElement as HTMLElement | null;
+
   const input = document.createElement('input');
   input.type = 'text';
   input.className = className;
@@ -50,11 +77,19 @@ export function beginInlineRename({
   const finish = (commit: boolean) => {
     if (done) return;
     done = true;
+    if (active?.input === input) active = null;
     const next = input.value.trim();
     unmount(input);
+    // Restore before onCommit/onDone, never after: callers that want
+    // focus somewhere specific say so there (the sidebar sends it back
+    // to the active terminal), and their choice must win. Skipped when
+    // the opener did not survive unmount — a rebuilt row takes its
+    // buttons with it.
+    if (opener?.isConnected) opener.focus();
     if (commit && next && next !== value) onCommit(next);
     if (onDone) onDone();
   };
+  active = { input, cancel: () => finish(false) };
   // Single capture-phase listener handles Enter/Escape AND shields the
   // input from xterm / global hotkey handlers. It must be a single
   // listener: stopPropagation() from a capture listener at the target

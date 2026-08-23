@@ -41,6 +41,14 @@ type CreateSpec struct {
 	// a random adjective-noun is generated.
 	Branch string `json:"branch,omitempty"`
 
+	// WorktreePath, when set, names an EXISTING worktree the session
+	// should run in — the "resume this work" path from the worktree
+	// browser. The daemon adopts that worktree's branch onto the new
+	// entry, which is what keeps it claimed (an unclaimed worktree is
+	// eligible for the startup reclaim). Mutually exclusive with
+	// UseWorktree: this path never runs `git worktree add`.
+	WorktreePath string `json:"worktree_path,omitempty"`
+
 	// InsertAfterSessionID, when it names an existing session in the
 	// same project as the new one, places the new session immediately
 	// after it in the display order instead of appending it last.
@@ -274,12 +282,117 @@ type Error struct {
 // Well-known error codes.
 const (
 	ErrCodeWorktreeDirty = "worktree_dirty"
+	// ErrCodeWorktreeInUse is returned when a worktree operation is
+	// refused because a live session is running inside it. Unlike the
+	// other two worktree codes this one is NOT overridable by force —
+	// the client must close those sessions first.
+	ErrCodeWorktreeInUse = "worktree_in_use"
+	// ErrCodeWorktreeUnpushed is returned when a worktree holds
+	// committed work that is not reachable from its upstream (or when
+	// no comparison base resolved at all, which is treated the same
+	// way). Overridable by force after the user confirms.
+	ErrCodeWorktreeUnpushed = "worktree_unpushed"
+	// ErrCodeBranchUnmerged is returned when deleting a branch would
+	// discard commits that are not merged into the default ref.
+	// Overridable by force after the user confirms.
+	ErrCodeBranchUnmerged = "branch_unmerged"
 	// ErrCodeSessionStarting is returned by an attach that arrives
 	// while the session is still being created. The entry exists but
 	// has no PTY yet; the client should wait for the SESSION_EVENT
 	// that moves it to PhaseReady rather than treating it as dead.
 	ErrCodeSessionStarting = "session_starting"
 )
+
+// ---------- worktree management ----------
+
+// ListWorktreesReq asks for the worktree inventory of one project.
+type ListWorktreesReq struct {
+	ProjectID string `json:"project_id"`
+}
+
+// WorktreeInfo is one row of the worktree browser. Uncommitted /
+// Unpushed / Unknown are the safety verdict: a worktree is disposable
+// only when all three are zero-valued.
+type WorktreeInfo struct {
+	Path     string `json:"path"`
+	Branch   string `json:"branch,omitempty"` // "" = detached HEAD
+	Detached bool   `json:"detached,omitempty"`
+	// IsMain marks the project's own checkout, which is listed for
+	// context but can never be removed.
+	IsMain      bool `json:"is_main,omitempty"`
+	Uncommitted bool `json:"uncommitted,omitempty"`
+	Unpushed    int  `json:"unpushed,omitempty"`
+	// Unknown means the unpushed count could not be determined (no
+	// upstream and no default ref). Clients must render it as
+	// "unsafe to delete", never as clean.
+	Unknown bool `json:"unknown,omitempty"`
+	// SessionIDs are the live sessions whose cwd is this worktree.
+	// Non-empty ⇒ removal and rename are refused.
+	SessionIDs []string `json:"session_ids,omitempty"`
+}
+
+// BranchInfo describes a local branch with no worktree — the
+// "orphaned branch" list, where a worktree can be re-created to pick
+// the work back up.
+type BranchInfo struct {
+	Name     string `json:"name"`
+	Upstream string `json:"upstream,omitempty"`
+	Ahead    int    `json:"ahead,omitempty"`
+	Merged   bool   `json:"merged,omitempty"`
+}
+
+// WorktreesResp is the daemon's answer to LIST_WORKTREES and to every
+// successful worktree mutation.
+type WorktreesResp struct {
+	ProjectID string `json:"project_id"`
+	// RepoRoot is the git root backing the project, "" when the
+	// project cwd is not a git repository (in which case both lists
+	// are empty and the client should say so rather than show an
+	// empty browser).
+	RepoRoot       string         `json:"repo_root,omitempty"`
+	Worktrees      []WorktreeInfo `json:"worktrees,omitempty"`
+	OrphanBranches []BranchInfo   `json:"orphan_branches,omitempty"`
+}
+
+// RemoveWorktreeReq deletes a worktree directory. Force overrides the
+// dirty and unpushed refusals (never the in-use one). DeleteBranch
+// additionally removes the branch the worktree was on — off by
+// default, because `git worktree remove` leaves the ref behind and
+// that ref is the user's last handle on the work.
+type RemoveWorktreeReq struct {
+	ProjectID    string `json:"project_id"`
+	Path         string `json:"path"`
+	Force        bool   `json:"force,omitempty"`
+	DeleteBranch bool   `json:"delete_branch,omitempty"`
+}
+
+// CreateWorktreeReq materializes a worktree for a branch that already
+// exists (the orphaned-branch case). A branch that does not exist yet
+// is created from the upstream default ref, same as session creation.
+type CreateWorktreeReq struct {
+	ProjectID string `json:"project_id"`
+	Branch    string `json:"branch"`
+}
+
+// RenameWorktreeReq renames both the branch and the directory, which
+// stay coupled (the path is derived from the branch). Refused while a
+// session lives in the worktree — moving the directory would leave
+// that session's shell in a cwd that no longer exists.
+type RenameWorktreeReq struct {
+	ProjectID string `json:"project_id"`
+	Path      string `json:"path"`
+	NewBranch string `json:"new_branch"`
+}
+
+// DeleteBranchReq removes a local branch that has no worktree. Force
+// is required for a branch holding commits that are not merged into
+// the default ref — git refuses those outright, and the client asks
+// before overriding.
+type DeleteBranchReq struct {
+	ProjectID string `json:"project_id"`
+	Branch    string `json:"branch"`
+	Force     bool   `json:"force,omitempty"`
+}
 
 // WriteJSON marshals v and writes it as a frame of type t.
 func WriteJSON(w io.Writer, t FrameType, v any) error {

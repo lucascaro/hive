@@ -16,6 +16,7 @@ import type { Mock } from 'vitest';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 import { isMac } from '../../src/lib/platform.js';
+import { state } from '../../src/app/state.js';
 
 const AGENTS: main.AgentInfo[] = [
   {
@@ -65,6 +66,9 @@ const createSession = vi.fn(
     _cols: number,
     _rows: number,
     _worktree: boolean,
+    _insertAfter?: string,
+    _branch?: string,
+    _worktreePath?: string,
   ): Promise<string> => Promise.resolve('s1'),
 );
 const duplicateSession = vi.fn(
@@ -146,6 +150,13 @@ function type(text: string) {
   searchBox().dispatchEvent(new Event('input', { bubbles: true }));
 }
 // Open and let ListAgents settle.
+// A few turns of the microtask queue: the IsGitRepo probe chains off
+// the ListAgents .then, so one await is not enough.
+async function flushMicrotasks() {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 async function open() {
   openLauncher('p1');
   resolveAgents(AGENTS);
@@ -383,8 +394,210 @@ describe('launcher worktree row', () => {
     expect(kids).toEqual([
       'launcher-search',
       'launcher-worktree',
+      // The branch field trails the toggle it belongs to, hidden until
+      // the toggle is on.
+      'launcher-branch hidden',
       'launcher-list',
     ]);
+  });
+});
+
+describe('launcher branch name', () => {
+  const branchBox = () =>
+    launcher().querySelector('.launcher-branch') as HTMLInputElement;
+  const wtBox = () =>
+    launcher().querySelector(
+      '.launcher-worktree input[type=checkbox]',
+    ) as HTMLInputElement;
+  const toggleWorktree = (on: boolean) => {
+    const box = wtBox();
+    box.checked = on;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const typeBranch = (value: string) => {
+    const box = branchBox();
+    box.value = value;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  // The launcher preventDefaults mousedown on everything but its text
+  // boxes, to keep the filter box focused. The branch box has to be
+  // exempt or it is literally unclickable — which is how it shipped
+  // first, because every test set .value directly.
+  it('can be focused by clicking it', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    const ev = new window.MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    branchBox().dispatchEvent(ev);
+    expect(
+      ev.defaultPrevented,
+      'mousedown was preventDefaulted, so the box can never take focus',
+    ).toBe(false);
+  });
+
+  it('still blocks focus moving to the agent rows', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    const rowEl = launcher().querySelector('.launcher-list > *') as HTMLElement;
+    const ev = new window.MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    rowEl.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  // Digits are row shortcuts while the filter box is empty. Inside the
+  // branch box they are part of the name (`fix-2`) and were being
+  // swallowed — the keystroke launched a session instead of typing.
+  it('takes digits as text instead of launching a session', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    branchBox().focus();
+    const ev = new window.KeyboardEvent('keydown', {
+      key: '2',
+      bubbles: true,
+      cancelable: true,
+    });
+    branchBox().dispatchEvent(ev);
+    expect(ev.defaultPrevented, 'digit was consumed as a row shortcut').toBe(
+      false,
+    );
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('launches on Enter from inside the branch box', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    branchBox().focus();
+    typeBranch('typed-here');
+    branchBox().dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+    );
+    expect(createSession).toHaveBeenCalled();
+    expect(createSession.mock.calls[0][8]).toBe('typed-here');
+  });
+
+  it('closes on Escape from inside the branch box', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    branchBox().focus();
+    branchBox().dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(launcher().classList.contains('hidden')).toBe(true);
+  });
+
+  it('is hidden until the worktree toggle is on', async () => {
+    localStorage.setItem('hive.worktree', '0');
+    await open();
+    expect(branchBox().classList.contains('hidden')).toBe(true);
+    toggleWorktree(true);
+    expect(branchBox().classList.contains('hidden')).toBe(false);
+  });
+
+  it('reaches CreateSession as the branch argument', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    typeBranch('my-feature');
+    press('Enter');
+    expect(createSession).toHaveBeenCalledWith(
+      expect.any(String),
+      'p1',
+      '',
+      '',
+      0,
+      0,
+      true,
+      expect.any(String),
+      'my-feature',
+      '',
+    );
+  });
+
+  it('trims whitespace and sends empty for a blank name', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    typeBranch('   ');
+    press('Enter');
+    expect(createSession.mock.calls[0][8]).toBe('');
+  });
+
+  // A branch typed for one session must not silently become the next
+  // session's branch — that would collide or reuse the wrong worktree.
+  it('does not leak into the next launcher opening', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    typeBranch('first-only');
+    closeLauncher();
+    await open();
+    expect(branchBox().value).toBe('');
+    press('Enter');
+    expect(createSession.mock.calls[0][8]).toBe('');
+  });
+
+  it('is cleared when the worktree toggle goes off', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    await open();
+    typeBranch('discard-me');
+    toggleWorktree(false);
+    press('Enter');
+    expect(createSession.mock.calls[0][6]).toBe(false);
+    expect(createSession.mock.calls[0][8]).toBe('');
+  });
+
+  // The IsGitRepo probe only runs for a project with a cwd, so this
+  // case has to seed one — the rest of the suite never needs project
+  // state and deliberately leaves it empty.
+  it('disappears along with the toggle on a non-git project', async () => {
+    localStorage.setItem('hive.worktree', '1');
+    isGitRepo.mockResolvedValueOnce(false);
+    state.projects = [{ id: 'p1', name: 'p', cwd: '/not-a-repo' }];
+    try {
+      await open();
+      await flushMicrotasks();
+      expect(branchBox().classList.contains('hidden')).toBe(true);
+      expect(wtBox().checked).toBe(false);
+    } finally {
+      state.projects = [];
+    }
+  });
+});
+
+describe('launcher resume-in-worktree mode', () => {
+  it('offers neither the worktree toggle nor a branch field', async () => {
+    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
+    resolveAgents(AGENTS);
+    await agentsPromise;
+    await Promise.resolve();
+    expect(launcher().querySelector('.launcher-worktree')).toBeNull();
+    expect(launcher().querySelector('.launcher-branch')).toBeNull();
+  });
+
+  it('passes the worktree path and never asks for a new worktree', async () => {
+    // Sticky preference is on; resume mode must still not create one.
+    localStorage.setItem('hive.worktree', '1');
+    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
+    resolveAgents(AGENTS);
+    await agentsPromise;
+    await Promise.resolve();
+    press('Enter');
+    expect(createSession.mock.calls[0][6]).toBe(false);
+    expect(createSession.mock.calls[0][9]).toBe('/repo/.worktrees/resume');
+  });
+
+  it('does not leak the path into the next regular opening', async () => {
+    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
+    resolveAgents(AGENTS);
+    await agentsPromise;
+    await Promise.resolve();
+    closeLauncher();
+    await open();
+    press('Enter');
+    expect(createSession.mock.calls[0][9]).toBe('');
   });
 });
 
@@ -409,9 +622,11 @@ describe('launcher stale-response handling', () => {
     await Promise.resolve();
 
     expect(launcher().querySelectorAll('.launcher-worktree')).toHaveLength(1);
+    expect(launcher().querySelectorAll('.launcher-branch')).toHaveLength(1);
     expect(Array.from(launcher().children).map((c) => c.className)).toEqual([
       'launcher-search',
       'launcher-worktree',
+      'launcher-branch hidden',
       'launcher-list',
     ]);
     expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);

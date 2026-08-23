@@ -113,6 +113,7 @@ var controlEvents = map[FrameType]string{
 	FrameSessionEvent: "session:event",
 	FrameProjects:     "project:list",
 	FrameProjectEvent: "project:event",
+	FrameWorktrees:    "worktree:list",
 	FrameError:        "control:error",
 }
 

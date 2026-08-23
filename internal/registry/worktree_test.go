@@ -37,6 +37,36 @@ func initGitRepo(t *testing.T) string {
 	return dir
 }
 
+// runGit runs a git command in dir, failing the test on a non-zero
+// exit. The registry-level worktree tests drive real git the same way
+// internal/worktree's do — no mocking, since the whole point is that
+// the git plumbing behaves.
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+// gitOutput returns the trimmed stdout of a git command, or "" on
+// failure. Used for assertions that must not abort the test.
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func mustWriteFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // freshRegistryWithProject opens a registry, creates a project rooted
 // at a fresh git repo, and returns both. Cleanup runs via t.Cleanup.
 func freshRegistryWithProject(t *testing.T) (*Registry, *Project) {
@@ -184,20 +214,79 @@ func TestKill_DirtyWorktree_NoForce_ErrsAndPreserves(t *testing.T) {
 	}
 }
 
-func TestKill_DirtyWorktree_ForceRemoves(t *testing.T) {
+// force lets the SESSION close; it does not destroy the worktree. The
+// uncommitted file is the user's work — closing a tab must never be
+// what deletes it. Removal is an explicit act in the worktree browser
+// (RemoveWorktree), which has its own confirm.
+func TestKill_DirtyWorktree_ForceKeepsWorktree(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 	e, _ := r.Create(context.Background(), wire.CreateSpec{
 		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
 	})
 	time.Sleep(80 * time.Millisecond)
-	_ = os.WriteFile(filepath.Join(e.WorktreePath, "scratch.txt"), []byte("x"), 0o644)
+	wtPath := e.WorktreePath
+	_ = os.WriteFile(filepath.Join(wtPath, "scratch.txt"), []byte("x"), 0o644)
 
 	if err := r.Kill(e.ID, true); err != nil {
 		t.Fatalf("force Kill: %v", err)
 	}
-	if _, err := os.Stat(e.WorktreePath); err == nil {
-		t.Errorf("worktree dir still exists after force Kill")
+	if r.Get(e.ID) != nil {
+		t.Errorf("entry survived force Kill; the session should be gone")
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Errorf("worktree dir was removed by force Kill: %v — uncommitted work must survive", err)
+	}
+	if _, err := os.Stat(filepath.Join(wtPath, "scratch.txt")); err != nil {
+		t.Errorf("the uncommitted file was destroyed: %v", err)
+	}
+}
+
+// The counterpart: a worktree with nothing in it is still pruned on
+// close, so throwaway sessions don't litter .worktrees/.
+func TestKill_PristineWorktreeIsPruned(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	e, _ := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	time.Sleep(80 * time.Millisecond)
+	wtPath := e.WorktreePath
+	if wtPath == "" {
+		t.Fatal("no worktree created")
+	}
+
+	if err := r.Kill(e.ID, false); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(wtPath); err == nil {
+		t.Errorf("pristine worktree %s survived Kill; it should have been pruned", wtPath)
+	}
+}
+
+// Committed-but-unpushed work is the case a dirty check alone misses:
+// `git status` is clean, yet deleting the worktree loses the commit.
+func TestKill_UnpushedCommits_KeepsWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	e, _ := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	time.Sleep(80 * time.Millisecond)
+	wtPath := e.WorktreePath
+	if wtPath == "" {
+		t.Fatal("no worktree created")
+	}
+	mustWriteFile(t, filepath.Join(wtPath, "committed.txt"), "work")
+	runGit(t, wtPath, "add", "committed.txt")
+	runGit(t, wtPath, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+
+	// Not dirty, so Kill does not even prompt — it just closes.
+	if err := r.Kill(e.ID, false); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Errorf("worktree with an unpushed commit was pruned: %v", err)
 	}
 }
 
