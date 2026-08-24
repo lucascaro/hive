@@ -1,16 +1,8 @@
 # Hive – AI Coding Guidelines
 
-> **Branch model (as of 2026-05-02):** `main` is **Hive v2** — the
-> Wails GUI + `hived` daemon rewrite (`cmd/hivegui/`, `cmd/hived/`,
-> `internal/wire/`, `internal/worktree/`). v1 (TUI, Bubble Tea, tmux
-> backend) lives on `release/v1` for bug-fix-only maintenance.
-> Forward-port shared-package fixes (`internal/registry`, `internal/agent`,
-> `internal/notify`, `internal/worktree`) from `release/v1` → `main` via
-> cherry-pick; never merge wholesale.
->
-> Architecture lives in `DESIGN.md` (the v2 map). This file covers agent
-> working rules — testing, keybindings, docs, release, and the feature
-> pipeline.
+> Architecture lives in `DESIGN.md` (the architecture map). This file
+> covers agent working rules — testing, keybindings, docs, release, and
+> the feature pipeline.
 
 ## Codebase Quick Reference
 

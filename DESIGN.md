@@ -1,10 +1,8 @@
 # DESIGN.md
 
-Top-level design overview for Hive v2 — the Wails GUI + `hived` daemon. The *shape* of the project: domains, layers, cross-cutting concerns, and the architectural rules that hold everything together.
+Top-level design overview for Hive — the Wails GUI + `hived` daemon. The *shape* of the project: domains, layers, cross-cutting concerns, and the architectural rules that hold everything together.
 
-Per-decision detail belongs in `docs/design-docs/` and `docs/native-rewrite/`. This file is the map.
-
-> v1 (TUI / Bubble Tea / tmux backend) lives on `release/v1` for bug-fix-only maintenance. Branch policy (cherry-pick only, no wholesale merges) is documented in AGENTS.md.
+Per-decision detail belongs in `docs/design-docs/`. This file is the map.
 
 ## Domains
 
@@ -62,6 +60,11 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   never persisted); it is attachable only when `alive == true` **and** the
   phase is `PhaseReady`. Attaching earlier is answered with
   `wire.ErrCodeSessionStarting`, not an error the client should treat as death.
+- **Attach replays scrollback, not just the visible screen.** Reattaching a
+  session — GUI restart included — must restore the history above the viewport,
+  not a snapshot of the current screen. The daemon sends it during the `replay`
+  phase and closes it with `pty:event kind=scrollback_replay_done`; anything
+  that narrows the replay to the visible rows breaks the contract.
 - **A worktree outlives its sessions unless it is pristine.** `Kill` and the
   startup orphan reclaim remove a worktree only when `worktree.Inspect`
   reports no uncommitted changes AND no unpushed commits AND a resolvable

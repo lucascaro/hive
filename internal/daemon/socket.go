@@ -8,8 +8,10 @@ import (
 )
 
 // SocketPath returns the canonical hived socket path for the current
-// user and platform. Phase 1 uses Unix domain sockets on all platforms
-// (Windows 10 1803+ supports AF_UNIX).
+// user and platform. Unix domain sockets are used on all platforms
+// rather than a named-pipe split for Windows: AF_UNIX has been
+// supported since Windows 10 1803, which is our floor, so one
+// transport covers every target.
 //
 // Setting HIVE_SOCKET overrides the platform default — useful for
 // running an isolated dev daemon alongside a production one without

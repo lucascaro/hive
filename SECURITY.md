@@ -20,32 +20,35 @@ You can expect an acknowledgement within 72 hours.
 
 | Component | Notes |
 |-----------|-------|
-| `hive` binary | In scope |
-| Native mux daemon | In scope |
-| Hook execution | User-controlled scripts — hooks are run as the invoking user |
-| tmux backend | Security depends on the installed tmux version |
+| `hived` (session daemon) | In scope |
+| `hivegui` (desktop client) | In scope |
+| Agent processes | Spawned as the invoking user; the agent CLI's own security is out of scope |
 
 ## Known Considerations
 
 ### Single-User Systems
 
-Hive is designed for personal use on a single-user machine. The native
-multiplexer daemon (`hive mux-daemon`) communicates over a Unix socket
-(`~/.config/hive/mux.sock`) with permissions `0o600` — accessible only by the
-owner.
+Hive is designed for personal use on a single-user machine. The session
+daemon (`hived`) listens on a per-user Unix socket — `/tmp/hive-<uid>/hived.sock`
+on macOS, `$XDG_RUNTIME_DIR/hive/hived.sock` on Linux,
+`%LOCALAPPDATA%\Hive\hived.sock` on Windows (`HIVE_SOCKET` overrides all
+three). Hive creates the containing directory with mode `0o700`, so only the
+owner can reach the socket — but it does not re-check the mode of a directory
+that already exists. On macOS, and on Linux without `XDG_RUNTIME_DIR`, that
+directory lives under world-writable `/tmp`, so on a shared machine verify its
+ownership and permissions before trusting the socket.
 
 ### Multi-User Systems
 
 On shared machines (e.g., a development server with multiple accounts):
 
-- The Unix socket is restricted to the owner, so other users cannot connect to
-  the daemon directly.
-- Log files (`hive.log`, `mux-daemon.log`) are created with mode `0o600` and
+- The socket directory is created `0o700`, so other users cannot connect to the
+  daemon directly — subject to the pre-existing-directory caveat above.
+- Log files (`hived.log`, `hivegui.log`) are created with mode `0o600` and
   are not readable by other users.
 - Agent session output is not exposed outside the daemon process.
 
-### Hook Scripts
+### Agent Processes
 
-Hook scripts in `~/.config/hive/hooks/` are executed as the user who launched
-Hive. Only executable files are run. Review any scripts you place there, as
-they have the same permissions as the Hive process.
+Agents (Claude, Codex, Gemini, …) run as child processes of `hived` with the
+same permissions as the user who launched Hive. Hive does not sandbox them.
