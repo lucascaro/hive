@@ -1731,9 +1731,19 @@ body.resizing-sidebar #app { transition: none; }
 #worktrees-panel section {
   overflow-y: auto;
   padding: 12px 14px 4px;
+  /* Flex items refuse to shrink below their content unless this is
+     said explicitly, which is how a repo with a hundred branches used
+     to push the worktree list clean out of the panel. */
+  min-height: 0;
 }
-#worktrees-section-trees { flex: 1 1 auto; }
-#worktrees-section-branches { flex: 0 1 auto; border-top: 1px solid #1e1e1e; }
+/* The worktrees are the point of this panel, so they get the top half
+   and scroll inside it; the branch list takes whatever is left and
+   scrolls separately. Neither can crowd the other out. */
+#worktrees-section-trees { flex: 0 0 auto; max-height: 50%; }
+#worktrees-section-branches {
+  flex: 1 1 auto;
+  border-top: 1px solid #1e1e1e;
+}
 #worktrees-panel section.hidden { display: none; }
 
 /* Loading / empty state. Mirrors the session tile's phase overlay —
@@ -1827,6 +1837,13 @@ body.resizing-sidebar #app { transition: none; }
   border: 1px solid #2a2a2a;
   border-radius: 3px;
   padding: 1px 4px;
+}
+/* Merged is the "this is safe to sweep" signal, so it reads as
+   positive rather than as another grey tag. */
+.worktree-badge.merged {
+  color: #4ade80;
+  border-color: #14532d;
+  background: rgba(22, 101, 52, 0.18);
 }
 .worktree-actions {
   display: flex;

@@ -183,6 +183,86 @@ func TestListBranches_MarksMergedIntoDefault(t *testing.T) {
 	}
 }
 
+func TestListBranches_DetectsSquashMerge(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	// Catch local main up with the upstream tip so the squash commit
+	// can be pushed later.
+	mustGit(t, repo, "fetch", "-q", "origin")
+	mustGit(t, repo, "merge", "-q", "--ff-only", "origin/main")
+
+	// A branch with two commits, the shape a squash merge collapses.
+	mustGit(t, repo, "checkout", "-q", "-b", "squashed")
+	mustWrite(t, filepath.Join(repo, "a.txt"), "one")
+	mustGit(t, repo, "add", "a.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "one")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "two")
+	mustGit(t, repo, "add", "b.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "two")
+
+	// Squash it onto main and publish — exactly what a GitHub squash
+	// merge leaves behind: same tree, unrelated commit, branch not an
+	// ancestor of origin/main.
+	mustGit(t, repo, "checkout", "-q", "main")
+	mustGit(t, repo, "merge", "-q", "--squash", "squashed")
+	mustGit(t, repo, "commit", "-q", "-m", "squashed (#1)")
+	mustGit(t, repo, "push", "-q", "origin", "main")
+
+	// A branch whose work is genuinely not upstream.
+	mustGit(t, repo, "checkout", "-q", "-b", "diverged")
+	mustWrite(t, filepath.Join(repo, "c.txt"), "three")
+	mustGit(t, repo, "add", "c.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "three")
+	mustGit(t, repo, "checkout", "-q", "main")
+
+	branches, err := ListBranches(repo)
+	if err != nil {
+		t.Fatalf("ListBranches: %v", err)
+	}
+	sq := findBranch(branches, "squashed")
+	if sq == nil {
+		t.Fatalf("squashed missing: %+v", branches)
+	}
+	if !sq.Merged {
+		t.Errorf("squashed Merged = false, want true (Ahead=%d)", sq.Ahead)
+	}
+	div := findBranch(branches, "diverged")
+	if div == nil {
+		t.Fatalf("diverged missing: %+v", branches)
+	}
+	if div.Merged {
+		t.Errorf("diverged Merged = true, want false")
+	}
+}
+
+func TestInspect_SquashMergedWorktreeIsPristine(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	mustGit(t, repo, "fetch", "-q", "origin")
+	mustGit(t, repo, "merge", "-q", "--ff-only", "origin/main")
+
+	wt := WorktreePath(repo, "done")
+	mustGit(t, repo, "worktree", "add", "-q", "-b", "done", wt, "main")
+	mustWrite(t, filepath.Join(wt, "a.txt"), "one")
+	mustGit(t, wt, "add", "a.txt")
+	mustGit(t, wt, "commit", "-q", "-m", "one")
+
+	mustGit(t, repo, "merge", "-q", "--squash", "done")
+	mustGit(t, repo, "commit", "-q", "-m", "done (#1)")
+	mustGit(t, repo, "push", "-q", "origin", "main")
+
+	s, err := Inspect(repo, wt)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !s.Merged {
+		t.Errorf("Merged = false, want true (%+v)", s)
+	}
+	// Ahead of origin/main by the pre-squash commit, yet nothing is
+	// lost by removing it.
+	if !s.Pristine() {
+		t.Errorf("Pristine() = false, want true (%+v)", s)
+	}
+}
+
 func TestInspect_CleanWorktreeIsPristine(t *testing.T) {
 	repo, _, _ := initRepoWithUpstream(t)
 	wt := WorktreePath(repo, "clean")

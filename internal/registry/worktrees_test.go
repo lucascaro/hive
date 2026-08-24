@@ -144,7 +144,7 @@ func TestRemoveWorktree_RefusesWhenLiveSessionInside(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 
 	for _, force := range []bool{false, true} {
-		err := r.RemoveWorktree(p.ID, e.WorktreePath, force, false)
+		err := r.RemoveWorktree(p.ID, e.WorktreePath, force, false, false)
 		if !errors.Is(err, ErrWorktreeInUse) {
 			t.Fatalf("force=%v: got %v, want ErrWorktreeInUse", force, err)
 		}
@@ -160,13 +160,13 @@ func TestRemoveWorktree_RefusesDirtyWithoutForce(t *testing.T) {
 	wt := newWorktree(t, p.Cwd, "dirty-tree")
 	mustWriteFile(t, filepath.Join(wt, "scratch.txt"), "unsaved")
 
-	if err := r.RemoveWorktree(p.ID, wt, false, false); !errors.Is(err, ErrWorktreeDirty) {
+	if err := r.RemoveWorktree(p.ID, wt, false, false, false); !errors.Is(err, ErrWorktreeDirty) {
 		t.Fatalf("got %v, want ErrWorktreeDirty", err)
 	}
 	if _, err := os.Stat(wt); err != nil {
 		t.Fatalf("worktree removed despite the refusal: %v", err)
 	}
-	if err := r.RemoveWorktree(p.ID, wt, true, false); err != nil {
+	if err := r.RemoveWorktree(p.ID, wt, true, false, false); err != nil {
 		t.Fatalf("force remove: %v", err)
 	}
 	if _, err := os.Stat(wt); err == nil {
@@ -183,7 +183,7 @@ func TestRemoveWorktree_RefusesUnpushedWithoutForce(t *testing.T) {
 	runGit(t, wt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a")
 
 	// git status is clean here — only the unpushed check catches this.
-	err := r.RemoveWorktree(p.ID, wt, false, false)
+	err := r.RemoveWorktree(p.ID, wt, false, false, false)
 	if !errors.Is(err, ErrWorktreeUnpushed) {
 		t.Fatalf("got %v, want ErrWorktreeUnpushed", err)
 	}
@@ -197,7 +197,7 @@ func TestRemoveWorktree_KeepsBranchByDefault(t *testing.T) {
 	r, p := freshRegistryWithProject(t)
 	wt := newWorktree(t, p.Cwd, "keepme")
 
-	if err := r.RemoveWorktree(p.ID, wt, false, false); err != nil {
+	if err := r.RemoveWorktree(p.ID, wt, false, false, false); err != nil {
 		t.Fatalf("RemoveWorktree: %v", err)
 	}
 	if _, err := os.Stat(wt); err == nil {
@@ -222,7 +222,7 @@ func TestRemoveWorktree_DeleteBranchOptionRemovesRef(t *testing.T) {
 	r, p := freshRegistryWithProject(t)
 	wt := newWorktree(t, p.Cwd, "goodbye")
 
-	if err := r.RemoveWorktree(p.ID, wt, false, true); err != nil {
+	if err := r.RemoveWorktree(p.ID, wt, false, true, false); err != nil {
 		t.Fatalf("RemoveWorktree: %v", err)
 	}
 	if gitOutput(t, p.Cwd, "rev-parse", "--verify", "--quiet", "refs/heads/goodbye") != "" {
@@ -239,7 +239,7 @@ func TestRemoveWorktree_DeletesTheWorktreesOwnBranch(t *testing.T) {
 	wt := newWorktree(t, p.Cwd, "target")
 	runGit(t, p.Cwd, "branch", "bystander")
 
-	if err := r.RemoveWorktree(p.ID, wt, false, true); err != nil {
+	if err := r.RemoveWorktree(p.ID, wt, false, true, false); err != nil {
 		t.Fatalf("RemoveWorktree: %v", err)
 	}
 	if gitOutput(t, p.Cwd, "rev-parse", "--verify", "--quiet", "refs/heads/bystander") == "" {
@@ -262,7 +262,7 @@ func TestRemoveWorktree_RejectsPathOutsideWorktreesDir(t *testing.T) {
 		filepath.Join(p.Cwd, ".worktrees", "..", "..", filepath.Base(outside)),
 		filepath.Join(p.Cwd, ".worktrees-evil", "x"),
 	} {
-		if err := r.RemoveWorktree(p.ID, path, true, true); err == nil {
+		if err := r.RemoveWorktree(p.ID, path, true, true, false); err == nil {
 			t.Errorf("RemoveWorktree(%q) succeeded; want a containment refusal", path)
 		}
 	}
@@ -519,7 +519,7 @@ func TestRemoveWorktree_InUseErrorNamesSessions(t *testing.T) {
 	defer r.Kill(e.ID, true)
 	time.Sleep(80 * time.Millisecond)
 
-	err = r.RemoveWorktree(p.ID, e.WorktreePath, false, false)
+	err = r.RemoveWorktree(p.ID, e.WorktreePath, false, false, false)
 	if err == nil || !strings.Contains(err.Error(), e.ID) {
 		t.Errorf("error %v does not name the blocking session %s", err, e.ID)
 	}
@@ -542,7 +542,7 @@ func TestRemoveWorktree_CleansUpAStaleEntryWhoseDirIsGone(t *testing.T) {
 		t.Skip("git already pruned the entry; nothing stale to clean")
 	}
 
-	if err := r.RemoveWorktree(p.ID, wt, false, false); err != nil {
+	if err := r.RemoveWorktree(p.ID, wt, false, false, false); err != nil {
 		t.Fatalf("RemoveWorktree on a stale entry: %v", err)
 	}
 	if strings.Contains(gitOutput(t, p.Cwd, "worktree", "list"), "vanished") {
@@ -556,7 +556,7 @@ func TestDeleteBranch_RemovesAMergedOrphan(t *testing.T) {
 	// Points at main, so it is merged by definition.
 	runGit(t, p.Cwd, "branch", "tidy-me")
 
-	if err := r.DeleteBranch(p.ID, "tidy-me", false); err != nil {
+	if err := r.DeleteBranch(p.ID, "tidy-me", false, false); err != nil {
 		t.Fatalf("DeleteBranch: %v", err)
 	}
 	if gitOutput(t, p.Cwd, "rev-parse", "--verify", "--quiet", "refs/heads/tidy-me") != "" {
@@ -576,14 +576,14 @@ func TestDeleteBranch_RefusesUnmergedWithoutForce(t *testing.T) {
 	runGit(t, p.Cwd, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "w")
 	runGit(t, p.Cwd, "checkout", "-q", "main")
 
-	err := r.DeleteBranch(p.ID, "has-work", false)
+	err := r.DeleteBranch(p.ID, "has-work", false, false)
 	if !errors.Is(err, ErrBranchUnmerged) {
 		t.Fatalf("got %v, want ErrBranchUnmerged", err)
 	}
 	if gitOutput(t, p.Cwd, "rev-parse", "--verify", "--quiet", "refs/heads/has-work") == "" {
 		t.Fatal("branch was deleted despite the refusal")
 	}
-	if err := r.DeleteBranch(p.ID, "has-work", true); err != nil {
+	if err := r.DeleteBranch(p.ID, "has-work", true, false); err != nil {
 		t.Fatalf("forced DeleteBranch: %v", err)
 	}
 	if gitOutput(t, p.Cwd, "rev-parse", "--verify", "--quiet", "refs/heads/has-work") != "" {
@@ -599,7 +599,7 @@ func TestDeleteBranch_RefusesWhenTheBranchStillHasAWorktree(t *testing.T) {
 	wt := newWorktree(t, p.Cwd, "occupied")
 
 	for _, force := range []bool{false, true} {
-		if err := r.DeleteBranch(p.ID, "occupied", force); !errors.Is(err, ErrBranchHasWorktree) {
+		if err := r.DeleteBranch(p.ID, "occupied", force, false); !errors.Is(err, ErrBranchHasWorktree) {
 			t.Fatalf("force=%v: got %v, want ErrBranchHasWorktree", force, err)
 		}
 	}
@@ -614,10 +614,10 @@ func TestDeleteBranch_RefusesWhenTheBranchStillHasAWorktree(t *testing.T) {
 func TestDeleteBranch_UnknownBranchAndEmptyName(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
-	if err := r.DeleteBranch(p.ID, "no-such-branch", true); err == nil {
+	if err := r.DeleteBranch(p.ID, "no-such-branch", true, false); err == nil {
 		t.Error("deleting an unknown branch succeeded")
 	}
-	if err := r.DeleteBranch(p.ID, "   ", true); err == nil {
+	if err := r.DeleteBranch(p.ID, "   ", true, false); err == nil {
 		t.Error("empty branch name accepted")
 	}
 }
@@ -729,7 +729,7 @@ func TestListWorktrees_WorksWhenTheProjectCwdIsALinkedWorktree(t *testing.T) {
 	}
 	// And removal of a sibling still works — managedPath's base was
 	// wrong before, so this was refused outright.
-	if err := r.RemoveWorktree(p.ID, sibling, false, false); err != nil {
+	if err := r.RemoveWorktree(p.ID, sibling, false, false, false); err != nil {
 		t.Fatalf("RemoveWorktree on a sibling worktree: %v", err)
 	}
 }

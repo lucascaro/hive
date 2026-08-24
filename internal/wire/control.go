@@ -340,6 +340,15 @@ type WorktreeInfo struct {
 	// upstream and no default ref). Clients must render it as
 	// "unsafe to delete", never as clean.
 	Unknown bool `json:"unknown,omitempty"`
+	// Upstream is the branch's tracking ref ("origin/foo"), empty when
+	// it tracks nothing. Clients use it to know whether there is a
+	// remote branch that could also be deleted.
+	Upstream string `json:"upstream,omitempty"`
+	// Merged means the branch's work is already in the default ref,
+	// including via a squash merge. Unpushed commits on a merged
+	// branch are not lost work, so clients may offer removal without
+	// the destructive confirm.
+	Merged bool `json:"merged,omitempty"`
 	// SessionIDs are the live sessions whose cwd is this worktree.
 	// Non-empty ⇒ removal and rename are refused.
 	SessionIDs []string `json:"session_ids,omitempty"`
@@ -352,7 +361,9 @@ type BranchInfo struct {
 	Name     string `json:"name"`
 	Upstream string `json:"upstream,omitempty"`
 	Ahead    int    `json:"ahead,omitempty"`
-	Merged   bool   `json:"merged,omitempty"`
+	// Merged: reachable from the default ref, or merged into it by a
+	// squash (detected by patch id, or by GitHub PR state).
+	Merged bool `json:"merged,omitempty"`
 }
 
 // WorktreesResp is the daemon's answer to LIST_WORKTREES and to every
@@ -378,6 +389,10 @@ type RemoveWorktreeReq struct {
 	Path         string `json:"path"`
 	Force        bool   `json:"force,omitempty"`
 	DeleteBranch bool   `json:"delete_branch,omitempty"`
+	// DeleteRemote also deletes the branch on its remote. Requires
+	// DeleteBranch — the remote copy is the last handle on the work
+	// once the local ref is gone, so the two go together or not at all.
+	DeleteRemote bool `json:"delete_remote,omitempty"`
 }
 
 // CreateWorktreeReq materializes a worktree for a branch that already
@@ -406,6 +421,9 @@ type DeleteBranchReq struct {
 	ProjectID string `json:"project_id"`
 	Branch    string `json:"branch"`
 	Force     bool   `json:"force,omitempty"`
+	// DeleteRemote also deletes the branch on its remote (a push, so
+	// it needs the network). Ignored for a branch that tracks nothing.
+	DeleteRemote bool `json:"delete_remote,omitempty"`
 }
 
 // WriteJSON marshals v and writes it as a frame of type t.

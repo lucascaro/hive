@@ -688,7 +688,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.RemoveWorktree(req.ProjectID, req.Path, req.Force, req.DeleteBranch); err != nil {
+				if err := d.reg.RemoveWorktree(req.ProjectID, req.Path, req.Force, req.DeleteBranch, req.DeleteRemote); err != nil {
 					sendWorktreeError(err, "remove_worktree_failed")
 					return
 				}
@@ -714,7 +714,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.DeleteBranch(req.ProjectID, req.Branch, req.Force); err != nil {
+				if err := d.reg.DeleteBranch(req.ProjectID, req.Branch, req.Force, req.DeleteRemote); err != nil {
 					sendWorktreeError(err, "delete_branch_failed")
 					return
 				}

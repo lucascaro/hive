@@ -200,6 +200,14 @@ function makeButton(
   return btn;
 }
 
+// makeBadge builds the small uppercase tag at the right of a row.
+function makeBadge(text: string, merged = false): HTMLElement {
+  const badge = document.createElement('span');
+  badge.className = merged ? 'worktree-badge merged' : 'worktree-badge';
+  badge.textContent = text;
+  return badge;
+}
+
 function worktreeRow(w: WorktreeInfo): HTMLElement {
   const row = document.createElement('div');
   row.className = 'worktree-row';
@@ -223,10 +231,11 @@ function worktreeRow(w: WorktreeInfo): HTMLElement {
   row.appendChild(main);
 
   if (readIsMain(w)) {
-    const badge = document.createElement('span');
-    badge.className = 'worktree-badge';
-    badge.textContent = 'main';
-    row.appendChild(badge);
+    row.appendChild(makeBadge('main'));
+  } else if (w.merged) {
+    // The whole point of the merged check is to be spottable at a
+    // glance, so it gets a badge rather than a word in the status line.
+    row.appendChild(makeBadge('merged', true));
   }
 
   const actions = document.createElement('div');
@@ -305,6 +314,7 @@ function branchRow(b: BranchInfo): HTMLElement {
   main.appendChild(name);
   main.appendChild(status);
   row.appendChild(main);
+  if (b.merged) row.appendChild(makeBadge('merged', true));
 
   const actions = document.createElement('div');
   actions.className = 'worktree-actions';
@@ -338,11 +348,15 @@ function branchRow(b: BranchInfo): HTMLElement {
 // daemon re-checks either way and answers with branch_unmerged if this
 // view is stale.
 async function confirmAndDeleteBranch(b: BranchInfo): Promise<void> {
-  if (!(await askDeleteBranch(b))) return;
+  const choice = await askDeleteBranch(b);
+  if (choice === 'cancel') return;
   if (!worktreesOpen() || !modalState.projectId) return;
-  DeleteBranch(modalState.projectId, b.name, !b.merged).catch(
-    reportFailure('delete branch'),
-  );
+  DeleteBranch(
+    modalState.projectId,
+    b.name,
+    !b.merged,
+    choice === 'remote',
+  ).catch(reportFailure('delete branch'));
 }
 
 // startRename swaps the row's label for an input, via the shared
@@ -390,8 +404,9 @@ function cssEscape(value: string): string {
   return fn ? fn(value) : value.replace(/["\\]/g, '\\$&');
 }
 
-// What the user chose in the delete dialog.
-type DeleteChoice = 'both' | 'keep-branch' | 'cancel';
+// What the user chose in the delete dialog. 'both' takes the branch
+// with the directory; 'everywhere' takes the remote branch too.
+type DeleteChoice = 'everywhere' | 'both' | 'keep-branch' | 'cancel';
 
 // askDelete puts the three real outcomes on screen as buttons. A native
 // Confirm can only answer yes/no, which forced the branch question and
@@ -403,7 +418,19 @@ async function askDelete(w: WorktreeInfo): Promise<DeleteChoice> {
     { label: 'Delete, keep branch', value: 'keep-branch' },
   ];
   if (w.branch) {
-    choices.push({ label: 'Delete both', value: 'both', danger: true });
+    // Not danger-styled when the branch is already merged and nothing
+    // else is at stake — there is no work left to lose.
+    const danger = needsConfirm(w) || !w.merged;
+    choices.push({ label: 'Delete + local branch', value: 'both', danger });
+    // Only offered when there is a remote branch to delete: a push is
+    // the one step of this that reaches beyond the machine.
+    if (w.upstream) {
+      choices.push({
+        label: 'Delete + branch everywhere',
+        value: 'everywhere',
+        danger,
+      });
+    }
   }
   const answer = await openChoiceDialog({
     title: needsConfirm(w)
@@ -428,18 +455,27 @@ function noteFor(w: WorktreeInfo): string {
   if (!w.branch) {
     return 'This worktree has no branch. Deleting it cannot be undone.';
   }
+  const remote = w.upstream
+    ? ` “Everywhere” also deletes ${w.upstream} on the remote.`
+    : '';
   if (w.uncommitted) {
     return (
       `Its uncommitted changes are destroyed either way — nothing keeps those. ` +
-      `Keeping the branch “${w.branch}” preserves only the commits already made.`
+      `Keeping the branch “${w.branch}” preserves only the commits already made.${remote}`
     );
   }
-  return `Keeping the branch “${w.branch}” leaves its commits recoverable. Deleting both cannot be undone.`;
+  if (w.merged) {
+    return `The branch “${w.branch}” is already merged into the default branch, so deleting it loses nothing.${remote}`;
+  }
+  return `Keeping the branch “${w.branch}” leaves its commits recoverable. Deleting it cannot be undone.${remote}`;
 }
+
+// 'remote' deletes the branch on its remote as well as locally.
+type BranchDeleteChoice = 'remote' | 'local' | 'cancel';
 
 // askDeleteBranch confirms removing an orphaned branch — the last
 // handle on whatever commits only it has.
-async function askDeleteBranch(b: BranchInfo): Promise<boolean> {
+async function askDeleteBranch(b: BranchInfo): Promise<BranchDeleteChoice> {
   const bullets: string[] = [];
   if (!b.merged) {
     const ahead = b.ahead ?? 0;
@@ -460,12 +496,22 @@ async function askDeleteBranch(b: BranchInfo): Promise<boolean> {
     note: b.merged
       ? 'Its commits are already merged, so nothing is lost.'
       : 'Deleting an unmerged branch discards those commits. This cannot be undone.',
-    choices: [
-      { label: 'Cancel', value: 'cancel' },
-      { label: 'Delete branch', value: 'delete', danger: !b.merged },
-    ],
+    choices: b.upstream
+      ? [
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Delete local only', value: 'local', danger: !b.merged },
+          {
+            label: 'Delete local + remote',
+            value: 'remote',
+            danger: !b.merged,
+          },
+        ]
+      : [
+          { label: 'Cancel', value: 'cancel' },
+          { label: 'Delete branch', value: 'local', danger: !b.merged },
+        ],
   });
-  return answer === 'delete';
+  return answer as BranchDeleteChoice;
 }
 
 // confirmAndDelete is the destructive path. The blockers are computed
@@ -483,7 +529,8 @@ async function confirmAndDelete(w: WorktreeInfo): Promise<void> {
     modalState.projectId,
     w.path,
     needsConfirm(w),
-    choice === 'both',
+    choice === 'both' || choice === 'everywhere',
+    choice === 'everywhere',
   ).catch(reportFailure('delete worktree'));
 }
 

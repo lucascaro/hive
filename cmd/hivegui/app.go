@@ -588,13 +588,14 @@ func (a *App) ListWorktrees(projectID string) error {
 // control:error channel; the GUI confirms and retries with force for
 // the latter two. force never overrides the in-use refusal.
 // deleteBranch additionally removes the branch the worktree was on.
-func (a *App) RemoveWorktree(projectID, path string, force, deleteBranch bool) error {
+func (a *App) RemoveWorktree(projectID, path string, force, deleteBranch, deleteRemote bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameRemoveWorktree, wire.RemoveWorktreeReq{
-		ProjectID: projectID, Path: path, Force: force, DeleteBranch: deleteBranch,
+		ProjectID: projectID, Path: path, Force: force,
+		DeleteBranch: deleteBranch, DeleteRemote: deleteRemote,
 	})
 }
 
@@ -613,13 +614,13 @@ func (a *App) CreateWorktree(projectID, branch string) error {
 // DeleteBranch removes a local branch that has no worktree. The daemon
 // refuses with "branch_unmerged" when the branch holds commits that are
 // not merged; the GUI confirms and retries with force.
-func (a *App) DeleteBranch(projectID, branch string, force bool) error {
+func (a *App) DeleteBranch(projectID, branch string, force, deleteRemote bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameDeleteBranch, wire.DeleteBranchReq{
-		ProjectID: projectID, Branch: branch, Force: force,
+		ProjectID: projectID, Branch: branch, Force: force, DeleteRemote: deleteRemote,
 	})
 }
 

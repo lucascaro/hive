@@ -16,6 +16,10 @@ export interface WorktreeInfo {
   uncommitted?: boolean;
   unpushed?: number;
   unknown?: boolean;
+  merged?: boolean;
+  // Tracking ref ("origin/foo"), absent when the branch tracks
+  // nothing — and so when there is no remote branch to delete.
+  upstream?: string;
   session_ids?: string[];
   sessionIds?: string[];
 }
@@ -67,13 +71,23 @@ export function readOrphanBranches(p: WorktreesPayload): BranchInfo[] {
 //   holding  — detached, but carries work (uncommitted, unpushed, or
 //              an unanswerable base). Deleting it loses something.
 //   idle     — detached and provably empty; safe to sweep
+//
+// `merged` (the branch is already in the default ref, squash merges
+// included) neutralises the unpushed count: those commits exist
+// upstream, so the row is disposable despite being ahead.
 export type WorktreeKind = 'main' | 'active' | 'holding' | 'idle';
 
 export function classifyWorktree(w: WorktreeInfo): WorktreeKind {
   if (readIsMain(w)) return 'main';
   if (readSessionIds(w).length > 0) return 'active';
-  if (w.uncommitted || (w.unpushed ?? 0) > 0 || w.unknown) return 'holding';
+  if (w.uncommitted || hasUnpushedWork(w) || w.unknown) return 'holding';
   return 'idle';
+}
+
+// Unpushed commits that are not already merged elsewhere — the only
+// kind whose loss matters.
+function hasUnpushedWork(w: WorktreeInfo): boolean {
+  return (w.unpushed ?? 0) > 0 && !w.merged;
 }
 
 // A single blocker: `absolute` ones cannot be overridden by force, so
@@ -114,7 +128,7 @@ export function deleteBlockers(w: WorktreeInfo): Blocker[] {
     out.push({ reason: 'It has uncommitted changes.', absolute: false });
   }
   const unpushed = w.unpushed ?? 0;
-  if (unpushed > 0) {
+  if (hasUnpushedWork(w)) {
     out.push({
       reason:
         unpushed === 1
@@ -166,8 +180,11 @@ export function statusLabel(w: WorktreeInfo): string {
   else if (n > 1) parts.push(`${n} sessions`);
   if (w.detached) parts.push('detached HEAD');
   if (w.uncommitted) parts.push('uncommitted changes');
+  // Merged shows as a badge on the row, not as another word here —
+  // but it still suppresses the ahead count, which is noise once the
+  // work is upstream.
   const unpushed = w.unpushed ?? 0;
-  if (unpushed > 0) {
+  if (hasUnpushedWork(w)) {
     parts.push(
       unpushed === 1 ? '1 unpushed commit' : `${unpushed} unpushed commits`,
     );
@@ -211,7 +228,7 @@ export function sortBranches(list: BranchInfo[]): BranchInfo[] {
 
 export function branchStatusLabel(b: BranchInfo): string {
   const parts: string[] = [];
-  if (b.merged) parts.push('merged');
+  // "merged" is the row's badge, not a word here.
   const ahead = b.ahead ?? 0;
   if (ahead > 0) {
     parts.push(ahead === 1 ? '1 commit ahead' : `${ahead} commits ahead`);

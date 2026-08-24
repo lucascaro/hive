@@ -42,6 +42,18 @@ describe('classifyWorktree', () => {
     expect(classifyWorktree(wt({ unpushed: 2 }))).toBe('holding');
   });
 
+  // A squash merge leaves the branch ahead of the default ref while
+  // its work is already upstream, so the row is disposable.
+  it('treats a merged branch with unpushed commits as idle', () => {
+    expect(classifyWorktree(wt({ unpushed: 2, merged: true }))).toBe('idle');
+  });
+
+  it('still holds when a merged branch has uncommitted changes', () => {
+    expect(classifyWorktree(wt({ merged: true, uncommitted: true }))).toBe(
+      'holding',
+    );
+  });
+
   // The conservative direction: an unanswerable base must never read
   // as disposable.
   it('treats an unknown comparison base as holding work', () => {
@@ -105,6 +117,12 @@ describe('deleteBlockers', () => {
     expect(needsConfirm(w)).toBe(true);
   });
 
+  it('drops the unpushed blocker once the branch is merged', () => {
+    const w = wt({ unpushed: 3, merged: true });
+    expect(deleteBlockers(w)).toHaveLength(0);
+    expect(needsConfirm(w)).toBe(false);
+  });
+
   it('explains an unknown base instead of implying it is clean', () => {
     const blockers = deleteBlockers(wt({ unknown: true }));
     expect(blockers).toHaveLength(1);
@@ -153,6 +171,12 @@ describe('statusLabel', () => {
       wt({ session_ids: ['a', 'b'], uncommitted: true, unpushed: 1 }),
     );
     expect(label).toBe('2 sessions · uncommitted changes · 1 unpushed commit');
+  });
+
+  // The badge says "merged"; the label must not repeat the ahead
+  // count, which is misleading once the work is upstream.
+  it('drops the ahead count once merged', () => {
+    expect(statusLabel(wt({ unpushed: 2, merged: true }))).toBe('clean');
   });
 
   it('names the main checkout', () => {
@@ -228,7 +252,8 @@ describe('branchStatusLabel', () => {
     expect(branchStatusLabel({ name: 'x' })).toBe('no worktree');
   });
 
-  it('reports merged state, ahead count and upstream', () => {
+  // Merged is the row's badge, so the label carries only the counts.
+  it('reports ahead count and upstream', () => {
     expect(
       branchStatusLabel({
         name: 'x',
@@ -236,7 +261,7 @@ describe('branchStatusLabel', () => {
         ahead: 2,
         upstream: 'origin/x',
       }),
-    ).toBe('merged · 2 commits ahead · tracks origin/x');
+    ).toBe('2 commits ahead · tracks origin/x');
   });
 });
 
