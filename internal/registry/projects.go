@@ -166,10 +166,13 @@ func (r *Registry) CreateProject(req wire.CreateProjectReq) (*Project, error) {
 	}
 	p := &Project{
 		ID: id, Name: name, Color: color, Cwd: req.Cwd,
-		Order: len(r.projectOrder), Created: time.Now().UTC(),
+		Created: time.Now().UTC(),
 	}
 	r.projects[id] = p
 	r.projectOrder = append(r.projectOrder, id)
+	// Order comes from reindex, never from a literal here — one place
+	// assigns it, so the append can't disagree with the slice.
+	r.reindexProjectsLocked()
 	if err := r.persistProjectLocked(p); err != nil {
 		delete(r.projects, id)
 		r.projectOrder = r.projectOrder[:len(r.projectOrder)-1]
@@ -222,11 +225,16 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 		}
 	}
 
-	// Reassign or kill each affected session.
+	// Reassign or kill each affected session. The reassigned ones are
+	// snapshotted here, under the lock: `affected` holds live entries
+	// that stay in r.entries, so calling Info() on them after the
+	// unlock would race every concurrent Update/setPhase.
+	var reassigned []wire.SessionInfo
 	if !killSessions {
 		for _, e := range affected {
 			e.ProjectID = targetID
 			r.persistEntryLoggedLocked(e, "delete project (reassign)")
+			reassigned = append(reassigned, e.Info())
 		}
 	}
 
@@ -237,8 +245,10 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 			break
 		}
 	}
-	// Intentionally NOT renumbering — same rationale as Kill().
-	// See registry.go for the full comment.
+	// Every project after the removed one shifted down a slot, so
+	// Order follows and the survivors are broadcast at the tail —
+	// same reasoning as Kill(). See reindexLocked in registry.go.
+	r.reindexProjectsLocked()
 	r.persistProjectIndexLoggedLocked("delete project")
 
 	dir := filepath.Join(ProjectsDir(r.stateDir), id)
@@ -252,11 +262,18 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 			_ = r.Kill(e.ID, true)
 		}
 	} else {
-		for _, e := range affected {
-			r.broadcast(wire.SessionEventUpdated, e.Info())
+		for _, si := range reassigned {
+			r.broadcast(wire.SessionEventUpdated, si)
 		}
 	}
 	r.broadcastProject(wire.ProjectEventRemoved, info)
+	// Read the survivors HERE, not back under the lock above: the
+	// RemoveAll and the N worktree teardowns in between can take
+	// seconds, and a stale ProjectInfo would clobber whatever ran in
+	// that window. Same hazard as Kill's fan-out.
+	for _, pi := range r.ListProjects() {
+		r.broadcastProject(wire.ProjectEventUpdated, pi)
+	}
 	return nil
 }
 
@@ -314,14 +331,15 @@ func (r *Registry) moveProjectLocked(id string, newOrder int) {
 		return
 	}
 	r.projectOrder = moveInOrder(r.projectOrder, id, newOrder)
-	r.renumberProjectsLocked()
+	r.reindexProjectsLocked()
 }
 
-func (r *Registry) renumberProjectsLocked() {
+// reindexProjectsLocked is reindexLocked for projects — same
+// invariant, same reason. See registry.go.
+func (r *Registry) reindexProjectsLocked() {
 	for i, id := range r.projectOrder {
 		if p := r.projects[id]; p != nil {
 			p.Order = i
-			r.persistProjectLoggedLocked(p, "renumber projects")
 		}
 	}
 }

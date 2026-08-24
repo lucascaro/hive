@@ -14,8 +14,8 @@ import (
 )
 
 // orderIDs returns the registry's global order slice, plus a check that
-// every entry's Order field matches its index in it (renumberLocked's
-// invariant, which the splice must preserve).
+// every entry's Order field matches its index in it (reindexLocked's
+// invariant, which every r.order mutation must preserve).
 func orderIDs(t *testing.T, r *Registry) []string {
 	t.Helper()
 	r.mu.Lock()
@@ -273,5 +273,278 @@ func TestUpdateOrderMoveDownAndUpAcrossGlobalList(t *testing.T) {
 	want = []string{s[1].ID, s[2].ID, s[3].ID, s[0].ID}
 	if got := orderIDs(t, r); !slices.Equal(got, want) {
 		t.Fatalf("after move to tail: got %v, want %v", got, want)
+	}
+}
+
+// --- Kill compaction -------------------------------------------------
+//
+// Order is the index into r.order, and both GUI reorder paths hand a
+// sibling's .order straight back as an absolute index. A kill that left
+// holes behind used to break that: the holes made a later append reuse
+// an Order another entry already held, and every subsequent move
+// clamped or landed in the wrong slot.
+
+func TestKillCompactsOrderAndKeepsAppendsUnique(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	a := mustCreate(t, r, wire.CreateSpec{Name: "a"})
+	b := mustCreate(t, r, wire.CreateSpec{Name: "b"})
+	c := mustCreate(t, r, wire.CreateSpec{Name: "c"})
+
+	if err := r.Kill(a.ID, true); err != nil {
+		t.Fatalf("Kill a: %v", err)
+	}
+	// orderIDs asserts Order == index for every entry.
+	if got := orderIDs(t, r); !slices.Equal(got, []string{b.ID, c.ID}) {
+		t.Fatalf("after kill: got %v, want [b c]", got)
+	}
+
+	d := mustCreate(t, r, wire.CreateSpec{Name: "d"})
+	if got := orderIDs(t, r); !slices.Equal(got, []string{b.ID, c.ID, d.ID}) {
+		t.Fatalf("after append: got %v, want [b c d]", got)
+	}
+	seen := map[int]string{}
+	for _, info := range r.List() {
+		if prev, dup := seen[info.Order]; dup {
+			t.Fatalf("duplicate Order %d on %s and %s", info.Order, prev, info.ID)
+		}
+		seen[info.Order] = info.ID
+	}
+	for i := range 3 {
+		if _, ok := seen[i]; !ok {
+			t.Fatalf("Order %d missing — sequence is sparse: %v", i, seen)
+		}
+	}
+}
+
+func TestKillBroadcastsShiftedSessions(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	a := mustCreate(t, r, wire.CreateSpec{Name: "a"})
+	b := mustCreate(t, r, wire.CreateSpec{Name: "b"})
+	c := mustCreate(t, r, wire.CreateSpec{Name: "c"})
+
+	listener, unsub := r.Subscribe()
+	defer unsub()
+	drain(listener)
+
+	if err := r.Kill(a.ID, true); err != nil {
+		t.Fatalf("Kill a: %v", err)
+	}
+
+	// Collect until both survivors report their new Order, or time out.
+	want := map[string]int{b.ID: 0, c.ID: 1}
+	got := map[string]int{}
+	deadline := time.After(2 * time.Second)
+	for len(got) < len(want) {
+		select {
+		case ev := <-listener:
+			if ev.Kind != wire.SessionEventUpdated {
+				continue
+			}
+			if _, ok := want[ev.Session.ID]; ok {
+				got[ev.Session.ID] = ev.Session.Order
+			}
+		case <-deadline:
+			t.Fatalf("timed out; got %v, want %v", got, want)
+		}
+	}
+	for id, order := range want {
+		if got[id] != order {
+			t.Errorf("session %s: broadcast Order=%d, want %d", id, got[id], order)
+		}
+	}
+}
+
+func TestMoveAfterKillLandsWhereAsked(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	s := make([]*Entry, 4)
+	for i := range s {
+		s[i] = mustCreate(t, r, wire.CreateSpec{Name: string(rune('a' + i))})
+	}
+	if err := r.Kill(s[1].ID, true); err != nil {
+		t.Fatalf("Kill s1: %v", err)
+	}
+
+	// What the GUI does: read the target sibling's .order off List()
+	// and hand it back as the absolute index to splice at.
+	var target int
+	for _, info := range r.List() {
+		if info.ID == s[0].ID {
+			target = info.Order
+		}
+	}
+	if _, err := r.Update(wire.UpdateSessionReq{SessionID: s[3].ID, Order: &target}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	want := []string{s[3].ID, s[0].ID, s[2].ID}
+	if got := orderIDs(t, r); !slices.Equal(got, want) {
+		t.Fatalf("after move: got %v, want %v", got, want)
+	}
+}
+
+func TestLoadDerivesOrderFromIndexNotMeta(t *testing.T) {
+	skipOnWindows(t)
+	dir := t.TempDir()
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ids := make([]string, 3)
+	for i := range ids {
+		ids[i] = mustCreate(t, r, wire.CreateSpec{Name: string(rune('a' + i))}).ID
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Skew every session.json the way a pre-compaction build would
+	// have left it: sparse, out of step with index.json's slice.
+	for i, id := range ids {
+		path := filepath.Join(SessionsDir(dir), id, "session.json")
+		var meta MetaFile
+		if err := readJSON(path, &meta); err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		meta.Order = 90 - i*10
+		if err := writeJSON(path, meta); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+	// orderIDs asserts Order == index; the skewed (and reversed) meta
+	// values must lose to index.json.
+	if got := orderIDs(t, r2); !slices.Equal(got, ids) {
+		t.Fatalf("after reload: got %v, want %v", got, ids)
+	}
+}
+
+func TestKillProjectCompactsProjectOrder(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+
+	made := make([]*Project, 3)
+	for i := range made {
+		p, err := r.CreateProject(wire.CreateProjectReq{Name: string(rune('a' + i))})
+		if err != nil {
+			t.Fatalf("CreateProject: %v", err)
+		}
+		made[i] = p
+	}
+	if err := r.KillProject(made[0].ID, false); err != nil {
+		t.Fatalf("KillProject: %v", err)
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, id := range r.projectOrder {
+		p := r.projects[id]
+		if p == nil {
+			t.Fatalf("projectOrder[%d]=%s has no project", i, id)
+		}
+		if p.Order != i {
+			t.Errorf("project %s: Order=%d, want %d", p.Name, p.Order, i)
+		}
+	}
+}
+
+// TestKillBroadcastsSurvivorsReadAfterTeardown pins the ordering of
+// Kill's fan-out against its own teardown. Kill releases r.mu, then
+// closes the PTY and runs `git worktree remove` — seconds on a real
+// worktree — before it broadcasts. Reading the survivors BEFORE that
+// window and sending the snapshot after it clobbers whatever ran
+// meanwhile, which is how a stale .order comes back: the late
+// broadcast overwrites the client's correct values with pre-teardown
+// ones, and the next reorder (which sends an absolute index) misfires.
+//
+// r.gitMu is the seam: force=true skips the dirty pre-flight, so the
+// kill's only git work is the cleanup, and holding gitMu parks it
+// exactly inside the window with r.mu already released. The mid-window
+// mutation is a reorder rather than a create because the create path
+// takes gitMu too (create.go:263, worktree adoption) and would
+// deadlock against the very lock this test is holding.
+func TestKillBroadcastsSurvivorsReadAfterTeardown(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	// w owns the worktree, so killing it takes the git-cleanup path.
+	w := mustCreate(t, r, wire.CreateSpec{
+		Name: "w", ProjectID: p.ID, UseWorktree: true,
+	})
+	a := mustCreate(t, r, wire.CreateSpec{Name: "a", ProjectID: p.ID})
+	b := mustCreate(t, r, wire.CreateSpec{Name: "b", ProjectID: p.ID})
+
+	listener, unsub := r.Subscribe()
+	defer unsub()
+
+	r.gitMu.Lock() // freeze the teardown before it starts
+	killed := make(chan error, 1)
+	go func() { killed <- r.Kill(w.ID, true) }()
+
+	// Wait until the kill has passed the locked section (w is gone from
+	// the registry) and is parked on gitMu.
+	deadline := time.After(5 * time.Second)
+	for len(r.List()) > 2 {
+		select {
+		case <-deadline:
+			r.gitMu.Unlock()
+			t.Fatal("kill never reached the teardown window")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+
+	// Mid-window: move b above a. A snapshot taken before this now
+	// describes the opposite order.
+	drain(listener)
+	top := 0
+	if _, err := r.Update(wire.UpdateSessionReq{SessionID: b.ID, Order: &top}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	r.gitMu.Unlock()
+	if err := <-killed; err != nil {
+		t.Fatalf("Kill w: %v", err)
+	}
+
+	if got := orderIDs(t, r); !slices.Equal(got, []string{b.ID, a.ID}) {
+		t.Fatalf("registry order: got %v, want [b a]", got)
+	}
+	// Whatever the fan-out said LAST for each session must agree with
+	// where that session actually sits. Kill broadcasts before it
+	// returns, so everything is queued by now — read until the stream
+	// goes quiet rather than stopping at the first sighting of each
+	// id, which would only ever see the reorder's (correct) events and
+	// never the kill's.
+	want := map[string]int{b.ID: 0, a.ID: 1}
+	last := map[string]int{}
+	for draining := true; draining; {
+		select {
+		case ev := <-listener:
+			if ev.Kind != wire.SessionEventUpdated {
+				continue
+			}
+			if _, ok := want[ev.Session.ID]; ok {
+				last[ev.Session.ID] = ev.Session.Order
+			}
+		case <-time.After(500 * time.Millisecond):
+			draining = false
+		}
+	}
+	if len(last) != len(want) {
+		t.Fatalf("saw %v, want an update for each of %v", last, want)
+	}
+	for id, order := range want {
+		if last[id] != order {
+			t.Errorf("session %s: last broadcast Order=%d, want %d", id, last[id], order)
+		}
 	}
 }

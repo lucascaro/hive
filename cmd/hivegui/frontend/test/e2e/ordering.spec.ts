@@ -129,6 +129,35 @@ test.describe('session ordering', () => {
     expect(new Set(pids).size).toBe(1);
   });
 
+  // The regression this whole fix is about, end to end: a kill used to
+  // leave a hole in the daemon's .order sequence, the next create
+  // reused a number that was still in use, and the reorder — which
+  // sends a sibling's .order as an absolute index — landed in the
+  // wrong slot or clamped to the end.
+  test('⇧⌘↓ still moves correctly after a kill and a create', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const before = await sidebarIds(page);
+    await page.evaluate((id) => window.__hive.killSession?.(id), before[0]);
+    await expect.poll(() => sidebarIds(page)).toHaveLength(3);
+    await page.evaluate(() => window.__hive.addSession?.('fresh'));
+    await expect.poll(() => sidebarIds(page)).toHaveLength(4);
+
+    // Nobody shares an order value, and the sequence has no holes.
+    const orders = await page.evaluate(
+      () => window.__hive.state?.sessions.map((s) => s.order) ?? [],
+    );
+    expect(orders).toEqual([0, 1, 2, 3]);
+
+    const rows = await sidebarIds(page);
+    await activate(page, rows[0]);
+    await page.keyboard.press(`${MOD}+Shift+ArrowDown`);
+    await expect
+      .poll(() => sidebarIds(page))
+      .toEqual([rows[1], rows[0], rows[2], rows[3]]);
+  });
+
   test('⇧⌘↑ on the first session wraps to the bottom of its project', async ({
     page,
   }) => {

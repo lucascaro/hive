@@ -10,9 +10,13 @@ import (
 
 // MetaFile is what we write to <session_dir>/session.json.
 type MetaFile struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Color          string    `json:"color"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
+	// Order is advisory. index.json's id slice is the authority and
+	// is what load() derives each entry's Order from; this copy is
+	// only refreshed when the entry itself is rewritten, so it goes
+	// stale whenever a sibling is killed or moved.
 	Order          int       `json:"order"`
 	Created        time.Time `json:"created"`
 	Agent          string    `json:"agent,omitempty"`           // canonical agent ID; "" = shell
@@ -39,7 +43,7 @@ type ProjectMetaFile struct {
 	Name    string    `json:"name"`
 	Color   string    `json:"color"`
 	Cwd     string    `json:"cwd,omitempty"`
-	Order   int       `json:"order"`
+	Order   int       `json:"order"` // advisory; see MetaFile.Order
 	Created time.Time `json:"created"`
 }
 

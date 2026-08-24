@@ -113,9 +113,10 @@ func TestCreateListKill(t *testing.T) {
 	expectEvent("removed")
 
 	got = r.List()
-	// Kill leaves the surviving entries with their original Order
-	// (gaps are fine — the GUI sort handles them). Beta keeps Order=1.
-	if len(got) != 1 || got[0].ID != b.ID || got[0].Order != 1 {
+	// Kill compacts the sequence: Order is the index into r.order, so
+	// beta slides from 1 to 0. Gaps would break the GUI reorder paths,
+	// which hand a sibling's .order back as an absolute index.
+	if len(got) != 1 || got[0].ID != b.ID || got[0].Order != 0 {
 		t.Errorf("after kill: %+v", got)
 	}
 }
