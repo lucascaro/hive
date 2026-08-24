@@ -59,7 +59,11 @@ export interface WorktreesDeps {
   setFocusedTile: (id: string | null) => void;
   refocusActiveTerm: () => void;
   // openSessionIn launches the agent picker for an existing worktree.
-  openSessionIn: (projectId: string, worktreePath: string) => void;
+  openSessionIn: (
+    projectId: string,
+    worktreePath: string,
+    continueConversation: boolean,
+  ) => void;
 }
 
 let deps: WorktreesDeps = {
@@ -229,18 +233,27 @@ function worktreeRow(w: WorktreeInfo): HTMLElement {
   actions.className = 'worktree-actions';
 
   if (!readIsMain(w)) {
+    const startSession = (continueConversation: boolean) => {
+      // Close FIRST, then open the launcher. closeWorktrees refocuses
+      // the active terminal, and the launcher closes itself on
+      // focusout — opening it first means it vanishes immediately.
+      const projectId = modalState.projectId;
+      closeWorktrees();
+      deps.openSessionIn(projectId, w.path, continueConversation);
+    };
     actions.appendChild(
       makeButton(
-        'Open session',
-        'Start a session in this worktree',
-        () => {
-          // Close FIRST, then open the launcher. closeWorktrees refocuses
-          // the active terminal, and the launcher closes itself on
-          // focusout — opening it first means it vanishes immediately.
-          const projectId = modalState.projectId;
-          closeWorktrees();
-          deps.openSessionIn(projectId, w.path);
-        },
+        'New session',
+        'Start a fresh session in this worktree',
+        () => startSession(false),
+        { opensLauncher: true },
+      ),
+    );
+    actions.appendChild(
+      makeButton(
+        'Continue',
+        'Start a session and resume the last conversation in this worktree',
+        () => startSession(true),
         { opensLauncher: true },
       ),
     );

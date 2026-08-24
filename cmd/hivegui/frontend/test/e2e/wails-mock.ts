@@ -18,7 +18,13 @@ type CustomAgent = main.CustomAgent;
 // rather than widen the source interfaces — the mock is the one that has
 // to match the app, not the other way round.
 // Exported for hive-global.d.ts, which types window.__hive.state off them.
-export type MockSession = SessionInfo & { created: string };
+// `continued` is mock-only: it records whether the session asked the
+// agent to resume its previous conversation, which the real daemon
+// expresses as an argv choice the browser cannot see.
+export type MockSession = SessionInfo & {
+  created: string;
+  continued?: boolean;
+};
 export type MockProject = ProjectInfo & { created: string };
 
 type Handler = (...args: unknown[]) => void;
@@ -238,7 +244,7 @@ function emitUpdatedExcept(skipId: string) {
 }
 // Positional args matching the real Wails binding:
 // CreateSession(agentID, projectID, name, color, cols, rows, useWorktree,
-// insertAfter, branch, worktreePath).
+// insertAfter, branch, worktreePath, continueConversation).
 export async function CreateSession(
   agentID: string,
   projectID: string,
@@ -250,6 +256,7 @@ export async function CreateSession(
   insertAfter?: string,
   branch?: string,
   worktreePath?: string,
+  continueConversation?: boolean,
 ) {
   maybeFail('CreateSession');
   const id = `mock-${state.sessions.length + 1}`;
@@ -292,6 +299,7 @@ export async function CreateSession(
       const existing = state.worktrees.find((w) => w.path === worktreePath);
       s.worktree_path = worktreePath;
       s.worktree_branch = existing?.branch || '';
+      s.continued = !!continueConversation;
       if (existing)
         existing.session_ids = [...(existing.session_ids ?? []), id];
       emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
@@ -324,6 +332,17 @@ export async function DuplicateSession(
 ) {
   maybeFail('DuplicateSession');
   return CreateSession(agentID, projectID, 'dup', '', 0, 0, false, insertAfter);
+}
+export async function KillSessionAndWorktree(id: string) {
+  maybeFail('KillSessionAndWorktree');
+  const s = state.sessions.find((x) => x.id === id);
+  const path = s?.worktree_path;
+  await KillSession(id);
+  if (path) {
+    const i = state.worktrees.findIndex((w) => w.path === path);
+    if (i >= 0) state.worktrees.splice(i, 1);
+  }
+  return '';
 }
 export async function KillSession(id: string) {
   maybeFail('KillSession');

@@ -322,7 +322,7 @@ func TestVTSnapshotPreservesScrollback(t *testing.T) {
 	const cols, rows = 20, 5
 	v := NewVT(cols, rows)
 	// Write rows*3 distinct lines so rows*2 of them scroll off.
-	for i := range rows*3 {
+	for i := range rows * 3 {
 		line := []byte("line-")
 		line = append(line, byte('0'+i/10), byte('0'+i%10))
 		line = append(line, '\r', '\n')
@@ -331,7 +331,7 @@ func TestVTSnapshotPreservesScrollback(t *testing.T) {
 		}
 	}
 	snap := string(v.RenderSnapshot())
-	for i := range rows*2 {
+	for i := range rows * 2 {
 		want := "line-" + string([]byte{byte('0' + i/10), byte('0' + i%10)})
 		if !strings.Contains(snap, want) {
 			t.Errorf("snapshot missing scrollback line %q", want)

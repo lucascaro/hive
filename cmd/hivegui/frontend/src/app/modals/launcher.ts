@@ -44,6 +44,9 @@ export interface LauncherOpts {
   // mode: the session runs in a worktree that already exists, so no
   // worktree row and no branch input are shown.
   worktreePath?: string;
+  // continueConversation asks the agent to resume its most recent
+  // conversation in that worktree instead of starting a new one.
+  continueConversation?: boolean;
 }
 
 let deps: LauncherDeps = {
@@ -96,6 +99,7 @@ export const launcherState: {
   useWorktree: boolean;
   branch: string;
   worktreePath: string;
+  continueConversation: boolean;
   duplicateFrom: SessionInfo | null;
   duplicateCwd: string;
 } = {
@@ -108,6 +112,9 @@ export const launcherState: {
   // worktreePath, when set, runs the session in an EXISTING worktree
   // instead of creating one.
   worktreePath: '',
+  // Only ever true for one opening, set by the worktree browser's
+  // "Continue previous" action.
+  continueConversation: false,
   // useWorktree is sticky across launcher opens, persisted in
   // localStorage. ⌃⌘N opens the launcher with this forced to true
   // for the duration of that opening.
@@ -185,6 +192,7 @@ function launchSelected(agentId: string) {
       anchor,
       launcherState.branch,
       launcherState.worktreePath,
+      launcherState.continueConversation,
     ).catch(reportFailure('new session'));
   }
   closeLauncher();
@@ -294,6 +302,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // the previous name.
   launcherState.branch = '';
   launcherState.worktreePath = opts?.worktreePath || '';
+  launcherState.continueConversation = !!opts?.continueConversation;
   if (launcherState.duplicateFrom || launcherState.worktreePath) {
     launcherState.useWorktree = false;
   }

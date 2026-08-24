@@ -539,7 +539,7 @@ func (a *App) SaveCustomAgents(list []CustomAgent) error {
 // EXISTING worktree instead of creating one — the worktree browser's
 // "open a session here" action — and takes precedence over
 // useWorktree.
-func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter, branch, worktreePath string) error {
+func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter, branch, worktreePath string, continueConversation bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
@@ -559,6 +559,7 @@ func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows i
 		UseWorktree:          useWorktree,
 		Branch:               branch,
 		WorktreePath:         worktreePath,
+		ContinueConversation: continueConversation,
 		InsertAfterSessionID: insertAfter,
 	})
 }
@@ -774,6 +775,19 @@ func (a *App) KillSession(id string, force bool) error {
 	}
 	return cs.WriteJSON(wire.FrameKillSession, wire.KillSessionReq{
 		SessionID: id, Force: force,
+	})
+}
+
+// KillSessionAndWorktree closes the session and deletes its worktree in
+// one daemon-side operation. Kept separate from KillSession so the
+// destructive variant is never reachable by passing the wrong boolean.
+func (a *App) KillSessionAndWorktree(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameKillSession, wire.KillSessionReq{
+		SessionID: id, Force: true, RemoveWorktree: true,
 	})
 }
 

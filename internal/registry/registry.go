@@ -594,6 +594,19 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 // returns ErrWorktreeDirty without modifying any state. Callers can
 // retry with force=true after confirming with the user.
 func (r *Registry) Kill(id string, force bool) error {
+	return r.kill(id, force, false)
+}
+
+// KillAndRemoveWorktree closes the session AND deletes its worktree,
+// whether or not the worktree is pristine. This is the one path where
+// closing a session is allowed to destroy work, and it exists because
+// the user asked for exactly that in the close dialog — the ordinary
+// Kill deliberately keeps anything holding work.
+func (r *Registry) KillAndRemoveWorktree(id string, force bool) error {
+	return r.kill(id, force, true)
+}
+
+func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	r.mu.Lock()
 	e, ok := r.entries[id]
 	if !ok {
@@ -718,6 +731,13 @@ func (r *Registry) Kill(id string, force bool) error {
 			// session must never be the thing that destroys work.
 			st, ierr := worktree.Inspect(root, wtPath)
 			switch {
+			case removeWorktree:
+				// Asked for explicitly: delete regardless of what it
+				// holds. The confirmation that produced this named the
+				// work at stake.
+				if err := worktree.Cleanup(root, wtPath); err != nil {
+					log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+				}
 			case ierr != nil:
 				log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
 			case !st.Pristine():

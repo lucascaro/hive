@@ -412,6 +412,14 @@ func resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 		return cmd
 	}
 	cmd = def.Cmd
+	// Carrying on in a worktree the user already worked in: use the
+	// agent's path-scoped resume. It continues the most recent
+	// conversation for this directory, which is the only handle we
+	// have — the previous session's id died with its entry. Falls back
+	// to a fresh launch for agents that define no resume argv.
+	if spec.ContinueConversation && len(def.ResumeCmd) > 0 {
+		return def.ResumeCmd
+	}
 	// Pin the agent's conversation to our entry id so Restart can
 	// resume by id even when sibling sessions share this cwd. Skipped
 	// when the caller passed an explicit spec.Cmd (we don't mutate

@@ -41,6 +41,13 @@ type CreateSpec struct {
 	// a random adjective-noun is generated.
 	Branch string `json:"branch,omitempty"`
 
+	// ContinueConversation asks the agent to pick up its most recent
+	// conversation in the resolved cwd instead of starting a fresh one
+	// (claude --continue, codex resume --last). Path-scoped by nature,
+	// so it is only meaningful together with WorktreePath — "open a
+	// session in this worktree and carry on where I left off".
+	ContinueConversation bool `json:"continue_conversation,omitempty"`
+
 	// WorktreePath, when set, names an EXISTING worktree the session
 	// should run in — the "resume this work" path from the worktree
 	// browser. The daemon adopts that worktree's branch onto the new
@@ -151,6 +158,13 @@ type SessionsResp struct {
 type KillSessionReq struct {
 	SessionID string `json:"session_id"`
 	Force     bool   `json:"force,omitempty"`
+	// RemoveWorktree deletes the session's worktree as part of the
+	// close, instead of leaving it behind for the worktree browser.
+	// Done daemon-side rather than as a follow-up REMOVE_WORKTREE from
+	// the client: the worktree is occupied until this very session is
+	// gone, so a second round trip would race its own teardown and be
+	// refused as in-use.
+	RemoveWorktree bool `json:"remove_worktree,omitempty"`
 }
 
 // RestartSessionReq is the RESTART_SESSION payload. The daemon

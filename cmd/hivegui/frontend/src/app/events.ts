@@ -8,6 +8,7 @@ import {
   EventsOn,
   Notify,
   KillSession,
+  KillSessionAndWorktree,
   ConnectControl,
   LogFrontend,
 } from '../bridge.js';
@@ -615,19 +616,34 @@ export function wireDaemonEvents(injected: EventsDeps) {
         detail: sess?.name ?? 'Session',
         bullets: [`It has uncommitted changes in ${branch}.`],
         note:
-          'The worktree and its changes are kept. You can find it under ' +
-          'Worktrees (⌘E) to resume the work or delete it later.',
+          'Closing keeps the worktree and its changes — find it under ' +
+          'Worktrees (⌘E) to resume or delete later. Cleaning up deletes ' +
+          'the worktree and those changes now, which cannot be undone.',
         choices: [
           { label: 'Cancel', value: 'cancel' },
           { label: 'Close session', value: 'close' },
+          {
+            label: 'Close and delete worktree',
+            value: 'close-and-clean',
+            danger: true,
+          },
         ],
       });
-      if (answer !== 'close') return;
+      if (answer === 'cancel') return;
       // The dialog is async + modal; the session may have been removed
       // (or its worktree resolved) while the dialog was open. Re-check
       // before issuing a second kill that would just produce a confusing
       // "no_such_session" control error.
       if (!state.sessions.find((s) => s.id === e.session_id)) return;
+      if (answer === 'close-and-clean') {
+        // One daemon-side operation: the worktree is occupied until
+        // this session is gone, so closing and then asking to remove it
+        // would race its own teardown and be refused as in-use.
+        KillSessionAndWorktree(e.session_id).catch(
+          reportFailure('close and delete worktree'),
+        );
+        return;
+      }
       KillSession(e.session_id, true).catch(reportFailure('force kill'));
       return;
     }

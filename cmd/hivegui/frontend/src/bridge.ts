@@ -21,6 +21,7 @@ export {
   CreateSession,
   DuplicateSession,
   KillSession,
+  KillSessionAndWorktree,
   RestartSession,
   UpdateSession,
   ListAgents,

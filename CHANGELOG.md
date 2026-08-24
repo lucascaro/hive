@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worktree is deleted, so the commits stay recoverable; deleting it too
   is a separate opt-in.
 
+- Closing a session with uncommitted changes now offers to delete the
+  worktree as part of the close, alongside keeping it. The clean-up
+  option is marked destructive and is never the default.
+
+- The worktree browser offers **Continue** as well as **New session**.
+  Continue starts the agent with its path-scoped resume, picking up the
+  last conversation in that worktree; New session starts a fresh one.
+
 - Orphaned branches can be deleted from the worktree browser, not just
   given a worktree. Deleting a branch that still holds unmerged commits
   says how many and requires a second confirmation.

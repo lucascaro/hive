@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
 )
@@ -730,5 +731,107 @@ func TestListWorktrees_WorksWhenTheProjectCwdIsALinkedWorktree(t *testing.T) {
 	// wrong before, so this was refused outright.
 	if err := r.RemoveWorktree(p.ID, sibling, false, false); err != nil {
 		t.Fatalf("RemoveWorktree on a sibling worktree: %v", err)
+	}
+}
+
+// The close dialog's third option: take the worktree with the session,
+// whatever it holds. This is the one path where closing a session is
+// allowed to destroy work, and it only runs when the user picked it.
+func TestKillAndRemoveWorktree_DeletesEvenWhenDirty(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	wt := e.WorktreePath
+	if wt == "" {
+		t.Fatal("no worktree created")
+	}
+	mustWriteFile(t, filepath.Join(wt, "scratch.txt"), "unsaved")
+
+	if err := r.KillAndRemoveWorktree(e.ID, true); err != nil {
+		t.Fatalf("KillAndRemoveWorktree: %v", err)
+	}
+	if _, err := os.Stat(wt); err == nil {
+		t.Errorf("worktree survived an explicit close-and-delete")
+	}
+	if r.Get(e.ID) != nil {
+		t.Errorf("session entry survived")
+	}
+}
+
+// The ordinary close still keeps it — the two paths must not converge.
+func TestKill_StillKeepsDirtyWorktreeWithoutTheExplicitRequest(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	wt := e.WorktreePath
+	mustWriteFile(t, filepath.Join(wt, "scratch.txt"), "unsaved")
+
+	if err := r.Kill(e.ID, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, err := os.Stat(wt); err != nil {
+		t.Errorf("plain force-close deleted the worktree: %v", err)
+	}
+}
+
+// "Continue" asks the agent to resume its most recent conversation in
+// the worktree rather than start a new one. The previous session's id
+// died with its entry, so the path-scoped resume argv is the only
+// handle left.
+func TestCreate_ContinueConversationUsesTheResumeArgv(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	wt := newWorktree(t, p.Cwd, "resume-here")
+
+	var gotCmd []string
+	restore := SetStartSessionForTest(func(o session.Options) (*session.Session, error) {
+		gotCmd = append([]string(nil), o.Cmd...)
+		return nil, os.ErrNotExist // we only care about the argv
+	})
+	t.Cleanup(restore)
+
+	_, _ = r.Create(context.Background(), wire.CreateSpec{
+		ProjectID:            p.ID,
+		Agent:                "claude",
+		WorktreePath:         wt,
+		ContinueConversation: true,
+	})
+	want := []string{"claude", "--continue"}
+	if len(gotCmd) != len(want) || gotCmd[0] != want[0] || gotCmd[1] != want[1] {
+		t.Errorf("argv = %v, want %v", gotCmd, want)
+	}
+}
+
+func TestCreate_WithoutContinuePinsAFreshConversation(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	wt := newWorktree(t, p.Cwd, "fresh-here")
+
+	var gotCmd []string
+	restore := SetStartSessionForTest(func(o session.Options) (*session.Session, error) {
+		gotCmd = append([]string(nil), o.Cmd...)
+		return nil, os.ErrNotExist
+	})
+	t.Cleanup(restore)
+
+	_, _ = r.Create(context.Background(), wire.CreateSpec{
+		ProjectID:    p.ID,
+		Agent:        "claude",
+		WorktreePath: wt,
+	})
+	if len(gotCmd) < 2 || gotCmd[1] != "--session-id" {
+		t.Errorf("argv = %v, want a --session-id pin", gotCmd)
 	}
 }

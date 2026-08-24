@@ -334,6 +334,114 @@ test('an orphaned branch can be deleted, behind a confirmation', async ({
 // Closing a session whose worktree is dirty used to raise a native OS
 // alert. It is the same class of question as the delete prompt, so it
 // uses the same dialog.
+test('Continue starts a session that resumes the previous conversation', async ({
+  page,
+}) => {
+  await boot(page);
+  await seed(page, [CLEAN]);
+  await page.keyboard.press(`${mod}+e`);
+  await row(page, 'clean').getByRole('button', { name: 'Continue' }).click();
+
+  await expect(page.locator('#launcher')).toBeVisible();
+  await page.locator('#launcher .launcher-list > *').first().click();
+
+  await page.waitForFunction(() =>
+    (window.__hive.state?.sessions ?? []).some(
+      (s) =>
+        s.worktree_path === '/mock/.worktrees/clean' && s.continued === true,
+    ),
+  );
+});
+
+test('New session starts a fresh conversation in the same worktree', async ({
+  page,
+}) => {
+  await boot(page);
+  await seed(page, [CLEAN]);
+  await page.keyboard.press(`${mod}+e`);
+  await row(page, 'clean').getByRole('button', { name: 'New session' }).click();
+  await page.locator('#launcher .launcher-list > *').first().click();
+
+  await page.waitForFunction(() =>
+    (window.__hive.state?.sessions ?? []).some(
+      (s) =>
+        s.worktree_path === '/mock/.worktrees/clean' && s.continued === false,
+    ),
+  );
+});
+
+// Closing a dirty session offers a third, destructive outcome: take the
+// worktree with it. It has to be visibly the dangerous one.
+test('the dirty-close dialog offers close-and-delete as the danger option', async ({
+  page,
+}) => {
+  await boot(page);
+  const id = await page.evaluate(() =>
+    window.__hive.createSessionWithWorktree?.('cleanup-me'),
+  );
+  await page.evaluate((sid) => {
+    window.__hive.emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_dirty',
+        message: 'uncommitted changes',
+        session_id: sid,
+      }),
+    );
+  }, id);
+
+  const clean = dialogChoice(page, 'close-and-clean');
+  await expect(clean).toBeVisible();
+  await expect(clean).toHaveClass(/danger/);
+  // Cancel still holds focus, so the destructive option is never the
+  // default.
+  await expect(dialogChoice(page, 'cancel')).toBeFocused();
+
+  await clean.click();
+  // The session goes, and so does its worktree.
+  await page.waitForFunction(
+    (sid) =>
+      !(window.__hive.state?.sessions ?? []).some((s) => s.id === sid) &&
+      !(window.__hive.state?.worktrees ?? []).some(
+        (w) => w.branch === 'cleanup-me',
+      ),
+    id,
+  );
+});
+
+test('closing a dirty session keeps the worktree when only Close is chosen', async ({
+  page,
+}) => {
+  await boot(page);
+  const id = await page.evaluate(() =>
+    window.__hive.createSessionWithWorktree?.('keep-me'),
+  );
+  await page.evaluate((sid) => {
+    window.__hive.emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_dirty',
+        message: 'uncommitted changes',
+        session_id: sid,
+      }),
+    );
+  }, id);
+  await dialogChoice(page, 'close').click();
+
+  await page.waitForFunction(
+    (sid) => !(window.__hive.state?.sessions ?? []).some((s) => s.id === sid),
+    id,
+  );
+  // The worktree survives — that is the whole lifecycle change.
+  expect(
+    await page.evaluate(() =>
+      (window.__hive.state?.worktrees ?? []).some(
+        (w) => w.branch === 'keep-me',
+      ),
+    ),
+  ).toBe(true);
+});
+
 test('closing a dirty session asks in-app, not with an OS alert', async ({
   page,
 }) => {
@@ -358,8 +466,10 @@ test('closing a dirty session asks in-app, not with an OS alert', async ({
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('Close this session anyway?');
   await expect(dialog).toContainText('uncommitted changes');
-  // The reassurance matters: the worktree is no longer destroyed.
-  await expect(dialog).toContainText('kept');
+  // The reassurance matters: closing alone no longer destroys the
+  // worktree — that is now a separate, explicitly destructive choice.
+  await expect(dialog).toContainText('keeps the worktree');
+  await expect(dialogChoice(page, 'close-and-clean')).toBeVisible();
   await expect(dialogChoice(page, 'cancel')).toBeFocused();
 
   await dialogChoice(page, 'cancel').click();
@@ -406,15 +516,13 @@ test('the loading card is replaced by the list, not layered under it', async ({
   await expect(page.locator('#worktrees-empty')).toBeHidden();
 });
 
-test('Open session hands the worktree to the launcher, with no worktree row', async ({
+test('New session hands the worktree to the launcher, with no worktree row', async ({
   page,
 }) => {
   await boot(page);
   await seed(page, [CLEAN]);
   await page.keyboard.press(`${mod}+e`);
-  await row(page, 'clean')
-    .getByRole('button', { name: 'Open session' })
-    .click();
+  await row(page, 'clean').getByRole('button', { name: 'New session' }).click();
 
   // The browser closes and the agent picker takes over.
   await expect(panel(page)).toBeHidden();

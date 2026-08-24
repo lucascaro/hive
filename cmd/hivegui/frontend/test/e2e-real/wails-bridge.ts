@@ -155,6 +155,7 @@ export async function CreateSession(
   insertAfter?: string,
   branch?: string,
   worktreePath?: string,
+  continueConversation?: boolean,
 ) {
   // The Wails signature uses positional args; map to the bridge's
   // CreateSpec shape.
@@ -170,6 +171,7 @@ export async function CreateSession(
     use_worktree: worktreePath ? false : !!useWorktree,
     branch: branch || '',
     worktree_path: worktreePath || '',
+    continue_conversation: !!continueConversation,
     insert_after_session_id: insertAfter || '',
   });
 }
@@ -224,6 +226,13 @@ export async function DuplicateSession(
 }
 export async function KillSession(id: string, force: boolean) {
   return call('KillSession', { session_id: id, force: !!force });
+}
+export async function KillSessionAndWorktree(id: string) {
+  return call('KillSession', {
+    session_id: id,
+    force: true,
+    remove_worktree: true,
+  });
 }
 export async function RestartSession(_id: string) {
   return '';

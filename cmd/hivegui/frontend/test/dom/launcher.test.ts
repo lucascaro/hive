@@ -69,6 +69,7 @@ const createSession = vi.fn(
     _insertAfter?: string,
     _branch?: string,
     _worktreePath?: string,
+    _continue?: boolean,
   ): Promise<string> => Promise.resolve('s1'),
 );
 const duplicateSession = vi.fn(
@@ -515,6 +516,7 @@ describe('launcher branch name', () => {
       expect.any(String),
       'my-feature',
       '',
+      false,
     );
   });
 

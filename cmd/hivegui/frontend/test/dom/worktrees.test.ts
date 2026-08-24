@@ -549,9 +549,47 @@ describe('resuming work', () => {
         worktrees: [{ path: '/repo/.worktrees/resume', branch: 'resume' }],
       }),
     );
-    button(rows()[0], 'Open session').click();
-    expect(openSessionIn).toHaveBeenCalledWith('p1', '/repo/.worktrees/resume');
+    button(rows()[0], 'New session').click();
+    expect(openSessionIn).toHaveBeenCalledWith(
+      'p1',
+      '/repo/.worktrees/resume',
+      false,
+    );
     expect(el('worktrees').classList.contains('hidden')).toBe(true);
+  });
+});
+
+describe('continuing previous work', () => {
+  // "New session" and "Continue" differ only in whether the agent is
+  // asked to resume its last conversation in that directory — the
+  // worktree is the same either way.
+  it('offers both a fresh session and a continue', async () => {
+    await openWith(
+      payload({
+        worktrees: [{ path: '/repo/.worktrees/resume', branch: 'resume' }],
+      }),
+    );
+    expect(button(rows()[0], 'New session')).toBeTruthy();
+    expect(button(rows()[0], 'Continue')).toBeTruthy();
+  });
+
+  it('asks the launcher to resume when Continue is used', async () => {
+    await openWith(
+      payload({
+        worktrees: [{ path: '/repo/.worktrees/resume', branch: 'resume' }],
+      }),
+    );
+    button(rows()[0], 'Continue').click();
+    expect(openSessionIn).toHaveBeenCalledWith(
+      'p1',
+      '/repo/.worktrees/resume',
+      true,
+    );
+  });
+
+  it('offers neither on the main checkout', async () => {
+    await openWith(payload());
+    expect(rows()[0].querySelectorAll('button')).toHaveLength(0);
   });
 });
 

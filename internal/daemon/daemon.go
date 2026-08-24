@@ -417,7 +417,11 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.Kill(req.SessionID, req.Force); err != nil {
+				kill := d.reg.Kill
+				if req.RemoveWorktree {
+					kill = d.reg.KillAndRemoveWorktree
+				}
+				if err := kill(req.SessionID, req.Force); err != nil {
 					if errors.Is(err, registry.ErrWorktreeDirty) {
 						_ = writeJSON(wire.FrameError, wire.Error{
 							Code:      wire.ErrCodeWorktreeDirty,

@@ -212,8 +212,8 @@ initWorktrees({
   refocusActiveTerm,
   // Resuming work in an existing worktree reuses the agent picker —
   // the choice of tool is the same question as for any new session.
-  openSessionIn: (projectId, worktreePath) =>
-    openLauncher(projectId, { worktreePath }),
+  openSessionIn: (projectId, worktreePath, continueConversation) =>
+    openLauncher(projectId, { worktreePath, continueConversation }),
 });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({

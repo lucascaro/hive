@@ -3,6 +3,7 @@ package worktree
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -648,5 +649,91 @@ func TestIsManaged_RejectsASymlinkEscape(t *testing.T) {
 	}
 	if IsManaged(root, link) {
 		t.Errorf("IsManaged accepted a symlink escaping to %q", outside)
+	}
+}
+
+// Locked and prunable are states a real repo produces and a fabricated
+// fixture does not. Both are reported by `git worktree list`, and both
+// change what the browser should let the user do.
+func TestList_ReportsLockedWorktrees(t *testing.T) {
+	repo := initRepo(t)
+	wt := WorktreePath(repo, "locked-one")
+	if err := CreateWorktree(context.Background(), repo, "locked-one", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	mustGit(t, repo, "worktree", "lock", wt)
+
+	list, err := List(repo)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	got := findInfo(list, wt)
+	if got == nil {
+		t.Fatalf("locked worktree missing from List: %+v", list)
+	}
+	if !got.Locked {
+		t.Errorf("Locked = false for a locked worktree: %+v", got)
+	}
+	// Unlocking clears it again.
+	mustGit(t, repo, "worktree", "unlock", wt)
+	list, _ = List(repo)
+	if got = findInfo(list, wt); got == nil || got.Locked {
+		t.Errorf("Locked still set after unlock: %+v", got)
+	}
+}
+
+// A worktree whose directory was deleted out-of-band: git keeps the
+// admin entry and marks it prunable. This is the leftover a user most
+// wants to sweep from the browser.
+func TestList_ReportsPrunableWorktrees(t *testing.T) {
+	repo := initRepo(t)
+	wt := WorktreePath(repo, "vanished")
+	if err := CreateWorktree(context.Background(), repo, "vanished", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	if err := os.RemoveAll(wt); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := List(repo)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	got := findInfo(list, wt)
+	if got == nil {
+		t.Fatalf("prunable worktree missing from List: %+v", list)
+	}
+	if !got.Prunable {
+		t.Errorf("Prunable = false for a worktree whose dir is gone: %+v", got)
+	}
+	// And it inspects as pristine — nothing on disk left to lose — so
+	// the browser can offer to clean it up without a warning.
+	s, err := Inspect(repo, wt)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !s.Pristine() {
+		t.Errorf("a vanished worktree should be disposable: %+v", s)
+	}
+}
+
+// A locked worktree still reports its real status: locking is git's
+// "do not prune this", not a claim about the contents.
+func TestInspect_LockedWorktreeStillReportsItsWork(t *testing.T) {
+	repo := initRepo(t)
+	wt := WorktreePath(repo, "locked-dirty")
+	if err := CreateWorktree(context.Background(), repo, "locked-dirty", wt); err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	mustWrite(t, filepath.Join(wt, "wip.txt"), "unsaved")
+	mustGit(t, repo, "worktree", "lock", wt)
+	t.Cleanup(func() { _ = exec.Command("git", "-C", repo, "worktree", "unlock", wt).Run() })
+
+	s, err := Inspect(repo, wt)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !s.Uncommitted || s.Pristine() {
+		t.Errorf("locked worktree with uncommitted work read as %+v", s)
 	}
 }
