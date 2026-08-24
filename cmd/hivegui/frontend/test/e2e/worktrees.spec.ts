@@ -739,22 +739,28 @@ test('a long branch list never squeezes out the worktree list', async ({
   expect(onScreen?.height ?? 0).toBeGreaterThan(0);
   expect(onScreen?.covered).toBe(true);
 
-  // The branch list is the one that scrolls, and it stays inside the
-  // panel rather than growing it.
+  // Both sections live in one scroll container, and it stays inside
+  // the panel rather than growing it.
   const fits = await page.evaluate(() => {
     const panelEl = document.getElementById('worktrees-panel');
+    const body = document.getElementById('worktrees-body');
     const branches = document.getElementById('worktrees-section-branches');
     const trees = document.getElementById('worktrees-section-trees');
-    if (!panelEl || !branches || !trees) return null;
+    if (!panelEl || !body || !branches || !trees) return null;
     return {
-      branchesScrolls: branches.scrollHeight > branches.clientHeight,
+      bodyScrolls: body.scrollHeight > body.clientHeight,
+      // Neither section scrolls on its own any more.
+      sectionsScroll:
+        branches.scrollHeight > branches.clientHeight ||
+        trees.scrollHeight > trees.clientHeight,
       branchesInside:
-        branches.getBoundingClientRect().bottom <=
+        body.getBoundingClientRect().bottom <=
         panelEl.getBoundingClientRect().bottom + 1,
       treesHeight: trees.getBoundingClientRect().height,
     };
   });
-  expect(fits?.branchesScrolls).toBe(true);
+  expect(fits?.bodyScrolls).toBe(true);
+  expect(fits?.sectionsScroll).toBe(false);
   expect(fits?.branchesInside).toBe(true);
   expect(fits?.treesHeight).toBeGreaterThan(40);
 });
