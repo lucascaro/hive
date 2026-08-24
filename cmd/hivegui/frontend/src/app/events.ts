@@ -336,6 +336,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
         abandonReplays(t); // the wipe abandons any in-flight restream
         t.attached = false;
         t.setDead(false);
+        // Re-open the dial the revived PTY needs, like the restart
+        // path does. Without it the cleared tile sits blank until the
+        // next switchTo/render/resize. Idempotent and phase-gated.
+        t.ensureAttached();
       }
     }
   }

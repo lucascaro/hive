@@ -104,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Restarting hive briefly showed "The process failed to start." on the
+  first session you were looking at, which then started working on its
+  own a moment later. The daemon starts answering clients before it has
+  respawned the shells of the sessions restored from the last run, and
+  those sessions were reported as finished rather than as still
+  starting, so the session you had focused painted an ended-session
+  overlay. They now report as starting until their shell is up, and a
+  restored session repaints itself without needing you to click away and
+  back.
+
 - The worktree browser was slow to open on a repository with a lot of
   branches — several seconds, during which the panel sat empty. It now
   opens in about a second on a repository with 169 branches, by asking

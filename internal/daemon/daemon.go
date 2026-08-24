@@ -148,6 +148,12 @@ func New(cfg Config) (*Daemon, error) {
 	}
 	reg.MigrateOrphanSessions()
 
+	// Every entry loaded from disk has no PTY yet — reviveAll forks
+	// them below, in the background, one at a time. Mark them spawning
+	// BEFORE the bind so no client can ever observe the alive:false +
+	// ready combination it is entitled to read as "this session died".
+	reg.MarkPendingRevive()
+
 	// Orphan-worktree reclaim and session revive deliberately do NOT
 	// run here: both are slow (a handful of git subprocesses per
 	// worktree, one PTY fork per session) and neither is needed

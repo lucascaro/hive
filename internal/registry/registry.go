@@ -224,6 +224,23 @@ func (r *Registry) setPhase(id, phase string) {
 	r.mu.Unlock()
 }
 
+// MarkPendingRevive puts every entry that has no live session into
+// PhaseSpawning. The daemon calls this on the boot path BEFORE it
+// binds its socket, so the first snapshot any client can see already
+// says "starting" instead of the alive:false + PhaseReady combination
+// that every client reads as death — an entry loaded from disk has no
+// session yet, and reviveAll forks its PTY later, sequentially.
+// Phases are in-memory only, so this can never persist.
+func (r *Registry) MarkPendingRevive() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.entries {
+		if e.sess == nil && e.Phase == wire.PhaseReady {
+			e.Phase = wire.PhaseSpawning
+		}
+	}
+}
+
 // setPhaseIf moves the entry from one phase to another only if it is
 // still in `from`, reporting whether it did. The compare and the set
 // share one critical section, which is what makes a phase bracket
@@ -407,7 +424,11 @@ func (r *Registry) Get(id string) *Entry {
 func (r *Registry) ReviveWithPhase(id string, opts session.Options) (bool, error) {
 	// Claim the entry: the check and the set are one critical
 	// section, so a kill or restart that got there first keeps it.
-	if !r.setPhaseIf(id, wire.PhaseReady, wire.PhaseSpawning) {
+	// The bracket may already be open — MarkPendingRevive pre-marks
+	// every unrevived entry spawning on the boot path — so accept
+	// that phase too; setPhaseIf's from == to case is the claim.
+	if !r.setPhaseIf(id, wire.PhaseReady, wire.PhaseSpawning) &&
+		!r.setPhaseIf(id, wire.PhaseSpawning, wire.PhaseSpawning) {
 		return false, nil
 	}
 	err := r.Revive(id, opts)
