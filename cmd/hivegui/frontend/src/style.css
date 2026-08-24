@@ -781,6 +781,20 @@ body.resizing-sidebar #app { transition: none; }
 .boot-state-card .phase-spinner {
   --session-color: #f59e0b;
 }
+/* The spinner belongs to the wait; once the boot has given up the card
+   shows a Retry instead. */
+.boot-state-card .phase-spinner.hidden { display: none; }
+#boot-state-retry {
+  background: #1f1f1f;
+  color: #ddd;
+  border: 1px solid #333;
+  border-radius: 5px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+#boot-state-retry:hover { background: #262626; }
+#boot-state-retry.hidden { display: none; }
 #empty-state .empty-title {
   font-size: 15px;
   color: #999;

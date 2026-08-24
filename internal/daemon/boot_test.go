@@ -135,11 +135,122 @@ func TestBootRevivesPersistedSessions(t *testing.T) {
 	}
 }
 
+// TestCloseLeavesAReplacementSocketAlone pins the fix for a race the
+// boot chores opened: Close waits on d.ops, so teardown now spans the
+// whole boot instead of the ~100ms the restart spec assumed. That is
+// long enough for the GUI's Restart to relaunch and a NEW hived to
+// bind a fresh socket at the same path — and an unconditional
+// os.Remove in Close would unlink the live daemon's socket, leaving
+// it serving an inode nobody can dial.
+func TestCloseLeavesAReplacementSocketAlone(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	sock := filepath.Join(tmp, "s")
+
+	old, err := New(Config{
+		SocketPath:       sock,
+		StateDir:         filepath.Join(tmp, "state1"),
+		BootstrapSession: session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24},
+	})
+	if err != nil {
+		t.Fatalf("New old: %v", err)
+	}
+	// The old daemon stops accepting (what the GUI's Restart action
+	// does) and its listener is unlinked, but its teardown — which
+	// now waits on the boot chores — has not run yet.
+	oldCtx, oldCancel := context.WithCancel(context.Background())
+	defer oldCancel()
+	runDone := make(chan struct{})
+	go func() { defer close(runDone); _ = old.Run(oldCtx) }()
+	old.Shutdown()
+	<-runDone
+
+	// Replacement takes over the path, exactly as a relaunched GUI's
+	// hived would: the old socket is no longer connectable, so New
+	// removes it and binds its own.
+	replacement, err := New(Config{
+		SocketPath:       sock,
+		StateDir:         filepath.Join(tmp, "state2"),
+		BootstrapSession: session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24},
+	})
+	if err != nil {
+		t.Fatalf("New replacement: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = replacement.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		_ = replacement.Close()
+	})
+
+	// Now the old daemon's teardown lands.
+	_ = old.Close()
+
+	if _, err := os.Stat(sock); err != nil {
+		t.Fatalf("the replacement daemon's socket was unlinked by the old daemon's Close: %v", err)
+	}
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dial replacement after old Close: %v", err)
+	}
+	defer conn.Close()
+	if _, err := wire.Handshake(conn, wire.Hello{Client: "test/0", Mode: wire.ModeControl}); err != nil {
+		t.Fatalf("handshake with the replacement: %v", err)
+	}
+}
+
+// TestCloseStopsBootWork pins the stop signal: a daemon closed right
+// after New must not sit in ops.Wait forking login shells for a
+// process that is going away.
+func TestCloseStopsBootWork(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	state := filepath.Join(tmp, "state")
+	// Several persisted sessions, so an uncancelled revive would be
+	// visibly slower than a cancelled one.
+	seedPersistedSessions(t, filepath.Join(tmp, "s1"), state, 4)
+
+	d, err := New(Config{
+		SocketPath:       filepath.Join(tmp, "s2"),
+		StateDir:         state,
+		BootstrapSession: session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	start := time.Now()
+	if err := d.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("Close took %v; the boot chores are not being told to stop", elapsed)
+	}
+	// And it really stopped early rather than quietly reviving them
+	// all: at most one session (the one in flight) may have spawned.
+	alive := 0
+	for _, info := range d.Registry().List() {
+		if info.Alive {
+			alive++
+		}
+	}
+	if alive > 1 {
+		t.Fatalf("%d sessions were revived after Close; want at most the one in flight", alive)
+	}
+}
+
 // seedPersistedSession runs a daemon once against stateDir so it
 // leaves a bootstrap session behind on disk, then shuts it down. The
 // returned id names an entry that the next daemon loads with no live
 // PTY.
 func seedPersistedSession(t *testing.T, sock, stateDir string) string {
+	t.Helper()
+	ids := seedPersistedSessions(t, sock, stateDir, 1)
+	return ids[0]
+}
+
+// seedPersistedSessions is seedPersistedSession for n sessions.
+func seedPersistedSessions(t *testing.T, sock, stateDir string, n int) []string {
 	t.Helper()
 	d, err := New(Config{
 		SocketPath: sock,
@@ -153,13 +264,19 @@ func seedPersistedSession(t *testing.T, sock, stateDir string) string {
 	if err != nil {
 		t.Fatalf("seed New: %v", err)
 	}
-	sessions := d.Registry().List()
-	if len(sessions) != 1 {
-		t.Fatalf("seed: got %d sessions, want 1", len(sessions))
+	for len(d.Registry().List()) < n {
+		if _, err := d.Registry().Create(context.Background(), wire.CreateSpec{
+			Shell: "/bin/bash", Cols: 80, Rows: 24,
+		}); err != nil {
+			t.Fatalf("seed Create: %v", err)
+		}
 	}
-	id := sessions[0].ID
+	var ids []string
+	for _, info := range d.Registry().List() {
+		ids = append(ids, info.ID)
+	}
 	if err := d.Close(); err != nil {
 		t.Fatalf("seed Close: %v", err)
 	}
-	return id
+	return ids
 }

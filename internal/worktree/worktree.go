@@ -34,9 +34,11 @@ func IsGitRepo(dir string) bool {
 
 // Root returns the absolute path of the git repository root that
 // contains dir.
+// Bounded like every other read here: a repo on a stalled network
+// mount would otherwise hang whoever asked, and the daemon's
+// orphan-worktree scan asks once per project at boot.
 func Root(dir string) (string, error) {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
-	out, err := cmd.Output()
+	out, err := git(context.Background(), readTimeout, dir, "rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", fmt.Errorf("not a git repository: %w", err)
 	}
@@ -195,14 +197,13 @@ func Cleanup(repoDir, worktreePath string) error {
 	// Best-effort `worktree remove --force`. If the dir is missing,
 	// git may exit non-zero — that's fine; we just want to make sure
 	// the registered worktree (if any) is gone.
-	removeCmd := exec.Command("git", "-C", repoDir, "worktree", "remove", "--force", worktreePath)
-	removeOut, removeErr := removeCmd.CombinedOutput()
+	removeOut, removeErr := git(context.Background(), mutateTimeout, repoDir,
+		"worktree", "remove", "--force", worktreePath)
 	// Always try the FS removal too — `git worktree remove` may have
 	// succeeded but left a stray dir, or it may have skipped it.
 	_ = os.RemoveAll(worktreePath)
 	// Prune git's admin state regardless of how the above went.
-	pruneCmd := exec.Command("git", "-C", repoDir, "worktree", "prune")
-	if out, err := pruneCmd.CombinedOutput(); err != nil {
+	if out, err := git(context.Background(), mutateTimeout, repoDir, "worktree", "prune"); err != nil {
 		return fmt.Errorf("git worktree prune: %s", strings.TrimSpace(string(out)))
 	}
 	if removeErr != nil {
@@ -344,9 +345,17 @@ func HasUncommitted(worktreePath string) (bool, error) {
 			args = append(args, ":(exclude)"+rel)
 		}
 	}
-	cmd := exec.Command("git", args...)
+	// Bounded like the rest of the read path: this runs once per
+	// candidate in the daemon's orphan-worktree scan, and a `git
+	// status` on a wedged repo must not hang it.
+	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return false, fmt.Errorf("git status: timed out after %s", readTimeout)
+		}
 		return false, fmt.Errorf("git status: %s", strings.TrimSpace(string(out)))
 	}
 	return len(strings.TrimSpace(string(out))) > 0, nil

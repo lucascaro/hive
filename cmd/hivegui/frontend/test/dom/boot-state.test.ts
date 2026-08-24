@@ -11,7 +11,13 @@ async function loadDom() {
     <div id="terms"></div>
     <ul id="projects"></ul>
     <div id="status"></div>
-    <div id="boot-state"><span id="boot-state-text">Starting hive…</span></div>
+    <div id="boot-state">
+      <div class="boot-state-card">
+        <span class="phase-spinner"></span>
+        <span id="boot-state-text">Starting hive…</span>
+        <button id="boot-state-retry" class="hidden" type="button">Retry</button>
+      </div>
+    </div>
   `;
   return await import('../../src/app/dom.js');
 }
@@ -36,6 +42,29 @@ describe('boot overlay', () => {
     setBootState(null);
     const el = document.getElementById('boot-state') as HTMLElement;
     expect(el.classList.contains('hidden')).toBe(true);
+  });
+
+  it('offers a retry instead of a spinner once it gives up', async () => {
+    const { setBootState } = await loadDom();
+    let clicked = 0;
+    setBootState('Could not reach the hive daemon.', {
+      retry: () => {
+        clicked += 1;
+      },
+    });
+    const retry = document.getElementById(
+      'boot-state-retry',
+    ) as HTMLButtonElement;
+    const spinner = document.querySelector('.phase-spinner') as HTMLElement;
+    expect(retry.classList.contains('hidden')).toBe(false);
+    expect(spinner.classList.contains('hidden')).toBe(true);
+    retry.click();
+    expect(clicked).toBe(1);
+
+    // And a plain wait puts the spinner back, retry gone.
+    setBootState('Waiting for the hive daemon…');
+    expect(retry.classList.contains('hidden')).toBe(true);
+    expect(spinner.classList.contains('hidden')).toBe(false);
   });
 
   it('is inert when the markup is absent', async () => {

@@ -429,7 +429,7 @@ func TestCreate_AdoptsExistingWorktreeWithoutSiblingSession(t *testing.T) {
 		t.Errorf("a nested .worktrees dir was created inside %s", wt)
 	}
 	// And the reclaim sweep must leave it alone now that it's claimed.
-	r.ReclaimOrphanWorktrees()
+	r.ReclaimOrphanWorktrees(context.Background())
 	if _, err := os.Stat(filepath.Join(wt, "wip.txt")); err != nil {
 		t.Fatalf("resumed worktree was reclaimed despite having a live session: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestReclaimOrphanWorktrees_KeepsNonPristine(t *testing.T) {
 
 	// Neither is claimed by a session — before this change both would
 	// have been force-removed at startup.
-	r.ReclaimOrphanWorktrees()
+	r.ReclaimOrphanWorktrees(context.Background())
 
 	if _, err := os.Stat(filepath.Join(dirty, "unsaved.txt")); err != nil {
 		t.Errorf("worktree with uncommitted work was reclaimed: %v", err)
@@ -462,7 +462,7 @@ func TestReclaimOrphanWorktrees_KeepsUnpushedCommits(t *testing.T) {
 	runGit(t, wt, "add", "a.txt")
 	runGit(t, wt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a")
 
-	r.ReclaimOrphanWorktrees()
+	r.ReclaimOrphanWorktrees(context.Background())
 
 	if _, err := os.Stat(wt); err != nil {
 		t.Errorf("worktree holding an unpushed commit was reclaimed: %v", err)
@@ -851,7 +851,7 @@ func TestReclaimOrphanWorktrees_ConcurrentAdopt(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		r.ReclaimOrphanWorktrees()
+		r.ReclaimOrphanWorktrees(context.Background())
 	}()
 
 	e, err := r.Create(context.Background(), wire.CreateSpec{

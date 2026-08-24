@@ -440,7 +440,22 @@ initVersionFooter();
     // control:disconnect, which needs a connection to have existed —
     // so a daemon that was merely slow to come up left the app dead
     // with a red status line and a black pane until relaunch.
-    setBootState('Waiting for the hive daemon…');
-    void reconnectControl();
+    //
+    // Bounded, unlike the mid-session loop: if the daemon never comes
+    // up, retrying forever just re-dials a hived that is failing to
+    // start. Hand the user a Retry instead.
+    void retryBoot();
   }
 })();
+
+const BOOT_RETRY_ATTEMPTS = 5;
+
+async function retryBoot(): Promise<void> {
+  setBootState('Waiting for the hive daemon…');
+  if (await reconnectControl(BOOT_RETRY_ATTEMPTS)) return;
+  setStatus('could not reach the hive daemon', true);
+  setBootState(
+    'Could not reach the hive daemon. Check hived.log for why it failed to start.',
+    { retry: () => void retryBoot() },
+  );
+}

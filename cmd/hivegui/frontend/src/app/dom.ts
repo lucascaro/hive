@@ -51,7 +51,10 @@ export const reportFailure = (what: string) => (err: unknown) =>
 //
 // pageEl, not mustEl: the jsdom tests mount partial markup and must
 // not fail on an overlay they never exercise.
-export function setBootState(text: string | null): void {
+export function setBootState(
+  text: string | null,
+  opts: { retry?: () => void } = {},
+): void {
   const el = pageEl('boot-state');
   if (!el) return;
   if (text === null) {
@@ -60,5 +63,14 @@ export function setBootState(text: string | null): void {
   }
   const label = pageEl('boot-state-text');
   if (label) label.textContent = text;
+  // A card offering Retry is a card that has stopped waiting, so the
+  // spinner goes with it.
+  const spinner = el.querySelector('.phase-spinner');
+  spinner?.classList.toggle('hidden', Boolean(opts.retry));
+  const retry = pageEl<HTMLButtonElement>('boot-state-retry');
+  if (retry) {
+    retry.classList.toggle('hidden', !opts.retry);
+    retry.onclick = opts.retry ? () => opts.retry?.() : null;
+  }
   el.classList.remove('hidden');
 }

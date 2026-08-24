@@ -188,7 +188,21 @@ function slowConnectMs(): number {
   return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
+// ?failConnect=<n> rejects the first n handshakes, standing in for a
+// daemon that will not start at all — the boot path is supposed to
+// give up after a bounded number of tries and offer a Retry.
+let failsLeft = (() => {
+  if (typeof window === 'undefined') return 0;
+  const raw = new URLSearchParams(window.location.search).get('failConnect');
+  const n = raw ? Number(raw) : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+})();
+
 export async function ConnectControl() {
+  if (failsLeft > 0) {
+    failsLeft -= 1;
+    throw new Error('hived did not come up');
+  }
   const wait = slowConnectMs();
   if (wait) await new Promise((r) => setTimeout(r, wait));
   setTimeout(broadcast, 0);

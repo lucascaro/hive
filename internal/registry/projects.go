@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -55,10 +56,16 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 // unbounded and used to run before the socket was answerable.
 //
 // Because it now runs concurrently with client-driven create/kill, it
-// holds r.gitMu for the whole scan (serializing it against
-// adoptDetachedWorktree and discardWorktree) and re-reads the claimed
-// set immediately before each Cleanup — a worktree adopted by a
-// session created mid-scan must not be deleted.
+// takes r.gitMu around each git step rather than for the whole scan —
+// a whole-scan hold would move the boot stall onto the first worktree
+// create or kill after boot, which waits on that same mutex before it
+// can even report a phase. Deleting is guarded instead by re-reading
+// the claimed set immediately before each Cleanup, inside that step's
+// lock: a worktree adopted by a session created mid-scan must not be
+// deleted.
+//
+// ctx cuts the scan short when the daemon is shutting down; the git
+// steps already in flight are bounded by their own timeouts.
 //
 // The pristine condition is what makes detached worktrees possible:
 // a worktree whose session was closed is unclaimed forever, so
@@ -72,11 +79,7 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 // reap: every prod-owned worktree would look unclaimed in its
 // registry and get force-removed. Daemon startup gates this call on
 // registry.StateDirOverridden().
-func (r *Registry) ReclaimOrphanWorktrees() {
-	// Never acquire gitMu while holding r.mu — see Registry.gitMu.
-	r.gitMu.Lock()
-	defer r.gitMu.Unlock()
-
+func (r *Registry) ReclaimOrphanWorktrees(ctx context.Context) {
 	r.mu.Lock()
 	projects := make([]*Project, 0, len(r.projects))
 	for _, p := range r.projects {
@@ -85,10 +88,13 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 	r.mu.Unlock()
 
 	for _, p := range projects {
-		if p.Cwd == "" || !worktree.IsGitRepo(p.Cwd) {
+		if ctx.Err() != nil {
+			return
+		}
+		if p.Cwd == "" {
 			continue
 		}
-		root, err := worktree.Root(p.Cwd)
+		root, err := r.gitRoot(p.Cwd)
 		if err != nil {
 			continue
 		}
@@ -98,6 +104,9 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 			continue
 		}
 		for _, d := range entries {
+			if ctx.Err() != nil {
+				return
+			}
 			if !d.IsDir() {
 				continue
 			}
@@ -112,7 +121,7 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 			// the next daemon start — silently, at boot, with no
 			// confirm. Pristine-only keeps the crash-leak cleanup
 			// this exists for while making detaching safe.
-			st, ierr := worktree.Inspect(root, path)
+			st, ierr := r.inspectWorktree(root, path)
 			switch {
 			case ierr != nil:
 				log.Printf("registry: cannot inspect orphan worktree %s (%v); keeping it", path, ierr)
@@ -120,18 +129,45 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 				log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
 					path, st.Uncommitted, st.Unpushed, st.Unknown)
 			default:
-				// Re-check under the lock: Inspect shells out to git,
-				// and a session created in the meantime may have
-				// adopted this very directory.
-				if r.worktreeClaimed(path) {
-					continue
-				}
-				log.Printf("registry: reclaiming orphan worktree %s", path)
-				if err := worktree.Cleanup(root, path); err != nil {
-					log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
-				}
+				r.reclaimOne(root, path)
 			}
 		}
+	}
+}
+
+// gitRoot resolves a project cwd to its repository root under gitMu,
+// so the reclaim's git subprocesses stay serialized against the
+// create/kill worktree steps without holding the mutex for the whole
+// scan. A non-git cwd surfaces as an error, which the scan skips.
+func (r *Registry) gitRoot(cwd string) (string, error) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	return worktree.Root(cwd)
+}
+
+// inspectWorktree is worktree.Inspect under gitMu — several git
+// subprocesses per call, and the create path is entitled to interleave
+// between candidates.
+func (r *Registry) inspectWorktree(root, path string) (worktree.Status, error) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	return worktree.Inspect(root, path)
+}
+
+// reclaimOne removes a single orphan worktree, re-checking under the
+// same lock that no session claimed it while Inspect was shelling out
+// to git. The claim check and the removal must share gitMu: adoption
+// (create.go's adoptDetachedWorktree) takes gitMu too, so a create
+// cannot slip a claim in between them.
+func (r *Registry) reclaimOne(root, path string) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	if r.worktreeClaimed(path) {
+		return
+	}
+	log.Printf("registry: reclaiming orphan worktree %s", path)
+	if err := worktree.Cleanup(root, path); err != nil {
+		log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
 	}
 }
 

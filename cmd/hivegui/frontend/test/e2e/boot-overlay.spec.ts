@@ -34,3 +34,21 @@ test('covers the pane while the daemon is slow, then retires', async ({
   await expect(boot).toBeHidden({ timeout: 10000 });
   await expect(page.locator('#terms')).toBeVisible();
 });
+
+// A daemon that never comes up must not leave the GUI dialing (and
+// re-spawning hived) forever behind a spinner. The boot path gives up
+// after a bounded number of attempts and hands the user a Retry.
+test('gives up after bounded attempts and offers a retry', async ({ page }) => {
+  // The initial connect plus all 5 bounded retries fail; the click
+  // that follows succeeds.
+  await page.goto('/?failConnect=6');
+
+  const boot = page.locator('#boot-state');
+  const retry = page.locator('#boot-state-retry');
+  await expect(retry).toBeVisible({ timeout: 20000 });
+  await expect(boot).toContainText('Could not reach the hive daemon');
+  await expect(boot.locator('.phase-spinner')).toBeHidden();
+
+  await retry.click();
+  await expect(boot).toBeHidden({ timeout: 10000 });
+});

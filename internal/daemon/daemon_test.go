@@ -772,14 +772,21 @@ func TestStartup_NoOverride_ReapsOrphans(t *testing.T) {
 	})
 
 	// Reclaim is a background op now (it shells out to git and must
-	// not delay the socket); Close waits on d.ops, so it doubles as
-	// the barrier.
+	// not delay the socket), and Close cancels it rather than waiting
+	// it out — so poll for the effect instead of using teardown as a
+	// barrier.
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := os.Stat(foreign); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected stale worktree to be reaped")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	cancel()
 	_ = d.Close()
-
-	if _, err := os.Stat(foreign); !os.IsNotExist(err) {
-		t.Fatalf("expected stale worktree to be reaped, got err=%v", err)
-	}
 }
 
 // TestRequestReplay verifies a client can issue FrameRequestReplay
