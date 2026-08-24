@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,19 +30,56 @@ func swapCopilotPollInterval(t *testing.T, d time.Duration) {
 // the workspace.yaml mtime. Returns the dir path.
 func writeCopilotSession(t *testing.T, root, uuid, cwd string, modTime time.Time) string {
 	t.Helper()
+	if err := writeCopilotSessionErr(root, uuid, cwd, modTime); err != nil {
+		t.Fatalf("write copilot session: %v", err)
+	}
+	return filepath.Join(root, uuid)
+}
+
+// writeCopilotSessionErr is the same write, reporting through an error
+// instead of t — the only form safe to call off the test goroutine.
+func writeCopilotSessionErr(root, uuid, cwd string, modTime time.Time) error {
 	dir := filepath.Join(root, uuid)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
+		return fmt.Errorf("mkdir: %w", err)
 	}
 	wsPath := filepath.Join(dir, "workspace.yaml")
 	body := "id: " + uuid + "\ncwd: " + cwd + "\nsummary: test\n"
 	if err := os.WriteFile(wsPath, []byte(body), 0o644); err != nil {
-		t.Fatalf("write workspace.yaml: %v", err)
+		return fmt.Errorf("write workspace.yaml: %w", err)
 	}
 	if err := os.Chtimes(wsPath, modTime, modTime); err != nil {
-		t.Fatalf("chtimes: %v", err)
+		return fmt.Errorf("chtimes: %w", err)
 	}
-	return dir
+	return nil
+}
+
+// writeCopilotSessionAfter simulates copilot creating its session dir a
+// moment after spawn, and joins that writer before the test returns.
+//
+// Both halves matter. Nothing may fail the test from another goroutine:
+// once the test has returned, testing panics with "Fail in goroutine
+// after <test> has completed", which replaces the real assertion
+// message with a stack trace. And an unjoined writer races
+// t.TempDir()'s cleanup, so its os.Chtimes lands on an already-deleted
+// dir and fails — which is exactly what triggered that panic on CI.
+//
+// The join goes in t.Cleanup, not at the end of the test body, so it
+// still runs when an assertion bails out via t.Fatalf. Cleanups are
+// LIFO and t.TempDir registered its removal first, so this one runs
+// before the directory goes away.
+func writeCopilotSessionAfter(t *testing.T, d time.Duration, root, uuid, cwd string) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() {
+		time.Sleep(d)
+		done <- writeCopilotSessionErr(root, uuid, cwd, time.Now())
+	}()
+	t.Cleanup(func() {
+		if err := <-done; err != nil {
+			t.Errorf("write copilot session %s: %v", uuid, err)
+		}
+	})
 }
 
 func TestCopilotCaptureReadsWorkspaceUUID(t *testing.T) {
@@ -55,10 +93,7 @@ func TestCopilotCaptureReadsWorkspaceUUID(t *testing.T) {
 	spawnedAt := time.Now()
 	// Write the session dir slightly in the future to simulate
 	// copilot creating workspace.yaml just after spawn.
-	go func() {
-		time.Sleep(40 * time.Millisecond)
-		writeCopilotSession(t, root, wantUUID, cwd, time.Now())
-	}()
+	writeCopilotSessionAfter(t, 40*time.Millisecond, root, wantUUID, cwd)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -125,10 +160,7 @@ func TestCopilotCaptureIgnoresPreexistingSessionsInSameCwd(t *testing.T) {
 	writeCopilotSession(t, root, older, cwd, time.Now().Add(-1*time.Hour))
 
 	spawnedAt := time.Now()
-	go func() {
-		time.Sleep(40 * time.Millisecond)
-		writeCopilotSession(t, root, newer, cwd, time.Now())
-	}()
+	writeCopilotSessionAfter(t, 40*time.Millisecond, root, newer, cwd)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -169,13 +201,19 @@ func TestCopilotCaptureRetriesPartiallyWrittenWorkspace(t *testing.T) {
 	}
 
 	spawnedAt := time.Now()
+	// Joined for the same reason as writeCopilotSessionAfter: this one
+	// swallows its errors so it cannot panic, but an unjoined writer
+	// still outlives the test and scribbles into a dir being removed.
+	phase2 := make(chan struct{})
 	go func() {
+		defer close(phase2)
 		// Phase 2: writer finishes the file with cwd:.
 		time.Sleep(80 * time.Millisecond)
 		body := "id: " + uuid + "\ncwd: " + cwd + "\nsummary: test\n"
 		_ = os.WriteFile(wsPath, []byte(body), 0o644)
 		_ = os.Chtimes(wsPath, time.Now(), time.Now())
 	}()
+	t.Cleanup(func() { <-phase2 })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
