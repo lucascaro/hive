@@ -224,6 +224,30 @@ func (r *Registry) setPhase(id, phase string) {
 	r.mu.Unlock()
 }
 
+// setPhaseIf moves the entry from one phase to another only if it is
+// still in `from`, reporting whether it did. The compare and the set
+// share one critical section, which is what makes a phase bracket
+// safe against a concurrent lifecycle op: a kill that moved the entry
+// to PhaseChecking while we were spawning must not be flipped back to
+// ready underneath the GUI.
+func (r *Registry) setPhaseIf(id, from, to string) bool {
+	r.mu.Lock()
+	e, ok := r.entries[id]
+	if !ok || e.Phase != from {
+		r.mu.Unlock()
+		return false
+	}
+	if from == to {
+		r.mu.Unlock()
+		return true
+	}
+	e.Phase = to
+	info := e.Info()
+	r.broadcastLocked(wire.SessionEventUpdated, info)
+	r.mu.Unlock()
+	return true
+}
+
 // Open creates or loads a Registry rooted at stateDir. Existing
 // metadata on disk is loaded; live sessions are not auto-started.
 func Open(stateDir string) (*Registry, error) {
@@ -365,6 +389,36 @@ func (r *Registry) Get(id string) *Entry {
 	return r.entries[id]
 }
 
+// ReviveWithPhase is Revive bracketed in wire.PhaseSpawning, for the
+// daemon's background boot revive: a client that attaches while the
+// PTY is still forking then gets "session is still starting" (and the
+// GUI's phase spinner) instead of "session_dead".
+//
+// The bool reports whether this call owned the revive. False means
+// another lifecycle op (create tail, restart, kill) held the entry
+// and nothing was done — the caller decides whether to come back.
+//
+// Unlike Restart, ready is set AFTER Revive, not before: the whole
+// point is that the phase covers the fork. Revive broadcasts
+// alive:true from inside while the phase still reads "spawning", and
+// the setPhase below is the later event that unsticks a client gating
+// its attach on ready — Restart has no such trailing event, which is
+// why it clears the phase first.
+func (r *Registry) ReviveWithPhase(id string, opts session.Options) (bool, error) {
+	// Claim the entry: the check and the set are one critical
+	// section, so a kill or restart that got there first keeps it.
+	if !r.setPhaseIf(id, wire.PhaseReady, wire.PhaseSpawning) {
+		return false, nil
+	}
+	err := r.Revive(id, opts)
+	// Compare-and-set on the way out too: a kill that started while
+	// we were spawning has already moved the entry to PhaseChecking
+	// or PhaseClosing, and clearing to ready there would show a
+	// ready tile for a session being torn down.
+	r.setPhaseIf(id, wire.PhaseSpawning, wire.PhaseReady)
+	return true, err
+}
+
 // Revive starts a fresh process on the existing entry. No-op if the
 // entry already has a live session. Used on daemon startup to bring
 // previously-persisted sessions back to a usable state.
@@ -456,6 +510,17 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 	sess.ID = id
 
 	r.mu.Lock()
+	// Re-resolve before binding: spawn happens outside the lock, and
+	// a Kill in that window deletes the entry and snapshots a nil
+	// sess to close — so assigning here would attach a live shell to
+	// an entry nobody owns. watchSessionExit would then find no entry
+	// and return, leaving the process running with its cwd inside a
+	// worktree kill has already removed.
+	if cur, ok := r.entries[id]; !ok || cur != e {
+		r.mu.Unlock()
+		_ = sess.Close()
+		return ErrNotFound
+	}
 	e.sess = sess
 	e.LastError = ""
 	info := e.Info()

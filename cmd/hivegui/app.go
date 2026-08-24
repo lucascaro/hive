@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/atotto/clipboard"
@@ -204,8 +205,13 @@ func (a *App) saveGeometry() {
 
 // dialHandshake dials the daemon socket (spawning hived if needed) and
 // performs the HELLO/WELCOME handshake via the shared wire client.
-func (a *App) dialHandshake(hello wire.Hello) (*wire.Client, error) {
-	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir)
+//
+// budget bounds the wait for a daemon that is not up yet. It belongs
+// to the caller, not to this function: the boot connect can afford to
+// wait out a cold daemon, while OpenSession runs behind openMu and
+// pays its budget once per session on a grid launch.
+func (a *App) dialHandshake(hello wire.Hello, budget time.Duration) (*wire.Client, error) {
+	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +248,7 @@ func (a *App) ConnectControl() error {
 		Client:  "hivegui/0.2",
 		BuildID: buildinfo.BuildID(),
 		Mode:    wire.ModeControl,
-	})
+	}, bootDialBudget)
 	if err != nil {
 		return fmt.Errorf("control: %w", err)
 	}
@@ -882,7 +888,7 @@ func (a *App) OpenSession(id string, cols, rows int) (*AttachInfo, error) {
 		Client:    "hivegui/0.2",
 		Mode:      wire.ModeAttach,
 		SessionID: id,
-	})
+	}, attachDialBudget)
 	if err != nil {
 		return nil, fmt.Errorf("attach failed: %w", err)
 	}
@@ -1037,23 +1043,58 @@ func (a *App) attachFor(id string) (*wire.Client, error) {
 
 // ----------------------------- daemon spawn ------------------------------
 
-// dialOrSpawn dials hived; on failure spawns it as a detached child
-// and retries with backoff for up to ~3s. cwd, when non-empty, is
-// passed to hived as --cwd so newly-created sessions default to that
-// directory.
-func dialOrSpawn(sock, cwd string) (net.Conn, error) {
+// Dial budgets. The daemon binds its socket last, once it can answer,
+// so the retry loop below is the whole wait — but how long that wait
+// is worth depends on the caller.
+//
+// bootDialBudget covers a cold start: spawning the binary and opening
+// the registry on a slow machine is seconds, not milliseconds.
+// attachDialBudget is deliberately short — OpenSession runs behind
+// openMu, so on an N-session grid launch its budget is paid N times
+// in series, and by then the daemon is known to be up anyway. Vars so
+// tests can shrink them.
+var (
+	bootDialBudget   = 15 * time.Second
+	attachDialBudget = 3 * time.Second
+)
+
+// spawnedHived records that this GUI process has already spawned a
+// daemon. The boot path retries forever (reconnectControl), and
+// without this a hived that crashes on startup would be re-forked
+// every few seconds for the life of the app.
+var spawnedHived atomic.Bool
+
+// dialOrSpawn dials hived; on the first failure it spawns hived as a
+// detached child, then retries with backoff until budget is spent.
+// cwd, when non-empty, is passed to hived as --cwd so newly-created
+// sessions default to that directory.
+//
+// The retry loop is the whole wait: the daemon's socket does not
+// exist until it is ready to handshake, so a dial that connects is a
+// daemon that answers.
+func dialOrSpawn(sock, cwd string, budget time.Duration) (net.Conn, error) {
 	if c, err := net.Dial("unix", sock); err == nil {
 		return c, nil
 	}
-	if err := spawnHived(sock, cwd); err != nil {
-		return nil, fmt.Errorf("spawn hived: %w", err)
+	// Spawn at most once per GUI process. A daemon that dies on
+	// startup is a bug to surface, not to retry into a fork loop.
+	if spawnedHived.CompareAndSwap(false, true) {
+		if err := spawnHived(sock, cwd); err != nil {
+			return nil, fmt.Errorf("spawn hived: %w", err)
+		}
 	}
-	delays := []time.Duration{100, 200, 400, 800, 1600}
-	for _, ms := range delays {
-		time.Sleep(ms * time.Millisecond)
+	deadline := time.Now().Add(budget)
+	delay := 100 * time.Millisecond
+	for {
+		time.Sleep(delay)
 		if c, err := net.Dial("unix", sock); err == nil {
 			return c, nil
 		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("hived did not come up at %s within %s", sock, budget)
+		}
+		if delay < 1600*time.Millisecond {
+			delay *= 2
+		}
 	}
-	return nil, fmt.Errorf("hived did not come up at %s", sock)
 }

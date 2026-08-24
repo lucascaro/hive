@@ -119,6 +119,17 @@
   </div>
   <main id="terms" aria-label="Terminals"></main>
   <div id="empty-state" class="hidden"></div>
+  <!-- Visible from the first paint: the daemon may take seconds to come
+       up on a cold, busy machine, and a black pane with a "connecting…"
+       status line reads as a broken app. Hidden by the first session
+       list. -->
+  <div id="boot-state" role="status" aria-live="polite">
+    <div class="boot-state-card">
+      <span class="phase-spinner" aria-hidden="true"></span>
+      <span id="boot-state-text">Starting hive…</span>
+      <button id="boot-state-retry" class="hidden" type="button">Retry</button>
+    </div>
+  </div>
   <div id="minimized-tray" class="hidden" role="toolbar" aria-label="Minimized sessions"></div>
   <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div id="help-overlay-panel">

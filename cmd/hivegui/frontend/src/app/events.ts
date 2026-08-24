@@ -14,7 +14,7 @@ import {
 } from '../bridge.js';
 import { state, saveCollapsed } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
-import { setStatus, flashStatus, reportFailure } from './dom.js';
+import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
@@ -90,13 +90,16 @@ interface PtyError {
 // RestartDaemon takes over (that path spawns a fresh GUI) or once
 // ConnectControl succeeds — the daemon then re-pushes the session list.
 let _reconnecting = false;
-async function reconnectControl() {
-  if (_reconnecting) return;
+export async function reconnectControl(
+  maxAttempts = Infinity,
+): Promise<boolean> {
+  if (_reconnecting) return false;
   _reconnecting = true;
   let delay = 500;
+  let attempts = 0;
   try {
     for (;;) {
-      if (deps.isDaemonRestarting()) return; // fresh GUI is taking over
+      if (deps.isDaemonRestarting()) return false; // fresh GUI is taking over
       try {
         await ConnectControl();
         setStatus('connected');
@@ -105,13 +108,19 @@ async function reconnectControl() {
         } catch {
           /* bridge absent in tests */
         }
-        return;
+        return true;
       } catch (err) {
         try {
           LogFrontend(`control reconnect failed: ${err}`);
         } catch {
           /* ignore */
         }
+        attempts += 1;
+        // A drop mid-session retries forever: the daemon existed a
+        // moment ago. The boot path passes a cap instead — a daemon
+        // that never came up is a failure to surface, not one to keep
+        // dialing (and every failed dial can spawn a fresh hived).
+        if (attempts >= maxAttempts) return false;
         await new Promise((r) => setTimeout(r, delay));
         delay = Math.min(delay * 2, 5000);
       }
@@ -332,6 +341,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
   }
 
   EventsOn('session:list', (jsonStr: string) => {
+    // First list = the daemon answered. Anything the pane renders from
+    // here on is the truth, so the boot overlay's job is done.
+    setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     state.sessions = sessions || [];
     for (const s of state.sessions) {

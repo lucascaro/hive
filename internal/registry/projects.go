@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -46,43 +47,40 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 	return r.CreateProject(wire.CreateProjectReq{Name: "default", Cwd: cwd})
 }
 
-// ReclaimOrphanWorktrees scans every project's <projectCwd>/.worktrees
-// directory and runs worktree.Cleanup on any subdirectory that is both
-// unclaimed by a live registry entry AND pristine (no uncommitted
-// changes, no unpushed commits). Idempotent. Run once at daemon
-// startup so a SIGKILL'd previous process doesn't leak.
+// OrphanWorktreeCandidate names one directory the reclaim may
+// consider. Candidates are collected once, at daemon start, and the
+// expensive part (git status per candidate, removal) runs later —
+// see ReclaimOrphanWorktrees.
+type OrphanWorktreeCandidate struct {
+	Root string // repository root the worktree belongs to
+	Path string // absolute path of the worktree directory
+}
+
+// ScanOrphanWorktrees lists the worktree directories that exist right
+// now, one ReadDir per project plus a `git rev-parse` to find each
+// repo root. Cheap enough to run on the daemon's boot path, which is
+// the point: the candidate set must be "what was on disk when this
+// daemon started".
 //
-// The pristine condition is what makes detached worktrees possible:
-// a worktree whose session was closed is unclaimed forever, so
-// reclaiming unconditionally would delete the user's kept work at the
-// next boot.
-//
-// Caller contract: only the canonical daemon may call this. The
-// on-disk <project>/.worktrees/ namespace is shared across daemon
-// instances (it lives under the project cwd, not under the state
-// dir), so an isolated dev daemon — HIVE_STATE_DIR set — must not
-// reap: every prod-owned worktree would look unclaimed in its
-// registry and get force-removed. Daemon startup gates this call on
-// registry.StateDirOverridden().
-func (r *Registry) ReclaimOrphanWorktrees() {
+// Anything created afterwards is somebody's live work — a worktree the
+// user made by hand, or one hive's own create path is still filling in
+// — and a background sweep that could delete it would be a data-loss
+// bug, not a leak cleanup.
+func (r *Registry) ScanOrphanWorktrees() []OrphanWorktreeCandidate {
 	r.mu.Lock()
-	claimed := make(map[string]bool, len(r.entries))
-	for _, e := range r.entries {
-		if e.WorktreePath != "" {
-			claimed[e.WorktreePath] = true
-		}
-	}
 	projects := make([]*Project, 0, len(r.projects))
 	for _, p := range r.projects {
 		projects = append(projects, p)
 	}
 	r.mu.Unlock()
 
+	var out []OrphanWorktreeCandidate
+	seen := make(map[string]bool)
 	for _, p := range projects {
-		if p.Cwd == "" || !worktree.IsGitRepo(p.Cwd) {
+		if p.Cwd == "" {
 			continue
 		}
-		root, err := worktree.Root(p.Cwd)
+		root, err := r.gitRoot(p.Cwd)
 		if err != nil {
 			continue
 		}
@@ -96,31 +94,132 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 				continue
 			}
 			path := filepath.Join(wtDir, d.Name())
-			if claimed[path] {
-				continue
+			if seen[path] {
+				continue // two projects under one repo root
 			}
-			// Same rule as Kill: reclaim only what holds no work.
-			// A worktree the user detached on purpose (closed its
-			// session, kept the branch) is unclaimed by definition,
-			// so an unconditional reclaim here would delete it on
-			// the next daemon start — silently, at boot, with no
-			// confirm. Pristine-only keeps the crash-leak cleanup
-			// this exists for while making detaching safe.
-			st, ierr := worktree.Inspect(root, path)
-			switch {
-			case ierr != nil:
-				log.Printf("registry: cannot inspect orphan worktree %s (%v); keeping it", path, ierr)
-			case !st.Pristine():
-				log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
-					path, st.Uncommitted, st.Unpushed, st.Unknown)
-			default:
-				log.Printf("registry: reclaiming orphan worktree %s", path)
-				if err := worktree.Cleanup(root, path); err != nil {
-					log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
-				}
-			}
+			seen[path] = true
+			out = append(out, OrphanWorktreeCandidate{Root: root, Path: path})
 		}
 	}
+	return out
+}
+
+// ReclaimOrphanWorktrees runs worktree.Cleanup on any candidate that
+// is both unclaimed by a live registry entry AND pristine (no
+// uncommitted changes, no unpushed commits). Idempotent. Run once per
+// daemon run, off the accept path, so a SIGKILL'd previous process
+// doesn't leak without holding up boot — the git status calls here
+// are several subprocesses per candidate.
+//
+// Candidates come from ScanOrphanWorktrees, called on the boot path
+// before any client can connect. That split is what makes a
+// background sweep safe: this function can only ever delete a
+// directory that predates the daemon.
+//
+// It still runs concurrently with client-driven create/kill, so it
+// takes r.gitMu around each git step rather than for the whole scan —
+// a whole-scan hold would move the boot stall onto the first worktree
+// create or kill after boot, which waits on that same mutex before it
+// can even report a phase. Deleting is guarded instead by re-checking
+// the claim and re-inspecting the worktree inside that step's lock: a
+// worktree adopted, or dirtied, since the scan must not be deleted.
+//
+// ctx cuts the sweep short when the daemon is shutting down; the git
+// steps already in flight are bounded by their own timeouts.
+//
+// The pristine condition is what makes detached worktrees possible:
+// a worktree whose session was closed is unclaimed forever, so
+// reclaiming unconditionally would delete the user's kept work at the
+// next boot.
+//
+// Caller contract: only the canonical daemon may call this. The
+// on-disk <project>/.worktrees/ namespace is shared across daemon
+// instances (it lives under the project cwd, not under the state
+// dir), so an isolated dev daemon — HIVE_STATE_DIR set — must not
+// reap: every prod-owned worktree would look unclaimed in its
+// registry and get force-removed. Daemon startup gates this call on
+// registry.StateDirOverridden().
+func (r *Registry) ReclaimOrphanWorktrees(ctx context.Context, candidates []OrphanWorktreeCandidate) {
+	for _, c := range candidates {
+		if ctx.Err() != nil {
+			return
+		}
+		if r.worktreeClaimed(c.Path) {
+			continue
+		}
+		// Same rule as Kill: reclaim only what holds no work.
+		// A worktree the user detached on purpose (closed its
+		// session, kept the branch) is unclaimed by definition,
+		// so an unconditional reclaim here would delete it on
+		// the next daemon start — silently, at boot, with no
+		// confirm. Pristine-only keeps the crash-leak cleanup
+		// this exists for while making detaching safe.
+		st, ierr := r.inspectWorktree(c.Root, c.Path)
+		switch {
+		case ierr != nil:
+			log.Printf("registry: cannot inspect orphan worktree %s (%v); keeping it", c.Path, ierr)
+		case !st.Pristine():
+			log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
+				c.Path, st.Uncommitted, st.Unpushed, st.Unknown)
+		default:
+			r.reclaimOne(c.Root, c.Path)
+		}
+	}
+}
+
+// gitRoot resolves a project cwd to its repository root under gitMu,
+// so the reclaim's git subprocesses stay serialized against the
+// create/kill worktree steps without holding the mutex for the whole
+// scan. A non-git cwd surfaces as an error, which the scan skips.
+func (r *Registry) gitRoot(cwd string) (string, error) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	return worktree.Root(cwd)
+}
+
+// inspectWorktree is worktree.Inspect under gitMu — several git
+// subprocesses per call, and the create path is entitled to interleave
+// between candidates.
+func (r *Registry) inspectWorktree(root, path string) (worktree.Status, error) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	return worktree.Inspect(root, path)
+}
+
+// reclaimOne removes a single orphan worktree, re-checking under the
+// same lock that no session claimed it while Inspect was shelling out
+// to git. The claim check and the removal must share gitMu: adoption
+// (create.go's adoptDetachedWorktree) takes gitMu too, so a create
+// cannot slip a claim in between them.
+func (r *Registry) reclaimOne(root, path string) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	if r.worktreeClaimed(path) {
+		return
+	}
+	// Re-inspect too: the first Inspect ran without the lock, and the
+	// user may have started work in the directory since.
+	if st, err := worktree.Inspect(root, path); err != nil || !st.Pristine() {
+		log.Printf("registry: orphan worktree %s is no longer pristine (err=%v); keeping it", path, err)
+		return
+	}
+	log.Printf("registry: reclaiming orphan worktree %s", path)
+	if err := worktree.Cleanup(root, path); err != nil {
+		log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+	}
+}
+
+// worktreeClaimed reports whether any registry entry currently owns
+// the worktree directory at path.
+func (r *Registry) worktreeClaimed(path string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.entries {
+		if e.WorktreePath == path {
+			return true
+		}
+	}
+	return false
 }
 
 // MigrateOrphanSessions assigns any session without a ProjectID to

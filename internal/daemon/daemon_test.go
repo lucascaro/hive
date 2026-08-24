@@ -722,6 +722,12 @@ func TestStartup_HIVEStateDir_SkipsOrphanReap(t *testing.T) {
 		_ = d.Close()
 	})
 
+	// Close drains d.ops, which is what the background reclaim runs
+	// under — so after it returns, "the reaper did not run" is a
+	// settled fact rather than a race.
+	cancel()
+	_ = d.Close()
+
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("foreign worktree was reaped despite HIVE_STATE_DIR override: %v", err)
 	}
@@ -765,9 +771,22 @@ func TestStartup_NoOverride_ReapsOrphans(t *testing.T) {
 		_ = d.Close()
 	})
 
-	if _, err := os.Stat(foreign); !os.IsNotExist(err) {
-		t.Fatalf("expected stale worktree to be reaped, got err=%v", err)
+	// Reclaim is a background op now (it shells out to git and must
+	// not delay the socket), and Close cancels it rather than waiting
+	// it out — so poll for the effect instead of using teardown as a
+	// barrier.
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		if _, err := os.Stat(foreign); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected stale worktree to be reaped")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
+	cancel()
+	_ = d.Close()
 }
 
 // TestRequestReplay verifies a client can issue FrameRequestReplay

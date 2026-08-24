@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -559,4 +560,149 @@ func worktreeDirs(t *testing.T, repo string) []string {
 		out = append(out, e.Name())
 	}
 	return out
+}
+
+// TestReviveWithPhaseSequence pins the contract the daemon's
+// background boot revive depends on: a session persisted from a
+// previous run announces PhaseSpawning *before* its PTY is forked and
+// only clears to PhaseReady once it is attachable. Without the
+// bracket the entry sits at alive:false + PhaseReady, which
+// serveAttach reports as "session_dead" — the wrong answer for a
+// session that is merely still coming up.
+func TestReviveWithPhaseSequence(t *testing.T) {
+	skipNonPosix(t)
+	dir := t.TempDir()
+
+	r1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e, err := r1.Create(context.Background(), wire.CreateSpec{Name: "persisted", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := e.ID
+	// Close kills the PTY but keeps the metadata: exactly the state a
+	// daemon restart loads from disk.
+	_ = r1.Close()
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+	if info := infoFor(t, r2, id); info.Alive {
+		t.Fatalf("reloaded session %s is alive before revive", id)
+	}
+
+	log, stop := watch(t, r2)
+	defer stop()
+
+	revived, err := r2.ReviveWithPhase(id, session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatalf("ReviveWithPhase: %v", err)
+	}
+	if !revived {
+		t.Fatal("ReviveWithPhase declined an idle session")
+	}
+
+	got := log.waitForLastEvent(t, id, "updated:"+wire.PhaseReady)
+	if got[0] != "updated:"+wire.PhaseSpawning {
+		t.Fatalf("phase sequence: got %s, want spawning first", joined(got))
+	}
+	if info := infoFor(t, r2, id); !info.Alive {
+		t.Fatalf("session %s not alive after ReviveWithPhase", id)
+	}
+}
+
+// infoFor returns the SessionInfo for id, failing if it is gone.
+func infoFor(t *testing.T, r *Registry, id string) wire.SessionInfo {
+	t.Helper()
+	for _, info := range r.List() {
+		if info.ID == id {
+			return info
+		}
+	}
+	t.Fatalf("session %s not in registry", id)
+	return wire.SessionInfo{}
+}
+
+// TestReviveWithPhaseDoesNotClobberAKill pins the compare-and-set on
+// the way out of the phase bracket. Revive spawns outside r.mu, and a
+// client kill landing in that window has already moved the entry to
+// PhaseChecking/PhaseClosing — clearing unconditionally to ready
+// would drop the GUI's spinner and show a ready tile for a session
+// being torn down.
+func TestReviveWithPhaseDoesNotClobberAKill(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e, err := r.Create(context.Background(), wire.CreateSpec{Name: "doomed", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	waitFor(t, "session ready", func() bool { return r.Phase(e.ID) == wire.PhaseReady })
+
+	// Stand in for the kill that arrives mid-spawn: the entry is no
+	// longer idle, so the revive must decline it outright.
+	if !r.setPhaseIf(e.ID, wire.PhaseReady, wire.PhaseClosing) {
+		t.Fatal("could not move the entry to closing")
+	}
+	revived, err := r.ReviveWithPhase(e.ID, session.Options{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("ReviveWithPhase: %v", err)
+	}
+	if revived {
+		t.Fatal("ReviveWithPhase claimed an entry a kill already owned")
+	}
+	if got := r.Phase(e.ID); got != wire.PhaseClosing {
+		t.Fatalf("phase = %q after a declined revive, want %q", got, wire.PhaseClosing)
+	}
+	_ = r.Kill(e.ID, true)
+}
+
+// TestReviveDoesNotResurrectAKilledEntry covers the other half: the
+// spawn itself lands after the kill removed the entry. Binding the
+// fresh PTY to that orphaned Entry leaks the process — watchSessionExit
+// finds no entry and returns, so nobody ever closes it, and its cwd
+// sits inside a worktree the kill already removed.
+func TestReviveDoesNotResurrectAKilledEntry(t *testing.T) {
+	skipNonPosix(t)
+	dir := t.TempDir()
+	r1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e, err := r1.Create(context.Background(), wire.CreateSpec{Name: "racy", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := e.ID
+	_ = r1.Close()
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+
+	// Delete the entry while the revive is in flight, the way kill
+	// does. Racing a goroutine against a real spawn is what makes
+	// this reproduce; the assertion holds either way it lands.
+	done := make(chan error, 1)
+	go func() { done <- r2.Revive(id, session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24}) }()
+	_ = r2.Kill(id, true)
+
+	if err := <-done; err != nil && !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Revive: %v", err)
+	}
+	// Whoever won, no live PTY may be reachable through a deleted
+	// entry — and if the revive won the race the entry is simply gone.
+	if got := r2.Get(id); got != nil && got.Session() != nil {
+		t.Fatal("a killed entry came back with a live PTY attached")
+	}
+	for _, info := range r2.List() {
+		if info.ID == id {
+			t.Fatal("killed session is still listed")
+		}
+	}
 }
