@@ -86,6 +86,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Reordering sessions sometimes moved the wrong one, or nothing at all.
+  A session's order number is the position the daemon splices at, but
+  closing a session used to leave a hole in the sequence rather than
+  closing it up. The next session opened then reused a number another
+  session still held, which made the sidebar sort ambiguous, and every
+  move after that landed a slot or more off — or clamped to the bottom
+  of the list. Order is now always recomputed from the actual position,
+  and the sessions that shift are told about it; restarting Hive
+  repairs a list that had already drifted. Deleting a project had the
+  same hole and the same fix.
+
 - Closing a session could delete the directory you were working in. When
   a project's working directory is itself a git worktree — which is how
   hive is often run, from inside its own `.worktrees/` — a session there

@@ -225,6 +225,7 @@ export async function RequestScrollbackReplay(id: string) {
   replayLog.push({ id, t: Date.now() });
   return '';
 }
+let nextSessionSeq = 0;
 // state.sessions IS the order, mirroring the daemon's single global
 // r.order list; renumber rewrites each session's .order to its index,
 // the same invariant registry.renumberLocked keeps.
@@ -259,7 +260,11 @@ export async function CreateSession(
   continueConversation?: boolean,
 ) {
   maybeFail('CreateSession');
-  const id = `mock-${state.sessions.length + 1}`;
+  // Monotonic, NOT derived from the current length: after a kill the
+  // length rewinds and a length-based id collides with a session that
+  // is still alive, which silently drops the new row from the sidebar.
+  nextSessionSeq += 1;
+  const id = `mock-${nextSessionSeq}`;
   const pid = projectID || 'p1';
   const s: MockSession = {
     id,
@@ -357,10 +362,17 @@ export async function KillSession(id: string) {
     const j = state.sessions.findIndex((s) => s.id === id);
     if (j < 0) return;
     const [removed] = state.sessions.splice(j, 1);
+    // A kill shifts every later session down a slot, so the daemon
+    // recompacts .order and broadcasts the survivors (registry.Kill).
+    // Leaving holes here would model a bug the daemon no longer has —
+    // and it hid this one: stale .order made the next reorder, which
+    // sends an absolute index, land in the wrong slot.
+    renumber();
     emit(
       'session:event',
       JSON.stringify({ kind: 'removed', session: removed }),
     );
+    emitUpdatedExcept(removed.id);
   });
   return '';
 }
@@ -491,6 +503,11 @@ export async function KillProject(id: string, killSessions: boolean) {
     }
   }
   const [removed] = state.projects.splice(i, 1);
+  // Same compaction the daemon does in KillProject, for both lists.
+  renumber();
+  state.projects.forEach((p, n) => {
+    p.order = n;
+  });
   emit('project:event', JSON.stringify({ kind: 'removed', project: removed }));
   return '';
 }

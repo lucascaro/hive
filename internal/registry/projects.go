@@ -170,6 +170,7 @@ func (r *Registry) CreateProject(req wire.CreateProjectReq) (*Project, error) {
 	}
 	r.projects[id] = p
 	r.projectOrder = append(r.projectOrder, id)
+	r.reindexProjectsLocked()
 	if err := r.persistProjectLocked(p); err != nil {
 		delete(r.projects, id)
 		r.projectOrder = r.projectOrder[:len(r.projectOrder)-1]
@@ -237,8 +238,16 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 			break
 		}
 	}
-	// Intentionally NOT renumbering — same rationale as Kill().
-	// See registry.go for the full comment.
+	// Every project after the removed one shifted down a slot, so
+	// Order follows and the shifted projects are broadcast below —
+	// same reasoning as Kill(). See reindexLocked in registry.go.
+	r.reindexProjectsLocked()
+	shifted := make([]wire.ProjectInfo, 0, len(r.projectOrder))
+	for _, pid := range r.projectOrder {
+		if other := r.projects[pid]; other != nil {
+			shifted = append(shifted, other.Info())
+		}
+	}
 	r.persistProjectIndexLoggedLocked("delete project")
 
 	dir := filepath.Join(ProjectsDir(r.stateDir), id)
@@ -257,6 +266,9 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 		}
 	}
 	r.broadcastProject(wire.ProjectEventRemoved, info)
+	for _, pi := range shifted {
+		r.broadcastProject(wire.ProjectEventUpdated, pi)
+	}
 	return nil
 }
 
@@ -314,14 +326,15 @@ func (r *Registry) moveProjectLocked(id string, newOrder int) {
 		return
 	}
 	r.projectOrder = moveInOrder(r.projectOrder, id, newOrder)
-	r.renumberProjectsLocked()
+	r.reindexProjectsLocked()
 }
 
-func (r *Registry) renumberProjectsLocked() {
+// reindexProjectsLocked is reindexLocked for projects — same
+// invariant, same reason. See registry.go.
+func (r *Registry) reindexProjectsLocked() {
 	for i, id := range r.projectOrder {
 		if p := r.projects[id]; p != nil {
 			p.Order = i
-			r.persistProjectLoggedLocked(p, "renumber projects")
 		}
 	}
 }

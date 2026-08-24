@@ -266,9 +266,11 @@ func (r *Registry) load() error {
 		if err := readJSON(filepath.Join(pdir, id, "project.json"), &meta); err != nil {
 			continue
 		}
+		// Index position wins over meta.Order — see the session
+		// loader below for why the per-entity copy is advisory.
 		r.projects[meta.ID] = &Project{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color, Cwd: meta.Cwd,
-			Order: meta.Order, Created: meta.Created,
+			Order: len(r.projectOrder), Created: meta.Created,
 		}
 		r.projectOrder = append(r.projectOrder, meta.ID)
 		pseen[meta.ID] = true
@@ -303,9 +305,13 @@ func (r *Registry) load() error {
 		if err := readJSON(filepath.Join(dir, id, "session.json"), &meta); err != nil {
 			continue
 		}
+		// Order comes from the index position, never from meta.Order:
+		// the per-session copy is advisory and goes stale whenever a
+		// sibling is killed or moved. Deriving it here also heals any
+		// state dir already skewed by an older build.
 		r.entries[meta.ID] = &Entry{
 			ID: meta.ID, Name: meta.Name, Color: meta.Color,
-			Order: meta.Order, Created: meta.Created, Agent: meta.Agent,
+			Order: len(r.order), Created: meta.Created, Agent: meta.Agent,
 			ProjectID:      meta.ProjectID,
 			WorktreePath:   meta.WorktreePath,
 			WorktreeBranch: meta.WorktreeBranch,
@@ -669,8 +675,10 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		return ErrNotFound
 	}
 	delete(r.entries, id)
+	killedAt := len(r.order)
 	for i, sid := range r.order {
 		if sid == id {
+			killedAt = i
 			r.order = append(r.order[:i], r.order[i+1:]...)
 			break
 		}
@@ -687,12 +695,18 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 			}
 		}
 	}
-	// Intentionally NOT renumbering remaining entries here. Orders
-	// were assigned at create time and only change on an explicit
-	// user move. Kill leaves a hole in the sequence (e.g. 0,1,3,4)
-	// — the sort-by-Order render handles holes fine, and not
-	// touching the field means we never have to broadcast spurious
-	// SessionEventUpdated for sessions the user didn't touch.
+	// Removing an entry shifts every later one down a slot, so Order
+	// has to follow — it IS the index into r.order, and both GUI
+	// reorder paths hand that index straight back to moveInOrder. The
+	// shifted entries are broadcast below so clients don't keep the
+	// stale values and misplace the next move.
+	r.reindexLocked()
+	shifted := make([]wire.SessionInfo, 0, max(len(r.order)-killedAt, 0))
+	for _, sid := range r.order[min(killedAt, len(r.order)):] {
+		if other := r.entries[sid]; other != nil {
+			shifted = append(shifted, other.Info())
+		}
+	}
 	r.persistIndexLoggedLocked("kill")
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
 	// Snapshot the PTY under the lock. Reading e.sess after the unlock
@@ -753,6 +767,9 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
+	for _, info := range shifted {
+		r.broadcast(wire.SessionEventUpdated, info)
+	}
 	return nil
 }
 
@@ -845,32 +862,31 @@ func (r *Registry) moveLocked(id string, newOrder int) {
 		return
 	}
 	r.order = moveInOrder(r.order, id, newOrder)
-	r.renumberLocked()
+	r.reindexLocked()
 }
 
-func (r *Registry) renumberLocked() {
+// reindexLocked re-derives every entry's Order from its position in
+// r.order. Call it after ANY mutation of r.order — insert, delete, or
+// move. Order is not independent state: both GUI reorder paths
+// (frontend lib/reorder.ts and app/sidebar.ts) convert a display
+// position into a global index by reading a sibling's .order and
+// handing it back as UpdateSessionReq.Order, which moveInOrder splices
+// at positionally. The moment Order stops equalling the index, every
+// move lands in the wrong slot (or clamps to the end), and an append
+// can even hand out an Order another entry already holds, which makes
+// the frontend's sort-by-order ambiguous.
+//
+// In-memory only. index.json's id slice is the persisted authority and
+// is what load() re-derives Order from, so a stale Order in a
+// session.json nobody rewrote is harmless.
+func (r *Registry) reindexLocked() {
 	for i, id := range r.order {
 		if e := r.entries[id]; e != nil {
 			e.Order = i
 		}
 	}
-	// Re-persist any entries whose Order changed. We re-write all of
-	// them rather than diff: the volume is small.
-	for _, id := range r.order {
-		if e := r.entries[id]; e != nil {
-			r.persistEntryLoggedLocked(e, "renumber")
-		}
-	}
 }
 
-// ponytail: disk I/O runs under r.mu, so persist latency blocks every
-// session op; renumberLocked makes it len(order) writes per reorder,
-// not one. Not fixed by snapshot-under-lock + write-outside: r.mu is
-// also what serializes the writes, so releasing it before the write
-// lets a slow writer land a stale snapshot on top of a newer one.
-// Upgrade path if it ever hurts: a persist-ordering lock acquired
-// under r.mu and released after the write, threaded through every
-// *Locked persist call site.
 func (r *Registry) persistEntryLocked(e *Entry) error {
 	path := filepath.Join(SessionsDir(r.stateDir), e.ID, "session.json")
 	return writeJSON(path, MetaFile{
