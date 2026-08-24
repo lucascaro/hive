@@ -1,5 +1,5 @@
-// hivegui is the desktop client for hived. See
-// docs/native-rewrite/phase-1.md for its role in the native rewrite.
+// hivegui is the desktop client for hived. See DESIGN.md for its role
+// in the architecture.
 package main
 
 import (

@@ -1,7 +1,6 @@
 // hived is the Hive session daemon. It owns one PTY-backed shell
 // session and accepts client connections over a Unix socket. See
-// docs/native-rewrite/phase-1.md for the role of this binary in the
-// native rewrite.
+// DESIGN.md for the role of this binary in the architecture.
 package main
 
 import (

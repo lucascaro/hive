@@ -53,7 +53,7 @@ Each principle has:
 
 ## 5. Background goroutines have explicit lifecycle
 
-**Why:** `hived` is a long-lived process that survives GUI restarts. Fire-and-forget goroutines leak across reconnects and produce ghost sessions, dangling PTY readers, and zombie watchers — exactly the v1 tmux-era pain `hived` was meant to eliminate.
+**Why:** `hived` is a long-lived process that survives GUI restarts. Fire-and-forget goroutines leak across reconnects and produce ghost sessions, dangling PTY readers, and zombie watchers.
 
 **Detection:** `go func()` or `go someFunc()` in `internal/daemon/`, `internal/session/`, or `internal/registry/` whose body neither (a) selects on a `context.Context.Done()` / shutdown channel, nor (b) is owned by a struct with a `Close()` / `Stop()` that signals it. Grep starting points: `^\s*go\s+` in those packages, then read the body.
 

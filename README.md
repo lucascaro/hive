@@ -3,15 +3,9 @@
 A native desktop app for managing multiple AI coding agent sessions —
 Claude, Codex, Gemini, Copilot, Aider, Pi, plain shells — across projects.
 
-> **`main` is now Hive v2 — the native daemon + GUI rewrite.** The legacy
-> tmux-backed TUI (Hive v1, `v0.14.x`) lives on the
-> [`release/v1`](https://github.com/lucascaro/hive/tree/release/v1) branch
-> for bug fixes. See `docs/native-rewrite/` for v2 design docs (PLAN.md
-> plus per-phase notes).
-
 ## Status
 
-**Released.** The v2 architecture is stable and in daily use. Latest release:
+**Released.** The architecture is stable and in daily use. Latest release:
 [v2.3.0](https://github.com/lucascaro/hive/releases/tag/v2.3.0).
 
 What works:
@@ -25,7 +19,8 @@ What works:
 - BEL → desktop notification + visual pulse on non-focused sessions
 
 Not yet shipping: scrollback resume across daemon restart, splits
-inside grid cells, workflows / agent teams, code signing.
+inside grid cells, workflows / agent teams, code signing and
+notarization, platform installers, auto-update.
 
 ## Build
 
@@ -84,8 +79,7 @@ internal/
   registry/        # sessions + projects + persistence
   daemon/          # socket listener + dispatch
   agent/           # built-in agent launcher catalog
-docs/
-  native-rewrite/  # v2 design docs (PLAN.md, phase-{0..5}.md)
+DESIGN.md          # architecture map
 build.sh           # macOS universal build
 ```
 
@@ -118,9 +112,8 @@ Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
 
 ## Contributing
 
-See `AGENTS.md` for repo-wide rules and `CONTRIBUTING.md` for the
-contribution flow. The native rewrite has its own design docs under
-`docs/native-rewrite/`.
+See `AGENTS.md` for repo-wide rules, `DESIGN.md` for the architecture
+map, and `CONTRIBUTING.md` for the contribution flow.
 
 ## License
 

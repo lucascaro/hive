@@ -1,11 +1,11 @@
 # hivegui
 
-The Hive desktop client for Phase 1. A Wails app that hosts an
+The Hive desktop client. A Wails app that hosts an
 xterm.js terminal and connects to `hived` (the session daemon) over
 a Unix socket. If `hived` isn't running, the GUI auto-spawns it as
 a detached child.
 
-See `docs/native-rewrite/phase-1.md` for the role of this binary.
+See `DESIGN.md` for the role of this binary.
 
 ## Build
 

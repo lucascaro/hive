@@ -1,10 +1,8 @@
 # DESIGN.md
 
-Top-level design overview for Hive v2 — the Wails GUI + `hived` daemon. The *shape* of the project: domains, layers, cross-cutting concerns, and the architectural rules that hold everything together.
+Top-level design overview for Hive — the Wails GUI + `hived` daemon. The *shape* of the project: domains, layers, cross-cutting concerns, and the architectural rules that hold everything together.
 
-Per-decision detail belongs in `docs/design-docs/` and `docs/native-rewrite/`. This file is the map.
-
-> v1 (TUI / Bubble Tea / tmux backend) lives on `release/v1` for bug-fix-only maintenance. Branch policy (cherry-pick only, no wholesale merges) is documented in AGENTS.md.
+Per-decision detail belongs in `docs/design-docs/`. This file is the map.
 
 ## Domains
 
