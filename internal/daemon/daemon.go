@@ -71,6 +71,11 @@ type Daemon struct {
 	// ~100ms.
 	sockInfo os.FileInfo
 
+	// orphanCandidates is the worktree-directory snapshot taken on the
+	// boot path, before any client could connect. The background sweep
+	// consumes it; see New.
+	orphanCandidates []registry.OrphanWorktreeCandidate
+
 	// ops tracks the goroutines that run session lifecycle work
 	// (create/kill/restart) off the control read loop. Close waits on
 	// it so a shutting-down daemon doesn't abandon a `git worktree
@@ -178,6 +183,23 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
 	}
 
+	// Collect the orphan-worktree candidates HERE, on the boot path,
+	// while no client can have created anything: the sweep itself is
+	// slow (git status per candidate) and runs in the background, but
+	// it must only ever be able to delete a directory that predates
+	// this daemon. A worktree that appears afterwards is live work.
+	//
+	// Only the canonical daemon owns the on-disk <project>/.worktrees/
+	// namespace; an isolated dev daemon (HIVE_STATE_DIR set) shares
+	// that directory with prod and would otherwise reap prod's
+	// worktrees as orphans.
+	var orphanCandidates []registry.OrphanWorktreeCandidate
+	if registry.StateDirOverridden() {
+		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
+	} else {
+		orphanCandidates = reg.ScanOrphanWorktrees()
+	}
+
 	// Identify the file we just bound, for Close's guarded unlink.
 	// A stat failure is not fatal — Close falls back to leaving the
 	// path alone, which is the safe direction.
@@ -192,9 +214,11 @@ func New(cfg Config) (*Daemon, error) {
 		reg:      reg,
 		ln:       ln,
 		sockInfo: sockInfo,
-		clients:  make(map[net.Conn]struct{}),
-		shutdown: make(chan struct{}),
-		stop:     make(chan struct{}),
+
+		orphanCandidates: orphanCandidates,
+		clients:          make(map[net.Conn]struct{}),
+		shutdown:         make(chan struct{}),
+		stop:             make(chan struct{}),
 	}
 
 	// The two slow boot chores run in the background, off the caller's
@@ -301,8 +325,7 @@ func wanted(only []string, id string) bool {
 // directory with prod and would otherwise reap prod's worktrees as
 // orphans.
 func (d *Daemon) reclaimWorktrees() {
-	if registry.StateDirOverridden() {
-		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
+	if len(d.orphanCandidates) == 0 {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -314,7 +337,7 @@ func (d *Daemon) reclaimWorktrees() {
 		case <-ctx.Done():
 		}
 	}()
-	d.reg.ReclaimOrphanWorktrees(ctx)
+	d.reg.ReclaimOrphanWorktrees(ctx, d.orphanCandidates)
 }
 
 // Shutdown asks Run to stop accepting and return, exactly as a

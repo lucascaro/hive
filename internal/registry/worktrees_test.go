@@ -429,7 +429,7 @@ func TestCreate_AdoptsExistingWorktreeWithoutSiblingSession(t *testing.T) {
 		t.Errorf("a nested .worktrees dir was created inside %s", wt)
 	}
 	// And the reclaim sweep must leave it alone now that it's claimed.
-	r.ReclaimOrphanWorktrees(context.Background())
+	r.ReclaimOrphanWorktrees(context.Background(), r.ScanOrphanWorktrees())
 	if _, err := os.Stat(filepath.Join(wt, "wip.txt")); err != nil {
 		t.Fatalf("resumed worktree was reclaimed despite having a live session: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestReclaimOrphanWorktrees_KeepsNonPristine(t *testing.T) {
 
 	// Neither is claimed by a session — before this change both would
 	// have been force-removed at startup.
-	r.ReclaimOrphanWorktrees(context.Background())
+	r.ReclaimOrphanWorktrees(context.Background(), r.ScanOrphanWorktrees())
 
 	if _, err := os.Stat(filepath.Join(dirty, "unsaved.txt")); err != nil {
 		t.Errorf("worktree with uncommitted work was reclaimed: %v", err)
@@ -462,7 +462,7 @@ func TestReclaimOrphanWorktrees_KeepsUnpushedCommits(t *testing.T) {
 	runGit(t, wt, "add", "a.txt")
 	runGit(t, wt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a")
 
-	r.ReclaimOrphanWorktrees(context.Background())
+	r.ReclaimOrphanWorktrees(context.Background(), r.ScanOrphanWorktrees())
 
 	if _, err := os.Stat(wt); err != nil {
 		t.Errorf("worktree holding an unpushed commit was reclaimed: %v", err)
@@ -851,7 +851,7 @@ func TestReclaimOrphanWorktrees_ConcurrentAdopt(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		r.ReclaimOrphanWorktrees(context.Background())
+		r.ReclaimOrphanWorktrees(context.Background(), r.ScanOrphanWorktrees())
 	}()
 
 	e, err := r.Create(context.Background(), wire.CreateSpec{
@@ -873,5 +873,31 @@ func TestReclaimOrphanWorktrees_ConcurrentAdopt(t *testing.T) {
 	}
 	if worktree.ResolvePath(e.WorktreePath) != worktree.ResolvePath(wt) {
 		t.Fatalf("WorktreePath = %q, want %q", e.WorktreePath, wt)
+	}
+}
+
+// TestReclaimOrphanWorktrees_IgnoresWorktreesCreatedAfterTheScan pins
+// what makes a background sweep safe at all: candidates are collected
+// on the daemon's boot path, so a worktree that appears afterwards —
+// one the user made by hand, one a create is still filling in — is
+// not something the sweep may ever delete, pristine or not.
+func TestReclaimOrphanWorktrees_IgnoresWorktreesCreatedAfterTheScan(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	stale := newWorktree(t, p.Cwd, "from-a-previous-run")
+
+	// Boot-path snapshot: only `stale` exists at this point.
+	candidates := r.ScanOrphanWorktrees()
+
+	// ...and now the user creates one, after the daemon came up.
+	fresh := newWorktree(t, p.Cwd, "made-just-now")
+
+	r.ReclaimOrphanWorktrees(context.Background(), candidates)
+
+	if _, err := os.Stat(stale); err == nil {
+		t.Errorf("pristine orphan %s from before the scan survived; the leak cleanup is broken", stale)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("worktree created after the scan was reclaimed: %v", err)
 	}
 }
