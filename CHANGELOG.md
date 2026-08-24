@@ -38,6 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given a worktree. Deleting a branch that still holds unmerged commits
   says how many and requires a second confirmation.
 
+- The worktree browser now recognises squash merges. A branch merged
+  with GitHub's "Squash and merge" is not part of the default branch's
+  history — its commits were rewritten — so the browser used to report
+  finished work as unmerged, sort it to the top as "may still hold
+  work", and ask you to force-delete it past a warning about losing
+  commits. Such branches now carry a **merged** badge, sort down with
+  the rest of the finished work, and delete without the destructive
+  confirmation. Detection compares the branch's changes against the
+  default branch's history, and consults GitHub for the merges that
+  comparison cannot see (which needs the `gh` command; without it, or
+  offline, everything still works — some squashes just keep reading as
+  unmerged). A branch you have committed on since its merge is never
+  treated as merged, whatever GitHub says about it.
+
+- Deleting a branch from the worktree browser can now delete it on the
+  remote too. It is a separate button, never the default, and it only
+  appears for a branch that actually tracks a remote.
+
 - The new-session popup can now name the worktree's branch. Ticking
   "Create in git worktree" reveals a branch-name field; leave it empty to
   keep the previous behaviour of an auto-generated adjective-noun name.
@@ -85,6 +103,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Go Back** / **Go Forward**.
 
 ### Fixed
+
+- The worktree browser was slow to open on a repository with a lot of
+  branches — several seconds, during which the panel sat empty. It now
+  opens in about a second on a repository with 169 branches, by asking
+  git for every branch's state in one go instead of once per branch,
+  and by running the remaining checks at the same time as each other
+  rather than one after another.
+
+- A long list of branches used to squeeze the worktree list out of the
+  worktree browser: with a hundred branches the worktrees were a few
+  pixels tall and effectively unreachable. The panel is now a single
+  list — worktrees first, then the branches without one — with headings
+  that stay put as you scroll.
 
 - Reordering sessions sometimes moved the wrong one, or nothing at all.
   A session's order number is the position the daemon splices at, but

@@ -411,6 +411,7 @@ describe('deleting', () => {
       '/repo/.worktrees/clean',
       false,
       false,
+      false,
     );
   });
 
@@ -425,6 +426,7 @@ describe('deleting', () => {
       '/repo/.worktrees/clean',
       false,
       true,
+      false,
     );
   });
 
@@ -438,6 +440,7 @@ describe('deleting', () => {
       'p1',
       '/repo/.worktrees/dirty',
       true,
+      false,
       false,
     );
   });
@@ -630,9 +633,9 @@ describe('orphaned branches', () => {
     button(branchRows()[0], 'Delete').click();
     await flush();
     expect(dialog()?.textContent).toContain('nothing is lost');
-    choice('delete').click();
+    choice('local').click();
     await flush();
-    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'tidy', false);
+    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'tidy', false, false);
   });
 
   // An unmerged branch is the case that loses commits: git refuses it
@@ -645,9 +648,9 @@ describe('orphaned branches', () => {
     const text = dialog()?.textContent ?? '';
     expect(text).toContain('lose its commits');
     expect(text).toContain('3 commits that are not merged');
-    choice('delete').click();
+    choice('local').click();
     await flush();
-    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'wip', true);
+    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'wip', true, false);
   });
 });
 

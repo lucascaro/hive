@@ -1728,12 +1728,22 @@ body.resizing-sidebar #app { transition: none; }
   outline: 2px solid #f59e0b;
   outline-offset: 1px;
 }
-#worktrees-panel section {
+/* One scroll container for both sections: worktrees first, then the
+   orphaned branches, read top to bottom as a single list. Two
+   independently-scrolling panes meant each could hide the other — and
+   as flex items they shrank proportionally to content, so a hundred
+   branches left the worktree list a few pixels tall. */
+#worktrees-body {
+  flex: 1 1 auto;
   overflow-y: auto;
+  /* Flex items refuse to shrink below their content unless this is
+     said explicitly. */
+  min-height: 0;
+}
+#worktrees-panel section {
   padding: 12px 14px 4px;
 }
-#worktrees-section-trees { flex: 1 1 auto; }
-#worktrees-section-branches { flex: 0 1 auto; border-top: 1px solid #1e1e1e; }
+#worktrees-section-branches { border-top: 1px solid #1e1e1e; }
 #worktrees-panel section.hidden { display: none; }
 
 /* Loading / empty state. Mirrors the session tile's phase overlay —
@@ -1768,6 +1778,16 @@ body.resizing-sidebar #app { transition: none; }
   --session-color: #f59e0b;
 }
 .worktrees-empty-card .phase-spinner.hidden { display: none; }
+/* The headings stay put while their rows scroll under them, so the
+   list never leaves you wondering which half you are looking at. */
+#worktrees-panel section h4 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #111;
+  margin: -12px -14px 0;
+  padding: 12px 14px 6px;
+}
 #worktrees-panel h4 {
   margin: 0 0 4px;
   font-size: 11px;
@@ -1827,6 +1847,13 @@ body.resizing-sidebar #app { transition: none; }
   border: 1px solid #2a2a2a;
   border-radius: 3px;
   padding: 1px 4px;
+}
+/* Merged is the "this is safe to sweep" signal, so it reads as
+   positive rather than as another grey tag. */
+.worktree-badge.merged {
+  color: #4ade80;
+  border-color: #14532d;
+  background: rgba(22, 101, 52, 0.18);
 }
 .worktree-actions {
   display: flex;

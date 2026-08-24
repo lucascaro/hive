@@ -327,7 +327,7 @@ test('an orphaned branch can be deleted, behind a confirmation', async ({
   await expect(branchRow).toBeVisible();
 
   await branchRow.getByRole('button', { name: 'Delete' }).click();
-  await dialogChoice(page, 'delete').click();
+  await dialogChoice(page, 'local').click();
   await expect(branchRow).toHaveCount(0);
 });
 
@@ -698,4 +698,108 @@ test('the branch name typed in the launcher reaches the new worktree', async ({
       (s) => s.worktree_branch === 'my-feature',
     ),
   );
+});
+
+// A repo with a long branch list used to push the worktree section
+// clean out of the panel: both sections are flex items, and a flex
+// item will not shrink below its content without min-height: 0.
+// Asserted in a real browser because this is pure layout — jsdom
+// computes no heights at all.
+test('a long branch list never squeezes out the worktree list', async ({
+  page,
+}) => {
+  await boot(page);
+  const many = Array.from({ length: 120 }, (_, i) => ({
+    name: `stale-${i}`,
+    ahead: i % 3,
+    merged: i % 2 === 0,
+  }));
+  await seed(page, [CLEAN, DIRTY], many);
+  await page.keyboard.press(`${mod}+e`);
+  await expect(panel(page)).toBeVisible();
+
+  // Visible, and actually on screen: elementFromPoint at the row's own
+  // centre must land inside it, not on whatever covers it.
+  await expect(row(page, 'clean')).toBeVisible();
+  // Queried and hit-tested in one evaluate: the list re-renders on
+  // every refresh, and a handle taken beforehand would be measuring a
+  // detached node.
+  const onScreen = await page.evaluate(() => {
+    const el = document.querySelector(
+      '#worktrees-list .worktree-row[data-path$="/clean"]',
+    );
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+    return { height: r.height, covered: !!hit && el.contains(hit) };
+  });
+  expect(onScreen?.height ?? 0).toBeGreaterThan(0);
+  expect(onScreen?.covered).toBe(true);
+
+  // Both sections live in one scroll container, and it stays inside
+  // the panel rather than growing it.
+  const fits = await page.evaluate(() => {
+    const panelEl = document.getElementById('worktrees-panel');
+    const body = document.getElementById('worktrees-body');
+    const branches = document.getElementById('worktrees-section-branches');
+    const trees = document.getElementById('worktrees-section-trees');
+    if (!panelEl || !body || !branches || !trees) return null;
+    return {
+      bodyScrolls: body.scrollHeight > body.clientHeight,
+      // Neither section scrolls on its own any more.
+      sectionsScroll:
+        branches.scrollHeight > branches.clientHeight ||
+        trees.scrollHeight > trees.clientHeight,
+      branchesInside:
+        body.getBoundingClientRect().bottom <=
+        panelEl.getBoundingClientRect().bottom + 1,
+      treesHeight: trees.getBoundingClientRect().height,
+    };
+  });
+  expect(fits?.bodyScrolls).toBe(true);
+  expect(fits?.sectionsScroll).toBe(false);
+  expect(fits?.branchesInside).toBe(true);
+  expect(fits?.treesHeight).toBeGreaterThan(40);
+});
+
+// Deleting the remote branch is a push, so it is never implied: the
+// dialog offers it as its own button, and only for a branch that
+// tracks something.
+test('an orphan branch with an upstream offers local-only and local+remote', async ({
+  page,
+}) => {
+  await boot(page);
+  await seed(
+    page,
+    [CLEAN],
+    [{ name: 'shipped', upstream: 'origin/shipped', merged: true }],
+  );
+  await page.keyboard.press(`${mod}+e`);
+  await page
+    .locator('#worktrees-branches .worktree-row', { hasText: 'shipped' })
+    .getByRole('button', { name: 'Delete' })
+    .click();
+
+  await expect(dialogChoice(page, 'local')).toBeVisible();
+  await dialogChoice(page, 'remote').click();
+
+  await page.waitForFunction(() =>
+    (window.__hive.state?.deletedRemotes ?? []).includes('shipped'),
+  );
+});
+
+test('a branch with no upstream gets no remote option', async ({ page }) => {
+  await boot(page);
+  await seed(page, [CLEAN], [{ name: 'local-only', merged: true }]);
+  await page.keyboard.press(`${mod}+e`);
+  await page
+    .locator('#worktrees-branches .worktree-row', { hasText: 'local-only' })
+    .getByRole('button', { name: 'Delete' })
+    .click();
+
+  await expect(dialogChoice(page, 'local')).toBeVisible();
+  await expect(dialogChoice(page, 'remote')).toHaveCount(0);
 });

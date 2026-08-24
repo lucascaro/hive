@@ -7,6 +7,8 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
@@ -94,6 +96,22 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 	}
 	resp.RepoRoot = root
 
+	// GitHub is asked in parallel with the git work below, not before
+	// it: the call is a network round trip that has nothing to wait
+	// for, and running it first made every cold open pay for it twice
+	// over. It is also deliberately outside the git lock.
+	started := time.Now()
+	var (
+		ghSet     ghMerged
+		ghElapsed time.Duration
+		ghDone    = make(chan struct{})
+	)
+	go func() {
+		defer close(ghDone)
+		ghSet = ghMergedLookup(root)
+		ghElapsed = time.Since(started)
+	}()
+
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
 
@@ -101,14 +119,37 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 	if err != nil {
 		return resp, fmt.Errorf("list worktrees: %w", err)
 	}
-	branches, err := worktree.ListBranches(root)
-	if err != nil {
-		return resp, fmt.Errorf("list branches: %w", err)
-	}
+	// The branch listing and the per-worktree probes below are
+	// independent read-only git work, so they overlap too. Same
+	// reasoning as the GitHub call: nothing here waits on anything
+	// else, and a repo with hundreds of branches makes the difference
+	// visible.
+	branchesStart := time.Now()
+	var (
+		branches        []worktree.BranchInfo
+		branchesErr     error
+		branchesElapsed time.Duration
+		branchesDone    = make(chan struct{})
+	)
+	go func() {
+		defer close(branchesDone)
+		branches, branchesErr = worktree.ListBranches(root)
+		branchesElapsed = time.Since(branchesStart)
+	}()
 	claims := r.sessionsByWorktree()
 	mainPath := worktree.ResolvePath(root)
 
-	for _, t := range trees {
+	// Each row costs a handful of git subprocesses, so they are probed
+	// concurrently — sequentially this is the slowest part of opening
+	// the browser on a repo with several worktrees.
+	inspectStart := time.Now()
+	resp.Worktrees = make([]wire.WorktreeInfo, len(trees))
+	// The overlay is read from here on, so this is where the GitHub
+	// call is finally waited on — by now it has been running for the
+	// length of the branch listing.
+	<-ghDone
+	var wg sync.WaitGroup
+	for i, t := range trees {
 		info := wire.WorktreeInfo{
 			Path:       t.Path,
 			Branch:     t.Branch,
@@ -118,7 +159,13 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 		}
 		// The main checkout is listed for context only — it is never
 		// removable, so spending a status probe on it is waste.
-		if !info.IsMain {
+		if info.IsMain {
+			resp.Worktrees[i] = info
+			continue
+		}
+		wg.Add(1)
+		go func(i int, t worktree.Info, info wire.WorktreeInfo) {
+			defer wg.Done()
 			st, ierr := worktree.Inspect(root, t.Path)
 			if ierr != nil {
 				// Unknown is the safe reading: an unprobeable
@@ -127,11 +174,19 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 				info.Unknown = true
 			} else {
 				info.Uncommitted, info.Unpushed, info.Unknown = st.Uncommitted, st.Unpushed, st.Unknown
+				info.Upstream = st.Upstream
+				info.Merged = st.Merged || ghConfirms(root, t.Branch, ghSet)
 			}
-		}
-		resp.Worktrees = append(resp.Worktrees, info)
+			resp.Worktrees[i] = info
+		}(i, t, info)
 	}
+	wg.Wait()
+	inspectElapsed := time.Since(inspectStart)
 
+	<-branchesDone
+	if branchesErr != nil {
+		return resp, fmt.Errorf("list branches: %w", branchesErr)
+	}
 	for _, b := range branches {
 		if b.HasWorktree {
 			continue
@@ -140,12 +195,18 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 			Name:     b.Name,
 			Upstream: b.Upstream,
 			Ahead:    b.Ahead,
-			Merged:   b.Merged,
+			Merged:   b.Merged || ghConfirms(root, b.Name, ghSet),
 		})
 	}
 	sort.Slice(resp.OrphanBranches, func(i, j int) bool {
 		return resp.OrphanBranches[i].Name < resp.OrphanBranches[j].Name
 	})
+	log.Printf("registry: ListWorktrees %s: %d worktrees, %d orphan branches in %s (gh=%s branches=%s inspect=%s)",
+		projectID, len(resp.Worktrees), len(resp.OrphanBranches),
+		time.Since(started).Round(time.Millisecond),
+		ghElapsed.Round(time.Millisecond),
+		branchesElapsed.Round(time.Millisecond),
+		inspectElapsed.Round(time.Millisecond))
 	return resp, nil
 }
 
@@ -179,7 +240,7 @@ func (r *Registry) liveSessionsIn(path string) []string {
 // deleteBranch additionally removes the branch the worktree was on.
 // It defaults off because `git worktree remove` deliberately leaves
 // the ref behind, and that ref is the user's last handle on the work.
-func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bool) error {
+func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, deleteRemote bool) error {
 	root, err := r.projectRoot(projectID)
 	if err != nil {
 		return err
@@ -188,9 +249,18 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bo
 	if err != nil {
 		return err
 	}
+	// The remote copy is the last handle on the work once the local ref
+	// is gone, so the two go together. Asking for one without the other
+	// used to be silently ignored.
+	if deleteRemote && !deleteBranch {
+		return errors.New("registry: delete_remote requires delete_branch")
+	}
 	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
 		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
 	}
+
+	// Network call, so it happens before the git lock is taken.
+	ghSet := ghMergedLookup(root)
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
@@ -207,11 +277,15 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bo
 	if err != nil {
 		return fmt.Errorf("inspect worktree: %w", err)
 	}
+	// Commits already merged into the default ref (squash included)
+	// are not lost by removing the worktree, so they do not need the
+	// force path. Same verdict the client rendered, so the two agree.
+	merged := st.Merged || ghConfirms(root, st.Branch, ghSet)
 	if !force {
 		if st.Uncommitted {
 			return ErrWorktreeDirty
 		}
-		if st.Unpushed > 0 || st.Unknown {
+		if (st.Unpushed > 0 && !merged) || st.Unknown {
 			return ErrWorktreeUnpushed
 		}
 	}
@@ -226,12 +300,24 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch bo
 		// force mirrors the user's confirmed intent: without it git
 		// refuses to delete a branch holding unmerged commits, which
 		// would leave the ref behind after the user explicitly asked
-		// for it to go. No `|| st.Unpushed > 0` here — reaching this
-		// line with force=false means the gate above already proved
-		// Unpushed is 0, so that clause read as a safety net while
-		// being unreachable.
-		if err := worktree.DeleteBranch(root, branch, force); err != nil {
+		// for it to go. `|| merged` covers the squash case: git's own
+		// -d test is reachability, so a branch whose work landed as a
+		// squash still needs -D even though nothing is lost.
+		// The upstream is read before the local ref goes: once the
+		// branch is deleted git can no longer say what it tracked.
+		remote, remoteBranch := "", ""
+		if deleteRemote {
+			remote, remoteBranch = worktree.UpstreamOf(root, branch)
+		}
+		if err := worktree.DeleteBranch(root, branch, force || merged); err != nil {
 			return fmt.Errorf("worktree removed, but deleting branch %s failed: %w", branch, err)
+		}
+		if remote != "" {
+			if err := worktree.DeleteRemoteBranch(root, remote, remoteBranch); err != nil {
+				return fmt.Errorf("worktree and local branch removed, but deleting %s/%s failed: %w",
+					remote, remoteBranch, err)
+			}
+			log.Printf("registry: deleted remote branch %s/%s", remote, remoteBranch)
 		}
 	}
 	log.Printf("registry: removed worktree %s (branch=%s deleteBranch=%v force=%v)", resolved, branch, deleteBranch, force)
@@ -284,7 +370,7 @@ var ErrBranchHasWorktree = errors.New("registry: branch still has a worktree")
 // the default ref. The unmerged check is git's own `branch -d`
 // behaviour; it is probed first so the client gets a specific error
 // code rather than a raw git message.
-func (r *Registry) DeleteBranch(projectID, branch string, force bool) error {
+func (r *Registry) DeleteBranch(projectID, branch string, force, deleteRemote bool) error {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
 		return errors.New("registry: empty branch name")
@@ -293,6 +379,8 @@ func (r *Registry) DeleteBranch(projectID, branch string, force bool) error {
 	if err != nil {
 		return err
 	}
+
+	ghSet := ghMergedLookup(root)
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
@@ -314,13 +402,27 @@ func (r *Registry) DeleteBranch(projectID, branch string, force bool) error {
 	if found.HasWorktree {
 		return fmt.Errorf("%w: %s", ErrBranchHasWorktree, branch)
 	}
-	if !force && !found.Merged {
+	// Merged covers squash merges, which git's own -d test cannot see;
+	// such a branch is safe to delete but needs -D to actually go.
+	merged := found.Merged || ghConfirms(root, branch, ghSet)
+	if !force && !merged {
 		return fmt.Errorf("%w: %s (%d ahead)", ErrBranchUnmerged, branch, found.Ahead)
 	}
-	if err := worktree.DeleteBranch(root, branch, force); err != nil {
+	remote, remoteBranch := "", ""
+	if deleteRemote {
+		remote, remoteBranch = worktree.UpstreamOf(root, branch)
+	}
+	if err := worktree.DeleteBranch(root, branch, force || merged); err != nil {
 		return err
 	}
 	log.Printf("registry: deleted branch %s (force=%v)", branch, force)
+	if remote != "" {
+		if err := worktree.DeleteRemoteBranch(root, remote, remoteBranch); err != nil {
+			return fmt.Errorf("local branch %s deleted, but deleting %s/%s failed: %w",
+				branch, remote, remoteBranch, err)
+		}
+		log.Printf("registry: deleted remote branch %s/%s", remote, remoteBranch)
+	}
 	return nil
 }
 

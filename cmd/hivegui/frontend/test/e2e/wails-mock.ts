@@ -124,6 +124,8 @@ export type MockWorktree = {
   uncommitted?: boolean;
   unpushed?: number;
   unknown?: boolean;
+  merged?: boolean;
+  upstream?: string;
   session_ids?: string[];
 };
 export type MockBranch = {
@@ -138,6 +140,8 @@ const state: {
   sessions: MockSession[];
   worktrees: MockWorktree[];
   orphanBranches: MockBranch[];
+  // Branch names the GUI asked to delete on the remote.
+  deletedRemotes: string[];
 } = {
   projects: [
     {
@@ -168,6 +172,7 @@ const state: {
   // window.__hive.seedWorktrees so each spec owns its own fixture.
   worktrees: [],
   orphanBranches: [],
+  deletedRemotes: [],
 };
 
 function broadcast() {
@@ -656,6 +661,7 @@ export async function RemoveWorktree(
   path: string,
   force: boolean,
   deleteBranch: boolean,
+  deleteRemote = false,
 ) {
   maybeFail('RemoveWorktree');
   const i = state.worktrees.findIndex((w) => w.path === path);
@@ -697,6 +703,9 @@ export async function RemoveWorktree(
   if (w.branch && !deleteBranch) {
     state.orphanBranches.push({ name: w.branch });
   }
+  // Recorded rather than simulated: what the specs care about is that
+  // the GUI asked for the remote deletion, not that a push happened.
+  if (deleteRemote && w.branch) state.deletedRemotes.push(w.branch);
   emitWorktrees(projectID);
   return '';
 }
@@ -714,6 +723,7 @@ export async function DeleteBranch(
   projectID: string,
   branch: string,
   force: boolean,
+  deleteRemote = false,
 ) {
   maybeFail('DeleteBranch');
   const i = state.orphanBranches.findIndex((b) => b.name === branch);
@@ -726,6 +736,7 @@ export async function DeleteBranch(
     return '';
   }
   state.orphanBranches.splice(i, 1);
+  if (deleteRemote) state.deletedRemotes.push(branch);
   emitWorktrees(projectID);
   return '';
 }

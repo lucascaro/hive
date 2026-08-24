@@ -40,6 +40,8 @@ interface HiveTestApi {
     sessions: MockSession[];
     worktrees: MockWorktree[];
     orphanBranches: MockBranch[];
+    // Branch names the GUI asked to delete on the remote.
+    deletedRemotes: string[];
   };
   addSession?(
     name: string,

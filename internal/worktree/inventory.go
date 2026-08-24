@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +20,9 @@ import (
 const (
 	readTimeout   = 5 * time.Second
 	mutateTimeout = 30 * time.Second
+	// How many per-branch git probes run at once. Bounded so a repo
+	// with hundreds of branches does not fork hundreds of processes.
+	probeConcurrency = 8
 )
 
 // git runs `git -C dir <args…>` with a bounded timeout and a C locale.
@@ -204,16 +209,71 @@ type BranchInfo struct {
 // merged-ness annotations. Never fetches: this is a read path that
 // must not block on the network.
 func ListBranches(repoRoot string) ([]BranchInfo, error) {
-	// %(worktreepath) is empty for branches with no worktree; the
-	// separator is \x00 so branch names containing spaces survive.
-	const format = "%(refname:short)%00%(upstream:short)%00%(worktreepath)"
-	out, err := git(context.Background(), readTimeout, repoRoot,
-		"for-each-ref", "--format="+format, "refs/heads")
+	base := defaultRef(repoRoot)
+	list, err := forEachBranch(repoRoot, base)
 	if err != nil {
 		return nil, err
 	}
-	base := defaultRef(repoRoot)
 	merged := mergedBranches(repoRoot, base)
+	for i := range list {
+		list[i].Merged = merged[list[i].Name]
+	}
+
+	// A squash merge rewrites the commits, so the branch is not an
+	// ancestor of base and the set above misses it. Asking per branch
+	// costs a walk of base's history each time; instead the history is
+	// indexed by patch id once and every branch is matched against it.
+	index := mergedPatchIDs(repoRoot, base)
+
+	// Everything left is one git spawn per branch, so it runs on the
+	// worker pool: a repo with a few hundred branches otherwise spends
+	// seconds waiting on processes one at a time.
+	forEachConcurrently(len(list), func(i int) {
+		b := &list[i]
+		// The batched ahead-behind above is measured against base. A
+		// branch tracking something else needs its own comparison.
+		//
+		// Display only: an unanswerable count shows as 0 ahead here. The
+		// deletion decision does not come from this list — it comes from
+		// Inspect, which treats the same failure as Unknown.
+		if cb := comparisonBase(b.Upstream, base); cb != base {
+			b.Ahead, _ = aheadCount(repoRoot, b.Name, cb)
+		}
+		if len(index) > 0 && !b.Merged && b.Ahead > 0 {
+			b.Merged = index[squashPatchID(repoRoot, b.Name, base)]
+		}
+	})
+	return list, nil
+}
+
+// forEachBranch reads every local branch in one `git for-each-ref`,
+// including its ahead count against base.
+//
+// %(ahead-behind:) needs git 2.41; on anything older for-each-ref
+// fails outright, so the whole listing falls back to a format without
+// it and counts per branch (the old behaviour, one spawn each).
+func forEachBranch(repoRoot, base string) ([]BranchInfo, error) {
+	// %(worktreepath) is empty for branches with no worktree; the
+	// separator is \x00 so branch names containing spaces survive.
+	const format = "%(refname:short)%00%(upstream:short)%00%(worktreepath)"
+	batched := base != ""
+	f := format
+	if batched {
+		f += "%00%(ahead-behind:" + base + ")"
+	}
+	out, err := git(context.Background(), readTimeout, repoRoot,
+		"for-each-ref", "--format="+f, "refs/heads")
+	if err != nil {
+		if !batched {
+			return nil, err
+		}
+		batched = false
+		out, err = git(context.Background(), readTimeout, repoRoot,
+			"for-each-ref", "--format="+format, "refs/heads")
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var list []BranchInfo
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
@@ -228,15 +288,48 @@ func ListBranches(repoRoot string) ([]BranchInfo, error) {
 			Name:        parts[0],
 			Upstream:    parts[1],
 			HasWorktree: parts[2] != "",
-			Merged:      merged[parts[0]],
 		}
-		// Display only: an unanswerable count shows as 0 ahead here. The
-		// deletion decision does not come from this list — it comes from
-		// Inspect, which treats the same failure as Unknown.
-		b.Ahead, _ = aheadCount(repoRoot, b.Name, comparisonBase(b.Upstream, base))
+		if batched && len(parts) > 3 {
+			// "<ahead> <behind>"; an unresolvable base prints nothing.
+			if ahead, _, ok := strings.Cut(parts[3], " "); ok {
+				b.Ahead, _ = strconv.Atoi(ahead)
+			}
+		} else {
+			b.Ahead, _ = aheadCount(repoRoot, b.Name, base)
+		}
 		list = append(list, b)
 	}
 	return list, nil
+}
+
+// forEachConcurrently runs fn for indices [0,n) over a bounded worker
+// pool. The work here is all `git` subprocesses — spawn latency, not
+// CPU — so a small fixed fan-out is what turns seconds into
+// milliseconds.
+func forEachConcurrently(n int, fn func(i int)) {
+	if n <= 0 {
+		return
+	}
+	workers := probeConcurrency
+	if n < workers {
+		workers = n
+	}
+	var wg sync.WaitGroup
+	idx := make(chan int)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range idx {
+				fn(i)
+			}
+		}()
+	}
+	for i := 0; i < n; i++ {
+		idx <- i
+	}
+	close(idx)
+	wg.Wait()
 }
 
 // defaultRef returns the ref new work is compared against:
@@ -265,6 +358,20 @@ func comparisonBase(upstream, defaultBase string) string {
 	return defaultBase
 }
 
+// IsAncestor reports whether local branch ref is reachable from base —
+// the single-branch form of mergedBranches, without listing every ref.
+// base may be any committish, including a raw sha; an unknown one
+// reports false rather than erroring, which is the safe direction for
+// every caller here.
+func IsAncestor(repoRoot, ref, base string) bool {
+	if ref == "" || base == "" {
+		return false
+	}
+	_, err := git(context.Background(), readTimeout, repoRoot,
+		"merge-base", "--is-ancestor", "refs/heads/"+ref, base)
+	return err == nil
+}
+
 // mergedBranches returns the set of local branches fully reachable
 // from base. Empty (nothing merged) when base is unresolvable, which
 // keeps every branch looking unmerged — the conservative direction.
@@ -284,6 +391,123 @@ func mergedBranches(repoRoot, base string) map[string]bool {
 		}
 	}
 	return set
+}
+
+// A squash merge collapses a branch into a single commit with a new
+// sha, so reachability cannot see it. What survives is the patch: the
+// squash commit's diff equals the branch's cumulative diff, and git
+// can name that equality with `git patch-id`.
+//
+// This is a heuristic. A squash that was edited on the way in
+// (conflict resolution, a rebase onto newer main) has a different
+// patch id and reads as unmerged — the safe direction, since callers
+// treat unmerged as "may still hold work".
+
+// patchIDHistory bounds how far back the index reads. A squash older
+// than this reads as unmerged; the alternative is walking the diff of
+// an entire repository's history on a read path.
+const patchIDHistory = "2000"
+
+// mergedPatchIDs indexes base's history by patch id — one walk that
+// answers the question for every branch, instead of one walk each.
+func mergedPatchIDs(repoRoot, base string) map[string]bool {
+	if base == "" {
+		return nil
+	}
+	ids, err := gitPatchIDs(repoRoot,
+		"log", "--format=%H", "-p", "--no-color", "--max-count="+patchIDHistory, base)
+	if err != nil {
+		return nil
+	}
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
+}
+
+// squashPatchID returns the patch id of everything ref adds on top of
+// base — the patch a squash merge of ref would have produced. Empty
+// when it cannot be computed, which never matches an index entry.
+//
+// `base...ref` (three dots) diffs from the merge base, so git finds
+// the branch point itself and no separate merge-base call is needed.
+func squashPatchID(repoRoot, ref, base string) string {
+	if ref == "" || base == "" {
+		return ""
+	}
+	// Fully qualified so a branch sharing its name with a file on disk
+	// is not ambiguous.
+	ids, err := gitPatchIDs(repoRoot, "diff", base+"...refs/heads/"+ref)
+	if err != nil || len(ids) != 1 {
+		return ""
+	}
+	return ids[0]
+}
+
+// gitPatchIDs runs `git <args…> | git patch-id --stable` and returns
+// the patch ids. Streamed rather than buffered: the left-hand side can
+// be an entire history's worth of diff.
+func gitPatchIDs(repoRoot string, args ...string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), readTimeout)
+	defer cancel()
+
+	producer := exec.CommandContext(ctx, "git", append([]string{"-C", repoRoot}, args...)...)
+	producer.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	pipe, err := producer.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	// --stable so the id does not depend on the order git happened to
+	// emit the hunks in.
+	consumer := exec.CommandContext(ctx, "git", "-C", repoRoot, "patch-id", "--stable")
+	consumer.Env = producer.Env
+	consumer.Stdin = pipe
+	if err := producer.Start(); err != nil {
+		return nil, err
+	}
+	out, cerr := consumer.Output()
+	// Drain and reap the producer either way — a patch-id that exits
+	// first leaves it writing into a closed pipe, and an unwaited
+	// process is a zombie.
+	pipe.Close()
+	_ = producer.Wait()
+	if cerr != nil {
+		return nil, cerr
+	}
+	var ids []string
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if id, _, ok := strings.Cut(line, " "); ok && id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
+// squashMerged answers the same question as the index above for a
+// single branch, without paying to index all of base — the shape
+// Inspect needs.
+func squashMerged(repoRoot, ref, base string) bool {
+	id := squashPatchID(repoRoot, ref, base)
+	if id == "" {
+		return false
+	}
+	// Only base's commits since the branch point can contain the
+	// squash, so the walk stops there — and is capped the same way the
+	// index is, so both paths answer from the same window rather than
+	// disagreeing about the same branch.
+	ids, err := gitPatchIDs(repoRoot,
+		"log", "--format=%H", "-p", "--no-color", "--max-count="+patchIDHistory,
+		base, "--not", "refs/heads/"+ref)
+	if err != nil {
+		return false
+	}
+	for _, candidate := range ids {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 // aheadCount returns how many commits ref has that base does not, and
@@ -323,11 +547,25 @@ type Status struct {
 	// treat it as unsafe to delete — guessing "clean" here is how work
 	// disappears.
 	Unknown bool
+	// Upstream is the branch's tracking ref ("origin/foo"), "" when it
+	// tracks nothing — which is also "there is no remote branch to
+	// delete".
+	Upstream string
+	// Merged is true when the branch's work is already in the repo's
+	// default ref, whether by a plain merge or a squash. It is a
+	// heuristic (see squashMerged) that only ever errs towards false,
+	// so Unpushed commits on a merged branch are not lost work.
+	Merged bool
 }
 
 // Pristine reports whether the worktree can be removed without losing
 // anything: no uncommitted changes, no unpushed commits, and the
 // unpushed question actually answerable.
+//
+// Deliberately blind to Merged. The unconfirmed auto-delete paths —
+// session Kill, boot-time orphan reclaim — gate on this, and a
+// heuristic must not be what widens them. Merged only relaxes the
+// browser's own delete, which is an explicit, confirmed act.
 func (s Status) Pristine() bool {
 	return !s.Uncommitted && s.Unpushed == 0 && !s.Unknown
 }
@@ -372,7 +610,14 @@ func Inspect(repoRoot, worktreePath string) (Status, error) {
 		"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"); uerr == nil {
 		upstream = strings.TrimSpace(string(o))
 	}
-	base := comparisonBase(upstream, defaultRef(repoRoot))
+	s.Upstream = upstream
+	// Merged is always measured against the default ref, never the
+	// upstream: a squash-merged branch's own origin/<branch> still
+	// exists and would answer the wrong question.
+	dflt := defaultRef(repoRoot)
+	s.Merged = IsAncestor(repoRoot, s.Branch, dflt) || squashMerged(repoRoot, s.Branch, dflt)
+
+	base := comparisonBase(upstream, dflt)
 	if base == "" {
 		s.Unknown = true
 		return s, nil
@@ -416,6 +661,62 @@ func RenameBranch(repoRoot, oldName, newName string) error {
 	}
 	_, err := git(context.Background(), mutateTimeout, repoRoot, "branch", "-m", oldName, newName)
 	return err
+}
+
+// UpstreamOf returns the remote name and the branch name on that
+// remote for a local branch, or empty strings when it tracks nothing.
+// The two are read from git rather than split out of "origin/foo":
+// remote names and branch names may both contain slashes, so that
+// split is guesswork.
+func UpstreamOf(repoRoot, branch string) (remote, remoteBranch string) {
+	if branch == "" {
+		return "", ""
+	}
+	out, err := git(context.Background(), readTimeout, repoRoot, "for-each-ref",
+		"--format=%(upstream:remotename)%00%(upstream:remoteref)",
+		"refs/heads/"+branch)
+	if err != nil {
+		return "", ""
+	}
+	name, ref, _ := strings.Cut(strings.TrimSpace(string(out)), "\x00")
+	if name == "" || ref == "" {
+		return "", ""
+	}
+	return name, strings.TrimPrefix(ref, "refs/heads/")
+}
+
+// DeleteRemoteBranch deletes a branch on a remote. This is a network
+// operation and the one thing here the user cannot undo locally, so it
+// is never inferred — a caller asks for it explicitly.
+//
+// A branch already gone from the remote is not an error: someone else
+// (or GitHub's own "delete branch on merge") got there first, and the
+// end state is the one that was asked for.
+func DeleteRemoteBranch(repoRoot, remote, branch string) error {
+	if remote == "" || branch == "" {
+		return errors.New("worktree.DeleteRemoteBranch: empty remote or branch")
+	}
+	// Fully qualified: a branch named like a flag ("-x") would
+	// otherwise be parsed as one.
+	out, err := git(context.Background(), mutateTimeout, repoRoot,
+		"push", remote, "--delete", "refs/heads/"+branch)
+	if err != nil && strings.Contains(string(out), "remote ref does not exist") {
+		return nil
+	}
+	if err != nil {
+		// git echoes the remote URL back, and an HTTPS remote can carry
+		// a token in its userinfo. The error travels to the GUI and
+		// into logs, so strip that before it leaves this function.
+		return errors.New(scrubURLCredentials(err.Error()))
+	}
+	return nil
+}
+
+// credentialsInURL matches the userinfo half of a URL — "//user:token@".
+var credentialsInURL = regexp.MustCompile(`//[^/@\s]+@`)
+
+func scrubURLCredentials(s string) string {
+	return credentialsInURL.ReplaceAllString(s, "//***@")
 }
 
 // DeleteBranch removes a local branch. Without force this is `-d`,

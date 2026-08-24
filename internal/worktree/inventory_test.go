@@ -183,6 +183,88 @@ func TestListBranches_MarksMergedIntoDefault(t *testing.T) {
 	}
 }
 
+func TestListBranches_DetectsSquashMerge(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	// Catch local main up with the upstream tip so the squash commit
+	// can be pushed later.
+	mustGit(t, repo, "fetch", "-q", "origin")
+	mustGit(t, repo, "merge", "-q", "--ff-only", "origin/main")
+
+	// A branch with two commits, the shape a squash merge collapses.
+	mustGit(t, repo, "checkout", "-q", "-b", "squashed")
+	mustWrite(t, filepath.Join(repo, "a.txt"), "one")
+	mustGit(t, repo, "add", "a.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "one")
+	mustWrite(t, filepath.Join(repo, "b.txt"), "two")
+	mustGit(t, repo, "add", "b.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "two")
+
+	// Squash it onto main and publish — exactly what a GitHub squash
+	// merge leaves behind: same tree, unrelated commit, branch not an
+	// ancestor of origin/main.
+	mustGit(t, repo, "checkout", "-q", "main")
+	mustGit(t, repo, "merge", "-q", "--squash", "squashed")
+	mustGit(t, repo, "commit", "-q", "-m", "squashed (#1)")
+	mustGit(t, repo, "push", "-q", "origin", "main")
+
+	// A branch whose work is genuinely not upstream.
+	mustGit(t, repo, "checkout", "-q", "-b", "diverged")
+	mustWrite(t, filepath.Join(repo, "c.txt"), "three")
+	mustGit(t, repo, "add", "c.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "three")
+	mustGit(t, repo, "checkout", "-q", "main")
+
+	branches, err := ListBranches(repo)
+	if err != nil {
+		t.Fatalf("ListBranches: %v", err)
+	}
+	sq := findBranch(branches, "squashed")
+	if sq == nil {
+		t.Fatalf("squashed missing: %+v", branches)
+	}
+	if !sq.Merged {
+		t.Errorf("squashed Merged = false, want true (Ahead=%d)", sq.Ahead)
+	}
+	div := findBranch(branches, "diverged")
+	if div == nil {
+		t.Fatalf("diverged missing: %+v", branches)
+	}
+	if div.Merged {
+		t.Errorf("diverged Merged = true, want false")
+	}
+}
+
+func TestInspect_DetectsSquashMergedWorktree(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	mustGit(t, repo, "fetch", "-q", "origin")
+	mustGit(t, repo, "merge", "-q", "--ff-only", "origin/main")
+
+	wt := WorktreePath(repo, "done")
+	mustGit(t, repo, "worktree", "add", "-q", "-b", "done", wt, "main")
+	mustWrite(t, filepath.Join(wt, "a.txt"), "one")
+	mustGit(t, wt, "add", "a.txt")
+	mustGit(t, wt, "commit", "-q", "-m", "one")
+
+	mustGit(t, repo, "merge", "-q", "--squash", "done")
+	mustGit(t, repo, "commit", "-q", "-m", "done (#1)")
+	mustGit(t, repo, "push", "-q", "origin", "main")
+
+	s, err := Inspect(repo, wt)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !s.Merged {
+		t.Errorf("Merged = false, want true (%+v)", s)
+	}
+	// Pristine deliberately ignores Merged: the unconfirmed auto-delete
+	// paths (session Kill, boot reclaim) gate on it, and a heuristic
+	// must not widen those. The browser's own delete consults Merged
+	// separately.
+	if s.Pristine() {
+		t.Errorf("Pristine() = true, want false — Merged must not widen it (%+v)", s)
+	}
+}
+
 func TestInspect_CleanWorktreeIsPristine(t *testing.T) {
 	repo, _, _ := initRepoWithUpstream(t)
 	wt := WorktreePath(repo, "clean")
@@ -735,5 +817,55 @@ func TestInspect_LockedWorktreeStillReportsItsWork(t *testing.T) {
 	}
 	if !s.Uncommitted || s.Pristine() {
 		t.Errorf("locked worktree with uncommitted work read as %+v", s)
+	}
+}
+
+func TestDeleteRemoteBranch_RemovesTheRefFromTheRemote(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	mustGit(t, repo, "fetch", "-q", "origin")
+	mustGit(t, repo, "checkout", "-q", "-b", "publish-me")
+	mustWrite(t, filepath.Join(repo, "a.txt"), "work")
+	mustGit(t, repo, "add", "a.txt")
+	mustGit(t, repo, "commit", "-q", "-m", "work")
+	mustGit(t, repo, "push", "-q", "-u", "origin", "publish-me")
+
+	remote, remoteBranch := UpstreamOf(repo, "publish-me")
+	if remote != "origin" || remoteBranch != "publish-me" {
+		t.Fatalf("UpstreamOf = %q/%q, want origin/publish-me", remote, remoteBranch)
+	}
+	if err := DeleteRemoteBranch(repo, remote, remoteBranch); err != nil {
+		t.Fatalf("DeleteRemoteBranch: %v", err)
+	}
+	out, err := exec.Command("git", "-C", repo, "ls-remote", "--heads", "origin", "publish-me").Output()
+	if err != nil {
+		t.Fatalf("ls-remote: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Errorf("remote branch still present: %s", out)
+	}
+
+	// Deleting it again is not an error: someone else getting there
+	// first (GitHub's delete-on-merge) leaves the asked-for end state.
+	if err := DeleteRemoteBranch(repo, remote, remoteBranch); err != nil {
+		t.Errorf("second delete: %v, want nil", err)
+	}
+}
+
+func TestUpstreamOf_EmptyWithoutTracking(t *testing.T) {
+	repo, _, _ := initRepoWithUpstream(t)
+	mustGit(t, repo, "branch", "untracked")
+	if remote, branch := UpstreamOf(repo, "untracked"); remote != "" || branch != "" {
+		t.Errorf("UpstreamOf = %q/%q, want empty", remote, branch)
+	}
+}
+
+func TestScrubURLCredentials(t *testing.T) {
+	in := "git push: remote: fatal: https://user:ghp_secrettoken@github.com/o/r.git rejected"
+	got := scrubURLCredentials(in)
+	if strings.Contains(got, "ghp_secrettoken") {
+		t.Errorf("token survived scrubbing: %s", got)
+	}
+	if !strings.Contains(got, "//***@github.com") {
+		t.Errorf("unexpected scrub result: %s", got)
 	}
 }
