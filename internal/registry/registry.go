@@ -675,10 +675,8 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		return ErrNotFound
 	}
 	delete(r.entries, id)
-	killedAt := len(r.order)
 	for i, sid := range r.order {
 		if sid == id {
-			killedAt = i
 			r.order = append(r.order[:i], r.order[i+1:]...)
 			break
 		}
@@ -698,15 +696,9 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	// Removing an entry shifts every later one down a slot, so Order
 	// has to follow — it IS the index into r.order, and both GUI
 	// reorder paths hand that index straight back to moveInOrder. The
-	// shifted entries are broadcast below so clients don't keep the
-	// stale values and misplace the next move.
+	// survivors are broadcast at the tail of this function so clients
+	// don't keep the stale values and misplace the next move.
 	r.reindexLocked()
-	shifted := make([]wire.SessionInfo, 0, max(len(r.order)-killedAt, 0))
-	for _, sid := range r.order[min(killedAt, len(r.order)):] {
-		if other := r.entries[sid]; other != nil {
-			shifted = append(shifted, other.Info())
-		}
-	}
 	r.persistIndexLoggedLocked("kill")
 	dir := filepath.Join(SessionsDir(r.stateDir), id)
 	// Snapshot the PTY under the lock. Reading e.sess after the unlock
@@ -767,7 +759,13 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
-	for _, info := range shifted {
+	// Re-read the survivors HERE rather than snapshotting them back
+	// under the lock above: the worktree teardown between the two can
+	// take seconds, and anything that ran meanwhile — a create
+	// splicing mid-list, a rename, a phase change — would be clobbered
+	// by a stale SessionInfo. Duplicate .order on the client is the
+	// exact failure this function exists to prevent.
+	for _, info := range r.List() {
 		r.broadcast(wire.SessionEventUpdated, info)
 	}
 	return nil
@@ -802,7 +800,7 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 		return e, err
 	}
 	if orderChanged {
-		// Notify clients of every session, since renumberLocked
+		// Notify clients of every session, since reindexLocked
 		// touched all of them. Cheap: a few entries times one
 		// channel send each.
 		for _, sid := range r.order {

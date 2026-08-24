@@ -17,7 +17,7 @@ type ProjectListener chan wire.ProjectEvent
 // Slow consumers are dropped — listeners must drain promptly.
 func (r *Registry) Subscribe() (Listener, func()) {
 	// 64, not 16: Update with an order change broadcasts one event per
-	// session while holding r.mu (see renumberLocked), so a listener
+	// session while holding r.mu (see reindexLocked), so a listener
 	// that's merely a beat behind on a many-session registry could
 	// overflow a small buffer and get dropped.
 	ch := make(Listener, 64)

@@ -226,12 +226,18 @@ export async function RequestScrollbackReplay(id: string) {
   return '';
 }
 let nextSessionSeq = 0;
+let nextProjectSeq = 0;
 // state.sessions IS the order, mirroring the daemon's single global
 // r.order list; renumber rewrites each session's .order to its index,
-// the same invariant registry.renumberLocked keeps.
+// the same invariant registry.reindexLocked keeps.
 function renumber() {
   state.sessions.forEach((s, i) => {
     s.order = i;
+  });
+}
+function renumberProjects() {
+  state.projects.forEach((p, i) => {
+    p.order = i;
   });
 }
 // emitUpdatedExcept mirrors the daemon's post-reorder fan-out: every
@@ -477,7 +483,11 @@ export async function SaveCustomAgents(list: CustomAgent[] | null) {
 // UpdateSession had.
 export async function CreateProject(name: string, color: string, cwd: string) {
   maybeFail('CreateProject');
-  const id = `p-${state.projects.length + 1}`;
+  // Monotonic for the same reason as nextSessionSeq — a length-derived
+  // id collides with a live project after a delete, and the `added`
+  // handler drops the duplicate instead of adding it.
+  nextProjectSeq += 1;
+  const id = `p-${nextProjectSeq}`;
   const p: MockProject = {
     id,
     name: name || 'new',
@@ -494,21 +504,32 @@ export async function KillProject(id: string, killSessions: boolean) {
   maybeFail('KillProject');
   const i = state.projects.findIndex((p) => p.id === id);
   if (i < 0) return '';
-  if (killSessions) {
-    for (let j = state.sessions.length - 1; j >= 0; j--) {
-      if (state.sessions[j].project_id === id) {
-        const [rs] = state.sessions.splice(j, 1);
-        emit('session:event', JSON.stringify({ kind: 'removed', session: rs }));
-      }
+  // The daemon reassigns the orphaned sessions to the first surviving
+  // project rather than leaving them pointing at a deleted one
+  // (registry/projects.go KillProject).
+  const survivor = state.projects.find((p) => p.id !== id);
+  for (let j = state.sessions.length - 1; j >= 0; j--) {
+    if (state.sessions[j].project_id !== id) continue;
+    if (killSessions) {
+      const [rs] = state.sessions.splice(j, 1);
+      emit('session:event', JSON.stringify({ kind: 'removed', session: rs }));
+    } else if (survivor) {
+      state.sessions[j].project_id = survivor.id;
     }
   }
   const [removed] = state.projects.splice(i, 1);
-  // Same compaction the daemon does in KillProject, for both lists.
+  // Same compaction the daemon does in KillProject, for both lists —
+  // and the same fan-out, so the GUI doesn't keep stale .order values
+  // and misplace the next project reorder.
   renumber();
-  state.projects.forEach((p, n) => {
-    p.order = n;
-  });
+  renumberProjects();
   emit('project:event', JSON.stringify({ kind: 'removed', project: removed }));
+  for (const p of state.projects) {
+    emit('project:event', JSON.stringify({ kind: 'updated', project: p }));
+  }
+  for (const s of state.sessions) {
+    emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+  }
   return '';
 }
 // Empty string / -1 mean "no change", mirroring UpdateSession (order is
