@@ -177,7 +177,20 @@ function broadcast() {
 
 // Wails control bindings — frontend imports these from
 // ../wailsjs/go/main/App.
+// ?slowConnect=<ms> stalls the handshake, standing in for a daemon
+// that is slow to come up on a cold machine — the only way to see the
+// boot overlay in a browser, since the mock otherwise connects in the
+// same tick as the first paint.
+function slowConnectMs(): number {
+  if (typeof window === 'undefined') return 0;
+  const raw = new URLSearchParams(window.location.search).get('slowConnect');
+  const ms = raw ? Number(raw) : 0;
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
 export async function ConnectControl() {
+  const wait = slowConnectMs();
+  if (wait) await new Promise((r) => setTimeout(r, wait));
   setTimeout(broadcast, 0);
   return '';
 }

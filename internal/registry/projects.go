@@ -49,8 +49,16 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 // ReclaimOrphanWorktrees scans every project's <projectCwd>/.worktrees
 // directory and runs worktree.Cleanup on any subdirectory that is both
 // unclaimed by a live registry entry AND pristine (no uncommitted
-// changes, no unpushed commits). Idempotent. Run once at daemon
-// startup so a SIGKILL'd previous process doesn't leak.
+// changes, no unpushed commits). Idempotent. Run once per daemon run,
+// off the accept path (Daemon.Run), so a SIGKILL'd previous process
+// doesn't leak without holding up boot: the git shellouts here are
+// unbounded and used to run before the socket was answerable.
+//
+// Because it now runs concurrently with client-driven create/kill, it
+// holds r.gitMu for the whole scan (serializing it against
+// adoptDetachedWorktree and discardWorktree) and re-reads the claimed
+// set immediately before each Cleanup — a worktree adopted by a
+// session created mid-scan must not be deleted.
 //
 // The pristine condition is what makes detached worktrees possible:
 // a worktree whose session was closed is unclaimed forever, so
@@ -65,13 +73,11 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 // registry and get force-removed. Daemon startup gates this call on
 // registry.StateDirOverridden().
 func (r *Registry) ReclaimOrphanWorktrees() {
+	// Never acquire gitMu while holding r.mu — see Registry.gitMu.
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+
 	r.mu.Lock()
-	claimed := make(map[string]bool, len(r.entries))
-	for _, e := range r.entries {
-		if e.WorktreePath != "" {
-			claimed[e.WorktreePath] = true
-		}
-	}
 	projects := make([]*Project, 0, len(r.projects))
 	for _, p := range r.projects {
 		projects = append(projects, p)
@@ -96,7 +102,7 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 				continue
 			}
 			path := filepath.Join(wtDir, d.Name())
-			if claimed[path] {
+			if r.worktreeClaimed(path) {
 				continue
 			}
 			// Same rule as Kill: reclaim only what holds no work.
@@ -114,6 +120,12 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 				log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
 					path, st.Uncommitted, st.Unpushed, st.Unknown)
 			default:
+				// Re-check under the lock: Inspect shells out to git,
+				// and a session created in the meantime may have
+				// adopted this very directory.
+				if r.worktreeClaimed(path) {
+					continue
+				}
 				log.Printf("registry: reclaiming orphan worktree %s", path)
 				if err := worktree.Cleanup(root, path); err != nil {
 					log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
@@ -121,6 +133,19 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 			}
 		}
 	}
+}
+
+// worktreeClaimed reports whether any registry entry currently owns
+// the worktree directory at path.
+func (r *Registry) worktreeClaimed(path string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.entries {
+		if e.WorktreePath == path {
+			return true
+		}
+	}
+	return false
 }
 
 // MigrateOrphanSessions assigns any session without a ProjectID to

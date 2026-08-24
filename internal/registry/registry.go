@@ -365,6 +365,29 @@ func (r *Registry) Get(id string) *Entry {
 	return r.entries[id]
 }
 
+// ReviveWithPhase is Revive bracketed in wire.PhaseSpawning, for the
+// daemon's background boot revive: a client that attaches while the
+// PTY is still forking then gets "session is still starting" (and the
+// GUI's phase spinner) instead of "session_dead".
+//
+// Unlike Restart, ready is set AFTER Revive, not before: the whole
+// point is that the phase covers the fork. Revive broadcasts
+// alive:true from inside while the phase still reads "spawning", and
+// the setPhase below is the later event that unsticks a client gating
+// its attach on ready — Restart has no such trailing event, which is
+// why it clears the phase first.
+func (r *Registry) ReviveWithPhase(id string, opts session.Options) error {
+	if r.Phase(id) != wire.PhaseReady {
+		// Something else owns this entry's lifecycle right now
+		// (create tail, restart, kill); leave it alone.
+		return nil
+	}
+	r.setPhase(id, wire.PhaseSpawning)
+	err := r.Revive(id, opts)
+	r.setPhase(id, wire.PhaseReady)
+	return err
+}
+
 // Revive starts a fresh process on the existing entry. No-op if the
 // entry already has a live session. Used on daemon startup to bring
 // previously-persisted sessions back to a usable state.

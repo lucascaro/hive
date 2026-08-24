@@ -835,3 +835,43 @@ func TestCreate_WithoutContinuePinsAFreshConversation(t *testing.T) {
 		t.Errorf("argv = %v, want a --session-id pin", gotCmd)
 	}
 }
+
+// TestReclaimOrphanWorktrees_ConcurrentAdopt covers the reclaim's new
+// home: it runs as a background daemon op now, so it races real
+// create/kill traffic instead of owning the process. Two properties
+// matter — it must not deadlock against the create path (both take
+// gitMu), and it must not delete a worktree a session is adopting
+// while the scan's git shellouts are in flight.
+func TestReclaimOrphanWorktrees_ConcurrentAdopt(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	wt := newWorktree(t, p.Cwd, "adopt-me")
+	mustWriteFile(t, filepath.Join(wt, "wip.txt"), "half-done")
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.ReclaimOrphanWorktrees()
+	}()
+
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		ProjectID: p.ID, Shell: "/bin/bash", WorktreePath: wt,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	defer r.Kill(e.ID, true)
+
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("ReclaimOrphanWorktrees did not finish; likely deadlocked against the create path")
+	}
+
+	if _, err := os.Stat(filepath.Join(wt, "wip.txt")); err != nil {
+		t.Fatalf("adopted worktree was reclaimed out from under the create: %v", err)
+	}
+	if worktree.ResolvePath(e.WorktreePath) != worktree.ResolvePath(wt) {
+		t.Fatalf("WorktreePath = %q, want %q", e.WorktreePath, wt)
+	}
+}

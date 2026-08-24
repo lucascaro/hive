@@ -3,7 +3,7 @@
 // rather than re-querying the document.
 
 import { createStatus } from '../lib/status.js';
-import { mustEl } from './el.js';
+import { mustEl, pageEl } from './el.js';
 
 // index.html owns these three ids; a missing one means the document and
 // this module have drifted, which is a load-time bug, not a runtime
@@ -42,3 +42,23 @@ export function flashStatus(text: string, isError = false): void {
 // to be swallowed — the button click just silently did nothing.
 export const reportFailure = (what: string) => (err: unknown) =>
   flashStatus(`${what} failed: ${err}`, true);
+
+// setBootState drives the full-pane boot overlay declared in
+// index.html. Passing null hides it — done once the first session list
+// arrives, which is the first moment the pane can tell the truth
+// (before that, "No sessions yet" may just mean "the daemon has not
+// answered yet").
+//
+// pageEl, not mustEl: the jsdom tests mount partial markup and must
+// not fail on an overlay they never exercise.
+export function setBootState(text: string | null): void {
+  const el = pageEl('boot-state');
+  if (!el) return;
+  if (text === null) {
+    el.classList.add('hidden');
+    return;
+  }
+  const label = pageEl('boot-state-text');
+  if (label) label.textContent = text;
+  el.classList.remove('hidden');
+}

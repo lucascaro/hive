@@ -14,7 +14,7 @@ import {
 } from '../bridge.js';
 import { state, saveCollapsed } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
-import { setStatus, flashStatus, reportFailure } from './dom.js';
+import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { renderSidebar, updateSidebarSelection } from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
@@ -90,7 +90,7 @@ interface PtyError {
 // RestartDaemon takes over (that path spawns a fresh GUI) or once
 // ConnectControl succeeds — the daemon then re-pushes the session list.
 let _reconnecting = false;
-async function reconnectControl() {
+export async function reconnectControl(): Promise<void> {
   if (_reconnecting) return;
   _reconnecting = true;
   let delay = 500;
@@ -332,6 +332,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
   }
 
   EventsOn('session:list', (jsonStr: string) => {
+    // First list = the daemon answered. Anything the pane renders from
+    // here on is the truth, so the boot overlay's job is done.
+    setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     state.sessions = sessions || [];
     for (const s of state.sessions) {

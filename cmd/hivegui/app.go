@@ -1037,10 +1037,21 @@ func (a *App) attachFor(id string) (*wire.Client, error) {
 
 // ----------------------------- daemon spawn ------------------------------
 
+// dialBudget bounds how long dialOrSpawn waits for a freshly spawned
+// hived to bind its socket. The daemon binds last, once it can answer
+// — so this covers opening the registry and the cold start of the
+// binary itself, which on a slow machine is seconds, not
+// milliseconds. A var so tests can shrink it.
+var dialBudget = 15 * time.Second
+
 // dialOrSpawn dials hived; on failure spawns it as a detached child
-// and retries with backoff for up to ~3s. cwd, when non-empty, is
-// passed to hived as --cwd so newly-created sessions default to that
-// directory.
+// and retries with backoff until dialBudget is spent. cwd, when
+// non-empty, is passed to hived as --cwd so newly-created sessions
+// default to that directory.
+//
+// The retry loop is the whole wait now: the daemon's socket does not
+// exist until it is ready to handshake, so a dial that connects is a
+// daemon that answers.
 func dialOrSpawn(sock, cwd string) (net.Conn, error) {
 	if c, err := net.Dial("unix", sock); err == nil {
 		return c, nil
@@ -1048,12 +1059,18 @@ func dialOrSpawn(sock, cwd string) (net.Conn, error) {
 	if err := spawnHived(sock, cwd); err != nil {
 		return nil, fmt.Errorf("spawn hived: %w", err)
 	}
-	delays := []time.Duration{100, 200, 400, 800, 1600}
-	for _, ms := range delays {
-		time.Sleep(ms * time.Millisecond)
+	deadline := time.Now().Add(dialBudget)
+	delay := 100 * time.Millisecond
+	for {
+		time.Sleep(delay)
 		if c, err := net.Dial("unix", sock); err == nil {
 			return c, nil
 		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("hived did not come up at %s within %s", sock, dialBudget)
+		}
+		if delay < 1600*time.Millisecond {
+			delay *= 2
+		}
 	}
-	return nil, fmt.Errorf("hived did not come up at %s", sock)
 }

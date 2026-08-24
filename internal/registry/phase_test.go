@@ -560,3 +560,64 @@ func worktreeDirs(t *testing.T, repo string) []string {
 	}
 	return out
 }
+
+// TestReviveWithPhaseSequence pins the contract the daemon's
+// background boot revive depends on: a session persisted from a
+// previous run announces PhaseSpawning *before* its PTY is forked and
+// only clears to PhaseReady once it is attachable. Without the
+// bracket the entry sits at alive:false + PhaseReady, which
+// serveAttach reports as "session_dead" — the wrong answer for a
+// session that is merely still coming up.
+func TestReviveWithPhaseSequence(t *testing.T) {
+	skipNonPosix(t)
+	dir := t.TempDir()
+
+	r1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e, err := r1.Create(context.Background(), wire.CreateSpec{Name: "persisted", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := e.ID
+	// Close kills the PTY but keeps the metadata: exactly the state a
+	// daemon restart loads from disk.
+	_ = r1.Close()
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r2.Close() })
+	if info := infoFor(t, r2, id); info.Alive {
+		t.Fatalf("reloaded session %s is alive before revive", id)
+	}
+
+	log, stop := watch(t, r2)
+	defer stop()
+
+	if err := r2.ReviveWithPhase(id, session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24}); err != nil {
+		t.Fatalf("ReviveWithPhase: %v", err)
+	}
+
+	got := log.waitForLastEvent(t, id, "updated:"+wire.PhaseReady)
+	if got[0] != "updated:"+wire.PhaseSpawning {
+		t.Fatalf("phase sequence: got %s, want spawning first", joined(got))
+	}
+	if info := infoFor(t, r2, id); !info.Alive {
+		t.Fatalf("session %s not alive after ReviveWithPhase", id)
+	}
+}
+
+// infoFor returns the SessionInfo for id, failing if it is gone.
+func infoFor(t *testing.T, r *Registry, id string) wire.SessionInfo {
+	t.Helper()
+	for _, info := range r.List() {
+		if info.ID == id {
+			return info
+		}
+	}
+	t.Fatalf("session %s not in registry", id)
+	return wire.SessionInfo{}
+}

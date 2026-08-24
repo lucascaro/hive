@@ -751,6 +751,36 @@ body.resizing-sidebar #app { transition: none; }
   pointer-events: auto;
 }
 #empty-state.hidden { display: none; }
+/* The boot overlay sits in the same grid cell as the empty state and
+   above it: until the first session list lands we do not yet know
+   whether "No sessions yet" is the truth or just a daemon that has not
+   answered. Mirrors the session tile's phase overlay and the worktree
+   modal's loading card. */
+#boot-state {
+  grid-row: 3;
+  grid-column: 2;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 18px;
+  background: #0b0b0b;
+}
+#boot-state.hidden { display: none; }
+.boot-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 40ch;
+  text-align: center;
+  font-size: 12.5px;
+  color: #999;
+  line-height: 1.5;
+}
+.boot-state-card .phase-spinner {
+  --session-color: #f59e0b;
+}
 #empty-state .empty-title {
   font-size: 15px;
   color: #999;

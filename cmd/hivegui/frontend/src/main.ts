@@ -18,7 +18,7 @@ import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
 import { paletteShortcuts } from './lib/shortcuts.js';
 import { state } from './app/state.js';
-import { setStatus, reportFailure } from './app/dom.js';
+import { setStatus, reportFailure, setBootState } from './app/dom.js';
 import { activeCwd } from './app/selectors.js';
 import { scrollTrace } from './app/trace.js';
 import {
@@ -37,7 +37,7 @@ import { initSettings, openSettings } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
-import { wireDaemonEvents } from './app/events.js';
+import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import { initVersionFooter } from './app/version-footer.js';
 import {
@@ -413,6 +413,7 @@ initVersionFooter();
     /* ignore */
   }
   setStatus('connecting…');
+  setBootState('Starting hive…');
   try {
     await ConnectControl();
     setStatus('connected');
@@ -435,5 +436,11 @@ initVersionFooter();
     } catch {
       /* ignore */
     }
+    // Keep trying. The reconnect loop used to be reachable only from
+    // control:disconnect, which needs a connection to have existed —
+    // so a daemon that was merely slow to come up left the app dead
+    // with a red status line and a black pane until relaunch.
+    setBootState('Waiting for the hive daemon…');
+    void reconnectControl();
   }
 })();

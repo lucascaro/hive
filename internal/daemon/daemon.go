@@ -91,14 +91,8 @@ func New(cfg Config) (*Daemon, error) {
 		}
 		_ = os.Remove(sock)
 	}
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
-	}
-
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
-		_ = ln.Close()
 		return nil, err
 	}
 
@@ -110,30 +104,14 @@ func New(cfg Config) (*Daemon, error) {
 		log.Printf("hived: ensure default project: %v", err)
 	}
 	reg.MigrateOrphanSessions()
-	// Reclaim worktree directories whose owning session no longer
-	// exists (e.g. previous daemon was SIGKILL'd mid-Kill). Only the
-	// canonical daemon owns the on-disk <project>/.worktrees/ namespace;
-	// an isolated dev daemon (HIVE_STATE_DIR set) shares that directory
-	// with prod and would otherwise reap prod's worktrees as orphans.
-	if registry.StateDirOverridden() {
-		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
-	} else {
-		reg.ReclaimOrphanWorktrees()
-	}
 
-	// Revive any persisted sessions that have no live PTY (i.e. every
-	// entry loaded from disk on this run). Metadata is preserved; the
-	// shell is fresh — Phase 1.7 will eventually replay scrollback here.
-	for _, info := range reg.List() {
-		if !info.Alive {
-			if err := reg.Revive(info.ID, cfg.BootstrapSession); err != nil {
-				log.Printf("hived: revive %s: %v", info.ID, err)
-			}
-		}
-	}
+	// Orphan-worktree reclaim and session revive deliberately do NOT
+	// run here: both are slow (git shellouts, one PTY fork per
+	// session) and neither is needed before the daemon can answer a
+	// LIST. Run starts them off the accept path — see Run.
 
-	// Bootstrap session only if the registry is still empty after revive
-	// (i.e. truly first run on this machine).
+	// Bootstrap session only if the registry is empty (i.e. truly
+	// first run on this machine).
 	if len(reg.List()) == 0 && bootstrapWanted(cfg.BootstrapSession) {
 		// Pre-Run: no daemon context exists yet, so this one-shot
 		// bootstrap create is rooted at Background.
@@ -148,14 +126,37 @@ func New(cfg Config) (*Daemon, error) {
 		}
 	}
 
-	return &Daemon{
+	// Bind LAST. A bound socket is the readiness signal every client
+	// relies on — dialOrSpawn's retry loop, the GUI's restart probe,
+	// the e2e waitForSocket — and all of them only stat/dial it. With
+	// the bind first, a client dialing during a slow boot landed in
+	// the kernel backlog with nobody accepting, and its HELLO timed
+	// out against wire.handshakeTimeout while the daemon was still
+	// starting up. Nothing above needs the listener.
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		_ = reg.Close()
+		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
+	}
+
+	d := &Daemon{
 		cfg:      cfg,
 		sock:     sock,
 		reg:      reg,
 		ln:       ln,
 		clients:  make(map[net.Conn]struct{}),
 		shutdown: make(chan struct{}),
-	}, nil
+	}
+
+	// The two slow boot chores run in the background, off the caller's
+	// path: reviving persisted sessions forks one PTY each, and the
+	// orphan-worktree reclaim shells out to git with no timeout.
+	// Started here rather than in Run so they cannot be skipped by a
+	// Close that beats Run to the scheduler; d.ops is what Close
+	// waits on.
+	d.runOp(d.reviveAll)
+	d.runOp(d.reclaimWorktrees)
+	return d, nil
 }
 
 // Run accepts clients until ctx is cancelled or the listener is closed.
@@ -179,6 +180,41 @@ func (d *Daemon) Run(ctx context.Context) error {
 		}
 		go d.serve(ctx, conn)
 	}
+}
+
+// reviveAll starts a fresh PTY for every persisted session that has
+// none — i.e. every entry loaded from disk on this run. Metadata is
+// preserved; the shell is fresh.
+//
+// Sequential on purpose: a user with ten sessions would otherwise fork
+// ten login shells at once on a machine that is already busy booting.
+// Each session is bracketed in wire.PhaseSpawning, so a client
+// attaching before its turn gets the "still starting" answer that
+// serveAttach already speaks (and the GUI's phase spinner) instead of
+// "session_dead".
+func (d *Daemon) reviveAll() {
+	for _, info := range d.reg.List() {
+		if info.Alive {
+			continue
+		}
+		if err := d.reg.ReviveWithPhase(info.ID, d.cfg.BootstrapSession); err != nil {
+			log.Printf("hived: revive %s: %v", info.ID, err)
+		}
+	}
+}
+
+// reclaimWorktrees removes worktree directories whose owning session
+// no longer exists (e.g. the previous daemon was SIGKILL'd mid-Kill).
+// Only the canonical daemon owns the on-disk <project>/.worktrees/
+// namespace; an isolated dev daemon (HIVE_STATE_DIR set) shares that
+// directory with prod and would otherwise reap prod's worktrees as
+// orphans.
+func (d *Daemon) reclaimWorktrees() {
+	if registry.StateDirOverridden() {
+		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
+		return
+	}
+	d.reg.ReclaimOrphanWorktrees()
 }
 
 // Shutdown asks Run to stop accepting and return, exactly as a
