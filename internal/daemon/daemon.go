@@ -544,10 +544,15 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	// push did not). A refusal alone would leave the browser rendering
 	// rows the mutation already invalidated, so the error goes first
 	// and the truth follows it.
+	// An empty failCode means "stay quiet if the listing fails" — used
+	// after a refusal, where the client already has one error and a
+	// second would just be a second toast for the same action.
 	sendWorktrees := func(projectID, failCode string) {
 		resp, err := d.reg.ListWorktrees(projectID)
 		if err != nil {
-			sendError(failCode, err.Error())
+			if failCode != "" {
+				sendError(failCode, err.Error())
+			}
 			return
 		}
 		_ = writeJSON(wire.FrameWorktrees, resp)
@@ -571,6 +576,19 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 		default:
 			sendError(genericCode, err.Error())
 		}
+	}
+	// finishMutation is how every worktree mutation ends: the refusal,
+	// if any, and then the inventory it left behind. The two go
+	// together because a mutation can half succeed — the local branch
+	// deleted, the remote push refused — and an error alone would leave
+	// the browser rendering a row that is already gone.
+	finishMutation := func(projectID string, err error, failCode string) {
+		if err != nil {
+			sendWorktreeError(err, failCode)
+			sendWorktrees(projectID, "")
+			return
+		}
+		sendWorktrees(projectID, "list_worktrees_failed")
 	}
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
@@ -696,10 +714,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.RemoveWorktree(req.ProjectID, req.Path, req.Force, req.DeleteBranch, req.DeleteRemote); err != nil {
-					sendWorktreeError(err, "remove_worktree_failed")
-				}
-				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+				err := d.reg.RemoveWorktree(req.ProjectID, req.Path,
+					req.Force, req.DeleteBranch, req.DeleteRemote)
+				finishMutation(req.ProjectID, err, "remove_worktree_failed")
 			})
 		case wire.FrameCreateWorktree:
 			var req wire.CreateWorktreeReq
@@ -708,10 +725,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if _, err := d.reg.CreateWorktreeForBranch(ctx, req.ProjectID, req.Branch); err != nil {
-					sendWorktreeError(err, "create_worktree_failed")
-				}
-				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+				_, err := d.reg.CreateWorktreeForBranch(ctx, req.ProjectID, req.Branch)
+				finishMutation(req.ProjectID, err, "create_worktree_failed")
 			})
 		case wire.FrameDeleteBranch:
 			var req wire.DeleteBranchReq
@@ -720,10 +735,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.DeleteBranch(req.ProjectID, req.Branch, req.Force, req.DeleteRemote); err != nil {
-					sendWorktreeError(err, "delete_branch_failed")
-				}
-				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+				err := d.reg.DeleteBranch(req.ProjectID, req.Branch,
+					req.Force, req.DeleteRemote)
+				finishMutation(req.ProjectID, err, "delete_branch_failed")
 			})
 		case wire.FrameRenameWorktree:
 			var req wire.RenameWorktreeReq
@@ -732,10 +746,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch); err != nil {
-					sendWorktreeError(err, "rename_worktree_failed")
-				}
-				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+				err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch)
+				finishMutation(req.ProjectID, err, "rename_worktree_failed")
 			})
 		default:
 			log.Printf("hived: unexpected control frame: %s", ft)

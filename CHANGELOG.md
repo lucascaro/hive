@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   remote too. It is a separate button, never the default, and it only
   appears for a branch that actually tracks a remote.
 
+- Worktree and branch rows now show the tip commit's subject line. The
+  branch name says what the work was called; the subject says what is
+  actually in it, which is what you need when deciding whether a branch
+  can go.
+
 - The new-session popup can now name the worktree's branch. Ticking
   "Create in git worktree" reveals a branch-name field; leave it empty to
   keep the previous behaviour of an auto-generated adjective-noun name.
@@ -103,6 +108,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Go Back** / **Go Forward**.
 
 ### Fixed
+
+- The worktree browser kept showing a branch it had already deleted. A
+  delete that got partway — the local branch removed, deleting it on
+  the remote refused — reported the failure and stopped there, so the
+  list was never repainted and the row stayed until the panel was
+  reopened. Every worktree action now repaints the list afterwards,
+  whether it succeeded, was refused, or half succeeded.
 
 - Restarting hive briefly showed "The process failed to start." on the
   first session you were looking at, which then started working on its

@@ -438,3 +438,44 @@ func gitOut(t *testing.T, repo string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// The same half-failure through REMOVE_WORKTREE: the directory and the
+// local branch go, the remote push does not. The inventory must still
+// follow the refusal — this path changed alongside DELETE_BRANCH and is
+// the one the browser hits when a worktree row is swept.
+func TestControl_RemoveWorktreeRefreshesAfterPartialFailure(t *testing.T) {
+	d, repo := startDaemonInRepo(t)
+	pid := projectIDOf(t, d)
+	wt := filepath.Join(repo, ".worktrees", "half-swept")
+	head := gitOut(t, repo, "rev-parse", "HEAD")
+	for _, args := range [][]string{
+		{"worktree", "add", "-q", "-b", "half-swept", wt},
+		{"remote", "add", "origin", filepath.Join(repo, "no-such-remote.git")},
+		{"update-ref", "refs/remotes/origin/half-swept", head},
+		{"branch", "--set-upstream-to=origin/half-swept", "half-swept"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+	if err := wire.WriteJSON(conn, wire.FrameRemoveWorktree, wire.RemoveWorktreeReq{
+		ProjectID: pid, Path: wt, Force: true,
+		DeleteBranch: true, DeleteRemote: true,
+	}); err != nil {
+		t.Fatalf("write REMOVE_WORKTREE: %v", err)
+	}
+
+	resp := readWorktrees(t, conn)
+	for _, w := range resp.Worktrees {
+		if w.Branch == "half-swept" {
+			t.Errorf("removed worktree still listed: %+v", w)
+		}
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree directory survived: %v", err)
+	}
+}
