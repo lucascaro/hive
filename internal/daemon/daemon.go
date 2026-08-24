@@ -51,6 +51,31 @@ type Daemon struct {
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
 
+	// stop is closed by Shutdown and by Close to tell the background
+	// boot chores (reviveAll, reclaimWorktrees) to give up. They are
+	// owned by d.ops, but a WaitGroup only joins — without a signal a
+	// SIGTERM two seconds into boot would sit in Close waiting for
+	// eight more login shells to fork, only to kill them all
+	// immediately after (golden principle 5: the owner signals, it
+	// does not merely wait).
+	stop     chan struct{}
+	stopOnce sync.Once
+
+	// sockInfo identifies the socket file this daemon bound, so Close
+	// only unlinks its own. Teardown now spans the boot chores, which
+	// is long enough for the GUI's Restart to have relaunched and a
+	// NEW hived to have bound a fresh socket at the same path — and
+	// an unconditional os.Remove here would delete that one. See
+	// docs/exec-plans/completed/243-restart-hive-doesnt-reliably-restart-daemon.md,
+	// which judged this window unreachable back when teardown was
+	// ~100ms.
+	sockInfo os.FileInfo
+
+	// orphanCandidates is the worktree-directory snapshot taken on the
+	// boot path, before any client could connect. The background sweep
+	// consumes it; see New.
+	orphanCandidates []registry.OrphanWorktreeCandidate
+
 	// ops tracks the goroutines that run session lifecycle work
 	// (create/kill/restart) off the control read loop. Close waits on
 	// it so a shutting-down daemon doesn't abandon a `git worktree
@@ -74,6 +99,24 @@ func (d *Daemon) runOp(fn func()) {
 	}()
 }
 
+// stopOps closes d.stop once. Safe from any goroutine and callable
+// more than once: both Shutdown (in-band client request) and Close
+// (process teardown) signal here, and either may arrive first.
+func (d *Daemon) stopOps() {
+	d.stopOnce.Do(func() { close(d.stop) })
+}
+
+// stopping reports whether the daemon has begun shutting down. The
+// boot chores poll it between units of work.
+func (d *Daemon) stopping() bool {
+	select {
+	case <-d.stop:
+		return true
+	default:
+		return false
+	}
+}
+
 // New binds the socket, opens the registry, and (if configured)
 // creates the bootstrap session. Call Run to start accepting clients.
 func New(cfg Config) (*Daemon, error) {
@@ -91,14 +134,8 @@ func New(cfg Config) (*Daemon, error) {
 		}
 		_ = os.Remove(sock)
 	}
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
-	}
-
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
-		_ = ln.Close()
 		return nil, err
 	}
 
@@ -110,30 +147,15 @@ func New(cfg Config) (*Daemon, error) {
 		log.Printf("hived: ensure default project: %v", err)
 	}
 	reg.MigrateOrphanSessions()
-	// Reclaim worktree directories whose owning session no longer
-	// exists (e.g. previous daemon was SIGKILL'd mid-Kill). Only the
-	// canonical daemon owns the on-disk <project>/.worktrees/ namespace;
-	// an isolated dev daemon (HIVE_STATE_DIR set) shares that directory
-	// with prod and would otherwise reap prod's worktrees as orphans.
-	if registry.StateDirOverridden() {
-		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
-	} else {
-		reg.ReclaimOrphanWorktrees()
-	}
 
-	// Revive any persisted sessions that have no live PTY (i.e. every
-	// entry loaded from disk on this run). Metadata is preserved; the
-	// shell is fresh — Phase 1.7 will eventually replay scrollback here.
-	for _, info := range reg.List() {
-		if !info.Alive {
-			if err := reg.Revive(info.ID, cfg.BootstrapSession); err != nil {
-				log.Printf("hived: revive %s: %v", info.ID, err)
-			}
-		}
-	}
+	// Orphan-worktree reclaim and session revive deliberately do NOT
+	// run here: both are slow (a handful of git subprocesses per
+	// worktree, one PTY fork per session) and neither is needed
+	// before the daemon can answer a LIST. They run as background
+	// ops instead — see the tail of this function.
 
-	// Bootstrap session only if the registry is still empty after revive
-	// (i.e. truly first run on this machine).
+	// Bootstrap session only if the registry is empty (i.e. truly
+	// first run on this machine).
 	if len(reg.List()) == 0 && bootstrapWanted(cfg.BootstrapSession) {
 		// Pre-Run: no daemon context exists yet, so this one-shot
 		// bootstrap create is rooted at Background.
@@ -148,14 +170,66 @@ func New(cfg Config) (*Daemon, error) {
 		}
 	}
 
-	return &Daemon{
+	// Bind LAST. A bound socket is the readiness signal every client
+	// relies on — dialOrSpawn's retry loop, the GUI's restart probe,
+	// the e2e waitForSocket — and all of them only stat/dial it. With
+	// the bind first, a client dialing during a slow boot landed in
+	// the kernel backlog with nobody accepting, and its HELLO timed
+	// out against wire.handshakeTimeout while the daemon was still
+	// starting up. Nothing above needs the listener.
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		_ = reg.Close()
+		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
+	}
+
+	// Collect the orphan-worktree candidates HERE, on the boot path,
+	// while no client can have created anything: the sweep itself is
+	// slow (git status per candidate) and runs in the background, but
+	// it must only ever be able to delete a directory that predates
+	// this daemon. A worktree that appears afterwards is live work.
+	//
+	// Only the canonical daemon owns the on-disk <project>/.worktrees/
+	// namespace; an isolated dev daemon (HIVE_STATE_DIR set) shares
+	// that directory with prod and would otherwise reap prod's
+	// worktrees as orphans.
+	var orphanCandidates []registry.OrphanWorktreeCandidate
+	if registry.StateDirOverridden() {
+		log.Printf("hived: HIVE_STATE_DIR set; skipping orphan-worktree reclaim to protect foreign worktrees")
+	} else {
+		orphanCandidates = reg.ScanOrphanWorktrees()
+	}
+
+	// Identify the file we just bound, for Close's guarded unlink.
+	// A stat failure is not fatal — Close falls back to leaving the
+	// path alone, which is the safe direction.
+	sockInfo, serr := os.Stat(sock)
+	if serr != nil {
+		log.Printf("hived: stat own socket %s: %v", sock, serr)
+	}
+
+	d := &Daemon{
 		cfg:      cfg,
 		sock:     sock,
 		reg:      reg,
 		ln:       ln,
-		clients:  make(map[net.Conn]struct{}),
-		shutdown: make(chan struct{}),
-	}, nil
+		sockInfo: sockInfo,
+
+		orphanCandidates: orphanCandidates,
+		clients:          make(map[net.Conn]struct{}),
+		shutdown:         make(chan struct{}),
+		stop:             make(chan struct{}),
+	}
+
+	// The two slow boot chores run in the background, off the caller's
+	// path: reviving persisted sessions forks one PTY each, and the
+	// orphan-worktree reclaim shells out to git. Started here rather
+	// than in Run so they cannot be skipped by a Close that beats Run
+	// to the scheduler; d.ops is what Close waits on, d.stop is what
+	// cuts them short.
+	d.runOp(d.reviveAll)
+	d.runOp(d.reclaimWorktrees)
+	return d, nil
 }
 
 // Run accepts clients until ctx is cancelled or the listener is closed.
@@ -181,11 +255,97 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 }
 
+// reviveAll starts a fresh PTY for every persisted session that has
+// none — i.e. every entry loaded from disk on this run. Metadata is
+// preserved; the shell is fresh.
+//
+// Sequential on purpose: a user with ten sessions would otherwise fork
+// ten login shells at once on a machine that is already busy booting.
+// Each session is bracketed in wire.PhaseSpawning, so a client
+// attaching before its turn gets the "still starting" answer that
+// serveAttach already speaks (and the GUI's phase spinner) instead of
+// "session_dead".
+func (d *Daemon) reviveAll() {
+	// Two passes: ReviveWithPhase declines an entry whose lifecycle
+	// something else owns right now (a client create/kill/restart
+	// landing mid-boot), and a session skipped on the only pass would
+	// stay dead until the next daemon start. Bounded at two — a
+	// second decline means the other owner is still working, and its
+	// own path will leave the session in a sane state.
+	skipped := d.revivePass(nil)
+	if len(skipped) > 0 && !d.stopping() {
+		log.Printf("hived: retrying revive for %d session(s) busy on the first pass", len(skipped))
+		if still := d.revivePass(skipped); len(still) > 0 {
+			log.Printf("hived: %d session(s) left unrevived; another lifecycle op owns them", len(still))
+		}
+	}
+}
+
+// revivePass revives every non-alive session, or only the given ids
+// when non-nil. Returns the ids it declined to touch because another
+// lifecycle op owned them.
+func (d *Daemon) revivePass(only []string) []string {
+	var skipped []string
+	for _, info := range d.reg.List() {
+		if d.stopping() {
+			return nil
+		}
+		if info.Alive || !wanted(only, info.ID) {
+			continue
+		}
+		revived, err := d.reg.ReviveWithPhase(info.ID, d.cfg.BootstrapSession)
+		switch {
+		case err != nil:
+			log.Printf("hived: revive %s: %v", info.ID, err)
+		case !revived:
+			log.Printf("hived: revive %s deferred: another lifecycle op owns it", info.ID)
+			skipped = append(skipped, info.ID)
+		}
+	}
+	return skipped
+}
+
+// wanted reports whether id is in only, treating a nil only as "all".
+func wanted(only []string, id string) bool {
+	if only == nil {
+		return true
+	}
+	for _, want := range only {
+		if want == id {
+			return true
+		}
+	}
+	return false
+}
+
+// reclaimWorktrees removes worktree directories whose owning session
+// no longer exists (e.g. the previous daemon was SIGKILL'd mid-Kill).
+// Only the canonical daemon owns the on-disk <project>/.worktrees/
+// namespace; an isolated dev daemon (HIVE_STATE_DIR set) shares that
+// directory with prod and would otherwise reap prod's worktrees as
+// orphans.
+func (d *Daemon) reclaimWorktrees() {
+	if len(d.orphanCandidates) == 0 {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-d.stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	d.reg.ReclaimOrphanWorktrees(ctx, d.orphanCandidates)
+}
+
 // Shutdown asks Run to stop accepting and return, exactly as a
 // cancelled context would. Safe to call more than once and from any
 // goroutine — a client can send FrameShutdown twice, and the pidfile
 // removal + registry flush that follow Run must happen once.
 func (d *Daemon) Shutdown() {
+	d.stopOps()
 	d.shutdownOnce.Do(func() {
 		log.Printf("hived: shutdown requested by client")
 		close(d.shutdown)
@@ -201,9 +361,12 @@ func (d *Daemon) Registry() *registry.Registry { return d.reg }
 
 // Close terminates every session, closes listeners, removes the socket.
 func (d *Daemon) Close() error {
-	// Let in-flight create/kill work finish first: a half-created
-	// worktree with no session entry is an orphan the next boot has to
-	// reclaim.
+	// Signal first, then wait: in-flight create/kill work still gets
+	// to finish (a half-created worktree with no session entry is an
+	// orphan the next boot has to reclaim), but the boot chores stop
+	// starting new work instead of forking shells for a daemon that
+	// is going away.
+	d.stopOps()
 	d.ops.Wait()
 	d.mu.Lock()
 	for c := range d.clients {
@@ -217,8 +380,32 @@ func (d *Daemon) Close() error {
 	if d.reg != nil {
 		_ = d.reg.Close()
 	}
-	_ = os.Remove(d.sock)
+	d.removeOwnSocket()
 	return nil
+}
+
+// removeOwnSocket unlinks the socket only while it is still the file
+// this daemon bound. Teardown can now span the boot chores, which is
+// long enough for the GUI's Restart action to have relaunched and a
+// replacement hived to have bound a fresh socket at the same path —
+// an unconditional unlink here would delete the live daemon's socket
+// and leave it serving an inode nobody can dial. Same shape as
+// removePidfile in cmd/hived.
+func (d *Daemon) removeOwnSocket() {
+	if d.sockInfo == nil {
+		return
+	}
+	cur, err := os.Stat(d.sock)
+	if err != nil {
+		return
+	}
+	if !os.SameFile(cur, d.sockInfo) {
+		log.Printf("hived: socket %s now belongs to another daemon; leaving it alone", d.sock)
+		return
+	}
+	if err := os.Remove(d.sock); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("hived: remove socket %s: %v", d.sock, err)
+	}
 }
 
 // serve dispatches on the HELLO mode. ctx is the daemon's Run context
