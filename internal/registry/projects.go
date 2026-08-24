@@ -47,9 +47,15 @@ func (r *Registry) EnsureDefaultProject(cwd string) (*Project, error) {
 }
 
 // ReclaimOrphanWorktrees scans every project's <projectCwd>/.worktrees
-// directory and runs worktree.Cleanup on any subdirectory whose path
-// is not claimed by some live registry entry. Idempotent. Run once at
-// daemon startup so a SIGKILL'd previous process doesn't leak.
+// directory and runs worktree.Cleanup on any subdirectory that is both
+// unclaimed by a live registry entry AND pristine (no uncommitted
+// changes, no unpushed commits). Idempotent. Run once at daemon
+// startup so a SIGKILL'd previous process doesn't leak.
+//
+// The pristine condition is what makes detached worktrees possible:
+// a worktree whose session was closed is unclaimed forever, so
+// reclaiming unconditionally would delete the user's kept work at the
+// next boot.
 //
 // Caller contract: only the canonical daemon may call this. The
 // on-disk <project>/.worktrees/ namespace is shared across daemon
@@ -93,9 +99,25 @@ func (r *Registry) ReclaimOrphanWorktrees() {
 			if claimed[path] {
 				continue
 			}
-			log.Printf("registry: reclaiming orphan worktree %s", path)
-			if err := worktree.Cleanup(root, path); err != nil {
-				log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+			// Same rule as Kill: reclaim only what holds no work.
+			// A worktree the user detached on purpose (closed its
+			// session, kept the branch) is unclaimed by definition,
+			// so an unconditional reclaim here would delete it on
+			// the next daemon start — silently, at boot, with no
+			// confirm. Pristine-only keeps the crash-leak cleanup
+			// this exists for while making detaching safe.
+			st, ierr := worktree.Inspect(root, path)
+			switch {
+			case ierr != nil:
+				log.Printf("registry: cannot inspect orphan worktree %s (%v); keeping it", path, ierr)
+			case !st.Pristine():
+				log.Printf("registry: keeping orphan worktree %s (uncommitted=%v unpushed=%d unknown=%v)",
+					path, st.Uncommitted, st.Unpushed, st.Unknown)
+			default:
+				log.Printf("registry: reclaiming orphan worktree %s", path)
+				if err := worktree.Cleanup(root, path); err != nil {
+					log.Printf("registry: orphan cleanup failed for %s: %v", path, err)
+				}
 			}
 		}
 	}

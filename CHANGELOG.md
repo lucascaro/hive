@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Worktrees are now something you can see and manage. A per-project
+  worktree browser (⌘E, the ⎇ button on a project row, or "Worktrees…"
+  in the command palette) lists every git worktree in the project along
+  with what it holds — which sessions are running in it, whether it has
+  uncommitted changes, and how many commits it has that aren't pushed —
+  plus the local branches that have no worktree at all. From it you can
+  start a session in an existing worktree to pick that work back up,
+  create a worktree for a branch that was left stranded, rename a
+  worktree (which renames its branch and moves its directory to match),
+  and delete the ones you're done with. Deleting is deliberately hard to
+  do by accident: it is refused outright while a session is running in
+  the worktree, and uncommitted changes, unpushed commits, or a branch
+  with no remote to compare against each require a confirmation that
+  names exactly what would be lost. The branch is kept by default when a
+  worktree is deleted, so the commits stay recoverable; deleting it too
+  is a separate opt-in.
+
+- Closing a session with uncommitted changes now offers to delete the
+  worktree as part of the close, alongside keeping it. The clean-up
+  option is marked destructive and is never the default.
+
+- The worktree browser offers **Continue** as well as **New session**.
+  Continue starts the agent with its path-scoped resume, picking up the
+  last conversation in that worktree; New session starts a fresh one.
+
+- Orphaned branches can be deleted from the worktree browser, not just
+  given a worktree. Deleting a branch that still holds unmerged commits
+  says how many and requires a second confirmation.
+
+- The new-session popup can now name the worktree's branch. Ticking
+  "Create in git worktree" reveals a branch-name field; leave it empty to
+  keep the previous behaviour of an auto-generated adjective-noun name.
+
 - Sessions now show what they are doing while they start. Opening a session
   used to leave the tile blank — often for many seconds when a git worktree
   had to be created — and then hand you a terminal already painting your
@@ -52,6 +85,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Go Back** / **Go Forward**.
 
 ### Fixed
+
+- Closing a session could delete the directory you were working in. When
+  a project's working directory is itself a git worktree — which is how
+  hive is often run, from inside its own `.worktrees/` — a session there
+  claimed that directory as hive's own, and closing the last session
+  removed it along with everything committed in it. Hive now only ever
+  deletes worktrees it created, and never the directory a project lives
+  in. Introduced during this release; no tagged version shipped it.
+
+- Worktrees are no longer deleted on the strength of a check that could
+  not be completed. A permissions or I/O error while inspecting a
+  worktree, or a failure to compare a branch against its remote, now
+  count as "may hold work" instead of silently reading as clean.
+
+- Modal dialogs no longer strand the keyboard. Tab now stays inside the
+  worktree browser, the settings form, the help overlay and any
+  confirmation dialog instead of walking into the page behind them
+  (where the next stop is a hidden terminal, so keystrokes went
+  somewhere invisible). Closing one returns focus to the terminal, and
+  cancelling a dialog or an inline rename returns it to the control that
+  opened it. Escape inside a rename cancels the edit rather than closing
+  the surrounding panel.
 - Closing a session in grid mode now repaints the grid. The only repaint on
   the removal path fired when the *active* session was the one closed, so
   closing any other tile left the layout with a hole where it used to be.
@@ -113,6 +168,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   showed as magenta blocks in place of terminal text).
 
 ### Changed
+
+- Prompts that risk losing work no longer use a native OS alert. Closing
+  a session with uncommitted changes, and deleting a worktree or branch,
+  now open an in-app dialog that spells out what is at stake and offers
+  the real choices as buttons — deleting a worktree can keep its branch
+  or remove both, and cancelling is always available and pre-selected.
+  The old alert could only ask yes/no, so the branch question had to be
+  asked separately and there was no way to back out of it.
+
+- Closing a session no longer destroys its worktree unless the worktree
+  is empty. Previously the worktree was removed as soon as its last
+  session closed — force-closing a session with uncommitted changes threw
+  that work away, and any worktree not currently held by a session was
+  also force-removed the next time the daemon started. A worktree with
+  uncommitted changes or unpushed commits now outlives its session and
+  stays listed in the new worktree browser, where removing it is an
+  explicit, confirmed act. Worktrees with nothing in them are still
+  cleaned up automatically on close and at startup, so throwaway sessions
+  don't leave directories behind.
 
 - Logs: `hived.log` and `hivegui.log` now rotate at 8 MiB (one prior
   generation kept) instead of growing unbounded. Added always-on

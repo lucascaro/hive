@@ -15,7 +15,12 @@
 // mock-only eight are optional. One interface, no casts, and the optionality
 // is a true statement about the runtime rather than a lie that makes the
 // spec sites read more nicely — the cost is `?.` at the mock-only sites.
-import type { MockProject, MockSession } from './wails-mock.js';
+import type {
+  MockBranch,
+  MockProject,
+  MockSession,
+  MockWorktree,
+} from './wails-mock.js';
 import type { ReflowApi } from './fixtures/xterm-reflow.js';
 
 type Handler = (...args: unknown[]) => void;
@@ -30,14 +35,20 @@ interface HiveTestApi {
   emit(name: string, ...args: unknown[]): void;
 
   // --- Mock only (test/e2e/wails-mock.ts). Absent under VITE_WAILS_REAL. ---
-  state?: { projects: MockProject[]; sessions: MockSession[] };
+  state?: {
+    projects: MockProject[];
+    sessions: MockSession[];
+    worktrees: MockWorktree[];
+    orphanBranches: MockBranch[];
+  };
   addSession?(
     name: string,
     insertAfter?: string,
     projectId?: string,
   ): Promise<string>;
   killSession?(id: string): Promise<string>;
-  createSessionWithWorktree?(name: string): Promise<string>;
+  createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
+  seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;
   resetReplay?(): void;

@@ -43,8 +43,9 @@ func randomIndex(n int) int {
 // agent's canonical ID (or "shell" when id is empty / unknown).
 //
 // Examples:
-//   "amber-falcon claude"
-//   "still-meadow shell"
+//
+//	"amber-falcon claude"
+//	"still-meadow shell"
 func RandomName(id ID) string {
 	suffix := string(id)
 	if suffix == "" {

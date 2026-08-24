@@ -34,6 +34,7 @@ import {
 } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
 import { initSettings, openSettings } from './app/modals/settings.js';
+import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents } from './app/events.js';
@@ -57,6 +58,7 @@ import {
   toggleAllGrid,
   confirmAndDeleteProject,
   deleteActiveProject,
+  openWorktreesForActiveProject,
   navSession,
   reorderActive,
   switchToNthSession,
@@ -107,6 +109,11 @@ const paletteCommands = [
     id: 'delete-project',
     name: 'Delete Active Project…',
     run: () => deleteActiveProject(),
+  },
+  {
+    id: 'worktrees',
+    name: 'Worktrees…',
+    run: () => openWorktreesForActiveProject(),
   },
   {
     id: 'close-session',
@@ -200,6 +207,14 @@ initLauncher({ setFocusedTile, refocusActiveTerm });
 initProjectEditor({ setFocusedTile, refocusActiveTerm });
 initCommandPalette({ commands: paletteCommands, focusActiveTerm });
 initSettings({ setFocusedTile, refocusActiveTerm });
+initWorktrees({
+  setFocusedTile,
+  refocusActiveTerm,
+  // Resuming work in an existing worktree reuses the agent picker —
+  // the choice of tool is the same question as for any new session.
+  openSessionIn: (projectId, worktreePath, continueConversation) =>
+    openLauncher(projectId, { worktreePath, continueConversation }),
+});
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({
   switchTo,

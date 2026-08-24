@@ -62,13 +62,43 @@ func (p *phaseLog) firstAdded() string {
 // state change reads a log that can still be a beat behind — invisible
 // on a fast machine, reliably fatal under a loaded CI runner (or
 // GOMAXPROCS=1, which reproduces it on demand).
-func (p *phaseLog) waitEventsFor(t *testing.T, id string, n int) []string {
+// waitForLastEvent polls until the most recent event for id is want.
+// Prefer this over waitEventsFor when the assertion is about the state
+// a session settles in: an event count is satisfied by whatever
+// intermediate phases happen to have arrived, which makes the test a
+// race against how many phases the path emits.
+func (p *phaseLog) waitForLastEvent(t *testing.T, id, want string) []string {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		got := p.phasesFor(id)
-		if len(got) >= n || time.Now().After(deadline) {
+		if len(got) > 0 && got[len(got)-1] == want {
 			return got
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s on %s; got %s", want, id, joined(got))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func (p *phaseLog) waitEventsFor(t *testing.T, id string, n int) []string {
+	t.Helper()
+	// 10s, not 3: this package now runs a lot of real git subprocesses
+	// (the worktree inventory tests), so a create's event can land well
+	// past three seconds on a loaded machine. The wait is a bound on
+	// hanging, not a performance assertion — a passing run still
+	// returns as soon as the events arrive.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		got := p.phasesFor(id)
+		if len(got) >= n {
+			return got
+		}
+		if time.Now().After(deadline) {
+			// Say so rather than returning a short slice and letting the
+			// caller fail on a confusing "first event: got []".
+			t.Fatalf("timed out waiting for %d events for %s; got %s", n, id, joined(got))
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -95,7 +125,12 @@ func watch(t *testing.T, r *Registry) (*phaseLog, func()) {
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	// 10s, not 3: this package now runs a lot of real git subprocesses
+	// (the worktree inventory tests), so a create's event can land well
+	// past three seconds on a loaded machine. The wait is a bound on
+	// hanging, not a performance assertion — a passing run still
+	// returns as soon as the events arrive.
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -219,8 +254,12 @@ func TestCreateBornDeadEndsReady(t *testing.T) {
 	if e == nil {
 		t.Fatal("Create: entry should be stranded, not dropped")
 	}
-	// added(starting) then the updated(ready) carrying the failure.
-	got := log.waitEventsFor(t, e.ID, 2)
+	// added(starting) … updated(ready) carrying the failure. Wait for
+	// the TERMINAL event, not for a count: the create also emits
+	// updated(spawning) in between, so "two events" can be satisfied
+	// before ready arrives — which showed up as a flake once this
+	// package got slower.
+	got := log.waitForLastEvent(t, e.ID, "updated:"+wire.PhaseReady)
 	if len(got) == 0 || got[0] != "added:"+wire.PhaseStarting {
 		t.Fatalf("first event: got %s", joined(got))
 	}

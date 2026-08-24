@@ -41,9 +41,9 @@ type Session struct {
 
 // Options configures a new Session.
 type Options struct {
-	Shell       string
-	Cmd         []string // when non-empty, runs in place of $SHELL (e.g. an agent)
-	Cwd         string   // working directory; default = sane choice
+	Shell      string
+	Cmd        []string // when non-empty, runs in place of $SHELL (e.g. an agent)
+	Cwd        string   // working directory; default = sane choice
 	Cols, Rows int
 	Env        []string // appended to os.Environ()
 }
@@ -312,7 +312,7 @@ func (s *Session) Done() <-chan struct{} { return s.done }
 // shellEscape joins argv into a single line safe for "sh -c". Bare-word
 // args pass through unquoted; anything with whitespace or shell
 // metacharacters gets single-quoted with embedded single quotes
-// escaped via the standard '\'' trick.
+// escaped via the standard '\” trick.
 func shellEscape(argv []string) string {
 	const safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./@:+=,%"
 	out := make([]byte, 0, 32)

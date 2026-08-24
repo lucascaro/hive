@@ -201,4 +201,3 @@ func TestSessionResize(t *testing.T) {
 		t.Fatalf("expected 50 132 from stty; got %q", sink.String())
 	}
 }
-

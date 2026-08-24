@@ -333,11 +333,11 @@ func (v *VT) appendRing(p []byte) {
 // preceding `back` bytes that has not yet seen a terminating byte.
 // Walks each sequence explicitly:
 //
-//   CSI: ESC [ <params 0x30–0x3F | intermediates 0x20–0x2F>*
-//        <final 0x40–0x7E>      — '[' itself is a final-range byte
-//                                  but only the FIRST byte after ESC.
-//   OSC: ESC ] <data>* <BEL | ESC \>
-//   short: ESC <single byte>   — e.g. ESC 7 (DECSC). One-byte tail.
+//	CSI: ESC [ <params 0x30–0x3F | intermediates 0x20–0x2F>*
+//	     <final 0x40–0x7E>      — '[' itself is a final-range byte
+//	                               but only the FIRST byte after ESC.
+//	OSC: ESC ] <data>* <BEL | ESC \>
+//	short: ESC <single byte>   — e.g. ESC 7 (DECSC). One-byte tail.
 //
 // "Back" caps how far we look backwards; CSI sequences are typically
 // under 16 bytes, OSC titles can be longer (terminal title up to
@@ -529,10 +529,10 @@ func (v *VT) RenderSnapshot() []byte {
 	// Track current SGR state; "no attrs, default colours" means we've
 	// just emitted \x1b[m (or are at the start, post soft-reset).
 	var (
-		curMode int16       = 0
-		curFG   vt10x.Color = vt10x.DefaultFG
-		curBG   vt10x.Color = vt10x.DefaultBG
-		atDefault           = true
+		curMode   int16       = 0
+		curFG     vt10x.Color = vt10x.DefaultFG
+		curBG     vt10x.Color = vt10x.DefaultBG
+		atDefault             = true
 	)
 
 	for y := range rows {
@@ -625,10 +625,10 @@ func renderRow(buf *bytes.Buffer, term vt10x.Terminal, y, cols int,
 func captureRowANSI(glyphs []vt10x.Glyph) []byte {
 	var buf bytes.Buffer
 	var (
-		curMode int16       = 0
-		curFG   vt10x.Color = vt10x.DefaultFG
-		curBG   vt10x.Color = vt10x.DefaultBG
-		atDefault           = true
+		curMode   int16       = 0
+		curFG     vt10x.Color = vt10x.DefaultFG
+		curBG     vt10x.Color = vt10x.DefaultBG
+		atDefault             = true
 	)
 	// Find last non-blank cell.
 	cols := len(glyphs)

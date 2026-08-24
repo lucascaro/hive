@@ -12,6 +12,17 @@ export function registerModal(el: Element | null | undefined): void {
   if (el) modals.push(el);
 }
 
+// unregisterModal removes a modal that no longer exists. The static
+// modals in index.html never need it — they are hidden, not removed —
+// but a dialog built per question does: a detached element has no
+// `hidden` class, so leaving it registered would make anyModalOpen()
+// answer true forever and permanently strand the keyboard.
+export function unregisterModal(el: Element | null | undefined): void {
+  if (!el) return;
+  const i = modals.indexOf(el);
+  if (i >= 0) modals.splice(i, 1);
+}
+
 export function anyModalOpen(): boolean {
   return modals.some((el) => !el.classList.contains('hidden'));
 }

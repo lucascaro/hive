@@ -345,6 +345,38 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	sendError := func(code, msg string) {
 		_ = writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
+	// sendWorktrees answers with the project's current inventory. Every
+	// successful worktree mutation ends here, so the browser never has
+	// to re-request after acting — and never renders state that the
+	// mutation just invalidated.
+	sendWorktrees := func(projectID, failCode string) {
+		resp, err := d.reg.ListWorktrees(projectID)
+		if err != nil {
+			sendError(failCode, err.Error())
+			return
+		}
+		_ = writeJSON(wire.FrameWorktrees, resp)
+	}
+	// sendWorktreeError maps the registry's refusal sentinels onto
+	// wire codes the GUI knows how to confirm against, the same way
+	// KILL_SESSION maps ErrWorktreeDirty. Anything unrecognised falls
+	// through to the generic code.
+	sendWorktreeError := func(err error, genericCode string) {
+		switch {
+		case errors.Is(err, registry.ErrWorktreeInUse):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		case errors.Is(err, registry.ErrWorktreeDirty):
+			sendError(wire.ErrCodeWorktreeDirty, err.Error())
+		case errors.Is(err, registry.ErrWorktreeUnpushed):
+			sendError(wire.ErrCodeWorktreeUnpushed, err.Error())
+		case errors.Is(err, registry.ErrBranchUnmerged):
+			sendError(wire.ErrCodeBranchUnmerged, err.Error())
+		case errors.Is(err, registry.ErrBranchHasWorktree):
+			sendError(wire.ErrCodeWorktreeInUse, err.Error())
+		default:
+			sendError(genericCode, err.Error())
+		}
+	}
 	for {
 		ft, payload, err := wire.ReadFrame(conn)
 		if err != nil {
@@ -385,7 +417,11 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 				continue
 			}
 			d.runOp(func() {
-				if err := d.reg.Kill(req.SessionID, req.Force); err != nil {
+				kill := d.reg.Kill
+				if req.RemoveWorktree {
+					kill = d.reg.KillAndRemoveWorktree
+				}
+				if err := kill(req.SessionID, req.Force); err != nil {
 					if errors.Is(err, registry.ErrWorktreeDirty) {
 						_ = writeJSON(wire.FrameError, wire.Error{
 							Code:      wire.ErrCodeWorktreeDirty,
@@ -448,6 +484,68 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			if _, err := d.reg.UpdateProject(req); err != nil {
 				sendError("update_project_failed", err.Error())
 			}
+		case wire.FrameListWorktrees:
+			var req wire.ListWorktreesReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			// Off the read loop: the inventory shells out to git once
+			// per worktree, which on a big repo is slow enough to
+			// stall every other control request.
+			d.runOp(func() { sendWorktrees(req.ProjectID, "list_worktrees_failed") })
+		case wire.FrameRemoveWorktree:
+			var req wire.RemoveWorktreeReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			d.runOp(func() {
+				if err := d.reg.RemoveWorktree(req.ProjectID, req.Path, req.Force, req.DeleteBranch); err != nil {
+					sendWorktreeError(err, "remove_worktree_failed")
+					return
+				}
+				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+			})
+		case wire.FrameCreateWorktree:
+			var req wire.CreateWorktreeReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			d.runOp(func() {
+				if _, err := d.reg.CreateWorktreeForBranch(ctx, req.ProjectID, req.Branch); err != nil {
+					sendWorktreeError(err, "create_worktree_failed")
+					return
+				}
+				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+			})
+		case wire.FrameDeleteBranch:
+			var req wire.DeleteBranchReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			d.runOp(func() {
+				if err := d.reg.DeleteBranch(req.ProjectID, req.Branch, req.Force); err != nil {
+					sendWorktreeError(err, "delete_branch_failed")
+					return
+				}
+				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+			})
+		case wire.FrameRenameWorktree:
+			var req wire.RenameWorktreeReq
+			if err := jsonUnmarshal(payload, &req); err != nil {
+				sendError("bad_payload", err.Error())
+				continue
+			}
+			d.runOp(func() {
+				if err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch); err != nil {
+					sendWorktreeError(err, "rename_worktree_failed")
+					return
+				}
+				sendWorktrees(req.ProjectID, "list_worktrees_failed")
+			})
 		default:
 			log.Printf("hived: unexpected control frame: %s", ft)
 		}

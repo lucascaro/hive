@@ -114,6 +114,94 @@ func (c *Client) ListSessions() error {
 	return c.cli.WriteJSON(wire.FrameListSessions, wire.ListSessionsReq{})
 }
 
+// ListWorktrees sends LIST_WORKTREES. Use AwaitWorktrees to consume
+// the response.
+func (c *Client) ListWorktrees(projectID string) error {
+	return c.cli.WriteJSON(wire.FrameListWorktrees, wire.ListWorktreesReq{ProjectID: projectID})
+}
+
+// RemoveWorktree sends REMOVE_WORKTREE. On success the daemon replies
+// with a fresh WORKTREES frame; on refusal, with an ERROR carrying
+// one of the worktree_* codes.
+func (c *Client) RemoveWorktree(req wire.RemoveWorktreeReq) error {
+	return c.cli.WriteJSON(wire.FrameRemoveWorktree, req)
+}
+
+// CreateWorktree sends CREATE_WORKTREE.
+func (c *Client) CreateWorktree(req wire.CreateWorktreeReq) error {
+	return c.cli.WriteJSON(wire.FrameCreateWorktree, req)
+}
+
+// DeleteBranch sends DELETE_BRANCH.
+func (c *Client) DeleteBranch(req wire.DeleteBranchReq) error {
+	return c.cli.WriteJSON(wire.FrameDeleteBranch, req)
+}
+
+// RenameWorktree sends RENAME_WORKTREE.
+func (c *Client) RenameWorktree(req wire.RenameWorktreeReq) error {
+	return c.cli.WriteJSON(wire.FrameRenameWorktree, req)
+}
+
+// AwaitWorktrees consumes frames until a WORKTREES snapshot arrives.
+// An ERROR frame is returned as an error carrying its code, so a
+// refusal surfaces as a failed assertion rather than a timeout.
+func (c *Client) AwaitWorktrees(timeout time.Duration) (wire.WorktreesResp, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return wire.WorktreesResp{}, errors.New("testclient: timeout waiting for WORKTREES")
+		}
+		select {
+		case msg := <-c.snaps:
+			switch msg.t {
+			case wire.FrameWorktrees:
+				var resp wire.WorktreesResp
+				if err := json.Unmarshal(msg.payload, &resp); err != nil {
+					return wire.WorktreesResp{}, err
+				}
+				return resp, nil
+			case wire.FrameError:
+				var e wire.Error
+				_ = json.Unmarshal(msg.payload, &e)
+				return wire.WorktreesResp{}, fmt.Errorf("testclient: daemon refused: %s: %s", e.Code, e.Message)
+			}
+			// Anything else (PROJECTS / SESSIONS snapshots) is drained.
+		case err := <-c.errs:
+			return wire.WorktreesResp{}, err
+		case <-time.After(remaining):
+			return wire.WorktreesResp{}, errors.New("testclient: timeout waiting for WORKTREES")
+		}
+	}
+}
+
+// AwaitControlError consumes frames until an ERROR arrives, returning
+// it. Used to assert the worktree refusal codes.
+func (c *Client) AwaitControlError(timeout time.Duration) (wire.Error, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return wire.Error{}, errors.New("testclient: timeout waiting for ERROR")
+		}
+		select {
+		case msg := <-c.snaps:
+			if msg.t != wire.FrameError {
+				continue
+			}
+			var e wire.Error
+			if err := json.Unmarshal(msg.payload, &e); err != nil {
+				return wire.Error{}, err
+			}
+			return e, nil
+		case err := <-c.errs:
+			return wire.Error{}, err
+		case <-time.After(remaining):
+			return wire.Error{}, errors.New("testclient: timeout waiting for ERROR")
+		}
+	}
+}
+
 // WaitForData reads from the stream until the accumulated DATA bytes
 // contain needle, or timeout. Returns the full accumulator on hit so
 // callers can assert on more than just the needle.

@@ -13,7 +13,7 @@ Per-decision detail belongs in `docs/design-docs/` and `docs/native-rewrite/`. T
 - **Wire protocol** (`internal/wire/`) — versioned IPC frames between GUI and daemon. Pure types + framing; no I/O policy.
 - **Daemon** (`internal/daemon/`, `cmd/hived/`) — multi-session PTY host. Accepts Unix-socket connections, dispatches by HELLO mode (`control` / `attach` / `create`), spawns/kills sessions through the registry.
 - **GUI** (`cmd/hivegui/`, `hivegui/frontend/`) — Wails desktop app. Thin client over the wire protocol; xterm.js renders terminal output, the JS layer owns sidebar/layout/agent UX.
-- **Worktrees** (`internal/worktree/`) — git worktree lifecycle for agent sessions; tracks dirty state so the registry can refuse destructive operations.
+- **Worktrees** (`internal/worktree/`) — git worktree lifecycle for agent sessions: create, inventory (`List`/`ListBranches`), safety status (`Inspect`), rename and removal. Tracks uncommitted and unpushed state so the registry can refuse destructive operations.
 - **Agents** (`internal/agent/`) — canonical agent catalog (`claude`, `codex`, `gemini`, …) and human-readable name generation.
 - **Notifications** (`internal/notify/`) — platform-specific desktop notifications. Bell/audio support (`internal/audio/`) is planned but not yet implemented.
 
@@ -62,10 +62,21 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
   never persisted); it is attachable only when `alive == true` **and** the
   phase is `PhaseReady`. Attaching earlier is answered with
   `wire.ErrCodeSessionStarting`, not an error the client should treat as death.
+- **A worktree outlives its sessions unless it is pristine.** `Kill` and the
+  startup orphan reclaim remove a worktree only when `worktree.Inspect`
+  reports no uncommitted changes AND no unpushed commits AND a resolvable
+  comparison base (`Status.Pristine`). Anything else survives and is managed
+  explicitly through the worktree frames. An unanswerable base counts as
+  "holds work", never as "safe to delete" — the conservative direction is
+  load-bearing, since the other reading silently destroys commits.
+  `git worktree list` is the source of truth for what exists; the registry
+  stores no worktree records of its own.
 - **Control-frame handlers that shell out to git run off the read loop.**
-  `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, and `KILL_PROJECT` are
+  `CREATE_SESSION`, `KILL_SESSION`, `RESTART_SESSION`, `KILL_PROJECT`, and the
+  worktree frames (`LIST_WORKTREES`, `REMOVE_WORKTREE`, `CREATE_WORKTREE`,
+  `RENAME_WORKTREE`, `DELETE_BRANCH`) are
   dispatched to goroutines owned by the daemon (drained in `Close`), so a slow
-  `git worktree add`/`remove` can't stall every other client request. The git
+  `git worktree add`/`remove`/`list` can't stall every other client request. The git
   subprocesses themselves are serialized by the registry, and its lock
   ordering rule is one-way: never take that git lock while holding `r.mu`.
 - **Wire mode is immutable for the connection.** Whatever mode a client picks in HELLO (`control` / `attach` / `create`) is the mode for the connection's lifetime. Daemon dispatch must reject frames that don't belong to the negotiated mode.

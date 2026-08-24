@@ -139,6 +139,7 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           label: 'Delete active project',
         },
         { keys: `${m('[')} / ${m(']')}`, label: 'Previous / next project' },
+        { keys: m('E'), label: 'Worktrees in the active project' },
       ],
     },
     {
@@ -221,6 +222,7 @@ export function paletteShortcuts({
     'duplicate-session-choose-tool': m('P', { shift: true }),
     'restart-session': '',
     'delete-project': m('backspace', { shift: true }),
+    worktrees: m('E'),
     'close-session': m('W'),
     'new-window': m('N', { shift: true }),
     'open-os-terminal': c('`'),

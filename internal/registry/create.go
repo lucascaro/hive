@@ -33,6 +33,11 @@ type createPlan struct {
 	adoptedPath   string
 	adoptedBranch string
 
+	// projectCwd is the owning project's own working directory. Kept
+	// apart from cwd because a session may run elsewhere, and because
+	// adoption must never claim it (see adoptDetachedWorktree).
+	projectCwd string
+
 	// wtPath/wtBranch are the worktree this session should end up in,
 	// pre-resolved before naming and cleared if `git worktree add`
 	// later fails.
@@ -192,6 +197,7 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	var projectColor string
 	if proj, ok := r.projects[p.projectID]; ok {
 		projectColor = proj.Color
+		p.projectCwd = proj.Cwd
 	}
 	// Color is reserved for project/session identity; agent identity
 	// is conveyed by the badge/icon. So skip the agent-default tier
@@ -211,6 +217,13 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 			p.cwd = proj.Cwd
 		}
 	}
+	// An explicit worktree path is the "resume this work" path from
+	// the worktree browser: run in a worktree that already exists on
+	// disk, whether or not any session currently occupies it. It wins
+	// over cwd, and it turns off worktree creation.
+	if spec.WorktreePath != "" {
+		p.cwd = spec.WorktreePath
+	}
 	// Detect when cwd already lives in a worktree owned by another
 	// session in the same project (e.g. ⌘P duplicate). The new entry
 	// adopts that worktree's path+branch so the sidebar shows the
@@ -228,11 +241,68 @@ func (r *Registry) resolveCreateTarget(spec wire.CreateSpec) createPlan {
 	return p
 }
 
+// adoptDetachedWorktree claims a worktree that exists on disk but has
+// no session in it — the case resolveCreateTarget's sibling scan can't
+// see. Without this the entry's WorktreePath stays empty, the worktree
+// looks unclaimed to ReclaimOrphanWorktrees, and the work the user
+// just resumed is deleted at the next daemon start.
+//
+// Does not take r.mu (it shells out to git); called from
+// planWorktreeAndName, which also runs lock-free.
+func (r *Registry) adoptDetachedWorktree(p *createPlan) {
+	if p.adoptedPath != "" || p.cwd == "" || !worktree.IsGitRepo(p.cwd) {
+		return
+	}
+	// MainRoot, not Root: p.cwd is typically a linked worktree here,
+	// and Root would report that worktree's own top level — which
+	// would then look like the main checkout and be skipped below.
+	root, err := worktree.MainRoot(p.cwd)
+	if err != nil {
+		return
+	}
+	r.gitMu.Lock()
+	trees, lerr := worktree.List(root)
+	r.gitMu.Unlock()
+	if lerr != nil {
+		log.Printf("registry: worktree.List while adopting %s: %v", p.cwd, lerr)
+		return
+	}
+	cwd := worktree.ResolvePath(p.cwd)
+	for _, t := range trees {
+		if t.Path != cwd {
+			continue
+		}
+		// Adoption means "Kill deletes this when the last session
+		// leaves", so it is only ever correct for a worktree hive made
+		// to hold sessions. Two things are therefore never adopted:
+		//
+		//  - anything outside <mainRoot>/.worktrees/ — the user's own
+		//    checkout, or a worktree they created themselves;
+		//  - the project's own working directory, even when that sits
+		//    under .worktrees/. Running hived from inside a linked
+		//    worktree makes project.Cwd that worktree, so without this
+		//    every plain session would claim it and closing the last
+		//    one would delete the directory the user works in.
+		if !worktree.IsManaged(root, t.Path) {
+			return
+		}
+		if p.projectCwd != "" &&
+			worktree.ResolvePath(p.projectCwd) == t.Path {
+			return
+		}
+		p.adoptedPath, p.adoptedBranch = t.Path, t.Branch
+		return
+	}
+}
+
 // planWorktreeAndName pre-resolves the worktree branch+path so the
 // session name can match the worktree directory, then picks the name.
 // ResolveBranchAndPath only picks a free name; the actual `git worktree
 // add` happens in materializeWorktree. Does not take r.mu.
 func (r *Registry) planWorktreeAndName(spec wire.CreateSpec, p *createPlan) {
+	if !spec.UseWorktree {
+		r.adoptDetachedWorktree(p)
+	}
 	if p.adoptedPath != "" {
 		p.wtPath, p.wtBranch = p.adoptedPath, p.adoptedBranch
 	}
@@ -342,6 +412,14 @@ func resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 		return cmd
 	}
 	cmd = def.Cmd
+	// Carrying on in a worktree the user already worked in: use the
+	// agent's path-scoped resume. It continues the most recent
+	// conversation for this directory, which is the only handle we
+	// have — the previous session's id died with its entry. Falls back
+	// to a fresh launch for agents that define no resume argv.
+	if spec.ContinueConversation && len(def.ResumeCmd) > 0 {
+		return def.ResumeCmd
+	}
 	// Pin the agent's conversation to our entry id so Restart can
 	// resume by id even when sibling sessions share this cwd. Skipped
 	// when the caller passed an explicit spec.Cmd (we don't mutate

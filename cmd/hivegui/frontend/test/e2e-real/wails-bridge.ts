@@ -153,6 +153,9 @@ export async function CreateSession(
   rows: number,
   useWorktree: boolean,
   insertAfter?: string,
+  branch?: string,
+  worktreePath?: string,
+  continueConversation?: boolean,
 ) {
   // The Wails signature uses positional args; map to the bridge's
   // CreateSpec shape.
@@ -163,8 +166,54 @@ export async function CreateSession(
     color: color || '',
     cols: cols || 80,
     rows: rows || 24,
-    use_worktree: !!useWorktree,
+    // Resuming an existing worktree never creates one — the same
+    // precedence the Go binding applies.
+    use_worktree: worktreePath ? false : !!useWorktree,
+    branch: branch || '',
+    worktree_path: worktreePath || '',
+    continue_conversation: !!continueConversation,
     insert_after_session_id: insertAfter || '',
+  });
+}
+export async function ListWorktrees(projectID: string) {
+  return call('ListWorktrees', { project_id: projectID || '' });
+}
+export async function RemoveWorktree(
+  projectID: string,
+  path: string,
+  force: boolean,
+  deleteBranch: boolean,
+) {
+  return call('RemoveWorktree', {
+    project_id: projectID || '',
+    path,
+    force: !!force,
+    delete_branch: !!deleteBranch,
+  });
+}
+export async function CreateWorktree(projectID: string, branch: string) {
+  return call('CreateWorktree', { project_id: projectID || '', branch });
+}
+export async function DeleteBranch(
+  projectID: string,
+  branch: string,
+  force: boolean,
+) {
+  return call('DeleteBranch', {
+    project_id: projectID || '',
+    branch,
+    force: !!force,
+  });
+}
+export async function RenameWorktree(
+  projectID: string,
+  path: string,
+  newBranch: string,
+) {
+  return call('RenameWorktree', {
+    project_id: projectID || '',
+    path,
+    new_branch: newBranch,
   });
 }
 export async function DuplicateSession(
@@ -177,6 +226,13 @@ export async function DuplicateSession(
 }
 export async function KillSession(id: string, force: boolean) {
   return call('KillSession', { session_id: id, force: !!force });
+}
+export async function KillSessionAndWorktree(id: string) {
+  return call('KillSession', {
+    session_id: id,
+    force: true,
+    remove_worktree: true,
+  });
 }
 export async function RestartSession(_id: string) {
   return '';

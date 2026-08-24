@@ -87,6 +87,20 @@ fi
 echo "==> Launching isolated Hive"
 echo "    HIVE_SOCKET=$iso_dir/hived.sock"
 echo "    HIVE_STATE_DIR=$iso_dir/state"
-HIVE_SOCKET="$iso_dir/hived.sock" \
-HIVE_STATE_DIR="$iso_dir/state" \
+# `env -u ...`: launching from a terminal (unlike Finder/launchd) passes
+# this shell's environment straight through to every session PTY.
+#
+#   dirstack — an exported `dirstack` makes zsh's `zmodload zsh/parameter`
+#   fail, so every session opens with a wall of "Can't add module
+#   parameter" errors.
+#
+#   CLAUDE_CODE_CHILD_SESSION / CLAUDECODE — set when this script is run
+#   from inside a Claude Code session. An agent that inherits them starts
+#   with "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION
+#   marker": no transcript is written, so the conversation never appears
+#   in /resume and Restart has nothing to resume by id. Silent, and it
+#   looks exactly like a Hive bug.
+env -u dirstack -u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE \
+  HIVE_SOCKET="$iso_dir/hived.sock" \
+  HIVE_STATE_DIR="$iso_dir/state" \
   "$app"

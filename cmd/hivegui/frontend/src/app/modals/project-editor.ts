@@ -10,6 +10,7 @@ import {
 } from '../../bridge.js';
 import { reportFailure } from '../dom.js';
 import { registerModal } from './registry.js';
+import { releaseFocus } from './focus-trap.js';
 import { pageEl } from '../el.js';
 import type { ProjectInfo } from '../state.js';
 
@@ -53,10 +54,16 @@ export function openProjectEditor(project: ProjectInfo | null) {
   editorEl.classList.remove('hidden');
   // Drop the active tile's visual focus — modal owns the keyboard.
   deps.setFocusedTile(null);
-  setTimeout(() => editorName.focus(), 0);
+  // Focus synchronously. The field is already visible by now (.hidden
+  // came off above), so there is nothing to wait for — and deferring
+  // opened a race: ⌘N immediately followed by Escape closed the modal
+  // first, then the timer put focus on a field inside a display:none
+  // dialog, sending every keystroke somewhere the user cannot see.
+  editorName.focus();
 }
 
 export function closeProjectEditor() {
+  releaseFocus(editorEl);
   editorEl.classList.add('hidden');
   editorState.editing = null;
   deps.refocusActiveTerm();
