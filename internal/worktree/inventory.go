@@ -202,7 +202,8 @@ type BranchInfo struct {
 	Upstream    string // "" = no upstream configured
 	Ahead       int
 	HasWorktree bool
-	Merged      bool // reachable from the default ref
+	Merged      bool   // reachable from the default ref
+	Subject     string // first line of the branch tip's commit message
 }
 
 // ListBranches returns every local branch with worktree and
@@ -255,7 +256,9 @@ func ListBranches(repoRoot string) ([]BranchInfo, error) {
 func forEachBranch(repoRoot, base string) ([]BranchInfo, error) {
 	// %(worktreepath) is empty for branches with no worktree; the
 	// separator is \x00 so branch names containing spaces survive.
-	const format = "%(refname:short)%00%(upstream:short)%00%(worktreepath)"
+	// %(subject) is the tip's commit subject — one line, and free
+	// here, where asking per branch would be a spawn each.
+	const format = "%(refname:short)%00%(upstream:short)%00%(worktreepath)%00%(subject)"
 	batched := base != ""
 	f := format
 	if batched {
@@ -281,17 +284,18 @@ func forEachBranch(repoRoot, base string) ([]BranchInfo, error) {
 			continue
 		}
 		parts := strings.Split(line, "\x00")
-		if len(parts) < 3 || parts[0] == "" {
+		if len(parts) < 4 || parts[0] == "" {
 			continue
 		}
 		b := BranchInfo{
 			Name:        parts[0],
 			Upstream:    parts[1],
 			HasWorktree: parts[2] != "",
+			Subject:     parts[3],
 		}
-		if batched && len(parts) > 3 {
+		if batched && len(parts) > 4 {
 			// "<ahead> <behind>"; an unresolvable base prints nothing.
-			if ahead, _, ok := strings.Cut(parts[3], " "); ok {
+			if ahead, _, ok := strings.Cut(parts[4], " "); ok {
 				b.Ahead, _ = strconv.Atoi(ahead)
 			}
 		} else {

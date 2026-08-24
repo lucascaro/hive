@@ -354,6 +354,10 @@ type WorktreeInfo struct {
 	// SessionIDs are the live sessions whose cwd is this worktree.
 	// Non-empty ⇒ removal and rename are refused.
 	SessionIDs []string `json:"session_ids,omitempty"`
+	// Subject is the first line of the branch tip's commit message —
+	// what the branch name alone never says. Empty for a detached
+	// worktree, and for anything the branch listing did not cover.
+	Subject string `json:"subject,omitempty"`
 }
 
 // BranchInfo describes a local branch with no worktree — the
@@ -366,6 +370,8 @@ type BranchInfo struct {
 	// Merged: reachable from the default ref, or merged into it by a
 	// squash (detected by patch id, or by GitHub PR state).
 	Merged bool `json:"merged,omitempty"`
+	// Subject is the first line of the branch tip's commit message.
+	Subject string `json:"subject,omitempty"`
 }
 
 // WorktreesResp is the daemon's answer to LIST_WORKTREES and to every

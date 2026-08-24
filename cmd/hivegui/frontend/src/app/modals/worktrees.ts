@@ -200,6 +200,19 @@ function makeButton(
   return btn;
 }
 
+// appendSubject adds the branch tip's commit subject under the row's
+// status line — a branch name says what the work was called, this says
+// what it is. Skipped when the daemon had none (a detached worktree,
+// or an older daemon that does not send it).
+function appendSubject(main: HTMLElement, subject?: string): void {
+  if (!subject) return;
+  const el = document.createElement('span');
+  el.className = 'worktree-subject';
+  el.textContent = subject;
+  el.title = subject;
+  main.appendChild(el);
+}
+
 // makeBadge builds the small uppercase tag at the right of a row.
 function makeBadge(text: string, merged = false): HTMLElement {
   const badge = document.createElement('span');
@@ -228,6 +241,7 @@ function worktreeRow(w: WorktreeInfo): HTMLElement {
   status.textContent = statusLabel(w);
   main.appendChild(name);
   main.appendChild(status);
+  appendSubject(main, w.subject);
   row.appendChild(main);
 
   if (readIsMain(w)) {
@@ -313,6 +327,7 @@ function branchRow(b: BranchInfo): HTMLElement {
   status.textContent = branchStatusLabel(b);
   main.appendChild(name);
   main.appendChild(status);
+  appendSubject(main, b.subject);
   row.appendChild(main);
   if (b.merged) row.appendChild(makeBadge('merged', true));
 

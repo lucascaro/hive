@@ -539,9 +539,11 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 		_ = writeJSON(wire.FrameError, wire.Error{Code: code, Message: msg})
 	}
 	// sendWorktrees answers with the project's current inventory. Every
-	// successful worktree mutation ends here, so the browser never has
-	// to re-request after acting — and never renders state that the
-	// mutation just invalidated.
+	// worktree mutation ends here — including the ones that failed, and
+	// the ones that half succeeded (the local branch went, the remote
+	// push did not). A refusal alone would leave the browser rendering
+	// rows the mutation already invalidated, so the error goes first
+	// and the truth follows it.
 	sendWorktrees := func(projectID, failCode string) {
 		resp, err := d.reg.ListWorktrees(projectID)
 		if err != nil {
@@ -696,7 +698,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			d.runOp(func() {
 				if err := d.reg.RemoveWorktree(req.ProjectID, req.Path, req.Force, req.DeleteBranch, req.DeleteRemote); err != nil {
 					sendWorktreeError(err, "remove_worktree_failed")
-					return
 				}
 				sendWorktrees(req.ProjectID, "list_worktrees_failed")
 			})
@@ -709,7 +710,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			d.runOp(func() {
 				if _, err := d.reg.CreateWorktreeForBranch(ctx, req.ProjectID, req.Branch); err != nil {
 					sendWorktreeError(err, "create_worktree_failed")
-					return
 				}
 				sendWorktrees(req.ProjectID, "list_worktrees_failed")
 			})
@@ -722,7 +722,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			d.runOp(func() {
 				if err := d.reg.DeleteBranch(req.ProjectID, req.Branch, req.Force, req.DeleteRemote); err != nil {
 					sendWorktreeError(err, "delete_branch_failed")
-					return
 				}
 				sendWorktrees(req.ProjectID, "list_worktrees_failed")
 			})
@@ -735,7 +734,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			d.runOp(func() {
 				if err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch); err != nil {
 					sendWorktreeError(err, "rename_worktree_failed")
-					return
 				}
 				sendWorktrees(req.ProjectID, "list_worktrees_failed")
 			})

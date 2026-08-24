@@ -663,6 +663,34 @@ describe('keyboard', () => {
     expect(el('worktrees').classList.contains('hidden')).toBe(true);
   });
 
+  // The tip's commit subject is what tells the user what is in a
+  // branch; the name alone does not.
+  it('shows the tip commit subject on both lists', async () => {
+    await openWith(
+      payload({
+        worktrees: [
+          { path: '/repo/.worktrees/c', branch: 'c', subject: 'feat: a thing' },
+        ],
+        orphan_branches: [{ name: 'o', merged: true, subject: 'fix: a bug' }],
+      }),
+    );
+    expect(rows()[0].querySelector('.worktree-subject')?.textContent).toBe(
+      'feat: a thing',
+    );
+    expect(
+      branchRows()[0].querySelector('.worktree-subject')?.textContent,
+    ).toBe('fix: a bug');
+  });
+
+  // An older daemon sends no subject at all — the line is skipped, not
+  // rendered empty.
+  it('omits the subject line when the payload has none', async () => {
+    await openWith(
+      payload({ worktrees: [{ path: '/repo/.worktrees/c', branch: 'c' }] }),
+    );
+    expect(rows()[0].querySelector('.worktree-subject')).toBeNull();
+  });
+
   it('refreshes on (r)', async () => {
     await openWith(payload());
     ListWorktrees.mockClear();

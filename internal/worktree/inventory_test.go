@@ -869,3 +869,23 @@ func TestScrubURLCredentials(t *testing.T) {
 		t.Errorf("unexpected scrub result: %s", got)
 	}
 }
+
+// The tip's commit subject rides along on the branch listing — a
+// branch name says what the work was called, this says what is in it.
+func TestListBranches_CarriesTipSubject(t *testing.T) {
+	repo := initRepo(t)
+	mustGit(t, repo, "checkout", "-q", "-b", "subject-branch")
+	mustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "fix: the thing that broke")
+
+	branches, err := ListBranches(repo)
+	if err != nil {
+		t.Fatalf("ListBranches: %v", err)
+	}
+	b := findBranch(branches, "subject-branch")
+	if b == nil {
+		t.Fatalf("subject-branch missing: %+v", branches)
+	}
+	if b.Subject != "fix: the thing that broke" {
+		t.Errorf("Subject = %q, want %q", b.Subject, "fix: the thing that broke")
+	}
+}

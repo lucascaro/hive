@@ -1832,6 +1832,17 @@ body.resizing-sidebar #app { transition: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The tip commit subject: what is actually in the branch. Dimmer than
+   the status line above it — it is context, not a verdict. */
+.worktree-subject {
+  display: block;
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Status colour carries the same ranking the list is sorted by, so a
    row that holds work is visible without reading the text. */
 .worktree-row[data-kind='active'] { border-color: #2f4858; }
