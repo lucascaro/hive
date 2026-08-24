@@ -192,7 +192,7 @@ test.describe('worktree browser against real hived', () => {
       });
       await expect(orphan).toBeVisible();
       await orphan.getByRole('button', { name: 'Delete' }).click();
-      await page.locator('.choice-dialog button[data-choice="delete"]').click();
+      await page.locator('.choice-dialog button[data-choice="local"]').click();
 
       await expect(orphan).toHaveCount(0);
       await expect
@@ -252,7 +252,7 @@ test.describe('worktree browser against real hived', () => {
       const dialog = page.locator('.choice-dialog');
       await expect(dialog).toContainText('lose its commits');
       await expect(dialog).toContainText('not merged');
-      await page.locator('.choice-dialog button[data-choice="delete"]').click();
+      await page.locator('.choice-dialog button[data-choice="local"]').click();
 
       await expect
         .poll(() => git('branch', '--list', branch), { timeout: 10000 })
