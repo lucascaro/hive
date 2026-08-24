@@ -1,6 +1,6 @@
-// hived is the Hive session daemon. It owns one PTY-backed shell
-// session and accepts client connections over a Unix socket. See
-// DESIGN.md for the role of this binary in the architecture.
+// hived is the Hive session daemon. It owns the PTY-backed sessions
+// and accepts client connections over a Unix socket. See DESIGN.md for
+// the role of this binary in the architecture.
 package main
 
 import (
