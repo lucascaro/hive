@@ -1832,6 +1832,18 @@ body.resizing-sidebar #app { transition: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The tip commit subject: what is actually in the branch. Italic, not
+   dimmer, sets it apart from the status line above it — at 11px on
+   #141414 anything below #7d7d7d misses the 4.5:1 contrast floor. */
+.worktree-subject {
+  display: block;
+  font-size: 11px;
+  color: #808080;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Status colour carries the same ranking the list is sorted by, so a
    row that holds work is visible without reading the text. */
 .worktree-row[data-kind='active'] { border-color: #2f4858; }

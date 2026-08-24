@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -384,5 +385,97 @@ func TestControl_DeleteBranchUnmergedReturnsErrorCode(t *testing.T) {
 	out, _ := exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/has-work").Output()
 	if len(out) == 0 {
 		t.Error("branch was deleted despite the refusal")
+	}
+}
+
+// A delete that half succeeds — the local ref goes, the remote push
+// fails — used to answer with an ERROR and nothing else, leaving the
+// browser rendering a branch that is already gone. The inventory must
+// follow the refusal either way, so the view never outlives the state
+// it describes.
+func TestControl_DeleteBranchRefreshesAfterPartialFailure(t *testing.T) {
+	d, repo := startDaemonInRepo(t)
+	pid := projectIDOf(t, d)
+	head := gitOut(t, repo, "rev-parse", "HEAD")
+	for _, args := range [][]string{
+		{"branch", "half-gone"},
+		// An upstream pointing at a remote that cannot be reached:
+		// deleting the local ref works, the push does not.
+		{"remote", "add", "origin", filepath.Join(repo, "no-such-remote.git")},
+		{"update-ref", "refs/remotes/origin/half-gone", head},
+		{"branch", "--set-upstream-to=origin/half-gone", "half-gone"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+	if err := wire.WriteJSON(conn, wire.FrameDeleteBranch, wire.DeleteBranchReq{
+		ProjectID: pid, Branch: "half-gone", DeleteRemote: true,
+	}); err != nil {
+		t.Fatalf("write DELETE_BRANCH: %v", err)
+	}
+
+	resp := readWorktrees(t, conn)
+	for _, b := range resp.OrphanBranches {
+		if b.Name == "half-gone" {
+			t.Errorf("deleted branch still listed as an orphan")
+		}
+	}
+	if out := gitOut(t, repo, "branch", "--list", "half-gone"); out != "" {
+		t.Fatalf("local branch survived: %q", out)
+	}
+}
+
+func gitOut(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// The same half-failure through REMOVE_WORKTREE: the directory and the
+// local branch go, the remote push does not. The inventory must still
+// follow the refusal — this path changed alongside DELETE_BRANCH and is
+// the one the browser hits when a worktree row is swept.
+func TestControl_RemoveWorktreeRefreshesAfterPartialFailure(t *testing.T) {
+	d, repo := startDaemonInRepo(t)
+	pid := projectIDOf(t, d)
+	wt := filepath.Join(repo, ".worktrees", "half-swept")
+	head := gitOut(t, repo, "rev-parse", "HEAD")
+	for _, args := range [][]string{
+		{"worktree", "add", "-q", "-b", "half-swept", wt},
+		{"remote", "add", "origin", filepath.Join(repo, "no-such-remote.git")},
+		{"update-ref", "refs/remotes/origin/half-swept", head},
+		{"branch", "--set-upstream-to=origin/half-swept", "half-swept"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	conn := dial(t, d)
+	defer conn.Close()
+	_ = handshake(t, conn, wire.Hello{Mode: wire.ModeControl})
+	if err := wire.WriteJSON(conn, wire.FrameRemoveWorktree, wire.RemoveWorktreeReq{
+		ProjectID: pid, Path: wt, Force: true,
+		DeleteBranch: true, DeleteRemote: true,
+	}); err != nil {
+		t.Fatalf("write REMOVE_WORKTREE: %v", err)
+	}
+
+	resp := readWorktrees(t, conn)
+	for _, w := range resp.Worktrees {
+		if w.Branch == "half-swept" {
+			t.Errorf("removed worktree still listed: %+v", w)
+		}
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("worktree directory survived: %v", err)
 	}
 }

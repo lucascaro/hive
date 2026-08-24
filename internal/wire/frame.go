@@ -80,10 +80,13 @@ const (
 	FrameShutdown FrameType = 0x15 // C → S, empty payload, control
 
 	// Worktree management. The daemon answers FrameListWorktrees — and
-	// every successful mutation below — with a fresh FrameWorktrees for
-	// the named project, so the client never has to re-request after
-	// acting. There is deliberately no WORKTREE_EVENT: the worktree
-	// browser is the only consumer and it is open whenever it mutates.
+	// every mutation below, whether it succeeded, was refused, or half
+	// succeeded — with a fresh FrameWorktrees for the named project, so
+	// the client never has to re-request after acting and never keeps
+	// rendering rows the attempt already invalidated. A refusal sends
+	// its FrameError first and the inventory follows it. There is
+	// deliberately no WORKTREE_EVENT: the worktree browser is the only
+	// consumer and it is open whenever it mutates.
 	FrameListWorktrees  FrameType = 0x16 // C → S, JSON, control
 	FrameWorktrees      FrameType = 0x17 // S → C, JSON, control
 	FrameRemoveWorktree FrameType = 0x18 // C → S, JSON, control

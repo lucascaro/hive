@@ -22,6 +22,8 @@ export interface WorktreeInfo {
   upstream?: string;
   session_ids?: string[];
   sessionIds?: string[];
+  // First line of the branch tip's commit message.
+  subject?: string;
 }
 
 export interface BranchInfo {
@@ -29,6 +31,8 @@ export interface BranchInfo {
   upstream?: string;
   ahead?: number;
   merged?: boolean;
+  // First line of the branch tip's commit message.
+  subject?: string;
 }
 
 export interface WorktreesPayload {

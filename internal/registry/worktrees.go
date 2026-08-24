@@ -187,7 +187,12 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 	if branchesErr != nil {
 		return resp, fmt.Errorf("list branches: %w", branchesErr)
 	}
+	// The branch listing already carries every local branch's tip
+	// subject, worktree or not, so the worktree rows get theirs from
+	// here rather than paying another git spawn each.
+	subjects := make(map[string]string, len(branches))
 	for _, b := range branches {
+		subjects[b.Name] = b.Subject
 		if b.HasWorktree {
 			continue
 		}
@@ -196,7 +201,11 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 			Upstream: b.Upstream,
 			Ahead:    b.Ahead,
 			Merged:   b.Merged || ghConfirms(root, b.Name, ghSet),
+			Subject:  b.Subject,
 		})
+	}
+	for i := range resp.Worktrees {
+		resp.Worktrees[i].Subject = subjects[resp.Worktrees[i].Branch]
 	}
 	sort.Slice(resp.OrphanBranches, func(i, j int) bool {
 		return resp.OrphanBranches[i].Name < resp.OrphanBranches[j].Name

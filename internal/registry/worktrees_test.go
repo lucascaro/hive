@@ -901,3 +901,36 @@ func TestReclaimOrphanWorktrees_IgnoresWorktreesCreatedAfterTheScan(t *testing.T
 		t.Fatalf("worktree created after the scan was reclaimed: %v", err)
 	}
 }
+
+// Both halves of the browser carry the tip's commit subject: the
+// worktree rows take theirs from the branch listing rather than paying
+// a git spawn each.
+func TestListWorktrees_CarriesTipSubjects(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	wt := newWorktree(t, p.Cwd, "has-tree")
+	runGit(t, wt, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "feat: worktree work")
+	runGit(t, p.Cwd, "branch", "stranded")
+	runGit(t, p.Cwd, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "unrelated")
+
+	resp, err := r.ListWorktrees(p.ID)
+	if err != nil {
+		t.Fatalf("ListWorktrees: %v", err)
+	}
+	got := findWT(resp, wt)
+	if got == nil {
+		t.Fatalf("worktree %s missing: %+v", wt, resp.Worktrees)
+	}
+	if got.Subject != "feat: worktree work" {
+		t.Errorf("worktree Subject = %q, want %q", got.Subject, "feat: worktree work")
+	}
+	orphan := findOrphan(resp, "stranded")
+	if orphan == nil {
+		t.Fatalf("stranded branch missing: %+v", resp.OrphanBranches)
+	}
+	if orphan.Subject == "" {
+		t.Error("orphan branch Subject is empty")
+	}
+}
