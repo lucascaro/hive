@@ -225,18 +225,24 @@ func (r *Registry) setPhase(id, phase string) {
 }
 
 // MarkPendingRevive puts every entry that has no live session into
-// PhaseSpawning. The daemon calls this on the boot path BEFORE it
+// PhaseReviving. The daemon calls this on the boot path BEFORE it
 // binds its socket, so the first snapshot any client can see already
 // says "starting" instead of the alive:false + PhaseReady combination
 // that every client reads as death — an entry loaded from disk has no
 // session yet, and reviveAll forks its PTY later, sequentially.
 // Phases are in-memory only, so this can never persist.
+//
+// The phase is PhaseReviving rather than PhaseSpawning precisely so it
+// stays exclusive to this boot path: finishCreate parks an in-flight
+// create in PhaseSpawning with no session either, and a claim that
+// accepted that phase would let the boot revive fork a second PTY for
+// a session someone is already creating.
 func (r *Registry) MarkPendingRevive() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, e := range r.entries {
 		if e.sess == nil && e.Phase == wire.PhaseReady {
-			e.Phase = wire.PhaseSpawning
+			e.Phase = wire.PhaseReviving
 		}
 	}
 }
@@ -424,11 +430,12 @@ func (r *Registry) Get(id string) *Entry {
 func (r *Registry) ReviveWithPhase(id string, opts session.Options) (bool, error) {
 	// Claim the entry: the check and the set are one critical
 	// section, so a kill or restart that got there first keeps it.
-	// The bracket may already be open — MarkPendingRevive pre-marks
-	// every unrevived entry spawning on the boot path — so accept
-	// that phase too; setPhaseIf's from == to case is the claim.
+	// PhaseReviving is the boot pre-mark (see MarkPendingRevive) and
+	// nothing else ever sets it, so accepting it here claims exactly
+	// the entries this daemon restored from disk — and never an
+	// in-flight create, which sits in PhaseSpawning with no session.
 	if !r.setPhaseIf(id, wire.PhaseReady, wire.PhaseSpawning) &&
-		!r.setPhaseIf(id, wire.PhaseSpawning, wire.PhaseSpawning) {
+		!r.setPhaseIf(id, wire.PhaseReviving, wire.PhaseSpawning) {
 		return false, nil
 	}
 	err := r.Revive(id, opts)

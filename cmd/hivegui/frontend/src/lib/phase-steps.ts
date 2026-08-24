@@ -33,6 +33,7 @@ export const PHASE = {
   checking: 'checking',
   closing: 'closing',
   restarting: 'restarting',
+  reviving: 'reviving',
 } as const;
 
 export type Phase = (typeof PHASE)[keyof typeof PHASE];
@@ -58,7 +59,8 @@ export function isStarting(phase: string): boolean {
     phase === PHASE.fetching ||
     phase === PHASE.worktree ||
     phase === PHASE.spawning ||
-    phase === PHASE.restarting
+    phase === PHASE.restarting ||
+    phase === PHASE.reviving
   );
 }
 
@@ -105,6 +107,17 @@ export function phasePanel({
 }: PhaseInput): PhasePanel | null {
   const agentLabel = agent || 'shell';
 
+  // Boot: a session restored from the last run, waiting its turn in
+  // the daemon's sequential revive. Deliberately NOT part of
+  // CREATE_ORDER — its worktree already exists, so the create
+  // checklist's "Fetching origin"/"Creating worktree" steps would be
+  // describing work that never happens on this path.
+  if (phase === 'reviving') {
+    return {
+      status: `Starting ${agentLabel}…`,
+      steps: [{ label: `Starting ${agentLabel}`, state: 'active' }],
+    };
+  }
   if (phase === 'restarting') {
     return {
       status: `Restarting ${agentLabel}…`,

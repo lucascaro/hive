@@ -327,7 +327,14 @@ func TestPersistedSessionsNeverLookDeadAtBoot(t *testing.T) {
 		t.Fatalf("List: got %d sessions, want 3", len(list))
 	}
 	for _, info := range list {
-		if !info.Alive && info.Phase == wire.PhaseReady {
+		// Reviving is the pre-mark; spawning is the one entry the
+		// sequential revive has already claimed and is now parked on
+		// the blocked spawn. Both render as "starting"; ready while
+		// not alive is the state that reads as death.
+		if info.Alive {
+			continue
+		}
+		if info.Phase != wire.PhaseReviving && info.Phase != wire.PhaseSpawning {
 			t.Fatalf("session %s reads dead at boot: alive=%v phase=%q",
 				info.ID, info.Alive, info.Phase)
 		}

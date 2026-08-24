@@ -660,6 +660,87 @@ func TestReviveWithPhaseDoesNotClobberAKill(t *testing.T) {
 	_ = r.Kill(e.ID, true)
 }
 
+// TestReviveWithPhaseDeclinesAnInFlightCreate pins why the boot
+// pre-mark has a phase of its own. finishCreate parks a session in
+// PhaseSpawning for the whole PTY fork, with e.sess still nil — the
+// same shape a restored-but-unrevived entry has. If the boot revive's
+// claim accepted PhaseSpawning, it would fork a second PTY for a
+// session the create is already spawning, and whichever bound second
+// would silently overwrite the other, leaking a live shell nothing
+// ever closes.
+func TestReviveWithPhaseDeclinesAnInFlightCreate(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e, err := r.Create(context.Background(), wire.CreateSpec{Name: "creating", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	waitFor(t, "session ready", func() bool { return r.Phase(e.ID) == wire.PhaseReady })
+
+	// Stand in for a create still inside finishCreate's spawn window.
+	if !r.setPhaseIf(e.ID, wire.PhaseReady, wire.PhaseSpawning) {
+		t.Fatal("could not move the entry to spawning")
+	}
+	revived, err := r.ReviveWithPhase(e.ID, session.Options{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("ReviveWithPhase: %v", err)
+	}
+	if revived {
+		t.Fatal("ReviveWithPhase claimed an entry a create already owned")
+	}
+	if got := r.Phase(e.ID); got != wire.PhaseSpawning {
+		t.Fatalf("phase = %q after a declined revive, want %q", got, wire.PhaseSpawning)
+	}
+	if !r.setPhaseIf(e.ID, wire.PhaseSpawning, wire.PhaseReady) {
+		t.Fatal("could not restore the entry to ready")
+	}
+	_ = r.Kill(e.ID, true)
+}
+
+// TestMarkPendingReviveIsClaimable is the other side of the same
+// contract: the boot pre-mark must still be revivable, or every
+// restored session would sit in "reviving" forever.
+func TestMarkPendingReviveIsClaimable(t *testing.T) {
+	skipNonPosix(t)
+	dir := t.TempDir()
+	r1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e, err := r1.Create(context.Background(), wire.CreateSpec{Name: "restored", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	waitFor(t, "session ready", func() bool { return r1.Phase(e.ID) == wire.PhaseReady })
+	if err := r1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Second daemon run: the entry is on disk with no PTY, exactly
+	// what the boot path sees.
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+
+	r.MarkPendingRevive()
+	if got := r.Phase(e.ID); got != wire.PhaseReviving {
+		t.Fatalf("phase = %q after MarkPendingRevive, want %q", got, wire.PhaseReviving)
+	}
+	revived, err := r.ReviveWithPhase(e.ID, session.Options{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("ReviveWithPhase: %v", err)
+	}
+	if !revived {
+		t.Fatal("ReviveWithPhase declined the entry its own boot pre-mark parked")
+	}
+	if got := r.Phase(e.ID); got != wire.PhaseReady {
+		t.Fatalf("phase = %q after revive, want ready", got)
+	}
+	_ = r.Kill(e.ID, true)
+}
+
 // TestReviveDoesNotResurrectAKilledEntry covers the other half: the
 // spawn itself lands after the kill removed the entry. Binding the
 // fresh PTY to that orphaned Entry leaks the process — watchSessionExit

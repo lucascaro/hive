@@ -29,7 +29,7 @@ func TestPhaseConstantsMatchFrontend(t *testing.T) {
 	// verbatim as quoted strings in the TS module.
 	for _, phase := range []string{
 		PhaseStarting, PhaseFetching, PhaseWorktree, PhaseSpawning,
-		PhaseChecking, PhaseClosing, PhaseRestarting,
+		PhaseChecking, PhaseClosing, PhaseRestarting, PhaseReviving,
 	} {
 		if !strings.Contains(ts, "'"+phase+"'") {
 			t.Errorf("phase %q is not in %s — the GUI silently stops rendering it; update PHASE and CREATE_ORDER there",
