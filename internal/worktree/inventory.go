@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -357,9 +358,12 @@ func comparisonBase(upstream, defaultBase string) string {
 	return defaultBase
 }
 
-// isAncestor reports whether ref is reachable from base — the
-// single-branch form of mergedBranches, without listing every ref.
-func isAncestor(repoRoot, ref, base string) bool {
+// IsAncestor reports whether local branch ref is reachable from base —
+// the single-branch form of mergedBranches, without listing every ref.
+// base may be any committish, including a raw sha; an unknown one
+// reports false rather than erroring, which is the safe direction for
+// every caller here.
+func IsAncestor(repoRoot, ref, base string) bool {
 	if ref == "" || base == "" {
 		return false
 	}
@@ -489,9 +493,12 @@ func squashMerged(repoRoot, ref, base string) bool {
 		return false
 	}
 	// Only base's commits since the branch point can contain the
-	// squash, so the walk stops there.
+	// squash, so the walk stops there — and is capped the same way the
+	// index is, so both paths answer from the same window rather than
+	// disagreeing about the same branch.
 	ids, err := gitPatchIDs(repoRoot,
-		"log", "--format=%H", "-p", "--no-color", base, "--not", "refs/heads/"+ref)
+		"log", "--format=%H", "-p", "--no-color", "--max-count="+patchIDHistory,
+		base, "--not", "refs/heads/"+ref)
 	if err != nil {
 		return false
 	}
@@ -554,8 +561,13 @@ type Status struct {
 // Pristine reports whether the worktree can be removed without losing
 // anything: no uncommitted changes, no unpushed commits, and the
 // unpushed question actually answerable.
+//
+// Deliberately blind to Merged. The unconfirmed auto-delete paths —
+// session Kill, boot-time orphan reclaim — gate on this, and a
+// heuristic must not be what widens them. Merged only relaxes the
+// browser's own delete, which is an explicit, confirmed act.
 func (s Status) Pristine() bool {
-	return !s.Uncommitted && (s.Unpushed == 0 || s.Merged) && !s.Unknown
+	return !s.Uncommitted && s.Unpushed == 0 && !s.Unknown
 }
 
 // Inspect reports the safety status of the worktree at worktreePath.
@@ -603,7 +615,7 @@ func Inspect(repoRoot, worktreePath string) (Status, error) {
 	// upstream: a squash-merged branch's own origin/<branch> still
 	// exists and would answer the wrong question.
 	dflt := defaultRef(repoRoot)
-	s.Merged = isAncestor(repoRoot, s.Branch, dflt) || squashMerged(repoRoot, s.Branch, dflt)
+	s.Merged = IsAncestor(repoRoot, s.Branch, dflt) || squashMerged(repoRoot, s.Branch, dflt)
 
 	base := comparisonBase(upstream, dflt)
 	if base == "" {
@@ -684,12 +696,27 @@ func DeleteRemoteBranch(repoRoot, remote, branch string) error {
 	if remote == "" || branch == "" {
 		return errors.New("worktree.DeleteRemoteBranch: empty remote or branch")
 	}
+	// Fully qualified: a branch named like a flag ("-x") would
+	// otherwise be parsed as one.
 	out, err := git(context.Background(), mutateTimeout, repoRoot,
-		"push", remote, "--delete", branch)
+		"push", remote, "--delete", "refs/heads/"+branch)
 	if err != nil && strings.Contains(string(out), "remote ref does not exist") {
 		return nil
 	}
-	return err
+	if err != nil {
+		// git echoes the remote URL back, and an HTTPS remote can carry
+		// a token in its userinfo. The error travels to the GUI and
+		// into logs, so strip that before it leaves this function.
+		return errors.New(scrubURLCredentials(err.Error()))
+	}
+	return nil
+}
+
+// credentialsInURL matches the userinfo half of a URL — "//user:token@".
+var credentialsInURL = regexp.MustCompile(`//[^/@\s]+@`)
+
+func scrubURLCredentials(s string) string {
+	return credentialsInURL.ReplaceAllString(s, "//***@")
 }
 
 // DeleteBranch removes a local branch. Without force this is `-d`,

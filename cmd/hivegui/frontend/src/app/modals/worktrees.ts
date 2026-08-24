@@ -511,7 +511,9 @@ async function askDeleteBranch(b: BranchInfo): Promise<BranchDeleteChoice> {
           { label: 'Delete branch', value: 'local', danger: !b.merged },
         ],
   });
-  return answer as BranchDeleteChoice;
+  // Narrowed rather than cast: this answer decides whether a remote
+  // branch is deleted, so anything unrecognised must read as cancel.
+  return answer === 'local' || answer === 'remote' ? answer : 'cancel';
 }
 
 // confirmAndDelete is the destructive path. The blockers are computed

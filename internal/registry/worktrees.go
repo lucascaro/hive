@@ -102,13 +102,13 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 	// over. It is also deliberately outside the git lock.
 	started := time.Now()
 	var (
-		ghMerged  map[string]bool
+		ghSet     ghMerged
 		ghElapsed time.Duration
 		ghDone    = make(chan struct{})
 	)
 	go func() {
 		defer close(ghDone)
-		ghMerged = ghMergedLookup(root)
+		ghSet = ghMergedLookup(root)
 		ghElapsed = time.Since(started)
 	}()
 
@@ -175,7 +175,7 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 			} else {
 				info.Uncommitted, info.Unpushed, info.Unknown = st.Uncommitted, st.Unpushed, st.Unknown
 				info.Upstream = st.Upstream
-				info.Merged = st.Merged || ghMerged[t.Branch]
+				info.Merged = st.Merged || ghConfirms(root, t.Branch, ghSet)
 			}
 			resp.Worktrees[i] = info
 		}(i, t, info)
@@ -195,7 +195,7 @@ func (r *Registry) ListWorktrees(projectID string) (wire.WorktreesResp, error) {
 			Name:     b.Name,
 			Upstream: b.Upstream,
 			Ahead:    b.Ahead,
-			Merged:   b.Merged || ghMerged[b.Name],
+			Merged:   b.Merged || ghConfirms(root, b.Name, ghSet),
 		})
 	}
 	sort.Slice(resp.OrphanBranches, func(i, j int) bool {
@@ -249,12 +249,18 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 	if err != nil {
 		return err
 	}
+	// The remote copy is the last handle on the work once the local ref
+	// is gone, so the two go together. Asking for one without the other
+	// used to be silently ignored.
+	if deleteRemote && !deleteBranch {
+		return errors.New("registry: delete_remote requires delete_branch")
+	}
 	if ids := r.liveSessionsIn(resolved); len(ids) > 0 {
 		return fmt.Errorf("%w: %s", ErrWorktreeInUse, strings.Join(ids, ", "))
 	}
 
 	// Network call, so it happens before the git lock is taken.
-	ghMerged := ghMergedLookup(root)
+	ghSet := ghMergedLookup(root)
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
@@ -274,7 +280,7 @@ func (r *Registry) RemoveWorktree(projectID, path string, force, deleteBranch, d
 	// Commits already merged into the default ref (squash included)
 	// are not lost by removing the worktree, so they do not need the
 	// force path. Same verdict the client rendered, so the two agree.
-	merged := st.Merged || ghMerged[st.Branch]
+	merged := st.Merged || ghConfirms(root, st.Branch, ghSet)
 	if !force {
 		if st.Uncommitted {
 			return ErrWorktreeDirty
@@ -374,7 +380,7 @@ func (r *Registry) DeleteBranch(projectID, branch string, force, deleteRemote bo
 		return err
 	}
 
-	ghMerged := ghMergedLookup(root)
+	ghSet := ghMergedLookup(root)
 
 	r.gitMu.Lock()
 	defer r.gitMu.Unlock()
@@ -398,7 +404,7 @@ func (r *Registry) DeleteBranch(projectID, branch string, force, deleteRemote bo
 	}
 	// Merged covers squash merges, which git's own -d test cannot see;
 	// such a branch is safe to delete but needs -D to actually go.
-	merged := found.Merged || ghMerged[branch]
+	merged := found.Merged || ghConfirms(root, branch, ghSet)
 	if !force && !merged {
 		return fmt.Errorf("%w: %s (%d ahead)", ErrBranchUnmerged, branch, found.Ahead)
 	}
