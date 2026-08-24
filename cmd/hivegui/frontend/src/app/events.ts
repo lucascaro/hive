@@ -336,6 +336,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
         abandonReplays(t); // the wipe abandons any in-flight restream
         t.attached = false;
         t.setDead(false);
+        // Re-open the dial the revived PTY needs. Without it the
+        // cleared tile sits blank until the next switchTo/render/
+        // resize. Unconditional like the ready-edge attach in
+        // setPhase (the restart path gates on visibility instead);
+        // safe because ensureAttached is idempotent and gated on
+        // phase, liveness and a non-zero box.
+        t.ensureAttached();
       }
     }
   }

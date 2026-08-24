@@ -130,6 +130,7 @@ type SessionInfo struct {
 //	create:  starting → fetching → worktree → spawning → ready
 //	kill:    ready → checking → closing → (removed)
 //	restart: ready → restarting → ready
+//	boot:    reviving → spawning → ready (sessions restored from disk)
 //
 // A session is attachable only when Alive is true AND Phase is ready.
 // SESSION_EVENT(added) means "the entry exists", not "you may attach".
@@ -142,6 +143,7 @@ const (
 	PhaseChecking   = "checking"   // kill: checking the worktree for uncommitted changes
 	PhaseClosing    = "closing"    // kill: PTY teardown + worktree removal
 	PhaseRestarting = "restarting" // restart: PTY recycled in place
+	PhaseReviving   = "reviving"   // daemon boot: restored session waiting its turn to respawn
 )
 
 // ListSessionsReq is the LIST_SESSIONS payload (currently empty).

@@ -280,3 +280,83 @@ func seedPersistedSessions(t *testing.T, sock, stateDir string, n int) []string 
 	}
 	return ids
 }
+
+// TestPersistedSessionsNeverLookDeadAtBoot pins the fix for the
+// restart flash: the socket is bound before reviveAll has forked any
+// PTY, and an entry loaded from disk has no session, so without the
+// pre-mark a client's first snapshot showed alive:false with a ready
+// phase — the exact combination every client renders as "this session
+// died" (the GUI paints its dead overlay, serveAttach answers
+// session_dead). Every unrevived entry must read spawning instead.
+func TestPersistedSessionsNeverLookDeadAtBoot(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	sock := filepath.Join(tmp, "s")
+	state := filepath.Join(tmp, "state")
+	seedPersistedSessions(t, sock+"1", state, 3)
+
+	// Hold every revive spawn so the boot window stays open for the
+	// whole assertion instead of racing the sequential revive.
+	release := blockSpawn(t)
+	// Function-scoped, so it runs BEFORE the t.Cleanup below: a
+	// failing assertion must not leave d.Close() waiting on a revive
+	// that is still parked on the gate.
+	defer release()
+
+	d, err := New(Config{
+		SocketPath: sock,
+		StateDir:   state,
+		BootstrapSession: session.Options{
+			Shell: "/bin/bash",
+			Cols:  80,
+			Rows:  24,
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = d.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		_ = d.Close()
+	})
+
+	list := d.Registry().List()
+	if len(list) != 3 {
+		t.Fatalf("List: got %d sessions, want 3", len(list))
+	}
+	for _, info := range list {
+		// Reviving is the pre-mark; spawning is the one entry the
+		// sequential revive has already claimed and is now parked on
+		// the blocked spawn. Both render as "starting"; ready while
+		// not alive is the state that reads as death.
+		if info.Alive {
+			continue
+		}
+		if info.Phase != wire.PhaseReviving && info.Phase != wire.PhaseSpawning {
+			t.Fatalf("session %s reads dead at boot: alive=%v phase=%q",
+				info.ID, info.Alive, info.Phase)
+		}
+	}
+
+	// And the pre-mark must not block the revive itself: once the
+	// spawns are let go every session lands alive and ready.
+	release()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		ok := true
+		for _, info := range d.Registry().List() {
+			if !info.Alive || info.Phase != wire.PhaseReady {
+				ok = false
+			}
+		}
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessions never revived: %+v", d.Registry().List())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
