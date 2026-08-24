@@ -875,7 +875,8 @@ func TestScrubURLCredentials(t *testing.T) {
 func TestListBranches_CarriesTipSubject(t *testing.T) {
 	repo := initRepo(t)
 	mustGit(t, repo, "checkout", "-q", "-b", "subject-branch")
-	mustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "fix: the thing that broke")
+	mustGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "fix: the thing that broke")
 
 	branches, err := ListBranches(repo)
 	if err != nil {

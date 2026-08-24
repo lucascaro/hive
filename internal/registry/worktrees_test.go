@@ -909,9 +909,11 @@ func TestListWorktrees_CarriesTipSubjects(t *testing.T) {
 	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 	wt := newWorktree(t, p.Cwd, "has-tree")
-	runGit(t, wt, "commit", "--allow-empty", "-q", "-m", "feat: worktree work")
+	runGit(t, wt, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "feat: worktree work")
 	runGit(t, p.Cwd, "branch", "stranded")
-	runGit(t, p.Cwd, "commit", "--allow-empty", "-q", "-m", "unrelated")
+	runGit(t, p.Cwd, "-c", "user.email=t@t", "-c", "user.name=t",
+		"commit", "--allow-empty", "-q", "-m", "unrelated")
 
 	resp, err := r.ListWorktrees(p.ID)
 	if err != nil {
