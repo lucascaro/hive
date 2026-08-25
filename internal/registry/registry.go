@@ -871,48 +871,7 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		_ = sess.Close()
 	}
 	if wtPath != "" && !worktreeShared {
-		r.gitMu.Lock()
-		root, err := worktree.Root(projectCwd)
-		switch {
-		case err != nil:
-			log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
-			_ = os.RemoveAll(wtPath)
-		case !worktree.IsManaged(root, wtPath):
-			// Second guard, independent of whatever set WorktreePath:
-			// only ever delete a worktree hive owns. An entry pointing
-			// at the user's own checkout — their main clone, or a
-			// worktree they created themselves — is left strictly
-			// alone. Teardown is the last place a bug upstream can
-			// still cost someone their working directory, so it does
-			// not trust the field it was handed.
-			log.Printf("registry: kill %s: worktree %s is not a hive-managed worktree of %s; leaving it on disk", id, wtPath, root)
-		default:
-			// Prune only a pristine worktree. Anything holding
-			// uncommitted changes or unpushed commits outlives the
-			// session and shows up in the worktree browser, where
-			// removing it is an explicit, confirmed act. Closing a
-			// session must never be the thing that destroys work.
-			st, ierr := worktree.Inspect(root, wtPath)
-			switch {
-			case removeWorktree:
-				// Asked for explicitly: delete regardless of what it
-				// holds. The confirmation that produced this named the
-				// work at stake.
-				if err := worktree.Cleanup(root, wtPath); err != nil {
-					log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
-				}
-			case ierr != nil:
-				log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
-			case !st.Pristine():
-				log.Printf("registry: kill %s: keeping worktree %s (branch=%s, uncommitted=%v unpushed=%d unknown=%v)",
-					id, wtPath, wtBranch, st.Uncommitted, st.Unpushed, st.Unknown)
-			default:
-				if err := worktree.Cleanup(root, wtPath); err != nil {
-					log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
-				}
-			}
-		}
-		r.gitMu.Unlock()
+		r.disposeWorktree(id, projectCwd, wtPath, wtBranch, removeWorktree)
 	}
 	_ = os.RemoveAll(dir)
 	r.broadcast(wire.SessionEventRemoved, e.Info())
@@ -926,6 +885,61 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		r.broadcast(wire.SessionEventUpdated, info)
 	}
 	return nil
+}
+
+// disposeWorktree decides what happens to a killed session's worktree
+// and carries it out. Extracted from kill, which was 164 lines: this
+// is the half that can delete a directory on someone's disk, so it is
+// worth reading — and testing — on its own.
+//
+// The caller has already established that this session was the last
+// one living in wtPath. Every branch below is a refusal except two:
+// an explicit remove-the-worktree request, and a worktree that holds
+// nothing (no uncommitted changes, no unpushed commits). Closing a
+// session must never be the thing that destroys work.
+func (r *Registry) disposeWorktree(id, projectCwd, wtPath, wtBranch string, removeWorktree bool) {
+	r.gitMu.Lock()
+	defer r.gitMu.Unlock()
+	root, err := worktree.Root(projectCwd)
+	switch {
+	case err != nil:
+		log.Printf("registry: kill %s: project cwd %q is not (or no longer) a git repo; falling back to RemoveAll on %s", id, projectCwd, wtPath)
+		_ = os.RemoveAll(wtPath)
+	case !worktree.IsManaged(root, wtPath):
+		// Second guard, independent of whatever set WorktreePath:
+		// only ever delete a worktree hive owns. An entry pointing
+		// at the user's own checkout — their main clone, or a
+		// worktree they created themselves — is left strictly
+		// alone. Teardown is the last place a bug upstream can
+		// still cost someone their working directory, so it does
+		// not trust the field it was handed.
+		log.Printf("registry: kill %s: worktree %s is not a hive-managed worktree of %s; leaving it on disk", id, wtPath, root)
+	default:
+		// Prune only a pristine worktree. Anything holding
+		// uncommitted changes or unpushed commits outlives the
+		// session and shows up in the worktree browser, where
+		// removing it is an explicit, confirmed act. Closing a
+		// session must never be the thing that destroys work.
+		st, ierr := worktree.Inspect(root, wtPath)
+		switch {
+		case removeWorktree:
+			// Asked for explicitly: delete regardless of what it
+			// holds. The confirmation that produced this named the
+			// work at stake.
+			if err := worktree.Cleanup(root, wtPath); err != nil {
+				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			}
+		case ierr != nil:
+			log.Printf("registry: kill %s: cannot inspect worktree %s (%v); keeping it", id, wtPath, ierr)
+		case !st.Pristine():
+			log.Printf("registry: kill %s: keeping worktree %s (branch=%s, uncommitted=%v unpushed=%d unknown=%v)",
+				id, wtPath, wtBranch, st.Uncommitted, st.Unpushed, st.Unknown)
+		default:
+			if err := worktree.Cleanup(root, wtPath); err != nil {
+				log.Printf("registry: worktree cleanup failed for %s: %v (branch=%s)", id, err, wtBranch)
+			}
+		}
+	}
 }
 
 // Update mutates name / color / order. Pointer fields opt in. When
