@@ -91,6 +91,27 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Staticcheck (Go)
+        if: matrix.biome
+        # Platform-independent like Biome/tsc, so it rides the same
+        # single-leg flag. `go vet` alone missed an unused assignment that
+        # sat in registry/phase_test.go; this is the wider net. Pinned so a
+        # new release can't turn a green PR red on its own.
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+          "$(go env GOPATH)/bin/staticcheck" ./...
+
+      - name: Vulnerability scan (govulncheck)
+        if: matrix.biome
+        # Symbol-level: only reports vulns the code actually reaches. Clean
+        # on the Go version setup-go resolves from go.mod (1.25.x). If this
+        # goes red on an untouched tree, it is almost always a fresh stdlib
+        # advisory — bump the `go` directive to the patched release rather
+        # than muting the step.
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
       - name: Test (Go)
         run: go test ./...
         env:

@@ -538,7 +538,9 @@ func TestKillDuringCreate_SpawnFails(t *testing.T) {
 	}
 	// The last word about this session must be `removed`: added,
 	// the create phases, the kill phases, then removed.
-	got := log.waitEventsFor(t, id, 2)
+	// Waiting for the count, not the value — the assertion below reads the
+	// settled log.
+	log.waitEventsFor(t, id, 2)
 	waitFor(t, "the removed event", func() bool {
 		ev := log.phasesFor(id)
 		return len(ev) > 0 && strings.HasPrefix(ev[len(ev)-1], "removed")
@@ -546,7 +548,7 @@ func TestKillDuringCreate_SpawnFails(t *testing.T) {
 	// Settle: give a stray post-removal broadcast time to land, so
 	// this asserts nothing follows rather than merely getting there first.
 	time.Sleep(50 * time.Millisecond)
-	got = log.phasesFor(id)
+	got := log.phasesFor(id)
 	if len(got) == 0 {
 		t.Fatalf("no events for %s", id)
 	}

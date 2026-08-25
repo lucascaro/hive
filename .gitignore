@@ -59,3 +59,6 @@ Thumbs.db
 
 # stray daemon/gui log dumped into the repo root during debugging
 /hive.log
+
+# stray npm/vitest cache if a node tool is run from the repo root
+/node_modules/

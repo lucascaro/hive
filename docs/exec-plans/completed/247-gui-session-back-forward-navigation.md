@@ -4,8 +4,8 @@
 - **Issue:** —
 - **PR:** #248
 - **Branch:** feature/247-gui-session-back-forward-navigation
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE
+- **Status:** completed (PR #248 merged 2026-07-25)
 
 ## Summary
 

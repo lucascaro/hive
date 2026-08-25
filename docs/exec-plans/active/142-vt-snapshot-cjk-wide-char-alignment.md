@@ -2,20 +2,22 @@
 
 - **Spec:** [docs/product-specs/142-vt-snapshot-cjk-wide-char-alignment.md](../../product-specs/142-vt-snapshot-cjk-wide-char-alignment.md) (lives on the PR branch only — not yet on main)
 - **Issue:** #142
-- **PR:** #160
+- **PR:** — (#160 was closed unmerged; see Status below)
 - **Branch:** `feature/142-vt-snapshot-cjk-wide-char-alignment`
-- **Stage:** REVIEW (PR open, not merged)
+- **Stage:** BLOCKED (no open PR; superseded by `in-house-vt-emulator.md`)
 - **Status:** active
 
-## Why this stub exists on main
+## Status as of 2026-08-24
 
-The full exec plan, product spec, code change, conformance-corpus regen, and
-tests live on the PR branch. This stub is here so anyone reading `main`'s
-`docs/exec-plans/active/` index sees that #142 is in flight on PR #160 and
-doesn't start a parallel attempt.
+**PR #160 was closed without merging.** The bug is still real: `internal/session/vt.go`
+has no wide-cell concept (no `runewidth`/`charmbracelet/x/vt` import; `go.mod` still
+pins `hinshun/vt10x`), so CJK and wide-emoji rows still misalign on reattach.
 
-When PR #160 lands, the merge will replace this stub with the real plan and
-move it to `completed/`.
+This stub stays in `active/` as the record of the known bug, but it is **not in
+flight** — nobody is working the branch. The backend swap it proposed is the same
+swap `in-house-vt-emulator.md` scopes more carefully, so treat that plan as the
+route to the fix and this file as the symptom report. Do not restart the #160
+branch without reconciling the two.
 
 ## Summary of what's on the branch
 
