@@ -18,9 +18,13 @@ export default defineConfig({
   // Real-daemon tests are slower than the mock — give them more room.
   timeout: 90000,
   workers: 1,
-  // One retry on CI so a one-off flake doesn't fail the required leg;
-  // first-attempt artifacts (trace, scrolltrace attachment) are kept.
+  // One retry on CI, but `failOnFlakyTests` means a retry buys diagnostics
+  // (both attempts' traces), NOT a green check. Spec 245's re-gate criterion
+  // is first-attempt green; letting a retry paper over a failure is what let
+  // three specs sit quarantined for weeks while they were deterministically
+  // stale rather than flaky.
   retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.CI,
   globalSetup: './test/e2e-real/globalSetup.mjs',
   globalTeardown: './test/e2e-real/globalTeardown.mjs',
   use: {

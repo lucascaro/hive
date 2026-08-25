@@ -62,6 +62,49 @@ before the rename" — they are older than that.
 
 Observed twice on PR #244 in a way that isolates the cause from any code change: Linux flipped green → red across `b404d1c`, and macOS flipped green → red across `365ec37`. **Both are documentation-only commits.** A subsequent re-run of the identical macOS commit passed with no changes at all.
 
+## Resolution (2026-08-24)
+
+**Root cause: the three specs were stale, not flaky.** Each one asserted
+`traceTags(page, 'replay-request') > 0` as a non-vacuity guard, in a scenario
+where the tile is *following the bottom*. `decideResizeReplay`
+(`src/app/session-term.ts`, via `src/lib/scroll-*`) deliberately SKIPS the
+destructive full-ring replay for a follower — that skip is itself a shipped fix
+(the renderer freeze / viewport thrash under live output). A healthy follower
+therefore emits `replay-skip` and exactly zero `replay-request`, and the guard
+fails against correct code, every time.
+
+That is why the 2026-08-09 baseline saw them fail 3/3 on an idle machine, and
+why the same set failed 10/10 here before the change. Nothing was
+load-dependent about them. The genuinely load-dependent `baseY` precondition
+this spec chased is a different test, and it passes.
+
+**Fix:** the guard now counts resizes that reached the replay *decision*
+(`replay-request` + `replay-skip`) rather than demanding one particular
+outcome. The invariants each spec exists for — markers exactly once and in
+order, viewport converges to the bottom, a follower is never stranded
+mid-history — are unchanged.
+
+**Evidence for the re-gate:**
+
+| suite | before | after |
+|-------|--------|-------|
+| the 3 quarantined specs, `--retries=0`, macOS idle | 0/10 runs green | 10/10 runs green |
+| full `e2e-real` with `CI=true` | 11 passed / 10 skipped | 21 passed, 3/3 runs |
+| mock `e2e` with `CI=true` | 182 passed | 182 passed, 0 flaky |
+
+**Re-gated.** The `test.skip(!!process.env.CI, ...)` quarantine is removed from
+all three specs, so CI runs 21 of 21 e2e-real tests again instead of 2 of 12.
+
+`retries: 1` stays on both Playwright configs, but is now paired with
+`failOnFlakyTests: !!process.env.CI`: a retry buys the diagnostics of a second
+attempt, not a green check. Green means every test passed first try — which is
+this spec's success criterion, made structural instead of a thing someone has
+to remember to audit. A quarantine that silently outlives its cause is exactly
+what happened here, and that is what the flag prevents next time.
+
+Remaining: the first success criterion (ten consecutive green `main` runs) can
+only be observed on CI, and starts from the commit that lands this.
+
 ## Desired behavior
 
 CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-real` either passes deterministically or is explicitly quarantined so it cannot fail a PR for reasons unrelated to that PR's diff. Whichever way it goes, a developer never has to ask "is this red mine?" — which is the state the suite is in today, and the reason it is a P1 despite being test-only.

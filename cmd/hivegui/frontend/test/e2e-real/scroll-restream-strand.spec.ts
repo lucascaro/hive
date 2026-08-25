@@ -46,7 +46,6 @@ test.afterEach(async ({ page }, testInfo) => {
 async function bootWithTerm(page: Page) {
   // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
   // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
-  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set');
   await page.goto('/');
   await page.waitForFunction(
@@ -87,10 +86,21 @@ function scrollState(page: Page) {
   });
 }
 
-function traceTags(page: Page, tag: string) {
+// resizeDecisions counts every resize that reached the replay decision,
+// whichever way it went. `replay-request` alone is NOT a valid vacuity
+// guard for a FOLLOWER scenario: decideResizeReplay deliberately skips
+// the destructive full-ring replay while the tile is glued to the
+// bottom (that skip is the fix for the renderer freeze / viewport
+// thrash under live output), so a healthy follower emits `replay-skip`
+// and zero `replay-request`. Asserting on requests made these specs
+// fail 10/10 against correct code — which is why they were quarantined
+// as "flaky" when they were in fact deterministically stale.
+function resizeDecisions(page: Page) {
   return page.evaluate(
-    (t) => (window.__hive_scrolltrace || []).filter((e) => e.tag === t).length,
-    tag,
+    () =>
+      (window.__hive_scrolltrace || []).filter(
+        (e) => e.tag === 'replay-request' || e.tag === 'replay-skip',
+      ).length,
   );
 }
 
@@ -144,8 +154,11 @@ test('single full-buffer session: no transient viewport-jump on threshold-crossi
       }
     }
   }
-  const replays = await traceTags(page, 'replay-request');
-  expect(replays, 'no replays fired — test is vacuous').toBeGreaterThan(0);
+  const decisions = await resizeDecisions(page);
+  expect(
+    decisions,
+    'no resize reached the replay decision — test is vacuous',
+  ).toBeGreaterThan(0);
   // The invariant: a follower is never left stranded up in history while a
   // resize replay restreams. A brief one-frame reset blip is tolerable; a
   // sustained strand (multiple samples off-bottom) is the bug.

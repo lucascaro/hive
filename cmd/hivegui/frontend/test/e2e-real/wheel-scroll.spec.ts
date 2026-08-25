@@ -47,7 +47,6 @@ const WS_URL = process.env.WS_BRIDGE_URL;
 test.beforeEach(async ({ page }) => {
   // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
   // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
-  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads,

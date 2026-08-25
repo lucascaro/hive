@@ -32,7 +32,6 @@ test.beforeEach(async ({ page }) => {
   // Quarantined on CI: setup relies on wall-clock output volume filling the
   // scrollback cap, which is unmet under CI CPU contention. Runs locally via
   // `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
-  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads.
@@ -193,6 +192,24 @@ function traceTags(page: Page, tag: string) {
   );
 }
 
+// resizeDecisions counts every resize that reached the replay decision,
+// whichever way it went. `replay-request` alone is NOT a valid vacuity
+// guard for a FOLLOWER scenario: decideResizeReplay deliberately skips
+// the destructive full-ring replay while the tile is glued to the
+// bottom (that skip is the fix for the renderer freeze / viewport
+// thrash under live output), so a healthy follower emits `replay-skip`
+// and zero `replay-request`. Asserting on requests made these specs
+// fail 10/10 against correct code — which is why they were quarantined
+// as "flaky" when they were in fact deterministically stale.
+function resizeDecisions(page: Page) {
+  return page.evaluate(
+    () =>
+      (window.__hive_scrolltrace || []).filter(
+        (e) => e.tag === 'replay-request' || e.tag === 'replay-skip',
+      ).length,
+  );
+}
+
 // Starts a bounded high-rate marker pump inside the real bash session.
 // Bursty: awk floods `burst` lines flat-out, then sleeps — keeps
 // xterm's async write queue loaded the way codex output does, without
@@ -237,9 +254,10 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
     .toContain('HIVE_PUMP_DONE');
   await page.waitForTimeout(1200); // let any trailing replay land
 
-  // Non-vacuity: the scenario must have fired at least one real replay.
-  expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
-  expect(await traceTags(page, 'scrollback_replay_done')).toBeGreaterThan(0);
+  // Non-vacuity: the toggles must really have driven resizes through the
+  // replay decision. The pump keeps this tile following the bottom, so the
+  // decision is `replay-skip` by design — see resizeDecisions above.
+  expect(await resizeDecisions(page)).toBeGreaterThan(0);
 
   const markers = extractMarkers(await bufferLines(page));
   expect(markers.length).toBeGreaterThan(0);
@@ -313,8 +331,9 @@ test('viewport converges to the bottom after a mode switch under continuous outp
     ).toBe(0);
   }
 
-  // Non-vacuity: replays must actually have fired across the toggles.
-  expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
+  // Non-vacuity: the toggles must have driven resizes through the replay
+  // decision (skipped, not requested — this tile is following the bottom).
+  expect(await resizeDecisions(page)).toBeGreaterThan(0);
 });
 
 test('full scrollback: an unscrolled user is not stranded in history by a resize under load', async ({

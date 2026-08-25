@@ -250,6 +250,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ⇧⌘G still toggle the project grid and the all-sessions grid, and
   Shift+Enter still inserts a newline without submitting.
 
+- CI is a real gate again. The three scroll/replay end-to-end specs that had
+  been quarantined since spec 245 are back on, so CI runs 21 of 21 real-daemon
+  tests instead of 2 of 12. They were never flaky: each demanded that a
+  resize fire a scrollback replay, in a scenario where the terminal is
+  following the bottom and the replay is deliberately skipped — so they
+  failed against correct code, every time. A retry no longer turns a failed
+  test into a green check either; it only buys a second trace.
+
 - Prompts that risk losing work no longer use a native OS alert. Closing
   a session with uncommitted changes, and deleting a worktree or branch,
   now open an in-app dialog that spells out what is at stake and offers
