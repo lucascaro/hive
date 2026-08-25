@@ -539,26 +539,50 @@ func TestE2E_DaemonRestart(t *testing.T) {
 	waitForSocket(t, d2.sockPath, 5*time.Second)
 
 	ctl2 := dialControl(t, d2)
-	if err := ctl2.ListSessions(); err != nil {
-		t.Fatalf("list after restart: %v", err)
-	}
-	snap, err := ctl2.AwaitSessionsSnapshot(3 * time.Second)
-	if err != nil {
-		t.Fatalf("snapshot after restart: %v", err)
-	}
-	var restored *wire.SessionInfo
-	for i := range snap.Sessions {
-		if snap.Sessions[i].ID == createdID && snap.Sessions[i].Name == sessName {
-			restored = &snap.Sessions[i]
+
+	// Revive is asynchronous: since #282 the daemon binds the socket
+	// before reviveAll forks any PTY and marks every restored entry
+	// `reviving`, so the FIRST snapshot legitimately reports
+	// alive:false. Asserting on one snapshot made this test a
+	// stopwatch race against the fork — deterministically red on a
+	// warm dev machine, green on CI by luck. Poll until the entry
+	// comes up instead, so a failure means "revive never happened",
+	// not "revive had not happened yet".
+	var restored wire.SessionInfo
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if err := ctl2.ListSessions(); err != nil {
+			t.Fatalf("list after restart: %v", err)
+		}
+		snap, err := ctl2.AwaitSessionsSnapshot(3 * time.Second)
+		if err != nil {
+			t.Fatalf("snapshot after restart: %v", err)
+		}
+		found := false
+		for i := range snap.Sessions {
+			if snap.Sessions[i].ID == createdID && snap.Sessions[i].Name == sessName {
+				restored, found = snap.Sessions[i], true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
+		}
+		if restored.Alive {
 			break
 		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session %s never came back alive after restart (daemon Revives); last snapshot: %+v",
+				createdID, restored)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-	if restored == nil {
-		t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
-	}
-	if !restored.Alive {
-		t.Errorf("session %s should be alive after restart (daemon Revives), got alive=false: %+v",
-			createdID, *restored)
+
+	// The transient phase must resolve too: a session parked in
+	// `reviving` forever reads as a permanently-starting tile in the
+	// GUI even though the PTY is up.
+	if restored.Phase == "reviving" {
+		t.Errorf("session %s is alive but still parked in phase %q", createdID, restored.Phase)
 	}
 }
 

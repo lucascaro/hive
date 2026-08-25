@@ -167,3 +167,58 @@ func TestConcurrentAttachWritesAreSerialized(t *testing.T) {
 		}
 	}
 }
+
+// TestRequireLoopbackRefusesOffHostBinds pins the assumption the
+// permissive CheckOrigin rests on: this bridge speaks for a real hived
+// daemon with no authentication of its own, so a non-loopback bind
+// would hand every session on the machine to anything that can reach
+// the port.
+func TestRequireLoopbackRefusesOffHostBinds(t *testing.T) {
+	allowed := []string{"127.0.0.1:0", "127.0.0.1:9222", "[::1]:0", "localhost:0"}
+	for _, addr := range allowed {
+		if err := requireLoopback(addr); err != nil {
+			t.Errorf("requireLoopback(%q) = %v, want nil", addr, err)
+		}
+	}
+	refused := []string{
+		":0",              // every interface
+		":9222",           // every interface
+		"0.0.0.0:9222",    // every interface, explicitly
+		"[::]:9222",       // every interface, v6
+		"192.168.1.10:80", // a LAN address
+		"example.com:80",  // a name that is not localhost
+		"127.0.0.1",       // missing port — SplitHostPort fails
+	}
+	for _, addr := range refused {
+		if err := requireLoopback(addr); err == nil {
+			t.Errorf("requireLoopback(%q) = nil, want an error", addr)
+		}
+	}
+}
+
+// TestRequireIsolationRefusesRealState is the other half of the guard:
+// the bridge must never be pointed at a developer's live hive state.
+func TestRequireIsolationRefusesRealState(t *testing.T) {
+	tmp := t.TempDir()
+	cases := []struct {
+		name        string
+		sock, state string
+		wantErr     bool
+	}{
+		{"both in tmp", filepath.Join(tmp, "hived.sock"), tmp, false},
+		{"unset", "", "", true},
+		{"only socket set", filepath.Join(tmp, "hived.sock"), "", true},
+		{"state outside tmp", filepath.Join(tmp, "hived.sock"), "/Users/someone/.hive", true},
+		{"socket outside tmp", "/Users/someone/.hive/hived.sock", tmp, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HIVE_SOCKET", tc.sock)
+			t.Setenv("HIVE_STATE_DIR", tc.state)
+			err := requireIsolation()
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("requireIsolation() = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}

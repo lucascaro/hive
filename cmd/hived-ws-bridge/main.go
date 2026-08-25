@@ -42,6 +42,9 @@ func main() {
 	if err := requireIsolation(); err != nil {
 		log.Fatalf("hived-ws-bridge: %v", err)
 	}
+	if err := requireLoopback(*addr); err != nil {
+		log.Fatalf("hived-ws-bridge: %v", err)
+	}
 	sockPath := os.Getenv("HIVE_SOCKET")
 
 	ln, err := net.Listen("tcp", *addr)
@@ -84,10 +87,40 @@ func requireIsolation() error {
 	return nil
 }
 
+// requireLoopback rejects any -addr that is not bound to the loopback
+// interface. The upgrader below accepts every Origin, which is only
+// defensible while nothing off this machine can reach the listener —
+// this is what makes "localhost-only listener" a guarantee rather than
+// a comment. An empty host ("":0, ":9222") binds all interfaces, so it
+// is refused too.
+func requireLoopback(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("addr %q: %w", addr, err)
+	}
+	if host == "" {
+		return fmt.Errorf("addr %q binds every interface; use 127.0.0.1 or [::1]", addr)
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("addr %q: host is not an IP literal or localhost", addr)
+	}
+	if !ip.IsLoopback() {
+		return fmt.Errorf("addr %q is not a loopback address", addr)
+	}
+	return nil
+}
+
 // --- WS session ---
 
+// CheckOrigin accepts everything: the browser-side harness runs on an
+// arbitrary Vite dev port, and requireLoopback above has already proven
+// the listener is unreachable from off-host.
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true }, // localhost-only listener
+	CheckOrigin: func(*http.Request) bool { return true },
 }
 
 type session struct {
