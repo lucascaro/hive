@@ -27,7 +27,59 @@ test files across unit/dom/e2e/e2e-real, one-item backlog.
 | 8 | Stray repo-root `node_modules/` (empty, untracked, not ignored) | `ls node_modules` → empty; `git check-ignore` → no | XS |
 | 9 | Go tests need a seeded `frontend/dist` or `go vet ./...` fails | `cmd/hivegui/main.go:17: pattern all:frontend/dist: no matching files` on a fresh worktree | XS |
 
-## Suggestions
+## Status — implemented 2026-08-25
+
+Everything below was carried out on branch `white-spire` unless the row says
+otherwise. Numbers are measured before/after, not estimated.
+
+| # | Item | Outcome |
+|---|------|---------|
+| 1 | e2e-real flake | **Fixed, and it was not a flake.** All three quarantined specs failed *deterministically* (0/10 local runs) because their vacuity guard demanded a `replay-request` in follower scenarios where the code deliberately skips the replay. Guard now counts replay *decisions*; 10/10 green, quarantine removed, CI runs 21 of 21 e2e-real tests instead of 2 of 12. `retries: 1` kept but paired with `failOnFlakyTests`, so a retry buys a trace, not a green check. Root cause and evidence in spec 245. |
+| 2 | Thin-binary coverage | **Done.** `hived-ws-bridge` 30.7% → 39.8% (plus a real `requireLoopback` guard — `-addr 0.0.0.0` was accepted while `CheckOrigin` returned true for everything). `cmd/hivegui` 30.5% → 38.2% (the fourteen Wails-bound RPCs had no test at all). `internal/daemon` 73.0% → 78.4%. `cmd/hived` stays at 24.3% and that number is **not** a gap: the binary is exercised as a subprocess by the `-tags=e2e` suite, which coverage cannot attribute. Fixed a real race there instead — `TestE2E_DaemonRestart` asserted `alive:true` on the first snapshot after a restart, which since #282 is legitimately `false`; it failed 3/3 locally and passed CI on luck. |
+| 3 | God-files | **Go half done, frontend half deliberately not.** `app.go` 1101 → 192 + four domain files (largest 416). `registry.go`'s `kill` 164 → 128 by lifting `disposeWorktree` out. `session-term.ts` and `style.css` left alone — see "Not done, and why" below. |
+| 4 | Long functions | **Done.** `serveControl` 274 → 144, with the 14-case dispatch now `handleControlFrame(...) bool` behind a `controlOps` value, and twelve identical decode prologues collapsed into `decodeReq[T]`. The seam paid for itself: the handlers are now unit-tested without a socket. |
+| 5 | Go static analysis | **Done.** `staticcheck` (pinned 2025.1.1) and `govulncheck` run on the Linux CI leg. Baseline was one real finding (an unused assignment `go vet` misses); both are clean now. `govulncheck` is clean on the Go 1.25.x that setup-go resolves from go.mod — a local 1.26.4 toolchain reports four stdlib advisories, which is the toolchain's age, not this repo's. |
+| 6 | Dependencies | **Partly.** Go module graph refreshed (`go-pty` 0.2.3 + indirects). Wails held at v2.12.0 and xterm held at 5.5 — both explained below. |
+| 7 | Plan-lifecycle drift | **Done.** 247 moved to `completed/`; 142's stub corrected (PR #160 was closed unmerged, the bug is still real, and `in-house-vt-emulator.md` is the route to it). `scripts/check-plan-lifecycle.sh` asks `gh` about every PR referenced from `active/` so this stops recurring. |
+| 8 | Housekeeping | **Done.** Stray root `node_modules/` removed (a vitest cache, accidentally committed in #255) and gitignored. The `frontend/dist` seeding is already handled by `scripts/ci-bootstrap.sh`, so no change was needed there. |
+
+### Not done, and why — these are yours to call
+
+**xterm 5.5 → 6.0.** Held. Hive uses none of the removed APIs (`windowsMode`,
+`fastScrollModifier`, the canvas addon, `overviewRulerWidth`), so the bump would
+*compile* fine. The problem is what 6.0 rewrote: "the viewport and scroll bar
+implementation works significantly differently now". `src/` has 87 call sites on
+exactly that surface — 29 `baseY`, 25 `viewportY`, 19 `scrollToBottom`, 10
+`onScroll`, 4 `scrollLines` — and that surface is the one with the longest bug
+history in this repo (scroll-jump, the strand, cap-trim, the freeze). A
+regression there reproduces only with a full 5000-line buffer, in a real
+WebView, which no CI leg here runs. Worth doing, worth doing alone, and worth
+watching a real terminal while you do it.
+
+**Wails v2.12.0 → v2.15.0.** Held. `scripts/ci-bootstrap.sh` pins the Wails
+*CLI* to the same version, and the CLI generates the bindings and drives the
+build. Bumping the library alone invites skew; bumping both is a real upgrade
+that deserves its own commit and a native build to validate.
+
+**Splitting `session-term.ts` (1638) and `style.css` (1984).** Not done, and I
+would argue against doing it now. Unlike `app.go` (a 50-method binding surface
+with existing section banners) and `serveControl` (an untestable 274-line
+closure), these two would be pure file-moving: no seam is unlocked, nothing
+becomes testable that was not. The July plan called it "cosmetic until they
+cause merge pain", and I have not found evidence of that pain — only that the
+files grew. `session-term.ts` in particular is the file behind the whole spec-245
+saga; churning it right after establishing that its behaviour is correct is a
+poor trade. If you want it split, the seam worth taking is the scrollback/replay
+logic into the existing pure `lib/scrollback.ts`, because *that* becomes
+unit-testable. The rest is rearrangement.
+
+**Dependabot / Renovate.** Not added — it is a repo-settings decision with
+ongoing PR-noise cost, and that is a preference, not a defect.
+
+## Original suggestions
+
+Kept as written on 2026-08-24, so the status table above can be read against them.
+
 
 ### 1. Finish the e2e-real re-gate (carry-over from phase 1)
 
