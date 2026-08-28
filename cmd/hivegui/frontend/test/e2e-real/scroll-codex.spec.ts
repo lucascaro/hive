@@ -49,13 +49,6 @@ test.beforeEach(async ({ page }) => {
 // failure itself) and the trace may be undefined — neither is allowed
 // to throw here and mask the original test failure.
 test.afterEach(async ({ page }, testInfo) => {
-  // Cleanup first, and on failure too: a failed test leaks just as
-  // hard, and the next spec pays for it either way.
-  try {
-    await closeLeakedSessions(page);
-  } catch {
-    // Best effort — never mask the real failure with a cleanup error.
-  }
   if (testInfo.status !== testInfo.expectedStatus) {
     try {
       const trace = await page.evaluate(() => window.__hive_scrolltrace);
@@ -155,34 +148,125 @@ async function bridgeCalls(calls: Array<[string, object]>) {
   }
 }
 
-// closeLeakedSessions kills every session named `second` this spec
-// created. The e2e-real suite shares ONE daemon across every spec file
+// Sessions this file created, torn down once at the end of the file.
+//
+// The e2e-real suite shares ONE daemon across every spec file
 // (globalSetup spawns it once), so a session left behind is inherited
-// by every later spec — session-phases.spec.ts asserts on the session
+// by every later spec: session-phases.spec.ts asserts on the session
 // COUNT and went red on CI with two stray `second` rows in the
-// sidebar. That leak was invisible while this file was quarantined;
-// un-quarantining it is what surfaced it.
-async function closeLeakedSessions(page: Page) {
-  const ids: string[] = await page.evaluate(() =>
-    (window.__hive_state?.sessions ?? [])
-      .filter((s) => s.name === 'second')
-      .map((s) => s.id),
-  );
-  if (ids.length === 0) return;
-  // force: the pump may still be writing, and a busy shell must not
-  // leave the session behind for the next spec.
-  await bridgeCalls(
-    ids.map((id) => ['KillSession', { session_id: id, force: true }]),
-  );
-  await page.waitForFunction(
-    () =>
-      (window.__hive_state?.sessions ?? []).every((s) => s.name !== 'second'),
-    null,
-    { timeout: 10000 },
-  );
+// sidebar. The leak was invisible while this file was quarantined.
+//
+// Cleanup is afterALL, not afterEach, and that distinction is load
+// bearing. Killing between tests measurably destabilised this file —
+// 2 failures in 6 runs against 0 in 6 without it — because removing a
+// tile reflows the grid and rebaselines the replay column baseline, so
+// the next test's ⌘G toggle no longer crosses REPLAY_COL_THRESHOLD and
+// reaches no replay decision at all. Per-file teardown keeps every
+// intra-file relationship exactly as it was while still handing the
+// next spec file a clean daemon.
+const createdSessionIds = new Set<string>();
+
+test.afterAll(async () => {
+  if (createdSessionIds.size === 0) return;
+  try {
+    // force: the marker pump may still be writing, and a busy shell
+    // must not survive into the next spec file.
+    //
+    // And WAIT for the removals. KillSession over the bridge is
+    // fire-and-forget — controlWriteJSON just writes the frame, and the
+    // daemon tears the session down on its own goroutine — so returning
+    // when the RPC acks let the next spec file start while the kill was
+    // still in flight. That is not theoretical: it leaked a `second`
+    // into session-phases on one run in two.
+    await killAndAwaitRemoval([...createdSessionIds]);
+  } catch {
+    // Best effort — a teardown error must not mask a real failure.
+  }
+  createdSessionIds.clear();
+});
+
+// killAndAwaitRemoval sends KILL_SESSION for each id and resolves only
+// once the daemon has broadcast `removed` for all of them, so teardown
+// is actually complete when it returns.
+async function killAndAwaitRemoval(ids: string[]) {
+  if (!WS_URL)
+    throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
+  const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
+  const ws = new WS(WS_URL);
+  await new Promise((res, rej) => {
+    ws.onopen = res;
+    ws.onerror = rej;
+  });
+  const pending = new Set(ids);
+  const done = new Promise<void>((resolve) => {
+    ws.addEventListener('message', (ev) => {
+      const m = JSON.parse(ev.data);
+      // The bridge relays daemon fanout as notifications; session:list
+      // (sent on connect) and session:event both settle this.
+      if (m.event === 'session:event') {
+        const parsed = JSON.parse(m.args?.[0] ?? '{}');
+        if (parsed.kind === 'removed' && parsed.session?.id) {
+          pending.delete(parsed.session.id);
+        }
+      } else if (m.event === 'session:list') {
+        const parsed = JSON.parse(m.args?.[0] ?? '{}');
+        const live = new Set(
+          (parsed.sessions ?? []).map((x: { id: string }) => x.id),
+        );
+        for (const id of [...pending]) if (!live.has(id)) pending.delete(id);
+      }
+      if (pending.size === 0) resolve();
+    });
+  });
+  const send = (id: number, method: string, params: object = {}) =>
+    ws.send(JSON.stringify({ id, method, params }));
+  const reply = (id: number) =>
+    new Promise<{ id: number; error?: string }>((res) => {
+      ws.addEventListener('message', function h(ev) {
+        const m = JSON.parse(ev.data);
+        if (m.id === id) {
+          ws.removeEventListener('message', h);
+          res(m);
+        }
+      });
+    });
+  try {
+    // AWAIT the handshake before killing anything. The bridge answers
+    // KillSession with "no control connection" if it arrives before
+    // ConnectControl has dialled — which is silently fatal here, since
+    // the kill never reaches the daemon and teardown then waits out its
+    // timeout for a removal that was never requested.
+    send(1, 'ConnectControl');
+    const hello = await reply(1);
+    if (hello.error) throw new Error(`ConnectControl: ${hello.error}`);
+    let n = 1;
+    for (const id of ids) {
+      n += 1;
+      send(n, 'KillSession', { session_id: id, force: true });
+    }
+    await Promise.race([
+      done,
+      new Promise<void>((_, rej) =>
+        setTimeout(
+          () => rej(new Error('teardown: sessions never removed')),
+          15000,
+        ),
+      ),
+    ]);
+  } finally {
+    ws.close();
+  }
 }
 
 async function addSecondSession(page: Page) {
+  // Wait for the count to GROW, not to reach a fixed number. Tests in
+  // this file share one daemon, so by the second test a `second` from
+  // the first is already in the sidebar and a `>= 2` wait returns
+  // before the new session lands — which then goes unrecorded and
+  // leaks past teardown.
+  const beforeCount = await page.evaluate(
+    () => document.querySelectorAll('#projects li.session-item').length,
+  );
   await bridgeCalls([
     [
       'CreateSession',
@@ -190,10 +274,21 @@ async function addSecondSession(page: Page) {
     ],
   ]);
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 2,
-    null,
+    (n) => document.querySelectorAll('#projects li.session-item').length > n,
+    beforeCount,
     { timeout: 10000 },
   );
+  // Remember what we made so afterAll can take it back out. Read from
+  // the page rather than the CreateSession response, which carries no
+  // id — the daemon answers with a session:event(added) broadcast.
+  for (const id of await page.evaluate(() =>
+    (window.__hive_state?.sessions ?? [])
+      .filter((s) => s.name === 'second')
+      .map((s) => s.id),
+  )) {
+    createdSessionIds.add(id);
+  }
+
   // Back to the original "main" session (⌘1 = first in display order).
   await page.keyboard.press(`${mod}+1`);
   await page.waitForTimeout(300);
