@@ -147,7 +147,6 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
       items: [
         { keys: m('G'), label: 'Toggle project grid' },
         { keys: m('G', { shift: true }), label: 'Toggle all-sessions grid' },
-        { keys: m('enter'), label: 'Toggle grid ⇄ single' },
         { keys: m('S'), label: 'Toggle sidebar' },
         {
           keys: `${m('=')} / ${m('-')} / ${m('0')}`,

@@ -3,7 +3,7 @@
 // The two-tile floor on grid views, against the REAL view.ts.
 //
 // A grid holding one tile looks exactly like focused mode but loses the
-// focused-mode keybindings, so ⌘G / ⇧⌘G / ⌘↩ must be no-ops below the
+// focused-mode keybindings, so ⌘G / ⇧⌘G must be no-ops below the
 // floor — and a live grid that shrinks to one tile (session killed, or
 // minimized away) must fall back on its own. The sibling
 // keyboard-arrows.test.ts mocks view.ts, so it cannot see any of this.

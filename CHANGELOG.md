@@ -233,6 +233,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- ⌘Enter (Ctrl+Enter elsewhere) no longer toggles between grid and
+  single view. It was a duplicate of ⌘G, and because the app swallowed
+  the chord before the terminal saw it, it was unusable inside an agent
+  session. The chord is now unbound and left to the session. ⌘G and
+  ⇧⌘G still toggle the project grid and the all-sessions grid, and
+  Shift+Enter still inserts a newline without submitting.
+
 - Prompts that risk losing work no longer use a native OS alert. Closing
   a session with uncommitted changes, and deleting a worktree or branch,
   now open an in-app dialog that spells out what is at stake and offers

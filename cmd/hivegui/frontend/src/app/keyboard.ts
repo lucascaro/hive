@@ -331,13 +331,6 @@ window.addEventListener(
       } else {
         setView(state.view === 'grid-project' ? 'single' : 'grid-project');
       }
-    } else if (e.key === 'Enter') {
-      // ⌘Enter mirrors ⌘G: in a grid mode it maximizes the active
-      // tile back to single mode; in single mode it expands to a
-      // per-project grid for context.
-      swallow();
-      if (state.view === 'single') setView('grid-project');
-      else setView('single');
     } else if (e.key === 'n' || e.key === 'N') {
       swallow();
       if (e.shiftKey) {
