@@ -65,6 +65,8 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 
 ## Progress
 
+- **2026-08-28** — Review-loop iter 2: APPROVE, 0 unresolved threads, no BLOCKING or IMPORTANT. Swept the three remaining MINOR stale-`⌘↩` comments. Loop converged.
+
 - **2026-08-28** — Review-loop iter 1: COMMENT, 0 unresolved threads. Applied the IMPORTANT finding (native-accelerator regression test) and both MINOR stale-comment findings; re-ran all checks green.
 
 - **2026-08-28** — Spec written, triaged bug / S / P2, research verified against the e2e harness.
@@ -76,6 +78,7 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 <!-- append-only, one line per review-loop iteration -->
 
 - **2026-08-28 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0af39b3f9edfcc04f9e881f693f2c2015e8174e69db13336f28bca8735a05f08; threads_open: 0; action: stop (1 IMPORTANT + 2 MINOR applied by hand rather than shipped as a gap); head_sha: 42dbaa4f.
+- **2026-08-28 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop (3 MINOR stale-comment nits swept in a follow-up commit); head_sha: cb2ce2a.
 
 ## Open questions
 

@@ -90,7 +90,7 @@ func walkAccelerators(items []*menu.MenuItem, out map[string]*keys.Accelerator) 
 }
 
 // TestMenuHasNoEnterAccelerator keeps ⌘↩ out of the native menu (#249).
-// Same mechanism as the arrow guard above: AppKit consumes a registered
+// Same mechanism as the arrow guard below: AppKit consumes a registered
 // key equivalent before the webview sees a keydown, so a menu item here
 // would toggle grid no matter what the frontend does — which is exactly
 // how the "⌘Enter is unusable inside an agent session" bug worked. The
