@@ -2,8 +2,9 @@
 
 - **Spec:** [docs/product-specs/248-sidebar-window-titles-under-session-names.md](../../product-specs/248-sidebar-window-titles-under-session-names.md)
 - **Issue:** —
+- **PR:** #288
 - **Branch:** feature/248-sidebar-window-titles
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Status:** active
 
 ## Summary
