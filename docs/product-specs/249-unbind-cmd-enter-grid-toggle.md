@@ -1,10 +1,11 @@
 # GUI: unbind ⌘/Ctrl+Enter from the grid toggle
 
 - **Issue:** —
+- **PR:** #287
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/249-unbind-cmd-enter-grid-toggle.md](../exec-plans/active/249-unbind-cmd-enter-grid-toggle.md)
 
 ## Problem

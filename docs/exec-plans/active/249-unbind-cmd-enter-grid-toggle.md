@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/249-unbind-cmd-enter-grid-toggle.md](../../product-specs/249-unbind-cmd-enter-grid-toggle.md)
 - **Issue:** —
+- **PR:** #287
+- **Branch:** `feature/249-unbind-cmd-enter-grid-toggle`
 - **Status:** active
 
 ## Summary
@@ -62,6 +64,7 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 ## Progress
 
 - **2026-08-28** — Spec written, triaged bug / S / P2, research verified against the e2e harness.
+- **2026-08-28** — PR #287 opened; stage → REVIEW.
 - **2026-08-28** — Implemented on `feature/249-unbind-cmd-enter-grid-toggle`: all four bindings removed, `focus.spec.ts` re-pointed at ⌘G, `cmd-enter-unbound.spec.ts` added, CHANGELOG entry under Unreleased → Changed. New tests confirmed red against the pre-fix branch before being green after it. Checks: `go build ./...`, `go test ./cmd/hivegui/...`, `biome ci .`, `npm run typecheck`, `scripts/test.sh unit dom e2e` (185 passed, 1 skipped) — all pass.
 
 ## Open questions
