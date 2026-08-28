@@ -58,14 +58,24 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 
 ## Decision log
 
+- **2026-08-28** — Added `TestMenuHasNoEnterAccelerator` in response to the iter-1 review. Why: the Playwright specs drive the browser mock, which has no native menu, so nothing would catch a re-added `keys.CmdOrCtrl("enter")` menu item — the load-bearing site. Mirrors the existing `TestMenuHasNoArrowLeftRightAccelerators` and reuses `walkAccelerators`.
+
 - **2026-08-28** — Unbind only; no pass-through byte for ⌘Enter. Why: explicitly chosen by the user at the loop's behavior gate; a pass-through would require new `_writePty` code in the xterm handler with no requested behavior behind it.
 - **2026-08-28** — Numbered 249, not 248. Why: no GitHub issue was created for this feature, and 248 is already a PR number in this repo.
 
 ## Progress
 
+- **2026-08-28** — Review-loop iter 1: COMMENT, 0 unresolved threads. Applied the IMPORTANT finding (native-accelerator regression test) and both MINOR stale-comment findings; re-ran all checks green.
+
 - **2026-08-28** — Spec written, triaged bug / S / P2, research verified against the e2e harness.
 - **2026-08-28** — PR #287 opened; stage → REVIEW.
 - **2026-08-28** — Implemented on `feature/249-unbind-cmd-enter-grid-toggle`: all four bindings removed, `focus.spec.ts` re-pointed at ⌘G, `cmd-enter-unbound.spec.ts` added, CHANGELOG entry under Unreleased → Changed. New tests confirmed red against the pre-fix branch before being green after it. Checks: `go build ./...`, `go test ./cmd/hivegui/...`, `biome ci .`, `npm run typecheck`, `scripts/test.sh unit dom e2e` (185 passed, 1 skipped) — all pass.
+
+## PR convergence ledger
+
+<!-- append-only, one line per review-loop iteration -->
+
+- **2026-08-28 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0af39b3f9edfcc04f9e881f693f2c2015e8174e69db13336f28bca8735a05f08; threads_open: 0; action: stop (1 IMPORTANT + 2 MINOR applied by hand rather than shipped as a gap); head_sha: 42dbaa4f.
 
 ## Open questions
 
