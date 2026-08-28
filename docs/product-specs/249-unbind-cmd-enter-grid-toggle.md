@@ -5,8 +5,9 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/249-unbind-cmd-enter-grid-toggle.md](../exec-plans/active/249-unbind-cmd-enter-grid-toggle.md)
+- **Shipped:** 2026-08-28
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/249-unbind-cmd-enter-grid-toggle.md](../exec-plans/completed/249-unbind-cmd-enter-grid-toggle.md)
 
 ## Problem
 

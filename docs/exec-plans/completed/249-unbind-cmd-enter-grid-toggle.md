@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #287
 - **Branch:** `feature/249-unbind-cmd-enter-grid-toggle`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -56,6 +56,16 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 - `shift-enter-newline.spec.ts` → unchanged; must stay green (Shift+Enter still 0x0a, Enter still 0x0d).
 - `go test ./cmd/hivegui/...` → existing menu tests must stay green after the menu line is removed.
 
+## QA verdict
+
+- **2026-08-28** — verdict: PASS; checks: 3 dimensions / 0 failed / 0 followups; followups: none; one-line: all six success criteria verified against merged `8edb0df`, all three non-goals confirmed unimplemented, full check suite green.
+  - 2026-08-28 dimensions:
+    - build/lint/test — PASS — `go build ./...`, `go vet ./...`, `go test ./cmd/hivegui/... -count=1`, `biome ci .`, `npm run typecheck`, `scripts/test.sh unit dom e2e` (185 passed, 1 skipped)
+    - acceptance — PASS — all 6 success criteria evidenced at file:line; `cmd-enter-unbound.spec.ts`, `shift-enter-newline.spec.ts`, `focus.spec.ts` (10 passed) and `TestMenuHasNo*` green
+    - non-goals — PASS — no replacement behavior for ⌘Enter, ⌘G/⇧⌘G/Shift+Enter/plain Enter unchanged, binding not made configurable
+    - regression — PASS — `menu:toggle-project-grid` keeps both emitter (⌘G item) and handler; dead-session-overlay Enter path untouched; no orphaned imports left by the removed branch
+    - doc accuracy — PASS — CHANGELOG under `[Unreleased] → Changed`, README row removed, all four AGENTS.md Keybindings-Policy surfaces updated; every surviving ⌘↩ reference is either a removal note or legitimate history (#217, #186)
+
 ## Decision log
 
 - **2026-08-28** — Added `TestMenuHasNoEnterAccelerator` in response to the iter-1 review. Why: the Playwright specs drive the browser mock, which has no native menu, so nothing would catch a re-added `keys.CmdOrCtrl("enter")` menu item — the load-bearing site. Mirrors the existing `TestMenuHasNoArrowLeftRightAccelerators` and reuses `walkAccelerators`.
@@ -64,6 +74,8 @@ The macOS menu line is the load-bearing removal: with the AppKit accelerator sti
 - **2026-08-28** — Numbered 249, not 248. Why: no GitHub issue was created for this feature, and 248 is already a PR number in this repo.
 
 ## Progress
+
+- **2026-08-28** — QA PASS across all three validator dimensions; stage → DONE, plan moved to `completed/`.
 
 - **2026-08-28** — Review-loop iter 2: APPROVE, 0 unresolved threads, no BLOCKING or IMPORTANT. Swept the three remaining MINOR stale-`⌘↩` comments. Loop converged.
 
