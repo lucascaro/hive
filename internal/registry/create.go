@@ -499,6 +499,7 @@ func (r *Registry) attachSession(ctx context.Context, e *Entry, sess *session.Se
 	// registry id so the registry id is the public identity.
 	sess.ID = p.id
 	e.sess = sess
+	r.attachTitleHook(p.id, sess)
 	if p.wtPath != "" {
 		e.WorktreePath = p.wtPath
 		e.WorktreeBranch = p.wtBranch

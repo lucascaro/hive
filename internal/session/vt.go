@@ -84,6 +84,21 @@ type VT struct {
 	ring []byte
 }
 
+// Title returns the window title the program most recently set via
+// OSC 0 / OSC 2, or "" when it never set one. Taken under the same mutex
+// as Write so a caller can't observe a title mid-parse.
+//
+// Note that a program cannot clear its title back to empty: vt10x drops
+// empty OSC titles (`if title != ""` in its handleSTR), so the last
+// non-empty value sticks for the life of the PTY. Callers that need
+// "no title" for a finished session should key off the session being
+// gone, not off this returning "".
+func (v *VT) Title() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.term.Title()
+}
+
 // NewVT constructs a VT sized cols x rows. Falls back to 80x24 when
 // either dimension is zero so callers don't need to bother.
 func NewVT(cols, rows int) *VT {
@@ -99,9 +114,11 @@ func NewVT(cols, rows int) *VT {
 }
 
 // Write feeds raw PTY bytes into the emulator. Best-effort — vt10x
-// silently swallows sequences it doesn't model (mouse, OSC titles,
-// bracketed paste etc), which is fine: those don't affect the rendered
-// grid and live PTY bytes still flow to clients via the fanout path.
+// silently swallows sequences it doesn't model (mouse, bracketed paste
+// etc), which is fine: those don't affect the rendered grid and live PTY
+// bytes still flow to clients via the fanout path. OSC 0/2 window titles
+// are the exception: vt10x does model those, and Title() below reads
+// them back.
 //
 // While on the normal screen, Write also runs an eviction heuristic:
 // pre-snapshot the top rows, run the underlying term.Write, then look

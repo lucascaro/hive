@@ -16,7 +16,12 @@ import { state, saveCollapsed } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
-import { renderSidebar, updateSidebarSelection } from './sidebar.js';
+import {
+  renderSidebar,
+  updateSidebarSelection,
+  updateSidebarTitles,
+} from './sidebar.js';
+import { titleOnlyChange } from '../lib/term-title.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
@@ -434,6 +439,18 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // this, closing a session never refreshed the grid at all.
       if (state.view !== 'single') deps.renderGrid();
     } else if (ev.kind === 'updated') {
+      // A window-title change arrives as an ordinary `updated` event, and
+      // a running program changes its title as it works. Rebuilding the
+      // sidebar, the tile header and the tray at that rate would thrash
+      // the UI and eat dblclick pairs (see updateSidebarSelection's
+      // comment), so a change that touches only the title takes the
+      // in-place path and skips the rest of this branch — none of which
+      // reads the title.
+      if (i >= 0 && titleOnlyChange(state.sessions[i], ev.session)) {
+        state.sessions[i] = ev.session;
+        updateSidebarTitles();
+        return;
+      }
       // A reorder arrives as `updated` events carrying new .order
       // values. renderGrid appends tiles in gridScopeSessions order, so
       // without a repaint the sidebar reorders while the tiles keep

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The sidebar now shows what each session is actually doing. Under every
+  session name sits a second, quieter line carrying the window title the
+  running program publishes — the task Claude is working on, the command
+  a shell is running, the file an editor has open. It updates live, and
+  it is there for every session in the list, including ones you have
+  never opened in this window and ones that were already running before
+  you launched the app. Sessions whose program sets no title look exactly
+  as they did before, with no empty space reserved and no change in row
+  height.
+
 - Worktrees are now something you can see and manage. A per-project
   worktree browser (⌘E, the ⎇ button on a project row, or "Worktrees…"
   in the command palette) lists every git worktree in the project along

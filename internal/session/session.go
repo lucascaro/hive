@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aymanbagabas/go-pty"
 	"github.com/google/uuid"
@@ -37,7 +38,29 @@ type Session struct {
 	sinks     map[Sink]struct{}
 	done      chan struct{}
 	vtErrOnce sync.Once
+
+	// Window title (OSC 0/2) plumbing, all guarded by mu.
+	//
+	// title is the last value handed to titleHook, NOT simply the last
+	// value seen: it is what makes a program that re-sets the identical
+	// string every frame (common in TUIs) cost nothing downstream.
+	//
+	// titleHook is installed by the registry to broadcast the change to
+	// clients. It is invoked from readLoop with mu released — see the
+	// comment on noteTitle for why that ordering is load-bearing.
+	title      string
+	titleHook  func(string)
+	titleTimer *time.Timer
 }
+
+// titleThrottle bounds how often a session reports a title change. Some
+// TUIs animate their title (a spinner glyph in the window title), and
+// every report costs a socket frame plus a Wails IPC hop plus a JSON
+// parse for each connected client. The throttle is trailing, so the
+// final title of a burst always lands — it is a coalesce, not a drop.
+// A var, not a const, purely so tests can shrink it — production never
+// assigns it.
+var titleThrottle = 500 * time.Millisecond
 
 // Options configures a new Session.
 type Options struct {
@@ -180,6 +203,12 @@ func (s *Session) readLoop() {
 		n, err := s.ptmx.Read(buf)
 		if n > 0 {
 			s.deliver(buf[:n])
+			// After deliver, not inside it: deliver holds s.mu across the
+			// VT write and the sink fanout, and noteTitle's hook reaches
+			// into the registry, which takes r.mu. registry imports
+			// session and never the reverse, so firing here (mu already
+			// released) keeps that a one-way edge instead of a lock cycle.
+			s.noteTitle()
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -218,9 +247,81 @@ func (s *Session) deliver(p []byte) {
 	}
 }
 
+// SetTitleHook installs the callback invoked when the program running on
+// this session changes its window title. Passing nil disables reporting.
+// The hook runs on the readLoop goroutine with no session lock held, so
+// it may take locks of its own; it must not block for long, since the
+// PTY drain is stalled while it runs.
+func (s *Session) SetTitleHook(fn func(string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.titleHook = fn
+}
+
+// Title returns the window title the running program most recently set,
+// or "" if it never set one.
+func (s *Session) Title() string {
+	return s.vt.Title()
+}
+
+// noteTitle reports a changed window title to the hook, at most once per
+// titleThrottle. Called from readLoop after every delivered chunk.
+//
+// Unchanged titles return before touching the timer, so the steady state
+// (a program that never sets a title, or re-sets the same one) is a
+// string compare and nothing else. A change inside the throttle window
+// arms a trailing timer rather than dropping the update, so the last
+// title of a burst is always the one clients end up with.
+func (s *Session) noteTitle() {
+	s.mu.Lock()
+	cur := s.vt.Title()
+	if cur == s.title || s.titleHook == nil {
+		s.mu.Unlock()
+		return
+	}
+	if s.titleTimer != nil {
+		// A trailing fire is already pending; it will read the latest
+		// title when it runs, so there is nothing more to do here.
+		s.mu.Unlock()
+		return
+	}
+	s.title = cur
+	hook := s.titleHook
+	s.titleTimer = time.AfterFunc(titleThrottle, s.flushTitle)
+	s.mu.Unlock()
+	hook(cur)
+}
+
+// flushTitle runs when a throttle window closes. It re-reads the title
+// and reports it if the program changed it again while the window was
+// open, so no update is ever merely dropped.
+func (s *Session) flushTitle() {
+	s.mu.Lock()
+	s.titleTimer = nil
+	cur := s.vt.Title()
+	if cur == s.title || s.titleHook == nil {
+		s.mu.Unlock()
+		return
+	}
+	s.title = cur
+	hook := s.titleHook
+	// Re-arm: the burst is evidently still going, so keep coalescing
+	// rather than letting the next chunk through unthrottled.
+	s.titleTimer = time.AfterFunc(titleThrottle, s.flushTitle)
+	s.mu.Unlock()
+	hook(cur)
+}
+
 func (s *Session) fanoutClose() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// The PTY is done, so no further title can arrive; drop any pending
+	// trailing fire rather than leaving a timer holding this session
+	// alive for another throttle window.
+	if s.titleTimer != nil {
+		s.titleTimer.Stop()
+		s.titleTimer = nil
+	}
 	for sink := range s.sinks {
 		if c, ok := sink.(io.Closer); ok {
 			_ = c.Close()

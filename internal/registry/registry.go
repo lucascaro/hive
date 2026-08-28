@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -145,7 +146,34 @@ func (e *Entry) Info() wire.SessionInfo {
 		WorktreeBranch: e.WorktreeBranch,
 		LastError:      e.LastError,
 		Phase:          e.Phase,
+		Title:          e.title(),
 	}
+}
+
+// title returns the window title of the live session, truncated to the
+// wire cap. Read through to the session rather than mirrored into a
+// field on Entry: that makes "no live process ⇒ no title" fall out for
+// free, so death, restart and daemon boot need no clearing code (which
+// is exactly the discipline the mirrored Phase field does require, at
+// four separate `e.sess = …` sites).
+func (e *Entry) title() string {
+	if e.sess == nil {
+		return ""
+	}
+	return truncateTitle(e.sess.Title())
+}
+
+// truncateTitle caps a window title at wire.MaxTitleLen bytes. The title
+// is whatever the child process chose to emit, so it is bounded at the
+// boundary rather than trusted — it is rebroadcast to every connected
+// client each time it changes.
+func truncateTitle(t string) string {
+	if len(t) <= wire.MaxTitleLen {
+		return t
+	}
+	// Byte-slice, then drop any partial rune left at the tail so the
+	// field stays valid UTF-8 for JSON encoding.
+	return strings.ToValidUTF8(t[:wire.MaxTitleLen], "")
 }
 
 // Registry is the daemon-side authoritative store of sessions and
@@ -222,6 +250,40 @@ func (r *Registry) setPhase(id, phase string) {
 	// sync.Mutex is not reentrant.
 	r.broadcastLocked(wire.SessionEventUpdated, info)
 	r.mu.Unlock()
+}
+
+// attachTitleHook wires a freshly-assigned session's window-title
+// reports back to this registry. Called at each site that assigns
+// Entry.sess, so a session created, restarted or revived all report
+// alike.
+//
+// Safe to call while holding r.mu: SetTitleHook takes only the session's
+// own lock, and the hook it installs takes only r.mu (never both at
+// once, since the session releases its lock before invoking it). The
+// resulting order is one-way, r.mu → session.mu, matching every other
+// registry→session call.
+func (r *Registry) attachTitleHook(id string, sess *session.Session) {
+	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
+}
+
+// noteTitleChange rebroadcasts an entry after its session reported a new
+// window title. Installed on the session as a hook at the two sites that
+// assign Entry.sess, and invoked from the session's readLoop goroutine
+// with no session lock held — which is what keeps the registry→session
+// import direction from becoming a lock cycle.
+//
+// There is no unchanged-guard here: the session already coalesces and
+// only calls the hook when the title actually changed. The title itself
+// is re-read via Info() rather than taken from the argument, so what
+// clients receive is always the entry's current state.
+func (r *Registry) noteTitleChange(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok || e.sess == nil {
+		return
+	}
+	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
 }
 
 // MarkPendingRevive puts every entry that has no live session into
@@ -550,6 +612,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		return ErrNotFound
 	}
 	e.sess = sess
+	r.attachTitleHook(id, sess)
 	e.LastError = ""
 	info := e.Info()
 	r.mu.Unlock()

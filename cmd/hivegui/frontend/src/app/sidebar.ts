@@ -20,6 +20,7 @@ import { openProjectEditor } from './modals/project-editor.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { beginInlineRename } from './inline-rename.js';
 import { readProjectId } from '../lib/wire.js';
+import { displayTitle } from '../lib/term-title.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
@@ -77,6 +78,35 @@ export function updateSidebarSelection() {
   // so it appears when an empty project is selected and clears when a
   // live session becomes visible again.
   deps.renderEmptyState();
+}
+
+// updateSidebarTitles patches the window-title line on existing rows
+// instead of rebuilding them, for the same reason updateSidebarSelection
+// exists: renderSidebar wipes projectsUL.innerHTML and recreates every
+// node and listener. Titles change as often as the running program
+// decides to change them — an agent rewrites its title as it works — so
+// routing them through a full rebuild would thrash the sidebar and eat
+// dblclick pairs (see the comment on updateSidebarSelection).
+export function updateSidebarTitles() {
+  for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
+    const s = state.sessions.find((x) => x.id === el.dataset.sid);
+    const slot = el.querySelector<HTMLElement>('.session-title');
+    if (!s || !slot) continue;
+    applyTitle(slot, s);
+  }
+}
+
+// applyTitle writes one row's title slot. Shared by the initial render
+// and the in-place update so the two can't drift on the suppression rule
+// or the tooltip.
+function applyTitle(slot: HTMLElement, s: SessionInfo) {
+  const t = displayTitle(s.title, s.name);
+  slot.textContent = t;
+  slot.title = t;
+  // hidden rather than a class toggle: an empty title must not leave the
+  // row taller than a titleless one, and `hidden` is the one signal that
+  // also keeps the text out of the accessibility tree.
+  slot.hidden = t === '';
 }
 
 function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
@@ -305,6 +335,21 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   name.className = 'name';
   name.textContent = s.name ?? '';
 
+  // The window title the running program published (OSC 0/2), shown
+  // under the name so the row says what the session is *doing*, not just
+  // what it was called at creation. Hidden when there is no title, so a
+  // titleless row keeps exactly the height it has always had.
+  const titleEl = document.createElement('span');
+  titleEl.className = 'session-title';
+  applyTitle(titleEl, s);
+
+  // Name and title stack; the dot, worktree glyph and swatch stay
+  // centered against the pair. The wrapper carries min-width: 0 so the
+  // ellipsis on both lines still works inside the flex row.
+  const text = document.createElement('span');
+  text.className = 'session-text';
+  text.append(name, titleEl);
+
   // Worktree glyph: shown when the session is backed by a git
   // worktree. Tooltip = branch name.
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
@@ -341,9 +386,9 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   swatch.appendChild(colorInput);
 
   if (glyph) {
-    li.append(dot, name, glyph, swatch);
+    li.append(dot, text, glyph, swatch);
   } else {
-    li.append(dot, name, swatch);
+    li.append(dot, text, swatch);
   }
   li.addEventListener('click', (e) => {
     if (e.target === colorInput || e.target === swatch) return;

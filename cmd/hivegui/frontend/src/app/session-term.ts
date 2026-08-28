@@ -26,6 +26,7 @@ import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { isMac } from '../lib/platform.js';
+import { displayTitle } from '../lib/term-title.js';
 import {
   PHASE,
   phaseOf,
@@ -1059,17 +1060,14 @@ export class SessionTerm {
   }
 
   _renderTermTitle() {
-    // Hide the slot when the TUI hasn't set a title or it just echoes
-    // the session name (avoids "foo — foo").
-    const t = this.termTitle || '';
-    if (!t || t === this.info.name) {
-      this.tileTermTitle.textContent = '';
-      this.tileTermTitle.style.display = 'none';
-    } else {
-      this.tileTermTitle.textContent = t;
-      this.tileTermTitle.title = t;
-      this.tileTermTitle.style.display = '';
-    }
+    // The "hide it when it echoes the session name" rule lives in
+    // lib/term-title.ts because the sidebar row applies it too — the two
+    // surfaces must not disagree about whether a session has anything
+    // worth reporting.
+    const t = displayTitle(this.termTitle, this.info.name);
+    this.tileTermTitle.textContent = t;
+    if (t) this.tileTermTitle.title = t;
+    this.tileTermTitle.style.display = t ? '' : 'none';
   }
 
   // _beginRename hides the tile-name span, drops an input next to
