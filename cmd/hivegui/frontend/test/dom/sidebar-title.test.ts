@@ -3,12 +3,13 @@
 // The window-title line under each sidebar session name
 // (src/app/sidebar.ts + src/lib/term-title.ts).
 //
-// The regression this file exists for is the last test: a title change
-// arrives as an ordinary SESSION_EVENT(updated), and the handler's
-// response to `updated` is a full renderSidebar() — an innerHTML wipe
-// that recreates every row and listener. A running program changes its
-// title as it works, so taking that path would thrash the sidebar and
-// eat dblclick pairs (the bug updateSidebarSelection was written for).
+// The regression this file exists for is the in-place update test: a
+// title change must patch the existing rows, not rebuild them. A full
+// renderSidebar() is an innerHTML wipe that recreates every row and
+// listener, and a running program changes its title as it works — taking
+// that path would thrash the sidebar and eat dblclick pairs (the bug
+// updateSidebarSelection was written for). The daemon gives title
+// changes their own SESSION_EVENT kind so this path is reachable at all.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
 

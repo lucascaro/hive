@@ -25,8 +25,8 @@ async function boot(page: Page, count = 2) {
   );
 }
 
-// setTitle drives the production path: the daemon reports a title as an
-// ordinary SESSION_EVENT(updated), so that is what the spec emits.
+// setTitle drives the production path: the daemon reports a title under
+// its own SESSION_EVENT kind, so that is what the spec emits.
 async function setTitle(page: Page, index: number, title: string) {
   await page.evaluate(
     ({ index, title }) => {
@@ -35,7 +35,7 @@ async function setTitle(page: Page, index: number, title: string) {
       s.title = title;
       window.__hive.emit(
         'session:event',
-        JSON.stringify({ kind: 'updated', session: s }),
+        JSON.stringify({ kind: 'title', session: s }),
       );
     },
     { index, title },

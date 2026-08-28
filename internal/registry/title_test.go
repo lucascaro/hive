@@ -58,18 +58,73 @@ func TestInfoTitleEmptyWithoutSession(t *testing.T) {
 	}
 }
 
-// End to end: a program that sets its window title produces a
-// SESSION_EVENT(updated) carrying that title, without any client having
-// attached to the session.
+// noteTitleChange is the registry half of the plumbing: it must announce
+// the entry under SessionEventTitle, carrying the session's current
+// title. Driven directly rather than through a PTY so the assertion does
+// not depend on what any particular shell decides to title itself —
+// internal/session/title_test.go already covers OSC bytes reaching
+// Title(), and this covers what the registry does with that.
+func TestNoteTitleChangeUsesTheTitleKind(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "titled"})
+
+	listener, unsub := r.Subscribe()
+	defer unsub()
+	drain(listener)
+
+	r.noteTitleChange(e.ID)
+
+	select {
+	case ev := <-listener:
+		if ev.Kind != wire.SessionEventTitle {
+			t.Fatalf("kind = %q, want %q — sharing %q is what made the "+
+				"event stream nondeterministic for other consumers",
+				ev.Kind, wire.SessionEventTitle, wire.SessionEventUpdated)
+		}
+		if ev.Session.ID != e.ID {
+			t.Errorf("session id = %q, want %q", ev.Session.ID, e.ID)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("noteTitleChange broadcast nothing")
+	}
+}
+
+// An entry with no live session must stay silent: there is no title to
+// report, and a broadcast would tell clients to re-read a dead session.
+func TestNoteTitleChangeIgnoresADeadEntry(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "titled"})
+
+	r.mu.Lock()
+	r.entries[e.ID].sess = nil
+	r.mu.Unlock()
+
+	listener, unsub := r.Subscribe()
+	defer unsub()
+	drain(listener)
+
+	r.noteTitleChange(e.ID)
+	r.noteTitleChange("no-such-id")
+
+	select {
+	case ev := <-listener:
+		t.Fatalf("unexpected %s event for %s", ev.Kind, ev.Session.ID)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// End to end through a real PTY: the hook is actually installed at the
+// session-assignment sites, and a title set by the program on the PTY
+// reaches subscribers as SessionEventTitle carrying that title.
 //
-// Runs `cat`, not a shell, on purpose. A shell re-titles itself from its
-// prompt (PROMPT_COMMAND / PS1) after every command, so with /bin/bash
-// there are two writers racing into the same 500ms coalesce window and
-// the prompt's title can legitimately swallow the one this test wrote —
-// a real property of the throttle, not a bug, but not what this test is
-// about. `cat` echoes stdin to stdout and titles nothing, which leaves
-// exactly one writer.
-func TestTitleChangeBroadcastsUpdated(t *testing.T) {
+// The OSC is written on a retry loop rather than once. Cmd is run under
+// a login shell (`zsh -l -i -c "cat"`), so a single early write can land
+// before the shell has exec'd the command and be swallowed; re-sending
+// until the title arrives makes the test independent of that startup
+// race without weakening the assertion.
+func TestTitleChangeBroadcastsTitleEvent(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
 	e, err := r.Create(context.Background(), wire.CreateSpec{
@@ -87,21 +142,38 @@ func TestTitleChangeBroadcastsUpdated(t *testing.T) {
 	if sess == nil {
 		t.Fatal("created session has no live process")
 	}
-	if _, err := sess.Write([]byte("\x1b]0;deploying\x07\n")); err != nil {
-		t.Fatalf("write to pty: %v", err)
-	}
 
-	deadline := time.After(10 * time.Second)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			_, _ = sess.Write([]byte("\x1b]0;deploying\x07\n"))
+			time.Sleep(200 * time.Millisecond)
+		}
+	}()
+
+	deadline := time.After(20 * time.Second)
 	for {
 		select {
 		case ev := <-listener:
-			if ev.Kind == wire.SessionEventUpdated &&
-				ev.Session.ID == e.ID &&
+			if ev.Session.ID != e.ID {
+				continue
+			}
+			if ev.Kind == wire.SessionEventUpdated {
+				t.Fatalf("title change arrived as %q; it must use %q",
+					wire.SessionEventUpdated, wire.SessionEventTitle)
+			}
+			if ev.Kind == wire.SessionEventTitle &&
 				strings.Contains(ev.Session.Title, "deploying") {
 				return
 			}
 		case <-deadline:
-			t.Fatalf("no updated event carrying the window title arrived; "+
+			t.Fatalf("no title event carrying the window title arrived; "+
 				"session title is now %q", sess.Title())
 		}
 	}

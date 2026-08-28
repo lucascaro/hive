@@ -266,8 +266,9 @@ func (r *Registry) attachTitleHook(id string, sess *session.Session) {
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 }
 
-// noteTitleChange rebroadcasts an entry after its session reported a new
-// window title. Installed on the session as a hook at the two sites that
+// noteTitleChange announces an entry after its session reported a new
+// window title. Emitted as SessionEventTitle, not SessionEventUpdated —
+// see the constant's comment for why the two are kept apart. Installed on the session as a hook at the two sites that
 // assign Entry.sess, and invoked from the session's readLoop goroutine
 // with no session lock held — which is what keeps the registry→session
 // import direction from becoming a lock cycle.
@@ -283,7 +284,7 @@ func (r *Registry) noteTitleChange(id string) {
 	if !ok || e.sess == nil {
 		return
 	}
-	r.broadcastLocked(wire.SessionEventUpdated, e.Info())
+	r.broadcastLocked(wire.SessionEventTitle, e.Info())
 }
 
 // MarkPendingRevive puts every entry that has no live session into

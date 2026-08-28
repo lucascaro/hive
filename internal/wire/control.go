@@ -208,6 +208,19 @@ const (
 	SessionEventAdded   = "added"
 	SessionEventRemoved = "removed"
 	SessionEventUpdated = "updated"
+	// SessionEventTitle reports that the program running on the session
+	// changed its window title (SessionInfo.Title). Deliberately NOT an
+	// "updated": that kind means the daemon's own view of the session
+	// changed — a rename, a reorder, a phase transition, a death — and
+	// clients treat it as authoritative state worth a full re-render. A
+	// title change is neither authoritative nor rare: it is the child
+	// process redrawing, at whatever rate it likes. Sharing a kind would
+	// make every existing consumer tolerate that churn, and make the
+	// event stream nondeterministic for anything asserting on it.
+	//
+	// Clients that do not know this kind ignore it and simply show no
+	// titles, so the field and the kind are both additive.
+	SessionEventTitle = "title"
 )
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

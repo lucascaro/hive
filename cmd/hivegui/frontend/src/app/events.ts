@@ -21,7 +21,6 @@ import {
   updateSidebarSelection,
   updateSidebarTitles,
 } from './sidebar.js';
-import { titleOnlyChange } from '../lib/term-title.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
@@ -74,7 +73,10 @@ interface ProjectEvent {
 }
 
 interface SessionEvent {
-  kind: 'added' | 'removed' | 'updated';
+  // 'title' is a session-only kind: the program on the PTY re-titled
+  // itself (internal/wire/control.go SessionEventTitle). Kept separate
+  // from 'updated' so title churn never triggers a full re-render.
+  kind: 'added' | 'removed' | 'updated' | 'title';
   session: SessionInfo;
 }
 
@@ -397,6 +399,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
       deps.switchTo(ev.session.id);
       return;
     }
+    // The program on the PTY re-titled itself. Its own kind, not an
+    // `updated`, precisely so it can take the cheap path: patch the
+    // sidebar's title line in place and touch nothing else. A full
+    // renderSidebar() here would wipe and rebuild every row at whatever
+    // rate the child process redraws, eating dblclick pairs on the way
+    // (see updateSidebarSelection's comment).
+    if (ev.kind === 'title') {
+      if (i >= 0) state.sessions[i] = ev.session;
+      updateSidebarTitles();
+      return;
+    }
     if (ev.kind === 'updated' && isClosing(phaseOf(ev.session))) {
       // Don't make the user watch a teardown: the moment the daemon
       // starts closing, hand focus to the neighbour. The tile itself
@@ -439,18 +452,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // this, closing a session never refreshed the grid at all.
       if (state.view !== 'single') deps.renderGrid();
     } else if (ev.kind === 'updated') {
-      // A window-title change arrives as an ordinary `updated` event, and
-      // a running program changes its title as it works. Rebuilding the
-      // sidebar, the tile header and the tray at that rate would thrash
-      // the UI and eat dblclick pairs (see updateSidebarSelection's
-      // comment), so a change that touches only the title takes the
-      // in-place path and skips the rest of this branch — none of which
-      // reads the title.
-      if (i >= 0 && titleOnlyChange(state.sessions[i], ev.session)) {
-        state.sessions[i] = ev.session;
-        updateSidebarTitles();
-        return;
-      }
       // A reorder arrives as `updated` events carrying new .order
       // values. renderGrid appends tiles in gridScopeSessions order, so
       // without a repaint the sidebar reorders while the tiles keep
