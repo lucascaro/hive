@@ -16,6 +16,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | #202 | GUI: minimize sessions to remove from grid view; restore from a tray | REVIEW | [202-minimize-session-from-grid](202-minimize-session-from-grid.md) |
 | P2 | #213 | GUI: always scroll to bottom on mode switch; never auto-scroll up | QA | [213-always-scroll-to-bottom-on-mode-switch-resize](213-always-scroll-to-bottom-on-mode-switch-resize.md) |
 | P2 | #217 | GUI: Cmd+Enter should insert a newline, not submit, in agent sessions on macOS | REVIEW | [217-cmd-enter-insert-newline-not-submit](217-cmd-enter-insert-newline-not-submit.md) |
+| P2 | — | GUI: unbind ⌘/Ctrl+Enter from the grid toggle | IMPLEMENT | [249-unbind-cmd-enter-grid-toggle](249-unbind-cmd-enter-grid-toggle.md) |
 | P2 | — | Add user-configurable custom agents | REVIEW | [240-user-configurable-custom-agents](240-user-configurable-custom-agents.md) |
 
 ## Completed
