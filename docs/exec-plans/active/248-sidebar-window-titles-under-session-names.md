@@ -135,6 +135,8 @@ already uses in that file, and for the same reason.
 - **2026-08-28** — Source the title daemon-side rather than from the GUI's existing `SessionTerm.termTitle`. Why: `state.terms` is populated lazily (`view.ts:82`, `renderGrid`), so in single view it is empty for precisely the unopened sessions the spec cares about, and it resets on every GUI restart.
 - **2026-08-28** — Accept that a program cannot clear its title back to empty. vt10x drops empty OSC titles (`if title != ""` in its handleSTR), so the last non-empty value sticks for the life of the PTY. Why: the alternative is forking the OSC parser to gain a rare edge case; a finished session is instead detected by its process being gone, which the read-through already handles. Documented on `VT.Title` and asserted in `TestVTTitleFromOSC`.
 - **2026-08-28** — Cover the two-line layout with a Playwright spec (`test/e2e/sidebar-window-title.spec.ts`), not just jsdom. Why: every claim this feature makes is a CSS claim, and jsdom computes no styles — the DOM tests pass whether or not the title actually renders below the name.
+- **2026-08-28** — Assert order-invariance, not event-absence, in `TestCreateAppendEmitsNoShiftedUpdates`. Why: a session now broadcasts whenever the program on its PTY re-titles itself, and a shell does that from its prompt — so "a plain append emits no events for siblings" is no longer a true invariant, while "a plain append shifts nobody's order" (the test's actual name and intent) still is. Caught by CI on Linux, where bash titles itself and macOS's did not.
+- **2026-08-28** — Run `cat`, not `/bin/bash`, in `TestTitleChangeBroadcastsUpdated`. Why: a shell re-titles itself after every command, so two writers race into one 500 ms coalesce window and the prompt's title can legitimately swallow the test's — correct throttle behavior, but it made the test nondeterministic (it passed on macOS, timed out on Linux).
 - **2026-08-28** — Throttle title-change broadcasts to 500 ms (trailing) in `session`. Why: a TUI that animates its title would otherwise emit a socket frame + Wails IPC hop + JSON parse per frame, per connected client.
 - **2026-08-28** — Read through to `e.sess.Title()` in `Entry.Info()` instead of storing `Entry.Title`. Why: nil-session and restart cases clear themselves, removing four write/clear sites that the `Phase` field needs.
 
@@ -143,6 +145,7 @@ already uses in that file, and for the same reason.
 - **2026-08-28** — Spec + exec plan created; triage approved (enhancement / M / P2). Stage = RESEARCH.
 - **2026-08-28** — Research approved; approach drafted and approved. Stage = IMPLEMENT.
 - **2026-08-28** — Implemented on `feature/248-sidebar-window-titles`. All AGENTS.md checks pass: `gofmt`, `go vet`, `go test ./internal/...`, `biome ci`, `tsc --noEmit`, and `scripts/test.sh` (go · unit · dom · e2e — 187 e2e passed, 1 skipped).
+- **2026-08-28** — CI on Linux caught two failures macOS did not: `TestCreateAppendEmitsNoShiftedUpdates` (a real consequence of the new broadcast traffic) and `TestTitleChangeBroadcastsUpdated` (nondeterministic against a self-titling shell). Both fixed at the root; re-verified with `-count=2` on the registry/daemon/session packages and `-race` on session/registry.
 
 ## Open questions
 

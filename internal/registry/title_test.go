@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -58,12 +59,25 @@ func TestInfoTitleEmptyWithoutSession(t *testing.T) {
 }
 
 // End to end: a program that sets its window title produces a
-// SESSION_EVENT(updated) carrying that title, without any client
-// having attached to the session.
+// SESSION_EVENT(updated) carrying that title, without any client having
+// attached to the session.
+//
+// Runs `cat`, not a shell, on purpose. A shell re-titles itself from its
+// prompt (PROMPT_COMMAND / PS1) after every command, so with /bin/bash
+// there are two writers racing into the same 500ms coalesce window and
+// the prompt's title can legitimately swallow the one this test wrote —
+// a real property of the throttle, not a bug, but not what this test is
+// about. `cat` echoes stdin to stdout and titles nothing, which leaves
+// exactly one writer.
 func TestTitleChangeBroadcastsUpdated(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "titled"})
+	e, err := r.Create(context.Background(), wire.CreateSpec{
+		Name: "titled", Cols: 80, Rows: 24, Cmd: []string{"cat"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
 
 	listener, unsub := r.Subscribe()
 	defer unsub()
@@ -73,7 +87,7 @@ func TestTitleChangeBroadcastsUpdated(t *testing.T) {
 	if sess == nil {
 		t.Fatal("created session has no live process")
 	}
-	if _, err := sess.Write([]byte("printf '\\033]0;deploying\\007'\n")); err != nil {
+	if _, err := sess.Write([]byte("\x1b]0;deploying\x07\n")); err != nil {
 		t.Fatalf("write to pty: %v", err)
 	}
 
@@ -87,7 +101,8 @@ func TestTitleChangeBroadcastsUpdated(t *testing.T) {
 				return
 			}
 		case <-deadline:
-			t.Fatal("no updated event carrying the window title arrived")
+			t.Fatalf("no updated event carrying the window title arrived; "+
+				"session title is now %q", sess.Title())
 		}
 	}
 }

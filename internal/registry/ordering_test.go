@@ -178,6 +178,18 @@ func TestCreateAppendEmitsNoShiftedUpdates(t *testing.T) {
 	defer unsub()
 	drain(listener)
 
+	// Sibling orders before the append. The invariant under test is that
+	// a plain append shifts nobody — so compare orders, rather than
+	// asserting siblings emit no events at all. Sessions now also
+	// broadcast when the program on the PTY changes its window title
+	// (a shell does this from its prompt), which is asynchronous and
+	// unrelated to ordering; keying on Order ignores that churn without
+	// weakening what this test actually checks.
+	before := map[string]int{}
+	for _, e := range r.List() {
+		before[e.ID] = e.Order
+	}
+
 	n := mustCreate(t, r, wire.CreateSpec{Name: "new"})
 
 	// Give any (unwanted) fan-out time to land before asserting.
@@ -185,12 +197,14 @@ func TestCreateAppendEmitsNoShiftedUpdates(t *testing.T) {
 	for {
 		select {
 		case ev := <-listener:
-			if ev.Session.ID != n.ID {
-				t.Errorf("unexpected %s event for %s on a plain append", ev.Kind, ev.Session.ID)
+			if ev.Session.ID == n.ID {
+				// The new session's own added + phase updates are expected.
 				continue
 			}
-			// The new session's own added + phase updates are
-			// expected; nobody else may be touched by a plain append.
+			if was, ok := before[ev.Session.ID]; ok && ev.Session.Order != was {
+				t.Errorf("plain append shifted %s: order %d -> %d",
+					ev.Session.ID, was, ev.Session.Order)
+			}
 		default:
 			return
 		}
