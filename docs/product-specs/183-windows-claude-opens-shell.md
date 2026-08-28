@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/183-windows-claude-opens-shell.md](../exec-plans/active/183-windows-claude-opens-shell.md)
+- **Exec plan:** [docs/exec-plans/completed/183-windows-claude-opens-shell.md](../exec-plans/completed/183-windows-claude-opens-shell.md)
 
 ## Problem
 

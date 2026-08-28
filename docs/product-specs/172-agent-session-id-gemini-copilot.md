@@ -4,7 +4,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/172-agent-session-id-gemini-copilot.md](../exec-plans/active/172-agent-session-id-gemini-copilot.md)
+- **Exec plan:** [docs/exec-plans/completed/172-agent-session-id-gemini-copilot.md](../exec-plans/completed/172-agent-session-id-gemini-copilot.md)
 
 ## Problem
 

@@ -4,7 +4,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/240-jump-to-next-session-needing-attention.md](../exec-plans/active/240-jump-to-next-session-needing-attention.md)
+- **Exec plan:** [docs/exec-plans/completed/240-jump-to-next-session-needing-attention.md](../exec-plans/completed/240-jump-to-next-session-needing-attention.md)
 
 ## Problem
 

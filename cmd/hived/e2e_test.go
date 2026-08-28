@@ -568,21 +568,21 @@ func TestE2E_DaemonRestart(t *testing.T) {
 		if !found {
 			t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
 		}
-		if restored.Alive {
+		// Poll to the TERMINAL state, not just alive. ReviveWithPhase
+		// CAS-moves the entry out of `reviving` into `spawning` BEFORE
+		// calling Revive (which is what broadcasts alive:true), so
+		// `alive && phase == reviving` is unreachable — a check on it
+		// after the loop would be dead code, and a session wedged in
+		// `spawning` would pass silently. Ready is the state a client
+		// gates its attach on, so it is the state worth asserting.
+		if restored.Alive && restored.Phase == wire.PhaseReady {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("session %s never came back alive after restart (daemon Revives); last snapshot: %+v",
+			t.Fatalf("session %s never reached alive+ready after restart (daemon Revives); last snapshot: %+v",
 				createdID, restored)
 		}
 		time.Sleep(100 * time.Millisecond)
-	}
-
-	// The transient phase must resolve too: a session parked in
-	// `reviving` forever reads as a permanently-starting tile in the
-	// GUI even though the PTY is up.
-	if restored.Phase == "reviving" {
-		t.Errorf("session %s is alive but still parked in phase %q", createdID, restored.Phase)
 	}
 }
 

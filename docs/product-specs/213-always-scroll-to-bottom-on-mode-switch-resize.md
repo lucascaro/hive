@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/213-always-scroll-to-bottom-on-mode-switch-resize.md](../exec-plans/active/213-always-scroll-to-bottom-on-mode-switch-resize.md)
+- **Exec plan:** [docs/exec-plans/completed/213-always-scroll-to-bottom-on-mode-switch-resize.md](../exec-plans/completed/213-always-scroll-to-bottom-on-mode-switch-resize.md)
 
 ## Problem
 

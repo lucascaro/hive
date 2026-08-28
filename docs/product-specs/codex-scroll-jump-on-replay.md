@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/codex-scroll-jump-on-replay.md](../exec-plans/active/codex-scroll-jump-on-replay.md)
+- **Exec plan:** [docs/exec-plans/completed/codex-scroll-jump-on-replay.md](../exec-plans/completed/codex-scroll-jump-on-replay.md)
 
 ## Problem
 

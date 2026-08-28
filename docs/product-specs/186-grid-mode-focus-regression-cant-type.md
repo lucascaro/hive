@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/186-grid-mode-focus-regression-cant-type.md](../exec-plans/active/186-grid-mode-focus-regression-cant-type.md)
+- **Exec plan:** [docs/exec-plans/completed/186-grid-mode-focus-regression-cant-type.md](../exec-plans/completed/186-grid-mode-focus-regression-cant-type.md)
 
 ## Problem
 

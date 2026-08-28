@@ -44,8 +44,11 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 
 async function bootWithTerm(page: Page) {
-  // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
-  // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
+  // Re-gated 2026-08-24 (spec 245). This spec was never flaky: its
+  // vacuity guard demanded a `replay-request` in a follower scenario,
+  // where decideResizeReplay deliberately skips the replay — so it
+  // failed against correct code, 0/10 runs. The guard now counts replay
+  // *decisions*; 10/10 green, and it gates CI again.
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set');
   await page.goto('/');
   await page.waitForFunction(

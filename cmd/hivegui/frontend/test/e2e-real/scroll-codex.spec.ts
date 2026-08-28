@@ -29,9 +29,11 @@ import type { SessionTerm } from '../../src/app/session-term.js';
 const WS_URL = process.env.WS_BRIDGE_URL;
 
 test.beforeEach(async ({ page }) => {
-  // Quarantined on CI: setup relies on wall-clock output volume filling the
-  // scrollback cap, which is unmet under CI CPU contention. Runs locally via
-  // `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
+  // Re-gated 2026-08-24 (spec 245). This spec was never flaky: its
+  // vacuity guard demanded a `replay-request` in a follower scenario,
+  // where decideResizeReplay deliberately skips the replay — so it
+  // failed against correct code, 0/10 runs. The guard now counts replay
+  // *decisions*; 10/10 green, and it gates CI again.
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads.
@@ -366,6 +368,18 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   // while the flood is still parsing — each lands inside the cap-trim
   // bottom-follow-loss window. A correct client keeps the user pinned to
   // the bottom; the buggy one strands them up in history.
+  // Everything before the resizes is attach-time noise. The daemon
+  // sends an atomic scrollback replay on EVERY attach
+  // (SubscribeWithAtomicReplay), so the trace already holds one
+  // `replay-restore` with wants=true before a single resize has fired —
+  // measured: restores pre=1, post=1, requests 0. Reading the whole
+  // trace therefore made both assertions below vacuous: the
+  // non-vacuity guard was satisfied by the attach, and wantsFalse was
+  // trivially empty because the attach restore is the only entry.
+  // Cut the trace here so what follows is the resize scenario alone.
+  const traceBase = await page.evaluate(
+    () => (window.__hive_scrolltrace || []).length,
+  );
   for (const w of [780, 1240, 820, 1200]) {
     await page.setViewportSize({ width: w, height: 640 });
     await page.waitForTimeout(350);
@@ -374,27 +388,35 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   await page.waitForTimeout(1500); // let the last replay land
 
   const s = await mustScrollState(page);
-  const restores = await page.evaluate(() =>
-    (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
+  const restores = await page.evaluate(
+    (base) =>
+      (window.__hive_scrolltrace || [])
+        .slice(base)
+        .filter((e) => e.tag === 'replay-restore'),
+    traceBase,
   );
   const wantsFalse = restores.filter((r) => r.wants === false);
 
-  // Sanity / non-vacuity: the buffer hit the cap and resizes actually
-  // fired replays (an invariant that holds over zero replays proves
-  // nothing).
+  // Sanity / non-vacuity: the buffer hit the cap, and the resizes
+  // really did reach the replay decision. Counting *decisions* rather
+  // than replays is the point — this tile is following the bottom, so
+  // decideResizeReplay correctly skips the replay, and demanding one
+  // would fail against correct code (the spec-245 mistake).
   expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(
     4500,
   );
   expect(
-    restores.length,
-    'no resize replay fired — scenario is vacuous',
+    await resizeDecisions(page),
+    'no resize reached the replay decision — scenario is vacuous',
   ).toBeGreaterThan(0);
 
   // The invariant: a user who NEVER scrolled must never be handed a
-  // restore-into-history (wants=false) replay. On the buggy code the
-  // cap-trim mis-read of wasAtBottom produces these; the follow-intent
-  // fix eliminates them. Deterministic regardless of whether a later
-  // event happens to re-snap the viewport to the bottom.
+  // restore-into-history (wants=false) replay BY A RESIZE. On the
+  // buggy code the cap-trim mis-read of wasAtBottom produces these;
+  // the follow-intent fix eliminates them — today by skipping the
+  // replay outright, which satisfies this the strongest way there is.
+  // Deterministic regardless of whether a later event happens to
+  // re-snap the viewport to the bottom.
   expect(
     wantsFalse.length,
     `unscrolled user got ${wantsFalse.length} restore-into-history replay(s): ${JSON.stringify(wantsFalse.slice(0, 4))}`,

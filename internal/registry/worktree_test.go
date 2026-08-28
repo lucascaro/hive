@@ -524,6 +524,7 @@ func TestCreate_WorktreeLinksAgentConfig(t *testing.T) {
 // what is pinned here is that registry teardown actually consults it,
 // and leaves the directory on disk when it says no.
 func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
+	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 
 	// A directory that is emphatically not a hive worktree: the
@@ -557,6 +558,7 @@ func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
 // TestDisposeWorktree_RemovesManagedWorktree is the positive case, so
 // the refusals above cannot pass by disposing of nothing at all.
 func TestDisposeWorktree_RemovesManagedWorktree(t *testing.T) {
+	skipNonPosix(t)
 	r, p := freshRegistryWithProject(t)
 	sess, err := r.Create(context.Background(), wire.CreateSpec{
 		Name: "wt", ProjectID: p.ID, Cols: 80, Rows: 24,

@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/190-gui-text-replaced-with-garbled-glyphs.md](../exec-plans/active/190-gui-text-replaced-with-garbled-glyphs.md)
+- **Exec plan:** [docs/exec-plans/completed/190-gui-text-replaced-with-garbled-glyphs.md](../exec-plans/completed/190-gui-text-replaced-with-garbled-glyphs.md)
 
 ## Problem
 

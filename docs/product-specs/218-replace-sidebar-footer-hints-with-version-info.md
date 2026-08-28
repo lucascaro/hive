@@ -4,7 +4,7 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/218-replace-sidebar-footer-hints-with-version-info.md](../exec-plans/active/218-replace-sidebar-footer-hints-with-version-info.md)
+- **Exec plan:** [docs/exec-plans/completed/218-replace-sidebar-footer-hints-with-version-info.md](../exec-plans/completed/218-replace-sidebar-footer-hints-with-version-info.md)
 
 ## Problem
 

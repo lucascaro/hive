@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/217-cmd-enter-insert-newline-not-submit.md](../exec-plans/active/217-cmd-enter-insert-newline-not-submit.md)
+- **Exec plan:** [docs/exec-plans/completed/217-cmd-enter-insert-newline-not-submit.md](../exec-plans/completed/217-cmd-enter-insert-newline-not-submit.md)
 
 ## Problem
 

@@ -91,6 +91,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Cache Go analysis tools
+        if: matrix.biome
+        # Both tools below are compiled from source; without this they are
+        # rebuilt on every run of the gate every PR waits on. Keyed on the
+        # pinned versions, so a bump misses the cache exactly once.
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: go-analysis-tools-${{ runner.os }}-staticcheck2025.1.1-govulncheck1.7.0
+
       - name: Staticcheck (Go)
         if: matrix.biome
         # Platform-independent like Biome/tsc, so it rides the same
@@ -104,12 +114,17 @@ jobs:
       - name: Vulnerability scan (govulncheck)
         if: matrix.biome
         # Symbol-level: only reports vulns the code actually reaches. Clean
-        # on the Go version setup-go resolves from go.mod (1.25.x). If this
-        # goes red on an untouched tree, it is almost always a fresh stdlib
-        # advisory — bump the `go` directive to the patched release rather
-        # than muting the step.
+        # on the Go version setup-go resolves from go.mod (1.25.x).
+        #
+        # The TOOL is pinned for the same reason staticcheck is — a tool
+        # release must not turn a green PR red on its own. The advisory
+        # DATABASE is still fetched live and deliberately so: that is the
+        # point of the scan. So this step CAN go red on an untouched tree
+        # when a new advisory lands. That is a real signal, not noise —
+        # fix it by bumping the `go` directive to the patched release
+        # rather than muting the step.
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
           "$(go env GOPATH)/bin/govulncheck" ./...
 
       - name: Test (Go)

@@ -4,7 +4,7 @@
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/202-minimize-session-from-grid.md](../exec-plans/active/202-minimize-session-from-grid.md)
+- **Exec plan:** [docs/exec-plans/completed/202-minimize-session-from-grid.md](../exec-plans/completed/202-minimize-session-from-grid.md)
 
 ## Problem
 

@@ -26,6 +26,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -101,26 +102,60 @@ func requireLoopback(addr string) error {
 	if host == "" {
 		return fmt.Errorf("addr %q binds every interface; use 127.0.0.1 or [::1]", addr)
 	}
-	if host == "localhost" {
+	if ip := net.ParseIP(host); ip != nil {
+		if !ip.IsLoopback() {
+			return fmt.Errorf("addr %q is not a loopback address", addr)
+		}
 		return nil
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
+	if host != "localhost" {
 		return fmt.Errorf("addr %q: host is not an IP literal or localhost", addr)
 	}
-	if !ip.IsLoopback() {
-		return fmt.Errorf("addr %q is not a loopback address", addr)
+	// Resolve rather than trust the name: a hosts file can map
+	// localhost anywhere, and "it said localhost" is not the property
+	// this guard is asserting.
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("addr %q: cannot resolve %q: %w", addr, host, err)
+	}
+	for _, ip := range ips {
+		if !ip.IsLoopback() {
+			return fmt.Errorf("addr %q: %q resolves to non-loopback %s", addr, host, ip)
+		}
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("addr %q: %q resolved to nothing", addr, host)
 	}
 	return nil
 }
 
 // --- WS session ---
 
-// CheckOrigin accepts everything: the browser-side harness runs on an
-// arbitrary Vite dev port, and requireLoopback above has already proven
-// the listener is unreachable from off-host.
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true },
+// The listener being loopback-only is NOT origin protection: a
+// WebSocket handshake is not subject to the same-origin policy, so any
+// page open in a browser on this machine could otherwise connect to
+// ws://127.0.0.1:<port>/ and drive the whole RPC surface — including
+// WriteStdin into a live PTY and RemoveWorktree. So check the Origin
+// too: no Origin at all (a non-browser client, which is how the Go
+// tests connect) or a loopback origin on any port, which is what the
+// harness's arbitrary Vite dev port needs.
+var upgrader = websocket.Upgrader{CheckOrigin: originIsLocal}
+
+func originIsLocal(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type session struct {

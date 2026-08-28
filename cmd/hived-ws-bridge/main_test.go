@@ -222,3 +222,44 @@ func TestRequireIsolationRefusesRealState(t *testing.T) {
 		})
 	}
 }
+
+// TestOriginIsLocal: the loopback bind is not origin protection. A
+// WebSocket handshake is not subject to the same-origin policy, so
+// without this check any page open in a browser on this machine could
+// connect and drive the whole RPC surface — WriteStdin into a live
+// PTY included.
+func TestOriginIsLocal(t *testing.T) {
+	check := func(origin string) bool {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		return originIsLocal(r)
+	}
+	// No Origin header at all: a non-browser client, which is how the
+	// Go tests and any CLI connect. Browsers always send one.
+	if !check("") {
+		t.Error("a request with no Origin was rejected")
+	}
+	for _, o := range []string{
+		"http://localhost:5175", // the harness's Vite dev server
+		"http://127.0.0.1:5173",
+		"http://[::1]:9222",
+		"https://localhost",
+	} {
+		if !check(o) {
+			t.Errorf("local origin %q was rejected", o)
+		}
+	}
+	for _, o := range []string{
+		"http://evil.example.com",
+		"https://127.0.0.1.evil.example.com", // suffix trickery
+		"http://192.168.1.10:5173",
+		"http://localhost.evil.example.com",
+		"::not a url::",
+	} {
+		if check(o) {
+			t.Errorf("foreign origin %q was accepted", o)
+		}
+	}
+}

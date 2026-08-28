@@ -4,7 +4,8 @@
 - **Issue:** #142
 - **PR:** — (#160 was closed unmerged; see Status below)
 - **Branch:** `feature/142-vt-snapshot-cjk-wide-char-alignment`
-- **Stage:** BLOCKED (no open PR; superseded by `in-house-vt-emulator.md`)
+- **Stage:** TRIAGE (back to the top of the pipeline: PR #160 was closed
+  unmerged, so nothing is in flight; superseded by `in-house-vt-emulator.md`)
 - **Status:** active
 
 ## Status as of 2026-08-24
