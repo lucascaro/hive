@@ -49,6 +49,13 @@ test.beforeEach(async ({ page }) => {
 // failure itself) and the trace may be undefined — neither is allowed
 // to throw here and mask the original test failure.
 test.afterEach(async ({ page }, testInfo) => {
+  // Cleanup first, and on failure too: a failed test leaks just as
+  // hard, and the next spec pays for it either way.
+  try {
+    await closeLeakedSessions(page);
+  } catch {
+    // Best effort — never mask the real failure with a cleanup error.
+  }
   if (testInfo.status !== testInfo.expectedStatus) {
     try {
       const trace = await page.evaluate(() => window.__hive_scrolltrace);
@@ -106,7 +113,11 @@ async function focusFirstTerm(page: Page) {
 // broadcasts session:event(added) to every control conn, so the
 // page's sidebar updates on its own. With two tiles, grid mode splits
 // the width and the col delta always crosses REPLAY_COL_THRESHOLD.
-async function addSecondSession(page: Page) {
+// bridgeCalls opens one control connection to the ws-bridge and runs a
+// sequence of JSON-RPC calls over it, in order, failing on the first
+// error. Both addSecondSession and the cleanup below need this, and a
+// second copy of the socket boilerplate is how the two would drift.
+async function bridgeCalls(calls: Array<[string, object]>) {
   if (!WS_URL)
     throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
   // Node < 22 has no global WebSocket; fall back to the ws package, typed by
@@ -129,17 +140,55 @@ async function addSecondSession(page: Page) {
         }
       });
     });
-  send(1, 'ConnectControl');
-  await waitFor(1);
-  send(2, 'CreateSession', {
-    name: 'second',
-    shell: '/bin/bash',
-    cols: 80,
-    rows: 24,
-  });
-  const resp = await waitFor(2);
-  ws.close();
-  if (resp.error) throw new Error(`CreateSession via bridge: ${resp.error}`);
+  try {
+    send(1, 'ConnectControl');
+    await waitFor(1);
+    let id = 1;
+    for (const [method, params] of calls) {
+      id += 1;
+      send(id, method, params);
+      const resp = await waitFor(id);
+      if (resp.error) throw new Error(`${method} via bridge: ${resp.error}`);
+    }
+  } finally {
+    ws.close();
+  }
+}
+
+// closeLeakedSessions kills every session named `second` this spec
+// created. The e2e-real suite shares ONE daemon across every spec file
+// (globalSetup spawns it once), so a session left behind is inherited
+// by every later spec — session-phases.spec.ts asserts on the session
+// COUNT and went red on CI with two stray `second` rows in the
+// sidebar. That leak was invisible while this file was quarantined;
+// un-quarantining it is what surfaced it.
+async function closeLeakedSessions(page: Page) {
+  const ids: string[] = await page.evaluate(() =>
+    (window.__hive_state?.sessions ?? [])
+      .filter((s) => s.name === 'second')
+      .map((s) => s.id),
+  );
+  if (ids.length === 0) return;
+  // force: the pump may still be writing, and a busy shell must not
+  // leave the session behind for the next spec.
+  await bridgeCalls(
+    ids.map((id) => ['KillSession', { session_id: id, force: true }]),
+  );
+  await page.waitForFunction(
+    () =>
+      (window.__hive_state?.sessions ?? []).every((s) => s.name !== 'second'),
+    null,
+    { timeout: 10000 },
+  );
+}
+
+async function addSecondSession(page: Page) {
+  await bridgeCalls([
+    [
+      'CreateSession',
+      { name: 'second', shell: '/bin/bash', cols: 80, rows: 24 },
+    ],
+  ]);
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li.session-item').length >= 2,
     null,
