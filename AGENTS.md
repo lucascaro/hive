@@ -276,6 +276,11 @@ Canonical lifecycle: `TRIAGE → RESEARCH → PLAN → IMPLEMENT → REVIEW → 
 - `/hs-doc-garden` — scans `docs/` for staleness against the code, opens fix-up PRs.
 - `/hs-gc-sweep` — reads `golden-principles.md`, opens small refactor PRs for deviations.
 - `/brain-garden` — tends `~/.hivesmith/brain/`: regenerates index, archives expired entries, surfaces promotion candidates.
+- **Verify under the CI toolchain.** `setup-go` with `go-version-file: go.mod`
+  installs the `go` directive verbatim, so CI runs exactly that patch release.
+  A local run on a newer toolchain can be green while CI is red (this is how
+  three reachable stdlib advisories reached a required gate). Use
+  `GOTOOLCHAIN=$(sed -n 's/^go //p' go.mod)` when checking anything CI gates.
 - **Static analysis is per-GOOS.** `staticcheck` analyses one platform at a
   time, so a symbol used only from `*_darwin.go` reads as dead on Linux
   (U1000) and a macOS-only run says nothing about the CI leg — which is

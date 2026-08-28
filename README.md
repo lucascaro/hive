@@ -24,7 +24,7 @@ notarization, platform installers, auto-update.
 
 ## Build
 
-Requires Go 1.25+, Node 20+, and the Wails CLI:
+Requires Go 1.25.14+, Node 20+, and the Wails CLI:
 
 ```sh
 scripts/ci-bootstrap.sh  # installs the pinned Wails CLI + generates bindings

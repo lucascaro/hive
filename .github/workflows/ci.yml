@@ -113,8 +113,14 @@ jobs:
 
       - name: Vulnerability scan (govulncheck)
         if: matrix.biome
-        # Symbol-level: only reports vulns the code actually reaches. Clean
-        # on the Go version setup-go resolves from go.mod (1.25.x).
+        # Symbol-level: only reports vulns the code actually reaches.
+        #
+        # `go-version-file: go.mod` installs the `go` directive VERBATIM —
+        # 1.25.0 means 1.25.0, not "latest 1.25.x". That is why the directive
+        # names a patch release: on 1.25.0 this step reports three reachable
+        # stdlib advisories fixed in 1.25.13. Verifying locally under a
+        # different toolchain proves nothing about this step; match go.mod
+        # (GOTOOLCHAIN=go1.25.14) when you do.
         #
         # The TOOL is pinned for the same reason staticcheck is — a tool
         # release must not turn a green PR red on its own. The advisory

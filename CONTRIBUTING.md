@@ -6,7 +6,10 @@ Thank you for your interest in contributing! This document explains how to build
 
 ### Prerequisites
 
-- **Go 1.25+** — [install](https://go.dev/dl/)
+- **Go 1.25.14+** — [install](https://go.dev/dl/). The patch floor is
+  deliberate: `go.mod` pins it because CI's `setup-go` installs the `go`
+  directive verbatim, and the earlier 1.25.0 shipped stdlib advisories that
+  `govulncheck` reports as reachable.
 - **Node 20+** and the **Wails CLI** for the desktop GUI:
   run `scripts/ci-bootstrap.sh` (installs the pinned Wails CLI version)
 
