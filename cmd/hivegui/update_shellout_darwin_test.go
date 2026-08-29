@@ -465,3 +465,189 @@ func deviceOf(fi os.FileInfo) (int32, bool) {
 	}
 	return st.Dev, true
 }
+
+// ------------------------ latest-channel hardening ------------------------
+
+// latestRepo wires an isolated state dir + a checkout on the latest
+// channel, and returns the fakeGit driving it.
+func latestRepo(t *testing.T, answers map[string]string, errs map[string]error) *fakeGit {
+	t.Helper()
+	dir := isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	writeFile(t, filepath.Join(dir, "update.json"),
+		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
+	if answers == nil {
+		answers = map[string]string{}
+	}
+	if _, ok := answers["status --porcelain"]; !ok {
+		answers["status --porcelain"] = ""
+	}
+	if _, ok := answers["rev-parse --abbrev-ref --symbolic-full-name @{upstream}"]; !ok {
+		answers["rev-parse --abbrev-ref --symbolic-full-name @{upstream}"] = "origin/main"
+	}
+	if _, ok := answers["remote get-url origin"]; !ok {
+		answers["remote get-url origin"] = "git@github.com:" + updateRepo + ".git"
+	}
+	g := &fakeGit{answers: answers, errs: errs}
+	g.install(t)
+	return g
+}
+
+// The source repo path is read out of update.json and its contents get
+// built and executed. validateSourceRepo only proves the directory
+// *looks* like hive — .git, build.sh and a module line are all
+// plantable — so the upstream remote is the real check.
+func TestStageLatestRefusesForeignRemote(t *testing.T) {
+	g := latestRepo(t, map[string]string{
+		"remote get-url origin": "https://github.com/someone-else/hive.git",
+	}, nil)
+	built := false
+	prev := runBuildFn
+	runBuildFn = func(string, func(string)) error { built = true; return nil }
+	t.Cleanup(func() { runBuildFn = prev })
+
+	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "refusing to build") {
+		t.Fatalf("stageLatest err = %v, want a refusal naming the foreign remote", err)
+	}
+	if g.ran("pull") {
+		t.Error("stageLatest pulled from an unpinned remote")
+	}
+	if built {
+		t.Error("stageLatest built code from an unpinned remote")
+	}
+}
+
+func TestStageLatestAcceptsBothRemoteSpellings(t *testing.T) {
+	for _, url := range []string{
+		"git@github.com:" + updateRepo + ".git",
+		"https://github.com/" + updateRepo + ".git",
+		"https://github.com/" + updateRepo,
+	} {
+		t.Run(url, func(t *testing.T) {
+			latestRepo(t, map[string]string{"remote get-url origin": url}, nil)
+			// Fails later, at the build — which is proof the remote
+			// check let it through.
+			prev := runBuildFn
+			runBuildFn = func(string, func(string)) error { return fmt.Errorf("sentinel") }
+			t.Cleanup(func() { runBuildFn = prev })
+
+			_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+			if err == nil || !strings.Contains(err.Error(), "sentinel") {
+				t.Fatalf("stageLatest err = %v, want it to reach the build step", err)
+			}
+		})
+	}
+}
+
+// A pull runs the checkout's own hooks before build.sh gets a turn, so
+// a planted post-merge hook would execute from a button press.
+func TestStageLatestDisablesGitHooks(t *testing.T) {
+	g := latestRepo(t, nil, nil)
+	prev := runBuildFn
+	runBuildFn = func(string, func(string)) error { return fmt.Errorf("stop here") }
+	t.Cleanup(func() { runBuildFn = prev })
+
+	_, _ = stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+
+	var pull string
+	for _, c := range g.calls {
+		if strings.Contains(c, "pull") {
+			pull = c
+		}
+	}
+	if pull == "" {
+		t.Fatal("stageLatest never pulled")
+	}
+	if !strings.Contains(pull, "core.hooksPath=/dev/null") {
+		t.Errorf("pull invocation = %q, want hooks disabled", pull)
+	}
+	if !strings.Contains(pull, "--ff-only") {
+		t.Errorf("pull invocation = %q, want --ff-only", pull)
+	}
+}
+
+// A pull that fails must stop the staging, not fall through to building
+// whatever is currently checked out.
+func TestStageLatestStopsOnPullFailure(t *testing.T) {
+	latestRepo(t, nil, map[string]error{"-c core.hooksPath=/dev/null": fmt.Errorf("would clobber local changes")})
+	built := false
+	prev := runBuildFn
+	runBuildFn = func(string, func(string)) error { built = true; return nil }
+	t.Cleanup(func() { runBuildFn = prev })
+
+	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "would clobber") {
+		t.Fatalf("stageLatest err = %v, want the pull failure surfaced", err)
+	}
+	if built {
+		t.Error("stageLatest built after a failed pull")
+	}
+}
+
+// ------------------------ stageRelease success path -----------------------
+
+// The happy path had no test: every release-channel case asserted a
+// refusal, so nothing proved a good release actually installs.
+func TestStageReleaseSucceedsAndLeavesAUsableBundle(t *testing.T) {
+	isolateStateDir(t)
+
+	// A real zip of a real (stub) bundle, packed the way build.sh packs.
+	src := t.TempDir()
+	stubBundle(t, src, "new")
+	zipName := "Hive-9.9.9-macos-universal.zip"
+	zipPath := filepath.Join(t.TempDir(), zipName)
+	cmd := exec.Command("zip", "-rq", zipPath, bundleName)
+	cmd.Dir = src
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("zip unavailable: %v: %s", err, out)
+	}
+	body, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	releaseServer(t, map[string][]byte{
+		zipName:        body,
+		checksumsAsset: []byte(sha256Of(body) + "  " + zipName + "\n"),
+	}, nil)
+
+	var steps []string
+	bundle, err := stageRelease(UpdateInfo{Channel: ChannelRelease, Latest: "9.9.9"},
+		func(s string) { steps = append(steps, s) })
+	if err != nil {
+		t.Fatalf("stageRelease: %v", err)
+	}
+	if err := verifyBundle(bundle); err != nil {
+		t.Fatalf("staged bundle is not usable: %v", err)
+	}
+	if got := readMarker(t, bundle); got != "new" {
+		t.Errorf("staged binary = %q, want %q", got, "new")
+	}
+	// The zip is tens of MB in production and is not kept once unpacked.
+	if _, err := os.Stat(filepath.Join(updatesRoot(), "9.9.9", zipName)); err == nil {
+		t.Error("stageRelease kept the downloaded zip after unpacking")
+	}
+	// The user watches these; silence for the length of a download reads
+	// as a hang.
+	if len(steps) < 4 {
+		t.Errorf("progress steps = %v, want the user to see each phase", steps)
+	}
+}
+
+// ---------------------------- staging cleanup -----------------------------
+
+func TestPruneStagingDirsClearsEverything(t *testing.T) {
+	isolateStateDir(t)
+	for _, v := range []string{"1.0.0", "2.0.0"} {
+		if _, err := stagingDir(v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pruneStagingDirs()
+	if _, err := os.Stat(updatesRoot()); !os.IsNotExist(err) {
+		t.Errorf("updates root still present after prune (err=%v)", err)
+	}
+	// Idempotent: called on every successful apply, including the first.
+	pruneStagingDirs()
+}

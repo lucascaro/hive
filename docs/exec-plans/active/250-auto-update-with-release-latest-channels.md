@@ -240,3 +240,5 @@ build, and reset the channel to `Release`.
 ## PR convergence ledger
 
 <Append-only. One line per `/hs-review-loop` iteration.>
+
+- **2026-08-29 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 284e0007…81e6; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: b977ca9.

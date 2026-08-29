@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -199,6 +200,19 @@ func updatesRoot() string {
 	return filepath.Join(registry.StateDir(), "updates")
 }
 
+// pruneStagingDirs removes everything under <stateDir>/updates. Called
+// once the staged bundle has been installed, at which point every
+// directory in there is spent: the release channel re-downloads on the
+// next update, and the latest channel stages inside the checkout.
+//
+// Best-effort — a failure here costs disk, not correctness, and must
+// never turn a successful install into a reported failure.
+func pruneStagingDirs() {
+	if err := os.RemoveAll(updatesRoot()); err != nil {
+		log.Printf("hivegui: could not prune %s: %v", updatesRoot(), err)
+	}
+}
+
 func stagingDir(version string) (string, error) {
 	// Slug the version into the path rather than interpolating it raw:
 	// it comes from a remote tag_name, and a "../.." in there would
@@ -318,8 +332,21 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 		return "", fmt.Errorf("%s has a detached HEAD — check out a branch first", repo)
 	}
 
+	// The checkout path comes out of update.json, and validateSourceRepo
+	// only proves the directory *looks* like hive — .git, build.sh and a
+	// module line are all plantable. Pinning the upstream remote is the
+	// check that the code about to be pulled and executed is actually
+	// ours.
+	if err := verifyUpstreamRemote(repo); err != nil {
+		return "", err
+	}
+
 	progress("Pulling latest commits…")
-	if _, err := runGitFn(repo, "pull", "--ff-only"); err != nil {
+	// core.hooksPath=/dev/null: a pull runs the checkout's own hooks
+	// (post-merge, post-checkout) before build.sh gets a turn, so a
+	// planted hook would execute from a button press. Nothing this
+	// button does needs hooks.
+	if _, err := runGitFn(repo, "-c", "core.hooksPath=/dev/null", "pull", "--ff-only"); err != nil {
 		return "", err
 	}
 
@@ -332,6 +359,33 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 		return "", err
 	}
 	return bundle, nil
+}
+
+// verifyUpstreamRemote refuses a checkout whose tracked branch does not
+// come from this project's own repository.
+//
+// Matching is on the "owner/repo" substring so both SSH
+// (git@github.com:lucascaro/hive.git) and HTTPS spellings pass, and a
+// trailing .git or slash is tolerated. A fork would be rejected — that
+// is the intended trade: this button pulls and *executes*, so "close
+// enough" is not the bar.
+func verifyUpstreamRemote(repo string) error {
+	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return fmt.Errorf("%s has no upstream branch to pull from", repo)
+	}
+	remote, _, found := strings.Cut(upstream, "/")
+	if !found || remote == "" {
+		return fmt.Errorf("cannot tell which remote %q tracks", upstream)
+	}
+	url, err := runGitFn(repo, "remote", "get-url", remote)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(url, updateRepo) {
+		return fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, url, updateRepo)
+	}
+	return nil
 }
 
 // runBuildScript runs ./build.sh and streams its output into progress.
@@ -360,6 +414,15 @@ func runBuildScript(repo string, progress func(string)) error {
 		}
 		tail = line
 		progress(line)
+	}
+	// A scanner error (a line past the 1MB cap, a read fault) stops the
+	// loop with the pipe still open. build.sh then blocks on a full pipe
+	// buffer and cmd.Wait sits there until the 30-minute timeout, with
+	// the button stuck on "Updating…" the whole time. Draining lets the
+	// child finish and Wait return.
+	if err := sc.Err(); err != nil {
+		log.Printf("hivegui: build.sh output scan stopped early: %v", err)
+		_, _ = io.Copy(io.Discard, stdout)
 	}
 	if err := cmd.Wait(); err != nil {
 		if tail != "" {

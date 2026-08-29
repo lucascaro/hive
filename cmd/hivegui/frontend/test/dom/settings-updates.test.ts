@@ -32,6 +32,14 @@ const bridge = vi.hoisted(() => ({
   ApplyUpdateAndRestart: vi.fn(() => Promise.resolve()),
   PickDirectory: vi.fn(() => Promise.resolve('/picked/hive')),
   EventsOn: vi.fn(),
+  // settings.ts now routes Restart through banners.ts's shared
+  // confirm-and-apply wrapper, so this file pulls banners.ts (and
+  // dom.ts) in transitively — both need their bindings mocked and their
+  // markup present.
+  Confirm: vi.fn(() => Promise.resolve(true)),
+  RestartDaemon: vi.fn(() => Promise.resolve()),
+  CheckForUpdate: vi.fn(() => Promise.resolve(null)),
+  OpenURL: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('../../src/bridge.js', () => bridge);
@@ -45,6 +53,18 @@ vi.mock('../../src/lib/platform.js', () => ({
 }));
 
 const MARKUP = `
+  <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
+  <div id="daemon-banner" class="hidden">
+    <span id="daemon-banner-text"></span>
+    <button id="daemon-banner-restart"></button>
+    <button id="daemon-banner-dismiss"></button>
+  </div>
+  <div id="update-banner" class="hidden">
+    <span id="update-banner-text"></span>
+    <button id="update-banner-action"></button>
+    <button id="update-banner-download"></button>
+    <button id="update-banner-dismiss"></button>
+  </div>
   <div id="settings" class="hidden">
     <div id="settings-panel">
       <header><button id="settings-close">×</button></header>
@@ -88,6 +108,10 @@ function el<T extends HTMLElement>(id: string): T {
 
 // Lets every pending bridge promise settle before asserting on the DOM.
 const settle = () => new Promise((r) => setTimeout(r, 0));
+// The source-repo probe is debounced (it stats its way up a directory
+// tree), so its assertions have to wait past that window rather than a
+// microtask.
+const settleProbe = () => new Promise((r) => setTimeout(r, 320));
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
@@ -125,7 +149,7 @@ describe('settings: update channel', () => {
     const channel = el<HTMLSelectElement>('settings-update-channel');
     channel.value = 'latest';
     channel.dispatchEvent(new Event('change'));
-    await settle();
+    await settleProbe();
 
     expect(el('settings-source-repo-row').classList.contains('hidden')).toBe(
       false,
@@ -146,12 +170,18 @@ describe('settings: update channel', () => {
       expect.objectContaining({ channel: 'latest' }),
     );
     expect(bridge.SaveCustomAgents).toHaveBeenCalled();
+    // Agents are written first, so a rejected channel leaves the agent
+    // edits durable rather than stranding a saved channel behind a
+    // Cancel that no longer discards it.
+    expect(bridge.SaveCustomAgents.mock.invocationCallOrder[0]).toBeLessThan(
+      bridge.SaveUpdateSettings.mock.invocationCallOrder[0],
+    );
   });
 
   // A latest channel with no resolvable checkout is refused by Go. That
   // refusal must stop the whole save, not land after agents.json has
   // already been rewritten.
-  it('does not write agents when the update settings are rejected', async () => {
+  it('keeps the modal open and shows why when the channel is rejected', async () => {
     bridge.SaveUpdateSettings.mockRejectedValueOnce(
       new Error('no hive checkout found'),
     );
@@ -160,9 +190,31 @@ describe('settings: update channel', () => {
     el('settings-save').dispatchEvent(new MouseEvent('click'));
     await settle();
 
-    expect(bridge.SaveCustomAgents).not.toHaveBeenCalled();
     expect(el('settings-error').textContent).toContain('no hive checkout');
     expect(el('settings').classList.contains('hidden')).toBe(false);
+  });
+
+  // The probe stats its way up a directory tree; one per keystroke is
+  // both wasteful and unordered, so a slow answer for "/Use" could
+  // overwrite the fast one for "/Users/me/hive".
+  it('debounces the source-repo probe across rapid typing', async () => {
+    openSettings();
+    await settle();
+    const channel = el<HTMLSelectElement>('settings-update-channel');
+    channel.value = 'latest';
+    channel.dispatchEvent(new Event('change'));
+    await settleProbe();
+    bridge.SourceRepoStatusFor.mockClear();
+
+    const input = el<HTMLInputElement>('settings-source-repo');
+    for (const v of ['/U', '/Us', '/User', '/Users/me/hive']) {
+      input.value = v;
+      input.dispatchEvent(new Event('input'));
+    }
+    await settleProbe();
+
+    expect(bridge.SourceRepoStatusFor).toHaveBeenCalledTimes(1);
+    expect(bridge.SourceRepoStatusFor).toHaveBeenCalledWith('/Users/me/hive');
   });
 
   it('fills the path from the directory picker', async () => {
@@ -172,7 +224,7 @@ describe('settings: update channel', () => {
     channel.value = 'latest';
     channel.dispatchEvent(new Event('change'));
     el('settings-source-repo-browse').dispatchEvent(new MouseEvent('click'));
-    await settle();
+    await settleProbe();
 
     expect(el<HTMLInputElement>('settings-source-repo').value).toBe(
       '/picked/hive',
@@ -199,10 +251,11 @@ describe('settings: update button', () => {
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
   });
 
-  it('restarts once staging is ready', async () => {
+  it('restarts once staging is ready, behind the same confirm the banner uses', async () => {
     bridge.UpdateStatus.mockResolvedValueOnce({
       available: true,
       stage: 'ready',
+      latest: '2.5.0',
       message: 'Update ready',
       channel: 'release',
     });
@@ -212,8 +265,26 @@ describe('settings: update button', () => {
     expect(action.textContent).toBe('Restart');
     action.dispatchEvent(new MouseEvent('click'));
     await settle();
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     expect(bridge.ApplyUpdateAndRestart).toHaveBeenCalledTimes(1);
     expect(bridge.StartUpdate).not.toHaveBeenCalled();
+  });
+
+  // Applying from Settings is exactly as destructive as applying from
+  // the banner, so declining must stop it here too.
+  it('does not apply when the confirm is declined', async () => {
+    bridge.Confirm.mockResolvedValueOnce(false);
+    bridge.UpdateStatus.mockResolvedValueOnce({
+      available: true,
+      stage: 'ready',
+      latest: '2.5.0',
+      channel: 'release',
+    });
+    openSettings();
+    await settle();
+    el('settings-update-action').dispatchEvent(new MouseEvent('click'));
+    await settle();
+    expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
   });
 
   // Staging outlives the modal: closing and reopening must show the

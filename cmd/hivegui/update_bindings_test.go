@@ -86,3 +86,43 @@ func TestSourceRepoStatusForReportsWhyItFailed(t *testing.T) {
 		t.Errorf("Error = %q, want it to tell the user where to fix this", st.Error)
 	}
 }
+
+// Switching channels must discard whatever the previous channel's check
+// produced. Without this, saving release→latest and pressing Update
+// with no re-check in between installs a GitHub release on the latest
+// channel — the wrong artifact entirely.
+func TestSaveUpdateSettingsForgetsStateOnChannelChange(t *testing.T) {
+	isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	a := &App{}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	got := a.UpdateStatus()
+	if got.Available || got.Latest != "" {
+		t.Errorf("UpdateStatus = %+v after a channel change, want it cleared", got)
+	}
+	if err := a.StartUpdate(); err == nil {
+		t.Error("StartUpdate = nil error right after a channel change, want it to require a fresh check")
+	}
+}
+
+// Re-saving the same channel is not a change and must not throw away a
+// check the user is about to act on.
+func TestSaveUpdateSettingsKeepsStateWhenChannelIsUnchanged(t *testing.T) {
+	isolateStateDir(t)
+	a := &App{}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelRelease}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	if got := a.UpdateStatus(); !got.Available || got.Latest != "2.5.0" {
+		t.Errorf("UpdateStatus = %+v after re-saving the same channel, want it preserved", got)
+	}
+}

@@ -17,3 +17,9 @@ var errUnsupported = fmt.Errorf("in-app update is macOS-only — use the Downloa
 func stageUpdate(UpdateInfo, func(string)) (string, error) { return "", errUnsupported }
 
 func applyStagedBundle(string) error { return errUnsupported }
+
+// pruneStagingDirs is called from the cross-platform apply path. There
+// is nothing to prune here — stageUpdate never stages on this platform —
+// but the symbol has to exist or cmd/hivegui stops compiling for
+// linux/windows, which a darwin-only local run would not notice.
+func pruneStagingDirs() {}

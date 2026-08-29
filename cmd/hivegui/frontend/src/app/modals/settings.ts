@@ -18,10 +18,10 @@ import {
   SourceRepoStatusFor,
   UpdateStatus,
   StartUpdate,
-  ApplyUpdateAndRestart,
   PickDirectory,
   EventsOn,
 } from '../../bridge.js';
+import { applyUpdateAndRestart } from '../banners.js';
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
 import { isMac } from '../../lib/platform.js';
@@ -247,27 +247,46 @@ export function openSettings() {
 // updateDraft mirrors the two saved fields while the modal is open.
 let updateDraft = { channel: CHANNEL_RELEASE, sourceRepo: '' };
 
+// SourceRepoStatusFor stats its way up a directory tree, so firing it
+// per keystroke is both wasteful and unordered — a slow answer for
+// "/Use" could land after the fast one for "/Users/me/hive" and
+// overwrite it with a stale error. Debounce, and stamp each request so
+// only the newest reply is allowed to render.
+let sourceRepoProbe: ReturnType<typeof setTimeout> | null = null;
+let sourceRepoToken = 0;
+const SOURCE_REPO_DEBOUNCE_MS = 250;
+
 function renderSourceRepoRow() {
   const isLatest = updateDraft.channel === CHANNEL_LATEST;
   sourceRepoRow.classList.toggle('hidden', !isLatest);
+  if (sourceRepoProbe) {
+    clearTimeout(sourceRepoProbe);
+    sourceRepoProbe = null;
+  }
+  const token = ++sourceRepoToken;
   if (!isLatest) {
     sourceRepoHint.textContent = '';
     return;
   }
-  SourceRepoStatusFor(updateDraft.sourceRepo)
-    .then((st) => {
-      if (!st) return;
-      if (st.error) {
-        sourceRepoHint.textContent = st.error;
-        return;
-      }
-      sourceRepoHint.textContent = st.detected
-        ? `Detected ${st.path}`
-        : `Using ${st.path}`;
-    })
-    .catch((err) => {
-      sourceRepoHint.textContent = String(err?.message || err);
-    });
+  const path = updateDraft.sourceRepo;
+  sourceRepoProbe = setTimeout(() => {
+    sourceRepoProbe = null;
+    SourceRepoStatusFor(path)
+      .then((st) => {
+        if (token !== sourceRepoToken || !st) return;
+        if (st.error) {
+          sourceRepoHint.textContent = st.error;
+          return;
+        }
+        sourceRepoHint.textContent = st.detected
+          ? `Detected ${st.path}`
+          : `Using ${st.path}`;
+      })
+      .catch((err) => {
+        if (token !== sourceRepoToken) return;
+        sourceRepoHint.textContent = String(err?.message || err);
+      });
+  }, SOURCE_REPO_DEBOUNCE_MS);
 }
 
 function renderUpdateAction(info: main.UpdateInfo | null) {
@@ -277,6 +296,7 @@ function renderUpdateAction(info: main.UpdateInfo | null) {
   updateActionEl.textContent = btn.label;
   updateActionEl.disabled = btn.disabled;
   updateActionEl.dataset.action = btn.action;
+  updateActionEl.dataset.version = info?.latest || '';
 }
 
 function refreshUpdateAction() {
@@ -337,14 +357,19 @@ function saveSettings() {
   // Drop fully-blank rows so an accidental "+ Add agent" doesn't
   // block the save with a validation error.
   const payload = draft.filter((a) => a.name.trim() || a.cmd.length);
-  // Update settings first: SaveUpdateSettings refuses a latest channel
-  // whose source repo does not resolve, and that refusal must not land
-  // after the agents have already been written.
-  SaveUpdateSettings({
-    channel: updateDraft.channel,
-    source_repo: updateDraft.sourceRepo,
-  } as main.UpdateSettings)
-    .then(() => SaveCustomAgents(payload))
+  // Both writes are validated Go-side and either can be rejected, so one
+  // of them is going to be the "partial save" on failure. Agents go
+  // first because that is the recoverable order: a rejected channel
+  // leaves the modal open on the row that caused it, with the agent
+  // edits already durable. The reverse strands a saved channel behind a
+  // Cancel that no longer discards it.
+  SaveCustomAgents(payload)
+    .then(() =>
+      SaveUpdateSettings({
+        channel: updateDraft.channel,
+        source_repo: updateDraft.sourceRepo,
+      } as main.UpdateSettings),
+    )
     .then(closeSettings)
     // Go returns one joined error naming every rejected entry; show it
     // verbatim rather than paraphrasing it into something vaguer.
@@ -379,9 +404,10 @@ export function initSettings(injected: SettingsDeps) {
   updateActionEl.addEventListener('click', () => {
     const action = updateActionEl.dataset.action;
     if (action === 'restart') {
-      ApplyUpdateAndRestart().catch((err) =>
-        showError(String(err?.message || err)),
-      );
+      // Shared with the banner: confirm overlay + re-entrancy guard +
+      // the daemon-restart flag live there, and applying is exactly as
+      // destructive from here as it is from the banner.
+      void applyUpdateAndRestart(updateActionEl.dataset.version || '');
       return;
     }
     if (action === 'start') {

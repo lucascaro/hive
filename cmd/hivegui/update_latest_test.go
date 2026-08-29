@@ -42,9 +42,14 @@ func (f *fakeGit) install(t *testing.T) {
 	t.Cleanup(func() { runGitFn = prev })
 }
 
-func (f *fakeGit) ran(prefix string) bool {
+// ran reports whether any recorded invocation contains sub. Substring,
+// not prefix: git calls carry `-c key=value` flags before the
+// subcommand, and a prefix match silently stopped detecting `pull` the
+// moment core.hooksPath was pinned in front of it — turning a
+// "must not pull" assertion into one that could never fail.
+func (f *fakeGit) ran(sub string) bool {
 	for _, c := range f.calls {
-		if strings.HasPrefix(c, prefix) {
+		if strings.Contains(c, sub) {
 			return true
 		}
 	}

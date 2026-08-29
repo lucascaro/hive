@@ -75,10 +75,20 @@ channel, untagged dev builds — anything built without `./build.sh
 --version <tag>` — skip the check entirely and never call out; the
 latest channel is the one built for those.
 
+The latest channel pulls and *executes* code, so it refuses any checkout
+whose tracked branch does not come from this repository, and runs git
+with hooks disabled.
+
 The latest channel needs to know where your checkout is. Hive finds it
 by walking up from its own binary, which works for a locally built app;
 for an installed `Hive.app` you point at the directory yourself. It
 refuses to pull over a dirty working tree or a detached HEAD.
+
+The SHA-256 manifest is an **integrity** check, not a provenance one: it
+is published in the same release as the zip, and the bundle is neither
+signed nor notarized, so it catches a truncated or corrupted download —
+not a compromised release. Signing and notarization are tracked
+separately.
 
 **Nothing is downloaded or built until you press Update.** The button
 shows progress while it works, then becomes **Restart** — that step

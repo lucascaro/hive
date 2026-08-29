@@ -7,7 +7,9 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 const bridge = vi.hoisted(() => ({
-  Confirm: vi.fn(() => Promise.resolve(true)),
+  // Typed params so mock.calls[0] destructures — the dialog's wording
+  // is part of what this file asserts, not just that it was shown.
+  Confirm: vi.fn((_title: string, _body: string) => Promise.resolve(true)),
   RestartDaemon: vi.fn(() => Promise.resolve()),
   CheckForUpdate: vi.fn(() => Promise.resolve(null)),
   StartUpdate: vi.fn(() => Promise.resolve()),
@@ -61,6 +63,7 @@ beforeAll(async () => {
 beforeEach(() => {
   bridge.StartUpdate.mockClear();
   bridge.ApplyUpdateAndRestart.mockClear();
+  bridge.Confirm.mockClear().mockResolvedValue(true);
   try {
     localStorage.removeItem('hive.updateDismissedFor');
   } catch {}
@@ -95,10 +98,11 @@ describe('update banner action button', () => {
     expect(el<HTMLButtonElement>('update-banner-action').disabled).toBe(true);
   });
 
-  it('turns into Restart and applies on click', () => {
+  it('turns into Restart and applies once confirmed', async () => {
     emit('update:progress', {
       available: true,
       stage: 'ready',
+      latest: '2.5.0',
       message: 'Update ready — restart to apply',
     });
     const action = el<HTMLButtonElement>('update-banner-action');
@@ -106,8 +110,56 @@ describe('update banner action button', () => {
     expect(action.disabled).toBe(false);
 
     action.dispatchEvent(new MouseEvent('click'));
+    await settle();
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
+    // The dialog has to name what is about to happen, not just ask.
+    const [title, body] = bridge.Confirm.mock.calls[0];
+    expect(title).toContain('2.5.0');
+    expect(body).toMatch(/terminate every running shell and agent/);
     expect(bridge.ApplyUpdateAndRestart).toHaveBeenCalledTimes(1);
     expect(bridge.StartUpdate).not.toHaveBeenCalled();
+  });
+
+  // The whole point of the overlay: declining must not restart. This
+  // path terminates every running shell and agent, and the first cut of
+  // the feature wired the button straight to the binding with no
+  // confirmation at all.
+  it('does not apply when the confirm is declined', async () => {
+    bridge.Confirm.mockResolvedValueOnce(false);
+    emit('update:progress', {
+      available: true,
+      stage: 'ready',
+      latest: '2.5.0',
+      message: 'Update ready',
+    });
+    el('update-banner-action').dispatchEvent(new MouseEvent('click'));
+    await settle();
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
+    expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
+  });
+
+  // The confirm dialog is itself a window in which the other surface can
+  // be clicked; the guard has to be claimed before the first await.
+  it('ignores a second click while the confirm is open', async () => {
+    let release: (v: boolean) => void = () => {};
+    bridge.Confirm.mockReturnValueOnce(
+      new Promise<boolean>((r) => {
+        release = r;
+      }),
+    );
+    emit('update:progress', {
+      available: true,
+      stage: 'ready',
+      latest: '2.5.0',
+    });
+    const action = el('update-banner-action');
+    action.dispatchEvent(new MouseEvent('click'));
+    action.dispatchEvent(new MouseEvent('click'));
+    await settle();
+    expect(bridge.Confirm).toHaveBeenCalledTimes(1);
+    release(true);
+    await settle();
+    expect(bridge.ApplyUpdateAndRestart).toHaveBeenCalledTimes(1);
   });
 
   // A staging failure is the whole reason this banner is not

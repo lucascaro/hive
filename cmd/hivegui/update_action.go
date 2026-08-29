@@ -68,6 +68,19 @@ func (a *App) rememberCheck(info UpdateInfo) {
 	a.update.last = info
 }
 
+// forgetUpdateState discards the last check and any staged bundle. Used
+// when something invalidates them wholesale — today, a channel change.
+// A staging goroutine in flight is left alone: it holds its own copy of
+// the info it started with, and its completion re-populates state that
+// the next check will correct.
+func (a *App) forgetUpdateState() {
+	a.update.mu.Lock()
+	defer a.update.mu.Unlock()
+	a.update.last = UpdateInfo{}
+	a.update.bundle = ""
+	a.update.stagedFor = ""
+}
+
 // UpdateStatus returns the current state of the update action, so the
 // frontend can render the button without re-running a check (and so a
 // second window's Settings modal shows the same thing the banner does).
@@ -167,6 +180,10 @@ func (a *App) ApplyUpdateAndRestart() error {
 		a.setStage(StageError, err.Error())
 		return err
 	}
+	// The staged copy has served its purpose and is ~150MB. Pruning here
+	// rather than on a timer keeps <stateDir>/updates from accumulating
+	// one directory per version the user ever installed.
+	pruneStagingDirs()
 	// RestartDaemon owns the whole teardown: in-band shutdown frame,
 	// socket-liveness probe, signal escalation, refuse-if-still-alive,
 	// relaunch, quit. Reusing it is also what picks up the *new* hived,

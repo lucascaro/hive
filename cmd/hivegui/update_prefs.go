@@ -118,5 +118,16 @@ func (a *App) SaveUpdateSettings(s UpdateSettings) error {
 			return err
 		}
 	}
-	return saveUpdateSettings(s)
+	prev, _ := loadUpdateSettings()
+	if err := saveUpdateSettings(s); err != nil {
+		return err
+	}
+	// A channel change invalidates everything the last check produced.
+	// Without this, switching release -> latest and pressing Update
+	// (with no re-check in between) installs the GitHub release the
+	// *previous* channel found — the wrong artifact entirely.
+	if prev.Channel != s.Channel {
+		a.forgetUpdateState()
+	}
+	return nil
 }

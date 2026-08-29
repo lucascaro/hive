@@ -129,6 +129,53 @@ function wireDaemonBanner() {
   });
 }
 
+// applyUpdateAndRestart is the ONE way either surface applies a staged
+// update. Both the banner and the Settings modal call it.
+//
+// It exists because ApplyUpdateAndRestart ends in RestartDaemon, which
+// is exactly as destructive as the Restart Hive action beside it: every
+// running shell and agent dies. AGENTS.md requires destructive actions
+// to go through the confirm overlay, and the first cut of this feature
+// wired both buttons straight to the binding instead.
+//
+// It also claims `daemonRestarting`, which is what stops events.ts from
+// flashing a red "disconnected" status while the daemon we deliberately
+// killed is coming back. A restart path that skips that flag looks like
+// a crash to the user.
+//
+// versionLabel names what is about to be installed ("2.5.0", or a commit
+// on the latest channel); empty is tolerated so a caller that has lost
+// track of it still gets a truthful, if vaguer, dialog.
+export async function applyUpdateAndRestart(versionLabel = '') {
+  // Same re-entrancy shape as restartHive: claimed before the first
+  // await, because the confirm dialog is itself a window in which a
+  // second click on the other surface would slip past.
+  if (daemonRestarting) return;
+  daemonRestarting = true;
+  try {
+    const title = versionLabel
+      ? `Install ${versionLabel} and restart Hive?`
+      : 'Install the update and restart Hive?';
+    const ok = await Confirm(
+      title,
+      'Hive will close, terminate every running shell and agent, and ' +
+        'reopen on the new version. Save your work first.\n\n' +
+        'Continue?',
+    );
+    if (!ok) return;
+    try {
+      await ApplyUpdateAndRestart();
+      // On success this process is already quitting; control reaching
+      // here means the swap or the daemon teardown refused, and the
+      // window the user is looking at still works.
+    } catch (err) {
+      flashStatus(`update failed: ${err}`, true);
+    }
+  } finally {
+    daemonRestarting = false;
+  }
+}
+
 // Update-available banner. Backend's startUpdateCheckLoop emits
 // "update:available" on startup + every 6h when a newer GitHub
 // release tag than buildinfo.Version() is found. The user can also
@@ -162,6 +209,10 @@ function renderUpdateAction(info: main.UpdateInfo | null) {
   updateBannerAction.textContent = btn.label;
   updateBannerAction.disabled = btn.disabled;
   updateBannerAction.dataset.action = btn.action;
+  // Kept on the button, not on the banner: banner.dataset.version is the
+  // per-version dismiss key, and showUpdateBanner deletes it on every
+  // show — so by the time the button says Restart it would be gone.
+  updateBannerAction.dataset.version = info?.latest || '';
 }
 
 function showUpdateBanner(
@@ -264,9 +315,9 @@ function wireUpdateBanner() {
   updateBannerAction.addEventListener('click', () => {
     const action = updateBannerAction.dataset.action;
     if (action === 'restart') {
-      // The swap runs before the relaunch, so a failure here leaves the
-      // window working — surfaced as a status flash, not a dead button.
-      ApplyUpdateAndRestart().catch(reportFailure('apply update'));
+      // Confirm + guard live in the shared wrapper; never call the
+      // binding directly from a click handler.
+      void applyUpdateAndRestart(updateBannerAction.dataset.version || '');
       return;
     }
     if (action === 'start') {
