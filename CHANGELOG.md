@@ -119,6 +119,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A session could go solid black when you entered grid mode or switched
+  between sessions in a grid, and stayed black until you resized the
+  window. Focusing a terminal made the browser scroll it out of its own
+  box to bring the (invisible) input target into view, so the text was
+  still there, just parked above the visible area. Nothing is scrolled
+  on focus any more.
+
 - The worktree browser kept showing a branch it had already deleted. A
   delete that got partway — the local branch removed, deleting it on
   the remote refused — reported the failure and stopped there, so the
