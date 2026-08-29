@@ -92,8 +92,30 @@ mid-history — are unchanged.
 | full `e2e-real` with `CI=true` | 11 passed / 10 skipped | 21 passed, 3/3 runs |
 | mock `e2e` with `CI=true` | 182 passed | 182 passed, 0 flaky |
 
-**Re-gated.** The `test.skip(!!process.env.CI, ...)` quarantine is removed from
-all three specs, so CI runs 21 of 21 e2e-real tests again instead of 2 of 12.
+**Re-gated, with one exception.** The file-level
+`test.skip(!!process.env.CI, ...)` quarantine is removed from all three specs,
+so CI runs the suite again instead of 2 of its 12 tests.
+
+The exception is `scroll-codex.spec.ts` → *a reader scrolled into history is
+not yanked to the bottom by a resize replay*, which is quarantined on CI **on
+its own**, and for a different reason than the rest of this spec describes:
+
+- It is **genuinely load-dependent**, which is what this spec originally
+  suspected of all of them and which turned out to be false for the other
+  three. Green locally on an idle machine across many full-suite runs; failed
+  on CI macOS (run 33143976246) and CI Linux (run for `ea0e572`) with
+  `viewportY == baseY == 5000`; and reproduces locally **1 run in 3** with 18
+  CPU hogs running.
+- Its guard is **not** stale. The assertion is correct, and under contention
+  the reader really is being yanked to the bottom by a replay — the exact
+  scroll-jump class this file exists to catch. So the open question is about
+  the product, not the harness: does the follow-intent restore hold when the
+  replay lands slowly?
+
+That distinction matters for whoever picks this up. The other three failed
+against correct code and needed a test fix. This one may be reporting a real
+defect and needs a diagnosis, not a guard change. Ten consecutive green CI
+runs remain the bar before it comes off quarantine.
 
 `retries: 1` stays on both Playwright configs, but is now paired with
 `failOnFlakyTests: !!process.env.CI`: a retry buys the diagnostics of a second
