@@ -236,3 +236,7 @@ build, and reset the channel to `Release`.
 
 - If the bundle is ever signed/notarized, the in-place swap needs revisiting. Tracked as a
   `ponytail:` comment in the apply path rather than a blocker.
+
+## PR convergence ledger
+
+<Append-only. One line per `/hs-review-loop` iteration.>
