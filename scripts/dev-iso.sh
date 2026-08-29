@@ -150,7 +150,17 @@ echo "    HIVE_STATE_DIR=$iso_dir/state"
 #   marker": no transcript is written, so the conversation never appears
 #   in /resume and Restart has nothing to resume by id. Silent, and it
 #   looks exactly like a Hive bug.
+#   SHELL — hived hands its own $SHELL to every session PTY
+#   (internal/session/defaultShell). A terminal that isn't your login
+#   shell — Claude Code's bash/zsh, say — would otherwise make every
+#   iso session open in that shell while prod (launched by Finder, which
+#   reads the directory record) opens in your real one. Ask the
+#   directory service, and fall back to the inherited value.
+login_shell=$(dscl . -read "/Users/$(id -un)" UserShell 2>/dev/null | awk '{print $2}')
+[[ -x "$login_shell" ]] || login_shell="$SHELL"
+
 env -u dirstack -u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE \
+  SHELL="$login_shell" \
   HIVE_SOCKET="$iso_dir/hived.sock" \
   HIVE_STATE_DIR="$iso_dir/state" \
   "$app"
