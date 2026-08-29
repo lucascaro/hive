@@ -87,12 +87,23 @@ function renderMinimizedProjects(activePID: string) {
   }
 }
 
+// projectHasAttention reports whether any session in the project is
+// ringing. A minimized project has no session rows in the sidebar, so
+// the chip is the only surface left to carry the bell — without this a
+// BEL inside a minimized project is invisible until ⌘B finds it.
+function projectHasAttention(pid: string): boolean {
+  return state.sessions.some(
+    (s) => readProjectId(s) === pid && state.attention.has(s.id),
+  );
+}
+
 function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   const li = document.createElement('li');
   li.className = 'min-project-chip';
   li.dataset.pid = p.id;
   li.style.setProperty('--project-color', p.color || '#888');
   if (p.id === activePID) li.classList.add('active');
+  if (projectHasAttention(p.id)) li.classList.add('attention');
 
   // A real <button>, like the session tray's chip (app/view.ts): the
   // chip body is an action, and on a bare <li> it would be mouse-only.
@@ -149,6 +160,7 @@ export function updateSidebarSelection() {
     '.min-project-chip',
   ) ?? []) {
     el.classList.toggle('active', el.dataset.pid === activePID);
+    el.classList.toggle('attention', projectHasAttention(el.dataset.pid ?? ''));
   }
   for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
     const sid = el.dataset.sid;

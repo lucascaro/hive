@@ -191,6 +191,18 @@ body.resizing-sidebar #app { transition: none; }
   background: color-mix(in srgb, var(--project-color, #888) 12%, transparent);
   color: #ddd;
 }
+/* A minimized project has no session rows, so the chip carries the
+   bell. Reuses the session pulse by aliasing --session-color to the
+   project color, and glows the color dot the way .session-item.attention
+   glows its ::before. */
+.min-project-chip.attention {
+  --session-color: var(--project-color, #888);
+  animation: hive-attention-pulse 1.2s ease-in-out infinite;
+  color: #ddd;
+}
+.min-project-chip.attention .min-project-color {
+  box-shadow: 0 0 6px var(--project-color, #888);
+}
 .min-project-color {
   width: 6px;
   height: 6px;

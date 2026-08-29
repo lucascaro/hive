@@ -88,6 +88,14 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 
 - **Greptile P1 — ⌘[ / ⌘] into a project whose session was never rendered showed a blank pane.** `showSingle` only shows a tile that already exists, and `shiftActiveProject` sets the active session through `deps.setActive` without ever going through `switchTo`, so nothing created the tile. Pre-existing (it hit any post-restart ⌘] in single view) but newly reachable through the grid→single fallback. Fixed by calling `deps.ensureTerm(target)` before `setActive`, with a test that empties `state.terms` and asserts the tile is created.
 
+## Review findings addressed (iter 4)
+
+- **IMPORTANT — minimized-project chips never surfaced bells.** A minimized project has no session rows in the sidebar, so a BEL inside one produced no visible signal — only ⌘B or a desktop notification found it, unlike a minimized *session*, whose row survives and still gets `.attention`. Fixed with `projectHasAttention` in `sidebar.ts`: the chip takes `.attention` at render and in `updateSidebarSelection`, which is the path all three attention mutation sites (`onSessionBell`, `clearAttention`, the exit-notification path) already call. CSS aliases `--session-color` to the project color so the chip reuses the existing `hive-attention-pulse` keyframe, and glows the color dot.
+
+### Deferred (MINOR, iter 4)
+
+- **`view.ts:503` — full `renderSidebar()` on every single-row minimize/restore.** `minimizeSession` / `restoreSession` rebuild every project header and session row (tearing down all listeners) for a one-row state change, where the incremental `updateSidebarSelection` pattern would do. Deferred as a follow-up: the rebuild is what keeps the row's toggle glyph and the chip tray coherent, so an incremental path needs its own class/glyph swap plus tray patch — not a same-PR change. Only bites on projects with many sessions.
+
 ## Follow-up scope (post-review, operator request)
 
 - **Session rows carry the minimize control too.** `renderSession` gained a hover-revealed `–` button wired to `view.ts`'s existing `minimizeSession` / `restoreSession` through two new `SidebarDeps` members, matching how the project pair is injected. The button toggles rather than only minimizing: once a row is minimized, the row itself is the nearest way back, and a control that only ever minimizes would be a dead end on an already-minimized row. `minimizeSession` / `restoreSession` now also call `renderSidebar()` — they previously repainted only the chip tray, which would have left the row's toggle stale.
@@ -95,6 +103,7 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 
 ## Progress
 
+- **2026-08-29** — Review iter 4: COMMENT, 0 unresolved threads. Bell gap on minimized-project chips fixed (24 dom tests green); sidebar-rebuild MINOR deferred.
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
 - **2026-08-29** — Follow-up: session-row minimize control + click-anywhere restore on minimized project rows; 237 dom tests green; verified in a dev-iso build.
 - **2026-08-29** — Review iter 3 (Greptile P1): blank-pane on project shift fixed; 233 dom tests green.
@@ -107,6 +116,7 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 
 <Append-only. One line per review-loop iteration.>
 
+- **2026-08-29 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ab37c582; threads_open: 0; action: stop (converged, 1 IMPORTANT surfaced); head_sha: aae094a.
 - **2026-08-29 iter 3** — verdict: REQUEST_CHANGES (Greptile P1); mergeable: MERGEABLE; threads_open: 1; action: fix applied + push; head_sha: pending.
 - **2026-08-29 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 188c31c8; threads_open: 0; action: fixes applied + push; head_sha: pending.
 - **2026-08-29 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 1; action: fixes applied + push; head_sha: pending.

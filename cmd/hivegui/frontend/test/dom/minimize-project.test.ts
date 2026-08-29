@@ -204,6 +204,25 @@ describe('minimize project', () => {
     expect(chip('p2')?.classList.contains('active')).toBe(true);
   });
 
+  // A minimized project has no session rows, so a BEL inside it would
+  // otherwise be invisible in the sidebar until ⌘B found it. The chip
+  // is the only surface left to carry it.
+  it('marks the chip when a session inside the project rings', async () => {
+    const { updateSidebarSelection } = await import('../../src/app/sidebar.js');
+    const chip = (pid: string) =>
+      document.querySelector(`.min-project-chip[data-pid="${pid}"]`);
+    state.attention = new Set(['s2']);
+    minimize('p1');
+    minimize('p2');
+    expect(chip('p2')?.classList.contains('attention')).toBe(true);
+    expect(chip('p1')?.classList.contains('attention')).toBe(false);
+
+    // Clearing repaints in place, the same path clearAttention takes.
+    state.attention.delete('s2');
+    updateSidebarSelection();
+    expect(chip('p2')?.classList.contains('attention')).toBe(false);
+  });
+
   it('marks the chip active when it is the current project', () => {
     state.currentProjectId = 'p2';
     minimize('p2');
