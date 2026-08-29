@@ -23,6 +23,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | Shipped | Spec |
 |-------|-------|---------|------|
 | #<n> | <title> | <date> | [<slug>](<slug>.md) |
+| — | GUI: unbind ⌘/Ctrl+Enter from the grid toggle | 2026-08-28 (PR #287) | [249-unbind-cmd-enter-grid-toggle](249-unbind-cmd-enter-grid-toggle.md) |
 | #200 | GUI: scrollback corruption after single↔grid transitions; text overwrites mid-print | 2026-05-15 (PR #203) | [200-scrollback-corruption-after-grid-transitions](200-scrollback-corruption-after-grid-transitions.md) |
 | #192 | Worktrees should branch from origin/main, not local HEAD | 2026-05-13 (PR #193) | [192-worktrees-branch-from-origin-main](192-worktrees-branch-from-origin-main.md) |
 | #181 | Single-focus → grid leaves session looking focused but keyboard input is dead | 2026-05-10 (PR #182) | [181-single-focus-to-grid-input-dead](181-single-focus-to-grid-input-dead.md) |

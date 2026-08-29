@@ -17,10 +17,11 @@ export const NEWLINE_SEQ = '\x0a';
 // (no other modifier). xterm sends a plain \r for Shift+Enter — the
 // Shift is dropped — so Claude/Codex can't tell it from Enter and
 // submit. We intercept it here and send NEWLINE_SEQ instead. Shift+Enter
-// is the cross-platform "newline in a chat input" convention and, unlike
-// Cmd/Ctrl+Enter, carries no Cmd/Ctrl modifier, so it is not consumed by
-// the capture-phase window shortcut handler (which gates on Cmd/Ctrl) and
-// actually reaches the terminal. Plain Enter still submits.
+// is the cross-platform "newline in a chat input" convention, and it
+// carries no Cmd/Ctrl modifier, so the capture-phase window shortcut
+// handler (which gates on Cmd/Ctrl) never sees it and the key reaches
+// the terminal. Plain Enter still submits. Cmd/Ctrl+Enter was the
+// grid-project toggle until #249 unbound it; it is now inert.
 // Structural, not `KeyboardEvent`: the unit tests build plain fakes.
 // `code` is optional — only navHistoryKey's layout fallback reads it.
 export interface KeyEventLike {

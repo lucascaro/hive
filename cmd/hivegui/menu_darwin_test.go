@@ -89,6 +89,38 @@ func walkAccelerators(items []*menu.MenuItem, out map[string]*keys.Accelerator) 
 	}
 }
 
+// TestMenuHasNoEnterAccelerator keeps ⌘↩ out of the native menu (#249).
+// Same mechanism as the arrow guard below: AppKit consumes a registered
+// key equivalent before the webview sees a keydown, so a menu item here
+// would toggle grid no matter what the frontend does — which is exactly
+// how the "⌘Enter is unusable inside an agent session" bug worked. The
+// Playwright specs cannot catch a re-add: they drive the browser mock,
+// which has no native menu.
+func TestMenuHasNoEnterAccelerator(t *testing.T) {
+	m := buildAppMenu(&App{})
+	if m == nil {
+		t.Fatal("buildAppMenu returned nil on darwin")
+	}
+	accels := map[string]*keys.Accelerator{}
+	walkAccelerators(m.Items, accels)
+	for label, acc := range accels {
+		if acc.Key == "enter" || acc.Key == "return" {
+			t.Errorf("menu item %q binds %q; ⌘↩ must reach the terminal", label, acc.Key)
+		}
+	}
+	// Guard the walker itself: ⌘G, the binding that replaced ⌘↩, must
+	// still be found — otherwise this test passes on an empty walk.
+	var g bool
+	for _, acc := range accels {
+		if acc.Key == "g" {
+			g = true
+		}
+	}
+	if !g {
+		t.Error("walkAccelerators found no 'g' binding; the walker is broken")
+	}
+}
+
 // TestMenuHasNoArrowLeftRightAccelerators keeps ⌘←/⌘→ (and their shifted
 // forms) out of the native menu. AppKit consumes a registered key
 // equivalent before the webview ever sees a keydown, so a menu item here

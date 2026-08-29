@@ -1,0 +1,97 @@
+# GUI: unbind ⌘/Ctrl+Enter from the grid toggle
+
+- **Spec:** [docs/product-specs/249-unbind-cmd-enter-grid-toggle.md](../../product-specs/249-unbind-cmd-enter-grid-toggle.md)
+- **Issue:** —
+- **PR:** #287
+- **Branch:** `feature/249-unbind-cmd-enter-grid-toggle`
+- **Status:** completed
+
+## Summary
+
+Delete the ⌘/Ctrl+Enter → grid-project toggle from the renderer, the macOS View menu, the shortcuts panel, and the README. No replacement behavior: the chord becomes app-inert and whatever xterm does with a meta-modified Enter is what happens (in practice, nothing).
+
+## Research
+
+Verified against the Playwright Wails-mock harness (`cmd/hivegui/frontend/test/e2e/`) on 2026-08-28: ⌘Enter toggles single ⇄ grid-project in both directions and writes zero bytes to the PTY, so today's behavior is exactly what the code says.
+
+Relevant code:
+
+- `cmd/hivegui/frontend/src/app/keyboard.ts:334-340` — the `else if (e.key === 'Enter')` branch inside the capture-phase window keydown handler, behind the `cmdOrCtrl(e)` gate at line 264. `swallow()` calls `preventDefault()` + `stopPropagation()`, which is why the key never reaches xterm.
+- `cmd/hivegui/frontend/src/lib/shortcuts.ts:150` — `{ keys: m('enter'), label: 'Toggle grid ⇄ single' }` in the View group of the help panel. `enter` is also a key label used by unrelated rows (line 182 `⇧↩`, line 196 `Confirm`), so only the View row goes; the `enter` entry in the label map at line 37 stays.
+- `cmd/hivegui/menu_darwin.go:91-92` — `view.AddText("Toggle Grid (⌘↩ alternate)", keys.CmdOrCtrl("enter"), emit("menu:toggle-project-grid"))`. This is a duplicate emitter for the same event as the ⌘G item at line 87, so removing it needs no handler change in `app/events.ts`. On macOS an AppKit accelerator is matched before the webview sees the keydown, so this line must go or ⌘Enter keeps toggling regardless of the renderer edit.
+- `README.md:97` — `| ⌘Enter | Toggle grid / single |` in the shortcut table.
+
+Constraints / non-issues:
+
+- `cmd/hivegui/menu_darwin_test.go` has no assertion naming the alternate item (`TestSessionMenuAttentionItems`, `TestMenuHasNoArrowLeftRightAccelerators` only), so no Go test needs editing — only re-running.
+- `test/e2e/focus.spec.ts:75` (`single → grid-project preserves keyboard focus`) drives `${MOD}+Enter` to reach grid mode. It must be re-pointed at ⌘G, otherwise it fails; its subject is the focus pipeline, not the binding.
+- Shift+Enter (#217, `lib/keymap.ts` `isShiftEnter` / `NEWLINE_SEQ`) is orthogonal — it carries no Cmd/Ctrl, so it never entered this branch. `test/e2e/shift-enter-newline.spec.ts` stays green untouched.
+- `docs/product-specs/217-*.md` documents ⌘Enter as the grid toggle in prose. Historical record of a shipped decision; left as-is, with the reversal recorded here and in spec 249's Notes.
+
+## Approach
+
+Straight deletion at all four sites rather than remapping the chord to a PTY byte. The user asked for unbind-only, and any pass-through would need an explicit `_writePty` in the xterm custom key handler (xterm emits nothing for meta+Enter on its own) — code with no requested behavior behind it.
+
+The macOS menu line is the load-bearing removal: with the AppKit accelerator still registered, deleting the renderer branch alone would leave ⌘Enter toggling grid on the platform where it was reported.
+
+### Files to change
+
+1. `cmd/hivegui/frontend/src/app/keyboard.ts` — delete the `else if (e.key === 'Enter')` branch (lines 334-340) and its comment.
+2. `cmd/hivegui/menu_darwin.go` — delete the `view.AddText("Toggle Grid (⌘↩ alternate)", ...)` call (lines 91-92).
+3. `cmd/hivegui/frontend/src/lib/shortcuts.ts` — delete the `Toggle grid ⇄ single` row (line 150).
+4. `README.md` — delete the `⌘Enter` row from the shortcut table (line 97).
+5. `cmd/hivegui/frontend/test/e2e/focus.spec.ts` — re-point the `single → grid-project preserves keyboard focus` test from `${MOD}+Enter` to `${MOD}+g`; rename it accordingly.
+6. `.changesets/` — one changeset for the user-visible shortcut removal.
+
+### New files
+
+- `cmd/hivegui/frontend/test/e2e/cmd-enter-unbound.spec.ts` — regression coverage for the removal.
+
+### Tests
+
+- `cmd-enter-unbound.spec.ts` → `⌘Enter in single mode does not enter grid` — boot 2 sessions, press `${MOD}+Enter`, assert `#terms` class is unchanged and still not `/grid/`.
+- `cmd-enter-unbound.spec.ts` → `⌘Enter in grid mode does not maximize` — enter grid via `${MOD}+g`, press `${MOD}+Enter`, assert still `/grid/`.
+- `cmd-enter-unbound.spec.ts` → `⌘G still toggles grid` — the control that proves the deletion did not take the working binding with it.
+- `focus.spec.ts` → existing focus test re-pointed at ⌘G (edit, not new).
+- `shift-enter-newline.spec.ts` → unchanged; must stay green (Shift+Enter still 0x0a, Enter still 0x0d).
+- `go test ./cmd/hivegui/...` → existing menu tests must stay green after the menu line is removed.
+
+## QA verdict
+
+- **2026-08-28** — verdict: PASS; checks: 3 dimensions / 0 failed / 0 followups; followups: none; one-line: all six success criteria verified against merged `8edb0df`, all three non-goals confirmed unimplemented, full check suite green.
+  - 2026-08-28 dimensions:
+    - build/lint/test — PASS — `go build ./...`, `go vet ./...`, `go test ./cmd/hivegui/... -count=1`, `biome ci .`, `npm run typecheck`, `scripts/test.sh unit dom e2e` (185 passed, 1 skipped)
+    - acceptance — PASS — all 6 success criteria evidenced at file:line; `cmd-enter-unbound.spec.ts`, `shift-enter-newline.spec.ts`, `focus.spec.ts` (10 passed) and `TestMenuHasNo*` green
+    - non-goals — PASS — no replacement behavior for ⌘Enter, ⌘G/⇧⌘G/Shift+Enter/plain Enter unchanged, binding not made configurable
+    - regression — PASS — `menu:toggle-project-grid` keeps both emitter (⌘G item) and handler; dead-session-overlay Enter path untouched; no orphaned imports left by the removed branch
+    - doc accuracy — PASS — CHANGELOG under `[Unreleased] → Changed`, README row removed, all four AGENTS.md Keybindings-Policy surfaces updated; every surviving ⌘↩ reference is either a removal note or legitimate history (#217, #186)
+
+## Decision log
+
+- **2026-08-28** — Added `TestMenuHasNoEnterAccelerator` in response to the iter-1 review. Why: the Playwright specs drive the browser mock, which has no native menu, so nothing would catch a re-added `keys.CmdOrCtrl("enter")` menu item — the load-bearing site. Mirrors the existing `TestMenuHasNoArrowLeftRightAccelerators` and reuses `walkAccelerators`.
+
+- **2026-08-28** — Unbind only; no pass-through byte for ⌘Enter. Why: explicitly chosen by the user at the loop's behavior gate; a pass-through would require new `_writePty` code in the xterm handler with no requested behavior behind it.
+- **2026-08-28** — Numbered 249, not 248. Why: no GitHub issue was created for this feature, and 248 is already a PR number in this repo.
+
+## Progress
+
+- **2026-08-28** — QA PASS across all three validator dimensions; stage → DONE, plan moved to `completed/`.
+
+- **2026-08-28** — Review-loop iter 2: APPROVE, 0 unresolved threads, no BLOCKING or IMPORTANT. Swept the three remaining MINOR stale-`⌘↩` comments. Loop converged.
+
+- **2026-08-28** — Review-loop iter 1: COMMENT, 0 unresolved threads. Applied the IMPORTANT finding (native-accelerator regression test) and both MINOR stale-comment findings; re-ran all checks green.
+
+- **2026-08-28** — Spec written, triaged bug / S / P2, research verified against the e2e harness.
+- **2026-08-28** — PR #287 opened; stage → REVIEW.
+- **2026-08-28** — Implemented on `feature/249-unbind-cmd-enter-grid-toggle`: all four bindings removed, `focus.spec.ts` re-pointed at ⌘G, `cmd-enter-unbound.spec.ts` added, CHANGELOG entry under Unreleased → Changed. New tests confirmed red against the pre-fix branch before being green after it. Checks: `go build ./...`, `go test ./cmd/hivegui/...`, `biome ci .`, `npm run typecheck`, `scripts/test.sh unit dom e2e` (185 passed, 1 skipped) — all pass.
+
+## PR convergence ledger
+
+<!-- append-only, one line per review-loop iteration -->
+
+- **2026-08-28 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0af39b3f9edfcc04f9e881f693f2c2015e8174e69db13336f28bca8735a05f08; threads_open: 0; action: stop (1 IMPORTANT + 2 MINOR applied by hand rather than shipped as a gap); head_sha: 42dbaa4f.
+- **2026-08-28 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop (3 MINOR stale-comment nits swept in a follow-up commit); head_sha: cb2ce2a.
+
+## Open questions
+
+None.

@@ -88,8 +88,6 @@ func buildAppMenu(a *App) *menu.Menu {
 	view.AddText("Toggle All Sessions Grid",
 		keys.Combo("g", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:toggle-all-grid"))
-	view.AddText("Toggle Grid (⌘↩ alternate)",
-		keys.CmdOrCtrl("enter"), emit("menu:toggle-project-grid"))
 
 	sess := m.AddSubmenu("Session")
 	sess.AddText("Next Session", keys.CmdOrCtrl("down"), emit("menu:next-session"))

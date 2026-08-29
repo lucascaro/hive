@@ -589,7 +589,7 @@ export function renderEmptyState() {
 
 export function setView(view: ViewMode) {
   // A grid of one tile looks like focused mode but loses the focused-mode
-  // keybindings, so ⌘G / ⇧⌘G / ⌘↩ below the floor stay where they are.
+  // keybindings, so ⌘G / ⇧⌘G below the floor stay where they are.
   // The startup restore of a persisted view goes through here too.
   const target = resolveView(
     view,

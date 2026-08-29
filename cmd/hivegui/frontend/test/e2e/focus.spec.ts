@@ -74,7 +74,10 @@ test.describe('grid-mode focus pipeline', () => {
 
   test('single → grid-project preserves keyboard focus', async ({ page }) => {
     await bootWithSessions(page, 2);
-    await page.keyboard.press(`${MOD}+Enter`);
+    // ⌘G, not ⌘Enter: the ⌘Enter grid toggle was unbound in #249. This
+    // test is about the focus pipeline, so it just needs any route into
+    // grid-project mode.
+    await page.keyboard.press(`${MOD}+g`);
     await expect(page.locator('#terms')).toHaveClass(/grid/);
     await page.waitForFunction(
       () => {

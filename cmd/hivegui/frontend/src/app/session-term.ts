@@ -504,8 +504,9 @@ export class SessionTerm {
       // Shift, so Claude/Codex can't tell it from Enter and submit.
       // NEWLINE_SEQ (Ctrl+J / \x0a) is the newline byte both agents accept
       // with no terminal config. Plain Enter still submits. Cmd/Ctrl+Enter
-      // is intentionally not used here — it is the grid-project toggle, and
-      // the capture-phase window handler consumes it before xterm sees it.
+      // is deliberately NOT bound here either: it used to be the
+      // grid-project toggle and was unbound outright in #249, with no
+      // replacement behavior asked for.
       if (isShiftEnter(e)) {
         e.preventDefault();
         this._writePty(NEWLINE_SEQ);
