@@ -64,11 +64,27 @@ The tray is a sibling `<ul>` between `#projects` and the version footer, not a t
 - **2026-08-29** — Project-minimize is a separate set from `state.minimized`, unified behind `isSessionHidden` / `filterHidden`. Why: folding sessions into `state.minimized` would lose per-session minimize state on restore.
 - **2026-08-29** — Tray is a sibling `<ul>`, read with the non-throwing `pageEl`. Why: existing jsdom tests mount partial sidebar markup and must not fail on an element they never exercise.
 
+## Review findings addressed (iter 1)
+
+- **BLOCKING** — `switchToProject` / `shiftActiveProject` could activate a session inside a still-minimized project while in a grid view, leaving the selection on a tile the filter removes and handing keystrokes to an invisible terminal. Fixed with one shared guard, `fallBackToSingleIfActiveHidden()`, called from both: single mode ignores the hidden filter, so dropping to it preserves "selecting a minimized project does not restore it" while keeping the view coherent.
+- **IMPORTANT** — the chip body was a bare `<li>` with a click handler, so switch-without-restore was mouse-only. It is now a real `<button type="button">`, matching the session tray's chip.
+- **IMPORTANT** — the prune moved out of `renderSidebar` (which runs before the first project list arrives and would have pruned against an empty `state.projects`) into the `project:list` / `project:event` handlers, beside the existing `collapsed` prune.
+- **IMPORTANT** — `test/dom/keyboard-arrows.test.ts`'s `view.js` mock gained `minimizeProject` and a behavior-mirroring `isSessionHidden`; its own comment makes listing every imported export the file's invariant.
+- **IMPORTANT** — added four grid-mode dom tests (focus handoff on minimize, both fall-back paths, and the no-op case), the branch every earlier test skipped by running in single mode.
+- **MINOR (declined)** — `hiddenSessionIds()` → `renderEmptyState` has no test because the `all-minimized` state is unreachable through project minimize: `minimizeProject` ends in `enforceViewFloor()`, which drops to single before the model could return that kind.
+
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-29** — Review iter 1: REQUEST_CHANGES (1 BLOCKING, 5 IMPORTANT). All addressed except one declined MINOR; unit/dom/e2e green (229 dom tests).
 - **2026-08-29** — PR #290 opened; stage = REVIEW.
 - **2026-08-29** — Implemented. go + unit + dom + e2e layers green (17 new unit/dom tests, 2 new ⌘B round-trip tests, 1 e2e layout test); `biome ci .` and `tsc --noEmit` clean. Layout verified in Chromium.
+
+## PR convergence ledger
+
+<Append-only. One line per review-loop iteration.>
+
+- **2026-08-29 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 1; action: fixes applied + push; head_sha: pending.
 
 ## Open questions
 

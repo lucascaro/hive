@@ -50,6 +50,10 @@ let state: typeof import('../../src/app/state.js').state;
 let renderSidebar: () => void;
 let bridge: typeof import('../../src/bridge.js');
 let gridScopeFor: typeof import('../../src/app/view.js').gridScopeFor;
+let minimizeProject: typeof import('../../src/app/view.js').minimizeProject;
+let switchToProject: typeof import('../../src/app/view.js').switchToProject;
+let shiftActiveProject: typeof import('../../src/app/view.js').shiftActiveProject;
+let initView: typeof import('../../src/app/view.js').initView;
 
 const noop = () => {};
 
@@ -72,6 +76,10 @@ beforeAll(async () => {
   bridge = await import('../../src/bridge.js');
   const view = await import('../../src/app/view.js');
   gridScopeFor = view.gridScopeFor;
+  minimizeProject = view.minimizeProject;
+  switchToProject = view.switchToProject;
+  shiftActiveProject = view.shiftActiveProject;
+  initView = view.initView;
   const sidebar = await import('../../src/app/sidebar.js');
   renderSidebar = sidebar.renderSidebar;
   sidebar.initSidebar({
@@ -177,14 +185,18 @@ describe('minimize project', () => {
     ).toBe(true);
   });
 
-  it('drops dead ids from the persisted set', () => {
+  // The prune lives in the project:list / project:event handlers, not
+  // in renderSidebar: renderSidebar runs before the first project list
+  // arrives, and pruning against an empty state.projects there would
+  // wipe the persisted set instead of trimming it.
+  it('keeps the set intact across a render with no projects loaded yet', () => {
     minimize('p3');
-    state.projects = state.projects.filter((p) => p.id !== 'p3');
+    state.projects = [];
     renderSidebar();
-    expect(state.minimizedProjects.has('p3')).toBe(false);
+    expect(state.minimizedProjects.has('p3')).toBe(true);
     expect(
       JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
-    ).toEqual([]);
+    ).toEqual(['p3']);
   });
 
   it("hides the project's sessions from grid views", () => {
@@ -238,5 +250,149 @@ describe('reordering around a minimized project', () => {
       '',
       1,
     );
+  });
+});
+
+// The grid branches are where the risk lives: everything above runs in
+// single mode, where the hidden-session filter is not consulted at all.
+// A selection that lands on a session the grid filters out is the
+// "sidebar moves, nothing appears, keystrokes vanish" failure.
+// The prune's real home: the daemon events that carry authoritative
+// project data.
+describe('project events', () => {
+  async function handlers() {
+    const { wireDaemonEvents } = await import('../../src/app/events.js');
+    const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
+    vi.mocked(bridge.EventsOn).mockClear();
+    wireDaemonEvents({
+      switchTo: noop,
+      renderMinimizedTray: noop,
+      renderGrid: noop,
+      enforceViewFloor: noop,
+      updateAppTitle: noop,
+      focusActiveTerm: noop,
+      refocusActiveTerm: noop,
+      isDaemonRestarting: () => false,
+      scrollTrace: createScrollTrace({ enabled: false }),
+    });
+    const map = new Map<string, (json: string) => void>();
+    for (const [name, fn] of vi.mocked(bridge.EventsOn).mock.calls) {
+      map.set(name as string, fn as (json: string) => void);
+    }
+    return map;
+  }
+
+  it('drops the minimized id when the project is deleted', async () => {
+    minimize('p3');
+    const h = await handlers();
+    h.get('project:event')?.(
+      JSON.stringify({ kind: 'removed', project: { id: 'p3' } }),
+    );
+    expect(state.minimizedProjects.has('p3')).toBe(false);
+    expect(
+      JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
+    ).toEqual([]);
+  });
+
+  it('prunes ids missing from an authoritative project list', async () => {
+    minimize('p3');
+    const h = await handlers();
+    h.get('project:list')?.(
+      JSON.stringify({ projects: [{ id: 'p1' }, { id: 'p2' }] }),
+    );
+    expect(state.minimizedProjects.has('p3')).toBe(false);
+  });
+
+  it('prunes against an empty authoritative list', async () => {
+    // An empty list means every project really is gone — unlike the
+    // empty state.projects a pre-boot renderSidebar would see.
+    minimize('p3');
+    const h = await handlers();
+    h.get('project:list')?.(JSON.stringify({ projects: [] }));
+    expect(state.minimizedProjects.has('p3')).toBe(false);
+  });
+});
+
+describe('grid views', () => {
+  const setActive = vi.fn((id: string | null) => {
+    state.activeId = id;
+  });
+
+  beforeEach(async () => {
+    setActive.mockClear();
+    const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
+    initView({
+      // No xterm in jsdom: renderGrid only reaches for the tile's host
+      // element and the show/hide pair.
+      ensureTerm: (info) => {
+        const existing = state.terms.get(info.id);
+        if (existing) return existing;
+        const tile = {
+          host: document.createElement('div'),
+          attached: true,
+          needsReattach: false,
+          deadOverlayShown: false,
+          phase: '',
+          setPhase() {},
+          revealAfterReplay() {},
+          ensureAttached() {},
+          show() {},
+          hide() {},
+          rebaselineReplayCols() {},
+          _onBodyResize() {},
+          setInfo() {},
+          setProject() {},
+          setDead() {},
+          writeData() {},
+          destroy() {},
+          _closeDead() {},
+          _dismissDead() {},
+        };
+        state.terms.set(info.id, tile);
+        return tile;
+      },
+      setActive,
+      focusActiveTerm: () => {},
+      scrollTrace: createScrollTrace({ enabled: false }),
+    });
+    state.terms = new Map();
+    state.view = 'grid-all';
+    state.activeId = 's2';
+  });
+
+  it('hands focus to a still-visible session when minimizing its project', () => {
+    minimizeProject('p2');
+    expect(state.activeId).not.toBe('s2');
+    expect(gridScopeFor('grid-all').map((s) => s.id)).toContain(
+      state.activeId as string,
+    );
+  });
+
+  it('falls back to single when selecting a minimized project', () => {
+    minimizeProject('p2');
+    state.view = 'grid-all';
+    switchToProject('p2');
+    // The session is selected but has no tile in the grid, so the view
+    // drops to single rather than focusing an invisible terminal.
+    expect(state.activeId).toBe('s2');
+    expect(state.view).toBe('single');
+  });
+
+  it('falls back to single when ⌘[ / ⌘] lands on a minimized project', () => {
+    minimizeProject('p2');
+    state.view = 'grid-all';
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    shiftActiveProject(1);
+    expect(state.currentProjectId).toBe('p2');
+    expect(state.view).toBe('single');
+  });
+
+  it('leaves a grid view alone when the target project is visible', () => {
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    switchToProject('p3');
+    expect(state.view).toBe('grid-all');
+    expect(state.activeId).toBe('s3');
   });
 });

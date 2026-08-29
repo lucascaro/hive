@@ -161,15 +161,31 @@ body.resizing-sidebar #app { transition: none; }
 .min-project-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
   border-radius: 3px;
+  color: #888;
+  min-width: 0;
+}
+.min-project-open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #888;
+  text-align: left;
   cursor: pointer;
-  min-width: 0;
+}
+.min-project-open:focus-visible,
+.min-project-restore:focus-visible {
+  outline: 1px solid rgba(245, 158, 11, 0.8);
+  outline-offset: -1px;
 }
 .min-project-chip:hover {
   background: rgba(255, 255, 255, 0.04);
@@ -206,10 +222,7 @@ body.resizing-sidebar #app { transition: none; }
 }
 .min-project-chip:hover .min-project-restore { color: #ddd; }
 .min-project-restore:hover { background: rgba(255, 255, 255, 0.06); }
-.min-project-restore:focus-visible {
-  outline: 1px solid rgba(245, 158, 11, 0.8);
-  outline-offset: 1px;
-}
+
 
 .project {
   margin-bottom: 4px;

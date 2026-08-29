@@ -9,12 +9,10 @@ import { UpdateSession, UpdateProject } from '../bridge.js';
 import {
   state,
   saveCollapsed,
-  saveMinimizedProjects,
   type ProjectInfo,
   type SessionInfo,
 } from './state.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
-import { pruneCollapsed } from '../lib/collapsed.js';
 import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
@@ -57,16 +55,6 @@ export function initSidebar(injected: SidebarDeps) {
 export function renderSidebar() {
   projectsUL.innerHTML = '';
   const activePID = activeProjectId();
-  // Drop ids for projects that no longer exist, so the persisted set
-  // can't grow forever behind deletions (same rule as `collapsed`).
-  const pruned = pruneCollapsed(
-    state.minimizedProjects,
-    state.projects.map((p) => p.id),
-  );
-  if (pruned.changed) {
-    state.minimizedProjects = pruned.set;
-    saveMinimizedProjects();
-  }
   for (const p of state.projects) {
     if (state.minimizedProjects.has(p.id)) continue;
     projectsUL.appendChild(renderProject(p, activePID));
@@ -100,22 +88,26 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   li.style.setProperty('--project-color', p.color || '#888');
   if (p.id === activePID) li.classList.add('active');
 
+  // A real <button>, like the session tray's chip (app/view.ts): the
+  // chip body is an action, and on a bare <li> it would be mouse-only.
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'min-project-open';
+  open.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
+  open.setAttribute('aria-label', `Switch to ${p.name}`);
+  // Selecting a minimized project does NOT un-minimize it: you can
+  // launch into a project you have set aside, and only the explicit ＋
+  // puts its rows back. view.ts drops out of a grid view when the
+  // session this activates has no tile there.
+  open.addEventListener('click', () => deps.switchToProject(p.id));
+
   const dot = document.createElement('span');
   dot.className = 'min-project-color';
 
   const name = document.createElement('span');
   name.className = 'min-project-name';
   name.textContent = p.name ?? '';
-  name.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
-
-  // Clicking the chip body selects the project without un-minimizing
-  // it: you can launch into a project you have set aside, and only the
-  // explicit ＋ puts the rows back.
-  li.addEventListener('click', (e) => {
-    const t = e.target;
-    if (t instanceof Element && t.closest('.min-project-restore')) return;
-    deps.switchToProject(p.id);
-  });
+  open.append(dot, name);
 
   const restore = document.createElement('button');
   restore.type = 'button';
@@ -128,7 +120,7 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
     deps.restoreProject(p.id);
   });
 
-  li.append(dot, name, restore);
+  li.append(open, restore);
   return li;
 }
 

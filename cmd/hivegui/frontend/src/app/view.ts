@@ -155,13 +155,31 @@ export function switchToProject(pid: string) {
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === pid)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (sessions[0]) switchTo(sessions[0].id);
-  else {
+  if (sessions[0]) {
+    switchTo(sessions[0].id);
+    fallBackToSingleIfActiveHidden();
+  } else {
     state.activeId = null;
     if (state.view === 'single') showSingle(null);
     else renderGrid();
     updateSidebarSelection();
   }
+}
+
+// fallBackToSingleIfActiveHidden drops out of a grid view when the
+// session that was just made active has no tile in it. Selecting a
+// minimized project (chip click, ⌘[ / ⌘]) deliberately does NOT
+// un-minimize it — but the grid filters its sessions out, so in a grid
+// view the selection would move with nothing appearing and
+// focusActiveTerm would hand keystrokes to an invisible terminal. That
+// is the same failure navGo's isSessionHidden branch exists to prevent;
+// single mode ignores the filter, so falling back to it is the fix that
+// keeps "select without restoring" working.
+function fallBackToSingleIfActiveHidden() {
+  if (state.view === 'single') return;
+  const id = state.activeId;
+  if (!id || !isSessionHidden(id)) return;
+  setView('single');
 }
 
 // gridLayout caches the (rows, cols) chosen for the current scope plus
@@ -382,6 +400,9 @@ export function shiftActiveProject(delta: number) {
   }
   if (state.view === 'single') showSingle(state.activeId);
   else renderGrid();
+  // Same guard as switchToProject: ⌘[ / ⌘] can land on a project whose
+  // sessions the grid filters out.
+  fallBackToSingleIfActiveHidden();
   updateSidebarSelection();
   setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }

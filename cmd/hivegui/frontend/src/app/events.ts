@@ -12,7 +12,7 @@ import {
   ConnectControl,
   LogFrontend,
 } from '../bridge.js';
-import { state, saveCollapsed } from './state.js';
+import { state, saveCollapsed, saveMinimizedProjects } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
@@ -247,15 +247,21 @@ export function wireDaemonEvents(injected: EventsDeps) {
     if (!state.currentProjectId && state.projects[0]) {
       state.currentProjectId = state.projects[0].id;
     }
-    // Drop persisted collapse entries for projects that no longer exist
-    // so the localStorage key can't grow forever.
-    const pruned = pruneCollapsed(
-      state.collapsed,
-      state.projects.map((p) => p.id),
-    );
+    // Drop persisted collapse / minimize entries for projects that no
+    // longer exist so the localStorage keys can't grow forever. Both
+    // prunes live here, not in renderSidebar: this event is the arrival
+    // of authoritative project data, and pruning against a
+    // not-yet-populated state.projects would wipe the sets instead.
+    const ids = state.projects.map((p) => p.id);
+    const pruned = pruneCollapsed(state.collapsed, ids);
     if (pruned.changed) {
       state.collapsed = pruned.set;
       saveCollapsed();
+    }
+    const prunedMin = pruneCollapsed(state.minimizedProjects, ids);
+    if (prunedMin.changed) {
+      state.minimizedProjects = prunedMin.set;
+      saveMinimizedProjects();
     }
     renderSidebar();
   });
@@ -285,6 +291,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     } else if (ev.kind === 'removed') {
       if (i >= 0) state.projects.splice(i, 1);
       if (state.collapsed.delete(ev.project.id)) saveCollapsed();
+      if (state.minimizedProjects.delete(ev.project.id)) {
+        saveMinimizedProjects();
+      }
       if (state.currentProjectId === ev.project.id) {
         state.currentProjectId = state.projects[0]?.id ?? null;
       }
