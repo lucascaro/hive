@@ -32,6 +32,8 @@ beforeAll(async () => {
     switchToProject: noop,
     minimizeProject: noop,
     restoreProject: noop,
+    minimizeSession: noop,
+    restoreSession: noop,
     confirmAndDeleteProject: noop,
     renderEmptyState: noop,
     refocusActiveTerm: noop,

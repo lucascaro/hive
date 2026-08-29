@@ -33,6 +33,10 @@ export interface SidebarDeps {
   // module — a direct import back would close the cycle.
   minimizeProject: (pid: string) => void;
   restoreProject: (pid: string) => void;
+  // The session-level twin of the pair above, same owner (view.ts) and
+  // same reason: minimizing repaints the grid and can move focus.
+  minimizeSession: (id: string) => void;
+  restoreSession: (id: string) => void;
   confirmAndDeleteProject: (p: ProjectInfo) => void;
   renderEmptyState: () => void;
   refocusActiveTerm: () => void;
@@ -43,6 +47,8 @@ let deps: SidebarDeps = {
   switchToProject: () => {},
   minimizeProject: () => {},
   restoreProject: () => {},
+  minimizeSession: () => {},
+  restoreSession: () => {},
   confirmAndDeleteProject: () => {},
   renderEmptyState: () => {},
   refocusActiveTerm: () => {},
@@ -94,12 +100,12 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   open.type = 'button';
   open.className = 'min-project-open';
   open.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
-  open.setAttribute('aria-label', `Switch to ${p.name}`);
-  // Selecting a minimized project does NOT un-minimize it: you can
-  // launch into a project you have set aside, and only the explicit ＋
-  // puts its rows back. view.ts drops out of a grid view when the
-  // session this activates has no tile there.
-  open.addEventListener('click', () => deps.switchToProject(p.id));
+  open.setAttribute('aria-label', `Restore ${p.name}`);
+  // Clicking the row restores the project — the same thing the ＋
+  // does. A minimized row is a thing you put away; the only reason to
+  // click it is to get it back, so making the whole row the target
+  // beats a 12px button as the sole way out.
+  open.addEventListener('click', () => deps.restoreProject(p.id));
 
   const dot = document.createElement('span');
   dot.className = 'min-project-color';
@@ -475,10 +481,32 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   });
   swatch.appendChild(colorInput);
 
+  // The same control the grid tile carries (app/session-term.ts), on
+  // the row — so a session can be pushed out of the grid without first
+  // finding its tile. It toggles, because once a row is minimized the
+  // tray chip is the only way back and the row is right here.
+  const isMin = state.minimized.has(s.id);
+  if (isMin) li.classList.add('minimized');
+  const minBtn = document.createElement('button');
+  minBtn.type = 'button';
+  minBtn.className = 'session-minimize';
+  minBtn.textContent = isMin ? '＋' : '–';
+  minBtn.title = isMin ? 'Restore to the grid' : 'Minimize (hide from grid)';
+  minBtn.setAttribute(
+    'aria-label',
+    `${isMin ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`,
+  );
+  minBtn.addEventListener('click', (e) => {
+    // Don't also switch to the session the button sits on.
+    e.stopPropagation();
+    if (isMin) deps.restoreSession(s.id);
+    else deps.minimizeSession(s.id);
+  });
+
   if (glyph) {
-    li.append(dot, text, glyph, swatch);
+    li.append(dot, text, glyph, minBtn, swatch);
   } else {
-    li.append(dot, text, swatch);
+    li.append(dot, text, minBtn, swatch);
   }
   li.addEventListener('click', (e) => {
     if (e.target === colorInput || e.target === swatch) return;

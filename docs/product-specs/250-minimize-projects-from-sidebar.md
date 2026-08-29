@@ -18,14 +18,17 @@ Sessions already have this affordance: the tile's `–` button minimizes one ses
 
 Each project header carries a `–` (minimize) button, the same glyph the session tile uses. Minimizing a project removes it from the main sidebar list and adds a name-only chip to a compact tray pinned to the bottom of the sidebar. Its sessions keep running, but they stop being tiled in grid views — the same hiding the session tray does, applied to a whole project at once.
 
-Each chip carries a `＋` button that restores the project. A restored project reappears at exactly the position it held before, because minimizing never touches the project's order — the sidebar simply stops rendering it in the main list.
+Each chip carries a `＋` button that restores the project, and clicking anywhere on the chip row does the same — a row you have put away is only worth clicking to get it back.
+
+Sessions get the same control one level down: every sidebar session row carries the `–` button the grid tile has, so a session can be minimized without first finding its tile. The row stays in the list, dimmed, with its control flipped to `＋`. A restored project reappears at exactly the position it held before, because minimizing never touches the project's order — the sidebar simply stops rendering it in the main list.
 
 Minimized state persists across GUI restarts, like the collapsed-projects set.
 
 ## Success criteria
 
 - Clicking `–` on a project header removes it from the main sidebar list and shows its name in a tray at the bottom of the sidebar.
-- Clicking `＋` on a chip returns the project to its original index in the sidebar list, with its sessions and collapsed state unchanged.
+- Clicking `＋` on a chip — or anywhere on the chip row — returns the project to its original index in the sidebar list, with its sessions and collapsed state unchanged.
+- Clicking `–` on a sidebar session row hides that session from grid views exactly as the grid tile's control does, and the row's control flips to `＋` to restore it.
 - While a project is minimized, none of its sessions appear in `grid-all` or `grid-project`; they remain alive and reachable via the sidebar chip, ⌘K, and ⌘[ / ⌘].
 - Reordering visible projects by drag while another project is minimized produces the same final order the user would get with nothing minimized (the minimized project keeps its slot).
 - The minimized set survives a GUI restart.

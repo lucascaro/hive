@@ -87,6 +87,8 @@ beforeAll(async () => {
     switchToProject: noop,
     minimizeProject: view.minimizeProject,
     restoreProject: view.restoreProject,
+    minimizeSession: view.minimizeSession,
+    restoreSession: view.restoreSession,
     confirmAndDeleteProject: noop,
     renderEmptyState: noop,
     refocusActiveTerm: noop,
@@ -151,6 +153,13 @@ describe('minimize project', () => {
   it('restores the project to its original index', () => {
     minimize('p2');
     click('.min-project-chip[data-pid="p2"] .min-project-restore');
+    expect(listedPIDs()).toEqual(['p1', 'p2', 'p3']);
+    expect(chipPIDs()).toEqual([]);
+  });
+
+  it('restores from a click anywhere on the row, not just the ＋', () => {
+    minimize('p2');
+    click('.min-project-chip[data-pid="p2"] .min-project-open');
     expect(listedPIDs()).toEqual(['p1', 'p2', 'p3']);
     expect(chipPIDs()).toEqual([]);
   });
@@ -225,6 +234,43 @@ describe('minimize project', () => {
     expect(gridScopeFor('grid-project', 'p2')).toEqual([]);
     // The sessions are hidden, not gone.
     expect(state.sessions.map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+  });
+});
+
+describe('session rows', () => {
+  const rowBtn = (sid: string) =>
+    document.querySelector<HTMLButtonElement>(
+      `.session-item[data-sid="${sid}"] .session-minimize`,
+    );
+
+  it('minimizes a session from its sidebar row', () => {
+    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.minimized.has('s2')).toBe(true);
+    // Same effect as the grid tile's control: out of the grid, still in
+    // the session list.
+    expect(gridScopeFor('grid-all').map((x) => x.id)).toEqual(['s1', 's3']);
+    expect(state.sessions.some((x) => x.id === 's2')).toBe(true);
+  });
+
+  it('toggles back to restore, and marks the row while minimized', () => {
+    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const row = document.querySelector(`.session-item[data-sid="s2"]`);
+    expect(row?.classList.contains('minimized')).toBe(true);
+    expect(rowBtn('s2')?.textContent).toBe('＋');
+
+    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.minimized.has('s2')).toBe(false);
+    expect(
+      document
+        .querySelector(`.session-item[data-sid="s2"]`)
+        ?.classList.contains('minimized'),
+    ).toBe(false);
+  });
+
+  it('does not switch to the session the button sits on', () => {
+    state.activeId = 's1';
+    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(state.activeId).toBe('s1');
   });
 });
 

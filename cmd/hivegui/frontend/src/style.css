@@ -367,6 +367,40 @@ body.resizing-sidebar #app { transition: none; }
   color: #ddd;
 }
 
+/* Hover-revealed, like .project-actions: the row is mostly name, and a
+   button parked on every row at rest would compete with it. Kept in the
+   layout at all times so revealing it never reflows the row. */
+.session-minimize {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #9a9a9a;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.session-item:hover .session-minimize,
+.session-minimize:focus-visible {
+  opacity: 1;
+}
+.session-minimize:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* A minimized session keeps its row — the row is where you put it back
+   from — but says so: dimmed, with the restore control always visible. */
+.session-item.minimized {
+  color: #777;
+}
+.session-item.minimized .session-minimize {
+  opacity: 1;
+}
+
 .session-item.selected {
   background: color-mix(in srgb, var(--session-color, #888) 18%, transparent);
   color: #fff;
@@ -1790,6 +1824,7 @@ body.resizing-sidebar #app { transition: none; }
 .min-chip:focus-visible,
 .min-project-open:focus-visible,
 .min-project-restore:focus-visible,
+.session-minimize:focus-visible,
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,

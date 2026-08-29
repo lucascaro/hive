@@ -88,9 +88,15 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 
 - **Greptile P1 — ⌘[ / ⌘] into a project whose session was never rendered showed a blank pane.** `showSingle` only shows a tile that already exists, and `shiftActiveProject` sets the active session through `deps.setActive` without ever going through `switchTo`, so nothing created the tile. Pre-existing (it hit any post-restart ⌘] in single view) but newly reachable through the grid→single fallback. Fixed by calling `deps.ensureTerm(target)` before `setActive`, with a test that empties `state.terms` and asserts the tile is created.
 
+## Follow-up scope (post-review, operator request)
+
+- **Session rows carry the minimize control too.** `renderSession` gained a hover-revealed `–` button wired to `view.ts`'s existing `minimizeSession` / `restoreSession` through two new `SidebarDeps` members, matching how the project pair is injected. The button toggles rather than only minimizing: once a row is minimized, the row itself is the nearest way back, and a control that only ever minimizes would be a dead end on an already-minimized row. `minimizeSession` / `restoreSession` now also call `renderSidebar()` — they previously repainted only the chip tray, which would have left the row's toggle stale.
+- **Clicking a minimized project row restores it.** This reverses the earlier "select without restoring" decision at the operator's request. The `＋` stays as the explicit affordance.
+
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-29** — Follow-up: session-row minimize control + click-anywhere restore on minimized project rows; 237 dom tests green; verified in a dev-iso build.
 - **2026-08-29** — Review iter 3 (Greptile P1): blank-pane on project shift fixed; 233 dom tests green.
 - **2026-08-29** — Review iter 2: COMMENT, 0 unresolved threads. All 4 IMPORTANT + 4 of 5 MINOR fixed anyway; 232 dom / 339 unit / 191 e2e green.
 - **2026-08-29** — Review iter 1: REQUEST_CHANGES (1 BLOCKING, 5 IMPORTANT). All addressed except one declined MINOR; unit/dom/e2e green (229 dom tests).

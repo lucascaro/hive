@@ -498,6 +498,9 @@ export function minimizeSession(id: string | null) {
     rebaselineGridReplayCols();
   }
   renderMinimizedTray();
+  // The sidebar row carries the same toggle, so it has to learn the
+  // new state — renderMinimizedTray only rebuilds the chip row.
+  renderSidebar();
   enforceViewFloor();
 }
 
@@ -522,6 +525,7 @@ export function restoreSession(id: string | null) {
   const pid = readProjectId(s);
   if (pid && state.minimizedProjects.has(pid)) restoreProject(pid);
   renderMinimizedTray();
+  renderSidebar();
   switchTo(id);
   if (state.view !== 'single') {
     rebaselineGridReplayCols();
