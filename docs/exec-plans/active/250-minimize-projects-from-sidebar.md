@@ -84,9 +84,14 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 - **MINOR** — the chip's focus rings joined the shared `2px #f59e0b` group; `.min-project-restore` moved off `#666` (~2.5:1 on `#0a0a0a`, and it is the only un-minimize affordance); the `all-minimized` hint no longer points at a tray that can be empty; and the forced fallback passes `persist: false` so a detour through a hidden session cannot rewrite the user's saved grid preference.
 - **MINOR (declined)** — minimize/restore ending in a full `renderSidebar()` drops keyboard focus to `<body>`. That is the sidebar's existing behavior for every rebuild path, not something this feature introduced; fixing it belongs in a focus-restoration pass across the whole sidebar.
 
+## Review findings addressed (iter 3)
+
+- **Greptile P1 — ⌘[ / ⌘] into a project whose session was never rendered showed a blank pane.** `showSingle` only shows a tile that already exists, and `shiftActiveProject` sets the active session through `deps.setActive` without ever going through `switchTo`, so nothing created the tile. Pre-existing (it hit any post-restart ⌘] in single view) but newly reachable through the grid→single fallback. Fixed by calling `deps.ensureTerm(target)` before `setActive`, with a test that empties `state.terms` and asserts the tile is created.
+
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-29** — Review iter 3 (Greptile P1): blank-pane on project shift fixed; 233 dom tests green.
 - **2026-08-29** — Review iter 2: COMMENT, 0 unresolved threads. All 4 IMPORTANT + 4 of 5 MINOR fixed anyway; 232 dom / 339 unit / 191 e2e green.
 - **2026-08-29** — Review iter 1: REQUEST_CHANGES (1 BLOCKING, 5 IMPORTANT). All addressed except one declined MINOR; unit/dom/e2e green (229 dom tests).
 - **2026-08-29** — PR #290 opened; stage = REVIEW.
@@ -96,6 +101,7 @@ Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and
 
 <Append-only. One line per review-loop iteration.>
 
+- **2026-08-29 iter 3** — verdict: REQUEST_CHANGES (Greptile P1); mergeable: MERGEABLE; threads_open: 1; action: fix applied + push; head_sha: pending.
 - **2026-08-29 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 188c31c8; threads_open: 0; action: fixes applied + push; head_sha: pending.
 - **2026-08-29 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 1; action: fixes applied + push; head_sha: pending.
 

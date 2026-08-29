@@ -419,6 +419,18 @@ describe('grid views', () => {
     expect(state.view).toBe('single');
   });
 
+  it('creates the tile for a session it has never rendered', () => {
+    // showSingle only shows an existing tile, and this path does not go
+    // through switchTo — without ensureTerm the fallback lands on a
+    // blank pane. The normal case after a restart.
+    state.terms = new Map();
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    shiftActiveProject(1);
+    expect(state.activeId).toBe('s2');
+    expect(state.terms.has('s2')).toBe(true);
+  });
+
   it('falls back to single when ⌘[ / ⌘] lands on a minimized project', () => {
     minimizeProject('p2');
     state.view = 'grid-all';

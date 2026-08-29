@@ -410,6 +410,12 @@ export function shiftActiveProject(delta: number) {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const target = firstVisible(sessions);
   if (target) {
+    // ensureTerm before setActive: showSingle only shows a tile that
+    // already exists, and this path never went through switchTo. A
+    // session that has not been rendered this run — the normal case
+    // after a restart, and now reachable whenever the grid falls back
+    // to single — would otherwise leave a blank, unfocusable pane.
+    deps.ensureTerm(target);
     deps.setActive(target.id);
   } else {
     // Empty project — keep the project selected but drop the active
