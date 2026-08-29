@@ -277,10 +277,21 @@ describe('⌘B into a minimized project', () => {
   });
 
   it('leaves a project you are still sitting in restored', () => {
+    // The session-level twin of this guard is tested at "does not
+    // re-minimize the session you ended up in": jumpBack's anchor is
+    // gone, so endRound runs its re-minimize pass while the active
+    // session is still inside p2. Re-minimizing it there would yank the
+    // tile out from under the user with no keypress to explain it.
     state.minimizedProjects = new Set(['p2']);
     state.attention = new Set(['z']);
     jumpToAttention();
-    // No jumpBack: the round is still open, so nothing is put back.
+    expect(state.activeId).toBe('z');
+
+    // Anchor killed while we were away: jumpBack ends the round in
+    // place instead of switching.
+    state.sessions = state.sessions.filter((x) => x.id !== 'a');
+    jumpBack();
+    expect(state.activeId).toBe('z');
     expect(state.minimizedProjects.has('p2')).toBe(false);
   });
 });

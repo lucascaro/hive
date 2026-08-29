@@ -78,7 +78,7 @@ export function emptyStateModel({
     return {
       kind: 'all-minimized',
       title: 'All sessions minimized',
-      hint: 'Restore one from the tray below, or from the sidebar.',
+      hint: 'Restore one from the session tray or the sidebar.',
       actions: [],
     };
   }

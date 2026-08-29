@@ -135,6 +135,15 @@ export function updateSidebarSelection() {
   for (const el of projectsUL.querySelectorAll<HTMLElement>('.project')) {
     el.classList.toggle('active', el.dataset.pid === activePID);
   }
+  // The chips need the same treatment as the rows: switching projects
+  // (chip click, ⌘[ / ⌘], any switchTo) repaints selection without a
+  // rebuild, so a chip that only learned its state at render time would
+  // keep a stale highlight and lie about which project is current.
+  for (const el of minimizedProjectsUL?.querySelectorAll<HTMLElement>(
+    '.min-project-chip',
+  ) ?? []) {
+    el.classList.toggle('active', el.dataset.pid === activePID);
+  }
   for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
     const sid = el.dataset.sid;
     el.classList.toggle('selected', sid === state.activeId);

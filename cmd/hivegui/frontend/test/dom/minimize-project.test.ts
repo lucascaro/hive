@@ -175,6 +175,26 @@ describe('minimize project', () => {
     ).toEqual([]);
   });
 
+  // updateSidebarSelection, not renderSidebar: switching projects
+  // repaints selection in place, so a chip that only learned its state
+  // at render time would keep a stale highlight.
+  it('moves the active highlight between chips without a rebuild', async () => {
+    const { updateSidebarSelection } = await import('../../src/app/sidebar.js');
+    minimize('p1');
+    minimize('p2');
+    const chip = (pid: string) =>
+      document.querySelector(`.min-project-chip[data-pid="${pid}"]`);
+    state.currentProjectId = 'p1';
+    updateSidebarSelection();
+    expect(chip('p1')?.classList.contains('active')).toBe(true);
+    expect(chip('p2')?.classList.contains('active')).toBe(false);
+
+    state.currentProjectId = 'p2';
+    updateSidebarSelection();
+    expect(chip('p1')?.classList.contains('active')).toBe(false);
+    expect(chip('p2')?.classList.contains('active')).toBe(true);
+  });
+
   it('marks the chip active when it is the current project', () => {
     state.currentProjectId = 'p2';
     minimize('p2');
@@ -366,6 +386,27 @@ describe('grid views', () => {
     expect(gridScopeFor('grid-all').map((s) => s.id)).toContain(
       state.activeId as string,
     );
+  });
+
+  it('activates a visible sibling rather than a hidden first session', () => {
+    // p1 keeps s1 minimized individually but has a visible sibling, so
+    // selecting the project must not tear the user out of the grid.
+    state.sessions.push({ id: 's1b', name: 's1b', project_id: 'p1', order: 3 });
+    state.minimized = new Set(['s1']);
+    switchToProject('p1');
+    expect(state.activeId).toBe('s1b');
+    expect(state.view).toBe('grid-all');
+  });
+
+  it('leaves the saved view preference alone when it falls back', () => {
+    localStorage.setItem('hive.view', 'grid-all');
+    minimizeProject('p2');
+    state.view = 'grid-all';
+    switchToProject('p2');
+    expect(state.view).toBe('single');
+    // The fallback is forced, not chosen — the next launch should still
+    // come up in the grid the user picked.
+    expect(localStorage.getItem('hive.view')).toBe('grid-all');
   });
 
   it('falls back to single when selecting a minimized project', () => {

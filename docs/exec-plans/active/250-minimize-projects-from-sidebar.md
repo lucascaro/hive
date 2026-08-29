@@ -73,9 +73,21 @@ The tray is a sibling `<ul>` between `#projects` and the version footer, not a t
 - **IMPORTANT** — added four grid-mode dom tests (focus handoff on minimize, both fall-back paths, and the no-op case), the branch every earlier test skipped by running in single mode.
 - **MINOR (declined)** — `hiddenSessionIds()` → `renderEmptyState` has no test because the `all-minimized` state is unreachable through project minimize: `minimizeProject` ends in `enforceViewFloor()`, which drops to single before the model could return that kind.
 
+## Review findings addressed (iter 2)
+
+Verdict was COMMENT (no BLOCKING), but all four IMPORTANT findings were real and cheap, so they were fixed rather than deferred.
+
+- **The guard moved into `switchTo`.** ⌘1–⌘9 and `menu:switch-N` reached `switchTo` directly and skipped the iteration-1 guard. Rather than bolt a third call site on, `fallBackToSingleIfActiveHidden()` now runs inside `switchTo` — every "make this session active" path routes through it, so the explicit call in `switchToProject` is gone and only `shiftActiveProject` (which uses `deps.setActive`) still calls it itself. This also fixes the pre-existing case of clicking an individually-minimized session's sidebar row while in a grid.
+- **The guard was too coarse.** A project whose *first* session was individually minimized dropped the user out of the grid even with visible siblings. `firstVisible()` now picks the first non-hidden session, so the fallback fires only when the whole project is hidden.
+- **Chips joined `updateSidebarSelection`.** They learned `.active` at render time only, so switching projects without a rebuild left a stale highlight and the tray lied about the current project.
+- **A test was named for a guard it never reached.** "leaves a project you are still sitting in restored" never called `jumpBack`, so `endRound`'s `pid !== activePID` guard could be deleted with the suite still green. It now kills the anchor and calls `jumpBack`, mirroring its session-level twin.
+- **MINOR** — the chip's focus rings joined the shared `2px #f59e0b` group; `.min-project-restore` moved off `#666` (~2.5:1 on `#0a0a0a`, and it is the only un-minimize affordance); the `all-minimized` hint no longer points at a tray that can be empty; and the forced fallback passes `persist: false` so a detour through a hidden session cannot rewrite the user's saved grid preference.
+- **MINOR (declined)** — minimize/restore ending in a full `renderSidebar()` drops keyboard focus to `<body>`. That is the sidebar's existing behavior for every rebuild path, not something this feature introduced; fixing it belongs in a focus-restoration pass across the whole sidebar.
+
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-29** — Review iter 2: COMMENT, 0 unresolved threads. All 4 IMPORTANT + 4 of 5 MINOR fixed anyway; 232 dom / 339 unit / 191 e2e green.
 - **2026-08-29** — Review iter 1: REQUEST_CHANGES (1 BLOCKING, 5 IMPORTANT). All addressed except one declined MINOR; unit/dom/e2e green (229 dom tests).
 - **2026-08-29** — PR #290 opened; stage = REVIEW.
 - **2026-08-29** — Implemented. go + unit + dom + e2e layers green (17 new unit/dom tests, 2 new ⌘B round-trip tests, 1 e2e layout test); `biome ci .` and `tsc --noEmit` clean. Layout verified in Chromium.
@@ -84,6 +96,7 @@ The tray is a sibling `<ul>` between `#projects` and the version footer, not a t
 
 <Append-only. One line per review-loop iteration.>
 
+- **2026-08-29 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 188c31c8; threads_open: 0; action: fixes applied + push; head_sha: pending.
 - **2026-08-29 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 1; action: fixes applied + push; head_sha: pending.
 
 ## Open questions

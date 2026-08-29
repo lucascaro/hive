@@ -182,11 +182,7 @@ body.resizing-sidebar #app { transition: none; }
   text-align: left;
   cursor: pointer;
 }
-.min-project-open:focus-visible,
-.min-project-restore:focus-visible {
-  outline: 1px solid rgba(245, 158, 11, 0.8);
-  outline-offset: -1px;
-}
+
 .min-project-chip:hover {
   background: rgba(255, 255, 255, 0.04);
   color: #ddd;
@@ -213,7 +209,9 @@ body.resizing-sidebar #app { transition: none; }
   flex-shrink: 0;
   background: none;
   border: none;
-  color: #666;
+  /* Not #666: this is the only control that un-minimizes a project, so
+     it has to clear the contrast floor at rest, not just on hover. */
+  color: #9a9a9a;
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
@@ -1790,6 +1788,8 @@ body.resizing-sidebar #app { transition: none; }
 #new-project-btn:focus-visible,
 .tile-minimize:focus-visible,
 .min-chip:focus-visible,
+.min-project-open:focus-visible,
+.min-project-restore:focus-visible,
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,

@@ -93,6 +93,12 @@ export function switchTo(id: string | null) {
     const pid = info.projectId ?? info.project_id;
     if (pid && pid !== state.gridProjectId) state.gridProjectId = pid;
   }
+  // Before painting: a grid view has no tile for a hidden session, so
+  // drop to single first rather than rendering a grid the selection
+  // isn't in. Every "make this session active" path lands here —
+  // sidebar click, ⌘1–⌘9, the menu, switchToProject — so the guard
+  // belongs here and not at each caller.
+  fallBackToSingleIfActiveHidden();
   if (state.view === 'single') showSingle(id);
   else renderGrid();
   updateSidebarSelection();
@@ -155,15 +161,24 @@ export function switchToProject(pid: string) {
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === pid)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (sessions[0]) {
-    switchTo(sessions[0].id);
-    fallBackToSingleIfActiveHidden();
+  const target = firstVisible(sessions);
+  if (target) {
+    switchTo(target.id);
   } else {
     state.activeId = null;
     if (state.view === 'single') showSingle(null);
     else renderGrid();
     updateSidebarSelection();
   }
+}
+
+// firstVisible picks the session a project should activate: the first
+// one that still has a tile in the current view, falling back to the
+// first of all when every one of them is hidden. Landing on a visible
+// sibling is what keeps a project with one individually-minimized
+// session from tearing the user out of grid mode.
+function firstVisible(sessions: SessionInfo[]): SessionInfo | undefined {
+  return sessions.find((s) => !isSessionHidden(s.id)) ?? sessions[0];
 }
 
 // fallBackToSingleIfActiveHidden drops out of a grid view when the
@@ -179,7 +194,10 @@ function fallBackToSingleIfActiveHidden() {
   if (state.view === 'single') return;
   const id = state.activeId;
   if (!id || !isSessionHidden(id)) return;
-  setView('single');
+  // persist: false — this is a forced fallback, not a preference. The
+  // user's saved grid mode has to survive a detour through a minimized
+  // session, or one chip click silently rewrites it.
+  setView('single', { persist: false });
 }
 
 // gridLayout caches the (rows, cols) chosen for the current scope plus
@@ -390,8 +408,9 @@ export function shiftActiveProject(delta: number) {
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === next.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  if (sessions[0]) {
-    deps.setActive(sessions[0].id);
+  const target = firstVisible(sessions);
+  if (target) {
+    deps.setActive(target.id);
   } else {
     // Empty project — keep the project selected but drop the active
     // session so the user can ⌘N into it. activeProjectId() now
@@ -684,7 +703,7 @@ export function renderEmptyState() {
   el.classList.remove('hidden');
 }
 
-export function setView(view: ViewMode) {
+export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // A grid of one tile looks like focused mode but loses the focused-mode
   // keybindings, so ⌘G / ⇧⌘G below the floor stay where they are.
   // The startup restore of a persisted view goes through here too.
@@ -695,9 +714,11 @@ export function setView(view: ViewMode) {
   if (target !== view) flashStatus('only one session — staying focused');
   view = target;
   state.view = view;
-  try {
-    localStorage.setItem(VIEW_STORAGE_KEY, view);
-  } catch {}
+  if (opts.persist !== false) {
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch {}
+  }
   if (view === 'grid-project') {
     state.gridProjectId = activeProjectId();
   }
