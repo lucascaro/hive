@@ -228,3 +228,51 @@ test('cancel discards edits', async ({ page }) => {
   await page.keyboard.press(`${mod}+,`);
   await expect(page.locator('.settings-agent-row')).toHaveCount(0);
 });
+
+// The Updates section shares the panel with a scrolling agent list.
+// jsdom cannot tell whether it is actually on screen, so this runs in a
+// real browser: the channel control must be visible and clickable even
+// with enough agents to overflow the list above it.
+test('the Updates section stays reachable under a long agent list', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  for (let i = 0; i < 12; i++) await addAgent(page, `Agent ${i}`, `cmd${i}`);
+
+  const channel = page.locator('#settings-update-channel');
+  await expect(channel).toBeVisible();
+
+  // Visible is not the same as hittable — a section pushed under the
+  // action bar still reports visible. elementFromPoint at the control's
+  // own centre is the check that catches an overlap.
+  const onTop = await channel.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.x + r.width / 2,
+      r.y + r.height / 2,
+    );
+    return el.contains(hit) || el === hit;
+  });
+  expect(onTop).toBe(true);
+
+  // The panel itself must not have grown past the window.
+  const overflows = await page
+    .locator('#settings-panel')
+    .evaluate((el) => el.getBoundingClientRect().bottom > window.innerHeight);
+  expect(overflows).toBe(false);
+});
+
+test('choosing the latest channel reveals the source-repo row', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings-source-repo-row')).toBeHidden();
+
+  await page.locator('#settings-update-channel').selectOption('latest');
+  await expect(page.locator('#settings-source-repo-row')).toBeVisible();
+  await expect(page.locator('#settings-source-repo')).toBeEditable();
+});

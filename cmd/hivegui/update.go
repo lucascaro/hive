@@ -53,11 +53,34 @@ type UpdateInfo struct {
 	Current   string `json:"current"`
 	Latest    string `json:"latest"`
 	URL       string `json:"url"`
-	// Skipped is true when the running build is "dev" (untagged) — the
-	// frontend uses this to differentiate a real "you're up to date"
-	// from "we can't tell" in the manual-check flow.
+	// Skipped is true when the check could not produce an answer — an
+	// untagged "dev" build on the release channel, or a latest-channel
+	// checkout with no upstream. The frontend uses it to differentiate a
+	// real "you're up to date" from "we can't tell".
 	Skipped bool `json:"skipped"`
+	// Channel is the channel this result came from, so the frontend can
+	// label a version ("2.4.0") differently from a commit ("8e65349")
+	// without having to re-read the settings.
+	Channel string `json:"channel"`
+	// Stage drives the action button: idle | available | staging |
+	// ready | error. Staging and beyond are set by the apply path, not
+	// by the check.
+	Stage string `json:"stage"`
+	// Message is human-readable detail for the current Stage — progress
+	// text while staging, the reason when Skipped, the failure when
+	// Stage is error.
+	Message string `json:"message"`
 }
+
+// Stages of the update action button. The frontend maps these to
+// labels (Update / Updating… / Restart) in lib/update-state.ts.
+const (
+	StageIdle      = "idle"
+	StageAvailable = "available"
+	StageStaging   = "staging"
+	StageReady     = "ready"
+	StageError     = "error"
+)
 
 // CheckForUpdate hits the GitHub releases API and reports whether a
 // newer tagged release than the running build exists. Bound to Wails
@@ -67,10 +90,45 @@ type UpdateInfo struct {
 // error — it returns Skipped=true so the UI can show a sensible
 // message instead of a misleading "up to date".
 func (a *App) CheckForUpdate() (UpdateInfo, error) {
+	settings, err := loadUpdateSettings()
+	if err != nil {
+		// A corrupt update.json must not silently downgrade the channel
+		// to release and start offering the user a different kind of
+		// update than the one they picked.
+		return UpdateInfo{Stage: StageError, Message: err.Error()}, err
+	}
+	if settings.Channel == ChannelLatest {
+		repo, err := resolveSourceRepo(settings.SourceRepo)
+		if err != nil {
+			return UpdateInfo{
+				Channel: ChannelLatest,
+				Current: buildinfo.BuildID(),
+				Stage:   StageIdle,
+				Skipped: true,
+				Message: err.Error(),
+			}, nil
+		}
+		info, err := checkLatest(repo)
+		if err == nil {
+			a.rememberCheck(info)
+		}
+		return info, err
+	}
+	info, err := a.checkRelease()
+	if err == nil {
+		a.rememberCheck(info)
+	}
+	return info, err
+}
+
+// checkRelease is the GitHub-releases channel: the original check, and
+// still the default.
+func (a *App) checkRelease() (UpdateInfo, error) {
 	current := buildinfo.Version()
-	info := UpdateInfo{Current: current}
+	info := UpdateInfo{Current: current, Channel: ChannelRelease, Stage: StageIdle}
 	if current == "dev" {
 		info.Skipped = true
+		info.Message = "untagged build — switch to the latest channel to track your checkout"
 		return info, nil
 	}
 
@@ -116,6 +174,7 @@ func (a *App) CheckForUpdate() (UpdateInfo, error) {
 	// "available" into "up to date".
 	if latest != "" && compareSemver(current, latest) < 0 {
 		info.Available = true
+		info.Stage = StageAvailable
 	}
 	return info, nil
 }

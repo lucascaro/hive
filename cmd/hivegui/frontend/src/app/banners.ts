@@ -12,10 +12,14 @@ import {
   Confirm,
   RestartDaemon,
   CheckForUpdate,
+  StartUpdate,
+  ApplyUpdateAndRestart,
   OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { pageEl } from './el.js';
+import { isMac } from '../lib/platform.js';
+import { updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../wailsjs/go/models';
 import type { DaemonStaleEvent } from './version-footer.js';
@@ -137,9 +141,28 @@ function wireDaemonBanner() {
 const updateBannerEl = pageEl('update-banner');
 const updateBannerText = pageEl('update-banner-text');
 const updateBannerDownload = pageEl('update-banner-download');
+const updateBannerAction = pageEl<HTMLButtonElement>('update-banner-action');
 const updateBannerDismiss = pageEl('update-banner-dismiss');
 const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
 let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+// renderUpdateAction drives the Update / Updating… / Restart button from
+// the shared reducer, so the banner and the Settings modal always agree
+// about what the button should say. Hidden entirely when there is
+// nothing to act on — including on non-macOS, where staging a build we
+// could not install would be a dead end and the Download link is the
+// real answer.
+function renderUpdateAction(info: main.UpdateInfo | null) {
+  const btn = updateButtonState(info, isMac);
+  if (!btn.label) {
+    updateBannerAction.style.display = 'none';
+    return;
+  }
+  updateBannerAction.style.display = '';
+  updateBannerAction.textContent = btn.label;
+  updateBannerAction.disabled = btn.disabled;
+  updateBannerAction.dataset.action = btn.action;
+}
 
 function showUpdateBanner(
   text: string,
@@ -180,12 +203,34 @@ function applyUpdateInfo(
   { manual = false }: { manual?: boolean } = {},
 ) {
   if (!info) return;
+  renderUpdateAction(info);
+  // Staging and its outcomes are always worth showing: the user asked
+  // for this, and a failure that only lived in the Settings modal would
+  // be invisible to anyone who closed it.
+  if (
+    info.stage === 'staging' ||
+    info.stage === 'ready' ||
+    info.stage === 'error'
+  ) {
+    const btn = updateButtonState(info, isMac);
+    showUpdateBanner(btn.status, {
+      downloadUrl: info.url || '',
+      showDownload: info.stage !== 'ready',
+    });
+    return;
+  }
   if (info.skipped) {
     if (manual) {
-      showUpdateBanner('Update check skipped — this is a dev build.', {
-        showDownload: false,
-        autoHideMs: UPDATE_TRANSIENT_MS,
-      });
+      // Go says *why* it skipped — an untagged build on the release
+      // channel, a checkout with no upstream on the latest one. Those
+      // are different problems with different fixes, so don't flatten
+      // them back into one hardcoded sentence.
+      showUpdateBanner(
+        info.message
+          ? `Update check skipped — ${info.message}.`
+          : 'Update check skipped — this is a dev build.',
+        { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS },
+      );
     }
     return;
   }
@@ -201,9 +246,8 @@ function applyUpdateInfo(
     // Still tell the user an update exists; just don't expose a
     // one-click Download for an untrusted target.
     const trustedURL = !!info.url;
-    const text = trustedURL
-      ? `Hive ${info.latest} is available (you have ${info.current}).`
-      : `Hive ${info.latest} is available (you have ${info.current}). Open releases page manually.`;
+    const base = updateButtonState(info, isMac).status;
+    const text = trustedURL ? base : `${base} Open releases page manually.`;
     showUpdateBanner(text, { downloadUrl: info.url });
     updateBannerEl.dataset.version = info.latest;
     return;
@@ -217,6 +261,19 @@ function applyUpdateInfo(
 }
 
 function wireUpdateBanner() {
+  updateBannerAction.addEventListener('click', () => {
+    const action = updateBannerAction.dataset.action;
+    if (action === 'restart') {
+      // The swap runs before the relaunch, so a failure here leaves the
+      // window working — surfaced as a status flash, not a dead button.
+      ApplyUpdateAndRestart().catch(reportFailure('apply update'));
+      return;
+    }
+    if (action === 'start') {
+      updateBannerAction.disabled = true;
+      StartUpdate().catch(reportFailure('start update'));
+    }
+  });
   updateBannerDownload.addEventListener('click', () => {
     const url = updateBannerEl.dataset.url;
     if (url) OpenURL(url).catch(reportFailure('open link'));
@@ -232,6 +289,11 @@ function wireUpdateBanner() {
   });
 
   EventsOn('update:available', (info: main.UpdateInfo | null) =>
+    applyUpdateInfo(info),
+  );
+  // Staging progress. Go emits one of these per step, and on the
+  // terminal ready/error transitions.
+  EventsOn('update:progress', (info: main.UpdateInfo | null) =>
     applyUpdateInfo(info),
   );
 

@@ -10,9 +10,26 @@
 // id, so changing one would break revive for every session already
 // created with that agent.
 
-import { ListCustomAgents, SaveCustomAgents } from '../../bridge.js';
+import {
+  ListCustomAgents,
+  SaveCustomAgents,
+  GetUpdateSettings,
+  SaveUpdateSettings,
+  SourceRepoStatusFor,
+  UpdateStatus,
+  StartUpdate,
+  ApplyUpdateAndRestart,
+  PickDirectory,
+  EventsOn,
+} from '../../bridge.js';
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
+import { isMac } from '../../lib/platform.js';
+import {
+  updateButtonState,
+  CHANNEL_LATEST,
+  CHANNEL_RELEASE,
+} from '../../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
 
@@ -31,6 +48,15 @@ let deps: SettingsDeps = {
 export const settingsEl = pageEl('settings');
 const listEl = pageEl('settings-agents-list');
 const errorEl = pageEl('settings-error');
+const channelEl = pageEl<HTMLSelectElement>('settings-update-channel');
+const sourceRepoEl = pageEl<HTMLInputElement>('settings-source-repo');
+const sourceRepoRow = pageEl('settings-source-repo-row');
+const sourceRepoBrowse = pageEl<HTMLButtonElement>(
+  'settings-source-repo-browse',
+);
+const sourceRepoHint = pageEl('settings-source-repo-hint');
+const updateActionEl = pageEl<HTMLButtonElement>('settings-update-action');
+const updateStatusEl = pageEl('settings-update-status');
 
 const DEFAULT_COLOR = '#64748b';
 
@@ -181,6 +207,8 @@ export function openSettings() {
   deps.setFocusedTile(null);
   document.getElementById('settings-close')?.focus();
 
+  loadUpdateSection(token);
+
   ListCustomAgents()
     .then((list) => {
       if (token !== openToken) return; // closed and reopened; stale
@@ -207,6 +235,81 @@ export function openSettings() {
     });
 }
 
+// ---------- updates section ----------
+//
+// The channel and source-repo inputs join the modal's draft/save cycle
+// (Cancel discards them). The Update button deliberately does NOT: it
+// starts real work in Go, and losing a running download because the
+// user closed the dialog would be surprising. Its state is read back
+// from Go rather than tracked here, which is also what keeps it in
+// agreement with the banner.
+
+// updateDraft mirrors the two saved fields while the modal is open.
+let updateDraft = { channel: CHANNEL_RELEASE, sourceRepo: '' };
+
+function renderSourceRepoRow() {
+  const isLatest = updateDraft.channel === CHANNEL_LATEST;
+  sourceRepoRow.classList.toggle('hidden', !isLatest);
+  if (!isLatest) {
+    sourceRepoHint.textContent = '';
+    return;
+  }
+  SourceRepoStatusFor(updateDraft.sourceRepo)
+    .then((st) => {
+      if (!st) return;
+      if (st.error) {
+        sourceRepoHint.textContent = st.error;
+        return;
+      }
+      sourceRepoHint.textContent = st.detected
+        ? `Detected ${st.path}`
+        : `Using ${st.path}`;
+    })
+    .catch((err) => {
+      sourceRepoHint.textContent = String(err?.message || err);
+    });
+}
+
+function renderUpdateAction(info: main.UpdateInfo | null) {
+  const btn = updateButtonState(info, isMac);
+  updateStatusEl.textContent = btn.status;
+  updateActionEl.style.display = btn.label ? '' : 'none';
+  updateActionEl.textContent = btn.label;
+  updateActionEl.disabled = btn.disabled;
+  updateActionEl.dataset.action = btn.action;
+}
+
+function refreshUpdateAction() {
+  UpdateStatus()
+    .then(renderUpdateAction)
+    .catch(() => renderUpdateAction(null));
+}
+
+function loadUpdateSection(token: number) {
+  GetUpdateSettings()
+    .then((s) => {
+      // Same staleness guard the agent list uses: closed and reopened
+      // before this resolved means a newer draft is on screen, and this
+      // response would overwrite it.
+      if (token !== openToken) return;
+      updateDraft = {
+        channel:
+          s?.channel === CHANNEL_LATEST ? CHANNEL_LATEST : CHANNEL_RELEASE,
+        sourceRepo: s?.source_repo || '',
+      };
+      channelEl.value = updateDraft.channel;
+      sourceRepoEl.value = updateDraft.sourceRepo;
+      renderSourceRepoRow();
+    })
+    // A corrupt update.json must not be silently replaced by defaults on
+    // the next save, so surface it the way a bad agents.json is.
+    .catch((err) => {
+      if (token !== openToken) return;
+      showError(String(err?.message || err));
+    });
+  refreshUpdateAction();
+}
+
 export function closeSettings() {
   openToken += 1; // invalidate any in-flight load
   loading = false;
@@ -214,6 +317,7 @@ export function closeSettings() {
   settingsEl.classList.add('hidden');
   showError('');
   draft = [];
+  updateDraft = { channel: CHANNEL_RELEASE, sourceRepo: '' };
   deps.refocusActiveTerm();
 }
 
@@ -233,7 +337,14 @@ function saveSettings() {
   // Drop fully-blank rows so an accidental "+ Add agent" doesn't
   // block the save with a validation error.
   const payload = draft.filter((a) => a.name.trim() || a.cmd.length);
-  SaveCustomAgents(payload)
+  // Update settings first: SaveUpdateSettings refuses a latest channel
+  // whose source repo does not resolve, and that refusal must not land
+  // after the agents have already been written.
+  SaveUpdateSettings({
+    channel: updateDraft.channel,
+    source_repo: updateDraft.sourceRepo,
+  } as main.UpdateSettings)
+    .then(() => SaveCustomAgents(payload))
     .then(closeSettings)
     // Go returns one joined error naming every rejected entry; show it
     // verbatim rather than paraphrasing it into something vaguer.
@@ -246,6 +357,43 @@ export function initSettings(injected: SettingsDeps) {
   pageEl('settings-close').addEventListener('click', closeSettings);
   pageEl('settings-cancel').addEventListener('click', closeSettings);
   pageEl('settings-save').addEventListener('click', saveSettings);
+  channelEl.addEventListener('change', () => {
+    updateDraft.channel =
+      channelEl.value === CHANNEL_LATEST ? CHANNEL_LATEST : CHANNEL_RELEASE;
+    renderSourceRepoRow();
+  });
+  sourceRepoEl.addEventListener('input', () => {
+    updateDraft.sourceRepo = sourceRepoEl.value;
+    renderSourceRepoRow();
+  });
+  sourceRepoBrowse.addEventListener('click', () => {
+    PickDirectory(updateDraft.sourceRepo)
+      .then((dir) => {
+        if (!dir) return; // cancelled
+        updateDraft.sourceRepo = dir;
+        sourceRepoEl.value = dir;
+        renderSourceRepoRow();
+      })
+      .catch((err) => showError(String(err?.message || err)));
+  });
+  updateActionEl.addEventListener('click', () => {
+    const action = updateActionEl.dataset.action;
+    if (action === 'restart') {
+      ApplyUpdateAndRestart().catch((err) =>
+        showError(String(err?.message || err)),
+      );
+      return;
+    }
+    if (action === 'start') {
+      updateActionEl.disabled = true;
+      StartUpdate().catch((err) => showError(String(err?.message || err)));
+    }
+  });
+  // Staging runs in Go and outlives this modal, so the button follows
+  // the same progress events the banner does rather than any local state.
+  EventsOn('update:progress', (info: main.UpdateInfo | null) =>
+    renderUpdateAction(info),
+  );
   pageEl('settings-agent-add').addEventListener('click', () => {
     draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
     showError('');

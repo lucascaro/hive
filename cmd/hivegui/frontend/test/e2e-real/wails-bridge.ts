@@ -302,6 +302,24 @@ export async function RestartDaemon() {
 export async function CheckForUpdate() {
   return null;
 }
+export async function UpdateStatus() {
+  return null;
+}
+export async function StartUpdate() {
+  return '';
+}
+export async function ApplyUpdateAndRestart() {
+  return '';
+}
+export async function GetUpdateSettings() {
+  return { channel: 'release', source_repo: '' };
+}
+export async function SaveUpdateSettings() {
+  return '';
+}
+export async function SourceRepoStatusFor() {
+  return { path: '', detected: false, error: '' };
+}
 
 // Clipboard bindings. main.ts imports ClipboardGetText (runtime) and
 // SetClipboardText (App), both aliased to this bridge under
