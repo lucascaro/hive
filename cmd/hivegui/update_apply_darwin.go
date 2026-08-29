@@ -28,8 +28,10 @@ const checksumsAsset = "checksums.txt"
 
 // maxDownloadBytes caps what we will pull from a release asset. The
 // macOS zip is tens of megabytes; this is a sanity bound so a wrong or
-// hostile Content-Length can't fill the user's disk.
-const maxDownloadBytes = 512 << 20
+// hostile Content-Length can't fill the user's disk. Var, like the two
+// timeouts below, so a test can shrink it — asserting the cap by
+// actually serving half a gigabyte is not a test anyone will keep.
+var maxDownloadBytes int64 = 512 << 20
 
 // downloadTimeout bounds a whole staging download.
 var downloadTimeout = 15 * time.Minute
@@ -244,7 +246,7 @@ func download(ctx context.Context, url, dest string) error {
 		return fmt.Errorf("download %s: %w", filepath.Base(dest), err)
 	}
 	if n > maxDownloadBytes {
-		return fmt.Errorf("download %s: larger than %d bytes", filepath.Base(dest), int64(maxDownloadBytes))
+		return fmt.Errorf("download %s: larger than %d bytes", filepath.Base(dest), maxDownloadBytes)
 	}
 	return f.Close()
 }

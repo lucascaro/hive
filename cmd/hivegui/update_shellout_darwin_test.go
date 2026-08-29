@@ -1,0 +1,467 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+)
+
+// Coverage for the pieces the rest of the update tests stub out: the
+// channel dispatcher, the shell-outs (git, ditto, build.sh), the
+// last-guard bundle check, and the download size cap. These are the
+// functions that stand between a bad download and the user's installed
+// app, so "it's only a wrapper" is not a reason to leave them unproven.
+
+// ------------------------------ verifyBundle ------------------------------
+
+// verifyBundle is the last check before swapBundle replaces the running
+// app. Every way a bundle can be wrong has to fail here, because after
+// this point the old app is already being moved aside.
+func TestVerifyBundleRejectsUnusableBundles(t *testing.T) {
+	cases := []struct {
+		name string
+		// build returns a bundle path in dir, having created whatever
+		// (broken) contents the case is about.
+		build func(t *testing.T, dir string) string
+		want  string
+	}{
+		{
+			name: "complete bundle passes",
+			build: func(t *testing.T, dir string) string {
+				return stubBundle(t, dir, "ok")
+			},
+		},
+		{
+			name: "missing hived",
+			build: func(t *testing.T, dir string) string {
+				b := stubBundle(t, dir, "ok")
+				if err := os.Remove(filepath.Join(b, "Contents", "MacOS", "hived")); err != nil {
+					t.Fatal(err)
+				}
+				return b
+			},
+			want: "missing hived",
+		},
+		{
+			name: "missing hivegui",
+			build: func(t *testing.T, dir string) string {
+				b := stubBundle(t, dir, "ok")
+				if err := os.Remove(filepath.Join(b, "Contents", "MacOS", "hivegui")); err != nil {
+					t.Fatal(err)
+				}
+				return b
+			},
+			want: "missing hivegui",
+		},
+		{
+			// The failure mode a naive archive/zip extraction would
+			// produce: files all there, executable bit gone, app dead on
+			// launch with no in-app way back.
+			name: "binary not executable",
+			build: func(t *testing.T, dir string) string {
+				b := stubBundle(t, dir, "ok")
+				if err := os.Chmod(filepath.Join(b, "Contents", "MacOS", "hivegui"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return b
+			},
+			want: "not executable",
+		},
+		{
+			name: "not a bundle at all",
+			build: func(t *testing.T, dir string) string {
+				return filepath.Join(dir, "nothing-here.app")
+			},
+			want: "missing hivegui",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := verifyBundle(c.build(t, t.TempDir()))
+			if c.want == "" {
+				if err != nil {
+					t.Fatalf("verifyBundle = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("verifyBundle = nil, want an error naming %q", c.want)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("error = %q, want it to mention %q", err, c.want)
+			}
+		})
+	}
+}
+
+// ------------------------------ stageUpdate -------------------------------
+
+// The dispatcher is three lines, and getting it backwards would send the
+// release channel into a git pull over the user's checkout. Routing is
+// asserted by which failure comes back: each channel has a distinctive
+// early refusal.
+func TestStageUpdateRoutesByChannel(t *testing.T) {
+	dir := isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	writeFile(t, filepath.Join(dir, "update.json"),
+		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
+
+	// Latest: a dirty tree refuses before anything else happens.
+	g := &fakeGit{answers: map[string]string{"status --porcelain": " M x.go"}}
+	g.install(t)
+	_, err := stageUpdate(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
+		t.Fatalf("latest channel err = %v, want the dirty-tree refusal from stageLatest", err)
+	}
+
+	// Release: no such release asset. Crucially, it must NOT have gone
+	// anywhere near git.
+	before := len(g.calls)
+	releaseServer(t, map[string][]byte{}, nil)
+	_, err = stageUpdate(UpdateInfo{Channel: ChannelRelease, Latest: "9.9.9"}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "has no") {
+		t.Fatalf("release channel err = %v, want a missing-asset error from stageRelease", err)
+	}
+	if len(g.calls) != before {
+		t.Errorf("release channel ran git commands: %v", g.calls[before:])
+	}
+
+	// An empty channel is the release channel — normalizeChannel's
+	// default has to hold all the way through here.
+	_, err = stageUpdate(UpdateInfo{Latest: "9.9.9"}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "has no") {
+		t.Fatalf("empty channel err = %v, want it treated as the release channel", err)
+	}
+}
+
+// -------------------------------- runGit ----------------------------------
+
+// runGit folds stderr into the error. Without it every git failure reads
+// "exit status 128", which says nothing about what went wrong.
+func TestRunGitReportsStderr(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not on PATH")
+	}
+	repo := t.TempDir()
+
+	if _, err := runGit(repo, "rev-parse", "--abbrev-ref", "@{upstream}"); err == nil {
+		t.Fatal("runGit = nil error outside a repository, want a failure")
+	} else if !strings.Contains(err.Error(), "git rev-parse") {
+		t.Errorf("error = %q, want it to name the command", err)
+	}
+
+	// And the success path returns trimmed stdout.
+	if out, err := runGit(repo, "--version"); err != nil {
+		t.Fatalf("runGit --version: %v", err)
+	} else if !strings.HasPrefix(out, "git version") {
+		t.Errorf("runGit --version = %q, want it to start with %q", out, "git version")
+	} else if strings.HasSuffix(out, "\n") {
+		t.Error("runGit did not trim trailing whitespace")
+	}
+}
+
+// ------------------------------ dittoExtract ------------------------------
+
+// ditto is used instead of archive/zip precisely because an .app needs
+// its mode bits and symlinks intact. This proves that against a zip
+// built the way build.sh builds one.
+func TestDittoExtractPreservesModeBitsAndSymlinks(t *testing.T) {
+	if _, err := exec.LookPath("ditto"); err != nil {
+		t.Skip("ditto not available")
+	}
+	if _, err := exec.LookPath("zip"); err != nil {
+		t.Skip("zip not available")
+	}
+
+	src := t.TempDir()
+	macos := filepath.Join(src, bundleName, "Contents", "MacOS")
+	if err := os.MkdirAll(macos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"hivegui", "hived"} {
+		if err := os.WriteFile(filepath.Join(macos, name), []byte("bin"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A framework-style symlink, which archive/zip would flatten into a
+	// regular file holding the link target.
+	fw := filepath.Join(src, bundleName, "Contents", "Frameworks")
+	if err := os.MkdirAll(fw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("Versions/A/Lib", filepath.Join(fw, "Lib")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same invocation build.sh uses.
+	zipPath := filepath.Join(t.TempDir(), "Hive-test-macos-universal.zip")
+	cmd := exec.Command("zip", "-rq", "--symlinks", zipPath, bundleName)
+	cmd.Dir = src
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("zip: %v: %s", err, out)
+	}
+
+	dest := filepath.Join(t.TempDir(), "app")
+	if err := dittoExtract(zipPath, dest); err != nil {
+		t.Fatalf("dittoExtract: %v", err)
+	}
+
+	bundle := filepath.Join(dest, bundleName)
+	if err := verifyBundle(bundle); err != nil {
+		t.Fatalf("extracted bundle fails verifyBundle: %v", err)
+	}
+	st, err := os.Lstat(filepath.Join(bundle, "Contents", "Frameworks", "Lib"))
+	if err != nil {
+		t.Fatalf("symlink missing after extract: %v", err)
+	}
+	if st.Mode()&os.ModeSymlink == 0 {
+		t.Error("symlink was extracted as a regular file")
+	}
+}
+
+func TestDittoExtractRejectsGarbage(t *testing.T) {
+	if _, err := exec.LookPath("ditto"); err != nil {
+		t.Skip("ditto not available")
+	}
+	bad := filepath.Join(t.TempDir(), "not-a.zip")
+	writeFile(t, bad, "definitely not a zip archive")
+	if err := dittoExtract(bad, filepath.Join(t.TempDir(), "out")); err == nil {
+		t.Fatal("dittoExtract = nil error on a non-zip, want the failure surfaced")
+	}
+}
+
+// ----------------------------- runBuildScript -----------------------------
+
+func TestRunBuildScriptStreamsProgress(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "build.sh"), "#!/bin/sh\necho step one\necho\necho step two\n")
+	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var lines []string
+	if err := runBuildScript(repo, func(s string) { lines = append(lines, s) }); err != nil {
+		t.Fatalf("runBuildScript: %v", err)
+	}
+	// Blank lines are dropped — the button has one line to render in and
+	// a blank one would read as a stall.
+	want := []string{"step one", "step two"}
+	if strings.Join(lines, "|") != strings.Join(want, "|") {
+		t.Errorf("progress = %v, want %v", lines, want)
+	}
+}
+
+// A failed build must report the last thing the script said, not a bare
+// "exit status 1" the user cannot act on.
+func TestRunBuildScriptReportsLastLineOnFailure(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "build.sh"),
+		"#!/bin/sh\necho compiling\necho 'error: wails not found' >&2\nexit 1\n")
+	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runBuildScript(repo, func(string) {})
+	if err == nil {
+		t.Fatal("runBuildScript = nil error for a failing build, want the failure surfaced")
+	}
+	if !strings.Contains(err.Error(), "wails not found") {
+		t.Errorf("error = %q, want it to carry the build's own message", err)
+	}
+}
+
+func TestRunBuildScriptReportsMissingScript(t *testing.T) {
+	if err := runBuildScript(t.TempDir(), func(string) {}); err == nil {
+		t.Fatal("runBuildScript = nil error with no build.sh, want a failure")
+	}
+}
+
+// stageLatest's other refusal: a detached HEAD has no upstream to
+// fast-forward from, and pulling would either fail confusingly or move
+// the user somewhere they did not ask to go.
+func TestStageLatestRefusesDetachedHead(t *testing.T) {
+	dir := isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	writeFile(t, filepath.Join(dir, "update.json"),
+		fmt.Sprintf(`{"channel":"latest","source_repo":%q}`, repo))
+
+	g := &fakeGit{
+		answers: map[string]string{"status --porcelain": ""},
+		errs:    map[string]error{"symbolic-ref --quiet": fmt.Errorf("exit status 1")},
+	}
+	g.install(t)
+
+	_, err := stageLatest(UpdateInfo{Channel: ChannelLatest}, func(string) {})
+	if err == nil || !strings.Contains(err.Error(), "detached HEAD") {
+		t.Fatalf("stageLatest err = %v, want the detached-HEAD refusal", err)
+	}
+	if g.ran("pull") {
+		t.Error("stageLatest pulled onto a detached HEAD")
+	}
+}
+
+// -------------------------------- download --------------------------------
+
+// The cap exists so a wrong or hostile Content-Length cannot fill the
+// disk. Shrunk here rather than served for real.
+func TestDownloadRejectsOversizeBody(t *testing.T) {
+	prev := maxDownloadBytes
+	maxDownloadBytes = 16
+	t.Cleanup(func() { maxDownloadBytes = prev })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", 64)))
+	}))
+	t.Cleanup(srv.Close)
+
+	dest := filepath.Join(t.TempDir(), "big.zip")
+	err := download(t.Context(), srv.URL, dest)
+	if err == nil {
+		t.Fatal("download = nil error for a body over the cap, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("error = %q, want it to name the size limit", err)
+	}
+}
+
+// Exactly at the cap is not over it — an off-by-one here would reject
+// legitimate downloads.
+func TestDownloadAcceptsBodyExactlyAtCap(t *testing.T) {
+	prev := maxDownloadBytes
+	maxDownloadBytes = 16
+	t.Cleanup(func() { maxDownloadBytes = prev })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", 16)))
+	}))
+	t.Cleanup(srv.Close)
+
+	dest := filepath.Join(t.TempDir(), "exact.zip")
+	if err := download(t.Context(), srv.URL, dest); err != nil {
+		t.Fatalf("download of a body exactly at the cap = %v, want nil", err)
+	}
+	b, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) != 16 {
+		t.Errorf("wrote %d bytes, want 16", len(b))
+	}
+}
+
+func TestDownloadReportsHTTPStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	err := download(t.Context(), srv.URL, filepath.Join(t.TempDir(), "x.zip"))
+	if err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("download err = %v, want it to name the HTTP status", err)
+	}
+}
+
+// ------------------------- cross-volume (EXDEV) swap ----------------------
+
+// swapBundle copies the staged bundle to a sibling of the installed one
+// before renaming, because staging lives under the state dir and the app
+// under /Applications — different volumes, where a direct os.Rename
+// fails with EXDEV. Every other swap test has both paths on one volume,
+// so this is the only place that claim is actually exercised.
+//
+// Skips rather than fails when a disk image cannot be created (CI
+// sandboxes, no hdiutil); the same-volume tests still cover the logic.
+func TestSwapBundleAcrossVolumes(t *testing.T) {
+	stagingVolume := mountScratchVolume(t)
+
+	staged := stubBundle(t, stagingVolume, "new")
+	installDir := t.TempDir() // the boot volume
+	installed := stubBundle(t, installDir, "old")
+
+	// Guard the premise: if these turn out to be the same device, the
+	// test proves nothing and should say so rather than pass silently.
+	if sameDevice(t, stagingVolume, installDir) {
+		t.Skip("scratch volume landed on the same device; nothing cross-volume to prove")
+	}
+	if err := os.Rename(staged, filepath.Join(installDir, "direct-rename.app")); err == nil {
+		t.Skip("a direct cross-device rename succeeded; this platform has nothing to prove here")
+	}
+
+	if err := swapBundle(staged, installed); err != nil {
+		t.Fatalf("swapBundle across volumes: %v", err)
+	}
+	if got := readMarker(t, installed); got != "new" {
+		t.Errorf("installed binary = %q after a cross-volume swap, want %q", got, "new")
+	}
+	if err := verifyBundle(installed); err != nil {
+		t.Errorf("bundle is not usable after a cross-volume swap: %v", err)
+	}
+	entries, err := os.ReadDir(installDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			t.Errorf("swapBundle left %s behind", e.Name())
+		}
+	}
+}
+
+// mountScratchVolume attaches a small disk image and returns its mount
+// point, detaching it on cleanup.
+func mountScratchVolume(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("hdiutil"); err != nil {
+		t.Skip("hdiutil not available")
+	}
+	img := filepath.Join(t.TempDir(), "scratch.dmg")
+	name := fmt.Sprintf("hive-swap-test-%d", os.Getpid())
+	if out, err := exec.Command("hdiutil", "create", "-size", "20m", "-fs", "APFS",
+		"-volname", name, "-quiet", img).CombinedOutput(); err != nil {
+		t.Skipf("hdiutil create: %v: %s", err, out)
+	}
+	mount := filepath.Join(t.TempDir(), "mnt")
+	if err := os.MkdirAll(mount, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("hdiutil", "attach", img, "-mountpoint", mount,
+		"-nobrowse", "-quiet").CombinedOutput(); err != nil {
+		t.Skipf("hdiutil attach: %v: %s", err, out)
+	}
+	t.Cleanup(func() {
+		// -force: the test may still hold directory handles.
+		_ = exec.Command("hdiutil", "detach", mount, "-force", "-quiet").Run()
+	})
+	return mount
+}
+
+func sameDevice(t *testing.T, a, b string) bool {
+	t.Helper()
+	sa, err := os.Stat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sb, err := os.Stat(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	da, oka := deviceOf(sa)
+	db, okb := deviceOf(sb)
+	return oka && okb && da == db
+}
+
+// deviceOf pulls the device number out of a FileInfo so sameDevice can
+// confirm the two paths really are on different volumes.
+func deviceOf(fi os.FileInfo) (int32, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Dev, true
+}
