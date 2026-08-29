@@ -258,13 +258,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Shift+Enter still inserts a newline without submitting.
 
 - CI is a real gate again. The three scroll/replay end-to-end specs that had
-  been quarantined since spec 245 are back on, so CI runs all but one of the
-  real-daemon tests instead of 2 of its 12. They were never flaky:
-  each demanded that a resize fire a scrollback replay, in a scenario where
-  the terminal is following the bottom and the replay is deliberately
-  skipped — so they failed against correct code, every time. A retry no
-  longer turns a failed test into a green check either; it only buys a
-  second trace.
+  been quarantined since spec 245 are back on, so CI runs 20 of the 22
+  real-daemon tests instead of 2 of the 12 it had then. Most of them were
+  never flaky: they demanded that a resize fire a scrollback replay, in a
+  scenario where the terminal is following the bottom and the replay is
+  deliberately skipped — so they failed against correct code, every time.
+  Two tests stayed behind and are documented in spec 245: one is genuinely
+  load-dependent, the other never reaches the state it means to assert on.
+  A retry no longer turns a failed test into a green check either; it only
+  buys a second trace.
 
 - Prompts that risk losing work no longer use a native OS alert. Closing
   a session with uncommitted changes, and deleting a worktree or branch,
