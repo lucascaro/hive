@@ -102,29 +102,18 @@ func requireLoopback(addr string) error {
 	if host == "" {
 		return fmt.Errorf("addr %q binds every interface; use 127.0.0.1 or [::1]", addr)
 	}
-	if ip := net.ParseIP(host); ip != nil {
-		if !ip.IsLoopback() {
-			return fmt.Errorf("addr %q is not a loopback address", addr)
-		}
-		return nil
+	// An IP literal only. Names are refused rather than resolved: this
+	// guard's answer has to be the one net.Listen acts on, and Listen
+	// re-resolves the name itself. Validating a resolution we then throw
+	// away is check-then-use — the name could resolve to loopback here
+	// and to something else at bind. Nothing needs a name anyway; the
+	// harness passes 127.0.0.1:0.
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("addr %q: host must be an IP literal, not a name", addr)
 	}
-	if host != "localhost" {
-		return fmt.Errorf("addr %q: host is not an IP literal or localhost", addr)
-	}
-	// Resolve rather than trust the name: a hosts file can map
-	// localhost anywhere, and "it said localhost" is not the property
-	// this guard is asserting.
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return fmt.Errorf("addr %q: cannot resolve %q: %w", addr, host, err)
-	}
-	for _, ip := range ips {
-		if !ip.IsLoopback() {
-			return fmt.Errorf("addr %q: %q resolves to non-loopback %s", addr, host, ip)
-		}
-	}
-	if len(ips) == 0 {
-		return fmt.Errorf("addr %q: %q resolved to nothing", addr, host)
+	if !ip.IsLoopback() {
+		return fmt.Errorf("addr %q is not a loopback address", addr)
 	}
 	return nil
 }

@@ -174,7 +174,7 @@ func TestConcurrentAttachWritesAreSerialized(t *testing.T) {
 // would hand every session on the machine to anything that can reach
 // the port.
 func TestRequireLoopbackRefusesOffHostBinds(t *testing.T) {
-	allowed := []string{"127.0.0.1:0", "127.0.0.1:9222", "[::1]:0", "localhost:0"}
+	allowed := []string{"127.0.0.1:0", "127.0.0.1:9222", "[::1]:0"}
 	for _, addr := range allowed {
 		if err := requireLoopback(addr); err != nil {
 			t.Errorf("requireLoopback(%q) = %v, want nil", addr, err)
@@ -188,6 +188,11 @@ func TestRequireLoopbackRefusesOffHostBinds(t *testing.T) {
 		"192.168.1.10:80", // a LAN address
 		"example.com:80",  // a name that is not localhost
 		"127.0.0.1",       // missing port — SplitHostPort fails
+		// Names are refused outright rather than resolved: net.Listen
+		// re-resolves the name itself, so validating a resolution we
+		// then discard would be check-then-use.
+		"localhost:0",
+		"localhost:9222",
 	}
 	for _, addr := range refused {
 		if err := requireLoopback(addr); err == nil {
