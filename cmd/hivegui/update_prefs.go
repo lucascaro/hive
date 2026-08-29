@@ -122,11 +122,14 @@ func (a *App) SaveUpdateSettings(s UpdateSettings) error {
 	if err := saveUpdateSettings(s); err != nil {
 		return err
 	}
-	// A channel change invalidates everything the last check produced.
-	// Without this, switching release -> latest and pressing Update
-	// (with no re-check in between) installs the GitHub release the
-	// *previous* channel found — the wrong artifact entirely.
-	if prev.Channel != s.Channel {
+	// ANY settings change invalidates what the last check produced —
+	// not just the channel. Comparing whole structs rather than named
+	// fields is deliberate: the first cut of this compared Channel
+	// only, which left a latest-channel bundle built from the *old*
+	// source repo still on offer after the user pointed Hive at a
+	// different checkout. A field added later inherits the invalidation
+	// for free instead of quietly reopening the hole.
+	if prev != s {
 		a.forgetUpdateState()
 	}
 	return nil

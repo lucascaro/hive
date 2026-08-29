@@ -38,6 +38,12 @@ type updateState struct {
 	// staging that a newer release has already obsoleted.
 	bundle    string
 	stagedFor string
+	// gen increments whenever the settings a staging run was started
+	// under stop being current. The staging goroutine captures it and
+	// refuses to publish a bundle staged under superseded settings —
+	// the identity check on Latest cannot see a channel or source-repo
+	// change, because those can leave Latest looking untouched.
+	gen int
 }
 
 // rememberCheck records a check result. A staged bundle that no longer
@@ -79,6 +85,9 @@ func (a *App) forgetUpdateState() {
 	a.update.last = UpdateInfo{}
 	a.update.bundle = ""
 	a.update.stagedFor = ""
+	// Anything staging right now was started under settings that no
+	// longer apply; bumping gen is what stops it publishing.
+	a.update.gen++
 }
 
 // UpdateStatus returns the current state of the update action, so the
@@ -129,6 +138,7 @@ func (a *App) StartUpdate() error {
 	a.update.busy = true
 	a.update.last.Stage = StageStaging
 	a.update.last.Message = "Starting…"
+	gen := a.update.gen
 	a.update.mu.Unlock()
 
 	go func() {
@@ -140,6 +150,17 @@ func (a *App) StartUpdate() error {
 			a.update.mu.Unlock()
 			log.Printf("hivegui: staging update failed: %v", err)
 			a.setStage(StageError, err.Error())
+			return
+		}
+		if a.update.gen != gen {
+			// The channel or source repo changed while this was
+			// staging. Whatever we just produced came from settings the
+			// user has since replaced — publishing it would offer
+			// Restart into a build from the checkout, or the channel,
+			// they moved away from.
+			a.update.mu.Unlock()
+			log.Printf("hivegui: discarding update staged under superseded settings")
+			a.setStage(StageIdle, "")
 			return
 		}
 		if a.update.last.Latest != info.Latest {

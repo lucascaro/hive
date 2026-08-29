@@ -160,3 +160,31 @@ func TestRememberCheckDropsStaleStaging(t *testing.T) {
 		t.Error("ApplyUpdateAndRestart = nil error after the staging went stale, want a refusal")
 	}
 }
+
+// A settings change landing mid-staging is the case the Latest identity
+// check cannot see: the bundle does not exist yet, and a channel or
+// source-repo switch can leave Latest looking untouched. The generation
+// counter is what closes it.
+func TestStagingDiscardedWhenSettingsChangeMidFlight(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+	started, release := stubStaging(t, "/staged/hivegui.app", nil)
+
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	<-started
+	// The user switches settings while the download/build is running.
+	a.forgetUpdateState()
+	close(release)
+
+	waitForStage(t, a, StageIdle)
+	if err := a.ApplyUpdateAndRestart(); err == nil {
+		t.Fatal("ApplyUpdateAndRestart = nil error, want the superseded bundle to have been discarded")
+	}
+	if got := a.UpdateStatus(); got.Stage == StageReady {
+		t.Errorf("Stage = %q, want the button not to offer Restart", got.Stage)
+	}
+}

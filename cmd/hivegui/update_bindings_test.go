@@ -126,3 +126,51 @@ func TestSaveUpdateSettingsKeepsStateWhenChannelIsUnchanged(t *testing.T) {
 		t.Errorf("UpdateStatus = %+v after re-saving the same channel, want it preserved", got)
 	}
 }
+
+// The channel is not the only setting a staged bundle depends on. A
+// latest-channel bundle is built from a specific checkout, so pointing
+// Hive at a different one has to invalidate it too — otherwise Restart
+// installs a build from the repo the user just moved away from.
+func TestSaveUpdateSettingsForgetsStateOnSourceRepoChange(t *testing.T) {
+	isolateStateDir(t)
+	first := fakeHiveCheckout(t)
+	second := fakeHiveCheckout(t)
+	a := &App{}
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: first}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "abc1234", Channel: ChannelLatest, Stage: StageAvailable,
+	})
+
+	// Same channel, different checkout.
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: second}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	if got := a.UpdateStatus(); got.Available || got.Latest != "" {
+		t.Errorf("UpdateStatus = %+v after a source-repo change, want it cleared", got)
+	}
+	if err := a.ApplyUpdateAndRestart(); err == nil {
+		t.Error("ApplyUpdateAndRestart = nil error after a source-repo change, want a refusal")
+	}
+}
+
+// Re-saving byte-identical settings is not a change; it must not throw
+// away a check the user is about to act on.
+func TestSaveUpdateSettingsKeepsStateWhenNothingChanged(t *testing.T) {
+	isolateStateDir(t)
+	repo := fakeHiveCheckout(t)
+	a := &App{}
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatal(err)
+	}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "abc1234", Channel: ChannelLatest, Stage: StageAvailable,
+	})
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.UpdateStatus(); !got.Available || got.Latest != "abc1234" {
+		t.Errorf("UpdateStatus = %+v after an identical re-save, want it preserved", got)
+	}
+}
