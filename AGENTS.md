@@ -181,7 +181,7 @@ Use the release script to publish a new version:
 ./scripts/release.sh <version>    # e.g. ./scripts/release.sh 0.3.0
 ```
 
-The script handles everything: version bump, changelog stamp, commit, tag, cross-compilation (darwin arm64/amd64, linux amd64/arm64, windows amd64), GitHub release with attached binaries, and push. Version/commit come from `internal/buildinfo` (stamped via ldflags at build time).
+The script handles everything: version bump, changelog stamp, commit, tag, release artifacts via `build.sh --platform all` (macOS universal .app + `hived`, Windows amd64 `.exe` — Linux is a manual native build, see README), GitHub release with attached binaries, and push. Version/commit come from `internal/buildinfo` (stamped via ldflags at build time).
 
 **Prerequisites:** clean working tree, `gh` CLI authenticated, `[Unreleased]` section in CHANGELOG.md.
 
