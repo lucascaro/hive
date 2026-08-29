@@ -22,7 +22,9 @@ test('a minimized project drops to a tray at the bottom of the sidebar', async (
   const first = listed.first();
   const pid = await first.getAttribute('data-pid');
 
-  await first.locator('.project-actions button[aria-label^="Minimize"]').click();
+  await first
+    .locator('.project-actions button[aria-label^="Minimize"]')
+    .click();
 
   await expect(listed).toHaveCount(before - 1);
   const chip = page.locator(`.min-project-chip[data-pid="${pid}"]`);
