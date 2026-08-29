@@ -64,6 +64,31 @@ func TestStartUpdateRefusesWhenNothingAvailable(t *testing.T) {
 	}
 }
 
+// A newer release landing *while* staging runs must not be presented as
+// ready: the bundle on disk is the older one, and Restart would install
+// it under the newer version's name.
+func TestStartUpdateDropsStagingOvertakenByNewerVersion(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})
+	started, release := stubStaging(t, "/staged/hivegui.app", nil)
+
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	<-started
+	// Mid-staging check finds a newer release.
+	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.10", Stage: StageAvailable})
+	close(release)
+
+	info := waitForStage(t, a, StageAvailable)
+	if info.Latest != "9.9.10" {
+		t.Errorf("Latest = %q, want the newer version", info.Latest)
+	}
+	if err := a.ApplyUpdateAndRestart(); err == nil {
+		t.Error("ApplyUpdateAndRestart = nil error after the staging was overtaken, want a refusal")
+	}
+}
+
 func TestStartUpdateIsSingleFlight(t *testing.T) {
 	a := &App{}
 	a.rememberCheck(UpdateInfo{Available: true, Latest: "9.9.9", Stage: StageAvailable})

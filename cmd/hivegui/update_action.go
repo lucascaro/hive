@@ -129,6 +129,15 @@ func (a *App) StartUpdate() error {
 			a.setStage(StageError, err.Error())
 			return
 		}
+		if a.update.last.Latest != info.Latest {
+			// A newer version landed while we were staging. rememberCheck
+			// could not drop this bundle — it did not exist yet — so drop
+			// it here: offering Restart would install the build we staged
+			// while the UI is already reporting the newer one.
+			a.update.mu.Unlock()
+			a.setStage(StageAvailable, "")
+			return
+		}
 		a.update.bundle = bundle
 		a.update.stagedFor = info.Latest
 		a.update.mu.Unlock()
