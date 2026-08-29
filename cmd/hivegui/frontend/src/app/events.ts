@@ -16,7 +16,11 @@ import { state, saveCollapsed } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
-import { renderSidebar, updateSidebarSelection } from './sidebar.js';
+import {
+  renderSidebar,
+  updateSidebarSelection,
+  updateSidebarTitles,
+} from './sidebar.js';
 import { pruneCollapsed } from '../lib/collapsed.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
@@ -69,7 +73,10 @@ interface ProjectEvent {
 }
 
 interface SessionEvent {
-  kind: 'added' | 'removed' | 'updated';
+  // 'title' is a session-only kind: the program on the PTY re-titled
+  // itself (internal/wire/control.go SessionEventTitle). Kept separate
+  // from 'updated' so title churn never triggers a full re-render.
+  kind: 'added' | 'removed' | 'updated' | 'title';
   session: SessionInfo;
 }
 
@@ -390,6 +397,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
       if (i < 0) state.sessions.push(ev.session);
       renderSidebar();
       deps.switchTo(ev.session.id);
+      return;
+    }
+    // The program on the PTY re-titled itself. Its own kind, not an
+    // `updated`, precisely so it can take the cheap path: patch the
+    // sidebar's title line in place and touch nothing else. A full
+    // renderSidebar() here would wipe and rebuild every row at whatever
+    // rate the child process redraws, eating dblclick pairs on the way
+    // (see updateSidebarSelection's comment).
+    if (ev.kind === 'title') {
+      if (i >= 0) state.sessions[i] = ev.session;
+      updateSidebarTitles();
       return;
     }
     if (ev.kind === 'updated' && isClosing(phaseOf(ev.session))) {

@@ -22,6 +22,18 @@ type phaseLog struct {
 }
 
 func (p *phaseLog) add(ev wire.SessionEvent) {
+	// Window-title events are dropped at the door. They carry a Phase
+	// like every other event, but they are emitted by the program on the
+	// PTY re-titling itself — a shell does this from its prompt — so they
+	// arrive asynchronously and in numbers no lifecycle assertion can
+	// predict. Filtering here rather than in each helper keeps every
+	// phase test reading as a pure lifecycle sequence.
+	//
+	// This is the reason titles have their own SessionEvent kind instead
+	// of riding `updated`: consumers that care about lifecycle can say so.
+	if ev.Kind == wire.SessionEventTitle {
+		return
+	}
 	p.mu.Lock()
 	p.events = append(p.events, ev)
 	p.mu.Unlock()

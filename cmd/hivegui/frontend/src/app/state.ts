@@ -39,6 +39,13 @@ export interface SessionInfo {
   // Lifecycle phase (internal/wire/control.go Phase*). Absent/empty
   // means ready — the daemon omits it in the steady state.
   phase?: string;
+  // OSC 0/2 window title the running program most recently set, read off
+  // the daemon's VT mirror (internal/wire/control.go SessionInfo.Title).
+  // Daemon-owned and in-memory only, so it is absent for a session with
+  // no live process and after a daemon restart. Single-spelled: the
+  // daemon emits `title` and there is no camelCase variant to fall back
+  // to.
+  title?: string;
 }
 
 export interface ProjectInfo {

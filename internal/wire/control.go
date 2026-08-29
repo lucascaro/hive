@@ -120,7 +120,22 @@ type SessionInfo struct {
 	// makes every entry loaded from disk ready by default. See the
 	// Phase* constants below.
 	Phase string `json:"phase,omitempty"`
+	// Title is the window title the running program most recently set
+	// via OSC 0 / OSC 2 — what a shell or agent TUI publishes to say
+	// what it is doing right now. Daemon-owned and in-memory only, like
+	// Phase: it is read back off the session's VT mirror, never
+	// persisted, so a daemon restart simply starts it empty again and a
+	// session with no live process reports "". Capped at
+	// MaxTitleLen bytes, since the content comes from the child process.
+	Title string `json:"title,omitempty"`
 }
+
+// MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
+// in the ordinary sense — any program on the PTY can set it to anything —
+// and it is rebroadcast to every connected client on change, so it is
+// truncated at the boundary rather than trusted. 256 bytes is far more
+// than any sane title and far less than a problem.
+const MaxTitleLen = 256
 
 // Session lifecycle phases, carried by SessionInfo.Phase. The daemon
 // owns them; clients render them. They are in-memory only — nothing
@@ -193,6 +208,19 @@ const (
 	SessionEventAdded   = "added"
 	SessionEventRemoved = "removed"
 	SessionEventUpdated = "updated"
+	// SessionEventTitle reports that the program running on the session
+	// changed its window title (SessionInfo.Title). Deliberately NOT an
+	// "updated": that kind means the daemon's own view of the session
+	// changed — a rename, a reorder, a phase transition, a death — and
+	// clients treat it as authoritative state worth a full re-render. A
+	// title change is neither authoritative nor rare: it is the child
+	// process redrawing, at whatever rate it likes. Sharing a kind would
+	// make every existing consumer tolerate that churn, and make the
+	// event stream nondeterministic for anything asserting on it.
+	//
+	// Clients that do not know this kind ignore it and simply show no
+	// titles, so the field and the kind are both additive.
+	SessionEventTitle = "title"
 )
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

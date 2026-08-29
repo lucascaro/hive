@@ -382,12 +382,52 @@ body.resizing-sidebar #app { transition: none; }
   text-overflow: ellipsis;
 }
 
+/* Name over window title. The row stays a centered flex line; only the
+   text stacks, so the dot, worktree glyph and swatch stay vertically
+   centered against a one- or two-line row without extra rules. */
+.session-item .session-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  /* Threads the shrink permission down to .name and .session-title —
+     without it a long title blows the row out instead of ellipsing. */
+  min-width: 0;
+  gap: 1px;
+}
+
+/* The window title the running program published: what the session is
+   doing *now*, under the name it was given at creation. Deliberately one
+   step quieter than the name in every dimension — smaller, dimmer, no
+   gradient — so the row still reads name-first at a glance. Same idea as
+   .tile-term-title in the grid header, one level down. */
+.session-item .session-title {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.session-item:hover .session-title { color: rgba(255, 255, 255, 0.55); }
+/* The selected row's tinted background washes out 0.4 alpha. */
+.session-item.selected .session-title {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 400;
+}
+
 .session-item.dead .name {
   background: none;
   -webkit-text-fill-color: #555;
   color: #555;
   font-style: italic;
 }
+
+/* A session with no live process has no current title — whatever the
+   daemon last saw is stale by definition. */
+.session-item.dead .session-title { display: none; }
 
 .session-item .dot {
   width: 6px;
@@ -400,7 +440,11 @@ body.resizing-sidebar #app { transition: none; }
 .session-item.dead .dot { background: #333; }
 
 .session-item .name-input {
-  flex: 1;
+  /* The input replaces .name *inside* .session-text, which is a column
+     flex — `flex: 1` there would stretch it vertically instead of
+     filling the row, so size it on the cross axis explicitly. */
+  width: 100%;
+  min-width: 0;
   background: #000;
   color: #fff;
   border: 1px solid #444;
