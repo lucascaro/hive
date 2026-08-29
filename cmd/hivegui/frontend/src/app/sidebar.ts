@@ -9,10 +9,12 @@ import { UpdateSession, UpdateProject } from '../bridge.js';
 import {
   state,
   saveCollapsed,
+  saveMinimizedProjects,
   type ProjectInfo,
   type SessionInfo,
 } from './state.js';
-import { projectsUL, reportFailure } from './dom.js';
+import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
+import { pruneCollapsed } from '../lib/collapsed.js';
 import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
@@ -28,6 +30,11 @@ import { displayTitle } from '../lib/term-title.js';
 export interface SidebarDeps {
   switchTo: (id: string) => void;
   switchToProject: (pid: string) => void;
+  // Owned by view.ts, not sidebar.ts: minimizing a project repaints
+  // the grid and can move focus, and view.ts already imports this
+  // module — a direct import back would close the cycle.
+  minimizeProject: (pid: string) => void;
+  restoreProject: (pid: string) => void;
   confirmAndDeleteProject: (p: ProjectInfo) => void;
   renderEmptyState: () => void;
   refocusActiveTerm: () => void;
@@ -36,6 +43,8 @@ export interface SidebarDeps {
 let deps: SidebarDeps = {
   switchTo: () => {},
   switchToProject: () => {},
+  minimizeProject: () => {},
+  restoreProject: () => {},
   confirmAndDeleteProject: () => {},
   renderEmptyState: () => {},
   refocusActiveTerm: () => {},
@@ -48,10 +57,79 @@ export function initSidebar(injected: SidebarDeps) {
 export function renderSidebar() {
   projectsUL.innerHTML = '';
   const activePID = activeProjectId();
+  // Drop ids for projects that no longer exist, so the persisted set
+  // can't grow forever behind deletions (same rule as `collapsed`).
+  const pruned = pruneCollapsed(
+    state.minimizedProjects,
+    state.projects.map((p) => p.id),
+  );
+  if (pruned.changed) {
+    state.minimizedProjects = pruned.set;
+    saveMinimizedProjects();
+  }
   for (const p of state.projects) {
+    if (state.minimizedProjects.has(p.id)) continue;
     projectsUL.appendChild(renderProject(p, activePID));
   }
+  renderMinimizedProjects(activePID);
   deps.renderEmptyState();
+}
+
+// renderMinimizedProjects rebuilds the name-only chip list pinned to
+// the bottom of the sidebar. Chips render in project order — the same
+// order the rows would have if nothing were minimized — so restoring
+// one is visibly a no-op on ordering.
+function renderMinimizedProjects(activePID: string) {
+  const tray = minimizedProjectsUL;
+  // pageEl, so a jsdom test that mounts only #projects still renders.
+  if (!tray) return;
+  tray.innerHTML = '';
+  const minimized = state.projects.filter((p) =>
+    state.minimizedProjects.has(p.id),
+  );
+  tray.classList.toggle('hidden', minimized.length === 0);
+  for (const p of minimized) {
+    tray.appendChild(renderProjectChip(p, activePID));
+  }
+}
+
+function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'min-project-chip';
+  li.dataset.pid = p.id;
+  li.style.setProperty('--project-color', p.color || '#888');
+  if (p.id === activePID) li.classList.add('active');
+
+  const dot = document.createElement('span');
+  dot.className = 'min-project-color';
+
+  const name = document.createElement('span');
+  name.className = 'min-project-name';
+  name.textContent = p.name ?? '';
+  name.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
+
+  // Clicking the chip body selects the project without un-minimizing
+  // it: you can launch into a project you have set aside, and only the
+  // explicit ＋ puts the rows back.
+  li.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t instanceof Element && t.closest('.min-project-restore')) return;
+    deps.switchToProject(p.id);
+  });
+
+  const restore = document.createElement('button');
+  restore.type = 'button';
+  restore.className = 'min-project-restore';
+  restore.textContent = '＋';
+  restore.title = `Restore ${p.name}`;
+  restore.setAttribute('aria-label', `Restore ${p.name}`);
+  restore.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deps.restoreProject(p.id);
+  });
+
+  li.append(dot, name, restore);
+  return li;
 }
 
 // updateSidebarSelection toggles the .selected / .active /
@@ -177,6 +255,17 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     openProjectEditor(p);
   });
 
+  const minBtn = document.createElement('button');
+  // Same glyph as the grid tile's minimize control
+  // (app/session-term.ts) — one gesture, two scopes.
+  minBtn.textContent = '–';
+  minBtn.title = 'Minimize project (hide from sidebar and grid)';
+  minBtn.setAttribute('aria-label', `Minimize ${p.name}`);
+  minBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deps.minimizeProject(p.id);
+  });
+
   const delBtn = document.createElement('button');
   delBtn.textContent = '✕';
   delBtn.title = 'Delete project';
@@ -185,7 +274,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     deps.confirmAndDeleteProject(p);
   });
 
-  actions.append(newBtn, wtBtn, editBtn, delBtn);
+  actions.append(newBtn, wtBtn, editBtn, minBtn, delBtn);
 
   header.append(caret, colorEl, name, actions);
   header.addEventListener('click', (e) => {

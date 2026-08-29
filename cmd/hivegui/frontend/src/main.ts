@@ -45,6 +45,8 @@ import {
   switchToProject,
   updateAppTitle,
   renderMinimizedTray,
+  minimizeProject,
+  restoreProject,
   renderEmptyState,
   shiftActiveProject,
   renderGrid,
@@ -219,6 +221,8 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initSidebar({
   switchTo,
   switchToProject,
+  minimizeProject,
+  restoreProject,
   confirmAndDeleteProject,
   renderEmptyState,
   refocusActiveTerm,

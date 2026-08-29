@@ -13,6 +13,11 @@ export const termsHost = mustEl('terms');
 termsHost.classList.add('single');
 
 export const projectsUL = mustEl('projects');
+
+// pageEl, not mustEl: the jsdom tests mount partial sidebar markup and
+// must not fail on a tray they never exercise. renderSidebar skips the
+// minimized list when this is null.
+export const minimizedProjectsUL = pageEl('minimized-projects');
 export const status = mustEl('status');
 
 const statusCtl = createStatus({

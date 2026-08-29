@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Projects can be minimized out of the sidebar. The `–` button on a
+  project header — the same glyph that minimizes a session tile — drops
+  the whole project to a compact, name-only list at the bottom of the
+  sidebar, and hides its sessions from grid views. The sessions keep
+  running and stay reachable from the chip, the command palette and
+  ⌘[ / ⌘]. A `＋` on the chip puts the project back exactly where it was:
+  minimizing never touches project order, so restoring cannot shuffle
+  your list, and reordering the projects you left visible produces the
+  same result it would with nothing minimized. The set survives a
+  restart.
+
 - The sidebar now shows what each session is actually doing. Under every
   session name sits a second, quieter line carrying the window title the
   running program publishes — the task Claude is working on, the command

@@ -30,6 +30,8 @@ beforeAll(async () => {
   sidebar.initSidebar({
     switchTo: noop,
     switchToProject: noop,
+    minimizeProject: noop,
+    restoreProject: noop,
     confirmAndDeleteProject: noop,
     renderEmptyState: noop,
     refocusActiveTerm: noop,

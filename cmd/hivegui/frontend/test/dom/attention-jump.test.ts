@@ -56,14 +56,27 @@ vi.mock('../../src/bridge.js', () => {
 
 // switchTo owns real DOM/xterm work; the slot logic is what's under test.
 // The real chain is covered end-to-end in attention-jump-integration.test.ts.
-vi.mock('../../src/app/view.js', () => ({
-  switchTo: vi.fn(),
-  setView: vi.fn(),
-  gridSpatialMove: vi.fn(),
-  shiftActiveProject: vi.fn(),
-  restoreSession: vi.fn(),
-  minimizeSession: vi.fn(),
-}));
+vi.mock('../../src/app/view.js', async () => {
+  const { state } = await import('../../src/app/state.js');
+  return {
+    switchTo: vi.fn(),
+    setView: vi.fn(),
+    gridSpatialMove: vi.fn(),
+    shiftActiveProject: vi.fn(),
+    restoreSession: vi.fn(),
+    minimizeSession: vi.fn(),
+    minimizeProject: vi.fn(),
+    // Mirrors the real predicate (view.ts): hidden by its own id, or by
+    // its project's. jumpToAttention branches on it, so hard-coding
+    // false here would stop testing what ships.
+    isSessionHidden: vi.fn((id: string) => {
+      if (state.minimized.has(id)) return true;
+      const s = state.sessions.find((x) => x.id === id);
+      const pid = s?.projectId ?? s?.project_id ?? '';
+      return !!pid && state.minimizedProjects.has(pid);
+    }),
+  };
+});
 
 type View = typeof import('../../src/app/view.js');
 

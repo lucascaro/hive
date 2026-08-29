@@ -140,6 +140,77 @@ body.resizing-sidebar #app { transition: none; }
   overflow-x: hidden;
 }
 
+/* Minimized projects: a name-only list pinned to the bottom of the
+   sidebar, above the version footer. #projects takes the free space
+   (flex: 1), so this sits under it without needing margin-top: auto. */
+#minimized-projects {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px;
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: 1px solid #1f1f1f;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#minimized-projects.hidden { display: none; }
+
+.min-project-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #888;
+  cursor: pointer;
+  min-width: 0;
+}
+.min-project-chip:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ddd;
+}
+.min-project-chip.active {
+  background: color-mix(in srgb, var(--project-color, #888) 12%, transparent);
+  color: #ddd;
+}
+.min-project-color {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--project-color, #888);
+  flex-shrink: 0;
+}
+.min-project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.min-project-restore {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.min-project-chip:hover .min-project-restore { color: #ddd; }
+.min-project-restore:hover { background: rgba(255, 255, 255, 0.06); }
+.min-project-restore:focus-visible {
+  outline: 1px solid rgba(245, 158, 11, 0.8);
+  outline-offset: 1px;
+}
+
 .project {
   margin-bottom: 4px;
   position: relative;

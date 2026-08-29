@@ -6,10 +6,15 @@
 // and main.ts.
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
-import { state, type SessionInfo, type TermTile } from './state.js';
+import {
+  state,
+  saveMinimizedProjects,
+  type SessionInfo,
+  type TermTile,
+} from './state.js';
 import { termsHost, setStatus, flashStatus } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
-import { updateSidebarSelection } from './sidebar.js';
+import { updateSidebarSelection, renderSidebar } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import {
@@ -18,9 +23,10 @@ import {
   type GridLayout,
 } from '../lib/grid.js';
 import { VIEW_STORAGE_KEY, resolveView, type ViewMode } from '../lib/view.js';
-import { filterMinimized } from '../lib/minimized.js';
+import { filterHidden } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { emptyStateModel } from '../lib/empty-state.js';
+import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 
@@ -385,13 +391,17 @@ export function shiftActiveProject(delta: number) {
 // before it commits to the mode.
 export function gridScopeFor(view: ViewMode, projectId?: string) {
   if (view === 'grid-all') {
-    return filterMinimized(orderedSessions(), state.minimized);
+    return filterHidden(
+      orderedSessions(),
+      state.minimized,
+      state.minimizedProjects,
+    );
   }
   if (view === 'grid-project') {
     const scoped = state.sessions
       .filter((s) => (s.projectId ?? s.project_id) === projectId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return filterMinimized(scoped, state.minimized);
+    return filterHidden(scoped, state.minimized, state.minimizedProjects);
   }
   return [];
 }
@@ -400,6 +410,27 @@ export function gridScopeFor(view: ViewMode, projectId?: string) {
 // in the current grid view.
 export function gridScopeSessions() {
   return gridScopeFor(state.view, state.gridProjectId || activeProjectId());
+}
+
+// isSessionHidden answers the one question every "can I switch to this
+// with a tile to land on?" caller asks: the session is out of the grid
+// either because it was minimized itself, or because its project was.
+// keyboard.ts branches on this rather than on state.minimized directly,
+// so the two mechanisms can never drift apart.
+export function isSessionHidden(id: string): boolean {
+  if (state.minimized.has(id)) return true;
+  const s = state.sessions.find((x) => x.id === id);
+  return !!s && state.minimizedProjects.has(readProjectId(s));
+}
+
+// hiddenSessionIds is the union the empty-state model needs: it asks
+// "is every session in scope hidden?", which must count both kinds.
+function hiddenSessionIds(): Set<string> {
+  const ids = new Set(state.minimized);
+  for (const s of state.sessions) {
+    if (state.minimizedProjects.has(readProjectId(s))) ids.add(s.id);
+  }
+  return ids;
 }
 
 // minimizeSession hides a session from grid views by adding its id to
@@ -438,9 +469,54 @@ export function enforceViewFloor() {
 export function restoreSession(id: string | null) {
   if (!id) return;
   state.minimized.delete(id);
+  // A session can be hidden by its project rather than by itself, and
+  // callers (⌘B, nav history) only know "make this one visible" — so
+  // reveal whichever of the two is holding it back.
+  const s = state.sessions.find((x) => x.id === id);
+  const pid = readProjectId(s);
+  if (pid && state.minimizedProjects.has(pid)) restoreProject(pid);
   renderMinimizedTray();
   switchTo(id);
   if (state.view !== 'single') {
+    rebaselineGridReplayCols();
+  }
+}
+
+// minimizeProject takes a whole project out of the sidebar list and
+// out of grid views in one move: the chip tray at the bottom of the
+// sidebar becomes its only row. Its sessions keep running and stay
+// reachable (sidebar chip, ⌘K, ⌘[ / ⌘]) — this is the project-level
+// twin of minimizeSession, and it repaints on the same three axes:
+// focus handoff, grid, view floor.
+export function minimizeProject(id: string | null) {
+  if (!id || state.minimizedProjects.has(id)) return;
+  state.minimizedProjects.add(id);
+  saveMinimizedProjects();
+  // Same reason as minimizeSession: don't leave the focus ring on a
+  // tile that just stopped being rendered.
+  if (state.view !== 'single') {
+    const active = state.sessions.find((x) => x.id === state.activeId);
+    if (active && readProjectId(active) === id) {
+      const next = gridScopeSessions()[0];
+      if (next) deps.setActive(next.id);
+    }
+    renderGrid();
+    rebaselineGridReplayCols();
+  }
+  renderSidebar();
+  enforceViewFloor();
+}
+
+// restoreProject puts the project back in the sidebar list. There is
+// no stored position to restore: minimizing never touches the
+// project's Order, so the row reappears exactly where it was.
+export function restoreProject(id: string | null) {
+  if (!id || !state.minimizedProjects.has(id)) return;
+  state.minimizedProjects.delete(id);
+  saveMinimizedProjects();
+  renderSidebar();
+  if (state.view !== 'single') {
+    renderGrid();
     rebaselineGridReplayCols();
   }
 }
@@ -540,7 +616,7 @@ export function renderEmptyState() {
     // there would change which default applies.
     currentProjectId: state.currentProjectId ?? undefined,
     gridProjectId: state.gridProjectId ?? undefined,
-    minimized: state.minimized,
+    minimized: hiddenSessionIds(),
     isMac,
   });
   if (!model) {
