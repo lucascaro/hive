@@ -147,8 +147,15 @@ already uses in that file, and for the same reason.
 - **2026-08-28** — Research approved; approach drafted and approved. Stage = IMPLEMENT.
 - **2026-08-28** — Confirmed `TestKill_DirtyWorktree_FrameError` fails identically on `origin/main` (3/3) under machine load: its 3s budget for `git worktree add` is environment-sensitive. Pre-existing, not from this branch.
 - **2026-08-28** — Implemented on `feature/248-sidebar-window-titles`. All AGENTS.md checks pass: `gofmt`, `go vet`, `go test ./internal/...`, `biome ci`, `tsc --noEmit`, and `scripts/test.sh` (go · unit · dom · e2e — 187 e2e passed, 1 skipped).
-- **2026-08-28** — Split the registry tests by layer: `noteTitleChange` is driven directly (deterministic, asserts the kind and the dead-entry silence) and only one test goes through a real PTY. Why: asserting on a title that a shell is simultaneously overwriting is inherently racy, and `internal/session` already covers OSC bytes reaching `Title()`.
+- **2026-08-28** — Filter title events inside `phaseLog.add` (the shared helper behind every phase test) rather than in each assertion. Why: title events carry a Phase like any other event but arrive asynchronously and unpredictably, so one filter at the recording site keeps every phase test reading as a pure lifecycle sequence. The `TestCreateAppendEmitsNoShiftedUpdates` skip is the same idea in the one place that does not use the helper. This is what the dedicated event kind buys: consumers that care about lifecycle can now say so.
+- **2026-08-28** — Reproduce the Linux-only failures locally with `PROMPT_COMMAND='printf "\033]0;%s\007" "$PWD"'`. Why: the difference between the two CI legs is simply that the Linux runner's bash titles itself from its prompt and this macOS shell does not — with that env var set, macOS reproduces the failures exactly, which turns a push-and-see loop into a local one. `noteTitleChange` is driven directly (deterministic, asserts the kind and the dead-entry silence) and only one test goes through a real PTY. Why: asserting on a title that a shell is simultaneously overwriting is inherently racy, and `internal/session` already covers OSC bytes reaching `Title()`.
 - **2026-08-28** — CI on Linux caught two failures macOS did not: `TestCreateAppendEmitsNoShiftedUpdates` (a real consequence of the new broadcast traffic) and `TestTitleChangeBroadcastsUpdated` (nondeterministic against a self-titling shell). Both fixed at the root; re-verified with `-count=2` on the registry/daemon/session packages and `-race` on session/registry.
+
+## Notes
+
+- To exercise this branch's event traffic the way CI's Linux runner does, run the Go tests with a self-titling prompt:
+  `PROMPT_COMMAND='printf "\033]0;%s\007" "$PWD"' go test ./internal/...`
+  Without it, macOS's shell sets no title and the title-broadcast paths stay dormant.
 
 ## Open questions
 
