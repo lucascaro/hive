@@ -9,6 +9,7 @@ import {
   loadCollapsed,
   serializeCollapsed,
   COLLAPSED_STORAGE_KEY,
+  MINIMIZED_PROJECTS_STORAGE_KEY,
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { ViewMode } from '../lib/view.js';
@@ -135,9 +136,11 @@ export interface AppState {
   projects: ProjectInfo[];
   sessions: SessionInfo[];
   collapsed: Set<string>;
+  minimizedProjects: Set<string>;
   attention: Set<string>;
   attentionReturnId: string | null;
   attentionRestored: Set<string>;
+  attentionRestoredProjects: Set<string>;
   nav: NavHistory;
   minimized: Set<string>;
   aliveById: Map<string, boolean>;
@@ -155,6 +158,9 @@ export const state: AppState = {
   projects: [], // ProjectInfo[] in display order
   sessions: [], // SessionInfo[] in display order
   collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
+  minimizedProjects: loadSavedMinimizedProjects(), // project ids pulled out of
+  //   the sidebar list into the tray at its bottom; their sessions are
+  //   hidden from grid views too. Persisted, like `collapsed`.
   attention: new Set(), // session ids that have unread bells
   attentionReturnId: null, // session to jump back to (⇧⌘B): the one you
   //   were in before the FIRST ⌘B. Written only
@@ -163,6 +169,8 @@ export const state: AppState = {
   //   the original anchor; cleared on use.
   attentionRestored: new Set(), // sessions ⌘B pulled out of the minimized
   //   tray this round; ⇧⌘B puts them back.
+  attentionRestoredProjects: new Set(), // same round-trip, one level up:
+  //   projects ⌘B revealed to reach a bell inside them.
   nav: createNavHistory(), // back/forward stacks of visited session ids
   //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
   //   persisted, unlike `collapsed`: the terminals
@@ -213,6 +221,25 @@ export function loadSavedCollapsed(): Set<string> {
     return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY));
   } catch {
     return new Set();
+  }
+}
+
+export function loadSavedMinimizedProjects(): Set<string> {
+  try {
+    return loadCollapsed(localStorage.getItem(MINIMIZED_PROJECTS_STORAGE_KEY));
+  } catch {
+    return new Set();
+  }
+}
+
+export function saveMinimizedProjects(): void {
+  try {
+    localStorage.setItem(
+      MINIMIZED_PROJECTS_STORAGE_KEY,
+      serializeCollapsed(state.minimizedProjects),
+    );
+  } catch {
+    /* private mode etc. — minimized state just won't persist */
   }
 }
 

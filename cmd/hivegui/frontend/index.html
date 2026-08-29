@@ -24,6 +24,10 @@
       <button id="new-project-btn" title="New project (⌘N)">＋</button>
     </header>
     <ul id="projects"></ul>
+    <!-- Projects the user minimized out of the list above. Pinned to
+         the bottom of the sidebar, name only, one ＋ each to restore.
+         Hidden (display: none) while the set is empty. -->
+    <ul id="minimized-projects" class="hidden"></ul>
     <!-- Version/build readout for hive (GUI) and hived (daemon).
          Both spans start empty: the daemon's version is only known
          once the control handshake lands, so app/version-footer.ts

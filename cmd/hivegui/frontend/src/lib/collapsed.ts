@@ -1,8 +1,17 @@
-// Persistence helpers for the sidebar's collapsed-project set.
+// Persistence helpers for the sidebar's per-project id sets — the
+// collapsed set and the minimized set. The helpers are key-agnostic:
+// they take the raw string and return a Set, so a second key costs a
+// constant, not a second module.
 // Mirrors lib/view.ts: pure functions, tolerant of garbage input,
 // unit-testable without localStorage.
 
 export const COLLAPSED_STORAGE_KEY = 'hive.collapsedProjects';
+
+// Projects the user has minimized out of the main sidebar list into
+// the tray at its bottom. Separate key from COLLAPSED_STORAGE_KEY:
+// collapsing hides a project's sessions in the sidebar, minimizing
+// takes the whole project out of the list and out of grid views.
+export const MINIMIZED_PROJECTS_STORAGE_KEY = 'hive.minimizedProjects';
 
 // raw: the localStorage string (or null). Returns a Set of project id
 // strings; anything malformed degrades to an empty/filtered set.

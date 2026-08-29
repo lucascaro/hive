@@ -74,6 +74,15 @@ vi.mock('../../src/app/view.js', async () => {
       if (id) state.minimized.delete(id);
       setActive(id);
     }),
+    minimizeProject: vi.fn(),
+    // Mirrors the real predicate (view.ts). navGo branches on it, so a
+    // bare state.minimized check here would stop testing what ships.
+    isSessionHidden: vi.fn((id: string) => {
+      if (state.minimized.has(id)) return true;
+      const s = state.sessions.find((x) => x.id === id);
+      const pid = s?.projectId ?? s?.project_id ?? '';
+      return !!pid && state.minimizedProjects.has(pid);
+    }),
     minimizeSession: vi.fn(),
   };
 });

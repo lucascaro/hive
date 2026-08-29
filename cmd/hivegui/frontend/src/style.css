@@ -140,6 +140,100 @@ body.resizing-sidebar #app { transition: none; }
   overflow-x: hidden;
 }
 
+/* Minimized projects: a name-only list pinned to the bottom of the
+   sidebar, above the version footer. #projects takes the free space
+   (flex: 1), so this sits under it without needing margin-top: auto. */
+#minimized-projects {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px;
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: 1px solid #1f1f1f;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#minimized-projects.hidden { display: none; }
+
+.min-project-chip {
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  color: #888;
+  min-width: 0;
+}
+.min-project-open {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.min-project-chip:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ddd;
+}
+.min-project-chip.active {
+  background: color-mix(in srgb, var(--project-color, #888) 12%, transparent);
+  color: #ddd;
+}
+/* A minimized project has no session rows, so the chip carries the
+   bell. Reuses the session pulse by aliasing --session-color to the
+   project color, and glows the color dot the way .session-item.attention
+   glows its ::before. */
+.min-project-chip.attention {
+  --session-color: var(--project-color, #888);
+  animation: hive-attention-pulse 1.2s ease-in-out infinite;
+  color: #ddd;
+}
+.min-project-chip.attention .min-project-color {
+  box-shadow: 0 0 6px var(--project-color, #888);
+}
+.min-project-color {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--project-color, #888);
+  flex-shrink: 0;
+}
+.min-project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.min-project-restore {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  /* Not #666: this is the only control that un-minimizes a project, so
+     it has to clear the contrast floor at rest, not just on hover. */
+  color: #9a9a9a;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.min-project-chip:hover .min-project-restore { color: #ddd; }
+.min-project-restore:hover { background: rgba(255, 255, 255, 0.06); }
+
+
 .project {
   margin-bottom: 4px;
   position: relative;
@@ -283,6 +377,40 @@ body.resizing-sidebar #app { transition: none; }
 .session-item:hover {
   background: rgba(255, 255, 255, 0.03);
   color: #ddd;
+}
+
+/* Hover-revealed, like .project-actions: the row is mostly name, and a
+   button parked on every row at rest would compete with it. Kept in the
+   layout at all times so revealing it never reflows the row. */
+.session-minimize {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #9a9a9a;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.session-item:hover .session-minimize,
+.session-minimize:focus-visible {
+  opacity: 1;
+}
+.session-minimize:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* A minimized session keeps its row — the row is where you put it back
+   from — but says so: dimmed, with the restore control always visible. */
+.session-item.minimized {
+  color: #777;
+}
+.session-item.minimized .session-minimize {
+  opacity: 1;
 }
 
 .session-item.selected {
@@ -1706,6 +1834,9 @@ body.resizing-sidebar #app { transition: none; }
 #new-project-btn:focus-visible,
 .tile-minimize:focus-visible,
 .min-chip:focus-visible,
+.min-project-open:focus-visible,
+.min-project-restore:focus-visible,
+.session-minimize:focus-visible,
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,

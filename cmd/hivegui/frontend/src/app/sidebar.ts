@@ -12,7 +12,7 @@ import {
   type ProjectInfo,
   type SessionInfo,
 } from './state.js';
-import { projectsUL, reportFailure } from './dom.js';
+import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
 import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
@@ -28,6 +28,15 @@ import { displayTitle } from '../lib/term-title.js';
 export interface SidebarDeps {
   switchTo: (id: string) => void;
   switchToProject: (pid: string) => void;
+  // Owned by view.ts, not sidebar.ts: minimizing a project repaints
+  // the grid and can move focus, and view.ts already imports this
+  // module — a direct import back would close the cycle.
+  minimizeProject: (pid: string) => void;
+  restoreProject: (pid: string) => void;
+  // The session-level twin of the pair above, same owner (view.ts) and
+  // same reason: minimizing repaints the grid and can move focus.
+  minimizeSession: (id: string) => void;
+  restoreSession: (id: string) => void;
   confirmAndDeleteProject: (p: ProjectInfo) => void;
   renderEmptyState: () => void;
   refocusActiveTerm: () => void;
@@ -36,6 +45,10 @@ export interface SidebarDeps {
 let deps: SidebarDeps = {
   switchTo: () => {},
   switchToProject: () => {},
+  minimizeProject: () => {},
+  restoreProject: () => {},
+  minimizeSession: () => {},
+  restoreSession: () => {},
   confirmAndDeleteProject: () => {},
   renderEmptyState: () => {},
   refocusActiveTerm: () => {},
@@ -49,9 +62,83 @@ export function renderSidebar() {
   projectsUL.innerHTML = '';
   const activePID = activeProjectId();
   for (const p of state.projects) {
+    if (state.minimizedProjects.has(p.id)) continue;
     projectsUL.appendChild(renderProject(p, activePID));
   }
+  renderMinimizedProjects(activePID);
   deps.renderEmptyState();
+}
+
+// renderMinimizedProjects rebuilds the name-only chip list pinned to
+// the bottom of the sidebar. Chips render in project order — the same
+// order the rows would have if nothing were minimized — so restoring
+// one is visibly a no-op on ordering.
+function renderMinimizedProjects(activePID: string) {
+  const tray = minimizedProjectsUL;
+  // pageEl, so a jsdom test that mounts only #projects still renders.
+  if (!tray) return;
+  tray.innerHTML = '';
+  const minimized = state.projects.filter((p) =>
+    state.minimizedProjects.has(p.id),
+  );
+  tray.classList.toggle('hidden', minimized.length === 0);
+  for (const p of minimized) {
+    tray.appendChild(renderProjectChip(p, activePID));
+  }
+}
+
+// projectHasAttention reports whether any session in the project is
+// ringing. A minimized project has no session rows in the sidebar, so
+// the chip is the only surface left to carry the bell — without this a
+// BEL inside a minimized project is invisible until ⌘B finds it.
+function projectHasAttention(pid: string): boolean {
+  return state.sessions.some(
+    (s) => readProjectId(s) === pid && state.attention.has(s.id),
+  );
+}
+
+function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'min-project-chip';
+  li.dataset.pid = p.id;
+  li.style.setProperty('--project-color', p.color || '#888');
+  if (p.id === activePID) li.classList.add('active');
+  if (projectHasAttention(p.id)) li.classList.add('attention');
+
+  // A real <button>, like the session tray's chip (app/view.ts): the
+  // chip body is an action, and on a bare <li> it would be mouse-only.
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'min-project-open';
+  open.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
+  open.setAttribute('aria-label', `Restore ${p.name}`);
+  // Clicking the row restores the project — the same thing the ＋
+  // does. A minimized row is a thing you put away; the only reason to
+  // click it is to get it back, so making the whole row the target
+  // beats a 12px button as the sole way out.
+  open.addEventListener('click', () => deps.restoreProject(p.id));
+
+  const dot = document.createElement('span');
+  dot.className = 'min-project-color';
+
+  const name = document.createElement('span');
+  name.className = 'min-project-name';
+  name.textContent = p.name ?? '';
+  open.append(dot, name);
+
+  const restore = document.createElement('button');
+  restore.type = 'button';
+  restore.className = 'min-project-restore';
+  restore.textContent = '＋';
+  restore.title = `Restore ${p.name}`;
+  restore.setAttribute('aria-label', `Restore ${p.name}`);
+  restore.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deps.restoreProject(p.id);
+  });
+
+  li.append(open, restore);
+  return li;
 }
 
 // updateSidebarSelection toggles the .selected / .active /
@@ -64,6 +151,16 @@ export function updateSidebarSelection() {
   const activePID = activeProjectId();
   for (const el of projectsUL.querySelectorAll<HTMLElement>('.project')) {
     el.classList.toggle('active', el.dataset.pid === activePID);
+  }
+  // The chips need the same treatment as the rows: switching projects
+  // (chip click, ⌘[ / ⌘], any switchTo) repaints selection without a
+  // rebuild, so a chip that only learned its state at render time would
+  // keep a stale highlight and lie about which project is current.
+  for (const el of minimizedProjectsUL?.querySelectorAll<HTMLElement>(
+    '.min-project-chip',
+  ) ?? []) {
+    el.classList.toggle('active', el.dataset.pid === activePID);
+    el.classList.toggle('attention', projectHasAttention(el.dataset.pid ?? ''));
   }
   for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
     const sid = el.dataset.sid;
@@ -177,6 +274,17 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     openProjectEditor(p);
   });
 
+  const minBtn = document.createElement('button');
+  // Same glyph as the grid tile's minimize control
+  // (app/session-term.ts) — one gesture, two scopes.
+  minBtn.textContent = '–';
+  minBtn.title = 'Minimize project (hide from sidebar and grid)';
+  minBtn.setAttribute('aria-label', `Minimize ${p.name}`);
+  minBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deps.minimizeProject(p.id);
+  });
+
   const delBtn = document.createElement('button');
   delBtn.textContent = '✕';
   delBtn.title = 'Delete project';
@@ -185,7 +293,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     deps.confirmAndDeleteProject(p);
   });
 
-  actions.append(newBtn, wtBtn, editBtn, delBtn);
+  actions.append(newBtn, wtBtn, editBtn, minBtn, delBtn);
 
   header.append(caret, colorEl, name, actions);
   header.addEventListener('click', (e) => {
@@ -385,10 +493,32 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   });
   swatch.appendChild(colorInput);
 
+  // The same control the grid tile carries (app/session-term.ts), on
+  // the row — so a session can be pushed out of the grid without first
+  // finding its tile. It toggles, because once a row is minimized the
+  // tray chip is the only way back and the row is right here.
+  const isMin = state.minimized.has(s.id);
+  if (isMin) li.classList.add('minimized');
+  const minBtn = document.createElement('button');
+  minBtn.type = 'button';
+  minBtn.className = 'session-minimize';
+  minBtn.textContent = isMin ? '＋' : '–';
+  minBtn.title = isMin ? 'Restore to the grid' : 'Minimize (hide from grid)';
+  minBtn.setAttribute(
+    'aria-label',
+    `${isMin ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`,
+  );
+  minBtn.addEventListener('click', (e) => {
+    // Don't also switch to the session the button sits on.
+    e.stopPropagation();
+    if (isMin) deps.restoreSession(s.id);
+    else deps.minimizeSession(s.id);
+  });
+
   if (glyph) {
-    li.append(dot, text, glyph, swatch);
+    li.append(dot, text, glyph, minBtn, swatch);
   } else {
-    li.append(dot, text, swatch);
+    li.append(dot, text, minBtn, swatch);
   }
   li.addEventListener('click', (e) => {
     if (e.target === colorInput || e.target === swatch) return;
