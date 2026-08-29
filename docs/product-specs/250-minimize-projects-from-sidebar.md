@@ -1,10 +1,11 @@
 # Minimize whole projects from the sidebar
 
 - **Issue:** —
+- **PR:** #290
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/250-minimize-projects-from-sidebar.md](../exec-plans/active/250-minimize-projects-from-sidebar.md)
 
 ## Problem

@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/250-minimize-projects-from-sidebar.md](../../product-specs/250-minimize-projects-from-sidebar.md)
 - **Issue:** —
+- **PR:** #290
+- **Branch:** feature/250-minimize-projects-from-sidebar
 - **Status:** active
 
 ## Summary
@@ -65,6 +67,7 @@ The tray is a sibling `<ul>` between `#projects` and the version footer, not a t
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-29** — PR #290 opened; stage = REVIEW.
 - **2026-08-29** — Implemented. go + unit + dom + e2e layers green (17 new unit/dom tests, 2 new ⌘B round-trip tests, 1 e2e layout test); `biome ci .` and `tsc --noEmit` clean. Layout verified in Chromium.
 
 ## Open questions
