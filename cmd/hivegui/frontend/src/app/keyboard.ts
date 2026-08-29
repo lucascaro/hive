@@ -56,11 +56,14 @@ import {
   shiftActiveProject,
   restoreSession,
   minimizeSession,
+  minimizeProject,
+  isSessionHidden,
 } from './view.js';
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { updateSidebarSelection } from './sidebar.js';
 import { goBack, goForward } from '../lib/nav-history.js';
+import { readProjectId } from '../lib/wire.js';
 import { reorderTarget } from '../lib/reorder.js';
 import { scrollTrace } from './trace.js';
 import { mustEl } from './el.js';
@@ -489,8 +492,15 @@ export function jumpToAttention() {
   if (id === state.attentionReturnId) endRound({ reminimize: false });
   else if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
 
-  if (state.minimized.has(id)) {
-    state.attentionRestored.add(id);
+  if (isSessionHidden(id)) {
+    // Record which of the two mechanisms was hiding it, so ⇧⌘B can put
+    // back exactly what ⌘B pulled out — the session, its project, or
+    // both.
+    if (state.minimized.has(id)) state.attentionRestored.add(id);
+    const pid = readProjectId(state.sessions.find((s) => s.id === id));
+    if (pid && state.minimizedProjects.has(pid)) {
+      state.attentionRestoredProjects.add(pid);
+    }
     restoreSession(id); // un-minimize + re-render tray, then switchTo
   } else {
     switchTo(id);
@@ -526,8 +536,21 @@ function endRound({ reminimize }: { reminimize: boolean }) {
         minimizeSession(rid);
       }
     }
+    // Projects last: re-minimizing one hides every session in it, so
+    // doing it before the session pass would hide the active session
+    // the pass above deliberately skips. The same guard applies —
+    // never re-minimize the project you are sitting in.
+    const activePID = readProjectId(
+      state.sessions.find((s) => s.id === state.activeId),
+    );
+    for (const pid of state.attentionRestoredProjects) {
+      if (pid !== activePID && state.projects.some((p) => p.id === pid)) {
+        minimizeProject(pid);
+      }
+    }
   }
   state.attentionRestored.clear();
+  state.attentionRestoredProjects.clear();
 }
 
 // navBack / navForward (Ctrl+- / Ctrl+Shift+-) walk the session history
@@ -553,8 +576,8 @@ const sessionExists = (id: string) => state.sessions.some((s) => s.id === id);
 // session", so it stays restored.
 function navGo(id: string) {
   deps.withoutNavHistory(() => {
-    if (state.minimized.has(id))
-      restoreSession(id); // un-minimize, then switchTo
+    if (isSessionHidden(id))
+      restoreSession(id); // un-minimize (session and/or project), then switchTo
     else switchTo(id);
   });
 }

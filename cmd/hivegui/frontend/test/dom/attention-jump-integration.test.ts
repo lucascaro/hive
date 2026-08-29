@@ -140,7 +140,9 @@ beforeEach(() => {
   state.attention = new Set();
   state.attentionReturnId = null;
   state.attentionRestored = new Set();
+  state.attentionRestoredProjects = new Set();
   state.minimized = new Set();
+  state.minimizedProjects = new Set();
   state.view = 'single';
   state.currentProjectId = 'p1';
 });
@@ -253,5 +255,43 @@ describe('minimized sessions round-trip', () => {
     expect(state.minimized.has('b')).toBe(false);
     expect(state.attentionReturnId).toBeNull();
     expect(state.attentionRestored.size).toBe(0);
+  });
+});
+
+describe('⌘B into a minimized project', () => {
+  // A bell inside a project the user set aside has to be reachable, and
+  // ⇧⌘B has to put the project back — the same round-trip the session
+  // tray gets. Without it, glancing at one bell would drag a whole
+  // project back into the sidebar for good.
+  it('reveals the project on the way in and re-minimizes it on the way back', () => {
+    state.minimizedProjects = new Set(['p2']);
+    state.attention = new Set(['z']);
+
+    jumpToAttention();
+    expect(state.activeId).toBe('z');
+    expect(state.minimizedProjects.has('p2')).toBe(false);
+
+    jumpBack();
+    expect(state.activeId).toBe('a');
+    expect(state.minimizedProjects.has('p2')).toBe(true);
+  });
+
+  it('leaves a project you are still sitting in restored', () => {
+    // The session-level twin of this guard is tested at "does not
+    // re-minimize the session you ended up in": jumpBack's anchor is
+    // gone, so endRound runs its re-minimize pass while the active
+    // session is still inside p2. Re-minimizing it there would yank the
+    // tile out from under the user with no keypress to explain it.
+    state.minimizedProjects = new Set(['p2']);
+    state.attention = new Set(['z']);
+    jumpToAttention();
+    expect(state.activeId).toBe('z');
+
+    // Anchor killed while we were away: jumpBack ends the round in
+    // place instead of switching.
+    state.sessions = state.sessions.filter((x) => x.id !== 'a');
+    jumpBack();
+    expect(state.activeId).toBe('z');
+    expect(state.minimizedProjects.has('p2')).toBe(false);
   });
 });
