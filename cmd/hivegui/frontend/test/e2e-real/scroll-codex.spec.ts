@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { bridgeCalls, registerSessionCleanup } from './bridge-sessions.js';
 // `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
 // view app modules use (app/state.ts). These specs poke the concrete tile the
 // map actually holds, which is what carries the real xterm Terminal, so they
@@ -106,48 +107,6 @@ async function focusFirstTerm(page: Page) {
 // broadcasts session:event(added) to every control conn, so the
 // page's sidebar updates on its own. With two tiles, grid mode splits
 // the width and the col delta always crosses REPLAY_COL_THRESHOLD.
-// bridgeCalls opens one control connection to the ws-bridge and runs a
-// sequence of JSON-RPC calls over it, in order, failing on the first
-// error. Both addSecondSession and the cleanup below need this, and a
-// second copy of the socket boilerplate is how the two would drift.
-async function bridgeCalls(calls: Array<[string, object]>) {
-  if (!WS_URL)
-    throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
-  // Node < 22 has no global WebSocket; fall back to the ws package, typed by
-  // the hand-written ws-shim.d.ts (see there for why not @types/ws).
-  const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
-  const ws = new WS(WS_URL);
-  await new Promise((res, rej) => {
-    ws.onopen = res;
-    ws.onerror = rej;
-  });
-  const send = (id: number, method: string, params: object = {}) =>
-    ws.send(JSON.stringify({ id, method, params }));
-  const waitFor = (id: number) =>
-    new Promise<{ id: number; error?: string }>((res) => {
-      ws.addEventListener('message', function h(ev) {
-        const m = JSON.parse(ev.data);
-        if (m.id === id) {
-          ws.removeEventListener('message', h);
-          res(m);
-        }
-      });
-    });
-  try {
-    send(1, 'ConnectControl');
-    await waitFor(1);
-    let id = 1;
-    for (const [method, params] of calls) {
-      id += 1;
-      send(id, method, params);
-      const resp = await waitFor(id);
-      if (resp.error) throw new Error(`${method} via bridge: ${resp.error}`);
-    }
-  } finally {
-    ws.close();
-  }
-}
-
 // Sessions this file created, torn down once at the end of the file.
 //
 // The e2e-real suite shares ONE daemon across every spec file
@@ -166,97 +125,7 @@ async function bridgeCalls(calls: Array<[string, object]>) {
 // next spec file a clean daemon.
 const createdSessionIds = new Set<string>();
 
-test.afterAll(async () => {
-  if (createdSessionIds.size === 0) return;
-  try {
-    // force: the marker pump may still be writing, and a busy shell
-    // must not survive into the next spec file.
-    //
-    // And WAIT for the removals. KillSession over the bridge is
-    // fire-and-forget — controlWriteJSON just writes the frame, and the
-    // daemon tears the session down on its own goroutine — so returning
-    // when the RPC acks let the next spec file start while the kill was
-    // still in flight. That is not theoretical: it leaked a `second`
-    // into session-phases on one run in two.
-    await killAndAwaitRemoval([...createdSessionIds]);
-  } catch {
-    // Best effort — a teardown error must not mask a real failure.
-  }
-  createdSessionIds.clear();
-});
-
-// killAndAwaitRemoval sends KILL_SESSION for each id and resolves only
-// once the daemon has broadcast `removed` for all of them, so teardown
-// is actually complete when it returns.
-async function killAndAwaitRemoval(ids: string[]) {
-  if (!WS_URL)
-    throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
-  const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
-  const ws = new WS(WS_URL);
-  await new Promise((res, rej) => {
-    ws.onopen = res;
-    ws.onerror = rej;
-  });
-  const pending = new Set(ids);
-  const done = new Promise<void>((resolve) => {
-    ws.addEventListener('message', (ev) => {
-      const m = JSON.parse(ev.data);
-      // The bridge relays daemon fanout as notifications; session:list
-      // (sent on connect) and session:event both settle this.
-      if (m.event === 'session:event') {
-        const parsed = JSON.parse(m.args?.[0] ?? '{}');
-        if (parsed.kind === 'removed' && parsed.session?.id) {
-          pending.delete(parsed.session.id);
-        }
-      } else if (m.event === 'session:list') {
-        const parsed = JSON.parse(m.args?.[0] ?? '{}');
-        const live = new Set(
-          (parsed.sessions ?? []).map((x: { id: string }) => x.id),
-        );
-        for (const id of [...pending]) if (!live.has(id)) pending.delete(id);
-      }
-      if (pending.size === 0) resolve();
-    });
-  });
-  const send = (id: number, method: string, params: object = {}) =>
-    ws.send(JSON.stringify({ id, method, params }));
-  const reply = (id: number) =>
-    new Promise<{ id: number; error?: string }>((res) => {
-      ws.addEventListener('message', function h(ev) {
-        const m = JSON.parse(ev.data);
-        if (m.id === id) {
-          ws.removeEventListener('message', h);
-          res(m);
-        }
-      });
-    });
-  try {
-    // AWAIT the handshake before killing anything. The bridge answers
-    // KillSession with "no control connection" if it arrives before
-    // ConnectControl has dialled — which is silently fatal here, since
-    // the kill never reaches the daemon and teardown then waits out its
-    // timeout for a removal that was never requested.
-    send(1, 'ConnectControl');
-    const hello = await reply(1);
-    if (hello.error) throw new Error(`ConnectControl: ${hello.error}`);
-    let n = 1;
-    for (const id of ids) {
-      n += 1;
-      send(n, 'KillSession', { session_id: id, force: true });
-    }
-    await Promise.race([
-      done,
-      new Promise<void>((_, rej) =>
-        setTimeout(
-          () => rej(new Error('teardown: sessions never removed')),
-          15000,
-        ),
-      ),
-    ]);
-  } finally {
-    ws.close();
-  }
-}
+registerSessionCleanup(createdSessionIds);
 
 async function addSecondSession(page: Page) {
   // Wait for the count to GROW, not to reach a fixed number. Tests in
