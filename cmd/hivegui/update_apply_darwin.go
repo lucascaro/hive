@@ -404,6 +404,7 @@ func swapBundle(staged, installed string) error {
 	_ = os.RemoveAll(previous)
 
 	if err := copyBundleFn(staged, incoming); err != nil {
+		os.RemoveAll(incoming)
 		return fmt.Errorf("stage into %s: %w", parent, err)
 	}
 	if err := os.Rename(installed, previous); err != nil {

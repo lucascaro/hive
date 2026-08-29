@@ -2,9 +2,28 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
+
+// TestMain points the two platform seams at stubs that fail loudly.
+// Several tests below assert that StartUpdate/ApplyUpdateAndRestart
+// *refuse* — and the production seams are a GitHub download (or a
+// `git pull` + `./build.sh` over the developer's own checkout) and an
+// in-place swap of the running Hive.app followed by a real daemon
+// restart. The moment one of those guards regresses, the test that
+// exists to catch it would instead replace the developer's install.
+// Tests that need staging to do something install their own stub.
+func TestMain(m *testing.M) {
+	stageUpdateFn = func(UpdateInfo, func(string)) (string, error) {
+		return "", fmt.Errorf("stageUpdate must not run in tests")
+	}
+	applyStagedBundleFn = func(string) error {
+		return fmt.Errorf("applyStagedBundle must not run in tests")
+	}
+	os.Exit(m.Run())
+}
 
 // stubStaging replaces the platform staging implementation. done is
 // closed once the goroutine has called it, so tests can wait without

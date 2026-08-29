@@ -386,7 +386,12 @@ export function initSettings(injected: SettingsDeps) {
     }
     if (action === 'start') {
       updateActionEl.disabled = true;
-      StartUpdate().catch((err) => showError(String(err?.message || err)));
+      // A synchronous refusal from StartUpdate emits no update:progress
+      // event, so re-enable the button here rather than leaving it dead.
+      StartUpdate().catch((err) => {
+        updateActionEl.disabled = false;
+        showError(String(err?.message || err));
+      });
     }
   });
   // Staging runs in Go and outlives this modal, so the button follows

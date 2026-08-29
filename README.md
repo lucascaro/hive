@@ -83,7 +83,8 @@ refuses to pull over a dirty working tree or a detached HEAD.
 **Nothing is downloaded or built until you press Update.** The button
 shows progress while it works, then becomes **Restart** — that step
 replaces the installed app and relaunches it, restarting `hived` so both
-halves come from the same build. Existing sessions survive the restart.
+halves come from the same build. That restart terminates every running
+shell and agent — save your work before pressing it.
 
 Applying an update in place is macOS-only. On Windows and Linux the
 banner keeps its Download button, which opens the release page.

@@ -271,7 +271,13 @@ function wireUpdateBanner() {
     }
     if (action === 'start') {
       updateBannerAction.disabled = true;
-      StartUpdate().catch(reportFailure('start update'));
+      // StartUpdate's refusals return synchronously without emitting an
+      // update:progress event, so nothing would re-render the button —
+      // re-enable it here or the click dead-ends it permanently.
+      StartUpdate().catch((err) => {
+        updateBannerAction.disabled = false;
+        reportFailure('start update')(err);
+      });
     }
   });
   updateBannerDownload.addEventListener('click', () => {
