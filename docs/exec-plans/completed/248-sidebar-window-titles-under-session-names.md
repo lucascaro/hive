@@ -4,8 +4,8 @@
 - **Issue:** —
 - **PR:** #288
 - **Branch:** feature/248-sidebar-window-titles
-- **Stage:** REVIEW
-- **Status:** active
+- **Stage:** DONE (merged 2026-08-29, shipped in v2.4.0)
+- **Status:** completed
 
 ## Summary
 
@@ -150,6 +150,7 @@ already uses in that file, and for the same reason.
 - **2026-08-28** — Filter title events inside `phaseLog.add` (the shared helper behind every phase test) rather than in each assertion. Why: title events carry a Phase like any other event but arrive asynchronously and unpredictably, so one filter at the recording site keeps every phase test reading as a pure lifecycle sequence. The `TestCreateAppendEmitsNoShiftedUpdates` skip is the same idea in the one place that does not use the helper. This is what the dedicated event kind buys: consumers that care about lifecycle can now say so.
 - **2026-08-28** — Reproduce the Linux-only failures locally with `PROMPT_COMMAND='printf "\033]0;%s\007" "$PWD"'`. Why: the difference between the two CI legs is simply that the Linux runner's bash titles itself from its prompt and this macOS shell does not — with that env var set, macOS reproduces the failures exactly, which turns a push-and-see loop into a local one. `noteTitleChange` is driven directly (deterministic, asserts the kind and the dead-entry silence) and only one test goes through a real PTY. Why: asserting on a title that a shell is simultaneously overwriting is inherently racy, and `internal/session` already covers OSC bytes reaching `Title()`.
 - **2026-08-28** — CI on Linux caught two failures macOS did not: `TestCreateAppendEmitsNoShiftedUpdates` (a real consequence of the new broadcast traffic) and `TestTitleChangeBroadcastsUpdated` (nondeterministic against a self-titling shell). Both fixed at the root; re-verified with `-count=2` on the registry/daemon/session packages and `-race` on session/registry.
+- **2026-08-29** — PR #288 merged (`4e76d3b`); shipped in v2.4.0. Plan moved to `completed/`.
 
 ## Notes
 
