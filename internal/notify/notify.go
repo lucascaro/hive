@@ -9,8 +9,6 @@
 // the registered activation handler.
 package notify
 
-import "sync"
-
 // Notify shows a native OS notification. tag is platform-specific:
 //   - darwin: surfaces back to SetActivationHandler when the user clicks
 //     the notification, and dedupes repeated notifications with the same
@@ -23,17 +21,16 @@ func Notify(title, subtitle, body, tag string) error {
 	return platformNotify(title, subtitle, body, tag)
 }
 
-var (
-	cbMu               sync.RWMutex
-	activationCallback func(tag string)
-)
-
 // SetActivationHandler registers a callback fired when the user
-// activates (clicks) a notification. Currently wired only on darwin.
-// On other platforms this is a no-op record-keeping call — safe to
-// always invoke from the app.
+// activates (clicks) a notification. Only darwin can deliver such an
+// event, so only darwin stores the callback; elsewhere this is a
+// genuine no-op and the handler is never held.
+//
+// The storage lives behind a platform-suffixed setActivationHandler
+// rather than in a shared var, per golden principle 3. When the var
+// was shared, it was written here and read only from notify_darwin.go,
+// so on Linux and Windows it was dead weight — which staticcheck
+// reports as U1000, correctly, and only on those platforms.
 func SetActivationHandler(fn func(tag string)) {
-	cbMu.Lock()
-	activationCallback = fn
-	cbMu.Unlock()
+	setActivationHandler(fn)
 }

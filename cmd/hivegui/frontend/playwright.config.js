@@ -9,9 +9,13 @@ export default defineConfig({
   testMatch: '**/*.spec.{js,ts}',
   fullyParallel: false,
   timeout: 30000,
-  // One retry on CI so a one-off flake doesn't fail the required leg;
-  // first-attempt artifacts (trace attachment) are kept.
+  // One retry on CI, but `failOnFlakyTests` means a retry buys diagnostics
+  // (both attempts' traces), NOT a green check. Spec 245's re-gate criterion
+  // is first-attempt green; letting a retry paper over a failure is what let
+  // three specs sit quarantined for weeks while they were deterministically
+  // stale rather than flaky.
   retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: !!process.env.CI,
   use: {
     baseURL: 'http://localhost:5174',
     actionTimeout: 5000,

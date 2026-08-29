@@ -38,6 +38,19 @@ func platformNotify(title, subtitle, body, tag string) error {
 	return nil
 }
 
+// Activation state lives here because darwin is the only platform that
+// can produce an activation event — see SetActivationHandler.
+var (
+	cbMu               sync.RWMutex
+	activationCallback func(tag string)
+)
+
+func setActivationHandler(fn func(tag string)) {
+	cbMu.Lock()
+	activationCallback = fn
+	cbMu.Unlock()
+}
+
 //export hiveOnNotificationActivated
 func hiveOnNotificationActivated(tag *C.char) {
 	cbMu.RLock()

@@ -539,26 +539,50 @@ func TestE2E_DaemonRestart(t *testing.T) {
 	waitForSocket(t, d2.sockPath, 5*time.Second)
 
 	ctl2 := dialControl(t, d2)
-	if err := ctl2.ListSessions(); err != nil {
-		t.Fatalf("list after restart: %v", err)
-	}
-	snap, err := ctl2.AwaitSessionsSnapshot(3 * time.Second)
-	if err != nil {
-		t.Fatalf("snapshot after restart: %v", err)
-	}
-	var restored *wire.SessionInfo
-	for i := range snap.Sessions {
-		if snap.Sessions[i].ID == createdID && snap.Sessions[i].Name == sessName {
-			restored = &snap.Sessions[i]
+
+	// Revive is asynchronous: since #282 the daemon binds the socket
+	// before reviveAll forks any PTY and marks every restored entry
+	// `reviving`, so the FIRST snapshot legitimately reports
+	// alive:false. Asserting on one snapshot made this test a
+	// stopwatch race against the fork — deterministically red on a
+	// warm dev machine, green on CI by luck. Poll until the entry
+	// comes up instead, so a failure means "revive never happened",
+	// not "revive had not happened yet".
+	var restored wire.SessionInfo
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		if err := ctl2.ListSessions(); err != nil {
+			t.Fatalf("list after restart: %v", err)
+		}
+		snap, err := ctl2.AwaitSessionsSnapshot(3 * time.Second)
+		if err != nil {
+			t.Fatalf("snapshot after restart: %v", err)
+		}
+		found := false
+		for i := range snap.Sessions {
+			if snap.Sessions[i].ID == createdID && snap.Sessions[i].Name == sessName {
+				restored, found = snap.Sessions[i], true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
+		}
+		// Poll to the TERMINAL state, not just alive. ReviveWithPhase
+		// CAS-moves the entry out of `reviving` into `spawning` BEFORE
+		// calling Revive (which is what broadcasts alive:true), so
+		// `alive && phase == reviving` is unreachable — a check on it
+		// after the loop would be dead code, and a session wedged in
+		// `spawning` would pass silently. Ready is the state a client
+		// gates its attach on, so it is the state worth asserting.
+		if restored.Alive && restored.Phase == wire.PhaseReady {
 			break
 		}
-	}
-	if restored == nil {
-		t.Fatalf("session %s (%s) did not survive daemon restart; saw %+v", createdID, sessName, snap.Sessions)
-	}
-	if !restored.Alive {
-		t.Errorf("session %s should be alive after restart (daemon Revives), got alive=false: %+v",
-			createdID, *restored)
+		if time.Now().After(deadline) {
+			t.Fatalf("session %s never reached alive+ready after restart (daemon Revives); last snapshot: %+v",
+				createdID, restored)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

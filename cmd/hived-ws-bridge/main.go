@@ -26,6 +26,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -40,6 +41,9 @@ func main() {
 	flag.Parse()
 
 	if err := requireIsolation(); err != nil {
+		log.Fatalf("hived-ws-bridge: %v", err)
+	}
+	if err := requireLoopback(*addr); err != nil {
 		log.Fatalf("hived-ws-bridge: %v", err)
 	}
 	sockPath := os.Getenv("HIVE_SOCKET")
@@ -84,10 +88,63 @@ func requireIsolation() error {
 	return nil
 }
 
+// requireLoopback rejects any -addr that is not bound to the loopback
+// interface. The upgrader below accepts every Origin, which is only
+// defensible while nothing off this machine can reach the listener —
+// this is what makes "localhost-only listener" a guarantee rather than
+// a comment. An empty host ("":0, ":9222") binds all interfaces, so it
+// is refused too.
+func requireLoopback(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("addr %q: %w", addr, err)
+	}
+	if host == "" {
+		return fmt.Errorf("addr %q binds every interface; use 127.0.0.1 or [::1]", addr)
+	}
+	// An IP literal only. Names are refused rather than resolved: this
+	// guard's answer has to be the one net.Listen acts on, and Listen
+	// re-resolves the name itself. Validating a resolution we then throw
+	// away is check-then-use — the name could resolve to loopback here
+	// and to something else at bind. Nothing needs a name anyway; the
+	// harness passes 127.0.0.1:0.
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("addr %q: host must be an IP literal, not a name", addr)
+	}
+	if !ip.IsLoopback() {
+		return fmt.Errorf("addr %q is not a loopback address", addr)
+	}
+	return nil
+}
+
 // --- WS session ---
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool { return true }, // localhost-only listener
+// The listener being loopback-only is NOT origin protection: a
+// WebSocket handshake is not subject to the same-origin policy, so any
+// page open in a browser on this machine could otherwise connect to
+// ws://127.0.0.1:<port>/ and drive the whole RPC surface — including
+// WriteStdin into a live PTY and RemoveWorktree. So check the Origin
+// too: no Origin at all (a non-browser client, which is how the Go
+// tests connect) or a loopback origin on any port, which is what the
+// harness's arbitrary Vite dev port needs.
+var upgrader = websocket.Upgrader{CheckOrigin: originIsLocal}
+
+func originIsLocal(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type session struct {

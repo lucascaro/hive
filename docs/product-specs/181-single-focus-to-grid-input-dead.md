@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/181-single-focus-to-grid-input-dead.md](../exec-plans/active/181-single-focus-to-grid-input-dead.md)
+- **Exec plan:** [docs/exec-plans/completed/181-single-focus-to-grid-input-dead.md](../exec-plans/completed/181-single-focus-to-grid-input-dead.md)
 
 ## Problem
 

@@ -4,7 +4,7 @@ Known shortcuts, deferrals, and rough edges. One row per item. Keep entries shor
 
 | Item | Surfaced in | Severity | Owner | Notes |
 |------|-------------|----------|-------|-------|
-| <one-line description> | <exec-plan slug or PR #> | low / med / high | <name or `unowned`> | <link or context> |
+| `disposeWorktree`'s non-git fallback deletes without the managed check | 2026-08-24 improvements | med | `unowned` | `internal/registry/registry.go`: when `worktree.Root(projectCwd)` errors (project cwd is no longer a git repo), teardown falls back to `os.RemoveAll(wtPath)` — skipping the `IsManaged` guard the very next branch exists to enforce. Same function, two contradictory trust levels. Deciding either way is a behaviour change: refusing leaves orphan directories when a repo is moved or de-inited, so it needs a call, not a drive-by fix. |
 
 ## Conventions
 

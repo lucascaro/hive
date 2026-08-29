@@ -513,3 +513,70 @@ func TestCreate_WorktreeLinksAgentConfig(t *testing.T) {
 		t.Fatalf("Kill(force=false) on a pristine worktree: %v", err)
 	}
 }
+
+// TestDisposeWorktree_RefusesUnmanagedPaths is the guard that matters
+// most in this package: teardown must never delete a directory hive
+// did not create. It is reachable directly now that disposeWorktree is
+// its own function, so each refusal can be asserted without staging a
+// whole session kill around it.
+//
+// The IsManaged predicate itself is unit-tested in internal/worktree;
+// what is pinned here is that registry teardown actually consults it,
+// and leaves the directory on disk when it says no.
+func TestDisposeWorktree_RefusesUnmanagedPaths(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+
+	// A directory that is emphatically not a hive worktree: the
+	// project's own checkout, with a file in it that must survive.
+	precious := filepath.Join(p.Cwd, "PRECIOUS.txt")
+	mustWriteFile(t, precious, "do not delete me")
+
+	r.disposeWorktree("sess-1", p.Cwd, p.Cwd, "main", false)
+	if _, err := os.Stat(precious); err != nil {
+		t.Fatalf("teardown deleted from the project's own checkout: %v", err)
+	}
+
+	// Even asked explicitly. removeWorktree means "the user confirmed
+	// losing this worktree's work", not "delete whatever path you were
+	// handed" — the managed check comes first and is not overridable.
+	r.disposeWorktree("sess-1", p.Cwd, p.Cwd, "main", true)
+	if _, err := os.Stat(precious); err != nil {
+		t.Fatalf("an explicit remove deleted the project's own checkout: %v", err)
+	}
+
+	// A sibling directory that is not a worktree of this repo at all.
+	outside := t.TempDir()
+	keep := filepath.Join(outside, "KEEP.txt")
+	mustWriteFile(t, keep, "unrelated")
+	r.disposeWorktree("sess-1", p.Cwd, outside, "main", true)
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("teardown deleted an unrelated directory: %v", err)
+	}
+}
+
+// TestDisposeWorktree_RemovesManagedWorktree is the positive case, so
+// the refusals above cannot pass by disposing of nothing at all.
+func TestDisposeWorktree_RemovesManagedWorktree(t *testing.T) {
+	skipNonPosix(t)
+	r, p := freshRegistryWithProject(t)
+	sess, err := r.Create(context.Background(), wire.CreateSpec{
+		Name: "wt", ProjectID: p.ID, Cols: 80, Rows: 24,
+		Shell: "/bin/bash", UseWorktree: true,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	wtPath := sess.WorktreePath
+	if wtPath == "" {
+		t.Fatal("create did not produce a worktree")
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("worktree missing before teardown: %v", err)
+	}
+
+	r.disposeWorktree(sess.ID, p.Cwd, wtPath, sess.WorktreeBranch, false)
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Errorf("pristine managed worktree survived teardown: err=%v", err)
+	}
+}

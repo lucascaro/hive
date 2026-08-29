@@ -4,7 +4,7 @@
 - **Type:** bug | enhancement
 - **Complexity:** S | M | L
 - **Priority:** P1 | P2 | P3
-- **Exec plan:** [docs/exec-plans/active/142-vt-snapshot-cjk-wide-char-column-misalignment.md](../exec-plans/active/142-vt-snapshot-cjk-wide-char-column-misalignment.md)
+- **Exec plan:** [docs/exec-plans/active/142-vt-snapshot-cjk-wide-char-alignment.md](../exec-plans/active/142-vt-snapshot-cjk-wide-char-alignment.md)
 
 ## Problem
 

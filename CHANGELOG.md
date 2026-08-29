@@ -119,6 +119,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A session could go solid black when you entered grid mode or switched
+  between sessions in a grid, and stayed black until you resized the
+  window. Focusing a terminal made the browser scroll it out of its own
+  box to bring the (invisible) input target into view, so the text was
+  still there, just parked above the visible area. Nothing is scrolled
+  on focus any more.
+
 - The worktree browser kept showing a branch it had already deleted. A
   delete that got partway — the local branch removed, deleting it on
   the remote refused — reported the failure and stopped there, so the
@@ -249,6 +256,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session. The chord is now unbound and left to the session. ⌘G and
   ⇧⌘G still toggle the project grid and the all-sessions grid, and
   Shift+Enter still inserts a newline without submitting.
+
+- CI is a real gate again. The three scroll/replay end-to-end specs that had
+  been quarantined since spec 245 are back on, so CI runs 20 of the 22
+  real-daemon tests instead of 2 of the 12 it had then. Most of them were
+  never flaky: they demanded that a resize fire a scrollback replay, in a
+  scenario where the terminal is following the bottom and the replay is
+  deliberately skipped — so they failed against correct code, every time.
+  Two tests stayed behind and are documented in spec 245: one is genuinely
+  load-dependent, the other never reaches the state it means to assert on.
+  A retry no longer turns a failed test into a green check either; it only
+  buys a second trace.
 
 - Prompts that risk losing work no longer use a native OS alert. Closing
   a session with uncommitted changes, and deleting a worktree or branch,

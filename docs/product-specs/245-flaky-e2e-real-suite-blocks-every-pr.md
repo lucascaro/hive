@@ -62,6 +62,86 @@ before the rename" — they are older than that.
 
 Observed twice on PR #244 in a way that isolates the cause from any code change: Linux flipped green → red across `b404d1c`, and macOS flipped green → red across `365ec37`. **Both are documentation-only commits.** A subsequent re-run of the identical macOS commit passed with no changes at all.
 
+## Resolution (2026-08-24)
+
+**Root cause: the three specs were stale, not flaky.** Each one asserted
+`traceTags(page, 'replay-request') > 0` as a non-vacuity guard, in a scenario
+where the tile is *following the bottom*. `decideResizeReplay`
+(`src/app/session-term.ts`, via `src/lib/scroll-*`) deliberately SKIPS the
+destructive full-ring replay for a follower — that skip is itself a shipped fix
+(the renderer freeze / viewport thrash under live output). A healthy follower
+therefore emits `replay-skip` and exactly zero `replay-request`, and the guard
+fails against correct code, every time.
+
+That is why the 2026-08-09 baseline saw them fail 3/3 on an idle machine, and
+why the same set failed 10/10 here before the change. Nothing was
+load-dependent about them. The genuinely load-dependent `baseY` precondition
+this spec chased is a different test, and it passes.
+
+**Fix:** the guard now counts resizes that reached the replay *decision*
+(`replay-request` + `replay-skip`) rather than demanding one particular
+outcome. The invariants each spec exists for — markers exactly once and in
+order, viewport converges to the bottom, a follower is never stranded
+mid-history — are unchanged.
+
+**Evidence for the re-gate:**
+
+| suite | before | after |
+|-------|--------|-------|
+| the 3 quarantined specs, `--retries=0`, macOS idle | 0/10 runs green | 10/10 runs green |
+| full `e2e-real` with `CI=true` | 11 passed / 10 skipped | 21 passed, 3/3 runs |
+| mock `e2e` with `CI=true` | 182 passed | 182 passed, 0 flaky |
+
+**Re-gated, with two exceptions.** The file-level
+`test.skip(!!process.env.CI, ...)` quarantine is removed from all three specs,
+so CI runs the suite again instead of 2 of its 12 tests.
+
+The exception is `scroll-codex.spec.ts` → *a reader scrolled into history is
+not yanked to the bottom by a resize replay*, which is quarantined on CI **on
+its own**, and for a different reason than the rest of this spec describes:
+
+- It is **genuinely load-dependent**, which is what this spec originally
+  suspected of all of them and which turned out to be false for the other
+  three. Green locally on an idle machine across many full-suite runs; failed
+  on CI macOS (run 33143976246) and CI Linux (run for `ea0e572`) with
+  `viewportY == baseY == 5000`; and reproduces locally **1 run in 3** with 18
+  CPU hogs running.
+- Its guard is **not** stale. The assertion is correct, and under contention
+  the reader really is being yanked to the bottom by a replay — the exact
+  scroll-jump class this file exists to catch. So the open question is about
+  the product, not the harness: does the follow-intent restore hold when the
+  replay lands slowly?
+
+The second exception is `scroll-codex.spec.ts` → *viewport converges to the
+bottom after a mode switch under continuous output*, and it fails a different
+way: `resizeDecisions() === 0`, meaning the ⌘G toggles reached no replay
+decision at all, so the guard trips before any invariant is exercised. Seen on
+CI macOS (run 33233271507) and CI Linux (run for `552824c`); green locally
+across many full-suite runs.
+
+Its cause is **not** established. The suspicion is shared-daemon state: this
+suite runs one daemon for every spec file, so tile count and the replay column
+baseline both depend on what earlier files left behind — a measured example is
+that removing sessions *between* tests took this file from 0 failures in 6 runs
+to 2. That points at harness isolation rather than the product, which is the
+opposite of the load-dependent test above. It is a hypothesis, not a diagnosis,
+and it should not be lifted without one.
+
+That distinction matters for whoever picks this up. The other three failed
+against correct code and needed a test fix. This one may be reporting a real
+defect and needs a diagnosis, not a guard change. Ten consecutive green CI
+runs remain the bar before it comes off quarantine.
+
+`retries: 1` stays on both Playwright configs, but is now paired with
+`failOnFlakyTests: !!process.env.CI`: a retry buys the diagnostics of a second
+attempt, not a green check. Green means every test passed first try — which is
+this spec's success criterion, made structural instead of a thing someone has
+to remember to audit. A quarantine that silently outlives its cause is exactly
+what happened here, and that is what the flag prevents next time.
+
+Remaining: the first success criterion (ten consecutive green `main` runs) can
+only be observed on CI, and starts from the commit that lands this.
+
 ## Desired behavior
 
 CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-real` either passes deterministically or is explicitly quarantined so it cannot fail a PR for reasons unrelated to that PR's diff. Whichever way it goes, a developer never has to ask "is this red mine?" — which is the state the suite is in today, and the reason it is a P1 despite being test-only.

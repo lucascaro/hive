@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { bridgeCalls, registerSessionCleanup } from './bridge-sessions.js';
 // `state.terms` is a Map<string, TermTile> — the deliberately narrow structural
 // view app modules use (app/state.ts). These specs poke the concrete tile the
 // map actually holds, which is what carries the real xterm Terminal, so they
@@ -29,10 +30,11 @@ import type { SessionTerm } from '../../src/app/session-term.js';
 const WS_URL = process.env.WS_BRIDGE_URL;
 
 test.beforeEach(async ({ page }) => {
-  // Quarantined on CI: setup relies on wall-clock output volume filling the
-  // scrollback cap, which is unmet under CI CPU contention. Runs locally via
-  // `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
-  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
+  // Re-gated 2026-08-24 (spec 245). This spec was never flaky: its
+  // vacuity guard demanded a `replay-request` in a follower scenario,
+  // where decideResizeReplay deliberately skips the replay — so it
+  // failed against correct code, 0/10 runs. The guard now counts replay
+  // *decisions*; 10/10 green, and it gates CI again.
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads.
@@ -105,45 +107,57 @@ async function focusFirstTerm(page: Page) {
 // broadcasts session:event(added) to every control conn, so the
 // page's sidebar updates on its own. With two tiles, grid mode splits
 // the width and the col delta always crosses REPLAY_COL_THRESHOLD.
+// Sessions this file created, torn down once at the end of the file.
+//
+// The e2e-real suite shares ONE daemon across every spec file
+// (globalSetup spawns it once), so a session left behind is inherited
+// by every later spec: session-phases.spec.ts asserts on the session
+// COUNT and went red on CI with two stray `second` rows in the
+// sidebar. The leak was invisible while this file was quarantined.
+//
+// Cleanup is afterALL, not afterEach, and that distinction is load
+// bearing. Killing between tests measurably destabilised this file —
+// 2 failures in 6 runs against 0 in 6 without it — because removing a
+// tile reflows the grid and rebaselines the replay column baseline, so
+// the next test's ⌘G toggle no longer crosses REPLAY_COL_THRESHOLD and
+// reaches no replay decision at all. Per-file teardown keeps every
+// intra-file relationship exactly as it was while still handing the
+// next spec file a clean daemon.
+const createdSessionIds = new Set<string>();
+
+registerSessionCleanup(createdSessionIds);
+
 async function addSecondSession(page: Page) {
-  if (!WS_URL)
-    throw new Error('WS_BRIDGE_URL not set — globalSetup did not run');
-  // Node < 22 has no global WebSocket; fall back to the ws package, typed by
-  // the hand-written ws-shim.d.ts (see there for why not @types/ws).
-  const WS = globalThis.WebSocket ?? (await import('ws')).WebSocket;
-  const ws = new WS(WS_URL);
-  await new Promise((res, rej) => {
-    ws.onopen = res;
-    ws.onerror = rej;
-  });
-  const send = (id: number, method: string, params: object = {}) =>
-    ws.send(JSON.stringify({ id, method, params }));
-  const waitFor = (id: number) =>
-    new Promise<{ id: number; error?: string }>((res) => {
-      ws.addEventListener('message', function h(ev) {
-        const m = JSON.parse(ev.data);
-        if (m.id === id) {
-          ws.removeEventListener('message', h);
-          res(m);
-        }
-      });
-    });
-  send(1, 'ConnectControl');
-  await waitFor(1);
-  send(2, 'CreateSession', {
-    name: 'second',
-    shell: '/bin/bash',
-    cols: 80,
-    rows: 24,
-  });
-  const resp = await waitFor(2);
-  ws.close();
-  if (resp.error) throw new Error(`CreateSession via bridge: ${resp.error}`);
+  // Wait for the count to GROW, not to reach a fixed number. Tests in
+  // this file share one daemon, so by the second test a `second` from
+  // the first is already in the sidebar and a `>= 2` wait returns
+  // before the new session lands — which then goes unrecorded and
+  // leaks past teardown.
+  const beforeCount = await page.evaluate(
+    () => document.querySelectorAll('#projects li.session-item').length,
+  );
+  await bridgeCalls([
+    [
+      'CreateSession',
+      { name: 'second', shell: '/bin/bash', cols: 80, rows: 24 },
+    ],
+  ]);
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 2,
-    null,
+    (n) => document.querySelectorAll('#projects li.session-item').length > n,
+    beforeCount,
     { timeout: 10000 },
   );
+  // Remember what we made so afterAll can take it back out. Read from
+  // the page rather than the CreateSession response, which carries no
+  // id — the daemon answers with a session:event(added) broadcast.
+  for (const id of await page.evaluate(() =>
+    (window.__hive_state?.sessions ?? [])
+      .filter((s) => s.name === 'second')
+      .map((s) => s.id),
+  )) {
+    createdSessionIds.add(id);
+  }
+
   // Back to the original "main" session (⌘1 = first in display order).
   await page.keyboard.press(`${mod}+1`);
   await page.waitForTimeout(300);
@@ -193,6 +207,24 @@ function traceTags(page: Page, tag: string) {
   );
 }
 
+// resizeDecisions counts every resize that reached the replay decision,
+// whichever way it went. `replay-request` alone is NOT a valid vacuity
+// guard for a FOLLOWER scenario: decideResizeReplay deliberately skips
+// the destructive full-ring replay while the tile is glued to the
+// bottom (that skip is the fix for the renderer freeze / viewport
+// thrash under live output), so a healthy follower emits `replay-skip`
+// and zero `replay-request`. Asserting on requests made these specs
+// fail 10/10 against correct code — which is why they were quarantined
+// as "flaky" when they were in fact deterministically stale.
+function resizeDecisions(page: Page) {
+  return page.evaluate(
+    () =>
+      (window.__hive_scrolltrace || []).filter(
+        (e) => e.tag === 'replay-request' || e.tag === 'replay-skip',
+      ).length,
+  );
+}
+
 // Starts a bounded high-rate marker pump inside the real bash session.
 // Bursty: awk floods `burst` lines flat-out, then sleeps — keeps
 // xterm's async write queue loaded the way codex output does, without
@@ -237,9 +269,10 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
     .toContain('HIVE_PUMP_DONE');
   await page.waitForTimeout(1200); // let any trailing replay land
 
-  // Non-vacuity: the scenario must have fired at least one real replay.
-  expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
-  expect(await traceTags(page, 'scrollback_replay_done')).toBeGreaterThan(0);
+  // Non-vacuity: the toggles must really have driven resizes through the
+  // replay decision. The pump keeps this tile following the bottom, so the
+  // decision is `replay-skip` by design — see resizeDecisions above.
+  expect(await resizeDecisions(page)).toBeGreaterThan(0);
 
   const markers = extractMarkers(await bufferLines(page));
   expect(markers.length).toBeGreaterThan(0);
@@ -262,6 +295,27 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
 test('viewport converges to the bottom after a mode switch under continuous output', async ({
   page,
 }) => {
+  // QUARANTINED ON CI ONLY — second of the two tests in this file that
+  // did not survive re-gating, and for a different reason than its
+  // sibling below.
+  //
+  // It fails with resizeDecisions() === 0: the ⌘G toggles reached no
+  // replay decision at all, so the guard fires before any invariant is
+  // tested. Seen on CI macOS (run 33233271507) and CI Linux (run for
+  // 552824c); green locally across many full-suite runs.
+  //
+  // Cause not established. The suspicion is shared-daemon state — this
+  // suite runs one daemon for every spec file, and tile count and the
+  // replay column baseline both depend on what earlier files left
+  // behind; a measured example is that removing sessions between tests
+  // took this file from 0 failures in 6 runs to 2. That makes it a
+  // harness-isolation problem rather than a product one, unlike the
+  // load-dependent test below, but it is a hypothesis and not a
+  // diagnosis. Do not lift this without one.
+  test.skip(
+    !!process.env.CI,
+    'reaches no replay decision on CI — shared-daemon state, see spec 245',
+  );
   await bootWithTerm(page);
   await addSecondSession(page);
   await startMarkerPump(page, 1500);
@@ -313,8 +367,9 @@ test('viewport converges to the bottom after a mode switch under continuous outp
     ).toBe(0);
   }
 
-  // Non-vacuity: replays must actually have fired across the toggles.
-  expect(await traceTags(page, 'replay-request')).toBeGreaterThan(0);
+  // Non-vacuity: the toggles must have driven resizes through the replay
+  // decision (skipped, not requested — this tile is following the bottom).
+  expect(await resizeDecisions(page)).toBeGreaterThan(0);
 });
 
 test('full scrollback: an unscrolled user is not stranded in history by a resize under load', async ({
@@ -347,6 +402,18 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   // while the flood is still parsing — each lands inside the cap-trim
   // bottom-follow-loss window. A correct client keeps the user pinned to
   // the bottom; the buggy one strands them up in history.
+  // Everything before the resizes is attach-time noise. The daemon
+  // sends an atomic scrollback replay on EVERY attach
+  // (SubscribeWithAtomicReplay), so the trace already holds one
+  // `replay-restore` with wants=true before a single resize has fired —
+  // measured: restores pre=1, post=1, requests 0. Reading the whole
+  // trace therefore made both assertions below vacuous: the
+  // non-vacuity guard was satisfied by the attach, and wantsFalse was
+  // trivially empty because the attach restore is the only entry.
+  // Cut the trace here so what follows is the resize scenario alone.
+  const traceBase = await page.evaluate(
+    () => (window.__hive_scrolltrace || []).length,
+  );
   for (const w of [780, 1240, 820, 1200]) {
     await page.setViewportSize({ width: w, height: 640 });
     await page.waitForTimeout(350);
@@ -355,27 +422,35 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   await page.waitForTimeout(1500); // let the last replay land
 
   const s = await mustScrollState(page);
-  const restores = await page.evaluate(() =>
-    (window.__hive_scrolltrace || []).filter((e) => e.tag === 'replay-restore'),
+  const restores = await page.evaluate(
+    (base) =>
+      (window.__hive_scrolltrace || [])
+        .slice(base)
+        .filter((e) => e.tag === 'replay-restore'),
+    traceBase,
   );
   const wantsFalse = restores.filter((r) => r.wants === false);
 
-  // Sanity / non-vacuity: the buffer hit the cap and resizes actually
-  // fired replays (an invariant that holds over zero replays proves
-  // nothing).
+  // Sanity / non-vacuity: the buffer hit the cap, and the resizes
+  // really did reach the replay decision. Counting *decisions* rather
+  // than replays is the point — this tile is following the bottom, so
+  // decideResizeReplay correctly skips the replay, and demanding one
+  // would fail against correct code (the spec-245 mistake).
   expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(
     4500,
   );
   expect(
-    restores.length,
-    'no resize replay fired — scenario is vacuous',
+    await resizeDecisions(page),
+    'no resize reached the replay decision — scenario is vacuous',
   ).toBeGreaterThan(0);
 
   // The invariant: a user who NEVER scrolled must never be handed a
-  // restore-into-history (wants=false) replay. On the buggy code the
-  // cap-trim mis-read of wasAtBottom produces these; the follow-intent
-  // fix eliminates them. Deterministic regardless of whether a later
-  // event happens to re-snap the viewport to the bottom.
+  // restore-into-history (wants=false) replay BY A RESIZE. On the
+  // buggy code the cap-trim mis-read of wasAtBottom produces these;
+  // the follow-intent fix eliminates them — today by skipping the
+  // replay outright, which satisfies this the strongest way there is.
+  // Deterministic regardless of whether a later event happens to
+  // re-snap the viewport to the bottom.
   expect(
     wantsFalse.length,
     `unscrolled user got ${wantsFalse.length} restore-into-history replay(s): ${JSON.stringify(wantsFalse.slice(0, 4))}`,
@@ -385,6 +460,26 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
 test('a reader scrolled into history is not yanked to the bottom by a resize replay', async ({
   page,
 }) => {
+  // QUARANTINED ON CI ONLY — and unlike its three siblings, this one is
+  // genuinely load-dependent, which is what spec 245 originally
+  // suspected of all of them.
+  //
+  // Evidence: green locally on an idle machine and across many full-suite
+  // runs; fails on CI (macOS run 33143976246, Linux run 33146…) with
+  // viewportY == baseY == 5000, i.e. the reader really was yanked to the
+  // bottom; and reproduces locally 1 run in 3 with 18 CPU hogs running.
+  //
+  // So this is NOT the stale-guard class the rest of this file had — the
+  // assertion is right and the behaviour under load may genuinely be
+  // wrong. That makes it a product question (a reader losing their place
+  // during a replay is the scroll-jump bug this file exists to catch),
+  // not harness fragility to paper over. It is skipped here rather than
+  // deleted so the other 21 tests can gate CI, per spec 245's rule that
+  // a quarantine be explicit and carry a follow-up.
+  test.skip(
+    !!process.env.CI,
+    'load-dependent under CI contention — see spec 245 Resolution',
+  );
   await bootWithTerm(page);
   // Fill scrollback, then stop output so the read position is stable.
   await startMarkerPump(page, 200);

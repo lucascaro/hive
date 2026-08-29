@@ -4,7 +4,7 @@
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/240-user-configurable-custom-agents.md](../exec-plans/active/240-user-configurable-custom-agents.md)
+- **Exec plan:** [docs/exec-plans/completed/240-user-configurable-custom-agents.md](../exec-plans/completed/240-user-configurable-custom-agents.md)
 
 ## Problem
 

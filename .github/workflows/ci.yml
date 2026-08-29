@@ -91,6 +91,53 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Cache Go analysis tools
+        if: matrix.biome
+        # Both tools below are compiled from source. The steps that use
+        # them skip `go install` when the binary is already present, so a
+        # cache hit actually avoids the rebuild — without that guard the
+        # unconditional install overwrites whatever was restored and the
+        # cache buys nothing but its own latency. Keyed on the pinned
+        # versions, so a bump misses exactly once.
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: go-analysis-tools-${{ runner.os }}-staticcheck2025.1.1-govulncheck1.7.0
+
+      - name: Staticcheck (Go)
+        if: matrix.biome
+        # Platform-independent like Biome/tsc, so it rides the same
+        # single-leg flag. `go vet` alone missed an unused assignment that
+        # sat in registry/phase_test.go; this is the wider net. Pinned so a
+        # new release can't turn a green PR red on its own.
+        run: |
+          BIN="$(go env GOPATH)/bin/staticcheck"
+          [ -x "$BIN" ] || go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+          "$BIN" ./...
+
+      - name: Vulnerability scan (govulncheck)
+        if: matrix.biome
+        # Symbol-level: only reports vulns the code actually reaches.
+        #
+        # `go-version-file: go.mod` installs the `go` directive VERBATIM —
+        # 1.25.0 means 1.25.0, not "latest 1.25.x". That is why the directive
+        # names a patch release: on 1.25.0 this step reports three reachable
+        # stdlib advisories fixed in 1.25.13. Verifying locally under a
+        # different toolchain proves nothing about this step; match go.mod
+        # (GOTOOLCHAIN=go1.25.14) when you do.
+        #
+        # The TOOL is pinned for the same reason staticcheck is — a tool
+        # release must not turn a green PR red on its own. The advisory
+        # DATABASE is still fetched live and deliberately so: that is the
+        # point of the scan. So this step CAN go red on an untouched tree
+        # when a new advisory lands. That is a real signal, not noise —
+        # fix it by bumping the `go` directive to the patched release
+        # rather than muting the step.
+        run: |
+          BIN="$(go env GOPATH)/bin/govulncheck"
+          [ -x "$BIN" ] || go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          "$BIN" ./...
+
       - name: Test (Go)
         run: go test ./...
         env:

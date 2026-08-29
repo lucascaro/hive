@@ -5,8 +5,8 @@
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/247-gui-session-back-forward-navigation.md](../exec-plans/active/247-gui-session-back-forward-navigation.md)
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/247-gui-session-back-forward-navigation.md](../exec-plans/completed/247-gui-session-back-forward-navigation.md)
 
 ## Problem
 

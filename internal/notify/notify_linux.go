@@ -27,3 +27,8 @@ func platformNotify(title, subtitle, body, tag string) error {
 	args = append(args, title, combined)
 	return exec.Command(path, args...).Run()
 }
+
+// setActivationHandler is a no-op: Linux notifications carry no
+// click-back channel, so the handler would never be called and holding
+// it would only keep the closure alive. See SetActivationHandler.
+func setActivationHandler(func(tag string)) {}

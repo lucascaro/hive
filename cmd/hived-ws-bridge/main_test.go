@@ -167,3 +167,104 @@ func TestConcurrentAttachWritesAreSerialized(t *testing.T) {
 		}
 	}
 }
+
+// TestRequireLoopbackRefusesOffHostBinds pins the assumption the
+// permissive CheckOrigin rests on: this bridge speaks for a real hived
+// daemon with no authentication of its own, so a non-loopback bind
+// would hand every session on the machine to anything that can reach
+// the port.
+func TestRequireLoopbackRefusesOffHostBinds(t *testing.T) {
+	allowed := []string{"127.0.0.1:0", "127.0.0.1:9222", "[::1]:0"}
+	for _, addr := range allowed {
+		if err := requireLoopback(addr); err != nil {
+			t.Errorf("requireLoopback(%q) = %v, want nil", addr, err)
+		}
+	}
+	refused := []string{
+		":0",              // every interface
+		":9222",           // every interface
+		"0.0.0.0:9222",    // every interface, explicitly
+		"[::]:9222",       // every interface, v6
+		"192.168.1.10:80", // a LAN address
+		"example.com:80",  // a name that is not localhost
+		"127.0.0.1",       // missing port — SplitHostPort fails
+		// Names are refused outright rather than resolved: net.Listen
+		// re-resolves the name itself, so validating a resolution we
+		// then discard would be check-then-use.
+		"localhost:0",
+		"localhost:9222",
+	}
+	for _, addr := range refused {
+		if err := requireLoopback(addr); err == nil {
+			t.Errorf("requireLoopback(%q) = nil, want an error", addr)
+		}
+	}
+}
+
+// TestRequireIsolationRefusesRealState is the other half of the guard:
+// the bridge must never be pointed at a developer's live hive state.
+func TestRequireIsolationRefusesRealState(t *testing.T) {
+	tmp := t.TempDir()
+	cases := []struct {
+		name        string
+		sock, state string
+		wantErr     bool
+	}{
+		{"both in tmp", filepath.Join(tmp, "hived.sock"), tmp, false},
+		{"unset", "", "", true},
+		{"only socket set", filepath.Join(tmp, "hived.sock"), "", true},
+		{"state outside tmp", filepath.Join(tmp, "hived.sock"), "/Users/someone/.hive", true},
+		{"socket outside tmp", "/Users/someone/.hive/hived.sock", tmp, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HIVE_SOCKET", tc.sock)
+			t.Setenv("HIVE_STATE_DIR", tc.state)
+			err := requireIsolation()
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("requireIsolation() = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+// TestOriginIsLocal: the loopback bind is not origin protection. A
+// WebSocket handshake is not subject to the same-origin policy, so
+// without this check any page open in a browser on this machine could
+// connect and drive the whole RPC surface — WriteStdin into a live
+// PTY included.
+func TestOriginIsLocal(t *testing.T) {
+	check := func(origin string) bool {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		return originIsLocal(r)
+	}
+	// No Origin header at all: a non-browser client, which is how the
+	// Go tests and any CLI connect. Browsers always send one.
+	if !check("") {
+		t.Error("a request with no Origin was rejected")
+	}
+	for _, o := range []string{
+		"http://localhost:5175", // the harness's Vite dev server
+		"http://127.0.0.1:5173",
+		"http://[::1]:9222",
+		"https://localhost",
+	} {
+		if !check(o) {
+			t.Errorf("local origin %q was rejected", o)
+		}
+	}
+	for _, o := range []string{
+		"http://evil.example.com",
+		"https://127.0.0.1.evil.example.com", // suffix trickery
+		"http://192.168.1.10:5173",
+		"http://localhost.evil.example.com",
+		"::not a url::",
+	} {
+		if check(o) {
+			t.Errorf("foreign origin %q was accepted", o)
+		}
+	}
+}

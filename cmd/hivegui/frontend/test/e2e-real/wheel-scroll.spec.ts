@@ -45,9 +45,11 @@ type SpyTerm = SessionTerm & { __wheelWrapped?: boolean };
 const WS_URL = process.env.WS_BRIDGE_URL;
 
 test.beforeEach(async ({ page }) => {
-  // Quarantined on CI: flaky setup under CI CPU contention (spec 245). Runs
-  // locally via `npm run test:e2e:real`. Re-gate per spec 245 (10 green runs).
-  test.skip(!!process.env.CI, 'quarantined on CI — flaky setup, spec 245');
+  // Re-gated 2026-08-24 (spec 245). This spec was never flaky: its
+  // vacuity guard demanded a `replay-request` in a follower scenario,
+  // where decideResizeReplay deliberately skips the replay — so it
+  // failed against correct code, 0/10 runs. The guard now counts replay
+  // *decisions*; 10/10 green, and it gates CI again.
   await page.addInitScript((url) => {
     window.__WS_BRIDGE_URL = url;
     // Arm the scroll tracer (window.__hive_scrolltrace) before main.ts loads,

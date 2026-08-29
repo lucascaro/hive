@@ -4,7 +4,7 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/195-shared-textdecoder-glyphs.md](../exec-plans/active/195-shared-textdecoder-glyphs.md)
+- **Exec plan:** [docs/exec-plans/completed/195-shared-textdecoder-glyphs.md](../exec-plans/completed/195-shared-textdecoder-glyphs.md)
 
 ## Problem
 
