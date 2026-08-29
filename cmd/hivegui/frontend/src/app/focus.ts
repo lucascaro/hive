@@ -103,6 +103,19 @@ function armFocusGuard(id: string) {
   _focusGuard = { id, until: performance.now() + 500 };
 }
 
+// Focusing xterm's helper textarea makes the browser scroll the nearest
+// scrollable ancestor to reveal it. That ancestor is `.term-body`, which
+// is `overflow: hidden` and — because the helper textarea sits below the
+// visible rows — has roughly a viewport's worth of scroll slack. The
+// browser therefore scrolls the terminal completely out of its own box
+// and the tile renders solid black, until any resize re-lays-out and
+// clamps scrollTop back to 0. That is the whole of the "black tile until
+// I resize" bug: the content was always painted, just scrolled out of
+// sight.
+// (xterm's own Terminal.focus() already passes preventScroll, so these
+// two call sites were the only ones that could trigger it.)
+const FOCUS_OPTS: FocusOptions = { preventScroll: true };
+
 document.addEventListener(
   'focusout',
   (e) => {
@@ -128,19 +141,6 @@ document.addEventListener(
   },
   true,
 );
-
-// Focusing xterm's helper textarea makes the browser scroll the nearest
-// scrollable ancestor to reveal it. That ancestor is `.term-body`, which
-// is `overflow: hidden` and — because the helper textarea sits below the
-// visible rows — has roughly a viewport's worth of scroll slack. The
-// browser therefore scrolls the terminal completely out of its own box
-// and the tile renders solid black, until any resize re-lays-out and
-// clamps scrollTop back to 0. That is the whole of the "black tile until
-// I resize" bug: the content was always painted, just scrolled out of
-// sight.
-// (xterm's own Terminal.focus() already passes preventScroll, so these
-// two call sites were the only ones that could trigger it.)
-const FOCUS_OPTS: FocusOptions = { preventScroll: true };
 
 export function setFocusedTile(id: string | null) {
   // First decision: synchronous, before any rAF. If we already know we

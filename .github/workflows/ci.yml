@@ -93,9 +93,12 @@ jobs:
 
       - name: Cache Go analysis tools
         if: matrix.biome
-        # Both tools below are compiled from source; without this they are
-        # rebuilt on every run of the gate every PR waits on. Keyed on the
-        # pinned versions, so a bump misses the cache exactly once.
+        # Both tools below are compiled from source. The steps that use
+        # them skip `go install` when the binary is already present, so a
+        # cache hit actually avoids the rebuild — without that guard the
+        # unconditional install overwrites whatever was restored and the
+        # cache buys nothing but its own latency. Keyed on the pinned
+        # versions, so a bump misses exactly once.
         uses: actions/cache@v4
         with:
           path: ~/go/bin
@@ -108,8 +111,9 @@ jobs:
         # sat in registry/phase_test.go; this is the wider net. Pinned so a
         # new release can't turn a green PR red on its own.
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
-          "$(go env GOPATH)/bin/staticcheck" ./...
+          BIN="$(go env GOPATH)/bin/staticcheck"
+          [ -x "$BIN" ] || go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+          "$BIN" ./...
 
       - name: Vulnerability scan (govulncheck)
         if: matrix.biome
@@ -130,8 +134,9 @@ jobs:
         # fix it by bumping the `go` directive to the patched release
         # rather than muting the step.
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-          "$(go env GOPATH)/bin/govulncheck" ./...
+          BIN="$(go env GOPATH)/bin/govulncheck"
+          [ -x "$BIN" ] || go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          "$BIN" ./...
 
       - name: Test (Go)
         run: go test ./...

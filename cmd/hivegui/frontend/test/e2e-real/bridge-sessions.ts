@@ -27,24 +27,42 @@ export async function bridgeCalls(calls: Array<[string, object]>) {
   });
   const send = (id: number, method: string, params: object = {}) =>
     ws.send(JSON.stringify({ id, method, params }));
-  const waitFor = (id: number) =>
-    new Promise<{ id: number; error?: string }>((res) => {
+  // Every request wait is bounded and rejects with the id it was
+  // waiting on. Unbounded, a socket error after the handshake or a
+  // bridge that simply never answers hangs until Playwright's 90s test
+  // timeout and surfaces as "test timeout exceeded" with no cause —
+  // the one place left in this suite where a failure arrives
+  // unlabelled.
+  const awaitReply = (id: number, ms = 10000) =>
+    new Promise<{ id: number; error?: string }>((res, rej) => {
+      const timer = setTimeout(
+        () =>
+          rej(new Error(`bridge: no reply to request ${id} within ${ms}ms`)),
+        ms,
+      );
+      const onError = (e: unknown) => {
+        clearTimeout(timer);
+        rej(new Error(`bridge: socket error awaiting request ${id}: ${e}`));
+      };
+      ws.addEventListener('error', onError);
       ws.addEventListener('message', function h(ev) {
         const m = JSON.parse(ev.data);
         if (m.id === id) {
+          clearTimeout(timer);
           ws.removeEventListener('message', h);
+          ws.removeEventListener('error', onError);
           res(m);
         }
       });
     });
   try {
     send(1, 'ConnectControl');
-    await waitFor(1);
+    await awaitReply(1);
     let id = 1;
     for (const [method, params] of calls) {
       id += 1;
       send(id, method, params);
-      const resp = await waitFor(id);
+      const resp = await awaitReply(id);
       if (resp.error) throw new Error(`${method} via bridge: ${resp.error}`);
     }
   } finally {
@@ -87,12 +105,30 @@ async function killAndAwaitRemoval(ids: string[]) {
   });
   const send = (id: number, method: string, params: object = {}) =>
     ws.send(JSON.stringify({ id, method, params }));
-  const reply = (id: number) =>
-    new Promise<{ id: number; error?: string }>((res) => {
+  // Every request wait is bounded and rejects with the id it was
+  // waiting on. Unbounded, a socket error after the handshake or a
+  // bridge that simply never answers hangs until Playwright's 90s test
+  // timeout and surfaces as "test timeout exceeded" with no cause —
+  // the one place left in this suite where a failure arrives
+  // unlabelled.
+  const awaitReply = (id: number, ms = 10000) =>
+    new Promise<{ id: number; error?: string }>((res, rej) => {
+      const timer = setTimeout(
+        () =>
+          rej(new Error(`bridge: no reply to request ${id} within ${ms}ms`)),
+        ms,
+      );
+      const onError = (e: unknown) => {
+        clearTimeout(timer);
+        rej(new Error(`bridge: socket error awaiting request ${id}: ${e}`));
+      };
+      ws.addEventListener('error', onError);
       ws.addEventListener('message', function h(ev) {
         const m = JSON.parse(ev.data);
         if (m.id === id) {
+          clearTimeout(timer);
           ws.removeEventListener('message', h);
+          ws.removeEventListener('error', onError);
           res(m);
         }
       });
@@ -104,7 +140,7 @@ async function killAndAwaitRemoval(ids: string[]) {
     // the kill never reaches the daemon and teardown then waits out its
     // timeout for a removal that was never requested.
     send(1, 'ConnectControl');
-    const hello = await reply(1);
+    const hello = await awaitReply(1);
     if (hello.error) throw new Error(`ConnectControl: ${hello.error}`);
     let n = 1;
     for (const id of ids) {

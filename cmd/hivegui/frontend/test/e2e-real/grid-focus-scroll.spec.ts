@@ -29,13 +29,19 @@ test.beforeEach(async ({ page }) => {
   }, WS_URL);
 });
 
+// preventScroll here too. Without it this helper does the very thing
+// the fix removes, and the guard would then depend on being called
+// before the flood (no scroll slack yet) rather than on the fix — a
+// spec that fails against correct code once someone reorders it, which
+// is exactly the spec-245 failure mode. The assertion is about the
+// APP's focus path during ⌘G / ⌘2 / ⌘1, not about this setup call.
 async function focusFirstTerm(page: Page) {
   await page.evaluate(() => {
     const helper = document.querySelector<HTMLTextAreaElement>(
       '.term-host .xterm-helper-textarea',
     );
     if (!helper) throw new Error('no xterm helper textarea');
-    helper.focus();
+    helper.focus({ preventScroll: true });
   });
 }
 
