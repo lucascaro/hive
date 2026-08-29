@@ -141,6 +141,67 @@ Frontend — `test/unit/update-state.test.ts`, `test/dom/settings-updates.test.t
 `test/e2e/settings.spec.ts` that check the new section is actually hittable under a
 long agent list (jsdom is blind to that) and that the channel reveals the repo row.
 
+## Manual verification
+
+Everything below needs a real bundle on disk; no automated layer covers the
+install-and-restart. Run from a clean tree.
+
+**1. Build and install a fake "old" release.**
+
+```sh
+./build.sh --version 0.0.1
+cp -R cmd/hivegui/build/bin/hivegui.app /Applications/
+open /Applications/hivegui.app
+```
+
+The sidebar footer should read `hive 0.0.1 (<sha>)`. Anything else means the
+`--version` stamp did not reach `buildinfo`.
+
+**2. Release channel — check.** Settings (⌘,) → Updates → channel `Release`,
+Save. Then **File → Check for Updates…**. The banner should offer the real
+latest release with an **Update** button next to Download. (Version 0.0.1 is
+below every published tag, so this is guaranteed to report available.)
+
+**3. Release channel — apply.** Click **Update**. Watch the banner text walk
+`Looking up release… → Downloading checksums… → Downloading Hive-…zip… →
+Verifying download… → Unpacking…`, then the button becomes **Restart**. Staging
+lands in `~/Library/Application Support/Hive/updates/<version>/`; confirm the
+`.zip` is gone and `app/hivegui.app` is there.
+
+Click **Restart**. Expect: the window closes and reopens, the footer now shows
+the released version, and any sessions that were open come back. Confirm
+`/Applications/hivegui.app` changed (`ls -la` mtime) and that no `.hivegui.app.new`
+or `.hivegui.app.old` is left in `/Applications`.
+
+> **Note:** this only works once the first release carrying `checksums.txt` is
+> published — `stageRelease` refuses a release without the manifest. Until then,
+> test step 3 against a local stub by pointing `updateReleasesAPI` at a file
+> server, or verify it after cutting the next release.
+
+**4. Latest channel — auto-detect.** Run a build from the checkout itself
+(`./build.sh && open cmd/hivegui/build/bin/hivegui.app`). Settings → channel
+`Latest`. The source-repo row should appear already saying **Detected
+/path/to/hive** without you typing anything. Save.
+
+**5. Latest channel — apply.** Move the checkout one commit behind:
+`git reset --hard HEAD~1`. Check for updates → banner reports `commit <sha> is
+available`. Click **Update**; the banner should stream `build.sh` output. When
+it says Restart, click it and confirm the footer's build id advances to the
+upstream sha.
+
+**6. Latest channel — dirty-tree refusal.** With an uncommitted change in the
+checkout, click Update. Expect an immediate error naming the uncommitted
+changes, and `git log` unchanged — no pull, no build.
+
+**7. Negative — corrupt download.** Point `updateReleasesAPI` at a local stub
+serving a zip whose bytes do not match its `checksums.txt` entry (the shape
+`TestStageReleaseRejectsChecksumMismatch` builds). Expect a `checksum mismatch`
+banner, an untouched `/Applications/hivegui.app`, and no leftover staging
+directory.
+
+**8. Cleanup.** `rm -rf /Applications/hivegui.app` if you installed a throwaway
+build, and reset the channel to `Release`.
+
 ## Decision log
 
 - **2026-08-29** — macOS-only self-update. Why: Windows needs a detached helper to replace a
