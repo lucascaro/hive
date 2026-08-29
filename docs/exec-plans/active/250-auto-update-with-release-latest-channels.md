@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/250-auto-update-with-release-latest-channels.md](../../product-specs/250-auto-update-with-release-latest-channels.md)
 - **Issue:** —
+- **PR:** #291
+- **Branch:** feature/250-auto-update-with-release-latest-channels
 - **Status:** active
 
 ## Summary

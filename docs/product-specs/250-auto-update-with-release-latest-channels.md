@@ -1,10 +1,11 @@
 # Auto-update with release/latest channels
 
 - **Issue:** —
+- **PR:** #291
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/250-auto-update-with-release-latest-channels.md](../exec-plans/active/250-auto-update-with-release-latest-channels.md)
 
 ## Problem
