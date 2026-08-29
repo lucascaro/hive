@@ -157,6 +157,13 @@ already uses in that file, and for the same reason.
   `PROMPT_COMMAND='printf "\033]0;%s\007" "$PWD"' go test ./internal/...`
   Without it, macOS's shell sets no title and the title-broadcast paths stay dormant.
 
+## PR convergence ledger
+
+- **2026-08-28 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 0; action: fix+push (Linux CI: TestCreateAppendEmitsNoShiftedUpdates, TestTitleChangeBroadcastsUpdated); head_sha: 761cdec.
+- **2026-08-28 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 0; action: redesign+push (title moved to its own SESSION_EVENT kind rather than patching more consumers); head_sha: fa6efde.
+- **2026-08-28 iter 3** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; threads_open: 0; action: fix+push (filter title events in phaseLog; Linux condition reproduced locally via PROMPT_COMMAND); head_sha: 71bf3b7.
+- **2026-08-28 iter 4** — verdict: APPROVE; mergeable: MERGEABLE; threads_open: 0; action: stop (all checks green on Linux, macOS and Windows; Greptile pass; no unresolved threads); head_sha: 71bf3b7.
+
 ## Open questions
 
 - 500 ms is a guess at "imperceptible" for the throttle. If it reads laggy in the real app, drop to 250 ms — it is one constant (`titleThrottle` in `internal/session/session.go`).
