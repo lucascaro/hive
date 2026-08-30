@@ -1,0 +1,19 @@
+/* iconButton - docs/design-docs/ui/components.md > iconButton() */
+.hv-icon-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--fg-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.hv-icon-btn[data-size="22"] { width: 22px; height: 22px; }
+.hv-icon-btn:hover { background: var(--hover); color: var(--fg); }
+.hv-icon-btn:disabled { opacity: 0.5; pointer-events: none; }
+.hv-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

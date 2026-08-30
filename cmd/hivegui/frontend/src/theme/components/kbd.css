@@ -1,0 +1,9 @@
+/* kbd - docs/design-docs/ui/patterns.md > Keyboard hints */
+.hv-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  background: none;
+  border: 0;
+  padding: 0;
+}
