@@ -9,14 +9,14 @@ Shipped in `src/theme/themes.css` as `:root[data-theme="<name>"] { … }` blocks
 | Name | Basis | Notes |
 |---|---|---|
 | `hive-dark` | Option B | **Default.** Cool-biased near-black, Plex Sans + JetBrains Mono, amber accent |
-| `hive-light` | Option B inverted by hand | Same hue bias, same fonts. Ground `#f4f4f7`, surface `#ffffff`, fg `#1a1b22`, accent `#c47a12` (darkened for contrast on white), attention `#d9731a`, running `#1f9d6a`, error `#d64545`. Not a naive inversion: borders lighten, shadows soften, accent darkens |
+| `hive-light` | Option B inverted by hand | Same hue bias, same fonts. Ground `#f4f4f7`, surface `#ffffff`, fg `#1a1b22`, accent `#c47a12` (darkened for contrast on white), `--on-accent #1a1b22` (white on that accent is only 3.42:1), attention `#d9731a`, running `#1f9d6a`, error `#d64545`. Not a naive inversion: borders lighten, shadows soften, accent darkens |
 | `native` | Option A | Lifted greys, system font, filled selection. Ships in dark and light variants (`native-dark`, `native-light`) |
-| `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention` |
+| `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention`; `--fg-subtle` raised to `#6f6f6f` (mock's `#5c5c5c` is 2.96:1) |
 | `classic` | v2.4.0 values | Pure black, amber everywhere, system font. Exists so migration step 1 is visually a no-op and so users who liked it keep it |
 
 Selection: Settings → Appearance → Theme (dropdown) with "System" mapping to `hive-dark`/`hive-light` via `prefers-color-scheme`.
 
-Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1. Check with the contrast script in `scripts/ui-lint.sh --contrast`.
+Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1; `--on-accent` on `--accent` must be ≥4.5:1 (primary buttons). Check with the contrast script in `scripts/ui-lint.sh --contrast`.
 
 ## User overrides
 

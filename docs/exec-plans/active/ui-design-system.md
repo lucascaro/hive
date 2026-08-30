@@ -29,11 +29,11 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 | # | Deliverable | Detailed plan | Visible change |
 |---|---|---|---|
 | 1 | `src/theme/{tokens,themes}.css`, `theme.ts` (preset apply from localStorage), `style.css` literals → tokens, xterm theme from tokens, `scripts/ui-lint.sh` (warn), CI step, screenshot baseline | [ui-design-system-phase1.md](ui-design-system-phase1.md) | none (`classic` default) |
-| 2 | `src/ui/icons.svg` + `icon()`/`stateIcon()`/`iconButton()`/`kbd()`; replace every Unicode glyph; lint → error | phase2 (write when 1 lands) | icons only |
-| 3 | `sessionRow`, `projectCard`, `chip` primitives; sidebar + trays rebuilt on them; sidebar min-width 220 | phase3 | sidebar |
-| 4 | `banner`, `statusBar` skin, grid tile header, toolbar, launcher rows, empty/phase states | phase4 | chrome |
-| 5 | `dialog`, form fields; Settings/Worktrees/Project editor/Help on them; **Settings › Appearance** (preset picker + custom tokens) | phase5 | dialogs, theming UI |
-| 6 | Default → `hive-dark`; ship `hive-light`, `native-*`, `terminal`; contrast check in lint; per-preset screenshot baselines; `style.css` split into `src/theme/{base,layout}.css` + `components/*.css` | phase6 | everything |
+| 2 | `src/ui/icons.svg` + `icon()`/`stateIcon()`/`iconButton()`/`kbd()`; replace every Unicode glyph; lint → error | [ui-design-system-phase2.md](ui-design-system-phase2.md) | icons only |
+| 3 | `sessionRow`, `projectCard`, `chip` primitives; sidebar + trays rebuilt on them; sidebar min-width 220 | [ui-design-system-phase3.md](ui-design-system-phase3.md) | sidebar |
+| 4 | `banner`, `statusBar` skin, grid tile header, toolbar, launcher rows, empty/phase states | [ui-design-system-phase4.md](ui-design-system-phase4.md) | chrome |
+| 5 | `dialog`, form fields; Settings/Worktrees/Project editor/Help on them; **Settings › Appearance** (preset picker + custom tokens) | [ui-design-system-phase5.md](ui-design-system-phase5.md) | dialogs, theming UI |
+| 6 | Default → `hive-dark`; ship `hive-light`, `native-*`, `terminal`; contrast check in lint; per-preset screenshot baselines; `style.css` split into `src/theme/{base,layout}.css` + `components/*.css` | [ui-design-system-phase6.md](ui-design-system-phase6.md) | everything |
 
 ### Files to change (across phases)
 
@@ -64,6 +64,10 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-29** — SVG line icons for all glyphs, geometric shapes for states. Why: consolidating iconography only works if actions and states come from one family; Unicode rendering varies per platform.
 - **2026-08-29** — Enforcement = docs + lint + primitive layer. Why: docs-only is the regime that produced 51 colours.
 - **2026-08-29** — Phase 1 is visually no-op via `classic`. Why: separates mechanical risk from design risk; screenshot-verifiable.
+- **2026-08-29** — `exit_code` is not on the wire; exited-vs-error resolves from `last_error`. Why: found while planning phase 2/3.
+- **2026-08-29** — `[n]` hints go on session rows, not project cards. Why: ⌘1–9 bind to `orderedSessions()`; no project chord exists.
+- **2026-08-29** — `hive-light --on-accent` → `#1a1b22`, `terminal --fg-subtle` → `#6f6f6f`. Why: computed WCAG ratios in phase 6 planning failed the spec's own rule.
+- **2026-08-29** — Phases 2–6 planned up front at task depth; implementers re-verify `file:line` refs and may amend. Why: user request.
 - **2026-08-29** — Inline key hints stay (AGENTS.md rule). Why: existing project policy; only rendering is standardised via `kbd()`.
 
 ## Progress

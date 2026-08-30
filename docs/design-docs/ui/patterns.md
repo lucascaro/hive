@@ -40,7 +40,7 @@ Errors are sentences: what failed, and what to do. `flash()` errors go to the st
 
 - One primitive, `kbd(text)` → `<kbd class="hv-kbd">`, `--font-mono --text-xs --fg-subtle`, no border, no fill. Feature modules never format hints by hand.
 - Format is uniform: `[1]` for digits/symbols, `(n)` for letters — exactly as `AGENTS.md` says. Modifier symbols on macOS (`⌘⇧`), words elsewhere (`Ctrl+Shift`), from `lib/platform.ts`.
-- Placement: project card header shows `[n]` before the name; overlay footers keep their `[esc] close · (r) refresh` line via `kbd`; the status bar right slot shows the current mode's top 1–2 shortcuts; the help overlay lists all.
+- Placement: session rows show `[n]` (⌘1–9 bind to sessions in global order; there is no project chord); overlay footers keep their `[esc] close · (r) refresh` line via `kbd`; the status bar right slot shows the current mode's top 1–2 shortcuts; the help overlay lists all.
 - Hints are never the only label and never carry colour.
 
 ## Density

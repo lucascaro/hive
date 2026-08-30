@@ -33,7 +33,8 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 
 - Height 40px. Grid: `[state 14px] [text 1fr] [meta auto]`.
 - Line 1: name, `--text-md`, `--fg` when selected else `--fg-muted`; attention → `--state-attention` + weight 500; exited/error → `--fg-subtle` + `text-decoration: line-through` (see patterns.md for why not hidden).
-- Line 2: window title (`session-title` today), `--text-sm`, `--fg-subtle`. Falls back to state words when no title: "Starting…", "Exited", "Exited (1)". Never both.
+- Line 2: window title (`session-title` today), `--text-sm`, `--fg-subtle`. Falls back to state words when no title: "Starting…", "Exited", "Exited — <last_error>". Never both.
+- `kbd("[n]")` before the name when the session is one of the first nine in `orderedSessions()` (⌘1–9 bind to sessions, not projects).
 - Meta column: worktree `branch` icon (12px, `--fg-subtle`) if session has a worktree; agent short code in `--font-mono --text-xs` (`cl`, `cx`, `gm`, `sh`, custom = first two letters).
 - Selected: `--sel` background + 2px `--accent` bar at left edge (`::before`). Hover: `--hover` and reveals actions (`minus`, `rotate`, `x` icon buttons) replacing the meta column.
 - Inline rename (existing feature) swaps line 1 for an input with the same metrics.
@@ -42,7 +43,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 ## `projectCard({ project, sessions, collapsed, ... })`
 
 - `--surface-raised` body, 1px `--border`, `--radius-md`, margin `var(--space-1) var(--space-2) var(--space-2)`.
-- Header 30px: chevron (collapsed state), `kbd("[n]")` project number (1–9), 8px colour swatch (`--session-color` data), name `--text-md` 500, session count `--font-mono --text-xs --fg-subtle` right-aligned, then hover actions (`plus` new session, `minus` minimize project, `branch` worktrees, `x` kill project).
+- Header 30px: chevron (collapsed state), 8px colour swatch (`--session-color` data), name `--text-md` 500, session count `--font-mono --text-xs --fg-subtle` right-aligned, then hover actions (`plus` new session, `minus` minimize project, `branch` worktrees, `x` kill project).
 - Header gets `data-state="attention"` when any child session has attention: swatch gains the pulse ring. Nothing else on the header changes.
 - Collapsed: body hidden, header shows "n sessions · k need you" in the count slot.
 

@@ -20,8 +20,8 @@ Resolution from `SessionInfo`:
 
 ```
 !isReady(phase)            → starting
-!alive && exit_code == 0    → exited
-!alive                      → error
+!alive && !last_error       → exited
+!alive                      → error   (no exit_code on the wire; last_error is the signal)
 attention.has(id)           → attention
 else                        → running
 ```
