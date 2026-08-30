@@ -4,7 +4,8 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **PR:** #296
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/253-strip-ansi-escapes-from-update-progress.md](../exec-plans/active/253-strip-ansi-escapes-from-update-progress.md)
 
 ## Problem

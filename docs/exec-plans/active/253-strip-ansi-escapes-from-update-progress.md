@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/253-strip-ansi-escapes-from-update-progress.md](../../product-specs/253-strip-ansi-escapes-from-update-progress.md)
 - **Issue:** —
+- **PR:** #296
+- **Branch:** feature/253-strip-ansi-escapes-from-update-progress
 - **Status:** active
 
 ## Summary
@@ -60,6 +62,7 @@ None.
 ## Progress
 
 - **2026-08-30** — Plan-first scaffold; stage = IMPLEMENT.
+- **2026-08-30** — Implemented, tests green, PR #296 opened; stage = REVIEW.
 
 ## Open questions
 
