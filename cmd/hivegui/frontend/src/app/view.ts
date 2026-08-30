@@ -183,7 +183,7 @@ function firstVisible(sessions: SessionInfo[]): SessionInfo | undefined {
 
 // fallBackToSingleIfActiveHidden drops out of a grid view when the
 // session that was just made active has no tile in it. Selecting a
-// minimized project (chip click, ⌘[ / ⌘]) deliberately does NOT
+// minimized project (chip click) deliberately does NOT
 // un-minimize it — but the grid filters its sessions out, so in a grid
 // view the selection would move with nothing appearing and
 // focusActiveTerm would hand keystrokes to an invisible terminal. That
@@ -407,8 +407,9 @@ export function shiftActiveProject(delta: number) {
   const m = state.projects.length;
   let next = state.projects[i];
   let found = false;
+  const step = Math.sign(delta) || 1;
   for (let k = 1; k < m && !found; k++) {
-    const cand = state.projects[(((i + delta * k) % m) + m) % m];
+    const cand = state.projects[(((i + step * k) % m) + m) % m];
     if (!state.minimizedProjects.has(cand.id)) {
       next = cand;
       found = true;
@@ -495,7 +496,7 @@ function hiddenSessionIds(): Set<string> {
 // minimizeSession hides a session from grid views by adding its id to
 // state.minimized. The session stays alive; its tile is removed on the
 // next renderGrid(). Single-session mode is unaffected — the user can
-// still switch to a minimized session via the sidebar / palette / ⌘[/].
+// still switch to a minimized session via the sidebar / palette.
 export function minimizeSession(id: string | null) {
   if (!id || state.minimized.has(id)) return;
   state.minimized.add(id);
@@ -548,7 +549,7 @@ export function restoreSession(id: string | null) {
 // minimizeProject takes a whole project out of the sidebar list and
 // out of grid views in one move: the chip tray at the bottom of the
 // sidebar becomes its only row. Its sessions keep running and stay
-// reachable (sidebar chip, ⌘K, ⌘[ / ⌘]) — this is the project-level
+// reachable (sidebar chip, ⌘K) — this is the project-level
 // twin of minimizeSession, and it repaints on the same three axes:
 // focus handoff, grid, view floor.
 export function minimizeProject(id: string | null) {

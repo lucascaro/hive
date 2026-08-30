@@ -594,6 +594,16 @@ describe('keyboard navigation skips minimized things', () => {
     expect(state.activeId).toBe('s1');
   });
 
+  it('seeds on the first VISIBLE session when nothing is active', () => {
+    // state.activeId is null whenever an empty project is selected or
+    // the last session was closed. switchTo does not un-minimize, so
+    // seeding on ord[0] blind would drop the user into the tray.
+    minimizeProject('p1');
+    state.activeId = null;
+    navSession(+1);
+    expect(state.activeId).toBe('s2');
+  });
+
   it('⇧⌘↓ still reorders across a minimized sibling', () => {
     // The reorder branch sends an index into the daemon's GLOBAL order
     // space, which counts hidden sessions — filtering it would scatter

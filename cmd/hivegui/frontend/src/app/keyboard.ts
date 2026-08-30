@@ -739,7 +739,13 @@ export function moveActiveSession(delta: number, reorder: boolean) {
   if (n === 0) return;
   const idx = ord.findIndex((s) => s.id === state.activeId);
   if (idx < 0) {
-    switchTo(ord[0].id);
+    // No active session (an empty project is selected, or the last one
+    // was closed): seed on the first VISIBLE session. ord[0] may be
+    // minimized, and switchTo does not un-minimize — only restoreSession
+    // does — so seeding blind is the same "moved into the tray" failure
+    // the walk below exists to prevent.
+    const first = ord.find((s) => !isSessionHidden(s.id));
+    if (first) switchTo(first.id);
     return;
   }
   if (reorder) {
@@ -758,8 +764,10 @@ export function moveActiveSession(delta: number, reorder: boolean) {
   // The walk is over the full ordered list, not a filtered one, because
   // orderedSessions() is shared with the sidebar, tray, palette and
   // ⌘1-9, all of which still list everything.
+  // Math.sign: the walk visits every slot for any delta, not only ±1.
+  const step = Math.sign(delta) || 1;
   for (let i = 1; i < n; i++) {
-    const cand = ord[(((idx + delta * i) % n) + n) % n];
+    const cand = ord[(((idx + step * i) % n) + n) % n];
     if (!isSessionHidden(cand.id)) {
       switchTo(cand.id);
       return;
