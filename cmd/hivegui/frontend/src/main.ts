@@ -4,6 +4,7 @@
 // free of behavior — if a function body wants to live here, it almost
 // certainly belongs in a module.
 
+import './theme/theme';
 import '@xterm/xterm/css/xterm.css';
 
 import {

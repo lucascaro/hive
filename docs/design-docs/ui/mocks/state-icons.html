@@ -1,0 +1,143 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hive State Iconography</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --page-bg:#f6f5f2; --page-fg:#1c1b19; --page-muted:#6b6862; --page-rule:#dcd9d2; --page-accent:#b4560a; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; } }
+  :root[data-theme="dark"] { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; }
+  body { background:var(--page-bg); color:var(--page-fg); font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif; margin:0; }
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:600; margin:0 0 6px; } .lede { color:var(--page-muted); max-width:68ch; margin:0 0 28px; }
+  h2 { font-size:14px; font-weight:600; margin:32px 0 4px; } h2 .tag { font:500 11px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-accent); margin-right:8px; }
+  .why { color:var(--page-muted); font-size:13px; margin:0 0 10px; max-width:80ch; } .why b { color:var(--page-fg); font-weight:500; }
+  .frame { border:1px solid var(--page-rule); border-radius:8px; overflow:auto; }
+  table.leg { border-collapse:collapse; font-size:12.5px; margin:8px 0 0; } .leg td { padding:3px 14px 3px 0; color:var(--page-muted); } .leg td:first-child { color:var(--page-fg); font-weight:500; }
+
+  .sb { --bg:#13141a; --card:#0f1015; --border:#22242e; --fg:#e6e7ee; --fg2:#a5a8b8; --fg3:#5f6273; --accent:#ffb454; --attn:#ff9f43; --ok:#5fd7a5; --err:#ff6b6b; --sel:#1c1e28; --btn:#1a1c25; --btnb:#2b2e3b;
+    background:var(--bg); color:var(--fg); font:12.5px/1.4 "IBM Plex Sans",system-ui,sans-serif; display:grid; grid-template-columns:240px 1fr; width:760px; }
+  .side { padding:8px; border-right:1px solid var(--border); }
+  .grp { border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--card); }
+  .proj { display:flex; align-items:center; gap:6px; padding:7px 10px; background:var(--bg); border-bottom:1px solid var(--border); font-weight:500; font-size:12px; }
+  .proj .c { color:var(--fg3); font-size:9px; } .sw { width:8px; height:8px; border-radius:50%; flex:none; } .proj .cnt { margin-left:auto; font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .row { position:relative; display:flex; align-items:flex-start; gap:8px; padding:5px 10px 0; height:40px; box-sizing:border-box; color:var(--fg2); }
+  .row.active { background:var(--sel); color:var(--fg); } .row.active::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); }
+  .txt { flex:1; min-width:0; display:flex; flex-direction:column; } .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .sub { font-size:11px; color:var(--fg3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .attn .nm { color:var(--attn); } .exit .nm, .exit .sub { color:var(--fg3); } .exit .nm { text-decoration:line-through; text-decoration-color:var(--fg3); }
+  .ic { width:14px; height:14px; flex:none; margin-top:3px; display:grid; place-items:center; }
+  .ag { font:10px "JetBrains Mono",monospace; color:var(--fg3); margin-top:5px; }
+
+  .right { padding:8px 12px; display:flex; flex-direction:column; gap:10px; }
+  .lbl { font:500 10px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--fg3); }
+  .tray { display:flex; gap:6px; } .chip { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:5px; border:1px solid var(--btnb); background:var(--btn); font-size:11.5px; color:var(--fg2); } .chip .ic { margin:0; }
+  .tiles { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .tile { border:1px solid var(--border); border-radius:5px; overflow:hidden; } .th { display:flex; align-items:center; gap:6px; padding:4px 8px; background:var(--card); font-size:11.5px; border-bottom:1px solid var(--border); } .th .ic { margin:0; } .tb { height:46px; background:#0b0c10; font:11px "JetBrains Mono",monospace; color:var(--fg3); padding:6px 8px; }
+  .toolbar { display:flex; gap:4px; } .tb-btn { width:24px; height:24px; border-radius:5px; border:1px solid var(--btnb); background:var(--btn); color:var(--fg2); display:grid; place-items:center; font-size:12px; }
+
+  /* I1: geometric dots */
+  .i1 .dot { width:8px; height:8px; border-radius:50%; background:var(--fg3); }
+  .i1 .run .dot { background:var(--ok); }
+  .i1 .attn .dot { background:var(--attn); box-shadow:0 0 0 3px color-mix(in srgb,var(--attn) 28%,transparent); animation:pulse 1.6s ease-in-out infinite; }
+  .i1 .start .dot { background:transparent; border:2px solid var(--fg3); border-top-color:var(--fg2); width:6px; height:6px; animation:spin 1s linear infinite; }
+  .i1 .exit .dot { background:transparent; border:1.5px solid var(--fg3); width:6px; height:6px; border-radius:1px; }
+  .i1 .err .dot { background:transparent; border:1.5px solid var(--err); width:6px; height:6px; border-radius:1px; }
+  @keyframes pulse { 50% { box-shadow:0 0 0 5px color-mix(in srgb,var(--attn) 10%,transparent);} } @keyframes spin { to { transform:rotate(360deg);} }
+  @media (prefers-reduced-motion:reduce) { .i1 .dot { animation:none !important; } }
+
+  /* I2: line icons (inline SVG, 14px, 1.5 stroke) */
+  .i2 svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+  .i2 .run .ic { color:var(--ok); } .i2 .attn .ic { color:var(--attn); } .i2 .start .ic { color:var(--fg3); } .i2 .exit .ic { color:var(--fg3); } .i2 .err .ic { color:var(--err); }
+
+  /* I3: mono glyphs */
+  .i3 .ic { font:500 12px/1 "JetBrains Mono",monospace; }
+  .i3 .run .ic { color:var(--ok); } .i3 .attn .ic { color:var(--attn); } .i3 .start .ic { color:var(--fg3); } .i3 .exit .ic { color:var(--fg3); } .i3 .err .ic { color:var(--err); }
+</style>
+</head><body>
+<div class="wrap">
+  <h1>State iconography</h1><p><em>Decision: I2 SVG line family for everything, but state icons use the I3 geometric shapes (▶ ◆ ◌ ■ ✗) drawn as SVG — no metaphor icons for states.</em></p>
+  <p class="lede">One icon vocabulary used everywhere a session appears: sidebar row, minimized chip, grid tile header. Five states from the code — <b>starting</b>, <b>running</b>, <b>attention</b> (waiting on you), <b>exited</b>, <b>exited with error</b> — plus the worktree mark and toolbar actions. The subtitle line is always the window title; state lives only in the icon + colour.</p>
+
+  <h2><span class="tag">I1</span>Geometric dots</h2>
+  <p class="why">Shape encodes state (circle = alive, ring-spinner = starting, square = exited), colour reinforces it. Attention pulses. <b>Wins:</b> tiny, quiet, reads at 8px, one CSS file, zero assets, works in the terminal-first preset too. <b>Loses:</b> abstract — a new user has to learn square = exited; toolbar actions still need a separate icon source.</p>
+  <div class="frame"><div class="sb i1">
+    <div class="side"><div class="grp">
+      <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span>hive<span class="cnt">5</span></div>
+      <div class="row active run"><span class="ic"><span class="dot"></span></span><span class="txt"><span class="nm">echo-mesa</span><span class="sub">Reviewing sidebar.ts</span></span><span class="ag">⎇</span></div>
+      <div class="row attn"><span class="ic"><span class="dot"></span></span><span class="txt"><span class="nm">sidebar-tray</span><span class="sub">Allow edit to style.css?</span></span><span class="ag">⎇</span></div>
+      <div class="row start"><span class="ic"><span class="dot"></span></span><span class="txt"><span class="nm">docs-pass</span><span class="sub">Creating worktree…</span></span></div>
+      <div class="row exit"><span class="ic"><span class="dot"></span></span><span class="txt"><span class="nm">shell</span><span class="sub">Exited</span></span></div>
+      <div class="row err"><span class="ic"><span class="dot"></span></span><span class="txt"><span class="nm">e2e-flake</span><span class="sub">Exited (1)</span></span></div>
+    </div></div>
+    <div class="right">
+      <span class="lbl">Minimized tray</span><div class="tray"><span class="chip run"><span class="ic"><span class="dot"></span></span>lint-fix</span><span class="chip attn"><span class="ic"><span class="dot"></span></span>docker-pin</span><span class="chip exit"><span class="ic"><span class="dot"></span></span>old-shell</span></div>
+      <span class="lbl">Grid tile headers</span><div class="tiles">
+        <div class="tile run"><div class="th"><span class="ic"><span class="dot"></span></span>echo-mesa <span class="sub">· Reviewing sidebar.ts</span></div><div class="tb">❯ …</div></div>
+        <div class="tile attn"><div class="th"><span class="ic"><span class="dot"></span></span>sidebar-tray <span class="sub">· Allow edit?</span></div><div class="tb">? [y/n]</div></div>
+      </div>
+      <span class="lbl">Actions (unchanged text glyphs)</span><div class="toolbar"><span class="tb-btn">–</span><span class="tb-btn">↻</span><span class="tb-btn">×</span><span class="tb-btn">⊞</span><span class="tb-btn">⎇</span></div>
+    </div>
+  </div></div>
+
+  <h2><span class="tag">I2</span>Line icons (Lucide-style SVG)</h2>
+  <p class="why">A small inline SVG set (≈12 icons: play, bell, loader, square, alert, minus, rotate, x, grid, git-branch, plus, chevron). Same stroke weight everywhere; colour from tokens. <b>Wins:</b> self-explanatory, matches the "dev-tool" identity, actions and states come from one family so the whole UI reads as one hand. <b>Loses:</b> busiest at 40px row height; needs an icon sprite (~2KB) and a rule that nobody adds a stray unicode glyph again.</p>
+  <div class="frame"><div class="sb i2">
+    <svg style="display:none"><defs>
+      <symbol id="play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+      <symbol id="bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></symbol>
+      <symbol id="loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-6.2-8.6"/></symbol>
+      <symbol id="stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+      <symbol id="alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></symbol>
+      <symbol id="minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+      <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></symbol>
+      <symbol id="branch" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-12 2-12 5"/></symbol>
+    </defs></svg>
+    <div class="side"><div class="grp">
+      <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span>hive<span class="cnt">5</span></div>
+      <div class="row active run"><span class="ic"><svg><use href="#play"/></svg></span><span class="txt"><span class="nm">echo-mesa</span><span class="sub">Reviewing sidebar.ts</span></span><span class="ag"><svg style="width:11px;height:11px"><use href="#branch"/></svg></span></div>
+      <div class="row attn"><span class="ic"><svg><use href="#bell"/></svg></span><span class="txt"><span class="nm">sidebar-tray</span><span class="sub">Allow edit to style.css?</span></span><span class="ag"><svg style="width:11px;height:11px"><use href="#branch"/></svg></span></div>
+      <div class="row start"><span class="ic"><svg><use href="#loader"/></svg></span><span class="txt"><span class="nm">docs-pass</span><span class="sub">Creating worktree…</span></span></div>
+      <div class="row exit"><span class="ic"><svg><use href="#stop"/></svg></span><span class="txt"><span class="nm">shell</span><span class="sub">Exited</span></span></div>
+      <div class="row err"><span class="ic"><svg><use href="#alert"/></svg></span><span class="txt"><span class="nm">e2e-flake</span><span class="sub">Exited (1)</span></span></div>
+    </div></div>
+    <div class="right">
+      <span class="lbl">Minimized tray</span><div class="tray"><span class="chip run"><span class="ic"><svg><use href="#play"/></svg></span>lint-fix</span><span class="chip attn"><span class="ic"><svg><use href="#bell"/></svg></span>docker-pin</span><span class="chip exit"><span class="ic"><svg><use href="#stop"/></svg></span>old-shell</span></div>
+      <span class="lbl">Grid tile headers</span><div class="tiles">
+        <div class="tile run"><div class="th"><span class="ic"><svg><use href="#play"/></svg></span>echo-mesa <span class="sub">· Reviewing sidebar.ts</span></div><div class="tb">❯ …</div></div>
+        <div class="tile attn"><div class="th"><span class="ic"><svg><use href="#bell"/></svg></span>sidebar-tray <span class="sub">· Allow edit?</span></div><div class="tb">? [y/n]</div></div>
+      </div>
+      <span class="lbl">Actions (same family)</span><div class="toolbar"><span class="tb-btn"><svg><use href="#minus"/></svg></span><span class="tb-btn"><svg><use href="#rotate"/></svg></span><span class="tb-btn"><svg><use href="#x"/></svg></span><span class="tb-btn"><svg><use href="#grid"/></svg></span><span class="tb-btn"><svg><use href="#branch"/></svg></span></div>
+    </div>
+  </div></div>
+
+  <h2><span class="tag">I3</span>Monospace glyphs</h2>
+  <p class="why">Text characters from JetBrains Mono only: <code>▶</code> running, <code>◆</code> attention, <code>◌</code> starting, <code>■</code> exited, <code>✗</code> error. Actions stay text too. <b>Wins:</b> zero assets, terminal-native feel, copy-pastes into logs. <b>Loses:</b> glyph coverage varies by platform font fallback (Windows especially), optical sizes differ between characters so alignment is fiddly — the problem the current UI already has.</p>
+  <div class="frame"><div class="sb i3">
+    <div class="side"><div class="grp">
+      <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span>hive<span class="cnt">5</span></div>
+      <div class="row active run"><span class="ic">▶</span><span class="txt"><span class="nm">echo-mesa</span><span class="sub">Reviewing sidebar.ts</span></span><span class="ag">⎇</span></div>
+      <div class="row attn"><span class="ic">◆</span><span class="txt"><span class="nm">sidebar-tray</span><span class="sub">Allow edit to style.css?</span></span><span class="ag">⎇</span></div>
+      <div class="row start"><span class="ic">◌</span><span class="txt"><span class="nm">docs-pass</span><span class="sub">Creating worktree…</span></span></div>
+      <div class="row exit"><span class="ic">■</span><span class="txt"><span class="nm">shell</span><span class="sub">Exited</span></span></div>
+      <div class="row err"><span class="ic">✗</span><span class="txt"><span class="nm">e2e-flake</span><span class="sub">Exited (1)</span></span></div>
+    </div></div>
+    <div class="right">
+      <span class="lbl">Minimized tray</span><div class="tray"><span class="chip run"><span class="ic">▶</span>lint-fix</span><span class="chip attn"><span class="ic">◆</span>docker-pin</span><span class="chip exit"><span class="ic">■</span>old-shell</span></div>
+      <span class="lbl">Grid tile headers</span><div class="tiles">
+        <div class="tile run"><div class="th"><span class="ic">▶</span>echo-mesa <span class="sub">· Reviewing sidebar.ts</span></div><div class="tb">❯ …</div></div>
+        <div class="tile attn"><div class="th"><span class="ic">◆</span>sidebar-tray <span class="sub">· Allow edit?</span></div><div class="tb">? [y/n]</div></div>
+      </div>
+      <span class="lbl">Actions</span><div class="toolbar"><span class="tb-btn">–</span><span class="tb-btn">↻</span><span class="tb-btn">×</span><span class="tb-btn">⊞</span><span class="tb-btn">⎇</span></div>
+    </div>
+  </div></div>
+
+  <h2><span class="tag">legend</span> State → meaning, shared by all three</h2>
+  <table class="leg">
+    <tr><td>starting</td><td>daemon phase ≠ ready (spawn / fetch / worktree). Never styled as dead.</td></tr>
+    <tr><td>running</td><td>alive, ready, no attention flag.</td></tr>
+    <tr><td>attention</td><td>agent waiting on you (bell / prompt). Only state allowed to animate. Also bubbles to project header + minimized chip.</td></tr>
+    <tr><td>exited</td><td>process ended, exit 0. Name dimmed.</td></tr>
+    <tr><td>exited (error)</td><td>process ended, exit ≠ 0. Error colour, name dimmed, restart affordance.</td></tr>
+  </table>
+</div>
+</body></html>

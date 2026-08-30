@@ -1,0 +1,51 @@
+/* Presets. Every block re-values EVERY token; partial presets fall through
+   to hive-dark and look broken in light. docs/design-docs/ui/themes.md */
+
+:root[data-theme="classic"] {
+  --bg: #000;
+  --surface: #0a0a0a;
+  --surface-raised: #111;
+  --border: #1f1f1f;
+  --fg: #ddd;
+  --fg-muted: #888;
+  --fg-subtle: #666;
+  --accent: #f59e0b;
+  --on-accent: #000;
+  --sel: #1a1a1a;
+  --hover: #2a2a2a;
+  --btn: #1f1f1f;
+  --btn-border: #2a2a2a;
+  --state-running: #22c55e;
+  --state-attention: #f59e0b;
+  --state-starting: #666;
+  --state-exited: #555;
+  --state-error: #ff9a9a;
+  --term-bg: #000;
+  --term-fg: #ffffff;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: Menlo, Consolas, monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+:root[data-theme="hive-dark"] { /* identical to tokens.css defaults; present so the picker has a block */ }
+
+/* hive-light deliberately omits the typography, spacing, radius and motion
+   tokens (--font-*, --text-*, --space-*, --radius-*, --motion-*): it shares
+   hive-dark's scales — themes.md calls it "same hue bias, same fonts" — so
+   those fall through to the tokens.css defaults, which is correct here, not
+   partial. --state-starting/--state-exited are also omitted: tokens.css
+   declares them as var(--fg-subtle), which re-resolves to this preset's own
+   --fg-subtle without needing a per-preset override. Do not use this block
+   as a template for a preset that isn't sharing hive-dark's scales — that
+   preset must set every token, per the file-header rule above. */
+:root[data-theme="hive-light"] {
+  --bg: #f4f4f7; --surface: #ffffff; --surface-raised: #f8f8fb; --border: #e2e3ea;
+  --fg: #1a1b22; --fg-muted: #4f5262; --fg-subtle: #8a8d9c;
+  --accent: #c47a12; --on-accent: #1a1b22; --sel: #eceef5;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #f2f3f7; --btn-border: #d9dbe3;
+  --state-running: #1f9d6a; --state-attention: #d9731a; --state-error: #c93a3a;
+  --term-bg: #ffffff; --term-fg: #1a1b22;
+  --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
+}

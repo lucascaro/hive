@@ -2,7 +2,7 @@
 
 Top-level design overview for Hive — the Wails GUI + `hived` daemon. The *shape* of the project: domains, layers, cross-cutting concerns, and the architectural rules that hold everything together.
 
-Per-decision detail belongs in `docs/design-docs/`. This file is the map.
+Per-decision detail belongs in `docs/design-docs/`. This file is the map. The GUI's visual system (tokens, themes, components) is in `docs/design-docs/ui/`.
 
 ## Domains
 

@@ -1,0 +1,2 @@
+.a { color: var(--fg); font-size: var(--text-sm); }
+.b { color: #fff; /* ui-lint: allow */ }

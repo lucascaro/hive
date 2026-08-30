@@ -8,6 +8,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 
+import { xtermTheme } from '../theme/theme';
 import {
   OpenSession,
   CloseAttach,
@@ -311,7 +312,7 @@ export class SessionTerm {
       cursorBlink: false,
       scrollback: 5000,
       smoothScrollDuration: 0,
-      theme: { background: '#000000' },
+      theme: xtermTheme(),
       // Route OSC 8 hyperlinks (used by Claude CLI and others) through
       // the OS default browser via the Wails backend.
       linkHandler: {

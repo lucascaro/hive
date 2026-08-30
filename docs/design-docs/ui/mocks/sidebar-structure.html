@@ -1,0 +1,127 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hive Sidebar Structure</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --page-bg:#f6f5f2; --page-fg:#1c1b19; --page-muted:#6b6862; --page-rule:#dcd9d2; --page-accent:#b4560a; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; } }
+  :root[data-theme="dark"] { --page-bg:#141414; --page-fg:#e8e6e1; --page-muted:#9a978f; --page-rule:#2a2a2a; --page-accent:#f0a04b; }
+  body { background:var(--page-bg); color:var(--page-fg); font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif; margin:0; }
+  .wrap { max-width:1180px; margin:0 auto; padding:40px 24px 80px; }
+  h1 { font-size:26px; font-weight:600; margin:0 0 6px; }
+  .lede { color:var(--page-muted); max-width:66ch; margin:0 0 28px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+  h2 { font-size:14px; font-weight:600; margin:0 0 4px; } h2 .tag { font:500 11px "JetBrains Mono",monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--page-accent); margin-right:8px; }
+  .why { color:var(--page-muted); font-size:13px; margin:0 0 10px; min-height:7.5em; } .why b { color:var(--page-fg); font-weight:500; }
+  .frame { border:1px solid var(--page-rule); border-radius:8px; overflow:hidden; }
+
+  /* B tokens */
+  .sb { --bg:#13141a; --border:#22242e; --fg:#e6e7ee; --fg2:#a5a8b8; --fg3:#5f6273; --accent:#ffb454; --attn:#ff9f43; --ok:#5fd7a5; --err:#ff6b6b; --sel:#1c1e28; --btn:#1a1c25; --btnb:#2b2e3b;
+    background:var(--bg); color:var(--fg); font:12.5px/1.4 "IBM Plex Sans",system-ui,sans-serif; height:520px; display:flex; flex-direction:column; }
+  .mono { font-family:"JetBrains Mono",monospace; }
+  .head { display:flex; align-items:center; justify-content:space-between; padding:0 12px; height:36px; border-bottom:1px solid var(--border); }
+  .brand { font:600 12.5px "JetBrains Mono",monospace; letter-spacing:.12em; color:var(--accent); }
+  .ib { width:22px; height:22px; border-radius:5px; background:var(--btn); border:1px solid var(--btnb); color:var(--fg2); display:grid; place-items:center; font-size:14px; }
+  .list { flex:1; padding:6px 0; overflow:hidden; }
+  .proj { display:flex; align-items:center; gap:6px; padding:10px 12px 4px; color:var(--fg2); font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:500; }
+  .proj .c { color:var(--fg3); font-size:9px; } .sw { width:8px; height:8px; border-radius:50%; flex:none; }
+  .foot { border-top:1px solid var(--border); padding:6px 12px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:5px; border:1px solid var(--btnb); background:var(--btn); font-size:11.5px; color:var(--fg2); }
+  .ver { margin-left:auto; font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .kbd { font:10px "JetBrains Mono",monospace; color:var(--fg3); border:1px solid var(--btnb); border-radius:3px; padding:0 4px; }
+
+  /* shared row */
+  .row { position:relative; display:flex; align-items:center; gap:8px; padding:0 12px 0 22px; color:var(--fg2); }
+  .row.active { background:var(--sel); color:var(--fg); } .row.active::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); border-radius:0 2px 2px 0; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--fg3); flex:none; }
+  .busy .dot { background:var(--ok); } .attn .dot { background:var(--attn); box-shadow:0 0 0 3px color-mix(in srgb,var(--attn) 25%,transparent); } .attn .nm { color:var(--attn); font-weight:500; } .err .dot { background:var(--err); }
+  .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .wt { font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+
+  /* S1 compact */
+  .s1 .row { height:26px; } .s1 .nm { flex:1; }
+  .s1 .row .act { display:none; gap:2px; } .s1 .row.hover .act { display:flex; } .s1 .act span { width:18px; height:18px; display:grid; place-items:center; border-radius:4px; color:var(--fg3); font-size:11px; }
+  .s1 .row.hover { background:color-mix(in srgb,var(--sel) 60%,transparent); }
+
+  /* S2 two-line */
+  .s2 .row { height:40px; align-items:flex-start; padding-top:5px; box-sizing:border-box; }
+  .s2 .dot { margin-top:5px; } .s2 .txt { flex:1; min-width:0; display:flex; flex-direction:column; } .s2 .sub { font-size:11px; color:var(--fg3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .s2 .attn .sub { color:color-mix(in srgb,var(--attn) 70%,var(--fg3)); }
+  .s2 .ag { font:10px "JetBrains Mono",monospace; color:var(--fg3); margin-top:5px; }
+
+  /* S3 grouped cards + status pills */
+  .s3 .grp { margin:4px 8px 8px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:color-mix(in srgb,var(--bg) 70%,#000); }
+  .s3 .proj { padding:7px 10px; background:var(--bg); border-bottom:1px solid var(--border); text-transform:none; letter-spacing:0; font-size:12px; color:var(--fg); }
+  .s3 .proj .n { flex:1; } .s3 .proj .cnt { font:10px "JetBrains Mono",monospace; color:var(--fg3); }
+  .s3 .row { height:28px; padding-left:10px; } .s3 .row::before { left:0; } .s3 .nm { flex:1; } .s3 .dot { display:none; }
+  .s3 .pill { font:500 9.5px "JetBrains Mono",monospace; letter-spacing:.04em; text-transform:uppercase; padding:1px 6px; border-radius:99px; border:1px solid var(--btnb); color:var(--fg3); }
+  .s3 .busy .pill { color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,transparent); }
+  .s3 .attn .pill { color:#15120a; background:var(--attn); border-color:var(--attn); }
+  .s3 .err .pill { color:var(--err); border-color:color-mix(in srgb,var(--err) 40%,transparent); }
+</style>
+</head><body>
+<div class="wrap">
+  <h1>Sidebar structure</h1><p><em>Decision: S2 rows inside S3 cards. Subtitle is always the window title; state moves to the icon channel (see state-icons.html).</em></p>
+  <p class="lede">B palette throughout. Same data: two projects, one minimized project, one session waiting on you, one shell that crashed. Hover state shown on the <em>lint-fix</em> row where relevant.</p>
+  <div class="grid3">
+
+    <div>
+      <h2><span class="tag">S1</span>Compact, hover actions</h2>
+      <p class="why">Today's structure, tightened. One line per session, 26px rows, state in the dot only, actions (minimize / restart / kill) appear on hover. <b>Wins:</b> most sessions per screen (~17), calm. <b>Loses:</b> window title (#248) has no room; dot is the only state channel — colour-blind users get nothing.</p>
+      <div class="frame"><div class="sb s1">
+        <div class="head"><span class="brand">HIVE</span><span class="ib">＋</span></div>
+        <div class="list">
+          <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span>hive</div>
+          <div class="row active busy"><span class="dot"></span><span class="nm">echo-mesa</span><span class="wt">⎇</span></div>
+          <div class="row attn"><span class="dot"></span><span class="nm">sidebar-tray</span><span class="wt">⎇</span></div>
+          <div class="row hover"><span class="dot"></span><span class="nm">lint-fix</span><span class="act"><span>–</span><span>↻</span><span>×</span></span></div>
+          <div class="row err"><span class="dot"></span><span class="nm">shell</span></div>
+          <div class="proj"><span class="c">▾</span><span class="sw" style="background:#6c9cff"></span>litellm</div>
+          <div class="row busy"><span class="dot"></span><span class="nm">docker-pin</span><span class="wt">⎇</span></div>
+          <div class="row"><span class="dot"></span><span class="nm">shell</span></div>
+        </div>
+        <div class="foot"><span class="chip"><span class="sw" style="background:#c084fc"></span>portfolio</span><span class="ver">v2.4.0</span></div>
+      </div></div>
+    </div>
+
+    <div>
+      <h2><span class="tag">S2</span>Two-line, live subtitle</h2>
+      <p class="why">40px rows: name on top, second line = the agent's window title (what it's doing right now) or the state in words ("waiting for input", "exited 1"). Agent glyph right-aligned. <b>Wins:</b> glanceable "what is every agent doing" — the actual job of Hive; state is text + colour. <b>Loses:</b> ~11 rows per screen; subtitle churns as titles change.</p>
+      <div class="frame"><div class="sb s2">
+        <div class="head"><span class="brand">HIVE</span><span class="ib">＋</span></div>
+        <div class="list">
+          <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span>hive</div>
+          <div class="row active busy"><span class="dot"></span><span class="txt"><span class="nm">echo-mesa</span><span class="sub">Reviewing sidebar.ts</span></span><span class="ag">cl</span></div>
+          <div class="row attn"><span class="dot"></span><span class="txt"><span class="nm">sidebar-tray</span><span class="sub">Waiting for input</span></span><span class="ag">cl</span></div>
+          <div class="row"><span class="dot"></span><span class="txt"><span class="nm">lint-fix</span><span class="sub">biome ci .</span></span><span class="ag">cx</span></div>
+          <div class="row err"><span class="dot"></span><span class="txt"><span class="nm">shell</span><span class="sub">Exited (1)</span></span><span class="ag">sh</span></div>
+          <div class="proj"><span class="c">▾</span><span class="sw" style="background:#6c9cff"></span>litellm</div>
+          <div class="row busy"><span class="dot"></span><span class="txt"><span class="nm">docker-pin</span><span class="sub">Running tests</span></span><span class="ag">gm</span></div>
+        </div>
+        <div class="foot"><span class="chip"><span class="sw" style="background:#c084fc"></span>portfolio</span><span class="ver">v2.4.0</span></div>
+      </div></div>
+    </div>
+
+    <div>
+      <h2><span class="tag">S3</span>Grouped cards, status pills</h2>
+      <p class="why">Each project is a bordered card with a header (name, session count); sessions inside carry a text pill for state instead of a dot. <b>Wins:</b> strongest project grouping, state is explicit and scannable, pills are colour-blind safe. <b>Loses:</b> heaviest chrome, pills eat name width, cards fight the 200px minimum sidebar; can look "web app" in a terminal tool.</p>
+      <div class="frame"><div class="sb s3">
+        <div class="head"><span class="brand">HIVE</span><span class="ib">＋</span></div>
+        <div class="list">
+          <div class="grp">
+            <div class="proj"><span class="c">▾</span><span class="sw" style="background:#ffb454"></span><span class="n">hive</span><span class="cnt">4</span></div>
+            <div class="row active busy"><span class="nm">echo-mesa</span><span class="pill">busy</span></div>
+            <div class="row attn"><span class="nm">sidebar-tray</span><span class="pill">input</span></div>
+            <div class="row"><span class="nm">lint-fix</span><span class="pill">idle</span></div>
+            <div class="row err"><span class="nm">shell</span><span class="pill">exit 1</span></div>
+          </div>
+          <div class="grp">
+            <div class="proj"><span class="c">▾</span><span class="sw" style="background:#6c9cff"></span><span class="n">litellm</span><span class="cnt">2</span></div>
+            <div class="row busy"><span class="nm">docker-pin</span><span class="pill">busy</span></div>
+            <div class="row"><span class="nm">shell</span><span class="pill">idle</span></div>
+          </div>
+        </div>
+        <div class="foot"><span class="chip"><span class="sw" style="background:#c084fc"></span>portfolio</span><span class="ver">v2.4.0</span></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+</body></html>
