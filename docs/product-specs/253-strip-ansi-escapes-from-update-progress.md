@@ -4,7 +4,8 @@ title: "Strip ANSI escape sequences from update build progress lines"
 type: bug
 complexity: S
 priority: P2
-stage: REVIEW
+stage: DONE
+shipped: 2026-08-30
 pr: 296
 ---
 
