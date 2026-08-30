@@ -5,8 +5,9 @@
 - **Complexity:** S
 - **Priority:** P2
 - **PR:** #296
-- **Stage:** QA
-- **Exec plan:** [docs/exec-plans/active/253-strip-ansi-escapes-from-update-progress.md](../exec-plans/active/253-strip-ansi-escapes-from-update-progress.md)
+- **Shipped:** 2026-08-30
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/253-strip-ansi-escapes-from-update-progress.md](../exec-plans/completed/253-strip-ansi-escapes-from-update-progress.md)
 
 ## Problem
 
