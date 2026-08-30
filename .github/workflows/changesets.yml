@@ -20,6 +20,9 @@
 # Merge this workflow into your existing CI file or keep it standalone.
 name: changesets
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
