@@ -24,6 +24,8 @@ import {
 import { applyUpdateAndRestart } from '../banners.js';
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
+import { icon } from '../../ui/icon.js';
+import { iconButton } from '../../ui/icon-button.js';
 import { isMac } from '../../lib/platform.js';
 import {
   updateButtonState,
@@ -155,27 +157,26 @@ function render() {
       draft[i].cmd = splitCommand(cmd.value);
     });
 
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'settings-agent-delete';
-    del.textContent = '×';
-    del.title = 'Delete agent';
-    del.setAttribute('aria-label', `Delete ${a.name || 'agent'}`);
-    del.addEventListener('click', () => {
-      draft.splice(i, 1);
-      showError('');
-      render();
-      // render() destroyed the button that had focus, dropping it to
-      // <body> — from there the Tab trap has no boundary to wrap and
-      // the next Tab walks behind the backdrop. Put focus back on the
-      // row that took this one's place, or on "+ Add agent".
-      const dels = listEl.querySelectorAll<HTMLElement>(
-        '.settings-agent-delete',
-      );
-      const next =
-        dels[Math.min(i, dels.length - 1)] ??
-        document.getElementById('settings-agent-add');
-      next?.focus();
+    const del = iconButton({
+      icon: 'x',
+      label: `Delete ${a.name || 'agent'}`,
+      className: 'settings-agent-delete',
+      onClick: () => {
+        draft.splice(i, 1);
+        showError('');
+        render();
+        // render() destroyed the button that had focus, dropping it to
+        // <body> — from there the Tab trap has no boundary to wrap and
+        // the next Tab walks behind the backdrop. Put focus back on the
+        // row that took this one's place, or on "+ Add agent".
+        const dels = listEl.querySelectorAll<HTMLElement>(
+          '.settings-agent-delete',
+        );
+        const next =
+          dels[Math.min(i, dels.length - 1)] ??
+          document.getElementById('settings-agent-add');
+        next?.focus();
+      },
     });
 
     row.append(color, name, cmd, del);
@@ -379,7 +380,9 @@ function saveSettings() {
 export function initSettings(injected: SettingsDeps) {
   deps = injected;
   registerModal(settingsEl);
-  pageEl('settings-close').addEventListener('click', closeSettings);
+  const settingsCloseBtn = pageEl('settings-close');
+  settingsCloseBtn.replaceChildren(icon('x'));
+  settingsCloseBtn.addEventListener('click', closeSettings);
   pageEl('settings-cancel').addEventListener('click', closeSettings);
   pageEl('settings-save').addEventListener('click', saveSettings);
   channelEl.addEventListener('change', () => {

@@ -28,6 +28,7 @@ import {
   type Choice,
 } from './choice-dialog.js';
 import { pageEl } from '../el.js';
+import { icon } from '../../ui/icon.js';
 import { beginInlineRename } from '../inline-rename.js';
 import { releaseFocus } from './focus-trap.js';
 import {
@@ -554,7 +555,9 @@ async function confirmAndDelete(w: WorktreeInfo): Promise<void> {
 export function initWorktrees(injected: WorktreesDeps): void {
   deps = injected;
   registerModal(worktreesEl);
-  pageEl('worktrees-close').addEventListener('click', closeWorktrees);
+  const worktreesCloseBtn = pageEl('worktrees-close');
+  worktreesCloseBtn.replaceChildren(icon('x'));
+  worktreesCloseBtn.addEventListener('click', closeWorktrees);
   worktreesEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();

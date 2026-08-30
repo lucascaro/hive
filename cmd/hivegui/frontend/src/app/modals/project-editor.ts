@@ -12,6 +12,7 @@ import { reportFailure } from '../dom.js';
 import { registerModal } from './registry.js';
 import { releaseFocus } from './focus-trap.js';
 import { pageEl } from '../el.js';
+import { icon } from '../../ui/icon.js';
 import type { ProjectInfo } from '../state.js';
 
 // Narrow on purpose: this modal needs exactly two callbacks off the
@@ -108,7 +109,7 @@ export function initProjectEditor(injected: ProjectEditorDeps) {
       closeProjectEditor();
     }
   });
-  pageEl('new-project-btn').addEventListener('click', () =>
-    openProjectEditor(null),
-  );
+  const newProjectBtn = pageEl('new-project-btn');
+  newProjectBtn.replaceChildren(icon('plus'));
+  newProjectBtn.addEventListener('click', () => openProjectEditor(null));
 }

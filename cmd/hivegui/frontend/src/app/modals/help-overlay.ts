@@ -6,6 +6,7 @@ import { isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
+import { icon } from '../../ui/icon.js';
 
 // Narrow on purpose: this overlay needs exactly two callbacks off the
 // focus pipeline, so it names those two rather than the whole module.
@@ -22,6 +23,7 @@ let deps: HelpOverlayDeps = {
 export const helpEl = pageEl('help-overlay');
 const helpGroupsEl = pageEl('help-overlay-groups');
 const helpCloseBtn = pageEl('help-overlay-close');
+helpCloseBtn.replaceChildren(icon('x'));
 let helpRendered = false;
 
 function renderHelpOverlay() {
