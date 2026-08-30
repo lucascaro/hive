@@ -105,3 +105,27 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
     });
   });
 });
+
+// Standing guard: presets actually switch styles (deterministic, runs on all
+// platforms, not pixel-gated).
+test('hive-light preset changes the sidebar ground', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('hive.theme', 'hive-light'),
+  );
+  await page.goto('/');
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+
+  // Verify the theme was actually applied by checking data-theme.
+  const theme = await page.evaluate(
+    () => document.documentElement.dataset.theme,
+  );
+  expect(theme).toBe('hive-light');
+
+  // Verify #sidebar background resolves to white through the token.
+  const bg = await page
+    .locator('#sidebar')
+    .evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bg).toBe('rgb(255, 255, 255)');
+});
