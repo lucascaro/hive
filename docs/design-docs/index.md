@@ -7,6 +7,7 @@ Index entries are short. Detailed rationale belongs in the per-doc files.
 ## Active
 
 <!-- One row per design doc. Add: `- [Title](slug.md) — one-line description` -->
+- [UI design system](ui/README.md) — tokens, themes, icons, components, patterns for the GUI; decisions + mocks
 
 ## Core beliefs
 
