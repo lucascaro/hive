@@ -1,2 +1,2 @@
-.a { color: #fff; font-size: 12.5px; }
+.a { color: #fff /* not #eee — trailing comment must not hide a real violation */; font-size: 12.5px; }
 .b { content: '●'; }

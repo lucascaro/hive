@@ -1373,7 +1373,7 @@ export class SessionTerm {
       return;
     }
     // If the host is still display:none, the body has no box yet and
-    // fit.fit() would measure 0×0. Defer until ResizeObserver fires
+    // fit.fit() would measure 0x0. Defer until ResizeObserver fires
     // with a real size — _onBodyResize will re-enter ensureAttached.
     if (this.body.clientWidth === 0 || this.body.clientHeight === 0) {
       this._pendingAttach = true;

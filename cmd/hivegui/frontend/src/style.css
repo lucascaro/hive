@@ -1249,14 +1249,14 @@ body.resizing-sidebar #app { transition: none; }
 #settings-updates {
   flex: 0 0 auto;
   padding: 12px 14px;
-  border-top: 1px solid #222;
+  border-top: 1px solid #222; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest border token */
 }
 #settings-updates h4 {
   margin: 0 0 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
+  color: #888; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg-muted token */
 }
 .settings-field {
   display: flex;
@@ -1267,17 +1267,17 @@ body.resizing-sidebar #app { transition: none; }
 .settings-field.hidden { display: none; }
 .settings-field label {
   flex: 0 0 auto;
-  font-size: 11.5px;
-  color: #999;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #999; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg-muted token */
   min-width: 84px;
 }
 .settings-field .settings-hint { margin: 0; }
 #settings-update-channel,
 #settings-source-repo {
-  background: #000;
-  border: 1px solid #2a2a2a;
+  background: #000; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest bg token */
+  border: 1px solid #2a2a2a; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest border token */
   border-radius: 4px;
-  color: #ddd;
+  color: #ddd; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg token */
   padding: 6px 8px;
   font: inherit;
   outline: none;
@@ -1285,10 +1285,10 @@ body.resizing-sidebar #app { transition: none; }
   flex: 1 1 auto;
 }
 #settings-update-channel:focus,
-#settings-source-repo:focus { border-color: #f59e0b; }
+#settings-source-repo:focus { border-color: #f59e0b; } /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest accent token */
 #settings-source-repo {
   font-family: Menlo, monospace;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .settings-agent-row {

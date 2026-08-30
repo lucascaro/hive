@@ -699,7 +699,7 @@ for (let i = 1; i <= 9; i++) {
 // ---------- delete project ----------
 
 // confirmAndDeleteProject is the single confirm + KillProject path
-// shared by the sidebar ✕ button and the ⇧⌘⌫ shortcut. Kept as one
+// shared by the sidebar's delete button and the ⇧⌘⌫ shortcut. Kept as one
 // function so the prompt text and killSessions logic can't drift.
 export async function confirmAndDeleteProject(
   proj: ProjectInfo | undefined | null,

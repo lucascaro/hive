@@ -1,2 +1,5 @@
 .a { color: var(--fg); font-size: var(--text-sm); }
 .b { color: #fff; /* ui-lint: allow */ }
+.c { content: '—'; }
+/* one ⌘N hint */
+/* #eee mentioned only in prose, not a real declaration — must not fire */

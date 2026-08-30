@@ -85,9 +85,9 @@ jobs:
         working-directory: cmd/hivegui/frontend
         run: npm run typecheck
 
-      - name: UI lint (tokens / icons — warn mode until phase 2)
+      - name: UI lint (tokens / icons)
         if: matrix.biome
-        run: ./scripts/ui-lint.sh
+        run: ./scripts/ui-lint.sh --strict
 
       - name: Build
         run: go build ./...

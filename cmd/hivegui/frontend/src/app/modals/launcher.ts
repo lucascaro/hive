@@ -649,7 +649,7 @@ export function initLauncher(injected: LauncherDeps) {
   // The .project-actions buttons are how you get there: each one calls
   // stopPropagation, so the outside-click handler below never sees them
   // (its .project-actions exemption has always been unreachable for
-  // that reason), but clicking ✎ or ✕ still moves focus out.
+  // that reason), but clicking the edit or delete button still moves focus out.
   //
   // relatedTarget null means focus went nowhere — that's closeLauncher's
   // own blur, so ignore it rather than recursing.
