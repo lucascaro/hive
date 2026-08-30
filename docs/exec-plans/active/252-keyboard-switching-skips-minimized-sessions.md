@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/252-keyboard-switching-skips-minimized-sessions.md](../../product-specs/252-keyboard-switching-skips-minimized-sessions.md)
 - **Issue:** —
+- **PR:** #293
+- **Branch:** feature/252-keyboard-switching-skips-minimized-sessions
 - **Status:** active
 
 ## Summary

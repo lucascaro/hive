@@ -4,7 +4,8 @@
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **PR:** #293
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/252-keyboard-switching-skips-minimized-sessions.md](../exec-plans/active/252-keyboard-switching-skips-minimized-sessions.md)
 
 ## Problem
