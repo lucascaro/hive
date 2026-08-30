@@ -163,6 +163,9 @@ test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', asyn
 // scripts/ui-lint.sh's GLYPH_DENY reads source; this reads the rendered DOM
 // the user actually sees. Keep this denylist identical to GLYPH_DENY in
 // scripts/ui-lint.sh — copy any change there over here too.
+// Coverage boundary: this only sees textContent, so it cannot catch a glyph
+// delivered via CSS content: on a pseudo-element (::before/::after) — that
+// source-level case is scripts/ui-lint.sh's job, which scans src/style.css.
 test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
