@@ -29,6 +29,8 @@ import { emptyStateModel } from '../lib/empty-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
+import { stateIcon } from '../ui/icon.js';
+import { sessionState } from '../lib/session-state.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
 // refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
@@ -615,6 +617,8 @@ export function renderMinimizedTray() {
     chip.title = `Restore ${info.name}`;
     chip.setAttribute('aria-label', `Restore ${info.name}`);
     chip.style.setProperty('--session-color', info.color || '#888');
+
+    chip.append(stateIcon(sessionState(info, state.attention.has(info.id))));
 
     const dot = document.createElement('span');
     dot.className = 'min-chip-color';

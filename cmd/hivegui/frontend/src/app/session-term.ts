@@ -22,6 +22,9 @@ import {
   UpdateSession,
 } from '../bridge.js';
 import { state, type SessionInfo } from './state.js';
+import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
+import { iconButton } from '../ui/icon-button.js';
+import { sessionState } from '../lib/session-state.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
 import { anyModalOpen } from './modals/registry.js';
@@ -142,6 +145,7 @@ export class SessionTerm {
   host: HTMLDivElement;
   header: HTMLDivElement;
   body: HTMLDivElement;
+  tileState: SVGSVGElement;
   tileColor: HTMLSpanElement;
   tileName: HTMLSpanElement;
   tileWorktree: HTMLSpanElement;
@@ -238,6 +242,9 @@ export class SessionTerm {
     this.header = document.createElement('div');
     this.header.className = 'tile-header';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
+    this.tileState = stateIcon(
+      sessionState(info, state.attention.has(info.id)),
+    );
     this.tileColor = document.createElement('span');
     this.tileColor.className = 'tile-color';
     this.tileName = document.createElement('span');
@@ -245,7 +252,7 @@ export class SessionTerm {
     this.tileName.textContent = info.name ?? '';
     this.tileWorktree = document.createElement('span');
     this.tileWorktree.className = 'worktree-glyph clickable';
-    this.tileWorktree.textContent = '⎇';
+    this.tileWorktree.replaceChildren(icon('branch', { size: 12 }));
     this.tileWorktree.setAttribute('role', 'button');
     // Clicking the worktree marker opens the worktree browser for this
     // session's project — the same thing the identical glyph does in
@@ -274,22 +281,22 @@ export class SessionTerm {
     // user can tell at a glance what each tile is currently doing.
     this.tileTermTitle = document.createElement('span');
     this.tileTermTitle.className = 'tile-term-title';
-    this.tileMinimize = document.createElement('button');
-    this.tileMinimize.className = 'tile-minimize';
-    this.tileMinimize.type = 'button';
-    this.tileMinimize.title = 'Minimize (hide from grid)';
-    this.tileMinimize.setAttribute('aria-label', 'Minimize session');
-    this.tileMinimize.textContent = '–';
+    this.tileMinimize = iconButton({
+      icon: 'minus',
+      label: 'Minimize session',
+      className: 'tile-minimize',
+      onClick: (e) => {
+        e.stopPropagation();
+        minimizeSession(this.info.id);
+      },
+    });
     this.tileMinimize.addEventListener('mousedown', (e) => {
       // Block the surrounding tile mousedown so minimizing doesn't
       // also select / switch to this tile.
       e.stopPropagation();
     });
-    this.tileMinimize.addEventListener('click', (e) => {
-      e.stopPropagation();
-      minimizeSession(this.info.id);
-    });
     this.header.append(
+      this.tileState,
       this.tileColor,
       this.tileName,
       this.tileWorktree,
@@ -1047,6 +1054,10 @@ export class SessionTerm {
 
   setInfo(info: SessionInfo) {
     this.info = info;
+    updateStateIcon(
+      this.tileState,
+      sessionState(this.info, state.attention.has(this.info.id)),
+    );
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.tileName.textContent = info.name ?? '';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
@@ -1521,7 +1532,14 @@ export class SessionTerm {
       ...panel.steps.map((step) => {
         const li = document.createElement('li');
         li.className = `phase-step ${step.state}`;
-        li.textContent = step.label;
+        // The mark used to be a CSS ::before dot/check/half-circle glyph;
+        // it is an icon now so it matches the rest of the family. 'todo'
+        // gets no mark - the indent in phase-step::before holds the column.
+        if (step.state === 'done') li.append(icon('check', { size: 12 }));
+        else if (step.state === 'active') li.append(stateIcon('starting'));
+        const label = document.createElement('span');
+        label.textContent = step.label;
+        li.append(label);
         return li;
       }),
     );
