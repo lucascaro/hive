@@ -17,6 +17,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | #213 | GUI: always scroll to bottom on mode switch; never auto-scroll up | QA | [213-always-scroll-to-bottom-on-mode-switch-resize](213-always-scroll-to-bottom-on-mode-switch-resize.md) |
 | P2 | #217 | GUI: Cmd+Enter should insert a newline, not submit, in agent sessions on macOS | REVIEW | [217-cmd-enter-insert-newline-not-submit](217-cmd-enter-insert-newline-not-submit.md) |
 | P2 | — | Add user-configurable custom agents | REVIEW | [240-user-configurable-custom-agents](240-user-configurable-custom-agents.md) |
+| P2 | — | Auto-update with release/latest channels | REVIEW | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
 
 ## Completed
 

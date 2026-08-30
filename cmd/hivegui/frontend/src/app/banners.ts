@@ -12,10 +12,14 @@ import {
   Confirm,
   RestartDaemon,
   CheckForUpdate,
+  StartUpdate,
+  ApplyUpdateAndRestart,
   OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { pageEl } from './el.js';
+import { isMac } from '../lib/platform.js';
+import { updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../wailsjs/go/models';
 import type { DaemonStaleEvent } from './version-footer.js';
@@ -125,6 +129,53 @@ function wireDaemonBanner() {
   });
 }
 
+// applyUpdateAndRestart is the ONE way either surface applies a staged
+// update. Both the banner and the Settings modal call it.
+//
+// It exists because ApplyUpdateAndRestart ends in RestartDaemon, which
+// is exactly as destructive as the Restart Hive action beside it: every
+// running shell and agent dies. AGENTS.md requires destructive actions
+// to go through the confirm overlay, and the first cut of this feature
+// wired both buttons straight to the binding instead.
+//
+// It also claims `daemonRestarting`, which is what stops events.ts from
+// flashing a red "disconnected" status while the daemon we deliberately
+// killed is coming back. A restart path that skips that flag looks like
+// a crash to the user.
+//
+// versionLabel names what is about to be installed ("2.5.0", or a commit
+// on the latest channel); empty is tolerated so a caller that has lost
+// track of it still gets a truthful, if vaguer, dialog.
+export async function applyUpdateAndRestart(versionLabel = '') {
+  // Same re-entrancy shape as restartHive: claimed before the first
+  // await, because the confirm dialog is itself a window in which a
+  // second click on the other surface would slip past.
+  if (daemonRestarting) return;
+  daemonRestarting = true;
+  try {
+    const title = versionLabel
+      ? `Install ${versionLabel} and restart Hive?`
+      : 'Install the update and restart Hive?';
+    const ok = await Confirm(
+      title,
+      'Hive will close, terminate every running shell and agent, and ' +
+        'reopen on the new version. Save your work first.\n\n' +
+        'Continue?',
+    );
+    if (!ok) return;
+    try {
+      await ApplyUpdateAndRestart();
+      // On success this process is already quitting; control reaching
+      // here means the swap or the daemon teardown refused, and the
+      // window the user is looking at still works.
+    } catch (err) {
+      flashStatus(`update failed: ${err}`, true);
+    }
+  } finally {
+    daemonRestarting = false;
+  }
+}
+
 // Update-available banner. Backend's startUpdateCheckLoop emits
 // "update:available" on startup + every 6h when a newer GitHub
 // release tag than buildinfo.Version() is found. The user can also
@@ -137,9 +188,32 @@ function wireDaemonBanner() {
 const updateBannerEl = pageEl('update-banner');
 const updateBannerText = pageEl('update-banner-text');
 const updateBannerDownload = pageEl('update-banner-download');
+const updateBannerAction = pageEl<HTMLButtonElement>('update-banner-action');
 const updateBannerDismiss = pageEl('update-banner-dismiss');
 const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
 let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+// renderUpdateAction drives the Update / Updating… / Restart button from
+// the shared reducer, so the banner and the Settings modal always agree
+// about what the button should say. Hidden entirely when there is
+// nothing to act on — including on non-macOS, where staging a build we
+// could not install would be a dead end and the Download link is the
+// real answer.
+function renderUpdateAction(info: main.UpdateInfo | null) {
+  const btn = updateButtonState(info, isMac);
+  if (!btn.label) {
+    updateBannerAction.style.display = 'none';
+    return;
+  }
+  updateBannerAction.style.display = '';
+  updateBannerAction.textContent = btn.label;
+  updateBannerAction.disabled = btn.disabled;
+  updateBannerAction.dataset.action = btn.action;
+  // Kept on the button, not on the banner: banner.dataset.version is the
+  // per-version dismiss key, and showUpdateBanner deletes it on every
+  // show — so by the time the button says Restart it would be gone.
+  updateBannerAction.dataset.version = info?.latest || '';
+}
 
 function showUpdateBanner(
   text: string,
@@ -180,12 +254,34 @@ function applyUpdateInfo(
   { manual = false }: { manual?: boolean } = {},
 ) {
   if (!info) return;
+  renderUpdateAction(info);
+  // Staging and its outcomes are always worth showing: the user asked
+  // for this, and a failure that only lived in the Settings modal would
+  // be invisible to anyone who closed it.
+  if (
+    info.stage === 'staging' ||
+    info.stage === 'ready' ||
+    info.stage === 'error'
+  ) {
+    const btn = updateButtonState(info, isMac);
+    showUpdateBanner(btn.status, {
+      downloadUrl: info.url || '',
+      showDownload: info.stage !== 'ready',
+    });
+    return;
+  }
   if (info.skipped) {
     if (manual) {
-      showUpdateBanner('Update check skipped — this is a dev build.', {
-        showDownload: false,
-        autoHideMs: UPDATE_TRANSIENT_MS,
-      });
+      // Go says *why* it skipped — an untagged build on the release
+      // channel, a checkout with no upstream on the latest one. Those
+      // are different problems with different fixes, so don't flatten
+      // them back into one hardcoded sentence.
+      showUpdateBanner(
+        info.message
+          ? `Update check skipped — ${info.message}.`
+          : 'Update check skipped — this is a dev build.',
+        { showDownload: false, autoHideMs: UPDATE_TRANSIENT_MS },
+      );
     }
     return;
   }
@@ -201,9 +297,8 @@ function applyUpdateInfo(
     // Still tell the user an update exists; just don't expose a
     // one-click Download for an untrusted target.
     const trustedURL = !!info.url;
-    const text = trustedURL
-      ? `Hive ${info.latest} is available (you have ${info.current}).`
-      : `Hive ${info.latest} is available (you have ${info.current}). Open releases page manually.`;
+    const base = updateButtonState(info, isMac).status;
+    const text = trustedURL ? base : `${base} Open releases page manually.`;
     showUpdateBanner(text, { downloadUrl: info.url });
     updateBannerEl.dataset.version = info.latest;
     return;
@@ -217,6 +312,25 @@ function applyUpdateInfo(
 }
 
 function wireUpdateBanner() {
+  updateBannerAction.addEventListener('click', () => {
+    const action = updateBannerAction.dataset.action;
+    if (action === 'restart') {
+      // Confirm + guard live in the shared wrapper; never call the
+      // binding directly from a click handler.
+      void applyUpdateAndRestart(updateBannerAction.dataset.version || '');
+      return;
+    }
+    if (action === 'start') {
+      updateBannerAction.disabled = true;
+      // StartUpdate's refusals return synchronously without emitting an
+      // update:progress event, so nothing would re-render the button —
+      // re-enable it here or the click dead-ends it permanently.
+      StartUpdate().catch((err) => {
+        updateBannerAction.disabled = false;
+        reportFailure('start update')(err);
+      });
+    }
+  });
   updateBannerDownload.addEventListener('click', () => {
     const url = updateBannerEl.dataset.url;
     if (url) OpenURL(url).catch(reportFailure('open link'));
@@ -232,6 +346,11 @@ function wireUpdateBanner() {
   });
 
   EventsOn('update:available', (info: main.UpdateInfo | null) =>
+    applyUpdateInfo(info),
+  );
+  // Staging progress. Go emits one of these per step, and on the
+  // terminal ready/error transitions.
+  EventsOn('update:progress', (info: main.UpdateInfo | null) =>
     applyUpdateInfo(info),
   );
 

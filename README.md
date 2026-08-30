@@ -18,9 +18,12 @@ What works:
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions
 
+- In-app updates (macOS): pick a release or latest-commit channel in
+  Settings, then Update → Restart
+
 Not yet shipping: scrollback resume across daemon restart, splits
 inside grid cells, workflows / agent teams, code signing and
-notarization, platform installers, auto-update.
+notarization, platform installers, in-app updates on Windows/Linux.
 
 ## Build
 
@@ -55,17 +58,46 @@ auto-spawns the daemon at startup.
 
 ## Updating
 
-Tagged release builds check GitHub for newer releases automatically:
-once on launch and every six hours. When a newer tag is found, the
-GUI shows an "Update available" banner with a one-click link to the
-release page. The check is also reachable manually from
-**File → Check for Updates…**.
+Hive checks for updates in the background — once on launch and every
+six hours — and shows an "Update available" banner. The check is also
+reachable manually from **File → Check for Updates…**. Which updates it
+looks for depends on the channel you pick in **Settings → Updates**:
 
-The check is a single anonymous `GET` to
-`api.github.com/repos/lucascaro/hive/releases/latest` (no
-identifying data beyond a `User-Agent: hivegui/<build-id>` header).
-Untagged dev builds — anything built without `./build.sh --version
-<tag>` — skip the check entirely and never call out.
+| Channel | Checks | Applying it |
+|---------|--------|-------------|
+| **Release** (default) | A newer tagged release than the running version | Downloads the macOS zip, verifies its SHA-256 against the published `checksums.txt`, unpacks it |
+| **Latest** | Whether your source checkout's upstream branch has commits the running build doesn't | `git pull --ff-only` then `./build.sh` in that checkout |
+
+The release check is a single anonymous `GET` to
+`api.github.com/repos/lucascaro/hive/releases/latest` (no identifying
+data beyond a `User-Agent: hivegui/<build-id>` header). On the release
+channel, untagged dev builds — anything built without `./build.sh
+--version <tag>` — skip the check entirely and never call out; the
+latest channel is the one built for those.
+
+The latest channel pulls and *executes* code, so it refuses any checkout
+whose tracked branch does not come from this repository, and runs git
+with hooks disabled.
+
+The latest channel needs to know where your checkout is. Hive finds it
+by walking up from its own binary, which works for a locally built app;
+for an installed `Hive.app` you point at the directory yourself. It
+refuses to pull over a dirty working tree or a detached HEAD.
+
+The SHA-256 manifest is an **integrity** check, not a provenance one: it
+is published in the same release as the zip, and the bundle is neither
+signed nor notarized, so it catches a truncated or corrupted download —
+not a compromised release. Signing and notarization are tracked
+separately.
+
+**Nothing is downloaded or built until you press Update.** The button
+shows progress while it works, then becomes **Restart** — that step
+replaces the installed app and relaunches it, restarting `hived` so both
+halves come from the same build. That restart terminates every running
+shell and agent — save your work before pressing it.
+
+Applying an update in place is macOS-only. On Windows and Linux the
+banner keeps its Download button, which opens the release page.
 
 ## Layout
 

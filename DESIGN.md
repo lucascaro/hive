@@ -54,7 +54,7 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
 
 - **Wire JSON is `snake_case` on the wire, `CamelCase` in Go.** Every field in `internal/wire/` carries an explicit `json:"snake_case"` tag. JS readers in `hivegui/frontend/` use `snake_case ?? camelCase` at the boundary.
 - **The GUI never opens a PTY.** All PTY operations go through the wire protocol. Grep guard: no `os/exec`, `creack/pty`, or `internal/session` imports in `cmd/hivegui/` or `hivegui/`.
-- **The registry is the only writer of persisted state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates.
+- **The registry is the only writer of persisted *session* state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates. The GUI owns three files in that same directory that are *not* session state and never cross the wire: `agents.json` (custom agents, also read by hived), `window.json` (window geometry), and `update.json` (update channel + source-repo override). They follow the same temp + rename discipline. Anything the daemon must agree about goes through the wire protocol and the registry instead.
 - **`SESSION_EVENT(added)` means "the entry exists", not "you may attach".**
   A session carries a lifecycle phase (`wire.Phase*`, in-memory on the daemon,
   never persisted); it is attachable only when `alive == true` **and** the
