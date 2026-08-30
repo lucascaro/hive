@@ -26,3 +26,8 @@ declare global {
     __WS_BRIDGE_URL?: string;
   }
 }
+
+declare module '*.svg?raw' {
+  const content: string;
+  export default content;
+}
