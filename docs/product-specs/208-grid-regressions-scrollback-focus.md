@@ -1,3 +1,13 @@
+---
+issue: 208
+title: "Fix grid-mode regressions: scrollback baseline + sidebar focus"
+type: bug
+complexity: M
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # Fix grid-mode regressions: scrollback baseline + sidebar focus
 
 - **Issue:** #208

@@ -1,3 +1,13 @@
+---
+issue: 163
+title: "GUI: resize loses scroll position when viewport is 1-2 lines short of bottom"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-05-08
+---
+
 # GUI: resize loses scroll position when viewport is 1-2 lines short of bottom
 
 - **Issue:** #163

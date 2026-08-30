@@ -1,8 +1,8 @@
 # UI design system — master plan
 
-- **Spec:** [docs/design-docs/ui/README.md](../../design-docs/ui/README.md) (+ tokens/themes/icons/components/patterns)
-- **Issue:** none yet — open one per phase when it starts
-- **Stage:** PLAN
+- **Spec:** [docs/product-specs/ui-design-system.md](../../product-specs/ui-design-system.md)
+- **Issue:** —
+- **Stage:** IMPLEMENT (phases 1–2 shipped: PR #292, #295; phases 3–6 not started)
 - **Status:** active
 
 ## Summary

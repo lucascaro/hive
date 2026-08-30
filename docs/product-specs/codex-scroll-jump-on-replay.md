@@ -1,3 +1,13 @@
+---
+issue: null
+title: "GUI: scrollback replays destroy the reader's scroll position (codex scroll-jump)"
+type: bug
+complexity: M
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: scrollback replays destroy the reader's scroll position (codex scroll-jump)
 
 - **Issue:** (verbal report — no GitHub issue)

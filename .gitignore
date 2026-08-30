@@ -62,3 +62,7 @@ Thumbs.db
 
 # stray npm/vitest cache if a node tool is run from the repo root
 /node_modules/
+
+# Python bytecode from scripts/
+__pycache__/
+*.pyc

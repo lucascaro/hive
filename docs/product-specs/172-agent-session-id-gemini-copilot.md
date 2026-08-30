@@ -1,3 +1,13 @@
+---
+issue: 172
+title: "Pin/capture agent session id for Gemini and Copilot"
+type: enhancement
+complexity: S
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # Pin/capture agent session id for Gemini and Copilot
 
 - **Issue:** #172

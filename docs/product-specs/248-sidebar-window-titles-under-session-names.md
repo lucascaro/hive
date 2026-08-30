@@ -1,3 +1,14 @@
+---
+issue: null
+title: "Show terminal window titles under session names in the sidebar"
+type: enhancement
+complexity: M
+priority: P2
+stage: DONE
+pr: 288
+shipped: 2026-08-29
+---
+
 # Show terminal window titles under session names in the sidebar
 
 - **Issue:** —
@@ -5,8 +16,8 @@
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/248-sidebar-window-titles-under-session-names.md](../exec-plans/active/248-sidebar-window-titles-under-session-names.md)
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/248-sidebar-window-titles-under-session-names.md](../exec-plans/completed/248-sidebar-window-titles-under-session-names.md)
 
 ## Problem
 

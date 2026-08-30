@@ -1,3 +1,13 @@
+---
+issue: 144
+title: "vt snapshot: RGB / 24-bit colors fall back to default"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-05-08
+---
+
 # vt snapshot: RGB / 24-bit colors fall back to default
 
 - **Issue:** #144

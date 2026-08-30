@@ -1,3 +1,13 @@
+---
+issue: 217
+title: "GUI: Shift+Enter should insert a newline, not submit, in agent sessions"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: Shift+Enter should insert a newline, not submit, in agent sessions
 
 - **Issue:** #217

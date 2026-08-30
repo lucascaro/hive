@@ -1,3 +1,13 @@
+---
+issue: null
+title: "Auto-update with release/latest channels"
+type: enhancement
+complexity: L
+priority: P2
+stage: REVIEW
+pr: 291
+---
+
 # Auto-update with release/latest channels
 
 - **Issue:** —

@@ -1,3 +1,13 @@
+---
+issue: 186
+title: "Regression: focus inconsistent — switching from single-session to grid mode disables typing"
+type: bug
+complexity: S
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # Regression: focus inconsistent — switching from single-session to grid mode disables typing
 
 - **Issue:** #186

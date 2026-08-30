@@ -1,7 +1,7 @@
 # TypeScript migration — hive GUI frontend
 
-- **Spec:** [docs/analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md](../../analysis/2026-07-19-improvement-plan/phase-2-ci-and-tooling.md) §2c
-- **Issue:** TBD
+- **Spec:** [docs/product-specs/typescript-migration.md](../../product-specs/typescript-migration.md)
+- **Issue:** —
 - **Stage:** DONE (waves 1–7d, 2026-08-07 → 2026-08-09)
 - **Status:** completed
 

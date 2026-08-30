@@ -1,3 +1,14 @@
+---
+issue: null
+title: "Keyboard switching skips minimized sessions and projects"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+pr: 293
+shipped: 2026-08-30
+---
+
 # Keyboard switching skips minimized sessions and projects
 
 - **Issue:** —

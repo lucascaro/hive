@@ -1,3 +1,13 @@
+---
+issue: null
+title: "Minimize whole projects from the sidebar"
+type: enhancement
+complexity: M
+priority: P2
+stage: REVIEW
+pr: 290
+---
+
 # Minimize whole projects from the sidebar
 
 - **Issue:** —
