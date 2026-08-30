@@ -67,3 +67,7 @@ None.
 ## Open questions
 
 None.
+
+## PR convergence ledger
+
+- **2026-08-30 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 05bec86.
