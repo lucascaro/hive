@@ -158,3 +158,18 @@ test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', asyn
   expect(termBg).toBe('#000');
   expect(termFg).toBe('#ffffff');
 });
+
+// Standing guard: runs on every platform/CI leg (no HIVE_SNAPSHOT gate).
+// scripts/ui-lint.sh's GLYPH_DENY reads source; this reads the rendered DOM
+// the user actually sees. Keep this denylist identical to GLYPH_DENY in
+// scripts/ui-lint.sh — copy any change there over here too.
+test('no Unicode glyph is used as a control label', async ({ page }) => {
+  await page.goto('/');
+  const found = await page.evaluate(() => {
+    const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻]/;
+    return [...document.querySelectorAll('button, .caret, .worktree-glyph')]
+      .filter((el) => deny.test(el.textContent ?? ''))
+      .map((el) => `${el.tagName}#${el.id}.${el.className}`);
+  });
+  expect(found).toEqual([]);
+});

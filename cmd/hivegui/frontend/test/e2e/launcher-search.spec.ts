@@ -121,7 +121,7 @@ test('clicking a project action other than + closes the launcher', async ({
   await expect(page.locator('#launcher')).toBeVisible();
 
   await page
-    .locator('#projects .project-actions button', { hasText: '✎' })
+    .locator('#projects .project-actions button[aria-label="Edit project"]')
     .first()
     .click();
   await expect(page.locator('#launcher')).toBeHidden();
