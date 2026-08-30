@@ -155,14 +155,18 @@ export function onSessionBell(info: SessionInfo) {
   }
   state.attention.add(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
+  state.terms.get(info.id)?.refreshStateIcon?.();
   updateSidebarSelection();
+  deps.renderMinimizedTray();
   if (!alreadyAttention) fireBellNotification(info);
 }
 
 export function clearAttention(sessionId: string) {
   if (state.attention.delete(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
+    state.terms.get(sessionId)?.refreshStateIcon?.();
     updateSidebarSelection();
+    deps.renderMinimizedTray();
   }
 }
 

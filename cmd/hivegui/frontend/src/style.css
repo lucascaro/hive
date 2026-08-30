@@ -328,6 +328,15 @@ body.resizing-sidebar #app { transition: none; }
   opacity: 0.5;
 }
 .project-header:hover .project-actions { opacity: 1; }
+/* The sidebar column is ~200px; five 22px hv-icon-btns (components.md's
+   sidebar-header size) plus the caret and color swatch leave no room for
+   .project-name to render at all. Shrink just these five back to the
+   18px box the legacy buttons used (the old baseline truncates the name
+   to a couple characters at that width — narrow, but present). */
+.project-header .project-actions .hv-icon-btn {
+  width: 18px;
+  height: 18px;
+}
 
 .project-sessions {
   list-style: none;

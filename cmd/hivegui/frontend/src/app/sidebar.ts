@@ -14,7 +14,7 @@ import {
 } from './state.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
 import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
-import { icon, stateIcon } from '../ui/icon.js';
+import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
 import { iconButton } from '../ui/icon-button.js';
 import { sessionState } from '../lib/session-state.js';
 import { activeProjectId } from './selectors.js';
@@ -171,7 +171,14 @@ export function updateSidebarSelection() {
     // `sid ?? ''` rather than widening the Set: an unset data-sid and the
     // empty string are both absent from state.attention, so this is the
     // same false the old `has(undefined)` produced.
-    el.classList.toggle('attention', state.attention.has(sid ?? ''));
+    const hasAttention = state.attention.has(sid ?? '');
+    el.classList.toggle('attention', hasAttention);
+    // The row's shape+words state channel (icons.md) doesn't follow from
+    // the class alone — patch it in place so a bell (or its clearing)
+    // doesn't leave the icon showing "Running" while the row pulses.
+    const s = state.sessions.find((x) => x.id === sid);
+    const dot = el.querySelector<SVGSVGElement>('.dot');
+    if (s && dot) updateStateIcon(dot, sessionState(s, hasAttention));
   }
   // The switch paths (switchTo / switchToProject / shiftActiveProject)
   // end here without a sidebar rebuild — re-evaluate the empty state
@@ -256,6 +263,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const newBtn = iconButton({
     icon: 'plus',
     label: 'New session in this project',
+    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openLauncher(p.id);
@@ -266,6 +274,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     // The binding is shown inline, per the key-discoverability rule.
     icon: 'branch',
     label: 'Worktrees in this project (⌘E)',
+    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openWorktrees(p);
@@ -275,6 +284,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const editBtn = iconButton({
     icon: 'settings',
     label: 'Edit project',
+    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openProjectEditor(p);
@@ -286,6 +296,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const minBtn = iconButton({
     icon: 'minus',
     label: `Minimize ${p.name}`,
+    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       deps.minimizeProject(p.id);
@@ -295,6 +306,7 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const delBtn = iconButton({
     icon: 'x',
     label: `Delete project ${p.name}`,
+    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       deps.confirmAndDeleteProject(p);

@@ -116,6 +116,11 @@ export interface TermTile extends ReplayFlags {
   // the ResizeObserver never fires on its own.
   _onBodyResize(): void;
   setInfo(info: SessionInfo): void;
+  // Patches the tile header's state icon from current info + attention
+  // without a full setInfo — the attention paths (events.ts bell /
+  // clearAttention) call it directly since they don't touch name/title.
+  // Optional: DOM-test stubs that never render a tile header can omit it.
+  refreshStateIcon?(): void;
   // Both params are optional because the implementation defaults them
   // (`name || ''`, `color || '#888'`) and ProjectInfo's fields are optional.
   setProject(name?: string, color?: string): void;

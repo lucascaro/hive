@@ -1052,12 +1052,21 @@ export class SessionTerm {
     document.addEventListener('visibilitychange', this._onVisibility);
   }
 
-  setInfo(info: SessionInfo) {
-    this.info = info;
+  // Patches the tile header's state icon in place from current info +
+  // attention, without touching name/title/worktree. setInfo calls this
+  // for the full-refresh path; the attention paths in events.ts (a bell
+  // and its clearing) call it directly since they don't go through
+  // setInfo at all.
+  refreshStateIcon() {
     updateStateIcon(
       this.tileState,
       sessionState(this.info, state.attention.has(this.info.id)),
     );
+  }
+
+  setInfo(info: SessionInfo) {
+    this.info = info;
+    this.refreshStateIcon();
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.tileName.textContent = info.name ?? '';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
