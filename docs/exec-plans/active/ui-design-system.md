@@ -69,10 +69,14 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-29** — `hive-light --on-accent` → `#1a1b22`, `terminal --fg-subtle` → `#6f6f6f`. Why: computed WCAG ratios in phase 6 planning failed the spec's own rule.
 - **2026-08-29** — Phases 2–6 planned up front at task depth; implementers re-verify `file:line` refs and may amend. Why: user request.
 - **2026-08-29** — Inline key hints stay (AGENTS.md rule). Why: existing project policy; only rendering is standardised via `kbd()`.
+- **2026-08-29** — Pixel baselines in `test/e2e/theme.spec.ts` are gated behind `HIVE_SNAPSHOT` and default-skipped. Why: CI runs e2e on ubuntu + macos + windows, but Playwright snapshots carry a per-platform suffix; committed darwin baselines would fail the other legs. The cross-platform guard is the computed-style preset test instead.
+- **2026-08-29** — `data-theme` is stamped by an inline blocking `<script>` in `<head>`, not by the module import. Why: `type="module"` is deferred and would let the first paint land on the wrong preset.
+- **2026-08-29** — Terminal cursor and selection colours changed from white to amber (under `classic` preset). Why: v2.4.0 xterm theme was hard-coded `{ background: '#000000' }` with no cursor/selection values, so xterm supplied its own white defaults; they now derive from `--accent` per the spec's xterm mapping table. Terminal text stays white and background is unchanged.
+- **2026-08-29** — `classic`'s `--term-fg` is `#ffffff` not `#ddd`. Why: terminal text must keep reproducing v2.4.0 exactly.
 
 ## Progress
 
-- [ ] Phase 1
+- [x] Phase 1
 - [ ] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4

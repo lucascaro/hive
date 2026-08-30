@@ -2,7 +2,7 @@
 
 The visual and interaction system for the Hive GUI (`cmd/hivegui/frontend/`). This directory is the source of truth for *how the UI looks and behaves*; `DESIGN.md` at the repo root covers architecture.
 
-Status: **specified, not yet implemented**. Implementation is tracked in [docs/exec-plans/active/ui-design-system.md](../../exec-plans/active/ui-design-system.md).
+Status: **Phase 1 implemented** (tokens, presets, lint in CI). Implementation is tracked in [docs/exec-plans/active/ui-design-system.md](../../exec-plans/active/ui-design-system.md).
 
 ## Why this exists
 
