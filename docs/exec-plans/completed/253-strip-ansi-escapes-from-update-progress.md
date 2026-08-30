@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #296
 - **Branch:** feature/253-strip-ansi-escapes-from-update-progress
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -71,3 +71,14 @@ None.
 ## PR convergence ledger
 
 - **2026-08-30 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 05bec86.
+
+## QA verdict
+
+- **2026-08-30** — verdict: PASS; checks: 5 passed / 0 failed / 0 followups; followups: none; one-line: sanitizer covered end-to-end through `runBuildScript`; build, vet and the full Go suite green on merged main.
+  - 2026-08-30 dimensions:
+    - build/lint/test — PASS — `go build ./...`, `go vet ./...`, `go test ./...` (after `scripts/ci-bootstrap.sh`) all clean; CI green on #296 across Linux/macOS/Windows.
+    - acceptance — PASS — every success criterion has a named subtest: no `\x1b` reaches progress or the error, `50%\r80%\r100%` → `100%`, control-only lines skipped, UTF-8 preserved.
+    - non-goals — PASS — diff is Go + docs only; no frontend change, no colour rendering, no general ANSI parser (`internal/session/vt.go` untouched).
+    - regression — PASS — `plainProgressLine` is unexported with a single caller; pre-existing `runBuildScript` tests still pass unchanged.
+    - doc accuracy — PASS — `.changesets/253-update-progress-ansi.md` describes the user-visible fix.
+  - Note: the live `latest`-channel banner was not exercised manually in this QA run; coverage is at the `runBuildScript` choke point, which is where the escape bytes entered.
