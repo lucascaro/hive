@@ -5,7 +5,7 @@
 - **Complexity:** S
 - **Priority:** P2
 - **PR:** #296
-- **Stage:** REVIEW
+- **Stage:** QA
 - **Exec plan:** [docs/exec-plans/active/253-strip-ansi-escapes-from-update-progress.md](../exec-plans/active/253-strip-ansi-escapes-from-update-progress.md)
 
 ## Problem
