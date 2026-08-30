@@ -282,7 +282,10 @@ describe('session rows', () => {
     rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const row = document.querySelector(`.session-item[data-sid="s2"]`);
     expect(row?.classList.contains('minimized')).toBe(true);
-    expect(rowBtn('s2')?.textContent).toBe('＋');
+    expect(rowBtn('s2')?.getAttribute('aria-label')).toMatch(/^Restore /);
+    expect(rowBtn('s2')?.querySelector('use')?.getAttribute('href')).toBe(
+      '#hv-plus',
+    );
 
     rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(state.minimized.has('s2')).toBe(false);

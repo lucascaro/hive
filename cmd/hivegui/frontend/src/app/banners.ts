@@ -18,6 +18,7 @@ import {
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { pageEl } from './el.js';
+import { icon } from '../ui/icon.js';
 import { isMac } from '../lib/platform.js';
 import { updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
@@ -387,6 +388,8 @@ export async function manualUpdateCheck() {
 }
 
 export function initBanners() {
+  daemonBannerDismiss.replaceChildren(icon('x'));
+  updateBannerDismiss.replaceChildren(icon('x'));
   wireDaemonBanner();
   wireUpdateBanner();
 }

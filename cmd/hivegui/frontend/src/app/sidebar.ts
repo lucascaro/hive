@@ -14,6 +14,9 @@ import {
 } from './state.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
 import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
+import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
+import { iconButton } from '../ui/icon-button.js';
+import { sessionState } from '../lib/session-state.js';
 import { activeProjectId } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
@@ -112,8 +115,8 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   open.className = 'min-project-open';
   open.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
   open.setAttribute('aria-label', `Restore ${p.name}`);
-  // Clicking the row restores the project — the same thing the ＋
-  // does. A minimized row is a thing you put away; the only reason to
+  // Clicking the row restores the project — the same thing the restore
+  // button does. A minimized row is a thing you put away; the only reason to
   // click it is to get it back, so making the whole row the target
   // beats a 12px button as the sole way out.
   open.addEventListener('click', () => deps.restoreProject(p.id));
@@ -126,15 +129,15 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   name.textContent = p.name ?? '';
   open.append(dot, name);
 
-  const restore = document.createElement('button');
-  restore.type = 'button';
-  restore.className = 'min-project-restore';
-  restore.textContent = '＋';
-  restore.title = `Restore ${p.name}`;
-  restore.setAttribute('aria-label', `Restore ${p.name}`);
-  restore.addEventListener('click', (e) => {
-    e.stopPropagation();
-    deps.restoreProject(p.id);
+  const restore = iconButton({
+    icon: 'plus',
+    label: `Restore ${p.name}`,
+    className: 'min-project-restore',
+    size: 22,
+    onClick: (e) => {
+      e.stopPropagation();
+      deps.restoreProject(p.id);
+    },
   });
 
   li.append(open, restore);
@@ -168,7 +171,14 @@ export function updateSidebarSelection() {
     // `sid ?? ''` rather than widening the Set: an unset data-sid and the
     // empty string are both absent from state.attention, so this is the
     // same false the old `has(undefined)` produced.
-    el.classList.toggle('attention', state.attention.has(sid ?? ''));
+    const hasAttention = state.attention.has(sid ?? '');
+    el.classList.toggle('attention', hasAttention);
+    // The row's shape+words state channel (icons.md) doesn't follow from
+    // the class alone — patch it in place so a bell (or its clearing)
+    // doesn't leave the icon showing "Running" while the row pulses.
+    const s = state.sessions.find((x) => x.id === sid);
+    const dot = el.querySelector<SVGSVGElement>('.dot');
+    if (s && dot) updateStateIcon(dot, sessionState(s, hasAttention));
   }
   // The switch paths (switchTo / switchToProject / shiftActiveProject)
   // end here without a sidebar rebuild — re-evaluate the empty state
@@ -222,9 +232,10 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   // aria-expanded; :focus-visible shows a ring only for keyboard focus.
   const caret = document.createElement('button');
   caret.type = 'button';
-  caret.className = 'caret';
-  caret.textContent = '▾';
+  caret.className = 'caret hv-icon-btn';
+  caret.dataset.size = '22';
   const collapsedNow = state.collapsed.has(p.id);
+  caret.replaceChildren(icon(collapsedNow ? 'chevron-right' : 'chevron-down'));
   caret.setAttribute('aria-expanded', String(!collapsedNow));
   caret.setAttribute(
     'aria-label',
@@ -249,48 +260,57 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const actions = document.createElement('span');
   actions.className = 'project-actions';
 
-  const newBtn = document.createElement('button');
-  newBtn.textContent = '+';
-  newBtn.title = 'New session in this project';
-  newBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openLauncher(p.id);
+  // No `size` here: the sidebar column is too narrow for even the 22px
+  // sidebar-header size alongside .project-name, so style.css overrides
+  // these five buttons down to 18px via
+  // `.project-header .project-actions .hv-icon-btn` — passing `size: 22`
+  // would be overridden and read as configuration that does nothing.
+  const newBtn = iconButton({
+    icon: 'plus',
+    label: 'New session in this project',
+    onClick: (e) => {
+      e.stopPropagation();
+      openLauncher(p.id);
+    },
   });
 
-  const wtBtn = document.createElement('button');
-  wtBtn.textContent = '⎇';
-  // The binding is shown inline, per the key-discoverability rule.
-  wtBtn.title = 'Worktrees in this project (⌘E)';
-  wtBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openWorktrees(p);
+  const wtBtn = iconButton({
+    // The binding is shown inline, per the key-discoverability rule.
+    icon: 'branch',
+    label: 'Worktrees in this project (⌘E)',
+    onClick: (e) => {
+      e.stopPropagation();
+      openWorktrees(p);
+    },
   });
 
-  const editBtn = document.createElement('button');
-  editBtn.textContent = '✎';
-  editBtn.title = 'Edit project';
-  editBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    openProjectEditor(p);
+  const editBtn = iconButton({
+    icon: 'settings',
+    label: 'Edit project',
+    onClick: (e) => {
+      e.stopPropagation();
+      openProjectEditor(p);
+    },
   });
 
-  const minBtn = document.createElement('button');
   // Same glyph as the grid tile's minimize control
   // (app/session-term.ts) — one gesture, two scopes.
-  minBtn.textContent = '–';
-  minBtn.title = 'Minimize project (hide from sidebar and grid)';
-  minBtn.setAttribute('aria-label', `Minimize ${p.name}`);
-  minBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    deps.minimizeProject(p.id);
+  const minBtn = iconButton({
+    icon: 'minus',
+    label: `Minimize ${p.name}`,
+    onClick: (e) => {
+      e.stopPropagation();
+      deps.minimizeProject(p.id);
+    },
   });
 
-  const delBtn = document.createElement('button');
-  delBtn.textContent = '✕';
-  delBtn.title = 'Delete project';
-  delBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    deps.confirmAndDeleteProject(p);
+  const delBtn = iconButton({
+    icon: 'x',
+    label: `Delete project ${p.name}`,
+    onClick: (e) => {
+      e.stopPropagation();
+      deps.confirmAndDeleteProject(p);
+    },
   });
 
   actions.append(newBtn, wtBtn, editBtn, minBtn, delBtn);
@@ -431,13 +451,8 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   li.dataset.pid = s.projectId ?? s.project_id ?? '';
   li.draggable = true;
 
-  const dot = document.createElement('span');
-  dot.className = 'dot';
-  if (!isReady(phase)) {
-    // Same vocabulary as the tile's loading panel, so the row and the
-    // pane never disagree about what the session is doing.
-    dot.title = isClosing(phase) ? 'Closing…' : 'Starting…';
-  }
+  const dot = stateIcon(sessionState(s, state.attention.has(s.id)));
+  dot.classList.add('dot'); // keep the legacy hook until phase 3 rebuilds the row
 
   const name = document.createElement('span');
   name.className = 'name';
@@ -465,7 +480,7 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   if (wtBranch) {
     glyph = document.createElement('span');
     glyph.className = 'worktree-glyph clickable';
-    glyph.textContent = '⎇';
+    glyph.replaceChildren(icon('branch', { size: 12 }));
     // The same glyph marks the project row's worktree button, so it
     // has to do the same thing here — an indicator that looks like the
     // control next to it but ignores clicks reads as broken.
@@ -499,20 +514,16 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   // tray chip is the only way back and the row is right here.
   const isMin = state.minimized.has(s.id);
   if (isMin) li.classList.add('minimized');
-  const minBtn = document.createElement('button');
-  minBtn.type = 'button';
-  minBtn.className = 'session-minimize';
-  minBtn.textContent = isMin ? '＋' : '–';
-  minBtn.title = isMin ? 'Restore to the grid' : 'Minimize (hide from grid)';
-  minBtn.setAttribute(
-    'aria-label',
-    `${isMin ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`,
-  );
-  minBtn.addEventListener('click', (e) => {
-    // Don't also switch to the session the button sits on.
-    e.stopPropagation();
-    if (isMin) deps.restoreSession(s.id);
-    else deps.minimizeSession(s.id);
+  const minBtn = iconButton({
+    icon: isMin ? 'plus' : 'minus',
+    label: `${isMin ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`,
+    className: 'session-minimize',
+    onClick: (e) => {
+      // Don't also switch to the session the button sits on.
+      e.stopPropagation();
+      if (isMin) deps.restoreSession(s.id);
+      else deps.minimizeSession(s.id);
+    },
   });
 
   if (glyph) {

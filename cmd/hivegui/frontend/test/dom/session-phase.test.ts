@@ -111,9 +111,13 @@ function makeTerm(info: Info) {
   return st;
 }
 
+// Read the label span's text, not the li's whole textContent: an
+// 'active' step's leading mark is a stateIcon with a <title> child
+// ("Starting"), which would otherwise leak into the li's textContent.
 const steps = (st: Tile) =>
   Array.from(st.phaseSteps.children).map(
-    (li) => `${li.className.replace('phase-step ', '')}:${li.textContent}`,
+    (li) =>
+      `${li.className.replace('phase-step ', '')}:${li.querySelector('span')?.textContent}`,
   );
 
 describe('phase overlay', () => {

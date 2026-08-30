@@ -1,0 +1,46 @@
+/* icon primitive - docs/design-docs/ui/components.md > icon() */
+#hv-icon-sprite { display: none; }
+
+.hv-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+  color: inherit;
+  /* <use> clones a <symbol> from icons.svg without its defining tree's
+     ancestors, so the sprite root's fill/stroke presentation attributes
+     never reach the clone — restate them here so stroke paths inherit
+     currentColor instead of painting nothing. */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.hv-icon[data-size="12"] { width: 12px; height: 12px; }
+
+/* State icons - icons.md > State icons. Colour and motion only; the
+   shape comes from the symbol. */
+.hv-state-icon[data-state="running"] { color: var(--state-running); }
+.hv-state-icon[data-state="attention"] { color: var(--state-attention); }
+.hv-state-icon[data-state="starting"] {
+  color: var(--state-starting);
+  animation: hv-state-spin 1s linear infinite;
+}
+.hv-state-icon[data-state="exited"] { color: var(--state-exited); }
+.hv-state-icon[data-state="error"] { color: var(--state-error); }
+
+.hv-state-icon[data-state="attention"] {
+  border-radius: 50%;
+  animation: hv-state-pulse var(--motion-pulse) ease-in-out infinite;
+}
+
+@keyframes hv-state-spin { to { transform: rotate(360deg); } }
+@keyframes hv-state-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-attention) 55%, transparent); }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-attention) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hv-state-icon { animation: none !important; }
+}

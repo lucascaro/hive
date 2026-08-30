@@ -73,11 +73,18 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-29** — `data-theme` is stamped by an inline blocking `<script>` in `<head>`, not by the module import. Why: `type="module"` is deferred and would let the first paint land on the wrong preset.
 - **2026-08-29** — Terminal cursor and selection colours changed from white to amber (under `classic` preset). Why: v2.4.0 xterm theme was hard-coded `{ background: '#000000' }` with no cursor/selection values, so xterm supplied its own white defaults; they now derive from `--accent` per the spec's xterm mapping table. Terminal text stays white and background is unchanged.
 - **2026-08-29** — `classic`'s `--term-fg` is `#ffffff` not `#ddd`. Why: terminal text must keep reproducing v2.4.0 exactly.
+- **2026-08-30** — Sprite is inlined via Vite's `?raw` + one-time DOM injection, not a build plugin. Why: no plugin code, resolves identically under vitest, and every icon is created from TS anyway.
+- **2026-08-30** — `last_error` replaces `exit_code` in the state resolution. Why: no exit code exists on the wire (`internal/wire` has no exit-code field).
+- **2026-08-30** — Edit-project uses `settings` (gear); the 22-icon inventory has no pencil.
+- **2026-08-30** — `ui-lint`'s glyph rule is a denylist of icon-shaped characters, not `[^\x00-\x7F]`. Why: prose comments and mandated `⌘` key hints are legitimate non-ASCII, so the old rule could never go strict.
+- **2026-08-30** — `.hv-icon` restates the sprite root's `fill`/`stroke`/`stroke-width`/`linecap`/`linejoin`. Why: `<use>` clones a `<symbol>` without its defining tree's ancestors, so the sprite root's presentation attributes never reach the clone — without this every stroke-based icon renders invisible. This was a real bug caught only by a screenshot check; it is worth writing down so nobody "simplifies" it away.
+- **2026-08-30** — Two of the three state-icon sites — the sidebar row (`updateSidebarSelection`) and the grid tile header (`session-term.ts`'s `refreshStateIcon`) — are patched in place via `updateStateIcon()`; the minimized tray gets a correct icon for free because `renderMinimizedTray()` clears and rebuilds every chip from scratch on each render, calling `stateIcon()` fresh rather than patching. Why patch at all: a bell only toggles a CSS class, so without an explicit refresh on the two sites that don't already rebuild wholesale, the shape and its `<title>` would keep saying "Running" while the session waits.
+- **2026-08-30** — The project-header action buttons keep an 18px box via a scoped `style.css` override rather than the primitive's 22/24 sizes. Why: five 24px buttons plus the caret squeezed the project name out of the sidebar entirely.
 
 ## Progress
 
 - [x] Phase 1
-- [ ] Phase 2
+- [x] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5

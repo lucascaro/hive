@@ -6,6 +6,7 @@ import { isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
+import { icon } from '../../ui/icon.js';
 
 // Narrow on purpose: this overlay needs exactly two callbacks off the
 // focus pipeline, so it names those two rather than the whole module.
@@ -74,6 +75,7 @@ export function toggleHelpOverlay() {
 export function initHelpOverlay(injected: HelpOverlayDeps) {
   deps = injected;
   registerModal(helpEl);
+  helpCloseBtn.replaceChildren(icon('x'));
   helpCloseBtn.addEventListener('click', closeHelpOverlay);
   helpEl.addEventListener('mousedown', (e) => {
     // The overlay element is the full-viewport backdrop — clicking it

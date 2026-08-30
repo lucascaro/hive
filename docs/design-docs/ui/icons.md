@@ -26,11 +26,15 @@ attention.has(id)           → attention
 else                        → running
 ```
 
+Implemented in `src/lib/session-state.ts`; the resolver accepts both the `last_error` and `lastError` spellings, since wire payloads are snake_case but the frontend sees both.
+
 ## Action / navigation icons (line)
 
 `plus`, `minus` (minimize), `x` (close/kill), `rotate` (restart), `grid`, `single` (one pane), `branch` (worktree), `chevron-down`, `chevron-right`, `settings`, `search`, `help`, `arrow-left`, `arrow-right` (nav history), `external` (open in OS terminal), `download`, `check`.
 
 That's 22 symbols. Adding one: draw it on the 24 grid at 1.75 stroke, add `<symbol id="…">` to the sprite, add a row here, never inline SVG in a feature module.
+
+`settings` (gear) also doubles as the sidebar's edit-project control (`src/app/sidebar.ts`'s `editBtn`) — the 22-icon inventory has no pencil.
 
 ## Rules
 
