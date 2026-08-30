@@ -50,7 +50,12 @@ fi
 # silently ignore the argument and scan the whole app tree instead.
 glyph_targets=("${targets[@]}")
 if [[ $custom -eq 0 ]]; then
-  glyph_targets=("$FE/src/app" "$FE/src/style.css" "$FE/index.html")
+  # src/ui and src/theme are where the sprite, the icon/iconButton/kbd
+  # primitives and their stylesheets live, and where new icon code will
+  # land — they must be scanned too. Deliberately NOT src/lib: grid.ts
+  # legitimately uses "×" for w×h dimensions, and scanning it would
+  # produce a false positive that invites a suppression.
+  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/theme" "$FE/src/style.css" "$FE/index.html")
 fi
 
 n=0
@@ -96,7 +101,7 @@ while IFS= read -r line; do report "$line"; done < <(
 
 # Denylist of icon-shaped characters. Not a Unicode range, so plain -F
 # (fixed-string) matching is enough — no PCRE required.
-GLYPH_DENY='× ✕ ✗ ＋ ✚ ⎇ ✎ ▾ ▴ ● ○ ◐ ◆ ■ ▶ ⟳ ↻'
+GLYPH_DENY='× ✕ ✗ ＋ ✚ ⎇ ✎ ▾ ▴ ● ○ ◐ ◆ ■ ▶ ⟳ ↻ ✓ ✔'
 glyph_args=()
 for ch in $GLYPH_DENY; do
   glyph_args+=(-e "$ch")

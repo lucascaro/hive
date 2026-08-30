@@ -89,6 +89,17 @@ jobs:
         if: matrix.biome
         run: ./scripts/ui-lint.sh --strict
 
+      - name: UI lint self-test (fixtures)
+        if: matrix.biome
+        # The linter's own red/green proof was manual. Assert both fixtures
+        # still behave: bad.css must fail, good.css must pass.
+        run: |
+          if ./scripts/ui-lint.sh --strict scripts/testdata/ui-lint/bad.css; then
+            echo "expected bad.css to fail ui-lint" >&2
+            exit 1
+          fi
+          ./scripts/ui-lint.sh --strict scripts/testdata/ui-lint/good.css
+
       - name: Build
         run: go build ./...
 

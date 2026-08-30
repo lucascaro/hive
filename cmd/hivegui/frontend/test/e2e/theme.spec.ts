@@ -169,7 +169,7 @@ test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', asyn
 test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
-    const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻]/;
+    const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻✓✔]/;
     return [...document.querySelectorAll('button, .caret, .worktree-glyph')]
       .filter((el) => deny.test(el.textContent ?? ''))
       .map((el) => `${el.tagName}#${el.id}.${el.className}`);
