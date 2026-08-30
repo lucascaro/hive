@@ -388,6 +388,60 @@ func verifyUpstreamRemote(repo string) error {
 	return nil
 }
 
+// plainProgressLine reduces one line of build output to what a terminal
+// would actually show, as plain text. build.sh drives npm/vite/wails,
+// which colour their output and redraw progress with carriage returns —
+// and the update banner renders its message as text, so anything left
+// in here reaches the user as literal `ESC[32m` garbage.
+//
+// Only what that output really contains is handled: CR redraws, CSI and
+// OSC sequences, and any other C0 control byte. A full VT parser lives
+// in internal/session for the terminal; the banner has one short line.
+func plainProgressLine(s string) string {
+	// A CR redraw means everything before the last CR was overwritten.
+	if i := strings.LastIndexByte(s, '\r'); i >= 0 {
+		s = s[i+1:]
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c == 0x1B && i+1 < len(s) && s[i+1] == '[':
+			// CSI: parameter/intermediate bytes, then a final byte in 0x40–0x7E.
+			i += 2
+			for i < len(s) && (s[i] < 0x40 || s[i] > 0x7E) {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+		case c == 0x1B && i+1 < len(s) && s[i+1] == ']':
+			// OSC: terminated by BEL or ST (ESC \).
+			i += 2
+			for i < len(s) {
+				if s[i] == 0x07 {
+					i++
+					break
+				}
+				if s[i] == 0x1B && i+1 < len(s) && s[i+1] == '\\' {
+					i += 2
+					break
+				}
+				i++
+			}
+		case c == 0x1B:
+			// Any other escape: drop ESC and the byte it introduces.
+			i += 2
+		case c < 0x20 && c != '\t', c == 0x7F:
+			i++
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // runBuildScript runs ./build.sh and streams its output into progress.
 // Only the most recent line is reported — build.sh is chatty and the
 // button has one line to show it in.
@@ -408,7 +462,7 @@ func runBuildScript(repo string, progress func(string)) error {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+		line := plainProgressLine(sc.Text())
 		if line == "" {
 			continue
 		}
