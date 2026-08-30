@@ -5,8 +5,9 @@
 - **Complexity:** S
 - **Priority:** P2
 - **PR:** #293
-- **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/252-keyboard-switching-skips-minimized-sessions.md](../exec-plans/active/252-keyboard-switching-skips-minimized-sessions.md)
+- **Shipped:** 2026-08-30
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/252-keyboard-switching-skips-minimized-sessions.md](../exec-plans/completed/252-keyboard-switching-skips-minimized-sessions.md)
 
 ## Problem
 

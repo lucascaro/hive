@@ -55,6 +55,7 @@ let switchToProject: typeof import('../../src/app/view.js').switchToProject;
 let shiftActiveProject: typeof import('../../src/app/view.js').shiftActiveProject;
 let initView: typeof import('../../src/app/view.js').initView;
 let minimizeSession: typeof import('../../src/app/view.js').minimizeSession;
+let restoreProject: typeof import('../../src/app/view.js').restoreProject;
 let navSession: typeof import('../../src/app/keyboard.js').navSession;
 let reorderActive: typeof import('../../src/app/keyboard.js').reorderActive;
 
@@ -84,6 +85,7 @@ beforeAll(async () => {
   shiftActiveProject = view.shiftActiveProject;
   initView = view.initView;
   minimizeSession = view.minimizeSession;
+  restoreProject = view.restoreProject;
   ({ navSession, reorderActive } = await import('../../src/app/keyboard.js'));
   const sidebar = await import('../../src/app/sidebar.js');
   renderSidebar = sidebar.renderSidebar;
@@ -633,6 +635,34 @@ describe('keyboard navigation skips minimized things', () => {
     state.currentProjectId = 'p1';
     state.activeId = 's1';
     shiftActiveProject(-1);
+    expect(state.currentProjectId).toBe('p2');
+  });
+
+  // The spec words criterion 1 as a FULL cycle, and criterion 6 as a
+  // round trip. The per-step cases above prove one hop each; these two
+  // prove the properties the user actually feels.
+  it('never lands in a minimized project across a full ⌘↓ cycle', () => {
+    state.sessions.push({ id: 's2b', name: 's2b', project_id: 'p2', order: 4 });
+    minimizeProject('p2');
+    state.activeId = 's1';
+    const seen: (string | null)[] = [];
+    for (let i = 0; i < 6; i++) {
+      navSession(+1);
+      seen.push(state.activeId);
+    }
+    expect(seen).not.toContain('s2');
+    expect(seen).not.toContain('s2b');
+    expect(new Set(seen)).toEqual(new Set(['s1', 's3']));
+  });
+
+  it('puts a restored project back in both rotations', () => {
+    minimizeProject('p2');
+    restoreProject('p2');
+    state.activeId = 's1';
+    navSession(+1);
+    expect(state.activeId).toBe('s2');
+    state.currentProjectId = 'p1';
+    shiftActiveProject(+1);
     expect(state.currentProjectId).toBe('p2');
   });
 
