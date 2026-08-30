@@ -1,5 +1,7 @@
 // Preset selection. Runs before first paint (imported first in main.ts) so
 // the app never flashes the default preset. docs/design-docs/ui/themes.md
+// NOTE: index.html contains a matching inline <script> that stamps data-theme
+// synchronously before stylesheets load. Keep both in sync, especially PRESETS.
 export type ThemeName = 'classic' | 'hive-dark' | 'hive-light' | 'system';
 export const THEME_KEY = 'hive.theme';
 export const DEFAULT_THEME: ThemeName = 'classic';
@@ -19,9 +21,10 @@ export function resolveTheme(
     : DEFAULT_THEME;
 }
 
-export function readTheme(storage: Storage = localStorage): ThemeName {
+export function readTheme(storage?: Storage): ThemeName {
   try {
-    const v = storage.getItem(THEME_KEY);
+    const s = storage ?? localStorage;
+    const v = s.getItem(THEME_KEY);
     return v === 'system' || PRESETS.has(v ?? '')
       ? (v as ThemeName)
       : DEFAULT_THEME;
