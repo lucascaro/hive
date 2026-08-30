@@ -54,6 +54,10 @@ let minimizeProject: typeof import('../../src/app/view.js').minimizeProject;
 let switchToProject: typeof import('../../src/app/view.js').switchToProject;
 let shiftActiveProject: typeof import('../../src/app/view.js').shiftActiveProject;
 let initView: typeof import('../../src/app/view.js').initView;
+let minimizeSession: typeof import('../../src/app/view.js').minimizeSession;
+let restoreProject: typeof import('../../src/app/view.js').restoreProject;
+let navSession: typeof import('../../src/app/keyboard.js').navSession;
+let reorderActive: typeof import('../../src/app/keyboard.js').reorderActive;
 
 const noop = () => {};
 
@@ -80,6 +84,9 @@ beforeAll(async () => {
   switchToProject = view.switchToProject;
   shiftActiveProject = view.shiftActiveProject;
   initView = view.initView;
+  minimizeSession = view.minimizeSession;
+  restoreProject = view.restoreProject;
+  ({ navSession, reorderActive } = await import('../../src/app/keyboard.js'));
   const sidebar = await import('../../src/app/sidebar.js');
   renderSidebar = sidebar.renderSidebar;
   sidebar.initSidebar({
@@ -499,8 +506,12 @@ describe('grid views', () => {
     expect(state.terms.has('s2')).toBe(true);
   });
 
-  it('falls back to single when ⌘[ / ⌘] lands on a minimized project', () => {
-    minimizeProject('p2');
+  // ⌘[ / ⌘] can no longer LAND on a minimized project (see the
+  // navigation suite below), but the fallback still has to fire for a
+  // visible project whose sessions are all individually minimized —
+  // that is the case this asserts.
+  it('falls back to single when the target project has no visible session', () => {
+    minimizeSession('s2');
     state.view = 'grid-all';
     state.currentProjectId = 'p1';
     state.activeId = 's1';
@@ -515,5 +526,155 @@ describe('grid views', () => {
     switchToProject('p3');
     expect(state.view).toBe('grid-all');
     expect(state.activeId).toBe('s3');
+  });
+});
+
+// Navigation must step OVER anything minimized. Before this, ⌘↓ walked
+// the raw orderedSessions() and ⌘] walked state.projects unfiltered, so
+// a project you put in the tray still landed under the cursor — and in
+// a grid view the hidden-session fallback then dropped you to single.
+// These run against the real view.ts. keyboard-arrows.test.ts cannot
+// host them: it mocks view.ts wholesale, so shiftActiveProject is a
+// spy with no behavior and switchTo never touches state.activeId.
+describe('keyboard navigation skips minimized things', () => {
+  beforeEach(async () => {
+    const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
+    initView({
+      ensureTerm: (info) => {
+        const existing = state.terms.get(info.id);
+        if (existing) return existing;
+        const tile = {
+          host: document.createElement('div'),
+          attached: true,
+          needsReattach: false,
+          deadOverlayShown: false,
+          phase: '',
+          setPhase() {},
+          revealAfterReplay() {},
+          ensureAttached() {},
+          show() {},
+          hide() {},
+          rebaselineReplayCols() {},
+          _onBodyResize() {},
+          setInfo() {},
+          setProject() {},
+          setDead() {},
+          writeData() {},
+          destroy() {},
+          _closeDead() {},
+          _dismissDead() {},
+        };
+        state.terms.set(info.id, tile);
+        return tile;
+      },
+      setActive: (id: string | null) => {
+        state.activeId = id;
+      },
+      focusActiveTerm: () => {},
+      scrollTrace: createScrollTrace({ enabled: false }),
+    });
+    state.terms = new Map();
+    vi.mocked(bridge.UpdateSession).mockClear();
+  });
+
+  it('⌘↓ skips a session inside a minimized project', () => {
+    minimizeProject('p2');
+    state.activeId = 's1';
+    navSession(+1);
+    expect(state.activeId).toBe('s3');
+  });
+
+  it('⌘↑ skips an individually-minimized session', () => {
+    minimizeSession('s2');
+    state.activeId = 's3';
+    navSession(-1);
+    expect(state.activeId).toBe('s1');
+  });
+
+  it('stays put when every other session is hidden', () => {
+    minimizeSession('s2');
+    minimizeProject('p3');
+    state.activeId = 's1';
+    navSession(+1);
+    expect(state.activeId).toBe('s1');
+  });
+
+  it('seeds on the first VISIBLE session when nothing is active', () => {
+    // state.activeId is null whenever an empty project is selected or
+    // the last session was closed. switchTo does not un-minimize, so
+    // seeding on ord[0] blind would drop the user into the tray.
+    minimizeProject('p1');
+    state.activeId = null;
+    navSession(+1);
+    expect(state.activeId).toBe('s2');
+  });
+
+  it('⇧⌘↓ still reorders across a minimized sibling', () => {
+    // The reorder branch sends an index into the daemon's GLOBAL order
+    // space, which counts hidden sessions — filtering it would scatter
+    // sessions. s1b is minimized and must still be a valid target.
+    state.sessions.push({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
+    minimizeSession('s1b');
+    state.activeId = 's1';
+    reorderActive(+1);
+    expect(vi.mocked(bridge.UpdateSession)).toHaveBeenCalledWith(
+      's1',
+      '',
+      '',
+      1,
+    );
+  });
+
+  it('⌘] skips a minimized project', () => {
+    minimizeProject('p2');
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    shiftActiveProject(+1);
+    expect(state.currentProjectId).toBe('p3');
+  });
+
+  it('⌘[ skips a minimized project', () => {
+    minimizeProject('p3');
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    shiftActiveProject(-1);
+    expect(state.currentProjectId).toBe('p2');
+  });
+
+  // The spec words criterion 1 as a FULL cycle, and criterion 6 as a
+  // round trip. The per-step cases above prove one hop each; these two
+  // prove the properties the user actually feels.
+  it('never lands in a minimized project across a full ⌘↓ cycle', () => {
+    state.sessions.push({ id: 's2b', name: 's2b', project_id: 'p2', order: 4 });
+    minimizeProject('p2');
+    state.activeId = 's1';
+    const seen: (string | null)[] = [];
+    for (let i = 0; i < 6; i++) {
+      navSession(+1);
+      seen.push(state.activeId);
+    }
+    expect(seen).not.toContain('s2');
+    expect(seen).not.toContain('s2b');
+    expect(new Set(seen)).toEqual(new Set(['s1', 's3']));
+  });
+
+  it('puts a restored project back in both rotations', () => {
+    minimizeProject('p2');
+    restoreProject('p2');
+    state.activeId = 's1';
+    navSession(+1);
+    expect(state.activeId).toBe('s2');
+    state.currentProjectId = 'p1';
+    shiftActiveProject(+1);
+    expect(state.currentProjectId).toBe('p2');
+  });
+
+  it('stays on the current project when every other project is minimized', () => {
+    minimizeProject('p2');
+    minimizeProject('p3');
+    state.currentProjectId = 'p1';
+    state.activeId = 's1';
+    shiftActiveProject(+1);
+    expect(state.currentProjectId).toBe('p1');
   });
 });
