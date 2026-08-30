@@ -3,8 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	hdaemon "github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/registry"
 )
 
 // TestMain points the two platform seams at stubs that fail loudly.
@@ -16,6 +21,22 @@ import (
 // exists to catch it would instead replace the developer's install.
 // Tests that need staging to do something install their own stub.
 func TestMain(m *testing.M) {
+	// Package-wide isolation, belt to the seams' braces. The seams stop
+	// the paths we know reach a real daemon; this stops the ones we
+	// haven't thought of. Without it, anything resolving
+	// daemon.SocketPath() or registry.StateDir() without setting these
+	// itself lands on the developer's live Hive — which is exactly how a
+	// test in this file SIGTERM'd a running daemon and restarted five
+	// sessions. Individual tests still override with t.Setenv; this is
+	// only the floor.
+	sandbox, err := os.MkdirTemp("", "hivegui-test-*")
+	if err != nil {
+		panic("hivegui tests: cannot create sandbox: " + err.Error())
+	}
+	os.Setenv("HIVE_SOCKET", filepath.Join(sandbox, "hived.sock"))
+	os.Setenv("HIVE_STATE_DIR", filepath.Join(sandbox, "state"))
+	defer os.RemoveAll(sandbox)
+
 	stageUpdateFn = func(UpdateInfo, func(string)) (string, error) {
 		return "", fmt.Errorf("stageUpdate must not run in tests")
 	}
@@ -31,7 +52,10 @@ func TestMain(m *testing.M) {
 	restartDaemonFn = func(*App) error {
 		return fmt.Errorf("RestartDaemon must not run in tests")
 	}
-	os.Exit(m.Run())
+	// os.Exit skips deferred cleanup, so run and capture first.
+	code := m.Run()
+	os.RemoveAll(sandbox)
+	os.Exit(code)
 }
 
 // stubStaging replaces the platform staging implementation. done is
@@ -234,5 +258,40 @@ func TestApplyClearsStagedStateAfterASuccessfulSwap(t *testing.T) {
 	}
 	if swapped != 1 {
 		t.Errorf("applyStagedBundle called %d times total, want the second click refused", swapped)
+	}
+}
+
+// The isolation TestMain sets up is a safety property, so it gets its
+// own check rather than being trusted. If this fails, some test in this
+// package can reach the developer's live daemon or real state
+// directory — which has happened, and cost five running sessions.
+func TestPackageIsIsolatedFromRealHiveState(t *testing.T) {
+	sock := hdaemon.SocketPath()
+	state := registry.StateDir()
+
+	if sock == "" || state == "" {
+		t.Fatal("socket or state dir resolved empty")
+	}
+	// The real ones: /tmp/hive-<uid>/hived.sock and the platform state
+	// dir under the user's home.
+	if sock == fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid()) {
+		t.Errorf("SocketPath() = %q — the real daemon socket; tests can kill a live hived", sock)
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(state, home) {
+		t.Errorf("StateDir() = %q — inside the user's home; tests can corrupt real sessions", state)
+	}
+	if !strings.Contains(sock, "hivegui-test-") || !strings.Contains(state, "hivegui-test-") {
+		t.Errorf("SocketPath()=%q StateDir()=%q — want both inside the TestMain sandbox", sock, state)
+	}
+
+	// And the seams must be stubbed, not live.
+	if err := applyStagedBundleFn("/nope"); err == nil {
+		t.Error("applyStagedBundleFn is live in tests; it swaps the installed app")
+	}
+	if err := restartDaemonFn(&App{}); err == nil {
+		t.Error("restartDaemonFn is live in tests; it SIGTERMs whatever answers the socket")
+	}
+	if _, err := stageUpdateFn(UpdateInfo{}, func(string) {}); err == nil {
+		t.Error("stageUpdateFn is live in tests; it downloads or runs build.sh")
 	}
 }
