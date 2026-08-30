@@ -1,5 +1,7 @@
 # 210 — Real end-to-end tests for hive
 
+- **Spec:** [docs/product-specs/210-real-e2e-tests.md](../../product-specs/210-real-e2e-tests.md)
+- **Issue:** —
 - **Stage:** DONE
 - **Status:** completed
 

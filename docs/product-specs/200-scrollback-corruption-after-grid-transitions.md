@@ -1,3 +1,14 @@
+---
+issue: 200
+title: "GUI: scrollback corruption after single↔grid transitions; text overwrites mid-print"
+type: bug
+complexity: L
+priority: P2
+stage: DONE
+pr: 203
+shipped: 2026-05-15
+---
+
 # GUI: scrollback corruption after single↔grid transitions; text overwrites mid-print
 
 - **Issue:** #200

@@ -1,7 +1,7 @@
 # In-house VT emulator (replace hinshun/vt10x)
 
-- **Spec:** TBD (see Problem section below until a product-spec is filed)
-- **Issue:** TBD
+- **Spec:** [docs/product-specs/in-house-vt-emulator.md](../../product-specs/in-house-vt-emulator.md)
+- **Issue:** —
 - **Stage:** IMPLEMENT (Phase 0 only; Phases 1-3 deferred pending Phase 0 outcomes)
 - **Status:** active
 

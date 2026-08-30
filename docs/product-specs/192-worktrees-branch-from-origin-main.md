@@ -1,3 +1,14 @@
+---
+issue: 192
+title: "Worktrees should branch from origin/main, not local HEAD"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+pr: 193
+shipped: 2026-05-13
+---
+
 # Worktrees should branch from origin/main, not local HEAD
 
 - **Issue:** #192

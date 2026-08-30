@@ -1,3 +1,14 @@
+---
+issue: 176
+title: "Fix huge-text flash on grid → zoom → session switch (regression)"
+type: bug
+complexity: S
+priority: P1
+stage: DONE
+pr: 178
+shipped: 2026-05-09
+---
+
 # Fix huge-text flash on grid → zoom → session switch (regression)
 
 - **Issue:** #176

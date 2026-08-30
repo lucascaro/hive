@@ -1,3 +1,13 @@
+---
+issue: 202
+title: "GUI: minimize sessions to remove from grid view; restore from a tray"
+type: enhancement
+complexity: M
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: minimize sessions to remove from grid view; restore from a tray
 
 - **Issue:** #202

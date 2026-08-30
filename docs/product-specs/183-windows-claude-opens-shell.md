@@ -1,3 +1,13 @@
+---
+issue: 183
+title: "Hive opens only a shell on Windows, not Claude"
+type: bug
+complexity: S
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # Hive opens only a shell on Windows, not Claude
 
 - **Issue:** #183

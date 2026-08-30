@@ -1,3 +1,13 @@
+---
+issue: 165
+title: "Restarting a session can reload the wrong session when multiple share a worktree/directory"
+type: bug
+complexity: S
+priority: P1
+stage: DONE
+shipped: 2026-05-08
+---
+
 # Restarting a session can reload the wrong session when multiple share a worktree/directory
 
 - **Issue:** #165

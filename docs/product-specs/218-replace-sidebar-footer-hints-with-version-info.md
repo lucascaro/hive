@@ -1,3 +1,13 @@
+---
+issue: null
+title: "GUI: Replace sidebar footer hints with hive/hived version and build info"
+type: enhancement
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: Replace sidebar footer hints with hive/hived version and build info
 
 - **Issue:** —

@@ -1,3 +1,13 @@
+---
+issue: 190
+title: "GUI: session terminal text gets replaced by garbled glyphs over time; resize fixes it"
+type: bug
+complexity: M
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: session terminal text gets replaced by garbled glyphs over time; resize fixes it
 
 - **Issue:** #190

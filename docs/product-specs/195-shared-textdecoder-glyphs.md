@@ -1,3 +1,13 @@
+---
+issue: 195
+title: "GUI: shared TextDecoder across sessions produces garbled glyphs"
+type: bug
+complexity: S
+priority: P1
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: shared TextDecoder across sessions produces garbled glyphs
 
 - **Issue:** #195

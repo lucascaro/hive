@@ -1,3 +1,14 @@
+---
+issue: null
+title: "Restart Hive doesn't reliably restart the daemon"
+type: bug
+complexity: M
+priority: P1
+stage: DONE
+pr: 244
+shipped: 2026-07-19
+---
+
 # Restart Hive doesn't reliably restart the daemon
 
 - **Issue:** —

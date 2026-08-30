@@ -1,3 +1,13 @@
+---
+issue: 177
+title: "Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch"
+type: bug
+complexity: L
+priority: P2
+stage: DONE
+shipped: 2026-05-10
+---
+
 # Windows: restart button, grid mode revert, and reversed ctrl-arrow session switch
 
 - **Issue:** #177

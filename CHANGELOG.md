@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
 - In-app updates. Settings now carries an update channel: **Release**
   follows tagged versions, **Latest** follows the tip of your source
   checkout (auto-detected when Hive is running from one, or pointed at a
@@ -20,16 +19,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   manifest now published with every release, and a mismatch is discarded
   rather than installed. The in-place swap is macOS-only for now —
   Windows and Linux keep the existing Download link.
+- Theme presets groundwork. `localStorage['hive.theme']` accepts `classic`
+  (default), `hive-dark`, `hive-light`, `system`. No visual change by
+  default, except that the terminal cursor and selection now use the accent
+  colour.
+
+### Changed
+- GUI icon sprite. The GUI's controls and session-state indicators are now
+  SVG icons instead of Unicode symbols, so they render identically on every
+  platform. Session state reads as a shape as well as a colour: a triangle
+  for running, a diamond when the agent needs you, a dotted ring while
+  starting, a square when exited, and a cross on error.
 
 ### Fixed
-
 - Keyboard switching now skips what you minimized. ⌘↑ / ⌘↓ step over
   sessions in the tray and sessions whose project is minimized — they no
   longer pull you back into a project you put away, or drop you out of a
   grid view when they do. ⌘[ / ⌘] likewise cycles only projects still in
   the sidebar. A minimized project stays reachable from its tray chip,
   the sidebar, and ⌘K.
-
+- Fixed raw escape characters in the update banner. Build output shown in
+  the update banner is now plain text — ANSI colour codes, cursor-control
+  sequences and carriage-return redraws from `build.sh` no longer leak
+  through as literal `ESC[32m` garbage.
 
 ## [2.4.0] — 2026-08-29
 

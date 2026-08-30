@@ -1,3 +1,13 @@
+---
+issue: 155
+title: "Save session name on Enter key when editing"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-05-07
+---
+
 # Save session name on Enter key when editing
 
 - **Issue:** #155

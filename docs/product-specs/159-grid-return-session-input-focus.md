@@ -1,3 +1,13 @@
+---
+issue: 159
+title: "Returning to grid leaves session visually selected but keyboard input doesn't reach it"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-05-08
+---
+
 # Returning to grid leaves session visually selected but keyboard input doesn't reach it
 
 - **Issue:** #159

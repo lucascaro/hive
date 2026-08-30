@@ -1,3 +1,14 @@
+---
+issue: 181
+title: "Single-focus → grid leaves session looking focused but keyboard input is dead"
+type: bug
+complexity: M
+priority: P1
+stage: DONE
+pr: 182
+shipped: 2026-05-10
+---
+
 # Single-focus → grid leaves session looking focused but keyboard input is dead
 
 - **Issue:** #181

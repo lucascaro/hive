@@ -1,3 +1,13 @@
+---
+issue: 143
+title: "vt snapshot: scrollback above visible viewport not preserved"
+type: bug
+complexity: M
+priority: P2
+stage: DONE
+shipped: 2026-05-08
+---
+
 # vt snapshot: scrollback above visible viewport not preserved
 
 - **Issue:** #143

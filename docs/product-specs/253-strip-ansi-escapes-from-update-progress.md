@@ -1,3 +1,13 @@
+---
+issue: null
+title: "Strip ANSI escape sequences from update build progress lines"
+type: bug
+complexity: S
+priority: P2
+stage: REVIEW
+pr: 296
+---
+
 # Strip ANSI escape sequences from update build progress lines
 
 - **Issue:** —

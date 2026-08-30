@@ -1,3 +1,9 @@
+---
+issue: 142
+title: "vt snapshot: CJK / wide-char column misalignment"
+stage: TRIAGE
+---
+
 # vt snapshot: CJK / wide-char column misalignment
 
 - **Issue:** #142

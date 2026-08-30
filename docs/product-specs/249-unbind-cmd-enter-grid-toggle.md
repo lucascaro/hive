@@ -1,3 +1,14 @@
+---
+issue: null
+title: "GUI: unbind ⌘/Ctrl+Enter from the grid toggle"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+pr: 287
+shipped: 2026-08-28
+---
+
 # GUI: unbind ⌘/Ctrl+Enter from the grid toggle
 
 - **Issue:** —

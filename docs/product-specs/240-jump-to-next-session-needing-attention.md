@@ -1,3 +1,13 @@
+---
+issue: null
+title: "GUI: Jump to next session needing attention"
+type: enhancement
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: Jump to next session needing attention
 
 - **Issue:** —

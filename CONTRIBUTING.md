@@ -58,7 +58,12 @@ See [DESIGN.md](DESIGN.md) for a full description of every package and how they 
 1. **Fork** the repository and create a branch from `main`.
 2. Make your changes.
 3. Ensure `go test ./...` and `go vet ./...` pass.
-4. **Update `CHANGELOG.md`** — add an entry under `[Unreleased]` for every user-visible change (`Added`, `Changed`, `Fixed`, `Removed`, or `Security`).
+4. **Add a changeset** — for every user-visible change, create `.changesets/<slug>.md` with
+   YAML frontmatter (`type`, `bump`, optional `issue` / `pr`) and the changelog bullet as the
+   body. See `.changesets/README.md` for the schema. **Do not edit `CHANGELOG.md` directly** —
+   it is regenerated on `main` from `.changesets/`, and a PR that touches it fails CI unless
+   labelled `regen-override`. A docs- or CI-only PR can skip the changeset with the
+   `no-changeset` label.
 5. **Update `DESIGN.md`** if your change adds or removes packages, alters a major interface, or otherwise changes the high-level structure described there.
 6. Update any relevant files in `docs/` if the subsystem they describe has changed.
 7. Open a pull request with a clear description of the problem and solution.

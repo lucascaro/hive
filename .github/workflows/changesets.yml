@@ -1,0 +1,138 @@
+# Changeset / generated-file enforcement.
+#
+# Scaffolded by `hivesmith-init`. Provides three jobs that work with
+# `scripts/regen-generated.sh` to keep `CHANGELOG.md` /
+# `docs/product-specs/index.md` / `docs/exec-plans/tech-debt-tracker.md`
+# out of the PR-conflict surface:
+#
+#   1. block-generated-edits — hard-fails any PR diff touching a generated
+#      file. Bypass: apply the `regen-override` label.
+#   2. verify-generated     — runs the regenerator against the PR merge ref
+#      to catch interaction bugs; requires at least one new
+#      `.changesets/*.md` (unless labelled `no-changeset`).
+#   3. regenerate-generated — on push to main, regenerates aggregates and
+#      direct-pushes the result with `[skip ci]`. A protected `main` must
+#      let this identity through, or the push is rejected and the job fails
+#      loudly: add the github-actions app as a ruleset bypass actor, or set
+#      a REGEN_TOKEN secret. (Classic branch protection can't express this
+#      on user-owned repos — bypass allowances are org-only.)
+#
+# Merge this workflow into your existing CI file or keep it standalone.
+name: changesets
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `labeled` / `unlabeled` are included so adding/removing the bypass
+    # labels after a PR opens re-runs the gate jobs.
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+jobs:
+  block-generated-edits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fail if PR edits generated files
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          GENERATED=(
+            CHANGELOG.md
+            docs/product-specs/index.md
+            docs/exec-plans/tech-debt-tracker.md
+          )
+          touched=$(git diff --name-only "$BASE"..."$HEAD" -- "${GENERATED[@]}")
+          if [ -n "$touched" ]; then
+            if printf '%s' "$PR_LABELS" | jq -e '.[] | select(.name == "regen-override")' >/dev/null 2>&1; then
+              echo "OK: regen-override label present — bypassing check."
+              echo "Touched:"
+              echo "$touched"
+              exit 0
+            fi
+            echo "::error::PR edits generated files directly:"
+            echo "$touched"
+            echo "These files are regenerated on main from .changesets/, spec frontmatter, and .tech-debt/."
+            echo "Edit the source files instead, or apply the 'regen-override' label if this is intentional."
+            exit 1
+          fi
+          echo "OK: no generated files were touched."
+
+  verify-generated:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha }}
+      - name: Regenerate against the merge ref
+        # NOT `--check` — that would fail any PR that adds a source file
+        # because the committed generated copies legitimately lag.
+        run: scripts/regen-generated.sh
+      - name: Require a changeset unless labelled no-changeset
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          if printf '%s' "$PR_LABELS" | jq -e '.[] | select(.name == "no-changeset")' >/dev/null 2>&1; then
+            echo "OK: no-changeset label present — skipping requirement."
+            exit 0
+          fi
+          if git diff --name-only "$BASE"..."$HEAD" -- ':(glob).changesets/*.md' | grep -vE '^\.changesets/(README\.md|\.gitkeep)$' | grep -q .; then
+            echo "OK: PR adds at least one changeset."
+            exit 0
+          fi
+          echo "::error::PR has no .changesets/*.md entry."
+          echo "Add a per-PR changeset (see .changesets/README.md for the schema),"
+          echo "or apply the 'no-changeset' label if this is a docs/CI-only change."
+          exit 1
+
+  regenerate-generated:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.REGEN_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Regenerate aggregates
+        run: scripts/regen-generated.sh
+      - name: Commit + push if changed
+        run: |
+          GENERATED=(
+            CHANGELOG.md
+            docs/product-specs/index.md
+            docs/exec-plans/tech-debt-tracker.md
+          )
+          if [ -z "$(git status --porcelain "${GENERATED[@]}")" ]; then
+            echo "no changes to commit"
+            exit 0
+          fi
+          git config user.name  "hivesmith-bot"
+          git config user.email "hivesmith-bot@users.noreply.github.com"
+          git add "${GENERATED[@]}"
+          git commit -m "chore: regenerate aggregates [skip ci]"
+          if ! git push; then
+            echo "::error::Push to main rejected. A protected main must let this"
+            echo "job through, or the aggregates silently stop regenerating."
+            echo "Fix it one of two ways:"
+            echo "  1. Add the github-actions app (id 15368) as a bypass actor"
+            echo "     on the ruleset protecting main. Rulesets support app"
+            echo "     bypass; classic branch protection does not on user-owned"
+            echo "     repos (bypass_pull_request_allowances is org-only)."
+            echo "  2. Set a REGEN_TOKEN secret — a PAT or GitHub App token"
+            echo "     whose identity is allowed to push to main."
+            exit 1
+          fi

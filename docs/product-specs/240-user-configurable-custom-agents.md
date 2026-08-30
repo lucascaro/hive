@@ -1,3 +1,13 @@
+---
+issue: null
+title: "Add user-configurable custom agents"
+type: enhancement
+complexity: M
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # Add user-configurable custom agents
 
 - **Issue:** —

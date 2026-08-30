@@ -1,3 +1,13 @@
+---
+issue: 213
+title: "GUI: always scroll to bottom on mode switch; never auto-scroll up"
+type: bug
+complexity: S
+priority: P2
+stage: DONE
+shipped: 2026-07-25
+---
+
 # GUI: always scroll to bottom on mode switch; never auto-scroll up
 
 - **Issue:** #213

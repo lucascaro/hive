@@ -1,3 +1,14 @@
+---
+issue: null
+title: "GUI: back / forward navigation between sessions"
+type: enhancement
+complexity: S
+priority: P2
+stage: DONE
+pr: 248
+shipped: 2026-08-28
+---
+
 # GUI: back / forward navigation between sessions
 
 - **Issue:** —
