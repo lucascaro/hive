@@ -8,7 +8,7 @@ import {
 
 describe('readTheme', () => {
   it('reads a valid preset from storage', () => {
-    const data: Record<string, string | null> = { 'hive.theme': 'hive-light' };
+    const data: Record<string, string | null> = { [THEME_KEY]: 'hive-light' };
     const result = readTheme({
       getItem: (k: string) => data[k] ?? null,
       length: 0,
@@ -75,14 +75,31 @@ describe('readTheme', () => {
     expect(result).toBe(DEFAULT_THEME);
   });
 
-  it('returns DEFAULT_THEME when Storage access (localStorage) itself throws', () => {
-    // readTheme() with no argument now resolves storage ?? localStorage inside the try,
-    // so a throw on accessing localStorage is caught
-    const result = readTheme(undefined);
-    // In this test env, localStorage doesn't actually throw, but the code path
-    // is exercised. We verify the function returns DEFAULT_THEME as a fallback.
-    expect(result).toBeDefined();
-    expect(['classic', 'hive-dark', 'hive-light', 'system']).toContain(result);
+  it('returns DEFAULT_THEME when localStorage property access throws', () => {
+    // Regression test for: readTheme's old signature had storage: Storage = localStorage
+    // as default parameter, evaluated outside the try/catch. If localStorage access
+    // itself throws (e.g., locked-down webview, private-browsing mode), the exception
+    // escaped readTheme. The fix moves the access inside try.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'localStorage',
+    );
+    try {
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new Error('localStorage access denied');
+        },
+      });
+      const result = readTheme();
+      expect(result).toBe(DEFAULT_THEME);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(globalThis, 'localStorage', originalDescriptor);
+      } else {
+        delete (globalThis as any).localStorage;
+      }
+    }
   });
 });
 
