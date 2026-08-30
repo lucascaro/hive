@@ -129,3 +129,32 @@ test('hive-light preset changes the sidebar ground', async ({ page }) => {
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe('rgb(255, 255, 255)');
 });
+
+// Standing guard: the xterm theme colours actually resolve from the live
+// cascade under the default preset (screenshot tests mask .xterm, so this
+// is the only coverage of the terminal's colour values). Reads the real
+// document, not hand-set inline styles, so it proves the cascade + preset
+// wiring, not just the xtermTheme() function in isolation.
+test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+
+  const theme = await page.evaluate(
+    () => document.documentElement.dataset.theme,
+  );
+  expect(theme).toBe('classic');
+
+  const { termBg, termFg } = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      termBg: cs.getPropertyValue('--term-bg').trim(),
+      termFg: cs.getPropertyValue('--term-fg').trim(),
+    };
+  });
+  expect(termBg).toBe('#000');
+  expect(termFg).toBe('#ffffff');
+});

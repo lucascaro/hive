@@ -40,5 +40,19 @@ export function applyTheme(name: ThemeName, doc: Document = document): void {
   doc.documentElement.dataset.theme = resolveTheme(name, prefersDark);
 }
 
+export function xtermTheme(doc: Document = document) {
+  const cs = getComputedStyle(doc.documentElement);
+  const v = (n: string) => cs.getPropertyValue(n).trim();
+  const accent = v('--accent');
+  return {
+    background: v('--term-bg'),
+    foreground: v('--term-fg'),
+    cursor: accent,
+    cursorAccent: v('--on-accent'),
+    // color-mix isn't resolvable via getPropertyValue; xterm accepts 8-digit hex.
+    selectionBackground: accent.length === 7 ? `${accent}4d` : accent,
+  };
+}
+
 // Side effect on import: stamp before anything renders.
 if (typeof document !== 'undefined') applyTheme(readTheme());
