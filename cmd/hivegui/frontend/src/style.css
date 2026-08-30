@@ -328,7 +328,16 @@ body.resizing-sidebar #app { transition: none; }
   display: flex;
   gap: 4px;
   align-items: center;
-  opacity: 0.5;
+  /* Was 0.5 against the legacy #ccc glyph color; the sprite icons render
+     at --fg-subtle, and on the default (classic) preset 0.5 * --fg-subtle
+     (#666) over --surface (#0a0a0a) measures ~1.69:1 — under the 3:1
+     non-text contrast floor. --fg-subtle alone only just clears the floor
+     at full opacity in classic (~3.45:1, thin), so dimming with the same
+     color can't both look dim and pass with margin. Scoped to --fg-muted
+     below and raised to 0.8 (~3.9:1 classic, ~4.6:1 hive-light, ~5.4:1
+     hive-dark) keeps a resting/hover contrast step in every preset while
+     landing with real margin. */
+  opacity: 0.8;
 }
 .project-header:hover .project-actions { opacity: 1; }
 /* The sidebar column is ~200px; five 22px hv-icon-btns (components.md's
@@ -339,7 +348,13 @@ body.resizing-sidebar #app { transition: none; }
 .project-header .project-actions .hv-icon-btn {
   width: 18px;
   height: 18px;
+  color: var(--fg-muted);
 }
+/* Restate hv-icon-btn:hover's color: our rest-color rule above is (0,3,0)
+   — unconditional, so it also matches on hover and would tie (and beat,
+   style.css loads first) .hv-icon-btn:hover (0,2,0) for the `color`
+   property, silently keeping --fg-muted instead of brightening to --fg. */
+.project-header .project-actions .hv-icon-btn:hover { color: var(--fg); }
 
 .project-sessions {
   list-style: none;
@@ -783,6 +798,15 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-minimize {
   flex-shrink: 0;
   margin-left: 6px;
+  /* Not var(--fg-subtle) (from .hv-icon-btn): the tile header's right end
+     is color-mix(session-color 28%, --surface), and with an amber session
+     color that ground is ~#4c330a — --fg-subtle over it measures ~2:1,
+     under the 3:1 non-text floor, on a control with no opacity reveal (it
+     is always visible). rgba(255,255,255,0.65) is what this control had
+     before the sprite swap (~6:1 on the same ground) — restoring it here
+     is simplest; a --fg-emphasis token is a phase-6 concern (would want
+     the whole file migrated at once), not a one-control fix. */
+  color: rgba(255, 255, 255, 0.65); /* ui-lint: allow — tinted-ground contrast override, see comment */
 }
 
 #minimized-tray {
@@ -1332,13 +1356,21 @@ body.resizing-sidebar #app { transition: none; }
   flex: 0 0 auto;
   background: transparent;
   border: 0;
-  color: var(--fg-muted);
   font-size: var(--text-xl);
   line-height: 1;
-  padding: 0 6px;
   cursor: pointer;
 }
-.settings-agent-delete:hover { color: var(--state-error); }
+/* Scoped to `.settings-agent-row .settings-agent-delete` (0,2,0), not the
+   bare class (0,1,0): .hv-icon-btn's color / :hover color are also 0,1,0 /
+   0,2,0 and load after style.css, so the bare-class rules below never won
+   the tie — rest rendered at --fg-subtle instead of --fg-muted, and hover
+   never turned red, losing the only signal this control is destructive.
+   Drops the old `padding: 0 6px` (also a losing tie, against
+   `.hv-icon-btn { padding: 0 }`): iconButton()'s fixed 24x24 box is the
+   right hit target here, consistent with every other icon button in the
+   app, so there's nothing to restore. */
+.settings-agent-row .settings-agent-delete { color: var(--fg-muted); }
+.settings-agent-row .settings-agent-delete:hover { color: var(--state-error); }
 #settings-agent-add {
   background: var(--btn);
   border: 1px solid var(--btn-border);
