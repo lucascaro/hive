@@ -7,6 +7,7 @@
 // index.html by a build plugin: `?raw` needs no plugin and resolves the
 // same way under vitest, so DOM tests exercise the real sprite.
 import sprite from './icons.svg?raw';
+import { STATE_WORDS, type SessionState } from '../lib/session-state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const SPRITE_ID = 'hv-icon-sprite';
@@ -70,4 +71,28 @@ export function icon(
   use.setAttribute('href', `#hv-${name}`);
   svg.appendChild(use);
   return svg;
+}
+
+// State icons (components.md > stateIcon). Used by the sidebar row, the
+// minimized chip and the grid tile header - nowhere else. data-state
+// drives colour and animation from icon.css; the <title> child is the
+// "words" channel required by README principle 5.
+export function stateIcon(state: SessionState): SVGSVGElement {
+  const el = icon(`state-${state}` as IconName);
+  el.setAttribute('class', 'hv-icon hv-state-icon');
+  el.setAttribute('role', 'img');
+  el.removeAttribute('aria-hidden');
+  el.dataset.state = state;
+  const title = document.createElementNS(SVG_NS, 'title');
+  title.textContent = STATE_WORDS[state];
+  el.prepend(title);
+  return el;
+}
+
+export function updateStateIcon(el: SVGSVGElement, state: SessionState): void {
+  if (el.dataset.state === state) return;
+  el.dataset.state = state;
+  el.querySelector('use')?.setAttribute('href', `#hv-state-${state}`);
+  const title = el.querySelector('title');
+  if (title) title.textContent = STATE_WORDS[state];
 }
