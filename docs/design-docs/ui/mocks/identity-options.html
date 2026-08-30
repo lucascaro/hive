@@ -1,0 +1,209 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hive Identity Options</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --page-bg: #f6f5f2; --page-fg: #1c1b19; --page-muted: #6b6862; --page-rule: #dcd9d2; --page-accent: #b4560a;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --page-bg: #141414; --page-fg: #e8e6e1; --page-muted: #9a978f; --page-rule: #2a2a2a; --page-accent: #f0a04b; } }
+  :root[data-theme="dark"] { --page-bg: #141414; --page-fg: #e8e6e1; --page-muted: #9a978f; --page-rule: #2a2a2a; --page-accent: #f0a04b; }
+
+  body { background: var(--page-bg); color: var(--page-fg); font: 14px/1.5 "IBM Plex Sans", system-ui, sans-serif; margin: 0; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { color: var(--page-muted); max-width: 64ch; margin: 0 0 32px; }
+  h2 { font-size: 15px; font-weight: 600; margin: 40px 0 4px; display: flex; gap: 12px; align-items: baseline; }
+  h2 .tag { font: 500 11px "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--page-accent); }
+  .why { color: var(--page-muted); margin: 0 0 14px; max-width: 72ch; }
+  .why b { color: var(--page-fg); font-weight: 500; }
+  .tokens { font: 12px/1.6 "IBM Plex Mono", monospace; color: var(--page-muted); border-top: 1px solid var(--page-rule); padding-top: 8px; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+  .tokens i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; border: 1px solid rgba(128,128,128,.35); }
+  .frame { border: 1px solid var(--page-rule); border-radius: 8px; overflow: auto; }
+
+  /* ===== The mock. One structure, styled entirely through --h-* tokens. ===== */
+  .app { --w: 1040px; width: var(--w); height: 500px; display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 1fr auto;
+    background: var(--h-bg); color: var(--h-fg); font-family: var(--h-ui-font); font-size: var(--h-ui-size); }
+  .sb { grid-row: 1 / span 2; background: var(--h-sb-bg); border-right: 1px solid var(--h-border); display: flex; flex-direction: column; }
+  .sb-head { display: flex; align-items: center; justify-content: space-between; padding: var(--h-pad); border-bottom: 1px solid var(--h-border); height: 36px; box-sizing: border-box; }
+  .brand { font-weight: 600; color: var(--h-brand); letter-spacing: var(--h-brand-track); font-family: var(--h-brand-font); }
+  .icon-btn { width: 22px; height: 22px; border-radius: var(--h-radius); background: var(--h-btn); color: var(--h-fg-2); border: 1px solid var(--h-btn-border); display: grid; place-items: center; font-size: 14px; }
+  .list { flex: 1; padding: 6px 0; overflow: hidden; }
+  .proj { padding: 8px var(--h-pad) 4px; display: flex; align-items: center; gap: 6px; color: var(--h-fg-2); font-size: calc(var(--h-ui-size) - 1px); text-transform: var(--h-proj-case); letter-spacing: var(--h-proj-track); font-weight: 500; }
+  .proj .caret { color: var(--h-fg-3); font-size: 9px; }
+  .proj .swatch { width: 8px; height: 8px; border-radius: 50%; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 0 var(--h-pad) 0 22px; height: 26px; color: var(--h-fg-2); position: relative; }
+  .row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--h-fg-3); flex: none; }
+  .row .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub { color: var(--h-fg-3); font-size: calc(var(--h-ui-size) - 2px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.active { background: var(--h-sel-bg); color: var(--h-sel-fg); }
+  .row.active::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: var(--h-sel-bar); background: var(--h-accent); border-radius: 0 2px 2px 0; }
+  .row.busy .dot { background: var(--h-ok); }
+  .row.attn .dot { background: var(--h-attn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--h-attn) 25%, transparent); }
+  .row.attn .nm { color: var(--h-attn); font-weight: 500; }
+  .row .wt { font-family: var(--h-mono); font-size: 10px; color: var(--h-fg-3); }
+  .sb-foot { border-top: 1px solid var(--h-border); padding: 6px var(--h-pad); display: flex; flex-direction: column; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--h-radius); border: 1px solid var(--h-border); background: var(--h-btn); font-size: calc(var(--h-ui-size) - 1px); color: var(--h-fg-2); width: max-content; }
+  .chip .swatch { width: 7px; height: 7px; border-radius: 50%; }
+  .ver { font-family: var(--h-mono); font-size: 10px; color: var(--h-fg-3); }
+
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .bar { height: 36px; box-sizing: border-box; border-bottom: 1px solid var(--h-border); background: var(--h-bar-bg); display: flex; align-items: center; gap: 10px; padding: 0 12px; color: var(--h-fg-2); }
+  .bar .title { font-weight: 500; color: var(--h-fg); }
+  .bar .sep { color: var(--h-fg-3); }
+  .bar .spacer { flex: 1; }
+  .btn { padding: 3px 9px; border-radius: var(--h-radius); border: 1px solid var(--h-btn-border); background: var(--h-btn); color: var(--h-fg-2); font-size: calc(var(--h-ui-size) - 1px); font-family: inherit; }
+  .btn.primary { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-on-accent); font-weight: 500; }
+  .term { flex: 1; background: var(--h-term-bg); color: var(--h-term-fg); font: 12.5px/1.5 var(--h-mono); padding: 10px 14px; white-space: pre; overflow: hidden; }
+  .term .p { color: var(--h-term-dim); } .term .g { color: var(--h-ok); } .term .y { color: var(--h-attn); } .term .c { color: var(--h-accent); }
+  .tray { grid-column: 2; border-top: 1px solid var(--h-border); background: var(--h-bar-bg); padding: 5px 10px; display: flex; gap: 6px; align-items: center; }
+  .tray .lbl { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--h-fg-3); margin-right: 4px; }
+  .banner { grid-column: 1 / -1; grid-row: 1; height: 0; }
+
+  /* ===== Option tokens ===== */
+  .t-current {
+    --h-bg:#000; --h-sb-bg:#0a0a0a; --h-bar-bg:#000; --h-border:#1f1f1f; --h-fg:#ddd; --h-fg-2:#aaa; --h-fg-3:#666;
+    --h-brand:#f59e0b; --h-accent:#f59e0b; --h-on-accent:#000; --h-ok:#22c55e; --h-attn:#f59e0b;
+    --h-sel-bg:#1a1a1a; --h-sel-fg:#fff; --h-sel-bar:2px; --h-btn:#1f1f1f; --h-btn-border:transparent; --h-radius:4px;
+    --h-term-bg:#000; --h-term-fg:#ddd; --h-term-dim:#777;
+    --h-ui-font:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; --h-ui-size:12.5px; --h-brand-font:inherit; --h-brand-track:.04em;
+    --h-mono:Menlo,Consolas,monospace; --h-pad:10px; --h-proj-case:none; --h-proj-track:0;
+  }
+  .t-native {
+    --h-bg:#1e1e1f; --h-sb-bg:#252527; --h-bar-bg:#27272a; --h-border:#3a3a3d; --h-fg:#ececed; --h-fg-2:#b8b8bc; --h-fg-3:#7a7a80;
+    --h-brand:#ececed; --h-accent:#e6a23c; --h-on-accent:#1a1a1a; --h-ok:#4cc38a; --h-attn:#f0b44c;
+    --h-sel-bg:#3b3b40; --h-sel-fg:#fff; --h-sel-bar:0; --h-btn:#323235; --h-btn-border:#454548; --h-radius:6px;
+    --h-term-bg:#151516; --h-term-fg:#e2e2e4; --h-term-dim:#7c7c82;
+    --h-ui-font:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; --h-ui-size:13px; --h-brand-font:inherit; --h-brand-track:0;
+    --h-mono:"SF Mono",Menlo,Consolas,monospace; --h-pad:12px; --h-proj-case:none; --h-proj-track:0;
+  }
+  .t-brand {
+    --h-bg:#0f1014; --h-sb-bg:#13141a; --h-bar-bg:#13141a; --h-border:#22242e; --h-fg:#e6e7ee; --h-fg-2:#a5a8b8; --h-fg-3:#5f6273;
+    --h-brand:#ffb454; --h-accent:#ffb454; --h-on-accent:#15120a; --h-ok:#5fd7a5; --h-attn:#ff9f43;
+    --h-sel-bg:#1c1e28; --h-sel-fg:#fff; --h-sel-bar:2px; --h-btn:#1a1c25; --h-btn-border:#2b2e3b; --h-radius:5px;
+    --h-term-bg:#0b0c10; --h-term-fg:#dfe1ea; --h-term-dim:#6a6e82;
+    --h-ui-font:"IBM Plex Sans",system-ui,sans-serif; --h-ui-size:12.5px; --h-brand-font:"JetBrains Mono",monospace; --h-brand-track:.12em;
+    --h-mono:"JetBrains Mono",monospace; --h-pad:12px; --h-proj-case:uppercase; --h-proj-track:.08em;
+  }
+  .t-mono {
+    --h-bg:#0a0a0a; --h-sb-bg:#0a0a0a; --h-bar-bg:#0a0a0a; --h-border:#232323; --h-fg:#d6d6d6; --h-fg-2:#9c9c9c; --h-fg-3:#5c5c5c;
+    --h-brand:#d6d6d6; --h-accent:#e8c170; --h-on-accent:#000; --h-ok:#9c9c9c; --h-attn:#e8c170;
+    --h-sel-bg:transparent; --h-sel-fg:#fff; --h-sel-bar:1px; --h-btn:transparent; --h-btn-border:#333; --h-radius:0;
+    --h-term-bg:#0a0a0a; --h-term-fg:#d6d6d6; --h-term-dim:#6a6a6a;
+    --h-ui-font:"IBM Plex Mono",monospace; --h-ui-size:12px; --h-brand-font:inherit; --h-brand-track:.02em;
+    --h-mono:"IBM Plex Mono",monospace; --h-pad:10px; --h-proj-case:none; --h-proj-track:0;
+  }
+  .t-mono .row.active { border-left: 1px solid var(--h-accent); } .t-mono .row.active::before { display:none; }
+  .t-mono .brand::before { content: "▮ "; color: var(--h-accent); }
+  .t-native .brand::before { content: ""; display:inline-block; width:10px; height:10px; border-radius:3px; background:var(--h-accent); margin-right:7px; vertical-align:-1px; }
+</style>
+</head><body>
+
+<div class="wrap">
+  <h1>Hive identity options</h1><p><em>Decision: B is the default preset (hive-dark). A, C and the baseline ship as selectable presets (native, terminal, classic).</em></p>
+  <p class="lede">Same screen, same content, four token sets. Every mock reads only <code>--h-*</code> variables — which is also the mechanism that makes user theming (palette, fonts) possible later. Terminal content is stand-in text.</p>
+
+  <h2><span class="tag">0 · baseline</span> Current UI, as shipped</h2>
+  <p class="why">Reference only. Pure black, 51 hard-coded hex values, one amber used for brand, accent, and attention alike — so attention doesn't stand out from selection. Fine bones; no system.</p>
+  <div class="frame"><div class="app t-current">
+    <aside class="sb"><div class="sb-head"><span class="brand">Hive</span><span class="icon-btn">＋</span></div>
+      <div class="list">
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#f59e0b"></span>hive</div>
+        <div class="row active busy"><span class="dot"></span><span class="nm">echo-mesa</span><span class="wt">⎇</span></div>
+        <div class="row attn"><span class="dot"></span><span class="nm">sidebar-tray</span></div>
+        <div class="row"><span class="dot"></span><span class="nm">shell</span></div>
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#3b82f6"></span>litellm</div>
+        <div class="row busy"><span class="dot"></span><span class="nm">docker-pin</span><span class="wt">⎇</span></div>
+      </div>
+      <div class="sb-foot"><span class="chip"><span class="swatch" style="background:#a855f7"></span>portfolio ＋</span><span class="ver">v2.4.0</span></div>
+    </aside>
+    <div class="main"><div class="bar"><span class="title">echo-mesa</span><span class="sep">·</span>claude<span class="spacer"></span><span class="btn">Restart</span><span class="btn">Grid</span></div>
+      <div class="term"><span class="p">❯</span> claude
+<span class="c">╭─ Claude Code</span>
+<span class="p">│</span> Reviewing sidebar.ts…
+<span class="g">✓</span> 3 files read
+<span class="y">?</span> Allow edit to style.css? <span class="p">[y/n]</span></div>
+      <div class="tray"><span class="lbl">Minimized</span><span class="chip"><span class="swatch" style="background:#3b82f6"></span>lint-fix</span><span class="chip"><span class="swatch" style="background:#f59e0b"></span>e2e-flake</span></div>
+    </div>
+  </div></div>
+  <div class="tokens"><span><i style="background:#000"></i>bg #000</span><span><i style="background:#0a0a0a"></i>sidebar #0a0a0a</span><span><i style="background:#f59e0b"></i>brand = accent = attention #f59e0b</span><span>system font · 12 sizes</span></div>
+
+  <h2><span class="tag">A · native-adjacent</span> Recedes into the OS</h2>
+  <p class="why"><b>Read:</b> lifted greys instead of pure black, system font, soft 6px radii, filled selection (no bar), bordered buttons — cues from Finder/VS Code/Zed sidebars. Brand goes neutral; the amber is spent once, on accent. Attention gets its own hue so it's not confused with selection. <b>Cost:</b> least distinctive; on Linux/Windows "native" is a moving target so it reads as "generic-good."</p>
+  <div class="frame"><div class="app t-native">
+    <aside class="sb"><div class="sb-head"><span class="brand">Hive</span><span class="icon-btn">＋</span></div>
+      <div class="list">
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#e6a23c"></span>hive</div>
+        <div class="row active busy"><span class="dot"></span><span class="nm">echo-mesa</span><span class="wt">⎇</span></div>
+        <div class="row attn"><span class="dot"></span><span class="nm">sidebar-tray</span></div>
+        <div class="row"><span class="dot"></span><span class="nm">shell</span></div>
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#5b8def"></span>litellm</div>
+        <div class="row busy"><span class="dot"></span><span class="nm">docker-pin</span><span class="wt">⎇</span></div>
+      </div>
+      <div class="sb-foot"><span class="chip"><span class="swatch" style="background:#b07ee8"></span>portfolio ＋</span><span class="ver">v2.4.0</span></div>
+    </aside>
+    <div class="main"><div class="bar"><span class="title">echo-mesa</span><span class="sep">·</span>claude<span class="spacer"></span><span class="btn">Restart</span><span class="btn">Grid</span></div>
+      <div class="term"><span class="p">❯</span> claude
+<span class="c">╭─ Claude Code</span>
+<span class="p">│</span> Reviewing sidebar.ts…
+<span class="g">✓</span> 3 files read
+<span class="y">?</span> Allow edit to style.css? <span class="p">[y/n]</span></div>
+      <div class="tray"><span class="lbl">Minimized</span><span class="chip"><span class="swatch" style="background:#5b8def"></span>lint-fix</span><span class="chip"><span class="swatch" style="background:#e6a23c"></span>e2e-flake</span></div>
+    </div>
+  </div></div>
+  <div class="tokens"><span><i style="background:#1e1e1f"></i>bg #1e1e1f</span><span><i style="background:#252527"></i>sidebar #252527</span><span><i style="background:#e6a23c"></i>accent #e6a23c</span><span><i style="background:#f0b44c"></i>attention #f0b44c</span><span><i style="background:#4cc38a"></i>ok #4cc38a</span><span>system font 13px · radius 6</span></div>
+
+  <h2><span class="tag">B · own brand, dev-tool</span> Linear / Warp lineage</h2>
+  <p class="why"><b>Read:</b> cool-biased near-black (blue-tinted greys, not neutral), IBM Plex Sans for UI + JetBrains Mono for brand/terminal, uppercase tracked project headers, 2px selection bar, warm amber accent kept from today so existing users still recognize it. <b>Cost:</b> ships two webfonts (~150KB, must be bundled — Wails has no CDN), most CSS to write, and a wrong call here is visible everywhere.</p>
+  <div class="frame"><div class="app t-brand">
+    <aside class="sb"><div class="sb-head"><span class="brand">HIVE</span><span class="icon-btn">＋</span></div>
+      <div class="list">
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#ffb454"></span>hive</div>
+        <div class="row active busy"><span class="dot"></span><span class="nm">echo-mesa</span><span class="wt">⎇</span></div>
+        <div class="row attn"><span class="dot"></span><span class="nm">sidebar-tray</span></div>
+        <div class="row"><span class="dot"></span><span class="nm">shell</span></div>
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#6c9cff"></span>litellm</div>
+        <div class="row busy"><span class="dot"></span><span class="nm">docker-pin</span><span class="wt">⎇</span></div>
+      </div>
+      <div class="sb-foot"><span class="chip"><span class="swatch" style="background:#c084fc"></span>portfolio ＋</span><span class="ver">v2.4.0</span></div>
+    </aside>
+    <div class="main"><div class="bar"><span class="title">echo-mesa</span><span class="sep">·</span>claude<span class="spacer"></span><span class="btn">Restart</span><span class="btn">Grid</span></div>
+      <div class="term"><span class="p">❯</span> claude
+<span class="c">╭─ Claude Code</span>
+<span class="p">│</span> Reviewing sidebar.ts…
+<span class="g">✓</span> 3 files read
+<span class="y">?</span> Allow edit to style.css? <span class="p">[y/n]</span></div>
+      <div class="tray"><span class="lbl">Minimized</span><span class="chip"><span class="swatch" style="background:#6c9cff"></span>lint-fix</span><span class="chip"><span class="swatch" style="background:#ffb454"></span>e2e-flake</span></div>
+    </div>
+  </div></div>
+  <div class="tokens"><span><i style="background:#0f1014"></i>bg #0f1014</span><span><i style="background:#13141a"></i>sidebar #13141a</span><span><i style="background:#ffb454"></i>accent #ffb454</span><span><i style="background:#ff9f43"></i>attention #ff9f43</span><span><i style="background:#5fd7a5"></i>ok #5fd7a5</span><span>Plex Sans 12.5 + JetBrains Mono</span></div>
+
+  <h2><span class="tag">C · terminal-first minimal</span> tmux with a sidebar</h2>
+  <p class="why"><b>Read:</b> everything monospace, square corners, no fills — hierarchy comes from weight and a single 1px accent rule. Near-monochrome; busy = grey, attention = the only saturated thing on screen, which makes "needs you" impossible to miss. <b>Cost:</b> monospace UI wastes width in a 200px sidebar (long session names truncate sooner); dialogs (Settings, Worktrees) get austere fast; least approachable for non-terminal people.</p>
+  <div class="frame"><div class="app t-mono">
+    <aside class="sb"><div class="sb-head"><span class="brand">hive</span><span class="icon-btn">+</span></div>
+      <div class="list">
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#e8c170"></span>hive</div>
+        <div class="row active busy"><span class="dot"></span><span class="nm">echo-mesa</span><span class="wt">⎇</span></div>
+        <div class="row attn"><span class="dot"></span><span class="nm">sidebar-tray</span></div>
+        <div class="row"><span class="dot"></span><span class="nm">shell</span></div>
+        <div class="proj"><span class="caret">▾</span><span class="swatch" style="background:#7aa2f7"></span>litellm</div>
+        <div class="row busy"><span class="dot"></span><span class="nm">docker-pin</span><span class="wt">⎇</span></div>
+      </div>
+      <div class="sb-foot"><span class="chip"><span class="swatch" style="background:#bb9af7"></span>portfolio +</span><span class="ver">v2.4.0</span></div>
+    </aside>
+    <div class="main"><div class="bar"><span class="title">echo-mesa</span><span class="sep">·</span>claude<span class="spacer"></span><span class="btn">restart</span><span class="btn">grid</span></div>
+      <div class="term"><span class="p">❯</span> claude
+<span class="c">╭─ Claude Code</span>
+<span class="p">│</span> Reviewing sidebar.ts…
+<span class="g">✓</span> 3 files read
+<span class="y">?</span> Allow edit to style.css? <span class="p">[y/n]</span></div>
+      <div class="tray"><span class="lbl">min</span><span class="chip"><span class="swatch" style="background:#7aa2f7"></span>lint-fix</span><span class="chip"><span class="swatch" style="background:#e8c170"></span>e2e-flake</span></div>
+    </div>
+  </div></div>
+  <div class="tokens"><span><i style="background:#0a0a0a"></i>bg #0a0a0a</span><span><i style="background:#e8c170"></i>accent = attention #e8c170</span><span><i style="background:#9c9c9c"></i>ok (grey)</span><span>Plex Mono 12 · radius 0 · no fills</span></div>
+
+  <h2><span class="tag">note</span> What's shared regardless of pick</h2>
+  <p class="why">All three fix the same defects: one token layer (≈40 variables) replacing 51 literals; a 5-step type scale replacing 12 sizes; separate roles for brand / accent / selection / attention / ok / error; a spacing scale. The pick decides <b>values</b>, not the architecture — and user theming = overriding those same variables from a settings file. A light theme becomes a second value set, not a second stylesheet.</p>
+</div>
+</body></html>

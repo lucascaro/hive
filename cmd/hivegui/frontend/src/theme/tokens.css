@@ -1,0 +1,44 @@
+/* Semantic tokens. Defaults are the hive-dark preset; themes.css re-values
+   them per [data-theme]. Components read ONLY these — no literals.
+   See docs/design-docs/ui/tokens.md. */
+:root {
+  --bg: #0f1014;
+  --surface: #13141a;
+  --surface-raised: #0f1015;
+  --border: #22242e;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --sel: #1c1e28;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #1a1c25;
+  --btn-border: #2b2e3b;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-starting: var(--fg-subtle);
+  --state-exited: var(--fg-subtle);
+  --state-error: #ff6b6b;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --motion-fast: 120ms;
+  --motion-pulse: 1.6s;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0s; --motion-pulse: 0s; }
+}
