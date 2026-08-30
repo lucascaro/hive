@@ -752,6 +752,19 @@ export function moveActiveSession(delta: number, reorder: boolean) {
     UpdateSession(ord[idx].id, '', '', target).catch(reportFailure('reorder'));
     return;
   }
-  const next = (idx + delta + n) % n;
-  switchTo(ord[next].id);
+  // Step OVER minimized sessions (their own tray, or their project's):
+  // you put them away, so the arrows must not walk you back into them —
+  // in a grid view landing on one has no tile and drops you to single.
+  // The walk is over the full ordered list, not a filtered one, because
+  // orderedSessions() is shared with the sidebar, tray, palette and
+  // ⌘1-9, all of which still list everything.
+  for (let i = 1; i < n; i++) {
+    const cand = ord[(((idx + delta * i) % n) + n) % n];
+    if (!isSessionHidden(cand.id)) {
+      switchTo(cand.id);
+      return;
+    }
+  }
+  // Full circle, nothing visible — stay put rather than teleport into
+  // the tray.
 }

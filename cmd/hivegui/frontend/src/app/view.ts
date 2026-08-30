@@ -400,8 +400,21 @@ export function shiftActiveProject(delta: number) {
   const cur = activeProjectId();
   const i = state.projects.findIndex((p) => p.id === cur);
   if (i < 0) return;
-  const next =
-    state.projects[(i + delta + state.projects.length) % state.projects.length];
+  // Step over minimized projects: a project you put in the tray is out
+  // of the keyboard rotation entirely (amends #250, which listed ⌘[/]
+  // among the ways a minimized project stays reachable — the sidebar
+  // chip, the sidebar and ⌘K are). Nothing visible to move to → stay.
+  const m = state.projects.length;
+  let next = state.projects[i];
+  let found = false;
+  for (let k = 1; k < m && !found; k++) {
+    const cand = state.projects[(((i + delta * k) % m) + m) % m];
+    if (!state.minimizedProjects.has(cand.id)) {
+      next = cand;
+      found = true;
+    }
+  }
+  if (!found) return;
   state.currentProjectId = next.id;
   if (state.view === 'grid-project') state.gridProjectId = next.id;
 
