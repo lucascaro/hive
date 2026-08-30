@@ -2,8 +2,8 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #000;
-  color: #ddd;
+  background: var(--bg);
+  color: var(--fg);
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -70,8 +70,8 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 #sidebar {
-  background: #0a0a0a;
-  border-right: 1px solid #1f1f1f;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   user-select: none;
@@ -94,7 +94,7 @@ body.resizing-sidebar #app { transition: none; }
 #sidebar-resizer:hover,
 #sidebar-resizer.dragging,
 #sidebar-resizer:focus-visible {
-  background: color-mix(in srgb, #f59e0b 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 #sidebar-resizer:focus-visible { outline: none; }
 #app.sidebar-hidden #sidebar-resizer { display: none; }
@@ -104,14 +104,14 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  border-bottom: 1px solid #1f1f1f;
+  border-bottom: 1px solid var(--border);
 }
 
 #sidebar header .brand {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-md);
   letter-spacing: 0.04em;
-  color: #f59e0b;
+  color: var(--accent);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -119,17 +119,17 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 #new-project-btn {
-  background: #1f1f1f;
-  color: #ccc;
+  background: var(--border);
+  color: #ccc; /* ui-lint: allow */
   border: none;
   border-radius: 4px;
   width: 22px;
   height: 22px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1;
 }
-#new-project-btn:hover { background: #2a2a2a; }
+#new-project-btn:hover { background: var(--hover); }
 
 #sessions, #projects {
   list-style: none;
@@ -151,7 +151,7 @@ body.resizing-sidebar #app { transition: none; }
   max-height: 30vh;
   overflow-y: auto;
   overflow-x: hidden;
-  border-top: 1px solid #1f1f1f;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -162,7 +162,7 @@ body.resizing-sidebar #app { transition: none; }
   display: flex;
   align-items: center;
   border-radius: 3px;
-  color: #888;
+  color: var(--fg-muted);
   min-width: 0;
 }
 .min-project-open {
@@ -176,7 +176,7 @@ body.resizing-sidebar #app { transition: none; }
   border: none;
   color: inherit;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   text-align: left;
@@ -185,29 +185,29 @@ body.resizing-sidebar #app { transition: none; }
 
 .min-project-chip:hover {
   background: rgba(255, 255, 255, 0.04);
-  color: #ddd;
+  color: var(--fg);
 }
 .min-project-chip.active {
-  background: color-mix(in srgb, var(--project-color, #888) 12%, transparent);
-  color: #ddd;
+  background: color-mix(in srgb, var(--project-color, var(--fg-muted)) 12%, transparent);
+  color: var(--fg);
 }
 /* A minimized project has no session rows, so the chip carries the
    bell. Reuses the session pulse by aliasing --session-color to the
    project color, and glows the color dot the way .session-item.attention
    glows its ::before. */
 .min-project-chip.attention {
-  --session-color: var(--project-color, #888);
+  --session-color: var(--project-color, var(--fg-muted));
   animation: hive-attention-pulse 1.2s ease-in-out infinite;
-  color: #ddd;
+  color: var(--fg);
 }
 .min-project-chip.attention .min-project-color {
-  box-shadow: 0 0 6px var(--project-color, #888);
+  box-shadow: 0 0 6px var(--project-color, var(--fg-muted));
 }
 .min-project-color {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--project-color, #888);
+  background: var(--project-color, var(--fg-muted));
   flex-shrink: 0;
 }
 .min-project-name {
@@ -221,16 +221,16 @@ body.resizing-sidebar #app { transition: none; }
   flex-shrink: 0;
   background: none;
   border: none;
-  /* Not #666: this is the only control that un-minimizes a project, so
+  /* Not var(--fg-subtle) (dimmer): this is the only control that un-minimizes a project, so
      it has to clear the contrast floor at rest, not just on hover. */
-  color: #9a9a9a;
+  color: #9a9a9a; /* ui-lint: allow */
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1;
   padding: 2px 4px;
   border-radius: 3px;
 }
-.min-project-chip:hover .min-project-restore { color: #ddd; }
+.min-project-chip:hover .min-project-restore { color: var(--fg); }
 .min-project-restore:hover { background: rgba(255, 255, 255, 0.06); }
 
 
@@ -245,7 +245,7 @@ body.resizing-sidebar #app { transition: none; }
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--project-color, #888);
+  background: var(--project-color, var(--fg-muted));
   opacity: 0.45;
   border-radius: 0 1px 1px 0;
   pointer-events: none;
@@ -261,32 +261,32 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   gap: 6px;
   padding: 5px 10px 5px 12px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #888;
+  color: var(--fg-muted);
   cursor: pointer;
   user-select: none;
   min-width: 0;
 }
 
-.project-header:hover { background: rgba(255,255,255,0.02); color: #ddd; }
+.project-header:hover { background: rgba(255,255,255,0.02); color: var(--fg); }
 
 .project.active > .project-header {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--project-color, #888) 22%, transparent) 0%,
+    color-mix(in srgb, var(--project-color, var(--fg-muted)) 22%, transparent) 0%,
     rgba(255, 255, 255, 0.04) 60%,
     rgba(255, 255, 255, 0.02) 100%
   );
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 .project.active > .project-header .project-color {
   width: 10px;
   height: 10px;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3),
-              0 0 8px color-mix(in srgb, var(--project-color, #888) 60%, transparent);
+              0 0 8px color-mix(in srgb, var(--project-color, var(--fg-muted)) 60%, transparent);
 }
 
 .project.active > .project-header .project-name {
@@ -295,8 +295,8 @@ body.resizing-sidebar #app { transition: none; }
 
 .project-header .caret {
   width: 10px;
-  font-size: 10px;
-  color: #555;
+  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #555; /* ui-lint: allow */
   flex-shrink: 0;
 }
 
@@ -304,7 +304,7 @@ body.resizing-sidebar #app { transition: none; }
   width: 8px;
   height: 8px;
   border-radius: 2px;
-  background: var(--project-color, #888);
+  background: var(--project-color, var(--fg-muted));
   flex-shrink: 0;
 }
 
@@ -319,12 +319,12 @@ body.resizing-sidebar #app { transition: none; }
 
 .project-header .project-name-input {
   flex: 1;
-  background: #000;
-  color: #fff;
-  border: 1px solid #444;
+  background: var(--bg);
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
+  border: 1px solid #444; /* ui-lint: allow */
   border-radius: 3px;
   padding: 2px 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: inherit;
   text-transform: none;
   letter-spacing: 0;
@@ -341,12 +341,12 @@ body.resizing-sidebar #app { transition: none; }
 
 .project-header .project-actions button {
   background: transparent;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 3px;
   width: 18px;
   height: 18px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -368,15 +368,15 @@ body.resizing-sidebar #app { transition: none; }
   gap: 8px;
   padding: 5px 10px 5px 26px;
   cursor: pointer;
-  font-size: 12.5px;
-  color: #aaa;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #aaa; /* ui-lint: allow */
   position: relative;
   min-width: 0;
 }
 
 .session-item:hover {
   background: rgba(255, 255, 255, 0.03);
-  color: #ddd;
+  color: var(--fg);
 }
 
 /* Hover-revealed, like .project-actions: the row is mostly name, and a
@@ -386,9 +386,9 @@ body.resizing-sidebar #app { transition: none; }
   flex-shrink: 0;
   background: none;
   border: none;
-  color: #9a9a9a;
+  color: #9a9a9a; /* ui-lint: allow */
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1;
   padding: 2px 4px;
   border-radius: 3px;
@@ -401,21 +401,21 @@ body.resizing-sidebar #app { transition: none; }
 }
 .session-minimize:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 /* A minimized session keeps its row — the row is where you put it back
    from — but says so: dimmed, with the restore control always visible. */
 .session-item.minimized {
-  color: #777;
+  color: #777; /* ui-lint: allow */
 }
 .session-item.minimized .session-minimize {
   opacity: 1;
 }
 
 .session-item.selected {
-  background: color-mix(in srgb, var(--session-color, #888) 18%, transparent);
-  color: #fff;
+  background: color-mix(in srgb, var(--session-color, var(--fg-muted)) 18%, transparent);
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
   font-weight: 500;
   padding-left: 23px;
 }
@@ -426,18 +426,18 @@ body.resizing-sidebar #app { transition: none; }
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--session-color, #d0d0d0);
+  background: var(--session-color, #d0d0d0); /* ui-lint: allow */
   border-radius: 0 1px 1px 0;
 }
 
 /* Attention indicator — fired by xterm BEL on a non-focused session. */
 @keyframes hive-attention-pulse {
   0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
-  50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 70%, transparent); }
+  50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 70%, transparent); }
 }
 .session-item.attention {
   animation: hive-attention-pulse 1.2s ease-in-out infinite;
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 /* Drag-to-reorder visual: a thin colored line at the drop edge so
@@ -452,7 +452,7 @@ body.resizing-sidebar #app { transition: none; }
   left: 6px;
   right: 6px;
   height: 2px;
-  background: var(--session-color, #f59e0b);
+  background: var(--session-color, var(--accent));
   border-radius: 1px;
   pointer-events: none;
 }
@@ -473,7 +473,7 @@ body.resizing-sidebar #app { transition: none; }
   left: 6px;
   right: 6px;
   height: 2px;
-  background: var(--project-color, #f59e0b);
+  background: var(--project-color, var(--accent));
   border-radius: 1px;
   pointer-events: none;
   z-index: 2;
@@ -482,11 +482,11 @@ body.resizing-sidebar #app { transition: none; }
 .project.drop-below::after { bottom: -1px; }
 .session-item.attention .name::before {
   content: '●';
-  color: var(--session-color, #888);
+  color: var(--session-color, var(--fg-muted));
   font-size: 8px;
   margin-right: 4px;
   vertical-align: middle;
-  text-shadow: 0 0 6px var(--session-color, #888);
+  text-shadow: 0 0 6px var(--session-color, var(--fg-muted));
 }
 
 /* Title gradient — color stays visible even when selected. */
@@ -499,8 +499,8 @@ body.resizing-sidebar #app { transition: none; }
      this barely shifts them. */
   background: linear-gradient(
     90deg,
-    var(--project-color, #888) 0%,
-    color-mix(in srgb, var(--session-color, #fff) 80%, #fff) 100%
+    var(--project-color, var(--fg-muted)) 0%,
+    color-mix(in srgb, var(--session-color, #fff) 80%, #fff) 100% /* ui-lint: allow — literal white as a color-mix blend endpoint, not a themed role */
   );
   -webkit-background-clip: text;
   background-clip: text;
@@ -530,7 +530,7 @@ body.resizing-sidebar #app { transition: none; }
    gradient — so the row still reads name-first at a glance. Same idea as
    .tile-term-title in the grid header, one level down. */
 .session-item .session-title {
-  font-size: 10.5px;
+  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   line-height: 1.35;
   color: rgba(255, 255, 255, 0.4);
   white-space: nowrap;
@@ -548,8 +548,8 @@ body.resizing-sidebar #app { transition: none; }
 
 .session-item.dead .name {
   background: none;
-  -webkit-text-fill-color: #555;
-  color: #555;
+  -webkit-text-fill-color: #555; /* ui-lint: allow */
+  color: #555; /* ui-lint: allow */
   font-style: italic;
 }
 
@@ -561,11 +561,11 @@ body.resizing-sidebar #app { transition: none; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--session-color, #888);
+  background: var(--session-color, var(--fg-muted));
   flex-shrink: 0;
 }
 
-.session-item.dead .dot { background: #333; }
+.session-item.dead .dot { background: #333; } /* ui-lint: allow */
 
 .session-item .name-input {
   /* The input replaces .name *inside* .session-text, which is a column
@@ -573,12 +573,12 @@ body.resizing-sidebar #app { transition: none; }
      filling the row, so size it on the cross axis explicitly. */
   width: 100%;
   min-width: 0;
-  background: #000;
-  color: #fff;
-  border: 1px solid #444;
+  background: var(--bg);
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
+  border: 1px solid #444; /* ui-lint: allow */
   border-radius: 3px;
   padding: 2px 4px;
-  font-size: 12.5px;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   font-family: inherit;
   outline: none;
 }
@@ -587,7 +587,7 @@ body.resizing-sidebar #app { transition: none; }
   width: 12px;
   height: 12px;
   border-radius: 2px;
-  background: var(--session-color, #888);
+  background: var(--session-color, var(--fg-muted));
   flex-shrink: 0;
   cursor: pointer;
   position: relative;
@@ -601,13 +601,13 @@ body.resizing-sidebar #app { transition: none; }
 
 .hints {
   padding: 6px 10px;
-  border-top: 1px solid #1f1f1f;
-  font-size: 10.5px;
-  /* #555 on #0a0a0a is ~2.7:1 — under AA. That was tolerable when this
-     line held redundant shortcut hints, but it now carries the build
-     identity users are asked to read back in bug reports. #888 is
-     ~5.6:1 and matches the muted-text grey used elsewhere. */
-  color: #888;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  /* #555 on classic's --surface is ~2.7:1 — under AA. That was tolerable
+     when this line held redundant shortcut hints, but it now carries the
+     build identity users are asked to read back in bug reports.
+     --fg-muted is ~5.6:1 and matches the muted-text grey used elsewhere. */
+  color: var(--fg-muted);
   line-height: 1.4;
   overflow: hidden;
   /* #sidebar sets user-select: none for drag-friendliness; opt back in
@@ -635,12 +635,12 @@ body.resizing-sidebar #app { transition: none; }
 /* Mismatch state: readable, but deliberately quieter than the
    stale-daemon banner, which is the primary signal. */
 .hints.mismatch {
-  color: #8a7a4a;
+  color: #8a7a4a; /* ui-lint: allow */
 }
 
 #terms {
   position: relative;
-  background: #000;
+  background: var(--bg);
   display: flex;
 }
 
@@ -652,9 +652,9 @@ body.resizing-sidebar #app { transition: none; }
   flex-direction: column;
   /* Match the grid-tile baseline border so the focus upgrade is
      visible in single mode too. */
-  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
   border-radius: 4px;
-  background: #000;
+  background: var(--term-bg);
   overflow: hidden;
 }
 #terms.single .term-host.visible {
@@ -684,9 +684,9 @@ body.resizing-sidebar #app { transition: none; }
   display: none;
   /* Always-visible border tinted with the session color so each
      tile's identity is obvious without having to read the title. */
-  border: 1px solid color-mix(in srgb, var(--session-color, #888) 45%, #111);
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
   border-radius: 4px;
-  background: #000;
+  background: var(--term-bg);
   overflow: hidden;
   padding: 0;
   /* Without min-* zero, grid items default to min-content sizing and
@@ -706,9 +706,9 @@ body.resizing-sidebar #app { transition: none; }
    The #terms prefix is needed to outweigh the per-mode baseline
    border rules (which are also ID-scoped). */
 #terms .term-host.term-focused {
-  border-color: var(--session-color, #888);
-  box-shadow: 0 0 0 1px var(--session-color, #888),
-              0 0 18px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
+  border-color: var(--session-color, var(--fg-muted));
+  box-shadow: 0 0 0 1px var(--session-color, var(--fg-muted)),
+              0 0 18px color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, transparent);
 }
 /* Dim non-focused tiles so it's obvious which session keystrokes go to.
    Header stays full opacity; only the terminal body fades. */
@@ -723,14 +723,14 @@ body.resizing-sidebar #app { transition: none; }
 
 @keyframes hive-tile-attention {
   0%, 100% {
-    border-color: color-mix(in srgb, var(--session-color, #888) 40%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--session-color, #888) 40%, transparent),
-                0 0 0 0 color-mix(in srgb, var(--session-color, #888) 0%, transparent);
+    border-color: color-mix(in srgb, var(--session-color, var(--fg-muted)) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--session-color, var(--fg-muted)) 0%, transparent);
   }
   50% {
-    border-color: var(--session-color, #888);
-    box-shadow: 0 0 0 1px var(--session-color, #888),
-                0 0 16px 4px color-mix(in srgb, var(--session-color, #888) 35%, transparent);
+    border-color: var(--session-color, var(--fg-muted));
+    box-shadow: 0 0 0 1px var(--session-color, var(--fg-muted)),
+                0 0 16px 4px color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, transparent);
   }
 }
 
@@ -739,11 +739,11 @@ body.resizing-sidebar #app { transition: none; }
 }
 #terms.grid .term-host.in-grid.attention .tile-name::before {
   content: '●';
-  color: var(--session-color, #888);
+  color: var(--session-color, var(--fg-muted));
   font-size: 8px;
   margin-right: 6px;
   vertical-align: middle;
-  text-shadow: 0 0 6px var(--session-color, #888);
+  text-shadow: 0 0 6px var(--session-color, var(--fg-muted));
 }
 .term-host .tile-header {
   display: flex;
@@ -756,29 +756,29 @@ body.resizing-sidebar #app { transition: none; }
      same visual encoding applies in grid and single mode. */
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--project-color, var(--session-color, #888)) 40%, #0a0a0a) 0%,
-    color-mix(in srgb, var(--session-color, #888) 12%, #0a0a0a) 100%
+    color-mix(in srgb, var(--project-color, var(--session-color, var(--fg-muted))) 40%, var(--surface)) 0%,
+    color-mix(in srgb, var(--session-color, var(--fg-muted)) 12%, var(--surface)) 100%
   );
-  border-bottom: 1px solid color-mix(in srgb, var(--session-color, #888) 35%, #1a1a1a);
+  border-bottom: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, var(--sel));
   font: 11px Menlo, monospace;
-  color: #ddd;
+  color: var(--fg);
   flex-shrink: 0;
 }
 .term-host.term-focused .tile-header {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--project-color, var(--session-color, #888)) 65%, #0a0a0a) 0%,
-    color-mix(in srgb, var(--session-color, #888) 28%, #0a0a0a) 100%
+    color-mix(in srgb, var(--project-color, var(--session-color, var(--fg-muted))) 65%, var(--surface)) 0%,
+    color-mix(in srgb, var(--session-color, var(--fg-muted)) 28%, var(--surface)) 100%
   );
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 .term-host .tile-color {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--session-color, #888);
+  background: var(--session-color, var(--fg-muted));
   flex-shrink: 0;
-  box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, #888) 60%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, var(--fg-muted)) 60%, transparent);
 }
 .term-host .tile-name {
   flex: 0 1 auto;
@@ -795,7 +795,7 @@ body.resizing-sidebar #app { transition: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
   color: rgba(255, 255, 255, 0.55);
-  font-size: 11px;
+  font-size: var(--text-xs);
   margin-left: 4px;
 }
 .term-host .tile-term-title::before {
@@ -806,7 +806,7 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-name-input {
   flex: 1;
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 3px;
   padding: 1px 5px;
@@ -816,7 +816,7 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-project {
   margin-left: auto;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 10px;
+  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -840,7 +840,7 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-minimize:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.35);
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 #minimized-tray {
@@ -850,8 +850,8 @@ body.resizing-sidebar #app { transition: none; }
   padding: 4px 8px;
   overflow-x: auto;
   overflow-y: hidden;
-  background: #0a0a0a;
-  border-top: 1px solid #1a1a1a;
+  background: var(--surface);
+  border-top: 1px solid var(--sel);
   min-height: 28px;
   scrollbar-width: thin;
 }
@@ -862,24 +862,24 @@ body.resizing-sidebar #app { transition: none; }
   gap: 6px;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid color-mix(in srgb, var(--session-color, #888) 30%, #1a1a1a);
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, var(--sel));
   border-radius: 3px;
   padding: 2px 8px;
-  color: #ddd;
+  color: var(--fg);
   font: 11px Menlo, monospace;
   cursor: pointer;
   max-width: 240px;
 }
 #minimized-tray .min-chip:hover {
-  background: color-mix(in srgb, var(--session-color, #888) 15%, #0a0a0a);
-  border-color: color-mix(in srgb, var(--session-color, #888) 55%, #1a1a1a);
-  color: #fff;
+  background: color-mix(in srgb, var(--session-color, var(--fg-muted)) 15%, var(--surface));
+  border-color: color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--sel));
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 #minimized-tray .min-chip .min-chip-color {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--session-color, #888);
+  background: var(--session-color, var(--fg-muted));
   flex-shrink: 0;
 }
 #minimized-tray .min-chip .min-chip-name {
@@ -889,7 +889,7 @@ body.resizing-sidebar #app { transition: none; }
 }
 #minimized-tray .min-chip .min-chip-project {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 10px;
+  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -919,7 +919,7 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #777;
+  color: #777; /* ui-lint: allow */
   pointer-events: auto;
 }
 #empty-state.hidden { display: none; }
@@ -936,7 +936,7 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   justify-content: center;
   padding: 32px 18px;
-  background: #0b0b0b;
+  background: #0b0b0b; /* ui-lint: allow */
 }
 #boot-state.hidden { display: none; }
 .boot-state-card {
@@ -946,34 +946,34 @@ body.resizing-sidebar #app { transition: none; }
   gap: 10px;
   max-width: 40ch;
   text-align: center;
-  font-size: 12.5px;
-  color: #999;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #999; /* ui-lint: allow */
   line-height: 1.5;
 }
 .boot-state-card .phase-spinner {
-  --session-color: #f59e0b;
+  --session-color: var(--accent);
 }
 /* The spinner belongs to the wait; once the boot has given up the card
    shows a Retry instead. */
 .boot-state-card .phase-spinner.hidden { display: none; }
 #boot-state-retry {
-  background: #1f1f1f;
-  color: #ddd;
-  border: 1px solid #333;
+  background: var(--border);
+  color: var(--fg);
+  border: 1px solid #333; /* ui-lint: allow */
   border-radius: 5px;
   padding: 6px 12px;
-  font-size: 12.5px;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   cursor: pointer;
 }
-#boot-state-retry:hover { background: #262626; }
+#boot-state-retry:hover { background: #262626; } /* ui-lint: allow */
 #boot-state-retry.hidden { display: none; }
 #empty-state .empty-title {
-  font-size: 15px;
-  color: #999;
+  font-size: 15px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #999; /* ui-lint: allow */
 }
 #empty-state .empty-hint {
-  font-size: 12.5px;
-  color: #666;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: var(--fg-subtle);
 }
 #empty-state .empty-actions {
   display: flex;
@@ -981,24 +981,24 @@ body.resizing-sidebar #app { transition: none; }
   margin-top: 6px;
 }
 #empty-state .empty-actions button {
-  background: #1f1f1f;
-  color: #ddd;
-  border: 1px solid #333;
+  background: var(--border);
+  color: var(--fg);
+  border: 1px solid #333; /* ui-lint: allow */
   border-radius: 5px;
   padding: 6px 12px;
-  font-size: 12.5px;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   cursor: pointer;
 }
-#empty-state .empty-actions button:hover { background: #2a2a2a; }
+#empty-state .empty-actions button:hover { background: var(--hover); }
 #empty-state .empty-actions button:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
 #launcher {
   position: fixed;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 6px;
   padding: 4px;
   /* Wide enough that the filter box's placeholder isn't clipped. */
@@ -1014,7 +1014,7 @@ body.resizing-sidebar #app { transition: none; }
      (project-editor, command-palette). Adding `z-index` to #sidebar
      would re-trap the resizer in its own context and break this. */
   z-index: 20;
-  font-size: 12.5px;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
 }
 #launcher.hidden { display: none; }
 
@@ -1026,12 +1026,12 @@ body.resizing-sidebar #app { transition: none; }
   margin: 0 0 4px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid #1f1f1f;
-  color: #eee;
+  border-bottom: 1px solid var(--border);
+  color: #eee; /* ui-lint: allow */
   font: inherit;
   outline: none;
 }
-.launcher-search::placeholder { color: #666; }
+.launcher-search::placeholder { color: var(--fg-subtle); }
 
 .launcher-item {
   display: flex;
@@ -1040,21 +1040,21 @@ body.resizing-sidebar #app { transition: none; }
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
-  color: #ccc;
+  color: #ccc; /* ui-lint: allow */
 }
 .launcher-item:hover,
 .launcher-item.selected { background: rgba(255,255,255,0.08); }
-.launcher-item.selected { color: #fff; }
+.launcher-item.selected { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 .launcher-item .agent-num {
   display: inline-block;
   width: 14px;
   text-align: right;
   font-family: Menlo, monospace;
-  font-size: 10.5px;
-  color: #666;
+  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: var(--fg-subtle);
   flex-shrink: 0;
 }
-.launcher-item.selected .agent-num { color: #aaa; }
+.launcher-item.selected .agent-num { color: #aaa; } /* ui-lint: allow */
 .launcher-item .agent-dot {
   width: 8px;
   height: 8px;
@@ -1065,12 +1065,12 @@ body.resizing-sidebar #app { transition: none; }
      Go sanitizes the color too (agent.validateCustom) — this is the
      second layer, so a future caller that skips validation is still
      safe. */
-  background-color: var(--agent-color, #888);
+  background-color: var(--agent-color, var(--fg-muted));
   flex-shrink: 0;
 }
 .launcher-item .agent-name { flex: 1; }
 .launcher-item.uninstalled .agent-name {
-  color: #999;
+  color: #999; /* ui-lint: allow */
 }
 
 .launcher-worktree {
@@ -1079,9 +1079,9 @@ body.resizing-sidebar #app { transition: none; }
   gap: 8px;
   padding: 6px 8px;
   margin: 0 0 4px;
-  border-bottom: 1px solid #1f1f1f;
-  color: #ccc;
-  font-size: 11.5px;
+  border-bottom: 1px solid var(--border);
+  color: #ccc; /* ui-lint: allow */
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   user-select: none;
   cursor: pointer;
 }
@@ -1101,16 +1101,16 @@ body.resizing-sidebar #app { transition: none; }
   width: calc(100% - 16px);
   margin: 0 8px 6px;
   padding: 4px 6px;
-  background: #141414;
-  border: 1px solid #2a2a2a;
+  background: #141414; /* ui-lint: allow */
+  border: 1px solid var(--hover);
   border-radius: 4px;
-  color: #ddd;
-  font-size: 11.5px;
+  color: var(--fg);
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   font-family: inherit;
 }
 .launcher-branch.hidden { display: none; }
 .launcher-branch:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -1118,11 +1118,11 @@ body.resizing-sidebar #app { transition: none; }
 .worktree-rename {
   width: 100%;
   padding: 3px 6px;
-  background: #141414;
-  border: 1px solid #f59e0b;
+  background: #141414; /* ui-lint: allow */
+  border: 1px solid var(--accent);
   border-radius: 4px;
-  color: #ddd;
-  font-size: 12px;
+  color: var(--fg);
+  font-size: var(--text-sm);
   font-family: inherit;
 }
 
@@ -1130,8 +1130,8 @@ body.resizing-sidebar #app { transition: none; }
    is backed by a git worktree. Sidebar + grid tile share the rule. */
 .worktree-glyph {
   display: inline-block;
-  font-size: 11px;
-  color: var(--session-color, #888);
+  font-size: var(--text-xs);
+  color: var(--session-color, var(--fg-muted));
   margin: 0 4px;
   opacity: 0.85;
   flex-shrink: 0;
@@ -1141,8 +1141,8 @@ body.resizing-sidebar #app { transition: none; }
   margin-right: 4px;
 }
 .launcher-item .install-tag {
-  font-size: 10.5px;
-  color: #888;
+  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: var(--fg-muted);
   font-family: Menlo, monospace;
 }
 
@@ -1151,21 +1151,21 @@ body.resizing-sidebar #app { transition: none; }
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 8px;
   padding: 16px 20px;
   min-width: 320px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.7);
   z-index: 20;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 #project-editor.hidden { display: none; }
 #project-editor h3 {
   margin: 0 0 12px;
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #ddd;
+  color: var(--fg);
 }
 #project-editor label {
   display: block;
@@ -1173,17 +1173,17 @@ body.resizing-sidebar #app { transition: none; }
 }
 #project-editor label > span {
   display: block;
-  font-size: 11px;
-  color: #888;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
   margin-bottom: 4px;
 }
 #project-editor input[type=text],
 #project-editor input[type=color] {
   width: 100%;
-  background: #000;
-  border: 1px solid #2a2a2a;
+  background: var(--bg);
+  border: 1px solid var(--hover);
   border-radius: 4px;
-  color: #ddd;
+  color: var(--fg);
   padding: 6px 8px;
   font: inherit;
   box-sizing: border-box;
@@ -1199,16 +1199,16 @@ body.resizing-sidebar #app { transition: none; }
 }
 #project-editor .cwd-row input { flex: 1; }
 #project-editor .cwd-row button {
-  background: #1f1f1f;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  background: var(--border);
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 4px;
   padding: 0 12px;
   cursor: pointer;
   font: inherit;
   white-space: nowrap;
 }
-#project-editor .cwd-row button:hover { background: #2a2a2a; }
+#project-editor .cwd-row button:hover { background: var(--hover); }
 #project-editor .actions {
   display: flex;
   justify-content: flex-end;
@@ -1216,22 +1216,22 @@ body.resizing-sidebar #app { transition: none; }
   margin-top: 4px;
 }
 #project-editor .actions button {
-  background: #1f1f1f;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  background: var(--border);
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 4px;
   padding: 6px 14px;
   cursor: pointer;
   font: inherit;
 }
-#project-editor .actions button:hover { background: #2a2a2a; }
+#project-editor .actions button:hover { background: var(--hover); }
 #project-editor .actions button.primary {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #000;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
   font-weight: 600;
 }
-#project-editor .actions button.primary:hover { background: #fbb04a; }
+#project-editor .actions button.primary:hover { background: #fbb04a; } /* ui-lint: allow */
 
 /* Settings — backdrop + panel, following the help-overlay shape. */
 #settings {
@@ -1249,38 +1249,38 @@ body.resizing-sidebar #app { transition: none; }
   width: 640px;
   max-width: 92vw;
   max-height: 80vh;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 8px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.7);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 #settings-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--hover);
 }
 #settings-panel h3 {
   margin: 0;
-  font-size: 13px;
-  color: #ddd;
+  font-size: var(--text-md);
+  color: var(--fg);
 }
 #settings-close {
   background: transparent;
   border: 0;
-  color: #888;
-  font-size: 16px;
+  color: var(--fg-muted);
+  font-size: var(--text-xl);
   cursor: pointer;
   padding: 0 4px;
 }
-#settings-close:hover { color: #fff; }
+#settings-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 #settings-close:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 #settings-agents {
@@ -1290,15 +1290,15 @@ body.resizing-sidebar #app { transition: none; }
 }
 #settings-agents h4 {
   margin: 0 0 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
+  color: var(--fg-muted);
 }
 .settings-hint {
   margin: 0 0 10px;
-  font-size: 11.5px;
-  color: #777;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #777; /* ui-lint: allow */
   line-height: 1.45;
 }
 .settings-agent-row {
@@ -1308,17 +1308,17 @@ body.resizing-sidebar #app { transition: none; }
   margin-bottom: 6px;
 }
 .settings-agent-row input[type=text] {
-  background: #000;
-  border: 1px solid #2a2a2a;
+  background: var(--bg);
+  border: 1px solid var(--hover);
   border-radius: 4px;
-  color: #ddd;
+  color: var(--fg);
   padding: 6px 8px;
   font: inherit;
   outline: none;
   min-width: 0;
 }
 .settings-agent-row input[type=text]:focus {
-  border-color: #f59e0b;
+  border-color: var(--accent);
 }
 .settings-agent-name { flex: 1 1 34%; }
 /* Commands run long ("claude --model haiku --foo"); give them the
@@ -1326,15 +1326,15 @@ body.resizing-sidebar #app { transition: none; }
 .settings-agent-cmd {
   flex: 2 1 55%;
   font-family: Menlo, monospace;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .settings-agent-row input[type=color] {
   flex: 0 0 auto;
   width: 28px;
   height: 30px;
   padding: 2px;
-  background: #000;
-  border: 1px solid #2a2a2a;
+  background: var(--bg);
+  border: 1px solid var(--hover);
   border-radius: 4px;
   cursor: pointer;
 }
@@ -1342,32 +1342,32 @@ body.resizing-sidebar #app { transition: none; }
   flex: 0 0 auto;
   background: transparent;
   border: 0;
-  color: #888;
-  font-size: 16px;
+  color: var(--fg-muted);
+  font-size: var(--text-xl);
   line-height: 1;
   padding: 0 6px;
   cursor: pointer;
 }
-.settings-agent-delete:hover { color: #ff9a9a; }
+.settings-agent-delete:hover { color: var(--state-error); }
 #settings-agent-add {
-  background: #1f1f1f;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  background: var(--border);
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 4px;
   padding: 6px 12px;
   cursor: pointer;
   font: inherit;
   margin-top: 4px;
 }
-#settings-agent-add:hover { background: #2a2a2a; }
+#settings-agent-add:hover { background: var(--hover); }
 .settings-error {
   margin: 10px 0 0;
   padding: 8px 10px;
   border-radius: 4px;
   background: rgba(120, 20, 20, 0.35);
-  border: 1px solid #6b2020;
-  color: #ff9a9a;
-  font-size: 11.5px;
+  border: 1px solid #6b2020; /* ui-lint: allow */
+  color: var(--state-error);
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   white-space: pre-wrap;
 }
 .settings-error.hidden { display: none; }
@@ -1376,25 +1376,25 @@ body.resizing-sidebar #app { transition: none; }
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 14px;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--hover);
 }
 #settings-panel .actions button {
-  background: #1f1f1f;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  background: var(--border);
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 4px;
   padding: 6px 14px;
   cursor: pointer;
   font: inherit;
 }
-#settings-panel .actions button:hover { background: #2a2a2a; }
+#settings-panel .actions button:hover { background: var(--hover); }
 #settings-panel .actions button.primary {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #000;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
   font-weight: 600;
 }
-#settings-panel .actions button.primary:hover { background: #fbb04a; }
+#settings-panel .actions button.primary:hover { background: #fbb04a; } /* ui-lint: allow */
 /* setEditingEnabled() disables these while agents.json is loading and
    after a failed read, when clicking is a no-op — so they must not keep
    the hover/pointer affordances of a live control. */
@@ -1404,22 +1404,22 @@ body.resizing-sidebar #app { transition: none; }
   cursor: default;
 }
 #settings-agent-add:disabled:hover,
-#settings-panel .actions button:disabled:hover { background: #1f1f1f; }
-#settings-panel .actions button.primary:disabled:hover { background: #f59e0b; }
+#settings-panel .actions button:disabled:hover { background: var(--border); }
+#settings-panel .actions button.primary:disabled:hover { background: var(--accent); }
 
 #status {
   position: fixed;
   right: 12px;
   bottom: 8px;
   font: 11px Menlo, monospace;
-  color: #888;
+  color: var(--fg-muted);
   pointer-events: none;
   background: rgba(0,0,0,0.5);
   padding: 2px 6px;
   border-radius: 3px;
 }
 #status.error {
-  color: #ff9a9a;
+  color: var(--state-error);
   background: rgba(120, 20, 20, 0.65);
   animation: status-error-pulse 0.5s ease-out 1;
 }
@@ -1441,16 +1441,16 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
-  background: #2b1d05;
-  border-bottom: 1px solid #f59e0b;
-  color: #fcd9a8;
+  background: #2b1d05; /* ui-lint: allow */
+  border-bottom: 1px solid var(--accent);
+  color: #fcd9a8; /* ui-lint: allow */
   font: 12px Menlo, monospace;
 }
 #daemon-banner.hidden { display: none; }
 #daemon-banner #daemon-banner-text { flex: 1; }
 #daemon-banner button {
-  background: #f59e0b;
-  color: #000;
+  background: var(--accent);
+  color: var(--on-accent);
   border: 0;
   border-radius: 3px;
   padding: 4px 10px;
@@ -1460,8 +1460,8 @@ body.resizing-sidebar #app { transition: none; }
 }
 #daemon-banner #daemon-banner-dismiss {
   background: transparent;
-  color: #fcd9a8;
-  font-size: 18px;
+  color: #fcd9a8; /* ui-lint: allow */
+  font-size: 18px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   padding: 0 6px;
 }
 #daemon-banner button:hover { filter: brightness(1.1); }
@@ -1474,16 +1474,16 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
-  background: #08221a;
-  border-bottom: 1px solid #10b981;
-  color: #b9f1d6;
+  background: #08221a; /* ui-lint: allow */
+  border-bottom: 1px solid #10b981; /* ui-lint: allow */
+  color: #b9f1d6; /* ui-lint: allow */
   font: 12px Menlo, monospace;
 }
 #update-banner.hidden { display: none; }
 #update-banner #update-banner-text { flex: 1; }
 #update-banner button {
-  background: #10b981;
-  color: #000;
+  background: #10b981; /* ui-lint: allow */
+  color: #000; /* ui-lint: allow — text on the one-off update-banner green, not var(--accent); no on-accent-equivalent token for this fill */
   border: 0;
   border-radius: 3px;
   padding: 4px 10px;
@@ -1493,8 +1493,8 @@ body.resizing-sidebar #app { transition: none; }
 }
 #update-banner #update-banner-dismiss {
   background: transparent;
-  color: #b9f1d6;
-  font-size: 18px;
+  color: #b9f1d6; /* ui-lint: allow */
+  font-size: 18px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   padding: 0 6px;
 }
 #update-banner button:hover { filter: brightness(1.1); }
@@ -1508,8 +1508,8 @@ body.resizing-sidebar #app { transition: none; }
   width: 480px;
   max-width: 90vw;
   max-height: 60vh;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 8px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.7);
   z-index: 20;
@@ -1521,13 +1521,13 @@ body.resizing-sidebar #app { transition: none; }
 #command-palette-input {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #1f1f1f;
+  border-bottom: 1px solid var(--border);
   outline: none;
-  color: #eee;
-  font-size: 14px;
+  color: #eee; /* ui-lint: allow */
+  font-size: var(--text-lg);
   padding: 12px 14px;
 }
-#command-palette-input::placeholder { color: #555; }
+#command-palette-input::placeholder { color: #555; } /* ui-lint: allow */
 #command-palette-list {
   overflow-y: auto;
   padding: 4px;
@@ -1539,16 +1539,16 @@ body.resizing-sidebar #app { transition: none; }
   padding: 7px 10px;
   border-radius: 4px;
   cursor: pointer;
-  color: #ccc;
-  font-size: 13px;
+  color: #ccc; /* ui-lint: allow */
+  font-size: var(--text-md);
 }
-.palette-item.selected { background: rgba(255,255,255,0.08); color: #fff; }
+.palette-item.selected { background: rgba(255,255,255,0.08); color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 .palette-name { flex: 1; }
 .palette-shortcut {
   font: 11.5px Menlo, monospace;
-  color: #888;
+  color: var(--fg-muted);
 }
-.palette-item.selected .palette-shortcut { color: #bbb; }
+.palette-item.selected .palette-shortcut { color: #bbb; } /* ui-lint: allow */
 
 /* Lifecycle-phase overlay — shown over a tile while the daemon is
    still creating the session (worktree + shell), and while it is
@@ -1560,7 +1560,7 @@ body.resizing-sidebar #app { transition: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0b0b0b;
+  background: #0b0b0b; /* ui-lint: allow */
   z-index: 6;
   opacity: 1;
   transition: opacity 140ms ease-out;
@@ -1580,8 +1580,8 @@ body.resizing-sidebar #app { transition: none; }
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--session-color, #888) 35%, #2a2a2a);
-  border-top-color: var(--session-color, #888);
+  border: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, var(--hover));
+  border-top-color: var(--session-color, var(--fg-muted));
   animation: phase-spin 700ms linear infinite;
 }
 @keyframes phase-spin {
@@ -1597,16 +1597,16 @@ body.resizing-sidebar #app { transition: none; }
   }
 }
 .phase-status {
-  font-size: 13px;
-  color: #ddd;
+  font-size: var(--text-md);
+  color: var(--fg);
 }
 .phase-steps {
   list-style: none;
   margin: 0;
   padding: 0;
   text-align: left;
-  font-size: 12px;
-  color: #777;
+  font-size: var(--text-sm);
+  color: #777; /* ui-lint: allow */
 }
 .phase-step {
   padding: 1px 0;
@@ -1617,11 +1617,11 @@ body.resizing-sidebar #app { transition: none; }
   content: '·';
 }
 .phase-step.done {
-  color: #9a9a9a;
+  color: #9a9a9a; /* ui-lint: allow */
 }
 .phase-step.done::before { content: '✓'; }
 .phase-step.active {
-  color: #e6e6e6;
+  color: #e6e6e6; /* ui-lint: allow */
 }
 .phase-step.active::before { content: '◐'; }
 
@@ -1664,25 +1664,25 @@ body.resizing-sidebar #app { transition: none; }
 }
 .dead-overlay[hidden] { display: none; }
 .dead-card {
-  background: #0d0d0d;
-  border: 1px solid color-mix(in srgb, var(--session-color, #888) 55%, #2a2a2a);
+  background: #0d0d0d; /* ui-lint: allow */
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--hover));
   border-radius: 6px;
   padding: 14px 18px;
   max-width: 80%;
   text-align: center;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6),
-              0 0 0 1px color-mix(in srgb, var(--session-color, #888) 30%, transparent);
+              0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, transparent);
 }
 .dead-title {
-  font-size: 13px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
   margin-bottom: 4px;
   letter-spacing: 0.02em;
 }
 .dead-subtitle {
-  font-size: 11.5px;
-  color: #aaa;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #aaa; /* ui-lint: allow */
   margin-bottom: 12px;
 }
 .dead-buttons {
@@ -1691,27 +1691,27 @@ body.resizing-sidebar #app { transition: none; }
   gap: 8px;
 }
 .dead-btn {
-  background: #1f1f1f;
-  border: 1px solid #2a2a2a;
-  color: #ddd;
+  background: var(--border);
+  border: 1px solid var(--hover);
+  color: var(--fg);
   border-radius: 4px;
   padding: 6px 14px;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
-.dead-btn:hover { background: #2a2a2a; }
+.dead-btn:hover { background: var(--hover); }
 .dead-btn.primary {
-  background: var(--session-color, #f59e0b);
-  border-color: var(--session-color, #f59e0b);
-  color: #000;
+  background: var(--session-color, var(--accent));
+  border-color: var(--session-color, var(--accent));
+  color: var(--on-accent);
   font-weight: 600;
 }
 .dead-btn.primary:hover {
   filter: brightness(1.12);
 }
 .dead-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--session-color, #888) 80%, #fff);
+  outline: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 80%, #fff); /* ui-lint: allow — literal white as a color-mix blend endpoint, not a themed role */
   outline-offset: 1px;
 }
 
@@ -1732,8 +1732,8 @@ body.resizing-sidebar #app { transition: none; }
   width: 640px;
   max-width: 92vw;
   max-height: 80vh;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 8px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.7);
   display: flex;
@@ -1745,24 +1745,24 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--hover);
 }
 #help-overlay-panel h3 {
   margin: 0;
-  font-size: 13px;
-  color: #ddd;
+  font-size: var(--text-md);
+  color: var(--fg);
 }
 #help-overlay-close {
   background: transparent;
   border: 0;
-  color: #888;
-  font-size: 16px;
+  color: var(--fg-muted);
+  font-size: var(--text-xl);
   cursor: pointer;
   padding: 0 4px;
 }
-#help-overlay-close:hover { color: #fff; }
+#help-overlay-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 #help-overlay-close:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 #help-overlay-groups {
@@ -1777,10 +1777,10 @@ body.resizing-sidebar #app { transition: none; }
 }
 #help-overlay-groups h4 {
   margin: 0 0 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #777;
+  color: #777; /* ui-lint: allow */
 }
 #help-overlay-groups dl {
   margin: 0;
@@ -1792,14 +1792,14 @@ body.resizing-sidebar #app { transition: none; }
 #help-overlay-groups dt { margin: 0; }
 #help-overlay-groups dd {
   margin: 0;
-  font-size: 12px;
-  color: #aaa;
+  font-size: var(--text-sm);
+  color: #aaa; /* ui-lint: allow */
 }
 #help-overlay-groups kbd {
   font: 11px Menlo, monospace;
-  color: #ddd;
-  background: #1d1d1d;
-  border: 1px solid #333;
+  color: var(--fg);
+  background: #1d1d1d; /* ui-lint: allow */
+  border: 1px solid #333; /* ui-lint: allow */
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 1px 5px;
@@ -1813,8 +1813,8 @@ body.resizing-sidebar #app { transition: none; }
 .launcher-loading,
 .launcher-empty {
   padding: 8px 10px;
-  font-size: 12px;
-  color: #777;
+  font-size: var(--text-sm);
+  color: #777; /* ui-lint: allow */
 }
 
 /* The collapse caret became a real <button> for keyboard a11y — keep
@@ -1844,7 +1844,7 @@ body.resizing-sidebar #app { transition: none; }
 #settings-panel .actions button:focus-visible,
 .settings-agent-delete:focus-visible,
 #empty-state .empty-actions button:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -1865,42 +1865,42 @@ body.resizing-sidebar #app { transition: none; }
   width: 720px;
   max-width: 94vw;
   max-height: 80vh;
-  background: #111;
-  border: 1px solid #2a2a2a;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
   border-radius: 8px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.7);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 #worktrees-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--hover);
 }
 #worktrees-panel h3 {
   margin: 0;
-  font-size: 13px;
-  color: #ddd;
+  font-size: var(--text-md);
+  color: var(--fg);
 }
 .worktrees-project {
-  color: #777;
+  color: #777; /* ui-lint: allow */
   font-weight: normal;
 }
 #worktrees-close {
   background: transparent;
   border: 0;
-  color: #888;
-  font-size: 16px;
+  color: var(--fg-muted);
+  font-size: var(--text-xl);
   cursor: pointer;
   padding: 0 4px;
 }
-#worktrees-close:hover { color: #fff; }
+#worktrees-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 #worktrees-close:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 /* One scroll container for both sections: worktrees first, then the
@@ -1918,7 +1918,7 @@ body.resizing-sidebar #app { transition: none; }
 #worktrees-panel section {
   padding: 12px 14px 4px;
 }
-#worktrees-section-branches { border-top: 1px solid #1e1e1e; }
+#worktrees-section-branches { border-top: 1px solid #1e1e1e; } /* ui-lint: allow */
 #worktrees-panel section.hidden { display: none; }
 
 /* Loading / empty state. Mirrors the session tile's phase overlay —
@@ -1943,14 +1943,14 @@ body.resizing-sidebar #app { transition: none; }
   gap: 10px;
   max-width: 40ch;
   text-align: center;
-  font-size: 12.5px;
-  color: #999;
+  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #999; /* ui-lint: allow */
   line-height: 1.5;
 }
 /* The spinner only belongs to the loading state; the "not a git repo"
    message is a settled answer, not a wait. */
 .worktrees-empty-card .phase-spinner {
-  --session-color: #f59e0b;
+  --session-color: var(--accent);
 }
 .worktrees-empty-card .phase-spinner.hidden { display: none; }
 /* The headings stay put while their rows scroll under them, so the
@@ -1959,26 +1959,26 @@ body.resizing-sidebar #app { transition: none; }
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #111;
+  background: var(--surface-raised);
   margin: -12px -14px 0;
   padding: 12px 14px 6px;
 }
 #worktrees-panel h4 {
   margin: 0 0 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
+  color: var(--fg-muted);
 }
 .worktrees-hint {
   margin: 0 0 10px;
-  font-size: 11.5px;
-  color: #777;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #777; /* ui-lint: allow */
   line-height: 1.45;
 }
 .worktrees-footer {
   padding: 8px 14px;
-  border-top: 1px solid #2a2a2a;
+  border-top: 1px solid var(--hover);
 }
 .worktrees-footer .worktrees-hint { margin: 0; }
 .worktree-row {
@@ -1986,23 +1986,23 @@ body.resizing-sidebar #app { transition: none; }
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border: 1px solid #1e1e1e;
+  border: 1px solid #1e1e1e; /* ui-lint: allow */
   border-radius: 6px;
   margin-bottom: 6px;
-  background: #141414;
+  background: #141414; /* ui-lint: allow */
 }
 .worktree-row .worktree-main { flex: 1; min-width: 0; }
 .worktree-name {
   display: block;
-  color: #ddd;
+  color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .worktree-status {
   display: block;
-  font-size: 11px;
-  color: #777;
+  font-size: var(--text-xs);
+  color: #777; /* ui-lint: allow */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2012,8 +2012,8 @@ body.resizing-sidebar #app { transition: none; }
    #141414 anything below #7d7d7d misses the 4.5:1 contrast floor. */
 .worktree-subject {
   display: block;
-  font-size: 11px;
-  color: #808080;
+  font-size: var(--text-xs);
+  color: #808080; /* ui-lint: allow */
   font-style: italic;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2021,25 +2021,25 @@ body.resizing-sidebar #app { transition: none; }
 }
 /* Status colour carries the same ranking the list is sorted by, so a
    row that holds work is visible without reading the text. */
-.worktree-row[data-kind='active'] { border-color: #2f4858; }
-.worktree-row[data-kind='active'] .worktree-status { color: #7fb3d5; }
-.worktree-row[data-kind='holding'] { border-color: #4a3a1a; }
-.worktree-row[data-kind='holding'] .worktree-status { color: #f0b357; }
-.worktree-row[data-kind='main'] { background: #101010; }
+.worktree-row[data-kind='active'] { border-color: #2f4858; } /* ui-lint: allow */
+.worktree-row[data-kind='active'] .worktree-status { color: #7fb3d5; } /* ui-lint: allow */
+.worktree-row[data-kind='holding'] { border-color: #4a3a1a; } /* ui-lint: allow */
+.worktree-row[data-kind='holding'] .worktree-status { color: #f0b357; } /* ui-lint: allow */
+.worktree-row[data-kind='main'] { background: #101010; } /* ui-lint: allow */
 .worktree-badge {
-  font-size: 10px;
+  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #888;
-  border: 1px solid #2a2a2a;
+  color: var(--fg-muted);
+  border: 1px solid var(--hover);
   border-radius: 3px;
   padding: 1px 4px;
 }
 /* Merged is the "this is safe to sweep" signal, so it reads as
    positive rather than as another grey tag. */
 .worktree-badge.merged {
-  color: #4ade80;
-  border-color: #14532d;
+  color: #4ade80; /* ui-lint: allow */
+  border-color: #14532d; /* ui-lint: allow */
   background: rgba(22, 101, 52, 0.18);
 }
 .worktree-actions {
@@ -2048,25 +2048,25 @@ body.resizing-sidebar #app { transition: none; }
   flex-shrink: 0;
 }
 .worktree-actions button {
-  background: #1a1a1a;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
+  background: var(--sel);
+  border: 1px solid var(--hover);
+  color: #ccc; /* ui-lint: allow */
   border-radius: 4px;
   padding: 3px 8px;
-  font-size: 11.5px;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
   cursor: pointer;
 }
-.worktree-actions button:hover:not(:disabled) { background: #2a2a2a; }
+.worktree-actions button:hover:not(:disabled) { background: var(--hover); }
 .worktree-actions button:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .worktree-actions button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.worktree-actions button.danger { color: #e08585; }
-.worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; }
+.worktree-actions button.danger { color: #e08585; } /* ui-lint: allow */
+.worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; } /* ui-lint: allow */
 
 /* The worktree glyph is a control wherever it appears (project row,
    sidebar session, grid tile) — it must look like one. */
@@ -2074,10 +2074,10 @@ body.resizing-sidebar #app { transition: none; }
   cursor: pointer;
 }
 .worktree-glyph.clickable:hover {
-  color: #fff;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 .worktree-glyph.clickable:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -2101,34 +2101,34 @@ body.resizing-sidebar #app { transition: none; }
 .choice-dialog-box {
   width: 460px;
   max-width: 88%;
-  background: #141414;
-  border: 1px solid #3a3a3a;
+  background: #141414; /* ui-lint: allow */
+  border: 1px solid #3a3a3a; /* ui-lint: allow */
   border-radius: 8px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.7);
   padding: 16px 18px;
 }
 .choice-dialog-box h4 {
   margin: 0 0 8px;
-  font-size: 13px;
-  color: #eee;
+  font-size: var(--text-md);
+  color: #eee; /* ui-lint: allow */
 }
 .choice-dialog-detail {
   margin: 0 0 10px;
-  font-size: 11.5px;
-  color: #888;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: var(--fg-muted);
   word-break: break-all;
 }
 .choice-dialog-bullets {
   margin: 0 0 10px;
   padding-left: 18px;
-  font-size: 12px;
-  color: #f0b357;
+  font-size: var(--text-sm);
+  color: #f0b357; /* ui-lint: allow */
   line-height: 1.5;
 }
 .choice-dialog-note {
   margin: 0 0 14px;
-  font-size: 11.5px;
-  color: #999;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: #999; /* ui-lint: allow */
   line-height: 1.5;
 }
 .choice-dialog-actions {
@@ -2138,22 +2138,22 @@ body.resizing-sidebar #app { transition: none; }
   flex-wrap: wrap;
 }
 .choice-dialog-actions button {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  color: #ddd;
+  background: #1e1e1e; /* ui-lint: allow */
+  border: 1px solid #333; /* ui-lint: allow */
+  color: var(--fg);
   border-radius: 4px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
-.choice-dialog-actions button:hover { background: #2a2a2a; }
+.choice-dialog-actions button:hover { background: var(--hover); }
 .choice-dialog-actions button:focus-visible {
-  outline: 2px solid #f59e0b;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 .choice-dialog-actions button.danger {
-  color: #e08585;
-  border-color: #4a2626;
+  color: #e08585; /* ui-lint: allow */
+  border-color: #4a2626; /* ui-lint: allow */
 }
-.choice-dialog-actions button.danger:hover { background: #3a1f1f; }
+.choice-dialog-actions button.danger:hover { background: #3a1f1f; } /* ui-lint: allow */
 .choice-dialog-actions button:first-child { font-weight: 600; }

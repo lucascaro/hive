@@ -30,6 +30,15 @@
 
 :root[data-theme="hive-dark"] { /* identical to tokens.css defaults; present so the picker has a block */ }
 
+/* hive-light deliberately omits the typography, spacing, radius and motion
+   tokens (--font-*, --text-*, --space-*, --radius-*, --motion-*): it shares
+   hive-dark's scales — themes.md calls it "same hue bias, same fonts" — so
+   those fall through to the tokens.css defaults, which is correct here, not
+   partial. --state-starting/--state-exited are also omitted: tokens.css
+   declares them as var(--fg-subtle), which re-resolves to this preset's own
+   --fg-subtle without needing a per-preset override. Do not use this block
+   as a template for a preset that isn't sharing hive-dark's scales — that
+   preset must set every token, per the file-header rule above. */
 :root[data-theme="hive-light"] {
   --bg: #f4f4f7; --surface: #ffffff; --surface-raised: #f8f8fb; --border: #e2e3ea;
   --fg: #1a1b22; --fg-muted: #4f5262; --fg-subtle: #8a8d9c;
