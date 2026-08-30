@@ -405,17 +405,13 @@ export function shiftActiveProject(delta: number) {
   // among the ways a minimized project stays reachable — the sidebar
   // chip, the sidebar and ⌘K are). Nothing visible to move to → stay.
   const m = state.projects.length;
-  let next = state.projects[i];
-  let found = false;
   const step = Math.sign(delta) || 1;
-  for (let k = 1; k < m && !found; k++) {
+  let next = null as (typeof state.projects)[number] | null;
+  for (let k = 1; k < m && !next; k++) {
     const cand = state.projects[(((i + step * k) % m) + m) % m];
-    if (!state.minimizedProjects.has(cand.id)) {
-      next = cand;
-      found = true;
-    }
+    if (!state.minimizedProjects.has(cand.id)) next = cand;
   }
-  if (!found) return;
+  if (!next) return;
   state.currentProjectId = next.id;
   if (state.view === 'grid-project') state.gridProjectId = next.id;
 

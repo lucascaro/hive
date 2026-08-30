@@ -107,3 +107,4 @@ None.
 
 - **2026-08-30 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2749afd6…; threads_open: 0; action: stop; head_sha: bf0d8a8.
 - **2026-08-30 iter 1 follow-up** — applied both IMPORTANT findings and the MINOR one by hand rather than exiting on COMMENT: the no-active-session seed in `moveActiveSession` was the same bug in the sibling exit, three source comments still claimed ⌘[ / ⌘] reaches minimized projects, and `delta * i` assumed |delta| === 1.
+- **2026-08-30 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 913d158. All three iteration-1 findings verified cleared. Two MINORs applied afterwards (dead initializer in `shiftActiveProject`, an inaccurate test comment about `keyboard-arrows.test.ts`'s mock). The third MINOR — no Active row in `docs/product-specs/index.md` — is not actionable: that file is generated on push to `main`.

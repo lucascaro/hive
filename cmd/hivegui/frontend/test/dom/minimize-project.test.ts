@@ -528,9 +528,9 @@ describe('grid views', () => {
 // the raw orderedSessions() and ⌘] walked state.projects unfiltered, so
 // a project you put in the tray still landed under the cursor — and in
 // a grid view the hidden-session fallback then dropped you to single.
-// These run against the real view.ts, unlike keyboard-arrows.test.ts,
-// which mocks it (a mocked isSessionHidden is falsy and would pass
-// regardless of what ships).
+// These run against the real view.ts. keyboard-arrows.test.ts cannot
+// host them: it mocks view.ts wholesale, so shiftActiveProject is a
+// spy with no behavior and switchTo never touches state.activeId.
 describe('keyboard navigation skips minimized things', () => {
   beforeEach(async () => {
     const { createScrollTrace } = await import('../../src/lib/scroll-debug.js');
