@@ -219,11 +219,14 @@ body.resizing-sidebar #app { transition: none; }
 }
 .min-project-restore {
   flex-shrink: 0;
-  /* Not var(--fg-subtle) (dimmer, from .hv-icon-btn): this is the only control that
-     un-minimizes a project, so it has to clear the contrast floor at rest, not just
-     on hover. */
-  color: #9a9a9a; /* ui-lint: allow */
 }
+/* Scoped to `.min-project-chip .min-project-restore` (0,2,0), not the bare
+   class (0,1,0): .hv-icon-btn { color: var(--fg-subtle) } is also 0,1,0 and
+   loads after style.css, so the bare-class version above never won the tie
+   and rendered at --fg-subtle. This is the only control that un-minimizes
+   a project, so it has to clear the contrast floor at rest, not just on
+   hover — var(--fg-subtle) (classic's #666) doesn't. */
+.min-project-chip .min-project-restore { color: #9a9a9a; /* ui-lint: allow */ }
 .min-project-chip:hover .min-project-restore { color: var(--fg); }
 
 
@@ -369,7 +372,15 @@ body.resizing-sidebar #app { transition: none; }
 .session-minimize {
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 120ms ease;
+}
+/* Scoped to `.session-item .session-minimize` (0,2,0), not the bare class
+   (0,1,0): .hv-icon-btn also declares `transition` (background/color) at
+   0,1,0 and loads after style.css, so the bare-class version here never
+   won the tie and the opacity reveal snapped instantly instead of fading.
+   Restates hv-icon-btn's background/color transition alongside opacity so
+   neither is lost. */
+.session-item .session-minimize {
+  transition: opacity 120ms ease, background var(--motion-fast), color var(--motion-fast);
 }
 .session-item:hover .session-minimize,
 .session-minimize:focus-visible {

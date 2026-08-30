@@ -260,10 +260,14 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const actions = document.createElement('span');
   actions.className = 'project-actions';
 
+  // No `size` here: the sidebar column is too narrow for even the 22px
+  // sidebar-header size alongside .project-name, so style.css overrides
+  // these five buttons down to 18px via
+  // `.project-header .project-actions .hv-icon-btn` — passing `size: 22`
+  // would be overridden and read as configuration that does nothing.
   const newBtn = iconButton({
     icon: 'plus',
     label: 'New session in this project',
-    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openLauncher(p.id);
@@ -274,7 +278,6 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     // The binding is shown inline, per the key-discoverability rule.
     icon: 'branch',
     label: 'Worktrees in this project (⌘E)',
-    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openWorktrees(p);
@@ -284,7 +287,6 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const editBtn = iconButton({
     icon: 'settings',
     label: 'Edit project',
-    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       openProjectEditor(p);
@@ -296,7 +298,6 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const minBtn = iconButton({
     icon: 'minus',
     label: `Minimize ${p.name}`,
-    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       deps.minimizeProject(p.id);
@@ -306,7 +307,6 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
   const delBtn = iconButton({
     icon: 'x',
     label: `Delete project ${p.name}`,
-    size: 22,
     onClick: (e) => {
       e.stopPropagation();
       deps.confirmAndDeleteProject(p);
