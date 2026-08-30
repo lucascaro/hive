@@ -1301,6 +1301,54 @@ body.resizing-sidebar #app { transition: none; }
   color: #777; /* ui-lint: allow */
   line-height: 1.45;
 }
+/* Updates section. Sits below the (scrolling) agents list at its
+   natural height, so a long agent list never squeezes the channel
+   controls out of reach. */
+#settings-updates {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  border-top: 1px solid #222;
+}
+#settings-updates h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #888;
+}
+.settings-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.settings-field.hidden { display: none; }
+.settings-field label {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: #999;
+  min-width: 84px;
+}
+.settings-field .settings-hint { margin: 0; }
+#settings-update-channel,
+#settings-source-repo {
+  background: #000;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #ddd;
+  padding: 6px 8px;
+  font: inherit;
+  outline: none;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#settings-update-channel:focus,
+#settings-source-repo:focus { border-color: #f59e0b; }
+#settings-source-repo {
+  font-family: Menlo, monospace;
+  font-size: 12px;
+}
+
 .settings-agent-row {
   display: flex;
   gap: 6px;
@@ -1498,6 +1546,14 @@ body.resizing-sidebar #app { transition: none; }
   padding: 0 6px;
 }
 #update-banner button:hover { filter: brightness(1.1); }
+/* Disabled only while staging is in flight ("Updating…") — the label
+   is the progress indicator, so it must stay legible. */
+#update-banner button:disabled {
+  opacity: 0.65;
+  cursor: default;
+  filter: none;
+}
+#settings-update-action:disabled { opacity: 0.65; cursor: default; }
 
 /* ---------- command palette ---------- */
 #command-palette {

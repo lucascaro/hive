@@ -37,6 +37,11 @@ func TestCompareSemver(t *testing.T) {
 // the test's stub for the GitHub releases endpoint.
 func stubReleases(t *testing.T, handler http.HandlerFunc, urlPrefix string) {
 	t.Helper()
+	// CheckForUpdate reads the channel from <stateDir>/update.json.
+	// Without this, these tests would pick up the developer's real
+	// setting and a "latest" channel would send them shelling out to
+	// git instead of hitting the stub below.
+	isolateStateDir(t)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	prevAPI, prevPrefix := updateReleasesAPI, updateURLPrefix
@@ -140,5 +145,52 @@ func TestCheckForUpdate_MalformedJSON(t *testing.T) {
 	_, err := a.CheckForUpdate()
 	if err == nil {
 		t.Fatal("want error on malformed JSON")
+	}
+}
+
+// The channel selection has to actually route: a latest-channel
+// setting must not fall through to the releases API.
+func TestCheckForUpdate_LatestChannelSkipsReleasesAPI(t *testing.T) {
+	defer buildinfo.SetVersionForTest("0.4.1")()
+	stubReleases(t, func(http.ResponseWriter, *http.Request) {
+		t.Fatal("latest channel must not call the releases API")
+	}, "")
+	repo := fakeHiveCheckout(t)
+	if err := saveUpdateSettings(UpdateSettings{Channel: ChannelLatest, SourceRepo: repo}); err != nil {
+		t.Fatal(err)
+	}
+	g := &fakeGit{answers: map[string]string{
+		"rev-parse --abbrev-ref --symbolic-full-name @{upstream}": "origin/main",
+		"rev-parse --short origin/main":                           "def5678",
+		"rev-list --count HEAD..origin/main":                      "0",
+	}}
+	g.install(t)
+
+	info, err := (&App{}).CheckForUpdate()
+	if err != nil {
+		t.Fatalf("CheckForUpdate: %v", err)
+	}
+	if info.Channel != ChannelLatest {
+		t.Errorf("Channel = %q, want %q", info.Channel, ChannelLatest)
+	}
+}
+
+// The release channel keeps reporting a version, not a commit, and
+// labels itself so the frontend can tell the two apart.
+func TestCheckForUpdate_ReleaseChannelLabelsItself(t *testing.T) {
+	defer buildinfo.SetVersionForTest("0.4.1")()
+	stubReleases(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v0.5.0","html_url":"` + updateURLPrefix + `releases/tag/v0.5.0"}`))
+	}, "")
+
+	info, err := (&App{}).CheckForUpdate()
+	if err != nil {
+		t.Fatalf("CheckForUpdate: %v", err)
+	}
+	if info.Channel != ChannelRelease {
+		t.Errorf("Channel = %q, want %q", info.Channel, ChannelRelease)
+	}
+	if info.Stage != StageAvailable {
+		t.Errorf("Stage = %q, want %q", info.Stage, StageAvailable)
 	}
 }

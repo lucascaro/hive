@@ -22,14 +22,53 @@ const saveCustomAgents = vi.fn(
 // that drops an argument the real binding gained still satisfies
 // toHaveBeenCalledWith, which is how UpdateSession/UpdateProject drifted
 // twice before.
+// The updates section shares the modal but not this file's subject.
+// Stubbed to the quiet defaults so the agent assertions below stay
+// about agents; test/dom/settings-updates.test.ts drives it for real.
+const updateBridge = {
+  GetUpdateSettings: vi.fn(() =>
+    Promise.resolve({ channel: 'release', source_repo: '' }),
+  ),
+  SaveUpdateSettings: vi.fn(() => Promise.resolve()),
+  SourceRepoStatusFor: vi.fn(() =>
+    Promise.resolve({ path: '', detected: false, error: '' }),
+  ),
+  UpdateStatus: vi.fn(() => Promise.resolve(null)),
+  StartUpdate: vi.fn(() => Promise.resolve()),
+  ApplyUpdateAndRestart: vi.fn(() => Promise.resolve()),
+  PickDirectory: vi.fn(() => Promise.resolve('')),
+  EventsOn: vi.fn(),
+  Confirm: vi.fn(() => Promise.resolve(true)),
+  RestartDaemon: vi.fn(() => Promise.resolve()),
+  CheckForUpdate: vi.fn(() => Promise.resolve(null)),
+  OpenURL: vi.fn(() => Promise.resolve()),
+};
+
 vi.mock('../../src/bridge.js', () => ({
   ListCustomAgents: (...a: Parameters<typeof listCustomAgents>) =>
     listCustomAgents(...a),
   SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
     saveCustomAgents(...a),
+  ...updateBridge,
 }));
 
+// settings.ts routes Restart through banners.ts's shared confirm-and-apply
+// wrapper, so this file now pulls banners.ts -> dom.ts in transitively.
+// dom.ts resolves its singletons with mustEl at import time, so their
+// markup has to exist even though nothing here exercises them.
 const MARKUP = `
+  <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
+  <div id="daemon-banner" class="hidden">
+    <span id="daemon-banner-text"></span>
+    <button id="daemon-banner-restart"></button>
+    <button id="daemon-banner-dismiss"></button>
+  </div>
+  <div id="update-banner" class="hidden">
+    <span id="update-banner-text"></span>
+    <button id="update-banner-action"></button>
+    <button id="update-banner-download"></button>
+    <button id="update-banner-dismiss"></button>
+  </div>
   <div id="settings" class="hidden">
     <div id="settings-panel">
       <header><h3>Settings</h3><button id="settings-close">×</button></header>
@@ -37,6 +76,19 @@ const MARKUP = `
         <div id="settings-agents-list"></div>
         <button id="settings-agent-add">+ Add agent</button>
         <p id="settings-error" class="settings-error hidden"></p>
+      </section>
+      <section id="settings-updates">
+        <select id="settings-update-channel">
+          <option value="release">Release</option>
+          <option value="latest">Latest</option>
+        </select>
+        <div id="settings-source-repo-row">
+          <input id="settings-source-repo" type="text"/>
+          <button id="settings-source-repo-browse">Browse…</button>
+        </div>
+        <p id="settings-source-repo-hint"></p>
+        <button id="settings-update-action">Update</button>
+        <span id="settings-update-status"></span>
       </section>
       <div class="actions">
         <button id="settings-cancel">Cancel</button>

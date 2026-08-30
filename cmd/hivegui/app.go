@@ -40,6 +40,11 @@ type App struct {
 	// twice, producing visibly duplicated output in xterm.
 	openMu sync.Mutex
 
+	// update carries the update-check result and any staged build, so
+	// the Update/Restart button renders the same state in the banner
+	// and in Settings. See update_action.go.
+	update updateState
+
 	// debugTrace mirrors the frontend's `hive.debug` localStorage flag so
 	// the Debug menu can say which state it will move to. Owned by the main
 	// thread: written only by SetDebugTrace (a Wails binding call, which

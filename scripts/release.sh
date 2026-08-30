@@ -121,6 +121,16 @@ for f in \
     ARTIFACTS+=("$f")
 done
 
+# SHA-256 manifest. The GUI's in-app updater downloads this alongside
+# the macOS zip and refuses to install on a mismatch — without it, a
+# truncated download becomes a broken Hive.app the user can only fix by
+# reinstalling by hand. Names are basenamed so the manifest matches the
+# asset names GitHub serves.
+echo "Writing checksums..."
+SUMS="release/checksums.txt"
+( cd release && shasum -a 256 $(printf '%s\n' "${ARTIFACTS[@]}" | xargs -n1 basename) ) > "$SUMS"
+ARTIFACTS+=("$SUMS")
+
 # ---- PUSH ----------------------------------------------------------------
 
 echo "Pushing to origin..."

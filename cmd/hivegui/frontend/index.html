@@ -29,6 +29,7 @@
   </div>
   <div id="update-banner" class="hidden" role="status">
     <span id="update-banner-text"></span>
+    <button id="update-banner-action" type="button">Update</button>
     <button id="update-banner-download" type="button">Download</button>
     <button id="update-banner-dismiss" type="button" aria-label="Dismiss">×</button>
   </div>
@@ -126,6 +127,31 @@
         <div id="settings-agents-list"></div>
         <button id="settings-agent-add" type="button">+ Add agent</button>
         <p id="settings-error" class="settings-error hidden" role="alert"></p>
+      </section>
+      <section id="settings-updates">
+        <h4>Updates</h4>
+        <p class="settings-hint">
+          Hive checks for updates in the background. Nothing is downloaded or
+          built until you press Update.
+        </p>
+        <div class="settings-field">
+          <label for="settings-update-channel">Channel</label>
+          <select id="settings-update-channel">
+            <option value="release">Release — tagged versions</option>
+            <option value="latest">Latest — tip of your checkout</option>
+          </select>
+        </div>
+        <div class="settings-field" id="settings-source-repo-row">
+          <label for="settings-source-repo">Source repo</label>
+          <input id="settings-source-repo" type="text" autocomplete="off"
+                 placeholder="Detected automatically" aria-describedby="settings-source-repo-hint"/>
+          <button id="settings-source-repo-browse" type="button">Browse…</button>
+        </div>
+        <p id="settings-source-repo-hint" class="settings-hint"></p>
+        <div class="settings-field">
+          <button id="settings-update-action" type="button">Update</button>
+          <span id="settings-update-status" class="settings-hint" role="status"></span>
+        </div>
       </section>
       <div class="actions">
         <button id="settings-cancel" type="button">Cancel</button>
