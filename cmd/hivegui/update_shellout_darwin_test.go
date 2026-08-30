@@ -276,6 +276,60 @@ func TestRunBuildScriptReportsLastLineOnFailure(t *testing.T) {
 	}
 }
 
+// build.sh drives npm/vite/wails, which colour their output and redraw
+// progress with carriage returns. The banner renders its message as
+// text, so anything not stripped here reaches the user as literal
+// `ESC[32m` garbage.
+func TestPlainProgressLineStripsTerminalControls(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain text passes through", "compiling hivegui", "compiling hivegui"},
+		{"sgr colours", "\x1b[32mbuilding\x1b[0m", "building"},
+		{"cr redraw keeps last segment", "50%\r80%\r100%", "100%"},
+		{"osc title with bel", "\x1b]0;npm run build\x07done", "done"},
+		{"osc title with st", "\x1b]0;npm\x1b\\done", "done"},
+		{"control only collapses to empty", "\x1b[2K\x1b[1G", ""},
+		{"utf8 survives", "\x1b[32m✓ built\x1b[0m", "✓ built"},
+		{"stray control bytes dropped", "a\x07b", "ab"},
+		{"tabs kept, surrounding space trimmed", "  a\tb  ", "a\tb"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := plainProgressLine(tc.in); got != tc.want {
+				t.Errorf("plainProgressLine(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// The end-to-end guarantee: no escape byte can reach the progress
+// callback or the failure message, whatever build.sh prints.
+func TestRunBuildScriptReportsSanitizedProgress(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "build.sh"),
+		"#!/bin/sh\nprintf '\\033[32mcompiling\\033[0m\\n'\nprintf '10%%\\r100%%\\n'\n"+
+			"printf '\\033[2K\\033[1G\\n'\nprintf '\\033[31merror: boom\\033[0m\\n' >&2\nexit 1\n")
+	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var lines []string
+	err := runBuildScript(repo, func(s string) { lines = append(lines, s) })
+	if err == nil {
+		t.Fatal("runBuildScript = nil error for a failing build, want the failure surfaced")
+	}
+	want := []string{"compiling", "100%", "error: boom"}
+	if strings.Join(lines, "|") != strings.Join(want, "|") {
+		t.Errorf("progress = %v, want %v", lines, want)
+	}
+	if strings.ContainsRune(err.Error(), 0x1B) {
+		t.Errorf("error = %q, want no escape bytes", err)
+	}
+}
+
 func TestRunBuildScriptReportsMissingScript(t *testing.T) {
 	if err := runBuildScript(t.TempDir(), func(string) {}); err == nil {
 		t.Fatal("runBuildScript = nil error with no build.sh, want a failure")
