@@ -219,19 +219,12 @@ body.resizing-sidebar #app { transition: none; }
 }
 .min-project-restore {
   flex-shrink: 0;
-  background: none;
-  border: none;
-  /* Not var(--fg-subtle) (dimmer): this is the only control that un-minimizes a project, so
-     it has to clear the contrast floor at rest, not just on hover. */
+  /* Not var(--fg-subtle) (dimmer, from .hv-icon-btn): this is the only control that
+     un-minimizes a project, so it has to clear the contrast floor at rest, not just
+     on hover. */
   color: #9a9a9a; /* ui-lint: allow */
-  cursor: pointer;
-  font-size: var(--text-xs);
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 3px;
 }
 .min-project-chip:hover .min-project-restore { color: var(--fg); }
-.min-project-restore:hover { background: rgba(255, 255, 255, 0.06); }
 
 
 .project {
@@ -294,9 +287,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 .project-header .caret {
-  width: 10px;
-  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #555; /* ui-lint: allow */
   flex-shrink: 0;
 }
 
@@ -339,20 +329,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 .project-header:hover .project-actions { opacity: 1; }
 
-.project-header .project-actions button {
-  background: transparent;
-  border: 1px solid var(--hover);
-  color: #ccc; /* ui-lint: allow */
-  border-radius: 3px;
-  width: 18px;
-  height: 18px;
-  font-size: var(--text-sm);
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-.project-header .project-actions button:hover { background: rgba(255,255,255,0.06); }
-
 .project-sessions {
   list-style: none;
   margin: 0;
@@ -360,7 +336,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 .project.collapsed .project-sessions { display: none; }
-.project.collapsed .caret { transform: rotate(-90deg); display: inline-block; }
 
 .session-item {
   display: flex;
@@ -384,24 +359,12 @@ body.resizing-sidebar #app { transition: none; }
    layout at all times so revealing it never reflows the row. */
 .session-minimize {
   flex-shrink: 0;
-  background: none;
-  border: none;
-  color: #9a9a9a; /* ui-lint: allow */
-  cursor: pointer;
-  font-size: var(--text-sm);
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 3px;
   opacity: 0;
   transition: opacity 120ms ease;
 }
 .session-item:hover .session-minimize,
 .session-minimize:focus-visible {
   opacity: 1;
-}
-.session-minimize:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 /* A minimized session keeps its row — the row is where you put it back
@@ -480,15 +443,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 .project.drop-above::after { top: -1px; }
 .project.drop-below::after { bottom: -1px; }
-.session-item.attention .name::before {
-  content: '●';
-  color: var(--session-color, var(--fg-muted));
-  font-size: 8px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  margin-right: 4px;
-  vertical-align: middle;
-  text-shadow: 0 0 6px var(--session-color, var(--fg-muted));
-}
-
 /* Title gradient — color stays visible even when selected. */
 .session-item .name {
   flex: 1;
@@ -558,14 +512,8 @@ body.resizing-sidebar #app { transition: none; }
 .session-item.dead .session-title { display: none; }
 
 .session-item .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--session-color, var(--fg-muted));
   flex-shrink: 0;
 }
-
-.session-item.dead .dot { background: #333; } /* ui-lint: allow */
 
 .session-item .name-input {
   /* The input replaces .name *inside* .session-text, which is a column
@@ -737,14 +685,6 @@ body.resizing-sidebar #app { transition: none; }
 #terms.grid .term-host.in-grid.attention {
   animation: hive-tile-attention 1.2s ease-in-out infinite;
 }
-#terms.grid .term-host.in-grid.attention .tile-name::before {
-  content: '●';
-  color: var(--session-color, var(--fg-muted));
-  font-size: 8px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  margin-right: 6px;
-  vertical-align: middle;
-  text-shadow: 0 0 6px var(--session-color, var(--fg-muted));
-}
 .term-host .tile-header {
   display: flex;
   align-items: center;
@@ -823,24 +763,6 @@ body.resizing-sidebar #app { transition: none; }
 .term-host .tile-minimize {
   flex-shrink: 0;
   margin-left: 6px;
-  width: 18px;
-  height: 16px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-  color: rgba(255, 255, 255, 0.65);
-  font: 12px Menlo, monospace;
-  line-height: 1;
-  cursor: pointer;
-}
-.term-host .tile-minimize:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.35);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
 }
 
 #minimized-tray {
@@ -1665,21 +1587,20 @@ body.resizing-sidebar #app { transition: none; }
   color: #777; /* ui-lint: allow */
 }
 .phase-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 1px 0;
 }
-.phase-step::before {
-  display: inline-block;
-  width: 1.2em;
-  content: '·';
-}
+.phase-step > .hv-icon { flex: none; }
+/* 'todo' has no mark; the gap keeps its label on the same column. */
+.phase-step.todo::before { content: ''; width: 12px; flex: none; }
 .phase-step.done {
   color: #9a9a9a; /* ui-lint: allow */
 }
-.phase-step.done::before { content: '✓'; }
 .phase-step.active {
   color: #e6e6e6; /* ui-lint: allow */
 }
-.phase-step.active::before { content: '◐'; }
 
 /* Closing: the tile is on its way out. Dim it and stop taking input;
    the removal event lands moments later. */
@@ -1691,12 +1612,6 @@ body.resizing-sidebar #app { transition: none; }
 .session-item.starting .name {
   opacity: 0.65;
   font-style: italic;
-}
-.session-item.starting .dot {
-  animation: phase-pulse-dot 1.2s ease-in-out infinite;
-}
-@keyframes phase-pulse-dot {
-  50% { opacity: 0.3; }
 }
 
 /* Dead-session overlay — shown over a tile (grid or single mode)
@@ -1871,16 +1786,6 @@ body.resizing-sidebar #app { transition: none; }
   padding: 8px 10px;
   font-size: var(--text-sm);
   color: #777; /* ui-lint: allow */
-}
-
-/* The collapse caret became a real <button> for keyboard a11y — keep
-   the original glyph look. */
-.project-header .caret {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
 }
 
 /* Keyboard-focus rings on the small controls that previously had

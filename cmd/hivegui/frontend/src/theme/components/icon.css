@@ -8,6 +8,15 @@
   display: inline-block;
   vertical-align: -0.15em;
   color: inherit;
+  /* <use> clones a <symbol> from icons.svg without its defining tree's
+     ancestors, so the sprite root's fill/stroke presentation attributes
+     never reach the clone — restate them here so stroke paths inherit
+     currentColor instead of painting nothing. */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .hv-icon[data-size="12"] { width: 12px; height: 12px; }
 
