@@ -23,7 +23,6 @@ let deps: HelpOverlayDeps = {
 export const helpEl = pageEl('help-overlay');
 const helpGroupsEl = pageEl('help-overlay-groups');
 const helpCloseBtn = pageEl('help-overlay-close');
-helpCloseBtn.replaceChildren(icon('x'));
 let helpRendered = false;
 
 function renderHelpOverlay() {
@@ -76,6 +75,7 @@ export function toggleHelpOverlay() {
 export function initHelpOverlay(injected: HelpOverlayDeps) {
   deps = injected;
   registerModal(helpEl);
+  helpCloseBtn.replaceChildren(icon('x'));
   helpCloseBtn.addEventListener('click', closeHelpOverlay);
   helpEl.addEventListener('mousedown', (e) => {
     // The overlay element is the full-viewport backdrop — clicking it

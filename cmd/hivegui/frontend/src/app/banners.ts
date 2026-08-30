@@ -43,7 +43,6 @@ const daemonBannerEl = pageEl('daemon-banner');
 const daemonBannerText = pageEl('daemon-banner-text');
 const daemonBannerRestart = pageEl<HTMLButtonElement>('daemon-banner-restart');
 const daemonBannerDismiss = pageEl('daemon-banner-dismiss');
-daemonBannerDismiss.replaceChildren(icon('x'));
 let daemonBannerDismissedFor: string | null = null;
 let daemonRestarting = false;
 
@@ -192,7 +191,6 @@ const updateBannerText = pageEl('update-banner-text');
 const updateBannerDownload = pageEl('update-banner-download');
 const updateBannerAction = pageEl<HTMLButtonElement>('update-banner-action');
 const updateBannerDismiss = pageEl('update-banner-dismiss');
-updateBannerDismiss.replaceChildren(icon('x'));
 const UPDATE_DISMISS_KEY = 'hive.updateDismissedFor';
 let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -390,6 +388,8 @@ export async function manualUpdateCheck() {
 }
 
 export function initBanners() {
+  daemonBannerDismiss.replaceChildren(icon('x'));
+  updateBannerDismiss.replaceChildren(icon('x'));
   wireDaemonBanner();
   wireUpdateBanner();
 }
