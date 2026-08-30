@@ -14,6 +14,13 @@ import (
 var (
 	stageUpdateFn       = stageUpdate
 	applyStagedBundleFn = applyStagedBundle
+	// restartDaemonFn is seamed for the same reason the two above are,
+	// and more urgently: RestartDaemon dials the real hived socket,
+	// can SIGTERM whatever answers, and ends in spawnNewGUI — which in
+	// a test binary re-execs the *test binary* as a detached child,
+	// where it runs the whole suite again. A test that reached it once
+	// spawned a daemon against the developer's real state directory.
+	restartDaemonFn = (*App).RestartDaemon
 )
 
 // updateState is everything the Update/Restart button needs to know,
@@ -75,10 +82,12 @@ func (a *App) rememberCheck(info UpdateInfo) {
 }
 
 // forgetUpdateState discards the last check and any staged bundle. Used
-// when something invalidates them wholesale — today, a channel change.
-// A staging goroutine in flight is left alone: it holds its own copy of
-// the info it started with, and its completion re-populates state that
-// the next check will correct.
+// when something invalidates them wholesale — today, any change to the
+// update settings.
+//
+// A staging goroutine already in flight cannot be cancelled, but the
+// generation bump below means whatever it produces is discarded rather
+// than published.
 func (a *App) forgetUpdateState() {
 	a.update.mu.Lock()
 	defer a.update.mu.Unlock()
@@ -204,10 +213,18 @@ func (a *App) ApplyUpdateAndRestart() error {
 	// The staged copy has served its purpose and is ~150MB. Pruning here
 	// rather than on a timer keeps <stateDir>/updates from accumulating
 	// one directory per version the user ever installed.
+	//
+	// Dropping the recorded state matters on exactly one path: normally
+	// RestartDaemon quits this process a moment later, but it is built
+	// to refuse and leave a working window when the daemon will not
+	// die. Without this the button would still read "Restart" and a
+	// second click would try to install from the directory just pruned,
+	// failing with a path error instead of saying the update is done.
 	pruneStagingDirs()
+	a.forgetUpdateState()
 	// RestartDaemon owns the whole teardown: in-band shutdown frame,
 	// socket-liveness probe, signal escalation, refuse-if-still-alive,
 	// relaunch, quit. Reusing it is also what picks up the *new* hived,
 	// which ships inside the bundle we just swapped.
-	return a.RestartDaemon()
+	return restartDaemonFn(a)
 }

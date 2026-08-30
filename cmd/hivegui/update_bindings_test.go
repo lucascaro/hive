@@ -174,3 +174,24 @@ func TestSaveUpdateSettingsKeepsStateWhenNothingChanged(t *testing.T) {
 		t.Errorf("UpdateStatus = %+v after an identical re-save, want it preserved", got)
 	}
 }
+
+// A corrupt update.json cannot tell us what the previous settings were,
+// so a save must invalidate rather than compare against the defaults it
+// stood in for.
+func TestSaveUpdateSettingsForgetsStateWhenPriorFileIsUnreadable(t *testing.T) {
+	dir := isolateStateDir(t)
+	a := &App{}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+	writeFile(t, filepath.Join(dir, "update.json"), "{not json")
+
+	// Saving settings that happen to equal the defaults the corrupt read
+	// returned — the case a naive comparison would treat as "unchanged".
+	if err := a.SaveUpdateSettings(UpdateSettings{Channel: ChannelRelease}); err != nil {
+		t.Fatalf("SaveUpdateSettings: %v", err)
+	}
+	if got := a.UpdateStatus(); got.Available {
+		t.Errorf("UpdateStatus = %+v after saving over a corrupt file, want it cleared", got)
+	}
+}

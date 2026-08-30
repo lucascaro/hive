@@ -118,7 +118,7 @@ func (a *App) SaveUpdateSettings(s UpdateSettings) error {
 			return err
 		}
 	}
-	prev, _ := loadUpdateSettings()
+	prev, prevErr := loadUpdateSettings()
 	if err := saveUpdateSettings(s); err != nil {
 		return err
 	}
@@ -129,7 +129,12 @@ func (a *App) SaveUpdateSettings(s UpdateSettings) error {
 	// source repo still on offer after the user pointed Hive at a
 	// different checkout. A field added later inherits the invalidation
 	// for free instead of quietly reopening the hole.
-	if prev != s {
+	//
+	// An unreadable prior file means we cannot know what changed, so
+	// invalidate rather than compare against the defaults it stood in
+	// for — otherwise saving settings that happen to equal the defaults
+	// would silently keep a bundle staged under something else.
+	if prevErr != nil || prev != s {
 		a.forgetUpdateState()
 	}
 	return nil

@@ -6,7 +6,7 @@
 - **Complexity:** L
 - **Priority:** P2
 - **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/250-auto-update-with-release-latest-channels.md](../exec-plans/active/250-auto-update-with-release-latest-channels.md)
+- **Exec plan:** [docs/exec-plans/active/251-auto-update-with-release-latest-channels.md](../exec-plans/active/251-auto-update-with-release-latest-channels.md)
 
 ## Problem
 

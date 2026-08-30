@@ -1,9 +1,9 @@
 # Auto-update with release/latest channels
 
-- **Spec:** [docs/product-specs/250-auto-update-with-release-latest-channels.md](../../product-specs/250-auto-update-with-release-latest-channels.md)
+- **Spec:** [docs/product-specs/251-auto-update-with-release-latest-channels.md](../../product-specs/251-auto-update-with-release-latest-channels.md)
 - **Issue:** —
 - **PR:** #291
-- **Branch:** feature/250-auto-update-with-release-latest-channels
+- **Branch:** feature/251-auto-update-with-release-latest-channels
 - **Status:** active
 
 ## Summary
@@ -228,7 +228,7 @@ build, and reset the channel to `Release`.
 ## Progress
 
 - **2026-08-29** — Plan-first scaffold; Stage = IMPLEMENT (set in the spec).
-- **2026-08-29** — Implemented on `feature/250-auto-update-with-release-latest-channels`.
+- **2026-08-29** — Implemented on `feature/251-auto-update-with-release-latest-channels`.
   `scripts/test.sh` green; `staticcheck` + `go vet` clean for darwin/linux/windows;
   `biome ci` and `tsc --noEmit` clean.
 

@@ -22,6 +22,15 @@ func TestMain(m *testing.M) {
 	applyStagedBundleFn = func(string) error {
 		return fmt.Errorf("applyStagedBundle must not run in tests")
 	}
+	// RestartDaemon is the most dangerous of the three: it dials the
+	// real hived socket, escalates to SIGKILL against whatever answers,
+	// and finishes with spawnNewGUI, which re-execs this test binary as
+	// a detached child that runs the entire suite again. Leaving it live
+	// is how a single test spawned a daemon against the developer's real
+	// state directory.
+	restartDaemonFn = func(*App) error {
+		return fmt.Errorf("RestartDaemon must not run in tests")
+	}
 	os.Exit(m.Run())
 }
 
@@ -186,5 +195,44 @@ func TestStagingDiscardedWhenSettingsChangeMidFlight(t *testing.T) {
 	}
 	if got := a.UpdateStatus(); got.Stage == StageReady {
 		t.Errorf("Stage = %q, want the button not to offer Restart", got.Stage)
+	}
+}
+
+// RestartDaemon normally quits this process, but it is built to refuse
+// and leave a working window when the daemon will not die. On that path
+// the staged bundle has already been installed and pruned, so the state
+// must not still advertise Restart — a second click would try to
+// install from a directory that no longer exists.
+func TestApplyClearsStagedStateAfterASuccessfulSwap(t *testing.T) {
+	a := &App{}
+	a.rememberCheck(UpdateInfo{
+		Available: true, Latest: "2.5.0", Channel: ChannelRelease, Stage: StageAvailable,
+	})
+	_, release := stubStaging(t, "/staged/hivegui.app", nil)
+	close(release)
+	if err := a.StartUpdate(); err != nil {
+		t.Fatalf("StartUpdate: %v", err)
+	}
+	waitForStage(t, a, StageReady)
+
+	swapped := 0
+	prev := applyStagedBundleFn
+	applyStagedBundleFn = func(string) error { swapped++; return nil }
+	t.Cleanup(func() { applyStagedBundleFn = prev })
+
+	// RestartDaemon fails here — no wire client on a bare App — which is
+	// precisely the "left a working window" path this guards.
+	_ = a.ApplyUpdateAndRestart()
+	if swapped != 1 {
+		t.Fatalf("applyStagedBundle called %d times, want 1", swapped)
+	}
+	if got := a.UpdateStatus(); got.Stage == StageReady {
+		t.Errorf("Stage = %q after the swap landed, want the Restart offer withdrawn", got.Stage)
+	}
+	if err := a.ApplyUpdateAndRestart(); err == nil {
+		t.Error("a second apply = nil error, want a refusal rather than a retry from a pruned path")
+	}
+	if swapped != 1 {
+		t.Errorf("applyStagedBundle called %d times total, want the second click refused", swapped)
 	}
 }
