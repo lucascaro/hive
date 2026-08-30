@@ -29,7 +29,7 @@ Minimized state persists across GUI restarts, like the collapsed-projects set.
 - Clicking `–` on a project header removes it from the main sidebar list and shows its name in a tray at the bottom of the sidebar.
 - Clicking `＋` on a chip — or anywhere on the chip row — returns the project to its original index in the sidebar list, with its sessions and collapsed state unchanged.
 - Clicking `–` on a sidebar session row hides that session from grid views exactly as the grid tile's control does, and the row's control flips to `＋` to restore it.
-- While a project is minimized, none of its sessions appear in `grid-all` or `grid-project`; they remain alive and reachable via the sidebar chip, ⌘K, and ⌘[ / ⌘].
+- While a project is minimized, none of its sessions appear in `grid-all` or `grid-project`; they remain alive and reachable via the sidebar chip and ⌘K. (Amended by [#252](252-keyboard-switching-skips-minimized-sessions.md): ⌘[ / ⌘] now skips minimized projects rather than reaching them.)
 - Reordering visible projects by drag while another project is minimized produces the same final order the user would get with nothing minimized (the minimized project keeps its slot).
 - The minimized set survives a GUI restart.
 - ⌘B jumping to a bell in a minimized project reveals it, and ⇧⌘B re-minimizes it — matching the existing session round-trip.
@@ -44,3 +44,5 @@ Minimized state persists across GUI restarts, like the collapsed-projects set.
 ## Notes
 
 Reuses the generic string-set persistence helpers in `cmd/hivegui/frontend/src/lib/collapsed.ts` under a second storage key, and the session-hiding path in `src/app/view.ts` (`gridScopeFor`).
+
+[#252](252-keyboard-switching-skips-minimized-sessions.md) supersedes the ⌘[ / ⌘] half of the reachability criterion above: a project you put in the tray is out of the keyboard rotation entirely.
