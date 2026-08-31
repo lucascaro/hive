@@ -63,6 +63,20 @@ if ! command -v wails >/dev/null 2>&1; then
   fi
 fi
 
+# The CLI on PATH is whatever was installed last, which drifts from the pin
+# after a dependency bump. scripts/ci-bootstrap.sh is the single source of
+# truth for the version; compare against it rather than duplicating it here.
+expected_wails="$(sed -n 's/^WAILS_VERSION=//p' scripts/ci-bootstrap.sh)"
+actual_wails="$(wails version 2>/dev/null | grep -o 'v[0-9][0-9.]*' | head -1)"
+if [[ -n "$expected_wails" && "$actual_wails" != "$expected_wails" ]]; then
+  echo "error: wails CLI is ${actual_wails:-unknown}, expected ${expected_wails}." >&2
+  echo "  Install the pinned version and regenerate bindings with:" >&2
+  echo "    scripts/ci-bootstrap.sh" >&2
+  echo "  If that doesn't help, a stale wails is shadowing it on PATH:" >&2
+  echo "    which wails   # should be \$(go env GOPATH)/bin/wails" >&2
+  exit 1
+fi
+
 # Frontend deps. Wails skips `npm install` when frontend/package.json
 # matches a cached MD5, which can leave node_modules stale after a
 # pull that adds a dep. Force a clean install when package.json is
