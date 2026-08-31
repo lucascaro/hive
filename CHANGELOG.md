@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   platform. Session state reads as a shape as well as a colour: a triangle
   for running, a diamond when the agent needs you, a dotted ring while
   starting, a square when exited, and a cross on error.
+- The sidebar is rebuilt on the design system: two-line rows (name over the
+  live window title, or its state when there is none), project cards,
+  geometric state icons, and `[n]` hints showing which session ⌘1–9 selects.
+  Exited sessions stay in the list, struck through, with restart and kill on
+  hover. Minimum sidebar width is now 220px.
 
 ### Fixed
 - Keyboard switching now skips what you minimized. ⌘↑ / ⌘↓ step over
