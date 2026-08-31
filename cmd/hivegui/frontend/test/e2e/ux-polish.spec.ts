@@ -380,3 +380,20 @@ test('a11y attributes: palette input label, alertdialog dead overlay, caret butt
   await page.keyboard.press('Escape');
   await expect(overlay).toBeHidden();
 });
+
+test('the sidebar cannot be dragged below the 220px design floor', async ({
+  page,
+}) => {
+  await boot(page);
+  const handle = page.locator('#sidebar-resizer');
+  const box = await handle.boundingBox();
+  if (!box) throw new Error('resizer not laid out');
+  await page.mouse.move(box.x + box.width / 2, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(40, box.y + 100, { steps: 5 });
+  await page.mouse.up();
+  const w = await page
+    .locator('#sidebar')
+    .evaluate((el) => el.getBoundingClientRect().width);
+  expect(w).toBeGreaterThanOrEqual(220);
+});

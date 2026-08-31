@@ -43,7 +43,7 @@ html, body {
 
 #app {
   display: grid;
-  grid-template-columns: var(--sidebar-width, 200px) 1fr;
+  grid-template-columns: var(--sidebar-width, 220px) 1fr;
   /* Row 1 is the daemon-mismatch banner, row 2 is the update-available
      banner — both collapse to 0 when hidden. Row 3 is the normal
      sidebar + terms layout. Row 4 is the minimized-sessions tray;

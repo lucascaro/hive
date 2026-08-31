@@ -262,7 +262,10 @@ initVersionFooter();
 // reloads. Constrained to a sane min/max so the resizer can't be lost
 // off-screen or eat the whole window.
 (function setupSidebarResize() {
-  const MIN = 140,
+  // 220 is the design system's sidebar floor (docs/design-docs/ui/tokens.md
+  // › Spacing): below it a project card's margins eat the two-line row's
+  // name column. A width stored below the floor is clamped up on load.
+  const MIN = 220,
     MAX = 480;
   const app = document.getElementById('app');
   const handle = document.getElementById('sidebar-resizer');
@@ -319,7 +322,7 @@ initVersionFooter();
       getComputedStyle(appEl).getPropertyValue('--sidebar-width'),
       10,
     );
-    const base = Number.isFinite(cur) ? cur : 200;
+    const base = Number.isFinite(cur) ? cur : 220;
     const w = Math.max(MIN, Math.min(MAX, base + delta));
     appEl.style.setProperty('--sidebar-width', `${w}px`);
     localStorage.setItem('hive.sidebarWidth', String(w));
