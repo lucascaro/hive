@@ -18,8 +18,14 @@ import {
 import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
 import { paletteShortcuts } from './lib/shortcuts.js';
+import { modeHints } from './lib/status.js';
 import { state } from './app/state.js';
-import { setStatus, reportFailure, setBootState } from './app/dom.js';
+import {
+  setStatus,
+  reportFailure,
+  setBootState,
+  setModeHint,
+} from './app/dom.js';
 import { activeCwd } from './app/selectors.js';
 import { scrollTrace } from './app/trace.js';
 import {
@@ -234,6 +240,10 @@ initSidebar({
 });
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
+// Seed the status bar's hint slot. setModeHint is otherwise reached only
+// from switchTo() and setView(), and a boot with zero sessions calls
+// neither — leaving the first-run screen with no shortcuts at all.
+setModeHint(modeHints(state.view, isMac));
 initKeyboard({
   bumpFontSize,
   resetFontSize,

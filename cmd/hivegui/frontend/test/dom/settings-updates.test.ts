@@ -53,18 +53,7 @@ vi.mock('../../src/lib/platform.js', () => ({
 }));
 
 const MARKUP = `
-  <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
-  <div id="daemon-banner" class="hidden">
-    <span id="daemon-banner-text"></span>
-    <button id="daemon-banner-restart"></button>
-    <button id="daemon-banner-dismiss"></button>
-  </div>
-  <div id="update-banner" class="hidden">
-    <span id="update-banner-text"></span>
-    <button id="update-banner-action"></button>
-    <button id="update-banner-download"></button>
-    <button id="update-banner-dismiss"></button>
-  </div>
+  <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
   <div id="settings" class="hidden">
     <div id="settings-panel">
       <header><button id="settings-close">×</button></header>

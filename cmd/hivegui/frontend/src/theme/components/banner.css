@@ -1,0 +1,34 @@
+/* docs/design-docs/ui/components.md > banner. 36px, --text-md, left
+   border carries the kind. Grid placement (rows 1 and 2 of #app) comes
+   from [data-slot], set by app/banners.ts. */
+.hv-banner {
+  /* Includes the borders — see status-bar.css. */
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 36px;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  color: var(--fg-muted);
+  grid-column: 1 / -1;
+}
+.hv-banner[hidden] { display: none; }
+.hv-banner[data-kind='error'] { border-left-color: var(--state-error); }
+.hv-banner[data-kind='info'] { border-left-color: var(--accent); }
+.hv-banner__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.hv-banner__action { flex-shrink: 0; }
+.hv-banner__dismiss { flex-shrink: 0; }
+.hv-banner[data-slot='daemon'] { grid-row: 1; }
+.hv-banner[data-slot='update'] { grid-row: 2; }

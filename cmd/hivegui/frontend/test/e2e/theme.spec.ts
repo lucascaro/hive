@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Phase-1 guard: the token migration must not move a pixel. Baselines are
-// captured on the pre-migration tree (Task 1) and asserted after (Task 5).
+// Preset guard. Originally a Phase-1 proof that the token migration moved
+// no pixel; Phase 4 rebuilt the chrome markup on purpose, so `classic` can
+// no longer reproduce v2.4.0 pixels — a preset is a set of token values,
+// not of markup. These baselines now guard preset *switching*: the same
+// scene under classic / hive-dark / hive-light must stay stable.
 //
 // These toHaveScreenshot() assertions run ONLY when HIVE_SNAPSHOT=1: CI runs
 // this suite on ubuntu-latest, macos-latest and windows-latest, Playwright
@@ -62,6 +65,11 @@ async function seedSidebar(page: Page) {
   const s2Sid = await page.evaluate(
     () => window.__hive.state?.sessions.find((s) => s.name === 's2')?.id,
   );
+  // Tile actions are hover-revealed (patterns.md), so the header has to
+  // be hovered before the button is clickable.
+  await page
+    .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-header`)
+    .hover();
   await page
     .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-minimize`)
     .click();
@@ -82,7 +90,7 @@ async function seedSidebar(page: Page) {
   await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
 }
 
-test.describe('classic preset is pixel-identical to v2.4.0', () => {
+test.describe('preset switching keeps the chrome stable', () => {
   test.skip(
     !process.env.HIVE_SNAPSHOT,
     'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
@@ -198,11 +206,7 @@ test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
     const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻✓✔]/;
-    return [
-      ...document.querySelectorAll(
-        'button, .hv-project-card__chevron, .worktree-glyph',
-      ),
-    ]
+    return [...document.querySelectorAll('button, .hv-project-card__chevron')]
       .filter((el) => deny.test(el.textContent ?? ''))
       .map((el) => `${el.tagName}#${el.id}.${el.className}`);
   });

@@ -2,7 +2,9 @@
 // are app singletons (one #terms, one #status) — modules import them
 // rather than re-querying the document.
 
-import { createStatus } from '../lib/status.js';
+import { createStatus, type ModeHint } from '../lib/status.js';
+import { kbd } from '../ui/kbd.js';
+import { button } from '../ui/button.js';
 import { mustEl, pageEl } from './el.js';
 
 // index.html owns these three ids; a missing one means the document and
@@ -19,16 +21,35 @@ export const projectsUL = mustEl('projects');
 // minimized list when this is null.
 export const minimizedProjectsUL = pageEl('minimized-projects');
 export const status = mustEl('status');
+const statusText = mustEl('status-text');
+const statusHint = mustEl('status-hint');
 
 const statusCtl = createStatus({
   render: (text: string, isError: boolean) => {
-    status.textContent = text;
+    statusText.textContent = text;
+    // Same reason as banner.setText: the slot ellipsises, and an error
+    // string is exactly the case where the tail matters.
+    statusText.title = text;
+    // The error tint is on the bar, not the span: the whole row flashes.
     status.classList.toggle('error', isError);
   },
   setTimer: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
   clearTimer: (id: number) => window.clearTimeout(id),
   now: () => Date.now(),
 });
+
+// setModeHint owns the right slot: the current mode's top shortcuts.
+// Rebuilt wholesale — two hints is never enough DOM to be worth diffing.
+export function setModeHint(hints: ModeHint[]): void {
+  statusHint.replaceChildren(
+    ...hints.flatMap((h) => {
+      const label = document.createElement('span');
+      label.className = 'hv-status__hint-label';
+      label.textContent = h.label;
+      return [kbd(h.key), label];
+    }),
+  );
+}
 
 // setStatus owns the persistent slot: connection state, nav feedback.
 export function setStatus(text: string, isError = false): void {
@@ -56,6 +77,23 @@ export const reportFailure = (what: string) => (err: unknown) =>
 //
 // pageEl, not mustEl: the jsdom tests mount partial markup and must
 // not fail on an overlay they never exercise.
+// The retry is a real button primitive, built lazily and parked in the
+// card the first time a boot state renders: dom.ts is imported by jsdom
+// tests that mount partial markup, so a mount at import time would fight
+// scaffolds that never show the overlay.
+let bootRetry: HTMLButtonElement | null = null;
+function bootRetryButton(el: HTMLElement): HTMLButtonElement | null {
+  if (bootRetry?.isConnected) return bootRetry;
+  const card = el.querySelector('.boot-state-card');
+  if (!card) return null;
+  bootRetry = button({ label: 'Retry', kind: 'primary', icon: 'rotate' });
+  // The id is what boot-overlay.spec.ts and boot-state.test.ts select on.
+  bootRetry.id = 'boot-state-retry';
+  bootRetry.hidden = true;
+  card.append(bootRetry);
+  return bootRetry;
+}
+
 export function setBootState(
   text: string | null,
   opts: { retry?: () => void } = {},
@@ -72,9 +110,9 @@ export function setBootState(
   // spinner goes with it.
   const spinner = el.querySelector('.phase-spinner');
   spinner?.classList.toggle('hidden', Boolean(opts.retry));
-  const retry = pageEl<HTMLButtonElement>('boot-state-retry');
+  const retry = bootRetryButton(el);
   if (retry) {
-    retry.classList.toggle('hidden', !opts.retry);
+    retry.hidden = !opts.retry;
     retry.onclick = opts.retry ? () => opts.retry?.() : null;
   }
   el.classList.remove('hidden');

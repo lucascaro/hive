@@ -1,0 +1,41 @@
+/* docs/design-docs/ui/components.md > statusBar. 24px, --surface, top
+   border, --text-xs --fg-muted. Left slot persistent, right slot the
+   current mode's shortcuts. */
+#status {
+  /* Not inherited: style.css sets box-sizing per-rule, not globally. A
+     content-box 24px bar plus its 1px border paints 25px, so the height
+     components.md specifies has to include the border. */
+  box-sizing: border-box;
+  grid-row: 5;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 24px;
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+#status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#status-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  /* --fg-subtle on --surface is ~3:1 — under the AA text floor. */
+  color: var(--fg-muted);
+}
+/* Space between a hint's label and the next hint's key, without a
+   separator glyph. */
+.hv-status__hint-label { margin-right: var(--space-2); }
+.hv-status__hint-label:last-child { margin-right: 0; }
+#status.error { color: var(--state-error); }

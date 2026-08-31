@@ -105,7 +105,7 @@ beforeAll(async () => {
     disconnect() {}
   } as unknown as typeof ResizeObserver;
   document.body.innerHTML = `
-    <div id="app"><ul id="projects"></ul><div id="status"></div>
+    <div id="app"><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     <div id="terms"></div><div id="minimized-tray"></div>
     <div id="empty-state"></div></div>`;
   ({ state } = await import('../../src/app/state.js'));

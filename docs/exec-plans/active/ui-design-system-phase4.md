@@ -1,5 +1,8 @@
 # UI design system — Phase 4: chrome (banner, status bar, tile header, launcher rows, empty/phase states)
 
+**PR:** https://github.com/lucascaro/hive/pull/301
+**Branch:** `feature/ui-design-system-phase4`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reskin every non-sidebar, non-dialog surface — banners, status bar, grid tile headers, launcher and command-palette rows, empty state, phase checklist, boot card — onto tokens and the `src/ui/` primitive layer, and add the two primitives this phase needs (`button`, `banner`). After this phase the only surfaces still carrying hand-written classes and Unicode glyphs are the dialogs (Phase 5).
@@ -45,7 +48,7 @@
   ```
 - Consumes: `icon`, `IconName` from `src/ui/icon.ts` (Phase 2).
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 ```ts
 // @vitest-environment jsdom
@@ -84,12 +87,12 @@ describe('button()', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `npx vitest run test/dom/ui-button.test.ts`
 Expected: FAIL — cannot resolve `../../src/ui/button.js`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // The only way a feature module makes a labelled button. Kinds are
@@ -128,7 +131,7 @@ export function button({
 }
 ```
 
-- [ ] **Step 4: `button.css`**
+- [x] **Step 4: `button.css`**
 
 ```css
 /* docs/design-docs/ui/components.md › button. Height 28px, --text-md,
@@ -182,12 +185,12 @@ export function button({
 
 Register it: append `@import './button.css';` to `src/theme/components/index.css`.
 
-- [ ] **Step 5: Run the gate**
+- [x] **Step 5: Run the gate**
 
 Run: `npx vitest run test/dom/ui-button.test.ts && npm run typecheck && npx biome ci . && (cd ../../.. && ./scripts/ui-lint.sh --strict)`
 Expected: 4 passed, typecheck clean, biome clean, `ui-lint: 0 violation(s)`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/button.ts src/theme/components/button.css src/theme/components/index.css test/dom/ui-button.test.ts
@@ -230,7 +233,7 @@ git commit -m "feat(ui): add button primitive"
 
 Why a handle and not a bare element: `banners.ts` needs to retitle the banner, disable the Restart button while a restart is in flight, and toggle the Download button's visibility per response — three things it does today by holding module-level element references. `action(id)` hands those back without re-querying by class.
 
-- [ ] **Step 1: Failing test**
+- [x] **Step 1: Failing test**
 
 ```ts
 // @vitest-environment jsdom
@@ -291,12 +294,12 @@ describe('banner()', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run: `npx vitest run test/dom/ui-banner.test.ts`
 Expected: FAIL — cannot resolve `../../src/ui/banner.js`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```ts
 // Full-width notice row above the app grid. Owns its own markup so no
@@ -390,7 +393,7 @@ export function banner({
 
 If Phase 2 exported `iconButton` from a different path or filename (e.g. `src/ui/icon-button.ts`), fix the import — do not add a re-export shim.
 
-- [ ] **Step 4: `banner.css`**
+- [x] **Step 4: `banner.css`**
 
 ```css
 /* docs/design-docs/ui/components.md › banner. 36px, --text-md, left
@@ -429,12 +432,12 @@ If Phase 2 exported `iconButton` from a different path or filename (e.g. `src/ui
 
 Append `@import './banner.css';` to `src/theme/components/index.css`.
 
-- [ ] **Step 5: Run the gate**
+- [x] **Step 5: Run the gate**
 
 Run: `npx vitest run test/dom/ui-banner.test.ts && npm run typecheck && npx biome ci .`
 Expected: 5 passed, clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ui/banner.ts src/theme/components/banner.css src/theme/components/index.css test/dom/ui-banner.test.ts
@@ -456,7 +459,7 @@ The daemon-stale and update banners are 8 hand-written elements in `index.html` 
 **Interfaces:**
 - Unchanged public surface: `initBanners()`, `restartHive()`, `manualUpdateCheck()`, `isDaemonRestarting()`.
 
-- [ ] **Step 1: Replace the module-level element handles**
+- [x] **Step 1: Replace the module-level element handles**
 
 Delete the six `pageEl(...)` banner lookups and build the banners instead. Note `mount()` is called at `initBanners()` time, not on import — `banners.ts` is dragged into jsdom tests that mount only partial markup, and an import-time `document.body` write would fight them.
 
@@ -516,7 +519,7 @@ function mountBanners() {
 }
 ```
 
-- [ ] **Step 2: Rewrite the four show/hide helpers against the handles**
+- [x] **Step 2: Rewrite the four show/hide helpers against the handles**
 
 ```ts
 function showDaemonBanner(text: string) {
@@ -559,7 +562,7 @@ function hideUpdateBanner() {
 
 `restartHive()` keeps its body; replace the two `daemonBannerRestart.disabled = …` lines with `daemonBanner?.action('restart').disabled = …` — but hoist the button once at the top of the function (`const restartBtn = daemonBanner?.action('restart');`) so the `finally` block can't throw on a null handle when the menu path runs before `initBanners()`.
 
-- [ ] **Step 3: `wireDaemonBanner` / `wireUpdateBanner` lose their listener wiring**
+- [x] **Step 3: `wireDaemonBanner` / `wireUpdateBanner` lose their listener wiring**
 
 The click handlers moved into `mountBanners()`. Both functions keep only their `EventsOn(...)` registration and (for update) the boot-time `CheckForUpdate()` poll. `initBanners()` becomes:
 
@@ -573,11 +576,11 @@ export function initBanners() {
 
 `applyUpdateInfo` writes `updateBanner.el.dataset.version = info.latest` after `showUpdateBanner(...)`, exactly as it does today against `updateBannerEl`.
 
-- [ ] **Step 4: Delete the markup and the old CSS**
+- [x] **Step 4: Delete the markup and the old CSS**
 
 Remove both `<div id="…-banner">` blocks from `index.html`. Remove the `#daemon-banner*` and `#update-banner*` rule blocks from `style.css` including the two focus-visible selectors and the `#update-banner { grid-row: 2; … }` placement rule near the top of the file.
 
-- [ ] **Step 5: Fix `test/dom/restart-hive.test.ts`**
+- [x] **Step 5: Fix `test/dom/restart-hive.test.ts`**
 
 Its scaffold hard-codes the old markup. Replace the banner block with a mount root, and call `initBanners()` before asserting. The two assertions that read `bannerEl.classList.contains('hidden')` become `bannerEl.hidden`:
 
@@ -597,12 +600,12 @@ Its scaffold hard-codes the old markup. Replace the banner block with a mount ro
 
 `initBanners()` also registers `EventsOn` handlers and fires `CheckForUpdate()`; the file already mocks `../bridge.js`, so extend that mock with `EventsOn: vi.fn()` and `CheckForUpdate: vi.fn().mockResolvedValue(null)` if they aren't there.
 
-- [ ] **Step 6: Run**
+- [x] **Step 6: Run**
 
 Run: `npx vitest run test/dom/restart-hive.test.ts && npm run typecheck && npx biome ci . && npx playwright test test/e2e/smoke.spec.ts`
 Expected: green. If `smoke.spec.ts` asserts on banner markup, update the selector to `#daemon-banner .hv-banner__text`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/app/banners.ts index.html src/style.css test/dom/restart-hive.test.ts
@@ -633,7 +636,7 @@ Today `#status` is a fixed pill floating bottom-right (`style.css:1410-1435`), 1
   ```
 - Produces (in `src/app/dom.ts`): `export function setModeHint(hints: ModeHint[]): void;`
 
-- [ ] **Step 1: Failing unit test for the hint table**
+- [x] **Step 1: Failing unit test for the hint table**
 
 ```ts
 import { describe, it, expect } from 'vitest';
@@ -667,9 +670,9 @@ describe('modeHints', () => {
 });
 ```
 
-- [ ] **Step 2: Run → FAIL** (`modeHints` not exported).
+- [x] **Step 2: Run → FAIL** (`modeHints` not exported).
 
-- [ ] **Step 3: Implement `modeHints` in `src/lib/status.ts`**
+- [x] **Step 3: Implement `modeHints` in `src/lib/status.ts`**
 
 Appended below `createStatus`; the module stays pure (no DOM, no platform sniffing — `mac` is a parameter).
 
@@ -702,7 +705,7 @@ export function modeHints(view: string, mac: boolean): ModeHint[] {
 
 Verify `⌘K` and `⌥`+arrows are what `src/app/keymap.ts` actually binds for the palette and grid spatial move before committing to those labels; if the palette is on a different chord, use the real one — a hint that lies is worse than no hint (AGENTS.md › Consistency).
 
-- [ ] **Step 4: Two-slot markup in `index.html`**
+- [x] **Step 4: Two-slot markup in `index.html`**
 
 ```html
   <div id="status" role="status" aria-live="polite">
@@ -719,7 +722,7 @@ and give it a grid row. In `style.css`'s `#app` block, extend the row template a
   grid-template-rows: auto auto 1fr auto auto;
 ```
 
-- [ ] **Step 5: `dom.ts` — render into the left slot, add `setModeHint`**
+- [x] **Step 5: `dom.ts` — render into the left slot, add `setModeHint`**
 
 ```ts
 import { createStatus, type ModeHint } from '../lib/status.js';
@@ -756,7 +759,7 @@ export function setModeHint(hints: ModeHint[]): void {
 
 `mustEl('status-text')` throws if the markup is missing — extend the jsdom scaffolds in `test/dom/*.test.ts` that mount a bare `<div id="status"></div>` (grep: `id="status"`) to the two-slot form. There are several; they all get the same three-line block.
 
-- [ ] **Step 6: Feed it from `view.ts`**
+- [x] **Step 6: Feed it from `view.ts`**
 
 `setView()` ends with `setStatus(\`${view}${active ? \` • ${active.name}\` : ''}\`)` (`view.ts:~740`). Replace the mode-name-in-the-text with the real thing: the left slot keeps the session name, the right slot carries the mode.
 
@@ -767,7 +770,7 @@ export function setModeHint(hints: ModeHint[]): void {
 
 `switchTo()` also needs `setModeHint(modeHints(state.view, isMac))` after its `setStatus(...)` — switching sessions can fall back out of a grid view (`fallBackToSingleIfActiveHidden`), and a stale "focus / move" hint on a single pane is exactly the lying hint AGENTS.md forbids. `isMac` is already imported in `view.ts`.
 
-- [ ] **Step 7: `status-bar.css`**
+- [x] **Step 7: `status-bar.css`**
 
 ```css
 /* docs/design-docs/ui/components.md › statusBar. 24px, --surface, top
@@ -812,7 +815,7 @@ The old `status-error-pulse` keyframes go with the old rules: `patterns.md` › 
 
 Delete `#status`, `#status.error`, `@keyframes status-error-pulse` and its `prefers-reduced-motion` override from `style.css`; append `@import './status-bar.css';` to `src/theme/components/index.css`.
 
-- [ ] **Step 8: Update the e2e selectors**
+- [x] **Step 8: Update the e2e selectors**
 
 `test/e2e/silent-failures.spec.ts` asserts `page.locator('#status')` has exact text (`silent-failures.spec.ts:21,42,58,77,103,131,134`). With a hint slot, `toHaveText` on `#status` now includes the hints. Point every text assertion at `#status-text`; leave the `toHaveClass(/error/)` assertions on `#status`.
 
@@ -837,12 +840,12 @@ test('the status bar right slot shows the current mode shortcuts', async ({
 
 (`mod` is already defined in that spec, or copy the one-liner from `theme.spec.ts:14`.)
 
-- [ ] **Step 9: Run the gate**
+- [x] **Step 9: Run the gate**
 
 Run: `npx vitest run && npm run typecheck && npx biome ci . && npx playwright test test/e2e/silent-failures.spec.ts && (cd ../../.. && ./scripts/ui-lint.sh --strict)`
 Expected: green. The arrow glyphs `↑↓←→` and `⌘⇧⌥` are on the ui-lint allow-list from Phase 1 — if `↑↓` are not, add them to `ALLOW` in `scripts/ui-lint.sh` in this commit with a comment (they are keyboard hint characters, which `icons.md` › Rules explicitly permits).
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add index.html src/lib/status.ts src/app/dom.ts src/app/view.ts src/style.css \
@@ -870,7 +873,7 @@ Two facts change channel: the coloured dot becomes the state icon (one of the th
 - Consumes: `stateIcon`, `updateStateIcon`, `resolveSessionState`, `iconButton` from `src/ui/`.
 - Class names are preserved (`tile-header`, `tile-name`, `tile-term-title`, `tile-name-input`) because `inline-rename.ts`, `theme.spec.ts:71` and `silent-failures.spec.ts:97-121` select on them. Only the leaf that was a Unicode glyph or a colour dot changes identity.
 
-- [ ] **Step 1: Rebuild the header in the constructor**
+- [x] **Step 1: Rebuild the header in the constructor**
 
 ```ts
     // Tile header (only visible in grid mode via CSS).
@@ -941,7 +944,7 @@ Field declarations at `session-term.ts:143-150`: drop `tileColor`, add `tileStat
 
 If `iconButton`'s `onClick` is typed `() => void` rather than `(e: MouseEvent) => void`, keep the `e.stopPropagation()` by attaching a separate `click` listener in capture phase instead of widening the primitive's signature.
 
-- [ ] **Step 2: Keep the state icon current**
+- [x] **Step 2: Keep the state icon current**
 
 `setInfo` and `setPhase` are the two edges that can change the resolved state; `renderGrid` is the one that knows about attention.
 
@@ -981,7 +984,7 @@ Call `this.refreshStateIcon()` at the end of `setPhase` (both branches — the `
 
 Keep the `.attention` class on the host: the tile border/glow still uses it, and Phase 3's sidebar does the same.
 
-- [ ] **Step 3: `_renderTermTitle` loses the em-dash**
+- [x] **Step 3: `_renderTermTitle` loses the em-dash**
 
 The `—` came from CSS `content`. `·` replaces it (a text separator, allowed by `icons.md` › Rules), and it moves into the CSS of `.tile-term-title::before` in the new file. The TS is unchanged except `style.display` → `hidden`:
 
@@ -991,7 +994,7 @@ The `—` came from CSS `content`. `·` replaces it (a text separator, allowed b
     this.tileTermTitle.hidden = !t;
 ```
 
-- [ ] **Step 4: `tile-header.css`**
+- [x] **Step 4: `tile-header.css`**
 
 ```css
 /* docs/design-docs/ui/components.md › Grid tile header. 28px, --surface,
@@ -1079,12 +1082,12 @@ Delete from `style.css`: `.term-host .tile-header`, `.term-host.term-focused .ti
 
 The `\00b7` escape rather than a literal `·` keeps `scripts/ui-lint.sh`'s glyph rule (which scans `src/app/**` and `index.html`, not CSS) and any future CSS glyph rule both satisfied without an allow comment.
 
-- [ ] **Step 5: Run**
+- [x] **Step 5: Run**
 
 Run: `npm run typecheck && npx biome ci . && npx vitest run && npx playwright test test/e2e/silent-failures.spec.ts test/e2e/minimize.spec.ts test/e2e/focus.spec.ts`
 Expected: green. `theme.spec.ts:71` clicks `.tile-minimize` — that class survives, but the button is now hidden until hover; Playwright's `.click()` hovers first, so it still works. If a spec instead asserts *visibility* of `.tile-minimize` without hovering, add an explicit `.hover()` on the tile header.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/session-term.ts src/app/view.ts src/style.css \
@@ -1109,7 +1112,7 @@ The agent colour is data, not a token, and is the one thing that tells two agent
 - Modify: `cmd/hivegui/frontend/src/style.css` (delete `.launcher-item*`, `.palette-item*`, `.agent-*`, `.install-tag`, `.palette-name`, `.palette-shortcut` rules — `style.css:1036-1075`, `:1143`, `:1535-1552`), `src/theme/components/index.css`
 - Test: `cmd/hivegui/frontend/test/e2e/launcher-search.spec.ts`, `launcher-stacking.spec.ts` (class names preserved; verify only)
 
-- [ ] **Step 1: Launcher row**
+- [x] **Step 1: Launcher row**
 
 Replace the row-building block inside `matches.forEach` with:
 
@@ -1157,7 +1160,7 @@ Replace the row-building block inside `matches.forEach` with:
 
 Import `kbd` from `../../ui/kbd.js` at the top of `launcher.ts`.
 
-- [ ] **Step 2: Palette row**
+- [x] **Step 2: Palette row**
 
 ```ts
   paletteState.items.forEach((c, i) => {
@@ -1184,7 +1187,7 @@ Import `kbd` from `../../ui/kbd.js` at the top of `launcher.ts`.
   });
 ```
 
-- [ ] **Step 3: `launcher-item.css`** (owns both row kinds — one anatomy, two call sites)
+- [x] **Step 3: `launcher-item.css`** (owns both row kinds — one anatomy, two call sites)
 
 ```css
 /* docs/design-docs/ui/components.md › launcherItem / command palette
@@ -1254,12 +1257,12 @@ Import `kbd` from `../../ui/kbd.js` at the top of `launcher.ts`.
 
 Append `@import './launcher-item.css';` to `src/theme/components/index.css`.
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 Run: `npm run typecheck && npx biome ci . && npx playwright test test/e2e/launcher-search.spec.ts test/e2e/launcher-stacking.spec.ts test/e2e/ux-polish.spec.ts && npx vitest run test/dom/launcher.test.ts`
 Expected: green. `launcher-search.spec.ts:52-78` drives digit selection — the digit still works, but the visible hint is now `[1]` inside a `<kbd>` rather than a bare `1`. If that spec asserts the row's exact text (`toContainText('1')` still passes; `toHaveText('1 Claude')` would not), relax it to a `kbd` locator: `await expect(launcher.locator('.launcher-item').first().locator('kbd')).toHaveText('[1]')`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/app/modals/launcher.ts src/app/modals/command-palette.ts src/style.css \
@@ -1287,7 +1290,7 @@ git commit -m "feat(ui): rebuild launcher and command-palette rows on kbd and to
 - Modify: `cmd/hivegui/frontend/src/style.css` (delete `#empty-state*`, `#boot-state*`, `.boot-state-card*`, `.phase-*` rules — `style.css:913-999`, `:1557-1627`), `src/theme/components/index.css`
 - Test: `cmd/hivegui/frontend/test/dom/boot-state.test.ts`, `test/dom/session-phase.test.ts`, `test/e2e/boot-overlay.spec.ts`, `test/e2e/ux-polish.spec.ts`
 
-- [ ] **Step 1: Empty state actions become `button()`s**
+- [x] **Step 1: Empty state actions become `button()`s**
 
 In `renderEmptyState`, replace the hand-built `<button>` loop. The first action is the primary one (`patterns.md`: "one primary `button` ('New project ⌘N')"), the rest default. The label already carries the key hint from `lib/empty-state.ts` — check whether it embeds the chord in the label string; if it does, leave it (it is the AGENTS.md inline hint) and do not double it with a `kbd()`.
 
@@ -1316,7 +1319,7 @@ In `renderEmptyState`, replace the hand-built `<button>` loop. The first action 
     }
 ```
 
-- [ ] **Step 2: Phase steps get real icons**
+- [x] **Step 2: Phase steps get real icons**
 
 In `_showPhaseOverlay`, replace the `li.className = \`phase-step ${step.state}\`` mapping:
 
@@ -1343,7 +1346,7 @@ In `_showPhaseOverlay`, replace the `li.className = \`phase-step ${step.state}\`
 
 The `.phase-spinner` element above the checklist stays a CSS ring (it is not a state icon; it is the panel's own loading indicator) but its colours come from tokens.
 
-- [ ] **Step 3: Boot retry button**
+- [x] **Step 3: Boot retry button**
 
 `index.html`'s `#boot-state` card keeps its spinner and text span; drop the hand-written `<button id="boot-state-retry">`:
 
@@ -1374,7 +1377,7 @@ document.querySelector('.boot-state-card')?.append(bootRetry);
 
 Wire `retryBoot` to whatever handler `main.ts` currently attaches to `#boot-state-retry` — grep for `boot-state-retry` and move that listener here rather than leaving a `getElementById` that now runs before the element exists. The existing `.hidden` class toggles on the retry become `bootRetry.hidden = …`; update `boot-state.test.ts`'s assertion the same way.
 
-- [ ] **Step 4: `empty-state.css`**
+- [x] **Step 4: `empty-state.css`**
 
 ```css
 /* Empty state, boot card and phase overlay. Bespoke surfaces
@@ -1505,12 +1508,12 @@ Wire `retryBoot` to whatever handler `main.ts` currently attaches to `#boot-stat
 
 Delete the corresponding blocks from `style.css` (including `@keyframes phase-spin`, `phase-pulse`, and the `#empty-state .empty-actions button*` rules — `button.css` owns those now). Append `@import './empty-state.css';` to `src/theme/components/index.css`.
 
-- [ ] **Step 5: Run**
+- [x] **Step 5: Run**
 
 Run: `npx vitest run test/dom/boot-state.test.ts test/dom/session-phase.test.ts && npm run typecheck && npx biome ci . && npx playwright test test/e2e/boot-overlay.spec.ts test/e2e/ux-polish.spec.ts`
 Expected: green. `boot-overlay.spec.ts:20-27` uses `elementFromPoint` to prove the overlay actually covers the pane — it must still pass, which is the check that `--bg` on `#boot-state` did not become transparent.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/app/view.ts src/app/session-term.ts src/app/dom.ts index.html src/style.css \
@@ -1531,7 +1534,7 @@ Phase 1's `theme.spec.ts` proved the token migration moved no pixel. This phase 
 **Interfaces:**
 - Produces snapshots: `grid-hive-dark.png`, `grid-hive-light.png`, `launcher-hive-dark.png`, `launcher-hive-light.png`.
 
-- [ ] **Step 1: Write the spec**
+- [x] **Step 1: Write the spec**
 
 ```ts
 import { test, expect, type Page } from '@playwright/test';
@@ -1606,19 +1609,19 @@ test.describe('phase-4 chrome baselines', () => {
 
 Confirm the launcher's opening chord against `src/app/keymap.ts` before generating baselines; `⌘T` is a guess. If no chord opens it directly, click the project card's `plus` action instead — `launcher-search.spec.ts` already has that helper, reuse it rather than inventing a second one.
 
-- [ ] **Step 2: Generate**
+- [x] **Step 2: Generate**
 
 Run: `HIVE_SNAPSHOT=1 npx playwright test test/e2e/chrome.spec.ts --update-snapshots`
 Expected: four PNGs under `test/e2e/chrome.spec.ts-snapshots/`.
 
-- [ ] **Step 3: Look at them.** This is the phase's design review: open all four. Check against `components.md` — 24px status bar, 28px tile headers, 32px rows, `--sel` + accent bar on the selected launcher row, hints as `kbd`, no glyph anywhere. `hive-light` is where contrast bugs surface: `--fg-subtle` on `--surface-raised` is the pair most likely to be unreadable. Fix in the component CSS (never with a literal), regenerate, and note anything that needed a token value change for Phase 6's contrast check.
+- [x] **Step 3: Look at them.** This is the phase's design review: open all four. Check against `components.md` — 24px status bar, 28px tile headers, 32px rows, `--sel` + accent bar on the selected launcher row, hints as `kbd`, no glyph anywhere. `hive-light` is where contrast bugs surface: `--fg-subtle` on `--surface-raised` is the pair most likely to be unreadable. Fix in the component CSS (never with a literal), regenerate, and note anything that needed a token value change for Phase 6's contrast check.
 
-- [ ] **Step 4: Confirm stable**
+- [x] **Step 4: Confirm stable**
 
 Run: `HIVE_SNAPSHOT=1 npx playwright test test/e2e/chrome.spec.ts`
 Expected: 4 passed.
 
-- [ ] **Step 5: Phase 1's baselines are now stale**
+- [x] **Step 5: Phase 1's baselines are now stale**
 
 `theme.spec.ts`'s `sidebar-classic.png` / `settings-classic.png` assert the `classic` preset, which this phase's markup changes (the status bar moved, the banners are gone from the markup, the tile header is rebuilt). `classic` is a preset of *token values*, not of markup — it cannot reproduce v2.4.0 pixels once the DOM changes. Regenerate them and update the describe block's comment to say what it now guards (preset switching, not v2.4.0 equality):
 
@@ -1626,7 +1629,7 @@ Run: `HIVE_SNAPSHOT=1 npx playwright test test/e2e/theme.spec.ts --update-snapsh
 
 Record this in the decision log (Task 9) — it retires the Phase 1 "pixel-identical" guarantee on purpose, and a later reader should not think the baselines rotted by accident.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add test/e2e/chrome.spec.ts test/e2e/chrome.spec.ts-snapshots test/e2e/theme.spec.ts test/e2e/theme.spec.ts-snapshots
@@ -1644,7 +1647,7 @@ git commit -m "test(ui): baseline grid and launcher chrome under hive-dark and h
 - Modify: `docs/exec-plans/active/ui-design-system.md` (Progress, decision log)
 - Create: `.changesets/<pr>-ui-chrome.md`
 
-- [ ] **Step 1: Run the lint and clear what this phase owns**
+- [x] **Step 1: Run the lint and clear what this phase owns**
 
 Run: `./scripts/ui-lint.sh --strict; echo exit=$?`
 
@@ -1664,7 +1667,7 @@ newProject.title = `New project (${isMac ? '⌘N' : 'Ctrl+N'})`;
 
 Do **not** silence a real violation with `/* ui-lint: allow */`; an allow comment in this phase means a token or an icon is missing, which is a spec change (`README.md` › How to change the UI).
 
-- [ ] **Step 2: If CI still runs ui-lint in warn mode, flip it**
+- [x] **Step 2: If CI still runs ui-lint in warn mode, flip it**
 
 ```yaml
       - name: UI lint (tokens / icons)
@@ -1674,7 +1677,7 @@ Do **not** silence a real violation with `/* ui-lint: allow */`; an allow commen
 
 Only if Phase 2 didn't already. Check first.
 
-- [ ] **Step 3: Full local gate**
+- [x] **Step 3: Full local gate**
 
 Run:
 ```bash
@@ -1684,13 +1687,13 @@ cd cmd/hivegui/frontend \
 ```
 Expected: all green, `ui-lint: 0 violation(s)` for the non-dialog tree.
 
-- [ ] **Step 4: Docs**
+- [x] **Step 4: Docs**
 
 `docs/design-docs/ui/README.md` Status → "Phases 1–4 implemented; dialogs and theming UI are Phase 5". `docs/exec-plans/active/ui-design-system.md`: tick Phase 4 in Progress, and add decision-log entries for (a) retiring the Phase 1 pixel-identity baseline (Task 8 step 5), (b) the tile header dropping the project-colour gradient — one channel per fact, and (c) the launcher's agent swatch standing in for the "leading icon for agent kind" slot, because per-agent sprite symbols are not something `icons.md` allows.
 
 Changeset via `/hs-changelog-update` — user-visible text: "Reskinned chrome: notice banners, a real status bar with inline mode shortcuts, grid tile headers with state icons, and consistent launcher and command-palette rows."
 
-- [ ] **Step 5: Commit and open PR**
+- [x] **Step 5: Commit and open PR**
 
 ```bash
 git add docs .changesets .github cmd/hivegui/frontend
@@ -1710,3 +1713,106 @@ PR title: `feat(ui): design-system phase 4 — banners, status bar, tile headers
 - **Known risk 2 — a fifth grid row.** Moving `#status` from `position: fixed` into the `#app` grid takes 24px off the terminal area's height. Every tile refits (each `SessionTerm` has its own `ResizeObserver`), so nothing breaks, but `grid-scroll-regressions.spec.ts` and `scrollback-invariants.spec.ts` assert on viewport-relative scroll maths — run both in Task 4 even though they are not listed in its command.
 - **Known risk 3 — `banners.ts` mounting into `#app`.** `mountBanners()` needs `#app` to exist. It does in `index.html`, but jsdom scaffolds that import `banners.ts` transitively (via `view.ts`/`keyboard.ts`) and then call `initBanners()` would silently drop the banners on the floor (`app?.prepend` is optional-chained). That is the correct behaviour for a test that never opens a banner; it is a bug for a test that does. Only `restart-hive.test.ts` does, and Task 3 step 5 gives it an `#app`.
 - **Deliberate scope call:** the tile header loses the project→session colour gradient. It is the biggest visual change in the phase and the one most likely to draw a "but I liked that" — it is in the plan because `README.md` principle 2 says project identity has one home (the sidebar card) and the tile already encodes session identity twice (colour dot + name). If review disagrees, the cheap reversal is one `background:` rule in `tile-header.css`, not a re-plan.
+
+## Progress
+
+**2026-08-30** — All nine tasks implemented on `feature/ui-design-system-phase4`
+(9 commits). Deviations from the plan as written, each verified against the
+tree rather than the plan's pre-phase-1 line references:
+
+- Components are linked individually from `index.html` (what phase 3 shipped),
+  so there is no `src/theme/components/index.css` to append `@import`s to.
+- The update banner needed a second action (`action`: Update / Updating… /
+  Restart) that the plan's `mountBanners()` sketch omitted; `renderUpdateAction`
+  drives it through `banner.action('action')`, and `banner()` stamps
+  `data-action-id` so tests can address one action without child order.
+- `modeHints` uses the chords `lib/shortcuts.ts` actually binds — `⌘G`,
+  `⇧⌘K`, `⌘`+arrows — not the plan's `⌘K` / `⌥`+arrows.
+- Phases 2–3 had already landed the tile's `stateIcon`, `refreshStateIcon` and
+  the phase-checklist icons; task 5 and task 7 were correspondingly smaller
+  (worktree glyph → `iconButton` in a hover-revealed `.tile-actions`, variant
+  classes → data attributes, empty-state and boot-retry buttons → `button()`).
+- The tile's window-title span is now hidden at construction: its `::before`
+  separator rendered a lone `·` beside the session name until the first title
+  arrived (visible in the first round of task-8 baselines).
+- The tile's minimize button is **not** hover-revealed. `display: none`
+  until hover leaves it unreachable by keyboard — the trap `session-row.css`
+  already rejected — so `.tile-actions` renders at rest beside the project
+  label. Review finding, user's call.
+
+**Review round 1 (PR #301)** cleared three defects, two of them shipped by
+this phase and invisible to the gate as originally specified:
+
+- `style.css` — a dangling selector list dropped focus rings from five
+  controls *and* broke `vite build`. The plan's per-task gate had no
+  `npm run build`, so only CI caught it; it is in the gate below now.
+- `button.css` / `icon-button.css` — no `[hidden]` rule, so the author-origin
+  `display` outranked the UA's, making every `el.hidden = true` on a button a
+  silent no-op (the update banner's Download/Update toggles among them). The
+  jsdom tests could not see it: `el.hidden` read back `true` throughout.
+  `test/e2e/banner-visibility.spec.ts` is the browser-level guard, verified
+  to fail when the rule is removed.
+- `modeHints` advertised `⌘G` as "focus" in `grid-all`, but `keyboard.ts`
+  sends plain `⌘G` to `grid-project` there; `⇧⌘G` is what returns to single.
+
+Also from that round: `refreshStateIcon()` now resolves from the tile's live
+`this.phase` rather than `this.info.phase` (setPhase never writes back to
+info, so the refresh it triggers was recomputing from a stale payload), the
+`aria-live` region narrowed to `#status-text` so mode hints stop re-announcing
+on every navigation, `modeHints` takes `ViewMode` instead of `string`, and the
+rewritten banner dismissal paths (per-version, per-daemon-build) got coverage.
+
+**Task 8 addendum — the chrome spec is split.** `chrome.spec.ts` now has two
+describes with different gates: `phase-4 chrome structure` runs in CI on every
+platform (heights, slots, `kbd` hints, the selected treatment, the live-region
+scope, both presets painting), while only `phase-4 chrome baselines` stays
+behind `HIVE_SNAPSHOT`. Gating both together is what let the `[hidden]`
+specificity bug ship green — the assertions that could have caught it were
+skipped alongside the screenshots.
+
+Splitting it immediately paid: the structural assertions caught that
+`style.css` sets `box-sizing` per-rule rather than globally, so every sized
+component this phase added painted `height + border` — the "24px" status bar
+was 25px, the "28px" tile header 29px, the 28px button 30px. `box-sizing:
+border-box` on `#status`, `.tile-header`, `.hv-banner` and `.hv-button` is the
+fix; the baselines were regenerated after it. The tile header also had two
+`margin-left: auto` children (`.tile-project` and `.tile-actions`) splitting
+the free space, floating the project label into the middle of the bar.
+
+**Review round 2** found no blockers and five IMPORTANT items, all fixed here:
+
+- The status bar's hint slot was never seeded on a zero-session boot.
+  `setModeHint` is reached only from `switchTo()` and `setView()`, and
+  `events.ts` calls `switchTo` only when sessions exist — so the first-run
+  screen showed none of the shortcuts this phase adds. `main.ts` seeds it
+  once after `initView`.
+- Contrast: `.tile-term-title`, `.tile-project` and `#status-hint` moved onto
+  `--fg-subtle`, which computes **3.05:1** on `--surface` in hive-dark and
+  **3.30:1** in hive-light — under the 4.5:1 AA floor, and a regression from
+  the `rgba(255,255,255,0.55)` (~6:1) rules they replaced. All three are
+  `--fg-muted` (7.8:1) now. Whether `--fg-subtle` is legible as text
+  *anywhere* is a token-value question for phase 6's contrast check — phase 3
+  uses it the same way in `session-row.css` / `project-card.css`.
+- `banner.setText()` and the status renderer set `title` alongside
+  `textContent`: both slots are fixed-height with `nowrap` + ellipsis, and an
+  error string is exactly where the truncated tail matters.
+- `refreshStateIcon()`'s live-phase override had no test — reverting it left
+  the suite green. `session-phase.test.ts` now pins both directions, verified
+  to fail on revert. (`PHASE.ready` is the empty string, not `'ready'`.)
+- `theme.spec.ts`'s describe still claimed "pixel-identical to v2.4.0" after
+  the same branch rebaselined those PNGs; renamed to what it now guards.
+
+Plus the minors: comments in `session-term.ts` that contradicted
+`tile-header.css` about hover-reveal, the dead `.worktree-glyph` rules left
+behind when the tile's glyph became an `iconButton`, a dismissal test whose
+first assertion passed on banner state leaked from an earlier test, and an
+over-claiming comment in `regen-generated.py`.
+
+Gate: `biome ci`, `tsc --noEmit`, `vite build`, 696 vitest tests, 214
+Playwright tests, `ui-lint --strict` (0 violations), `regen-generated.sh` and
+`go build ./...` all green.
+
+## PR convergence ledger
+
+- **2026-08-30 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 40505da01f92b489; threads_open: 0; action: stop; head_sha: 6053a31. (Findings fixed in a follow-up commit on the branch.)
+- **2026-08-30 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 5241381b689bb7ae; threads_open: 0; action: autofix+push, then escalated:risky fix needs human decision; head_sha: 286e448.

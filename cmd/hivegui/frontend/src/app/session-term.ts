@@ -146,11 +146,11 @@ export class SessionTerm {
   header: HTMLDivElement;
   body: HTMLDivElement;
   tileState: SVGSVGElement;
-  tileColor: HTMLSpanElement;
   tileName: HTMLSpanElement;
-  tileWorktree: HTMLSpanElement;
+  tileWorktree: HTMLButtonElement;
   tileProject: HTMLSpanElement;
   tileTermTitle: HTMLSpanElement;
+  tileActions: HTMLDivElement;
   tileMinimize: HTMLButtonElement;
   term: Terminal;
   fit: FitAddon;
@@ -245,33 +245,31 @@ export class SessionTerm {
     this.tileState = stateIcon(
       sessionState(info, state.attention.has(info.id)),
     );
-    this.tileColor = document.createElement('span');
-    this.tileColor.className = 'tile-color';
     this.tileName = document.createElement('span');
     this.tileName.className = 'tile-name';
     this.tileName.textContent = info.name ?? '';
-    this.tileWorktree = document.createElement('span');
-    this.tileWorktree.className = 'worktree-glyph clickable';
-    this.tileWorktree.replaceChildren(icon('branch', { size: 12 }));
-    this.tileWorktree.setAttribute('role', 'button');
     // Clicking the worktree marker opens the worktree browser for this
-    // session's project — the same thing the identical glyph does in
+    // session's project — the same thing the identical icon does in
     // the sidebar and on the project row. An indicator that looks like
     // a control but ignores clicks reads as broken.
-    this.tileWorktree.addEventListener('click', (e) => {
-      // The tile header also focuses/activates the tile; this click is
-      // about the worktree, not about switching sessions.
-      e.stopPropagation();
-      const pid = this.info?.projectId ?? this.info?.project_id ?? '';
-      const proj = state.projects.find((p) => p.id === pid);
-      if (proj) openWorktrees(proj);
+    this.tileWorktree = iconButton({
+      icon: 'branch',
+      label: 'Manage worktrees',
+      className: 'tile-worktree',
+      onClick: (e) => {
+        // The tile header also focuses/activates the tile; this click is
+        // about the worktree, not about switching sessions.
+        e.stopPropagation();
+        const pid = this.info?.projectId ?? this.info?.project_id ?? '';
+        const proj = state.projects.find((p) => p.id === pid);
+        if (proj) openWorktrees(proj);
+      },
     });
     {
       const wtBranch = info.worktreeBranch ?? info.worktree_branch;
+      this.tileWorktree.hidden = !wtBranch;
       if (wtBranch) {
         this.tileWorktree.title = `Worktree: ${wtBranch} — click to manage worktrees`;
-      } else {
-        this.tileWorktree.style.display = 'none';
       }
     }
     this.tileProject = document.createElement('span');
@@ -281,6 +279,10 @@ export class SessionTerm {
     // user can tell at a glance what each tile is currently doing.
     this.tileTermTitle = document.createElement('span');
     this.tileTermTitle.className = 'tile-term-title';
+    // Hidden until a title actually arrives: the separator lives in the
+    // element's ::before, so an empty-but-visible span renders a lone
+    // '·' next to the session name.
+    this.tileTermTitle.hidden = true;
     this.tileMinimize = iconButton({
       icon: 'minus',
       label: 'Minimize session',
@@ -295,14 +297,21 @@ export class SessionTerm {
       // also select / switch to this tile.
       e.stopPropagation();
     });
+    // Deliberately NOT hover-revealed (see tile-header.css): a control
+    // that is display:none until hover cannot be reached by keyboard.
+    this.tileActions = document.createElement('div');
+    this.tileActions.className = 'tile-actions';
+    this.tileActions.append(this.tileMinimize);
     this.header.append(
       this.tileState,
-      this.tileColor,
       this.tileName,
+      // Outside .tile-actions: worktree-ness is a fact about the session,
+      // not an action, so it has to read at rest like the sidebar row's
+      // marker does. Only the minimize button is hover-revealed.
       this.tileWorktree,
       this.tileTermTitle,
       this.tileProject,
-      this.tileMinimize,
+      this.tileActions,
     );
 
     this.body = document.createElement('div');
@@ -1058,9 +1067,16 @@ export class SessionTerm {
   // and its clearing) call it directly since they don't go through
   // setInfo at all.
   refreshStateIcon() {
+    // `this.phase` overrides `this.info.phase`: setPhase() updates the
+    // tile's own phase and never writes back to info, so resolving from
+    // info alone would repaint the icon from whatever the last session
+    // list said — stale for exactly the transition setPhase exists for.
     updateStateIcon(
       this.tileState,
-      sessionState(this.info, state.attention.has(this.info.id)),
+      sessionState(
+        { ...this.info, phase: this.phase },
+        state.attention.has(this.info.id),
+      ),
     );
   }
 
@@ -1071,13 +1087,10 @@ export class SessionTerm {
     this.tileName.textContent = info.name ?? '';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
     const wtBranch = info.worktreeBranch ?? info.worktree_branch;
-    if (wtBranch) {
-      this.tileWorktree.style.display = '';
-      this.tileWorktree.title = `Worktree: ${wtBranch} — click to manage worktrees`;
-    } else {
-      this.tileWorktree.style.display = 'none';
-      this.tileWorktree.title = '';
-    }
+    this.tileWorktree.hidden = !wtBranch;
+    this.tileWorktree.title = wtBranch
+      ? `Worktree: ${wtBranch} — click to manage worktrees`
+      : '';
     this._renderTermTitle();
   }
 
@@ -1089,7 +1102,7 @@ export class SessionTerm {
     const t = displayTitle(this.termTitle, this.info.name);
     this.tileTermTitle.textContent = t;
     if (t) this.tileTermTitle.title = t;
-    this.tileTermTitle.style.display = t ? '' : 'none';
+    this.tileTermTitle.hidden = !t;
   }
 
   // _beginRename hides the tile-name span, drops an input next to
@@ -1503,6 +1516,10 @@ export class SessionTerm {
     const prev = this.phase;
     this.phase = phase;
     this.host.classList.toggle('closing', isClosing(phase));
+    // Both branches: the phase is half of what sessionState() resolves,
+    // so the tile's icon has to move with it or it lies until the next
+    // setInfo.
+    this.refreshStateIcon();
     if (!isReady(phase)) {
       this._showPhaseOverlay();
       return;
@@ -1540,7 +1557,9 @@ export class SessionTerm {
     this.phaseSteps.replaceChildren(
       ...panel.steps.map((step) => {
         const li = document.createElement('li');
-        li.className = `phase-step ${step.state}`;
+        li.className = 'phase-step';
+        // A variant is a data attribute, never a second class.
+        li.dataset.state = step.state;
         // The mark used to be a CSS ::before dot/check/half-circle glyph;
         // it is an icon now so it matches the rest of the family. 'todo'
         // gets no mark - the indent in phase-step::before holds the column.

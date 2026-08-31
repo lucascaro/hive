@@ -289,7 +289,7 @@ test('the worktree glyph on a tile opens the browser', async ({ page }) => {
   const id = await page.evaluate(() =>
     window.__hive.createSessionWithWorktree?.('tile-session'),
   );
-  const glyph = page.locator(`.term-host[data-sid="${id}"] .worktree-glyph`);
+  const glyph = page.locator(`.term-host[data-sid="${id}"] .tile-worktree`);
   await expect(glyph).toBeVisible();
   await glyph.click();
   await expect(panel(page)).toBeVisible();

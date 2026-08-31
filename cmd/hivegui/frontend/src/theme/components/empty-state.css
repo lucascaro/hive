@@ -1,0 +1,136 @@
+/* Empty state, boot card and phase overlay. Bespoke surfaces
+   (components.md > "What is not a primitive") — tokens and icon() only.
+   The empty state sits in the same grid cell as #terms and floats above
+   it; pointer events only on itself so a sliver of terminal behind it
+   stays interactive when hidden. */
+#empty-state {
+  grid-row: 3;
+  grid-column: 2;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--fg-muted);
+  pointer-events: auto;
+}
+#empty-state.hidden { display: none; }
+#empty-state .empty-title {
+  font-family: var(--font-ui);
+  font-size: var(--text-xl);
+  color: var(--fg);
+}
+#empty-state .empty-hint {
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+  max-width: 60ch;
+  text-align: center;
+}
+#empty-state .empty-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* The boot overlay sits in the same grid cell as the empty state and
+   above it: until the first session list lands we do not yet know
+   whether "No sessions yet" is the truth or just a daemon that has not
+   answered. Opaque on purpose. */
+#boot-state {
+  grid-row: 3;
+  grid-column: 2;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--bg);
+}
+#boot-state.hidden { display: none; }
+.boot-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 40ch;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+.boot-state-card .phase-spinner { --session-color: var(--accent); }
+/* The spinner belongs to the wait; once the boot has given up the card
+   shows a Retry instead. */
+.boot-state-card .phase-spinner.hidden { display: none; }
+#boot-state-retry[hidden] { display: none; }
+
+.phase-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  z-index: 6;
+  opacity: 1;
+  transition: opacity var(--motion-fast) ease-out;
+}
+.phase-overlay[hidden] { display: none; }
+.phase-overlay.fading { opacity: 0; }
+.phase-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  max-width: 80%;
+  text-align: center;
+}
+.phase-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--session-color, var(--fg-subtle)) 35%, transparent);
+  border-top-color: var(--session-color, var(--fg-subtle));
+  animation: phase-spin 700ms linear infinite;
+}
+@keyframes phase-spin { to { transform: rotate(360deg); } }
+/* Users who ask for less motion get a pulse instead of a spin. */
+@media (prefers-reduced-motion: reduce) {
+  .phase-spinner { animation: phase-pulse 1.4s ease-in-out infinite; }
+  @keyframes phase-pulse { 50% { opacity: 0.35; } }
+}
+.phase-status {
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+.phase-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+}
+.phase-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.phase-step > .hv-icon { flex: none; }
+/* 'todo' has no icon: a token dot in the icon's slot keeps the labels
+   aligned without a Unicode bullet. */
+.phase-step[data-state='todo']::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  flex: none;
+  background: radial-gradient(circle, var(--fg-subtle) 0 2px, transparent 2px);
+}
+.phase-step[data-state='done'] { color: var(--fg-muted); }
+.phase-step[data-state='done'] .hv-icon { color: var(--state-running); }
+.phase-step[data-state='active'] { color: var(--fg); }

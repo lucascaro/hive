@@ -18,7 +18,7 @@ test('boot lands a persistent non-error status', async ({ page }) => {
   await boot(page);
   // After connect, setActive overwrites "connected" with the active
   // session's name — the persistent slot ends at "main".
-  await expect(page.locator('#status')).toHaveText('main');
+  await expect(page.locator('#status-text')).toHaveText('main');
   await expect(page.locator('#status')).not.toHaveClass(/error/);
 });
 
@@ -41,7 +41,9 @@ test('failed CreateSession via launcher shows an error and adds no session', asy
 
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
-  await expect(status).toHaveText(/new session failed:.*daemon went away/);
+  await expect(page.locator('#status-text')).toHaveText(
+    /new session failed:.*daemon went away/,
+  );
   expect(
     await page.evaluate(() => window.__hive.state?.sessions.length ?? 0),
   ).toBe(before);
@@ -57,7 +59,7 @@ test('failed KillSession shows an error and the session survives', async ({
 
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
-  await expect(status).toHaveText(/close failed:.*boom/);
+  await expect(page.locator('#status-text')).toHaveText(/close failed:.*boom/);
   // The bootstrap session is still listed.
   await expect(page.locator('#projects li[data-sid="s1"]')).toBeVisible();
 });
@@ -76,7 +78,9 @@ test('failed rename shows an error', async ({ page }) => {
 
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
-  await expect(status).toHaveText(/rename failed:.*no daemon/);
+  await expect(page.locator('#status-text')).toHaveText(
+    /rename failed:.*no daemon/,
+  );
 });
 
 test('failed tile rename shows an error (regression: UpdateSession import)', async ({
@@ -102,7 +106,9 @@ test('failed tile rename shows an error (regression: UpdateSession import)', asy
 
   const status = page.locator('#status');
   await expect(status).toHaveClass(/error/);
-  await expect(status).toHaveText(/rename failed:.*no daemon/);
+  await expect(page.locator('#status-text')).toHaveText(
+    /rename failed:.*no daemon/,
+  );
 });
 
 test('tile rename commits on Enter', async ({ page }) => {
@@ -128,10 +134,12 @@ test('error flash auto-reverts to the persistent status', async ({ page }) => {
     window.__hive.failNext?.('KillSession', 'transient'),
   );
   await page.keyboard.press(`${mod}+w`);
-  await expect(page.locator('#status')).toHaveText(/close failed/);
+  await expect(page.locator('#status-text')).toHaveText(/close failed/);
   // FLASH_ERROR_MS is 6s — after expiry the persistent slot (the
   // active session's name) returns.
-  await expect(page.locator('#status')).toHaveText('main', { timeout: 8000 });
+  await expect(page.locator('#status-text')).toHaveText('main', {
+    timeout: 8000,
+  });
   await expect(page.locator('#status')).not.toHaveClass(/error/);
 });
 
@@ -178,4 +186,24 @@ test('launcher selects an agent and creates a session on the happy path', async 
     before,
   );
   await expect(page.locator('#launcher')).toBeHidden();
+});
+
+// The right slot is the only place the current mode is named now that
+// setStatus stopped prefixing the view onto the session name.
+test('the status bar right slot shows the current mode shortcuts', async ({
+  page,
+}) => {
+  await boot(page);
+  const hint = page.locator('#status-hint');
+  await expect(hint).toContainText('grid');
+  // A one-session grid is downgraded back to single by resolveView, so
+  // the mode can only change with a second session on screen.
+  await page.evaluate(() => window.__hive.addSession?.('two'));
+  await page.waitForFunction(
+    () => (window.__hive.state?.sessions.length ?? 0) >= 2,
+  );
+  await page.keyboard.press(`${mod}+g`);
+  await expect(page.locator('#terms')).toHaveClass(/grid/);
+  await expect(hint).toContainText('focus');
+  await expect(hint.locator('kbd').first()).toBeVisible();
 });

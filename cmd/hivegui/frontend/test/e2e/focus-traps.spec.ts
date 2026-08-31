@@ -332,11 +332,11 @@ test('launcher: Tab moves the selection instead of leaving', async ({
   await page.keyboard.press(`${mod}+t`);
   await expect(page.locator('#launcher')).toBeVisible();
   const before = await page
-    .locator('#launcher .launcher-list > *.selected')
+    .locator('#launcher .launcher-list > *[data-selected]')
     .textContent();
   await page.keyboard.press('Tab');
   const after = await page
-    .locator('#launcher .launcher-list > *.selected')
+    .locator('#launcher .launcher-list > *[data-selected]')
     .textContent();
   expect(after).not.toBe(before);
   await expect(page.locator('#launcher')).toBeVisible();

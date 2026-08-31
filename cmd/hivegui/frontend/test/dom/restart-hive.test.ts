@@ -21,6 +21,7 @@ vi.mock('../../src/bridge.js', () => bridge);
 
 let restartHive: typeof import('../../src/app/banners.js').restartHive;
 let isDaemonRestarting: typeof import('../../src/app/banners.js').isDaemonRestarting;
+let initBanners: typeof import('../../src/app/banners.js').initBanners;
 let bannerEl: HTMLElement;
 let bannerText: HTMLElement;
 
@@ -28,6 +29,13 @@ let bannerText: HTMLElement;
 // non-null assertions, and a missing scaffold element should name
 // itself instead of surfacing as a null-property TypeError three
 // assertions later.
+// The handlers registered via EventsOn, replayed the way Go would.
+function emit(event: string, payload: unknown) {
+  for (const call of bridge.EventsOn.mock.calls) {
+    if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+  }
+}
+
 function mustEl(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id} in test scaffold`);
@@ -38,24 +46,19 @@ beforeAll(async () => {
   // dom.ts runs side effects on import (it decorates #terms), and
   // banners.ts pulls it in for flashStatus — so the scaffold needs
   // those elements even though this file never touches them.
+  // The banners build their own markup now; the scaffold only has to
+  // provide the #app mount point they prepend into.
   document.body.innerHTML = `
-    <div id="terms"></div><ul id="projects"></ul>
-    <div id="daemon-banner" class="hidden">
-      <span id="daemon-banner-text"></span>
-      <button id="daemon-banner-restart"></button>
-      <button id="daemon-banner-dismiss"></button>
-    </div>
-    <div id="update-banner" class="hidden">
-      <span id="update-banner-text"></span>
-      <button id="update-banner-download"></button>
-      <button id="update-banner-dismiss"></button>
-    </div>
-    <div id="status"></div>`;
-  ({ restartHive, isDaemonRestarting } = await import(
+    <div id="app">
+      <div id="terms"></div><ul id="projects"></ul>
+      <div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
+    </div>`;
+  ({ restartHive, isDaemonRestarting, initBanners } = await import(
     '../../src/app/banners.js'
   ));
+  initBanners();
   bannerEl = mustEl('daemon-banner');
-  bannerText = mustEl('daemon-banner-text');
+  bannerText = bannerEl.querySelector('.hv-banner__text') as HTMLElement;
 });
 
 beforeEach(() => {
@@ -82,7 +85,7 @@ describe('restartHive', () => {
   it('surfaces a refusal in the banner', async () => {
     bridge.RestartDaemon.mockRejectedValue(new Error('hived still answering'));
     await restartHive();
-    expect(bannerEl.classList.contains('hidden')).toBe(false);
+    expect(bannerEl.hidden).toBe(false);
     expect(bannerText.textContent).toMatch(
       /Restart failed.*hived still answering/,
     );
@@ -131,5 +134,69 @@ describe('restartHive re-entrancy', () => {
     bridge.Confirm.mockResolvedValue(true);
     await restartHive();
     expect(bridge.RestartDaemon).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The daemon banner's dismissal is keyed on the specific daemon build it
+// was dismissed for — rewritten onto the banner primitive's handle in
+// phase 4. A dismissal that leaked across builds would hide a real
+// mismatch, which is the whole reason the banner exists.
+describe('daemon banner dismissal', () => {
+  const stale = (daemonBuild: string) =>
+    emit('daemon:stale', {
+      severity: 'mismatch',
+      daemonBuild,
+      guiBuild: 'gui-1',
+    });
+  const dismiss = () =>
+    (
+      bannerEl.querySelector('.hv-banner__dismiss') as HTMLButtonElement
+    ).dispatchEvent(new MouseEvent('click'));
+
+  // A 'match' reconnect both hides the banner and clears the remembered
+  // dismissal, which is exactly the clean slate these tests need. Without
+  // it the first assertion below passes on the banner an earlier test in
+  // this file left open, so a `stale()` that did nothing would still go
+  // green.
+  beforeEach(() => {
+    emit('daemon:stale', {
+      severity: 'match',
+      daemonBuild: 'baseline',
+      guiBuild: 'gui-1',
+    });
+    if (!bannerEl.hidden) throw new Error('scaffold: banner should be hidden');
+  });
+
+  it('stays down for the dismissed build and returns for a different one', () => {
+    stale('daemon-1');
+    expect(bannerEl.hidden).toBe(false);
+
+    dismiss();
+    expect(bannerEl.hidden).toBe(true);
+
+    // Same build reconnecting: still dismissed.
+    stale('daemon-1');
+    expect(bannerEl.hidden).toBe(true);
+
+    // A different mismatched build is a new fact.
+    stale('daemon-2');
+    expect(bannerEl.hidden).toBe(false);
+  });
+
+  it('clears the dismissal when the builds match again', () => {
+    stale('daemon-3');
+    dismiss();
+    expect(bannerEl.hidden).toBe(true);
+
+    emit('daemon:stale', {
+      severity: 'match',
+      daemonBuild: 'daemon-3',
+      guiBuild: 'gui-1',
+    });
+    expect(bannerEl.hidden).toBe(true);
+
+    // Reset means a later mismatch on that same build surfaces again.
+    stale('daemon-3');
+    expect(bannerEl.hidden).toBe(false);
   });
 });

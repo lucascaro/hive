@@ -18,6 +18,7 @@ import { registerModal } from './registry.js';
 import { releaseFocus } from './focus-trap.js';
 import { pageEl } from '../el.js';
 import { cmdOrCtrl } from '../../lib/platform.js';
+import { kbd } from '../../ui/kbd.js';
 import type { SessionInfo } from '../state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
@@ -30,7 +31,7 @@ export interface LauncherDeps {
 }
 
 // One rendered agent row, paired with the element that draws it so
-// highlightLauncherSelection can toggle .selected without re-querying.
+// highlightLauncherSelection can toggle data-selected without re-querying.
 interface LauncherItem {
   agent: main.AgentInfo;
   el: HTMLElement;
@@ -149,7 +150,7 @@ export function bumpAgentUsage(id: string | undefined) {
 
 function highlightLauncherSelection() {
   launcherState.items.forEach((it, i) => {
-    it.el.classList.toggle('selected', i === launcherState.selected);
+    it.el.toggleAttribute('data-selected', i === launcherState.selected);
     if (i === launcherState.selected)
       it.el.scrollIntoView({ block: 'nearest' });
   });
@@ -242,7 +243,8 @@ function renderLauncherList() {
   }
   matches.forEach((a, idx) => {
     const item = document.createElement('div');
-    item.className = `launcher-item${a.available ? '' : ' uninstalled'}`;
+    item.className = 'launcher-item';
+    if (!a.available) item.dataset.available = 'false';
     item.style.setProperty('--agent-color', a.color);
     const num = document.createElement('span');
     num.className = 'agent-num';
@@ -250,8 +252,9 @@ function renderLauncherList() {
     // number (no digit shortcut). While a query is active the digits
     // type into it instead of selecting, so the hints come off — a
     // visible [n] that does nothing is worse than none (AGENTS.md,
-    // Key Discoverability).
-    num.textContent = !raw && idx < 9 ? String(idx + 1) : '';
+    // Key Discoverability). kbd() is the only way a key hint renders
+    // (patterns.md > Keyboard hints).
+    if (!raw && idx < 9) num.append(kbd(`[${idx + 1}]`));
     const dot = document.createElement('span');
     dot.className = 'agent-dot';
     const name = document.createElement('span');

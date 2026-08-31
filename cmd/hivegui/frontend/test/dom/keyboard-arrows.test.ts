@@ -97,7 +97,7 @@ beforeAll(async () => {
   // The keydown listener dereferences every modal before reaching the
   // shortcut chain; without these it throws before any binding runs.
   document.body.innerHTML = `
-    <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
+    <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     <div id="launcher" class="hidden"></div>
     <div id="project-editor" class="hidden"></div>
     <div id="command-palette" class="hidden"></div>

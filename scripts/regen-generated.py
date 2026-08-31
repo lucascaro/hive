@@ -36,6 +36,10 @@ SPECS_INDEX = SPECS_DIR / "index.md"
 TECH_DEBT_TRACKER = REPO_ROOT / "docs" / "exec-plans" / "tech-debt-tracker.md"
 
 CHANGESET_TYPES = ["added", "changed", "fixed", "removed", "deprecated", "security"]
+# GATE is the current name for the pre-merge validation stage. QA is its
+# pre-rename spelling: no spec in the tree uses it today, but it stays
+# accepted so a branch cut before the rename still regenerates instead of
+# failing the verify-generated job on an unrelated PR.
 STAGES = ["TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE", "DONE", "REJECTED"]
 ACTIVE_STAGES = {"TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE"}
 PRIORITY_ORDER = {"P1": 1, "P2": 2, "P3": 3}

@@ -25,20 +25,15 @@
     <link rel="stylesheet" href="./src/theme/components/icon.css"/>
     <link rel="stylesheet" href="./src/theme/components/icon-button.css"/>
     <link rel="stylesheet" href="./src/theme/components/kbd.css"/>
+    <link rel="stylesheet" href="./src/theme/components/button.css"/>
+    <link rel="stylesheet" href="./src/theme/components/banner.css"/>
+    <link rel="stylesheet" href="./src/theme/components/status-bar.css"/>
+    <link rel="stylesheet" href="./src/theme/components/tile-header.css"/>
+    <link rel="stylesheet" href="./src/theme/components/launcher-item.css"/>
+    <link rel="stylesheet" href="./src/theme/components/empty-state.css"/>
 </head>
 <body>
 <div id="app">
-  <div id="daemon-banner" class="hidden" role="alert">
-    <span id="daemon-banner-text"></span>
-    <button id="daemon-banner-restart" type="button">Restart Hive</button>
-    <button id="daemon-banner-dismiss" type="button" aria-label="Dismiss"></button>
-  </div>
-  <div id="update-banner" class="hidden" role="status">
-    <span id="update-banner-text"></span>
-    <button id="update-banner-action" type="button">Update</button>
-    <button id="update-banner-download" type="button">Download</button>
-    <button id="update-banner-dismiss" type="button" aria-label="Dismiss"></button>
-  </div>
   <aside id="sidebar">
     <header>
       <span class="brand">Hive</span>
@@ -179,7 +174,6 @@
     <div class="boot-state-card">
       <span class="phase-spinner" aria-hidden="true"></span>
       <span id="boot-state-text">Starting hive…</span>
-      <button id="boot-state-retry" class="hidden" type="button">Retry</button>
     </div>
   </div>
   <div id="minimized-tray" class="hidden" role="toolbar" aria-label="Minimized sessions"></div>
@@ -192,7 +186,13 @@
       <div id="help-overlay-groups"></div>
     </div>
   </div>
-  <div id="status" role="status" aria-live="polite">connecting…</div>
+  <!-- The live region is the text slot alone. With it on the bar, the
+       mode hints re-announced on every navigation even though they only
+       restate a static per-mode shortcut. -->
+  <div id="status">
+    <span id="status-text" role="status" aria-live="polite">connecting…</span>
+    <span id="status-hint"></span>
+  </div>
 </div>
 <script src="./src/main.ts" type="module"></script>
 </body>

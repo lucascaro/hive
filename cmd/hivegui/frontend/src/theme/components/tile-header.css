@@ -1,0 +1,95 @@
+/* docs/design-docs/ui/components.md > Grid tile header. 28px, --surface,
+   bottom border, state icon + name + '·' + window title, hover actions.
+   The project colour is deliberately gone from this bar: the sidebar
+   owns project identity (README principle 2), and the tile keeps
+   --session-color for its border and attention glow. */
+.term-host .tile-header {
+  /* Includes the 1px bottom border — see status-bar.css. */
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+.term-host.term-focused .tile-header {
+  /* Focus reads as a session-coloured hairline under the bar, not as a
+     brighter fill: the terminal is the product, chrome recedes. */
+  border-bottom-color: var(--session-color, var(--accent));
+  color: var(--fg);
+}
+.term-host .tile-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--fg);
+}
+.term-host .tile-term-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* --fg-muted, not --fg-subtle: subtle on --surface computes 3.05:1 in
+     hive-dark and 3.30:1 in hive-light, under the 4.5:1 AA floor. The
+     rules this replaced were rgba(255,255,255,0.55) (~6:1), so --fg-subtle
+     here would be a regression. Whether --fg-subtle is legible ANYWHERE as
+     text is a token-value question for phase 6's contrast check. */
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+}
+.term-host .tile-term-title[hidden] { display: none; }
+.term-host .tile-term-title::before {
+  content: '\00b7';
+  margin-right: var(--space-2);
+  color: var(--fg-muted);
+}
+.term-host .tile-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  background: var(--surface-raised);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  font: inherit;
+  outline: none;
+}
+.term-host .tile-project {
+  margin-left: auto;
+  flex-shrink: 0;
+  /* See .tile-term-title above for why this is not --fg-subtle. */
+  color: var(--fg-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+/* Deliberately NOT hover-revealed. `display: none` until hover leaves the
+   minimize button unreachable by keyboard — the same trap session-row.css
+   rejected — and Playwright cannot click what only appears on hover. The
+   header has room for the label and the button both. */
+.term-host .tile-actions {
+  display: flex;
+  /* No margin-left:auto here — .tile-project already claims the free
+     space, and two auto margins would split it and float the label into
+     the middle of the bar instead of parking it on the right. */
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.term-host .tile-worktree[hidden] { display: none; }
+/* Visible at rest: it reports that this session runs in a worktree, which
+   is a fact, not an action. Only .tile-actions is hover-revealed. */
+.term-host .tile-worktree { flex-shrink: 0; }
+

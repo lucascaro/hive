@@ -1,0 +1,52 @@
+/* docs/design-docs/ui/components.md > button. Height 28px, --text-md,
+   --radius-sm; kinds are [data-kind], never extra classes. */
+.hv-button {
+  /* Includes the 1px border — see status-bar.css. */
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: 1.4;
+  cursor: pointer;
+  background: var(--btn);
+  border: 1px solid var(--btn-border);
+  color: var(--fg-muted);
+  transition: background var(--motion-fast) ease;
+}
+/* The author-origin `display` above outranks the UA's `[hidden]` rule, so
+   without this every `el.hidden = true` on a button is a silent no-op. */
+.hv-button[hidden] { display: none; }
+.hv-button[data-kind='primary'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 500;
+}
+.hv-button[data-kind='danger'] {
+  background: transparent;
+  border-color: var(--state-error);
+  color: var(--state-error);
+}
+.hv-button[data-kind='ghost'] {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-muted);
+}
+.hv-button:hover { background: var(--hover); }
+.hv-button[data-kind='primary']:hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--bg));
+}
+.hv-button:active { filter: brightness(0.92); }
+.hv-button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.hv-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

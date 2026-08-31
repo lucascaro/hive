@@ -6,6 +6,7 @@
 
 import { registerModal } from './registry.js';
 import { pageEl } from '../el.js';
+import { kbd } from '../../ui/kbd.js';
 
 // One row of the command table main.ts builds and hands over.
 export interface PaletteCommand {
@@ -46,18 +47,22 @@ function renderPalette() {
   }
   paletteState.items.forEach((c, i) => {
     const row = document.createElement('div');
-    row.className = `palette-item${i === paletteState.selected ? ' selected' : ''}`;
+    row.className = 'palette-item';
+    if (i === paletteState.selected) row.dataset.selected = '';
     const name = document.createElement('span');
     name.className = 'palette-name';
     name.textContent = c.name;
     const sc = document.createElement('span');
     sc.className = 'palette-shortcut';
-    sc.textContent = c.shortcut;
+    // kbd() is the only way a key hint renders (patterns.md).
+    if (c.shortcut) sc.append(kbd(c.shortcut));
     row.append(name, sc);
     row.addEventListener('mouseenter', () => {
       paletteState.selected = i;
-      for (const el of paletteList.children) el.classList.remove('selected');
-      row.classList.add('selected');
+      for (const el of paletteList.children) {
+        (el as HTMLElement).removeAttribute('data-selected');
+      }
+      row.dataset.selected = '';
     });
     row.addEventListener('click', () => activatePalette(i));
     paletteList.appendChild(row);

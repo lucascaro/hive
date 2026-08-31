@@ -1,0 +1,69 @@
+/* docs/design-docs/ui/components.md > launcherItem / command palette
+   rows. 32px, --text-md, leading swatch, trailing kbd hint; selected
+   uses the same --sel + accent bar as the session row. */
+.launcher-item,
+.palette-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  color: var(--fg-muted);
+  transition: background var(--motion-fast) ease;
+}
+.launcher-item:hover,
+.palette-item:hover { background: var(--hover); }
+.launcher-item[data-selected],
+.palette-item[data-selected] {
+  background: var(--sel);
+  color: var(--fg);
+}
+.launcher-item[data-selected]::before,
+.palette-item[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.launcher-item .agent-num {
+  flex-shrink: 0;
+  min-width: 2.5ch;
+}
+.launcher-item .agent-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  /* background-color, not the `background` shorthand: the value comes
+     from a user-editable agents.json, and the shorthand would accept a
+     url() and fire an outbound request just from opening the launcher.
+     Go sanitizes the color too (agent.validateCustom) — this is the
+     second layer, so a future caller that skips validation is still
+     safe. */
+  background-color: var(--agent-color, var(--fg-subtle));
+}
+.launcher-item .agent-name { flex: 1; min-width: 0; }
+.launcher-item[data-available='false'] .agent-name { color: var(--fg-subtle); }
+.launcher-item .install-tag {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+}
+.launcher-loading,
+.launcher-empty {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+}
+.palette-name { flex: 1; min-width: 0; }
+.palette-shortcut { flex-shrink: 0; }

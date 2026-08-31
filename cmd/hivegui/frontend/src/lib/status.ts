@@ -75,3 +75,41 @@ export function createStatus({
 
   return { set, flash };
 }
+
+// The status bar's right slot. patterns.md > Keyboard hints: "the status
+// bar right slot shows the current mode's top 1-2 shortcuts". Kept here,
+// beside the controller, and pure so a test can assert the table without
+// a DOM. Modifier spelling follows AGENTS.md (symbols on macOS, words
+// elsewhere); the chords themselves mirror lib/shortcuts.ts — ⌘G toggles
+// the project grid, ⇧⌘K opens the palette, and ⌘+arrows move between
+// tiles. A hint that names a chord nothing is bound to is worse than no
+// hint at all (AGENTS.md > Consistency).
+import type { ViewMode } from './view.js';
+
+export interface ModeHint {
+  key: string;
+  label: string;
+}
+
+export function modeHints(view: ViewMode, mac: boolean): ModeHint[] {
+  const mod = mac ? '⌘' : 'Ctrl+';
+  if (view === 'grid-all' || view === 'grid-project') {
+    return [
+      // Each grid is toggled back to a single pane by the chord that
+      // opened it (keyboard.ts): ⌘G for the project grid, ⇧⌘G for the
+      // all-sessions grid. Naming plain ⌘G in grid-all would advertise a
+      // chord that switches grids instead of focusing.
+      {
+        key: view === 'grid-all' ? (mac ? '⇧⌘G' : 'Ctrl+Shift+G') : `${mod}G`,
+        label: 'focus',
+      },
+      // Off macOS the four arrows spelled out would be longer than the
+      // slot; the word carries the same meaning.
+      { key: mac ? '⌘↑↓←→' : 'Ctrl+Arrows', label: 'move' },
+    ];
+  }
+  return [
+    { key: `${mod}G`, label: 'grid' },
+    { key: mac ? '⇧⌘K' : 'Ctrl+Shift+K', label: 'actions' },
+  ];
+}
