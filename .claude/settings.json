@@ -11,5 +11,38 @@
       "Bash(./hive --help)",
       "Bash(grep:*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c '[ -x \"$CLAUDE_PROJECT_DIR/graphify-out/graphify-refresh.sh\" ] || exit 0; exec \"$CLAUDE_PROJECT_DIR/graphify-out/graphify-refresh.sh\"'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v graphify >/dev/null 2>&1 && graphify hook-guard search || exit 0"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v graphify >/dev/null 2>&1 && graphify hook-guard read || exit 0"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,3 +1,25 @@
+<!-- BEGIN HIVESMITH GRAPHIFY -->
+## Knowledge graph (graphify)
+
+This project keeps a structural map of its own code in `graphify-out/`. It refreshes
+automatically — after agent edits (debounced) and on commit/checkout, in every
+worktree. Do not run a rebuild by hand as part of ordinary work.
+
+- **Orient** before a repo-wide change: read `graphify-out/GRAPH_REPORT.md`.
+- **Trace a connection:** `graphify query "how does X reach Y"`.
+- **Blast radius** before editing a shared symbol: `graphify affected "SymbolName"`.
+- **Rebuild concepts** (costs LLM tokens, so only when the *meaning* of the code
+  moved, not its structure): `/graphify`.
+
+Automatic refreshes are AST-only and never spend tokens. Set
+`HIVESMITH_GRAPHIFY_REFRESH=0` to silence them for a session.
+
+This project also registers graphify's `PreToolUse` orientation hooks, which
+print a reminder to consult the graph before `Read`/`Glob`/`Grep`/`Bash`.
+Re-run the setup with `--no-nudges` (or `HIVESMITH_GRAPHIFY_NUDGES=0`) to drop
+them while keeping everything else.
+<!-- END HIVESMITH GRAPHIFY -->
+
 # Hive – AI Coding Guidelines
 
 > Architecture lives in `DESIGN.md` (the architecture map). This file
