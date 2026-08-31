@@ -163,12 +163,23 @@ export function onSessionRestored(ev: RestoredEvent) {
   const patch = ev.patch_path ?? ev.patchPath;
   if (patch) losses.push(`uncommitted changes were saved to ${patch}`);
 
+  // Name the session that actually came back. ⌘Z sends an empty id and
+  // the daemon resolves "the last closed one", so the session restored
+  // is not necessarily the one the banner was offering undo for —
+  // reporting an unqualified "Session reopened" would then describe the
+  // wrong session. The event carries the id precisely so this message
+  // can be specific; falling back to the generic noun is fine when the
+  // added event has not landed yet.
+  const id = ev.session_id ?? ev.sessionId ?? '';
+  const name = state.sessions.find((s) => s.id === id)?.name;
+  const subject = name ? `“${name}” reopened` : 'Session reopened';
+
   // Scrollback is unconditional: there is no disk-backed scrollback to
   // replay from, so every restore starts with an empty terminal. Said
   // once, plainly, rather than per-restore.
   const text = losses.length
-    ? `Session reopened — scrollback is gone, and ${losses.join('; ')}.`
-    : 'Session reopened. Scrollback is gone; everything else came back.';
+    ? `${subject} — scrollback is gone, and ${losses.join('; ')}.`
+    : `${subject}. Scrollback is gone; everything else came back.`;
 
   undoBanner.setText(text);
   undoBanner.action('undo').hidden = true;

@@ -156,13 +156,49 @@ func (r *Registry) dumpRecoveryPatch(id, wtPath string) (patchPath string, skipp
 // on, and failing the restore with a JSON error helps nobody.
 func (r *Registry) readTombstone(id string) (Tombstone, error) {
 	var t Tombstone
+	// The id arrives off the wire and is about to be joined into a
+	// path that discardTombstone will later os.Remove. Kill() is
+	// protected incidentally — it looks its id up in r.entries first,
+	// so only known ids ever reach a path — but Restore builds the
+	// path from the raw string, so the guard has to be explicit here.
+	// The socket is local and user-owned, which bounds the impact; it
+	// does not make an unvalidated path join at a trust boundary OK.
+	if !validSessionID(id) {
+		return t, ErrNotFound
+	}
 	if err := readJSON(r.tombstonePath(id), &t); err != nil {
 		return t, ErrNotFound
 	}
 	if t.Meta.ID == "" {
 		return t, ErrNotFound
 	}
+	// The file's own id must match the one we were asked for. A
+	// mismatch means the store is inconsistent, and restoring under
+	// the wrong id would then delete the wrong tombstone.
+	if t.Meta.ID != id {
+		return t, ErrNotFound
+	}
 	return t, nil
+}
+
+// validSessionID reports whether id is safe to use as a path segment.
+// Session ids are generated UUIDs, so this is deliberately stricter
+// than "no separators": anything outside the UUID alphabet is rejected
+// rather than escaped, because there is no legitimate caller that
+// needs it.
+func validSessionID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // listTombstones returns every readable tombstone, newest close first.
@@ -223,7 +259,14 @@ func (r *Registry) pruneTombstones() {
 }
 
 // discardTombstone removes a record and any recovery patch beside it.
+// Callers reach this only after readTombstone or listTombstones has
+// vouched for the id, but it re-checks: this is the function that
+// removes files, and it is one line to make that independent of who
+// calls it.
 func (r *Registry) discardTombstone(id string) {
+	if !validSessionID(id) {
+		return
+	}
 	if err := os.Remove(r.tombstonePath(id)); err != nil && !os.IsNotExist(err) {
 		log.Printf("registry: could not remove tombstone %s: %v", id, err)
 	}

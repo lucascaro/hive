@@ -144,6 +144,27 @@ describe('restore outcome', () => {
     expect(undoButton()?.hidden).toBe(true);
   });
 
+  it('names the session that actually came back', () => {
+    // ⌘Z restores whatever the daemon says was closed last, which is
+    // not necessarily the session the banner offered undo for — so the
+    // report has to name the one that returned, not the one we asked
+    // about.
+    state.sessions = [{ id: 's2', name: 'other-branch' } as never];
+    noteLocalClose('s1', 'api-refactor');
+    onSessionRemoved('s1');
+
+    onSessionRestored({ session_id: 's2' });
+
+    expect(bannerText()).toContain('other-branch');
+    expect(bannerText()).not.toContain('api-refactor');
+  });
+
+  it('falls back to a generic subject when the session is not in state yet', () => {
+    state.sessions = [];
+    onSessionRestored({ session_id: 'not-here-yet' });
+    expect(bannerText()).toContain('Session reopened');
+  });
+
   it('reports degradation instead of a bare success', () => {
     onSessionRestored({
       session_id: 's1',

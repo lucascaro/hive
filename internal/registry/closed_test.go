@@ -132,9 +132,67 @@ func TestRestoreTwiceSecondFails(t *testing.T) {
 	}
 	defer r.Kill(id, true)
 
+	// Specifically ErrNotFound, not "either error": a successful
+	// restore deletes the tombstone, and Restore reads the tombstone
+	// before it checks the live map, so ErrNotFound is the only
+	// reachable outcome here. Accepting ErrExists too would let this
+	// test pass while the ordering silently changed.
 	_, _, err := r.Restore(id, shellOpts())
-	if !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrExists) {
-		t.Errorf("second Restore err = %v, want ErrNotFound or ErrExists", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("second Restore err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestRestoreRefusesWhenIdIsLive covers the ErrExists branch, which no
+// ordinary sequence reaches: a successful restore removes the
+// tombstone, so the live-map check only fires when a tombstone and a
+// live entry exist for the same id at once. Hand-build that state —
+// otherwise the guard is dead code that nothing proves works.
+func TestRestoreRefusesWhenIdIsLive(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e := createShell(t, r)
+	id := e.ID
+	defer r.Kill(id, true)
+
+	writeTestTombstone(t, r, id, time.Now().UTC())
+
+	_, _, err := r.Restore(id, shellOpts())
+	if !errors.Is(err, ErrExists) {
+		t.Fatalf("Restore of a live id = %v, want ErrExists", err)
+	}
+	// The refusal must not have taken the tombstone with it: this
+	// close is still undoable once the live session goes away.
+	if _, rerr := r.readTombstone(id); rerr != nil {
+		t.Errorf("a refused restore discarded the tombstone: %v", rerr)
+	}
+}
+
+// TestRestoreRejectsTraversalIds pins the path guard. The id is joined
+// into a filename that a successful restore later removes, so a
+// separator or a `..` must never reach the filesystem.
+func TestRestoreRejectsTraversalIds(t *testing.T) {
+	r := freshRegistry(t)
+	// A real tombstone the traversal ids must not be able to reach.
+	writeTestTombstone(t, r, "victim", time.Now().UTC())
+
+	for _, id := range []string{
+		"../victim",
+		"../../etc/passwd",
+		"a/b",
+		`a\b`,
+		"..",
+		"",
+	} {
+		t.Run(id, func(t *testing.T) {
+			if _, _, err := r.Restore(id, shellOpts()); !errors.Is(err, ErrNotFound) {
+				t.Errorf("Restore(%q) = %v, want ErrNotFound", id, err)
+			}
+		})
+	}
+	// Nothing above may have deleted the real record.
+	if _, err := r.readTombstone("victim"); err != nil {
+		t.Errorf("a traversal id removed an unrelated tombstone: %v", err)
 	}
 }
 

@@ -345,6 +345,11 @@ TDD per `AGENTS.md` — every behaviour ships with its test.
   dispatch, GUI bindings, `undo-close.ts` with the banner and ⌘Z. Go suite,
   frontend unit/dom/e2e, tsc, biome and ui-lint all green.
 
+## PR convergence ledger
+
+- **2026-08-31 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c6de5a00…; threads_open: 0; action: stop; head_sha: d8e652b.
+- **2026-08-31 post-loop** — 3 IMPORTANT findings applied by hand rather than left for the gate (boil-the-lake): wire-id path guard, ErrExists + traversal coverage, restored-session naming.
+
 ## Open questions
 
 None. All five open decisions were resolved during plan review.
