@@ -21,6 +21,7 @@ vi.mock('../../src/bridge.js', () => bridge);
 
 let restartHive: typeof import('../../src/app/banners.js').restartHive;
 let isDaemonRestarting: typeof import('../../src/app/banners.js').isDaemonRestarting;
+let initBanners: typeof import('../../src/app/banners.js').initBanners;
 let bannerEl: HTMLElement;
 let bannerText: HTMLElement;
 
@@ -38,24 +39,19 @@ beforeAll(async () => {
   // dom.ts runs side effects on import (it decorates #terms), and
   // banners.ts pulls it in for flashStatus — so the scaffold needs
   // those elements even though this file never touches them.
+  // The banners build their own markup now; the scaffold only has to
+  // provide the #app mount point they prepend into.
   document.body.innerHTML = `
-    <div id="terms"></div><ul id="projects"></ul>
-    <div id="daemon-banner" class="hidden">
-      <span id="daemon-banner-text"></span>
-      <button id="daemon-banner-restart"></button>
-      <button id="daemon-banner-dismiss"></button>
-    </div>
-    <div id="update-banner" class="hidden">
-      <span id="update-banner-text"></span>
-      <button id="update-banner-download"></button>
-      <button id="update-banner-dismiss"></button>
-    </div>
-    <div id="status"></div>`;
-  ({ restartHive, isDaemonRestarting } = await import(
+    <div id="app">
+      <div id="terms"></div><ul id="projects"></ul>
+      <div id="status"></div>
+    </div>`;
+  ({ restartHive, isDaemonRestarting, initBanners } = await import(
     '../../src/app/banners.js'
   ));
+  initBanners();
   bannerEl = mustEl('daemon-banner');
-  bannerText = mustEl('daemon-banner-text');
+  bannerText = bannerEl.querySelector('.hv-banner__text') as HTMLElement;
 });
 
 beforeEach(() => {
@@ -82,7 +78,7 @@ describe('restartHive', () => {
   it('surfaces a refusal in the banner', async () => {
     bridge.RestartDaemon.mockRejectedValue(new Error('hived still answering'));
     await restartHive();
-    expect(bannerEl.classList.contains('hidden')).toBe(false);
+    expect(bannerEl.hidden).toBe(false);
     expect(bannerText.textContent).toMatch(
       /Restart failed.*hived still answering/,
     );

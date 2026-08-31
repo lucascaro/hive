@@ -57,6 +57,9 @@ export function banner({
     // a filled button inside it reads as a second alert.
     const b = button({ label: a.label, kind: 'ghost', onClick: a.onClick });
     b.classList.add('hv-banner__action');
+    // The id is on the element too, so e2e and DOM tests can address a
+    // specific action without depending on child order.
+    b.dataset.actionId = a.id;
     byId.set(a.id, b);
     el.append(b);
   }

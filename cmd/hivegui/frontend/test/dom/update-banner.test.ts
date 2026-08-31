@@ -30,6 +30,16 @@ function el<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
+// The banner builds its own markup now: text and actions are parts of
+// the primitive, addressed by class / data-action-id rather than by id.
+function part<T extends HTMLElement>(sel: string): T {
+  const found = el('update-banner').querySelector<T>(sel);
+  if (!found) throw new Error(`missing ${sel} in the update banner`);
+  return found;
+}
+const actionBtn = () => part<HTMLButtonElement>('[data-action-id="action"]');
+const bannerText = () => part<HTMLElement>('.hv-banner__text');
+
 // The handlers registered via EventsOn, captured from the mock so the
 // test can push events the way Go would.
 function emit(event: string, payload: unknown) {
@@ -42,19 +52,10 @@ const settle = () => new Promise((r) => setTimeout(r, 0));
 
 beforeAll(async () => {
   document.body.innerHTML = `
-    <div id="terms"></div><ul id="projects"></ul>
-    <div id="daemon-banner" class="hidden">
-      <span id="daemon-banner-text"></span>
-      <button id="daemon-banner-restart"></button>
-      <button id="daemon-banner-dismiss"></button>
-    </div>
-    <div id="update-banner" class="hidden">
-      <span id="update-banner-text"></span>
-      <button id="update-banner-action"></button>
-      <button id="update-banner-download"></button>
-      <button id="update-banner-dismiss"></button>
-    </div>
-    <div id="status"></div>`;
+    <div id="app">
+      <div id="terms"></div><ul id="projects"></ul>
+      <div id="status"></div>
+    </div>`;
   const mod = await import('../../src/app/banners.js');
   mod.initBanners();
   await settle();
@@ -79,8 +80,8 @@ describe('update banner action button', () => {
       stage: 'available',
       channel: 'release',
     });
-    const action = el<HTMLButtonElement>('update-banner-action');
-    expect(action.style.display).not.toBe('none');
+    const action = actionBtn();
+    expect(action.hidden).toBe(false);
     expect(action.textContent).toBe('Update');
 
     action.dispatchEvent(new MouseEvent('click'));
@@ -93,9 +94,9 @@ describe('update banner action button', () => {
       stage: 'staging',
       message: 'Downloading Hive-2.5.0-macos-universal.zip…',
     });
-    expect(el('update-banner').classList.contains('hidden')).toBe(false);
-    expect(el('update-banner-text').textContent).toContain('Downloading');
-    expect(el<HTMLButtonElement>('update-banner-action').disabled).toBe(true);
+    expect(el('update-banner').hidden).toBe(false);
+    expect(bannerText().textContent).toContain('Downloading');
+    expect(actionBtn().disabled).toBe(true);
   });
 
   it('turns into Restart and applies once confirmed', async () => {
@@ -105,7 +106,7 @@ describe('update banner action button', () => {
       latest: '2.5.0',
       message: 'Update ready — restart to apply',
     });
-    const action = el<HTMLButtonElement>('update-banner-action');
+    const action = actionBtn();
     expect(action.textContent).toBe('Restart');
     expect(action.disabled).toBe(false);
 
@@ -132,7 +133,7 @@ describe('update banner action button', () => {
       latest: '2.5.0',
       message: 'Update ready',
     });
-    el('update-banner-action').dispatchEvent(new MouseEvent('click'));
+    actionBtn().dispatchEvent(new MouseEvent('click'));
     await settle();
     expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
@@ -152,7 +153,7 @@ describe('update banner action button', () => {
       stage: 'ready',
       latest: '2.5.0',
     });
-    const action = el('update-banner-action');
+    const action = actionBtn();
     action.dispatchEvent(new MouseEvent('click'));
     action.dispatchEvent(new MouseEvent('click'));
     await settle();
@@ -170,10 +171,8 @@ describe('update banner action button', () => {
       stage: 'error',
       message: 'checksum mismatch for Hive-2.5.0-macos-universal.zip',
     });
-    expect(el('update-banner').classList.contains('hidden')).toBe(false);
-    expect(el('update-banner-text').textContent).toContain('checksum mismatch');
-    expect(el<HTMLButtonElement>('update-banner-action').textContent).toBe(
-      'Retry',
-    );
+    expect(el('update-banner').hidden).toBe(false);
+    expect(bannerText().textContent).toContain('checksum mismatch');
+    expect(actionBtn().textContent).toBe('Retry');
   });
 });

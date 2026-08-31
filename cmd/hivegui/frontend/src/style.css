@@ -56,7 +56,6 @@ html, body {
 #sidebar-resizer { grid-row: 3 / span 2; grid-column: 1; }
 #terms { grid-row: 3; grid-column: 2; }
 #minimized-tray { grid-row: 4; grid-column: 2; }
-#update-banner { grid-row: 2; grid-column: 1 / -1; }
 
 body.resizing-sidebar { cursor: col-resize; user-select: none; }
 body.resizing-sidebar #app { transition: none; }
@@ -990,77 +989,12 @@ body.resizing-sidebar #app { transition: none; }
 /* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
    terms columns. Pushes the rest of the UI down rather than overlaying
    it. Amber to match the brand. */
-#daemon-banner {
-  grid-row: 1;
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: #2b1d05; /* ui-lint: allow */
-  border-bottom: 1px solid var(--state-attention);
-  color: #fcd9a8; /* ui-lint: allow */
-  font: 12px Menlo, monospace;
-}
-#daemon-banner.hidden { display: none; }
-#daemon-banner #daemon-banner-text { flex: 1; }
-#daemon-banner button {
-  background: var(--state-attention);
-  color: var(--on-accent);
-  border: 0;
-  border-radius: 3px;
-  padding: 4px 10px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-#daemon-banner #daemon-banner-dismiss {
-  background: transparent;
-  color: #fcd9a8; /* ui-lint: allow */
-  font-size: 18px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  padding: 0 6px;
-}
-#daemon-banner button:hover { filter: brightness(1.1); }
 
 /* Update-available banner: same shape as the daemon banner but
    green-tinted so the two are visually distinct when both are
    showing (rare, but possible). */
-#update-banner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 14px;
-  background: #08221a; /* ui-lint: allow */
-  border-bottom: 1px solid #10b981; /* ui-lint: allow */
-  color: #b9f1d6; /* ui-lint: allow */
-  font: 12px Menlo, monospace;
-}
-#update-banner.hidden { display: none; }
-#update-banner #update-banner-text { flex: 1; }
-#update-banner button {
-  background: #10b981; /* ui-lint: allow */
-  color: #000; /* ui-lint: allow — text on the one-off update-banner green, not var(--accent); no on-accent-equivalent token for this fill */
-  border: 0;
-  border-radius: 3px;
-  padding: 4px 10px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-#update-banner #update-banner-dismiss {
-  background: transparent;
-  color: #b9f1d6; /* ui-lint: allow */
-  font-size: 18px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  padding: 0 6px;
-}
-#update-banner button:hover { filter: brightness(1.1); }
 /* Disabled only while staging is in flight ("Updating…") — the label
    is the progress indicator, so it must stay legible. */
-#update-banner button:disabled {
-  opacity: 0.65;
-  cursor: default;
-  filter: none;
-}
 #settings-update-action:disabled { opacity: 0.65; cursor: default; }
 
 /* ---------- command palette ---------- */
@@ -1370,10 +1304,9 @@ body.resizing-sidebar #app { transition: none; }
 
 /* Keyboard-focus rings on the small controls that previously had
    none. :focus-visible only — mouse clicks stay ring-free. */
+
 #new-project-btn:focus-visible,
 .tile-minimize:focus-visible,
-#daemon-banner button:focus-visible,
-#update-banner button:focus-visible,
 #project-editor button:focus-visible,
 #settings-agent-add:focus-visible,
 #settings-panel .actions button:focus-visible,
