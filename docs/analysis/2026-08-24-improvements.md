@@ -39,7 +39,7 @@ otherwise. Numbers are measured before/after, not estimated.
 | 3 | God-files | **Go half done, frontend half deliberately not.** `app.go` 1101 → 192 + four domain files (largest 416). `registry.go`'s `kill` 164 → 128 by lifting `disposeWorktree` out. `session-term.ts` and `style.css` left alone — see "Not done, and why" below. |
 | 4 | Long functions | **Done.** `serveControl` 274 → 144, with the 14-case dispatch now `handleControlFrame(...) bool` behind a `controlOps` value, and twelve identical decode prologues collapsed into `decodeReq[T]`. The seam paid for itself: the handlers are now unit-tested without a socket. |
 | 5 | Go static analysis | **Done.** `staticcheck` (pinned 2025.1.1) and `govulncheck` run on the Linux CI leg. Baseline was one real finding (an unused assignment `go vet` misses); both are clean now. `govulncheck` is clean on the Go 1.25.x that setup-go resolves from go.mod — a local 1.26.4 toolchain reports four stdlib advisories, which is the toolchain's age, not this repo's. |
-| 6 | Dependencies | **Partly.** Go module graph refreshed (`go-pty` 0.2.3 + indirects). Wails held at v2.12.0 and xterm held at 5.5 — both explained below. |
+| 6 | Dependencies | **Partly.** Go module graph refreshed (`go-pty` 0.2.3 + indirects). Wails held at v2.12.0 (bumped to v2.15.0 on 2026-08-30, see below) and xterm still held at 5.5 — both explained below. |
 | 7 | Plan-lifecycle drift | **Done.** 247 moved to `completed/`; 142's stub corrected (PR #160 was closed unmerged, the bug is still real, and `in-house-vt-emulator.md` is the route to it). `scripts/check-plan-lifecycle.sh` asks `gh` about every PR referenced from `active/` so this stops recurring. |
 | 8 | Housekeeping | **Done.** Stray root `node_modules/` removed (a vitest cache, accidentally committed in #255) and gitignored. The `frontend/dist` seeding is already handled by `scripts/ci-bootstrap.sh`, so no change was needed there. |
 
@@ -56,10 +56,15 @@ regression there reproduces only with a full 5000-line buffer, in a real
 WebView, which no CI leg here runs. Worth doing, worth doing alone, and worth
 watching a real terminal while you do it.
 
-**Wails v2.12.0 → v2.15.0.** Held. `scripts/ci-bootstrap.sh` pins the Wails
-*CLI* to the same version, and the CLI generates the bindings and drives the
-build. Bumping the library alone invites skew; bumping both is a real upgrade
-that deserves its own commit and a native build to validate.
+**Wails v2.12.0 → v2.15.0.** Done 2026-08-30. Library and the
+`scripts/ci-bootstrap.sh` CLI pin bumped together, so the bindings generator and
+the build stay on one version. v2.13/v2.14/v2.15 carry no v2 breaking changes
+— the release notes are two nil-pointer fixes, a `wake` build-runner fix, and
+a v3-side dev-proxy fix; `go.sum` moved but no indirect did. Validated:
+`go vet ./...` and `go test ./...` clean, `wails generate module` produced
+byte-identical bindings, native `wails build` (darwin/arm64) succeeded, and the
+packaged app was launched against a sandboxed `HIVE_SOCKET`/`HIVE_STATE_DIR`
+— control channel connected and the frontend heartbeat ran with no errors.
 
 **Splitting `session-term.ts` (1638) and `style.css` (1984).** Not done, and I
 would argue against doing it now. Unlike `app.go` (a 50-method binding surface
