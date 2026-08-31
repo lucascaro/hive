@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colour.
 
 ### Changed
+- Reskinned chrome: notice banners, a real status bar with inline mode
+  shortcuts, grid tile headers with state icons, and consistent launcher and
+  command-palette rows.
 - GUI icon sprite. The GUI's controls and session-state indicators are now
   SVG icons instead of Unicode symbols, so they render identically on every
   platform. Session state reads as a shape as well as a colour: a triangle
