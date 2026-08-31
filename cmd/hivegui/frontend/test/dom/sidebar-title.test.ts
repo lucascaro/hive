@@ -108,6 +108,11 @@ describe('sidebar window titles', () => {
 
   it('leaves line 2 blank when the title just echoes the session name', () => {
     seed([{ id: 'a', name: 'api', order: 0, title: 'api' }]);
+    // The slot stays in the DOM and stays shown — suppressing the echo
+    // empties line 2, it never re-hides it. Pinned on this path too, not
+    // just the no-title one: `title === name` is its own branch in
+    // displayTitle() and could regress alone.
+    expect(titleSlot('a').hidden).toBe(false);
     expect(titleSlot('a').textContent).toBe('');
   });
 

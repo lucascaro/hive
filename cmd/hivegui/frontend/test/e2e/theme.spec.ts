@@ -82,10 +82,9 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
     await page.evaluate(() =>
       window.__hive.emit('pty:data', 's1', btoa('\x07')),
     );
-    await expect(page.locator('#projects [data-sid="s1"]')).toHaveAttribute(
-      'data-state',
-      'attention',
-    );
+    await expect(
+      page.locator('#projects li.hv-session-row[data-sid="s1"]'),
+    ).toHaveAttribute('data-state', 'attention');
 
     await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
     await expect(page).toHaveScreenshot('sidebar-classic.png', {

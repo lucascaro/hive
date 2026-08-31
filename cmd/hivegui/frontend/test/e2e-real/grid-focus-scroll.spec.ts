@@ -54,7 +54,7 @@ registerSessionCleanup(createdSessionIds);
 // Extra sessions so grid splits the width the way the report does.
 async function addSessions(page: Page, n: number) {
   const before = await page.evaluate(
-    () => document.querySelectorAll('#projects li.session-item').length,
+    () => document.querySelectorAll('#projects li.hv-session-row').length,
   );
   await bridgeCalls(
     Array.from({ length: n }, (_, i) => [
@@ -64,7 +64,7 @@ async function addSessions(page: Page, n: number) {
   );
   await page.waitForFunction(
     (want) =>
-      document.querySelectorAll('#projects li.session-item').length >= want,
+      document.querySelectorAll('#projects li.hv-session-row').length >= want,
     before + n,
     { timeout: 15000 },
   );

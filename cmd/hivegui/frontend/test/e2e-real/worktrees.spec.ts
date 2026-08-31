@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
 async function boot(page: Page) {
   await page.goto('/');
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 1,
+    () => document.querySelectorAll('#projects li.hv-session-row').length >= 1,
     null,
     { timeout: 15000 },
   );
