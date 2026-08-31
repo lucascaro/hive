@@ -97,7 +97,6 @@ test.describe('#208 grid-mode scroll regressions', () => {
     // Minimize the first tile. The remaining two tiles' column widths
     // change as the grid reflows — pre-fix this triggered replay.
     const firstTile = page.locator('.term-host.in-grid').first();
-    await firstTile.locator('.tile-header').hover();
     await firstTile.locator('.tile-minimize').click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);
@@ -113,7 +112,6 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await enterGridAll(page);
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
-    await firstTile.locator('.tile-header').hover();
     await firstTile.locator('.tile-minimize').click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
     await settleReplay(page);

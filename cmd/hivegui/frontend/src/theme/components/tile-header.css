@@ -67,10 +67,12 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
-/* patterns.md > Hover-revealed actions: hidden until hover or keyboard
-   focus within the row, and they REPLACE the meta column. */
+/* Deliberately NOT hover-revealed. `display: none` until hover leaves the
+   minimize button unreachable by keyboard — the same trap session-row.css
+   rejected — and Playwright cannot click what only appears on hover. The
+   header has room for the label and the button both. */
 .term-host .tile-actions {
-  display: none;
+  display: flex;
   margin-left: auto;
   align-items: center;
   gap: var(--space-1);
@@ -80,7 +82,4 @@
 /* Visible at rest: it reports that this session runs in a worktree, which
    is a fact, not an action. Only .tile-actions is hover-revealed. */
 .term-host .tile-worktree { flex-shrink: 0; }
-.term-host .tile-header:hover .tile-actions,
-.term-host .tile-header:focus-within .tile-actions { display: flex; }
-.term-host .tile-header:hover .tile-project,
-.term-host .tile-header:focus-within .tile-project { display: none; }
+

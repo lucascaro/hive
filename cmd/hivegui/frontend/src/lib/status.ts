@@ -84,12 +84,14 @@ export function createStatus({
 // the project grid, ⇧⌘K opens the palette, and ⌘+arrows move between
 // tiles. A hint that names a chord nothing is bound to is worse than no
 // hint at all (AGENTS.md > Consistency).
+import type { ViewMode } from './view.js';
+
 export interface ModeHint {
   key: string;
   label: string;
 }
 
-export function modeHints(view: string, mac: boolean): ModeHint[] {
+export function modeHints(view: ViewMode, mac: boolean): ModeHint[] {
   const mod = mac ? '⌘' : 'Ctrl+';
   if (view === 'grid-all' || view === 'grid-project') {
     return [

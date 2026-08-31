@@ -1735,11 +1735,36 @@ tree rather than the plan's pre-phase-1 line references:
 - The tile's window-title span is now hidden at construction: its `::before`
   separator rendered a lone `·` beside the session name until the first title
   arrived (visible in the first round of task-8 baselines).
-- Specs that click hover-revealed tile actions (`minimize`, `theme`,
-  `grid-scroll-regressions`, `worktrees`) now hover `.tile-header` first.
+- The tile's minimize button is **not** hover-revealed. `display: none`
+  until hover leaves it unreachable by keyboard — the trap `session-row.css`
+  already rejected — so `.tile-actions` renders at rest beside the project
+  label. Review finding, user's call.
 
-Gate: `biome ci`, `tsc --noEmit`, 689 vitest tests, 206 Playwright tests,
-`ui-lint --strict` (0 violations) and `go build ./...` all green.
+**Review round 1 (PR #301)** cleared three defects, two of them shipped by
+this phase and invisible to the gate as originally specified:
+
+- `style.css` — a dangling selector list dropped focus rings from five
+  controls *and* broke `vite build`. The plan's per-task gate had no
+  `npm run build`, so only CI caught it; it is in the gate below now.
+- `button.css` / `icon-button.css` — no `[hidden]` rule, so the author-origin
+  `display` outranked the UA's, making every `el.hidden = true` on a button a
+  silent no-op (the update banner's Download/Update toggles among them). The
+  jsdom tests could not see it: `el.hidden` read back `true` throughout.
+  `test/e2e/banner-visibility.spec.ts` is the browser-level guard, verified
+  to fail when the rule is removed.
+- `modeHints` advertised `⌘G` as "focus" in `grid-all`, but `keyboard.ts`
+  sends plain `⌘G` to `grid-project` there; `⇧⌘G` is what returns to single.
+
+Also from that round: `refreshStateIcon()` now resolves from the tile's live
+`this.phase` rather than `this.info.phase` (setPhase never writes back to
+info, so the refresh it triggers was recomputing from a stale payload), the
+`aria-live` region narrowed to `#status-text` so mode hints stop re-announcing
+on every navigation, `modeHints` takes `ViewMode` instead of `string`, and the
+rewritten banner dismissal paths (per-version, per-daemon-build) got coverage.
+
+Gate: `biome ci`, `tsc --noEmit`, `vite build`, 694 vitest tests, 208
+Playwright tests, `ui-lint --strict` (0 violations) and `go build ./...` all
+green.
 
 ## PR convergence ledger
 

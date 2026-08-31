@@ -186,8 +186,11 @@
       <div id="help-overlay-groups"></div>
     </div>
   </div>
-  <div id="status" role="status" aria-live="polite">
-    <span id="status-text">connecting…</span>
+  <!-- The live region is the text slot alone. With it on the bar, the
+       mode hints re-announced on every navigation even though they only
+       restate a static per-mode shortcut. -->
+  <div id="status">
+    <span id="status-text" role="status" aria-live="polite">connecting…</span>
     <span id="status-hint"></span>
   </div>
 </div>

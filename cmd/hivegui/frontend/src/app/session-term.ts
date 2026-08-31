@@ -1068,9 +1068,16 @@ export class SessionTerm {
   // and its clearing) call it directly since they don't go through
   // setInfo at all.
   refreshStateIcon() {
+    // `this.phase` overrides `this.info.phase`: setPhase() updates the
+    // tile's own phase and never writes back to info, so resolving from
+    // info alone would repaint the icon from whatever the last session
+    // list said — stale for exactly the transition setPhase exists for.
     updateStateIcon(
       this.tileState,
-      sessionState(this.info, state.attention.has(this.info.id)),
+      sessionState(
+        { ...this.info, phase: this.phase },
+        state.attention.has(this.info.id),
+      ),
     );
   }
 

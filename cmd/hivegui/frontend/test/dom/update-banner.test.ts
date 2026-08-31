@@ -176,3 +176,52 @@ describe('update banner action button', () => {
     expect(actionBtn().textContent).toBe('Retry');
   });
 });
+
+// The dismissal paths were rewritten onto the banner primitive's handle
+// in phase 4 and had no coverage: the update banner remembers a dismissed
+// version in localStorage, and the daemon banner remembers the build it
+// was dismissed for. Both are "don't nag me again about THIS one" rules
+// that must not degrade into "never show me anything again".
+describe('update banner dismissal', () => {
+  const dismiss = () =>
+    part<HTMLButtonElement>('.hv-banner__dismiss').dispatchEvent(
+      new MouseEvent('click'),
+    );
+
+  it('remembers the dismissed version and stays down for it', () => {
+    const available = {
+      available: true,
+      current: '2.4.0',
+      latest: '2.5.0',
+      url: 'https://github.com/lucascaro/hive/releases/tag/v2.5.0',
+      stage: 'available',
+      channel: 'release',
+    };
+    emit('update:available', available);
+    expect(el('update-banner').hidden).toBe(false);
+
+    dismiss();
+    expect(el('update-banner').hidden).toBe(true);
+    expect(localStorage.getItem('hive.updateDismissedFor')).toBe('2.5.0');
+
+    // The 6h poll re-fires the same version: it must stay down.
+    emit('update:available', available);
+    expect(el('update-banner').hidden).toBe(true);
+
+    // A newer release is a different fact and must surface.
+    emit('update:available', { ...available, latest: '2.6.0' });
+    expect(el('update-banner').hidden).toBe(false);
+  });
+
+  it('does not write a dismissal key for a transient banner', () => {
+    // "Checking…" / "up to date" carry no version; dismissing one must
+    // not poison the key for a real release.
+    emit('update:progress', {
+      available: true,
+      stage: 'staging',
+      message: 'Downloading…',
+    });
+    dismiss();
+    expect(localStorage.getItem('hive.updateDismissedFor')).toBeNull();
+  });
+});

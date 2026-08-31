@@ -29,6 +29,13 @@ let bannerText: HTMLElement;
 // non-null assertions, and a missing scaffold element should name
 // itself instead of surfacing as a null-property TypeError three
 // assertions later.
+// The handlers registered via EventsOn, replayed the way Go would.
+function emit(event: string, payload: unknown) {
+  for (const call of bridge.EventsOn.mock.calls) {
+    if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+  }
+}
+
 function mustEl(id: string): HTMLElement {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id} in test scaffold`);
@@ -127,5 +134,55 @@ describe('restartHive re-entrancy', () => {
     bridge.Confirm.mockResolvedValue(true);
     await restartHive();
     expect(bridge.RestartDaemon).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The daemon banner's dismissal is keyed on the specific daemon build it
+// was dismissed for — rewritten onto the banner primitive's handle in
+// phase 4. A dismissal that leaked across builds would hide a real
+// mismatch, which is the whole reason the banner exists.
+describe('daemon banner dismissal', () => {
+  const stale = (daemonBuild: string) =>
+    emit('daemon:stale', {
+      severity: 'mismatch',
+      daemonBuild,
+      guiBuild: 'gui-1',
+    });
+  const dismiss = () =>
+    (
+      bannerEl.querySelector('.hv-banner__dismiss') as HTMLButtonElement
+    ).dispatchEvent(new MouseEvent('click'));
+
+  it('stays down for the dismissed build and returns for a different one', () => {
+    stale('daemon-1');
+    expect(bannerEl.hidden).toBe(false);
+
+    dismiss();
+    expect(bannerEl.hidden).toBe(true);
+
+    // Same build reconnecting: still dismissed.
+    stale('daemon-1');
+    expect(bannerEl.hidden).toBe(true);
+
+    // A different mismatched build is a new fact.
+    stale('daemon-2');
+    expect(bannerEl.hidden).toBe(false);
+  });
+
+  it('clears the dismissal when the builds match again', () => {
+    stale('daemon-3');
+    dismiss();
+    expect(bannerEl.hidden).toBe(true);
+
+    emit('daemon:stale', {
+      severity: 'match',
+      daemonBuild: 'daemon-3',
+      guiBuild: 'gui-1',
+    });
+    expect(bannerEl.hidden).toBe(true);
+
+    // Reset means a later mismatch on that same build surfaces again.
+    stale('daemon-3');
+    expect(bannerEl.hidden).toBe(false);
   });
 });

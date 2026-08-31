@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { modeHints } from '../../src/lib/status.js';
+import type { ViewMode } from '../../src/lib/view.js';
 
 describe('modeHints', () => {
   it('offers grid + palette in single view', () => {
@@ -38,8 +39,11 @@ describe('modeHints', () => {
   });
 
   it('never shows more than two hints', () => {
-    for (const v of ['single', 'grid-all', 'grid-project', 'nonsense']) {
-      expect(modeHints(v, true).length).toBeLessThanOrEqual(2);
+    // 'nonsense' is not a ViewMode; the cast exercises the runtime
+    // fall-through that a persisted-but-unknown view would hit.
+    const views = ['single', 'grid-all', 'grid-project', 'nonsense'];
+    for (const v of views) {
+      expect(modeHints(v as ViewMode, true).length).toBeLessThanOrEqual(2);
     }
   });
 });
