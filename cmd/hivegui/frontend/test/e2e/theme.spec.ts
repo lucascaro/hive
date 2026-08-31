@@ -20,6 +20,68 @@ async function boot(page: Page) {
   );
 }
 
+// Shared scene for the sidebar pixel baselines: two projects, three
+// sessions, one minimized, one with attention. Used by the classic guard
+// (Phase 1) and the hive-dark/hive-light baselines (Phase 3) alike, so all
+// three screenshots show the same layout.
+async function seedSidebar(page: Page) {
+  // Second project, so the sidebar renders two project groups. No
+  // window.__hive helper creates projects (only sessions), so seed the
+  // mock's own state + emit the same 'project:event' the real
+  // CreateProject binding fires (test/e2e/wails-mock.ts CreateProject).
+  await page.evaluate(() => {
+    const p = {
+      id: 'p2',
+      name: 'second',
+      color: '#0af',
+      cwd: '',
+      order: 1,
+      created: new Date().toISOString(),
+    };
+    window.__hive.state?.projects.push(p);
+    window.__hive.emit(
+      'project:event',
+      JSON.stringify({ kind: 'added', project: p }),
+    );
+  });
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects .hv-project-card').length >= 2,
+  );
+
+  // Two more sessions in the default project (three total).
+  await page.evaluate((n) => window.__hive.addSession?.(n), 's2');
+  await page.evaluate((n) => window.__hive.addSession?.(n), 's3');
+  await page.waitForFunction(
+    (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
+    3,
+  );
+
+  // s2 minimized: click its tile's minimize button in grid view.
+  await page.keyboard.press(`${mod}+Shift+g`);
+  await expect(page.locator('#terms')).toHaveClass(/grid/);
+  const s2Sid = await page.evaluate(
+    () => window.__hive.state?.sessions.find((s) => s.name === 's2')?.id,
+  );
+  await page
+    .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-minimize`)
+    .click();
+  await expect(
+    page.locator(`.term-host.in-grid[data-sid="${s2Sid}"]`),
+  ).toHaveCount(0);
+
+  // Seed session s1 ("main") gets attention: every 'added' session auto-
+  // activates (see events.ts session:event 'added' -> switchTo), so s3
+  // is active by now and s1 is the non-active session a BEL can mark.
+  // onSessionBell ignores a bell on the active+focused session, the same
+  // path a real bell in the PTY stream drives.
+  await page.evaluate(() => window.__hive.emit('pty:data', 's1', btoa('\x07')));
+  await expect(
+    page.locator('#projects li.hv-session-row[data-sid="s1"]'),
+  ).toHaveAttribute('data-state', 'attention');
+
+  await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
+}
+
 test.describe('classic preset is pixel-identical to v2.4.0', () => {
   test.skip(
     !process.env.HIVE_SNAPSHOT,
@@ -29,64 +91,7 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
   test('sidebar + terminal', async ({ page }) => {
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
-
-    // Second project, so the sidebar renders two project groups. No
-    // window.__hive helper creates projects (only sessions), so seed the
-    // mock's own state + emit the same 'project:event' the real
-    // CreateProject binding fires (test/e2e/wails-mock.ts CreateProject).
-    await page.evaluate(() => {
-      const p = {
-        id: 'p2',
-        name: 'second',
-        color: '#0af',
-        cwd: '',
-        order: 1,
-        created: new Date().toISOString(),
-      };
-      window.__hive.state?.projects.push(p);
-      window.__hive.emit(
-        'project:event',
-        JSON.stringify({ kind: 'added', project: p }),
-      );
-    });
-    await page.waitForFunction(
-      () => document.querySelectorAll('#projects .hv-project-card').length >= 2,
-    );
-
-    // Two more sessions in the default project (three total).
-    await page.evaluate((n) => window.__hive.addSession?.(n), 's2');
-    await page.evaluate((n) => window.__hive.addSession?.(n), 's3');
-    await page.waitForFunction(
-      (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
-      3,
-    );
-
-    // s2 minimized: click its tile's minimize button in grid view.
-    await page.keyboard.press(`${mod}+Shift+g`);
-    await expect(page.locator('#terms')).toHaveClass(/grid/);
-    const s2Sid = await page.evaluate(
-      () => window.__hive.state?.sessions.find((s) => s.name === 's2')?.id,
-    );
-    await page
-      .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-minimize`)
-      .click();
-    await expect(
-      page.locator(`.term-host.in-grid[data-sid="${s2Sid}"]`),
-    ).toHaveCount(0);
-
-    // Seed session s1 ("main") gets attention: every 'added' session auto-
-    // activates (see events.ts session:event 'added' -> switchTo), so s3
-    // is active by now and s1 is the non-active session a BEL can mark.
-    // onSessionBell ignores a bell on the active+focused session, the same
-    // path a real bell in the PTY stream drives.
-    await page.evaluate(() =>
-      window.__hive.emit('pty:data', 's1', btoa('\x07')),
-    );
-    await expect(
-      page.locator('#projects li.hv-session-row[data-sid="s1"]'),
-    ).toHaveAttribute('data-state', 'attention');
-
-    await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
+    await seedSidebar(page);
     await expect(page).toHaveScreenshot('sidebar-classic.png', {
       maxDiffPixels: 0,
       animations: 'disabled',
@@ -105,6 +110,29 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
     });
   });
 });
+
+// Phase-3 baselines: the sidebar's first visible redesign. Clipped to
+// #sidebar — the terminal area is not what these guard, and masking it
+// leaves the diff hostage to xterm's renderer.
+for (const preset of ['hive-dark', 'hive-light'] as const) {
+  test(`sidebar under ${preset}`, async ({ page }) => {
+    test.skip(
+      !process.env.HIVE_SNAPSHOT,
+      'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
+    );
+    await page.addInitScript(
+      (p) => localStorage.setItem('hive.theme', p),
+      preset,
+    );
+    await page.setViewportSize({ width: 1100, height: 700 });
+    await boot(page);
+    await seedSidebar(page);
+    await expect(page.locator('#sidebar')).toHaveScreenshot(
+      `sidebar-${preset}.png`,
+      { maxDiffPixels: 0, animations: 'disabled' },
+    );
+  });
+}
 
 // Standing guard: presets actually switch styles (deterministic, runs on all
 // platforms, not pixel-gated).
