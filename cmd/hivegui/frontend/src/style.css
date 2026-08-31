@@ -976,7 +976,7 @@ body.resizing-sidebar #app { transition: none; }
 #project-editor button:focus-visible,
 #settings-agent-add:focus-visible,
 #settings-panel .actions button:focus-visible,
-.settings-agent-delete:focus-visible,
+.settings-agent-delete:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
