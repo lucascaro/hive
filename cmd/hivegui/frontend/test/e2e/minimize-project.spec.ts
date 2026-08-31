@@ -126,3 +126,39 @@ test('both chip controls are clickable and keyboard-reachable', async ({
     expect(focused, `${sel} cannot take keyboard focus`).toBe(true);
   }
 });
+
+// The tray is a full-width vertical list, not a wrapped row of pills: the
+// chip spans the tray, the restore + hugs the right edge, and clicking the
+// dead space next to a short name restores instead of doing nothing.
+test('a project chip spans the tray, right-aligns +, and restores on any click', async ({
+  page,
+}) => {
+  await boot(page);
+  const listed = page.locator('#projects > li.hv-project-card');
+  const before = await listed.count();
+  const first = listed.first();
+  const pid = await first.getAttribute('data-pid');
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+
+  const chip = page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`);
+  await expect(chip).toBeVisible();
+
+  const tray = page.locator('#minimized-projects');
+  const trayBox = (await tray.boundingBox())!;
+  const chipBox = (await chip.boundingBox())!;
+  const restoreBox = (await chip.locator('.hv-chip__restore').boundingBox())!;
+
+  // No 240px cap: the chip fills the tray's content box.
+  expect(chipBox.width).toBeGreaterThan(trayBox.width - 16);
+  // + sits at the right edge, not next to the label.
+  expect(restoreBox.x + restoreBox.width).toBeGreaterThan(
+    chipBox.x + chipBox.width - 12,
+  );
+
+  // Click the slack between the label and the +.
+  await page.mouse.click(restoreBox.x - 12, chipBox.y + chipBox.height / 2);
+  await expect(listed).toHaveCount(before);
+});
