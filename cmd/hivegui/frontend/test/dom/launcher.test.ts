@@ -126,7 +126,7 @@ function names() {
   return rows().map((r) => r.querySelector('.agent-name')?.textContent);
 }
 function selectedName() {
-  return launcher().querySelector('.launcher-item.selected .agent-name')
+  return launcher().querySelector('.launcher-item[data-selected] .agent-name')
     ?.textContent;
 }
 // The launcher owns its keys via a listener on #launcher, so events
@@ -314,18 +314,16 @@ describe('launcher keyboard', () => {
   });
 
   it('hides row numbers while the query is non-empty', async () => {
+    // The digit hint renders through kbd() now, so the row number is a
+    // <kbd> child rather than the span's own text.
+    const nums = () =>
+      rows().map((r) => r.querySelector('.agent-num')?.textContent);
     await open();
-    expect(
-      rows().map((r) => r.querySelector('.agent-num')?.textContent),
-    ).toEqual(['1', '2', '3']);
+    expect(nums()).toEqual(['[1]', '[2]', '[3]']);
     type('c');
-    expect(
-      rows().map((r) => r.querySelector('.agent-num')?.textContent),
-    ).toEqual(['', '']);
+    expect(nums()).toEqual(['', '']);
     type('');
-    expect(
-      rows().map((r) => r.querySelector('.agent-num')?.textContent),
-    ).toEqual(['1', '2', '3']);
+    expect(nums()).toEqual(['[1]', '[2]', '[3]']);
   });
 
   it('launches the selected filtered match, not the unfiltered index', async () => {

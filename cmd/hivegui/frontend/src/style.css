@@ -448,45 +448,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 .launcher-search::placeholder { color: var(--fg-subtle); }
 
-.launcher-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  color: #ccc; /* ui-lint: allow */
-}
-.launcher-item:hover,
-.launcher-item.selected { background: rgba(255,255,255,0.08); }
-.launcher-item.selected { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-.launcher-item .agent-num {
-  display: inline-block;
-  width: 14px;
-  text-align: right;
-  font-family: Menlo, monospace;
-  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: var(--fg-subtle);
-  flex-shrink: 0;
-}
-.launcher-item.selected .agent-num { color: #aaa; } /* ui-lint: allow */
-.launcher-item .agent-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  /* background-color, not the `background` shorthand: the value comes
-     from a user-editable agents.json, and the shorthand would accept a
-     url() and fire an outbound request just from opening the launcher.
-     Go sanitizes the color too (agent.validateCustom) — this is the
-     second layer, so a future caller that skips validation is still
-     safe. */
-  background-color: var(--agent-color, var(--fg-muted));
-  flex-shrink: 0;
-}
-.launcher-item .agent-name { flex: 1; }
-.launcher-item.uninstalled .agent-name {
-  color: #999; /* ui-lint: allow */
-}
 
 .launcher-worktree {
   display: flex;
@@ -550,11 +511,6 @@ body.resizing-sidebar #app { transition: none; }
   margin: 0 4px;
   opacity: 0.85;
   flex-shrink: 0;
-}
-.launcher-item .install-tag {
-  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: var(--fg-muted);
-  font-family: Menlo, monospace;
 }
 
 #project-editor {
@@ -918,23 +874,6 @@ body.resizing-sidebar #app { transition: none; }
   overflow-y: auto;
   padding: 4px;
 }
-.palette-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  color: #ccc; /* ui-lint: allow */
-  font-size: var(--text-md);
-}
-.palette-item.selected { background: rgba(255,255,255,0.08); color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-.palette-name { flex: 1; }
-.palette-shortcut {
-  font: 11.5px Menlo, monospace;
-  color: var(--fg-muted);
-}
-.palette-item.selected .palette-shortcut { color: #bbb; } /* ui-lint: allow */
 
 /* Lifecycle-phase overlay — shown over a tile while the daemon is
    still creating the session (worktree + shell), and while it is
@@ -1182,13 +1121,6 @@ body.resizing-sidebar #app { transition: none; }
   #help-overlay-groups { columns: 1; }
 }
 
-/* Launcher loading / empty rows. */
-.launcher-loading,
-.launcher-empty {
-  padding: 8px 10px;
-  font-size: var(--text-sm);
-  color: #777; /* ui-lint: allow */
-}
 
 /* Keyboard-focus rings on the small controls that previously had
    none. :focus-visible only — mouse clicks stay ring-free. */
