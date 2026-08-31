@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/255-minimized-project-chips-fill-the-tray.md](../../product-specs/255-minimized-project-chips-fill-the-tray.md)
 - **Issue:** —
+- **PR:** #300
+- **Branch:** feature/255-minimized-project-chip-layout
 - **Status:** active
 
 ## Summary
@@ -70,6 +72,12 @@ None.
 
 - **2026-08-30** — Implemented; `npm test` (676), `npx playwright test` (206),
   `biome ci .` and `npm run typecheck` all green.
+
+- **2026-08-30** — PR #300 opened; stage = REVIEW.
+
+## PR convergence ledger
+
+<Append-only. One line per /hs-review-loop iteration.>
 
 ## Open questions
 

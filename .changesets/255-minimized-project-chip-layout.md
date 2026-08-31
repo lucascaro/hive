@@ -1,5 +1,6 @@
 ---
 issue: null
+pr: 300
 type: fixed
 bump: patch
 ---
