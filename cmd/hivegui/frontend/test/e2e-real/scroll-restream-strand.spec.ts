@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { settleShell } from './term-harness.js';
 
 // Regression guard for the restream strand: a FOLLOWING viewport must stay
 // pinned to the bottom for the WHOLE resize-replay restream, not just end
@@ -74,8 +75,11 @@ async function bootWithTerm(page: Page) {
     if (!h) throw new Error('no xterm helper textarea to focus');
     h.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 }
 
 function scrollState(page: Page) {

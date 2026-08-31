@@ -176,11 +176,22 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 			s.respond(0, nil, fmt.Errorf("parse: %w", err))
 			continue
 		}
-		// Goroutine-per-request, unbounded by design: the only client is
-		// the localhost Playwright runner, whose request rate is bounded
-		// by the test code itself. A semaphore here could deadlock the
-		// harness (a blocked ConnectControl holding a slot while the
-		// test pumps WriteStdin). dispatch recovers panics.
+		// WriteStdin is handled INLINE, on this single read loop, because
+		// keystrokes are a stream and their order is part of the payload.
+		// A goroutine per frame only takes the write mutex in whatever
+		// order the scheduler picks, so under CPU load adjacent keys swap:
+		// a test typing `HIVE_READY_mthhi3gn_1` had the shell echo back
+		// `HIVE_READY_mthhig3n1_`, which then failed as "the command never
+		// ran". Mutual exclusion is not ordering.
+		if req.Method == "WriteStdin" {
+			s.dispatch(req)
+			continue
+		}
+		// Everything else stays goroutine-per-request, unbounded by design:
+		// the only client is the localhost Playwright runner, whose request
+		// rate is bounded by the test code itself. A semaphore here could
+		// deadlock the harness (a blocked ConnectControl holding a slot
+		// while the test pumps WriteStdin). dispatch recovers panics.
 		go s.dispatch(req)
 	}
 }

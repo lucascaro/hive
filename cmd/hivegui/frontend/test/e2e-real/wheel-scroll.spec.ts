@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { sentinel, settleShell, waitForSentinel } from './term-harness.js';
 
 // `wheelDeltaY` is a legacy read-only getter, not a WheelEventInit member, so
 // it rides along here and is installed on the instance (see dispatchWheel).
@@ -103,17 +104,26 @@ async function bootWithTerm(page: Page) {
     if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 }
 
 // Bounded high-rate marker pump (bursty: flood, sleep) — fills scrollback so
 // there is history above the viewport to scroll INTO, then stops so the read
 // position is stable.
+// Returns the UNIQUE done-sentinel for this pump. A fixed `HIVE_PUMP_DONE`
+// is not usable as a readiness signal here: every attach replays the shared
+// session's whole scrollback, so an earlier test's copy is already on screen
+// and the wait returns before this pump has printed a single line.
 async function startMarkerPump(page: Page, count: number, burst = 40) {
+  const done = sentinel('HIVE_PUMP_DONE');
   await page.keyboard.type(
-    `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo HIVE_PUMP_DONE\n`,
+    `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo ${done}\n`,
   );
+  return done;
 }
 
 function bufferLines(page: Page) {
@@ -255,13 +265,8 @@ async function enterAltBuffer(page: Page) {
 // subsequent upward move is unambiguously the wheel gesture's doing.
 async function primeScrollback(page: Page) {
   await bootWithTerm(page);
-  await startMarkerPump(page, 200);
-  await expect
-    .poll(async () => (await bufferLines(page)).join('\n'), {
-      timeout: 30000,
-      intervals: [250, 500],
-    })
-    .toContain('HIVE_PUMP_DONE');
+  const pumpDone = await startMarkerPump(page, 200);
+  await waitForSentinel(page, pumpDone);
   const at = await mustScrollState(page);
   expect(at.baseY, 'scrollback should be populated').toBeGreaterThan(0);
   expect(at.viewportY, 'viewport should start at the bottom').toBe(at.baseY);

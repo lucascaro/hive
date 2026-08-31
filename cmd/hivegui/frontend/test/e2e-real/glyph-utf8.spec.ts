@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { settleShell } from './term-harness.js';
 
 // Layer B regression cover for the multi-byte-glyph class (#195).
 // The daemon emits raw PTY bytes; the frontend's per-session
@@ -58,8 +59,11 @@ test('multi-byte UTF-8 round-trips through the real wire path without corruption
     if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 
   // Use printf %b so the bytes are emitted literally without bash
   // interpreting the multibyte sequence as a glob/expansion. The

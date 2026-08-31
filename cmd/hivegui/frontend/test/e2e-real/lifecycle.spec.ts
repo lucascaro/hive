@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { settleShell } from './term-harness.js';
 
 // Layer B smoke: real-daemon end-to-end. Boots the frontend against a
 // real hived daemon (via hived-ws-bridge), waits for the bootstrap
@@ -71,8 +72,11 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
     if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 
   // Type a marker and a literal echo command. Bash sees this AFTER
   // stty -echo so the only thing rendered is the output line.
