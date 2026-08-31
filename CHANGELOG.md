@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the update banner is now plain text — ANSI colour codes, cursor-control
   sequences and carriage-return redraws from `build.sh` no longer leak
   through as literal `ESC[32m` garbage.
+- Fixed the layout of minimized projects in the sidebar. A minimized
+  project now spans the full width of its tray with the restore `+`
+  pinned to the right edge, and clicking anywhere on the row restores
+  the project instead of only the project name.
 
 ## [2.4.0] — 2026-08-29
 

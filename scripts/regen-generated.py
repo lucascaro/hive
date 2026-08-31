@@ -40,8 +40,8 @@ CHANGESET_TYPES = ["added", "changed", "fixed", "removed", "deprecated", "securi
 # pre-rename spelling: no spec in the tree uses it today, but it stays
 # accepted so a branch cut before the rename still regenerates instead of
 # failing the verify-generated job on an unrelated PR.
-STAGES = ["TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "GATE", "QA", "DONE", "REJECTED"]
-ACTIVE_STAGES = {"TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "GATE", "QA"}
+STAGES = ["TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE", "DONE", "REJECTED"]
+ACTIVE_STAGES = {"TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE"}
 PRIORITY_ORDER = {"P1": 1, "P2": 2, "P3": 3}
 
 DRY_RUN = False  # set by --check; suppresses all writes in _write_if_changed
