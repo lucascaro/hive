@@ -3,7 +3,9 @@
 .hv-session-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  /* state | text | worktree | meta-or-actions | swatch. The last three
+     are `auto`, so a row with no worktree simply has one fewer item. */
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-2);
   min-height: 40px;
@@ -79,7 +81,9 @@
 
 /* Actions replace the meta column rather than pushing the text
    (patterns.md › Hover-revealed actions). Keyboard focus counts as hover
-   so the buttons are reachable without a mouse. */
+   so the buttons are reachable without a mouse. The worktree button sits
+   outside both containers and is exempt from the swap — it is a control,
+   and one that vanishes on hover can never be clicked. */
 .hv-session-row:hover .hv-session-row__meta,
 .hv-session-row:focus-within .hv-session-row__meta,
 .hv-session-row[data-minimized] .hv-session-row__meta { display: none; }

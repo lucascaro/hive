@@ -236,6 +236,13 @@ test('"Delete both" removes the branch as well', async ({ page }) => {
 // The same ⎇ marks a worktree-backed session in the sidebar and on its
 // grid tile. Both used to be inert while an identical glyph on the
 // project row was a button — which just reads as broken.
+//
+// This has to be a browser test, not jsdom: the row's meta column is
+// display:none on :hover and :focus-within (the hover-action swap), so a
+// worktree button parked in there exists in the DOM, passes every jsdom
+// assertion, and is still impossible to click or tab to. Only a real
+// layout engine can tell the difference — hence elementFromPoint and the
+// live activeElement below.
 test('the worktree glyph on a session opens the browser', async ({ page }) => {
   await boot(page);
   await seed(page, [
@@ -244,10 +251,33 @@ test('the worktree glyph on a session opens the browser', async ({ page }) => {
   const id = await page.evaluate(() =>
     window.__hive.createSessionWithWorktree?.('glyph-session'),
   );
-  const glyph = page.locator(
-    `#projects li.session-item[data-sid="${id}"] .worktree-glyph`,
-  );
+  const row = `#projects li.hv-session-row[data-sid="${id}"]`;
+  const glyph = page.locator(`${row} .hv-session-row__worktree`);
   await expect(glyph).toBeVisible();
+
+  // Visible at rest AND still the thing under the cursor once the row is
+  // hovered — the state in which a click actually happens.
+  await page.locator(row).hover();
+  await expect(glyph).toBeVisible();
+  const hitIsGlyph = await page.evaluate((sel) => {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+    return !!hit && (hit === el || el.contains(hit));
+  }, `${row} .hv-session-row__worktree`);
+  expect(hitIsGlyph).toBe(true);
+
+  // Focus must stick: if the button lived in the swapped-out column,
+  // :focus-within would display:none the focused element and the browser
+  // would drop focus back to <body>.
+  await glyph.focus();
+  await expect(glyph).toBeFocused();
+  await expect(glyph).toBeVisible();
+
   await glyph.click();
   await expect(panel(page)).toBeVisible();
 });

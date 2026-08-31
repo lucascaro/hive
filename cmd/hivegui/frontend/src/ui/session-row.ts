@@ -86,9 +86,17 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   const meta = document.createElement('span');
   meta.className = 'hv-session-row__meta';
 
+  // The worktree control is NOT in `meta`: meta is the half of the
+  // hover swap that disappears the moment the pointer enters the row
+  // (or focus lands in it), so a button living there could never be
+  // clicked, and tabbing to it would display:none the focused element
+  // out from under the browser. It is both an indicator and a control —
+  // the old .worktree-glyph was always visible and always clickable —
+  // so it gets its own always-on slot outside the swap.
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  let wt: HTMLButtonElement | null = null;
   if (wtBranch) {
-    const wt = iconButton({
+    wt = iconButton({
       icon: 'branch',
       label: `Worktree: ${wtBranch} — manage worktrees`,
       onClick: (e) => {
@@ -97,7 +105,6 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
       },
     });
     wt.classList.add('hv-session-row__worktree');
-    meta.append(wt);
   }
 
   const code = agentCode(s.agent);
@@ -160,7 +167,8 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   colorInput.addEventListener('input', () => o.onColor(colorInput.value));
   swatch.append(colorInput);
 
-  li.append(st, text, meta, actions, swatch);
+  if (wt) li.append(st, text, wt, meta, actions, swatch);
+  else li.append(st, text, meta, actions, swatch);
 
   li.addEventListener('click', (e) => {
     // The swatch opens the native picker; it must not also switch sessions.

@@ -428,6 +428,14 @@ function renderSession(s: SessionInfo, index: number | null): HTMLLIElement {
 // destructive actions never skip it) and a dead one straight through, which
 // is the rule session-term.ts's _closeDead already follows — there is
 // nothing left to lose once the process is gone.
+//
+// force=false on the live branch, like every other kill path (main.ts's
+// close-session command, ⌘W, the menu): it lets the daemon refuse with
+// worktree_dirty so events.ts can ask the real three-way question
+// (cancel / close / close and delete the worktree). Forcing here would
+// make this confirm — which only mentions scrollback — silently agree to
+// throwing away uncommitted changes. The dead branch keeps force=true:
+// there is no process to refuse and no worktree state worth guarding.
 function killSession(s: SessionInfo) {
   const alive = s.alive !== false;
   if (!alive) {
@@ -439,7 +447,7 @@ function killSession(s: SessionInfo) {
     `Kill ${s.name ?? 'this session'}? Its scrollback is lost.`,
   )
     .then((ok) => {
-      if (ok) KillSession(s.id, true).catch(reportFailure('kill session'));
+      if (ok) KillSession(s.id, false).catch(reportFailure('kill session'));
     })
     .catch(reportFailure('kill session'));
 }
