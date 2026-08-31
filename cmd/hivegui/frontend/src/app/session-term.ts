@@ -302,10 +302,14 @@ export class SessionTerm {
     // rather than pushing the text around.
     this.tileActions = document.createElement('div');
     this.tileActions.className = 'tile-actions';
-    this.tileActions.append(this.tileWorktree, this.tileMinimize);
+    this.tileActions.append(this.tileMinimize);
     this.header.append(
       this.tileState,
       this.tileName,
+      // Outside .tile-actions: worktree-ness is a fact about the session,
+      // not an action, so it has to read at rest like the sidebar row's
+      // marker does. Only the minimize button is hover-revealed.
+      this.tileWorktree,
       this.tileTermTitle,
       this.tileProject,
       this.tileActions,

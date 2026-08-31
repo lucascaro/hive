@@ -289,9 +289,6 @@ test('the worktree glyph on a tile opens the browser', async ({ page }) => {
   const id = await page.evaluate(() =>
     window.__hive.createSessionWithWorktree?.('tile-session'),
   );
-  // The tile's worktree control is an iconButton in the hover-revealed
-  // actions group now, so the header has to be hovered to reach it.
-  await page.locator(`.term-host[data-sid="${id}"] .tile-header`).hover();
   const glyph = page.locator(`.term-host[data-sid="${id}"] .tile-worktree`);
   await expect(glyph).toBeVisible();
   await glyph.click();

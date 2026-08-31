@@ -78,6 +78,9 @@
   flex-shrink: 0;
 }
 .term-host .tile-worktree[hidden] { display: none; }
+/* Visible at rest: it reports that this session runs in a worktree, which
+   is a fact, not an action. Only .tile-actions is hover-revealed. */
+.term-host .tile-worktree { flex-shrink: 0; }
 .term-host .tile-header:hover .tile-actions,
 .term-host .tile-header:focus-within .tile-actions { display: flex; }
 .term-host .tile-header:hover .tile-project,
