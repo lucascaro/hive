@@ -11,6 +11,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P1 | — | The e2e-real Playwright suite fails on main and blocks every PR | TRIAGE | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
 | P2 | — | Minimize whole projects from the sidebar | REVIEW | [250-minimize-projects-from-sidebar](250-minimize-projects-from-sidebar.md) |
 | P2 | — | Auto-update with release/latest channels | REVIEW | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
+| P2 | — | Minimized project chips fill the tray with a right-aligned restore | GATE | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | P2 | — | UI design system: tokens, themes, icons, primitives | IMPLEMENT | [ui-design-system](ui-design-system.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
