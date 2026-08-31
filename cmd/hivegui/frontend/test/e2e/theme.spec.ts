@@ -1,7 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Phase-1 guard: the token migration must not move a pixel. Baselines are
-// captured on the pre-migration tree (Task 1) and asserted after (Task 5).
+// Preset guard. Originally a Phase-1 proof that the token migration moved
+// no pixel; Phase 4 rebuilt the chrome markup on purpose, so `classic` can
+// no longer reproduce v2.4.0 pixels — a preset is a set of token values,
+// not of markup. These baselines now guard preset *switching*: the same
+// scene under classic / hive-dark / hive-light must stay stable.
 //
 // These toHaveScreenshot() assertions run ONLY when HIVE_SNAPSHOT=1: CI runs
 // this suite on ubuntu-latest, macos-latest and windows-latest, Playwright

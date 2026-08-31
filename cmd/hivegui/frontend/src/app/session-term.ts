@@ -279,6 +279,10 @@ export class SessionTerm {
     // user can tell at a glance what each tile is currently doing.
     this.tileTermTitle = document.createElement('span');
     this.tileTermTitle.className = 'tile-term-title';
+    // Hidden until a title actually arrives: the separator lives in the
+    // element's ::before, so an empty-but-visible span renders a lone
+    // '·' next to the session name.
+    this.tileTermTitle.hidden = true;
     this.tileMinimize = iconButton({
       icon: 'minus',
       label: 'Minimize session',
