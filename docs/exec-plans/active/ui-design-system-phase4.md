@@ -1,5 +1,8 @@
 # UI design system — Phase 4: chrome (banner, status bar, tile header, launcher rows, empty/phase states)
 
+**PR:** https://github.com/lucascaro/hive/pull/301
+**Branch:** `feature/ui-design-system-phase4`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reskin every non-sidebar, non-dialog surface — banners, status bar, grid tile headers, launcher and command-palette rows, empty state, phase checklist, boot card — onto tokens and the `src/ui/` primitive layer, and add the two primitives this phase needs (`button`, `banner`). After this phase the only surfaces still carrying hand-written classes and Unicode glyphs are the dialogs (Phase 5).

@@ -4,7 +4,8 @@ title: "UI design system: tokens, themes, icons, primitives"
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 301
+stage: REVIEW
 ---
 
 # UI design system: tokens, themes, icons, primitives
@@ -13,7 +14,7 @@ stage: IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Stage:** IMPLEMENT
+- **Stage:** REVIEW
 - **Exec plan:** [docs/exec-plans/active/ui-design-system.md](../exec-plans/active/ui-design-system.md)
 
 ## Problem
