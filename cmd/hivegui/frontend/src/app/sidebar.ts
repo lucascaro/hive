@@ -5,7 +5,13 @@
 // refocusActiveTerm) are injected via initSidebar(deps) — they still
 // live in main.ts until later stages.
 
-import { UpdateSession, UpdateProject } from '../bridge.js';
+import {
+  UpdateSession,
+  UpdateProject,
+  RestartSession,
+  KillSession,
+  Confirm,
+} from '../bridge.js';
 import {
   state,
   saveCollapsed,
@@ -13,17 +19,20 @@ import {
   type SessionInfo,
 } from './state.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
-import { phaseOf, isReady, isStarting, isClosing } from '../lib/phase-steps.js';
-import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
 import { iconButton } from '../ui/icon-button.js';
+import { sessionRow, updateSessionRow } from '../ui/session-row.js';
+import {
+  projectCard,
+  updateProjectCard,
+  type ProjectCardState,
+} from '../ui/project-card.js';
 import { sessionState } from '../lib/session-state.js';
-import { activeProjectId } from './selectors.js';
+import { activeProjectId, orderedSessions } from './selectors.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { beginInlineRename } from './inline-rename.js';
 import { readProjectId } from '../lib/wire.js';
-import { displayTitle } from '../lib/term-title.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
@@ -64,12 +73,28 @@ export function initSidebar(injected: SidebarDeps) {
 export function renderSidebar() {
   projectsUL.innerHTML = '';
   const activePID = activeProjectId();
+  const hints = keyHints();
+  const indexOf = (id: string) => hints.get(id) ?? null;
   for (const p of state.projects) {
     if (state.minimizedProjects.has(p.id)) continue;
-    projectsUL.appendChild(renderProject(p, activePID));
+    projectsUL.appendChild(renderProject(p, activePID, indexOf));
   }
   renderMinimizedProjects(activePID);
   deps.renderEmptyState();
+}
+
+// keyHints maps a session id to the digit ⌘n actually selects it with.
+// app/keyboard.ts resolves ⌘n against orderedSessions()[n-1], so the hint
+// has to be read off the same list — a per-project counter would label
+// rows with keys that jump somewhere else entirely.
+function keyHints(): Map<string, number> {
+  const hints = new Map<string, number>();
+  orderedSessions()
+    .slice(0, 9)
+    .forEach((s, i) => {
+      hints.set(s.id, i + 1);
+    });
+  return hints;
 }
 
 // renderMinimizedProjects rebuilds the name-only chip list pinned to
@@ -144,16 +169,28 @@ function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
   return li;
 }
 
-// updateSidebarSelection toggles the .selected / .active /
-// .attention classes on existing DOM nodes without rebuilding them.
-// Selection-only or attention-only changes call this instead of
-// renderSidebar so consecutive clicks on a session-item still match
-// up as a dblclick pair (the rebuild between clicks was eating the
-// dblclick because the LI was a different node by the second click).
+// updateSidebarSelection re-applies selection and attention to the
+// existing card and row nodes without rebuilding them. Selection-only or
+// attention-only changes call this instead of renderSidebar so
+// consecutive clicks on a session row still match up as a dblclick pair
+// (the rebuild between clicks was eating the dblclick because the LI was
+// a different node by the second click).
 export function updateSidebarSelection() {
   const activePID = activeProjectId();
-  for (const el of projectsUL.querySelectorAll<HTMLElement>('.project')) {
-    el.classList.toggle('active', el.dataset.pid === activePID);
+  for (const el of projectsUL.querySelectorAll<HTMLElement>(
+    '.hv-project-card',
+  )) {
+    const pid = el.dataset.pid ?? '';
+    const p = state.projects.find((x) => x.id === pid);
+    // Every field of the card's state is recomputed, not just `active`:
+    // attention on a card is the union of its sessions', so a bell that
+    // arrives without a rebuild would otherwise leave a collapsed card
+    // silent and its count line stale.
+    updateProjectCard(
+      el,
+      p?.name ?? 'project',
+      projectCardState(pid, activePID),
+    );
   }
   // The chips need the same treatment as the rows: switching projects
   // (chip click, ⌘[ / ⌘], any switchTo) repaints selection without a
@@ -165,26 +202,48 @@ export function updateSidebarSelection() {
     el.classList.toggle('active', el.dataset.pid === activePID);
     el.classList.toggle('attention', projectHasAttention(el.dataset.pid ?? ''));
   }
-  for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
-    const sid = el.dataset.sid;
-    el.classList.toggle('selected', sid === state.activeId);
-    // `sid ?? ''` rather than widening the Set: an unset data-sid and the
-    // empty string are both absent from state.attention, so this is the
-    // same false the old `has(undefined)` produced.
-    const hasAttention = state.attention.has(sid ?? '');
-    el.classList.toggle('attention', hasAttention);
-    // The row's shape+words state channel (icons.md) doesn't follow from
-    // the class alone — patch it in place so a bell (or its clearing)
-    // doesn't leave the icon showing "Running" while the row pulses.
-    const s = state.sessions.find((x) => x.id === sid);
-    const dot = el.querySelector<SVGSVGElement>('.dot');
-    if (s && dot) updateStateIcon(dot, sessionState(s, hasAttention));
-  }
+  patchRows();
   // The switch paths (switchTo / switchToProject / shiftActiveProject)
   // end here without a sidebar rebuild — re-evaluate the empty state
   // so it appears when an empty project is selected and clears when a
   // live session becomes visible again.
   deps.renderEmptyState();
+}
+
+// projectCardState derives one card's whole visual state from `state`, so
+// the build path and the in-place patch path can never disagree about it.
+function projectCardState(pid: string, activePID: string): ProjectCardState {
+  const sessions = state.sessions.filter((s) => readProjectId(s) === pid);
+  const attentionCount = sessions.filter((s) =>
+    state.attention.has(s.id),
+  ).length;
+  return {
+    collapsed: state.collapsed.has(pid),
+    active: pid === activePID,
+    attention: attentionCount > 0,
+    sessionCount: sessions.length,
+    attentionCount,
+  };
+}
+
+// patchRows re-applies every row's state from `state` without rebuilding a
+// node — the invariant updateSidebarSelection was created for: a rebuild
+// between two clicks replaces the <li> and the dblclick pair that starts a
+// rename never forms.
+function patchRows() {
+  const hints = keyHints();
+  for (const el of projectsUL.querySelectorAll<HTMLLIElement>(
+    '.hv-session-row',
+  )) {
+    const s = state.sessions.find((x) => x.id === el.dataset.sid);
+    if (!s) continue;
+    updateSessionRow(el, s, {
+      state: sessionState(s, state.attention.has(s.id)),
+      selected: s.id === state.activeId,
+      minimized: state.minimized.has(s.id),
+      index: hints.get(s.id) ?? null,
+    });
+  }
 }
 
 // updateSidebarTitles patches the window-title line on existing rows
@@ -195,166 +254,67 @@ export function updateSidebarSelection() {
 // routing them through a full rebuild would thrash the sidebar and eat
 // dblclick pairs (see the comment on updateSidebarSelection).
 export function updateSidebarTitles() {
-  for (const el of projectsUL.querySelectorAll<HTMLElement>('.session-item')) {
-    const s = state.sessions.find((x) => x.id === el.dataset.sid);
-    const slot = el.querySelector<HTMLElement>('.session-title');
-    if (!s || !slot) continue;
-    applyTitle(slot, s);
-  }
+  patchRows();
 }
 
-// applyTitle writes one row's title slot. Shared by the initial render
-// and the in-place update so the two can't drift on the suppression rule
-// or the tooltip.
-function applyTitle(slot: HTMLElement, s: SessionInfo) {
-  const t = displayTitle(s.title, s.name);
-  slot.textContent = t;
-  slot.title = t;
-  // hidden rather than a class toggle: an empty title must not leave the
-  // row taller than a titleless one, and `hidden` is the one signal that
-  // also keeps the text out of the accessibility tree.
-  slot.hidden = t === '';
-}
+function renderProject(
+  p: ProjectInfo,
+  activePID: string,
+  indexOf: (id: string) => number | null,
+): HTMLLIElement {
+  const sessions = state.sessions
+    .filter((s) => readProjectId(s) === p.id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'project';
-  li.dataset.pid = p.id;
-  if (state.collapsed.has(p.id)) li.classList.add('collapsed');
-  if (p.id === activePID) li.classList.add('active');
-  li.style.setProperty('--project-color', p.color || '#888');
-  li.draggable = true;
-
-  const header = document.createElement('div');
-  header.className = 'project-header';
-
-  // A real <button> so the caret is keyboard-operable and can carry
-  // aria-expanded; :focus-visible shows a ring only for keyboard focus.
-  const caret = document.createElement('button');
-  caret.type = 'button';
-  caret.className = 'caret hv-icon-btn';
-  caret.dataset.size = '22';
-  const collapsedNow = state.collapsed.has(p.id);
-  caret.replaceChildren(icon(collapsedNow ? 'chevron-right' : 'chevron-down'));
-  caret.setAttribute('aria-expanded', String(!collapsedNow));
-  caret.setAttribute(
-    'aria-label',
-    `${collapsedNow ? 'Expand' : 'Collapse'} ${p.name}`,
-  );
-  caret.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
-    else state.collapsed.add(p.id);
-    saveCollapsed();
-    renderSidebar();
-  });
-
-  const colorEl = document.createElement('span');
-  colorEl.className = 'project-color';
-
-  const name = document.createElement('span');
-  name.className = 'project-name';
-  name.textContent = p.name ?? '';
-  name.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
-
-  const actions = document.createElement('span');
-  actions.className = 'project-actions';
-
-  // No `size` here: the sidebar column is too narrow for even the 22px
-  // sidebar-header size alongside .project-name, so style.css overrides
-  // these five buttons down to 18px via
-  // `.project-header .project-actions .hv-icon-btn` — passing `size: 22`
-  // would be overridden and read as configuration that does nothing.
-  const newBtn = iconButton({
-    icon: 'plus',
-    label: 'New session in this project',
-    onClick: (e) => {
-      e.stopPropagation();
-      openLauncher(p.id);
+  const { root, header, body, name } = projectCard({
+    project: p,
+    ...projectCardState(p.id, activePID),
+    onSelect: () => deps.switchToProject(p.id),
+    onToggleCollapse: () => {
+      if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
+      else state.collapsed.add(p.id);
+      saveCollapsed();
+      renderSidebar();
     },
+    onNewSession: () => openLauncher(p.id),
+    onMinimize: () => deps.minimizeProject(p.id),
+    onWorktrees: () => openWorktrees(p),
+    onEdit: () => openProjectEditor(p),
+    onDelete: () => deps.confirmAndDeleteProject(p),
   });
 
-  const wtBtn = iconButton({
-    // The binding is shown inline, per the key-discoverability rule.
-    icon: 'branch',
-    label: 'Worktrees in this project (⌘E)',
-    onClick: (e) => {
-      e.stopPropagation();
-      openWorktrees(p);
-    },
-  });
-
-  const editBtn = iconButton({
-    icon: 'settings',
-    label: 'Edit project',
-    onClick: (e) => {
-      e.stopPropagation();
-      openProjectEditor(p);
-    },
-  });
-
-  // Same glyph as the grid tile's minimize control
-  // (app/session-term.ts) — one gesture, two scopes.
-  const minBtn = iconButton({
-    icon: 'minus',
-    label: `Minimize ${p.name}`,
-    onClick: (e) => {
-      e.stopPropagation();
-      deps.minimizeProject(p.id);
-    },
-  });
-
-  const delBtn = iconButton({
-    icon: 'x',
-    label: `Delete project ${p.name}`,
-    onClick: (e) => {
-      e.stopPropagation();
-      deps.confirmAndDeleteProject(p);
-    },
-  });
-
-  actions.append(newBtn, wtBtn, editBtn, minBtn, delBtn);
-
-  header.append(caret, colorEl, name, actions);
-  header.addEventListener('click', (e) => {
-    // Only fire when clicking the row background, color block, or name —
-    // not on buttons / caret / inline inputs. Each of those stops
-    // propagation in its own handler so we shouldn't see them here,
-    // but be defensive.
-    const t = e.target;
-    if (!(t instanceof Element)) return;
-    if (t.closest('.project-actions') || t === caret) return;
-    deps.switchToProject(p.id);
-  });
   header.addEventListener('dblclick', (e) => {
     if (e.target === name || e.target === header) beginRenameProject(p, name);
   });
-  li.appendChild(header);
 
-  const ul = document.createElement('ul');
-  ul.className = 'project-sessions';
-  const sessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id) === p.id)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  for (const s of sessions) {
-    ul.appendChild(renderSession(s, p.color || '#888'));
-  }
-  li.appendChild(ul);
+  for (const s of sessions) body.appendChild(renderSession(s, indexOf(s.id)));
 
-  // ---- Drag-to-reorder for projects ----
-  // dragstart bubbles, so a session-item drag fires here too after
-  // its own handler runs. We must not preventDefault in that case
-  // (it would cancel the session drag). For drags that originate on
-  // the project chrome (action buttons, rename input) we DO want to
-  // abort, since the li itself is the closest draggable.
-  li.addEventListener('dragstart', (e) => {
+  wireProjectDrag(root, header, p);
+  return root;
+}
+
+// ---- Drag-to-reorder for projects ----
+// dragstart bubbles, so a session-row drag fires here too after its own
+// handler runs. We must not preventDefault in that case (it would cancel
+// the session drag). For drags that originate on the project chrome
+// (action buttons, rename input) we DO want to abort, since the card
+// itself is the closest draggable.
+function wireProjectDrag(
+  root: HTMLLIElement,
+  header: HTMLElement,
+  p: ProjectInfo,
+) {
+  root.addEventListener('dragstart', (e) => {
     const t = e.target;
     if (t instanceof Element) {
-      if (t.closest('.session-item')) {
+      if (t.closest('.hv-session-row')) {
         // Bubbled from an inner session drag — leave it alone.
         return;
       }
-      if (t.closest('.project-actions') || t.closest('.project-name-input')) {
+      if (
+        t.closest('.hv-project-card__actions') ||
+        t.closest('.project-name-input')
+      ) {
         e.preventDefault();
         return;
       }
@@ -363,52 +323,53 @@ function renderProject(p: ProjectInfo, activePID: string): HTMLLIElement {
     if (!dt) return;
     dt.effectAllowed = 'move';
     dt.setData('text/x-hive-project', p.id);
-    li.classList.add('dragging');
+    root.classList.add('dragging');
   });
-  li.addEventListener('dragend', () => {
-    li.classList.remove('dragging');
+  root.addEventListener('dragend', () => {
+    root.classList.remove('dragging');
     document
-      .querySelectorAll('.project.drop-above, .project.drop-below')
+      .querySelectorAll(
+        '.hv-project-card.drop-above, .hv-project-card.drop-below',
+      )
       .forEach((el) => {
         el.classList.remove('drop-above', 'drop-below');
       });
   });
-  li.addEventListener('dragover', (e) => {
+  root.addEventListener('dragover', (e) => {
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     dt.dropEffect = 'move';
-    // Use the header's bounds (not the whole li): with sessions
-    // expanded, the li is tall, the cursor is almost always above
+    // Use the header's bounds (not the whole card): with sessions
+    // expanded, the card is tall, the cursor is almost always above
     // its midpoint, and the indicator would land far from the
     // cursor. Anchoring both the hit-test and the visual to the
     // header keeps them in sync.
     const r = header.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
-    li.classList.toggle('drop-above', above);
-    li.classList.toggle('drop-below', !above);
+    root.classList.toggle('drop-above', above);
+    root.classList.toggle('drop-below', !above);
   });
-  li.addEventListener('dragleave', (e) => {
-    // Only clear when leaving the li entirely; dragover into a child
+  root.addEventListener('dragleave', (e) => {
+    // Only clear when leaving the card entirely; dragover into a child
     // re-fires and re-asserts the right class.
     // `contains(null)` is false, so a relatedTarget that isn't a Node
-    // takes the same "left the li" branch it takes today.
-    if (!(e.relatedTarget instanceof Node) || !li.contains(e.relatedTarget)) {
-      li.classList.remove('drop-above', 'drop-below');
+    // takes the same "left the card" branch it takes today.
+    if (!(e.relatedTarget instanceof Node) || !root.contains(e.relatedTarget)) {
+      root.classList.remove('drop-above', 'drop-below');
     }
   });
-  li.addEventListener('drop', (e) => {
+  root.addEventListener('drop', (e) => {
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
     const pid = dt.getData('text/x-hive-project');
-    li.classList.remove('drop-above', 'drop-below');
+    root.classList.remove('drop-above', 'drop-below');
     if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
     reorderDroppedProject(pid, p.id, above);
   });
-  return li;
 }
 
 // reorderDroppedProject converts an above/below drop into the new
@@ -434,112 +395,59 @@ function reorderDroppedProject(
   );
 }
 
-function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'session-item';
-  if (s.id === state.activeId) li.classList.add('selected');
-  // A session that hasn't finished starting isn't dead — it has no PTY
-  // yet. Marking it dead would grey the row out for the whole create.
-  const phase = phaseOf(s);
-  if (!s.alive && isReady(phase)) li.classList.add('dead');
-  if (isStarting(phase)) li.classList.add('starting');
-  if (isClosing(phase)) li.classList.add('closing');
-  if (state.attention.has(s.id)) li.classList.add('attention');
-  li.style.setProperty('--session-color', s.color || '#888');
-  li.style.setProperty('--project-color', projectColor || '#888');
-  li.dataset.sid = s.id;
-  li.dataset.pid = s.projectId ?? s.project_id ?? '';
-  li.draggable = true;
-
-  const dot = stateIcon(sessionState(s, state.attention.has(s.id)));
-  dot.classList.add('dot'); // keep the legacy hook until phase 3 rebuilds the row
-
-  const name = document.createElement('span');
-  name.className = 'name';
-  name.textContent = s.name ?? '';
-
-  // The window title the running program published (OSC 0/2), shown
-  // under the name so the row says what the session is *doing*, not just
-  // what it was called at creation. Hidden when there is no title, so a
-  // titleless row keeps exactly the height it has always had.
-  const titleEl = document.createElement('span');
-  titleEl.className = 'session-title';
-  applyTitle(titleEl, s);
-
-  // Name and title stack; the dot, worktree glyph and swatch stay
-  // centered against the pair. The wrapper carries min-width: 0 so the
-  // ellipsis on both lines still works inside the flex row.
-  const text = document.createElement('span');
-  text.className = 'session-text';
-  text.append(name, titleEl);
-
-  // Worktree glyph: shown when the session is backed by a git
-  // worktree. Tooltip = branch name.
-  const wtBranch = s.worktreeBranch ?? s.worktree_branch;
-  let glyph: HTMLSpanElement | null = null;
-  if (wtBranch) {
-    glyph = document.createElement('span');
-    glyph.className = 'worktree-glyph clickable';
-    glyph.replaceChildren(icon('branch', { size: 12 }));
-    // The same glyph marks the project row's worktree button, so it
-    // has to do the same thing here — an indicator that looks like the
-    // control next to it but ignores clicks reads as broken.
-    glyph.title = `Worktree: ${wtBranch} — click to manage worktrees`;
-    glyph.setAttribute('role', 'button');
-    glyph.addEventListener('click', (e) => {
-      // Don't also switch to the session the glyph sits on.
-      e.stopPropagation();
+function renderSession(s: SessionInfo, index: number | null): HTMLLIElement {
+  const li = sessionRow({
+    session: s,
+    state: sessionState(s, state.attention.has(s.id)),
+    selected: s.id === state.activeId,
+    minimized: state.minimized.has(s.id),
+    index,
+    onSelect: () => deps.switchTo(s.id),
+    onMinimize: () => deps.minimizeSession(s.id),
+    onRestore: () => deps.restoreSession(s.id),
+    onRestart: () =>
+      RestartSession(s.id).catch(reportFailure('restart session')),
+    onKill: () => killSession(s),
+    onWorktrees: () => {
       const proj = state.projects.find((p) => p.id === readProjectId(s));
       if (proj) openWorktrees(proj);
-    });
-  }
-
-  const swatch = document.createElement('span');
-  swatch.className = 'swatch';
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.value = s.color || '#888888';
-  // Read the value off the in-scope input rather than narrowing e.target:
-  // the listener is bound to this element, so colorInput IS the target.
-  colorInput.addEventListener('input', () => {
-    UpdateSession(s.id, '', colorInput.value, -1).catch(
-      reportFailure('color change'),
-    );
-  });
-  swatch.appendChild(colorInput);
-
-  // The same control the grid tile carries (app/session-term.ts), on
-  // the row — so a session can be pushed out of the grid without first
-  // finding its tile. It toggles, because once a row is minimized the
-  // tray chip is the only way back and the row is right here.
-  const isMin = state.minimized.has(s.id);
-  if (isMin) li.classList.add('minimized');
-  const minBtn = iconButton({
-    icon: isMin ? 'plus' : 'minus',
-    label: `${isMin ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`,
-    className: 'session-minimize',
-    onClick: (e) => {
-      // Don't also switch to the session the button sits on.
-      e.stopPropagation();
-      if (isMin) deps.restoreSession(s.id);
-      else deps.minimizeSession(s.id);
     },
+    onColor: (hex) =>
+      UpdateSession(s.id, '', hex, -1).catch(reportFailure('color change')),
   });
 
-  if (glyph) {
-    li.append(dot, text, glyph, minBtn, swatch);
-  } else {
-    li.append(dot, text, minBtn, swatch);
+  const name = li.querySelector<HTMLElement>('.hv-session-row__name');
+  if (name) {
+    li.addEventListener('dblclick', () => beginRenameSession(s, name));
   }
-  li.addEventListener('click', (e) => {
-    if (e.target === colorInput || e.target === swatch) return;
-    deps.switchTo(s.id);
-  });
-  li.addEventListener('dblclick', () => beginRenameSession(s, li, name));
+  wireSessionDrag(li, s);
+  return li;
+}
 
-  // ---- Drag-to-reorder ----
-  // Same-project drops only; cross-project moves are not supported
-  // yet (would require also updating project_id on the wire).
+// killSession routes a live session through the native confirm (AGENTS.md:
+// destructive actions never skip it) and a dead one straight through, which
+// is the rule session-term.ts's _closeDead already follows — there is
+// nothing left to lose once the process is gone.
+function killSession(s: SessionInfo) {
+  const alive = s.alive !== false;
+  if (!alive) {
+    KillSession(s.id, true).catch(reportFailure('kill session'));
+    return;
+  }
+  Confirm(
+    'Kill session',
+    `Kill ${s.name ?? 'this session'}? Its scrollback is lost.`,
+  )
+    .then((ok) => {
+      if (ok) KillSession(s.id, true).catch(reportFailure('kill session'));
+    })
+    .catch(reportFailure('kill session'));
+}
+
+// ---- Drag-to-reorder ----
+// Same-project drops only; cross-project moves are not supported
+// yet (would require also updating project_id on the wire).
+function wireSessionDrag(li: HTMLLIElement, s: SessionInfo) {
   li.addEventListener('dragstart', (e) => {
     const dt = e.dataTransfer;
     if (!dt) return;
@@ -550,7 +458,9 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
   li.addEventListener('dragend', () => {
     li.classList.remove('dragging');
     document
-      .querySelectorAll('.session-item.drop-above, .session-item.drop-below')
+      .querySelectorAll(
+        '.hv-session-row.drop-above, .hv-session-row.drop-below',
+      )
       .forEach((el) => {
         el.classList.remove('drop-above', 'drop-below');
       });
@@ -575,14 +485,13 @@ function renderSession(s: SessionInfo, projectColor: string): HTMLLIElement {
     if (!sid || sid === s.id) return;
     const dragged = state.sessions.find((x) => x.id === sid);
     if (!dragged) return;
-    const draggedPID = dragged.projectId ?? dragged.project_id ?? '';
-    const targetPID = s.projectId ?? s.project_id ?? '';
+    const draggedPID = readProjectId(dragged);
+    const targetPID = readProjectId(s);
     if (draggedPID !== targetPID) return; // cross-project: not supported yet
     const r = li.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
     reorderDroppedSession(sid, s.id, above);
   });
-  return li;
 }
 
 // reorderDroppedSession converts a drop position ("above" or "below"
@@ -646,11 +555,7 @@ function reorderDroppedSession(
   );
 }
 
-function beginRenameSession(
-  sess: SessionInfo,
-  _li: HTMLLIElement,
-  nameEl: HTMLSpanElement,
-) {
+function beginRenameSession(sess: SessionInfo, nameEl: HTMLElement) {
   beginInlineRename({
     className: 'name-input',
     value: sess.name ?? '',

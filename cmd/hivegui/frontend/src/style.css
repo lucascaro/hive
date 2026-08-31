@@ -193,8 +193,7 @@ body.resizing-sidebar #app { transition: none; }
 }
 /* A minimized project has no session rows, so the chip carries the
    bell. Reuses the session pulse by aliasing --session-color to the
-   project color, and glows the color dot the way .session-item.attention
-   glows its ::before. */
+   project color, and glows the color dot. */
 .min-project-chip.attention {
   --session-color: var(--project-color, var(--fg-muted));
   animation: hive-attention-pulse 1.2s ease-in-out infinite;
@@ -230,356 +229,12 @@ body.resizing-sidebar #app { transition: none; }
 .min-project-chip:hover .min-project-restore { color: var(--fg); }
 
 
-.project {
-  margin-bottom: 4px;
-  position: relative;
-}
-.project::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--project-color, var(--fg-muted));
-  opacity: 0.45;
-  border-radius: 0 1px 1px 0;
-  pointer-events: none;
-  transition: opacity 120ms ease, width 120ms ease;
-}
-.project.active::before {
-  opacity: 1;
-  width: 4px;
-}
-
-.project-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px 5px 12px;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--fg-muted);
-  cursor: pointer;
-  user-select: none;
-  min-width: 0;
-}
-
-.project-header:hover { background: rgba(255,255,255,0.02); color: var(--fg); }
-
-.project.active > .project-header {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--project-color, var(--fg-muted)) 22%, transparent) 0%,
-    rgba(255, 255, 255, 0.04) 60%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-}
-
-.project.active > .project-header .project-color {
-  width: 10px;
-  height: 10px;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3),
-              0 0 8px color-mix(in srgb, var(--project-color, var(--fg-muted)) 60%, transparent);
-}
-
-.project.active > .project-header .project-name {
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.6);
-}
-
-.project-header .caret {
-  flex-shrink: 0;
-}
-
-.project-header .project-color {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--project-color, var(--fg-muted));
-  flex-shrink: 0;
-}
-
-.project-header .project-name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-header .project-name-input {
-  flex: 1;
-  background: var(--bg);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-  border: 1px solid #444; /* ui-lint: allow */
-  border-radius: 3px;
-  padding: 2px 4px;
-  font-size: var(--text-xs);
-  font-family: inherit;
-  text-transform: none;
-  letter-spacing: 0;
-  outline: none;
-}
-
-.project-header .project-actions {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  /* Was 0.5 against the legacy #ccc glyph color; the sprite icons render
-     at --fg-subtle, and on the default (classic) preset 0.5 * --fg-subtle
-     (#666) over --surface (#0a0a0a) measures ~1.69:1 — under the 3:1
-     non-text contrast floor. --fg-subtle alone only just clears the floor
-     at full opacity in classic (~3.45:1, thin), so dimming with the same
-     color can't both look dim and pass with margin. Scoped to --fg-muted
-     below and raised to 0.8 (~3.9:1 classic, ~4.6:1 hive-light, ~5.4:1
-     hive-dark) keeps a resting/hover contrast step in every preset while
-     landing with real margin. */
-  opacity: 0.8;
-}
-.project-header:hover .project-actions { opacity: 1; }
-/* The sidebar column is ~200px; five 22px hv-icon-btns (components.md's
-   sidebar-header size) plus the caret and color swatch leave no room for
-   .project-name to render at all. Shrink just these five back to the
-   18px box the legacy buttons used (the old baseline truncates the name
-   to a couple characters at that width — narrow, but present). */
-.project-header .project-actions .hv-icon-btn {
-  width: 18px;
-  height: 18px;
-  color: var(--fg-muted);
-}
-/* Restate hv-icon-btn:hover's color: our rest-color rule above is (0,3,0)
-   — unconditional, so it also matches on hover and would tie (and beat,
-   style.css loads first) .hv-icon-btn:hover (0,2,0) for the `color`
-   property, silently keeping --fg-muted instead of brightening to --fg. */
-.project-header .project-actions .hv-icon-btn:hover { color: var(--fg); }
-
-.project-sessions {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.project.collapsed .project-sessions { display: none; }
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px 5px 26px;
-  cursor: pointer;
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #aaa; /* ui-lint: allow */
-  position: relative;
-  min-width: 0;
-}
-
-.session-item:hover {
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--fg);
-}
-
-/* Hover-revealed, like .project-actions: the row is mostly name, and a
-   button parked on every row at rest would compete with it. Kept in the
-   layout at all times so revealing it never reflows the row. */
-.session-minimize {
-  flex-shrink: 0;
-  opacity: 0;
-}
-/* Scoped to `.session-item .session-minimize` (0,2,0), not the bare class
-   (0,1,0): .hv-icon-btn also declares `transition` (background/color) at
-   0,1,0 and loads after style.css, so the bare-class version here never
-   won the tie and the opacity reveal snapped instantly instead of fading.
-   Restates hv-icon-btn's background/color transition alongside opacity so
-   neither is lost. */
-.session-item .session-minimize {
-  transition: opacity 120ms ease, background var(--motion-fast), color var(--motion-fast);
-}
-.session-item:hover .session-minimize,
-.session-minimize:focus-visible {
-  opacity: 1;
-}
-
-/* A minimized session keeps its row — the row is where you put it back
-   from — but says so: dimmed, with the restore control always visible. */
-.session-item.minimized {
-  color: #777; /* ui-lint: allow */
-}
-.session-item.minimized .session-minimize {
-  opacity: 1;
-}
-
-.session-item.selected {
-  background: color-mix(in srgb, var(--session-color, var(--fg-muted)) 18%, transparent);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-  font-weight: 500;
-  padding-left: 23px;
-}
-.session-item.selected::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--session-color, #d0d0d0); /* ui-lint: allow */
-  border-radius: 0 1px 1px 0;
-}
-
-/* Attention indicator — fired by xterm BEL on a non-focused session. */
+/* Attention pulse — fired by xterm BEL on a non-focused session.
+   Used by the minimized project chip above, which has no state
+   icon of its own to carry the bell. */
 @keyframes hive-attention-pulse {
   0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
   50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 70%, transparent); }
-}
-.session-item.attention {
-  animation: hive-attention-pulse 1.2s ease-in-out infinite;
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-}
-
-/* Drag-to-reorder visual: a thin colored line at the drop edge so
-   the user can see exactly where the dragged session will land. */
-.session-item.dragging {
-  opacity: 0.45;
-}
-.session-item.drop-above::before,
-.session-item.drop-below::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  background: var(--session-color, var(--accent));
-  border-radius: 1px;
-  pointer-events: none;
-}
-.session-item.drop-above::before { top: -1px; }
-.session-item.drop-below::before { bottom: -1px; }
-
-/* Drag-to-reorder visual for projects. The indicator marks the
-   landing slot — above the project (and any expanded sessions
-   above this one) or below the project (after its sessions). The
-   hit-test uses the header midpoint, but the visual spans the
-   whole li so it sits at the actual insertion point. ::after is
-   used because ::before is the persistent color stripe. */
-.project.dragging { opacity: 0.45; }
-.project.drop-above::after,
-.project.drop-below::after {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  background: var(--project-color, var(--accent));
-  border-radius: 1px;
-  pointer-events: none;
-  z-index: 2;
-}
-.project.drop-above::after { top: -1px; }
-.project.drop-below::after { bottom: -1px; }
-/* Title gradient — color stays visible even when selected. */
-.session-item .name {
-  flex: 1;
-  min-width: 0;
-  /* Project → session gradient. The right-end stop blends 80% of the
-     session color with white so a user-picked dark hex stays readable
-     on the dark sidebar; palette-default colors are bright enough that
-     this barely shifts them. */
-  background: linear-gradient(
-    90deg,
-    var(--project-color, var(--fg-muted)) 0%,
-    color-mix(in srgb, var(--session-color, #fff) 80%, #fff) 100% /* ui-lint: allow — literal white as a color-mix blend endpoint, not a themed role */
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Name over window title. The row stays a centered flex line; only the
-   text stacks, so the dot, worktree glyph and swatch stay vertically
-   centered against a one- or two-line row without extra rules. */
-.session-item .session-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1;
-  /* Threads the shrink permission down to .name and .session-title —
-     without it a long title blows the row out instead of ellipsing. */
-  min-width: 0;
-  gap: 1px;
-}
-
-/* The window title the running program published: what the session is
-   doing *now*, under the name it was given at creation. Deliberately one
-   step quieter than the name in every dimension — smaller, dimmer, no
-   gradient — so the row still reads name-first at a glance. Same idea as
-   .tile-term-title in the grid header, one level down. */
-.session-item .session-title {
-  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.session-item:hover .session-title { color: rgba(255, 255, 255, 0.55); }
-/* The selected row's tinted background washes out 0.4 alpha. */
-.session-item.selected .session-title {
-  color: rgba(255, 255, 255, 0.72);
-  font-weight: 400;
-}
-
-.session-item.dead .name {
-  background: none;
-  -webkit-text-fill-color: #555; /* ui-lint: allow */
-  color: #555; /* ui-lint: allow */
-  font-style: italic;
-}
-
-/* A session with no live process has no current title — whatever the
-   daemon last saw is stale by definition. */
-.session-item.dead .session-title { display: none; }
-
-.session-item .dot {
-  flex-shrink: 0;
-}
-
-.session-item .name-input {
-  /* The input replaces .name *inside* .session-text, which is a column
-     flex — `flex: 1` there would stretch it vertically instead of
-     filling the row, so size it on the cross axis explicitly. */
-  width: 100%;
-  min-width: 0;
-  background: var(--bg);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-  border: 1px solid #444; /* ui-lint: allow */
-  border-radius: 3px;
-  padding: 2px 4px;
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  font-family: inherit;
-  outline: none;
-}
-
-.session-item .swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  background: var(--session-color, var(--fg-muted));
-  flex-shrink: 0;
-  cursor: pointer;
-  position: relative;
-}
-.session-item .swatch input[type=color] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
 }
 
 .hints {
@@ -1092,8 +747,8 @@ body.resizing-sidebar #app { transition: none; }
   font-family: inherit;
 }
 
-/* Worktree glyph: shown next to a session name when the session
-   is backed by a git worktree. Sidebar + grid tile share the rule. */
+/* Worktree glyph on the grid tile (app/session-term.ts). The sidebar
+   row's worktree control is an .hv-icon-btn — see ui/session-row.ts. */
 .worktree-glyph {
   display: inline-block;
   font-size: var(--text-xs);
@@ -1101,10 +756,6 @@ body.resizing-sidebar #app { transition: none; }
   margin: 0 4px;
   opacity: 0.85;
   flex-shrink: 0;
-}
-.session-item .worktree-glyph {
-  margin-left: 0;
-  margin-right: 4px;
 }
 .launcher-item .install-tag {
   font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
@@ -1660,12 +1311,6 @@ body.resizing-sidebar #app { transition: none; }
   filter: grayscale(0.7) brightness(0.55);
   pointer-events: none;
 }
-.session-item.closing .name,
-.session-item.starting .name {
-  opacity: 0.65;
-  font-style: italic;
-}
-
 /* Dead-session overlay — shown over a tile (grid or single mode)
    when the underlying process has exited. */
 .term-host {
@@ -1842,14 +1487,11 @@ body.resizing-sidebar #app { transition: none; }
 
 /* Keyboard-focus rings on the small controls that previously had
    none. :focus-visible only — mouse clicks stay ring-free. */
-.project-header .caret:focus-visible,
-.project-header .project-actions button:focus-visible,
 #new-project-btn:focus-visible,
 .tile-minimize:focus-visible,
 .min-chip:focus-visible,
 .min-project-open:focus-visible,
 .min-project-restore:focus-visible,
-.session-minimize:focus-visible,
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,

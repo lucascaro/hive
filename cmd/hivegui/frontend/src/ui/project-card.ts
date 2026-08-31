@@ -49,9 +49,6 @@ export function projectCard(o: ProjectCardOpts): {
   root.className = 'hv-project-card';
   root.dataset.pid = p.id;
   root.draggable = true;
-  if (o.collapsed) root.dataset.collapsed = '';
-  if (o.active) root.dataset.active = '';
-  if (o.attention) root.dataset.state = 'attention';
   if (p.color) root.style.setProperty('--project-color', p.color);
 
   const header = document.createElement('div');
@@ -62,12 +59,6 @@ export function projectCard(o: ProjectCardOpts): {
   const chevron = document.createElement('button');
   chevron.type = 'button';
   chevron.className = 'hv-project-card__chevron';
-  chevron.setAttribute('aria-expanded', String(!o.collapsed));
-  chevron.setAttribute(
-    'aria-label',
-    `${o.collapsed ? 'Expand' : 'Collapse'} ${p.name ?? 'project'}`,
-  );
-  chevron.append(icon(o.collapsed ? 'chevron-right' : 'chevron-down'));
   chevron.addEventListener('click', (e) => {
     e.stopPropagation();
     o.onToggleCollapse();
@@ -83,7 +74,6 @@ export function projectCard(o: ProjectCardOpts): {
 
   const count = document.createElement('span');
   count.className = 'hv-project-card__count';
-  count.textContent = countText(o);
 
   const actions = document.createElement('span');
   actions.className = 'hv-project-card__actions';
@@ -137,5 +127,51 @@ export function projectCard(o: ProjectCardOpts): {
   body.className = 'hv-project-card__body';
 
   root.append(header, body);
+  applyState(root, p.name ?? 'project', o);
   return { root, header, body, name };
+}
+
+// updateProjectCard patches an existing card. Exists for the same reason
+// updateSessionRow does: app/sidebar.ts's updateSidebarSelection /
+// updateSidebarTitles repaint without rebuilding, because a rebuild between
+// two clicks eats the dblclick pair that starts a rename. Everything the
+// build path derives from ProjectCardState is reconciled here — a bell that
+// arrives without a rebuild changes the attention flag AND, on a collapsed
+// card, the count line.
+export function updateProjectCard(
+  root: HTMLElement,
+  projectName: string,
+  next: ProjectCardState,
+): void {
+  applyState(root, projectName, next);
+}
+
+function applyState(
+  root: HTMLElement,
+  projectName: string,
+  next: ProjectCardState,
+): void {
+  if (next.collapsed) root.dataset.collapsed = '';
+  else delete root.dataset.collapsed;
+  if (next.active) root.dataset.active = '';
+  else delete root.dataset.active;
+  if (next.attention) root.dataset.state = 'attention';
+  else delete root.dataset.state;
+
+  const chevron = root.querySelector<HTMLButtonElement>(
+    '.hv-project-card__chevron',
+  );
+  if (chevron) {
+    chevron.setAttribute('aria-expanded', String(!next.collapsed));
+    chevron.setAttribute(
+      'aria-label',
+      `${next.collapsed ? 'Expand' : 'Collapse'} ${projectName}`,
+    );
+    chevron.replaceChildren(
+      icon(next.collapsed ? 'chevron-right' : 'chevron-down'),
+    );
+  }
+
+  const count = root.querySelector<HTMLElement>('.hv-project-card__count');
+  if (count) count.textContent = countText(next);
 }
