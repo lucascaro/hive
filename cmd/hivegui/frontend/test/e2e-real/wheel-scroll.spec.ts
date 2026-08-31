@@ -126,21 +126,6 @@ async function startMarkerPump(page: Page, count: number, burst = 40) {
   return done;
 }
 
-function bufferLines(page: Page) {
-  return page.evaluate(() => {
-    const st = [...(window.__hive_state?.terms?.values() || [])][0] as
-      | SessionTerm
-      | undefined;
-    const buf = st?.term?.buffer?.active;
-    if (!buf) return [];
-    const out = [];
-    for (let i = 0; i < buf.length; i++) {
-      out.push(buf.getLine(i)?.translateToString(true) || '');
-    }
-    return out;
-  });
-}
-
 function scrollState(page: Page) {
   return page.evaluate(() => {
     const st = [...(window.__hive_state?.terms?.values() || [])][0] as

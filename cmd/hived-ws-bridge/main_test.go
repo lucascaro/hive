@@ -335,8 +335,11 @@ func TestWriteStdinPreservesArrivalOrder(t *testing.T) {
 		}
 	}()
 
+	// Deliberately s.route, not s.writeStdinOrdered: the defect was the
+	// ROUTING choice, so a test that calls the lane directly stays green
+	// even when WriteStdin is sent back to `go dispatch`.
 	for i := range frames {
-		s.writeStdinOrdered(stdinReq(i, "sid", fmt.Sprintf("k%04d", i)))
+		s.route(stdinReq(i, "sid", fmt.Sprintf("k%04d", i)))
 	}
 
 	for i := range frames {

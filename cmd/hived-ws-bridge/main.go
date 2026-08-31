@@ -174,11 +174,33 @@ type session struct {
 	attaches map[string]*wire.Client // session id → attach conn
 }
 
+// route sends one decoded request to the right execution lane. It is a
+// method rather than inline read-loop code so a test can drive the ROUTING
+// decision, not just the lane it selects: the original defect was this
+// choice, and a test that calls writeStdinOrdered directly stays green even
+// if WriteStdin is routed back to `go dispatch`.
+func (s *session) route(req rpcReq) {
+	// WriteStdin goes down the ordered stdin lane (see session.stdin); it
+	// must not be dispatched concurrently with its own neighbours.
+	if req.Method == "WriteStdin" {
+		s.writeStdinOrdered(req)
+		return
+	}
+	// Everything else stays goroutine-per-request, unbounded by design: the
+	// only client is the localhost Playwright runner, whose request rate is
+	// bounded by the test code itself. A semaphore here could deadlock the
+	// harness (a blocked ConnectControl holding a slot while the test pumps
+	// WriteStdin). dispatch recovers panics.
+	go s.dispatch(req)
+}
+
 // writeStdinOrdered hands a WriteStdin frame to this connection's single
-// stdin writer, starting it on first use. Buffered so an ordinary keystroke
-// burst never blocks the read loop; a full buffer blocks, which is the
-// backpressure we want (dropping input would corrupt the stream far worse
-// than delaying it).
+// stdin writer, starting it on first use. The buffer absorbs an ordinary
+// keystroke burst without touching the read loop; it does not make a stall
+// impossible — 1024 frames behind a wedged pty will still block the read
+// loop, and every other RPC with it. That is the right trade here (dropping
+// input corrupts the stream far worse than delaying it) and it is a bound
+// on the old behaviour, not an elimination of it.
 func (s *session) writeStdinOrdered(req rpcReq) {
 	s.stdinOnce.Do(func() {
 		s.stdin = make(chan rpcReq, 1024)
@@ -193,8 +215,6 @@ func (s *session) writeStdinOrdered(req rpcReq) {
 	s.stdin <- req
 }
 
-// closeStdin drains and stops the stdin writer. Safe to call when the lane
-// was never started.
 // shutdown tears the connection down in the only order that terminates:
 // closeAll first, so an in-flight attach write fails fast, then closeStdin
 // to join the writer goroutine. serveWS defers this rather than the two
@@ -247,18 +267,7 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 			s.respond(0, nil, fmt.Errorf("parse: %w", err))
 			continue
 		}
-		// WriteStdin goes down the ordered stdin lane (see session.stdin);
-		// it must not be dispatched concurrently with its own neighbours.
-		if req.Method == "WriteStdin" {
-			s.writeStdinOrdered(req)
-			continue
-		}
-		// Everything else stays goroutine-per-request, unbounded by design:
-		// the only client is the localhost Playwright runner, whose request
-		// rate is bounded by the test code itself. A semaphore here could
-		// deadlock the harness (a blocked ConnectControl holding a slot
-		// while the test pumps WriteStdin). dispatch recovers panics.
-		go s.dispatch(req)
+		s.route(req)
 	}
 }
 

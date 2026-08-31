@@ -184,10 +184,20 @@ a mangled `awk` line prints no markers (`markers.length` = 0), a mangled flood
 never fills the scrollback (`baseY` ≈ 500 — the attach replay alone), a mangled
 `printf '\033[?1000h'` never sets mouse-tracking mode (DECSET timeout).
 
-**Fix:** handle `WriteStdin` inline on the single WS read loop; everything else
-keeps the goroutine-per-request concurrency. This is harness-only — the shipped
-GUI reaches the same daemon through the in-process Wails binding, not this
-bridge.
+**Fix:** `WriteStdin` now goes down a per-connection ordered lane — one writer
+goroutine draining a buffered channel — while everything else keeps the
+goroutine-per-request concurrency. (The first attempt handled it inline on the
+read loop; review caught that `attachWriteFrame` backpressures whenever the pty
+is not draining, which is normal in this suite, so an inline write would stall
+`ResizeSession` / `CloseAttach` / `KillSession` for the whole connection.)
+Ordering and teardown are pinned by `TestWriteStdinPreservesArrivalOrder` and
+`TestShutdownTerminatesWhileStdinWriteIsBlocked`.
+
+This is harness-only — the shipped GUI reaches the same daemon through the
+in-process Wails binding, not this bridge. Wails does dispatch each frontend
+call in its own goroutine (`internal/frontend/desktop/*/frontend.go`), so the
+same hazard may exist on the product path; that is unverified and belongs in
+its own spec.
 
 ### Root cause 2 — readiness waits matched *replayed* output
 
