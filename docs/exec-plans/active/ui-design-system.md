@@ -70,6 +70,10 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-29** — Phases 2–6 planned up front at task depth; implementers re-verify `file:line` refs and may amend. Why: user request.
 - **2026-08-29** — Inline key hints stay (AGENTS.md rule). Why: existing project policy; only rendering is standardised via `kbd()`.
 - **2026-08-29** — Pixel baselines in `test/e2e/theme.spec.ts` are gated behind `HIVE_SNAPSHOT` and default-skipped. Why: CI runs e2e on ubuntu + macos + windows, but Playwright snapshots carry a per-platform suffix; committed darwin baselines would fail the other legs. The cross-platform guard is the computed-style preset test instead.
+- **2026-08-30** — Phase 1's "pixel-identical to v2.4.0" guarantee is retired on purpose. Why: `classic` is a preset of token *values*, not of markup, and phase 4 rebuilds the chrome markup (status bar moved into the grid, banners built in TS, tile header rebuilt). The `theme.spec.ts` baselines were regenerated and now guard preset switching instead.
+- **2026-08-30** — The grid tile header drops the project→session colour gradient. Why: README principle 2, one channel per fact — the sidebar card owns project identity and the tile already encodes the session twice (colour + name). Reversing it is one `background:` rule in `tile-header.css`.
+- **2026-08-30** — The launcher's per-agent colour swatch stands in for components.md's "leading icon for agent kind". Why: `icons.md` forbids a sprite symbol per agent, and the colour is the one thing that tells two agents apart at a glance.
+- **2026-08-30** — Status-bar mode hints are `⌘G`, `⇧⌘K` and `⌘`+arrows, not the chords the phase-4 plan sketched. Why: verified against `lib/shortcuts.ts` — the palette is `⇧⌘K` and tile movement is `⌘`+arrows; a hint naming an unbound chord is worse than no hint.
 - **2026-08-29** — `data-theme` is stamped by an inline blocking `<script>` in `<head>`, not by the module import. Why: `type="module"` is deferred and would let the first paint land on the wrong preset.
 - **2026-08-29** — Terminal cursor and selection colours changed from white to amber (under `classic` preset). Why: v2.4.0 xterm theme was hard-coded `{ background: '#000000' }` with no cursor/selection values, so xterm supplied its own white defaults; they now derive from `--accent` per the spec's xterm mapping table. Terminal text stays white and background is unchanged.
 - **2026-08-29** — `classic`'s `--term-fg` is `#ffffff` not `#ddd`. Why: terminal text must keep reproducing v2.4.0 exactly.
@@ -90,6 +94,6 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - [x] Phase 1
 - [x] Phase 2
 - [x] Phase 3
-- [ ] Phase 4
+- [x] Phase 4
 - [ ] Phase 5
 - [ ] Phase 6
