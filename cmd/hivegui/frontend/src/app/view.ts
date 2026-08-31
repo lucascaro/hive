@@ -29,6 +29,7 @@ import { emptyStateModel } from '../lib/empty-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { modeHints } from '../lib/status.js';
+import { button } from '../ui/button.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 import { chip } from '../ui/chip.js';
 import { sessionState } from '../lib/session-state.js';
@@ -691,20 +692,24 @@ export function renderEmptyState() {
     if (model.actions.length) {
       const row = document.createElement('div');
       row.className = 'empty-actions';
-      for (const a of model.actions) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.textContent = a.label;
-        btn.addEventListener('click', (e) => {
-          // The launcher now opens synchronously; without this, the
-          // same click bubbles to the document-level outside-click
-          // closer and shuts it in the same tick.
-          e.stopPropagation();
-          if (a.id === 'new-session') openLauncher();
-          else if (a.id === 'new-project') openProjectEditor(null);
-        });
-        row.appendChild(btn);
-      }
+      // patterns.md: one primary action, the rest default.
+      model.actions.forEach((a, i) => {
+        row.appendChild(
+          button({
+            label: a.label,
+            kind: i === 0 ? 'primary' : 'default',
+            icon: 'plus',
+            onClick: (e) => {
+              // The launcher now opens synchronously; without this, the
+              // same click bubbles to the document-level outside-click
+              // closer and shuts it in the same tick.
+              e.stopPropagation();
+              if (a.id === 'new-session') openLauncher();
+              else if (a.id === 'new-project') openProjectEditor(null);
+            },
+          }),
+        );
+      });
       el.appendChild(row);
     }
   }

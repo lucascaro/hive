@@ -1543,7 +1543,9 @@ export class SessionTerm {
     this.phaseSteps.replaceChildren(
       ...panel.steps.map((step) => {
         const li = document.createElement('li');
-        li.className = `phase-step ${step.state}`;
+        li.className = 'phase-step';
+        // A variant is a data attribute, never a second class.
+        li.dataset.state = step.state;
         // The mark used to be a CSS ::before dot/check/half-circle glyph;
         // it is an icon now so it matches the rest of the family. 'todo'
         // gets no mark - the indent in phase-step::before holds the column.

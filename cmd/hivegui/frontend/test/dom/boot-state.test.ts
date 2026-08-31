@@ -15,7 +15,6 @@ async function loadDom() {
       <div class="boot-state-card">
         <span class="phase-spinner"></span>
         <span id="boot-state-text">Starting hive…</span>
-        <button id="boot-state-retry" class="hidden" type="button">Retry</button>
       </div>
     </div>
   `;
@@ -56,14 +55,14 @@ describe('boot overlay', () => {
       'boot-state-retry',
     ) as HTMLButtonElement;
     const spinner = document.querySelector('.phase-spinner') as HTMLElement;
-    expect(retry.classList.contains('hidden')).toBe(false);
+    expect(retry.hidden).toBe(false);
     expect(spinner.classList.contains('hidden')).toBe(true);
     retry.click();
     expect(clicked).toBe(1);
 
     // And a plain wait puts the spinner back, retry gone.
     setBootState('Waiting for the hive daemon…');
-    expect(retry.classList.contains('hidden')).toBe(true);
+    expect(retry.hidden).toBe(true);
     expect(spinner.classList.contains('hidden')).toBe(false);
   });
 

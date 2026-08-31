@@ -116,8 +116,7 @@ function makeTerm(info: Info) {
 // ("Starting"), which would otherwise leak into the li's textContent.
 const steps = (st: Tile) =>
   Array.from(st.phaseSteps.children).map(
-    (li) =>
-      `${li.className.replace('phase-step ', '')}:${li.querySelector('span')?.textContent}`,
+    (li) => `${li.dataset.state}:${li.querySelector('span')?.textContent}`,
   );
 
 describe('phase overlay', () => {

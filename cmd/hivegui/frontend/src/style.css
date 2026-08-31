@@ -325,90 +325,6 @@ body.resizing-sidebar #app { transition: none; }
    "no sessions in this project" ::after text. Occupies the same grid
    cell as #terms and floats above it; pointer events only on itself
    so a sliver of terminal behind it stays interactive when hidden. */
-#empty-state {
-  grid-row: 3;
-  grid-column: 2;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  color: #777; /* ui-lint: allow */
-  pointer-events: auto;
-}
-#empty-state.hidden { display: none; }
-/* The boot overlay sits in the same grid cell as the empty state and
-   above it: until the first session list lands we do not yet know
-   whether "No sessions yet" is the truth or just a daemon that has not
-   answered. Mirrors the session tile's phase overlay and the worktree
-   modal's loading card. */
-#boot-state {
-  grid-row: 3;
-  grid-column: 2;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 18px;
-  background: #0b0b0b; /* ui-lint: allow */
-}
-#boot-state.hidden { display: none; }
-.boot-state-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  max-width: 40ch;
-  text-align: center;
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #999; /* ui-lint: allow */
-  line-height: 1.5;
-}
-.boot-state-card .phase-spinner {
-  --session-color: var(--accent);
-}
-/* The spinner belongs to the wait; once the boot has given up the card
-   shows a Retry instead. */
-.boot-state-card .phase-spinner.hidden { display: none; }
-#boot-state-retry {
-  background: var(--btn);
-  color: var(--fg);
-  border: 1px solid #333; /* ui-lint: allow */
-  border-radius: 5px;
-  padding: 6px 12px;
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  cursor: pointer;
-}
-#boot-state-retry:hover { background: #262626; } /* ui-lint: allow */
-#boot-state-retry.hidden { display: none; }
-#empty-state .empty-title {
-  font-size: 15px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #999; /* ui-lint: allow */
-}
-#empty-state .empty-hint {
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: var(--fg-subtle);
-}
-#empty-state .empty-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
-}
-#empty-state .empty-actions button {
-  background: var(--btn);
-  color: var(--fg);
-  border: 1px solid #333; /* ui-lint: allow */
-  border-radius: 5px;
-  padding: 6px 12px;
-  font-size: 12.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  cursor: pointer;
-}
-#empty-state .empty-actions button:hover { background: var(--hover); }
-#empty-state .empty-actions button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 
 #launcher {
   position: fixed;
@@ -879,75 +795,6 @@ body.resizing-sidebar #app { transition: none; }
    still creating the session (worktree + shell), and while it is
    tearing one down. Opaque on purpose: it hides the login shell's
    startup output, so the reveal lands on a settled screen. */
-.phase-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #0b0b0b; /* ui-lint: allow */
-  z-index: 6;
-  opacity: 1;
-  transition: opacity 140ms ease-out;
-}
-.phase-overlay[hidden] { display: none; }
-.phase-overlay.fading { opacity: 0; }
-.phase-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 18px 22px;
-  max-width: 80%;
-  text-align: center;
-}
-.phase-spinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, var(--hover));
-  border-top-color: var(--session-color, var(--fg-muted));
-  animation: phase-spin 700ms linear infinite;
-}
-@keyframes phase-spin {
-  to { transform: rotate(360deg); }
-}
-/* Users who ask for less motion get a pulse instead of a spin. */
-@media (prefers-reduced-motion: reduce) {
-  .phase-spinner {
-    animation: phase-pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes phase-pulse {
-    50% { opacity: 0.35; }
-  }
-}
-.phase-status {
-  font-size: var(--text-md);
-  color: var(--fg);
-}
-.phase-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  text-align: left;
-  font-size: var(--text-sm);
-  color: #777; /* ui-lint: allow */
-}
-.phase-step {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 1px 0;
-}
-.phase-step > .hv-icon { flex: none; }
-/* 'todo' has no mark; the gap keeps its label on the same column. */
-.phase-step.todo::before { content: ''; width: 12px; flex: none; }
-.phase-step.done {
-  color: #9a9a9a; /* ui-lint: allow */
-}
-.phase-step.active {
-  color: #e6e6e6; /* ui-lint: allow */
-}
 
 /* Closing: the tile is on its way out. Dim it and stop taking input;
    the removal event lands moments later. */
@@ -1130,7 +977,6 @@ body.resizing-sidebar #app { transition: none; }
 #settings-agent-add:focus-visible,
 #settings-panel .actions button:focus-visible,
 .settings-agent-delete:focus-visible,
-#empty-state .empty-actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
