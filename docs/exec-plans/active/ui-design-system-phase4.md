@@ -1742,3 +1742,5 @@ Gate: `biome ci`, `tsc --noEmit`, 689 vitest tests, 206 Playwright tests,
 `ui-lint --strict` (0 violations) and `go build ./...` all green.
 
 ## PR convergence ledger
+
+- **2026-08-30 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 5241381b689bb7ae; threads_open: 0; action: autofix+push, then escalated:risky fix needs human decision; head_sha: 286e448.
