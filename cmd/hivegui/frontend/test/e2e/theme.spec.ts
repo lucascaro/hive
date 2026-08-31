@@ -62,6 +62,11 @@ async function seedSidebar(page: Page) {
   const s2Sid = await page.evaluate(
     () => window.__hive.state?.sessions.find((s) => s.name === 's2')?.id,
   );
+  // Tile actions are hover-revealed (patterns.md), so the header has to
+  // be hovered before the button is clickable.
+  await page
+    .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-header`)
+    .hover();
   await page
     .locator(`.term-host.in-grid[data-sid="${s2Sid}"] .tile-minimize`)
     .click();

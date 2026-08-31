@@ -1,0 +1,84 @@
+/* docs/design-docs/ui/components.md > Grid tile header. 28px, --surface,
+   bottom border, state icon + name + '·' + window title, hover actions.
+   The project colour is deliberately gone from this bar: the sidebar
+   owns project identity (README principle 2), and the tile keeps
+   --session-color for its border and attention glow. */
+.term-host .tile-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+.term-host.term-focused .tile-header {
+  /* Focus reads as a session-coloured hairline under the bar, not as a
+     brighter fill: the terminal is the product, chrome recedes. */
+  border-bottom-color: var(--session-color, var(--accent));
+  color: var(--fg);
+}
+.term-host .tile-state { flex-shrink: 0; }
+.term-host .tile-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--fg);
+}
+.term-host .tile-term-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.term-host .tile-term-title[hidden] { display: none; }
+.term-host .tile-term-title::before {
+  content: '\00b7';
+  margin-right: var(--space-2);
+  color: var(--fg-subtle);
+}
+.term-host .tile-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  background: var(--surface-raised);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  font: inherit;
+  outline: none;
+}
+.term-host .tile-project {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+/* patterns.md > Hover-revealed actions: hidden until hover or keyboard
+   focus within the row, and they REPLACE the meta column. */
+.term-host .tile-actions {
+  display: none;
+  margin-left: auto;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.term-host .tile-worktree[hidden] { display: none; }
+.term-host .tile-header:hover .tile-actions,
+.term-host .tile-header:focus-within .tile-actions { display: flex; }
+.term-host .tile-header:hover .tile-project,
+.term-host .tile-header:focus-within .tile-project { display: none; }

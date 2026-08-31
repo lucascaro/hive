@@ -42,6 +42,7 @@ test.describe('session minimize', () => {
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
     if (!sid) throw new Error('the first tile carries no data-sid');
+    await firstTile.locator('.tile-header').hover();
     await firstTile.locator('.tile-minimize').click();
 
     // The tile is removed from the grid.
@@ -62,6 +63,7 @@ test.describe('session minimize', () => {
 
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
+    await firstTile.locator('.tile-header').hover();
     await firstTile.locator('.tile-minimize').click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
 
@@ -75,11 +77,9 @@ test.describe('session minimize', () => {
   }) => {
     await bootWithSessions(page, 2);
     await enterGridAll(page);
-    await page
-      .locator('.term-host.in-grid')
-      .first()
-      .locator('.tile-minimize')
-      .click();
+    const tile = page.locator('.term-host.in-grid').first();
+    await tile.locator('.tile-header').hover();
+    await tile.locator('.tile-minimize').click();
     await expect(page.locator('#terms')).not.toHaveClass(/grid/);
   });
 
@@ -100,6 +100,7 @@ test.describe('session minimize', () => {
     );
 
     // Minimize the active tile.
+    await tiles.first().locator('.tile-header').hover();
     await tiles.first().locator('.tile-minimize').click();
 
     // Active session should no longer be the minimized one.
@@ -119,6 +120,7 @@ test.describe('session minimize', () => {
     const firstTile = page.locator('.term-host.in-grid').first();
     const sid = await firstTile.evaluate((el) => el.dataset.sid);
     if (!sid) throw new Error('the first tile carries no data-sid');
+    await firstTile.locator('.tile-header').hover();
     await firstTile.locator('.tile-minimize').click();
     await expect(
       page.locator(`#minimized-tray .hv-chip[data-sid="${sid}"]`),

@@ -294,94 +294,6 @@ body.resizing-sidebar #app { transition: none; }
 #terms.grid .term-host.in-grid.attention {
   animation: hive-tile-attention 1.2s ease-in-out infinite;
 }
-.term-host .tile-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  /* Title bar gradient: project color (left) → session color (right),
-     each mixed into the dark base so the bar reads as a tinted strip
-     rather than a solid block. Mirrors the sidebar gradient so the
-     same visual encoding applies in grid and single mode. */
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--project-color, var(--session-color, var(--fg-muted))) 40%, var(--surface)) 0%,
-    color-mix(in srgb, var(--session-color, var(--fg-muted)) 12%, var(--surface)) 100%
-  );
-  border-bottom: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, var(--sel));
-  font: 11px Menlo, monospace;
-  color: var(--fg);
-  flex-shrink: 0;
-}
-.term-host.term-focused .tile-header {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--project-color, var(--session-color, var(--fg-muted))) 65%, var(--surface)) 0%,
-    color-mix(in srgb, var(--session-color, var(--fg-muted)) 28%, var(--surface)) 100%
-  );
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-}
-.term-host .tile-color {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--session-color, var(--fg-muted));
-  flex-shrink: 0;
-  box-shadow: 0 0 4px color-mix(in srgb, var(--session-color, var(--fg-muted)) 60%, transparent);
-}
-.term-host .tile-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.term-host .tile-term-title {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: var(--text-xs);
-  margin-left: 4px;
-}
-.term-host .tile-term-title::before {
-  content: "—";
-  margin-right: 6px;
-  color: rgba(255, 255, 255, 0.3);
-}
-.term-host .tile-name-input {
-  flex: 1;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 3px;
-  padding: 1px 5px;
-  font: inherit;
-  outline: none;
-}
-.term-host .tile-project {
-  margin-left: auto;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.term-host .tile-minimize {
-  flex-shrink: 0;
-  margin-left: 6px;
-  /* Not var(--fg-subtle) (from .hv-icon-btn): the tile header's right end
-     is color-mix(session-color 28%, --surface), and with an amber session
-     color that ground is ~#4c330a — --fg-subtle over it measures ~2:1,
-     under the 3:1 non-text floor, on a control with no opacity reveal (it
-     is always visible). rgba(255,255,255,0.65) is what this control had
-     before the sprite swap (~6:1 on the same ground) — restoring it here
-     is simplest; a --fg-emphasis token is a phase-6 concern (would want
-     the whole file migrated at once), not a one-control fix. */
-  color: rgba(255, 255, 255, 0.65); /* ui-lint: allow — tinted-ground contrast override, see comment */
-}
 
 #minimized-tray {
   display: flex;
@@ -1282,7 +1194,6 @@ body.resizing-sidebar #app { transition: none; }
    none. :focus-visible only — mouse clicks stay ring-free. */
 
 #new-project-btn:focus-visible,
-.tile-minimize:focus-visible,
 #project-editor button:focus-visible,
 #settings-agent-add:focus-visible,
 #settings-panel .actions button:focus-visible,
