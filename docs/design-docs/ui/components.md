@@ -36,7 +36,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Line 2: window title (`session-title` today), `--text-sm`, `--fg-subtle`. Falls back to state words when no title: "Starting…", "Exited", "Exited — <last_error>". Never both.
 - `kbd("[n]")` before the name when the session is one of the first nine in `orderedSessions()` (⌘1–9 bind to sessions, not projects).
 - Meta column: worktree `branch` icon (12px, `--fg-subtle`) if session has a worktree; agent short code in `--font-mono --text-xs` (`cl`, `cx`, `gm`, `sh`, custom = first two letters).
-- Selected: `--sel` background + 2px `--accent` bar at left edge (`::before`). Hover: `--hover` and reveals actions (`minus`, `rotate`, `x` icon buttons) replacing the meta column.
+- Selected: `--sel` background + 2px `--accent` bar at left edge (`::before`). Hover: `--hover` and reveals actions replacing the meta column — `minus` (minimize), `rotate` (restart, exited/error rows only), `x` (kill, via the native `Confirm()` bridge; `force: false` on a live session so the daemon's dirty-worktree refusal still runs, `force: true` once the session is already dead).
 - Inline rename (existing feature) swaps line 1 for an input with the same metrics.
 - Drag-reorder handle: whole row, as today.
 

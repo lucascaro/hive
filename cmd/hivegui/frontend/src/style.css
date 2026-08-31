@@ -1372,9 +1372,6 @@ body.resizing-sidebar #app { transition: none; }
    none. :focus-visible only — mouse clicks stay ring-free. */
 #new-project-btn:focus-visible,
 .tile-minimize:focus-visible,
-.min-chip:focus-visible,
-.min-project-open:focus-visible,
-.min-project-restore:focus-visible,
 #daemon-banner button:focus-visible,
 #update-banner button:focus-visible,
 #project-editor button:focus-visible,

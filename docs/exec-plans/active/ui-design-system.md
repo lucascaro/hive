@@ -80,12 +80,15 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-30** — `.hv-icon` restates the sprite root's `fill`/`stroke`/`stroke-width`/`linecap`/`linejoin`. Why: `<use>` clones a `<symbol>` without its defining tree's ancestors, so the sprite root's presentation attributes never reach the clone — without this every stroke-based icon renders invisible. This was a real bug caught only by a screenshot check; it is worth writing down so nobody "simplifies" it away.
 - **2026-08-30** — Two of the three state-icon sites — the sidebar row (`updateSidebarSelection`) and the grid tile header (`session-term.ts`'s `refreshStateIcon`) — are patched in place via `updateStateIcon()`; the minimized tray gets a correct icon for free because `renderMinimizedTray()` clears and rebuilds every chip from scratch on each render, calling `stateIcon()` fresh rather than patching. Why patch at all: a bell only toggles a CSS class, so without an explicit refresh on the two sites that don't already rebuild wholesale, the shape and its `<title>` would keep saying "Running" while the session waits.
 - **2026-08-30** — The project-header action buttons keep an 18px box via a scoped `style.css` override rather than the primitive's 22/24 sizes. Why: five 24px buttons plus the caret squeezed the project name out of the sidebar entirely.
+- **2026-08-30** — `[n]` key hints render on session rows, not project cards. Why: ⌘1–9 selects the nth session in global order (`keyboard.ts`); there is no project-number binding, and a hint for a key that does nothing is worse than none. Revisit if a project-number chord is added.
+- **2026-08-30** — Sidebar rows gained restart and kill. Why: patterns.md requires `rotate`/`x` on an exited row, and there was no way to restart a session from the sidebar at all (`RestartSession` was dead code in the frontend). Kill on a live session goes through the native confirm.
+- **2026-08-30** — State resolution reads `last_error`, not `exit_code`. Why: the daemon never sends an exit code; `SessionInfo` has `alive` and `last_error` only. Line 2 reads "Exited" or "Exited — <error>".
 
 ## Progress
 
 - [x] Phase 1
 - [x] Phase 2
-- [ ] Phase 3
+- [x] Phase 3
 - [ ] Phase 4
 - [ ] Phase 5
 - [ ] Phase 6

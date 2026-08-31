@@ -2,7 +2,7 @@
 
 The visual and interaction system for the Hive GUI (`cmd/hivegui/frontend/`). This directory is the source of truth for *how the UI looks and behaves*; `DESIGN.md` at the repo root covers architecture.
 
-Status: **Phase 2 implemented** (tokens, presets, SVG icon sprite and primitives, every Unicode UI glyph removed, `ui-lint --strict` gating CI). Implementation is tracked in [docs/exec-plans/active/ui-design-system.md](../../exec-plans/active/ui-design-system.md).
+Status: **Phases 1–3 implemented** (tokens, presets, SVG icon sprite and primitives, every Unicode UI glyph removed, `ui-lint --strict` gating CI; sidebar rebuilt on `sessionRow`/`projectCard`/`chip`). Implementation is tracked in [docs/exec-plans/active/ui-design-system.md](../../exec-plans/active/ui-design-system.md).
 
 ## Why this exists
 
