@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project now spans the full width of its tray with the restore `+`
   pinned to the right edge, and clicking anywhere on the row restores
   the project instead of only the project name.
+- `build.sh` now fails with install instructions when the `wails` CLI on
+  `PATH` does not match the version pinned in `scripts/ci-bootstrap.sh`,
+  instead of silently building against a stale toolchain after a Wails
+  bump.
+- Added `scripts/check-changeset.sh`, a local mirror of the changesets CI
+  gate that can be installed as a `pre-push` hook.
 
 ## [2.4.0] — 2026-08-29
 
