@@ -467,10 +467,6 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
   // 2/2 with the same viewportY == baseY == 5000. So it is not a harness
   // artefact — the yank is real under contention, and the follow-up is a
   // product question about the resize replay, not a test one.
-  test.skip(
-    !!process.env.CI,
-    'load-dependent under CI contention — see spec 245 Resolution',
-  );
   //
   // So this is NOT the stale-guard class the rest of this file had — the
   // assertion is right and the behaviour under load may genuinely be
@@ -479,6 +475,10 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
   // not harness fragility to paper over. It is skipped here rather than
   // deleted so the other 21 tests can gate CI, per spec 245's rule that
   // a quarantine be explicit and carry a follow-up.
+  test.skip(
+    !!process.env.CI,
+    'load-dependent under CI contention — see spec 245 Resolution',
+  );
 
   await bootWithTerm(page);
   // Fill scrollback, then stop output so the read position is stable.

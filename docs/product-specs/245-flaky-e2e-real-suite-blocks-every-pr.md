@@ -4,7 +4,7 @@ title: "The e2e-real Playwright suite fails on main and blocks every PR"
 type: bug
 complexity: M
 priority: P1
-stage: IMPLEMENT
+stage: GATE
 ---
 
 # The e2e-real Playwright suite fails on main and blocks every PR
