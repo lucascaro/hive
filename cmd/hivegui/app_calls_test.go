@@ -127,6 +127,8 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"RemoveWorktree":         func() error { return a.RemoveWorktree("p", "/tmp/wt", false, false, false) },
 		"RenameWorktree":         func() error { return a.RenameWorktree("p", "/tmp/wt", "b2") },
 		"DeleteBranch":           func() error { return a.DeleteBranch("p", "b", false, false) },
+		"RestoreSession":         func() error { return a.RestoreSession("s") },
+		"ListClosedSessions":     func() error { return a.ListClosedSessions() },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
@@ -134,5 +136,53 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 				t.Errorf("%s with no control connection returned nil, want an error", name)
 			}
 		})
+	}
+}
+
+// TestRestoreSessionCall pins the payload the reopen affordances send.
+// The empty-id form is the one ⌘Z uses, and it must stay empty on the
+// wire: the daemon resolves "the last one" so the client cannot race a
+// retention prune between listing and restoring.
+func TestRestoreSessionCall(t *testing.T) {
+	for _, tc := range []struct{ name, id string }{
+		{"explicit id", "sess-1"},
+		{"reopen last", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, next := appWithControl(t)
+			done := make(chan error, 1)
+			go func() { done <- a.RestoreSession(tc.id) }()
+
+			ft, payload := next(t)
+			if ft != wire.FrameRestoreSession {
+				t.Fatalf("frame = %#x, want FrameRestoreSession", byte(ft))
+			}
+			var req wire.RestoreSessionReq
+			if err := json.Unmarshal(payload, &req); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if req.SessionID != tc.id {
+				t.Errorf("SessionID = %q, want %q", req.SessionID, tc.id)
+			}
+			if err := <-done; err != nil {
+				t.Fatalf("RestoreSession: %v", err)
+			}
+		})
+	}
+}
+
+// TestListClosedSessionsCall: the reopen list is a plain query, so the
+// only thing worth pinning is that it reaches the wire as LIST_CLOSED.
+func TestListClosedSessionsCall(t *testing.T) {
+	a, next := appWithControl(t)
+	done := make(chan error, 1)
+	go func() { done <- a.ListClosedSessions() }()
+
+	ft, _ := next(t)
+	if ft != wire.FrameListClosed {
+		t.Fatalf("frame = %#x, want FrameListClosed", byte(ft))
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("ListClosedSessions: %v", err)
 	}
 }

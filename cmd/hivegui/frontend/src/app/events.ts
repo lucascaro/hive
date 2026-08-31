@@ -12,6 +12,11 @@ import {
   ConnectControl,
   LogFrontend,
 } from '../bridge.js';
+import {
+  noteLocalClose,
+  onSessionRemoved,
+  onSessionRestored,
+} from './undo-close.js';
 import { state, saveCollapsed, saveMinimizedProjects } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
@@ -400,6 +405,20 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
   });
 
+  // What a restore could NOT bring back. Its own event rather than a
+  // field on the session, because it describes the transition, not the
+  // session — a tile that has been open for an hour should not still
+  // be advertising that its worktree was rebuilt.
+  EventsOn('session:restored', (jsonStr: string) => {
+    try {
+      onSessionRestored(JSON.parse(jsonStr));
+    } catch {
+      // A malformed payload costs the user the "what was lost" line,
+      // not the restored session — the tile already arrived on the
+      // ordinary session event stream.
+    }
+  });
+
   EventsOn('session:event', (jsonStr: string) => {
     const ev = JSON.parse(jsonStr) as SessionEvent;
     const i = state.sessions.findIndex((s) => s.id === ev.session.id);
@@ -435,6 +454,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
     }
     if (ev.kind === 'removed') {
+      // Offers undo, but only for a close this client issued.
+      onSessionRemoved(ev.session.id);
       state.aliveById.delete(ev.session.id);
       state.phaseById.delete(ev.session.id);
       state.dismissedDead.delete(ev.session.id);
@@ -686,7 +707,12 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // before issuing a second kill that would just produce a confusing
       // "no_such_session" control error.
       if (!state.sessions.find((s) => s.id === e.session_id)) return;
+      const sessName = sess?.name ?? 'Session';
       if (answer === 'close-and-clean') {
+        // Deleting the worktree is the one close that destroys work,
+        // so the banner it raises says so rather than offering a plain
+        // "Undo" the restore cannot honour in full.
+        noteLocalClose(e.session_id, sessName, true);
         // One daemon-side operation: the worktree is occupied until
         // this session is gone, so closing and then asking to remove it
         // would race its own teardown and be refused as in-use.
@@ -695,6 +721,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
         );
         return;
       }
+      noteLocalClose(e.session_id, sessName);
       KillSession(e.session_id, true).catch(reportFailure('force kill'));
       return;
     }

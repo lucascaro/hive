@@ -135,6 +135,13 @@ export type MockBranch = {
   merged?: boolean;
 };
 
+/** One closed session the mock can still reopen. */
+export type MockClosed = {
+  session: MockSession;
+  closedAt: string;
+  degraded: Record<string, boolean>;
+};
+
 const state: {
   projects: MockProject[];
   sessions: MockSession[];
@@ -142,6 +149,10 @@ const state: {
   orphanBranches: MockBranch[];
   // Branch names the GUI asked to delete on the remote.
   deletedRemotes: string[];
+  // Tombstones left by closes, oldest last — the mock's stand-in for
+  // <stateDir>/closed/. `degraded` is what the daemon would report on
+  // SESSION_RESTORED for this particular close.
+  closed: MockClosed[];
 } = {
   projects: [
     {
@@ -173,6 +184,7 @@ const state: {
   worktrees: [],
   orphanBranches: [],
   deletedRemotes: [],
+  closed: [],
 };
 
 function broadcast() {
@@ -380,14 +392,18 @@ export async function KillSessionAndWorktree(id: string) {
   maybeFail('KillSessionAndWorktree');
   const s = state.sessions.find((x) => x.id === id);
   const path = s?.worktree_path;
-  await KillSession(id, true);
+  await KillSession(id, true, true);
   if (path) {
     const i = state.worktrees.findIndex((w) => w.path === path);
     if (i >= 0) state.worktrees.splice(i, 1);
   }
   return '';
 }
-export async function KillSession(id: string, force?: boolean) {
+export async function KillSession(
+  id: string,
+  force?: boolean,
+  removeWorktree = false,
+) {
   maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i < 0) return '';
@@ -418,6 +434,13 @@ export async function KillSession(id: string, force?: boolean) {
     const j = state.sessions.findIndex((s) => s.id === id);
     if (j < 0) return;
     const [removed] = state.sessions.splice(j, 1);
+    // Every close leaves a tombstone, exactly as the daemon writes one
+    // before the teardown.
+    state.closed.push({
+      session: { ...removed, phase: 'ready' },
+      closedAt: new Date().toISOString(),
+      degraded: removeWorktree ? { worktree_lost: true } : {},
+    });
     // A kill shifts every later session down a slot, so the daemon
     // recompacts .order and broadcasts the survivors (registry.Kill).
     // Leaving holes here would model a bug the daemon no longer has —
@@ -431,6 +454,56 @@ export async function KillSession(id: string, force?: boolean) {
     emitUpdatedExcept(removed.id);
   });
   return '';
+}
+// Undo close. The mock keeps its own tombstone list so a spec can
+// drive the full close → banner → reopen loop; the real daemon keeps
+// these on disk under the state dir.
+export async function RestoreSession(id: string) {
+  maybeFail('RestoreSession');
+  const i = id
+    ? state.closed.findIndex((t: MockClosed) => t.session.id === id)
+    : state.closed.length - 1;
+  if (i < 0) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: id ? 'no_such_closed_session' : 'no_closed_sessions',
+        message: 'nothing to reopen',
+      }),
+    );
+    return '';
+  }
+  const [tomb] = state.closed.splice(i, 1);
+  // Appended, like the registry: every sibling's order shifted when
+  // this one was removed, so the remembered slot no longer means what
+  // it meant.
+  state.sessions.push(tomb.session);
+  renumber();
+  emit(
+    'session:event',
+    JSON.stringify({ kind: 'added', session: tomb.session }),
+  );
+  emit(
+    'session:restored',
+    JSON.stringify({ session_id: tomb.session.id, ...tomb.degraded }),
+  );
+  emit('closed:list', JSON.stringify({ closed: closedList() }));
+  return '';
+}
+export async function ListClosedSessions() {
+  maybeFail('ListClosedSessions');
+  emit('closed:list', JSON.stringify({ closed: closedList() }));
+  return '';
+}
+function closedList() {
+  return state.closed
+    .slice()
+    .reverse()
+    .map((t: MockClosed) => ({
+      session_id: t.session.id,
+      name: t.session.name,
+      closed_at: t.closedAt,
+    }));
 }
 export async function RestartSession(_id: string) {
   maybeFail('RestartSession');

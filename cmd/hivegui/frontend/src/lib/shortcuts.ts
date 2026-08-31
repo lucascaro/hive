@@ -109,6 +109,7 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           label: 'Duplicate session (choose tool)',
         },
         { keys: m('W'), label: 'Close session' },
+        { keys: m('Z'), label: 'Reopen closed session' },
         { keys: `${m('1')}–${m('9')}`, label: 'Switch to session 1–9' },
         {
           keys: `${isMac ? '⌘' : 'Ctrl+'}${vArrows}`,

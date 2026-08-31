@@ -124,6 +124,7 @@ build.sh           # macOS universal build
 | ⌘N | New project |
 | ⇧⌘N | New window |
 | ⌘W | Kill active session |
+| ⌘Z | Reopen the last closed session |
 | ⇧⌘W | Close this window |
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
 | ⌘↑ / ⌘↓ | Previous / next session (focused) / move between tiles vertically (grid) |

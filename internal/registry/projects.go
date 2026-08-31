@@ -210,16 +210,25 @@ func (r *Registry) reclaimOne(root, path string) {
 }
 
 // worktreeClaimed reports whether any registry entry currently owns
-// the worktree directory at path.
+// the worktree directory at path — or whether a recently closed
+// session can still be restored into it.
+//
+// The tombstone half matters because boot-time orphan reclaim deletes
+// pristine *unclaimed* worktrees, and a tombstoned worktree is
+// unclaimed by definition. Without this, a worktree the user could
+// still undo into would be deleted at startup: silently, with no
+// confirm, before they ever saw the window.
 func (r *Registry) worktreeClaimed(path string) bool {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	for _, e := range r.entries {
 		if e.WorktreePath == path {
+			r.mu.Unlock()
 			return true
 		}
 	}
-	return false
+	r.mu.Unlock()
+	// Reads the closed/ directory, so deliberately outside r.mu.
+	return r.tombstoneClaimsWorktree(path)
 }
 
 // MigrateOrphanSessions assigns any session without a ProjectID to

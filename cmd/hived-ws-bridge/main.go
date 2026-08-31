@@ -253,6 +253,20 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameKillSession, p))
+	case "RestoreSession":
+		var p wire.RestoreSessionReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRestoreSession, p))
+	case "ListClosedSessions":
+		var p wire.ListClosedReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListClosed, p))
 	case "ListWorktrees":
 		var p wire.ListWorktreesReq
 		if err := parseParams(req.Params, &p); err != nil {

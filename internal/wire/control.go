@@ -184,6 +184,72 @@ type KillSessionReq struct {
 	RemoveWorktree bool `json:"remove_worktree,omitempty"`
 }
 
+// RestoreSessionReq is the RESTORE_SESSION payload. SessionID is the
+// id of a session closed earlier; empty means "the most recently
+// closed one", which is what the reopen-last affordance sends so the
+// client does not have to LIST_CLOSED first and then race a prune.
+type RestoreSessionReq struct {
+	SessionID string `json:"session_id,omitempty"`
+}
+
+// ListClosedReq is the LIST_CLOSED payload.
+type ListClosedReq struct{}
+
+// ClosedResp is the CLOSED payload: the sessions that can still be
+// reopened, most recently closed first.
+type ClosedResp struct {
+	Closed []ClosedSessionInfo `json:"closed"`
+}
+
+// ClosedSessionInfo describes one restorable session. Deliberately
+// thinner than SessionInfo — nothing here is live, so there is no
+// phase, no alive flag and no title to report.
+type ClosedSessionInfo struct {
+	SessionID      string `json:"session_id"`
+	Name           string `json:"name"`
+	Color          string `json:"color,omitempty"`
+	Agent          string `json:"agent,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
+	WorktreeBranch string `json:"worktree_branch,omitempty"`
+	ClosedAt       string `json:"closed_at"`
+	// HasPatch reports that a recovery patch of the worktree's
+	// uncommitted state was saved when this session was closed.
+	HasPatch bool `json:"has_patch,omitempty"`
+}
+
+// RestoredResp is the SESSION_RESTORED payload: what the restore could
+// NOT bring back. Sent after the session's "added" event so a client
+// can render the tile first and then explain the gaps.
+//
+// Every field is a degradation, so an all-false payload means a clean
+// undo. Scrollback is absent from this list because it is never
+// restorable — the UI says so unconditionally rather than per-restore.
+type RestoredResp struct {
+	SessionID string `json:"session_id"`
+	// ProjectReassigned: the original project was deleted, so the
+	// session came back in the default project.
+	ProjectReassigned bool `json:"project_reassigned,omitempty"`
+	// WorktreeRecreated: the directory was gone and was rebuilt from
+	// the surviving branch. Committed work is back; uncommitted is not.
+	WorktreeRecreated bool `json:"worktree_recreated,omitempty"`
+	// WorktreeLost: no worktree could be restored; the session runs in
+	// the project directory instead.
+	WorktreeLost bool `json:"worktree_lost,omitempty"`
+	// ConversationLost: the agent had no pinned conversation id, so it
+	// came back as a fresh conversation.
+	ConversationLost bool `json:"conversation_lost,omitempty"`
+	// AgentFellBack: the session's agent is no longer in the catalog
+	// (a custom agent deleted since), so it came back as a shell.
+	AgentFellBack bool `json:"agent_fell_back,omitempty"`
+	// PatchPath is where the recovery patch for a deleted worktree was
+	// saved, "" when there is none.
+	PatchPath string `json:"patch_path,omitempty"`
+	// PatchSkipped: there WAS uncommitted work at close time but it
+	// exceeded the patch cap and was not saved. Distinct from an empty
+	// PatchPath, which means nothing was at stake.
+	PatchSkipped bool `json:"patch_skipped,omitempty"`
+}
+
 // RestartSessionReq is the RESTART_SESSION payload. The daemon
 // terminates the agent process in place (preserving the session
 // entry, its name/color/order/worktree) and respawns it using the

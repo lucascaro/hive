@@ -23,6 +23,8 @@ export {
   KillSession,
   KillSessionAndWorktree,
   RestartSession,
+  RestoreSession,
+  ListClosedSessions,
   UpdateSession,
   ListAgents,
   ListCustomAgents,

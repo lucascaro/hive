@@ -149,3 +149,52 @@ func TestMenuHasNoArrowLeftRightAccelerators(t *testing.T) {
 		t.Error("walkAccelerators found no 'down' binding; the walker is broken")
 	}
 }
+
+// TestReopenClosedSessionAccelerator pins ⌘Z to Reopen Closed Session
+// and, more importantly, proves nothing else claims it. ⇧⌘T was the
+// obvious choice for this action and is already New Session in
+// Worktree; this test is what stops the next binding from repeating
+// that.
+func TestReopenClosedSessionAccelerator(t *testing.T) {
+	m := buildAppMenu(&App{})
+	accels := map[string]*keys.Accelerator{}
+	walkAccelerators(m.Items, accels)
+
+	got, ok := accels["Reopen Closed Session"]
+	if !ok || got == nil {
+		t.Fatal("Reopen Closed Session has no accelerator")
+	}
+	if got.Key != "z" {
+		t.Errorf("Reopen Closed Session bound to %q, want \"z\"", got.Key)
+	}
+	var cmd, shift bool
+	for _, mod := range got.Modifiers {
+		switch mod {
+		case keys.CmdOrCtrlKey:
+			cmd = true
+		case keys.ShiftKey:
+			shift = true
+		}
+	}
+	if !cmd {
+		t.Error("Reopen Closed Session missing CmdOrCtrl modifier")
+	}
+	if shift {
+		t.Error("Reopen Closed Session is ⇧⌘Z; that is conventionally redo")
+	}
+
+	for label, a := range accels {
+		if label == "Reopen Closed Session" || a == nil || a.Key != "z" {
+			continue
+		}
+		hasShift := false
+		for _, mod := range a.Modifiers {
+			if mod == keys.ShiftKey {
+				hasShift = true
+			}
+		}
+		if !hasShift {
+			t.Errorf("%q also claims ⌘Z", label)
+		}
+	}
+}

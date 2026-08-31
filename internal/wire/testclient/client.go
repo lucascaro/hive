@@ -114,6 +114,64 @@ func (c *Client) ListSessions() error {
 	return c.cli.WriteJSON(wire.FrameListSessions, wire.ListSessionsReq{})
 }
 
+// KillSession sends KILL_SESSION.
+func (c *Client) KillSession(req wire.KillSessionReq) error {
+	return c.cli.WriteJSON(wire.FrameKillSession, req)
+}
+
+// RestoreSession sends RESTORE_SESSION. An empty id asks the daemon
+// for the most recently closed session. Use AwaitSessionRestored to
+// consume the degradation report, or AwaitControlError for a refusal.
+func (c *Client) RestoreSession(req wire.RestoreSessionReq) error {
+	return c.cli.WriteJSON(wire.FrameRestoreSession, req)
+}
+
+// ListClosedSessions sends LIST_CLOSED. Use AwaitClosed to consume
+// the response.
+func (c *Client) ListClosedSessions() error {
+	return c.cli.WriteJSON(wire.FrameListClosed, wire.ListClosedReq{})
+}
+
+// AwaitClosed consumes the next CLOSED snapshot.
+func (c *Client) AwaitClosed(timeout time.Duration) (wire.ClosedResp, error) {
+	var resp wire.ClosedResp
+	err := c.awaitSnapshot(wire.FrameClosed, "CLOSED", timeout, &resp)
+	return resp, err
+}
+
+// AwaitSessionRestored consumes the next SESSION_RESTORED frame — the
+// report of what a restore could not bring back.
+func (c *Client) AwaitSessionRestored(timeout time.Duration) (wire.RestoredResp, error) {
+	var resp wire.RestoredResp
+	err := c.awaitSnapshot(wire.FrameSessionRestored, "SESSION_RESTORED", timeout, &resp)
+	return resp, err
+}
+
+// awaitSnapshot drains the snapshot channel until the wanted frame
+// type arrives and unmarshals it into out. Control mode interleaves
+// several unsolicited snapshots (PROJECTS, SESSIONS, CLOSED), so
+// every await has to skip past the ones it did not ask for.
+func (c *Client) awaitSnapshot(want wire.FrameType, name string, timeout time.Duration, out any) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("testclient: timeout waiting for %s", name)
+		}
+		select {
+		case msg := <-c.snaps:
+			if msg.t != want {
+				continue
+			}
+			return json.Unmarshal(msg.payload, out)
+		case err := <-c.errs:
+			return err
+		case <-time.After(remaining):
+			return fmt.Errorf("testclient: timeout waiting for %s", name)
+		}
+	}
+}
+
 // ListWorktrees sends LIST_WORKTREES. Use AwaitWorktrees to consume
 // the response.
 func (c *Client) ListWorktrees(projectID string) error {
