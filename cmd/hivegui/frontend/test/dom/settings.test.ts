@@ -57,7 +57,7 @@ vi.mock('../../src/bridge.js', () => ({
 // dom.ts resolves its singletons with mustEl at import time, so their
 // markup has to exist even though nothing here exercises them.
 const MARKUP = `
-  <div id="terms"></div><ul id="projects"></ul><div id="status"></div>
+  <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
   <div id="settings" class="hidden">
     <div id="settings-panel">
       <header><h3>Settings</h3><button id="settings-close">×</button></header>

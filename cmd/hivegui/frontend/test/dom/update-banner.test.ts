@@ -54,7 +54,7 @@ beforeAll(async () => {
   document.body.innerHTML = `
     <div id="app">
       <div id="terms"></div><ul id="projects"></ul>
-      <div id="status"></div>
+      <div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     </div>`;
   const mod = await import('../../src/app/banners.js');
   mod.initBanners();

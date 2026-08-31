@@ -58,7 +58,7 @@ let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
 beforeAll(async () => {
   // dom.ts dereferences #terms at import time; give it the singletons.
   document.body.innerHTML =
-    '<div id="terms"></div><ul id="projects"></ul><div id="status"></div>';
+    '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
   ({ state } = await import('../../src/app/state.js'));
   ({ wireDaemonEvents } = await import('../../src/app/events.js'));
 });

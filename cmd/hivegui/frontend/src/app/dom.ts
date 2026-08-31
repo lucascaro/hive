@@ -2,7 +2,8 @@
 // are app singletons (one #terms, one #status) — modules import them
 // rather than re-querying the document.
 
-import { createStatus } from '../lib/status.js';
+import { createStatus, type ModeHint } from '../lib/status.js';
+import { kbd } from '../ui/kbd.js';
 import { mustEl, pageEl } from './el.js';
 
 // index.html owns these three ids; a missing one means the document and
@@ -19,16 +20,32 @@ export const projectsUL = mustEl('projects');
 // minimized list when this is null.
 export const minimizedProjectsUL = pageEl('minimized-projects');
 export const status = mustEl('status');
+const statusText = mustEl('status-text');
+const statusHint = mustEl('status-hint');
 
 const statusCtl = createStatus({
   render: (text: string, isError: boolean) => {
-    status.textContent = text;
+    statusText.textContent = text;
+    // The error tint is on the bar, not the span: the whole row flashes.
     status.classList.toggle('error', isError);
   },
   setTimer: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
   clearTimer: (id: number) => window.clearTimeout(id),
   now: () => Date.now(),
 });
+
+// setModeHint owns the right slot: the current mode's top shortcuts.
+// Rebuilt wholesale — two hints is never enough DOM to be worth diffing.
+export function setModeHint(hints: ModeHint[]): void {
+  statusHint.replaceChildren(
+    ...hints.flatMap((h) => {
+      const label = document.createElement('span');
+      label.className = 'hv-status__hint-label';
+      label.textContent = h.label;
+      return [kbd(h.key), label];
+    }),
+  );
+}
 
 // setStatus owns the persistent slot: connection state, nav feedback.
 export function setStatus(text: string, isError = false): void {

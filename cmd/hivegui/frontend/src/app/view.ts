@@ -12,7 +12,7 @@ import {
   type SessionInfo,
   type TermTile,
 } from './state.js';
-import { termsHost, setStatus, flashStatus } from './dom.js';
+import { termsHost, setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import { updateSidebarSelection, renderSidebar } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
@@ -28,6 +28,7 @@ import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { emptyStateModel } from '../lib/empty-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
+import { modeHints } from '../lib/status.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 import { chip } from '../ui/chip.js';
 import { sessionState } from '../lib/session-state.js';
@@ -105,6 +106,10 @@ export function switchTo(id: string | null) {
   else renderGrid();
   updateSidebarSelection();
   setStatus(info ? (info.name ?? '') : '');
+  // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
+  // the hint is recomputed here too — a "focus / move" hint on a single
+  // pane is exactly the lying hint AGENTS.md forbids.
+  setModeHint(modeHints(state.view, isMac));
   updateAppTitle();
   // setActive() called focusActiveTerm() before ensureTerm() existed
   // for a brand-new session — re-focus now that the SessionTerm is
@@ -755,7 +760,10 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   }, 250);
   const ord = orderedSessions();
   const active = ord.find((s) => s.id === state.activeId);
-  setStatus(`${view}${active ? ` • ${active.name}` : ''}`);
+  // The left slot names the session; the mode moved to the right slot,
+  // where it is spelled as the shortcut that leaves it.
+  setStatus(active ? (active.name ?? '') : '');
+  setModeHint(modeHints(view, isMac));
   renderEmptyState();
 }
 

@@ -66,7 +66,7 @@ beforeAll(async () => {
     <div id="app">
       <ul id="projects"></ul>
       <div id="minimized-projects" class="hidden" role="toolbar" aria-label="Minimized projects"></div>
-      <div id="status"></div><div id="terms"></div>
+      <div id="status"><span id="status-text"></span><span id="status-hint"></span></div><div id="terms"></div>
       <div id="minimized-tray"></div><div id="empty-state"></div>
     </div>`;
   // view.ts installs a container ResizeObserver at module load; jsdom

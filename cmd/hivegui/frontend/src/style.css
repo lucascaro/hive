@@ -47,8 +47,8 @@ html, body {
   /* Row 1 is the daemon-mismatch banner, row 2 is the update-available
      banner — both collapse to 0 when hidden. Row 3 is the normal
      sidebar + terms layout. Row 4 is the minimized-sessions tray;
-     collapses to 0 when empty (display: none). */
-  grid-template-rows: auto auto 1fr auto;
+     collapses to 0 when empty (display: none). Row 5 is the status bar. */
+  grid-template-rows: auto auto 1fr auto auto;
   height: 100vh;
   transition: grid-template-columns 120ms ease;
 }
@@ -961,30 +961,6 @@ body.resizing-sidebar #app { transition: none; }
 #settings-agent-add:disabled:hover,
 #settings-panel .actions button:disabled:hover { background: var(--border); }
 #settings-panel .actions button.primary:disabled:hover { background: var(--accent); }
-
-#status {
-  position: fixed;
-  right: 12px;
-  bottom: 8px;
-  font: 11px Menlo, monospace;
-  color: var(--fg-muted);
-  pointer-events: none;
-  background: rgba(0,0,0,0.5);
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-#status.error {
-  color: var(--state-error);
-  background: rgba(120, 20, 20, 0.65);
-  animation: status-error-pulse 0.5s ease-out 1;
-}
-@keyframes status-error-pulse {
-  0%   { background: rgba(220, 50, 50, 0.9); }
-  100% { background: rgba(120, 20, 20, 0.65); }
-}
-@media (prefers-reduced-motion: reduce) {
-  #status.error { animation: none; }
-}
 
 /* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
    terms columns. Pushes the rest of the UI down rather than overlaying
