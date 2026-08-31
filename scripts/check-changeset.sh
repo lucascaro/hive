@@ -4,13 +4,9 @@
 # Fails when the current branch adds no `.changesets/*.md` entry relative
 # to main, so you find out before pushing instead of from a red check.
 #
-# Install as a pre-push hook (works from any worktree; --git-common-dir
-# resolves to the shared hooks directory, so the graphify post-* hooks
-# living there are left alone — do NOT set core.hooksPath, that would
-# disable them):
+# Install once per clone; the shared hooks dir covers every worktree:
 #
-#   ln -sf ../../scripts/check-changeset.sh \
-#     "$(git rev-parse --git-common-dir)/hooks/pre-push"
+#   cp scripts/hooks/pre-push "$(git rev-parse --git-common-dir)/hooks/pre-push"
 #
 # Bypass a single push with `git push --no-verify` — CI still requires
 # either a changeset or the `no-changeset` label.

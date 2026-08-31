@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# pre-push — run the repo's changeset gate for whichever worktree is pushing.
+#
+# Lives in the shared hooks dir (.git/hooks), which every worktree of this
+# repo uses, so installing it once covers them all. core.hooksPath is
+# deliberately left unset — setting it would relocate hook lookup and
+# disable the graphify post-checkout / post-commit hooks sitting here.
+#
+# Not a symlink into one worktree: the gate must come from the tree being
+# pushed, and branches that predate it are skipped rather than broken.
+set -euo pipefail
+
+gate="$(git rev-parse --show-toplevel)/scripts/check-changeset.sh"
+[[ -f "$gate" ]] || exit 0
+exec bash "$gate"
