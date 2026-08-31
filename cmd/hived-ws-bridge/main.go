@@ -152,9 +152,55 @@ type session struct {
 	writeMu  sync.Mutex
 	sockPath string
 
+	// Ordered stdin lane. Keystrokes are a stream, so their order is part
+	// of the payload: a goroutine per frame only takes the write mutex in
+	// whatever order the scheduler picks, and under CPU load adjacent keys
+	// swap (a test typing `HIVE_READY_mthhi3gn_1` had the shell echo back
+	// `HIVE_READY_mthhig3n1_`, which then failed as "the command never
+	// ran"). Mutual exclusion is not ordering.
+	//
+	// One goroutine drains this channel, so WriteStdin frames are applied
+	// in arrival order. It is a lane of its own rather than inline work on
+	// the read loop because attachWriteFrame backpressures when the pty
+	// input buffer fills — normal here, where a spec floods 60k lines
+	// without reading stdin — and that would stall ResizeSession /
+	// CloseAttach / KillSession for the whole connection.
+	stdin     chan rpcReq
+	stdinOnce sync.Once
+	stdinDone chan struct{}
+
 	mu       sync.Mutex
 	control  *wire.Client
 	attaches map[string]*wire.Client // session id → attach conn
+}
+
+// writeStdinOrdered hands a WriteStdin frame to this connection's single
+// stdin writer, starting it on first use. Buffered so an ordinary keystroke
+// burst never blocks the read loop; a full buffer blocks, which is the
+// backpressure we want (dropping input would corrupt the stream far worse
+// than delaying it).
+func (s *session) writeStdinOrdered(req rpcReq) {
+	s.stdinOnce.Do(func() {
+		s.stdin = make(chan rpcReq, 1024)
+		s.stdinDone = make(chan struct{})
+		go func() {
+			defer close(s.stdinDone)
+			for r := range s.stdin {
+				s.dispatch(r)
+			}
+		}()
+	})
+	s.stdin <- req
+}
+
+// closeStdin drains and stops the stdin writer. Safe to call when the lane
+// was never started.
+func (s *session) closeStdin() {
+	if s.stdin == nil {
+		return
+	}
+	close(s.stdin)
+	<-s.stdinDone
 }
 
 func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
@@ -166,6 +212,7 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 	defer c.Close()
 	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]*wire.Client)}
 	defer s.closeAll()
+	defer s.closeStdin()
 	for {
 		_, raw, err := c.ReadMessage()
 		if err != nil {
@@ -176,15 +223,10 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 			s.respond(0, nil, fmt.Errorf("parse: %w", err))
 			continue
 		}
-		// WriteStdin is handled INLINE, on this single read loop, because
-		// keystrokes are a stream and their order is part of the payload.
-		// A goroutine per frame only takes the write mutex in whatever
-		// order the scheduler picks, so under CPU load adjacent keys swap:
-		// a test typing `HIVE_READY_mthhi3gn_1` had the shell echo back
-		// `HIVE_READY_mthhig3n1_`, which then failed as "the command never
-		// ran". Mutual exclusion is not ordering.
+		// WriteStdin goes down the ordered stdin lane (see session.stdin);
+		// it must not be dispatched concurrently with its own neighbours.
 		if req.Method == "WriteStdin" {
-			s.dispatch(req)
+			s.writeStdinOrdered(req)
 			continue
 		}
 		// Everything else stays goroutine-per-request, unbounded by design:

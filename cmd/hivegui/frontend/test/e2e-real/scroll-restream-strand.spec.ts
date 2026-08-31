@@ -117,7 +117,7 @@ test('single full-buffer session: no transient viewport-jump on threshold-crossi
   await bootWithTerm(page);
   // Flood well past the 5000-line cap so cap-trim + bottom-follow loss is armed.
   await page.keyboard.type(
-    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; echo HIVE_PUMP_DONE\n`,
+    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'\n`,
   );
   await expect
     .poll(async () => (await scrollState(page))?.baseY ?? 0, {

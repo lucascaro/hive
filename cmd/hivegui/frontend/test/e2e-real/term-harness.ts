@@ -59,7 +59,16 @@ export async function settleShell(page: Page, timeout = 60000): Promise<void> {
   // prompt, so this is safe on every path.
   await page.keyboard.press('Control+C');
   const tag = sentinel('HIVE_READY');
-  await page.keyboard.type(`stty -echo; echo ${tag}\n`);
+  // The tag is typed as part of the command, and on the FIRST call of a run
+  // the tty is still echoing, so the typed line itself paints the tag on
+  // screen. Waiting on it verbatim would match that echo — proving the
+  // keystrokes arrived, but NOT that the shell executed anything, which is
+  // the one thing this helper exists to prove. Split the tag across two
+  // adjacent shell strings: `echo "HIVE_READY_ab""cd"` echoes as written and
+  // only prints the joined `HIVE_READY_abcd` once bash has actually run it.
+  const cut = tag.length - 2;
+  const typed = `${tag.slice(0, cut)}""${tag.slice(cut)}`;
+  await page.keyboard.type(`stty -echo; echo "${typed}"\n`);
   await waitForSentinel(page, tag, timeout);
 }
 

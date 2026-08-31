@@ -374,7 +374,7 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   // Flat-out flood well past the cap so it keeps parsing through the
   // resizes below (bottom-follow stays lost the whole time).
   await page.keyboard.type(
-    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; echo HIVE_PUMP_DONE\n`,
+    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'\n`,
   );
 
   // Wait until the buffer is genuinely at the cap.
