@@ -78,6 +78,17 @@
   gap: var(--space-1);
   flex-shrink: 0;
 }
+/* Five buttons at the default 24px box, plus the caret and the swatch,
+   leave the (flex-shrink: 0) actions owning the whole header at the
+   220px sidebar floor — .hv-project-card__name absorbs every pixel of
+   shrink and renders at ~3px. Shrink just these five back to the 18px
+   box the legacy sidebar used. Restated :hover because this selector
+   (0,3,0) also beats .hv-icon-btn:hover (0,2,0) for `color`. */
+.hv-project-card__actions .hv-icon-btn {
+  width: 18px;
+  height: 18px;
+}
+.hv-project-card__actions .hv-icon-btn:hover { color: var(--fg); }
 .hv-project-card__header:hover .hv-project-card__count,
 .hv-project-card__header:focus-within .hv-project-card__count { display: none; }
 .hv-project-card__header:hover .hv-project-card__actions,

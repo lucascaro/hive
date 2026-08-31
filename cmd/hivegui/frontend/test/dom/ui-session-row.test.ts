@@ -55,6 +55,26 @@ describe('sessionRow', () => {
     ).toBe('Exited — boom');
   });
 
+  // sessionState() resolves a teardown to 'starting' (neither phase is
+  // `ready`), which is right for the icon and wrong for the words: a
+  // session being killed used to say "Starting…" for the whole worktree
+  // removal. Fixed in the display layer only.
+  it('says Closing while a session is being torn down', () => {
+    for (const phase of ['checking', 'closing']) {
+      expect(
+        row({ phase }, { state: 'starting' }).querySelector(
+          '.hv-session-row__sub',
+        )?.textContent,
+      ).toBe('Closing…');
+    }
+    // A real window title still wins over any state word.
+    expect(
+      row({ phase: 'closing', title: 'npm run build' }).querySelector(
+        '.hv-session-row__sub',
+      )?.textContent,
+    ).toBe('npm run build');
+  });
+
   it('suppresses a title equal to the name (displayTitle rule)', () => {
     expect(
       row({ title: 'api' }, { state: 'running' }).querySelector(

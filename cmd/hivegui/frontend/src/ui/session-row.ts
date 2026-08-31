@@ -11,6 +11,7 @@
 import { icon, stateIcon, updateStateIcon } from './icon.js';
 import { iconButton } from './icon-button.js';
 import { kbd } from './kbd.js';
+import { isClosing, phaseOf } from '../lib/phase-steps.js';
 import type { SessionState } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
 import type { SessionInfo } from '../app/state.js';
@@ -39,6 +40,13 @@ export interface SessionRowOpts extends SessionRowState {
 function subtitleFor(s: SessionInfo, state: SessionState): string {
   const t = displayTitle(s.title, s.name);
   if (t) return t;
+  // A teardown is not a startup. sessionState() folds both into
+  // 'starting' (neither is `ready`), which is the right call for the
+  // status ICON — but the words have to tell them apart, or a session
+  // being killed says "Starting…" for the seconds a worktree removal
+  // takes. Display-layer only: session-state.ts's resolution is Phase 2
+  // semantics with its own tests.
+  if (isClosing(phaseOf(s))) return 'Closing…';
   if (state === 'starting') return 'Starting…';
   if (state === 'exited') return 'Exited';
   if (state === 'error') {

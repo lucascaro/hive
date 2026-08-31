@@ -82,6 +82,7 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-30** — The project-header action buttons keep an 18px box via a scoped `style.css` override rather than the primitive's 22/24 sizes. Why: five 24px buttons plus the caret squeezed the project name out of the sidebar entirely.
 - **2026-08-30** — `[n]` key hints render on session rows, not project cards. Why: ⌘1–9 selects the nth session in global order (`keyboard.ts`); there is no project-number binding, and a hint for a key that does nothing is worse than none. Revisit if a project-number chord is added.
 - **2026-08-30** — Sidebar rows gained restart and kill. Why: patterns.md requires `rotate`/`x` on an exited row, and there was no way to restart a session from the sidebar at all (`RestartSession` was dead code in the frontend). Kill on a live session goes through the native confirm.
+- **2026-08-30** — Both minimized trays (`#minimized-tray`, `#minimized-projects`) are `<div role="toolbar">`, not `<ul>`. Why: `chip()` returns a `<span>` so it can also sit inline elsewhere, and a `<span>` is not a valid child of `<ul>`; `role="toolbar"` with an `aria-label` is the accurate role for a strip of restore controls anyway, where a list role would announce them as content.
 - **2026-08-30** — State resolution reads `last_error`, not `exit_code`. Why: the daemon never sends an exit code; `SessionInfo` has `alive` and `last_error` only. Line 2 reads "Exited" or "Exited — <error>".
 
 ## Progress
