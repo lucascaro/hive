@@ -156,6 +156,13 @@ body.resizing-sidebar #app { transition: none; }
 }
 #minimized-projects.hidden { display: none; }
 
+/* Project chips are a full-width vertical list, not a wrapped tray row:
+   drop the chip's 240px cap so long names use the sidebar width, let the
+   label area take the slack so the restore + lands on the right edge, and
+   make the whole chip one restore target. */
+#minimized-projects .hv-chip { max-width: none; }
+#minimized-projects .hv-chip__open { flex: 1; text-align: left; }
+
 .hints {
   padding: 6px 10px;
   border-top: 1px solid var(--border);

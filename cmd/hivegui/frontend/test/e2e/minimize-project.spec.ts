@@ -126,3 +126,58 @@ test('both chip controls are clickable and keyboard-reachable', async ({
     expect(focused, `${sel} cannot take keyboard focus`).toBe(true);
   }
 });
+
+// The tray is a full-width vertical list, not a wrapped row of pills: the
+// chip spans the tray, the restore + hugs the right edge, and clicking the
+// dead space next to a short name restores instead of doing nothing.
+test('a project chip spans the tray, right-aligns +, and restores on any click', async ({
+  page,
+}) => {
+  await boot(page);
+  const listed = page.locator('#projects > li.hv-project-card');
+  const before = await listed.count();
+  const first = listed.first();
+  const pid = await first.getAttribute('data-pid');
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+
+  const chip = page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`);
+  await expect(chip).toBeVisible();
+
+  // Measure against the tray's own content box rather than a fixed
+  // tolerance: clientWidth excludes the scrollbar the tray grows once
+  // enough projects are minimized, and reading the padding off the
+  // computed style keeps the assertion honest if the tray is restyled.
+  const trayInner = await page.locator('#minimized-projects').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return (
+      el.clientWidth -
+      Number.parseFloat(cs.paddingLeft) -
+      Number.parseFloat(cs.paddingRight)
+    );
+  });
+  const chipBox = (await chip.boundingBox())!;
+  const restoreBox = (await chip.locator('.hv-chip__restore').boundingBox())!;
+
+  // No 240px cap: the chip fills the tray's content box.
+  expect(chipBox.width).toBeCloseTo(trayInner, 0);
+  // + sits at the right edge, not next to the label.
+  expect(restoreBox.x + restoreBox.width).toBeGreaterThan(
+    chipBox.x + chipBox.width - 12,
+  );
+
+  // Click the slack between the label and the +. Assert first that the
+  // point really is dead space — with a long enough project name this
+  // would land on the label and pass without testing anything.
+  const slackX = restoreBox.x - 12;
+  const slackY = chipBox.y + chipBox.height / 2;
+  const onLabel = await page.evaluate(
+    ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.hv-chip__label'),
+    { x: slackX, y: slackY },
+  );
+  expect(onLabel, 'the click point is on the label, not the slack').toBe(false);
+  await page.mouse.click(slackX, slackY);
+  await expect(listed).toHaveCount(before);
+});
