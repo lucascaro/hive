@@ -36,8 +36,8 @@ SPECS_INDEX = SPECS_DIR / "index.md"
 TECH_DEBT_TRACKER = REPO_ROOT / "docs" / "exec-plans" / "tech-debt-tracker.md"
 
 CHANGESET_TYPES = ["added", "changed", "fixed", "removed", "deprecated", "security"]
-STAGES = ["TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "DONE", "REJECTED"]
-ACTIVE_STAGES = {"TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA"}
+STAGES = ["TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE", "DONE", "REJECTED"]
+ACTIVE_STAGES = {"TRIAGE", "RESEARCH", "PLAN", "IMPLEMENT", "REVIEW", "QA", "GATE"}
 PRIORITY_ORDER = {"P1": 1, "P2": 2, "P3": 3}
 
 DRY_RUN = False  # set by --check; suppresses all writes in _write_if_changed
