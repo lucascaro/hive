@@ -13,8 +13,8 @@ Shapes come from option I3; drawn as SVG so they align and render identically on
 | `state-running` | ▶ triangle | `--state-running` | alive, phase ready, no attention | no |
 | `state-attention` | ◆ diamond | `--state-attention` | agent waiting on the user | yes — `--motion-pulse` on a `box-shadow` ring |
 | `state-starting` | ◌ dotted ring | stroke `--state-starting` | daemon phase ≠ ready (starting / fetching / worktree) | yes — rotate 1s linear |
-| `state-exited` | ■ square | stroke `--state-exited` | process ended, exit 0 | no |
-| `state-error` | ✗ cross | stroke `--state-error` | process ended, exit ≠ 0 | no |
+| `state-exited` | ■ square | stroke `--state-exited` | process ended, no `last_error` | no |
+| `state-error` | ✗ cross | stroke `--state-error` | process ended with `last_error` set | no |
 
 Resolution from `SessionInfo`:
 

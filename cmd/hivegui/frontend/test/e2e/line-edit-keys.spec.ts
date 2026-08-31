@@ -70,8 +70,9 @@ test.describe('macOS line-edit keys reach the terminal', () => {
     const activeId = () =>
       page.evaluate(
         () =>
-          document.querySelector<HTMLElement>('li.session-item.selected')
-            ?.dataset.sid ?? null,
+          document.querySelector<HTMLElement>(
+            'li.hv-session-row[data-selected]',
+          )?.dataset.sid ?? null,
       );
     // Add the second session FIRST: creating one switches to it, which
     // would otherwise look like the arrows moved the selection.

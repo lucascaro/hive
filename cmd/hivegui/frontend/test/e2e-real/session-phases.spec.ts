@@ -85,7 +85,7 @@ test('a real session is announced while starting, settles to ready, and closes c
 
   await page.goto('/');
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 1,
+    () => document.querySelectorAll('#projects li.hv-session-row').length >= 1,
     null,
     { timeout: 10000 },
   );
@@ -95,7 +95,7 @@ test('a real session is announced while starting, settles to ready, and closes c
   // The sidebar row appears from the `added` event — which the daemon
   // now sends before the PTY exists.
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 2,
+    () => document.querySelectorAll('#projects li.hv-session-row').length >= 2,
     null,
     { timeout: 10000 },
   );

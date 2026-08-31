@@ -118,7 +118,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
     await page.evaluate(() => window.__hive.resetReplay?.());
 
     // Restore from tray; remaining tiles narrow again.
-    await page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`).click();
+    await page.locator(`#minimized-tray .hv-chip[data-sid="${sid}"]`).click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await settleReplay(page);
 

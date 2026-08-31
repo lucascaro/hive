@@ -313,16 +313,19 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   launcherEl.innerHTML = '';
   branchEl = null;
   launcherState.items = [];
-  // Anchor next to the resolved project's + button so the user
-  // can see which project the new session lands in. Falls back
-  // to the global new-project button if the project's row isn't
-  // currently in the DOM (e.g. its header is offscreen), and to a
-  // fixed spot over the sidebar if neither anchor exists — a
-  // missing anchor must not throw and leave the launcher unopened
-  // (the throw used to vanish into this chain's empty catch).
+  // Anchor under the resolved project's card header so the user
+  // can see which project the new session lands in. The header, not
+  // its + button: the card's actions are `display: none` until the
+  // header is hovered (ui/project-card.ts), and a display:none anchor
+  // measures as a zero rect at the origin. Falls back to the global
+  // new-project button if the project's card isn't currently in the
+  // DOM (e.g. the project is minimized), and to a fixed spot over the
+  // sidebar if neither anchor exists — a missing anchor must not throw
+  // and leave the launcher unopened (the throw used to vanish into
+  // this chain's empty catch).
   const anchorEl =
     document.querySelector(
-      `.project[data-pid="${launcherState.projectId}"] .project-actions button`,
+      `.hv-project-card[data-pid="${launcherState.projectId}"] .hv-project-card__header`,
     ) ?? document.getElementById('new-project-btn');
   if (anchorEl) {
     const r = anchorEl.getBoundingClientRect();
@@ -646,10 +649,11 @@ export function initLauncher(injected: LauncherDeps) {
   // launcher that stays visible after focus moves away is a launcher
   // nobody is listening for, Escape included.
   //
-  // The .project-actions buttons are how you get there: each one calls
-  // stopPropagation, so the outside-click handler below never sees them
-  // (its .project-actions exemption has always been unreachable for
-  // that reason), but clicking the edit or delete button still moves focus out.
+  // The .hv-project-card__actions buttons are how you get there: each one
+  // calls stopPropagation, so the outside-click handler below never sees
+  // them (its .hv-project-card__actions exemption has always been
+  // unreachable for that reason), but clicking the edit or delete button
+  // still moves focus out.
   //
   // relatedTarget null means focus went nowhere — that's closeLauncher's
   // own blur, so ignore it rather than recursing.
@@ -666,7 +670,7 @@ export function initLauncher(injected: LauncherDeps) {
     // any other opener opts in with data-opens-launcher (the worktree
     // browser's "Open session" button does).
     const inAction =
-      target?.closest('.project-actions') ??
+      target?.closest('.hv-project-card__actions') ??
       target?.closest('[data-opens-launcher]');
     if (!launcherEl.contains(target) && !inAction) closeLauncher();
   });

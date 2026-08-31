@@ -56,7 +56,7 @@ function seed(sessions: SessionInfo[]) {
 
 function dot(id: string): SVGSVGElement {
   const el = document.querySelector<SVGSVGElement>(
-    `.session-item[data-sid="${id}"] .dot`,
+    `.hv-session-row[data-sid="${id}"] .hv-session-row__state`,
   );
   if (!el) throw new Error(`no state icon for ${id}`);
   return el;
@@ -103,5 +103,63 @@ describe('sidebar row state icon on attention', () => {
     state.attention.add('a');
     updateSidebarSelection();
     expect(dot('a')).toBe(before);
+  });
+});
+
+// projectCard is a pure build function — it has no idea a bell arrived.
+// updateSidebarSelection is the only thing that repaints a card between
+// rebuilds, so if it patched only `active` the card's attention marker
+// and (while collapsed) its count line would go stale.
+describe('project card on an in-place repaint', () => {
+  it('bubbles a new bell to the card and refreshes the collapsed count', () => {
+    seed([{ id: 'a', name: 'api', order: 0 }]);
+    state.collapsed.add('p1');
+    renderSidebar();
+
+    const card = () =>
+      document.querySelector<HTMLElement>('.hv-project-card[data-pid="p1"]');
+    const count = () =>
+      card()?.querySelector('.hv-project-card__count')?.textContent;
+
+    expect(card()?.dataset.state).toBeUndefined();
+    expect(count()).toBe('1 session');
+
+    const before = card();
+    state.attention.add('a');
+    updateSidebarSelection();
+
+    expect(card()).toBe(before); // patched, not rebuilt
+    expect(card()?.dataset.state).toBe('attention');
+    expect(count()).toBe('1 session · 1 needs you');
+
+    state.attention.delete('a');
+    updateSidebarSelection();
+    expect(card()?.dataset.state).toBeUndefined();
+    expect(count()).toBe('1 session');
+  });
+
+  it('moves the active marker between cards without a rebuild', () => {
+    state.projects = [
+      { id: 'p1', name: 'one', color: '#888' },
+      { id: 'p2', name: 'two', color: '#888' },
+    ];
+    state.sessions = [];
+    state.collapsed = new Set();
+    state.attention = new Set();
+    state.activeId = null;
+    state.currentProjectId = 'p1';
+    renderSidebar();
+
+    const card = (pid: string) =>
+      document.querySelector<HTMLElement>(
+        `.hv-project-card[data-pid="${pid}"]`,
+      );
+    expect(card('p1')?.dataset.active).toBe('');
+    expect(card('p2')?.dataset.active).toBeUndefined();
+
+    state.currentProjectId = 'p2';
+    updateSidebarSelection();
+    expect(card('p1')?.dataset.active).toBeUndefined();
+    expect(card('p2')?.dataset.active).toBe('');
   });
 });

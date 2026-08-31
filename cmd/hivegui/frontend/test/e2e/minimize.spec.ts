@@ -49,8 +49,8 @@ test.describe('session minimize', () => {
     // And appears in the tray.
     const tray = page.locator('#minimized-tray');
     await expect(tray).not.toHaveClass(/hidden/);
-    await expect(tray.locator('.min-chip')).toHaveCount(1);
-    await expect(tray.locator(`.min-chip[data-sid="${sid}"]`)).toBeVisible();
+    await expect(tray.locator('.hv-chip')).toHaveCount(1);
+    await expect(tray.locator(`.hv-chip[data-sid="${sid}"]`)).toBeVisible();
   });
 
   // Three sessions, not two: a grid that drops below two tiles now
@@ -65,7 +65,7 @@ test.describe('session minimize', () => {
     await firstTile.locator('.tile-minimize').click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(2);
 
-    await page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`).click();
+    await page.locator(`#minimized-tray .hv-chip[data-sid="${sid}"]`).click();
     await expect(page.locator('.term-host.in-grid')).toHaveCount(3);
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
   });
@@ -121,12 +121,12 @@ test.describe('session minimize', () => {
     if (!sid) throw new Error('the first tile carries no data-sid');
     await firstTile.locator('.tile-minimize').click();
     await expect(
-      page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
+      page.locator(`#minimized-tray .hv-chip[data-sid="${sid}"]`),
     ).toBeVisible();
 
     await page.evaluate((id) => window.__hive.killSession?.(id), sid);
     await expect(
-      page.locator(`#minimized-tray .min-chip[data-sid="${sid}"]`),
+      page.locator(`#minimized-tray .hv-chip[data-sid="${sid}"]`),
     ).toHaveCount(0);
     await expect(page.locator('#minimized-tray')).toHaveClass(/hidden/);
   });

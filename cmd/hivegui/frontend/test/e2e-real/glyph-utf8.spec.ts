@@ -37,7 +37,7 @@ test('multi-byte UTF-8 round-trips through the real wire path without corruption
   await page.waitForFunction(
     () => {
       return (
-        document.querySelectorAll('#projects li.session-item').length >= 1 &&
+        document.querySelectorAll('#projects li.hv-session-row').length >= 1 &&
         !!document.querySelector('.term-host .xterm-helper-textarea')
       );
     },

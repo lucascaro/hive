@@ -19,6 +19,9 @@
     <link rel="stylesheet" href="./src/theme/tokens.css"/>
     <link rel="stylesheet" href="./src/theme/themes.css"/>
     <link rel="stylesheet" href="./src/style.css"/>
+    <link rel="stylesheet" href="./src/theme/components/project-card.css"/>
+    <link rel="stylesheet" href="./src/theme/components/chip.css"/>
+    <link rel="stylesheet" href="./src/theme/components/session-row.css"/>
     <link rel="stylesheet" href="./src/theme/components/icon.css"/>
     <link rel="stylesheet" href="./src/theme/components/icon-button.css"/>
     <link rel="stylesheet" href="./src/theme/components/kbd.css"/>
@@ -43,9 +46,9 @@
     </header>
     <ul id="projects"></ul>
     <!-- Projects the user minimized out of the list above. Pinned to
-         the bottom of the sidebar, name only, one restore button each.
+         the bottom of the sidebar, name only, one restore control each.
          Hidden (display: none) while the set is empty. -->
-    <ul id="minimized-projects" class="hidden"></ul>
+    <div id="minimized-projects" class="hidden" role="toolbar" aria-label="Minimized projects"></div>
     <!-- Version/build readout for hive (GUI) and hived (daemon).
          Both spans start empty: the daemon's version is only known
          once the control handshake lands, so app/version-footer.ts

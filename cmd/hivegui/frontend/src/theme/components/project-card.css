@@ -1,0 +1,136 @@
+/* Project card — docs/design-docs/ui/components.md › projectCard.
+   --project-color is data (a user-picked colour), not a token. */
+.hv-project-card {
+  position: relative;
+  list-style: none;
+  margin: var(--space-1) var(--space-2) var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.hv-project-card[data-active] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+.hv-project-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 30px;
+  padding: 0 var(--space-2);
+  color: var(--fg);
+  font-size: var(--text-md);
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+.hv-project-card__header:hover { background: var(--hover); }
+
+.hv-project-card__chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.hv-project-card__swatch {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--project-color, var(--fg-subtle));
+}
+/* Attention bubbles to the swatch and nothing else on the header
+   (patterns.md › Attention bubbling). */
+.hv-project-card[data-state='attention'] .hv-project-card__swatch {
+  animation: hv-card-pulse var(--motion-pulse) ease-in-out infinite;
+}
+@keyframes hv-card-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-attention) 50%, transparent); }
+}
+
+.hv-project-card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hv-project-card__count {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.hv-project-card[data-state='attention'][data-collapsed] .hv-project-card__count {
+  color: var(--state-attention);
+}
+
+.hv-project-card__actions {
+  display: none;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+/* Five buttons at the default 24px box, plus the caret and the swatch,
+   leave the (flex-shrink: 0) actions owning the whole header at the
+   220px sidebar floor — .hv-project-card__name absorbs every pixel of
+   shrink and renders at ~3px. Shrink just these five back to the 18px
+   box the legacy sidebar used. Restated :hover because this selector
+   (0,3,0) also beats .hv-icon-btn:hover (0,2,0) for `color`. */
+.hv-project-card__actions .hv-icon-btn {
+  width: 18px;
+  height: 18px;
+}
+.hv-project-card__actions .hv-icon-btn:hover { color: var(--fg); }
+.hv-project-card__header:hover .hv-project-card__count,
+.hv-project-card__header:focus-within .hv-project-card__count { display: none; }
+.hv-project-card__header:hover .hv-project-card__actions,
+.hv-project-card__header:focus-within .hv-project-card__actions { display: flex; }
+
+.hv-project-card__body {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--space-1);
+}
+.hv-project-card[data-collapsed] .hv-project-card__body { display: none; }
+
+.hv-project-card .project-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+.hv-project-card.dragging { opacity: 0.45; }
+.hv-project-card.drop-above::after,
+.hv-project-card.drop-below::after {
+  content: '';
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-1);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.hv-project-card.drop-above::after { top: -1px; }
+.hv-project-card.drop-below::after { bottom: -1px; }
+
+.hv-project-card button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

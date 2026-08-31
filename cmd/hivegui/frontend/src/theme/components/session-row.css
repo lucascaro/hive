@@ -1,0 +1,184 @@
+/* Session row — docs/design-docs/ui/components.md › sessionRow.
+   --session-color is data (a user-picked colour), not a token. */
+.hv-session-row {
+  position: relative;
+  display: grid;
+  /* state | text | worktree | meta+actions | swatch. Every child is
+     placed explicitly (below) because meta and actions SHARE the fourth
+     cell — see the hover swap. Column gaps come from the children's own
+     margins rather than `gap`, so a row with no worktree contributes no
+     empty-column gap. */
+  grid-template-columns: 14px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  row-gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  color: var(--fg-muted);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+.hv-session-row > * + * { margin-left: var(--space-2); }
+.hv-session-row__state { grid-column: 1; }
+.hv-session-row__text { grid-column: 2; }
+.hv-session-row__worktree { grid-column: 3; }
+.hv-session-row__swatch { grid-column: 5; }
+
+.hv-session-row:hover { background: var(--hover); color: var(--fg); }
+
+/* Selection: --sel ground + a 2px accent bar at the left edge. Attention
+   never uses either channel (patterns.md › Selection vs attention). */
+.hv-session-row[data-selected] {
+  background: var(--sel);
+  color: var(--fg);
+  font-weight: 500;
+}
+.hv-session-row[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.hv-session-row__text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  gap: 1px;
+}
+.hv-session-row__name,
+.hv-session-row__sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hv-session-row__sub {
+  font-size: var(--text-sm);
+  color: var(--fg-subtle);
+  line-height: 1.4;
+}
+
+.hv-session-row[data-state='attention'] .hv-session-row__name {
+  color: var(--state-attention);
+  font-weight: 500;
+}
+/* Exited stays in the list, dimmed and struck through, until killed
+   (patterns.md › Exited sessions). Error colours the icon only, so a
+   column of failures does not turn the sidebar red. */
+.hv-session-row[data-state='exited'] .hv-session-row__name,
+.hv-session-row[data-state='error'] .hv-session-row__name {
+  color: var(--fg-subtle);
+  text-decoration: line-through;
+}
+
+.hv-session-row__meta,
+.hv-session-row__actions {
+  /* Both live in the same cell so the swap below can be opacity rather
+     than `display` — see the hover-swap comment. */
+  grid-column: 4;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  color: var(--fg-subtle);
+}
+/* meta shares the cell with actions and can be the wider of the two, so
+   it would swallow clicks aimed at the revealed buttons. It holds only
+   indicators (key hint, agent code) — never a control — so it is inert
+   at all times; a click on it falls through to the row, which selects. */
+.hv-session-row__meta { pointer-events: none; }
+.hv-session-row__actions {
+  opacity: 0;
+  pointer-events: none;
+}
+.hv-session-row__agent {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* Actions replace the meta column rather than pushing the text
+   (patterns.md › Hover-revealed actions). The swap is opacity +
+   pointer-events, NOT `display`: `display: none` also takes the buttons
+   out of the tab order, and a row with no worktree has nothing focusable
+   before them, so `:focus-within` could never fire from a forward Tab and
+   minimize/restart/kill were reachable only by shift-tabbing backwards
+   out of the colour swatch. Sharing one grid cell means the reveal costs
+   no reflow either. The worktree button sits outside both containers and
+   is exempt from the swap — it is a control, and one that vanishes on
+   hover can never be clicked. */
+.hv-session-row:hover .hv-session-row__meta,
+.hv-session-row:focus-within .hv-session-row__meta,
+.hv-session-row[data-minimized] .hv-session-row__meta { opacity: 0; }
+.hv-session-row:hover .hv-session-row__actions,
+.hv-session-row:focus-within .hv-session-row__actions,
+.hv-session-row[data-minimized] .hv-session-row__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hv-session-row__swatch {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--session-color, var(--fg-subtle));
+  cursor: pointer;
+}
+.hv-session-row__swatch input[type='color'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Inline rename: same metrics as line 1, so the row does not jump. */
+.hv-session-row .name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 2px var(--space-1);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-md);
+  outline: none;
+}
+
+/* Drag-to-reorder. Classes, not data attributes: they are transient
+   drag chrome, not row state. */
+.hv-session-row.dragging { opacity: 0.45; }
+.hv-session-row.drop-above::after,
+.hv-session-row.drop-below::after {
+  content: '';
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-1);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.hv-session-row.drop-above::after { top: -1px; }
+.hv-session-row.drop-below::after { bottom: -1px; }
+
+.hv-session-row button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* The colour input is `opacity: 0` and opacity applies to the outline
+   too, so its own focus ring paints nothing. Ring the wrapper instead. */
+.hv-session-row__swatch:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.hv-session-row .name-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

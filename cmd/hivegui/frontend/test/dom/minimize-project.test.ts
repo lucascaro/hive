@@ -65,7 +65,7 @@ beforeAll(async () => {
   document.body.innerHTML = `
     <div id="app">
       <ul id="projects"></ul>
-      <ul id="minimized-projects" class="hidden"></ul>
+      <div id="minimized-projects" class="hidden" role="toolbar" aria-label="Minimized projects"></div>
       <div id="status"></div><div id="terms"></div>
       <div id="minimized-tray"></div><div id="empty-state"></div>
     </div>`;
@@ -126,13 +126,13 @@ beforeEach(() => {
 });
 
 const listedPIDs = () =>
-  [...document.querySelectorAll<HTMLElement>('#projects > .project')].map(
-    (el) => el.dataset.pid,
-  );
+  [
+    ...document.querySelectorAll<HTMLElement>('#projects > .hv-project-card'),
+  ].map((el) => el.dataset.pid);
 const chipPIDs = () =>
-  [...document.querySelectorAll<HTMLElement>('.min-project-chip')].map(
-    (el) => el.dataset.pid,
-  );
+  [
+    ...document.querySelectorAll<HTMLElement>('#minimized-projects .hv-chip'),
+  ].map((el) => el.dataset.pid);
 
 function click(sel: string) {
   const el = document.querySelector<HTMLElement>(sel);
@@ -141,9 +141,7 @@ function click(sel: string) {
 }
 
 function minimize(pid: string) {
-  click(
-    `.project[data-pid="${pid}"] .project-actions button[aria-label^="Minimize"]`,
-  );
+  click(`.hv-project-card[data-pid="${pid}"] [data-action="minimize"]`);
 }
 
 describe('minimize project', () => {
@@ -152,21 +150,21 @@ describe('minimize project', () => {
     expect(listedPIDs()).toEqual(['p1', 'p3']);
     expect(chipPIDs()).toEqual(['p2']);
     expect(
-      document.querySelector('.min-project-chip .min-project-name')
+      document.querySelector('#minimized-projects .hv-chip .hv-chip__label')
         ?.textContent,
     ).toBe('two');
   });
 
   it('restores the project to its original index', () => {
     minimize('p2');
-    click('.min-project-chip[data-pid="p2"] .min-project-restore');
+    click('#minimized-projects .hv-chip[data-pid="p2"] .hv-chip__restore');
     expect(listedPIDs()).toEqual(['p1', 'p2', 'p3']);
     expect(chipPIDs()).toEqual([]);
   });
 
   it('restores from a click anywhere on the row, not just the ＋', () => {
     minimize('p2');
-    click('.min-project-chip[data-pid="p2"] .min-project-open');
+    click('#minimized-projects .hv-chip[data-pid="p2"] .hv-chip__open');
     expect(listedPIDs()).toEqual(['p1', 'p2', 'p3']);
     expect(chipPIDs()).toEqual([]);
   });
@@ -176,7 +174,7 @@ describe('minimize project', () => {
     expect(tray?.classList.contains('hidden')).toBe(true);
     minimize('p1');
     expect(tray?.classList.contains('hidden')).toBe(false);
-    click('.min-project-chip[data-pid="p1"] .min-project-restore');
+    click('#minimized-projects .hv-chip[data-pid="p1"] .hv-chip__restore');
     expect(tray?.classList.contains('hidden')).toBe(true);
   });
 
@@ -185,7 +183,7 @@ describe('minimize project', () => {
     expect(
       JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
     ).toEqual(['p3']);
-    click('.min-project-chip[data-pid="p3"] .min-project-restore');
+    click('#minimized-projects .hv-chip[data-pid="p3"] .hv-chip__restore');
     expect(
       JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
     ).toEqual([]);
@@ -199,16 +197,18 @@ describe('minimize project', () => {
     minimize('p1');
     minimize('p2');
     const chip = (pid: string) =>
-      document.querySelector(`.min-project-chip[data-pid="${pid}"]`);
+      document.querySelector<HTMLElement>(
+        `#minimized-projects .hv-chip[data-pid="${pid}"]`,
+      );
     state.currentProjectId = 'p1';
     updateSidebarSelection();
-    expect(chip('p1')?.classList.contains('active')).toBe(true);
-    expect(chip('p2')?.classList.contains('active')).toBe(false);
+    expect(chip('p1')?.dataset.active).toBe('');
+    expect(chip('p2')?.dataset.active).toBeUndefined();
 
     state.currentProjectId = 'p2';
     updateSidebarSelection();
-    expect(chip('p1')?.classList.contains('active')).toBe(false);
-    expect(chip('p2')?.classList.contains('active')).toBe(true);
+    expect(chip('p1')?.dataset.active).toBeUndefined();
+    expect(chip('p2')?.dataset.active).toBe('');
   });
 
   // A minimized project has no session rows, so a BEL inside it would
@@ -217,27 +217,29 @@ describe('minimize project', () => {
   it('marks the chip when a session inside the project rings', async () => {
     const { updateSidebarSelection } = await import('../../src/app/sidebar.js');
     const chip = (pid: string) =>
-      document.querySelector(`.min-project-chip[data-pid="${pid}"]`);
+      document.querySelector<HTMLElement>(
+        `#minimized-projects .hv-chip[data-pid="${pid}"]`,
+      );
     state.attention = new Set(['s2']);
     minimize('p1');
     minimize('p2');
-    expect(chip('p2')?.classList.contains('attention')).toBe(true);
-    expect(chip('p1')?.classList.contains('attention')).toBe(false);
+    expect(chip('p2')?.dataset.state).toBe('attention');
+    expect(chip('p1')?.dataset.state).toBeUndefined();
 
     // Clearing repaints in place, the same path clearAttention takes.
     state.attention.delete('s2');
     updateSidebarSelection();
-    expect(chip('p2')?.classList.contains('attention')).toBe(false);
+    expect(chip('p2')?.dataset.state).toBeUndefined();
   });
 
   it('marks the chip active when it is the current project', () => {
     state.currentProjectId = 'p2';
     minimize('p2');
     expect(
-      document
-        .querySelector('.min-project-chip[data-pid="p2"]')
-        ?.classList.contains('active'),
-    ).toBe(true);
+      document.querySelector<HTMLElement>(
+        '#minimized-projects .hv-chip[data-pid="p2"]',
+      )?.dataset.active,
+    ).toBe('');
   });
 
   // The prune lives in the project:list / project:event handlers, not
@@ -266,7 +268,7 @@ describe('minimize project', () => {
 describe('session rows', () => {
   const rowBtn = (sid: string) =>
     document.querySelector<HTMLButtonElement>(
-      `.session-item[data-sid="${sid}"] .session-minimize`,
+      `.hv-session-row[data-sid="${sid}"] [data-action="minimize"]`,
     );
 
   it('minimizes a session from its sidebar row', () => {
@@ -280,8 +282,10 @@ describe('session rows', () => {
 
   it('toggles back to restore, and marks the row while minimized', () => {
     rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    const row = document.querySelector(`.session-item[data-sid="s2"]`);
-    expect(row?.classList.contains('minimized')).toBe(true);
+    const row = document.querySelector<HTMLElement>(
+      `.hv-session-row[data-sid="s2"]`,
+    );
+    expect(row?.dataset.minimized).toBe('');
     expect(rowBtn('s2')?.getAttribute('aria-label')).toMatch(/^Restore /);
     expect(rowBtn('s2')?.querySelector('use')?.getAttribute('href')).toBe(
       '#hv-plus',
@@ -290,10 +294,9 @@ describe('session rows', () => {
     rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(state.minimized.has('s2')).toBe(false);
     expect(
-      document
-        .querySelector(`.session-item[data-sid="s2"]`)
-        ?.classList.contains('minimized'),
-    ).toBe(false);
+      document.querySelector<HTMLElement>(`.hv-session-row[data-sid="s2"]`)
+        ?.dataset.minimized,
+    ).toBeUndefined();
   });
 
   it('does not switch to the session the button sits on', () => {
@@ -309,7 +312,7 @@ describe('reordering around a minimized project', () => {
   // change just because one of them stopped being rendered.
   function drop(draggedPID: string, targetPID: string) {
     const target = document.querySelector<HTMLElement>(
-      `.project[data-pid="${targetPID}"]`,
+      `.hv-project-card[data-pid="${targetPID}"]`,
     );
     if (!target) throw new Error(`no row for ${targetPID}`);
     const dt = {

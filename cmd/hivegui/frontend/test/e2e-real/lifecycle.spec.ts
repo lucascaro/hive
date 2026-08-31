@@ -36,14 +36,16 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
   // Sidebar must render the daemon's bootstrap session (name "main").
   await page.waitForFunction(
     () => {
-      return document.querySelectorAll('#projects li.session-item').length >= 1;
+      return (
+        document.querySelectorAll('#projects li.hv-session-row').length >= 1
+      );
     },
     null,
     { timeout: 10000 },
   );
-  await expect(page.locator('#projects li.session-item').first()).toContainText(
-    'main',
-  );
+  await expect(
+    page.locator('#projects li.hv-session-row').first(),
+  ).toContainText('main');
 
   // Wait for the active term to attach (xterm helper textarea exists).
   await page.waitForFunction(

@@ -52,7 +52,7 @@ async function bootWithTerm(page: Page) {
   test.skip(!WS_URL, 'WS_BRIDGE_URL not set');
   await page.goto('/');
   await page.waitForFunction(
-    () => document.querySelectorAll('#projects li.session-item').length >= 1,
+    () => document.querySelectorAll('#projects li.hv-session-row').length >= 1,
     null,
     { timeout: 10000 },
   );

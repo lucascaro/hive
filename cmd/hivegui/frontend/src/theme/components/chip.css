@@ -1,0 +1,74 @@
+/* Chip — docs/design-docs/ui/components.md › chip. 24px, --btn fill.
+   --chip-color is data (a user-picked session/project colour), not a token. */
+.hv-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 24px;
+  max-width: 240px;
+  min-width: 0;
+  background: var(--btn);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: var(--text-sm);
+}
+.hv-chip:hover { background: var(--hover); color: var(--fg); }
+.hv-chip[data-active] { border-color: var(--accent); color: var(--fg); }
+
+.hv-chip__open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-2);
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.hv-chip__swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--chip-color, var(--fg-subtle));
+}
+
+.hv-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hv-chip__sub {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Attention bubbles up to the chip: the label takes the attention colour
+   and the state icon pulses on its own (see icons.md). A colour-dot chip
+   (project) pulses the dot, since it has no state icon. */
+.hv-chip[data-state='attention'] .hv-chip__label { color: var(--state-attention); }
+.hv-chip[data-state='attention'] .hv-chip__swatch {
+  animation: hv-chip-pulse var(--motion-pulse) ease-in-out infinite;
+}
+@keyframes hv-chip-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-attention) 45%, transparent); }
+}
+
+.hv-chip__restore { flex-shrink: 0; margin-right: 2px; }
+
+.hv-chip__open:focus-visible,
+.hv-chip__restore:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

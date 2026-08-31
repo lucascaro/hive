@@ -80,10 +80,11 @@ test('⌘E again closes it', async ({ page }) => {
 test('the sidebar project button opens it too', async ({ page }) => {
   await boot(page);
   await seed(page, [CLEAN]);
-  await page
-    .locator('.project-actions button[title*="Worktrees"]')
-    .first()
-    .click();
+  // Card actions are hover-revealed (patterns.md › Hover-revealed
+  // actions), so the pointer has to be on the header first.
+  const card = page.locator('#projects .hv-project-card').first();
+  await card.locator('.hv-project-card__header').hover();
+  await card.locator('[data-action="worktrees"]').click();
   await expect(panel(page)).toBeVisible();
 });
 
@@ -236,6 +237,13 @@ test('"Delete both" removes the branch as well', async ({ page }) => {
 // The same ⎇ marks a worktree-backed session in the sidebar and on its
 // grid tile. Both used to be inert while an identical glyph on the
 // project row was a button — which just reads as broken.
+//
+// This has to be a browser test, not jsdom: the row's meta column is
+// display:none on :hover and :focus-within (the hover-action swap), so a
+// worktree button parked in there exists in the DOM, passes every jsdom
+// assertion, and is still impossible to click or tab to. Only a real
+// layout engine can tell the difference — hence elementFromPoint and the
+// live activeElement below.
 test('the worktree glyph on a session opens the browser', async ({ page }) => {
   await boot(page);
   await seed(page, [
@@ -244,10 +252,33 @@ test('the worktree glyph on a session opens the browser', async ({ page }) => {
   const id = await page.evaluate(() =>
     window.__hive.createSessionWithWorktree?.('glyph-session'),
   );
-  const glyph = page.locator(
-    `#projects li.session-item[data-sid="${id}"] .worktree-glyph`,
-  );
+  const row = `#projects li.hv-session-row[data-sid="${id}"]`;
+  const glyph = page.locator(`${row} .hv-session-row__worktree`);
   await expect(glyph).toBeVisible();
+
+  // Visible at rest AND still the thing under the cursor once the row is
+  // hovered — the state in which a click actually happens.
+  await page.locator(row).hover();
+  await expect(glyph).toBeVisible();
+  const hitIsGlyph = await page.evaluate((sel) => {
+    const el = document.querySelector<HTMLElement>(sel);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+    return !!hit && (hit === el || el.contains(hit));
+  }, `${row} .hv-session-row__worktree`);
+  expect(hitIsGlyph).toBe(true);
+
+  // Focus must stick: if the button lived in the swapped-out column,
+  // :focus-within would display:none the focused element and the browser
+  // would drop focus back to <body>.
+  await glyph.focus();
+  await expect(glyph).toBeFocused();
+  await expect(glyph).toBeVisible();
+
   await glyph.click();
   await expect(panel(page)).toBeVisible();
 });
@@ -476,7 +507,7 @@ test('closing a dirty session asks in-app, not with an OS alert', async ({
   await expect(dialog).toHaveCount(0);
   // Cancelling leaves the session alone.
   await expect(
-    page.locator(`#projects li.session-item[data-sid="${id}"]`),
+    page.locator(`#projects li.hv-session-row[data-sid="${id}"]`),
   ).toBeVisible();
 });
 
@@ -500,7 +531,7 @@ test('Escape backs out of the dirty-close question', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(page.locator('.choice-dialog')).toHaveCount(0);
   await expect(
-    page.locator(`#projects li.session-item[data-sid="${id}"]`),
+    page.locator(`#projects li.hv-session-row[data-sid="${id}"]`),
   ).toBeVisible();
 });
 
@@ -802,4 +833,101 @@ test('a branch with no upstream gets no remote option', async ({ page }) => {
 
   await expect(dialogChoice(page, 'local')).toBeVisible();
   await expect(dialogChoice(page, 'remote')).toHaveCount(0);
+});
+
+// The session ROW's kill button, end to end. ⌘W and the palette cover
+// the other kill paths; this is the one that reaches the daemon from a
+// click on a sidebar row, and it is the path that must NOT force —
+// forcing would let its confirm ("scrollback is lost") silently agree to
+// throwing away uncommitted work. Driven by a real click against a mock
+// that refuses un-forced kills of a dirty worktree, so the whole chain
+// is under test rather than a hand-emitted control:error.
+test("the row's kill button lets the daemon refuse a dirty close", async ({
+  page,
+}) => {
+  await boot(page);
+  const id = await page.evaluate(() =>
+    window.__hive.createSessionWithWorktree?.('row-dirty'),
+  );
+  await page.waitForFunction(
+    (sid) =>
+      (window.__hive.state?.sessions ?? []).find((s) => s.id === sid)?.alive ===
+      true,
+    id,
+  );
+  await page.evaluate(() => {
+    const w = (window.__hive.state?.worktrees ?? []).find(
+      (x) => x.branch === 'row-dirty',
+    );
+    if (!w) throw new Error('no worktree for the new session');
+    w.uncommitted = true;
+  });
+
+  const rowEl = page.locator(`#projects li.hv-session-row[data-sid="${id}"]`);
+  // Row actions are hover-revealed (patterns.md › Hover-revealed actions).
+  await rowEl.hover();
+  await rowEl.locator('[data-action="kill"]').click();
+
+  // Not forced: the refusal comes back and raises the three-way question
+  // instead of the session quietly taking its changes with it.
+  const dialog = page.locator('.choice-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Close this session anyway?');
+  await expect(dialog).toContainText('row-dirty');
+  await expect(rowEl).toBeVisible();
+
+  await dialogChoice(page, 'close').click();
+  await page.waitForFunction(
+    (sid) => !(window.__hive.state?.sessions ?? []).some((s) => s.id === sid),
+    id,
+  );
+  // Close alone keeps the worktree; only close-and-clean removes it.
+  expect(
+    await page.evaluate(() =>
+      (window.__hive.state?.worktrees ?? []).some(
+        (w) => w.branch === 'row-dirty',
+      ),
+    ),
+  ).toBe(true);
+});
+
+// A dead session has no process to refuse and no worktree state left to
+// guard, so its kill IS forced — and must not stop to ask.
+test("the row's kill button forces a dead session straight through", async ({
+  page,
+}) => {
+  await boot(page);
+  const id = await page.evaluate(() =>
+    window.__hive.createSessionWithWorktree?.('row-dead'),
+  );
+  await page.waitForFunction(
+    (sid) =>
+      (window.__hive.state?.sessions ?? []).find((s) => s.id === sid)?.alive ===
+      true,
+    id,
+  );
+  await page.evaluate((sid) => {
+    const w = (window.__hive.state?.worktrees ?? []).find(
+      (x) => x.branch === 'row-dead',
+    );
+    if (w) w.uncommitted = true;
+    const s = (window.__hive.state?.sessions ?? []).find((x) => x.id === sid);
+    if (!s) throw new Error('no mock session');
+    s.alive = false;
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'updated', session: s }),
+    );
+  }, id);
+
+  const rowEl = page.locator(`#projects li.hv-session-row[data-sid="${id}"]`);
+  await expect(rowEl).toHaveAttribute('data-state', 'exited');
+  await rowEl.hover();
+  await rowEl.locator('[data-action="kill"]').click();
+
+  await page.waitForFunction(
+    (sid) => !(window.__hive.state?.sessions ?? []).some((s) => s.id === sid),
+    id,
+  );
+  await expect(page.locator('.choice-dialog')).toHaveCount(0);
 });
