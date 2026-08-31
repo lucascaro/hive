@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-WAILS_VERSION=v2.12.0
+WAILS_VERSION=v2.15.0
 
 mkdir -p cmd/hivegui/frontend/dist
 echo placeholder > cmd/hivegui/frontend/dist/.placeholder
