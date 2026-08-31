@@ -70,6 +70,7 @@ None.
 
 ## Progress
 
+- **2026-08-30** — Review loop converged on iteration 1 (APPROVE, 0 threads); two MINOR test-brittleness notes addressed. Stage = GATE.
 - **2026-08-30** — Implemented; `npm test` (676), `npx playwright test` (206),
   `biome ci .` and `npm run typecheck` all green.
 
@@ -78,6 +79,8 @@ None.
 ## PR convergence ledger
 
 <Append-only. One line per /hs-review-loop iteration.>
+
+- **2026-08-30 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 25b211f.
 
 ## Open questions
 

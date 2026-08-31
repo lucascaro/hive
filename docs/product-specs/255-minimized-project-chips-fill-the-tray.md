@@ -4,7 +4,7 @@ title: "Minimized project chips fill the tray with a right-aligned restore"
 type: bug
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 pr: 300
 ---
 
@@ -15,7 +15,7 @@ pr: 300
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Stage:** REVIEW
+- **Stage:** GATE
 - **Exec plan:** [docs/exec-plans/active/255-minimized-project-chips-fill-the-tray.md](../exec-plans/active/255-minimized-project-chips-fill-the-tray.md)
 
 ## Problem
