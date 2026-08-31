@@ -144,7 +144,6 @@ body.resizing-sidebar #app { transition: none; }
    sidebar, above the version footer. #projects takes the free space
    (flex: 1), so this sits under it without needing margin-top: auto. */
 #minimized-projects {
-  list-style: none;
   margin: 0;
   padding: 4px 6px;
   flex: 0 0 auto;
@@ -157,85 +156,6 @@ body.resizing-sidebar #app { transition: none; }
   gap: 2px;
 }
 #minimized-projects.hidden { display: none; }
-
-.min-project-chip {
-  display: flex;
-  align-items: center;
-  border-radius: 3px;
-  color: var(--fg-muted);
-  min-width: 0;
-}
-.min-project-open {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 3px 6px;
-  background: none;
-  border: none;
-  color: inherit;
-  font: inherit;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  text-align: left;
-  cursor: pointer;
-}
-
-.min-project-chip:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fg);
-}
-.min-project-chip.active {
-  background: color-mix(in srgb, var(--project-color, var(--fg-muted)) 12%, transparent);
-  color: var(--fg);
-}
-/* A minimized project has no session rows, so the chip carries the
-   bell. Reuses the session pulse by aliasing --session-color to the
-   project color, and glows the color dot. */
-.min-project-chip.attention {
-  --session-color: var(--project-color, var(--fg-muted));
-  animation: hive-attention-pulse 1.2s ease-in-out infinite;
-  color: var(--fg);
-}
-.min-project-chip.attention .min-project-color {
-  box-shadow: 0 0 6px var(--project-color, var(--fg-muted));
-}
-.min-project-color {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--project-color, var(--fg-muted));
-  flex-shrink: 0;
-}
-.min-project-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.min-project-restore {
-  flex-shrink: 0;
-}
-/* Scoped to `.min-project-chip .min-project-restore` (0,2,0), not the bare
-   class (0,1,0): .hv-icon-btn { color: var(--fg-subtle) } is also 0,1,0 and
-   loads after style.css, so the bare-class version above never won the tie
-   and rendered at --fg-subtle. This is the only control that un-minimizes
-   a project, so it has to clear the contrast floor at rest, not just on
-   hover — var(--fg-subtle) (classic's #666) doesn't. */
-.min-project-chip .min-project-restore { color: #9a9a9a; /* ui-lint: allow */ }
-.min-project-chip:hover .min-project-restore { color: var(--fg); }
-
-
-/* Attention pulse — fired by xterm BEL on a non-focused session.
-   Used by the minimized project chip above, which has no state
-   icon of its own to carry the bell. */
-@keyframes hive-attention-pulse {
-  0%, 100% { box-shadow: inset 0 0 0 1px transparent; }
-  50%      { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 70%, transparent); }
-}
 
 .hints {
   padding: 6px 10px;
@@ -467,53 +387,16 @@ body.resizing-sidebar #app { transition: none; }
 #minimized-tray {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--surface);
-  border-top: 1px solid var(--sel);
-  min-height: 28px;
+  border-top: 1px solid var(--border);
+  min-height: 32px;
   scrollbar-width: thin;
 }
 #minimized-tray.hidden { display: none; }
-#minimized-tray .min-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, var(--sel));
-  border-radius: 3px;
-  padding: 2px 8px;
-  color: var(--fg);
-  font: 11px Menlo, monospace;
-  cursor: pointer;
-  max-width: 240px;
-}
-#minimized-tray .min-chip:hover {
-  background: color-mix(in srgb, var(--session-color, var(--fg-muted)) 15%, var(--surface));
-  border-color: color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--sel));
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-}
-#minimized-tray .min-chip .min-chip-color {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--session-color, var(--fg-muted));
-  flex-shrink: 0;
-}
-#minimized-tray .min-chip .min-chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#minimized-tray .min-chip .min-chip-project {
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 10px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 #terms.grid .term-host .term-body {
   flex: 1;
   position: relative;

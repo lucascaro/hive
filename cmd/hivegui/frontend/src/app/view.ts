@@ -29,7 +29,7 @@ import { emptyStateModel } from '../lib/empty-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
-import { stateIcon } from '../ui/icon.js';
+import { chip } from '../ui/chip.js';
 import { sessionState } from '../lib/session-state.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
@@ -610,52 +610,31 @@ export function renderMinimizedTray() {
   const tray = document.getElementById('minimized-tray');
   if (!tray) return;
   tray.innerHTML = '';
-  const ids = Array.from(state.minimized);
-  if (ids.length === 0) {
+  if (state.minimized.size === 0) {
     tray.classList.add('hidden');
+    renderEmptyState();
     return;
   }
   tray.classList.remove('hidden');
-  // Preserve display order so the chip row reads top-to-bottom like
-  // the sidebar / grid would.
-  const ord = orderedSessions().filter((s) => state.minimized.has(s.id));
-  for (const info of ord) {
-    const chip = document.createElement('button');
-    chip.className = 'min-chip';
-    chip.type = 'button';
-    chip.dataset.sid = info.id;
-    chip.title = `Restore ${info.name}`;
-    chip.setAttribute('aria-label', `Restore ${info.name}`);
-    chip.style.setProperty('--session-color', info.color || '#888');
-
-    chip.append(stateIcon(sessionState(info, state.attention.has(info.id))));
-
-    const dot = document.createElement('span');
-    dot.className = 'min-chip-color';
-    chip.append(dot);
-
-    const name = document.createElement('span');
-    name.className = 'min-chip-name';
-    name.textContent = info.name ?? '';
-    chip.append(name);
-
-    const pid = info.projectId ?? info.project_id;
-    const proj = state.projects.find((p) => p.id === pid);
-    if (proj?.name) {
-      const projLabel = document.createElement('span');
-      projLabel.className = 'min-chip-project';
-      projLabel.textContent = proj.name;
-      chip.append(projLabel);
-    }
-
-    chip.addEventListener('click', (e) => {
-      e.stopPropagation();
-      restoreSession(info.id);
+  // Display order, so the chip row reads left-to-right like the sidebar
+  // reads top-to-bottom.
+  for (const info of orderedSessions().filter((s) =>
+    state.minimized.has(s.id),
+  )) {
+    const proj = state.projects.find((p) => p.id === readProjectId(info));
+    const el = chip({
+      label: info.name ?? '',
+      sublabel: proj?.name,
+      color: info.color,
+      state: sessionState(info, state.attention.has(info.id)),
+      ariaLabel: `Restore ${info.name}`,
+      onClick: () => restoreSession(info.id),
     });
-    tray.append(chip);
+    el.dataset.sid = info.id;
+    tray.append(el);
   }
-  // Minimize/restore changes which sessions are visible without a
-  // sidebar render — re-evaluate the empty state here too.
+  // Minimize/restore changes which sessions are visible without a sidebar
+  // render — re-evaluate the empty state here too.
   renderEmptyState();
 }
 

@@ -19,7 +19,7 @@ import {
   type SessionInfo,
 } from './state.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
-import { iconButton } from '../ui/icon-button.js';
+import { chip } from '../ui/chip.js';
 import { sessionRow, updateSessionRow } from '../ui/session-row.js';
 import {
   projectCard,
@@ -125,48 +125,25 @@ function projectHasAttention(pid: string): boolean {
   );
 }
 
-function renderProjectChip(p: ProjectInfo, activePID: string): HTMLLIElement {
-  const li = document.createElement('li');
-  li.className = 'min-project-chip';
-  li.dataset.pid = p.id;
-  li.style.setProperty('--project-color', p.color || '#888');
-  if (p.id === activePID) li.classList.add('active');
-  if (projectHasAttention(p.id)) li.classList.add('attention');
-
-  // A real <button>, like the session tray's chip (app/view.ts): the
-  // chip body is an action, and on a bare <li> it would be mouse-only.
-  const open = document.createElement('button');
-  open.type = 'button';
-  open.className = 'min-project-open';
-  open.title = p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '');
-  open.setAttribute('aria-label', `Restore ${p.name}`);
-  // Clicking the row restores the project — the same thing the restore
-  // button does. A minimized row is a thing you put away; the only reason to
-  // click it is to get it back, so making the whole row the target
-  // beats a 12px button as the sole way out.
-  open.addEventListener('click', () => deps.restoreProject(p.id));
-
-  const dot = document.createElement('span');
-  dot.className = 'min-project-color';
-
-  const name = document.createElement('span');
-  name.className = 'min-project-name';
-  name.textContent = p.name ?? '';
-  open.append(dot, name);
-
-  const restore = iconButton({
-    icon: 'plus',
-    label: `Restore ${p.name}`,
-    className: 'min-project-restore',
-    size: 22,
-    onClick: (e) => {
-      e.stopPropagation();
-      deps.restoreProject(p.id);
-    },
+function renderProjectChip(p: ProjectInfo, activePID: string): HTMLSpanElement {
+  const el = chip({
+    label: p.name ?? '',
+    color: p.color,
+    active: p.id === activePID,
+    title: p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? ''),
+    ariaLabel: `Restore ${p.name}`,
+    // Clicking the chip body restores the project — the same thing the
+    // restore control does. A minimized row is a thing you put away; the
+    // only reason to click it is to get it back.
+    onClick: () => deps.restoreProject(p.id),
+    onRestore: () => deps.restoreProject(p.id),
+    restoreLabel: `Restore ${p.name}`,
   });
-
-  li.append(open, restore);
-  return li;
+  el.dataset.pid = p.id;
+  // The chip is the only surface left carrying a bell for a project whose
+  // rows are gone (patterns.md › Attention bubbling).
+  if (projectHasAttention(p.id)) el.dataset.state = 'attention';
+  return el;
 }
 
 // updateSidebarSelection re-applies selection and attention to the
@@ -197,10 +174,13 @@ export function updateSidebarSelection() {
   // rebuild, so a chip that only learned its state at render time would
   // keep a stale highlight and lie about which project is current.
   for (const el of minimizedProjectsUL?.querySelectorAll<HTMLElement>(
-    '.min-project-chip',
+    '.hv-chip',
   ) ?? []) {
-    el.classList.toggle('active', el.dataset.pid === activePID);
-    el.classList.toggle('attention', projectHasAttention(el.dataset.pid ?? ''));
+    if (el.dataset.pid === activePID) el.dataset.active = '';
+    else delete el.dataset.active;
+    if (projectHasAttention(el.dataset.pid ?? ''))
+      el.dataset.state = 'attention';
+    else delete el.dataset.state;
   }
   patchRows();
   // The switch paths (switchTo / switchToProject / shiftActiveProject)
