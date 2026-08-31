@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/304-reopen-a-closed-session-undo-close.md](../../product-specs/304-reopen-a-closed-session-undo-close.md)
 - **Issue:** #304
+- **PR:** #306
+- **Branch:** feature/304-reopen-closed-session
 - **Status:** active
 
 ## Summary
@@ -337,6 +339,7 @@ TDD per `AGENTS.md` — every behaviour ships with its test.
 - **2026-08-31** — Plan-first scaffold; stage = IMPLEMENT (set in spec
   frontmatter). Design approved via the plan-html review loop; irreversibility
   audit and all five open decisions resolved before scaffolding.
+- **2026-08-31** — PR #306 opened; stage = REVIEW.
 - **2026-08-31** — Implemented on `feature/304-reopen-closed-session`. Registry
   tombstones + `Restore`, `worktree.DumpPatch`, three new wire frames, daemon
   dispatch, GUI bindings, `undo-close.ts` with the banner and ⌘Z. Go suite,

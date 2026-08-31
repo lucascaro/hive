@@ -1,6 +1,6 @@
 ---
 issue: 304
-pr: null
+pr: 306
 type: added
 bump: minor
 ---
