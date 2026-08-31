@@ -74,6 +74,10 @@ export function banner({
     el,
     setText: (t: string) => {
       textEl.textContent = t;
+      // The row is a fixed 36px with nowrap + ellipsis, so a long message
+      // (`Restart failed: ${err}`) is cut at the window edge. The full
+      // string has to stay reachable somewhere.
+      textEl.title = t;
     },
     action: (aid: string) => {
       const b = byId.get(aid);

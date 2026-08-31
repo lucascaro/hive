@@ -99,7 +99,7 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   // (or focus lands in it), so a button living there could never be
   // clicked, and tabbing to it would display:none the focused element
   // out from under the browser. It is both an indicator and a control —
-  // the old .worktree-glyph was always visible and always clickable —
+  // the old worktree glyph was always visible and always clickable —
   // so it gets its own always-on slot outside the swap.
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
   let wt: HTMLButtonElement | null = null;

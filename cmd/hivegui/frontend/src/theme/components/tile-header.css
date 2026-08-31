@@ -40,14 +40,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fg-subtle);
+  /* --fg-muted, not --fg-subtle: subtle on --surface computes 3.05:1 in
+     hive-dark and 3.30:1 in hive-light, under the 4.5:1 AA floor. The
+     rules this replaced were rgba(255,255,255,0.55) (~6:1), so --fg-subtle
+     here would be a regression. Whether --fg-subtle is legible ANYWHERE as
+     text is a token-value question for phase 6's contrast check. */
+  color: var(--fg-muted);
   font-size: var(--text-xs);
 }
 .term-host .tile-term-title[hidden] { display: none; }
 .term-host .tile-term-title::before {
   content: '\00b7';
   margin-right: var(--space-2);
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
 }
 .term-host .tile-name-input {
   flex: 1;
@@ -64,7 +69,8 @@
 .term-host .tile-project {
   margin-left: auto;
   flex-shrink: 0;
-  color: var(--fg-subtle);
+  /* See .tile-term-title above for why this is not --fg-subtle. */
+  color: var(--fg-muted);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;

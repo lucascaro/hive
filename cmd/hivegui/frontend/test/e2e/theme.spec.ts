@@ -90,7 +90,7 @@ async function seedSidebar(page: Page) {
   await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
 }
 
-test.describe('classic preset is pixel-identical to v2.4.0', () => {
+test.describe('preset switching keeps the chrome stable', () => {
   test.skip(
     !process.env.HIVE_SNAPSHOT,
     'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
@@ -206,11 +206,7 @@ test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
     const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻✓✔]/;
-    return [
-      ...document.querySelectorAll(
-        'button, .hv-project-card__chevron, .worktree-glyph',
-      ),
-    ]
+    return [...document.querySelectorAll('button, .hv-project-card__chevron')]
       .filter((el) => deny.test(el.textContent ?? ''))
       .map((el) => `${el.tagName}#${el.id}.${el.className}`);
   });

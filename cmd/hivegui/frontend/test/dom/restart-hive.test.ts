@@ -153,6 +153,20 @@ describe('daemon banner dismissal', () => {
       bannerEl.querySelector('.hv-banner__dismiss') as HTMLButtonElement
     ).dispatchEvent(new MouseEvent('click'));
 
+  // A 'match' reconnect both hides the banner and clears the remembered
+  // dismissal, which is exactly the clean slate these tests need. Without
+  // it the first assertion below passes on the banner an earlier test in
+  // this file left open, so a `stale()` that did nothing would still go
+  // green.
+  beforeEach(() => {
+    emit('daemon:stale', {
+      severity: 'match',
+      daemonBuild: 'baseline',
+      guiBuild: 'gui-1',
+    });
+    if (!bannerEl.hidden) throw new Error('scaffold: banner should be hidden');
+  });
+
   it('stays down for the dismissed build and returns for a different one', () => {
     stale('daemon-1');
     expect(bannerEl.hidden).toBe(false);

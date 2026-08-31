@@ -215,3 +215,46 @@ describe('phase overlay', () => {
     expect(written.join('')).toContain('attach failed');
   });
 });
+
+// The tile's state icon has two inputs that can disagree: the phase on the
+// SessionInfo payload, and the tile's own live phase from setPhase(). Only
+// the latter is current — setPhase never writes back to info — so resolving
+// the icon from info alone repaints the stale answer for exactly the
+// transition setPhase exists to signal. Reverting the override in
+// refreshStateIcon() must fail here.
+describe('tile state icon follows the live phase', () => {
+  const iconState = (st: Tile) => st.tileState.dataset.state;
+
+  it('leaves "starting" when setPhase says ready, without a fresh info', () => {
+    const st = makeTerm({
+      id: 'live-1',
+      name: 'booting',
+      agent: 'claude',
+      phase: 'starting',
+      alive: true,
+    });
+    st.setPhase('starting');
+    expect(iconState(st)).toBe('starting');
+
+    // The payload still says 'starting' — only the tile knows better.
+    expect(st.info.phase).toBe('starting');
+    // PHASE.ready is the empty string, not 'ready'.
+    st.setPhase('');
+    expect(iconState(st)).toBe('running');
+  });
+
+  it('shows "starting" when the tile enters a starting phase', () => {
+    const st = makeTerm({
+      id: 'live-2',
+      name: 'ready-then-closing',
+      agent: 'claude',
+      phase: '',
+      alive: true,
+    });
+    st.setPhase('');
+    expect(iconState(st)).toBe('running');
+
+    st.setPhase('starting');
+    expect(iconState(st)).toBe('starting');
+  });
+});

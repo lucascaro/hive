@@ -27,6 +27,9 @@ const statusHint = mustEl('status-hint');
 const statusCtl = createStatus({
   render: (text: string, isError: boolean) => {
     statusText.textContent = text;
+    // Same reason as banner.setText: the slot ellipsises, and an error
+    // string is exactly the case where the tail matters.
+    statusText.title = text;
     // The error tint is on the bar, not the span: the whole row flashes.
     status.classList.toggle('error', isError);
   },

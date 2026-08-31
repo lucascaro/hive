@@ -297,9 +297,8 @@ export class SessionTerm {
       // also select / switch to this tile.
       e.stopPropagation();
     });
-    // patterns.md > Hover-revealed actions: the actions stay hidden
-    // until hover or focus-within, and they replace the project label
-    // rather than pushing the text around.
+    // Deliberately NOT hover-revealed (see tile-header.css): a control
+    // that is display:none until hover cannot be reached by keyboard.
     this.tileActions = document.createElement('div');
     this.tileActions.className = 'tile-actions';
     this.tileActions.append(this.tileMinimize);

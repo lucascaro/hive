@@ -420,16 +420,6 @@ body.resizing-sidebar #app { transition: none; }
   font-family: inherit;
 }
 
-/* Worktree glyph on the grid tile (app/session-term.ts). The sidebar
-   row's worktree control is an .hv-icon-btn — see ui/session-row.ts. */
-.worktree-glyph {
-  display: inline-block;
-  font-size: var(--text-xs);
-  color: var(--session-color, var(--fg-muted));
-  margin: 0 4px;
-  opacity: 0.85;
-  flex-shrink: 0;
-}
 
 #project-editor {
   position: fixed;
@@ -1190,19 +1180,6 @@ body.resizing-sidebar #app { transition: none; }
 }
 .worktree-actions button.danger { color: #e08585; } /* ui-lint: allow */
 .worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; } /* ui-lint: allow */
-
-/* The worktree glyph is a control wherever it appears (project row,
-   sidebar session, grid tile) — it must look like one. */
-.worktree-glyph.clickable {
-  cursor: pointer;
-}
-.worktree-glyph.clickable:hover {
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-}
-.worktree-glyph.clickable:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 
 /* ---------- choice dialog ---------- */
 /* In-DOM rather than a native Confirm: some of these questions are

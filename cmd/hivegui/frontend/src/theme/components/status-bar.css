@@ -31,7 +31,8 @@
   align-items: center;
   gap: var(--space-1);
   flex-shrink: 0;
-  color: var(--fg-subtle);
+  /* --fg-subtle on --surface is ~3:1 — under the AA text floor. */
+  color: var(--fg-muted);
 }
 /* Space between a hint's label and the next hint's key, without a
    separator glyph. */

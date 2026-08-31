@@ -1779,10 +1779,40 @@ fix; the baselines were regenerated after it. The tile header also had two
 `margin-left: auto` children (`.tile-project` and `.tile-actions`) splitting
 the free space, floating the project label into the middle of the bar.
 
-Gate: `biome ci`, `tsc --noEmit`, `vite build`, 694 vitest tests, 213
-Playwright tests, `ui-lint --strict` (0 violations) and `go build ./...` all
-green.
+**Review round 2** found no blockers and five IMPORTANT items, all fixed here:
+
+- The status bar's hint slot was never seeded on a zero-session boot.
+  `setModeHint` is reached only from `switchTo()` and `setView()`, and
+  `events.ts` calls `switchTo` only when sessions exist — so the first-run
+  screen showed none of the shortcuts this phase adds. `main.ts` seeds it
+  once after `initView`.
+- Contrast: `.tile-term-title`, `.tile-project` and `#status-hint` moved onto
+  `--fg-subtle`, which computes **3.05:1** on `--surface` in hive-dark and
+  **3.30:1** in hive-light — under the 4.5:1 AA floor, and a regression from
+  the `rgba(255,255,255,0.55)` (~6:1) rules they replaced. All three are
+  `--fg-muted` (7.8:1) now. Whether `--fg-subtle` is legible as text
+  *anywhere* is a token-value question for phase 6's contrast check — phase 3
+  uses it the same way in `session-row.css` / `project-card.css`.
+- `banner.setText()` and the status renderer set `title` alongside
+  `textContent`: both slots are fixed-height with `nowrap` + ellipsis, and an
+  error string is exactly where the truncated tail matters.
+- `refreshStateIcon()`'s live-phase override had no test — reverting it left
+  the suite green. `session-phase.test.ts` now pins both directions, verified
+  to fail on revert. (`PHASE.ready` is the empty string, not `'ready'`.)
+- `theme.spec.ts`'s describe still claimed "pixel-identical to v2.4.0" after
+  the same branch rebaselined those PNGs; renamed to what it now guards.
+
+Plus the minors: comments in `session-term.ts` that contradicted
+`tile-header.css` about hover-reveal, the dead `.worktree-glyph` rules left
+behind when the tile's glyph became an `iconButton`, a dismissal test whose
+first assertion passed on banner state leaked from an earlier test, and an
+over-claiming comment in `regen-generated.py`.
+
+Gate: `biome ci`, `tsc --noEmit`, `vite build`, 696 vitest tests, 214
+Playwright tests, `ui-lint --strict` (0 violations), `regen-generated.sh` and
+`go build ./...` all green.
 
 ## PR convergence ledger
 
+- **2026-08-30 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 40505da01f92b489; threads_open: 0; action: stop; head_sha: 6053a31. (Findings fixed in a follow-up commit on the branch.)
 - **2026-08-30 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 5241381b689bb7ae; threads_open: 0; action: autofix+push, then escalated:risky fix needs human decision; head_sha: 286e448.
