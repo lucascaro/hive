@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 301
-stage: GATE
+stage: IMPLEMENT
 ---
 
 # UI design system: tokens, themes, icons, primitives
@@ -14,7 +14,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Stage:** GATE
+- **Stage:** IMPLEMENT
 - **Exec plan:** [docs/exec-plans/active/ui-design-system.md](../exec-plans/active/ui-design-system.md)
 
 ## Problem
