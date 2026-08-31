@@ -7,11 +7,11 @@
 // (localStorage on import) is not. `hasAttention` is passed in rather
 // than read from state.attention for the same reason.
 //
-// icons.md writes the exit branch as `exit_code == 0`, but no exit code
-// exists on the wire (internal/wire has no ExitCode field and
-// SessionInfo has no exit_code). last_error is the only "it ended
+// No exit code exists on the wire (internal/wire has no ExitCode field
+// and SessionInfo has no exit_code). last_error is the only "it ended
 // badly" signal the daemon sends, and it is what the dead-session
-// overlay already reads (app/events.ts, app/session-term.ts).
+// overlay already reads (app/events.ts, app/session-term.ts). icons.md
+// resolves the same way for the same reason.
 import { phaseOf, isReady } from './phase-steps.js';
 
 export type SessionState =
