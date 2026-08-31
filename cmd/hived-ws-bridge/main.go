@@ -195,12 +195,37 @@ func (s *session) writeStdinOrdered(req rpcReq) {
 
 // closeStdin drains and stops the stdin writer. Safe to call when the lane
 // was never started.
+// shutdown tears the connection down in the only order that terminates:
+// closeAll first, so an in-flight attach write fails fast, then closeStdin
+// to join the writer goroutine. serveWS defers this rather than the two
+// calls separately — defers are LIFO, so writing them in the intuitive
+// order produces exactly the deadlock closeStdin warns about.
+func (s *session) shutdown() {
+	s.closeAll()
+	s.closeStdin()
+}
+
+// closeStdin drains and stops the stdin writer. Safe to call when the lane
+// was never started.
+//
+// MUST run after closeAll, never before: the writer can be parked inside
+// attachWriteFrame on pty backpressure, which is a normal state here, and
+// only closing the attach client aborts that write. Joining the writer
+// first hangs teardown forever and leaks the connection goroutine.
+// TestShutdownTerminatesWhileStdinWriteIsBlocked pins this.
 func (s *session) closeStdin() {
 	if s.stdin == nil {
 		return
 	}
 	close(s.stdin)
-	<-s.stdinDone
+	select {
+	case <-s.stdinDone:
+	case <-time.After(5 * time.Second):
+		// ponytail: closeAll should always unblock the writer, so this arm
+		// is insurance — it turns a hung teardown (which wedges a whole CI
+		// job) into a leaked goroutine in a process that is exiting anyway.
+		log.Printf("ws-bridge: stdin writer did not drain within 5s")
+	}
 }
 
 func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
@@ -211,8 +236,7 @@ func serveWS(w http.ResponseWriter, r *http.Request, sockPath string) {
 	}
 	defer c.Close()
 	s := &session{ws: c, sockPath: sockPath, attaches: make(map[string]*wire.Client)}
-	defer s.closeAll()
-	defer s.closeStdin()
+	defer s.shutdown()
 	for {
 		_, raw, err := c.ReadMessage()
 		if err != nil {

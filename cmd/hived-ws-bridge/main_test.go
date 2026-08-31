@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -266,5 +267,122 @@ func TestOriginIsLocal(t *testing.T) {
 		if check(o) {
 			t.Errorf("foreign origin %q was accepted", o)
 		}
+	}
+}
+
+// dialTestWS returns a live WebSocket conn attached to a server that
+// discards everything. Session methods write RPC replies to s.ws, so a
+// session built by hand needs a real conn or the first respond() panics.
+func dialTestWS(t *testing.T) *websocket.Conn {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				_ = c.Close()
+				return
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	ws, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	return ws
+}
+
+func stdinReq(id int, sid, payload string) rpcReq {
+	b64 := base64.StdEncoding.EncodeToString([]byte(payload))
+	return rpcReq{
+		ID:     id,
+		Method: "WriteStdin",
+		Params: json.RawMessage(fmt.Sprintf(`{"id":%q,"b64":%q}`, sid, b64)),
+	}
+}
+
+// TestWriteStdinPreservesArrivalOrder is the regression guard for spec 245.
+//
+// Keystrokes are a stream: their order IS the payload. The bridge used to
+// run every RPC frame on its own goroutine, and a mutex around the write
+// gives mutual exclusion, not ordering — so under load adjacent keys swapped
+// and the shell ran a command nobody typed. net.Pipe is unbuffered, so every
+// write here blocks until the reader takes it, which is exactly the
+// backpressure that made the old code reorder.
+func TestWriteStdinPreservesArrivalOrder(t *testing.T) {
+	client, server := net.Pipe()
+	defer server.Close()
+	s := &session{
+		ws:       dialTestWS(t),
+		attaches: map[string]*wire.Client{"sid": wire.NewClient(client)},
+	}
+	defer s.shutdown()
+
+	const frames = 200
+	got := make(chan string, frames)
+	go func() {
+		for range frames {
+			ft, payload, err := wire.ReadFrame(server)
+			if err != nil || ft != wire.FrameData {
+				close(got)
+				return
+			}
+			got <- string(payload)
+		}
+	}()
+
+	for i := range frames {
+		s.writeStdinOrdered(stdinReq(i, "sid", fmt.Sprintf("k%04d", i)))
+	}
+
+	for i := range frames {
+		want := fmt.Sprintf("k%04d", i)
+		select {
+		case p, ok := <-got:
+			if !ok {
+				t.Fatalf("reader stopped early at frame %d", i)
+			}
+			if p != want {
+				t.Fatalf("frame %d = %q, want %q — stdin arrived out of order", i, p, want)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for frame %d (%q)", i, want)
+		}
+	}
+}
+
+// TestShutdownTerminatesWhileStdinWriteIsBlocked pins the teardown ORDER.
+//
+// The stdin writer parks inside attachWriteFrame whenever the pty is not
+// draining — normal in this suite, where a spec floods 60k lines. Only
+// closeAll (which closes the attach client) aborts that write, so joining
+// the writer first hangs forever and leaks the connection goroutine. Defers
+// are LIFO, which makes the intuitive spelling the broken one; shutdown()
+// exists so the order is stated once and tested here.
+func TestShutdownTerminatesWhileStdinWriteIsBlocked(t *testing.T) {
+	client, server := net.Pipe()
+	defer server.Close()
+	s := &session{
+		ws:       dialTestWS(t),
+		attaches: map[string]*wire.Client{"sid": wire.NewClient(client)},
+	}
+
+	// Nothing ever reads `server`, so the first frame blocks the writer.
+	s.writeStdinOrdered(stdinReq(1, "sid", "wedged"))
+
+	done := make(chan struct{})
+	go func() {
+		s.shutdown()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("shutdown did not return with the stdin writer blocked — teardown deadlock")
 	}
 }
