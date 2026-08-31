@@ -93,7 +93,14 @@ export function modeHints(view: string, mac: boolean): ModeHint[] {
   const mod = mac ? '⌘' : 'Ctrl+';
   if (view === 'grid-all' || view === 'grid-project') {
     return [
-      { key: `${mod}G`, label: 'focus' },
+      // Each grid is toggled back to a single pane by the chord that
+      // opened it (keyboard.ts): ⌘G for the project grid, ⇧⌘G for the
+      // all-sessions grid. Naming plain ⌘G in grid-all would advertise a
+      // chord that switches grids instead of focusing.
+      {
+        key: view === 'grid-all' ? (mac ? '⇧⌘G' : 'Ctrl+Shift+G') : `${mod}G`,
+        label: 'focus',
+      },
       // Off macOS the four arrows spelled out would be longer than the
       // slot; the word carries the same meaning.
       { key: mac ? '⌘↑↓←→' : 'Ctrl+Arrows', label: 'move' },

@@ -16,6 +16,9 @@
   color: var(--fg-muted);
   transition: background var(--motion-fast) ease;
 }
+/* The author-origin `display` above outranks the UA's `[hidden]` rule, so
+   without this every `el.hidden = true` on a button is a silent no-op. */
+.hv-button[hidden] { display: none; }
 .hv-button[data-kind='primary'] {
   background: var(--accent);
   border-color: var(--accent);

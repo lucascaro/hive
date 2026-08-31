@@ -13,6 +13,9 @@
   cursor: pointer;
   transition: background var(--motion-fast), color var(--motion-fast);
 }
+/* The author-origin `display` above outranks the UA's `[hidden]` rule, so
+   without this every `el.hidden = true` on an icon button is a no-op. */
+.hv-icon-btn[hidden] { display: none; }
 .hv-icon-btn[data-size="22"] { width: 22px; height: 22px; }
 .hv-icon-btn:hover { background: var(--hover); color: var(--fg); }
 .hv-icon-btn:disabled { opacity: 0.5; pointer-events: none; }

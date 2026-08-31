@@ -22,7 +22,6 @@
   border-bottom-color: var(--session-color, var(--accent));
   color: var(--fg);
 }
-.term-host .tile-state { flex-shrink: 0; }
 .term-host .tile-name {
   flex: 0 1 auto;
   min-width: 0;

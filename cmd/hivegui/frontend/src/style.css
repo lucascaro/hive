@@ -321,11 +321,6 @@ body.resizing-sidebar #app { transition: none; }
   height: 100%;
 }
 
-/* Actionable empty state — replaces the old CSS-only
-   "no sessions in this project" ::after text. Occupies the same grid
-   cell as #terms and floats above it; pointer events only on itself
-   so a sliver of terminal behind it stays interactive when hidden. */
-
 #launcher {
   position: fixed;
   background: var(--surface-raised);
@@ -746,13 +741,6 @@ body.resizing-sidebar #app { transition: none; }
 #settings-panel .actions button:disabled:hover { background: var(--border); }
 #settings-panel .actions button.primary:disabled:hover { background: var(--accent); }
 
-/* Stale-daemon banner: row 1 of the #app grid, spanning sidebar +
-   terms columns. Pushes the rest of the UI down rather than overlaying
-   it. Amber to match the brand. */
-
-/* Update-available banner: same shape as the daemon banner but
-   green-tinted so the two are visually distinct when both are
-   showing (rare, but possible). */
 /* Disabled only while staging is in flight ("Updating…") — the label
    is the progress indicator, so it must stay legible. */
 #settings-update-action:disabled { opacity: 0.65; cursor: default; }
@@ -790,11 +778,6 @@ body.resizing-sidebar #app { transition: none; }
   overflow-y: auto;
   padding: 4px;
 }
-
-/* Lifecycle-phase overlay — shown over a tile while the daemon is
-   still creating the session (worktree + shell), and while it is
-   tearing one down. Opaque on purpose: it hides the login shell's
-   startup output, so the reveal lands on a settled screen. */
 
 /* Closing: the tile is on its way out. Dim it and stop taking input;
    the removal event lands moments later. */
