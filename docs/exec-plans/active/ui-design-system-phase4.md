@@ -1740,3 +1740,5 @@ tree rather than the plan's pre-phase-1 line references:
 
 Gate: `biome ci`, `tsc --noEmit`, 689 vitest tests, 206 Playwright tests,
 `ui-lint --strict` (0 violations) and `go build ./...` all green.
+
+## PR convergence ledger
