@@ -2,6 +2,8 @@
    border carries the kind. Grid placement (rows 1 and 2 of #app) comes
    from [data-slot], set by app/banners.ts. */
 .hv-banner {
+  /* Includes the borders — see status-bar.css. */
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--space-3);

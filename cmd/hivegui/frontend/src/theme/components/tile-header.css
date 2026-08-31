@@ -4,6 +4,8 @@
    owns project identity (README principle 2), and the tile keeps
    --session-color for its border and attention glow. */
 .term-host .tile-header {
+  /* Includes the 1px bottom border — see status-bar.css. */
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -73,7 +75,9 @@
    header has room for the label and the button both. */
 .term-host .tile-actions {
   display: flex;
-  margin-left: auto;
+  /* No margin-left:auto here — .tile-project already claims the free
+     space, and two auto margins would split it and float the label into
+     the middle of the bar instead of parking it on the right. */
   align-items: center;
   gap: var(--space-1);
   flex-shrink: 0;

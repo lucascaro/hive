@@ -1762,7 +1762,24 @@ info, so the refresh it triggers was recomputing from a stale payload), the
 on every navigation, `modeHints` takes `ViewMode` instead of `string`, and the
 rewritten banner dismissal paths (per-version, per-daemon-build) got coverage.
 
-Gate: `biome ci`, `tsc --noEmit`, `vite build`, 694 vitest tests, 208
+**Task 8 addendum — the chrome spec is split.** `chrome.spec.ts` now has two
+describes with different gates: `phase-4 chrome structure` runs in CI on every
+platform (heights, slots, `kbd` hints, the selected treatment, the live-region
+scope, both presets painting), while only `phase-4 chrome baselines` stays
+behind `HIVE_SNAPSHOT`. Gating both together is what let the `[hidden]`
+specificity bug ship green — the assertions that could have caught it were
+skipped alongside the screenshots.
+
+Splitting it immediately paid: the structural assertions caught that
+`style.css` sets `box-sizing` per-rule rather than globally, so every sized
+component this phase added painted `height + border` — the "24px" status bar
+was 25px, the "28px" tile header 29px, the 28px button 30px. `box-sizing:
+border-box` on `#status`, `.tile-header`, `.hv-banner` and `.hv-button` is the
+fix; the baselines were regenerated after it. The tile header also had two
+`margin-left: auto` children (`.tile-project` and `.tile-actions`) splitting
+the free space, floating the project label into the middle of the bar.
+
+Gate: `biome ci`, `tsc --noEmit`, `vite build`, 694 vitest tests, 213
 Playwright tests, `ui-lint --strict` (0 violations) and `go build ./...` all
 green.
 

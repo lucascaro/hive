@@ -1,6 +1,8 @@
 /* docs/design-docs/ui/components.md > button. Height 28px, --text-md,
    --radius-sm; kinds are [data-kind], never extra classes. */
 .hv-button {
+  /* Includes the 1px border — see status-bar.css. */
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
