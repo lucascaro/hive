@@ -147,4 +147,51 @@ describe('sessionRow', () => {
     expect(el.dataset.selected).toBeUndefined();
     expect(el.querySelector('.hv-kbd')).toBeNull();
   });
+
+  it('updateSessionRow grows a restart button when a running row exits', () => {
+    const el = row({});
+    expect(el.querySelector('[data-action="restart"]')).toBeNull();
+    updateSessionRow(
+      el,
+      { id: 's1', name: 'api', alive: false } as SessionInfo,
+      {
+        state: 'exited',
+        selected: false,
+        minimized: false,
+        index: null,
+      },
+    );
+    expect(el.querySelector('[data-action="restart"]')).not.toBeNull();
+  });
+
+  it('updateSessionRow drops the restart button when an exited row is restarted', () => {
+    const el = row({ alive: false }, { state: 'exited' });
+    expect(el.querySelector('[data-action="restart"]')).not.toBeNull();
+    updateSessionRow(el, { id: 's1', name: 'api' } as SessionInfo, {
+      state: 'running',
+      selected: false,
+      minimized: false,
+      index: null,
+    });
+    expect(el.querySelector('[data-action="restart"]')).toBeNull();
+  });
+
+  it('updateSessionRow patches --session-color and the swatch input on a colour change', () => {
+    const el = row({ color: '#ff0000' });
+    expect(el.style.getPropertyValue('--session-color')).toBe('#ff0000');
+    expect(
+      el.querySelector<HTMLInputElement>('.hv-session-row__swatch input')
+        ?.value,
+    ).toBe('#ff0000');
+    updateSessionRow(
+      el,
+      { id: 's1', name: 'api', color: '#00ff00' } as SessionInfo,
+      { state: 'running', selected: false, minimized: false, index: null },
+    );
+    expect(el.style.getPropertyValue('--session-color')).toBe('#00ff00');
+    expect(
+      el.querySelector<HTMLInputElement>('.hv-session-row__swatch input')
+        ?.value,
+    ).toBe('#00ff00');
+  });
 });

@@ -55,6 +55,12 @@ function agentCode(agent?: string): string {
   return (agent ?? '').trim().slice(0, 2).toLowerCase();
 }
 
+// The restart button is built once per row (so its click handler keeps
+// its closure over the row's onRestart), but whether it is IN the DOM is
+// state-dependent and can change after the fact via updateSessionRow —
+// applyState() is the only place that inserts/removes it.
+const restartButtons = new WeakMap<HTMLLIElement, HTMLButtonElement>();
+
 export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   const s = o.session;
   const li = document.createElement('li');
@@ -125,6 +131,7 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
     },
   });
   restartBtn.dataset.action = 'restart';
+  restartButtons.set(li, restartBtn);
 
   const killBtn = iconButton({
     icon: 'x',
@@ -138,10 +145,9 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
 
   // rotate first, x second — patterns.md › Exited sessions. Restart is
   // only offered where it means something; a running session's restart is
-  // the tile's job, not a one-click sidebar action.
-  actions.append(minBtn);
-  if (o.state === 'exited' || o.state === 'error') actions.append(restartBtn);
-  actions.append(killBtn);
+  // the tile's job, not a one-click sidebar action. Whether it's actually
+  // in the DOM right now is applyState()'s call, below.
+  actions.append(minBtn, killBtn);
 
   // The colour picker keeps its native input (components.md › Form fields)
   // and sits outside the hover swap: it is data, not an action.
@@ -211,6 +217,33 @@ function applyState(
     minBtn.title = label;
     minBtn.replaceChildren(icon(next.minimized ? 'plus' : 'minus'));
   }
+
+  // Restart is only offered where it means something (exited/error), and a
+  // patched row can cross that boundary in either direction — a running
+  // session dying, or a restarted one coming back up — so this has to be
+  // reconciled here, not just decided once at build time.
+  const wantsRestart = next.state === 'exited' || next.state === 'error';
+  const restartBtn = restartButtons.get(el);
+  const killBtn = el.querySelector<HTMLButtonElement>('[data-action="kill"]');
+  if (restartBtn) {
+    // `.isConnected` would say false for a row never appended to the
+    // document (every DOM test here builds rows detached), so membership
+    // in the row's own action bar — the only place this button ever
+    // lives — is what "currently shown" means.
+    const inDom = restartBtn.parentElement !== null;
+    if (wantsRestart && !inDom && killBtn) killBtn.before(restartBtn);
+    else if (!wantsRestart && inDom) restartBtn.remove();
+  }
+
+  // --session-color / the swatch's input are patched from session data
+  // that can change from outside this row (a colour synced elsewhere),
+  // not only through the row's own picker.
+  if (s.color) el.style.setProperty('--session-color', s.color);
+  else el.style.removeProperty('--session-color');
+  const colorInput = el.querySelector<HTMLInputElement>(
+    '.hv-session-row__swatch input[type="color"]',
+  );
+  if (colorInput) colorInput.value = s.color || '#888888';
 
   const meta = el.querySelector<HTMLElement>('.hv-session-row__meta');
   const existing = el.querySelector('.hv-kbd');
