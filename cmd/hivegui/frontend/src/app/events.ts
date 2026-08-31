@@ -414,7 +414,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // The program on the PTY re-titled itself. Its own kind, not an
     // `updated`, precisely so it can take the cheap path: patch the
-    // sidebar's title line in place and touch nothing else. A full
+    // existing rows in place — every write guarded on an actual change,
+    // so a title-only event rewrites the title line and nothing else. A full
     // renderSidebar() here would wipe and rebuild every row at whatever
     // rate the child process redraws, eating dblclick pairs on the way
     // (see updateSidebarSelection's comment).

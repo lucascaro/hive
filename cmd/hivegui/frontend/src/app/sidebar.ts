@@ -226,13 +226,15 @@ function patchRows() {
   }
 }
 
-// updateSidebarTitles patches the window-title line on existing rows
-// instead of rebuilding them, for the same reason updateSidebarSelection
-// exists: renderSidebar wipes projectsUL.innerHTML and recreates every
-// node and listener. Titles change as often as the running program
-// decides to change them — an agent rewrites its title as it works — so
-// routing them through a full rebuild would thrash the sidebar and eat
-// dblclick pairs (see the comment on updateSidebarSelection).
+// updateSidebarTitles re-applies existing rows' state — the title line
+// included — instead of rebuilding them, for the same reason
+// updateSidebarSelection exists: renderSidebar wipes projectsUL.innerHTML
+// and recreates every node and listener. Titles change as often as the
+// running program decides to change them — an agent rewrites its title as
+// it works — so routing them through a full rebuild would thrash the
+// sidebar and eat dblclick pairs (see the comment on
+// updateSidebarSelection). updateSessionRow writes only what actually
+// changed, so a title-only event costs a text assignment per row.
 export function updateSidebarTitles() {
   patchRows();
 }

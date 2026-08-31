@@ -231,7 +231,13 @@ function applyState(
     const label = `${next.minimized ? 'Restore' : 'Minimize'} ${s.name ?? 'session'}`;
     minBtn.setAttribute('aria-label', label);
     minBtn.title = label;
-    minBtn.replaceChildren(icon(next.minimized ? 'plus' : 'minus'));
+    // Swap the glyph only when it actually changes, the way
+    // updateStateIcon() does: sidebar.ts patches every row on every
+    // title event, and an unconditional replaceChildren() would rebuild
+    // an <svg> per row at the child program's redraw rate.
+    const want = next.minimized ? 'plus' : 'minus';
+    if (minBtn.querySelector('use')?.getAttribute('href') !== `#hv-${want}`)
+      minBtn.replaceChildren(icon(want));
   }
 
   // Restart is only offered where it means something (exited/error), and a
@@ -261,8 +267,13 @@ function applyState(
   );
   if (colorInput) colorInput.value = s.color || '#888888';
 
-  const meta = el.querySelector<HTMLElement>('.hv-session-row__meta');
+  // Same guard as the minimize glyph: an unchanged hint keeps its node
+  // instead of being removed and rebuilt on every patch.
+  const hint = next.index === null ? null : `[${next.index}]`;
   const existing = el.querySelector('.hv-kbd');
-  if (existing) existing.remove();
-  if (meta && next.index !== null) meta.prepend(kbd(`[${next.index}]`));
+  if (!existing || existing.textContent !== hint) {
+    existing?.remove();
+    const meta = el.querySelector<HTMLElement>('.hv-session-row__meta');
+    if (meta && hint) meta.prepend(kbd(hint));
+  }
 }

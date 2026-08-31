@@ -65,7 +65,7 @@ beforeAll(async () => {
   document.body.innerHTML = `
     <div id="app">
       <ul id="projects"></ul>
-      <ul id="minimized-projects" class="hidden"></ul>
+      <div id="minimized-projects" class="hidden" role="toolbar" aria-label="Minimized projects"></div>
       <div id="status"></div><div id="terms"></div>
       <div id="minimized-tray"></div><div id="empty-state"></div>
     </div>`;
