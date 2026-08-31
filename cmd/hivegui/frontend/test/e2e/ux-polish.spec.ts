@@ -144,14 +144,16 @@ test('selecting an empty project shows the empty state; switching away clears it
   });
   // Clicking the empty project's row goes through switchToProject —
   // a repaint path that does not rebuild the sidebar.
-  await page.locator('#projects .project[data-pid="p2"] .project-name').click();
+  await page
+    .locator('#projects .hv-project-card[data-pid="p2"] .hv-project-card__name')
+    .click();
   const empty = page.locator('#empty-state');
   await expect(empty).toBeVisible();
   await expect(empty).toHaveAttribute('data-kind', 'project-empty');
   await expect(empty).toContainText('No sessions in this project');
   // Switching to a live session must clear the pane — a stale overlay
   // here would sit above the terminal and intercept clicks.
-  await page.locator('#projects .session-item[data-sid="s1"]').click();
+  await page.locator('#projects .hv-session-row[data-sid="s1"]').click();
   await expect(empty).toBeHidden();
 });
 
@@ -324,30 +326,25 @@ test('sidebar footer does not overflow a narrow sidebar', async ({ page }) => {
 
 test('project collapse state survives a reload', async ({ page }) => {
   await boot(page);
-  const caret = page.locator('#projects .project[data-pid="p1"] .caret');
+  const card = page.locator('#projects .hv-project-card[data-pid="p1"]');
+  const caret = card.locator('.hv-project-card__chevron');
   await caret.click();
-  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(
-    /collapsed/,
-  );
+  await expect(card).toHaveAttribute('data-collapsed', '');
   await expect(caret).toHaveAttribute('aria-expanded', 'false');
 
   await page.reload();
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
-  await expect(page.locator('#projects .project[data-pid="p1"]')).toHaveClass(
-    /collapsed/,
-  );
+  await expect(card).toHaveAttribute('data-collapsed', '');
 
   // Expand again and confirm that persists too.
-  await page.locator('#projects .project[data-pid="p1"] .caret').click();
+  await card.locator('.hv-project-card__chevron').click();
   await page.reload();
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
-  await expect(
-    page.locator('#projects .project[data-pid="p1"]'),
-  ).not.toHaveClass(/collapsed/);
+  await expect(card).not.toHaveAttribute('data-collapsed', '');
 });
 
 test('a11y attributes: palette input label, alertdialog dead overlay, caret button', async ({
@@ -358,7 +355,9 @@ test('a11y attributes: palette input label, alertdialog dead overlay, caret butt
     'aria-label',
     'Search commands',
   );
-  const caret = page.locator('#projects .project[data-pid="p1"] .caret');
+  const caret = page.locator(
+    '#projects .hv-project-card[data-pid="p1"] .hv-project-card__chevron',
+  );
   await expect(caret).toHaveAttribute('aria-expanded', 'true');
 
   // Drive a session death through the mock and check the overlay role.

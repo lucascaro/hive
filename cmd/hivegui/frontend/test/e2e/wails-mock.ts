@@ -380,18 +380,36 @@ export async function KillSessionAndWorktree(id: string) {
   maybeFail('KillSessionAndWorktree');
   const s = state.sessions.find((x) => x.id === id);
   const path = s?.worktree_path;
-  await KillSession(id);
+  await KillSession(id, true);
   if (path) {
     const i = state.worktrees.findIndex((w) => w.path === path);
     if (i >= 0) state.worktrees.splice(i, 1);
   }
   return '';
 }
-export async function KillSession(id: string) {
+export async function KillSession(id: string, force?: boolean) {
   maybeFail('KillSession');
   const i = state.sessions.findIndex((s) => s.id === id);
   if (i < 0) return '';
   const doomed = state.sessions[i];
+  // The daemon refuses an UN-forced kill of a session whose worktree has
+  // uncommitted work and answers with worktree_dirty (carrying the
+  // session id). That refusal is what raises the three-way close
+  // question in app/events.ts — modelling it here is the only way a spec
+  // can drive that flow from a real click instead of a hand-emitted
+  // control:error.
+  const wt = state.worktrees.find((w) => w.path === doomed.worktree_path);
+  if (!force && wt?.uncommitted) {
+    emit(
+      'control:error',
+      JSON.stringify({
+        code: 'worktree_dirty',
+        message: 'uncommitted changes',
+        session_id: id,
+      }),
+    );
+    return '';
+  }
   // Teardown is announced (wire.PhaseClosing) before the session is
   // gone: on a real worktree the git cleanup in between takes seconds.
   doomed.phase = 'closing';
@@ -812,8 +830,8 @@ if (typeof window !== 'undefined') {
       state.orphanBranches.length = 0;
       state.orphanBranches.push(...branches);
     },
-    killSession(id: string) {
-      return KillSession(id);
+    killSession(id: string, force?: boolean) {
+      return KillSession(id, force);
     },
     listeners,
     stdinLog,

@@ -69,14 +69,14 @@ for (const { kind, shape } of SHAPES) {
     }, shape(id));
 
     // The session appears in the sidebar (its row is keyed by id).
-    const row = page.locator(`#projects li.session-item[data-sid="${id}"]`);
+    const row = page.locator(`#projects li.hv-session-row[data-sid="${id}"]`);
     await expect(row).toBeVisible({ timeout: 2000 });
     // Name renders.
     await expect(row).toContainText(`shape-${id}`);
-    // Worktree glyph (app/sidebar.ts, className 'worktree-glyph') is
+    // The row's worktree control (ui/session-row.ts) is
     // rendered iff `s.worktreeBranch ?? s.worktree_branch` resolves —
     // this is the read-both pattern under test.
-    await expect(row.locator('.worktree-glyph')).toBeVisible();
+    await expect(row.locator('.hv-session-row__worktree')).toBeVisible();
   });
 
   test(`session is routed to its project from ${kind} payload`, async ({
@@ -92,13 +92,13 @@ for (const { kind, shape } of SHAPES) {
       );
     }, shape(id));
 
-    // The session must end up under its project's <li.project
+    // The session must end up under its project's <li.hv-project-card
     // data-pid="p1"> in the sidebar — the routing read is
     // `projectId ?? project_id` (app/sidebar.ts, app/view.ts). If a
     // future refactor drops one branch, the session would orphan
     // out of its project subtree and this assertion fails.
     const sessionRow = page.locator(
-      `#projects li.project[data-pid="p1"] li.session-item[data-sid="${id}"]`,
+      `#projects li.hv-project-card[data-pid="p1"] li.hv-session-row[data-sid="${id}"]`,
     );
     await expect(sessionRow).toBeVisible({ timeout: 2000 });
   });

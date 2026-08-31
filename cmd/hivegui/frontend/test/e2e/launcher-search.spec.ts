@@ -120,10 +120,9 @@ test('clicking a project action other than + closes the launcher', async ({
   await page.keyboard.press(`${mod}+t`);
   await expect(page.locator('#launcher')).toBeVisible();
 
-  await page
-    .locator('#projects .project-actions button[aria-label="Edit project"]')
-    .first()
-    .click();
+  const card = page.locator('#projects .hv-project-card').first();
+  await card.locator('.hv-project-card__header').hover();
+  await card.locator('[data-action="edit"]').click();
   await expect(page.locator('#launcher')).toBeHidden();
 });
 

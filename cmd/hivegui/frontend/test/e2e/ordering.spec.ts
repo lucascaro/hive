@@ -27,7 +27,7 @@ async function boot(page: Page, count = 3) {
 // Sidebar row order, top to bottom, as session ids.
 function sidebarIds(page: Page) {
   return page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLElement>('li.session-item')).map(
+    Array.from(document.querySelectorAll<HTMLElement>('li.hv-session-row')).map(
       (li) => li.dataset.sid ?? '',
     ),
   );
@@ -47,13 +47,13 @@ function tileIds(page: Page) {
 function activeId(page: Page) {
   return page.evaluate(
     () =>
-      document.querySelector<HTMLElement>('li.session-item.selected')?.dataset
-        .sid ?? null,
+      document.querySelector<HTMLElement>('li.hv-session-row[data-selected]')
+        ?.dataset.sid ?? null,
   );
 }
 
 async function activate(page: Page, id: string) {
-  await page.locator(`li.session-item[data-sid="${id}"]`).click();
+  await page.locator(`li.hv-session-row[data-sid="${id}"]`).click();
   await expect.poll(() => activeId(page)).toBe(id);
 }
 
@@ -216,7 +216,7 @@ test.describe('session ordering', () => {
         (p) =>
           Array.from(
             document.querySelectorAll<HTMLElement>(
-              `li.project[data-pid="${p}"] li.session-item`,
+              `li.hv-project-card[data-pid="${p}"] li.hv-session-row`,
             ),
           ).map((li) => li.dataset.sid ?? ''),
         pid,

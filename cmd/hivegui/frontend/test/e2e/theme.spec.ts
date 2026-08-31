@@ -50,7 +50,7 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
       );
     });
     await page.waitForFunction(
-      () => document.querySelectorAll('#projects .project').length >= 2,
+      () => document.querySelectorAll('#projects .hv-project-card').length >= 2,
     );
 
     // Two more sessions in the default project (three total).
@@ -82,11 +82,12 @@ test.describe('classic preset is pixel-identical to v2.4.0', () => {
     await page.evaluate(() =>
       window.__hive.emit('pty:data', 's1', btoa('\x07')),
     );
-    await expect(page.locator('#projects li[data-sid="s1"]')).toHaveClass(
-      /attention/,
+    await expect(page.locator('#projects [data-sid="s1"]')).toHaveAttribute(
+      'data-state',
+      'attention',
     );
 
-    await expect(page.locator('#projects .project')).toHaveCount(2);
+    await expect(page.locator('#projects .hv-project-card')).toHaveCount(2);
     await expect(page).toHaveScreenshot('sidebar-classic.png', {
       maxDiffPixels: 0,
       animations: 'disabled',
@@ -170,7 +171,11 @@ test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
     const deny = /[×✕✗＋✚⎇✎▾▴●○◐◆■▶⟳↻✓✔]/;
-    return [...document.querySelectorAll('button, .caret, .worktree-glyph')]
+    return [
+      ...document.querySelectorAll(
+        'button, .hv-project-card__chevron, .worktree-glyph',
+      ),
+    ]
       .filter((el) => deny.test(el.textContent ?? ''))
       .map((el) => `${el.tagName}#${el.id}.${el.className}`);
   });

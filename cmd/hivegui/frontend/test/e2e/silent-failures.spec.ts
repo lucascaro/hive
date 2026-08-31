@@ -68,7 +68,7 @@ test('failed rename shows an error', async ({ page }) => {
     window.__hive.failNext?.('UpdateSession', 'no daemon'),
   );
 
-  const row = page.locator('#projects li[data-sid="s1"] .name');
+  const row = page.locator('#projects li[data-sid="s1"] .hv-session-row__name');
   await row.dblclick();
   const input = page.locator('#projects li[data-sid="s1"] input.name-input');
   await input.fill('renamed');
@@ -141,22 +141,24 @@ test('Enter commits a rename, Escape cancels it', async ({ page }) => {
   // bubble-phase Enter/Escape handler, so Enter did nothing and Escape
   // could not cancel (the later blur committed anyway).
   await boot(page);
-  const row = page.locator('#projects li[data-sid="s1"] .name');
+  const row = page.locator('#projects li[data-sid="s1"] .hv-session-row__name');
   await row.dblclick();
   let input = page.locator('#projects li[data-sid="s1"] input.name-input');
   await input.fill('kept');
   await input.press('Enter');
-  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText(
-    'kept',
-  );
+  await expect(
+    page.locator('#projects li[data-sid="s1"] .hv-session-row__name'),
+  ).toHaveText('kept');
 
-  await page.locator('#projects li[data-sid="s1"] .name').dblclick();
+  await page
+    .locator('#projects li[data-sid="s1"] .hv-session-row__name')
+    .dblclick();
   input = page.locator('#projects li[data-sid="s1"] input.name-input');
   await input.fill('discarded');
   await input.press('Escape');
-  await expect(page.locator('#projects li[data-sid="s1"] .name')).toHaveText(
-    'kept',
-  );
+  await expect(
+    page.locator('#projects li[data-sid="s1"] .hv-session-row__name'),
+  ).toHaveText('kept');
 });
 
 test('launcher selects an agent and creates a session on the happy path', async ({
