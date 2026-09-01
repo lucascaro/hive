@@ -74,58 +74,6 @@
          title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   </aside>
   <div id="launcher" class="hidden" role="menu"></div>
-  <div id="project-editor" class="hidden" role="dialog">
-    <h3 id="project-editor-title">New project</h3>
-    <label>
-      <span>Name</span>
-      <input id="project-editor-name" type="text" autocomplete="off"/>
-    </label>
-    <label>
-      <span>Working directory</span>
-      <div class="cwd-row">
-        <input id="project-editor-cwd" type="text" autocomplete="off"/>
-        <button id="project-editor-browse" type="button">Browse…</button>
-      </div>
-    </label>
-    <label>
-      <span>Color</span>
-      <input id="project-editor-color" type="color"/>
-    </label>
-    <div class="actions">
-      <button id="project-editor-cancel">Cancel</button>
-      <button id="project-editor-save" class="primary">Save</button>
-    </div>
-  </div>
-  <div id="worktrees" class="hidden" role="dialog" aria-modal="true" aria-label="Worktrees">
-    <div id="worktrees-panel">
-      <header>
-        <h3>Worktrees <span id="worktrees-project" class="worktrees-project"></span></h3>
-        <button id="worktrees-close" type="button" aria-label="Close"></button>
-      </header>
-      <div id="worktrees-empty" class="worktrees-empty hidden">
-        <div class="worktrees-empty-card">
-          <span id="worktrees-empty-spinner" class="phase-spinner"></span>
-          <span id="worktrees-empty-text"></span>
-        </div>
-      </div>
-      <div id="worktrees-body">
-        <section id="worktrees-section-trees">
-          <h4>Worktrees</h4>
-          <div id="worktrees-list"></div>
-        </section>
-        <section id="worktrees-section-branches">
-          <h4>Branches with no worktree</h4>
-          <p class="worktrees-hint">
-            Create a worktree to pick this work back up.
-          </p>
-          <div id="worktrees-branches"></div>
-        </section>
-      </div>
-      <footer class="worktrees-footer">
-        <span class="worktrees-hint">[esc] close · (r) refresh</span>
-      </footer>
-    </div>
-  </div>
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
     <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" aria-label="Search commands" autocomplete="off"/>
     <div id="command-palette-list" role="listbox"></div>

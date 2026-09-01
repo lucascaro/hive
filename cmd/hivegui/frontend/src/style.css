@@ -421,92 +421,14 @@ body.resizing-sidebar #app { transition: none; }
 }
 
 
-#project-editor {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--surface-raised);
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  padding: 16px 20px;
-  min-width: 320px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.7);
-  z-index: 20;
-  font-size: var(--text-md);
-}
-#project-editor.hidden { display: none; }
-#project-editor h3 {
-  margin: 0 0 12px;
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--fg);
-}
-#project-editor label {
-  display: block;
-  margin-bottom: 10px;
-}
-#project-editor label > span {
-  display: block;
-  font-size: var(--text-xs);
-  color: var(--fg-muted);
-  margin-bottom: 4px;
-}
-#project-editor input[type=text],
-#project-editor input[type=color] {
-  width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--hover);
-  border-radius: 4px;
-  color: var(--fg);
-  padding: 6px 8px;
-  font: inherit;
-  box-sizing: border-box;
-  outline: none;
-}
-#project-editor input[type=color] {
-  height: 32px;
-  padding: 2px;
-}
+/* Project editor — composition only; the shell, fields and buttons are
+   primitives. The cwd row is the one thing that is this screen's own:
+   a path field with Browse… beside it. */
 #project-editor .cwd-row {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
-#project-editor .cwd-row input { flex: 1; }
-#project-editor .cwd-row button {
-  background: var(--btn);
-  border: 1px solid var(--btn-border);
-  color: #ccc; /* ui-lint: allow */
-  border-radius: 4px;
-  padding: 0 12px;
-  cursor: pointer;
-  font: inherit;
-  white-space: nowrap;
-}
-#project-editor .cwd-row button:hover { background: var(--hover); }
-#project-editor .actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
-}
-#project-editor .actions button {
-  background: var(--btn);
-  border: 1px solid var(--btn-border);
-  color: #ccc; /* ui-lint: allow */
-  border-radius: 4px;
-  padding: 6px 14px;
-  cursor: pointer;
-  font: inherit;
-}
-#project-editor .actions button:hover { background: var(--hover); }
-#project-editor .actions button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-#project-editor .actions button.primary:hover { background: #fbb04a; } /* ui-lint: allow */
+#project-editor .cwd-row .hv-input { flex: 1 1 auto; min-width: 0; }
 
 /* Settings — composition only. The dialog shell, fields, buttons and the
    error slot come from the primitives (src/ui/); what is left here is how
@@ -791,9 +713,6 @@ body.resizing-sidebar #app { transition: none; }
    none. :focus-visible only — mouse clicks stay ring-free. */
 
 #new-project-btn:focus-visible,
-#project-editor button:focus-visible,
-#settings-agent-add:focus-visible,
-#settings-panel .actions button:focus-visible,
 .settings-agent-delete:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -801,64 +720,16 @@ body.resizing-sidebar #app { transition: none; }
 
 /* ---------- worktrees browser ---------- */
 
-#worktrees {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 30;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 7vh;
-}
-#worktrees.hidden { display: none; }
-#worktrees-panel {
-  width: 720px;
-  max-width: 94vw;
-  max-height: 80vh;
-  background: var(--surface-raised);
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+/* The dialog body hands its scrolling to #worktrees-body so both
+   sections share one scroll container and the sticky headings have
+   something to stick to. */
+#worktrees-panel .hv-dialog__body {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
-  font-size: var(--text-md);
 }
-#worktrees-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--hover);
-}
-#worktrees-panel h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  color: var(--fg);
-}
-.worktrees-project {
-  color: #777; /* ui-lint: allow */
-  font-weight: normal;
-}
-#worktrees-close {
-  background: transparent;
-  border: 0;
-  color: var(--fg-muted);
-  font-size: var(--text-xl);
-  cursor: pointer;
-  padding: 0 4px;
-}
-#worktrees-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-#worktrees-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-/* One scroll container for both sections: worktrees first, then the
-   orphaned branches, read top to bottom as a single list. Two
-   independently-scrolling panes meant each could hide the other — and
-   as flex items they shrank proportionally to content, so a hundred
-   branches left the worktree list a few pixels tall. */
+#worktrees-empty { flex: 1 1 auto; }
 #worktrees-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -867,7 +738,7 @@ body.resizing-sidebar #app { transition: none; }
   min-height: 0;
 }
 #worktrees-panel section {
-  padding: 12px 14px 4px;
+  padding: var(--space-3) 0 var(--space-1);
 }
 #worktrees-section-branches { border-top: 1px solid #1e1e1e; } /* ui-lint: allow */
 #worktrees-panel section.hidden { display: none; }
@@ -880,7 +751,6 @@ body.resizing-sidebar #app { transition: none; }
    without this one the "Loading…" card stayed on screen under the list
    it was supposed to precede. */
 #worktrees-empty {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -910,9 +780,9 @@ body.resizing-sidebar #app { transition: none; }
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--surface-raised);
-  margin: -12px -14px 0;
-  padding: 12px 14px 6px;
+  background: var(--surface);
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 #worktrees-panel h4 {
   margin: 0 0 4px;
@@ -927,11 +797,6 @@ body.resizing-sidebar #app { transition: none; }
   color: #777; /* ui-lint: allow */
   line-height: 1.45;
 }
-.worktrees-footer {
-  padding: 8px 14px;
-  border-top: 1px solid var(--hover);
-}
-.worktrees-footer .worktrees-hint { margin: 0; }
 .worktree-row {
   display: flex;
   align-items: center;

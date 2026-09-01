@@ -21,14 +21,13 @@ import {
   DeleteBranch,
 } from '../../bridge.js';
 import { flashStatus, reportFailure } from '../dom.js';
-import { registerModal } from './registry.js';
 import {
   openChoiceDialog,
   dismissChoiceDialog,
   type Choice,
 } from './choice-dialog.js';
-import { pageEl } from '../el.js';
-import { icon } from '../../ui/icon.js';
+import { dialog } from '../../ui/dialog.js';
+import { kbd } from '../../ui/kbd.js';
 import { beginInlineRename } from '../inline-rename.js';
 import { releaseFocus } from './focus-trap.js';
 import {
@@ -73,15 +72,80 @@ let deps: WorktreesDeps = {
   openSessionIn: () => {},
 };
 
-export const worktreesEl = pageEl('worktrees');
-const titleProjectEl = pageEl('worktrees-project');
-const listEl = pageEl('worktrees-list');
-const branchesEl = pageEl('worktrees-branches');
-const emptyEl = pageEl('worktrees-empty');
-const emptyTextEl = pageEl('worktrees-empty-text');
-const emptySpinnerEl = pageEl('worktrees-empty-spinner');
-const treesSection = pageEl('worktrees-section-trees');
-const branchesSection = pageEl('worktrees-section-branches');
+// The panel's contents are built here with the same ids and classes the
+// old index.html block declared, so render()/showEmpty() and every
+// worktrees.spec.ts selector are untouched; only the shell moved to the
+// dialog primitive.
+function div(id: string, className?: string): HTMLElement {
+  const el = document.createElement('div');
+  el.id = id;
+  if (className) el.className = className;
+  return el;
+}
+
+function span(id: string, className?: string): HTMLElement {
+  const el = document.createElement('span');
+  el.id = id;
+  if (className) el.className = className;
+  return el;
+}
+
+function section(id: string, title: string, hint?: string): HTMLElement {
+  const el = document.createElement('section');
+  el.id = id;
+  const h = document.createElement('h4');
+  h.textContent = title;
+  el.append(h);
+  if (hint) {
+    const p = document.createElement('p');
+    p.className = 'worktrees-hint';
+    p.textContent = hint;
+    el.append(p);
+  }
+  return el;
+}
+
+function text(value: string): Text {
+  return document.createTextNode(value);
+}
+
+const titleProjectEl = span('worktrees-project', 'worktrees-project');
+const listEl = div('worktrees-list');
+const branchesEl = div('worktrees-branches');
+const emptyTextEl = span('worktrees-empty-text');
+const emptySpinnerEl = span('worktrees-empty-spinner', 'phase-spinner');
+const treesSection = section('worktrees-section-trees', 'Worktrees');
+treesSection.append(listEl);
+const branchesSection = section(
+  'worktrees-section-branches',
+  'Branches with no worktree',
+  'Create a worktree to pick this work back up.',
+);
+branchesSection.append(branchesEl);
+
+const emptyCard = document.createElement('div');
+emptyCard.className = 'worktrees-empty-card';
+emptyCard.append(emptySpinnerEl, emptyTextEl);
+const emptyEl = div('worktrees-empty', 'worktrees-empty hidden');
+emptyEl.append(emptyCard);
+
+const bodyEl = div('worktrees-body');
+bodyEl.append(treesSection, branchesSection);
+
+const dlg = dialog({
+  id: 'worktrees',
+  title: 'Worktrees',
+  size: 'lg',
+  body: [emptyEl, bodyEl],
+  hints: [kbd('esc'), text(' close · '), kbd('r'), text(' refresh')],
+  onClose: () => closeWorktrees(),
+});
+dlg.setTitleSuffix(titleProjectEl);
+dlg.panel.id = 'worktrees-panel';
+dlg.el
+  .querySelector('.hv-dialog__close')
+  ?.setAttribute('id', 'worktrees-close');
+export const worktreesEl = dlg.el;
 
 const modalState: { projectId: string; lastPayload: WorktreesPayload | null } =
   {
@@ -94,7 +158,7 @@ const modalState: { projectId: string; lastPayload: WorktreesPayload | null } =
 // the user is no longer looking at.
 
 export function worktreesOpen(): boolean {
-  return !worktreesEl.classList.contains('hidden');
+  return dlg.isOpen();
 }
 
 export function openWorktrees(project: ProjectInfo | null): void {
@@ -106,10 +170,10 @@ export function openWorktrees(project: ProjectInfo | null): void {
   modalState.lastPayload = null;
   titleProjectEl.textContent = project.name ? `· ${project.name}` : '';
   renderLoading();
-  worktreesEl.classList.remove('hidden');
+  dlg.show();
   deps.setFocusedTile(null);
   refresh();
-  setTimeout(() => pageEl('worktrees-close').focus(), 0);
+  setTimeout(() => document.getElementById('worktrees-close')?.focus(), 0);
 }
 
 export function closeWorktrees(): void {
@@ -117,7 +181,7 @@ export function closeWorktrees(): void {
   // Drop focus before hiding, or it is left on a display:none element
   // and the browser resolves it to <body> — stranding the keyboard.
   releaseFocus(worktreesEl);
-  worktreesEl.classList.add('hidden');
+  dlg.hide();
   modalState.projectId = '';
   deps.refocusActiveTerm();
 }
@@ -554,15 +618,11 @@ async function confirmAndDelete(w: WorktreeInfo): Promise<void> {
 
 export function initWorktrees(injected: WorktreesDeps): void {
   deps = injected;
-  registerModal(worktreesEl);
-  const worktreesCloseBtn = pageEl('worktrees-close');
-  worktreesCloseBtn.replaceChildren(icon('x'));
-  worktreesCloseBtn.addEventListener('click', closeWorktrees);
+  document.getElementById('app')?.append(worktreesEl);
+  // Escape, the close button and the backdrop are the dialog
+  // primitive's; only the refresh key is this module's.
   worktreesEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      closeWorktrees();
-    } else if (
+    if (
       (e.key === 'r' || e.key === 'R') &&
       !e.metaKey &&
       !e.ctrlKey &&
@@ -572,10 +632,5 @@ export function initWorktrees(injected: WorktreesDeps): void {
       e.preventDefault();
       refresh();
     }
-  });
-  // Click on the backdrop (not the panel) closes, matching the
-  // launcher's outside-click behaviour.
-  worktreesEl.addEventListener('mousedown', (e) => {
-    if (e.target === worktreesEl) closeWorktrees();
   });
 }
