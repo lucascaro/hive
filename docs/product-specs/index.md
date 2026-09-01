@@ -8,10 +8,10 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
-| P1 | — | The e2e-real Playwright suite fails on main and blocks every PR | TRIAGE | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
 | P2 | — | Minimize whole projects from the sidebar | REVIEW | [250-minimize-projects-from-sidebar](250-minimize-projects-from-sidebar.md) |
 | P2 | — | Auto-update with release/latest channels | REVIEW | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
 | P2 | — | Minimized project chips fill the tray with a right-aligned restore | GATE | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
+| P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | P2 | — | UI design system: tokens, themes, icons, primitives | IMPLEMENT | [ui-design-system](ui-design-system.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
@@ -21,6 +21,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
 | — | Keyboard switching skips minimized sessions and projects | #293 | 2026-08-30 | [252-keyboard-switching-skips-minimized-sessions](252-keyboard-switching-skips-minimized-sessions.md) |
 | — | Strip ANSI escape sequences from update build progress lines | #296 | 2026-08-30 | [253-strip-ansi-escapes-from-update-progress](253-strip-ansi-escapes-from-update-progress.md) |
 | — | Show terminal window titles under session names in the sidebar | #288 | 2026-08-29 | [248-sidebar-window-titles-under-session-names](248-sidebar-window-titles-under-session-names.md) |

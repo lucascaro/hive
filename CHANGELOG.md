@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hover. Minimum sidebar width is now 220px.
 
 ### Fixed
+- Fixed the `e2e-real` test harness, which had been failing on `main` for
+  reasons unrelated to any diff. `hived-ws-bridge` dispatched every JSON-RPC
+  frame on its own goroutine, so under CPU contention adjacent `WriteStdin`
+  keystrokes reached the pty out of order and the commands the specs typed
+  were not the commands the shell ran. `WriteStdin` is now applied in arrival
+  order. Test-only: the shipped GUI does not use this bridge.
 - Keyboard switching now skips what you minimized. ⌘↑ / ⌘↓ step over
   sessions in the tray and sessions whose project is minimized — they no
   longer pull you back into a project you put away, or drop you out of a
