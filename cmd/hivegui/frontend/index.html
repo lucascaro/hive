@@ -41,7 +41,10 @@
         if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
         document.documentElement.dataset.theme = t;
         var o = localStorage.getItem('hive.themeOverrides');
-        if (o) document.getElementById('theme-overrides').textContent = ':root {\n  ' + o + '\n}';
+        // ':root:root', not ':root': themes.css's preset blocks are
+        // :root[data-theme="…"] (0,2,0) and would otherwise outrank
+        // these. Kept in sync with applyOverrides in theme.ts.
+        if (o) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
       } catch (e) { document.documentElement.dataset.theme = 'classic'; }
     </script>
 </head>

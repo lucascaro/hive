@@ -4,6 +4,7 @@
 // native Wails runtime. Drives the UI through a tiny scripted
 // daemon-state machine that Playwright can poke via window.__hive.
 
+import { state as appState } from '../../src/app/state.js';
 import type { ProjectInfo, SessionInfo } from '../../src/app/state.js';
 // Type-only, so it is erased before Vite ever sees it — the whole point of
 // this module is to stand in for wailsjs at runtime. Using the generated
@@ -932,6 +933,13 @@ if (typeof window !== 'undefined') {
     },
     phaseHold(ms = 250) {
       phaseHoldMs = ms;
+    },
+    // xterm caches its palette, so a theme change that reaches the CSS
+    // is not proof it reached the terminals. This reads what the live
+    // Terminal objects actually hold; nothing in the DOM shows it.
+    termThemeBg() {
+      const first = [...appState.terms.values()][0];
+      return first?.term?.options?.theme?.background ?? '';
     },
   };
 }

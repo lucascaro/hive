@@ -57,6 +57,8 @@ interface HiveTestApi {
   failNext?(method: string, message?: string): void;
   delayNext?(method: string, ms?: number): void;
   phaseHold?(ms?: number): void;
+  // Background colour the first open terminal is actually painted with.
+  termThemeBg?(): string;
 }
 
 declare global {

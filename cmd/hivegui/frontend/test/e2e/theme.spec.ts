@@ -212,3 +212,104 @@ test('no Unicode glyph is used as a control label', async ({ page }) => {
   });
   expect(found).toEqual([]);
 });
+
+// Settings › Appearance, driven through the real dialog. The unit tests
+// prove the sanitiser; this proves the wiring — that picking a preset
+// repaints the app, that a bad override line is reported instead of
+// injected, and that a good one survives a reload.
+test.describe('Settings > Appearance', () => {
+  async function openAppearance(page: Page) {
+    await boot(page);
+    await page.keyboard.press(`${mod}+,`);
+    await expect(page.locator('#settings')).toBeVisible();
+  }
+
+  test('picking a preset repaints the sidebar and is remembered', async ({
+    page,
+  }) => {
+    await openAppearance(page);
+    const sidebarBg = () =>
+      page
+        .locator('#sidebar')
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
+    const before = await sidebarBg();
+
+    await page.locator('#settings-theme').selectOption('hive-light');
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+    expect(await sidebarBg()).not.toBe(before);
+
+    // Cancel does not revert it — Appearance is a preference, not part
+    // of the agent draft.
+    await page.locator('#settings-cancel').click();
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+    expect(await page.evaluate(() => localStorage.getItem('hive.theme'))).toBe(
+      'hive-light',
+    );
+
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+  });
+
+  test('the preset list is exactly what theme.ts exports', async ({ page }) => {
+    await openAppearance(page);
+    // Guards the "data-driven from PRESETS" requirement: phase 6 adds
+    // native-*/terminal by editing theme.ts alone.
+    const values = await page
+      .locator('#settings-theme option')
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(values).toEqual(['system', 'hive-dark', 'hive-light', 'classic']);
+  });
+
+  test('a good override applies live; a bad line is reported, not injected', async ({
+    page,
+  }) => {
+    await openAppearance(page);
+    const accent = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--accent')
+          .trim(),
+      );
+
+    await page.locator('#settings-overrides').fill('--accent: #7aa2f7;');
+    expect(await accent()).toBe('#7aa2f7');
+    await expect(page.locator('#settings-overrides-error')).toBeHidden();
+
+    await page
+      .locator('#settings-overrides')
+      .fill('--accent: #7aa2f7;\nbody { display: none }');
+    await expect(page.locator('#settings-overrides-error')).toBeVisible();
+    await expect(page.locator('#settings-overrides-error')).toContainText(
+      'Ignored',
+    );
+    // The good line still applies and the bad one did not escape the
+    // :root block — the sidebar is still on screen.
+    expect(await accent()).toBe('#7aa2f7');
+    await expect(page.locator('#sidebar')).toBeVisible();
+
+    // Only the sanitised text is persisted.
+    expect(
+      await page.evaluate(() => localStorage.getItem('hive.themeOverrides')),
+    ).toBe('--accent: #7aa2f7;');
+  });
+
+  test('an override reaches every open terminal', async ({ page }) => {
+    await openAppearance(page);
+    await page.locator('#settings-overrides').fill('--term-bg: #123456;');
+    // Read off the live Terminal, not the DOM: xterm caches its palette,
+    // so CSS alone would prove nothing (window.__hive.termThemeBg, in
+    // test/e2e/wails-mock.ts).
+    await expect
+      .poll(() => page.evaluate(() => window.__hive.termThemeBg?.() ?? ''))
+      .toBe('#123456');
+  });
+});

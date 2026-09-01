@@ -185,13 +185,16 @@ describe('applyTheme', () => {
 });
 
 describe('applyOverrides', () => {
+  // ':root:root' rather than ':root' — themes.css's preset blocks are
+  // :root[data-theme="…"] (0,2,0), which a plain :root (0,1,0) loses to
+  // regardless of order, so every user override was silently ignored.
   it('writes overrides into the static style element, replacing not appending', () => {
     document.head.innerHTML = '<style id="theme-overrides"></style>';
     applyOverrides('--accent: red;');
     const el = document.getElementById('theme-overrides');
-    expect(el?.textContent).toBe(':root {\n  --accent: red;\n}');
+    expect(el?.textContent).toBe(':root:root {\n  --accent: red;\n}');
     applyOverrides('--accent: blue;');
-    expect(el?.textContent).toBe(':root {\n  --accent: blue;\n}');
+    expect(el?.textContent).toBe(':root:root {\n  --accent: blue;\n}');
     applyOverrides('');
     expect(el?.textContent).toBe('');
   });

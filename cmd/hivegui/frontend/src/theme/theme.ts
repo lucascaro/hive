@@ -142,9 +142,13 @@ export function writeOverrides(css: string, storage?: Storage): void {
 }
 
 // applyOverrides rewrites the <style id="theme-overrides"> that
-// index.html declares after themes.css — overrides beat presets by
-// cascade ORDER, not by specificity, so the element's position matters
-// and it is never moved or recreated.
+// index.html declares after themes.css. The element's position is what
+// puts overrides last in the cascade, so it is never moved or recreated
+// — but position alone is not enough: every preset block in themes.css
+// is `:root[data-theme="…"]` (0,2,0), which outranks a plain `:root`
+// (0,1,0) whatever the order. `:root:root` matches exactly the same
+// element at the same 0,2,0, so the later rule wins the tie. Keep this
+// selector in sync with index.html's pre-paint boot script.
 export function applyOverrides(css: string, doc: Document = document): void {
   let el = doc.getElementById(OVERRIDES_STYLE_ID);
   if (!el) {
@@ -152,7 +156,7 @@ export function applyOverrides(css: string, doc: Document = document): void {
     el.id = OVERRIDES_STYLE_ID;
     doc.head.appendChild(el);
   }
-  el.textContent = css ? `:root {\n  ${css}\n}` : '';
+  el.textContent = css ? `:root:root {\n  ${css}\n}` : '';
 }
 
 // Side effect on import: stamp before anything renders. index.html's
