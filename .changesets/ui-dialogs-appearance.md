@@ -10,3 +10,6 @@ bump: minor
 - New Settings > Appearance: pick a theme preset (System, Hive Dark, Hive
   Light, Classic) and override any design token by hand. Changes apply as you
   make them, reach open terminals, and are remembered.
+- Terminal colours now follow the theme: each preset carries its own ANSI
+  palette, so Hive Light no longer renders program output in colours tuned
+  for a dark background.

@@ -49,7 +49,7 @@ Read via `getComputedStyle(document.documentElement).getPropertyValue(...)` once
 ## Adding a preset
 
 1. Copy the `hive-dark` block in `themes.css`, rename, re-value every token (no partial presets — missing tokens fall through to `hive-dark` silently and look broken in light).
-2. Add ANSI 16 (phase 6 — the tokens do not exist yet; see the mapping table).
+2. Add ANSI 16 (`--ansi-0 … --ansi-15`). A preset on a light ground **must** re-value all sixteen: the defaults are xterm's Tango palette, and seven of those fail WCAG AA on white — `brightWhite` lands at 1.16:1, i.e. invisible. `test/e2e/theme.spec.ts` computes the contrast rather than pinning hexes, so a new light preset is checked by the same rule.
 3. Run `scripts/ui-lint.sh --contrast`.
 4. Add a Playwright screenshot baseline (`e2e/theme.spec.ts`) for sidebar + dialog under the new preset.
 5. Add a row to the table above.

@@ -57,6 +57,56 @@ describe('xtermTheme', () => {
   });
 });
 
+describe('ANSI palette', () => {
+  it("maps --ansi-0..15 onto xterm's sixteen colour keys", () => {
+    const root = document.documentElement;
+    const names = [
+      'black',
+      'red',
+      'green',
+      'yellow',
+      'blue',
+      'magenta',
+      'cyan',
+      'white',
+      'brightBlack',
+      'brightRed',
+      'brightGreen',
+      'brightYellow',
+      'brightBlue',
+      'brightMagenta',
+      'brightCyan',
+      'brightWhite',
+    ] as const;
+    // Distinct sentinel per slot: an off-by-one in the mapping is the
+    // failure mode here, and a uniform value would not catch it.
+    names.forEach((_, i) => {
+      root.style.setProperty(
+        `--ansi-${i}`,
+        `#0000${i.toString(16)}${i.toString(16)}`,
+      );
+    });
+    const t = xtermTheme(document) as Record<string, string>;
+    names.forEach((name, i) => {
+      expect(t[name], name).toBe(`#0000${i.toString(16)}${i.toString(16)}`);
+    });
+    for (let i = 0; i < names.length; i++) {
+      root.style.removeProperty(`--ansi-${i}`);
+    }
+  });
+
+  it('omits a slot the preset does not define rather than sending an empty string', () => {
+    for (let i = 0; i < 16; i++) {
+      document.documentElement.style.removeProperty(`--ansi-${i}`);
+    }
+    const t = xtermTheme(document) as Record<string, string>;
+    // jsdom resolves no stylesheet, so every --ansi-* is empty here;
+    // xterm must keep its own defaults instead of being handed ''.
+    expect('black' in t).toBe(false);
+    expect(t.background).toBeDefined();
+  });
+});
+
 describe('applyXtermTheme', () => {
   let applyXtermTheme: typeof import('../../src/app/session-term.js').applyXtermTheme;
   let state: typeof import('../../src/app/state.js').state;

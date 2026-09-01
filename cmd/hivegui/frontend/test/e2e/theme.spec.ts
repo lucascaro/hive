@@ -364,6 +364,55 @@ test.describe('Settings > Appearance', () => {
     await page.evaluate(() => localStorage.removeItem('hive.themeOverrides'));
   });
 
+  // The gap this closes: with no --ansi-* tokens, xterm kept its Tango
+  // defaults under every preset, and seven of those fail WCAG AA on
+  // hive-light's white ground (brightWhite at 1.16:1 — invisible).
+  test('hive-light gives terminals a palette readable on white', async ({
+    page,
+  }) => {
+    await openAppearance(page);
+    await page.locator('#settings-theme').selectOption('hive-light');
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+
+    const palette = await page.evaluate(() => {
+      const cs = getComputedStyle(document.documentElement);
+      return Array.from({ length: 16 }, (_, i) =>
+        cs.getPropertyValue(`--ansi-${i}`).trim(),
+      );
+    });
+    expect(palette.filter(Boolean)).toHaveLength(16);
+
+    // Contrast against the terminal ground, computed here rather than
+    // asserted as fixed hexes: the point is legibility, not the values.
+    const worst = await page.evaluate((pal) => {
+      const lum = (hex: string) => {
+        const c = (hex.replace('#', '').match(/../g) ?? []).map((h) => {
+          const v = parseInt(h, 16) / 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      };
+      const bg = getComputedStyle(document.documentElement)
+        .getPropertyValue('--term-bg')
+        .trim();
+      return Math.min(
+        ...pal.map((c) => {
+          const [hi, lo] = [lum(c), lum(bg)].sort((a, b) => b - a);
+          return (hi + 0.05) / (lo + 0.05);
+        }),
+      );
+    }, palette);
+    expect(worst).toBeGreaterThanOrEqual(4.5);
+
+    // And it actually reaches the terminal, not just the CSS.
+    await expect
+      .poll(() => page.evaluate(() => window.__hive.termAnsi?.()[15] ?? ''))
+      .toBe(palette[15]);
+  });
+
   test('an override reaches every open terminal', async ({ page }) => {
     await openAppearance(page);
     await page.locator('#settings-overrides').fill('--term-bg: #123456;');

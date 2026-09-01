@@ -61,11 +61,42 @@ export function applyTheme(name: ThemeName, doc: Document = document): void {
   doc.documentElement.dataset.theme = resolveTheme(name, prefersDark);
 }
 
+// The sixteen ANSI slots, in the order the tokens are numbered, mapped
+// to the keys xterm's ITheme uses.
+const ANSI_KEYS = [
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'brightBlack',
+  'brightRed',
+  'brightGreen',
+  'brightYellow',
+  'brightBlue',
+  'brightMagenta',
+  'brightCyan',
+  'brightWhite',
+] as const;
+
 export function xtermTheme(doc: Document = document) {
   const cs = getComputedStyle(doc.documentElement);
   const v = (n: string) => cs.getPropertyValue(n).trim();
   const accent = v('--accent');
+  // A slot the preset does not define is omitted, never sent as '': an
+  // empty string is not a colour, and xterm keeping its own default is
+  // the right answer for a token that isn't there (jsdom, which
+  // resolves no stylesheet, is the case that proves it).
+  const ansi: Record<string, string> = {};
+  ANSI_KEYS.forEach((key, i) => {
+    const value = v(`--ansi-${i}`);
+    if (value) ansi[key] = value;
+  });
   return {
+    ...ansi,
     background: v('--term-bg'),
     foreground: v('--term-fg'),
     cursor: accent,

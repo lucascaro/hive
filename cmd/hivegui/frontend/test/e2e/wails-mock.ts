@@ -937,6 +937,30 @@ if (typeof window !== 'undefined') {
     // xterm caches its palette, so a theme change that reaches the CSS
     // is not proof it reached the terminals. This reads what the live
     // Terminal objects actually hold; nothing in the DOM shows it.
+    // The sixteen ANSI slots as the live Terminal holds them — the CSS
+    // being right proves nothing about what xterm was handed.
+    termAnsi() {
+      const first = [...appState.terms.values()][0];
+      const t = (first?.term?.options?.theme ?? {}) as Record<string, string>;
+      return [
+        'black',
+        'red',
+        'green',
+        'yellow',
+        'blue',
+        'magenta',
+        'cyan',
+        'white',
+        'brightBlack',
+        'brightRed',
+        'brightGreen',
+        'brightYellow',
+        'brightBlue',
+        'brightMagenta',
+        'brightCyan',
+        'brightWhite',
+      ].map((k) => t[k] ?? '');
+    },
     termThemeBg() {
       const first = [...appState.terms.values()][0];
       return first?.term?.options?.theme?.background ?? '';
