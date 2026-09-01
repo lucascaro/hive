@@ -314,6 +314,42 @@ test('settings: Shift+Tab wraps backwards without escaping', async ({
   await shiftTabAround(page, '#settings', 10);
 });
 
+// A sidebar re-render must not reach into an open dialog. renderSidebar
+// wraps its rebuild in preserveFocus (src/lib/preserve-focus.ts, from
+// main), and the daemon emits session:event `updated` on every phase
+// step — up to 30s after a spawn. If that restore fired while a modal
+// held the keyboard, typing would jump out of the dialog mid-edit.
+test('a sidebar re-render does not steal focus from an open dialog', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+  // A row has to exist before anything in it can hold focus.
+  await page.locator('#settings-agent-add').click();
+  await page.locator('.settings-agent-name').first().focus();
+
+  await page.evaluate(() => {
+    const s = window.__hive.state?.sessions[0];
+    if (!s) throw new Error('no seeded session');
+    window.__hive.emit(
+      'session:event',
+      JSON.stringify({ kind: 'updated', session: s }),
+    );
+  });
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getElementById('settings')
+            ?.contains(document.activeElement) ?? false,
+      ),
+    )
+    .toBe(true);
+});
+
 // ---------- project editor ----------
 
 // The editor claims aria-modal="true" (the dialog primitive sets it), so
