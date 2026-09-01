@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/ui-design-system.md](../../product-specs/ui-design-system.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT (phases 1–2 shipped: PR #292, #295; phases 3–6 not started)
+- **Stage:** IMPLEMENT (phases 1–5 shipped; phase 6 not started)
 - **Status:** active
 
 ## Summary
@@ -90,11 +90,17 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-30** — Both minimized trays (`#minimized-tray`, `#minimized-projects`) are `<div role="toolbar">`, not `<ul>`. Why: `chip()` returns a `<span>` so it can also sit inline elsewhere, and a `<span>` is not a valid child of `<ul>`; `role="toolbar"` with an `aria-label` is the accurate role for a strip of restore controls anyway, where a list role would announce them as content.
 - **2026-08-30** — State resolution reads `last_error`, not `exit_code`. Why: the daemon never sends an exit code; `SessionInfo` has `alive` and `last_error` only. Line 2 reads "Exited" or "Exited — <error>".
 
+- **2026-08-31** — Appearance applies on change, not on Save. Why: a theme with no round-trip and no validation has nothing to be transactional about, and a preview you cannot see is not a picker. Cancel therefore leaves it applied, and the section says so.
+- **2026-08-31** — Overrides are sanitised on write and stored as finished CSS. Why: the pre-paint boot script would otherwise need a second copy of the sanitiser; `theme.ts` re-sanitises on read so a hand-edited store is still safe.
+- **2026-08-31** — The override block is `:root:root`, not `:root`. Why: themes.css's preset blocks are `:root[data-theme="…"]` (0,2,0) and outrank a plain `:root` (0,1,0) whatever the cascade order — as planned, every user override was silently ignored. Caught in a real browser, pinned by `theme.spec.ts`.
+- **2026-08-31** — Settings keeps its Updates section outside the scrolling part of the dialog body. Why: `dialog()` scrolls the whole body, so a dozen custom agents pushed the channel picker below the fold; `test/e2e/settings.spec.ts` already guarded that and caught it.
+- **2026-08-31** — Phase 5 also rebuilt the Updates section (channel, source repo, update action), which the phase-5 plan predates. Why: it lives inside the Settings dialog, so it moved with the markup.
+
 ## Progress
 
 - [x] Phase 1
 - [x] Phase 2
 - [x] Phase 3
 - [x] Phase 4
-- [ ] Phase 5
+- [x] Phase 5
 - [ ] Phase 6

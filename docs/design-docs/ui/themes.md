@@ -22,7 +22,11 @@ Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) an
 
 Settings → Appearance → "Custom tokens" textarea. Content is CSS declarations only (e.g. `--accent: #7aa2f7; --font-mono: "Berkeley Mono";`). Persisted in `localStorage['hive.themeOverrides']`; preset name in `localStorage['hive.theme']` (same store as `hive.fontSize` and the view key today).
 
-Applied at boot and on save as a `<style id="theme-overrides">:root { … }</style>` appended after `themes.css`, so overrides beat presets by cascade order, not specificity. Input is sanitised to `--[a-z0-9-]+:\s*[^;{}]+;` lines; anything else is dropped and reported in the Settings error slot.
+Applied at boot and on every keystroke as a `<style id="theme-overrides">:root:root { … }</style>` declared in `index.html` after `themes.css`. Order is what makes overrides last, but order alone is not enough: every preset block is `:root[data-theme="…"]` (0,2,0), which outranks a plain `:root` (0,1,0) — `:root:root` ties the specificity and wins on order. Input is sanitised to `--[a-z0-9-]+: <value>;` lines (`sanitizeOverrides` in `theme.ts`); anything else is dropped and reported in the Settings error slot.
+
+Overrides are sanitised **on write** and stored as finished CSS, so `index.html`'s pre-paint boot script is a two-line assignment rather than a second copy of the sanitiser. `theme.ts` re-sanitises what it reads, so a hand-edited store is still safe.
+
+Appearance applies as you change it and is remembered; Cancel does not revert it. The agent list in the same dialog is a transactional draft, but a theme has no round-trip and nothing to validate — and a preview you cannot see is not a picker.
 
 Fonts named in overrides must already be installed on the OS — Hive doesn't fetch fonts.
 
