@@ -11,7 +11,11 @@ export type ThemeName =
   | 'terminal'
   | 'system';
 export const THEME_KEY = 'hive.theme';
-export const DEFAULT_THEME: ThemeName = 'classic';
+// Phase 6: new installs follow the OS. Users who already set a preset keep
+// it — readTheme() only falls back when the stored value is absent or
+// garbage. index.html's pre-paint script hard-codes the same fallback;
+// keep the two in sync.
+export const DEFAULT_THEME: ThemeName = 'system';
 export interface Preset {
   id: ThemeName;
   label: string;

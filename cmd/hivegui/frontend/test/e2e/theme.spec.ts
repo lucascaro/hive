@@ -97,6 +97,9 @@ test.describe('preset switching keeps the chrome stable', () => {
   );
 
   test('sidebar + terminal', async ({ page }) => {
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
     await seedSidebar(page);
@@ -108,6 +111,9 @@ test.describe('preset switching keeps the chrome stable', () => {
   });
 
   test('settings dialog', async ({ page }) => {
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
     await page.keyboard.press(`${mod}+,`);
@@ -174,6 +180,9 @@ test('hive-light preset changes the sidebar ground', async ({ page }) => {
 test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', async ({
   page,
 }) => {
+  // classic is a preset, not the default, since phase 6 — it has to be
+  // asked for by name.
+  await page.addInitScript(() => localStorage.setItem('hive.theme', 'classic'));
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -227,7 +236,17 @@ test.describe('Settings > Appearance', () => {
   test('picking a preset repaints the sidebar and is remembered', async ({
     page,
   }) => {
+    // The default is 'system' now, so what it resolves to depends on the
+    // runner's colour scheme — and if that were already light the repaint
+    // assertion below would be vacuous. Pin the media query rather than
+    // seeding storage: addInitScript would re-run on the reload at the end
+    // of this test and overwrite the preference it is checking survived.
+    await page.emulateMedia({ colorScheme: 'dark' });
     await openAppearance(page);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-dark',
+    );
     const sidebarBg = () =>
       page
         .locator('#sidebar')

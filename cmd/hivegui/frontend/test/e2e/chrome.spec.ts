@@ -169,6 +169,11 @@ test.describe('phase-4 chrome baselines', () => {
       await expect(page).toHaveScreenshot(`launcher-${theme}.png`, {
         maxDiffPixels: 0,
         animations: 'disabled',
+        // Same mask as the grid shot. `animations: 'disabled'` does not
+        // stop xterm's cursor blink — it is a canvas repaint, not a CSS
+        // animation — so without this the shot flakes on a single cursor
+        // cell, and the launcher is what this baseline is about anyway.
+        mask: [page.locator('.xterm')],
       });
     });
   }

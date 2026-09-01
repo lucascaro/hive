@@ -27,9 +27,10 @@
         var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
         var t = localStorage.getItem('hive.theme');
         var dark = matchMedia('(prefers-color-scheme: dark)').matches;
-        if (t === 'system') t = dark ? 'hive-dark' : 'hive-light';
-        // DEFAULT_THEME in theme.ts — keep the two in sync.
-        else if (KNOWN.indexOf(t) < 0) t = 'classic';
+        // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
+        // stored value resolves the same way an explicit 'system' does.
+        // Keep the two in sync.
+        if (t === 'system' || KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
         document.documentElement.dataset.theme = t;
         // The store is hand-editable, so it is shape-checked before it
         // reaches the <style>: declarations only, no block, tag, at-rule
@@ -47,7 +48,7 @@
             return FN_OK.indexOf(f.slice(0, -1).toLowerCase()) >= 0;
           });
         if (ok) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
-      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
+      } catch (e) { document.documentElement.dataset.theme = 'hive-dark'; }
     </script>
 </head>
 <body>
