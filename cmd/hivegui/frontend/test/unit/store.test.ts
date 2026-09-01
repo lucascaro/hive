@@ -353,6 +353,34 @@ describe('the subscribe contract', () => {
     unsub();
   });
 
+  it('project and session list actions are silent when nothing changes', () => {
+    applyProjectList([{ id: 'p1', order: 1 }]);
+    setSessions([{ id: 'a' }]);
+    const p = s().projects[0];
+    const sess = s().sessions[0];
+    let hits = 0;
+    const unsub = appStore.subscribe(() => {
+      hits++;
+    });
+
+    addProject(p); // already present
+    updateProject(p); // the very object already stored
+    updateProject({ id: 'nope' }); // unknown id
+    removeProject('nope');
+    addSession(sess);
+    updateSession(sess);
+    updateSession({ id: 'nope' });
+    removeSession('nope');
+
+    expect(hits).toBe(0);
+
+    // …and still fire for a genuine change.
+    updateProject({ id: 'p1', order: 2 });
+    expect(hits).toBe(1);
+
+    unsub();
+  });
+
   it('stops delivering after unsubscribe', () => {
     let hits = 0;
     const unsub = appStore.subscribe(() => {

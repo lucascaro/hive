@@ -164,8 +164,12 @@ function mapWithout<V>(
   return next;
 }
 
+// Returns the SAME array when it is already in order, so a sort that
+// changes nothing cannot wake a subscriber — the same contract the
+// setWith/mapWith helpers keep.
 function byOrder<T extends { order?: number }>(list: T[]): T[] {
-  return [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const next = [...list].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return next.every((item, i) => item === list[i]) ? list : next;
 }
 
 function initialData(): AppData {
@@ -274,12 +278,17 @@ export function addProject(p: ProjectInfo): void {
 
 export function updateProject(p: ProjectInfo): void {
   const s = get();
+  // `map` always allocates, so bail out before it when there is nothing
+  // to replace — an unknown id, or the very object already stored.
+  const i = s.projects.findIndex((x) => x.id === p.id);
+  if (i < 0 || s.projects[i] === p) return;
   const projects = s.projects.map((x) => (x.id === p.id ? p : x));
   set({ projects: byOrder(projects) });
 }
 
 export function removeProject(id: string): void {
   const s = get();
+  if (!s.projects.some((p) => p.id === id)) return;
   const projects = s.projects.filter((p) => p.id !== id);
   const collapsed = setWithout(s.collapsed, id);
   const minimizedProjects = setWithout(s.minimizedProjects, id);
@@ -334,11 +343,16 @@ export function addSession(s: SessionInfo): void {
 }
 
 export function updateSession(s: SessionInfo): void {
-  set({ sessions: get().sessions.map((x) => (x.id === s.id ? s : x)) });
+  const cur = get().sessions;
+  const i = cur.findIndex((x) => x.id === s.id);
+  if (i < 0 || cur[i] === s) return;
+  set({ sessions: cur.map((x) => (x.id === s.id ? s : x)) });
 }
 
 export function removeSession(id: string): void {
-  set({ sessions: get().sessions.filter((s) => s.id !== id) });
+  const cur = get().sessions;
+  if (!cur.some((s) => s.id === id)) return;
+  set({ sessions: cur.filter((s) => s.id !== id) });
 }
 
 export function setAlive(id: string, alive: boolean): void {
