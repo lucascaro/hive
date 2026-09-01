@@ -1,7 +1,10 @@
-// ---------- settings (custom agents) ----------
+// ---------- settings (appearance + custom agents + updates) ----------
 //
-// Follows the project-editor pattern: module-scope element refs, an
-// open/close pair, and focus callbacks injected via init.
+// The panel is built here rather than declared in index.html: it is the
+// only way the dialog and field primitives can own the markup, and the
+// Appearance section's controls are data-driven off PRESETS anyway.
+// The ids the keyboard pipeline and the e2e specs key off are set
+// explicitly and are part of this module's contract.
 //
 // The agent list is edited as a local draft and written in one
 // SaveCustomAgents call. Go owns validation and ID assignment — new
@@ -9,29 +12,54 @@
 // deliberately not editable: registry entries persist only the agent
 // id, so changing one would break revive for every session already
 // created with that agent.
+//
+// Appearance is NOT part of that draft. It is a local preference with
+// no round-trip and nothing to validate, so it applies and persists on
+// change — you cannot choose a theme you are not allowed to look at.
+// Cancel therefore does not revert it, and the section says so.
 
 import {
-  ListCustomAgents,
-  SaveCustomAgents,
+  EventsOn,
   GetUpdateSettings,
+  ListCustomAgents,
+  PickDirectory,
+  SaveCustomAgents,
   SaveUpdateSettings,
   SourceRepoStatusFor,
-  UpdateStatus,
   StartUpdate,
-  PickDirectory,
-  EventsOn,
+  UpdateStatus,
 } from '../../bridge.js';
-import { applyUpdateAndRestart } from '../banners.js';
-import { registerModal } from './registry.js';
-import { pageEl } from '../el.js';
-import { icon } from '../../ui/icon.js';
-import { iconButton } from '../../ui/icon-button.js';
 import { isMac } from '../../lib/platform.js';
 import {
-  updateButtonState,
   CHANNEL_LATEST,
   CHANNEL_RELEASE,
+  updateButtonState,
 } from '../../lib/update-state.js';
+import {
+  applyOverrides,
+  applyTheme,
+  PRESETS,
+  readOverrides,
+  readTheme,
+  sanitizeOverrides,
+  THEME_KEY,
+  type ThemeName,
+  writeOverrides,
+} from '../../theme/theme.js';
+import { button } from '../../ui/button.js';
+import { dialog } from '../../ui/dialog.js';
+import {
+  colorInput,
+  errorSlot,
+  field,
+  selectInput,
+  textareaInput,
+  textInput,
+} from '../../ui/field.js';
+import { iconButton } from '../../ui/icon-button.js';
+import { applyUpdateAndRestart } from '../banners.js';
+import { releaseFocus } from './focus-trap.js';
+import { applyXtermTheme } from '../session-term.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
 
@@ -47,20 +75,238 @@ let deps: SettingsDeps = {
   refocusActiveTerm: () => {},
 };
 
-export const settingsEl = pageEl('settings');
-const listEl = pageEl('settings-agents-list');
-const errorEl = pageEl('settings-error');
-const channelEl = pageEl<HTMLSelectElement>('settings-update-channel');
-const sourceRepoEl = pageEl<HTMLInputElement>('settings-source-repo');
-const sourceRepoRow = pageEl('settings-source-repo-row');
-const sourceRepoBrowse = pageEl<HTMLButtonElement>(
-  'settings-source-repo-browse',
-);
-const sourceRepoHint = pageEl('settings-source-repo-hint');
-const updateActionEl = pageEl<HTMLButtonElement>('settings-update-action');
-const updateStatusEl = pageEl('settings-update-status');
-
 const DEFAULT_COLOR = '#64748b';
+
+function hintPara(text: string): HTMLParagraphElement {
+  const p = document.createElement('p');
+  p.className = 'settings-hint';
+  p.textContent = text;
+  return p;
+}
+
+function heading(text: string): HTMLElement {
+  const h = document.createElement('h4');
+  h.textContent = text;
+  return h;
+}
+
+// ---------- appearance ----------
+
+const themeError = errorSlot('settings-overrides-error');
+
+const themeSelect = selectInput({
+  id: 'settings-theme',
+  ariaLabel: 'Theme',
+  options: PRESETS.map((p) => ({ value: p.id, label: p.label })),
+  onChange: (value) => selectPreset(value as ThemeName),
+});
+
+const overridesInput = textareaInput({
+  id: 'settings-overrides',
+  ariaLabel: 'Custom tokens',
+  rows: 4,
+  placeholder: '--accent: #7aa2f7;',
+  onInput: (value) => queueUserOverrides(value),
+});
+// Programmatic link to the slot this box writes its rejections into,
+// mirroring the source-repo field below: without it a screen reader
+// never hears why a line was ignored.
+overridesInput.setAttribute('aria-describedby', 'settings-overrides-error');
+
+// Applying is not free: a style invalidation, then a getComputedStyle
+// and a palette rebuild on EVERY live terminal, then a synchronous
+// localStorage write. applyXtermTheme's own comment says "not per
+// frame"; a keystroke is the per-frame case, so the work trails the
+// typing by one short pause instead of riding every character.
+let overridesTimer: ReturnType<typeof setTimeout> | null = null;
+const OVERRIDES_DEBOUNCE_MS = 150;
+
+function queueUserOverrides(raw: string): void {
+  if (overridesTimer) clearTimeout(overridesTimer);
+  overridesTimer = setTimeout(() => {
+    overridesTimer = null;
+    applyUserOverrides(raw);
+  }, OVERRIDES_DEBOUNCE_MS);
+}
+
+// One place stamps the theme, so the three things that must happen
+// together cannot drift apart: the attribute, the terminals (xterm
+// caches its palette; a CSS change alone leaves every open session on
+// the old colours), and the store.
+function selectPreset(name: ThemeName): void {
+  applyTheme(name);
+  applyXtermTheme();
+  try {
+    localStorage.setItem(THEME_KEY, name);
+  } catch {
+    // Denied storage: applied for this session, not remembered.
+  }
+}
+
+// applyUserOverrides runs on every keystroke, which is what makes the
+// box usable — but it must never leave a half-typed line showing as an
+// error while the user is still typing it. Rejected lines are reported;
+// accepted ones apply. Typing "--acc" reports one rejected line and
+// changes nothing, which is the honest answer.
+function applyUserOverrides(raw: string): void {
+  const { css, rejected } = sanitizeOverrides(raw);
+  applyOverrides(css);
+  applyXtermTheme();
+  writeOverrides(css);
+  themeError.show(
+    rejected.length === 0
+      ? ''
+      : `Ignored ${rejected.length} line(s) — only "--token: value;" declarations are allowed: ${rejected.join(' / ')}`,
+  );
+}
+
+function appearanceSection(): Node[] {
+  return [
+    heading('Appearance'),
+    hintPara(
+      'Applies as you change it, and is remembered. Cancel does not undo it.',
+    ),
+    field('Theme', themeSelect),
+    hintPara(
+      'Override any design token, one declaration per line. Fonts must already be installed on this machine.',
+    ),
+    field('Custom tokens', overridesInput),
+    themeError.el,
+  ];
+}
+
+// ---------- custom agents ----------
+
+const listEl = document.createElement('div');
+listEl.id = 'settings-agents-list';
+
+const agentsError = errorSlot('settings-error');
+// The e2e and DOM specs assert on `.settings-error`; the primitive's
+// own class carries the styling.
+agentsError.el.classList.add('settings-error');
+
+const addBtn = button({
+  label: 'Add agent',
+  icon: 'plus',
+  onClick: () => addAgentRow(),
+});
+addBtn.id = 'settings-agent-add';
+
+function agentsSection(): Node[] {
+  return [
+    heading('Custom agents'),
+    hintPara(
+      'Define your own tools — a command and its arguments. They appear in the new-session menu alongside the built-ins.',
+    ),
+    listEl,
+    addBtn,
+    agentsError.el,
+  ];
+}
+
+// ---------- updates ----------
+
+const channelEl = selectInput({
+  id: 'settings-update-channel',
+  ariaLabel: 'Update channel',
+  options: [
+    { value: CHANNEL_RELEASE, label: 'Release — tagged versions' },
+    { value: CHANNEL_LATEST, label: 'Latest — tip of your checkout' },
+  ],
+});
+
+const sourceRepoEl = textInput({
+  id: 'settings-source-repo',
+  ariaLabel: 'Source repo',
+  placeholder: 'Detected automatically',
+});
+sourceRepoEl.setAttribute('aria-describedby', 'settings-source-repo-hint');
+
+const sourceRepoBrowse = button({
+  label: 'Browse…',
+  onClick: () => browseSourceRepo(),
+});
+sourceRepoBrowse.id = 'settings-source-repo-browse';
+
+// The row is a container, not a field: it holds the labelled input and
+// the Browse button on one line, and is hidden wholesale on the release
+// channel (the e2e spec toggles on #settings-source-repo-row).
+const sourceRepoRow = document.createElement('div');
+sourceRepoRow.id = 'settings-source-repo-row';
+sourceRepoRow.className = 'settings-field';
+sourceRepoRow.append(field('Source repo', sourceRepoEl), sourceRepoBrowse);
+
+const sourceRepoHint = hintPara('');
+sourceRepoHint.id = 'settings-source-repo-hint';
+
+const updateActionEl = button({ label: 'Update', onClick: () => runUpdate() });
+updateActionEl.id = 'settings-update-action';
+const updateActionLabel = updateActionEl.querySelector(
+  '.hv-button__label',
+) as HTMLElement;
+
+const updateStatusEl = document.createElement('span');
+updateStatusEl.id = 'settings-update-status';
+updateStatusEl.className = 'settings-hint';
+updateStatusEl.setAttribute('role', 'status');
+
+// Updates sits outside the scrolling part of the body, at its natural
+// height: a dozen custom agents must never push the channel picker
+// below the fold (test/e2e/settings.spec.ts).
+function updatesSection(): HTMLElement {
+  const actionRow = document.createElement('div');
+  actionRow.className = 'settings-field';
+  actionRow.append(updateActionEl, updateStatusEl);
+  const section = document.createElement('section');
+  section.id = 'settings-updates';
+  section.append(
+    heading('Updates'),
+    hintPara(
+      'Hive checks for updates in the background. Nothing is downloaded or built until you press Update.',
+    ),
+    field('Channel', channelEl),
+    sourceRepoRow,
+    sourceRepoHint,
+    actionRow,
+  );
+  return section;
+}
+
+// Everything above Updates scrolls together. Agents first: it is the
+// section people open Settings to edit, and it is the only one that
+// grows — putting Appearance above it pushed the list off-screen on
+// open for anyone with more than a couple of agents.
+function scrollSection(): HTMLElement {
+  const el = document.createElement('div');
+  el.id = 'settings-scroll';
+  el.append(...agentsSection(), ...appearanceSection());
+  return el;
+}
+
+// ---------- the dialog ----------
+
+const saveBtn = button({
+  label: 'Save',
+  kind: 'primary',
+  onClick: () => saveSettings(),
+});
+saveBtn.id = 'settings-save';
+const cancelBtn = button({ label: 'Cancel', onClick: () => closeSettings() });
+cancelBtn.id = 'settings-cancel';
+
+const dlg = dialog({
+  id: 'settings',
+  title: 'Settings',
+  size: 'md',
+  body: [scrollSection(), updatesSection()],
+  actions: [cancelBtn, saveBtn],
+  onClose: () => closeSettings(),
+});
+// keyboard.ts and the tests import this; it must stay the root element.
+export const settingsEl = dlg.el;
+// The primitive's panel and close button keep the ids the e2e specs use.
+dlg.panel.id = 'settings-panel';
+dlg.el.querySelector('.hv-dialog__close')?.setAttribute('id', 'settings-close');
 
 // draft is the in-progress edit; discarded on cancel. Rows are plain
 // objects, not main.CustomAgent instances — the generated class is a
@@ -102,24 +348,48 @@ export function splitCommand(line: string | null): string[] {
 }
 
 function showError(msg: string) {
-  errorEl.textContent = msg;
-  errorEl.classList.toggle('hidden', !msg);
+  agentsError.show(msg);
+  // The slot lives in the scrolling region, so a save rejected after
+  // the user scrolled down would otherwise land off-screen and read as
+  // "the button did nothing".
+  // Optional call: jsdom has no layout and no scrollIntoView, and this
+  // runs inside promise handlers — an unguarded throw there escapes as
+  // an unhandled rejection, which exits vitest 1 while every test still
+  // reports as passing.
+  if (msg) agentsError.el.scrollIntoView?.({ block: 'nearest' });
+}
+
+function addAgentRow() {
+  draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
+  showError('');
+  render();
+  listEl
+    .querySelector<HTMLElement>(
+      '.settings-agent-row:last-child .settings-agent-name',
+    )
+    ?.focus();
+}
+
+function deleteAgentRow(i: number) {
+  draft.splice(i, 1);
+  showError('');
+  render();
+  // render() destroyed the button that had focus, dropping it to
+  // <body> — from there the Tab trap has no boundary to wrap and the
+  // next Tab walks behind the backdrop. Put focus back on the row that
+  // took this one's place, or on "Add agent".
+  const dels = listEl.querySelectorAll<HTMLElement>('.settings-agent-delete');
+  (dels[Math.min(i, dels.length - 1)] ?? addBtn).focus();
 }
 
 function render() {
   listEl.replaceChildren();
   if (loading) {
-    const busy = document.createElement('p');
-    busy.className = 'settings-hint';
-    busy.textContent = 'Loading…';
-    listEl.append(busy);
+    listEl.append(hintPara('Loading…'));
     return;
   }
   if (draft.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'settings-hint';
-    empty.textContent = 'No custom agents yet.';
-    listEl.append(empty);
+    listEl.append(hintPara('No custom agents yet.'));
     return;
   }
 
@@ -127,59 +397,39 @@ function render() {
     const row = document.createElement('div');
     row.className = 'settings-agent-row';
 
-    const color = document.createElement('input');
-    color.type = 'color';
-    color.value = a.color || DEFAULT_COLOR;
-    color.setAttribute('aria-label', 'Agent color');
-    color.addEventListener('input', () => {
-      draft[i].color = color.value;
+    const color = colorInput({
+      value: a.color || DEFAULT_COLOR,
+      ariaLabel: 'Agent color',
+      onInput: (v) => {
+        draft[i].color = v;
+      },
     });
-
-    const name = document.createElement('input');
-    name.type = 'text';
-    name.className = 'settings-agent-name';
-    name.placeholder = 'Name (e.g. Claude Lite)';
-    name.autocomplete = 'off';
-    name.value = a.name || '';
-    name.setAttribute('aria-label', 'Agent name');
-    name.addEventListener('input', () => {
-      draft[i].name = name.value;
+    const name = textInput({
+      className: 'settings-agent-name',
+      placeholder: 'Name (e.g. Claude Lite)',
+      ariaLabel: 'Agent name',
+      value: a.name || '',
+      onInput: (v) => {
+        draft[i].name = v;
+      },
     });
-
-    const cmd = document.createElement('input');
-    cmd.type = 'text';
-    cmd.className = 'settings-agent-cmd';
-    cmd.placeholder = 'Command (e.g. claude --model haiku)';
-    cmd.autocomplete = 'off';
-    cmd.value = (a.cmd || []).join(' ');
-    cmd.setAttribute('aria-label', 'Agent command');
-    cmd.addEventListener('input', () => {
-      draft[i].cmd = splitCommand(cmd.value);
+    const cmd = textInput({
+      className: 'settings-agent-cmd',
+      placeholder: 'Command (e.g. claude --model haiku)',
+      ariaLabel: 'Agent command',
+      value: (a.cmd || []).join(' '),
+      onInput: (v) => {
+        draft[i].cmd = splitCommand(v);
+      },
     });
-
     const del = iconButton({
       icon: 'x',
       label: `Delete ${a.name || 'agent'}`,
       className: 'settings-agent-delete',
-      onClick: () => {
-        draft.splice(i, 1);
-        showError('');
-        render();
-        // render() destroyed the button that had focus, dropping it to
-        // <body> — from there the Tab trap has no boundary to wrap and
-        // the next Tab walks behind the backdrop. Put focus back on the
-        // row that took this one's place, or on "+ Add agent".
-        const dels = listEl.querySelectorAll<HTMLElement>(
-          '.settings-agent-delete',
-        );
-        const next =
-          dels[Math.min(i, dels.length - 1)] ??
-          document.getElementById('settings-agent-add');
-        next?.focus();
-      },
+      onClick: () => deleteAgentRow(i),
     });
 
-    row.append(color, name, cmd, del);
+    row.append(color.el, name, cmd, del);
     listEl.append(row);
   });
 }
@@ -193,7 +443,12 @@ export function openSettings() {
   // arrives here as menu:settings rather than as the toggle-to-close
   // in the keydown gate. Without this guard the `draft = []` below
   // silently wipes the user's unsaved edits.
-  if (!settingsEl.classList.contains('hidden')) return;
+  if (dlg.isOpen()) return;
+  // Seeded from the store, not from the last open: the theme can change
+  // elsewhere (the `system` preset follows the OS).
+  themeSelect.value = readTheme();
+  overridesInput.value = readOverrides().replace(/\n\s*/g, '\n');
+  themeError.clear();
   showError('');
   draft = [];
   loading = true;
@@ -201,7 +456,7 @@ export function openSettings() {
   const token = ++openToken;
   setEditingEnabled(false);
   render();
-  settingsEl.classList.remove('hidden');
+  dlg.show();
   // Drop the active tile's visual focus and pull focus into the
   // dialog — same discipline as the help overlay. Without this, focus
   // stays on the terminal and keystrokes leak behind the backdrop.
@@ -290,11 +545,42 @@ function renderSourceRepoRow() {
   }, SOURCE_REPO_DEBOUNCE_MS);
 }
 
+function browseSourceRepo() {
+  PickDirectory(updateDraft.sourceRepo)
+    .then((dir) => {
+      if (!dir) return; // cancelled
+      updateDraft.sourceRepo = dir;
+      sourceRepoEl.value = dir;
+      renderSourceRepoRow();
+    })
+    .catch((err) => showError(String(err?.message || err)));
+}
+
+function runUpdate() {
+  const action = updateActionEl.dataset.action;
+  if (action === 'restart') {
+    // Shared with the banner: confirm overlay + re-entrancy guard +
+    // the daemon-restart flag live there, and applying is exactly as
+    // destructive from here as it is from the banner.
+    void applyUpdateAndRestart(updateActionEl.dataset.version || '');
+    return;
+  }
+  if (action === 'start') {
+    updateActionEl.disabled = true;
+    // A synchronous refusal from StartUpdate emits no update:progress
+    // event, so re-enable the button here rather than leaving it dead.
+    StartUpdate().catch((err) => {
+      updateActionEl.disabled = false;
+      showError(String(err?.message || err));
+    });
+  }
+}
+
 function renderUpdateAction(info: main.UpdateInfo | null) {
   const btn = updateButtonState(info, isMac);
   updateStatusEl.textContent = btn.status;
   updateActionEl.style.display = btn.label ? '' : 'none';
-  updateActionEl.textContent = btn.label;
+  updateActionLabel.textContent = btn.label;
   updateActionEl.disabled = btn.disabled;
   updateActionEl.dataset.action = btn.action;
   updateActionEl.dataset.version = info?.latest || '';
@@ -333,10 +619,18 @@ function loadUpdateSection(token: number) {
 
 export function closeSettings() {
   openToken += 1; // invalidate any in-flight load
+  // Same staleness class as openToken: a pending debounce would fire
+  // after the close with the text as it was, and on a reopen inside the
+  // window it writes that back over what the box now shows.
+  if (overridesTimer) {
+    clearTimeout(overridesTimer);
+    overridesTimer = null;
+  }
   loading = false;
   loadFailed = false;
-  settingsEl.classList.add('hidden');
-  showError('');
+  releaseFocus(settingsEl);
+  dlg.hide();
+  agentsError.clear();
   draft = [];
   updateDraft = { channel: CHANNEL_RELEASE, sourceRepo: '' };
   deps.refocusActiveTerm();
@@ -345,10 +639,8 @@ export function closeSettings() {
 // setEditingEnabled gates the controls that can mutate agents.json.
 // They stay disabled while a load is in flight or after one failed.
 function setEditingEnabled(on: boolean) {
-  const save = pageEl<HTMLButtonElement>('settings-save');
-  const add = pageEl<HTMLButtonElement>('settings-agent-add');
-  if (save) save.disabled = !on;
-  if (add) add.disabled = !on;
+  saveBtn.disabled = !on;
+  addBtn.disabled = !on;
 }
 
 function saveSettings() {
@@ -379,12 +671,7 @@ function saveSettings() {
 
 export function initSettings(injected: SettingsDeps) {
   deps = injected;
-  registerModal(settingsEl);
-  const settingsCloseBtn = pageEl('settings-close');
-  settingsCloseBtn.replaceChildren(icon('x'));
-  settingsCloseBtn.addEventListener('click', closeSettings);
-  pageEl('settings-cancel').addEventListener('click', closeSettings);
-  pageEl('settings-save').addEventListener('click', saveSettings);
+  document.getElementById('app')?.append(settingsEl);
   channelEl.addEventListener('change', () => {
     updateDraft.channel =
       channelEl.value === CHANNEL_LATEST ? CHANNEL_LATEST : CHANNEL_RELEASE;
@@ -394,60 +681,17 @@ export function initSettings(injected: SettingsDeps) {
     updateDraft.sourceRepo = sourceRepoEl.value;
     renderSourceRepoRow();
   });
-  sourceRepoBrowse.addEventListener('click', () => {
-    PickDirectory(updateDraft.sourceRepo)
-      .then((dir) => {
-        if (!dir) return; // cancelled
-        updateDraft.sourceRepo = dir;
-        sourceRepoEl.value = dir;
-        renderSourceRepoRow();
-      })
-      .catch((err) => showError(String(err?.message || err)));
-  });
-  updateActionEl.addEventListener('click', () => {
-    const action = updateActionEl.dataset.action;
-    if (action === 'restart') {
-      // Shared with the banner: confirm overlay + re-entrancy guard +
-      // the daemon-restart flag live there, and applying is exactly as
-      // destructive from here as it is from the banner.
-      void applyUpdateAndRestart(updateActionEl.dataset.version || '');
-      return;
-    }
-    if (action === 'start') {
-      updateActionEl.disabled = true;
-      // A synchronous refusal from StartUpdate emits no update:progress
-      // event, so re-enable the button here rather than leaving it dead.
-      StartUpdate().catch((err) => {
-        updateActionEl.disabled = false;
-        showError(String(err?.message || err));
-      });
-    }
-  });
   // Staging runs in Go and outlives this modal, so the button follows
   // the same progress events the banner does rather than any local state.
   EventsOn('update:progress', (info: main.UpdateInfo | null) =>
     renderUpdateAction(info),
   );
-  pageEl('settings-agent-add').addEventListener('click', () => {
-    draft.push({ id: '', name: '', cmd: [], color: DEFAULT_COLOR });
-    showError('');
-    render();
-    listEl
-      .querySelector<HTMLElement>(
-        '.settings-agent-row:last-child .settings-agent-name',
-      )
-      ?.focus();
-  });
+  // Enter in a text field saves, as before. Escape and the backdrop are
+  // the dialog primitive's. The Appearance textarea is excluded by the
+  // type check: Enter there is a newline, and this listener would
+  // otherwise turn "next line of overrides" into "save and close".
   settingsEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      // Consume it. This listener fires before the window handler in
-      // keyboard.ts, which would otherwise see an already-hidden
-      // dialog, fall past its settings gate, and spend the same
-      // Escape on whatever is behind the modal.
-      e.preventDefault();
-      e.stopPropagation();
-      closeSettings();
-    } else if (
+    if (
       e.key === 'Enter' &&
       e.target instanceof HTMLInputElement &&
       e.target.type === 'text'
@@ -455,19 +699,5 @@ export function initSettings(injected: SettingsDeps) {
       e.preventDefault();
       saveSettings();
     }
-  });
-  // Click on the backdrop (not the panel) closes. Both ends of the
-  // gesture must land on the backdrop: a text-selection drag that
-  // starts inside an input and releases outside the panel dispatches
-  // its click on the nearest common ancestor — the backdrop — so
-  // testing the click alone discards the whole draft mid-edit. Same
-  // data-loss class as the openSettings re-entry guard above.
-  let downOnBackdrop = false;
-  settingsEl.addEventListener('mousedown', (e) => {
-    downOnBackdrop = e.target === settingsEl;
-  });
-  settingsEl.addEventListener('click', (e) => {
-    if (downOnBackdrop && e.target === settingsEl) closeSettings();
-    downOnBackdrop = false;
   });
 }

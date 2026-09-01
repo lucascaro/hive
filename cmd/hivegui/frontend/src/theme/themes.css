@@ -22,6 +22,13 @@
   --state-error: #ff9a9a;
   --term-bg: #000;
   --term-fg: #ffffff;
+  /* Same Tango palette as tokens.css, restated because this block
+     re-values every token: classic must keep reproducing the colours
+     v2.4.0 got from xterm's defaults. */
+  --ansi-0: #2e3436; --ansi-1: #cc0000; --ansi-2: #4e9a06; --ansi-3: #c4a000;
+  --ansi-4: #3465a4; --ansi-5: #75507b; --ansi-6: #06989a; --ansi-7: #d3d7cf;
+  --ansi-8: #555753; --ansi-9: #ef2929; --ansi-10: #8ae234; --ansi-11: #fce94f;
+  --ansi-12: #729fcf; --ansi-13: #ad7fa8; --ansi-14: #34e2e2; --ansi-15: #eeeeec;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: Menlo, Consolas, monospace;
   --radius-sm: 4px;
@@ -47,5 +54,12 @@
   --btn: #f2f3f7; --btn-border: #d9dbe3;
   --state-running: #1f9d6a; --state-attention: #d9731a; --state-error: #c93a3a;
   --term-bg: #ffffff; --term-fg: #1a1b22;
+  /* The one thing hive-light cannot inherit. Every value clears WCAG AA
+     on #ffffff (min 5.93:1); the bright half is deeper rather than
+     lighter, which is what "bright" has to mean on a light ground. */
+  --ansi-0: #1a1b22; --ansi-1: #b81f2b; --ansi-2: #16713a; --ansi-3: #8a5a00;
+  --ansi-4: #0b5fca; --ansi-5: #7b2fbe; --ansi-6: #0f6b73; --ansi-7: #5c6070;
+  --ansi-8: #4a4d5a; --ansi-9: #91121f; --ansi-10: #0e5a2e; --ansi-11: #6f4600;
+  --ansi-12: #0a4ba0; --ansi-13: #62239b; --ansi-14: #0b555c; --ansi-15: #000000;
   --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
 }

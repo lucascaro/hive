@@ -1,0 +1,66 @@
+/* form fields — docs/design-docs/ui/components.md › Form fields */
+.hv-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+.hv-field__label {
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+.hv-field__hint {
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  max-width: 60ch;
+}
+
+.hv-input {
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface-raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+}
+textarea.hv-input {
+  height: auto;
+  padding: var(--space-2);
+  line-height: 1.4;
+  resize: vertical;
+}
+.hv-input--mono { font-family: var(--font-mono); font-size: var(--text-sm); }
+.hv-input:focus { outline: none; border-color: var(--accent); }
+.hv-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hv-input:disabled { opacity: 0.5; }
+
+.hv-swatch {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--swatch, var(--surface-raised));
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+/* The native control is the hit target; it is made invisible rather
+   than display:none so it stays focusable and keyboard-operable. */
+.hv-swatch input[type='color'] {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.hv-swatch:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.hv-field-error {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--state-error);
+}
+.hv-field-error.hidden { display: none; }

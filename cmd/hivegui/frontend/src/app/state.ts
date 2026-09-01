@@ -14,6 +14,7 @@ import {
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { ViewMode } from '../lib/view.js';
 import type { ReplayFlags, ReplayXterm } from '../lib/scrollback.js';
+import type { xtermTheme } from '../theme/theme.js';
 
 // Wire payloads from the daemon (internal/wire/control.go) are
 // snake_case; some paths also carry camelCase, so both spellings are
@@ -91,13 +92,17 @@ export interface TermTile extends ReplayFlags {
   // Timestamp of the last replay event, used by the scroll-jump
   // detector to label a following up-move (session-term.ts:682,816).
   _lastReplayTs?: number;
-  // `options` is here for applyFontSize (session-term.ts), the one app-side
-  // writer of xterm's live config. Optional like the rest of the
-  // intersection: the DOM-test stubs omit `term` entirely.
+  // `options` is here for applyFontSize and applyXtermTheme
+  // (session-term.ts), the two app-side writers of xterm's live config.
+  // Optional like the rest of the intersection: the DOM-test stubs omit
+  // `term` entirely.
   term?:
     | (ReplayXterm & {
         focus?: () => void;
-        options?: { fontSize?: number };
+        options?: {
+          fontSize?: number;
+          theme?: Partial<ReturnType<typeof xtermTheme>>;
+        };
       })
     | null;
   // Dead-session overlay. Required for the same reason as `attached`:

@@ -52,35 +52,19 @@ vi.mock('../../src/lib/platform.js', () => ({
   cmdOrCtrl: () => true,
 }));
 
+// settings.ts calls applyXtermTheme() when the theme changes; importing
+// session-term.js for real would drag xterm and the whole view layer into
+// a test about agents and updates.
+vi.mock('../../src/app/session-term.js', () => ({
+  applyXtermTheme: vi.fn(),
+}));
+
+// settings.ts builds its own dialog now (dialog + field primitives), so
+// the fixture is only the app root it mounts into plus the singletons
+// dom.ts resolves at import time.
 const MARKUP = `
-  <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
-  <div id="settings" class="hidden">
-    <div id="settings-panel">
-      <header><button id="settings-close">×</button></header>
-      <section id="settings-agents">
-        <div id="settings-agents-list"></div>
-        <button id="settings-agent-add">+ Add agent</button>
-        <p id="settings-error" class="settings-error hidden"></p>
-      </section>
-      <section id="settings-updates">
-        <select id="settings-update-channel">
-          <option value="release">Release</option>
-          <option value="latest">Latest</option>
-        </select>
-        <div id="settings-source-repo-row">
-          <input id="settings-source-repo" type="text"/>
-          <button id="settings-source-repo-browse">Browse…</button>
-        </div>
-        <p id="settings-source-repo-hint"></p>
-        <button id="settings-update-action">Update</button>
-        <span id="settings-update-status"></span>
-      </section>
-      <div class="actions">
-        <button id="settings-cancel">Cancel</button>
-        <button id="settings-save" class="primary">Save</button>
-      </div>
-    </div>
-  </div>`;
+  <div id="app"></div>
+  <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>`;
 
 type SettingsModule = typeof import('../../src/app/modals/settings.js');
 let openSettings: SettingsModule['openSettings'];
