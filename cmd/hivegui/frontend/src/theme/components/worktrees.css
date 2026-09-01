@@ -181,8 +181,10 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
-/* tokens.md gives --state-error the destructive-action role. */
+/* tokens.md gives --state-error the destructive-action role. Colour only:
+   the hover fill stays the shared var(--hover) from the rule above, so the
+   label keeps sitting on a ground ui-contrast.mjs can actually check. A
+   red-tinted hover put --state-error under 4.5:1 on four of six presets,
+   and because the tint is a color-mix() the gate skips it — the one ground
+   nothing checks would have been the only one that failed. */
 .worktree-actions button.danger { color: var(--state-error); }
-.worktree-actions button.danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--state-error) 22%, transparent);
-}

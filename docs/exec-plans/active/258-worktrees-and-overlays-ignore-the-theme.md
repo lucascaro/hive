@@ -271,6 +271,21 @@ rows that can be both at once. One general-purpose informational token in the
   writing down — these baselines catch a token falling through to the wrong
   preset, not a colour moving a few steps. The exact-value guards remain the
   contrast gate and the computed-style tests, exactly as the phase-6 log says.
+- **2026-09-01 (review iter 2)** — The destructive action's hover tint is gone;
+  it keeps the shared `var(--hover)` its sibling buttons use. Why: the tint was
+  `color-mix(--state-error 22%, transparent)`, so the red label sat on a ground
+  made of its own hue — hive-light 3.87:1, native-light 4.05:1, terminal 4.04:1,
+  native-dark 4.24:1 — and because the ground is a `color-mix()` the gate skips
+  it. Same defect class as iteration 1's finding, one ground further in: the
+  only surface that failed was the only one nothing could check. The rule now is
+  simply that a state colour is never painted on a ground tinted with itself.
+  The label stays red; the affordance does not need the fill.
+- **2026-09-01 (review iter 2)** — Dropped the `--state-*` length assertion from
+  the per-preset token test. Why: `tokens.css`'s base `:root` declares all four,
+  so reading them off `documentElement` returns an inherited value for a preset
+  that omits one — the assertion could not fail and its comment claimed it
+  could. `ui-contrast.mjs` merges the base block into every preset and does
+  catch that case, which is now what the comment says.
 - **2026-09-01** — Two existing baselines changed as well as twelve being added:
   `sidebar-hive-light` and `sidebar-native-light`. Why: the session-state icons
   are filled with `--state-running`, and `hive-light`'s value moved. Expected,
@@ -280,6 +295,7 @@ rows that can be both at once. One general-purpose informational token in the
 
 - **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c6151570d5c5dce221aa402fdc5caa8ca81a5d30e18c171eb62d9edf7cb2d9b2; threads_open: 0; action: continue (three IMPORTANT findings taken rather than stopping on a no-thread COMMENT); head_sha: 82e4c00.
 - **2026-09-01 iter 1 (follow-up)** — all three IMPORTANT findings and the one MINOR fixed on the branch; gates re-run green; the six worktrees baselines regenerated.
+- **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b9ad6144c9ef5ea88f17f9fd891c9f71b499f2dfa5323cd05b44861fecdebcfc; threads_open: 0; action: continue (one IMPORTANT + two MINOR taken rather than stopping on a no-thread COMMENT); head_sha: 563bd95.
 
 ## Progress
 

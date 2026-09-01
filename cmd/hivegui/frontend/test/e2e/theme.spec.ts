@@ -269,14 +269,7 @@ test('the worktree rows follow the preset, not a literal', async ({ page }) => {
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
-  await page.evaluate(
-    (w) =>
-      window.__hive.seedWorktrees?.(
-        w as Parameters<NonNullable<typeof window.__hive.seedWorktrees>>[0],
-        [],
-      ),
-    WORKTREES,
-  );
+  await seedWorktrees(page);
   await page.keyboard.press(`${mod}+e`);
   await expect(page.locator('#worktrees')).toBeVisible();
 
@@ -497,21 +490,13 @@ test.describe('Settings > Appearance', () => {
     for (const id of ids) {
       await page.locator('#settings-theme').selectOption(id);
       await expect(page.locator('html')).toHaveAttribute('data-theme', id);
-      const { ground, ansi, states } = await page.evaluate(() => {
+      const { ground, ansi } = await page.evaluate(() => {
         const cs = getComputedStyle(document.documentElement);
         return {
           ground: ['--bg', '--surface', '--fg', '--accent', '--term-bg']
             .map((t) => cs.getPropertyValue(t).trim())
             .join('/'),
-          // The state family is text, not just icon fills, since spec
-          // 258 — a preset that forgets one paints the worktree ramp
-          // in hive-dark's colours on its own ground.
-          states: [
-            '--state-running',
-            '--state-attention',
-            '--state-error',
-            '--state-info',
-          ].map((t) => cs.getPropertyValue(t).trim()),
+
           ansi: Array.from({ length: 16 }, (_, i) =>
             cs.getPropertyValue(`--ansi-${i}`).trim(),
           ),
@@ -519,7 +504,12 @@ test.describe('Settings > Appearance', () => {
       });
       // themes.md's "Adding a preset" step 2: all sixteen, every preset.
       expect(ansi.filter(Boolean), `${id} ANSI`).toHaveLength(16);
-      expect(states.filter(Boolean), `${id} state colours`).toHaveLength(4);
+      // No equivalent assertion for the --state-* family: tokens.css's
+      // base :root declares all four, so reading them off documentElement
+      // returns an inherited value for a preset that omits one and the
+      // check could never fail. That gap is ui-contrast.mjs's — it merges
+      // the base block into every preset, so an omitting light preset
+      // fails on the inherited dark value.
       // And they reach xterm, not just the cascade — xterm caches its
       // palette, so the CSS alone proves nothing.
       await expect
