@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/258-worktrees-and-overlays-ignore-the-theme.md](../../product-specs/258-worktrees-and-overlays-ignore-the-theme.md)
 - **Issue:** —
-- **PR:** —
+- **PR:** #313
 - **Branch:** stone-light
 - **Status:** active
 
