@@ -11,6 +11,16 @@
   --on-accent: #15120a;
   --term-bg: #0b0c10;
   --term-fg: #dfe1ea;
+  /* The state family and the two extra grounds it is checked on. Without
+     these the four --state-* pairs resolve to null and are silently
+     skipped, so both fixtures would behave identically whether the pairs
+     were present, misspelled or deleted. */
+  --surface-raised: #0f1015;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
 }
 /* Dark ground: the ANSI 16 are skipped by design, since ANSI 0 is meant to
    vanish into the background there. */
@@ -30,6 +40,12 @@
   --on-accent: #1a1b22;
   --term-bg: #ffffff;
   --term-fg: #1a1b22;
+  --surface-raised: #f8f8fb;
+  --sel: #eceef5;
+  --state-running: #177a53;
+  --state-attention: #a35f0d;
+  --state-error: #bd3030;
+  --state-info: #1163a8;
   --ansi-0: var(--fg); --ansi-1: #b81f2b; --ansi-2: #16713a; --ansi-3: #8a5a00;
   --ansi-4: #0b5fca; --ansi-5: #7b2fbe; --ansi-6: #0f6b73; --ansi-7: #5c6070;
   --ansi-8: #4a4d5a; --ansi-9: #91121f; --ansi-10: #0e5a2e; --ansi-11: #6f4600;

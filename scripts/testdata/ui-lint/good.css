@@ -5,5 +5,7 @@
 /* a circle is not a scale step, so no allow is needed */
 .e { border-radius: 50%; }
 .f { border-radius: 2px; /* ui-lint: allow */ }
+/* prose may mention border-radius: 8px without firing */
+.g { border-radius: 0 0 var(--radius-md) var(--radius-md); }
 /* one ⌘N hint */
 /* #eee mentioned only in prose, not a real declaration — must not fire */

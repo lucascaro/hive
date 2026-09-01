@@ -16,6 +16,12 @@
   --on-accent: #15120a;
   --term-bg: #0b0c10;
   --term-fg: #dfe1ea;
+  --surface-raised: #0f1015;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
 }
 /* Body text under AA: #4a4a4a on #13141a is 2.7:1, needs 4.5. */
 :root[data-theme="fixture-dim-text"] {
@@ -41,6 +47,34 @@
   --ansi-4: #3465a4; --ansi-5: #75507b; --ansi-6: #06989a; --ansi-7: #d3d7cf;
   --ansi-8: #555753; --ansi-9: #ef2929; --ansi-10: #8ae234; --ansi-11: #fce94f;
   --ansi-12: #729fcf; --ansi-13: #ad7fa8; --ansi-14: #34e2e2; --ansi-15: #eeeeec;
+}
+/* A state colour that reads as an icon fill and not as text: #1f9d6a is
+   3.45:1 on white. This is the real bug that moved hive-light's running
+   and attention values — the gate had no --state-* pair at all, so it
+   shipped green. */
+:root[data-theme="fixture-dim-state"] {
+  --bg: #f4f4f7;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --sel: #ffffff;
+  --fg: #1a1b22;
+  --fg-muted: #4f5262;
+  --fg-subtle: #767676;
+  --accent: #c47a12;
+  --on-accent: #1a1b22;
+  /* Only running is dim; the other three clear, so this block fails for
+     exactly one reason like every other block in this file. --term-bg
+     stays the base's dark ground, so the ANSI rule is not also invoked. */
+  --state-running: #1f9d6a;
+  --state-attention: #a35f0d;
+  --state-error: #bd3030;
+  --state-info: #1163a8;
+}
+/* A destructive action that cannot be read on the button it sits in:
+   #e06c6c on #3b3b40 is 3.46:1. The --surface pair alone passes it. */
+:root[data-theme="fixture-dim-danger"] {
+  --sel: #3b3b40;
+  --state-error: #e06c6c;
 }
 /* A light ground that declares no ANSI at all — the other half of the
    light-ground rule: silence is a failure, not a pass. */

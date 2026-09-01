@@ -234,6 +234,43 @@ rows that can be both at once. One general-purpose informational token in the
   the row's. Why: the row declares no `color`, so `getComputedStyle(row).color`
   returns the `--fg-muted` the dialog body hands down — the first version of the
   assertion failed on that, correctly.
+- **2026-09-01 (review iter 1)** — The contrast gate's first version checked the
+  state family on `--surface` only, and `--surface` is not where two of the four
+  text uses sit. Measured: the destructive row action paints `--state-error` on
+  `--sel` (native-dark 3.46:1 — *worse* than the `#e08585` literal it replaced,
+  4.17:1; hive-light 4.37:1), and the merged badge sat on its own
+  `color-mix(--state-running 15%, transparent)` tint (hive-light 4.10:1). A gate
+  that reports green over the text it exists to protect is worse than no gate.
+  Fixed three ways: `PAIRS` gained the family on `--surface-raised` (the row-card
+  ground) plus `--state-error` on `--sel`; `hive-light --state-error` moved to
+  `#bd3030` and `native-dark --state-error` to `#ee9090`; and the merged badge
+  lost its tint, so its ground is the row's `--surface-raised`, which *is*
+  gated. The tint had to go rather than be re-valued — `ui-contrast.mjs` cannot
+  resolve `color-mix()`, so any hue-tinted ground is unverifiable by
+  construction.
+- **2026-09-01 (review iter 1)** — `--state-error` is gated on `--sel` alone, not
+  the whole family on every ground. Why: a pair for a combination nothing
+  renders would constrain the palette for nothing. The rule tracks the sites.
+- **2026-09-01 (review iter 1)** — Both fixture files gained the state tokens.
+  Why: `ui-contrast.mjs` treats an unresolvable token as a bare `continue`, so
+  with no `--state-*` in `good.css` the two fixtures behaved identically whether
+  the new pairs were present, misspelled or deleted — the self-test could not
+  tell a working rule from a dead one. `bad.css` gained `fixture-dim-state`
+  (`#1f9d6a` at 3.45:1 on white — the real bug that moved hive-light) and
+  `fixture-dim-danger` (`#e06c6c` at 3.46:1 on `--sel`, which the `--surface`
+  pair alone passes). Each fails for exactly one reason, per that file's header.
+- **2026-09-01 (review iter 1)** — The radius rule now strips comments and
+  matches the longhands and multi-value shorthands
+  (`border-top-left-radius: 4px`, `border-radius: 0 0 4px 4px`). Nothing in the
+  tree hits either today, which is the point: the rule exists for what gets
+  written next.
+- **2026-09-01 (review iter 1)** — Re-valuing two `--state-error`s and dropping
+  the badge tint moved *no* screenshot baseline until the PNGs were deleted and
+  regenerated. Cause: `toHaveScreenshot`'s default per-pixel `threshold` (0.2
+  YIQ) absorbs a small hue shift before `maxDiffPixels: 0` ever counts it. Worth
+  writing down — these baselines catch a token falling through to the wrong
+  preset, not a colour moving a few steps. The exact-value guards remain the
+  contrast gate and the computed-style tests, exactly as the phase-6 log says.
 - **2026-09-01** — Two existing baselines changed as well as twelve being added:
   `sidebar-hive-light` and `sidebar-native-light`. Why: the session-state icons
   are filled with `--state-running`, and `hive-light`'s value moved. Expected,
@@ -241,7 +278,8 @@ rows that can be both at once. One general-purpose informational token in the
 
 ## PR convergence ledger
 
-<!-- written by /hs-review-loop -->
+- **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c6151570d5c5dce221aa402fdc5caa8ca81a5d30e18c171eb62d9edf7cb2d9b2; threads_open: 0; action: continue (three IMPORTANT findings taken rather than stopping on a no-thread COMMENT); head_sha: 82e4c00.
+- **2026-09-01 iter 1 (follow-up)** — all three IMPORTANT findings and the one MINOR fixed on the branch; gates re-run green; the six worktrees baselines regenerated.
 
 ## Progress
 

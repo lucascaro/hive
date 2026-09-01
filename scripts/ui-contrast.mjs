@@ -12,8 +12,10 @@
 //   --term-fg   on --term-bg  >= 4.5   terminal default pair
 //   --on-accent on --accent   >= 4.5   primary buttons must read their own label
 //   --state-*   on --surface  >= 4.5   state colours are text, not just icons
-//                                      (worktree kind ramp, merged badge,
-//                                      destructive action, version mismatch)
+//                                      (worktree kind ramp, version mismatch)
+//   --state-*   on --surface-raised    the same words on a row card / popover
+//               >= 4.5                 ground (worktree rows, merged badge)
+//   --state-error on --sel    >= 4.5   the destructive row action's button fill
 // color-mix()/var() values that don't resolve to a hex are skipped, loudly.
 //
 // Run via `scripts/ui-lint.sh --contrast [--verbose] [path ...]`, which is the
@@ -49,6 +51,17 @@ const PAIRS = [
   ['--state-attention', '--surface', 4.5],
   ['--state-error', '--surface', 4.5],
   ['--state-info', '--surface', 4.5],
+  // A worktree row is a --surface-raised card and the state words sit on
+  // it, not on the panel behind it. Checking only --surface would have
+  // reported green over the merged badge at 4.10:1 on hive-light.
+  ['--state-running', '--surface-raised', 4.5],
+  ['--state-attention', '--surface-raised', 4.5],
+  ['--state-error', '--surface-raised', 4.5],
+  ['--state-info', '--surface-raised', 4.5],
+  // The one state colour painted on a filled control. Kept to --sel
+  // alone rather than the whole family on every ground: a pair for a
+  // combination nothing renders would constrain the palette for nothing.
+  ['--state-error', '--sel', 4.5],
 ];
 // The ANSI 16 are checked only on a light ground. On a dark one, ANSI 0
 // ("black") is meant to be invisible on the background — every terminal

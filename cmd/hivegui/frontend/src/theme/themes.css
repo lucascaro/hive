@@ -53,13 +53,15 @@
   --accent: #c47a12; --on-accent: #1a1b22; --sel: #eceef5;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #f2f3f7; --btn-border: #d9dbe3;
-  /* Darker than the mock's #1f9d6a/#d9731a: on this preset's white
-     --surface those measure 3.45:1 and 3.27:1. That was tolerable while
-     the state tokens only filled 8px icons (decorative, >= 3:1), but they
-     now colour 11px text in the worktree browser, so they have to clear
-     4.5:1. --state-attention lands on the value native-light already
-     ships. ui-contrast.mjs enforces this. */
-  --state-running: #177a53; --state-attention: #a35f0d; --state-error: #c93a3a;
+  /* Darker than the mock's #1f9d6a/#d9731a/#c93a3a: on this preset's
+     white --surface the first two measure 3.45:1 and 3.27:1, and the red
+     is 4.37:1 on --sel, the destructive row action's fill. That was
+     tolerable while the state tokens only filled 8px icons (decorative,
+     >= 3:1); they now colour 11px text in the worktree browser, so they
+     have to clear 4.5:1 on every ground they land on. --state-attention
+     lands on the value native-light already ships. ui-contrast.mjs
+     enforces this. */
+  --state-running: #177a53; --state-attention: #a35f0d; --state-error: #bd3030;
   --state-info: #1163a8;
   --term-bg: #ffffff; --term-fg: #1a1b22;
   /* The one thing hive-light cannot inherit. Every value clears WCAG AA
@@ -84,7 +86,9 @@
   --accent: #e6a23c; --on-accent: #1a1a1a; --sel: #3b3b40;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #323235; --btn-border: #454548;
-  --state-running: #4cc38a; --state-attention: #f0b44c; --state-error: #e06c6c;
+  /* #ee9090, not the mock's #e06c6c: the destructive row action paints
+     --state-error on --sel (#3b3b40), where #e06c6c is 3.46:1. */
+  --state-running: #4cc38a; --state-attention: #f0b44c; --state-error: #ee9090;
   --state-info: #6cb6e8;
   --term-bg: #151516; --term-fg: #e2e2e4;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;

@@ -149,11 +149,14 @@
   padding: 1px 4px;
 }
 /* Merged is the "this is safe to sweep" signal, so it reads as
-   positive rather than as another grey tag. */
+   positive rather than as another grey tag. Text and border carry that;
+   there is deliberately no fill. A tinted ground would make the badge's
+   own hue part of its background, which no contrast rule can express —
+   ui-contrast.mjs cannot resolve color-mix() and would skip it — so the
+   chip keeps the row's --surface-raised, which IS gated. */
 .worktree-badge.merged {
   color: var(--state-running);
   border-color: color-mix(in srgb, var(--state-running) 40%, var(--border));
-  background: color-mix(in srgb, var(--state-running) 15%, transparent);
 }
 .worktree-actions {
   display: flex;

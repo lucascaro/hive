@@ -12,7 +12,9 @@
 #              `terminal` preset sets --radius-sm/--radius-md to 0 and twelve
 #              literal 4/6/8px roundings made that a no-op — a preset whose
 #              defining trait is square corners shipped with rounded cards, and
-#              nothing here flagged it.
+#              nothing here flagged it. Covers the longhands
+#              (border-top-left-radius) and multi-value shorthands, and strips
+#              comments first, like the hex rule.
 #   glyph    — a denylist of icon-shaped Unicode characters in
 #              src/app/**/*.{ts,tsx}, src/theme/**/*.css and index.html. Icons
 #              come from the sprite via icon() now (docs/design-docs/ui/icons.md
@@ -119,9 +121,16 @@ while IFS= read -r line; do report "$line"; done < <(
     | grep -v -e 'src/theme/tokens.css' -e 'ui-lint: allow' \
     | sed 's/^/px-size: /' || true)
 
+# Comment-stripped like the hex rule, and matched on the longhands and the
+# multi-value shorthand too: `border-radius: 0 0 4px 4px` and
+# `border-top-left-radius: 4px` ignore the preset exactly as much as the
+# one-value shorthand does, and prose that mentions a radius must not fire.
 while IFS= read -r line; do report "$line"; done < <(
-  grep -rnE --include='*.css' 'border-radius:\s*[0-9.]+px' "${targets[@]}" 2>/dev/null \
-    | grep -v -e 'src/theme/tokens.css' -e 'ui-lint: allow' \
+  find "${targets[@]}" -name '*.css' 2>/dev/null | while IFS= read -r f; do
+    strip_css_comments <"$f" | grep -nE 'border(-[a-z]+)*-radius:[^;}]*[0-9.]+px' 2>/dev/null | cut -d: -f1 | while IFS= read -r ln; do
+      printf '%s:%s:%s\n' "$f" "$ln" "$(sed -n "${ln}p" "$f")"
+    done
+  done | grep -v -e 'src/theme/tokens.css' -e 'ui-lint: allow' \
     | sed 's/^/radius: /' || true)
 
 # Denylist of icon-shaped characters. Not a Unicode range, so plain -F
