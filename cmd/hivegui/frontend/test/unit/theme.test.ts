@@ -55,7 +55,6 @@ describe('PRESETS', () => {
       expect(resolveTheme(p.id, true)).toBe(p.id);
     }
   });
-
 });
 
 describe('sanitizeOverrides', () => {
