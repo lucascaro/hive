@@ -58,6 +58,7 @@ import {
 } from '../../ui/field.js';
 import { iconButton } from '../../ui/icon-button.js';
 import { applyUpdateAndRestart } from '../banners.js';
+import { releaseFocus } from './focus-trap.js';
 import { applyXtermTheme } from '../session-term.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
@@ -347,7 +348,11 @@ function showError(msg: string) {
   // The slot lives in the scrolling region, so a save rejected after
   // the user scrolled down would otherwise land off-screen and read as
   // "the button did nothing".
-  if (msg) agentsError.el.scrollIntoView({ block: 'nearest' });
+  // Optional call: jsdom has no layout and no scrollIntoView, and this
+  // runs inside promise handlers — an unguarded throw there escapes as
+  // an unhandled rejection, which exits vitest 1 while every test still
+  // reports as passing.
+  if (msg) agentsError.el.scrollIntoView?.({ block: 'nearest' });
 }
 
 function addAgentRow() {
@@ -610,8 +615,16 @@ function loadUpdateSection(token: number) {
 
 export function closeSettings() {
   openToken += 1; // invalidate any in-flight load
+  // Same staleness class as openToken: a pending debounce would fire
+  // after the close with the text as it was, and on a reopen inside the
+  // window it writes that back over what the box now shows.
+  if (overridesTimer) {
+    clearTimeout(overridesTimer);
+    overridesTimer = null;
+  }
   loading = false;
   loadFailed = false;
+  releaseFocus(settingsEl);
   dlg.hide();
   agentsError.clear();
   draft = [];

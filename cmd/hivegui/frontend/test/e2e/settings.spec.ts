@@ -295,3 +295,32 @@ test('the agent list is on screen the moment Settings opens', async ({
   });
   expect(onTop).toBe(true);
 });
+
+// The error slot is a <p> inside the dialog body, and the primitive's
+// body-paragraph rule outranks the error class on colour: a rejected
+// save rendered in --fg-muted, pixel-identical to the help text above
+// it. Computed colour, because this is exactly the kind of bug that
+// looks fine in the DOM.
+test('a rejected save renders as an error, not as another hint', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+  await addAgent(page, 'Broken', 'nope');
+  await page.evaluate(() =>
+    window.__hive.failNext?.('SaveCustomAgents', 'nope'),
+  );
+  await page.locator('#settings-save').click();
+
+  const err = page.locator('#settings-error');
+  await expect(err).toBeVisible();
+  const [errColor, hintColor] = await Promise.all([
+    err.evaluate((el) => getComputedStyle(el).color),
+    page
+      .locator('#settings .settings-hint')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color),
+  ]);
+  expect(errColor).not.toBe(hintColor);
+});

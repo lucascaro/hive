@@ -346,6 +346,21 @@ test.describe('Settings > Appearance', () => {
       () => document.getElementById('theme-overrides')?.textContent ?? '',
     );
     expect(injected).toBe('');
+
+    // A CSS escape tokenizes back into url() after parsing, so a gate
+    // that matches on the spelled function name is no gate at all.
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'hive.themeOverrides',
+        '--bg: \\75rl("https://evil.example/x.png");',
+      );
+    });
+    await page.reload();
+    expect(
+      await page.evaluate(
+        () => document.getElementById('theme-overrides')?.textContent ?? '',
+      ),
+    ).toBe('');
     await page.evaluate(() => localStorage.removeItem('hive.themeOverrides'));
   });
 

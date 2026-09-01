@@ -314,6 +314,18 @@ test('settings: Shift+Tab wraps backwards without escaping', async ({
   await shiftTabAround(page, '#settings', 10);
 });
 
+// ---------- project editor ----------
+
+// The editor claims aria-modal="true" (the dialog primitive sets it), so
+// Tab must actually stay inside. It had no containment test before the
+// migration because it was a bare role="dialog" that trapped nothing.
+test('project editor: Tab stays inside the dialog', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+n`);
+  await expect(page.locator('#project-editor')).toBeVisible();
+  await tabAround(page, '#project-editor', 10);
+});
+
 // ---------- help overlay ----------
 
 test('help overlay: Tab stays on its single control', async ({ page }) => {

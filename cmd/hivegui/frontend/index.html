@@ -41,16 +41,20 @@
         if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
         document.documentElement.dataset.theme = t;
         // The store is hand-editable, so it is shape-checked before it
-        // reaches the <style>: declarations only, no block or tag
-        // characters, no network-reaching function. This is a cheap
-        // gate, not the sanitiser — theme.ts re-runs the real one on
-        // import, one paint later.
+        // reaches the <style>: declarations only, no block, tag, at-rule
+        // or comment characters, no backslash (a CSS escape such as
+        // \\75rl( tokenizes back into url() after parsing, so matching on
+        // the spelled function name proves nothing), and every function
+        // call checked against the same allowlist theme.ts uses. This is
+        // a cheap gate, not the sanitiser — theme.ts re-runs the real one
+        // on import, one paint later. Keep the two in sync.
+        var FN_OK = ['var','calc','min','max','clamp','rgb','rgba','hsl','hsla','hwb','lab','lch','oklab','oklch','color','color-mix'];
         var o = localStorage.getItem('hive.themeOverrides');
-        var ok = o && /^(?:--[a-z0-9-]+:[^;{}<>@]+;\s*)+$/.test(o) &&
-          !/\b(?:url|image-set|src|expression)\s*\(/i.test(o);
-        // ':root:root', not ':root': themes.css's preset blocks are
-        // :root[data-theme="…"] (0,2,0) and would otherwise outrank
-        // these. Kept in sync with applyOverrides in theme.ts.
+        var ok = !!o && /^(?:--[a-z0-9-]+:[^;{}<>@\\]+;\s*)+$/.test(o) &&
+          o.indexOf('/*') < 0 && o.indexOf('*/') < 0 &&
+          (o.match(/[a-z-]*\(/gi) || []).every(function (f) {
+            return FN_OK.indexOf(f.slice(0, -1).toLowerCase()) >= 0;
+          });
         if (ok) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
       } catch (e) { document.documentElement.dataset.theme = 'classic'; }
     </script>

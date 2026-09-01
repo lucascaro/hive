@@ -424,3 +424,25 @@ describe('escape', () => {
     expect(seen).not.toHaveBeenCalled();
   });
 });
+
+// The custom-token box debounces at 150ms. A timer that outlives the
+// close fires with the text as it was, and on a reopen inside that
+// window writes it back over what the box now shows — including
+// writeOverrides('') when the field was cleared on the way out.
+describe('appearance debounce', () => {
+  it('does not write overrides after the dialog is closed', async () => {
+    vi.useFakeTimers();
+    try {
+      openSettings();
+      const box = el<HTMLTextAreaElement>('settings-overrides');
+      box.value = '--accent: red;';
+      box.dispatchEvent(new window.Event('input', { bubbles: true }));
+      closeSettings();
+      const before = localStorage.getItem('hive.themeOverrides');
+      vi.advanceTimersByTime(500);
+      expect(localStorage.getItem('hive.themeOverrides')).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

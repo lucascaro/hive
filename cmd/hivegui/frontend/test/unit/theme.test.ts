@@ -71,6 +71,12 @@ describe('sanitizeOverrides', () => {
       '--bg: image-set("https://evil/x.png")',
       '--bg: -webkit-image-set("https://evil/x.png")',
       '--bg: src("https://evil/x.png")',
+      // A CSS escape tokenizes back into url() after parsing, so the
+      // literal spelling of the function name proves nothing.
+      '--bg: \\75rl("https://evil/x.png")',
+      // An unterminated comment swallows every later declaration.
+      '--a: red/*',
+      '--a: red*/',
     ]) {
       const r = sanitizeOverrides(bad);
       expect(r.css, bad).toBe('');

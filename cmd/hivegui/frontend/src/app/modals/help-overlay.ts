@@ -5,6 +5,7 @@
 import { isMac } from '../../lib/platform.js';
 import { shortcutGroups } from '../../lib/shortcuts.js';
 import { dialog } from '../../ui/dialog.js';
+import { releaseFocus } from './focus-trap.js';
 import { kbd } from '../../ui/kbd.js';
 
 // Narrow on purpose: this overlay needs exactly two callbacks off the
@@ -73,6 +74,9 @@ export function openHelpOverlay() {
 }
 
 export function closeHelpOverlay() {
+  // Before hide(), same as the other modals: focus left on a
+  // display:none element resolves to <body> and strands the keyboard.
+  releaseFocus(helpEl);
   dlg.hide();
   deps.focusActiveTerm();
 }

@@ -69,6 +69,13 @@
   font-size: var(--text-sm);
   color: var(--fg-muted);
 }
+/* The error slot is a <p> too, and the rule above (0,1,1) outranks
+   .hv-field-error (0,1,0) — without this every dialog error rendered in
+   --fg-muted and read as one more hint. */
+.hv-dialog__body p.hv-field-error {
+  margin: var(--space-2) 0 0;
+  color: var(--state-error);
+}
 
 .hv-dialog__footer {
   display: flex;

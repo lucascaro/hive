@@ -102,6 +102,9 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-31** — The custom-token box debounces at 150ms. Why: every keystroke otherwise ran a style invalidation plus a `getComputedStyle` and palette rebuild on every live terminal plus a synchronous `localStorage` write — exactly the per-frame case `applyXtermTheme`'s comment rules out.
 - **2026-08-31** — `.hv-dialog__actions` wraps. Why: a four-answer question overflows the `sm` panel, and without wrapping the labels broke to three lines inside a 28px button and rendered outside it — on the dialog that deletes branches.
 
+- **2026-08-31** — ANSI 0–15 is documented as **not implemented** rather than as a themes.css table. Why: no `--ansi-*` token has ever existed, so xterm keeps its dark-tuned defaults under every preset — under `hive-light` a program's explicit `white` is near-invisible on white. Phase 6 owns the tokens, and the light presets are not shippable as the default until it does.
+- **2026-08-31** — The project editor gets a real Tab trap in `keyboard.ts`. Why: `dialog()` sets `aria-modal="true"`, which the pre-migration bare `role="dialog"` never claimed; without a trap the attribute was a false promise and Tab walked out into the sidebar. It was also the one migrated dialog with no containment test.
+
 ## Progress
 
 - [x] Phase 1

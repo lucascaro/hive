@@ -121,10 +121,11 @@ export function dialog(spec: DialogSpec): DialogHandle {
   panel.append(header, body, footer);
   el.append(panel);
 
-  // Escape is consumed here as well as handled. keyboard.ts's window
-  // listener runs after this one and would otherwise see an
-  // already-hidden dialog, fall past its gate, and spend the same
-  // Escape on whatever is behind the modal.
+  // Escape is handled and consumed here. keyboard.ts's window listener
+  // registers with capture, so for the dialogs it has a branch for it
+  // runs first and this never fires; this is the fallback for the ones
+  // it does not know about, and consuming the event stops a second
+  // handler spending the same Escape on whatever is behind the modal.
   el.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();

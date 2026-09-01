@@ -88,9 +88,14 @@ export interface Sanitized {
 // looking like it should work.
 const NAME = /^--[a-z0-9-]+$/;
 // The value may not contain anything that could end the declaration,
-// end the :root block, start a new rule, or close the <style> element
-// it is injected into.
-const BAD_VALUE = /[{}<>;@]/;
+// end the :root block, start a new rule, open a comment (`/*` with no
+// terminator swallows every later declaration, permanently), carry a
+// CSS escape (`\75rl(` tokenizes as `url(`), or close the <style>
+// element it is injected into.
+// `/` and `*` stay legal on their own — `calc(var(--space-2) * 2)` and
+// `rgb(0 0 0 / 50%)` are ordinary token values; only the comment
+// delimiters are refused.
+const BAD_VALUE = /[{}<>;@\\]|\/\*|\*\//;
 
 // Functions are allow-listed, not deny-listed. A denylist of url() and
 // friends leaked: `image-set("https://…")` fetches a remote resource
