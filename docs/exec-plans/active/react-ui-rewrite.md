@@ -90,8 +90,9 @@ criteria are the gate for Phase 6 only, where they must all pass.
 
 Consequences:
 - The spec's frontmatter `stage:` stays `IMPLEMENT` while phases 1–6 ship — it
-  advances to `DONE` only after the Phase 6 gate. (Same shape as the
-  `ui-design-system` master/phase plans.)
+  advances to `DONE` only after the Phase 6 gate. This is exactly the shape
+  `ui-design-system` turned out to have: its spec sat at `IMPLEMENT` across
+  phases 1–5 and went `DONE` when phase 6 shipped (PR #312, 2026-08-31).
 - A phase's own plan moves to `docs/exec-plans/completed/` when its gate passes;
   the master plan moves at the end.
 - Every phase still gets `/hs-review-loop` convergence and a full green CI run

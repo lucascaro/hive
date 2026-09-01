@@ -1,0 +1,168 @@
+/* ---------- worktrees browser ---------- */
+
+/* The dialog body hands its scrolling to #worktrees-body so both
+   sections share one scroll container and the sticky headings have
+   something to stick to. */
+#worktrees-panel .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#worktrees-empty { flex: 1 1 auto; }
+#worktrees-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* Flex items refuse to shrink below their content unless this is
+     said explicitly. */
+  min-height: 0;
+}
+#worktrees-panel section {
+  padding: var(--space-3) 0 var(--space-1);
+}
+#worktrees-section-branches { border-top: 1px solid #1e1e1e; } /* ui-lint: allow */
+#worktrees-panel section.hidden { display: none; }
+
+/* Loading / empty state. Mirrors the session tile's phase overlay —
+   centered card, same spinner — so waiting for the inventory looks like
+   waiting for a session rather than a stray line of text.
+   The .hidden rule is load-bearing: this codebase has no global
+   `.hidden { display: none }`, every element declares its own, and
+   without this one the "Loading…" card stayed on screen under the list
+   it was supposed to precede. */
+#worktrees-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 18px;
+}
+#worktrees-empty.hidden { display: none; }
+.worktrees-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 40ch;
+  text-align: center;
+  font-size: var(--text-md);
+  color: #999; /* ui-lint: allow */
+  line-height: 1.5;
+}
+/* The spinner only belongs to the loading state; the "not a git repo"
+   message is a settled answer, not a wait. */
+.worktrees-empty-card .phase-spinner {
+  --session-color: var(--accent);
+}
+.worktrees-empty-card .phase-spinner.hidden { display: none; }
+/* The headings stay put while their rows scroll under them, so the
+   list never leaves you wondering which half you are looking at. */
+/* Sticks to the top of #worktrees-body, its scroller. No negative
+   horizontal margin: the scroller's content box is the full panel
+   width, so pulling the heading out by --space-4 on each side made it
+   overflow rather than bleed. */
+#worktrees-panel section h4 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  margin: calc(-1 * var(--space-3)) 0 0;
+  padding: var(--space-3) 0 var(--space-2);
+}
+#worktrees-panel h4 {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+/* Only line-height survives: .hv-dialog__body p (0,1,1) sets the margin,
+   size and colour and outranks this rule. */
+.worktrees-hint { line-height: 1.45; }
+.worktree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #1e1e1e; /* ui-lint: allow */
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  background: #141414; /* ui-lint: allow */
+}
+.worktree-row .worktree-main { flex: 1; min-width: 0; }
+.worktree-name {
+  display: block;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.worktree-status {
+  display: block;
+  font-size: var(--text-xs);
+  color: #777; /* ui-lint: allow */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The tip commit subject: what is actually in the branch. Italic, not
+   dimmer, sets it apart from the status line above it — at 11px on
+   #141414 anything below #7d7d7d misses the 4.5:1 contrast floor. */
+.worktree-subject {
+  display: block;
+  font-size: var(--text-xs);
+  color: #808080; /* ui-lint: allow */
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Status colour carries the same ranking the list is sorted by, so a
+   row that holds work is visible without reading the text. */
+.worktree-row[data-kind='active'] { border-color: #2f4858; } /* ui-lint: allow */
+.worktree-row[data-kind='active'] .worktree-status { color: #7fb3d5; } /* ui-lint: allow */
+.worktree-row[data-kind='holding'] { border-color: #4a3a1a; } /* ui-lint: allow */
+.worktree-row[data-kind='holding'] .worktree-status { color: #f0b357; } /* ui-lint: allow */
+.worktree-row[data-kind='main'] { background: #101010; } /* ui-lint: allow */
+.worktree-badge {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  border: 1px solid var(--btn-border);
+  /* Hairline rounding on a 15px chip; see the swatch note in
+     project-card.css. Not a scale step. */
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+/* Merged is the "this is safe to sweep" signal, so it reads as
+   positive rather than as another grey tag. */
+.worktree-badge.merged {
+  color: #4ade80; /* ui-lint: allow */
+  border-color: #14532d; /* ui-lint: allow */
+  background: rgba(22, 101, 52, 0.18);
+}
+.worktree-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.worktree-actions button {
+  background: var(--sel);
+  border: 1px solid var(--btn-border);
+  color: #ccc; /* ui-lint: allow */
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.worktree-actions button:hover:not(:disabled) { background: var(--hover); }
+.worktree-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.worktree-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.worktree-actions button.danger { color: #e08585; } /* ui-lint: allow */
+.worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; } /* ui-lint: allow */

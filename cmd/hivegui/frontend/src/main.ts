@@ -40,7 +40,11 @@ import {
   initProjectEditor,
 } from './app/modals/project-editor.js';
 import { initCommandPalette } from './app/modals/command-palette.js';
-import { initSettings, openSettings } from './app/modals/settings.js';
+import {
+  initSettings,
+  initThemeWatch,
+  openSettings,
+} from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
@@ -275,6 +279,7 @@ wireDaemonEvents({
 // Sidebar footer: hive/hived version + build. Populated from the
 // "daemon:stale" event, so it fills in once the control handshake lands.
 initVersionFooter();
+initThemeWatch();
 
 // ---------- sidebar resize ----------
 //

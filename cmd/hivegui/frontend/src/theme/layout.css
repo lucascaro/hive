@@ -1,0 +1,178 @@
+/* App skeleton: the #app grid, its row/column placement, the sidebar
+   resizer, and the two terminal arrangements (#terms.single / #terms.grid).
+   Geometry only — how the boxes are placed and sized. What is drawn inside
+   them lives in components/. docs/design-docs/ui/README.md */
+
+#app {
+  display: grid;
+  grid-template-columns: var(--sidebar-width, 220px) 1fr;
+  /* Row 1 is the daemon-mismatch banner, row 2 is the update-available
+     banner — both collapse to 0 when hidden. Row 3 is the normal
+     sidebar + terms layout. Row 4 is the minimized-sessions tray;
+     collapses to 0 when empty (display: none). Row 5 is the status bar. */
+  grid-template-rows: auto auto 1fr auto auto;
+  height: 100vh;
+  transition: grid-template-columns 120ms ease;
+}
+#sidebar { grid-row: 3 / span 2; grid-column: 1; }
+#sidebar-resizer { grid-row: 3 / span 2; grid-column: 1; }
+#terms { grid-row: 3; grid-column: 2; }
+#minimized-tray { grid-row: 4; grid-column: 2; }
+
+body.resizing-sidebar { cursor: col-resize; user-select: none; }
+body.resizing-sidebar #app { transition: none; }
+
+#app.sidebar-hidden {
+  grid-template-columns: 0 1fr;
+}
+#app.sidebar-hidden #sidebar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+
+#sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 120ms ease;
+}
+#sidebar-resizer:hover,
+#sidebar-resizer.dragging,
+#sidebar-resizer:focus-visible {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+#sidebar-resizer:focus-visible { outline: none; }
+#app.sidebar-hidden #sidebar-resizer { display: none; }
+
+#terms {
+  position: relative;
+  background: var(--bg);
+  display: flex;
+}
+
+#terms.single .term-host {
+  position: absolute;
+  inset: 6px;
+  box-sizing: border-box;
+  display: none;
+  flex-direction: column;
+  /* Match the grid-tile baseline border so the focus upgrade is
+     visible in single mode too. */
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
+  border-radius: var(--radius-sm);
+  background: var(--term-bg);
+  overflow: hidden;
+}
+#terms.single .term-host.visible {
+  display: flex;
+}
+#terms.single .term-host .term-body {
+  flex: 1;
+  position: relative;
+  padding: 4px 6px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#terms.grid {
+  position: relative;
+  display: grid;
+  /* grid-template-{rows,columns} are set by JS to fill the viewport */
+  gap: 6px;
+  padding: 6px;
+  overflow: hidden;
+  align-content: stretch;
+}
+
+#terms.grid .term-host {
+  position: relative;
+  inset: auto;
+  display: none;
+  /* Always-visible border tinted with the session color so each
+     tile's identity is obvious without having to read the title. */
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
+  border-radius: var(--radius-sm);
+  background: var(--term-bg);
+  overflow: hidden;
+  padding: 0;
+  /* Without min-* zero, grid items default to min-content sizing and
+     each tile grows to fit its xterm canvas — making bottom rows
+     taller than top rows. Force fr distribution to win. */
+  min-width: 0;
+  min-height: 0;
+}
+#terms.grid .term-host.in-grid {
+  display: flex;
+  flex-direction: column;
+}
+/* Visual focus border = real xterm focus. focusin/focusout on the
+   tile host toggle .term-focused; when a session loses focus
+   (sidebar click, dialog open, window blur), the border goes away —
+   and only comes back once the xterm has actually regained focus.
+   The #terms prefix is needed to outweigh the per-mode baseline
+   border rules (which are also ID-scoped). */
+#terms .term-host.term-focused {
+  border-color: var(--session-color, var(--fg-muted));
+  box-shadow: 0 0 0 1px var(--session-color, var(--fg-muted)),
+              0 0 18px color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, transparent);
+}
+/* Dim non-focused tiles so it's obvious which session keystrokes go to.
+   Header stays full opacity; only the terminal body fades. */
+#terms .term-host:not(.term-focused) .term-body {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+#terms .term-host.term-focused .term-body {
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+@keyframes hive-tile-attention {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--session-color, var(--fg-muted)) 40%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 40%, transparent),
+                0 0 0 0 color-mix(in srgb, var(--session-color, var(--fg-muted)) 0%, transparent);
+  }
+  50% {
+    border-color: var(--session-color, var(--fg-muted));
+    box-shadow: 0 0 0 1px var(--session-color, var(--fg-muted)),
+                0 0 16px 4px color-mix(in srgb, var(--session-color, var(--fg-muted)) 35%, transparent);
+  }
+}
+
+#terms.grid .term-host.in-grid.attention {
+  animation: hive-tile-attention 1.2s ease-in-out infinite;
+}
+
+#minimized-tray {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  min-height: 32px;
+  scrollbar-width: thin;
+}
+#minimized-tray.hidden { display: none; }
+#terms.grid .term-host .term-body {
+  flex: 1;
+  position: relative;
+  padding: 4px 6px;
+  overflow: hidden;
+  min-height: 0; /* allow flex shrink so canvas doesn't push past 1fr */
+}
+#terms.grid .term-host .term-body .xterm,
+#terms.single .term-host .xterm,
+#terms.grid .term-host .xterm-screen {
+  height: 100%;
+}
+

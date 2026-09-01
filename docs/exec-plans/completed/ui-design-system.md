@@ -2,8 +2,14 @@
 
 - **Spec:** [docs/product-specs/ui-design-system.md](../../product-specs/ui-design-system.md)
 - **Issue:** —
-- **Stage:** IMPLEMENT (phases 1–5 shipped; phase 6 not started)
-- **Status:** active
+- **PR:** #312
+- **Branch:** silver-hill
+- **Status:** completed
+
+> Stage lives in the spec's frontmatter (`stage: GATE`), not here. `PR:` and
+> `Branch:` name the **last** phase PR, #312, which is the one the gate runs
+> against — phases 1–5 shipped as #292, #295, #299, #301 and #310 and are
+> already on `main`.
 
 ## Summary
 
@@ -105,6 +111,46 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-31** — ANSI 0–15 shipped in phase 5 after all, rather than being deferred to phase 6. Why: `themes.md` had documented `--ansi-*` as existing when no such token ever did, so xterm kept its Tango defaults under every preset — measured, seven of the sixteen fail WCAG AA on `hive-light`'s white ground and `brightWhite` sits at 1.16:1, invisible. Shipping a preset the picker offers but whose terminal output cannot be read is worse than the extra scope. `classic` and `hive-dark` restate the Tango values so nothing moves; `hive-light` gets a palette whose worst slot is 5.93:1.
 - **2026-08-31** — The project editor gets a real Tab trap in `keyboard.ts`. Why: `dialog()` sets `aria-modal="true"`, which the pre-migration bare `role="dialog"` never claimed; without a trap the attribute was a false promise and Tab walked out into the sidebar. It was also the one migrated dialog with no containment test.
 
+- **2026-08-31** — Fonts ship as unmodified upstream woff2 (no subsetting). Why: both are OFL 1.1 with Reserved Font Names; a subset would need renaming and the paperwork costs more than the ~480KB it saves.
+- **2026-08-31** — The phase-6 plan's IBM Plex asset URL (`v6.4.0/WOFF2.zip`) is 404. The release ships per-family archives; `IBM-Plex-Sans.zip` › `fonts/complete/woff2/` is what carries the unsplit files. Actual URLs and sha256 are recorded in `src/theme/fonts/README.md`. Why note it: the plan flagged this as the one thing most likely to have drifted, and it had.
+- **2026-08-31** — `html, body` reads `var(--font-ui)` instead of a literal system stack. Why: without it the bundled Plex would have reached only the components that set `--font-ui` themselves — the sidebar, worktrees list, help overlay and launcher all inherit, so bundling the fonts would have been visually inert. It also makes `classic`/`native-*` opt back into the system font by re-valuing the token, which is the correct mechanism.
+- **2026-08-31** — `tokens.css` keeps the Tango ANSI defaults rather than the phase-6 plan's brand-derived set. Why: the phase-5 log entry chose Tango for `classic` and `hive-dark` deliberately ("so nothing moves"); the plan predates that decision.
+- **2026-08-31** — `native-light`'s ANSI is VS Code Light+ with every hue darkened until it clears 4.5:1 on white (worst slot 4.61:1), not Light+ verbatim. Why: measured, seven of Light+'s sixteen fail AA on white — brightGreen 2.13:1, brightWhite 2.46:1. Same reason `hive-light` got its own palette in phase 5. `native-light --accent` is `#a35f0d`, not the mock's `#e6a23c`: white on the mock amber is 1.9:1.
+- **2026-08-31** — `terminal` keeps a desaturated red at ANSI 1/9 instead of a pure grey ramp. Why: monochrome chrome is a design choice; deleting the error colour out of *program output* would destroy information the user's tools are sending.
+- **2026-08-31** — `ui-contrast.mjs` checks the ANSI 16 only on presets whose `--term-bg` is a light ground. Why: on a dark ground ANSI 0 is *supposed* to vanish into the background — every terminal works that way — so a blanket rule would fail every dark preset for behaving correctly. On a light ground the same slot is the darkest colour and the rule bites where it should.
+- **2026-08-31** — Per-preset screenshot baselines stay darwin-local behind `HIVE_SNAPSHOT`, not Linux-container-generated as the phase-6 plan proposed. Why: that plan predates the 2026-08-29 decision above, which is still the right one — the cross-platform guards are the computed-style tests and the contrast gate, and three sets of baselines to maintain buys nothing.
+- **2026-08-31** — The `style.css` split's proof of inertness is a computed-style dump, not the screenshots. Why: the HIVE_SNAPSHOT baselines cover the sidebar, the settings dialog, the grid and the launcher; they say nothing about the worktree browser, the help overlay, the palette or the phase overlays. Dumping every CSS property of every element across seven surfaces under three presets, before and after, gave zero differences — which also cleared the one real risk of the move, that `style.css` rules which used to precede the primitives now follow them.
+- **2026-08-31** — Twelve literal `border-radius: 4/6/8px` are now `var(--radius-sm)` / `var(--radius-md)`. Why: `terminal` sets both radii to 0 and it did nothing — the preset whose defining trait is square corners shipped with rounded launcher, palette, tiles, cards and buttons. `ui-lint` has no radius rule, so only reading computed styles under the preset found it. The 1/2/3px hairline roundings (drag indicators, project swatch, worktree badge) stay literal: `--radius-sm` on a 10px swatch reads as a circle.
+- **2026-08-31** — The repo README has no screenshots, so the phase-6 plan's "refresh the README screenshots" step is moot. Nothing to recapture.
+
+## PR convergence ledger
+
+Written by hand: `/hs-review-loop` keys its ledger off a numbered
+`<NNN>-*.md` plan and skips it for a named one like this, so the loop ran
+and converged without recording anything here. These are its three real
+iteration envelopes.
+
+- **2026-08-31 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4b549c7de2e4bfb40ef1ce650ea7909df7d61c2cf3fd774d4e42e97b96de4f07; threads_open: 0; action: escalated:dirty working tree (the operator's in-flight fix for the same BLOCKING finding); head_sha: e4abada.
+- **2026-08-31 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: dac03e506d76f5e65702c901c06e7591c1e0902947dc41813be358c0619f4a19; threads_open: 0; action: stop; head_sha: 539b23e.
+- **2026-08-31 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e2e3b0.
+
+Iteration 1's BLOCKING (OFL notices never reached `dist/`) and iteration 2's
+three IMPORTANT items were all fixed on the branch and re-reviewed, which is
+why iteration 3 came back clean. Two commits landed after iteration 3 —
+`db4a9cc` (its two MINOR items: the stale `TODO(phase-6)` and the pre-paint
+`matchMedia` fallback diverging from `theme.ts`) and `35be523` (this stage
+advance). Neither touches behaviour that iteration 3 assessed.
+
+## Gate verdict
+
+- **2026-08-31** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: all seven success criteria observable on HEAD, the one non-goal respected, docs accurate after three rounds of fixes.
+  - 2026-08-31 dimensions:
+    - acceptance — PASS — all seven criteria verified against HEAD rather than the diff alone, since phases 1-5 are on `main` and outside `main...HEAD`. `ui-lint --strict` 0 violations; `--contrast` 6 presets 0 failures; vitest 68 files / 750 tests; playwright 30 passed + 14 HIVE_SNAPSHOT skips; typecheck exit 0. Criterion 7 evidenced by five merged phase PRs (#292, #295, #299, #301, #310) plus #312.
+    - non-goals — PASS — the one non-goal is "no layout or IA redesign". The `style.css` dissolution was verified by a CSS-block comparator: zero selectors dropped, every body diff traceable to a declared token substitution, and the single deliberately-split `:focus-visible` rule byte-identical in both halves. No new screens, navigation, daemon protocol, session-lifecycle, keyboard or persistence-format changes.
+    - doc accuracy — PASS on the third run. Run 1 FAIL: themes.md's xterm mapping claimed `color-mix()` for `selectionBackground` where the code writes an 8-digit hex, and the spec's Notes still said "phases 3-6 are not started". Run 2 FAIL: the Notes fix over-claimed, asserting #312 had shipped while it is the open PR under gate. Run 3 FAIL: the ui README's status line still said "landing in PR #312". All three fixed on the branch (0352c43, dd0b585, 9a7bd50) rather than filed as follow-ups, which is the point of gating before the merge.
+
+Notes on the run: the gate's cold-start guard wants a `PR:` header and a `## PR convergence ledger`, both of which `/hs-review-loop` skips for a plan not named `<NNN>-*.md`. They were reconstructed by hand from the three real iteration envelopes rather than bypassed. The acceptance dimension also caught two wrong phase PR numbers (#302/#306) that had been written into this plan's header by hand; corrected to #299/#301.
+
 ## Progress
 
 - [x] Phase 1
@@ -112,4 +158,4 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - [x] Phase 3
 - [x] Phase 4
 - [x] Phase 5
-- [ ] Phase 6
+- [x] Phase 6

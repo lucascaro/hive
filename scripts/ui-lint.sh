@@ -6,16 +6,22 @@
 #              declaration with a trailing comment is still caught)
 #   px-size  — font-size: <n>px outside src/theme/tokens.css
 #   glyph    — a denylist of icon-shaped Unicode characters in
-#              src/app/**/*.{ts,tsx}, src/style.css and index.html. Icons come
-#              from the sprite via icon() now (docs/design-docs/ui/icons.md
+#              src/app/**/*.{ts,tsx}, src/theme/**/*.css and index.html. Icons
+#              come from the sprite via icon() now (docs/design-docs/ui/icons.md
 #              > Rules); anything on this list is an unconverted call site.
 #              This is deliberately NOT "any non-ASCII" — prose in comments
 #              legitimately uses em dashes, curly quotes and arrows, and key
 #              hints (⌘⇧⌥⌃⌫) are required by AGENTS.md.
+#   contrast — `--contrast` runs scripts/ui-contrast.mjs instead of the three
+#              rules above: WCAG 2.1 AA per preset, plus the ANSI 16 on any
+#              preset whose --term-bg is a light ground. Same exit code, so CI
+#              has one entry point. Add --verbose to print every pair checked,
+#              or explicit paths to check fixtures instead of the real tokens
+#              (scripts/testdata/ui-contrast/{bad,good}.css).
 # A trailing `/* ui-lint: allow */` (CSS) or `// ui-lint: allow` (TS) exempts a line.
 # Exit 0 in warn mode; --strict exits 1 on any violation.
 #
-# Usage: ui-lint.sh [--strict] [path ...]
+# Usage: ui-lint.sh [--strict] [path ...] | ui-lint.sh --contrast [--verbose] [path ...]
 #   No paths -> lints the whole frontend tree (rule-specific defaults below).
 #   Explicit paths -> all three rules (including glyph) are scoped to them,
 #   so `ui-lint.sh --strict scripts/testdata/ui-lint/bad.css` is meaningful.
@@ -33,6 +39,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 FE=cmd/hivegui/frontend
 
+if [[ "${1:-}" == "--contrast" ]]; then
+  exec node scripts/ui-contrast.mjs "${@:2}"
+fi
+
 strict=0
 if [[ "${1:-}" == "--strict" ]]; then
   strict=1
@@ -44,7 +54,7 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   custom=0
   targets=("$FE/src" "$FE/index.html")
 fi
-# Glyph rule defaults to src/app + src/style.css + index.html when no
+# Glyph rule defaults to src/app + src/ui + src/theme + index.html when no
 # explicit targets are given, but honours explicit targets like the other
 # two rules do — otherwise `ui-lint.sh --strict some/fixture.ts` would
 # silently ignore the argument and scan the whole app tree instead.
@@ -57,7 +67,7 @@ if [[ $custom -eq 0 ]]; then
   # produce a false positive that invites a suppression.
   # src/components is where the React ports of the src/ui primitives
   # land during the React rewrite, so it is scanned on the same footing.
-  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/components" "$FE/src/theme" "$FE/src/style.css" "$FE/index.html")
+  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/components" "$FE/src/theme" "$FE/index.html")
 fi
 
 n=0

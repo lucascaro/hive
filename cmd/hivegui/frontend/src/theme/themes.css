@@ -63,3 +63,84 @@
   --ansi-12: #0a4ba0; --ansi-13: #62239b; --ansi-14: #0b555c; --ansi-15: #000000;
   --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
 }
+
+/* native-dark — mock option A (.t-native). Lifted neutral greys, system
+   font, filled selection, 6px radii; VS Code / Zed lineage, so its ANSI is
+   the Dark+ set users of those tools already read fluently.
+   Like classic, this block re-values every colour, font, radius and shadow
+   token and inherits the type/space/motion scales from tokens.css — those
+   are one scale for the whole app, not a per-preset choice. */
+:root[data-theme="native-dark"] {
+  --bg: #1e1e1f; --surface: #252527; --surface-raised: #27272a; --border: #3a3a3d;
+  --fg: #ececed; --fg-muted: #b8b8bc; --fg-subtle: #7a7a80;
+  --accent: #e6a23c; --on-accent: #1a1a1a; --sel: #3b3b40;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #323235; --btn-border: #454548;
+  --state-running: #4cc38a; --state-attention: #f0b44c; --state-error: #e06c6c;
+  --term-bg: #151516; --term-fg: #e2e2e4;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #000000;  --ansi-1: #cd3131;  --ansi-2: #0dbc79;  --ansi-3: #e5e510;
+  --ansi-4: #2472c8;  --ansi-5: #bc3fbc;  --ansi-6: #11a8cd;  --ansi-7: #e5e5e5;
+  --ansi-8: #666666;  --ansi-9: #f14c4c;  --ansi-10: #23d18b; --ansi-11: #f5f543;
+  --ansi-12: #3b8eea; --ansi-13: #d670d6; --ansi-14: #29b8db; --ansi-15: #e5e5e5;
+}
+
+/* native-light — option A inverted the way hive-light inverts B: borders
+   lighten, the shadow softens, and the accent darkens until white-on-accent
+   clears AA (#a35f0d is 5.00:1; the mock's #e6a23c would be 1.9:1, unusable
+   for a button label). */
+:root[data-theme="native-light"] {
+  --bg: #ffffff; --surface: #f3f3f3; --surface-raised: #ffffff; --border: #e0e0e0;
+  --fg: #1c1c1e; --fg-muted: #4c4c52; --fg-subtle: #6e6e76;
+  --accent: #a35f0d; --on-accent: #ffffff; --sel: #dfe6f5;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #ffffff; --btn-border: #cdcdd2;
+  --state-running: #197f52; --state-attention: #a35f0d; --state-error: #c02b2b;
+  --term-bg: #ffffff; --term-fg: #1c1c1e;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
+  /* VS Code Light+ hues, each darkened until it clears 4.5:1 on this
+     preset's white --term-bg (worst slot 4.61:1). Light+ itself does not:
+     seven of its sixteen fail on white, brightGreen at 2.13:1 and
+     brightWhite at 2.46:1. As in hive-light, "bright" means DARKER here —
+     on a light ground more contrast is the whole point of the bright row —
+     and brightBlue is deepened past normal blue so the two stay
+     distinguishable after the fit. */
+  --ansi-0: #1c1c1e;  --ansi-1: #cd3131;  --ansi-2: #008700;  --ansi-3: #767a00;
+  --ansi-4: #0451a5;  --ansi-5: #bc05bc;  --ansi-6: #047e9c;  --ansi-7: #555555;
+  --ansi-8: #717171;  --ansi-9: #b02a2a;  --ansi-10: #0b6d0b; --ansi-11: #5e6100;
+  --ansi-12: #033d7c; --ansi-13: #a704a7; --ansi-14: #03667e; --ansi-15: #1c1c1e;
+}
+
+/* terminal — mock option C (.t-mono). Everything mono, radius 0, no fills;
+   --accent == --state-attention by design (themes.md allows the collision
+   only for this preset). --fg-subtle is #6f6f6f, not the mock's #5c5c5c:
+   the mock value is 2.96:1 on #0a0a0a and misses the >= 3 decorative rule
+   by a hair. */
+:root[data-theme="terminal"] {
+  --bg: #0a0a0a; --surface: #0a0a0a; --surface-raised: #0f0f0f; --border: #232323;
+  --fg: #d6d6d6; --fg-muted: #9c9c9c; --fg-subtle: #6f6f6f;
+  --accent: #e8c170; --on-accent: #000000; --sel: #1a1a1a;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: transparent; --btn-border: #333333;
+  --state-running: #9c9c9c; --state-attention: #e8c170; --state-error: #c07070;
+  --term-bg: #0a0a0a; --term-fg: #d6d6d6;
+  --font-ui: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 0; --radius-md: 0;
+  --shadow-popover: 0 0 0 1px var(--border);
+  /* Near-monochrome ANSI: the greys carry structure, amber carries
+     attention. Red is kept as a desaturated brick rather than a grey —
+     build output that says "error" in colour must still read as error, and
+     a fully monochrome ramp would delete information the user's tools are
+     trying to send. */
+  --ansi-0: #0a0a0a;  --ansi-1: #c07070;  --ansi-2: #8f8f8f;  --ansi-3: #e8c170;
+  --ansi-4: #7c7c7c;  --ansi-5: #8a8a8a;  --ansi-6: #9c9c9c;  --ansi-7: #d6d6d6;
+  --ansi-8: #6f6f6f;  --ansi-9: #d98d8d;  --ansi-10: #b4b4b4; --ansi-11: #f0d094;
+  --ansi-12: #a0a0a0; --ansi-13: #adadad; --ansi-14: #c2c2c2; --ansi-15: #f2f2f2;
+}

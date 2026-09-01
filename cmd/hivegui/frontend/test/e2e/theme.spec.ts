@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { PRESETS } from '../../src/theme/theme';
 
 // Preset guard. Originally a Phase-1 proof that the token migration moved
 // no pixel; Phase 4 rebuilt the chrome markup on purpose, so `classic` can
@@ -21,6 +22,12 @@ async function boot(page: Page) {
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
+  // The bundled @font-face rules use font-display: swap, so the system
+  // fallback paints first and the real face swaps in when the woff2
+  // finishes decoding. Every baseline below asserts maxDiffPixels: 0, so
+  // capturing mid-swap is a guaranteed flake — and it would flake toward
+  // a WRONG baseline if it lost the race during --update-snapshots.
+  await page.evaluate(() => document.fonts.ready);
 }
 
 // Shared scene for the sidebar pixel baselines: two projects, three
@@ -97,10 +104,15 @@ test.describe('preset switching keeps the chrome stable', () => {
   );
 
   test('sidebar + terminal', async ({ page }) => {
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
     await seedSidebar(page);
-    await expect(page).toHaveScreenshot('sidebar-classic.png', {
+    // Named for what it is: the only FULL-PAGE baseline. The per-preset
+    // block below owns `sidebar-<preset>.png`, scoped to #sidebar.
+    await expect(page).toHaveScreenshot('chrome-classic.png', {
       maxDiffPixels: 0,
       animations: 'disabled',
       mask: [page.locator('.xterm')], // terminal content is not under test
@@ -108,6 +120,9 @@ test.describe('preset switching keeps the chrome stable', () => {
   });
 
   test('settings dialog', async ({ page }) => {
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
     await page.keyboard.press(`${mod}+,`);
@@ -119,28 +134,55 @@ test.describe('preset switching keeps the chrome stable', () => {
   });
 });
 
-// Phase-3 baselines: the sidebar's first visible redesign. Clipped to
-// #sidebar — the terminal area is not what these guard, and masking it
-// leaves the diff hostage to xterm's renderer.
-for (const preset of ['hive-dark', 'hive-light'] as const) {
-  test(`sidebar under ${preset}`, async ({ page }) => {
-    test.skip(
-      !process.env.HIVE_SNAPSHOT,
-      'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
-    );
-    await page.addInitScript(
-      (p) => localStorage.setItem('hive.theme', p),
-      preset,
-    );
-    await page.setViewportSize({ width: 1100, height: 700 });
-    await boot(page);
-    await seedSidebar(page);
-    await expect(page.locator('#sidebar')).toHaveScreenshot(
-      `sidebar-${preset}.png`,
-      { maxDiffPixels: 0, animations: 'disabled' },
-    );
-  });
-}
+// themes.md's "Adding a preset" step 4: sidebar + dialog under every
+// preset. Generated from PRESETS, so a seventh preset gets its pair by
+// existing rather than by someone remembering to add a test.
+//
+// These are the only check that catches a preset which parses fine, clears
+// contrast, and still looks broken — a token that falls through to
+// hive-dark's dark surface inside a light preset paints correctly by every
+// other measure we have.
+//
+// Element-scoped, not full-page: the terminal is live content and would
+// need masking on every shot. The full-page classic guard above is the one
+// place the whole chrome is pinned.
+test.describe('preset baselines', () => {
+  test.skip(
+    !process.env.HIVE_SNAPSHOT,
+    'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
+  );
+
+  for (const { id } of PRESETS.filter((p) => p.id !== 'system')) {
+    test(`${id}: sidebar`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await seedSidebar(page);
+      await expect(page.locator('#sidebar')).toHaveScreenshot(
+        `sidebar-${id}.png`,
+        { maxDiffPixels: 0, animations: 'disabled' },
+      );
+    });
+
+    test(`${id}: dialog`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await page.keyboard.press(`${mod}+,`);
+      await expect(page.locator('#settings')).toBeVisible();
+      await expect(page.locator('#settings-panel')).toHaveScreenshot(
+        `dialog-${id}.png`,
+        { maxDiffPixels: 0, animations: 'disabled' },
+      );
+    });
+  }
+});
 
 // Standing guard: presets actually switch styles (deterministic, runs on all
 // platforms, not pixel-gated).
@@ -174,6 +216,9 @@ test('hive-light preset changes the sidebar ground', async ({ page }) => {
 test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', async ({
   page,
 }) => {
+  // classic is a preset, not the default, since phase 6 — it has to be
+  // asked for by name.
+  await page.addInitScript(() => localStorage.setItem('hive.theme', 'classic'));
   await page.goto('/');
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
@@ -201,7 +246,7 @@ test('classic preset resolves --term-bg/--term-fg to xterm v2.4.0 colours', asyn
 // scripts/ui-lint.sh — copy any change there over here too.
 // Coverage boundary: this only sees textContent, so it cannot catch a glyph
 // delivered via CSS content: on a pseudo-element (::before/::after) — that
-// source-level case is scripts/ui-lint.sh's job, which scans src/style.css.
+// source-level case is scripts/ui-lint.sh's job, which scans src/theme/.
 test('no Unicode glyph is used as a control label', async ({ page }) => {
   await page.goto('/');
   const found = await page.evaluate(() => {
@@ -227,7 +272,17 @@ test.describe('Settings > Appearance', () => {
   test('picking a preset repaints the sidebar and is remembered', async ({
     page,
   }) => {
+    // The default is 'system' now, so what it resolves to depends on the
+    // runner's colour scheme — and if that were already light the repaint
+    // assertion below would be vacuous. Pin the media query rather than
+    // seeding storage: addInitScript would re-run on the reload at the end
+    // of this test and overwrite the preference it is checking survived.
+    await page.emulateMedia({ colorScheme: 'dark' });
     await openAppearance(page);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-dark',
+    );
     const sidebarBg = () =>
       page
         .locator('#sidebar')
@@ -287,7 +342,109 @@ test.describe('Settings > Appearance', () => {
     const values = await page
       .locator('#settings-theme option')
       .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    expect(values).toEqual(['system', 'hive-dark', 'hive-light', 'classic']);
+    expect(values).toEqual([
+      'system',
+      'hive-dark',
+      'hive-light',
+      'native-dark',
+      'native-light',
+      'terminal',
+      'classic',
+    ]);
+  });
+
+  // A preset listed in PRESETS but with no :root[data-theme] block in
+  // themes.css is the silent failure themes.md warns about: it inherits
+  // hive-dark wholesale and looks broken on a light ground, while every
+  // other check stays green. Distinct grounds are the cheapest proof each
+  // block exists and is actually reached — and the values come from the
+  // live cascade, so a typo'd selector fails here too.
+  test('every preset paints its own tokens and its own ANSI 16', async ({
+    page,
+  }) => {
+    await openAppearance(page);
+    const seen = new Map<string, string>();
+    const ids = await page
+      .locator('#settings-theme option')
+      .evaluateAll((os) =>
+        os
+          .map((o) => (o as HTMLOptionElement).value)
+          .filter((v) => v !== 'system'),
+      );
+    for (const id of ids) {
+      await page.locator('#settings-theme').selectOption(id);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', id);
+      const { ground, ansi } = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        return {
+          ground: ['--bg', '--surface', '--fg', '--accent', '--term-bg']
+            .map((t) => cs.getPropertyValue(t).trim())
+            .join('/'),
+          ansi: Array.from({ length: 16 }, (_, i) =>
+            cs.getPropertyValue(`--ansi-${i}`).trim(),
+          ),
+        };
+      });
+      // themes.md's "Adding a preset" step 2: all sixteen, every preset.
+      expect(ansi.filter(Boolean), `${id} ANSI`).toHaveLength(16);
+      // And they reach xterm, not just the cascade — xterm caches its
+      // palette, so the CSS alone proves nothing.
+      await expect
+        .poll(() => page.evaluate(() => window.__hive.termAnsi?.() ?? []))
+        .toEqual(ansi);
+      const clash = seen.get(ground);
+      expect(clash, `${id} paints the same tokens as ${clash}`).toBeUndefined();
+      seen.set(ground, id);
+    }
+    expect(seen.size).toBe(ids.length);
+  });
+
+  // 'system' is the default for every new install since phase 6, so the
+  // OS flipping to dark mid-session has to repaint. Playwright's
+  // emulateMedia fires the same media-query change event the OS does.
+  test('the system preset follows an OS scheme change without a restart', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'system'),
+    );
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-dark',
+    );
+    // The terminals repaint too, not just the CSS — xterm caches its
+    // palette, so this is the half that a CSS-only fix would miss.
+    await expect
+      .poll(() => page.evaluate(() => window.__hive.termThemeBg?.() ?? ''))
+      .toBe('#0b0c10');
+
+    // The stored choice is still 'system', not the resolved value.
+    expect(await page.evaluate(() => localStorage.getItem('hive.theme'))).toBe(
+      'system',
+    );
+  });
+
+  // The mirror image: an explicit preset is a decision the OS does not
+  // get to override.
+  test('an explicit preset ignores an OS scheme change', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.waitForTimeout(200);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
   });
 
   test('a good override applies live; a bad line is reported, not injected', async ({
@@ -365,53 +522,56 @@ test.describe('Settings > Appearance', () => {
   });
 
   // The gap this closes: with no --ansi-* tokens, xterm kept its Tango
-  // defaults under every preset, and seven of those fail WCAG AA on
-  // hive-light's white ground (brightWhite at 1.16:1 — invisible).
-  test('hive-light gives terminals a palette readable on white', async ({
-    page,
-  }) => {
-    await openAppearance(page);
-    await page.locator('#settings-theme').selectOption('hive-light');
-    await expect(page.locator('html')).toHaveAttribute(
-      'data-theme',
-      'hive-light',
-    );
+  // defaults under every preset, and seven of those fail WCAG AA on a
+  // white ground (brightWhite at 1.16:1 — invisible). Parametrised over
+  // every light preset rather than hive-light alone: the rule is
+  // themes.md's "a preset on a light ground MUST re-value all sixteen",
+  // and the ratios are computed here rather than pinned as hexes, so a
+  // preset added to this list is checked by the rule, not by a fixture.
+  for (const preset of ['hive-light', 'native-light'] as const) {
+    test(`${preset} gives terminals a palette readable on its own ground`, async ({
+      page,
+    }) => {
+      await openAppearance(page);
+      await page.locator('#settings-theme').selectOption(preset);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', preset);
 
-    const palette = await page.evaluate(() => {
-      const cs = getComputedStyle(document.documentElement);
-      return Array.from({ length: 16 }, (_, i) =>
-        cs.getPropertyValue(`--ansi-${i}`).trim(),
-      );
+      const palette = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        return Array.from({ length: 16 }, (_, i) =>
+          cs.getPropertyValue(`--ansi-${i}`).trim(),
+        );
+      });
+      expect(palette.filter(Boolean)).toHaveLength(16);
+
+      // Contrast against the terminal ground, computed here rather than
+      // asserted as fixed hexes: the point is legibility, not the values.
+      const worst = await page.evaluate((pal) => {
+        const lum = (hex: string) => {
+          const c = (hex.replace('#', '').match(/../g) ?? []).map((h) => {
+            const v = parseInt(h, 16) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        };
+        const bg = getComputedStyle(document.documentElement)
+          .getPropertyValue('--term-bg')
+          .trim();
+        return Math.min(
+          ...pal.map((c) => {
+            const [hi, lo] = [lum(c), lum(bg)].sort((a, b) => b - a);
+            return (hi + 0.05) / (lo + 0.05);
+          }),
+        );
+      }, palette);
+      expect(worst).toBeGreaterThanOrEqual(4.5);
+
+      // And it actually reaches the terminal, not just the CSS.
+      await expect
+        .poll(() => page.evaluate(() => window.__hive.termAnsi?.()[15] ?? ''))
+        .toBe(palette[15]);
     });
-    expect(palette.filter(Boolean)).toHaveLength(16);
-
-    // Contrast against the terminal ground, computed here rather than
-    // asserted as fixed hexes: the point is legibility, not the values.
-    const worst = await page.evaluate((pal) => {
-      const lum = (hex: string) => {
-        const c = (hex.replace('#', '').match(/../g) ?? []).map((h) => {
-          const v = parseInt(h, 16) / 255;
-          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-        });
-        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-      };
-      const bg = getComputedStyle(document.documentElement)
-        .getPropertyValue('--term-bg')
-        .trim();
-      return Math.min(
-        ...pal.map((c) => {
-          const [hi, lo] = [lum(c), lum(bg)].sort((a, b) => b - a);
-          return (hi + 0.05) / (lo + 0.05);
-        }),
-      );
-    }, palette);
-    expect(worst).toBeGreaterThanOrEqual(4.5);
-
-    // And it actually reaches the terminal, not just the CSS.
-    await expect
-      .poll(() => page.evaluate(() => window.__hive.termAnsi?.()[15] ?? ''))
-      .toBe(palette[15]);
-  });
+  }
 
   test('an override reaches every open terminal', async ({ page }) => {
     await openAppearance(page);

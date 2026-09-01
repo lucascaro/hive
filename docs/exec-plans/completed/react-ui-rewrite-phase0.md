@@ -215,3 +215,27 @@ Append-only, one line per `/hs-review-loop` iteration.
 
 - **2026-09-01 (re-gate)** — verdict: PASS; checks: 6 passed / 0 failed / 0 followups; followups: none; one-line: re-gated against **this phase's** `## Success criteria` after adopting per-phase gating; the whole-migration criterion that produced the earlier NEEDS_FOLLOWUP now belongs to Phase 6, where the spec's criteria are the gate.
   - 2026-09-01 dimensions: unchanged from the entry above (acceptance / non-goals / doc accuracy all PASS); only the checklist the acceptance dimension is measured against changed, from the spec's finished-migration criteria to this phase's own.
+
+## Post-gate: merge of main @ `afc430c` (design-system phase 6, PR #312)
+
+Brought the branch current after #312 landed while #311 sat open awaiting merge.
+Conflict surface was four files; only `scripts/ui-lint.sh` needed hand
+resolution.
+
+- `scripts/ui-lint.sh` — both sides edited the glyph-target list. Resolution
+  keeps main's removal of `$FE/src/style.css` (deleted by #312's CSS split) and
+  this phase's addition of `$FE/src/components`. The `--include='*.tsx'` glyph
+  scan and main's new `--contrast` mode are independent and both survive.
+- `src/app/session-term.ts`, `src/app/state.ts`, `src/main.ts` — auto-merged.
+  #312's `applyXtermTheme()` arrived iterating `state.terms.values()` through
+  the compat facade; converted to `allTerms()` to match its sibling
+  `applyFontSize`, and `ensureTerm`'s lookup to `getTerm`. `session-term.ts` now
+  has **no** references to the `state.terms` facade at all.
+- New CI gate `ui-lint.sh --contrast` (WCAG AA per preset) passes: 6 presets,
+  0 failures. This phase adds no CSS, so it was never at risk — but it is now
+  part of the per-phase verification block.
+
+Re-verified on the merged tree: tsc clean, biome at the baseline 10 warnings,
+ui-lint + contrast 0 violations, 774 vitest tests, 234 e2e (up from 230 — #312's
+new specs included and passing unmodified, 19 skipped are its snapshot-gated
+ones), 24 e2e-real. The gate verdict above stands.

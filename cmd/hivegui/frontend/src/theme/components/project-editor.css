@@ -1,0 +1,8 @@
+/* Project editor — composition only; the shell, fields and buttons are
+   primitives. The cwd row is the one thing that is this screen's own:
+   a path field with Browse… beside it. */
+#project-editor .cwd-row {
+  display: flex;
+  gap: var(--space-2);
+}
+#project-editor .cwd-row .hv-input { flex: 1 1 auto; min-width: 0; }

@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #291
 - **Branch:** feature/251-auto-update-with-release-latest-channels
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 

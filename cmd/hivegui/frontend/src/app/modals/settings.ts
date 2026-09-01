@@ -143,6 +143,25 @@ function selectPreset(name: ThemeName): void {
   }
 }
 
+// 'system' resolves prefers-color-scheme at the moment it is applied,
+// and since phase 6 it is the default for every new install — so without
+// a listener, flipping the OS to dark leaves Hive light until it is
+// restarted. Re-applies only when the stored choice is still 'system':
+// an explicit preset is a decision the OS does not get to override.
+// Same trio as selectPreset minus the store write, because the stored
+// value ('system') is exactly what has not changed.
+export function initThemeWatch(): void {
+  const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+  // jsdom has no matchMedia, and older webviews expose the legacy
+  // addListener only; neither is worth a shim for a live-preview nicety.
+  if (!mq?.addEventListener) return;
+  mq.addEventListener('change', () => {
+    if (readTheme() !== 'system') return;
+    applyTheme('system');
+    applyXtermTheme();
+  });
+}
+
 // applyUserOverrides runs on every keystroke, which is what makes the
 // box usable — but it must never leave a half-typed line showing as an
 // error while the user is still typing it. Rejected lines are reported;

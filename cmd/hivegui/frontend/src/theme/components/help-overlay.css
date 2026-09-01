@@ -1,0 +1,33 @@
+/* Keyboard-shortcuts help overlay (⌘/). The shell is the dialog
+   primitive; what is left is this screen's two-column shortcut table. */
+#help-overlay-groups {
+  columns: 2;
+  column-gap: 28px;
+}
+#help-overlay-groups section {
+  break-inside: avoid;
+  margin-top: 10px;
+}
+#help-overlay-groups h4 {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #777; /* ui-lint: allow */
+}
+#help-overlay-groups dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+#help-overlay-groups dt { margin: 0; }
+#help-overlay-groups dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: #aaa; /* ui-lint: allow */
+}
+@media (max-width: 700px) {
+  #help-overlay-groups { columns: 1; }
+}

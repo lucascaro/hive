@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #290
 - **Branch:** feature/250-minimize-projects-from-sidebar
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 

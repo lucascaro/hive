@@ -2,23 +2,36 @@
 // the app never flashes the default preset. docs/design-docs/ui/themes.md
 // NOTE: index.html contains a matching inline <script> that stamps data-theme
 // synchronously before stylesheets load. Keep both in sync, especially PRESETS.
-export type ThemeName = 'classic' | 'hive-dark' | 'hive-light' | 'system';
+export type ThemeName =
+  | 'classic'
+  | 'hive-dark'
+  | 'hive-light'
+  | 'native-dark'
+  | 'native-light'
+  | 'terminal'
+  | 'system';
 export const THEME_KEY = 'hive.theme';
-export const DEFAULT_THEME: ThemeName = 'classic';
+// Phase 6: new installs follow the OS. Users who already set a preset keep
+// it — readTheme() only falls back when the stored value is absent or
+// garbage. index.html's pre-paint script hard-codes the same fallback;
+// keep the two in sync.
+export const DEFAULT_THEME: ThemeName = 'system';
 export interface Preset {
   id: ThemeName;
   label: string;
 }
 
-// The picker renders from this list, so adding a preset in phase 6
-// (native-dark, native-light, terminal) is one line here plus its block
-// in themes.css — plus the duplicated list in index.html's pre-paint
-// script, which cannot import this module and is checked against this
-// one by test/e2e/theme.spec.ts. Order is the order shown.
+// The picker renders from this list, so adding a preset is one line here
+// plus its block in themes.css — plus the duplicated list in index.html's
+// pre-paint script, which cannot import this module and is checked against
+// this one by test/e2e/theme.spec.ts. Order is the order shown.
 export const PRESETS: readonly Preset[] = [
   { id: 'system', label: 'System' },
   { id: 'hive-dark', label: 'Hive Dark' },
   { id: 'hive-light', label: 'Hive Light' },
+  { id: 'native-dark', label: 'Native Dark' },
+  { id: 'native-light', label: 'Native Light' },
+  { id: 'terminal', label: 'Terminal' },
   { id: 'classic', label: 'Classic' },
 ];
 
@@ -104,6 +117,17 @@ export function xtermTheme(doc: Document = document) {
     // color-mix isn't resolvable via getPropertyValue; xterm accepts 8-digit hex.
     selectionBackground: accent.length === 7 ? `${accent}4d` : accent,
   };
+}
+
+// The terminal's font is a token like every other value, so xterm has to
+// be told it explicitly — it has no cascade of its own. The fallback is
+// for jsdom, where no stylesheet resolves and getPropertyValue returns ''.
+export function monoFontFamily(doc: Document = document): string {
+  return (
+    getComputedStyle(doc.documentElement)
+      .getPropertyValue('--font-mono')
+      .trim() || 'Menlo, "DejaVu Sans Mono", monospace'
+  );
 }
 
 export const OVERRIDES_KEY = 'hive.themeOverrides';

@@ -75,7 +75,7 @@ same DOM contract.
 ## Notes
 
 Seven phases, each its own PR and its own detailed plan, mirroring the
-`ui-design-system` master/phase plan layout:
+`ui-design-system` master/phase plan layout (completed 2026-08-31, PR #312):
 
 - Phase 0 — zustand store + React tooling, no rendering change
 - Phase 1 — sidebar island

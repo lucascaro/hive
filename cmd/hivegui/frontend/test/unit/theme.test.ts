@@ -10,8 +10,9 @@ import {
 } from '../../src/theme/theme';
 
 describe('resolveTheme', () => {
-  it('defaults to classic when nothing is stored', () => {
-    expect(resolveTheme(null, true)).toBe(DEFAULT_THEME);
+  it('defaults to the OS preference when nothing is stored', () => {
+    expect(resolveTheme(null, true)).toBe('hive-dark');
+    expect(resolveTheme(null, false)).toBe('hive-light');
   });
   it('maps system to hive-dark / hive-light by OS preference', () => {
     expect(resolveTheme('system', true)).toBe('hive-dark');
@@ -19,7 +20,15 @@ describe('resolveTheme', () => {
   });
   it('passes known presets through and rejects garbage', () => {
     expect(resolveTheme('hive-light', true)).toBe('hive-light');
-    expect(resolveTheme('<script>', true)).toBe(DEFAULT_THEME);
+    // Garbage takes the DEFAULT_THEME path, which is now 'system'.
+    expect(resolveTheme('<script>', true)).toBe('hive-dark');
+    expect(resolveTheme('<script>', false)).toBe('hive-light');
+  });
+
+  it('never resolves to the selection sentinel', () => {
+    expect(DEFAULT_THEME).toBe('system');
+    for (const stored of [null, 'system', 'nonsense', 'classic'])
+      expect(resolveTheme(stored, true)).not.toBe('system');
   });
 });
 
@@ -27,7 +36,15 @@ describe('PRESETS', () => {
   it('lists every selectable theme exactly once, System first', () => {
     expect(PRESETS[0].id).toBe('system');
     const ids = PRESETS.map((p) => p.id);
-    expect(ids).toEqual(['system', 'hive-dark', 'hive-light', 'classic']);
+    expect(ids).toEqual([
+      'system',
+      'hive-dark',
+      'hive-light',
+      'native-dark',
+      'native-light',
+      'terminal',
+      'classic',
+    ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(PRESETS.every((p) => p.label.length > 0)).toBe(true);
   });
