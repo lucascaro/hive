@@ -11,6 +11,9 @@
 //   --fg        on --bg       >= 4.5   the app ground, not just panels
 //   --term-fg   on --term-bg  >= 4.5   terminal default pair
 //   --on-accent on --accent   >= 4.5   primary buttons must read their own label
+//   --state-*   on --surface  >= 4.5   state colours are text, not just icons
+//                                      (worktree kind ramp, merged badge,
+//                                      destructive action, version mismatch)
 // color-mix()/var() values that don't resolve to a hex are skipped, loudly.
 //
 // Run via `scripts/ui-lint.sh --contrast [--verbose] [path ...]`, which is the
@@ -37,6 +40,15 @@ const PAIRS = [
   ['--fg', '--bg', 4.5],
   ['--term-fg', '--term-bg', 4.5],
   ['--on-accent', '--accent', 4.5],
+  // The state family is checked on --surface because that is the ground
+  // every panel that spells a state out in words sits on. It was icon-only
+  // when phase 6 wrote this list — 8px shapes, decorative, >= 3:1 — and
+  // hive-light shipped --state-running at 3.45:1 and --state-attention at
+  // 3.27:1 as a result. Both are text now.
+  ['--state-running', '--surface', 4.5],
+  ['--state-attention', '--surface', 4.5],
+  ['--state-error', '--surface', 4.5],
+  ['--state-info', '--surface', 4.5],
 ];
 // The ANSI 16 are checked only on a light ground. On a dark one, ANSI 0
 // ("black") is meant to be invisible on the background — every terminal

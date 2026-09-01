@@ -31,7 +31,7 @@
 
 #new-project-btn {
   background: var(--btn);
-  color: #ccc; /* ui-lint: allow */
+  color: var(--fg);
   border: none;
   border-radius: var(--radius-sm);
   width: 22px;

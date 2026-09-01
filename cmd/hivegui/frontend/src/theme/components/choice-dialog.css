@@ -20,7 +20,7 @@
   margin: 0 0 10px;
   padding-left: 18px;
   font-size: var(--text-sm);
-  color: #f0b357; /* ui-lint: allow */
+  color: var(--state-attention);
   line-height: 1.5;
 }
 /* Same as .worktrees-hint: the primitive's body-paragraph rule wins on

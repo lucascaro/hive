@@ -25,7 +25,7 @@
 }
 .dead-overlay[hidden] { display: none; }
 .dead-card {
-  background: #0d0d0d; /* ui-lint: allow */
+  background: var(--surface-raised);
   border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--hover));
   border-radius: var(--radius-md);
   padding: 14px 18px;
@@ -37,13 +37,15 @@
 .dead-title {
   font-size: var(--text-md);
   font-weight: 600;
-  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
+  /* The emphasis here is weight and size; the colour is just primary
+     text. A literal white was invisible on a light preset's card. */
+  color: var(--fg);
   margin-bottom: 4px;
   letter-spacing: 0.02em;
 }
 .dead-subtitle {
   font-size: var(--text-sm);
-  color: #aaa; /* ui-lint: allow */
+  color: var(--fg-muted);
   margin-bottom: 12px;
 }
 .dead-buttons {
@@ -72,6 +74,9 @@
   filter: brightness(1.12);
 }
 .dead-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 80%, #fff); /* ui-lint: allow — literal white as a color-mix blend endpoint, not a themed role */
+  /* Blended toward --fg, not toward white: the point of the endpoint is
+     to pull the session colour away from the card behind it, and on a
+     light preset white pulls it the wrong way. */
+  outline: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 80%, var(--fg));
   outline-offset: 1px;
 }

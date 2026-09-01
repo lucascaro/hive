@@ -5,6 +5,14 @@
 #              discusses a hex value doesn't trip the rule; a real
 #              declaration with a trailing comment is still caught)
 #   px-size  — font-size: <n>px outside src/theme/tokens.css
+#   radius   — border-radius: <n>px outside src/theme/tokens.css. Deliberately
+#              px-only: `border-radius: 50%` is a circle, not a scale step, so
+#              the four of those in the tree are exempt by construction rather
+#              than by a suppression comment. This rule exists because the
+#              `terminal` preset sets --radius-sm/--radius-md to 0 and twelve
+#              literal 4/6/8px roundings made that a no-op — a preset whose
+#              defining trait is square corners shipped with rounded cards, and
+#              nothing here flagged it.
 #   glyph    — a denylist of icon-shaped Unicode characters in
 #              src/app/**/*.{ts,tsx}, src/theme/**/*.css and index.html. Icons
 #              come from the sprite via icon() now (docs/design-docs/ui/icons.md
@@ -110,6 +118,11 @@ while IFS= read -r line; do report "$line"; done < <(
   grep -rnE --include='*.css' 'font-size:\s*[0-9.]+px' "${targets[@]}" 2>/dev/null \
     | grep -v -e 'src/theme/tokens.css' -e 'ui-lint: allow' \
     | sed 's/^/px-size: /' || true)
+
+while IFS= read -r line; do report "$line"; done < <(
+  grep -rnE --include='*.css' 'border-radius:\s*[0-9.]+px' "${targets[@]}" 2>/dev/null \
+    | grep -v -e 'src/theme/tokens.css' -e 'ui-lint: allow' \
+    | sed 's/^/radius: /' || true)
 
 # Denylist of icon-shaped characters. Not a Unicode range, so plain -F
 # (fixed-string) matching is enough — no PCRE required.

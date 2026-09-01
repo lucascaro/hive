@@ -20,7 +20,7 @@
 #worktrees-panel section {
   padding: var(--space-3) 0 var(--space-1);
 }
-#worktrees-section-branches { border-top: 1px solid #1e1e1e; } /* ui-lint: allow */
+#worktrees-section-branches { border-top: 1px solid var(--border); }
 #worktrees-panel section.hidden { display: none; }
 
 /* Loading / empty state. Mirrors the session tile's phase overlay —
@@ -45,7 +45,7 @@
   max-width: 40ch;
   text-align: center;
   font-size: var(--text-md);
-  color: #999; /* ui-lint: allow */
+  color: var(--fg-muted);
   line-height: 1.5;
 }
 /* The spinner only belongs to the loading state; the "not a git repo"
@@ -83,10 +83,10 @@
   align-items: center;
   gap: 8px;
   padding: 7px 8px;
-  border: 1px solid #1e1e1e; /* ui-lint: allow */
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   margin-bottom: 6px;
-  background: #141414; /* ui-lint: allow */
+  background: var(--surface-raised);
 }
 .worktree-row .worktree-main { flex: 1; min-width: 0; }
 .worktree-name {
@@ -99,18 +99,21 @@
 .worktree-status {
   display: block;
   font-size: var(--text-xs);
-  color: #777; /* ui-lint: allow */
+  color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* The tip commit subject: what is actually in the branch. Italic, not
-   dimmer, sets it apart from the status line above it — at 11px on
-   #141414 anything below #7d7d7d misses the 4.5:1 contrast floor. */
+   dimmer, sets it apart from the status line above it — so it shares
+   --fg-muted with the status line rather than reaching for a second
+   grey. The literal it replaces was picked as the 4.5:1 floor on a
+   hard-coded #141414 ground, a floor that stops existing once both the
+   ground and the text come from the preset. */
 .worktree-subject {
   display: block;
   font-size: var(--text-xs);
-  color: #808080; /* ui-lint: allow */
+  color: var(--fg-muted);
   font-style: italic;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -118,11 +121,22 @@
 }
 /* Status colour carries the same ranking the list is sorted by, so a
    row that holds work is visible without reading the text. */
-.worktree-row[data-kind='active'] { border-color: #2f4858; } /* ui-lint: allow */
-.worktree-row[data-kind='active'] .worktree-status { color: #7fb3d5; } /* ui-lint: allow */
-.worktree-row[data-kind='holding'] { border-color: #4a3a1a; } /* ui-lint: allow */
-.worktree-row[data-kind='holding'] .worktree-status { color: #f0b357; } /* ui-lint: allow */
-.worktree-row[data-kind='main'] { background: #101010; } /* ui-lint: allow */
+/* --state-info, not --state-running: "a session is running in it" and
+   "already merged, safe to sweep" are both true of some rows at once,
+   and the merged badge below owns green. */
+.worktree-row[data-kind='active'] {
+  border-color: color-mix(in srgb, var(--state-info) 30%, var(--border));
+}
+.worktree-row[data-kind='active'] .worktree-status { color: var(--state-info); }
+.worktree-row[data-kind='holding'] {
+  border-color: color-mix(in srgb, var(--state-attention) 30%, var(--border));
+}
+.worktree-row[data-kind='holding'] .worktree-status { color: var(--state-attention); }
+/* The project's own checkout is not a worktree you can sweep, so it sits
+   flush with the panel while every other row is a raised card. That is
+   the same fact the old second near-black carried, said with the two
+   grounds the preset already defines instead of a third. */
+.worktree-row[data-kind='main'] { background: var(--surface); }
 .worktree-badge {
   font-size: var(--text-xs);
   text-transform: uppercase;
@@ -131,15 +145,15 @@
   border: 1px solid var(--btn-border);
   /* Hairline rounding on a 15px chip; see the swatch note in
      project-card.css. Not a scale step. */
-  border-radius: 3px;
+  border-radius: 3px; /* ui-lint: allow */
   padding: 1px 4px;
 }
 /* Merged is the "this is safe to sweep" signal, so it reads as
    positive rather than as another grey tag. */
 .worktree-badge.merged {
-  color: #4ade80; /* ui-lint: allow */
-  border-color: #14532d; /* ui-lint: allow */
-  background: rgba(22, 101, 52, 0.18);
+  color: var(--state-running);
+  border-color: color-mix(in srgb, var(--state-running) 40%, var(--border));
+  background: color-mix(in srgb, var(--state-running) 15%, transparent);
 }
 .worktree-actions {
   display: flex;
@@ -149,7 +163,7 @@
 .worktree-actions button {
   background: var(--sel);
   border: 1px solid var(--btn-border);
-  color: #ccc; /* ui-lint: allow */
+  color: var(--fg);
   border-radius: var(--radius-sm);
   padding: 3px 8px;
   font-size: var(--text-sm);
@@ -164,5 +178,8 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
-.worktree-actions button.danger { color: #e08585; } /* ui-lint: allow */
-.worktree-actions button.danger:hover:not(:disabled) { background: #3a1f1f; } /* ui-lint: allow */
+/* tokens.md gives --state-error the destructive-action role. */
+.worktree-actions button.danger { color: var(--state-error); }
+.worktree-actions button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--state-error) 22%, transparent);
+}

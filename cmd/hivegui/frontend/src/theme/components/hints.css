@@ -34,5 +34,8 @@
 /* Mismatch state: readable, but deliberately quieter than the
    stale-daemon banner, which is the primary signal. */
 .hints.mismatch {
-  color: #8a7a4a; /* ui-lint: allow */
+  /* Mixed toward --fg-muted rather than given its own literal: the
+     rule is "attention, but quieter than the banner", and only a
+     derivation keeps meaning that under six presets. */
+  color: color-mix(in srgb, var(--state-attention) 55%, var(--fg-muted));
 }

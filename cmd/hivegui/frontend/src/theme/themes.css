@@ -20,6 +20,7 @@
   --state-starting: #666;
   --state-exited: #555;
   --state-error: #ff9a9a;
+  --state-info: #7fb3d5;
   --term-bg: #000;
   --term-fg: #ffffff;
   /* Same Tango palette as tokens.css, restated because this block
@@ -52,7 +53,14 @@
   --accent: #c47a12; --on-accent: #1a1b22; --sel: #eceef5;
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #f2f3f7; --btn-border: #d9dbe3;
-  --state-running: #1f9d6a; --state-attention: #d9731a; --state-error: #c93a3a;
+  /* Darker than the mock's #1f9d6a/#d9731a: on this preset's white
+     --surface those measure 3.45:1 and 3.27:1. That was tolerable while
+     the state tokens only filled 8px icons (decorative, >= 3:1), but they
+     now colour 11px text in the worktree browser, so they have to clear
+     4.5:1. --state-attention lands on the value native-light already
+     ships. ui-contrast.mjs enforces this. */
+  --state-running: #177a53; --state-attention: #a35f0d; --state-error: #c93a3a;
+  --state-info: #1163a8;
   --term-bg: #ffffff; --term-fg: #1a1b22;
   /* The one thing hive-light cannot inherit. Every value clears WCAG AA
      on #ffffff (min 5.93:1); the bright half is deeper rather than
@@ -77,6 +85,7 @@
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #323235; --btn-border: #454548;
   --state-running: #4cc38a; --state-attention: #f0b44c; --state-error: #e06c6c;
+  --state-info: #6cb6e8;
   --term-bg: #151516; --term-fg: #e2e2e4;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", Menlo, Consolas, monospace;
@@ -99,6 +108,7 @@
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: #ffffff; --btn-border: #cdcdd2;
   --state-running: #197f52; --state-attention: #a35f0d; --state-error: #c02b2b;
+  --state-info: #1163a8;
   --term-bg: #ffffff; --term-fg: #1c1c1e;
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "SF Mono", Menlo, Consolas, monospace;
@@ -129,6 +139,10 @@
   --hover: color-mix(in srgb, var(--sel) 60%, transparent);
   --btn: transparent; --btn-border: #333333;
   --state-running: #9c9c9c; --state-attention: #e8c170; --state-error: #c07070;
+  /* Brighter than --state-running rather than a different hue: this
+     preset carries structure in the greys, so "occupied" reads as more
+     light, not as blue. */
+  --state-info: #b4b4b4;
   --term-bg: #0a0a0a; --term-fg: #d6d6d6;
   --font-ui: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
   --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;

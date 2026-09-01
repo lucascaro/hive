@@ -30,7 +30,7 @@
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--border);
-  color: #eee; /* ui-lint: allow */
+  color: var(--fg);
   font: inherit;
   outline: none;
 }
@@ -44,7 +44,7 @@
   padding: 6px 8px;
   margin: 0 0 4px;
   border-bottom: 1px solid var(--border);
-  color: #ccc; /* ui-lint: allow */
+  color: var(--fg);
   font-size: var(--text-sm);
   user-select: none;
   cursor: pointer;
@@ -65,7 +65,7 @@
   width: calc(100% - 16px);
   margin: 0 8px 6px;
   padding: 4px 6px;
-  background: #141414; /* ui-lint: allow */
+  background: var(--surface-raised);
   border: 1px solid var(--hover);
   border-radius: var(--radius-sm);
   color: var(--fg);
@@ -82,7 +82,7 @@
 .worktree-rename {
   width: 100%;
   padding: 3px 6px;
-  background: #141414; /* ui-lint: allow */
+  background: var(--surface-raised);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   color: var(--fg);

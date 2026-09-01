@@ -24,13 +24,16 @@ Semantic roles, defined once in `src/theme/tokens.css` (defaults = `hive-dark`) 
 | `--state-starting` | Daemon phase ≠ ready | `--fg-subtle` |
 | `--state-exited` | Exit 0 | `--fg-subtle` |
 | `--state-error` | Exit ≠ 0, banners, destructive actions | `#ff6b6b` |
+| `--state-info` | In use / occupied, no action needed (worktree `active`) | `#7fb3d5` |
 | `--term-bg` | xterm background | `#0b0c10` |
 | `--term-fg` | xterm foreground | `#dfe1ea` |
 
 Rules:
 - `--accent` and `--state-attention` are **different hues on purpose** so "selected" never reads as "needs you". Presets may set them equal only if the preset is monochrome (`terminal`).
 - Session/project colours (user-chosen swatches) are data, not tokens. They render via `--session-color` on the element, as today.
-- Derived shades use `color-mix()` in components, not extra tokens. Cap: one derivation per use site.
+- Derived shades use `color-mix()` in components, not extra tokens. Cap: one derivation per use site. A state colour used as a *border* or a *fill* is written `color-mix(in srgb, var(--state-x) N%, var(--border))` / `…, transparent)`, so the tint follows the preset instead of pinning a second hex.
+- The four state hues (`running`, `attention`, `error`, `info`) are **text**, not only icons — the worktree kind ramp, the merged badge, the destructive action and the version-mismatch hint all spell a state out in words. `scripts/ui-lint.sh --contrast` therefore requires each of them ≥ 4.5:1 on `--surface` in every preset. This is why `hive-light`'s `--state-running` is `#177a53` and its `--state-attention` is `#a35f0d` rather than the lighter mock values (3.45:1 and 3.27:1).
+- `--state-info` exists because `active`, `holding` and `merged` are three facts shown in one panel and only two hues carried them. `holding` is attention and `merged` is success; `active` could not also be `--state-running` without green meaning both "a session is running here" and "already merged, safe to delete" on rows that are frequently both.
 
 ## Typography
 
@@ -72,6 +75,8 @@ Presets `native-dark`, `native-light` and `classic` set `--font-ui` to the syste
 | `--motion-pulse` | 1.6s ease-in-out infinite (attention only) |
 
 `@media (prefers-reduced-motion: reduce)` sets both motion tokens to `0s`.
+
+`ui-lint`'s **radius** rule fails a literal `border-radius: <n>px` outside `tokens.css`, because `terminal` sets both radius tokens to `0` and a literal ignores it. It is px-only, so `border-radius: 50%` (a circle, not a scale step) needs no suppression. Four sub-scale hairline roundings — 1px drag indicators, the 2px project swatch, the 3px worktree badge — carry an `allow` comment: `--radius-sm` on a 10px swatch reads as a circle.
 
 ## Focus
 
