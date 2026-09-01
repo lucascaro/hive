@@ -136,8 +136,19 @@ describe('applyXtermTheme', () => {
   it('pushes the current tokens into every open terminal', () => {
     document.documentElement.style.setProperty('--term-bg', '#101010');
     document.documentElement.style.setProperty('--term-fg', '#f0f0f0');
+    // --font-mono travels with the colours: `terminal` and `native-*` name
+    // different families, and xterm has no cascade to pick that up itself.
+    document.documentElement.style.setProperty(
+      '--font-mono',
+      'Iosevka, monospace',
+    );
     const a = {
-      term: { options: { theme: { background: '#000000', foreground: '' } } },
+      term: {
+        options: {
+          fontFamily: 'Menlo',
+          theme: { background: '#000000', foreground: '' },
+        },
+      },
     };
     // Tiles whose term is absent (the DOM-test stubs, and a tile whose
     // terminal has been disposed) must not throw.
@@ -149,6 +160,7 @@ describe('applyXtermTheme', () => {
 
     expect(a.term.options.theme.background).toBe('#101010');
     expect(a.term.options.theme.foreground).toBe('#f0f0f0');
+    expect(a.term.options.fontFamily).toBe('Iosevka, monospace');
     state.terms.clear();
   });
 });

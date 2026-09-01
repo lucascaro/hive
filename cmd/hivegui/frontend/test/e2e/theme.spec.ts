@@ -304,7 +304,9 @@ test.describe('Settings > Appearance', () => {
   // other check stays green. Distinct grounds are the cheapest proof each
   // block exists and is actually reached — and the values come from the
   // live cascade, so a typo'd selector fails here too.
-  test('every preset has its own block in themes.css', async ({ page }) => {
+  test('every preset paints its own tokens and its own ANSI 16', async ({
+    page,
+  }) => {
     await openAppearance(page);
     const seen = new Map<string, string>();
     const ids = await page
@@ -317,12 +319,24 @@ test.describe('Settings > Appearance', () => {
     for (const id of ids) {
       await page.locator('#settings-theme').selectOption(id);
       await expect(page.locator('html')).toHaveAttribute('data-theme', id);
-      const ground = await page.evaluate(() => {
+      const { ground, ansi } = await page.evaluate(() => {
         const cs = getComputedStyle(document.documentElement);
-        return ['--bg', '--surface', '--fg', '--accent', '--term-bg']
-          .map((t) => cs.getPropertyValue(t).trim())
-          .join('/');
+        return {
+          ground: ['--bg', '--surface', '--fg', '--accent', '--term-bg']
+            .map((t) => cs.getPropertyValue(t).trim())
+            .join('/'),
+          ansi: Array.from({ length: 16 }, (_, i) =>
+            cs.getPropertyValue(`--ansi-${i}`).trim(),
+          ),
+        };
       });
+      // themes.md's "Adding a preset" step 2: all sixteen, every preset.
+      expect(ansi.filter(Boolean), `${id} ANSI`).toHaveLength(16);
+      // And they reach xterm, not just the cascade — xterm caches its
+      // palette, so the CSS alone proves nothing.
+      await expect
+        .poll(() => page.evaluate(() => window.__hive.termAnsi?.() ?? []))
+        .toEqual(ansi);
       const clash = seen.get(ground);
       expect(clash, `${id} paints the same tokens as ${clash}`).toBeUndefined();
       seen.set(ground, id);
