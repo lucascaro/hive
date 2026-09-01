@@ -84,7 +84,7 @@
   gap: 8px;
   padding: 7px 8px;
   border: 1px solid #1e1e1e; /* ui-lint: allow */
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   margin-bottom: 6px;
   background: #141414; /* ui-lint: allow */
 }
@@ -129,6 +129,8 @@
   letter-spacing: 0.04em;
   color: var(--fg-muted);
   border: 1px solid var(--btn-border);
+  /* Hairline rounding on a 15px chip; see the swatch note in
+     project-card.css. Not a scale step. */
   border-radius: 3px;
   padding: 1px 4px;
 }
@@ -148,7 +150,7 @@
   background: var(--sel);
   border: 1px solid var(--btn-border);
   color: #ccc; /* ui-lint: allow */
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 3px 8px;
   font-size: var(--text-sm);
   cursor: pointer;

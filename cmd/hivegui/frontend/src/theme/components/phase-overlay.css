@@ -27,7 +27,7 @@
 .dead-card {
   background: #0d0d0d; /* ui-lint: allow */
   border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--hover));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 14px 18px;
   max-width: 80%;
   text-align: center;
@@ -55,7 +55,7 @@
   background: var(--btn);
   border: 1px solid var(--btn-border);
   color: var(--fg);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px 14px;
   font: inherit;
   font-size: var(--text-sm);

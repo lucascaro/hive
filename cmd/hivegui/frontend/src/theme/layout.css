@@ -65,7 +65,7 @@ body.resizing-sidebar #app { transition: none; }
   /* Match the grid-tile baseline border so the focus upgrade is
      visible in single mode too. */
   border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--term-bg);
   overflow: hidden;
 }
@@ -97,7 +97,7 @@ body.resizing-sidebar #app { transition: none; }
   /* Always-visible border tinted with the session color so each
      tile's identity is obvious without having to read the title. */
   border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 45%, var(--surface-raised));
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--term-bg);
   overflow: hidden;
   padding: 0;

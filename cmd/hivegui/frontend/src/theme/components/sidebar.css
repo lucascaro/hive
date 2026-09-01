@@ -33,7 +33,7 @@
   background: var(--btn);
   color: #ccc; /* ui-lint: allow */
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   width: 22px;
   height: 22px;
   cursor: pointer;

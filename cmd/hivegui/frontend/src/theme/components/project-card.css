@@ -40,6 +40,9 @@
   width: 8px;
   height: 8px;
   flex-shrink: 0;
+  /* Hairline rounding on a 10px square, not a scale step: --radius-sm
+     would be 40% of the swatch and read as a circle. Stays literal, and
+     stays 2px under `terminal` — at this size it is already square. */
   border-radius: 2px;
   background: var(--project-color, var(--fg-subtle));
 }

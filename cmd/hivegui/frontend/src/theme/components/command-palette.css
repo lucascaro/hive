@@ -9,7 +9,7 @@
   max-height: 60vh;
   background: var(--surface-raised);
   border: 1px solid var(--hover);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: 0 16px 40px rgba(0,0,0,0.7);
   z-index: 20;
   display: flex;
