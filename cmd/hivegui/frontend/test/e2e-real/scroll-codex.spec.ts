@@ -300,13 +300,31 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
 test('viewport converges to the bottom after a mode switch under continuous output', async ({
   page,
 }) => {
-  // Un-quarantined 2026-08-31 (spec 245). It used to fail on CI with
-  // resizeDecisions() === 0 — no replay decision reached at all — and the
-  // cause was a harness bug, as the shared-daemon-state hypothesis in this
-  // comment suspected: the ws-bridge dispatched every WriteStdin frame on
-  // its own goroutine, so under contention adjacent keystrokes were applied
-  // out of order and the command this test types was never the command that
-  // ran. With the bridge write path ordered, it is green under 18 CPU hogs.
+  // QUARANTINED ON CI ONLY — lifted 2026-08-31, and RE-INSTATED the same day.
+  //
+  // The lift was wrong. The argument was that this test's long-standing
+  // `resizeDecisions() === 0` failure was the ws-bridge keystroke-ordering
+  // bug (root cause 1 in spec 245's Resolution) rather than the
+  // shared-daemon state its old comment guessed at, and the evidence was
+  // three green full-suite runs under 18 CPU hogs on an idle macOS laptop.
+  //
+  // CI disagreed immediately. On PR #307's final commit the macOS leg failed
+  // this test on BOTH attempts with resizeDecisions() === 0 — the exact
+  // original symptom — while the same commit's Linux and Windows legs, and
+  // main's own macOS run of the merge commit, passed it. So it is flaky on
+  // CI macOS specifically, which `failOnFlakyTests` correctly refuses to
+  // tolerate, and local runs under synthetic CPU load do not model whatever
+  // CI macOS does differently.
+  //
+  // The lesson worth keeping: local green under load is not evidence about a
+  // CI-only failure. Retiring a CI-only quarantine needs CI-side evidence —
+  // repeated green runs of the un-skipped test on the actual runner — not a
+  // plausible causal story plus a clean laptop. Do not lift this again
+  // without that.
+  test.skip(
+    !!process.env.CI,
+    'flaky on CI macOS (resizeDecisions() === 0) — see spec 245 Resolution',
+  );
 
   await bootWithTerm(page);
   await addSecondSession(page);

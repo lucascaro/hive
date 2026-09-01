@@ -257,10 +257,40 @@ under load with `viewportY == baseY == 5000` — the reader really is yanked. Th
 is a product question about the resize replay, not a harness one, and this
 spec's non-goals put it out of scope. It stays skipped on CI with this note.
 
+### Correction (2026-08-31, post-merge)
+
+**Un-quarantining `viewport converges to the bottom after a mode switch` was
+wrong, and it is re-instated.** The claim above — that its long-standing
+`resizeDecisions() === 0` failure was root cause 1 rather than the
+shared-daemon state its old comment guessed at — rested on three green
+full-suite runs under 18 CPU hogs on an idle macOS laptop.
+
+CI refuted it immediately. On PR #307's final commit the macOS leg failed that
+test on **both** attempts with `resizeDecisions() === 0`, the exact original
+symptom, while the same commit's Linux and Windows legs and `main`'s own macOS
+run of the merge commit passed it. It is flaky on CI macOS specifically, and
+`failOnFlakyTests` is right to refuse it.
+
+The reasoning error is worth more than the fix: **local green under load is not
+evidence about a CI-only failure.** Retiring a CI-only quarantine needs CI-side
+evidence — repeated first-attempt-green runs of the un-skipped test on the real
+runner — not a plausible causal story plus a clean laptop. The other three root
+causes are unaffected; they were each confirmed by a mechanism, not by a green
+run.
+
+So coverage is back where it started: two CI quarantines, both explicit and
+both carrying their evidence.
+
 ### Still open
 
 The ten-consecutive-green-runs criterion can only be observed on CI, from the
 landing commit forward.
+
+`main` is also red from an unrelated pre-existing flake in the **mock** suite
+(`test/e2e/worktrees.spec.ts:247`, focus lost under load), tracked as
+[spec 257](257-mock-e2e-worktree-glyph-loses-focus.md). It is a different suite
+and a different mechanism; it does not implicate this fix, but it does gate the
+ten-green-runs count.
 
 ## Gate verdict
 
