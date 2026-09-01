@@ -33,3 +33,43 @@ func TestEmbeddedAssetsIncludeWebfonts(t *testing.T) {
 			"did `npm run build` run before `go test`?", n)
 	}
 }
+
+// The OFL requires the licence notice to travel with the redistributed font
+// files. Nothing imports a licence, and anything under frontend/src only
+// reaches dist/ if something imports it — so the two texts live in
+// frontend/public/, which Vite copies into dist/ verbatim. This asserts that
+// arrangement still holds: moving them "back next to the fonts" would drop
+// them out of every shipped binary silently.
+func TestEmbeddedAssetsIncludeFontLicences(t *testing.T) {
+	want := map[string]bool{
+		"LICENSE-IBMPlexSans.txt":   false,
+		"LICENSE-JetBrainsMono.txt": false,
+	}
+	err := fs.WalkDir(assets, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if _, ok := want[path.Base(p)]; ok && !d.IsDir() {
+			// A zero-byte or truncated copy satisfies the notice
+			// requirement no better than a missing one.
+			b, rerr := fs.ReadFile(assets, p)
+			if rerr != nil {
+				return rerr
+			}
+			if !strings.Contains(string(b), "SIL OPEN FONT LICENSE Version 1.1") {
+				t.Errorf("%s does not contain the OFL 1.1 text", p)
+			}
+			want[path.Base(p)] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk embedded assets: %v", err)
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("%s missing from the embedded assets; it must live in "+
+				"cmd/hivegui/frontend/public/fonts/ so Vite copies it into dist/", name)
+		}
+	}
+}
