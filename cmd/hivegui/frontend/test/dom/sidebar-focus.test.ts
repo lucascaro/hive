@@ -18,6 +18,7 @@
 // shape genuinely moves — puts focus back where it was.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
 
 const killCalls: Array<[string, boolean | undefined]> = [];
 
@@ -155,7 +156,7 @@ describe('sidebar repaint and focus', () => {
 
     // A new session is a genuine shape change, so this falls back to the
     // full rebuild — the node holding focus is destroyed.
-    state.sessions.push({
+    store.addSession({
       id: 'c',
       name: 'db',
       order: 2,
@@ -200,7 +201,7 @@ describe('sidebar repaint and focus', () => {
     document.body.append(outside);
     outside.focus();
 
-    state.sessions.push({
+    store.addSession({
       id: 'z',
       name: 'other',
       order: 9,

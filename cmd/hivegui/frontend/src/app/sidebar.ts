@@ -13,12 +13,8 @@ import {
   Confirm,
 } from '../bridge.js';
 import { noteLocalClose } from './undo-close.js';
-import {
-  state,
-  saveCollapsed,
-  type ProjectInfo,
-  type SessionInfo,
-} from './state.js';
+import { state, type ProjectInfo, type SessionInfo } from './state.js';
+import { toggleCollapsed } from '../store/store.js';
 import { projectsUL, minimizedProjectsUL, reportFailure } from './dom.js';
 import { chip } from '../ui/chip.js';
 import { sessionRow, updateSessionRow } from '../ui/session-row.js';
@@ -314,9 +310,7 @@ function renderProject(
     ...projectCardState(p.id, activePID),
     onSelect: () => deps.switchToProject(p.id),
     onToggleCollapse: () => {
-      if (state.collapsed.has(p.id)) state.collapsed.delete(p.id);
-      else state.collapsed.add(p.id);
-      saveCollapsed();
+      toggleCollapsed(p.id);
       renderSidebar();
     },
     onNewSession: () => openLauncher(p.id),

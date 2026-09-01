@@ -20,6 +20,7 @@ import {
   type MockedFunction,
 } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -71,7 +72,7 @@ vi.mock('../../src/app/view.js', async () => {
     shiftActiveProject: vi.fn(),
     // Mirrors the real restoreSession (view.ts): un-minimize, then switchTo.
     restoreSession: vi.fn((id: string | null) => {
-      if (id) state.minimized.delete(id);
+      if (id) store.restoreSession(id);
       setActive(id);
     }),
     minimizeProject: vi.fn(),
@@ -153,7 +154,7 @@ beforeEach(() => {
   state.activeId = null;
   state.nav.back.length = 0;
   state.nav.fwd.length = 0;
-  state.minimized.clear();
+  store.setMinimized(new Set());
   restoreSession.mockClear();
 });
 
@@ -302,7 +303,7 @@ describe('navBack / navForward', () => {
     // keystrokes are silently dropped. ⌘B already restores on the way
     // in (keyboard.ts jumpToAttention); back/forward must match.
     switchTo('a');
-    state.minimized.add('a');
+    store.minimizeSession('a');
     switchTo('b');
     switchTo('c');
 
@@ -317,7 +318,7 @@ describe('navBack / navForward', () => {
   it('un-minimizes on the forward leg too', () => {
     switchTo('a');
     switchTo('b');
-    state.minimized.add('b');
+    store.minimizeSession('b');
     navBack();
     expect(state.activeId).toBe('a');
 

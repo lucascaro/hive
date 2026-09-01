@@ -31,7 +31,9 @@
     "strict": true,
     // The generated wailsjs/** and @xterm/* types are not ours to fix.
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // React 19 automatic runtime — no `import React` needed in .tsx.
+    "jsx": "react-jsx"
   },
   // test/unit is safe to include wholesale from wave 1: the un-converted
   // *.test.js files land in the program but `checkJs: false` skips them, so
@@ -46,6 +48,7 @@
   "include": [
     "src/lib/**/*",
     "src/app/**/*",
+    "src/store/**/*",
     "src/bridge.ts",
     "src/globals.d.ts",
     "src/main.ts",
