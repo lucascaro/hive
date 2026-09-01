@@ -6,21 +6,9 @@
     <title>Hive</title>
     <link rel="stylesheet" href="./src/theme/tokens.css"/>
     <link rel="stylesheet" href="./src/theme/themes.css"/>
-    <link rel="stylesheet" href="./src/style.css"/>
-    <link rel="stylesheet" href="./src/theme/components/project-card.css"/>
-    <link rel="stylesheet" href="./src/theme/components/chip.css"/>
-    <link rel="stylesheet" href="./src/theme/components/session-row.css"/>
-    <link rel="stylesheet" href="./src/theme/components/icon.css"/>
-    <link rel="stylesheet" href="./src/theme/components/icon-button.css"/>
-    <link rel="stylesheet" href="./src/theme/components/kbd.css"/>
-    <link rel="stylesheet" href="./src/theme/components/button.css"/>
-    <link rel="stylesheet" href="./src/theme/components/banner.css"/>
-    <link rel="stylesheet" href="./src/theme/components/status-bar.css"/>
-    <link rel="stylesheet" href="./src/theme/components/tile-header.css"/>
-    <link rel="stylesheet" href="./src/theme/components/launcher-item.css"/>
-    <link rel="stylesheet" href="./src/theme/components/empty-state.css"/>
-    <link rel="stylesheet" href="./src/theme/components/dialog.css"/>
-    <link rel="stylesheet" href="./src/theme/components/field.css"/>
+    <link rel="stylesheet" href="./src/theme/base.css"/>
+    <link rel="stylesheet" href="./src/theme/layout.css"/>
+    <link rel="stylesheet" href="./src/theme/components/index.css"/>
     <!-- User token overrides. Declared here, after every preset, so they
          win by cascade ORDER. Filled synchronously by the script below
          and rewritten by src/theme/theme.ts. Never moved. -->
@@ -35,11 +23,35 @@
       // are stored already-sanitised (writeOverrides), and theme.ts
       // re-sanitises on import, which covers a hand-edited store one paint
       // later.
+      // Two try blocks, not one. The theme stamp and the override
+      // injection fail independently: with a single block, a throw from
+      // the override half (a getItem that denies, a regex on a hostile
+      // value) would land in a catch that re-stamps data-theme and
+      // overwrite the correct preset the first half had already applied.
+      // Defaults to dark, not light: applyTheme() in theme.ts ends its
+      // matchMedia chain with `?? true`, and the two must agree or a
+      // matchMedia-less runtime would paint one preset and then swap to
+      // the other a paint later. Every supported webview has matchMedia,
+      // so this is belt-and-braces — but a comment claiming parity that
+      // does not hold is worse than no comment.
+      var dark = true;
       try {
+        dark = matchMedia('(prefers-color-scheme: dark)').matches;
+      } catch (e) { /* keep the theme.ts default */ }
+      try {
+        var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
         var t = localStorage.getItem('hive.theme');
-        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
-        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
+        // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
+        // stored value resolves the same way an explicit 'system' does.
+        // Keep the two in sync.
+        if (t === 'system' || KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
         document.documentElement.dataset.theme = t;
+      } catch (e) {
+        // Storage denied. Still follow the OS rather than pinning a
+        // dark preset on a light machine.
+        document.documentElement.dataset.theme = dark ? 'hive-dark' : 'hive-light';
+      }
+      try {
         // The store is hand-editable, so it is shape-checked before it
         // reaches the <style>: declarations only, no block, tag, at-rule
         // or comment characters, no backslash (a CSS escape such as
@@ -56,7 +68,7 @@
             return FN_OK.indexOf(f.slice(0, -1).toLowerCase()) >= 0;
           });
         if (ok) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
-      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
+      } catch (e) { /* no overrides; the preset above still stands */ }
     </script>
 </head>
 <body>

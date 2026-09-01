@@ -1,0 +1,77 @@
+/* Closing: the tile is on its way out. Dim it and stop taking input;
+   the removal event lands moments later. */
+.term-host.closing .term-body {
+  filter: grayscale(0.7) brightness(0.55);
+  pointer-events: none;
+}
+/* Dead-session overlay — shown over a tile (grid or single mode)
+   when the underlying process has exited. */
+.term-host {
+  position: relative;
+}
+.term-host.dead .term-body {
+  filter: grayscale(0.7) brightness(0.55);
+  pointer-events: none;
+}
+.dead-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(1px);
+  z-index: 5;
+}
+.dead-overlay[hidden] { display: none; }
+.dead-card {
+  background: #0d0d0d; /* ui-lint: allow */
+  border: 1px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 55%, var(--hover));
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  max-width: 80%;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6),
+              0 0 0 1px color-mix(in srgb, var(--session-color, var(--fg-muted)) 30%, transparent);
+}
+.dead-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: #fff; /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+.dead-subtitle {
+  font-size: var(--text-sm);
+  color: #aaa; /* ui-lint: allow */
+  margin-bottom: 12px;
+}
+.dead-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.dead-btn {
+  background: var(--btn);
+  border: 1px solid var(--btn-border);
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.dead-btn:hover { background: var(--hover); }
+.dead-btn.primary {
+  background: var(--session-color, var(--accent));
+  border-color: var(--session-color, var(--accent));
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.dead-btn.primary:hover {
+  filter: brightness(1.12);
+}
+.dead-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--session-color, var(--fg-muted)) 80%, #fff); /* ui-lint: allow — literal white as a color-mix blend endpoint, not a themed role */
+  outline-offset: 1px;
+}

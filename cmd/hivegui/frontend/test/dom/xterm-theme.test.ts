@@ -136,12 +136,31 @@ describe('applyXtermTheme', () => {
   it('pushes the current tokens into every open terminal', () => {
     document.documentElement.style.setProperty('--term-bg', '#101010');
     document.documentElement.style.setProperty('--term-fg', '#f0f0f0');
+    // --font-mono travels with the colours: `terminal` and `native-*` name
+    // different families, and xterm has no cascade to pick that up itself.
+    document.documentElement.style.setProperty(
+      '--font-mono',
+      'Iosevka, monospace',
+    );
+    let refits = 0;
     const a = {
-      term: { options: { theme: { background: '#000000', foreground: '' } } },
+      term: {
+        options: {
+          fontFamily: 'Menlo',
+          theme: { background: '#000000', foreground: '' },
+        },
+      },
+      _onBodyResize: () => {
+        refits++;
+      },
     };
     // Tiles whose term is absent (the DOM-test stubs, and a tile whose
     // terminal has been disposed) must not throw.
-    const b = {};
+    const b = {
+      _onBodyResize: () => {
+        refits++;
+      },
+    };
     state.terms.set('a', a as never);
     state.terms.set('b', b as never);
 
@@ -149,6 +168,12 @@ describe('applyXtermTheme', () => {
 
     expect(a.term.options.theme.background).toBe('#101010');
     expect(a.term.options.theme.foreground).toBe('#f0f0f0');
+    expect(a.term.options.fontFamily).toBe('Iosevka, monospace');
+    // A font change moves the character cell, so (cols, rows) must be
+    // recomputed and the PTY told — the body box does not change, so the
+    // ResizeObserver will not do it for us. Both tiles refit, including
+    // the one with no terminal.
+    expect(refits).toBe(2);
     state.terms.clear();
   });
 });

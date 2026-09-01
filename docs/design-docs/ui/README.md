@@ -2,11 +2,11 @@
 
 The visual and interaction system for the Hive GUI (`cmd/hivegui/frontend/`). This directory is the source of truth for *how the UI looks and behaves*; `DESIGN.md` at the repo root covers architecture.
 
-Status: **Phases 1–5 implemented** (tokens, presets, SVG icon sprite and primitives, every Unicode UI glyph removed, `ui-lint --strict` gating CI; sidebar rebuilt on `sessionRow`/`projectCard`/`chip`; chrome — banners, status bar, tile headers, launcher and palette rows, empty/boot/phase states — on `button`/`banner` and tokens; every modal on `dialog()` + the form-field primitives, with Settings › Appearance shipping the preset picker and user token overrides). The remaining presets, the contrast check and the `style.css` split are Phase 6. Implementation is tracked in [docs/exec-plans/active/ui-design-system.md](../../exec-plans/active/ui-design-system.md).
+Status: **complete** — all six phases implemented, the last in PR #312 (v2.5.0). Changes to the UI now follow "How to change the UI from now on" below. The six phases: tokens and presets; the SVG icon sprite and primitives, with every Unicode UI glyph removed; the sidebar rebuilt on `sessionRow`/`projectCard`/`chip`; the chrome — banners, status bar, tile headers, launcher and palette rows, empty/boot/phase states — on `button`/`banner` and tokens; every modal on `dialog()` plus the form-field primitives, with Settings › Appearance shipping the preset picker and user token overrides; and finally the bundled webfonts, the remaining presets, the WCAG contrast gate, the flip to the OS colour scheme and the dissolution of `style.css` into `base.css` + `layout.css` + `components/*.css`. `ui-lint --strict` and `ui-lint --contrast` gate CI. Implementation is tracked in [docs/exec-plans/completed/ui-design-system.md](../../exec-plans/completed/ui-design-system.md).
 
 ## Why this exists
 
-As of v2.4.0 `style.css` is 2159 lines with one custom property, 51 distinct hex colours, 12 font sizes (8–18px, including 10.5/11.5/12.5), no theming, and state glyphs pulled from five different Unicode blocks. Every screen was built piece by piece. This system replaces that with a small set of named decisions that every future change reads from.
+As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct hex colours, 12 font sizes (8–18px, including 10.5/11.5/12.5), no theming, and state glyphs pulled from five different Unicode blocks. Every screen was built piece by piece. This system replaces that with a small set of named decisions that every future change reads from.
 
 ## Principles
 
@@ -22,7 +22,7 @@ As of v2.4.0 `style.css` is 2159 lines with one custom property, 51 distinct hex
 | File | Contents |
 |---|---|
 | [tokens.md](tokens.md) | Semantic token roles: colour, type scale, spacing, radius, elevation, motion |
-| [themes.md](themes.md) | Presets (`hive-dark` default, `hive-light`, `native`, `terminal`, `classic`), user overrides, xterm mapping |
+| [themes.md](themes.md) | Presets (`system` default, resolving to `hive-dark`/`hive-light`; plus `native-dark`, `native-light`, `terminal`, `classic`), user overrides, xterm mapping |
 | [icons.md](icons.md) | SVG sprite inventory, state shapes, rules |
 | [components.md](components.md) | Primitives in `src/ui/`: anatomy, states, tokens used |
 | [patterns.md](patterns.md) | Cross-component behaviour: attention bubbling, selection vs attention, empty/error states, keyboard hints |

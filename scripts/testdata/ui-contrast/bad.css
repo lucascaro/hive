@@ -1,0 +1,50 @@
+/* Fixture: every failure mode the checker is supposed to catch, one per
+   preset. Used by the ui-lint self-test in .github/workflows/ci.yml, which
+   asserts this file makes scripts/ui-contrast.mjs exit 1. Editing it to pass
+   defeats the point.
+
+   The base ground is dark so each preset fails for exactly one reason —
+   a light --term-bg here would also (correctly) fail every preset for not
+   declaring the ANSI 16, which buries the case each block is testing. */
+:root {
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+}
+/* Body text under AA: #4a4a4a on #13141a is 2.7:1, needs 4.5. */
+:root[data-theme="fixture-dim-text"] {
+  --fg: #4a4a4a;
+}
+/* A primary button that cannot read its own label: white on #e6a23c is
+   2.19:1. This is the real bug that moved native-light's accent. */
+:root[data-theme="fixture-unreadable-button"] {
+  --accent: #e6a23c;
+  --on-accent: #ffffff;
+}
+/* A light ground with xterm's Tango defaults: brightWhite lands at 1.16:1.
+   This is the whole reason the light-ground ANSI rule exists. */
+:root[data-theme="fixture-light-tango"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --fg: #1a1b22;
+  --fg-muted: #4f5262;
+  --fg-subtle: #767676;
+  --term-bg: #ffffff;
+  --term-fg: #1a1b22;
+  --ansi-0: #2e3436; --ansi-1: #cc0000; --ansi-2: #4e9a06; --ansi-3: #c4a000;
+  --ansi-4: #3465a4; --ansi-5: #75507b; --ansi-6: #06989a; --ansi-7: #d3d7cf;
+  --ansi-8: #555753; --ansi-9: #ef2929; --ansi-10: #8ae234; --ansi-11: #fce94f;
+  --ansi-12: #729fcf; --ansi-13: #ad7fa8; --ansi-14: #34e2e2; --ansi-15: #eeeeec;
+}
+/* A light ground that declares no ANSI at all — the other half of the
+   light-ground rule: silence is a failure, not a pass. */
+:root[data-theme="fixture-light-no-ansi"] {
+  --term-bg: #ffffff;
+  --term-fg: #1a1b22;
+}

@@ -4,8 +4,9 @@ title: "UI design system: tokens, themes, icons, primitives"
 type: enhancement
 complexity: L
 priority: P2
-pr: 310
-stage: IMPLEMENT
+pr: 312
+shipped: 2026-08-31
+stage: DONE
 ---
 
 # UI design system: tokens, themes, icons, primitives
@@ -15,7 +16,7 @@ stage: IMPLEMENT
 - **Complexity:** L
 - **Priority:** P2
 - **Stage:** IMPLEMENT
-- **Exec plan:** [docs/exec-plans/active/ui-design-system.md](../exec-plans/active/ui-design-system.md)
+- **Exec plan:** [docs/exec-plans/completed/ui-design-system.md](../exec-plans/completed/ui-design-system.md)
 
 ## Problem
 
@@ -49,6 +50,7 @@ component layer, and CI keeps literals out.
 ## Notes
 
 Six phases, each with its own detailed plan under `docs/exec-plans/active/ui-design-system-phase<N>.md`.
-Phase 1 shipped in PR #292, phase 2 in PR #295; phases 3–6 are not started.
+One PR per phase: phase 1 in #292, 2 in #295, 3 in #299, 4 in #301 and 5 in #310, all
+merged; phase 6 in #312, which is the PR this spec is gated against.
 Design docs live in `docs/design-docs/ui/`. Spec written retroactively
 (2026-08-30) to give the phase plans a spec to hang off.

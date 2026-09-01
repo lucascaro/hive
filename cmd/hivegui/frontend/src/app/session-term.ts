@@ -8,7 +8,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 
-import { xtermTheme } from '../theme/theme';
+import { monoFontFamily, xtermTheme } from '../theme/theme';
 import {
   OpenSession,
   CloseAttach,
@@ -321,7 +321,11 @@ export class SessionTerm {
     mustEl('terms').appendChild(this.host);
 
     this.term = new Terminal({
-      fontFamily: 'Menlo, "DejaVu Sans Mono", monospace',
+      // Terminal font follows --font-mono, so the bundled JetBrains Mono
+      // (and any user override from Settings › Appearance) reaches xterm
+      // too. Read at construction; applyXtermTheme() re-reads it whenever
+      // the theme changes, which is the only time it can move.
+      fontFamily: monoFontFamily(),
       fontSize: state.fontSize,
       // cursorBlink causes a repaint twice a second per terminal —
       // material on older machines with many tiles. Off by default.
@@ -1639,9 +1643,20 @@ export class SessionTerm {
 // outlive its terminal for a tick.
 export function applyXtermTheme() {
   const theme = xtermTheme();
+  const fontFamily = monoFontFamily();
   for (const st of state.terms.values()) {
     const opts = st.term?.options;
-    if (opts) opts.theme = theme;
+    if (opts) {
+      opts.theme = theme;
+      opts.fontFamily = fontFamily;
+    }
+    // Same reason applyFontSize refits: --font-mono genuinely differs
+    // per preset (classic -> Menlo, native-* -> SF Mono, hive-*/terminal
+    // -> JetBrains Mono), so a theme change moves the character cell.
+    // The body box does not change, so the ResizeObserver never fires,
+    // and without this every open terminal keeps (cols, rows) computed
+    // from the old font's metrics and the PTY is never told.
+    st._onBodyResize();
   }
 }
 

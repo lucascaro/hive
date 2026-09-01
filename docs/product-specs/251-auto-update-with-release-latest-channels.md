@@ -4,7 +4,8 @@ title: "Auto-update with release/latest channels"
 type: enhancement
 complexity: L
 priority: P2
-stage: REVIEW
+stage: DONE
+shipped: 2026-08-30
 pr: 291
 ---
 
@@ -16,7 +17,7 @@ pr: 291
 - **Complexity:** L
 - **Priority:** P2
 - **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/251-auto-update-with-release-latest-channels.md](../exec-plans/active/251-auto-update-with-release-latest-channels.md)
+- **Exec plan:** [docs/exec-plans/completed/251-auto-update-with-release-latest-channels.md](../exec-plans/completed/251-auto-update-with-release-latest-channels.md)
 
 ## Problem
 

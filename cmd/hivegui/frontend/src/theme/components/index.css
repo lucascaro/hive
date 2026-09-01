@@ -1,0 +1,35 @@
+/* Component layer. Import order IS cascade order — later files win ties, so
+   surface-specific files come after the primitives they override.
+   Vite inlines these @imports at build; index.html links only this file. */
+
+/* Primitives (src/ui/) first: everything below may override them. */
+@import './icon.css';
+@import './icon-button.css';
+@import './kbd.css';
+@import './button.css';
+@import './chip.css';
+@import './field.css';
+@import './dialog.css';
+@import './banner.css';
+@import './status-bar.css';
+@import './empty-state.css';
+@import './project-card.css';
+@import './session-row.css';
+@import './tile-header.css';
+@import './launcher-item.css';
+
+/* Surfaces: one file per screen, composed from the primitives above. */
+@import './sidebar.css';
+@import './minimized.css';
+@import './hints.css';
+@import './phase-overlay.css';
+@import './project-editor.css';
+@import './settings.css';
+@import './launcher.css';
+@import './command-palette.css';
+@import './help-overlay.css';
+@import './worktrees.css';
+@import './choice-dialog.css';
+
+/* Last: xterm's own DOM, which we only ever subtract from. */
+@import './xterm-overrides.css';

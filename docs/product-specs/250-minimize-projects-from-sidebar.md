@@ -4,7 +4,8 @@ title: "Minimize whole projects from the sidebar"
 type: enhancement
 complexity: M
 priority: P2
-stage: REVIEW
+stage: DONE
+shipped: 2026-08-29
 pr: 290
 ---
 
@@ -16,7 +17,7 @@ pr: 290
 - **Complexity:** M
 - **Priority:** P2
 - **Stage:** REVIEW
-- **Exec plan:** [docs/exec-plans/active/250-minimize-projects-from-sidebar.md](../exec-plans/active/250-minimize-projects-from-sidebar.md)
+- **Exec plan:** [docs/exec-plans/completed/250-minimize-projects-from-sidebar.md](../exec-plans/completed/250-minimize-projects-from-sidebar.md)
 
 ## Problem
 

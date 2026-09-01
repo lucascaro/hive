@@ -1,0 +1,91 @@
+#launcher {
+  position: fixed;
+  background: var(--surface-raised);
+  border: 1px solid var(--hover);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  /* Wide enough that the filter box's placeholder isn't clipped. */
+  min-width: 220px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  /* Must clear #sidebar-resizer (z-index 20). Neither #sidebar
+     (position: relative, no z-index) nor #app (plain grid, no
+     z-index/opacity/transform) establishes a stacking context, so the
+     resizer and this menu both resolve into the ROOT stacking context
+     where their z-indexes compare directly; at 10 the 5px resize strip
+     painted over the agent menu. At 20 they tie and DOM order wins it
+     for the menu (it follows #sidebar). Matches the other modals
+     (project-editor, command-palette). Adding `z-index` to #sidebar
+     would re-trap the resizer in its own context and break this. */
+  z-index: 20;
+  font-size: var(--text-md);
+}
+#launcher.hidden { display: none; }
+
+.launcher-search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: #eee; /* ui-lint: allow */
+  font: inherit;
+  outline: none;
+}
+.launcher-search::placeholder { color: var(--fg-subtle); }
+
+
+.launcher-worktree {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--border);
+  color: #ccc; /* ui-lint: allow */
+  font-size: var(--text-sm);
+  user-select: none;
+  cursor: pointer;
+}
+.launcher-worktree input[type=checkbox] {
+  margin: 0;
+}
+.launcher-worktree.disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Branch name for a new worktree. Only rendered while the worktree
+   toggle above it is on — hidden, not removed, so toggling doesn't
+   reflow the agent list twice. */
+.launcher-branch {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 0 8px 6px;
+  padding: 4px 6px;
+  background: #141414; /* ui-lint: allow */
+  border: 1px solid var(--hover);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}
+.launcher-branch.hidden { display: none; }
+.launcher-branch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Inline rename inside a worktree row. */
+.worktree-rename {
+  width: 100%;
+  padding: 3px 6px;
+  background: #141414; /* ui-lint: allow */
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-family: inherit;
+}

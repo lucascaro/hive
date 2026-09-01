@@ -157,10 +157,10 @@ export function openChoiceDialog(spec: ChoiceSpec): Promise<string> {
     });
     const overlay = dlg.el;
     // `.choice-dialog` carries this dialog's one deviation from the
-    // primitive (z-index, style.css) and is what focus-traps.spec.ts
-    // selects on; the id is the primitive's. The panel and footer take
-    // no extra class — the primitive styles both, and the bullets and
-    // note below are the only bits style.css still owns.
+    // primitive (z-index, components/choice-dialog.css) and is what
+    // focus-traps.spec.ts selects on; the id is the primitive's. The
+    // panel and footer take no extra class — the primitive styles both,
+    // and the bullets and note below are the only bits that file owns.
     overlay.classList.add('choice-dialog');
 
     dismiss = () => finish(safe.value);
