@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #312
 - **Branch:** silver-hill
-- **Status:** active
+- **Status:** completed
 
 > Stage lives in the spec's frontmatter (`stage: GATE`), not here. `PR:` and
 > `Branch:` name the **last** phase PR, #312, which is the one the gate runs
@@ -142,6 +142,14 @@ why iteration 3 came back clean. Two commits landed after iteration 3 —
 advance). Neither touches behaviour that iteration 3 assessed.
 
 ## Gate verdict
+
+- **2026-08-31** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: all seven success criteria observable on HEAD, the one non-goal respected, docs accurate after three rounds of fixes.
+  - 2026-08-31 dimensions:
+    - acceptance — PASS — all seven criteria verified against HEAD rather than the diff alone, since phases 1-5 are on `main` and outside `main...HEAD`. `ui-lint --strict` 0 violations; `--contrast` 6 presets 0 failures; vitest 68 files / 750 tests; playwright 30 passed + 14 HIVE_SNAPSHOT skips; typecheck exit 0. Criterion 7 evidenced by five merged phase PRs (#292, #295, #299, #301, #310) plus #312.
+    - non-goals — PASS — the one non-goal is "no layout or IA redesign". The `style.css` dissolution was verified by a CSS-block comparator: zero selectors dropped, every body diff traceable to a declared token substitution, and the single deliberately-split `:focus-visible` rule byte-identical in both halves. No new screens, navigation, daemon protocol, session-lifecycle, keyboard or persistence-format changes.
+    - doc accuracy — PASS on the third run. Run 1 FAIL: themes.md's xterm mapping claimed `color-mix()` for `selectionBackground` where the code writes an 8-digit hex, and the spec's Notes still said "phases 3-6 are not started". Run 2 FAIL: the Notes fix over-claimed, asserting #312 had shipped while it is the open PR under gate. Run 3 FAIL: the ui README's status line still said "landing in PR #312". All three fixed on the branch (0352c43, dd0b585, 9a7bd50) rather than filed as follow-ups, which is the point of gating before the merge.
+
+Notes on the run: the gate's cold-start guard wants a `PR:` header and a `## PR convergence ledger`, both of which `/hs-review-loop` skips for a plan not named `<NNN>-*.md`. They were reconstructed by hand from the three real iteration envelopes rather than bypassed. The acceptance dimension also caught two wrong phase PR numbers (#302/#306) that had been written into this plan's header by hand; corrected to #299/#301.
 
 ## Progress
 
