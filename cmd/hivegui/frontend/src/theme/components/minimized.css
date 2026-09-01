@@ -1,0 +1,23 @@
+/* Minimized projects: a name-only list pinned to the bottom of the
+   sidebar, above the version footer. #projects takes the free space
+   (flex: 1), so this sits under it without needing margin-top: auto. */
+#minimized-projects {
+  margin: 0;
+  padding: 4px 6px;
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#minimized-projects.hidden { display: none; }
+
+/* Project chips are a full-width vertical list, not a wrapped tray row:
+   drop the chip's 240px cap so long names use the sidebar width, let the
+   label area take the slack so the restore + lands on the right edge, and
+   make the whole chip one restore target. */
+#minimized-projects .hv-chip { max-width: none; }
+#minimized-projects .hv-chip__open { flex: 1; text-align: left; }

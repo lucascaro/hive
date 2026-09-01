@@ -1,0 +1,11 @@
+/* xterm.js renders its own scrollbar inside .xterm-viewport — hide it
+   completely. Scrollback still works via mouse wheel / trackpad and is
+   the same buffer whether or not the bar is visible. */
+.xterm-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+.xterm-viewport {
+  scrollbar-width: none;
+}
+

@@ -1,0 +1,37 @@
+/* UA-level ground: document box, typography reset and the global
+   scrollbar skin. Everything here is unscoped — one selector per browser
+   surface, no component knows about it. Loaded after themes.css and before
+   layout.css. docs/design-docs/ui/README.md */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Global scrollbar styling — overrides macOS "Always show scrollbars".
+   Thin, subtle, dark-theme-aware; WebKit-only but Wails uses WebKit on
+   every supported platform. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+

@@ -1,0 +1,77 @@
+/* Settings — composition only. The dialog shell, fields, buttons and the
+   error slot come from the primitives (src/ui/); what is left here is how
+   this screen's controls share a line.
+   TODO(phase-6): move into src/theme/components/. */
+.settings-hint {
+  margin: 0 0 var(--space-3);
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+/* A labelled control plus a trailing button (Browse…, Update) on one line. */
+.settings-field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.settings-field.hidden { display: none; }
+.settings-field .hv-field { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+
+/* Appearance and the agent list scroll together; Updates is pinned below
+   them at its natural height. A dozen custom agents must never push the
+   channel picker out of reach (test/e2e/settings.spec.ts, "stays reachable
+   under a long agent list"). */
+#settings-panel .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+#settings-updates {
+  flex: 0 0 auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+#settings-agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-agent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.settings-agent-row .settings-agent-name { flex: 1 1 34%; min-width: 0; }
+/* Commands run long ("claude --model haiku --foo"); give them the
+   larger share and let the name field shrink first. */
+.settings-agent-row .settings-agent-cmd {
+  flex: 2 1 55%;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+#settings-source-repo { font-family: var(--font-mono); font-size: var(--text-sm); }
+/* Scoped to `.settings-agent-row .settings-agent-delete` (0,2,0), not the
+   bare class (0,1,0): .hv-icon-btn's color / :hover color are also 0,1,0 /
+   0,2,0 and load after style.css, so the bare-class rules below never won
+   the tie — rest rendered at --fg-subtle instead of --fg-muted, and hover
+   never turned red, losing the only signal this control is destructive. */
+.settings-agent-row .settings-agent-delete { color: var(--fg-muted); }
+.settings-agent-row .settings-agent-delete:hover { color: var(--state-error); }
+
+/* Disabled only while staging is in flight ("Updating…") — the label
+   is the progress indicator, so it must stay legible. */
+#settings-update-action:disabled { opacity: 0.65; cursor: default; }
+
+/* Keyboard-focus ring — see the twin rule in sidebar.css. */
+.settings-agent-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

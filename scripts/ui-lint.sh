@@ -6,7 +6,7 @@
 #              declaration with a trailing comment is still caught)
 #   px-size  — font-size: <n>px outside src/theme/tokens.css
 #   glyph    — a denylist of icon-shaped Unicode characters in
-#              src/app/**/*.ts, src/style.css and index.html. Icons come
+#              src/app/**/*.ts, src/theme/**/*.css and index.html. Icons come
 #              from the sprite via icon() now (docs/design-docs/ui/icons.md
 #              > Rules); anything on this list is an unconverted call site.
 #              This is deliberately NOT "any non-ASCII" — prose in comments
@@ -44,7 +44,7 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   custom=0
   targets=("$FE/src" "$FE/index.html")
 fi
-# Glyph rule defaults to src/app + src/style.css + index.html when no
+# Glyph rule defaults to src/app + src/ui + src/theme + index.html when no
 # explicit targets are given, but honours explicit targets like the other
 # two rules do — otherwise `ui-lint.sh --strict some/fixture.ts` would
 # silently ignore the argument and scan the whole app tree instead.
@@ -55,7 +55,7 @@ if [[ $custom -eq 0 ]]; then
   # land — they must be scanned too. Deliberately NOT src/lib: grid.ts
   # legitimately uses "×" for w×h dimensions, and scanning it would
   # produce a false positive that invites a suppression.
-  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/theme" "$FE/src/style.css" "$FE/index.html")
+  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/theme" "$FE/index.html")
 fi
 
 n=0

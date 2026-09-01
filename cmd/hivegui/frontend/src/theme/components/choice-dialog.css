@@ -1,0 +1,33 @@
+/* ---------- choice dialog ---------- */
+/* In-DOM rather than a native Confirm: some of these questions are
+   three-way (delete both / keep the branch / cancel), which a yes-no
+   alert cannot express without asking twice — and where work is at
+   stake the consequences need more room than an OS alert gives. Shared
+   by the worktree browser and the dirty-session close prompt. */
+/* Mounted on <body>, so it has to out-rank whatever asked the question
+   (every other modal sits at the primitive's z-index 40). Doubled
+   selector, not the bare class: dialog.css loads after style.css, so a
+   0,1,0 `.choice-dialog` would lose the tie with `.hv-dialog` and the
+   rule would be dead. */
+.choice-dialog.choice-dialog { z-index: 60; }
+.choice-dialog-detail {
+  margin: 0 0 10px;
+  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  color: var(--fg-muted);
+  word-break: break-all;
+}
+.choice-dialog-bullets {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: var(--text-sm);
+  color: #f0b357; /* ui-lint: allow */
+  line-height: 1.5;
+}
+/* Same as .worktrees-hint: the primitive's body-paragraph rule wins on
+   margin, size and colour. */
+.choice-dialog-note { line-height: 1.5; }
+/* The safe answer is first, and reads as the default. Wrapping is the
+   primitive's now (.hv-dialog__actions). */
+.choice-dialog .hv-dialog__actions .hv-button:first-child {
+  font-weight: 600;
+}
