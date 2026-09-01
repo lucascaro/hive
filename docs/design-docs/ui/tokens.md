@@ -51,7 +51,11 @@ Scale (5 steps, replaces 12 sizes):
 
 Line-height: `1.4` UI, `1.5` terminal. Weights: 400 body, 500 emphasis/selected, 600 brand & dialog titles only. Uppercase labels use `letter-spacing: .08em` and `--text-xs`/`--text-sm`. Tabular numerals (`font-variant-numeric: tabular-nums`) on anything that counts.
 
-Fonts are bundled as woff2 under `src/theme/fonts/` (Wails cannot hit a CDN). Presets `native` and `classic` set `--font-ui` to the system stack and load nothing.
+Fonts are bundled as woff2 under `src/theme/fonts/` (Wails cannot hit a CDN): IBM Plex Sans 400/500/600 and JetBrains Mono 400/500/700, both SIL OFL 1.1, unmodified upstream releases. Provenance — exact release URLs and sha256 — is in `src/theme/fonts/README.md`, and the licence texts sit beside the files. `base.css` declares the `@font-face` rules; Vite hashes them into `dist/assets/` and `//go:embed all:frontend/dist` carries them into the binary on every platform (`cmd/hivegui/assets_test.go` asserts that).
+
+Presets `native-dark`, `native-light` and `classic` set `--font-ui` to the system stack and load nothing. `terminal` sets both `--font-ui` and `--font-mono` to the mono stack.
+
+`html, body` is the app's only `font-family` declaration and it reads `var(--font-ui)`; everything else inherits. A literal stack there would silently exclude every surface that sets no font of its own.
 
 ## Spacing
 

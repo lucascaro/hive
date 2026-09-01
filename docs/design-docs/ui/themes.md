@@ -8,15 +8,20 @@ Shipped in `src/theme/themes.css` as `:root[data-theme="<name>"] { … }` blocks
 
 | Name | Basis | Notes |
 |---|---|---|
-| `hive-dark` | Option B | **Default.** Cool-biased near-black, Plex Sans + JetBrains Mono, amber accent |
-| `hive-light` | Option B inverted by hand | Same hue bias, same fonts. Ground `#f4f4f7`, surface `#ffffff`, fg `#1a1b22`, accent `#c47a12` (darkened for contrast on white), `--on-accent #1a1b22` (white on that accent is only 3.42:1), attention `#d9731a`, running `#1f9d6a`, error `#d64545`. Not a naive inversion: borders lighten, shadows soften, accent darkens |
-| `native` | Option A | Lifted greys, system font, filled selection. Ships in dark and light variants (`native-dark`, `native-light`) |
-| `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention`; `--fg-subtle` raised to `#6f6f6f` (mock's `#5c5c5c` is 2.96:1) |
+| `hive-dark` | Option B | Cool-biased near-black, Plex Sans + JetBrains Mono, amber accent. What `system` resolves to in dark mode |
+| `hive-light` | Option B inverted by hand | Same hue bias, same fonts. Ground `#f4f4f7`, surface `#ffffff`, fg `#1a1b22`, accent `#c47a12` (darkened for contrast on white), `--on-accent #1a1b22` (white on that accent is only 3.42:1), attention `#d9731a`, running `#1f9d6a`, error `#c93a3a`. Not a naive inversion: borders lighten, shadows soften, accent darkens |
+| `native-dark` | Option A | Lifted greys, system font, filled selection, 6px radii. Ground `#1e1e1f`, surface `#252527`, accent `#e6a23c`. ANSI is the VS Code Dark+ set |
+| `native-light` | Option A inverted | Ground `#ffffff`, surface `#f3f3f3`, fg `#1c1c1e`, accent `#a35f0d` (the mock's `#e6a23c` gives white-on-accent 1.9:1). ANSI is VS Code Light+ **with every hue darkened until it clears 4.5:1 on white** — Light+ itself puts seven of sixteen under AA there |
+| `terminal` | Option C | Monochrome, all `--font-mono`, radius 0, `--accent == --state-attention`; `--fg-subtle` raised to `#6f6f6f` (mock's `#5c5c5c` is 2.96:1). ANSI is near-monochrome but keeps a desaturated red at 1/9: program output that says "error" in colour must still read as error |
 | `classic` | v2.4.0 values | Pure black, amber everywhere, system font. Exists so migration step 1 is visually a no-op and so users who liked it keep it |
 
-Selection: Settings → Appearance → Theme (dropdown) with "System" mapping to `hive-dark`/`hive-light` via `prefers-color-scheme`.
+Selection: Settings → Appearance → Theme (dropdown) with "System" mapping to `hive-dark`/`hive-light` via `prefers-color-scheme`. **`system` is the default** since v2.5.0 — an absent or unrecognised `hive.theme` resolves the same way an explicit `system` does. Anyone who already picked a preset keeps it.
 
-Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1; `--on-accent` on `--accent` must be ≥4.5:1 (primary buttons). Check with the contrast script in `scripts/ui-lint.sh --contrast`.
+Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1; `--fg` on `--bg` and `--term-fg` on `--term-bg` are ≥4.5:1; and `--on-accent` on `--accent` must be ≥4.5:1 — a primary button must read its own label.
+
+On a preset whose `--term-bg` is a **light** ground, all sixteen `--ansi-*` are checked at ≥4.5:1 against it too. Dark grounds are exempt because ANSI 0 is meant to disappear into the background there, which is what every terminal does; on a light ground that same slot is the darkest colour and the rule bites where it should.
+
+`scripts/ui-lint.sh --contrast` is the gate (add `--verbose` for every ratio); it runs on the Linux CI leg, since token values are platform-independent.
 
 ## User overrides
 
@@ -42,14 +47,16 @@ The xterm `theme` object is rebuilt from tokens whenever the theme changes:
 | `foreground` | `--term-fg` |
 | `cursor`, `cursorAccent` | `--accent`, `--on-accent` |
 | `selectionBackground` | `color-mix(in srgb, var(--accent) 30%, transparent)` |
-| ANSI 0–15 | **not implemented.** Phase 6 — no `--ansi-*` token exists yet, so xterm keeps its own dark-tuned defaults under every preset. Under `hive-light` that leaves a program's explicit `white` near-invisible on a white ground; the light presets are not shippable as the default until this lands. |
+| ANSI 0–15 | `--ansi-0 … --ansi-15`, positionally (SGR 30–37 then 90–97). A slot the preset leaves unset is omitted from the theme object rather than sent as `''`, so xterm keeps its own default. |
+| `fontFamily` | `--font-mono` |
 
-Read via `getComputedStyle(document.documentElement).getPropertyValue(...)` once per theme change, then `term.options.theme = …` on every open terminal. Not per frame.
+Read via `getComputedStyle(document.documentElement).getPropertyValue(...)` once per theme change, then `term.options.theme = …` and `term.options.fontFamily = …` on every open terminal. Not per frame — `getComputedStyle` is a layout read.
 
 ## Adding a preset
 
 1. Copy the `hive-dark` block in `themes.css`, rename, re-value every token (no partial presets — missing tokens fall through to `hive-dark` silently and look broken in light).
 2. Add ANSI 16 (`--ansi-0 … --ansi-15`). A preset on a light ground **must** re-value all sixteen: the defaults are xterm's Tango palette, and seven of those fail WCAG AA on white — `brightWhite` lands at 1.16:1, i.e. invisible. `test/e2e/theme.spec.ts` computes the contrast rather than pinning hexes, so a new light preset is checked by the same rule.
+2b. Add the preset to `PRESETS` in `src/theme/theme.ts` **and** to the duplicated list in `index.html`'s pre-paint boot script. The boot script cannot import the module (a deferred module script would paint the wrong preset first), so the two lists are kept honest by `test/e2e/theme.spec.ts`.
 3. Run `scripts/ui-lint.sh --contrast`.
-4. Add a Playwright screenshot baseline (`e2e/theme.spec.ts`) for sidebar + dialog under the new preset.
+4. Nothing to do for screenshot baselines except generate them: `test/e2e/theme.spec.ts` loops over `PRESETS`, so the new preset already has a sidebar + dialog test. Run `HIVE_SNAPSHOT=1 npx playwright test test/e2e/theme.spec.ts --update-snapshots` on macOS and read the two new PNGs — they are darwin-local and default-skipped, which is why they must be eyeballed rather than trusted.
 5. Add a row to the table above.
