@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #300
 - **Branch:** feature/255-minimized-project-chip-layout
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
