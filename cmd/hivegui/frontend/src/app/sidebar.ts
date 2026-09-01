@@ -34,6 +34,7 @@ import { openProjectEditor } from './modals/project-editor.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { beginInlineRename } from './inline-rename.js';
 import { readProjectId } from '../lib/wire.js';
+import { preserveFocus } from '../lib/preserve-focus.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
@@ -71,17 +72,76 @@ export function initSidebar(injected: SidebarDeps) {
   deps = injected;
 }
 
+// renderSidebar rebuilds every node under #projects. It is the structural
+// path — a project or session appearing, disappearing or changing order —
+// and it is wrapped in preserveFocus because `innerHTML = ''` destroys the
+// focused element outright and the browser drops focus to <body>.
+// State-only changes must NOT come here; see updateSidebarRows.
 export function renderSidebar() {
-  projectsUL.innerHTML = '';
-  const activePID = activeProjectId();
-  const hints = keyHints();
-  const indexOf = (id: string) => hints.get(id) ?? null;
+  preserveFocus(projectsUL, () => {
+    projectsUL.innerHTML = '';
+    const activePID = activeProjectId();
+    const hints = keyHints();
+    const indexOf = (id: string) => hints.get(id) ?? null;
+    for (const p of state.projects) {
+      if (state.minimizedProjects.has(p.id)) continue;
+      projectsUL.appendChild(renderProject(p, activePID, indexOf));
+    }
+    renderMinimizedProjects(activePID);
+    deps.renderEmptyState();
+  });
+}
+
+// sidebarShape is the ordered list of what renderSidebar would put in the
+// DOM — one entry per project card and per session row, in render order.
+// Both callers below derive it from the SAME traversal renderSidebar uses,
+// so the in-place path can never disagree with the rebuild about whether
+// the shape moved.
+function sidebarShape(): string[] {
+  const out: string[] = [];
   for (const p of state.projects) {
     if (state.minimizedProjects.has(p.id)) continue;
-    projectsUL.appendChild(renderProject(p, activePID, indexOf));
+    out.push(`p:${p.id}`);
+    for (const s of state.sessions
+      .filter((s) => readProjectId(s) === p.id)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)))
+      out.push(`s:${s.id}`);
   }
-  renderMinimizedProjects(activePID);
-  deps.renderEmptyState();
+  return out;
+}
+
+// domShape reads the same list back off the DOM.
+function domShape(): string[] {
+  return Array.from(
+    projectsUL.querySelectorAll<HTMLElement>(
+      '.hv-project-card, .hv-session-row',
+    ),
+  ).map((el) =>
+    el.classList.contains('hv-project-card')
+      ? `p:${el.dataset.pid ?? ''}`
+      : `s:${el.dataset.sid ?? ''}`,
+  );
+}
+
+// updateSidebarRows is the state-only path: it patches the existing nodes
+// and rebuilds only when the sidebar's shape actually moved.
+//
+// `session:event` kind `updated` is the hot one. The daemon emits it on
+// every phase step (starting -> worktree -> ready), once per surviving
+// session when a kill recompacts the order, and whenever the 200ms
+// agent-session-id capture poll finally lands — which can be up to 30s
+// after a spawn (internal/registry/create.go). Routing each of those
+// through renderSidebar wiped and rebuilt the whole list, which destroyed
+// whatever the user had focused and ate dblclick pairs mid-rename. The
+// same reasoning already routes `title` events through updateSidebarTitles.
+export function updateSidebarRows() {
+  const want = sidebarShape();
+  const have = domShape();
+  if (want.length !== have.length || want.some((v, i) => have[i] !== v)) {
+    renderSidebar();
+    return;
+  }
+  updateSidebarSelection();
 }
 
 // keyHints maps a session id to the digit ⌘n actually selects it with.
@@ -379,6 +439,18 @@ function reorderDroppedProject(
 }
 
 function renderSession(s: SessionInfo, index: number | null): HTMLLIElement {
+  // These callbacks outlive the SessionInfo they were built from. Rows are
+  // no longer rebuilt on every `updated` (see updateSidebarRows), so a
+  // handler that closed over `s` would keep answering from whatever the
+  // session looked like when the row was first drawn — and `s` at that
+  // moment is typically a session still in phase `starting`, before the
+  // daemon has reported it alive or given it a worktree. killSession in
+  // particular branches on `alive`, and a stale `false` there sends
+  // force=true, which skips the dirty-worktree refusal entirely.
+  // So: capture the id, read the session at call time.
+  const live = (): SessionInfo =>
+    state.sessions.find((x) => x.id === s.id) ?? s;
+
   const li = sessionRow({
     session: s,
     state: sessionState(s, state.attention.has(s.id)),
@@ -390,9 +462,9 @@ function renderSession(s: SessionInfo, index: number | null): HTMLLIElement {
     onRestore: () => deps.restoreSession(s.id),
     onRestart: () =>
       RestartSession(s.id).catch(reportFailure('restart session')),
-    onKill: () => killSession(s),
+    onKill: () => killSession(live()),
     onWorktrees: () => {
-      const proj = state.projects.find((p) => p.id === readProjectId(s));
+      const proj = state.projects.find((p) => p.id === readProjectId(live()));
       if (proj) openWorktrees(proj);
     },
     onColor: (hex) =>
@@ -401,7 +473,7 @@ function renderSession(s: SessionInfo, index: number | null): HTMLLIElement {
 
   const name = li.querySelector<HTMLElement>('.hv-session-row__name');
   if (name) {
-    li.addEventListener('dblclick', () => beginRenameSession(s, name));
+    li.addEventListener('dblclick', () => beginRenameSession(live(), name));
   }
   wireSessionDrag(li, s);
   return li;

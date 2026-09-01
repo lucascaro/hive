@@ -33,6 +33,7 @@ import { button } from '../ui/button.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 import { chip } from '../ui/chip.js';
 import { sessionState } from '../lib/session-state.js';
+import { preserveFocus } from '../lib/preserve-focus.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
 // refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
@@ -305,6 +306,7 @@ export function renderGrid() {
   // / CSS grid honors the navigation order without us having to set
   // grid-row/column explicitly.
   const _deferred: TermTile[] = [];
+  const _wanted: HTMLElement[] = [];
   for (const info of gridSessions) {
     const existed = state.terms.has(info.id);
     const st = deps.ensureTerm(info);
@@ -314,8 +316,27 @@ export function renderGrid() {
     st.host.classList.toggle('attention', state.attention.has(info.id));
     if (info.id === state.activeId) st.ensureAttached();
     else _deferred.push(st);
-    termsHost.appendChild(st.host); // re-order to keep DOM == nav order
+    _wanted.push(st.host);
   }
+  // Re-order to keep DOM == nav order — but ONLY when the order actually
+  // moved. appendChild on an already-attached node is a remove+insert, and
+  // the browser blurs whatever is focused inside it (the very blur
+  // focus.ts's _focusGuard exists to paper over). renderGrid runs on every
+  // repaint, and most of them change no order at all — killing a non-active
+  // session leaves the survivors exactly where they were — so an
+  // unconditional re-parent dropped keyboard focus for nothing.
+  const _domOrder = Array.from(termsHost.children).filter((c) =>
+    _wanted.includes(c as HTMLElement),
+  );
+  if (
+    _domOrder.length !== _wanted.length ||
+    _wanted.some((h, i) => _domOrder[i] !== h)
+  )
+    // A genuine re-order still moves nodes, so it still blurs. Put focus
+    // back on the same element afterwards — it survived, it just moved.
+    preserveFocus(termsHost, () => {
+      for (const host of _wanted) termsHost.appendChild(host);
+    });
   attachDeferred(_deferred);
   // Only log when the pass built new tiles — renderGrid runs on every
   // repaint (switch, minimize, resize, …), and an unconditional line

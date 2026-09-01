@@ -69,6 +69,28 @@ function agentCode(agent?: string): string {
 // applyState() is the only place that inserts/removes it.
 const restartButtons = new WeakMap<HTMLLIElement, HTMLButtonElement>();
 
+// The worktree control is built only when the session HAS a worktree, but
+// a session gains one after the fact: the daemon announces the entry in
+// phase `starting` and only reports the branch on a later `updated`. So
+// applyState has to be able to create the button too, which means keeping
+// the row's onWorktrees callback reachable from the patch path.
+const worktreeHandlers = new WeakMap<HTMLLIElement, () => void>();
+
+// buildWorktreeButton is the single definition of that control, shared by
+// the build path and the patch path so the two cannot drift.
+function buildWorktreeButton(branch: string, onClick: () => void) {
+  const wt = iconButton({
+    icon: 'branch',
+    label: `Worktree: ${branch} — manage worktrees`,
+    onClick: (e) => {
+      e.stopPropagation();
+      onClick();
+    },
+  });
+  wt.classList.add('hv-session-row__worktree');
+  return wt;
+}
+
 export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   const s = o.session;
   const li = document.createElement('li');
@@ -102,18 +124,7 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   // the old worktree glyph was always visible and always clickable —
   // so it gets its own always-on slot outside the swap.
   const wtBranch = s.worktreeBranch ?? s.worktree_branch;
-  let wt: HTMLButtonElement | null = null;
-  if (wtBranch) {
-    wt = iconButton({
-      icon: 'branch',
-      label: `Worktree: ${wtBranch} — manage worktrees`,
-      onClick: (e) => {
-        e.stopPropagation();
-        o.onWorktrees();
-      },
-    });
-    wt.classList.add('hv-session-row__worktree');
-  }
+  const wt = wtBranch ? buildWorktreeButton(wtBranch, o.onWorktrees) : null;
 
   const code = agentCode(s.agent);
   if (code) {
@@ -147,6 +158,7 @@ export function sessionRow(o: SessionRowOpts): HTMLLIElement {
   });
   restartBtn.dataset.action = 'restart';
   restartButtons.set(li, restartBtn);
+  worktreeHandlers.set(li, o.onWorktrees);
 
   const killBtn = iconButton({
     icon: 'x',
@@ -266,6 +278,43 @@ function applyState(
     '.hv-session-row__swatch input[type="color"]',
   );
   if (colorInput) colorInput.value = s.color || '#888888';
+
+  // The worktree glyph is state, not build-time decoration: a session is
+  // announced in phase `starting` with no branch and gains one on a later
+  // `updated`, and adopting or dropping a worktree flips it back. Without
+  // this, the in-place path left a worktree-backed session with no control
+  // until something else forced a full rebuild.
+  const wtBranch = s.worktreeBranch ?? s.worktree_branch;
+  const existingWt = el.querySelector<HTMLButtonElement>(
+    '.hv-session-row__worktree',
+  );
+  if (!wtBranch) existingWt?.remove();
+  else if (existingWt) {
+    const label = `Worktree: ${wtBranch} — manage worktrees`;
+    if (existingWt.getAttribute('aria-label') !== label) {
+      existingWt.setAttribute('aria-label', label);
+      existingWt.title = label;
+    }
+  } else {
+    const onWorktrees = worktreeHandlers.get(el);
+    const meta = el.querySelector<HTMLElement>('.hv-session-row__meta');
+    if (onWorktrees && meta)
+      meta.before(buildWorktreeButton(wtBranch, onWorktrees));
+  }
+
+  // Agent code travels on the same `updated` events as everything above.
+  const code = agentCode(s.agent);
+  const metaEl = el.querySelector<HTMLElement>('.hv-session-row__meta');
+  const existingAgent = el.querySelector<HTMLElement>('.hv-session-row__agent');
+  if (!code) existingAgent?.remove();
+  else if (existingAgent) {
+    if (existingAgent.textContent !== code) existingAgent.textContent = code;
+  } else if (metaEl) {
+    const agent = document.createElement('span');
+    agent.className = 'hv-session-row__agent';
+    agent.textContent = code;
+    metaEl.append(agent);
+  }
 
   // Same guard as the minimize glyph: an unchanged hint keeps its node
   // instead of being removed and rebuilt on every patch.

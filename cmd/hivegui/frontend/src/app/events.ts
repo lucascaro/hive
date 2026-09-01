@@ -23,6 +23,7 @@ import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import {
   renderSidebar,
+  updateSidebarRows,
   updateSidebarSelection,
   updateSidebarTitles,
 } from './sidebar.js';
@@ -533,7 +534,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
       if (state.activeId === ev.session.id) deps.updateAppTitle();
     }
-    renderSidebar();
+    // `updated` is the high-frequency kind — one per phase step, one per
+    // surviving session when a kill recompacts the order, and one when the
+    // agent-session-id capture poll lands up to 30s after a spawn. It
+    // changes a session's state, not the sidebar's shape, so it takes the
+    // in-place path; updateSidebarRows falls back to a full rebuild by
+    // itself if the shape did move. `removed` is structural: rebuild.
+    if (ev.kind === 'updated') updateSidebarRows();
+    else renderSidebar();
     if (ev.kind === 'removed' || ev.kind === 'updated')
       deps.renderMinimizedTray();
   });
