@@ -4,7 +4,7 @@
 - **Issue:** #304
 - **PR:** #306
 - **Branch:** feature/304-reopen-closed-session
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -344,6 +344,14 @@ TDD per `AGENTS.md` — every behaviour ships with its test.
   tombstones + `Restore`, `worktree.DumpPatch`, three new wire frames, daemon
   dispatch, GUI bindings, `undo-close.ts` with the banner and ⌘Z. Go suite,
   frontend unit/dom/e2e, tsc, biome and ui-lint all green.
+
+## QA verdict
+
+- **2026-08-31** — verdict: PASS; checks: 3 dimensions / 8 acceptance criteria / 5 non-goals passed, 0 failed, 0 followups; followups: none; one-line: undo-close delivers every success criterion, bleeds into no non-goal, and leaves every close confirmation byte-identical to main.
+  - 2026-08-31 dimensions:
+    - acceptance — PASS — all 8 criteria demonstrated by passing tests, not asserted from source; tombstone-before-teardown confirmed by ordering at registry.go:854.
+    - non-goals — PASS — `kill()` dirty pre-flight and `disposeWorktree`'s Pristine()-gated branch byte-identical to main; no `git apply` exec anywhere; `KillProject` untouched.
+    - doc accuracy — PASS — changeset, README keybinds row, help overlay, command palette and DESIGN.md persistence section all updated for ⌘Z and `closed/`.
 
 ## PR convergence ledger
 

@@ -4,8 +4,9 @@ title: "Reopen a closed session (undo close)"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 pr: 306
+shipped: 2026-08-31
 ---
 
 # Reopen a closed session (undo close)
@@ -15,8 +16,8 @@ pr: 306
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Stage:** GATE
-- **Exec plan:** [docs/exec-plans/active/304-reopen-a-closed-session-undo-close.md](../exec-plans/active/304-reopen-a-closed-session-undo-close.md)
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/304-reopen-a-closed-session-undo-close.md](../exec-plans/completed/304-reopen-a-closed-session-undo-close.md)
 
 ## Problem
 
