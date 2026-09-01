@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { sentinel, settleShell } from './term-harness.js';
 
 // Layer B smoke: real-daemon end-to-end. Boots the frontend against a
 // real hived daemon (via hived-ws-bridge), waits for the bootstrap
@@ -71,12 +72,20 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
     if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 
   // Type a marker and a literal echo command. Bash sees this AFTER
   // stty -echo so the only thing rendered is the output line.
-  await page.keyboard.type('echo HIVE_REAL_MARK_$((40+2))\n');
+  // Unique per run: `retries: 1` on CI replays this shared session's whole
+  // scrollback into the retry's fresh attach, so a fixed marker would
+  // already be on screen from the failed attempt. The $((40+2)) stays — it
+  // is what proves bash evaluated the line rather than echoing it back.
+  const mark = sentinel('HIVE_REAL_MARK');
+  await page.keyboard.type(`echo ${mark}_$((40+2))\n`);
 
   // Poll the xterm buffer for the marker. We read via xterm's own
   // buffer API (not DOM) because the WebGL renderer paints to canvas;
@@ -100,5 +109,5 @@ test('boots, sees bootstrap session, echoes typed input through real hived', asy
       },
       { timeout: 5000, intervals: [100, 200, 500] },
     )
-    .toContain('HIVE_REAL_MARK_42');
+    .toContain(`${mark}_42`);
 });

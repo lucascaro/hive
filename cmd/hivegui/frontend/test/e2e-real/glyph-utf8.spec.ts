@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { sentinel, settleShell } from './term-harness.js';
 
 // Layer B regression cover for the multi-byte-glyph class (#195).
 // The daemon emits raw PTY bytes; the frontend's per-session
@@ -58,14 +59,22 @@ test('multi-byte UTF-8 round-trips through the real wire path without corruption
     if (!helper) throw new Error('no xterm helper textarea to focus');
     helper.focus();
   });
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 
   // Use printf %b so the bytes are emitted literally without bash
   // interpreting the multibyte sequence as a glob/expansion. The
   // sequence covers 2-byte (é U+00E9), 3-byte (中 U+4E2D), and 4-byte
   // (😀 U+1F600) UTF-8 paths.
-  await page.keyboard.type("printf '%s\\n' 'GLYPH é中😀 END'\n");
+  // The END marker is unique per run. `retries: 1` on CI replays this
+  // shared session's whole scrollback into the retry's fresh attach, so a
+  // fixed marker would already be on screen from the failed attempt and the
+  // poll below would pass without the printf running. See term-harness.ts.
+  const mark = sentinel('END');
+  await page.keyboard.type(`printf '%s\\n' 'GLYPH é中😀 ${mark}'\n`);
 
   await expect
     .poll(
@@ -86,5 +95,5 @@ test('multi-byte UTF-8 round-trips through the real wire path without corruption
       },
       { timeout: 5000, intervals: [100, 200, 500] },
     )
-    .toContain('GLYPH é中😀 END');
+    .toContain(`GLYPH é中😀 ${mark}`);
 });

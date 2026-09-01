@@ -6,6 +6,7 @@ import { bridgeCalls, registerSessionCleanup } from './bridge-sessions.js';
 // assert SessionTerm rather than widening TermTile for every app caller and
 // DOM-test stub (wave 5b's rule).
 import type { SessionTerm } from '../../src/app/session-term.js';
+import { sentinel, settleShell, waitForSentinel } from './term-harness.js';
 
 // Repro harness for the "scrolling jumps around with Codex when
 // switching to grid mode or back" report. The mock-Wails e2e layer
@@ -80,8 +81,11 @@ async function bootWithTerm(page: Page) {
     { timeout: 10000 },
   );
   await focusFirstTerm(page);
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
 }
 
 async function focusFirstTerm(page: Page) {
@@ -229,10 +233,16 @@ function resizeDecisions(page: Page) {
 // Bursty: awk floods `burst` lines flat-out, then sleeps — keeps
 // xterm's async write queue loaded the way codex output does, without
 // an unbounded loop that could leak past teardown.
+// Returns the UNIQUE done-sentinel for this pump. A fixed `HIVE_PUMP_DONE`
+// is not usable as a readiness signal here: every attach replays the shared
+// session's whole scrollback, so an earlier test's copy is already on screen
+// and the wait returns before this pump has printed a single line.
 async function startMarkerPump(page: Page, count: number, burst = 40) {
+  const done = sentinel('HIVE_PUMP_DONE');
   await page.keyboard.type(
-    `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo HIVE_PUMP_DONE\n`,
+    `i=0; while [ $i -lt ${count} ]; do awk -v s=$i -v n=${burst} 'BEGIN{for(j=s;j<s+n;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; i=$((i+${burst})); sleep 0.05; done; echo ${done}\n`,
   );
+  return done;
 }
 
 function extractMarkers(lines: string[]) {
@@ -249,7 +259,7 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
 }) => {
   await bootWithTerm(page);
   await addSecondSession(page);
-  await startMarkerPump(page, 1200);
+  const pumpDone = await startMarkerPump(page, 1200);
 
   // Toggle to grid and back twice while the pump is printing. With two
   // tiles the grid split changes cols by tens of columns, firing real
@@ -261,12 +271,7 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
     await page.keyboard.press(`${mod}+g`);
   }
 
-  await expect
-    .poll(async () => (await bufferLines(page)).join('\n'), {
-      timeout: 30000,
-      intervals: [250, 500],
-    })
-    .toContain('HIVE_PUMP_DONE');
+  await waitForSentinel(page, pumpDone);
   await page.waitForTimeout(1200); // let any trailing replay land
 
   // Non-vacuity: the toggles must really have driven resizes through the
@@ -295,30 +300,17 @@ test('markers survive grid↔single toggles under continuous output, exactly onc
 test('viewport converges to the bottom after a mode switch under continuous output', async ({
   page,
 }) => {
-  // QUARANTINED ON CI ONLY — second of the two tests in this file that
-  // did not survive re-gating, and for a different reason than its
-  // sibling below.
-  //
-  // It fails with resizeDecisions() === 0: the ⌘G toggles reached no
-  // replay decision at all, so the guard fires before any invariant is
-  // tested. Seen on CI macOS (run 33233271507) and CI Linux (run for
-  // 552824c); green locally across many full-suite runs.
-  //
-  // Cause not established. The suspicion is shared-daemon state — this
-  // suite runs one daemon for every spec file, and tile count and the
-  // replay column baseline both depend on what earlier files left
-  // behind; a measured example is that removing sessions between tests
-  // took this file from 0 failures in 6 runs to 2. That makes it a
-  // harness-isolation problem rather than a product one, unlike the
-  // load-dependent test below, but it is a hypothesis and not a
-  // diagnosis. Do not lift this without one.
-  test.skip(
-    !!process.env.CI,
-    'reaches no replay decision on CI — shared-daemon state, see spec 245',
-  );
+  // Un-quarantined 2026-08-31 (spec 245). It used to fail on CI with
+  // resizeDecisions() === 0 — no replay decision reached at all — and the
+  // cause was a harness bug, as the shared-daemon-state hypothesis in this
+  // comment suspected: the ws-bridge dispatched every WriteStdin frame on
+  // its own goroutine, so under contention adjacent keystrokes were applied
+  // out of order and the command this test types was never the command that
+  // ran. With the bridge write path ordered, it is green under 18 CPU hogs.
+
   await bootWithTerm(page);
   await addSecondSession(page);
-  await startMarkerPump(page, 1500);
+  const pumpDone = await startMarkerPump(page, 1500);
   await page.waitForTimeout(700);
 
   // The user-meaningful invariant is CONVERGENCE: a deliberate mode
@@ -350,12 +342,7 @@ test('viewport converges to the bottom after a mode switch under continuous outp
 
   // Once the pump finishes and everything settles, bottom must be
   // stable -- no late replay or restore may move it.
-  await expect
-    .poll(async () => (await bufferLines(page)).join('\n'), {
-      timeout: 30000,
-      intervals: [250, 500],
-    })
-    .toContain('HIVE_PUMP_DONE');
+  await waitForSentinel(page, pumpDone);
   await expect
     .poll(atBottom, { timeout: 20000, intervals: [250, 500] })
     .toBe(0);
@@ -387,7 +374,7 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   // Flat-out flood well past the cap so it keeps parsing through the
   // resizes below (bottom-follow stays lost the whole time).
   await page.keyboard.type(
-    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'; echo HIVE_PUMP_DONE\n`,
+    `awk 'BEGIN{for(j=0;j<60000;j++) printf "HIVE_SCROLL_%06d ................................................\\n", j}'\n`,
   );
 
   // Wait until the buffer is genuinely at the cap.
@@ -421,7 +408,6 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
 
   await page.waitForTimeout(1500); // let the last replay land
 
-  const s = await mustScrollState(page);
   const restores = await page.evaluate(
     (base) =>
       (window.__hive_scrolltrace || [])
@@ -431,14 +417,20 @@ test('full scrollback: an unscrolled user is not stranded in history by a resize
   );
   const wantsFalse = restores.filter((r) => r.wants === false);
 
-  // Sanity / non-vacuity: the buffer hit the cap, and the resizes
-  // really did reach the replay decision. Counting *decisions* rather
-  // than replays is the point — this tile is following the bottom, so
-  // decideResizeReplay correctly skips the replay, and demanding one
-  // would fail against correct code (the spec-245 mistake).
-  expect(s.baseY, 'buffer never reached the scrollback cap').toBeGreaterThan(
-    4500,
-  );
+  // Non-vacuity: the resizes really did reach the replay decision.
+  // Counting *decisions* rather than replays is the point — this tile is
+  // following the bottom, so decideResizeReplay correctly skips the replay,
+  // and demanding one would fail against correct code (the spec-245 mistake).
+  //
+  // There is deliberately NO second "buffer is at the cap" assertion here.
+  // The poll above already established the cap BEFORE the resizes, which is
+  // when it matters; re-checking it afterwards asserts a state the scenario
+  // itself destroys. Narrowing to 780 wraps each flood line onto two rows, so
+  // cap-trim discards half the logical lines, and widening back to 1200
+  // unwraps what is left — measured baseY 2483/2484, almost exactly half the
+  // 5000-line cap, on both CI Linux and CI macOS. It only ever passed while
+  // the flood happened to still be running and refilled the buffer, which is
+  // luck, not an invariant.
   expect(
     await resizeDecisions(page),
     'no resize reached the replay decision — scenario is vacuous',
@@ -469,6 +461,13 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
   // viewportY == baseY == 5000, i.e. the reader really was yanked to the
   // bottom; and reproduces locally 1 run in 3 with 18 CPU hogs running.
   //
+  // Re-checked 2026-08-31 after the spec-245 harness fixes (ordered
+  // WriteStdin, unique sentinels, settleShell): its three quarantined
+  // siblings all came back green under 18 CPU hogs, this one still fails
+  // 2/2 with the same viewportY == baseY == 5000. So it is not a harness
+  // artefact — the yank is real under contention, and the follow-up is a
+  // product question about the resize replay, not a test one.
+  //
   // So this is NOT the stale-guard class the rest of this file had — the
   // assertion is right and the behaviour under load may genuinely be
   // wrong. That makes it a product question (a reader losing their place
@@ -480,15 +479,11 @@ test('a reader scrolled into history is not yanked to the bottom by a resize rep
     !!process.env.CI,
     'load-dependent under CI contention — see spec 245 Resolution',
   );
+
   await bootWithTerm(page);
   // Fill scrollback, then stop output so the read position is stable.
-  await startMarkerPump(page, 200);
-  await expect
-    .poll(async () => (await bufferLines(page)).join('\n'), {
-      timeout: 30000,
-      intervals: [250, 500],
-    })
-    .toContain('HIVE_PUMP_DONE');
+  const pumpDone = await startMarkerPump(page, 200);
+  await waitForSentinel(page, pumpDone);
 
   // Scroll up with a real wheel gesture so the clamped wheel handler runs.
   const term = page.locator('.term-host .term-body').first();

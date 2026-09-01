@@ -15,6 +15,7 @@
 // version passes on the unfixed build).
 import { expect, type Page, test } from '@playwright/test';
 import { bridgeCalls, registerSessionCleanup } from './bridge-sessions.js';
+import { sentinel, settleShell } from './term-harness.js';
 
 const WS_URL = process.env.WS_BRIDGE_URL;
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -93,15 +94,22 @@ test('a grid tile is not scrolled out of its own box when refocused', async ({
     { timeout: 15000 },
   );
   await focusFirstTerm(page);
-  await page.keyboard.type('stty -echo\n');
-  await page.waitForTimeout(200);
+  // NOT `type('stty -echo'); waitForTimeout(200)`: this suite shares one
+  // long-lived shell across every spec file, so it may still be running the
+  // previous test's flood and typed input queues behind it. settleShell waits
+  // for a round trip — see term-harness.ts.
+  await settleShell(page);
   await addSessions(page, 3);
   await page.keyboard.press(`${mod}+1`);
   await page.waitForTimeout(400);
   await focusFirstTerm(page);
 
+  // Unique per run: a fixed sentinel is already on screen from an earlier
+  // test, replayed by this page's attach, so the wait below would return
+  // before the flood had printed anything. See term-harness.ts.
+  const pumpDone = sentinel('PUMP_DONE');
   await page.keyboard.type(
-    `awk 'BEGIN{for(j=0;j<40000;j++) printf "ROW_%06d ................................................\\n", j}'; echo PUMP_DONE\n`,
+    `awk 'BEGIN{for(j=0;j<40000;j++) printf "ROW_%06d ................................................\\n", j}'; echo ${pumpDone}\n`,
   );
   const tailText = () =>
     page.evaluate(() => {
@@ -134,7 +142,7 @@ test('a grid tile is not scrolled out of its own box when refocused', async ({
   // Output must have STOPPED: a tile still receiving bytes repaints on
   // its own and hides the symptom.
   await expect
-    .poll(async () => ((await tailText()).includes('PUMP_DONE') ? 1 : 0), {
+    .poll(async () => ((await tailText()).includes(pumpDone) ? 1 : 0), {
       timeout: 60000,
       intervals: [500],
     })
