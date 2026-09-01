@@ -28,10 +28,16 @@
       // the override half (a getItem that denies, a regex on a hostile
       // value) would land in a catch that re-stamps data-theme and
       // overwrite the correct preset the first half had already applied.
-      var dark = false;
+      // Defaults to dark, not light: applyTheme() in theme.ts ends its
+      // matchMedia chain with `?? true`, and the two must agree or a
+      // matchMedia-less runtime would paint one preset and then swap to
+      // the other a paint later. Every supported webview has matchMedia,
+      // so this is belt-and-braces — but a comment claiming parity that
+      // does not hold is worse than no comment.
+      var dark = true;
       try {
         dark = matchMedia('(prefers-color-scheme: dark)').matches;
-      } catch (e) { /* no matchMedia: treat as light, same as the module */ }
+      } catch (e) { /* keep the theme.ts default */ }
       try {
         var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
         var t = localStorage.getItem('hive.theme');

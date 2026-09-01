@@ -1,7 +1,6 @@
 /* Settings — composition only. The dialog shell, fields, buttons and the
    error slot come from the primitives (src/ui/); what is left here is how
-   this screen's controls share a line.
-   TODO(phase-6): move into src/theme/components/. */
+   this screen's controls share a line. */
 .settings-hint {
   margin: 0 0 var(--space-3);
   max-width: 60ch;
