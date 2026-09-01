@@ -4,7 +4,9 @@ title: "Worktrees, overlays and the launcher ignore the chosen theme"
 type: bug
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
+pr: 313
+shipped: 2026-09-01
 ---
 
 # Worktrees, overlays and the launcher ignore the chosen theme
@@ -13,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/258-worktrees-and-overlays-ignore-the-theme.md](../exec-plans/active/258-worktrees-and-overlays-ignore-the-theme.md)
+- **Exec plan:** [docs/exec-plans/completed/258-worktrees-and-overlays-ignore-the-theme.md](../exec-plans/completed/258-worktrees-and-overlays-ignore-the-theme.md)
 
 ## Problem
 

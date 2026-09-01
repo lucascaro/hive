@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #313
 - **Branch:** stone-light
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -311,6 +311,24 @@ rows that can be both at once. One general-purpose informational token in the
 - **2026-09-01 iter 1 (follow-up)** — all three IMPORTANT findings and the one MINOR fixed on the branch; gates re-run green; the six worktrees baselines regenerated.
 - **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b9ad6144c9ef5ea88f17f9fd891c9f71b499f2dfa5323cd05b44861fecdebcfc; threads_open: 0; action: continue (one IMPORTANT + two MINOR taken rather than stopping on a no-thread COMMENT); head_sha: 563bd95.
 - **2026-09-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop (three MINOR comment/whitespace nits taken before the gate); head_sha: 516c386. CI fully green; the spec-257 flake did not fire.
+
+## Gate verdict
+
+- **2026-09-01** — verdict: FAIL; checks: 1 dimension passed / 2 failed / 0 followups; followups: none (PR open — fixed on the branch, which is the point of gating pre-merge); one-line: acceptance criterion 4 had no test behind it after review iteration 2 deleted a vacuous one, and the changeset described only half the colour moves.
+  - 2026-09-01 dimensions:
+    - acceptance — FAIL — five of six criteria observable on HEAD. Criterion 4 ("a resolved value under all six presets, asserted from the live cascade by a Playwright test rather than by reading the CSS") had nothing behind it for `--state-info`: `grep -rn state-info cmd/hivegui/frontend/test/` returned no matches, and `ui-contrast.mjs` cannot stand in — it regex-parses `tokens.css`/`themes.css`, so it validates values and not whether a rule still points at them.
+    - non-goals — PASS — all four respected. Also flagged that the literal `main...HEAD` range is wrong in this worktree: the local `main` ref is 2 commits stale, dragging ~2600 lines of the merged zustand refactor into the range. `origin/main...HEAD` is the correct range and was used throughout.
+    - doc accuracy — FAIL on the changeset only; the other nine checks passed, including six decision-log contrast ratios recomputed by hand and matched exactly. The changeset said only hive-light's running/attention moved, omitting hive-light's `--state-error` (`#bd3030`), native-dark's (`#ee9090`, a *dark* preset getting *lighter*) and the merged badge's tint removal.
+
+- **2026-09-01** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: both failures fixed on the branch and independently re-verified, including a reproduced mutation proof; all gates green at `e121f09`.
+  - 2026-09-01 dimensions (re-run):
+    - acceptance — PASS — criterion 4 closed by an ungated, all-platforms block in `theme.spec.ts` that asserts each of the four state-word sites paints the colour its preset resolves for the token, compared through a probe element. Re-verified by mutation *by the validator, not by the author*: hard-coding `.worktree-row[data-kind='active'] .worktree-status` to `#7fb3d5` fails 4 of 6 presets, with hive-dark and classic correctly still passing because their `--state-info` is that same hex. `--contrast` stays green through the mutation, which is what makes the two checks complementary rather than redundant.
+    - non-goals — PASS — re-run after the three follow-up commits. No production `.ts`/`.tsx`/`.go`/`.html` touched, no ANSI/xterm value moved, `PRESETS` and the pre-paint list untouched, exactly four `allow` comments (down from 30 on `origin/main`), no CSS geometry property added or removed, no generated file edited.
+    - doc accuracy — PASS — changeset now names both `--state-error` moves and the badge tint removal, verified against `git show HEAD:themes.css` and `HEAD:worktrees.css`.
+
+  Caught by the gate and fixed in the PR, which is why it runs pre-merge: (1) criterion 4's missing test, (2) the incomplete changeset, (3) `test-results/.last-run.json` committed at the repo root — Playwright writes artifacts relative to CWD and the ignore rule only covered `/cmd/hivegui/frontend/test-results/`, so a run invoked from the root left an unignored copy that `git add -A` swept in. File removed, both paths ignored.
+
+  Observed and deliberately NOT actioned here: `docs/exec-plans/active/ui-design-system-phase{1,6}.md` still quote retired hex literals. Pre-existing, outside this diff, and they are historical planning records for a shipped programme — editing them would falsify what was planned at the time. Worth a separate tidy-up (those phase plans arguably belong in `completed/` beside their umbrella); not this feature's to do.
 
 ## Progress
 
