@@ -19,6 +19,25 @@ Files to change / delete:
 - `src/app/version-footer.ts`, empty-state DOM parts of `src/lib/empty-state.ts`, boot-state writes in `main.ts` — replaced by components. Static boot overlay markup stays in `index.html` for pre-JS paint; `BootState` takes over the same ids on mount. `reportFailure` + bounded 5-attempt `retryBoot` keep exact semantics.
 - `src/ui/banner.ts`, `button.ts`, `icon.ts`, `icon-button.ts`, `kbd.ts` — deleted.
 
+## Success criteria
+
+What `/hs-merge-gate` validates for THIS phase.
+
+- Status bar, banners, boot state, empty state, minimized tray and version
+  footer are React-rendered into the same ids.
+- Flash timing is still `src/lib/status.ts`'s `createStatus` engine — the store
+  holds its rendered output, and `FLASH_MIN_MS` semantics are not reimplemented
+  in an action.
+- Empty-state content comes from `emptyStateModel()` in a selector, and the tray
+  from `filterHidden()` — neither is stored as new state.
+- The static boot overlay markup stays in `index.html` for pre-JS paint, and
+  `BootState` takes over the same ids on mount.
+- `reportFailure` and the bounded 5-attempt `retryBoot` keep their exact
+  semantics.
+- `src/ui/banner.ts`, `button.ts`, `icon.ts`, `icon-button.ts`, `kbd.ts` are
+  deleted with no remaining callers.
+- `setStatus`'s signature is unchanged — every module calls it.
+
 ## Invariants
 
 Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).

@@ -25,6 +25,23 @@ Files to change / delete:
 - `src/ui/session-row.ts`, `project-card.ts`, `chip.ts` — deleted (no remaining callers). `button/icon/icon-button/kbd/banner` stay until Phase 2.
 - `src/app/dom.ts` — drop `projectsUL`/`minimizedProjectsUL` singletons.
 
+## Success criteria
+
+What `/hs-merge-gate` validates for THIS phase.
+
+- `#projects` and `#minimized-projects` are rendered by a React root; the
+  markup is byte-identical on ids, `hv-*` classes and data-attributes.
+- `src/app/sidebar.ts` is deleted, along with `src/ui/session-row.ts`,
+  `project-card.ts` and `chip.ts` — no remaining callers (`rg` clean).
+- No module calls `renderSidebar` / `updateSidebarSelection` /
+  `updateSidebarTitles` any more, including `session-term.ts`.
+- Double-click-to-rename works: the row's DOM node survives the re-render
+  between the two clicks (this is the bug the old rebuild caused, so it is a
+  required test, not an observation).
+- Drag reorder still routes through `src/lib/reorder.ts`.
+- `src/app/dom.ts` no longer exports the `projectsUL` / `minimizedProjectsUL`
+  singletons.
+
 ## Invariants
 
 Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).

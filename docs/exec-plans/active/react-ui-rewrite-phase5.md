@@ -17,6 +17,26 @@ New files:
 
 Files to change: `src/app/view.ts` — render paths deleted; survivors (app-title timer, `focusActiveTerm` interop, nav helpers) move next to callers or into `grid-layout.ts`. `src/app/events.ts` — remaining `deps.renderGrid()` calls removed; `pty:*` handlers keep writing directly to SessionTerm instances via the registry (data plane bypasses React, as today). `src/app/session-term.ts` — imports only.
 
+## Success criteria
+
+What `/hs-merge-gate` validates for THIS phase.
+
+- `GridView` renders no DOM of its own; all layout work happens in one
+  `useLayoutEffect` calling `applyGridLayout()`.
+- The grid template is set **before** any attach — pinned by a spy-sequence
+  test, because reversing it brings back the double-scrollback-restream jump.
+- Tiles are reparented, never recreated: the same DOM node identity survives a
+  re-render, and an out-of-scope tile keeps its node.
+- `rebaselineGridReplayCols()`'s double-rAF, `attachDeferred`'s idle staggering,
+  the `#terms` ResizeObserver + rAF coalescing, `setView`'s 250ms bottom-snap and
+  `focusActiveTerm`'s 8-frame retry are ported verbatim.
+- `ensureAttached()` is called no more often than on today's paths.
+- The `pty:*` data plane still writes straight to SessionTerm via the registry,
+  bypassing React.
+- The e2e suite passes 3× consecutively, and a `wails build` smoke covers
+  attach, resize, view toggle, background-tile scroll, minimize/restore and
+  theme switch.
+
 ## Invariants
 
 Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).

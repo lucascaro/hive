@@ -1,11 +1,11 @@
 # React UI rewrite — Phase 0: foundations (zustand store + React tooling)
 
-- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](../active/react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** #311
 - **Branch:** `react-phase0-store`
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -27,9 +27,24 @@ Files to change:
 - `scripts/ui-lint.sh` (repo root) — include `*.tsx` in scanned globs.
 - `test/dom/*` — mechanical updates only where tests mutated `state` directly.
 
+## Success criteria
+
+What `/hs-merge-gate` validates for THIS phase.
+
+- `src/store/store.ts` and `src/store/terms.ts` exist; every data field of the old
+  `AppState` lives in the store, and `SessionTerm` instances live only in the
+  non-reactive registry.
+- No `src/` file mutates a store-owned collection in place or assigns
+  `state.x` / `state.x[i]` directly — every write goes through a named action.
+- An action that changes nothing does not notify subscribers.
+- The `state` facade preserves the exact `window.__hive_state` field list and
+  types, pinned by a test that asserts against the facade (not the store).
+- No rendering change: every legacy `renderX()` call site is where it was.
+- `scripts/ui-lint.sh --strict` and the vitest globs cover `.tsx`.
+
 ## Invariants
 
-Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
+Every phase honours the Invariants section of the [master plan](../active/react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
 Violating any one reintroduces a shipped bug.
 
 ## Brief
@@ -197,3 +212,6 @@ Append-only, one line per `/hs-review-loop` iteration.
     - doc accuracy — PASS — every action in the brief's inventory table exists in `store.ts` with the stated signature, fields and localStorage key; every Decision log claim verified against source (`jsdom ^25.0.0`, no `@vitejs/plugin-react` in either `package.json` or `vite.config.js`, the `setProjects`/`applyProjectList` split, `setNav`, facade setters); store header comments match the implementation after the review-time no-op fix; all relative links between spec and phase plans resolve; `no-changeset` label matches AGENTS.md's carve-out for internal refactors. `FRONTEND.md` left as the unfilled scaffold, which the master plan explicitly defers to Phase 6.
 
 **Note on the net diff.** `@vitejs/plugin-react` was added in `dc249dc` and removed again in `deded18`, so the PR's *net* change to `vite.config.js` is nil and the plugin never appears in `package.json`'s final state. The Decision log entry explains why it must not come back without first making the theme-stamp script addressable by id.
+
+- **2026-09-01 (re-gate)** — verdict: PASS; checks: 6 passed / 0 failed / 0 followups; followups: none; one-line: re-gated against **this phase's** `## Success criteria` after adopting per-phase gating; the whole-migration criterion that produced the earlier NEEDS_FOLLOWUP now belongs to Phase 6, where the spec's criteria are the gate.
+  - 2026-09-01 dimensions: unchanged from the entry above (acceptance / non-goals / doc accuracy all PASS); only the checklist the acceptance dimension is measured against changed, from the spec's finished-migration criteria to this phase's own.

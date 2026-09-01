@@ -77,6 +77,26 @@ The executing session runs on Opus and orchestrates; it does not hand-write mech
 All paths below relative to `cmd/hivegui/frontend/` unless rooted.
 
 
+## Gating convention
+
+This feature ships as 7 PRs against one spec, so the spec's `## Success criteria`
+describe the **finished** migration and cannot pass until Phase 6. Gating every
+phase against them would wave the same unmet criterion through six times and
+make the gate meaningless.
+
+So: **each phase plan carries its own `## Success criteria`, and
+`/hs-merge-gate` validates a phase PR against that phase's plan.** The spec's
+criteria are the gate for Phase 6 only, where they must all pass.
+
+Consequences:
+- The spec's frontmatter `stage:` stays `IMPLEMENT` while phases 1–6 ship — it
+  advances to `DONE` only after the Phase 6 gate. (Same shape as the
+  `ui-design-system` master/phase plans.)
+- A phase's own plan moves to `docs/exec-plans/completed/` when its gate passes;
+  the master plan moves at the end.
+- Every phase still gets `/hs-review-loop` convergence and a full green CI run
+  before merge — the per-phase gate is in addition to that, not instead of it.
+
 ## Phases
 
 Each phase is its own PR and its own detailed plan. A phase's plan is written
@@ -85,7 +105,7 @@ implemented — the briefs deliberately do not all exist up front.
 
 | Phase | Plan | PR | State |
 |---|---|---|---|
-| 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | #311 | implemented, in review |
+| 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **gate PASS**, awaiting merge |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | — | not started |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | — | not started |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | not started |
@@ -136,4 +156,5 @@ Compare any failures against `.plans/react-rewrite-flake-baseline.md` (Phase 0 a
 **2026-09-01** — Migrated from `~/.hivesmith/plans/2026-08-31-react-ui-rewrite.md`
 into hivesmith bookkeeping, following the `ui-design-system` master/phase layout.
 Phase 0 implemented and committed (`dc249dc`); see
-[phase0](react-ui-rewrite-phase0.md) for its brief, flake baseline and decision log.
+[phase0](../completed/react-ui-rewrite-phase0.md) for its brief, flake baseline and
+decision log.

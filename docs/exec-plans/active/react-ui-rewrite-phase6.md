@@ -18,6 +18,27 @@ All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
 #
 
+## Success criteria
+
+What `/hs-merge-gate` validates for THIS phase.
+
+- One React root; `src/main.tsx` replaces `src/main.ts`, with bootstrap order
+  theme → hydrate store → wire daemon events → mount → freeze heartbeat.
+- `src/app/state.ts`'s compat facade is deleted and the `window.__hive_state`
+  exposure has moved into `src/store/store.ts` under the same env gates, with an
+  unchanged shape.
+- All legacy render code is gone (`view.ts`, residual deps seams, unused
+  `src/ui/`), and `rg` finds no orphaned exports.
+- The freeze heartbeat still reads real state every second; the theme-stamp
+  script is still inline in `index.html` ahead of first paint.
+- `FRONTEND.md` is filled in; `DESIGN.md` and `docs/design-docs/ui/README.md`
+  are updated.
+- A changeset is added for the whole rewrite.
+- Debt specs are filed: SessionTerm React-ification, CSS Modules (step 1 = the
+  e2e testid/selector strategy), and `keyboard.ts` decomposition.
+- **The spec's own `## Success criteria` are the gate at this phase** — this is
+  where the whole-migration checklist must pass.
+
 ## Invariants
 
 Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
