@@ -20,6 +20,18 @@
   --state-starting: var(--fg-subtle);
   --state-exited: var(--fg-subtle);
   --state-error: #ff6b6b;
+  /* ANSI 0-15, the palette xterm paints program output with. These are
+     xterm's own defaults (the Tango palette) — stating them here rather
+     than leaving them implicit is what lets a preset override them, and
+     what keeps `classic` reproducing v2.4.0 exactly. A preset on a light
+     ground MUST re-value all sixteen: seven of these fail WCAG AA on
+     white and brightWhite lands at 1.16:1, i.e. invisible.
+     docs/design-docs/ui/themes.md > xterm mapping. */
+  --ansi-0: #2e3436; --ansi-1: #cc0000; --ansi-2: #4e9a06; --ansi-3: #c4a000;
+  --ansi-4: #3465a4; --ansi-5: #75507b; --ansi-6: #06989a; --ansi-7: #d3d7cf;
+  --ansi-8: #555753; --ansi-9: #ef2929; --ansi-10: #8ae234; --ansi-11: #fce94f;
+  --ansi-12: #729fcf; --ansi-13: #ad7fa8; --ansi-14: #34e2e2; --ansi-15: #eeeeec;
+
   --term-bg: #0b0c10;
   --term-fg: #dfe1ea;
 

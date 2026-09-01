@@ -164,7 +164,14 @@ window.addEventListener(
       return; // launcher's own listener handles keys
     }
     if (!editorEl.classList.contains('hidden')) {
-      return; // editor's own listener handles keys
+      // The editor's own listener handles Enter; Escape and the backdrop
+      // are the dialog primitive's. Tab containment has to live here for
+      // the same reason it does for settings: a dialog opened over a
+      // terminal starts with focus outside it, so a listener on the
+      // dialog would never fire. Without this the editor claims
+      // aria-modal="true" while Tab walks out into the sidebar.
+      if (trapFocus(editorEl, e)) e.stopPropagation();
+      return;
     }
     const _palette = document.getElementById('command-palette');
     if (_palette && !_palette.classList.contains('hidden')) {

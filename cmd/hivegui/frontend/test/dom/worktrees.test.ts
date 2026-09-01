@@ -53,23 +53,9 @@ vi.mock('../../src/app/dom.js', () => ({
   reportFailure: () => () => {},
 }));
 
-const MARKUP = `
-  <div id="worktrees" class="hidden">
-    <div id="worktrees-panel">
-      <header>
-        <h3>Worktrees <span id="worktrees-project"></span></h3>
-        <button id="worktrees-close">×</button>
-      </header>
-      <div id="worktrees-empty" class="hidden">
-        <div class="worktrees-empty-card">
-          <span id="worktrees-empty-spinner" class="phase-spinner"></span>
-          <span id="worktrees-empty-text"></span>
-        </div>
-      </div>
-      <section id="worktrees-section-trees"><div id="worktrees-list"></div></section>
-      <section id="worktrees-section-branches"><div id="worktrees-branches"></div></section>
-    </div>
-  </div>`;
+// worktrees.ts builds its own dialog now (the dialog primitive), so the
+// fixture is only the app root it mounts into.
+const MARKUP = `<div id="app"></div>`;
 
 type WorktreesModule = typeof import('../../src/app/modals/worktrees.js');
 let openWorktrees: WorktreesModule['openWorktrees'];

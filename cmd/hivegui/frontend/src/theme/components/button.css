@@ -50,3 +50,5 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+.hv-button__label { white-space: nowrap; }

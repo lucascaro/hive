@@ -4,18 +4,6 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Hive</title>
-    <script>
-      // Stamps data-theme synchronously, before the stylesheets paint. A module
-      // script (src/theme/theme.ts) is deferred and would let the first paint
-      // land on tokens.css's hive-dark defaults. Deliberately duplicated from
-      // src/theme/theme.ts — keep the preset list here in sync with PRESETS there.
-      try {
-        var t = localStorage.getItem('hive.theme');
-        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
-        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
-        document.documentElement.dataset.theme = t;
-      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
-    </script>
     <link rel="stylesheet" href="./src/theme/tokens.css"/>
     <link rel="stylesheet" href="./src/theme/themes.css"/>
     <link rel="stylesheet" href="./src/style.css"/>
@@ -31,6 +19,45 @@
     <link rel="stylesheet" href="./src/theme/components/tile-header.css"/>
     <link rel="stylesheet" href="./src/theme/components/launcher-item.css"/>
     <link rel="stylesheet" href="./src/theme/components/empty-state.css"/>
+    <link rel="stylesheet" href="./src/theme/components/dialog.css"/>
+    <link rel="stylesheet" href="./src/theme/components/field.css"/>
+    <!-- User token overrides. Declared here, after every preset, so they
+         win by cascade ORDER. Filled synchronously by the script below
+         and rewritten by src/theme/theme.ts. Never moved. -->
+    <style id="theme-overrides"></style>
+    <script>
+      // Stamps data-theme and injects the user's token overrides before
+      // first paint. A module script (src/theme/theme.ts) is deferred and
+      // would let the first paint land on the wrong preset.
+      //
+      // The preset list is duplicated from PRESETS in src/theme/theme.ts —
+      // keep them in sync. The overrides are NOT re-sanitised here: they
+      // are stored already-sanitised (writeOverrides), and theme.ts
+      // re-sanitises on import, which covers a hand-edited store one paint
+      // later.
+      try {
+        var t = localStorage.getItem('hive.theme');
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
+        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
+        document.documentElement.dataset.theme = t;
+        // The store is hand-editable, so it is shape-checked before it
+        // reaches the <style>: declarations only, no block, tag, at-rule
+        // or comment characters, no backslash (a CSS escape such as
+        // \\75rl( tokenizes back into url() after parsing, so matching on
+        // the spelled function name proves nothing), and every function
+        // call checked against the same allowlist theme.ts uses. This is
+        // a cheap gate, not the sanitiser — theme.ts re-runs the real one
+        // on import, one paint later. Keep the two in sync.
+        var FN_OK = ['var','calc','min','max','clamp','rgb','rgba','hsl','hsla','hwb','lab','lch','oklab','oklch','color','color-mix'];
+        var o = localStorage.getItem('hive.themeOverrides');
+        var ok = !!o && /^(?:--[a-z0-9-]+:[^;{}<>@\\]+;\s*)+$/.test(o) &&
+          o.indexOf('/*') < 0 && o.indexOf('*/') < 0 &&
+          (o.match(/[a-z-]*\(/gi) || []).every(function (f) {
+            return FN_OK.indexOf(f.slice(0, -1).toLowerCase()) >= 0;
+          });
+        if (ok) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
+      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
+    </script>
 </head>
 <body>
 <div id="app">
@@ -61,105 +88,6 @@
          title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   </aside>
   <div id="launcher" class="hidden" role="menu"></div>
-  <div id="project-editor" class="hidden" role="dialog">
-    <h3 id="project-editor-title">New project</h3>
-    <label>
-      <span>Name</span>
-      <input id="project-editor-name" type="text" autocomplete="off"/>
-    </label>
-    <label>
-      <span>Working directory</span>
-      <div class="cwd-row">
-        <input id="project-editor-cwd" type="text" autocomplete="off"/>
-        <button id="project-editor-browse" type="button">Browse…</button>
-      </div>
-    </label>
-    <label>
-      <span>Color</span>
-      <input id="project-editor-color" type="color"/>
-    </label>
-    <div class="actions">
-      <button id="project-editor-cancel">Cancel</button>
-      <button id="project-editor-save" class="primary">Save</button>
-    </div>
-  </div>
-  <div id="worktrees" class="hidden" role="dialog" aria-modal="true" aria-label="Worktrees">
-    <div id="worktrees-panel">
-      <header>
-        <h3>Worktrees <span id="worktrees-project" class="worktrees-project"></span></h3>
-        <button id="worktrees-close" type="button" aria-label="Close"></button>
-      </header>
-      <div id="worktrees-empty" class="worktrees-empty hidden">
-        <div class="worktrees-empty-card">
-          <span id="worktrees-empty-spinner" class="phase-spinner"></span>
-          <span id="worktrees-empty-text"></span>
-        </div>
-      </div>
-      <div id="worktrees-body">
-        <section id="worktrees-section-trees">
-          <h4>Worktrees</h4>
-          <div id="worktrees-list"></div>
-        </section>
-        <section id="worktrees-section-branches">
-          <h4>Branches with no worktree</h4>
-          <p class="worktrees-hint">
-            Create a worktree to pick this work back up.
-          </p>
-          <div id="worktrees-branches"></div>
-        </section>
-      </div>
-      <footer class="worktrees-footer">
-        <span class="worktrees-hint">[esc] close · (r) refresh</span>
-      </footer>
-    </div>
-  </div>
-  <div id="settings" class="hidden" role="dialog" aria-modal="true" aria-label="Settings">
-    <div id="settings-panel">
-      <header>
-        <h3>Settings</h3>
-        <button id="settings-close" type="button" aria-label="Close"></button>
-      </header>
-      <section id="settings-agents">
-        <h4>Custom agents</h4>
-        <p class="settings-hint">
-          Define your own tools — a command and its arguments. They appear in the
-          new-session menu alongside the built-ins.
-        </p>
-        <div id="settings-agents-list"></div>
-        <button id="settings-agent-add" type="button">+ Add agent</button>
-        <p id="settings-error" class="settings-error hidden" role="alert"></p>
-      </section>
-      <section id="settings-updates">
-        <h4>Updates</h4>
-        <p class="settings-hint">
-          Hive checks for updates in the background. Nothing is downloaded or
-          built until you press Update.
-        </p>
-        <div class="settings-field">
-          <label for="settings-update-channel">Channel</label>
-          <select id="settings-update-channel">
-            <option value="release">Release — tagged versions</option>
-            <option value="latest">Latest — tip of your checkout</option>
-          </select>
-        </div>
-        <div class="settings-field" id="settings-source-repo-row">
-          <label for="settings-source-repo">Source repo</label>
-          <input id="settings-source-repo" type="text" autocomplete="off"
-                 placeholder="Detected automatically" aria-describedby="settings-source-repo-hint"/>
-          <button id="settings-source-repo-browse" type="button">Browse…</button>
-        </div>
-        <p id="settings-source-repo-hint" class="settings-hint"></p>
-        <div class="settings-field">
-          <button id="settings-update-action" type="button">Update</button>
-          <span id="settings-update-status" class="settings-hint" role="status"></span>
-        </div>
-      </section>
-      <div class="actions">
-        <button id="settings-cancel" type="button">Cancel</button>
-        <button id="settings-save" type="button" class="primary">Save</button>
-      </div>
-    </div>
-  </div>
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
     <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" aria-label="Search commands" autocomplete="off"/>
     <div id="command-palette-list" role="listbox"></div>
@@ -177,15 +105,6 @@
     </div>
   </div>
   <div id="minimized-tray" class="hidden" role="toolbar" aria-label="Minimized sessions"></div>
-  <div id="help-overlay" class="hidden" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
-    <div id="help-overlay-panel">
-      <header>
-        <h3>Keyboard shortcuts</h3>
-        <button id="help-overlay-close" type="button" aria-label="Close"></button>
-      </header>
-      <div id="help-overlay-groups"></div>
-    </div>
-  </div>
   <!-- The live region is the text slot alone. With it on the bar, the
        mode hints re-announced on every navigation even though they only
        restate a static per-mode shortcut. -->

@@ -1632,6 +1632,21 @@ export class SessionTerm {
   }
 }
 
+// applyXtermTheme pushes the current token values into every live
+// terminal. Called when the theme changes (Settings › Appearance), not
+// per frame — getComputedStyle is a layout read.
+//
+// Same shape and same guard as applyFontSize: TermTile's `term` is
+// optional because the DOM-test stubs omit it, and a disposed tile can
+// outlive its terminal for a tick.
+export function applyXtermTheme() {
+  const theme = xtermTheme();
+  for (const st of state.terms.values()) {
+    const opts = st.term?.options;
+    if (opts) opts.theme = theme;
+  }
+}
+
 export function applyFontSize() {
   for (const st of allTerms()) {
     // Guarded rather than `st.term.options.fontSize = …`: TermTile's `term`

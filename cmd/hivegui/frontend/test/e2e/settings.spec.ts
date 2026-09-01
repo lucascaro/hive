@@ -276,3 +276,51 @@ test('choosing the latest channel reveals the source-repo row', async ({
   await expect(page.locator('#settings-source-repo-row')).toBeVisible();
   await expect(page.locator('#settings-source-repo')).toBeEditable();
 });
+
+// Appearance is a preference; the agent list is what people open
+// Settings to edit. Putting Appearance first pushed the list off-screen
+// on open, which is the one thing this dialog must not do.
+test('the agent list is on screen the moment Settings opens', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  const onTop = await page.locator('#settings-agents-list').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.height === 0) return false;
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + 8);
+    return !!hit && el.contains(hit);
+  });
+  expect(onTop).toBe(true);
+});
+
+// The error slot is a <p> inside the dialog body, and the primitive's
+// body-paragraph rule outranks the error class on colour: a rejected
+// save rendered in --fg-muted, pixel-identical to the help text above
+// it. Computed colour, because this is exactly the kind of bug that
+// looks fine in the DOM.
+test('a rejected save renders as an error, not as another hint', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+  await addAgent(page, 'Broken', 'nope');
+  await page.evaluate(() =>
+    window.__hive.failNext?.('SaveCustomAgents', 'nope'),
+  );
+  await page.locator('#settings-save').click();
+
+  const err = page.locator('#settings-error');
+  await expect(err).toBeVisible();
+  const [errColor, hintColor] = await Promise.all([
+    err.evaluate((el) => getComputedStyle(el).color),
+    page
+      .locator('#settings .settings-hint')
+      .first()
+      .evaluate((el) => getComputedStyle(el).color),
+  ]);
+  expect(errColor).not.toBe(hintColor);
+});

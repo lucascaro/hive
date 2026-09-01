@@ -16,7 +16,9 @@
 // focus straight back and the dialog's buttons never hold it.
 // keyboard.ts additionally consults choiceDialogOpen().
 
-import { registerModal, unregisterModal } from './registry.js';
+import { button } from '../../ui/button.js';
+import { dialog } from '../../ui/dialog.js';
+import { unregisterModal } from './registry.js';
 
 export interface Choice {
   label: string;
@@ -76,23 +78,32 @@ export function openChoiceDialog(spec: ChoiceSpec): Promise<string> {
     // to its first control.
     const opener = document.activeElement as HTMLElement | null;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'choice-dialog';
-    overlay.setAttribute('role', 'alertdialog');
-    overlay.setAttribute('aria-modal', 'true');
+    let settled = false;
+    const finish = (value: string) => {
+      if (settled) return;
+      settled = true;
+      dismiss = null;
+      current = null;
+      // A detached element has no `hidden` class, so leaving it
+      // registered would make anyModalOpen() answer true forever and
+      // permanently strand the keyboard (registry.ts).
+      unregisterModal(dlg.el);
+      dlg.el.remove();
+      // Restore only if the opener is still on the page: the button
+      // that raised the question is often the one the answer removes
+      // (deleting a worktree takes its row with it). When it is gone,
+      // leave focus alone rather than guessing — whatever is still
+      // open owns the keyboard and will claim it on the next key.
+      if (opener?.isConnected) opener.focus();
+      resolve(value);
+    };
 
-    const box = document.createElement('div');
-    box.className = 'choice-dialog-box';
-
-    const title = document.createElement('h4');
-    title.textContent = spec.title;
-    box.appendChild(title);
-
+    const body: Node[] = [];
     if (spec.detail) {
       const detail = document.createElement('p');
       detail.className = 'choice-dialog-detail';
       detail.textContent = spec.detail;
-      box.appendChild(detail);
+      body.push(detail);
     }
 
     if (spec.bullets?.length) {
@@ -103,69 +114,59 @@ export function openChoiceDialog(spec: ChoiceSpec): Promise<string> {
         li.textContent = b;
         list.appendChild(li);
       }
-      box.appendChild(list);
+      body.push(list);
     }
 
     if (spec.note) {
       const note = document.createElement('p');
       note.className = 'choice-dialog-note';
       note.textContent = spec.note;
-      box.appendChild(note);
+      body.push(note);
     }
-
-    const actions = document.createElement('div');
-    actions.className = 'choice-dialog-actions';
-
-    let settled = false;
-    const finish = (value: string) => {
-      if (settled) return;
-      settled = true;
-      dismiss = null;
-      current = null;
-      unregisterModal(overlay);
-      overlay.remove();
-      // Restore only if the opener is still on the page: the button
-      // that raised the question is often the one the answer removes
-      // (deleting a worktree takes its row with it). When it is gone,
-      // leave focus alone rather than guessing — whatever is still
-      // open owns the keyboard and will claim it on the next key.
-      if (opener?.isConnected) opener.focus();
-      resolve(value);
-    };
 
     const safe = spec.choices[0];
-    let safeBtn: HTMLButtonElement | null = null;
-    for (const c of spec.choices) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = c.label;
+    const actions = spec.choices.map((c) => {
+      const btn = button({
+        label: c.label,
+        kind: c.danger ? 'danger' : 'default',
+        onClick: () => finish(c.value),
+      });
+      // worktrees.spec.ts selects the answer by value, and asserts the
+      // destructive one is marked as such by class — button()'s own
+      // signal is data-kind, so carry both.
       btn.dataset.choice = c.value;
-      if (c.danger) btn.className = 'danger';
-      btn.addEventListener('click', () => finish(c.value));
-      actions.appendChild(btn);
-      if (c === safe) safeBtn = btn;
-    }
-
-    box.appendChild(actions);
-    overlay.appendChild(box);
-
-    overlay.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        finish(safe.value);
-        return;
-      }
+      if (c.danger) btn.classList.add('danger');
+      return btn;
     });
-    // Clicking the scrim means the same as Escape.
-    overlay.addEventListener('mousedown', (e) => {
-      if (e.target === overlay) finish(safe.value);
+    const safeBtn = actions[0];
+
+    // Built per question rather than kept around, so unlike the four
+    // static modals it must be removed AND unregistered on close — see
+    // finish() and registry.ts's own comment.
+    const dlg = dialog({
+      id: 'choice-dialog',
+      role: 'alertdialog',
+      title: spec.title,
+      size: 'sm',
+      body,
+      actions,
+      // The FIRST choice is the safe one: Escape and a scrim click
+      // resolve to it, so a stray key can never destroy anything.
+      onClose: () => finish(safe.value),
+      showCloseButton: false,
     });
+    const overlay = dlg.el;
+    // `.choice-dialog` carries this dialog's one deviation from the
+    // primitive (z-index, style.css) and is what focus-traps.spec.ts
+    // selects on; the id is the primitive's. The panel and footer take
+    // no extra class — the primitive styles both, and the bullets and
+    // note below are the only bits style.css still owns.
+    overlay.classList.add('choice-dialog');
 
     dismiss = () => finish(safe.value);
     current = overlay;
-    registerModal(overlay);
     document.body.appendChild(overlay);
+    dlg.show();
     // The safe option holds focus, so a stray Enter can never destroy
     // anything.
     safeBtn?.focus();
