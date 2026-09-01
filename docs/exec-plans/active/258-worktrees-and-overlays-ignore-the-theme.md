@@ -296,6 +296,7 @@ rows that can be both at once. One general-purpose informational token in the
 - **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c6151570d5c5dce221aa402fdc5caa8ca81a5d30e18c171eb62d9edf7cb2d9b2; threads_open: 0; action: continue (three IMPORTANT findings taken rather than stopping on a no-thread COMMENT); head_sha: 82e4c00.
 - **2026-09-01 iter 1 (follow-up)** — all three IMPORTANT findings and the one MINOR fixed on the branch; gates re-run green; the six worktrees baselines regenerated.
 - **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b9ad6144c9ef5ea88f17f9fd891c9f71b499f2dfa5323cd05b44861fecdebcfc; threads_open: 0; action: continue (one IMPORTANT + two MINOR taken rather than stopping on a no-thread COMMENT); head_sha: 563bd95.
+- **2026-09-01 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop (three MINOR comment/whitespace nits taken before the gate); head_sha: 516c386. CI fully green; the spec-257 flake did not fire.
 
 ## Progress
 

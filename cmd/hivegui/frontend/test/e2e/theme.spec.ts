@@ -496,7 +496,6 @@ test.describe('Settings > Appearance', () => {
           ground: ['--bg', '--surface', '--fg', '--accent', '--term-bg']
             .map((t) => cs.getPropertyValue(t).trim())
             .join('/'),
-
           ansi: Array.from({ length: 16 }, (_, i) =>
             cs.getPropertyValue(`--ansi-${i}`).trim(),
           ),

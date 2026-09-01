@@ -62,9 +62,12 @@
   --fg-subtle: #767676;
   --accent: #c47a12;
   --on-accent: #1a1b22;
-  /* Only running is dim; the other three clear, so this block fails for
-     exactly one reason like every other block in this file. --term-bg
-     stays the base's dark ground, so the ANSI rule is not also invoked. */
+  /* Only running is dim; the other three clear. It reports twice, once
+     per checked ground, because --surface and --surface-raised are both
+     white here — one cause, two lines, which is the point: the ground
+     that the earlier --surface-only rule could not see now reports too.
+     --term-bg stays the base's dark ground, so the ANSI rule is not also
+     invoked. */
   --state-running: #1f9d6a;
   --state-attention: #a35f0d;
   --state-error: #bd3030;

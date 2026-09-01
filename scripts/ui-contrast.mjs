@@ -12,7 +12,7 @@
 //   --term-fg   on --term-bg  >= 4.5   terminal default pair
 //   --on-accent on --accent   >= 4.5   primary buttons must read their own label
 //   --state-*   on --surface  >= 4.5   state colours are text, not just icons
-//                                      (worktree kind ramp, version mismatch)
+//                                      (the worktree kind ramp's status lines)
 //   --state-*   on --surface-raised    the same words on a row card / popover
 //               >= 4.5                 ground (worktree rows, merged badge)
 //   --state-error on --sel    >= 4.5   the destructive row action's button fill

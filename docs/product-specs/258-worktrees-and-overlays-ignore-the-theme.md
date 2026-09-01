@@ -4,7 +4,7 @@ title: "Worktrees, overlays and the launcher ignore the chosen theme"
 type: bug
 complexity: M
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Worktrees, overlays and the launcher ignore the chosen theme
