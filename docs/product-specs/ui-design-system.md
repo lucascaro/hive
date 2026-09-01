@@ -4,8 +4,8 @@ title: "UI design system: tokens, themes, icons, primitives"
 type: enhancement
 complexity: L
 priority: P2
-pr: 310
-stage: IMPLEMENT
+pr: 312
+stage: GATE
 ---
 
 # UI design system: tokens, themes, icons, primitives
