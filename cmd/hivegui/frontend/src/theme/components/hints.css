@@ -1,7 +1,7 @@
 .hints {
   padding: 6px 10px;
   border-top: 1px solid var(--border);
-  font-size: 10.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
+  font-size: var(--text-xs);
   /* #555 on classic's --surface is ~2.7:1 — under AA. That was tolerable
      when this line held redundant shortcut hints, but it now carries the
      build identity users are asked to read back in bug reports.
