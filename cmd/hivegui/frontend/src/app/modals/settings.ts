@@ -108,6 +108,10 @@ const overridesInput = textareaInput({
   placeholder: '--accent: #7aa2f7;',
   onInput: (value) => queueUserOverrides(value),
 });
+// Programmatic link to the slot this box writes its rejections into,
+// mirroring the source-repo field below: without it a screen reader
+// never hears why a line was ignored.
+overridesInput.setAttribute('aria-describedby', 'settings-overrides-error');
 
 // Applying is not free: a style invalidation, then a getComputedStyle
 // and a palette rebuild on EVERY live terminal, then a synchronous

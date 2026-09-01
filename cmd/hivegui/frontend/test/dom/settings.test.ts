@@ -429,6 +429,17 @@ describe('escape', () => {
 // close fires with the text as it was, and on a reopen inside that
 // window writes it back over what the box now shows — including
 // writeOverrides('') when the field was cleared on the way out.
+describe('appearance a11y', () => {
+  it('links the custom-tokens box to the slot it reports into', () => {
+    expect(
+      el<HTMLTextAreaElement>('settings-overrides').getAttribute(
+        'aria-describedby',
+      ),
+    ).toBe('settings-overrides-error');
+    expect(el('settings-overrides-error')).toBeTruthy();
+  });
+});
+
 describe('appearance debounce', () => {
   it('does not write overrides after the dialog is closed', async () => {
     vi.useFakeTimers();
