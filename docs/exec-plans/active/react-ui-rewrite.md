@@ -85,7 +85,7 @@ implemented — the briefs deliberately do not all exist up front.
 
 | Phase | Plan | PR | State |
 |---|---|---|---|
-| 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | — | implemented, in review |
+| 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | #311 | implemented, in review |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | — | not started |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | — | not started |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | not started |
