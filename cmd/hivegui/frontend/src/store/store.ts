@@ -8,7 +8,8 @@
 //
 // The contract every action keeps: an immutable replace of the slices
 // it touches. zustand compares by reference, so a Set/Map mutated in
-// place would never notify a subscriber. Persistence lives in the
+// place would never notify a subscriber, and an action that changes
+// nothing never notifies at all (see `set` below). Persistence lives in the
 // action that owns the field — there is no separate "save" step to
 // forget.
 //
@@ -205,8 +206,28 @@ function initialData(): AppData {
 
 export const appStore = createStore<AppData>()(() => initialData());
 
-const set = appStore.setState;
+const replace = appStore.setState;
 const get = appStore.getState;
+
+// The write every action uses. zustand builds a fresh state object from
+// a partial, so `setState({ attention: sameSetRef })` still swaps the
+// root reference and wakes every raw subscriber. Comparing first makes
+// a no-op action genuinely silent — which is what the immutable helpers
+// above are for: they hand back the SAME reference when nothing
+// changed, and this turns that into "no notification".
+//
+// `useAppStore`'s selector subscriptions would not have re-rendered
+// either way (the selector output is unchanged), but `appStore.subscribe`
+// consumers and anything counting notifications would have.
+function set(partial: Partial<AppData>): void {
+  const cur = get();
+  for (const key of Object.keys(partial) as (keyof AppData)[]) {
+    if (!Object.is(cur[key], partial[key])) {
+      replace(partial);
+      return;
+    }
+  }
+}
 
 // ---------- projects ----------
 
@@ -471,6 +492,13 @@ export function restoreSession(id: string): void {
 
 // ---------- selection + view ----------
 
+// Replaces the whole history object. The app never calls this — nav is
+// mutated in place by lib/nav-history.ts — but the state facade needs a
+// setter to back AppState's writable `nav`, and the dom tests seed it.
+export function setNav(nav: NavHistory): void {
+  replace({ nav });
+}
+
 export function setActiveId(id: string | null): void {
   set({ activeId: id });
 }
@@ -501,7 +529,7 @@ export function setSidebarWidth(w: number): void {
 // Reset to a freshly-loaded state, optionally seeded. Only the dom/unit
 // suites call this — the app itself boots the store exactly once.
 export function resetStore(seed: Partial<AppData> = {}): void {
-  set({ ...initialData(), ...seed }, true);
+  replace({ ...initialData(), ...seed }, true);
 }
 
 // React binding. Exported from here rather than a hooks file: one

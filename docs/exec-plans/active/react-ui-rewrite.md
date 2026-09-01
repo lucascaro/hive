@@ -105,6 +105,15 @@ RTL = `@testing-library/react`. All rewritten tests keep asserting the same clas
 - Phase 5 — New: `test/dom/grid-layout.test.tsx` (spy-sequence asserts template-set-before-attach; reparent not recreate — same node identity across renders; out-of-scope tile keeps its DOM node). Update to the new entry points: `view-floor.test.ts`, `xterm-reflow.test.ts`, and the three that import `initView` from `src/app/view.js` (deleted this phase) — `attention-jump.test.ts`, `attention-jump-integration.test.ts`, `test/dom/nav-history.test.ts`.
 - Phase 6 — New: `test/dom/app-shell.test.tsx` (single root mounts all regions, ids present). Sweep: no test imports a deleted module.
 
+## Known spec-edit exceptions
+
+Exactly one is sanctioned, surfaced by the Phase 0 review and carried into the
+phase plans that hit it: `test/e2e/nav-history.spec.ts:100` mutates the store's
+`minimized` Set in place. It works until a component subscribes to `minimized`
+(Phase 2's tray, Phase 5's grid), at which point that phase changes the line to
+call an action. It is not a DOM-contract break. Every other spec edit still
+means the contract broke.
+
 ## Verification
 
 Every phase PR, from the repo root (fresh worktree: `./scripts/ci-bootstrap.sh` first for wailsjs bindings):

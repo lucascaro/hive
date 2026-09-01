@@ -12,6 +12,7 @@
 // changes their own SESSION_EVENT kind so this path is reachable at all.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
 
 let state: typeof import('../../src/app/state.js').state;
 let renderSidebar: () => void;
@@ -144,7 +145,7 @@ describe('sidebar window titles', () => {
     const before = row('a');
     const beforeSlot = titleSlot('a');
 
-    state.sessions[0] = { ...state.sessions[0], title: 'step two' };
+    store.updateSession({ ...state.sessions[0], title: 'step two' });
     updateSidebarTitles();
 
     // Same nodes, new text. Node identity is the assertion that matters:
@@ -159,13 +160,13 @@ describe('sidebar window titles', () => {
     seed([{ id: 'a', name: 'api', order: 0 }]);
     expect(titleSlot('a').textContent).toBe('');
 
-    state.sessions[0] = { ...state.sessions[0], title: 'working' };
+    store.updateSession({ ...state.sessions[0], title: 'working' });
     updateSidebarTitles();
     expect(titleSlot('a').textContent).toBe('working');
 
     // A title that becomes the session name is suppressed again rather
     // than left showing a redundant second line.
-    state.sessions[0] = { ...state.sessions[0], title: 'api' };
+    store.updateSession({ ...state.sessions[0], title: 'api' });
     updateSidebarTitles();
     expect(titleSlot('a').textContent).toBe('');
   });

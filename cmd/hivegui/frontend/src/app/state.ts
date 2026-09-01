@@ -223,9 +223,15 @@ export const state: AppState = {
     actions.setAttentionRestoredProjects(v);
   },
   // Mutated in place by lib/nav-history.ts — the store holds a stable
-  // reference, so there is nothing to notify and no setter to write.
+  // reference, so there is nothing to notify. The setter exists only
+  // because AppState types the field writable: without it, a plain
+  // `state.nav = …` compiles and then throws at runtime on a
+  // getter-only property.
   get nav() {
     return store.getState().nav;
+  },
+  set nav(v: NavHistory) {
+    actions.setNav(v);
   },
   get minimized() {
     return store.getState().minimized;

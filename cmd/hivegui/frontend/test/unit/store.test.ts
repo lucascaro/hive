@@ -36,6 +36,8 @@ import {
   SIDEBAR_MIN_WIDTH,
   SIDEBAR_MAX_WIDTH,
 } from '../../src/store/store.js';
+import { state } from '../../src/app/state.js';
+import { setTerm, clearTerms } from '../../src/store/terms.js';
 import {
   COLLAPSED_STORAGE_KEY,
   MINIMIZED_PROJECTS_STORAGE_KEY,
@@ -273,11 +275,107 @@ describe('persisted scalars', () => {
   });
 });
 
+describe('persistence load branches', () => {
+  // resetStore() re-reads localStorage, so seeding storage first is what
+  // exercises the loadSaved* path. Without this the boot path is never
+  // covered: beforeEach clears storage before every reset.
+  it('hydrates every persisted field from storage', () => {
+    store.set(COLLAPSED_STORAGE_KEY, JSON.stringify(['p1', 'p2']));
+    store.set(MINIMIZED_PROJECTS_STORAGE_KEY, JSON.stringify(['p3']));
+    store.set(VIEW_STORAGE_KEY, 'grid-all');
+    store.set('hive.fontSize', '21');
+    store.set('hive.sidebarWidth', '333');
+
+    resetStore();
+
+    expect([...s().collapsed].sort()).toEqual(['p1', 'p2']);
+    expect([...s().minimizedProjects]).toEqual(['p3']);
+    expect(s().view).toBe('grid-all');
+    expect(s().fontSize).toBe(21);
+    expect(s().sidebarWidth).toBe(333);
+  });
+
+  it('degrades to defaults on garbage, rather than throwing at boot', () => {
+    store.set(COLLAPSED_STORAGE_KEY, 'not json');
+    store.set(VIEW_STORAGE_KEY, 'sideways');
+    store.set('hive.fontSize', 'huge');
+    store.set('hive.sidebarWidth', '');
+
+    expect(() => resetStore()).not.toThrow();
+
+    expect([...s().collapsed]).toEqual([]);
+    expect(s().view).toBe('single');
+    expect(s().fontSize).toBe(14);
+    expect(s().sidebarWidth).toBe(SIDEBAR_MIN_WIDTH);
+  });
+
+  it('survives a localStorage that throws on every access', () => {
+    // Private-browsing modes throw rather than returning null. Losing a
+    // preference must never take the app down at boot.
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem() {
+        throw new Error('denied');
+      },
+      setItem() {
+        throw new Error('denied');
+      },
+    };
+
+    expect(() => resetStore()).not.toThrow();
+    expect(() => toggleCollapsed('p1')).not.toThrow();
+    expect(s().collapsed.has('p1')).toBe(true);
+  });
+});
+
+describe('the subscribe contract', () => {
+  it('notifies once per real change and not at all for a no-op', () => {
+    setSessions([{ id: 'a' }]);
+    let hits = 0;
+    const unsub = appStore.subscribe(() => {
+      hits++;
+    });
+
+    addAttention('a');
+    expect(hits).toBe(1);
+
+    // Same id again: the helper hands back the SAME Set reference, so
+    // there is no state change and no notification. This is the store's
+    // central design claim.
+    addAttention('a');
+    expect(hits).toBe(1);
+
+    clearAttentionFor('a');
+    expect(hits).toBe(2);
+
+    clearAttentionFor('a'); // already gone — no-op
+    expect(hits).toBe(2);
+
+    unsub();
+  });
+
+  it('stops delivering after unsubscribe', () => {
+    let hits = 0;
+    const unsub = appStore.subscribe(() => {
+      hits++;
+    });
+    addAttention('a');
+    expect(hits).toBe(1);
+
+    unsub();
+
+    addAttention('b');
+    setSessions([{ id: 'z' }]);
+    expect(hits).toBe(1);
+  });
+});
+
 describe('window.__hive_state', () => {
   it('test_window_hive_state_shape_unchanged', () => {
-    // Every field the Playwright specs and the app read off the state
-    // facade. A rename here breaks the e2e suites silently, so the list
-    // is spelled out rather than derived.
+    // Asserts against the `state` facade, NOT appStore.getState(): the
+    // facade is the object assigned to window.__hive_state, and it
+    // carries one field the store does not (`terms`, from the registry).
+    // Testing the store instead would keep this green while a deleted
+    // facade getter broke ~12 e2e specs.
     const expected = [
       'projects',
       'sessions',
@@ -292,35 +390,52 @@ describe('window.__hive_state', () => {
       'aliveById',
       'phaseById',
       'dismissedDead',
+      'terms',
       'activeId',
       'currentProjectId',
       'view',
       'gridProjectId',
       'fontSize',
     ];
-    const actual = s();
     for (const key of expected) {
-      expect(actual, `missing store field: ${key}`).toHaveProperty(key);
+      expect(
+        Reflect.has(state, key),
+        `window.__hive_state lost the field: ${key}`,
+      ).toBe(true);
     }
 
-    // Types the specs depend on.
-    expect(Array.isArray(actual.projects)).toBe(true);
-    expect(Array.isArray(actual.sessions)).toBe(true);
-    expect(actual.collapsed).toBeInstanceOf(Set);
-    expect(actual.attention).toBeInstanceOf(Set);
-    expect(actual.minimized).toBeInstanceOf(Set);
-    expect(actual.aliveById).toBeInstanceOf(Map);
-    expect(actual.phaseById).toBeInstanceOf(Map);
-    expect(actual.nav).toEqual({ back: [], fwd: [] });
+    // Types the specs depend on. `terms` is the load-bearing one: specs
+    // reach state.terms.get(id).term.buffer.active.
+    expect(Array.isArray(state.projects)).toBe(true);
+    expect(Array.isArray(state.sessions)).toBe(true);
+    expect(state.collapsed).toBeInstanceOf(Set);
+    expect(state.attention).toBeInstanceOf(Set);
+    expect(state.minimized).toBeInstanceOf(Set);
+    expect(state.aliveById).toBeInstanceOf(Map);
+    expect(state.phaseById).toBeInstanceOf(Map);
+    expect(state.terms).toBeInstanceOf(Map);
+    expect(state.nav).toEqual({ back: [], fwd: [] });
 
     setActiveId('a');
-    expect(s().activeId).toBe('a');
+    expect(state.activeId).toBe('a');
+  });
+
+  it('the facade reads through to the store, not a copy', () => {
+    setSessions([{ id: 'a' }]);
+    expect(state.sessions).toBe(appStore.getState().sessions);
+
+    // And the terms registry is the live map the e2e specs hold on to.
+    const reg = state.terms;
+    setTerm('a', { host: {} } as never);
+    expect(state.terms).toBe(reg);
+    expect(state.terms.get('a')).toBeDefined();
+    clearTerms();
   });
 
   it('nav keeps a stable reference — lib/nav-history mutates it in place', () => {
-    const nav = s().nav;
+    const nav = state.nav;
     setSessions([{ id: 'a' }]);
     setActiveId('a');
-    expect(s().nav).toBe(nav);
+    expect(state.nav).toBe(nav);
   });
 });

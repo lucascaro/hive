@@ -37,6 +37,11 @@ Violating any one reintroduces a shipped bug.
 Written 2026-08-31 against `760bce4`, before implementation, per the master
 plan's Execution model.
 
+> **Amended during implementation.** The table below is the brief as written
+> before the work; two rows changed in flight and are corrected here —
+> `setProjects` split into `setProjects` + `applyProjectList`, and `setNav` was
+> added to back the facade's writable `nav`. See the Decision log for why.
+
 **Store shape** (`src/store/store.ts`, zustand/vanilla `createStore`). Data fields exactly as `AppState` minus `terms`:
 `projects, sessions, collapsed, minimizedProjects, attention, attentionReturnId, attentionRestored, attentionRestoredProjects, nav, minimized, aliveById, phaseById, dismissedDead, activeId, currentProjectId, view, gridProjectId, fontSize`, plus `sidebarWidth: number`.
 
@@ -48,7 +53,8 @@ plan's Execution model.
 
 | Action | Signature | Fields written | localStorage | Legacy call sites replaced |
 |---|---|---|---|---|
-| `setProjects` | `(list: ProjectInfo[]) => void` | `projects`, `currentProjectId` (first if unset), `collapsed`+`minimizedProjects` (pruned to live ids) | `hive.collapsedProjects`, `hive.minimizedProjects` (only if pruning changed them) | `events.ts:256-274` (`project:list`) |
+| `setProjects` | `(list: ProjectInfo[]) => void` | `projects` only — never prunes | — | the `state.projects` facade setter, dom tests |
+| `applyProjectList` | `(list: ProjectInfo[]) => void` | `projects`, `currentProjectId` (first if unset), `collapsed`+`minimizedProjects` (pruned to live ids) | `hive.collapsedProjects`, `hive.minimizedProjects` (only if pruning changed them) | `events.ts:256-274` (`project:list`) |
 | `addProject` | `(p: ProjectInfo) => void` | `projects` (append-if-absent, re-sorted by `order`), `currentProjectId` if unset | — | `events.ts:298-300` |
 | `updateProject` | `(p: ProjectInfo) => void` | `projects` (replace by id, re-sorted) | — | `events.ts:306` + `:322` |
 | `removeProject` | `(id: string) => void` | `projects`, `collapsed`, `minimizedProjects`, `currentProjectId` (→ first remaining when it was this one) | both collapse keys on change | `events.ts:302-309` |
@@ -163,3 +169,7 @@ context. Phases 1–4 are the natural delegation points.
 store + registry + compat facade landed; all `src/` mutation sites converted to
 actions; 8 dom test files converted off in-place mutation; 17 store tests added.
 All gates green and matching the baseline.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
