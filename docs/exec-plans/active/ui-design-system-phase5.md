@@ -1890,3 +1890,8 @@ PR title: `feat(ui): design-system phase 5 — dialog + fields, Settings › App
 - **Second risk: focus order changed by the colour swatch.** `focusableWithin` filters on `disabled`/`hidden`/`.hidden`, not on visibility, so an `opacity: 0` colour input stays in the tab order — correct, and what `focus-traps.spec.ts` expects. But if Phases 2–4 changed the swatch to `display: none` for any reason, Tab silently skips it. Task 5 step 5 says to fix the CSS, not the spec.
 - **Known ceiling.** The override sanitiser is line-based and cannot express a value containing a semicolon or a CSS comment. That is what `themes.md` specifies and no token value needs either. Upgrade path if it bites: parse with `CSSStyleDeclaration` (`el.style.cssText = input`, then read back only `--*` properties), which the browser validates for free — but it is unavailable in the node-environment unit tests, which is why it is not the first choice.
 - **Deliberately not built.** No live preview of a preset before committing to it, no "reset to defaults" button (clear the textarea, pick System), no per-token colour pickers, no import/export of themes. Each is a feature request, not a gap in this spec.
+
+## PR convergence ledger
+
+- **2026-08-31 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 02a077f9…; threads_open: 0; action: escalated:autofix produced no changes (its Phase 3/4 confirmation gates cannot be satisfied non-interactively); head_sha: 2cd077f.
+- **2026-08-31 iter 1b** — findings applied by hand in the interactive session (1 BLOCKING, 8 IMPORTANT, 4 MINOR), each verified in Chromium or under `--sequence.shuffle` before and after; head_sha: 0cc237e.
