@@ -100,6 +100,13 @@ jobs:
           fi
           ./scripts/ui-lint.sh --strict scripts/testdata/ui-lint/good.css
 
+      - name: UI contrast (WCAG AA per preset)
+        if: matrix.biome
+        # Token values are platform-independent, so the Linux leg is enough.
+        # --verbose so the log carries the ratios: when this goes red the
+        # next question is always "by how much".
+        run: ./scripts/ui-lint.sh --contrast --verbose
+
       - name: Build
         run: go build ./...
 

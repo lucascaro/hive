@@ -12,10 +12,14 @@
 #              This is deliberately NOT "any non-ASCII" — prose in comments
 #              legitimately uses em dashes, curly quotes and arrows, and key
 #              hints (⌘⇧⌥⌃⌫) are required by AGENTS.md.
+#   contrast — `--contrast` runs scripts/ui-contrast.mjs instead of the three
+#              rules above: WCAG 2.1 AA per preset, plus the ANSI 16 on any
+#              preset whose --term-bg is a light ground. Same exit code, so CI
+#              has one entry point. Add --verbose to print every pair checked.
 # A trailing `/* ui-lint: allow */` (CSS) or `// ui-lint: allow` (TS) exempts a line.
 # Exit 0 in warn mode; --strict exits 1 on any violation.
 #
-# Usage: ui-lint.sh [--strict] [path ...]
+# Usage: ui-lint.sh [--strict] [path ...] | ui-lint.sh --contrast [--verbose]
 #   No paths -> lints the whole frontend tree (rule-specific defaults below).
 #   Explicit paths -> all three rules (including glyph) are scoped to them,
 #   so `ui-lint.sh --strict scripts/testdata/ui-lint/bad.css` is meaningful.
@@ -32,6 +36,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FE=cmd/hivegui/frontend
+
+if [[ "${1:-}" == "--contrast" ]]; then
+  exec node scripts/ui-contrast.mjs "${@:2}"
+fi
 
 strict=0
 if [[ "${1:-}" == "--strict" ]]; then
