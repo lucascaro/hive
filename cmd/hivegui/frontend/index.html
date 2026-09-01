@@ -4,18 +4,6 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Hive</title>
-    <script>
-      // Stamps data-theme synchronously, before the stylesheets paint. A module
-      // script (src/theme/theme.ts) is deferred and would let the first paint
-      // land on tokens.css's hive-dark defaults. Deliberately duplicated from
-      // src/theme/theme.ts — keep the preset list here in sync with PRESETS there.
-      try {
-        var t = localStorage.getItem('hive.theme');
-        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
-        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
-        document.documentElement.dataset.theme = t;
-      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
-    </script>
     <link rel="stylesheet" href="./src/theme/tokens.css"/>
     <link rel="stylesheet" href="./src/theme/themes.css"/>
     <link rel="stylesheet" href="./src/style.css"/>
@@ -33,6 +21,29 @@
     <link rel="stylesheet" href="./src/theme/components/empty-state.css"/>
     <link rel="stylesheet" href="./src/theme/components/dialog.css"/>
     <link rel="stylesheet" href="./src/theme/components/field.css"/>
+    <!-- User token overrides. Declared here, after every preset, so they
+         win by cascade ORDER. Filled synchronously by the script below
+         and rewritten by src/theme/theme.ts. Never moved. -->
+    <style id="theme-overrides"></style>
+    <script>
+      // Stamps data-theme and injects the user's token overrides before
+      // first paint. A module script (src/theme/theme.ts) is deferred and
+      // would let the first paint land on the wrong preset.
+      //
+      // The preset list is duplicated from PRESETS in src/theme/theme.ts —
+      // keep them in sync. The overrides are NOT re-sanitised here: they
+      // are stored already-sanitised (writeOverrides), and theme.ts
+      // re-sanitises on import, which covers a hand-edited store one paint
+      // later.
+      try {
+        var t = localStorage.getItem('hive.theme');
+        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
+        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
+        document.documentElement.dataset.theme = t;
+        var o = localStorage.getItem('hive.themeOverrides');
+        if (o) document.getElementById('theme-overrides').textContent = ':root {\n  ' + o + '\n}';
+      } catch (e) { document.documentElement.dataset.theme = 'classic'; }
+    </script>
 </head>
 <body>
 <div id="app">
