@@ -27,7 +27,15 @@ describe('PRESETS', () => {
   it('lists every selectable theme exactly once, System first', () => {
     expect(PRESETS[0].id).toBe('system');
     const ids = PRESETS.map((p) => p.id);
-    expect(ids).toEqual(['system', 'hive-dark', 'hive-light', 'classic']);
+    expect(ids).toEqual([
+      'system',
+      'hive-dark',
+      'hive-light',
+      'native-dark',
+      'native-light',
+      'terminal',
+      'classic',
+    ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(PRESETS.every((p) => p.label.length > 0)).toBe(true);
   });
@@ -38,6 +46,7 @@ describe('PRESETS', () => {
       expect(resolveTheme(p.id, true)).toBe(p.id);
     }
   });
+
 });
 
 describe('sanitizeOverrides', () => {

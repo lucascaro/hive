@@ -24,9 +24,12 @@
       // re-sanitises on import, which covers a hand-edited store one paint
       // later.
       try {
+        var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
         var t = localStorage.getItem('hive.theme');
-        if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'hive-dark' : 'hive-light';
-        if (t !== 'classic' && t !== 'hive-dark' && t !== 'hive-light') t = 'classic';
+        var dark = matchMedia('(prefers-color-scheme: dark)').matches;
+        if (t === 'system') t = dark ? 'hive-dark' : 'hive-light';
+        // DEFAULT_THEME in theme.ts — keep the two in sync.
+        else if (KNOWN.indexOf(t) < 0) t = 'classic';
         document.documentElement.dataset.theme = t;
         // The store is hand-editable, so it is shape-checked before it
         // reaches the <style>: declarations only, no block, tag, at-rule

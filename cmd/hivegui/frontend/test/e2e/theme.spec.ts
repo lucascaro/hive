@@ -287,7 +287,47 @@ test.describe('Settings > Appearance', () => {
     const values = await page
       .locator('#settings-theme option')
       .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    expect(values).toEqual(['system', 'hive-dark', 'hive-light', 'classic']);
+    expect(values).toEqual([
+      'system',
+      'hive-dark',
+      'hive-light',
+      'native-dark',
+      'native-light',
+      'terminal',
+      'classic',
+    ]);
+  });
+
+  // A preset listed in PRESETS but with no :root[data-theme] block in
+  // themes.css is the silent failure themes.md warns about: it inherits
+  // hive-dark wholesale and looks broken on a light ground, while every
+  // other check stays green. Distinct grounds are the cheapest proof each
+  // block exists and is actually reached — and the values come from the
+  // live cascade, so a typo'd selector fails here too.
+  test('every preset has its own block in themes.css', async ({ page }) => {
+    await openAppearance(page);
+    const seen = new Map<string, string>();
+    const ids = await page
+      .locator('#settings-theme option')
+      .evaluateAll((os) =>
+        os
+          .map((o) => (o as HTMLOptionElement).value)
+          .filter((v) => v !== 'system'),
+      );
+    for (const id of ids) {
+      await page.locator('#settings-theme').selectOption(id);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', id);
+      const ground = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        return ['--bg', '--surface', '--fg', '--accent', '--term-bg']
+          .map((t) => cs.getPropertyValue(t).trim())
+          .join('/');
+      });
+      const clash = seen.get(ground);
+      expect(clash, `${id} paints the same tokens as ${clash}`).toBeUndefined();
+      seen.set(ground, id);
+    }
+    expect(seen.size).toBe(ids.length);
   });
 
   test('a good override applies live; a bad line is reported, not injected', async ({
@@ -365,53 +405,56 @@ test.describe('Settings > Appearance', () => {
   });
 
   // The gap this closes: with no --ansi-* tokens, xterm kept its Tango
-  // defaults under every preset, and seven of those fail WCAG AA on
-  // hive-light's white ground (brightWhite at 1.16:1 — invisible).
-  test('hive-light gives terminals a palette readable on white', async ({
-    page,
-  }) => {
-    await openAppearance(page);
-    await page.locator('#settings-theme').selectOption('hive-light');
-    await expect(page.locator('html')).toHaveAttribute(
-      'data-theme',
-      'hive-light',
-    );
+  // defaults under every preset, and seven of those fail WCAG AA on a
+  // white ground (brightWhite at 1.16:1 — invisible). Parametrised over
+  // every light preset rather than hive-light alone: the rule is
+  // themes.md's "a preset on a light ground MUST re-value all sixteen",
+  // and the ratios are computed here rather than pinned as hexes, so a
+  // preset added to this list is checked by the rule, not by a fixture.
+  for (const preset of ['hive-light', 'native-light'] as const) {
+    test(`${preset} gives terminals a palette readable on its own ground`, async ({
+      page,
+    }) => {
+      await openAppearance(page);
+      await page.locator('#settings-theme').selectOption(preset);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', preset);
 
-    const palette = await page.evaluate(() => {
-      const cs = getComputedStyle(document.documentElement);
-      return Array.from({ length: 16 }, (_, i) =>
-        cs.getPropertyValue(`--ansi-${i}`).trim(),
-      );
+      const palette = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        return Array.from({ length: 16 }, (_, i) =>
+          cs.getPropertyValue(`--ansi-${i}`).trim(),
+        );
+      });
+      expect(palette.filter(Boolean)).toHaveLength(16);
+
+      // Contrast against the terminal ground, computed here rather than
+      // asserted as fixed hexes: the point is legibility, not the values.
+      const worst = await page.evaluate((pal) => {
+        const lum = (hex: string) => {
+          const c = (hex.replace('#', '').match(/../g) ?? []).map((h) => {
+            const v = parseInt(h, 16) / 255;
+            return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+          });
+          return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+        };
+        const bg = getComputedStyle(document.documentElement)
+          .getPropertyValue('--term-bg')
+          .trim();
+        return Math.min(
+          ...pal.map((c) => {
+            const [hi, lo] = [lum(c), lum(bg)].sort((a, b) => b - a);
+            return (hi + 0.05) / (lo + 0.05);
+          }),
+        );
+      }, palette);
+      expect(worst).toBeGreaterThanOrEqual(4.5);
+
+      // And it actually reaches the terminal, not just the CSS.
+      await expect
+        .poll(() => page.evaluate(() => window.__hive.termAnsi?.()[15] ?? ''))
+        .toBe(palette[15]);
     });
-    expect(palette.filter(Boolean)).toHaveLength(16);
-
-    // Contrast against the terminal ground, computed here rather than
-    // asserted as fixed hexes: the point is legibility, not the values.
-    const worst = await page.evaluate((pal) => {
-      const lum = (hex: string) => {
-        const c = (hex.replace('#', '').match(/../g) ?? []).map((h) => {
-          const v = parseInt(h, 16) / 255;
-          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-        });
-        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-      };
-      const bg = getComputedStyle(document.documentElement)
-        .getPropertyValue('--term-bg')
-        .trim();
-      return Math.min(
-        ...pal.map((c) => {
-          const [hi, lo] = [lum(c), lum(bg)].sort((a, b) => b - a);
-          return (hi + 0.05) / (lo + 0.05);
-        }),
-      );
-    }, palette);
-    expect(worst).toBeGreaterThanOrEqual(4.5);
-
-    // And it actually reaches the terminal, not just the CSS.
-    await expect
-      .poll(() => page.evaluate(() => window.__hive.termAnsi?.()[15] ?? ''))
-      .toBe(palette[15]);
-  });
+  }
 
   test('an override reaches every open terminal', async ({ page }) => {
     await openAppearance(page);
