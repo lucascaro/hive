@@ -49,6 +49,7 @@ component layer, and CI keeps literals out.
 ## Notes
 
 Six phases, each with its own detailed plan under `docs/exec-plans/active/ui-design-system-phase<N>.md`.
-Phase 1 shipped in PR #292, phase 2 in PR #295; phases 3–6 are not started.
+All six have shipped: phase 1 in PR #292, 2 in #295, 3 in #299, 4 in #301, 5 in #310,
+6 in #312.
 Design docs live in `docs/design-docs/ui/`. Spec written retroactively
 (2026-08-30) to give the phase plans a spec to hang off.

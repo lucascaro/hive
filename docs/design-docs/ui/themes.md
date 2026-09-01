@@ -46,7 +46,7 @@ The xterm `theme` object is rebuilt from tokens whenever the theme changes:
 | `background` | `--term-bg` |
 | `foreground` | `--term-fg` |
 | `cursor`, `cursorAccent` | `--accent`, `--on-accent` |
-| `selectionBackground` | `color-mix(in srgb, var(--accent) 30%, transparent)` |
+| `selectionBackground` | `--accent` at 30% alpha, written as an 8-digit hex (`#rrggbb` + `4d`). Not `color-mix()`: `getPropertyValue` returns that function unresolved and xterm cannot parse it, but it does accept hex-alpha. A non-7-char `--accent` is passed through unchanged. |
 | ANSI 0–15 | `--ansi-0 … --ansi-15`, positionally (SGR 30–37 then 90–97). A slot the preset leaves unset is omitted from the theme object rather than sent as `''`, so xterm keeps its own default. |
 | `fontFamily` | `--font-mono` |
 

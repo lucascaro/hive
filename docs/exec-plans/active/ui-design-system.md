@@ -2,8 +2,14 @@
 
 - **Spec:** [docs/product-specs/ui-design-system.md](../../product-specs/ui-design-system.md)
 - **Issue:** —
-- **Stage:** GATE (all six phases shipped; the spec is gated once, here)
+- **PR:** #312
+- **Branch:** silver-hill
 - **Status:** active
+
+> Stage lives in the spec's frontmatter (`stage: GATE`), not here. `PR:` and
+> `Branch:` name the **last** phase PR, #312, which is the one the gate runs
+> against — phases 1–5 shipped as #292, #295, #299, #301 and #310 and are
+> already on `main`.
 
 ## Summary
 
@@ -116,6 +122,26 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-31** — The `style.css` split's proof of inertness is a computed-style dump, not the screenshots. Why: the HIVE_SNAPSHOT baselines cover the sidebar, the settings dialog, the grid and the launcher; they say nothing about the worktree browser, the help overlay, the palette or the phase overlays. Dumping every CSS property of every element across seven surfaces under three presets, before and after, gave zero differences — which also cleared the one real risk of the move, that `style.css` rules which used to precede the primitives now follow them.
 - **2026-08-31** — Twelve literal `border-radius: 4/6/8px` are now `var(--radius-sm)` / `var(--radius-md)`. Why: `terminal` sets both radii to 0 and it did nothing — the preset whose defining trait is square corners shipped with rounded launcher, palette, tiles, cards and buttons. `ui-lint` has no radius rule, so only reading computed styles under the preset found it. The 1/2/3px hairline roundings (drag indicators, project swatch, worktree badge) stay literal: `--radius-sm` on a 10px swatch reads as a circle.
 - **2026-08-31** — The repo README has no screenshots, so the phase-6 plan's "refresh the README screenshots" step is moot. Nothing to recapture.
+
+## PR convergence ledger
+
+Written by hand: `/hs-review-loop` keys its ledger off a numbered
+`<NNN>-*.md` plan and skips it for a named one like this, so the loop ran
+and converged without recording anything here. These are its three real
+iteration envelopes.
+
+- **2026-08-31 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4b549c7de2e4bfb40ef1ce650ea7909df7d61c2cf3fd774d4e42e97b96de4f07; threads_open: 0; action: escalated:dirty working tree (the operator's in-flight fix for the same BLOCKING finding); head_sha: e4abada.
+- **2026-08-31 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: dac03e506d76f5e65702c901c06e7591c1e0902947dc41813be358c0619f4a19; threads_open: 0; action: stop; head_sha: 539b23e.
+- **2026-08-31 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 9e2e3b0.
+
+Iteration 1's BLOCKING (OFL notices never reached `dist/`) and iteration 2's
+three IMPORTANT items were all fixed on the branch and re-reviewed, which is
+why iteration 3 came back clean. Two commits landed after iteration 3 —
+`db4a9cc` (its two MINOR items: the stale `TODO(phase-6)` and the pre-paint
+`matchMedia` fallback diverging from `theme.ts`) and `35be523` (this stage
+advance). Neither touches behaviour that iteration 3 assessed.
+
+## Gate verdict
 
 ## Progress
 
