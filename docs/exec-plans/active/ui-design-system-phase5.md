@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**PR:** #310 · **Branch:** `feature/ui-design-system-phase5`
+
 **Goal:** Replace four hand-rolled dialog implementations with one `dialog()` primitive and one set of form fields, and give the theme layer a user interface — a preset picker and a custom-token override box that apply live, including to every open terminal.
 
 **Architecture:** `src/ui/dialog.ts` builds a backdrop + panel + header + body + footer, owning the four behaviours every modal in this app re-implements today: Escape, the backdrop mousedown/click pair, the close button, and registration with `modals/registry.ts`. Focus containment stays where it already works — `keyboard.ts` calls `trapFocus()` on the open modal's root — so `dialog()` only has to keep the contract that root depends on: a stable `id` and the `hidden` class as the open/closed signal. `src/ui/field.ts` supplies the label+control pairs (text, select, textarea, colour swatch) and the shared error slot. The four static dialog blocks leave `index.html` and are built in TypeScript at module scope, so the module-level `export const settingsEl` / `editorEl` / `worktreesEl` / `helpEl` refs that `keyboard.ts` and the tests import keep working unchanged.
