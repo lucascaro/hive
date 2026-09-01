@@ -4,7 +4,9 @@ title: "The e2e-real Playwright suite fails on main and blocks every PR"
 type: bug
 complexity: M
 priority: P1
-stage: GATE
+stage: DONE
+pr: 307
+shipped: 2026-08-31
 ---
 
 # The e2e-real Playwright suite fails on main and blocks every PR
@@ -260,6 +262,16 @@ spec's non-goals put it out of scope. It stays skipped on CI with this note.
 The ten-consecutive-green-runs criterion can only be observed on CI, from the
 landing commit forward.
 
+## Gate verdict
+
+- **2026-08-31** — verdict: NEEDS_FOLLOWUP; checks: 5 passed / 0 failed / 1 followup; followups: criterion 1 (post-merge observation), spec 256 (split out); one-line: harness fix validated against the spec; the only open item is the ten-green-runs count, which cannot start until this merges.
+  - 2026-08-31 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — criterion 1 (ten consecutive green Linux+macOS runs on unchanged `main`) is unobservable pre-merge: `main` was red 8/8 runs immediately before this fix and has no post-fix history yet; closes only after merge, counting from the merge commit. Criterion 2 PASS — both cap-dependent specs poll `baseY > 4500` *before* the destructive resizes and the post-resize re-check is deleted with a rationale; `sentinel()`/`settleShell()` replace every fixed-sleep readiness wait. Criterion 3 PASS (caveat) — exactly one CI quarantine remains (`scroll-codex.spec.ts`, "a reader scrolled into history is not yanked to the bottom"), explicit and reasoned, though its follow-up is prose pointing here rather than a tracked issue, this spec having no issue number.
+    - non-goals — PASS — no file under `cmd/hivegui/frontend/src/` is touched; `cmd/hived-ws-bridge` is reached only from `test/e2e-real/` (`globalSetup.mjs`, `wails-bridge.ts`) and never by the shipped Wails app; e2e-real coverage did not shrink (22 tests before and after; CI quarantines 2 → 1); `.github/workflows/` is untouched, so Windows CI is unaffected.
+    - doc accuracy — PASS — the changeset's frontmatter matches sibling conventions and its prose describes the shipped ordered lane, not the abandoned inline attempt; this Resolution's root causes, evidence table and coverage claims all check out against the code at HEAD; generated files (`index.md`, `CHANGELOG.md`, `tech-debt-tracker.md`) untouched; the comments in `main.go` and `term-harness.ts` describe HEAD, not an earlier iteration.
+  - **Gate initially FAILED** on a fourth criterion, "a developer can tell from the check name alone whether a red gate implicates their diff" — correctly, since this PR does not touch `ci.yml`. Resolved by splitting that criterion into [spec 256](256-ci-check-names-identify-the-failing-stage.md) rather than by passing it; see the note under `## Success criteria`.
+  - Ran without an exec plan (this spec never went through the feature pipeline), so there was no convergence ledger to check and no plan file to move. Convergence evidence is `/hs-review-loop` on PR #307: 4 iterations, final verdict APPROVE, zero unresolved threads, all checks green.
+
 ## Desired behavior
 
 CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-real` either passes deterministically or is explicitly quarantined so it cannot fail a PR for reasons unrelated to that PR's diff. Whichever way it goes, a developer never has to ask "is this red mine?" — which is the state the suite is in today, and the reason it is a P1 despite being test-only.
@@ -271,7 +283,20 @@ CI is a trustworthy merge gate: a red check means the PR broke something. `e2e-r
   were `CI (Linux)` / `CI (macOS)` when this spec was written.)
 - No spec depends on an unbounded "output reached the cap" precondition without either waiting for that condition deterministically or failing with a clear "precondition not met" skip.
 - If any spec is quarantined rather than fixed, it is skipped explicitly with a linked follow-up, not left failing.
-- A developer can tell from the check name alone whether a red gate implicates their diff.
+
+**Moved out 2026-08-31, at the merge gate for PR #307.** A fourth criterion
+read: *"A developer can tell from the check name alone whether a red gate
+implicates their diff."* The gate correctly failed this spec on it — the
+harness fix does not touch `.github/workflows/ci.yml`, where one `build` job
+still hides sixteen steps behind one check name per OS.
+
+It is separated rather than dropped: check-name granularity is a different
+problem from suite determinism, it needs its own design (splitting the job
+duplicates the Wails and Playwright bootstrap, which `ci.yml` already calls the
+single biggest cost in CI), and holding this P1 behind it would have left
+`main` red for every PR while that design was worked out. It now lives, verbatim,
+as the first success criterion of
+[256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md).
 
 ## Non-goals
 
