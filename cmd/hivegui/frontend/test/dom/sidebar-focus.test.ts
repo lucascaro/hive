@@ -18,6 +18,7 @@
 // shape genuinely moves — puts focus back where it was.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
 
 const killCalls: Array<[string, boolean | undefined]> = [];
 
@@ -99,7 +100,7 @@ describe('sidebar repaint and focus', () => {
     seed([{ id: 'a', name: 'api', order: 0 }]);
     const before = row('a');
 
-    state.sessions[0] = { ...state.sessions[0], phase: '' };
+    store.updateSession({ ...state.sessions[0], phase: '' });
     updateSidebarRows();
 
     // Same node, not a rebuilt one: this is what makes focus, dblclick
@@ -113,7 +114,7 @@ describe('sidebar repaint and focus', () => {
     btn.focus();
     expect(document.activeElement).toBe(btn);
 
-    state.sessions[0] = { ...state.sessions[0], agent: 'claude' };
+    store.updateSession({ ...state.sessions[0], agent: 'claude' });
     updateSidebarRows();
 
     expect(document.activeElement).toBe(btn);
@@ -129,12 +130,12 @@ describe('sidebar repaint and focus', () => {
     const before = row('a');
     expect(before.querySelector('.hv-session-row__worktree')).toBeNull();
 
-    state.sessions[0] = {
+    store.updateSession({
       ...state.sessions[0],
       phase: '',
       worktree_branch: 'feat/x',
       worktree_path: '/mock/.worktrees/feat-x',
-    };
+    });
     updateSidebarRows();
 
     expect(row('a')).toBe(before);
@@ -155,7 +156,7 @@ describe('sidebar repaint and focus', () => {
 
     // A new session is a genuine shape change, so this falls back to the
     // full rebuild — the node holding focus is destroyed.
-    state.sessions.push({
+    store.addSession({
       id: 'c',
       name: 'db',
       order: 2,
@@ -182,7 +183,7 @@ describe('sidebar repaint and focus', () => {
     const btn = killBtn('a');
 
     // The daemon reports it up. Same node, patched in place.
-    state.sessions[0] = { ...state.sessions[0], alive: true, phase: '' };
+    store.updateSession({ ...state.sessions[0], alive: true, phase: '' });
     updateSidebarRows();
     expect(killBtn('a')).toBe(btn);
 
@@ -200,7 +201,7 @@ describe('sidebar repaint and focus', () => {
     document.body.append(outside);
     outside.focus();
 
-    state.sessions.push({
+    store.addSession({
       id: 'z',
       name: 'other',
       order: 9,

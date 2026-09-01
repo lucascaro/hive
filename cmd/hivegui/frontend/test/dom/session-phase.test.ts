@@ -10,6 +10,8 @@
 // (seconds, on a big worktree), and every render/focus/resize in that
 // window re-dialled and painted the same red error.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import * as store from '../../src/store/store.js';
+import { setTerm, clearTerms } from '../../src/store/terms.js';
 
 const OpenSession = vi.fn((_id: string, _cols: number, _rows: number) =>
   Promise.resolve({}),
@@ -61,7 +63,6 @@ type Tile = InstanceType<SessionTermClass>;
 type Info = import('../../src/app/state.js').SessionInfo;
 
 let SessionTerm: SessionTermClass;
-let state: typeof import('../../src/app/state.js').state;
 
 beforeAll(async () => {
   // view.ts (pulled in via session-term) installs a container
@@ -86,14 +87,13 @@ beforeAll(async () => {
   })) as unknown as typeof window.matchMedia;
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
-  ({ state } = await import('../../src/app/state.js'));
   ({ SessionTerm } = await import('../../src/app/session-term.js'));
 });
 
 beforeEach(() => {
   OpenSession.mockClear();
-  state.terms.clear();
-  state.aliveById.clear();
+  clearTerms();
+  store.setAliveById(new Map());
 });
 
 // jsdom gives every element a 0×0 box, which ensureAttached treats as
@@ -107,7 +107,7 @@ function withBox(st: Tile) {
 
 function makeTerm(info: Info) {
   const st = withBox(new SessionTerm(info));
-  state.terms.set(info.id, st);
+  setTerm(info.id, st);
   return st;
 }
 
@@ -184,7 +184,7 @@ describe('phase overlay', () => {
     st.setPhase('spawning');
     // The daemon's ready event carries alive:false — the spawn failed.
     // events.ts records that before the tile's setPhase runs.
-    state.aliveById.set('s7', false);
+    store.setAlive('s7', false);
     st.setPhase('');
     // No spinner left sitting on top of the dead overlay.
     expect(st.phaseOverlayShown).toBe(false);

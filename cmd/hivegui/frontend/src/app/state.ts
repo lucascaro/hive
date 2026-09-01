@@ -1,26 +1,22 @@
-// ---------- app state ----------
+// ---------- app state: types + the compat view ----------
 //
-// The single shared mutable state object. Every app module imports it
-// from here; main.ts stays the composition root that wires behavior.
+// This file used to own the app's data as one mutable object. The data
+// now lives in store/store.ts (zustand) and store/terms.ts (the
+// terminal registry); what remains here is the type surface every
+// module imports, plus a `state` facade that reads and writes through
+// to them.
+//
+// The facade is migration scaffolding, deleted in Phase 6 of the React
+// rewrite. New code should import the store actions directly.
 
-import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
-import { normalizeView, VIEW_STORAGE_KEY } from '../lib/view.js';
-import {
-  loadCollapsed,
-  serializeCollapsed,
-  COLLAPSED_STORAGE_KEY,
-  MINIMIZED_PROJECTS_STORAGE_KEY,
-} from '../lib/collapsed.js';
-import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
+import { appStore as store } from '../store/store.js';
+import * as actions from '../store/store.js';
+import { termsMap } from '../store/terms.js';
+import type { NavHistory } from '../lib/nav-history.js';
 import type { ViewMode } from '../lib/view.js';
 import type { ReplayFlags, ReplayXterm } from '../lib/scrollback.js';
 import type { xtermTheme } from '../theme/theme.js';
 
-// Wire payloads from the daemon (internal/wire/control.go) are
-// snake_case; some paths also carry camelCase, so both spellings are
-// optional and call sites read `x_y ?? xY` (see selectors.ts). These
-// are NOT the generated wailsjs models — sessions/projects arrive over
-// EventsOn as raw JSON, so there is nothing generated to import.
 export interface SessionInfo {
   id: string;
   name?: string;
@@ -165,48 +161,154 @@ export interface AppState {
   fontSize: number;
 }
 
+// ---------- the compat view ----------
+//
+// `state` used to BE the app's data. It is now a facade: every field
+// reads through to store/store.ts, and `terms` to store/terms.ts.
+//
+// It exists so the ~200 read sites across app/ keep compiling unchanged
+// while the migration proceeds region by region, and because
+// window.__hive_state — a Playwright API, see below — has to keep its
+// exact shape. Phase 6 of the React migration deletes this object and
+// moves the window exposure into store/store.ts.
+//
+// Writes: the setters delegate to the owning store action, so a plain
+// `state.x = v` still behaves. What does NOT work any more is mutating
+// a collection in place (`state.attention.add(id)`): the store's
+// equality is reference-based, so an in-place edit is invisible to
+// subscribers. Every such site in src/ has been converted to an action;
+// use the actions in new code.
+
 export const state: AppState = {
-  projects: [], // ProjectInfo[] in display order
-  sessions: [], // SessionInfo[] in display order
-  collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
-  minimizedProjects: loadSavedMinimizedProjects(), // project ids pulled out of
-  //   the sidebar list into the tray at its bottom; their sessions are
-  //   hidden from grid views too. Persisted, like `collapsed`.
-  attention: new Set(), // session ids that have unread bells
-  attentionReturnId: null, // session to jump back to (⇧⌘B): the one you
-  //   were in before the FIRST ⌘B. Written only
-  //   when empty, so a round of bells that walks
-  //   you through several flagged sessions keeps
-  //   the original anchor; cleared on use.
-  attentionRestored: new Set(), // sessions ⌘B pulled out of the minimized
-  //   tray this round; ⇧⌘B puts them back.
-  attentionRestoredProjects: new Set(), // same round-trip, one level up:
-  //   projects ⌘B revealed to reach a bell inside them.
-  nav: createNavHistory(), // back/forward stacks of visited session ids
-  //   (Ctrl+- / Ctrl+Shift+-). Deliberately NOT
-  //   persisted, unlike `collapsed`: the terminals
-  //   are gone after a restart anyway. Written from
-  //   setActive (app/focus.ts), the sole writer of
-  //   activeId, so every switch path is recorded.
-  minimized: new Set(), // session ids hidden from grid views; restored via tray
-  aliveById: new Map(), // session id -> last-seen Alive bool (for transition detection)
-  phaseById: new Map(), // session id -> last-seen lifecycle phase (see lib/phase-steps.ts)
-  dismissedDead: new Set(), // session ids whose dead overlay user dismissed
-  terms: new Map(), // session id -> SessionTerm
-  activeId: null,
-  currentProjectId: null, // "the project I'm working in"; can be set
-  //   without a focused session (so empty
-  //   projects are reachable / launchable)
-  view: loadSavedView(), // 'single' | 'grid-project' | 'grid-all' — persisted across launches
-  gridProjectId: null, // project shown in grid-project mode
-  fontSize: clampFont(
-    parseInt(localStorage.getItem('hive.fontSize') ?? '', 10) ||
-      DEFAULT_FONT_SIZE,
-  ),
+  get projects() {
+    return store.getState().projects;
+  },
+  set projects(v: ProjectInfo[]) {
+    actions.setProjects(v);
+  },
+  get sessions() {
+    return store.getState().sessions;
+  },
+  set sessions(v: SessionInfo[]) {
+    actions.setSessions(v);
+  },
+  get collapsed() {
+    return store.getState().collapsed;
+  },
+  set collapsed(v: Set<string>) {
+    actions.setCollapsed(v);
+  },
+  get minimizedProjects() {
+    return store.getState().minimizedProjects;
+  },
+  set minimizedProjects(v: Set<string>) {
+    actions.setMinimizedProjects(v);
+  },
+  get attention() {
+    return store.getState().attention;
+  },
+  set attention(v: Set<string>) {
+    actions.setAttention(v);
+  },
+  get attentionReturnId() {
+    return store.getState().attentionReturnId;
+  },
+  set attentionReturnId(v: string | null) {
+    actions.setAttentionReturnId(v);
+  },
+  get attentionRestored() {
+    return store.getState().attentionRestored;
+  },
+  set attentionRestored(v: Set<string>) {
+    actions.setAttentionRestored(v);
+  },
+  get attentionRestoredProjects() {
+    return store.getState().attentionRestoredProjects;
+  },
+  set attentionRestoredProjects(v: Set<string>) {
+    actions.setAttentionRestoredProjects(v);
+  },
+  // Mutated in place by lib/nav-history.ts — the store holds a stable
+  // reference, so there is nothing to notify. The setter exists only
+  // because AppState types the field writable: without it, a plain
+  // `state.nav = …` compiles and then throws at runtime on a
+  // getter-only property.
+  get nav() {
+    return store.getState().nav;
+  },
+  set nav(v: NavHistory) {
+    actions.setNav(v);
+  },
+  get minimized() {
+    return store.getState().minimized;
+  },
+  set minimized(v: Set<string>) {
+    actions.setMinimized(v);
+  },
+  get aliveById() {
+    return store.getState().aliveById;
+  },
+  set aliveById(v: Map<string, boolean>) {
+    actions.setAliveById(v);
+  },
+  get phaseById() {
+    return store.getState().phaseById;
+  },
+  set phaseById(v: Map<string, string>) {
+    actions.setPhaseById(v);
+  },
+  get dismissedDead() {
+    return store.getState().dismissedDead;
+  },
+  set dismissedDead(v: Set<string>) {
+    actions.setDismissedDead(v);
+  },
+  // The registry object itself is stable (store/terms.ts owns it), so
+  // an assignment refills it rather than swapping the reference — the
+  // dom tests assign a fresh Map in setup and Playwright holds on to
+  // window.__hive_state.terms across navigations.
+  get terms() {
+    return termsMap();
+  },
+  set terms(v: Map<string, TermTile>) {
+    const reg = termsMap();
+    reg.clear();
+    for (const [k, t] of v) reg.set(k, t);
+  },
+  get activeId() {
+    return store.getState().activeId;
+  },
+  set activeId(v: string | null) {
+    actions.setActiveId(v);
+  },
+  get currentProjectId() {
+    return store.getState().currentProjectId;
+  },
+  set currentProjectId(v: string | null) {
+    actions.setCurrentProjectId(v);
+  },
+  get view() {
+    return store.getState().view;
+  },
+  set view(v: ViewMode) {
+    actions.setView(v);
+  },
+  get gridProjectId() {
+    return store.getState().gridProjectId;
+  },
+  set gridProjectId(v: string | null) {
+    actions.setGridProjectId(v);
+  },
+  get fontSize() {
+    return store.getState().fontSize;
+  },
+  set fontSize(v: number) {
+    actions.setFontSize(v);
+  },
 };
 
-// E2E test affordance: expose the term registry under a dunder name
-// so Playwright specs can read xterm buffer contents via
+// E2E test affordance: expose the state facade under a dunder name so
+// Playwright specs can read xterm buffer contents via
 // state.terms.get(id).term.buffer.active. Gated on the Vite mock/real
 // env vars so production builds drop this — the gates are inlined to
 // string literals by Vite at build time, so the whole block is dead
@@ -219,48 +321,12 @@ if (
   window.__hive_state = state;
 }
 
-export function loadSavedView(): ViewMode {
-  try {
-    return normalizeView(localStorage.getItem(VIEW_STORAGE_KEY));
-  } catch {
-    return normalizeView(null);
-  }
-}
-
-export function loadSavedCollapsed(): Set<string> {
-  try {
-    return loadCollapsed(localStorage.getItem(COLLAPSED_STORAGE_KEY));
-  } catch {
-    return new Set();
-  }
-}
-
-export function loadSavedMinimizedProjects(): Set<string> {
-  try {
-    return loadCollapsed(localStorage.getItem(MINIMIZED_PROJECTS_STORAGE_KEY));
-  } catch {
-    return new Set();
-  }
-}
-
-export function saveMinimizedProjects(): void {
-  try {
-    localStorage.setItem(
-      MINIMIZED_PROJECTS_STORAGE_KEY,
-      serializeCollapsed(state.minimizedProjects),
-    );
-  } catch {
-    /* private mode etc. — minimized state just won't persist */
-  }
-}
-
-export function saveCollapsed(): void {
-  try {
-    localStorage.setItem(
-      COLLAPSED_STORAGE_KEY,
-      serializeCollapsed(state.collapsed),
-    );
-  } catch {
-    /* private mode etc. — collapse state just won't persist */
-  }
-}
+// Re-exported for the modules (and tests) that imported them from here
+// before the store existed. The store owns the storage keys now.
+export {
+  loadSavedView,
+  loadSavedCollapsed,
+  loadSavedMinimizedProjects,
+  saveCollapsed,
+  saveMinimizedProjects,
+} from '../store/store.js';

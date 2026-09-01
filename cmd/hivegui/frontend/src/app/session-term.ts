@@ -22,6 +22,8 @@ import {
   UpdateSession,
 } from '../bridge.js';
 import { state, type SessionInfo } from './state.js';
+import { addDismissedDead, setFontSize } from '../store/store.js';
+import { allTerms, getTerm, setTerm } from '../store/terms.js';
 import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
 import { iconButton } from '../ui/icon-button.js';
 import { sessionState } from '../lib/session-state.js';
@@ -1628,7 +1630,7 @@ export class SessionTerm {
   }
 
   _dismissDead() {
-    state.dismissedDead.add(this.info.id);
+    addDismissedDead(this.info.id);
     this.setDead(false);
     refocusActiveTerm();
   }
@@ -1644,7 +1646,7 @@ export class SessionTerm {
 export function applyXtermTheme() {
   const theme = xtermTheme();
   const fontFamily = monoFontFamily();
-  for (const st of state.terms.values()) {
+  for (const st of allTerms()) {
     const opts = st.term?.options;
     if (opts) {
       opts.theme = theme;
@@ -1661,7 +1663,7 @@ export function applyXtermTheme() {
 }
 
 export function applyFontSize() {
-  for (const st of state.terms.values()) {
+  for (const st of allTerms()) {
     // Guarded rather than `st.term.options.fontSize = …`: TermTile's `term`
     // is optional because the DOM-test stubs omit it. Every real tile has
     // one, so this is the same write on every path that matters.
@@ -1672,13 +1674,12 @@ export function applyFontSize() {
     // recomputes (cols, rows) from new char metrics.
     st._onBodyResize();
   }
-  localStorage.setItem('hive.fontSize', String(state.fontSize));
 }
 
 export function bumpFontSize(delta: number) {
   const next = clampFont(state.fontSize + delta);
   if (next === state.fontSize) return;
-  state.fontSize = next;
+  setFontSize(next);
   applyFontSize();
   // flashStatus (not setStatus): per-action feedback must auto-revert,
   // not overwrite the persistent slot ("control disconnected", session
@@ -1687,16 +1688,16 @@ export function bumpFontSize(delta: number) {
 }
 
 export function resetFontSize() {
-  state.fontSize = DEFAULT_FONT_SIZE;
+  setFontSize(DEFAULT_FONT_SIZE);
   applyFontSize();
   flashStatus(`font ${state.fontSize}px`);
 }
 
 export function ensureTerm(info: SessionInfo) {
-  let st = state.terms.get(info.id);
+  let st = getTerm(info.id);
   if (!st) {
     st = new SessionTerm(info);
-    state.terms.set(info.id, st);
+    setTerm(info.id, st);
   } else {
     st.setInfo(info);
   }

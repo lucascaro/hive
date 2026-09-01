@@ -17,6 +17,12 @@ import {
 } from '../bridge.js';
 import { closeActiveSession, reopenLastClosedSession } from './undo-close.js';
 import { state } from './state.js';
+import {
+  addAttentionRestored,
+  addAttentionRestoredProject,
+  clearAttentionRestored,
+  setAttentionReturnId,
+} from '../store/store.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
   orderedSessions,
@@ -504,16 +510,16 @@ export function jumpToAttention() {
   // on the anchor would yank tiles out from under them with no keypress
   // to explain it.
   if (id === state.attentionReturnId) endRound({ reminimize: false });
-  else if (!state.attentionReturnId) state.attentionReturnId = state.activeId;
+  else if (!state.attentionReturnId) setAttentionReturnId(state.activeId);
 
   if (isSessionHidden(id)) {
     // Record which of the two mechanisms was hiding it, so ⇧⌘B can put
     // back exactly what ⌘B pulled out — the session, its project, or
     // both.
-    if (state.minimized.has(id)) state.attentionRestored.add(id);
+    if (state.minimized.has(id)) addAttentionRestored(id);
     const pid = readProjectId(state.sessions.find((s) => s.id === id));
     if (pid && state.minimizedProjects.has(pid)) {
-      state.attentionRestoredProjects.add(pid);
+      addAttentionRestoredProject(pid);
     }
     restoreSession(id); // un-minimize + re-render tray, then switchTo
   } else {
@@ -543,7 +549,7 @@ export function jumpBack() {
 // killed while you were away are dropped rather than re-minimized —
 // adding a dead id to state.minimized would strand a chip in the tray.
 function endRound({ reminimize }: { reminimize: boolean }) {
-  state.attentionReturnId = null;
+  setAttentionReturnId(null);
   if (reminimize) {
     for (const rid of state.attentionRestored) {
       if (rid !== state.activeId && state.sessions.some((s) => s.id === rid)) {
@@ -563,8 +569,7 @@ function endRound({ reminimize }: { reminimize: boolean }) {
       }
     }
   }
-  state.attentionRestored.clear();
-  state.attentionRestoredProjects.clear();
+  clearAttentionRestored();
 }
 
 // navBack / navForward (Ctrl+- / Ctrl+Shift+-) walk the session history

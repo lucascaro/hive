@@ -9,6 +9,7 @@
 // so any missed deps.* substitution in that path throws here.
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { createScrollTrace } from '../../src/lib/scroll-debug.js';
+import * as store from '../../src/store/store.js';
 
 // The bridge re-exports the Wails runtime, which doesn't exist under
 // vitest (the vite-plugin substitution only applies to the Playwright
@@ -82,7 +83,7 @@ describe('wireDaemonEvents window-focus handler', () => {
     });
 
     state.activeId = 'sess-1';
-    state.attention.add('sess-1');
+    store.addAttention('sess-1');
 
     // A listener that throws would swallow the rest of the handler and
     // surface as a jsdom uncaught error; assert the spy actually ran.

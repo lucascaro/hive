@@ -17,8 +17,27 @@ import {
   onSessionRemoved,
   onSessionRestored,
 } from './undo-close.js';
-import { state, saveCollapsed, saveMinimizedProjects } from './state.js';
+import { state } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
+import {
+  addAttention,
+  addProject,
+  addSession,
+  clearAttentionFor,
+  clearDismissedDead,
+  forgetSession,
+  pruneToLiveSessions,
+  removeProject,
+  removeSession,
+  setActiveId,
+  setAlive,
+  applyProjectList,
+  setSessionPhase,
+  setSessions,
+  updateProject,
+  updateSession,
+} from '../store/store.js';
+import { deleteTerm } from '../store/terms.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import {
@@ -27,7 +46,6 @@ import {
   updateSidebarSelection,
   updateSidebarTitles,
 } from './sidebar.js';
-import { pruneCollapsed } from '../lib/collapsed.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
@@ -155,11 +173,12 @@ export function onSessionBell(info: SessionInfo) {
   if (isActive && windowFocused) return;
   const alreadyAttention = state.attention.has(info.id);
   if (alreadyAttention) {
-    // Refresh to re-trigger CSS animation.
-    state.attention.delete(info.id);
+    // Refresh to re-trigger CSS animation. Only the class is dropped and
+    // re-added — the flag itself is already set and stays set, so there
+    // is no state transition to make here.
     state.terms.get(info.id)?.host.classList.remove('attention');
   }
-  state.attention.add(info.id);
+  addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   state.terms.get(info.id)?.refreshStateIcon?.();
   updateSidebarSelection();
@@ -168,7 +187,7 @@ export function onSessionBell(info: SessionInfo) {
 }
 
 export function clearAttention(sessionId: string) {
-  if (state.attention.delete(sessionId)) {
+  if (clearAttentionFor(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
     state.terms.get(sessionId)?.refreshStateIcon?.();
     updateSidebarSelection();
@@ -200,7 +219,7 @@ function fireBellNotification(info: SessionInfo) {
 // Shows the in-tile overlay, marks attention, and posts a desktop
 // notification distinct from a normal bell.
 function onSessionDeath(info: SessionInfo) {
-  state.dismissedDead.delete(info.id);
+  clearDismissedDead(info.id);
   const t = state.terms.get(info.id);
   if (t) {
     // Flip attached eagerly so a switch-back before pty:disconnect arrives
@@ -212,7 +231,7 @@ function onSessionDeath(info: SessionInfo) {
     );
   }
   // Reuse the attention pulse path so the sidebar entry highlights.
-  state.attention.add(info.id);
+  addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   updateSidebarSelection();
   const proj = state.projects.find(
@@ -253,26 +272,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
 
   EventsOn('project:list', (jsonStr: string) => {
     const { projects } = JSON.parse(jsonStr) as { projects?: ProjectInfo[] };
-    state.projects = projects || [];
-    if (!state.currentProjectId && state.projects[0]) {
-      state.currentProjectId = state.projects[0].id;
-    }
-    // Drop persisted collapse / minimize entries for projects that no
-    // longer exist so the localStorage keys can't grow forever. Both
-    // prunes live here, not in renderSidebar: this event is the arrival
-    // of authoritative project data, and pruning against a
-    // not-yet-populated state.projects would wipe the sets instead.
-    const ids = state.projects.map((p) => p.id);
-    const pruned = pruneCollapsed(state.collapsed, ids);
-    if (pruned.changed) {
-      state.collapsed = pruned.set;
-      saveCollapsed();
-    }
-    const prunedMin = pruneCollapsed(state.minimizedProjects, ids);
-    if (prunedMin.changed) {
-      state.minimizedProjects = prunedMin.set;
-      saveMinimizedProjects();
-    }
+    // setProjects also defaults currentProjectId and drops persisted
+    // collapse / minimize entries for projects that no longer exist, so
+    // the localStorage keys can't grow forever. That pruning belongs to
+    // this event, not to renderSidebar: this is the arrival of
+    // authoritative project data, and pruning against a
+    // not-yet-populated project list would wipe the sets instead.
+    applyProjectList(projects || []);
     renderSidebar();
   });
 
@@ -295,20 +301,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const ev = JSON.parse(jsonStr) as ProjectEvent;
     const i = state.projects.findIndex((p) => p.id === ev.project.id);
     if (ev.kind === 'added') {
-      if (i < 0) state.projects.push(ev.project);
-      // First-ever project: make it current.
-      if (!state.currentProjectId) state.currentProjectId = ev.project.id;
+      // addProject also makes a first-ever project current.
+      addProject(ev.project);
     } else if (ev.kind === 'removed') {
-      if (i >= 0) state.projects.splice(i, 1);
-      if (state.collapsed.delete(ev.project.id)) saveCollapsed();
-      if (state.minimizedProjects.delete(ev.project.id)) {
-        saveMinimizedProjects();
-      }
-      if (state.currentProjectId === ev.project.id) {
-        state.currentProjectId = state.projects[0]?.id ?? null;
-      }
+      // removeProject also drops the id from the two persisted sets and
+      // re-points currentProjectId when it was this project.
+      removeProject(ev.project.id);
     } else if (ev.kind === 'updated') {
-      if (i >= 0) state.projects[i] = ev.project;
+      if (i >= 0) updateProject(ev.project);
       // Refresh tile-header project color for every session belonging
       // to this project so grid/single-mode title bars reflect rename
       // and recolor in real time.
@@ -319,7 +319,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
         if (st) st.setProject(ev.project.name, ev.project.color);
       }
     }
-    state.projects.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     renderSidebar();
   });
 
@@ -332,8 +331,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const phase = phaseOf(info);
     const prevPhase = state.phaseById.get(info.id);
     const wasPending = prevPhase !== undefined && !isReady(prevPhase);
-    state.aliveById.set(info.id, !!info.alive);
-    state.phaseById.set(info.id, phase);
+    setAlive(info.id, !!info.alive);
+    setSessionPhase(info.id, phase);
     // A session that hasn't finished starting is not dead — it has no
     // PTY *yet*. Death is only meaningful once the daemon says ready.
     if (!isReady(phase)) return;
@@ -350,7 +349,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // session would sit under the loading panel forever.
       onSessionDeath(info);
     } else if (prev === false && info.alive === true) {
-      state.dismissedDead.delete(info.id);
+      clearDismissedDead(info.id);
       const t = state.terms.get(info.id);
       if (t) {
         // Wipe stale frame from the previous (dead) shell so the revived
@@ -378,7 +377,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // here on is the truth, so the boot overlay's job is done.
     setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
-    state.sessions = sessions || [];
+    setSessions(sessions || []);
     for (const s of state.sessions) {
       processAliveTransition(s);
       state.terms.get(s.id)?.setPhase(phaseOf(s));
@@ -388,16 +387,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // the transition-detection maps don't grow for the life of the
     // process. A snapshot is the only path that can retire a session
     // without a per-session `removed` event.
+    pruneToLiveSessions();
     const liveIds = new Set(state.sessions.map((s) => s.id));
-    for (const id of Array.from(state.minimized)) {
-      if (!liveIds.has(id)) state.minimized.delete(id);
-    }
-    for (const id of Array.from(state.aliveById.keys())) {
-      if (!liveIds.has(id)) state.aliveById.delete(id);
-    }
-    for (const id of Array.from(state.phaseById.keys())) {
-      if (!liveIds.has(id)) state.phaseById.delete(id);
-    }
     pruneNav(state.nav, (id) => liveIds.has(id));
     renderSidebar();
     deps.renderMinimizedTray();
@@ -427,7 +418,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       processAliveTransition(ev.session);
     }
     if (ev.kind === 'added') {
-      if (i < 0) state.sessions.push(ev.session);
+      addSession(ev.session);
       renderSidebar();
       deps.switchTo(ev.session.id);
       return;
@@ -440,7 +431,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // rate the child process redraws, eating dblclick pairs on the way
     // (see updateSidebarSelection's comment).
     if (ev.kind === 'title') {
-      if (i >= 0) state.sessions[i] = ev.session;
+      if (i >= 0) updateSession(ev.session);
       updateSidebarTitles();
       return;
     }
@@ -457,23 +448,20 @@ export function wireDaemonEvents(injected: EventsDeps) {
     if (ev.kind === 'removed') {
       // Offers undo, but only for a close this client issued.
       onSessionRemoved(ev.session.id);
-      state.aliveById.delete(ev.session.id);
-      state.phaseById.delete(ev.session.id);
-      state.dismissedDead.delete(ev.session.id);
-      state.minimized.delete(ev.session.id);
+      forgetSession(ev.session.id);
       const nextId =
         state.activeId === ev.session.id ? neighbourOf(ev.session.id) : null;
-      if (i >= 0) state.sessions.splice(i, 1);
+      if (i >= 0) removeSession(ev.session.id);
       const t = state.terms.get(ev.session.id);
       if (t) {
         t.destroy();
-        state.terms.delete(ev.session.id);
+        deleteTerm(ev.session.id);
       }
       // Prune AFTER the splice above: until then the removed id is
       // still in state.sessions, so an exists-check would keep it.
       pruneNav(state.nav, (id) => state.sessions.some((s) => s.id === id));
       if (state.activeId === ev.session.id) {
-        state.activeId = null;
+        setActiveId(null);
         if (nextId) deps.switchTo(nextId);
       }
       // Killing the second-to-last tile leaves a one-tile grid, which is
@@ -493,7 +481,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // without a repaint the sidebar reorders while the tiles keep
       // their stale DOM order.
       const prevOrder = i >= 0 ? state.sessions[i].order : undefined;
-      if (i >= 0) state.sessions[i] = ev.session;
+      if (i >= 0) updateSession(ev.session);
       if (prevOrder !== ev.session.order && state.view !== 'single') {
         deps.renderGrid();
       }

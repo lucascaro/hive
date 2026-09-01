@@ -13,8 +13,9 @@ import { defineConfig } from 'vitest/config';
 // total. Playwright specs (test/e2e*, *.spec.*) are excluded by the
 // `*.test.*` include and run via their own runner.
 //
-// The includes match both .js and .ts: the tree is mid-migration to
-// TypeScript (docs/exec-plans/active/typescript-migration.md) and a
+// The includes match .js, .ts and .tsx: the tree is mid-migration to
+// TypeScript (docs/exec-plans/active/typescript-migration.md), the React
+// rewrite adds .tsx suites on top of that, and a
 // converted test that stops matching its glob vanishes *silently* — the
 // suite just gets smaller. Do not narrow these back to `.js`.
 export default defineConfig({
@@ -26,7 +27,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['test/unit/**/*.test.{js,ts}'],
+          include: ['test/unit/**/*.test.{js,ts,tsx}'],
           environment: 'node',
         },
       },
@@ -34,8 +35,12 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'dom',
-          include: ['test/dom/**/*.test.{js,ts}'],
+          include: ['test/dom/**/*.test.{js,ts,tsx}'],
           environment: 'jsdom',
+          // Registers @testing-library/jest-dom's matchers (toHaveClass,
+          // toBeVisible, …) for the React Testing Library suites the UI
+          // rewrite adds. Harmless for the existing imperative tests.
+          setupFiles: ['./test/dom/setup-rtl.ts'],
         },
       },
     ],

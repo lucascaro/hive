@@ -19,6 +19,7 @@ import { isMac } from './lib/platform.js';
 import { paletteShortcuts } from './lib/shortcuts.js';
 import { modeHints } from './lib/status.js';
 import { state } from './app/state.js';
+import * as store from './store/store.js';
 import {
   setStatus,
   reportFailure,
@@ -286,24 +287,21 @@ initThemeWatch();
 // reloads. Constrained to a sane min/max so the resizer can't be lost
 // off-screen or eat the whole window.
 (function setupSidebarResize() {
-  // 220 is the design system's sidebar floor (docs/design-docs/ui/tokens.md
-  // › Spacing): below it a project card's margins eat the two-line row's
-  // name column. A width stored below the floor is clamped up on load.
-  const MIN = 220,
-    MAX = 480;
+  // The 220/480 bounds and the load-time clamp live on the store
+  // (SIDEBAR_MIN_WIDTH / SIDEBAR_MAX_WIDTH), which also owns the
+  // localStorage round-trip. 220 is the design system's sidebar floor
+  // (docs/design-docs/ui/tokens.md › Spacing): below it a project card's
+  // margins eat the two-line row's name column.
   const app = document.getElementById('app');
   const handle = document.getElementById('sidebar-resizer');
   if (!app || !handle) return;
   // Preserve the successful narrowing inside nested callbacks.
   const appEl = app;
   const handleEl = handle;
-  const saved = parseInt(localStorage.getItem('hive.sidebarWidth') || '', 10);
-  if (Number.isFinite(saved)) {
-    appEl.style.setProperty(
-      '--sidebar-width',
-      `${Math.max(MIN, Math.min(MAX, saved))}px`,
-    );
-  }
+  appEl.style.setProperty(
+    '--sidebar-width',
+    `${store.appStore.getState().sidebarWidth}px`,
+  );
   // #app spans the viewport, so pointer clientX maps directly to sidebar width.
   let dragging = false;
   function endDrag() {
@@ -313,8 +311,7 @@ initThemeWatch();
     handleEl.classList.remove('dragging');
     const px = appEl.style.getPropertyValue('--sidebar-width');
     const w = parseInt(px, 10);
-    if (Number.isFinite(w))
-      localStorage.setItem('hive.sidebarWidth', String(w));
+    if (Number.isFinite(w)) store.setSidebarWidth(w);
     // Main pane width change reflows terminals automatically: each
     // tile body's ResizeObserver fits its xterm; the termsHost RO
     // re-picks (rows, cols) for the grid.
@@ -329,7 +326,10 @@ initThemeWatch();
   });
   handleEl.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const w = Math.max(MIN, Math.min(MAX, e.clientX));
+    const w = Math.max(
+      store.SIDEBAR_MIN_WIDTH,
+      Math.min(store.SIDEBAR_MAX_WIDTH, e.clientX),
+    );
     appEl.style.setProperty('--sidebar-width', `${w}px`);
   });
   handleEl.addEventListener('pointerup', endDrag);
@@ -346,10 +346,10 @@ initThemeWatch();
       getComputedStyle(appEl).getPropertyValue('--sidebar-width'),
       10,
     );
-    const base = Number.isFinite(cur) ? cur : 220;
-    const w = Math.max(MIN, Math.min(MAX, base + delta));
+    const base = Number.isFinite(cur) ? cur : store.SIDEBAR_MIN_WIDTH;
+    store.setSidebarWidth(base + delta);
+    const w = store.appStore.getState().sidebarWidth;
     appEl.style.setProperty('--sidebar-width', `${w}px`);
-    localStorage.setItem('hive.sidebarWidth', String(w));
   }
   handleEl.addEventListener('keydown', (e) => {
     const step = e.shiftKey ? 50 : 10;
@@ -361,10 +361,10 @@ initThemeWatch();
       nudge(+step);
     } else if (e.key === 'Home') {
       e.preventDefault();
-      nudge(-MAX);
+      nudge(-store.SIDEBAR_MAX_WIDTH);
     } else if (e.key === 'End') {
       e.preventDefault();
-      nudge(+MAX);
+      nudge(+store.SIDEBAR_MAX_WIDTH);
     }
   });
 })();

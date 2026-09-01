@@ -12,6 +12,7 @@
 // was never the thing lying.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
 
 let state: typeof import('../../src/app/state.js').state;
 let renderSidebar: () => void;
@@ -76,7 +77,7 @@ describe('sidebar row state icon on attention', () => {
       '#hv-state-running',
     );
 
-    state.attention.add('a');
+    store.addAttention('a');
     updateSidebarSelection();
 
     expect(dot('a').dataset.state).toBe('attention');
@@ -87,7 +88,7 @@ describe('sidebar row state icon on attention', () => {
       'Waiting for you',
     );
 
-    state.attention.delete('a');
+    store.clearAttentionFor('a');
     updateSidebarSelection();
 
     expect(dot('a').dataset.state).toBe('running');
@@ -100,7 +101,7 @@ describe('sidebar row state icon on attention', () => {
   it('patches in place rather than rebuilding the row', () => {
     seed([{ id: 'a', name: 'api', order: 0 }]);
     const before = dot('a');
-    state.attention.add('a');
+    store.addAttention('a');
     updateSidebarSelection();
     expect(dot('a')).toBe(before);
   });
@@ -113,7 +114,7 @@ describe('sidebar row state icon on attention', () => {
 describe('project card on an in-place repaint', () => {
   it('bubbles a new bell to the card and refreshes the collapsed count', () => {
     seed([{ id: 'a', name: 'api', order: 0 }]);
-    state.collapsed.add('p1');
+    store.toggleCollapsed('p1');
     renderSidebar();
 
     const card = () =>
@@ -125,14 +126,14 @@ describe('project card on an in-place repaint', () => {
     expect(count()).toBe('1 session');
 
     const before = card();
-    state.attention.add('a');
+    store.addAttention('a');
     updateSidebarSelection();
 
     expect(card()).toBe(before); // patched, not rebuilt
     expect(card()?.dataset.state).toBe('attention');
     expect(count()).toBe('1 session · 1 needs you');
 
-    state.attention.delete('a');
+    store.clearAttentionFor('a');
     updateSidebarSelection();
     expect(card()?.dataset.state).toBeUndefined();
     expect(count()).toBe('1 session');

@@ -17,6 +17,7 @@ import {
   afterEach,
   type MockedFunction,
 } from 'vitest';
+import * as store from '../../src/store/store.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -145,7 +146,7 @@ describe('jumpToAttention', () => {
     state.attention = new Set(['b', 'c']);
     jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b'; // switchTo is mocked; mirror what it would do
-    state.attention.delete('b');
+    store.clearAttentionFor('b');
     jumpToAttention(); // b → c, anchor must STILL be a
     expect(switchTo).toHaveBeenLastCalledWith('c');
     expect(state.attentionReturnId).toBe('a');

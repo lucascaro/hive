@@ -9,6 +9,8 @@
 // Order index it would produce with nothing minimized, because the
 // daemon's index space still counts the minimized project.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import * as store from '../../src/store/store.js';
+import { setTerm } from '../../src/store/terms.js';
 
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
@@ -227,7 +229,7 @@ describe('minimize project', () => {
     expect(chip('p1')?.dataset.state).toBeUndefined();
 
     // Clearing repaints in place, the same path clearAttention takes.
-    state.attention.delete('s2');
+    store.clearAttentionFor('s2');
     updateSidebarSelection();
     expect(chip('p2')?.dataset.state).toBeUndefined();
   });
@@ -446,7 +448,7 @@ describe('grid views', () => {
           _closeDead() {},
           _dismissDead() {},
         };
-        state.terms.set(info.id, tile);
+        setTerm(info.id, tile);
         return tile;
       },
       setActive,
@@ -469,7 +471,7 @@ describe('grid views', () => {
   it('activates a visible sibling rather than a hidden first session', () => {
     // p1 keeps s1 minimized individually but has a visible sibling, so
     // selecting the project must not tear the user out of the grid.
-    state.sessions.push({ id: 's1b', name: 's1b', project_id: 'p1', order: 3 });
+    store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 3 });
     state.minimized = new Set(['s1']);
     switchToProject('p1');
     expect(state.activeId).toBe('s1b');
@@ -567,7 +569,7 @@ describe('keyboard navigation skips minimized things', () => {
           _closeDead() {},
           _dismissDead() {},
         };
-        state.terms.set(info.id, tile);
+        setTerm(info.id, tile);
         return tile;
       },
       setActive: (id: string | null) => {
@@ -616,7 +618,7 @@ describe('keyboard navigation skips minimized things', () => {
     // The reorder branch sends an index into the daemon's GLOBAL order
     // space, which counts hidden sessions — filtering it would scatter
     // sessions. s1b is minimized and must still be a valid target.
-    state.sessions.push({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
+    store.addSession({ id: 's1b', name: 's1b', project_id: 'p1', order: 1 });
     minimizeSession('s1b');
     state.activeId = 's1';
     reorderActive(+1);
@@ -648,7 +650,7 @@ describe('keyboard navigation skips minimized things', () => {
   // round trip. The per-step cases above prove one hop each; these two
   // prove the properties the user actually feels.
   it('never lands in a minimized project across a full ⌘↓ cycle', () => {
-    state.sessions.push({ id: 's2b', name: 's2b', project_id: 'p2', order: 4 });
+    store.addSession({ id: 's2b', name: 's2b', project_id: 'p2', order: 4 });
     minimizeProject('p2');
     state.activeId = 's1';
     const seen: (string | null)[] = [];

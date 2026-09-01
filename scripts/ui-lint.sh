@@ -6,8 +6,8 @@
 #              declaration with a trailing comment is still caught)
 #   px-size  — font-size: <n>px outside src/theme/tokens.css
 #   glyph    — a denylist of icon-shaped Unicode characters in
-#              src/app/**/*.ts, src/theme/**/*.css and index.html. Icons come
-#              from the sprite via icon() now (docs/design-docs/ui/icons.md
+#              src/app/**/*.{ts,tsx}, src/theme/**/*.css and index.html. Icons
+#              come from the sprite via icon() now (docs/design-docs/ui/icons.md
 #              > Rules); anything on this list is an unconverted call site.
 #              This is deliberately NOT "any non-ASCII" — prose in comments
 #              legitimately uses em dashes, curly quotes and arrows, and key
@@ -65,7 +65,9 @@ if [[ $custom -eq 0 ]]; then
   # land — they must be scanned too. Deliberately NOT src/lib: grid.ts
   # legitimately uses "×" for w×h dimensions, and scanning it would
   # produce a false positive that invites a suppression.
-  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/theme" "$FE/index.html")
+  # src/components is where the React ports of the src/ui primitives
+  # land during the React rewrite, so it is scanned on the same footing.
+  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/components" "$FE/src/theme" "$FE/index.html")
 fi
 
 n=0
@@ -117,7 +119,7 @@ for ch in $GLYPH_DENY; do
   glyph_args+=(-e "$ch")
 done
 while IFS= read -r line; do report "$line"; done < <(
-  grep -rnF --include='*.ts' --include='*.html' --include='*.css' \
+  grep -rnF --include='*.ts' --include='*.tsx' --include='*.html' --include='*.css' \
     "${glyph_args[@]}" "${glyph_targets[@]}" 2>/dev/null \
     | grep -v -e 'ui-lint: allow' \
     | sed 's/^/glyph: /' || true)

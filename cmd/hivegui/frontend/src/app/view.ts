@@ -6,12 +6,8 @@
 // and main.ts.
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
-import {
-  state,
-  saveMinimizedProjects,
-  type SessionInfo,
-  type TermTile,
-} from './state.js';
+import { state, type SessionInfo, type TermTile } from './state.js';
+import * as store from '../store/store.js';
 import { termsHost, setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import { updateSidebarSelection, renderSidebar } from './sidebar.js';
@@ -22,7 +18,7 @@ import {
   computeSpatialMove,
   type GridLayout,
 } from '../lib/grid.js';
-import { VIEW_STORAGE_KEY, resolveView, type ViewMode } from '../lib/view.js';
+import { resolveView, type ViewMode } from '../lib/view.js';
 import { filterHidden } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { emptyStateModel } from '../lib/empty-state.js';
@@ -96,7 +92,7 @@ export function switchTo(id: string | null) {
   // project than the one currently shown in grid-project mode.
   if (state.view === 'grid-project' && info) {
     const pid = info.projectId ?? info.project_id;
-    if (pid && pid !== state.gridProjectId) state.gridProjectId = pid;
+    if (pid && pid !== state.gridProjectId) store.setGridProjectId(pid);
   }
   // Before painting: a grid view has no tile for a hidden session, so
   // drop to single first rather than rendering a grid the selection
@@ -165,8 +161,8 @@ export function updateAppTitle() {
 // currentProjectId is set so ⌘N targets them correctly.
 export function switchToProject(pid: string) {
   if (!pid) return;
-  state.currentProjectId = pid;
-  if (state.view === 'grid-project') state.gridProjectId = pid;
+  store.setCurrentProjectId(pid);
+  if (state.view === 'grid-project') store.setGridProjectId(pid);
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === pid)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -174,7 +170,7 @@ export function switchToProject(pid: string) {
   if (target) {
     switchTo(target.id);
   } else {
-    state.activeId = null;
+    store.setActiveId(null);
     if (state.view === 'single') showSingle(null);
     else renderGrid();
     updateSidebarSelection();
@@ -441,8 +437,8 @@ export function shiftActiveProject(delta: number) {
     if (!state.minimizedProjects.has(cand.id)) next = cand;
   }
   if (!next) return;
-  state.currentProjectId = next.id;
-  if (state.view === 'grid-project') state.gridProjectId = next.id;
+  store.setCurrentProjectId(next.id);
+  if (state.view === 'grid-project') store.setGridProjectId(next.id);
 
   const sessions = state.sessions
     .filter((s) => (s.projectId ?? s.project_id) === next.id)
@@ -460,7 +456,7 @@ export function shiftActiveProject(delta: number) {
     // Empty project — keep the project selected but drop the active
     // session so the user can ⌘N into it. activeProjectId() now
     // returns the empty project because currentProjectId is set.
-    state.activeId = null;
+    store.setActiveId(null);
   }
   if (state.view === 'single') showSingle(state.activeId);
   else renderGrid();
@@ -524,7 +520,7 @@ function hiddenSessionIds(): Set<string> {
 // still switch to a minimized session via the sidebar / palette.
 export function minimizeSession(id: string | null) {
   if (!id || state.minimized.has(id)) return;
-  state.minimized.add(id);
+  store.minimizeSession(id);
   // If the active session is the one being minimized while in grid
   // mode, hand focus to the next still-visible session so the focus
   // ring doesn't vanish onto an offscreen tile.
@@ -556,7 +552,7 @@ export function enforceViewFloor() {
 // to it. Works from any view — switchTo handles the view-aware repaint.
 export function restoreSession(id: string | null) {
   if (!id) return;
-  state.minimized.delete(id);
+  store.restoreSession(id);
   // A session can be hidden by its project rather than by itself, and
   // callers (⌘B, nav history) only know "make this one visible" — so
   // reveal whichever of the two is holding it back.
@@ -579,8 +575,7 @@ export function restoreSession(id: string | null) {
 // focus handoff, grid, view floor.
 export function minimizeProject(id: string | null) {
   if (!id || state.minimizedProjects.has(id)) return;
-  state.minimizedProjects.add(id);
-  saveMinimizedProjects();
+  store.minimizeProject(id);
   // Same reason as minimizeSession: don't leave the focus ring on a
   // tile that just stopped being rendered.
   if (state.view !== 'single') {
@@ -601,8 +596,7 @@ export function minimizeProject(id: string | null) {
 // project's Order, so the row reappears exactly where it was.
 export function restoreProject(id: string | null) {
   if (!id || !state.minimizedProjects.has(id)) return;
-  state.minimizedProjects.delete(id);
-  saveMinimizedProjects();
+  store.restoreProject(id);
   renderSidebar();
   if (state.view !== 'single') {
     renderGrid();
@@ -747,14 +741,9 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   );
   if (target !== view) flashStatus('only one session — staying focused');
   view = target;
-  state.view = view;
-  if (opts.persist !== false) {
-    try {
-      localStorage.setItem(VIEW_STORAGE_KEY, view);
-    } catch {}
-  }
+  store.setView(view, opts.persist !== false);
   if (view === 'grid-project') {
-    state.gridProjectId = activeProjectId();
+    store.setGridProjectId(activeProjectId());
   }
   if (view === 'single') {
     showSingle(state.activeId);

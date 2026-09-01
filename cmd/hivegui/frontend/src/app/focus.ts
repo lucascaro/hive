@@ -5,6 +5,11 @@
 
 import { state } from './state.js';
 import {
+  clearAttentionFor,
+  setActiveId,
+  setCurrentProjectId,
+} from '../store/store.js';
+import {
   decideFocusAction,
   ACTION_CLEAR,
   ACTION_PRESERVE,
@@ -45,13 +50,13 @@ export function setActive(id: string | null) {
   if (!_navSuppress && id && id !== state.activeId)
     pushNav(state.nav, state.activeId);
   if (id) {
-    state.attention.delete(id);
+    clearAttentionFor(id);
     state.terms.get(id)?.host.classList.remove('attention');
     const s = state.sessions.find((x) => x.id === id);
     const pid = s?.projectId ?? s?.project_id;
-    if (pid) state.currentProjectId = pid;
+    if (pid) setCurrentProjectId(pid);
   }
-  state.activeId = id;
+  setActiveId(id);
   // Schedule focus after the next paint so any DOM reorder / visibility
   // change from renderGrid / showSingle has settled. xterm.focus()
   // moves focus to its hidden textarea; that fires .onFocus, which
