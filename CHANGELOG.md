@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keystrokes reached the pty out of order and the commands the specs typed
   were not the commands the shell ran. `WriteStdin` is now applied in arrival
   order. Test-only: the shipped GUI does not use this bridge.
+- Re-instated the CI quarantine on the `e2e-real` test "viewport converges to
+  the bottom after a mode switch", which PR #307 lifted on insufficient
+  evidence. It failed CI macOS on both attempts with the same
+  `resizeDecisions() === 0` symptom it was originally quarantined for. Test-only.
 - Keyboard switching now skips what you minimized. ⌘↑ / ⌘↓ step over
   sessions in the tray and sessions whose project is minimized — they no
   longer pull you back into a project you put away, or drop you out of a
@@ -70,6 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   project now spans the full width of its tray with the restore `+`
   pinned to the right edge, and clicking anywhere on the row restores
   the project instead of only the project name.
+- Fixed keyboard focus being silently lost in the sidebar and the grid. A
+  daemon `session:event` update — one arrives on every phase step, on every
+  surviving session after a kill, and whenever the agent-session-id capture
+  poll lands, up to 30s after a session starts — rebuilt the whole sidebar,
+  destroying whatever the user had focused. `renderGrid` had the same problem
+  from re-parenting every tile on every repaint. Session updates now patch the
+  existing rows in place, the grid reorders only when the order actually
+  moved, and both paths restore focus if a genuine rebuild moves it.
 - `build.sh` now fails with install instructions when the `wails` CLI on
   `PATH` does not match the version pinned in `scripts/ci-bootstrap.sh`,
   instead of silently building against a stale toolchain after a Wails

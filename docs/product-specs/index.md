@@ -8,6 +8,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
+| P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | Minimize whole projects from the sidebar | REVIEW | [250-minimize-projects-from-sidebar](250-minimize-projects-from-sidebar.md) |
 | P2 | — | Auto-update with release/latest channels | REVIEW | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
 | P2 | — | Minimized project chips fill the tray with a right-aligned restore | GATE | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
