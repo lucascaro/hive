@@ -158,6 +158,17 @@ its input mounts. RTL 16 + React 19 do not need the bump.
 targets — so a Phase 1 `.tsx` suite cannot vanish silently, which is the trap
 `vitest.config.js`'s own comment warns about.
 
+**`@vitejs/plugin-react` is deliberately NOT installed.** It was added first,
+then removed: its dev-only Fast Refresh preamble is injected as the *first*
+inline `<script>` in `<head>`, which displaces the theme-stamp script that
+`test/e2e/theme.spec.ts` reads via `document.head.querySelector('script:not([src])')`
+— breaking a spec on all three platforms without touching a line of app code.
+Vite compiles `.tsx` natively through esbuild using `tsconfig`'s
+`"jsx": "react-jsx"`, so the plugin buys only HMR. Verified before removal with
+a throwaway `.tsx` component + RTL test: both compile and render with no plugin.
+Phase 1 gets Fast Refresh only if someone first makes the theme-stamp script
+addressable by id, which is a spec change and needs its own sign-off.
+
 **No subagent delegation.** The master plan's Execution model allows it "when
 efficient"; the orchestrating session already held the full read of every
 mutating file, so a handoff would have paid to re-read what was already in
@@ -173,3 +184,4 @@ All gates green and matching the baseline.
 ## PR convergence ledger
 
 Append-only, one line per `/hs-review-loop` iteration.
+- **2026-09-01 iter 2** — verdict: pending re-review; mergeable: MERGEABLE; findings_hash: (iter-1 findings addressed by hand); threads_open: 0; action: fixes pushed (no-op-action silencing, `__hive_state` shape guard on the facade, index-assignment sweep, persistence-load + subscribe coverage, `setNav`); head_sha: c4c132f.

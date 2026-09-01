@@ -37,6 +37,10 @@ export default defineConfig({
           name: 'dom',
           include: ['test/dom/**/*.test.{js,ts,tsx}'],
           environment: 'jsdom',
+          // Registers @testing-library/jest-dom's matchers (toHaveClass,
+          // toBeVisible, …) for the React Testing Library suites the UI
+          // rewrite adds. Harmless for the existing imperative tests.
+          setupFiles: ['./test/dom/setup-rtl.ts'],
         },
       },
     ],
