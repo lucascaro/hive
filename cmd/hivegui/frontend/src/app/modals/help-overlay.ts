@@ -27,7 +27,7 @@ const dlg = dialog({
   title: 'Keyboard shortcuts',
   size: 'lg',
   body: [helpGroupsEl],
-  hints: [kbd('esc'), document.createTextNode(' close')],
+  hints: [kbd('[esc]'), document.createTextNode(' close')],
   onClose: () => closeHelpOverlay(),
 });
 dlg.panel.id = 'help-overlay-panel';

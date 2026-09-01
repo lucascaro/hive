@@ -96,6 +96,12 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 - **2026-08-31** — Settings keeps its Updates section outside the scrolling part of the dialog body. Why: `dialog()` scrolls the whole body, so a dozen custom agents pushed the channel picker below the fold; `test/e2e/settings.spec.ts` already guarded that and caught it.
 - **2026-08-31** — Phase 5 also rebuilt the Updates section (channel, source repo, update action), which the phase-5 plan predates. Why: it lives inside the Settings dialog, so it moved with the markup.
 
+- **2026-08-31** — Override values are allow-listed by function, not deny-listed by `url()`. Why: review found `image-set("https://…")` passed the denylist and reached `background: var(--bg)` — egress. Unbalanced parens are now rejected too: `--accent: rgb(` swallowed the appended `;` and the rest of the block, killing every override with `rejected.length === 0`, so nothing was reported. Both reproduced in Chromium before fixing.
+- **2026-08-31** — The pre-paint boot script shape-checks the store before injecting it. Why: re-sanitising a paint later closes the visual window, not the request; the store is hand-editable and that script writes straight into a `<style>`.
+- **2026-08-31** — Custom agents sits above Appearance in the Settings scroll region. Why: the agent list is what people open Settings to edit and the only section that grows; Appearance above it pushed the list off-screen on open.
+- **2026-08-31** — The custom-token box debounces at 150ms. Why: every keystroke otherwise ran a style invalidation plus a `getComputedStyle` and palette rebuild on every live terminal plus a synchronous `localStorage` write — exactly the per-frame case `applyXtermTheme`'s comment rules out.
+- **2026-08-31** — `.hv-dialog__actions` wraps. Why: a four-answer question overflows the `sm` panel, and without wrapping the labels broke to three lines inside a 28px button and rendered outside it — on the dialog that deletes branches.
+
 ## Progress
 
 - [x] Phase 1

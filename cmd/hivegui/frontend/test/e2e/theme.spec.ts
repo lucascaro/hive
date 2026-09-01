@@ -259,6 +259,27 @@ test.describe('Settings > Appearance', () => {
     );
   });
 
+  // index.html's pre-paint script cannot import theme.ts, so it carries
+  // its own copy of the stampable preset names. This is the guard that
+  // makes the duplication safe rather than a trap for phase 6.
+  test('the boot script knows every preset theme.ts stamps', async ({
+    page,
+  }) => {
+    await boot(page);
+    const script = await page.evaluate(
+      () => document.head.querySelector('script:not([src])')?.textContent ?? '',
+    );
+    const stampable = await page
+      .locator('#settings-theme option')
+      .evaluateAll((os) =>
+        os
+          .map((o) => (o as HTMLOptionElement).value)
+          .filter((v) => v !== 'system'),
+      );
+    // The picker is only rendered after ⌘, so seed it first.
+    for (const name of stampable) expect(script).toContain(`'${name}'`);
+  });
+
   test('the preset list is exactly what theme.ts exports', async ({ page }) => {
     await openAppearance(page);
     // Guards the "data-driven from PRESETS" requirement: phase 6 adds
@@ -280,8 +301,10 @@ test.describe('Settings > Appearance', () => {
           .trim(),
       );
 
+    // Applying trails typing by a debounce (settings.ts), so poll
+    // rather than reading once.
     await page.locator('#settings-overrides').fill('--accent: #7aa2f7;');
-    expect(await accent()).toBe('#7aa2f7');
+    await expect.poll(accent).toBe('#7aa2f7');
     await expect(page.locator('#settings-overrides-error')).toBeHidden();
 
     await page
@@ -293,13 +316,37 @@ test.describe('Settings > Appearance', () => {
     );
     // The good line still applies and the bad one did not escape the
     // :root block — the sidebar is still on screen.
-    expect(await accent()).toBe('#7aa2f7');
+    await expect.poll(accent).toBe('#7aa2f7');
     await expect(page.locator('#sidebar')).toBeVisible();
 
     // Only the sanitised text is persisted.
-    expect(
-      await page.evaluate(() => localStorage.getItem('hive.themeOverrides')),
-    ).toBe('--accent: #7aa2f7;');
+    await expect
+      .poll(() =>
+        page.evaluate(() => localStorage.getItem('hive.themeOverrides')),
+      )
+      .toBe('--accent: #7aa2f7;');
+  });
+
+  // The pre-paint boot script writes straight into a <style>, one paint
+  // before theme.ts's sanitiser runs. The store is hand-editable, so
+  // that script shape-checks it: a hostile value must never reach the
+  // document at all, not merely be corrected a paint later.
+  test('a hand-edited override store is not injected before paint', async ({
+    page,
+  }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'hive.themeOverrides',
+        '--bg: image-set("https://evil.example/x.png");',
+      );
+    });
+    await page.reload();
+    const injected = await page.evaluate(
+      () => document.getElementById('theme-overrides')?.textContent ?? '',
+    );
+    expect(injected).toBe('');
+    await page.evaluate(() => localStorage.removeItem('hive.themeOverrides'));
   });
 
   test('an override reaches every open terminal', async ({ page }) => {

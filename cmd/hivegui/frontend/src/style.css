@@ -716,13 +716,17 @@ body.resizing-sidebar #app { transition: none; }
 .worktrees-empty-card .phase-spinner.hidden { display: none; }
 /* The headings stay put while their rows scroll under them, so the
    list never leaves you wondering which half you are looking at. */
+/* Sticks to the top of #worktrees-body, its scroller. No negative
+   horizontal margin: the scroller's content box is the full panel
+   width, so pulling the heading out by --space-4 on each side made it
+   overflow rather than bleed. */
 #worktrees-panel section h4 {
   position: sticky;
   top: 0;
   z-index: 1;
   background: var(--surface);
-  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) 0;
-  padding: var(--space-3) var(--space-4) var(--space-2);
+  margin: calc(-1 * var(--space-3)) 0 0;
+  padding: var(--space-3) 0 var(--space-2);
 }
 #worktrees-panel h4 {
   margin: 0 0 4px;
@@ -831,8 +835,11 @@ body.resizing-sidebar #app { transition: none; }
    stake the consequences need more room than an OS alert gives. Shared
    by the worktree browser and the dirty-session close prompt. */
 /* Mounted on <body>, so it has to out-rank whatever asked the question
-   (every other modal sits at the primitive's z-index 40). */
-.choice-dialog { z-index: 60; }
+   (every other modal sits at the primitive's z-index 40). Doubled
+   selector, not the bare class: dialog.css loads after style.css, so a
+   0,1,0 `.choice-dialog` would lose the tie with `.hv-dialog` and the
+   rule would be dead. */
+.choice-dialog.choice-dialog { z-index: 60; }
 .choice-dialog-detail {
   margin: 0 0 10px;
   font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
@@ -852,6 +859,8 @@ body.resizing-sidebar #app { transition: none; }
   color: #999; /* ui-lint: allow */
   line-height: 1.5;
 }
-.choice-dialog-actions { flex-wrap: wrap; }
-/* The safe answer is first, and reads as the default. */
-.choice-dialog-actions .hv-button:first-child { font-weight: 600; }
+/* The safe answer is first, and reads as the default. Wrapping is the
+   primitive's now (.hv-dialog__actions). */
+.choice-dialog .hv-dialog__actions .hv-button:first-child {
+  font-weight: 600;
+}

@@ -139,6 +139,10 @@ export function errorSlot(id?: string): {
   return {
     el,
     show(msg: string) {
+      // role="alert" re-announces on every write, so an unchanged
+      // message must not be written again — a per-keystroke validator
+      // would otherwise talk over the user for the whole line.
+      if (el.textContent === msg) return;
       el.textContent = msg;
       el.classList.toggle('hidden', !msg);
     },

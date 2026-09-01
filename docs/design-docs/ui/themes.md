@@ -24,7 +24,9 @@ Settings → Appearance → "Custom tokens" textarea. Content is CSS declaration
 
 Applied at boot and on every keystroke as a `<style id="theme-overrides">:root:root { … }</style>` declared in `index.html` after `themes.css`. Order is what makes overrides last, but order alone is not enough: every preset block is `:root[data-theme="…"]` (0,2,0), which outranks a plain `:root` (0,1,0) — `:root:root` ties the specificity and wins on order. Input is sanitised to `--[a-z0-9-]+: <value>;` lines (`sanitizeOverrides` in `theme.ts`); anything else is dropped and reported in the Settings error slot.
 
-Overrides are sanitised **on write** and stored as finished CSS, so `index.html`'s pre-paint boot script is a two-line assignment rather than a second copy of the sanitiser. `theme.ts` re-sanitises what it reads, so a hand-edited store is still safe.
+Overrides are sanitised **on write** and stored as finished CSS, so `index.html`'s pre-paint boot script does not carry a second copy of the sanitiser. It is not blind, though: the store is hand-editable and the script writes straight into a `<style>`, so it shape-checks what it reads (declarations only; no block, tag or at-rule characters; no network-reaching function) and injects nothing that fails. `theme.ts` then re-runs the real sanitiser on import.
+
+Values are filtered by an **allowlist of CSS functions** (`var`, `calc`, `min`/`max`/`clamp`, the colour functions, `color-mix`), not a denylist of `url()`: `image-set()` reaches the network just as `url()` does, and so would the next function anyone adds. Unbalanced parentheses are rejected rather than emitted — an open `(` swallows the terminating `;`, every later declaration and the closing brace, so one half-typed value would silently wipe the whole block while reporting nothing.
 
 Appearance applies as you change it and is remembered; Cancel does not revert it. The agent list in the same dialog is a transactional draft, but a theme has no round-trip and nothing to validate — and a preview you cannot see is not a picker.
 

@@ -105,8 +105,24 @@ const overridesInput = textareaInput({
   ariaLabel: 'Custom tokens',
   rows: 4,
   placeholder: '--accent: #7aa2f7;',
-  onInput: (value) => applyUserOverrides(value),
+  onInput: (value) => queueUserOverrides(value),
 });
+
+// Applying is not free: a style invalidation, then a getComputedStyle
+// and a palette rebuild on EVERY live terminal, then a synchronous
+// localStorage write. applyXtermTheme's own comment says "not per
+// frame"; a keystroke is the per-frame case, so the work trails the
+// typing by one short pause instead of riding every character.
+let overridesTimer: ReturnType<typeof setTimeout> | null = null;
+const OVERRIDES_DEBOUNCE_MS = 150;
+
+function queueUserOverrides(raw: string): void {
+  if (overridesTimer) clearTimeout(overridesTimer);
+  overridesTimer = setTimeout(() => {
+    overridesTimer = null;
+    applyUserOverrides(raw);
+  }, OVERRIDES_DEBOUNCE_MS);
+}
 
 // One place stamps the theme, so the three things that must happen
 // together cannot drift apart: the attribute, the terminals (xterm
@@ -251,11 +267,14 @@ function updatesSection(): HTMLElement {
   return section;
 }
 
-// Everything above Updates scrolls together.
+// Everything above Updates scrolls together. Agents first: it is the
+// section people open Settings to edit, and it is the only one that
+// grows — putting Appearance above it pushed the list off-screen on
+// open for anyone with more than a couple of agents.
 function scrollSection(): HTMLElement {
   const el = document.createElement('div');
   el.id = 'settings-scroll';
-  el.append(...appearanceSection(), ...agentsSection());
+  el.append(...agentsSection(), ...appearanceSection());
   return el;
 }
 
@@ -325,6 +344,10 @@ export function splitCommand(line: string | null): string[] {
 
 function showError(msg: string) {
   agentsError.show(msg);
+  // The slot lives in the scrolling region, so a save rejected after
+  // the user scrolled down would otherwise land off-screen and read as
+  // "the button did nothing".
+  if (msg) agentsError.el.scrollIntoView({ block: 'nearest' });
 }
 
 function addAgentRow() {

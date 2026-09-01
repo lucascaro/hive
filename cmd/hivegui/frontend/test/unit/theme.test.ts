@@ -66,6 +66,11 @@ describe('sanitizeOverrides', () => {
       '--x: expression(alert(1))',
       '@import "http://evil/x.css"',
       '--x: </style><script>alert(1)</script>',
+      // Not url(): any function that can reach the network is egress,
+      // which is why the function list is an allowlist.
+      '--bg: image-set("https://evil/x.png")',
+      '--bg: -webkit-image-set("https://evil/x.png")',
+      '--bg: src("https://evil/x.png")',
     ]) {
       const r = sanitizeOverrides(bad);
       expect(r.css, bad).toBe('');
@@ -77,6 +82,23 @@ describe('sanitizeOverrides', () => {
     const r = sanitizeOverrides('--Accent: red; --: red; --ok:;');
     expect(r.css).toBe('');
     expect(r.rejected).toHaveLength(3);
+  });
+
+  // An open paren swallows the appended ';', the rest of the block and
+  // its closing brace: one half-typed line used to silently wipe every
+  // override, and report nothing because the line itself parsed.
+  it('rejects unbalanced parentheses instead of emitting them', () => {
+    for (const bad of ['--accent: rgb(', '--accent: rgb(0,0,0))', '--a: )']) {
+      const r = sanitizeOverrides(bad);
+      expect(r.css, bad).toBe('');
+      expect(r.rejected, bad).toEqual([bad.trim()]);
+    }
+  });
+
+  it('keeps the CSS functions a token legitimately needs', () => {
+    const ok =
+      '--accent: rgb(122 162 247); --gap: calc(var(--space-2) * 2); --mix: color-mix(in srgb, black 50%, transparent)';
+    expect(sanitizeOverrides(ok).rejected).toEqual([]);
   });
 
   it('is a no-op on empty input', () => {

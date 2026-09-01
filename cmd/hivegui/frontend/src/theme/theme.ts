@@ -12,7 +12,9 @@ export interface Preset {
 
 // The picker renders from this list, so adding a preset in phase 6
 // (native-dark, native-light, terminal) is one line here plus its block
-// in themes.css — no UI change. Order is the order shown.
+// in themes.css — plus the duplicated list in index.html's pre-paint
+// script, which cannot import this module and is checked against this
+// one by test/e2e/theme.spec.ts. Order is the order shown.
 export const PRESETS: readonly Preset[] = [
   { id: 'system', label: 'System' },
   { id: 'hive-dark', label: 'Hive Dark' },
@@ -86,9 +88,54 @@ export interface Sanitized {
 // looking like it should work.
 const NAME = /^--[a-z0-9-]+$/;
 // The value may not contain anything that could end the declaration,
-// end the :root block, start a new rule, fetch a resource, or close the
-// <style> element it is injected into.
-const BAD_VALUE = /[{}<>;]|url\s*\(|expression\s*\(|@import/i;
+// end the :root block, start a new rule, or close the <style> element
+// it is injected into.
+const BAD_VALUE = /[{}<>;@]/;
+
+// Functions are allow-listed, not deny-listed. A denylist of url() and
+// friends leaked: `image-set("https://…")` fetches a remote resource
+// just as url() does, and every future CSS function that can reach the
+// network would have to be remembered here. This is the set a design
+// token legitimately needs.
+const ALLOWED_FN = new Set([
+  'var',
+  'calc',
+  'min',
+  'max',
+  'clamp',
+  'rgb',
+  'rgba',
+  'hsl',
+  'hsla',
+  'hwb',
+  'lab',
+  'lch',
+  'oklab',
+  'oklch',
+  'color',
+  'color-mix',
+]);
+const FN_CALL = /([a-z-]*)\(/gi;
+
+// Unbalanced parentheses are rejected rather than passed through: an
+// open `(` swallows the `;` this function appends, then every later
+// declaration and the closing brace, so one half-typed value silently
+// destroys the whole override block — with nothing reported, because
+// the line itself looked fine.
+function valueIsSafe(value: string): boolean {
+  if (BAD_VALUE.test(value)) return false;
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === '(') depth++;
+    else if (ch === ')' && --depth < 0) return false;
+  }
+  if (depth !== 0) return false;
+  FN_CALL.lastIndex = 0;
+  for (const m of value.matchAll(FN_CALL)) {
+    if (!ALLOWED_FN.has(m[1].toLowerCase())) return false;
+  }
+  return true;
+}
 
 // sanitizeOverrides turns whatever the user typed into declarations
 // that are safe to drop inside `:root { … }`, plus the lines it refused
@@ -106,7 +153,7 @@ export function sanitizeOverrides(input: string): Sanitized {
     const i = line.indexOf(':');
     const name = i < 0 ? '' : line.slice(0, i).trim();
     const value = i < 0 ? '' : line.slice(i + 1).trim();
-    if (!NAME.test(name) || !value || BAD_VALUE.test(value)) {
+    if (!NAME.test(name) || !value || !valueIsSafe(value)) {
       rejected.push(line);
       continue;
     }

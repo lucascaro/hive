@@ -137,7 +137,8 @@ const dlg = dialog({
   title: 'Worktrees',
   size: 'lg',
   body: [emptyEl, bodyEl],
-  hints: [kbd('esc'), text(' close · '), kbd('r'), text(' refresh')],
+  // patterns.md > Keyboard hints: `[…]` for symbols, `(…)` for letters.
+  hints: [kbd('[esc]'), text(' close · '), kbd('(r)'), text(' refresh')],
   onClose: () => closeWorktrees(),
 });
 dlg.setTitleSuffix(titleProjectEl);

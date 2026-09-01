@@ -931,3 +931,41 @@ test("the row's kill button forces a dead session straight through", async ({
   );
   await expect(page.locator('.choice-dialog')).toHaveCount(0);
 });
+
+// A question with four answers overflows the `sm` panel. Before the
+// actions row wrapped, the labels broke to three lines inside a 28px
+// button and rendered outside it — on the dialog that deletes branches.
+// Measured, not screenshotted: this is layout, and jsdom has none.
+test('choice-dialog buttons wrap instead of spilling out of their box', async ({
+  page,
+}) => {
+  await boot(page);
+  await seed(page, [
+    { ...CLEAN, upstream: 'origin/clean', merged: true },
+  ] as never);
+  await page.keyboard.press(`${mod}+e`);
+  await page
+    .locator('#worktrees-list .worktree-row', { hasText: 'clean' })
+    .getByRole('button', { name: 'Delete' })
+    .click();
+  await expect(dialogChoice(page, 'cancel')).toBeVisible();
+
+  const spill = await page.evaluate(() => {
+    const dlg = document.getElementById('choice-dialog');
+    if (!dlg) return null;
+    return [...dlg.querySelectorAll<HTMLElement>('.hv-button')]
+      .map((b) => {
+        const box = b.getBoundingClientRect();
+        const label = b
+          .querySelector('.hv-button__label')
+          ?.getBoundingClientRect();
+        return {
+          label: b.textContent ?? '',
+          over: (label?.height ?? 0) > box.height,
+        };
+      })
+      .filter((r) => r.over)
+      .map((r) => r.label);
+  });
+  expect(spill).toEqual([]);
+});

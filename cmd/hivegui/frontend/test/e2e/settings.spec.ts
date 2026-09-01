@@ -276,3 +276,22 @@ test('choosing the latest channel reveals the source-repo row', async ({
   await expect(page.locator('#settings-source-repo-row')).toBeVisible();
   await expect(page.locator('#settings-source-repo')).toBeEditable();
 });
+
+// Appearance is a preference; the agent list is what people open
+// Settings to edit. Putting Appearance first pushed the list off-screen
+// on open, which is the one thing this dialog must not do.
+test('the agent list is on screen the moment Settings opens', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  const onTop = await page.locator('#settings-agents-list').evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.height === 0) return false;
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + 8);
+    return !!hit && el.contains(hit);
+  });
+  expect(onTop).toBe(true);
+});

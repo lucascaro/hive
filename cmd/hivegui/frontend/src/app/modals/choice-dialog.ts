@@ -156,11 +156,12 @@ export function openChoiceDialog(spec: ChoiceSpec): Promise<string> {
       showCloseButton: false,
     });
     const overlay = dlg.el;
-    // The class is what style.css and the specs key off; keep it
-    // alongside the id the primitive assigns.
+    // `.choice-dialog` carries this dialog's one deviation from the
+    // primitive (z-index, style.css) and is what focus-traps.spec.ts
+    // selects on; the id is the primitive's. The panel and footer take
+    // no extra class — the primitive styles both, and the bullets and
+    // note below are the only bits style.css still owns.
     overlay.classList.add('choice-dialog');
-    dlg.panel.classList.add('choice-dialog-box');
-    dlg.footer.classList.add('choice-dialog-actions');
 
     dismiss = () => finish(safe.value);
     current = overlay;

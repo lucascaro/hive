@@ -4,16 +4,29 @@
 // four slightly different rules; the risk in consolidating them is that
 // one caller quietly loses one. Each is pinned here.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { anyModalOpen } from '../../src/app/modals/registry';
+import { anyModalOpen, unregisterModal } from '../../src/app/modals/registry';
 import { dialog } from '../../src/ui/dialog';
 
 describe('dialog()', () => {
+  // The registry is module state shared by every test in the run, and
+  // dialog() registers unconditionally. Without this, anyModalOpen()
+  // answers for whatever another file left open — the assertion below
+  // passed only because the files happened to run in a lucky order
+  // (reproducible with --sequence.shuffle --sequence.seed=7).
+  const built: HTMLElement[] = [];
+  const mk = (spec: Parameters<typeof dialog>[0]) => {
+    const d = dialog(spec);
+    built.push(d.el);
+    return d;
+  };
+
   beforeEach(() => {
+    for (const el of built.splice(0)) unregisterModal(el);
     document.body.replaceChildren();
   });
 
   it('renders the id, aria contract and starts hidden', () => {
-    const d = dialog({ id: 'demo', title: 'Demo', onClose: () => {} });
+    const d = mk({ id: 'demo', title: 'Demo', onClose: () => {} });
     document.body.append(d.el);
     expect(d.el.id).toBe('demo');
     expect(d.el.getAttribute('role')).toBe('dialog');
@@ -25,7 +38,7 @@ describe('dialog()', () => {
   });
 
   it('registers with the modal registry so the focus pipeline sees it', () => {
-    const d = dialog({ id: 'demo2', title: 'Demo', onClose: () => {} });
+    const d = mk({ id: 'demo2', title: 'Demo', onClose: () => {} });
     document.body.append(d.el);
     expect(anyModalOpen()).toBe(false);
     d.show();
@@ -36,7 +49,7 @@ describe('dialog()', () => {
 
   it('calls onClose for Escape, the close button and the backdrop', () => {
     const onClose = vi.fn();
-    const d = dialog({ id: 'demo3', title: 'Demo', onClose });
+    const d = mk({ id: 'demo3', title: 'Demo', onClose });
     document.body.append(d.el);
     d.show();
 
@@ -64,7 +77,7 @@ describe('dialog()', () => {
     // the panel dispatches its click on the backdrop. Closing on that
     // discards the user's draft mid-edit. Both ends must be the backdrop.
     const onClose = vi.fn();
-    const d = dialog({ id: 'demo4', title: 'Demo', onClose });
+    const d = mk({ id: 'demo4', title: 'Demo', onClose });
     document.body.append(d.el);
     d.show();
     d.panel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -76,7 +89,7 @@ describe('dialog()', () => {
     const b = document.createElement('p');
     const a = document.createElement('button');
     const k = document.createElement('kbd');
-    const d = dialog({
+    const d = mk({
       id: 'demo5',
       title: 'Demo',
       size: 'lg',
