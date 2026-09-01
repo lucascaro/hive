@@ -49,7 +49,7 @@ component layer, and CI keeps literals out.
 ## Notes
 
 Six phases, each with its own detailed plan under `docs/exec-plans/active/ui-design-system-phase<N>.md`.
-All six have shipped: phase 1 in PR #292, 2 in #295, 3 in #299, 4 in #301, 5 in #310,
-6 in #312.
+One PR per phase: phase 1 in #292, 2 in #295, 3 in #299, 4 in #301 and 5 in #310, all
+merged; phase 6 in #312, which is the PR this spec is gated against.
 Design docs live in `docs/design-docs/ui/`. Spec written retroactively
 (2026-08-30) to give the phase plans a spec to hang off.
