@@ -107,6 +107,19 @@ jobs:
         # next question is always "by how much".
         run: ./scripts/ui-lint.sh --contrast --verbose
 
+      - name: UI contrast self-test (fixtures)
+        if: matrix.biome
+        # Same shape as the ui-lint self-test above, and for the same reason:
+        # this gate only ever runs against tokens that currently pass, so
+        # without a known-bad fixture a regression in the ratio maths or the
+        # light-ground branch would turn it into a rubber stamp silently.
+        run: |
+          if ./scripts/ui-lint.sh --contrast scripts/testdata/ui-contrast/bad.css; then
+            echo "expected bad.css to fail ui-contrast" >&2
+            exit 1
+          fi
+          ./scripts/ui-lint.sh --contrast scripts/testdata/ui-contrast/good.css
+
       - name: Build
         run: go build ./...
 

@@ -13,14 +13,23 @@
 //   --on-accent on --accent   >= 4.5   primary buttons must read their own label
 // color-mix()/var() values that don't resolve to a hex are skipped, loudly.
 //
-// Run via `scripts/ui-lint.sh --contrast [--verbose]`, which is the single
-// entry point CI uses.
+// Run via `scripts/ui-lint.sh --contrast [--verbose] [path ...]`, which is the
+// single entry point CI uses. With no paths it checks the real token files.
 import { readFileSync } from 'node:fs';
 
-const FILES = [
+// Defaults are the real token files. Explicit paths override them, which
+// is what lets the CI self-test point the checker at a known-bad and a
+// known-good fixture — without that, this gate only ever runs against
+// tokens that currently pass, so a regression in hex()/ratio()/the
+// light-ground branch would turn it into a rubber stamp silently.
+// Mirrors how ui-lint.sh takes explicit targets.
+const DEFAULT_FILES = [
   'cmd/hivegui/frontend/src/theme/tokens.css',
   'cmd/hivegui/frontend/src/theme/themes.css',
 ];
+const args = process.argv.slice(2);
+const fileArgs = args.filter((a) => !a.startsWith('--'));
+const FILES = fileArgs.length ? fileArgs : DEFAULT_FILES;
 const PAIRS = [
   ['--fg', '--surface', 4.5],
   ['--fg-muted', '--surface', 4.5],
@@ -77,7 +86,7 @@ const ratio = (a, b) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-const verbose = process.argv.includes('--verbose');
+const verbose = args.includes('--verbose');
 const all = FILES.flatMap((f) => blocks(readFileSync(f, 'utf8')));
 const base = all.find((b) => b.name === null)?.decls ?? {};
 const presets = all.filter((b) => b.name);

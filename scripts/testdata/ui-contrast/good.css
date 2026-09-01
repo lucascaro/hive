@@ -1,0 +1,37 @@
+/* Fixture: every checked pair clears its threshold. Paired with bad.css to
+   prove scripts/ui-contrast.mjs still passes what it should — see the
+   ui-lint self-test step in .github/workflows/ci.yml. */
+:root {
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+}
+/* Dark ground: the ANSI 16 are skipped by design, since ANSI 0 is meant to
+   vanish into the background there. */
+:root[data-theme="fixture-dark"] {
+  --fg-subtle: #6f6f6f;
+}
+/* Light ground, so the ANSI 16 ARE checked. All sixteen clear 4.5:1 on
+   white; the var() indirection on --ansi-0 exercises hex()'s one-level
+   resolution, and the 3-digit #fff exercises its shorthand expansion. */
+:root[data-theme="fixture-light"] {
+  --bg: #fff;
+  --surface: #ffffff;
+  --fg: #1a1b22;
+  --fg-muted: #4f5262;
+  --fg-subtle: #767676;
+  --accent: #c47a12;
+  --on-accent: #1a1b22;
+  --term-bg: #ffffff;
+  --term-fg: #1a1b22;
+  --ansi-0: var(--fg); --ansi-1: #b81f2b; --ansi-2: #16713a; --ansi-3: #8a5a00;
+  --ansi-4: #0b5fca; --ansi-5: #7b2fbe; --ansi-6: #0f6b73; --ansi-7: #5c6070;
+  --ansi-8: #4a4d5a; --ansi-9: #91121f; --ansi-10: #0e5a2e; --ansi-11: #6f4600;
+  --ansi-12: #0a4ba0; --ansi-13: #62239b; --ansi-14: #0b555c; --ansi-15: #000000;
+}

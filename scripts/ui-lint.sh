@@ -15,11 +15,13 @@
 #   contrast — `--contrast` runs scripts/ui-contrast.mjs instead of the three
 #              rules above: WCAG 2.1 AA per preset, plus the ANSI 16 on any
 #              preset whose --term-bg is a light ground. Same exit code, so CI
-#              has one entry point. Add --verbose to print every pair checked.
+#              has one entry point. Add --verbose to print every pair checked,
+#              or explicit paths to check fixtures instead of the real tokens
+#              (scripts/testdata/ui-contrast/{bad,good}.css).
 # A trailing `/* ui-lint: allow */` (CSS) or `// ui-lint: allow` (TS) exempts a line.
 # Exit 0 in warn mode; --strict exits 1 on any violation.
 #
-# Usage: ui-lint.sh [--strict] [path ...] | ui-lint.sh --contrast [--verbose]
+# Usage: ui-lint.sh [--strict] [path ...] | ui-lint.sh --contrast [--verbose] [path ...]
 #   No paths -> lints the whole frontend tree (rule-specific defaults below).
 #   Explicit paths -> all three rules (including glyph) are scoped to them,
 #   so `ui-lint.sh --strict scripts/testdata/ui-lint/bad.css` is meaningful.

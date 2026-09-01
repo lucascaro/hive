@@ -1650,6 +1650,13 @@ export function applyXtermTheme() {
       opts.theme = theme;
       opts.fontFamily = fontFamily;
     }
+    // Same reason applyFontSize refits: --font-mono genuinely differs
+    // per preset (classic -> Menlo, native-* -> SF Mono, hive-*/terminal
+    // -> JetBrains Mono), so a theme change moves the character cell.
+    // The body box does not change, so the ResizeObserver never fires,
+    // and without this every open terminal keeps (cols, rows) computed
+    // from the old font's metrics and the PTY is never told.
+    st._onBodyResize();
   }
 }
 

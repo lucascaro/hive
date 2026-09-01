@@ -399,6 +399,54 @@ test.describe('Settings > Appearance', () => {
     expect(seen.size).toBe(ids.length);
   });
 
+  // 'system' is the default for every new install since phase 6, so the
+  // OS flipping to dark mid-session has to repaint. Playwright's
+  // emulateMedia fires the same media-query change event the OS does.
+  test('the system preset follows an OS scheme change without a restart', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'system'),
+    );
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-light',
+    );
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-theme',
+      'hive-dark',
+    );
+    // The terminals repaint too, not just the CSS — xterm caches its
+    // palette, so this is the half that a CSS-only fix would miss.
+    await expect
+      .poll(() => page.evaluate(() => window.__hive.termThemeBg?.() ?? ''))
+      .toBe('#0b0c10');
+
+    // The stored choice is still 'system', not the resolved value.
+    expect(await page.evaluate(() => localStorage.getItem('hive.theme'))).toBe(
+      'system',
+    );
+  });
+
+  // The mirror image: an explicit preset is a decision the OS does not
+  // get to override.
+  test('an explicit preset ignores an OS scheme change', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.addInitScript(() =>
+      localStorage.setItem('hive.theme', 'classic'),
+    );
+    await boot(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.waitForTimeout(200);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+  });
+
   test('a good override applies live; a bad line is reported, not injected', async ({
     page,
   }) => {

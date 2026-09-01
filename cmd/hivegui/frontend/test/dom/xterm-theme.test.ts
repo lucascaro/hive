@@ -142,6 +142,7 @@ describe('applyXtermTheme', () => {
       '--font-mono',
       'Iosevka, monospace',
     );
+    let refits = 0;
     const a = {
       term: {
         options: {
@@ -149,10 +150,17 @@ describe('applyXtermTheme', () => {
           theme: { background: '#000000', foreground: '' },
         },
       },
+      _onBodyResize: () => {
+        refits++;
+      },
     };
     // Tiles whose term is absent (the DOM-test stubs, and a tile whose
     // terminal has been disposed) must not throw.
-    const b = {};
+    const b = {
+      _onBodyResize: () => {
+        refits++;
+      },
+    };
     state.terms.set('a', a as never);
     state.terms.set('b', b as never);
 
@@ -161,6 +169,11 @@ describe('applyXtermTheme', () => {
     expect(a.term.options.theme.background).toBe('#101010');
     expect(a.term.options.theme.foreground).toBe('#f0f0f0');
     expect(a.term.options.fontFamily).toBe('Iosevka, monospace');
+    // A font change moves the character cell, so (cols, rows) must be
+    // recomputed and the PTY told — the body box does not change, so the
+    // ResizeObserver will not do it for us. Both tiles refit, including
+    // the one with no terminal.
+    expect(refits).toBe(2);
     state.terms.clear();
   });
 });
