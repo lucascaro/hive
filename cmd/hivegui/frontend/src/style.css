@@ -508,235 +508,73 @@ body.resizing-sidebar #app { transition: none; }
 }
 #project-editor .actions button.primary:hover { background: #fbb04a; } /* ui-lint: allow */
 
-/* Settings — backdrop + panel, following the help-overlay shape. */
-#settings {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 30;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 7vh;
-}
-#settings.hidden { display: none; }
-#settings-panel {
-  width: 640px;
-  max-width: 92vw;
-  max-height: 80vh;
-  background: var(--surface-raised);
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-size: var(--text-md);
-}
-#settings-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--hover);
-}
-#settings-panel h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  color: var(--fg);
-}
-#settings-close {
-  background: transparent;
-  border: 0;
-  color: var(--fg-muted);
-  font-size: var(--text-xl);
-  cursor: pointer;
-  padding: 0 4px;
-}
-#settings-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-#settings-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-#settings-agents {
-  overflow-y: auto;
-  padding: 12px 14px;
-  flex: 1;
-}
-#settings-agents h4 {
-  margin: 0 0 4px;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--fg-muted);
-}
+/* Settings — composition only. The dialog shell, fields, buttons and the
+   error slot come from the primitives (src/ui/); what is left here is how
+   this screen's controls share a line.
+   TODO(phase-6): move into src/theme/components/. */
 .settings-hint {
-  margin: 0 0 10px;
-  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #777; /* ui-lint: allow */
-  line-height: 1.45;
+  margin: 0 0 var(--space-3);
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
 }
-/* Updates section. Sits below the (scrolling) agents list at its
-   natural height, so a long agent list never squeezes the channel
-   controls out of reach. */
-#settings-updates {
-  flex: 0 0 auto;
-  padding: 12px 14px;
-  border-top: 1px solid #222; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest border token */
-}
-#settings-updates h4 {
-  margin: 0 0 4px;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #888; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg-muted token */
-}
+/* A labelled control plus a trailing button (Browse…, Update) on one line. */
 .settings-field {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 .settings-field.hidden { display: none; }
-.settings-field label {
-  flex: 0 0 auto;
-  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  color: #999; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg-muted token */
-  min-width: 84px;
-}
-.settings-field .settings-hint { margin: 0; }
-#settings-update-channel,
-#settings-source-repo {
-  background: #000; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest bg token */
-  border: 1px solid #2a2a2a; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest border token */
-  border-radius: 4px;
-  color: #ddd; /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest fg token */
-  padding: 6px 8px;
-  font: inherit;
-  outline: none;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-#settings-update-channel:focus,
-#settings-source-repo:focus { border-color: #f59e0b; } /* ui-lint: allow — no exact token match; TODO(phase-6): reconcile with nearest accent token */
-#settings-source-repo {
-  font-family: Menlo, monospace;
-  font-size: var(--text-sm);
-}
+.settings-field .hv-field { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
 
+/* Appearance and the agent list scroll together; Updates is pinned below
+   them at its natural height. A dozen custom agents must never push the
+   channel picker out of reach (test/e2e/settings.spec.ts, "stays reachable
+   under a long agent list"). */
+#settings-panel .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+#settings-updates {
+  flex: 0 0 auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+#settings-agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
 .settings-agent-row {
   display: flex;
-  gap: 6px;
   align-items: center;
-  margin-bottom: 6px;
+  gap: var(--space-2);
 }
-.settings-agent-row input[type=text] {
-  background: var(--bg);
-  border: 1px solid var(--hover);
-  border-radius: 4px;
-  color: var(--fg);
-  padding: 6px 8px;
-  font: inherit;
-  outline: none;
-  min-width: 0;
-}
-.settings-agent-row input[type=text]:focus {
-  border-color: var(--accent);
-}
-.settings-agent-name { flex: 1 1 34%; }
+.settings-agent-row .settings-agent-name { flex: 1 1 34%; min-width: 0; }
 /* Commands run long ("claude --model haiku --foo"); give them the
    larger share and let the name field shrink first. */
-.settings-agent-cmd {
+.settings-agent-row .settings-agent-cmd {
   flex: 2 1 55%;
-  font-family: Menlo, monospace;
+  min-width: 0;
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
-.settings-agent-row input[type=color] {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 30px;
-  padding: 2px;
-  background: var(--bg);
-  border: 1px solid var(--hover);
-  border-radius: 4px;
-  cursor: pointer;
-}
-.settings-agent-delete {
-  flex: 0 0 auto;
-  background: transparent;
-  border: 0;
-  font-size: var(--text-xl);
-  line-height: 1;
-  cursor: pointer;
-}
+#settings-source-repo { font-family: var(--font-mono); font-size: var(--text-sm); }
 /* Scoped to `.settings-agent-row .settings-agent-delete` (0,2,0), not the
    bare class (0,1,0): .hv-icon-btn's color / :hover color are also 0,1,0 /
    0,2,0 and load after style.css, so the bare-class rules below never won
    the tie — rest rendered at --fg-subtle instead of --fg-muted, and hover
-   never turned red, losing the only signal this control is destructive.
-   Drops the old `padding: 0 6px` (also a losing tie, against
-   `.hv-icon-btn { padding: 0 }`): iconButton()'s fixed 24x24 box is the
-   right hit target here, consistent with every other icon button in the
-   app, so there's nothing to restore. */
+   never turned red, losing the only signal this control is destructive. */
 .settings-agent-row .settings-agent-delete { color: var(--fg-muted); }
 .settings-agent-row .settings-agent-delete:hover { color: var(--state-error); }
-#settings-agent-add {
-  background: var(--btn);
-  border: 1px solid var(--btn-border);
-  color: #ccc; /* ui-lint: allow */
-  border-radius: 4px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font: inherit;
-  margin-top: 4px;
-}
-#settings-agent-add:hover { background: var(--hover); }
-.settings-error {
-  margin: 10px 0 0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: rgba(120, 20, 20, 0.35);
-  border: 1px solid #6b2020; /* ui-lint: allow */
-  color: var(--state-error);
-  font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
-  white-space: pre-wrap;
-}
-.settings-error.hidden { display: none; }
-#settings-panel .actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 14px;
-  border-top: 1px solid var(--hover);
-}
-#settings-panel .actions button {
-  background: var(--btn);
-  border: 1px solid var(--btn-border);
-  color: #ccc; /* ui-lint: allow */
-  border-radius: 4px;
-  padding: 6px 14px;
-  cursor: pointer;
-  font: inherit;
-}
-#settings-panel .actions button:hover { background: var(--hover); }
-#settings-panel .actions button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-}
-#settings-panel .actions button.primary:hover { background: #fbb04a; } /* ui-lint: allow */
-/* setEditingEnabled() disables these while agents.json is loading and
-   after a failed read, when clicking is a no-op — so they must not keep
-   the hover/pointer affordances of a live control. */
-#settings-agent-add:disabled,
-#settings-panel .actions button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-#settings-agent-add:disabled:hover,
-#settings-panel .actions button:disabled:hover { background: var(--border); }
-#settings-panel .actions button.primary:disabled:hover { background: var(--accent); }
 
 /* Disabled only while staging is in flight ("Updating…") — the label
    is the progress indicator, so it must stay legible. */
