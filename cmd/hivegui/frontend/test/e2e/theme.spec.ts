@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { PRESETS } from '../../src/theme/theme';
 
 // Preset guard. Originally a Phase-1 proof that the token migration moved
 // no pixel; Phase 4 rebuilt the chrome markup on purpose, so `classic` can
@@ -103,7 +104,9 @@ test.describe('preset switching keeps the chrome stable', () => {
     await page.setViewportSize({ width: 1100, height: 700 });
     await boot(page);
     await seedSidebar(page);
-    await expect(page).toHaveScreenshot('sidebar-classic.png', {
+    // Named for what it is: the only FULL-PAGE baseline. The per-preset
+    // block below owns `sidebar-<preset>.png`, scoped to #sidebar.
+    await expect(page).toHaveScreenshot('chrome-classic.png', {
       maxDiffPixels: 0,
       animations: 'disabled',
       mask: [page.locator('.xterm')], // terminal content is not under test
@@ -125,28 +128,55 @@ test.describe('preset switching keeps the chrome stable', () => {
   });
 });
 
-// Phase-3 baselines: the sidebar's first visible redesign. Clipped to
-// #sidebar — the terminal area is not what these guard, and masking it
-// leaves the diff hostage to xterm's renderer.
-for (const preset of ['hive-dark', 'hive-light'] as const) {
-  test(`sidebar under ${preset}`, async ({ page }) => {
-    test.skip(
-      !process.env.HIVE_SNAPSHOT,
-      'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
-    );
-    await page.addInitScript(
-      (p) => localStorage.setItem('hive.theme', p),
-      preset,
-    );
-    await page.setViewportSize({ width: 1100, height: 700 });
-    await boot(page);
-    await seedSidebar(page);
-    await expect(page.locator('#sidebar')).toHaveScreenshot(
-      `sidebar-${preset}.png`,
-      { maxDiffPixels: 0, animations: 'disabled' },
-    );
-  });
-}
+// themes.md's "Adding a preset" step 4: sidebar + dialog under every
+// preset. Generated from PRESETS, so a seventh preset gets its pair by
+// existing rather than by someone remembering to add a test.
+//
+// These are the only check that catches a preset which parses fine, clears
+// contrast, and still looks broken — a token that falls through to
+// hive-dark's dark surface inside a light preset paints correctly by every
+// other measure we have.
+//
+// Element-scoped, not full-page: the terminal is live content and would
+// need masking on every shot. The full-page classic guard above is the one
+// place the whole chrome is pinned.
+test.describe('preset baselines', () => {
+  test.skip(
+    !process.env.HIVE_SNAPSHOT,
+    'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
+  );
+
+  for (const { id } of PRESETS.filter((p) => p.id !== 'system')) {
+    test(`${id}: sidebar`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await seedSidebar(page);
+      await expect(page.locator('#sidebar')).toHaveScreenshot(
+        `sidebar-${id}.png`,
+        { maxDiffPixels: 0, animations: 'disabled' },
+      );
+    });
+
+    test(`${id}: dialog`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await page.keyboard.press(`${mod}+,`);
+      await expect(page.locator('#settings')).toBeVisible();
+      await expect(page.locator('#settings-panel')).toHaveScreenshot(
+        `dialog-${id}.png`,
+        { maxDiffPixels: 0, animations: 'disabled' },
+      );
+    });
+  }
+});
 
 // Standing guard: presets actually switch styles (deterministic, runs on all
 // platforms, not pixel-gated).
