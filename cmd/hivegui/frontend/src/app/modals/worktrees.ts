@@ -109,7 +109,10 @@ function text(value: string): Text {
   return document.createTextNode(value);
 }
 
-const titleProjectEl = span('worktrees-project', 'worktrees-project');
+// No class: the primitive's .hv-dialog__title-suffix wrapper already
+// supplies the muted, normal-weight treatment by inheritance. The id
+// stays because openWorktrees() writes into it.
+const titleProjectEl = span('worktrees-project');
 const listEl = div('worktrees-list');
 const branchesEl = div('worktrees-branches');
 const emptyTextEl = span('worktrees-empty-text');
