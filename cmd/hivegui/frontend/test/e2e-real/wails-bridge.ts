@@ -234,6 +234,12 @@ export async function KillSessionAndWorktree(id: string) {
     remove_worktree: true,
   });
 }
+export async function RestoreSession(id: string) {
+  return call('RestoreSession', { session_id: id });
+}
+export async function ListClosedSessions() {
+  return call('ListClosedSessions', {});
+}
 export async function RestartSession(_id: string) {
   return '';
 }

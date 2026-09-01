@@ -818,6 +818,21 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 			return ErrWorktreeDirty
 		}
 	}
+	// Past the pre-flight, so this close is really happening. Capture
+	// the uncommitted state of a worktree we have been told to delete
+	// BEFORE anything is torn down — this is the one close path that
+	// destroys work, and the patch is the only way back from it.
+	//
+	// Outside r.mu: it shells out to git several times. Best-effort by
+	// construction; a failed backup never vetoes the close.
+	tomb := Tombstone{
+		WorktreeRemoveRequested: removeWorktree,
+		WorktreeShared:          worktreeShared,
+	}
+	if removeWorktree && wtPath != "" && !worktreeShared {
+		tomb.PatchPath, tomb.PatchSkipped = r.dumpRecoveryPatch(id, wtPath)
+	}
+
 	// Announce the teardown while the entry still exists: after the
 	// delete below there is nothing left for List() to return, so a
 	// client connecting mid-kill would otherwise see nothing at all.
@@ -831,6 +846,12 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 		r.mu.Unlock()
 		return ErrNotFound
 	}
+	// Record the close before anything is destroyed — in memory or on
+	// disk — so a crash anywhere below still leaves an undoable trace.
+	// Under r.mu, alongside the index persist a few lines down: it is
+	// one small atomic write, and the entry it describes must not
+	// change between reading it and writing it.
+	r.writeTombstoneLocked(e, tomb)
 	delete(r.entries, id)
 	for i, sid := range r.order {
 		if sid == id {
@@ -884,6 +905,10 @@ func (r *Registry) kill(id string, force, removeWorktree bool) error {
 	for _, info := range r.List() {
 		r.broadcast(wire.SessionEventUpdated, info)
 	}
+	// Last, and outside every lock: enforce the tombstone retention
+	// bounds. Doing it after the broadcast keeps the close's visible
+	// latency independent of how many old records need sweeping.
+	r.pruneTombstones()
 	return nil
 }
 

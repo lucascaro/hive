@@ -151,3 +151,159 @@ func TestDecodeReqEmptyPayload(t *testing.T) {
 		t.Fatalf("round trip failed: ok=%v req=%+v errs=%v", ok, req, got)
 	}
 }
+
+// --- undo close ---
+
+// TestControlFrameRestoreBadPayload extends the bad_payload contract
+// to the restore frame. Kept out of the table above because that test
+// asserts the registry is untouched via `mutated`, which the restore
+// path does not use.
+func TestControlFrameRestoreBadPayload(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	if done := d.handleControlFrame(context.Background(), rec.ops(),
+		wire.FrameRestoreSession, []byte(`["not","an","object"]`)); done {
+		t.Fatal("a bad payload closed the connection")
+	}
+	if len(rec.errs) != 1 || rec.errs[0].Code != "bad_payload" {
+		t.Fatalf("got %+v, want exactly one bad_payload error", rec.errs)
+	}
+}
+
+// TestControlFrameListClosedAnswersInPlace: LIST_CLOSED needs no
+// payload and answers synchronously, like the other list frames.
+func TestControlFrameListClosedAnswersInPlace(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	if done := d.handleControlFrame(context.Background(), rec.ops(), wire.FrameListClosed, nil); done {
+		t.Fatal("LIST_CLOSED closed the connection")
+	}
+	if len(rec.frames) != 1 || rec.frames[0] != wire.FrameClosed {
+		t.Errorf("got frames %v, want [CLOSED]", rec.frames)
+	}
+}
+
+// TestControlFrameRestoreUnknownIDSendsError: asking to reopen a
+// session with no tombstone is a refusal the user can act on, not a
+// generic failure — the GUI shows different copy for each.
+func TestControlFrameRestoreUnknownIDSendsError(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.RestoreSessionReq{SessionID: "no-such-session"})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameRestoreSession, payload)
+	d.ops.Wait()
+
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_such_closed_session" {
+		t.Fatalf("got %+v, want one no_such_closed_session error", rec.errs)
+	}
+	// A refused restore still refreshes the reopen list: a pruned or
+	// already-restored tombstone is exactly why it failed.
+	if len(rec.frames) != 1 || rec.frames[0] != wire.FrameClosed {
+		t.Errorf("got frames %v, want [CLOSED] after a refusal", rec.frames)
+	}
+}
+
+// TestControlFrameRestoreEmptyIDWithNothingClosed: the reopen-last
+// affordance sends an empty id. With no tombstones at all that must
+// say so rather than fall through to "not found" for a session the
+// user never named.
+func TestControlFrameRestoreEmptyIDWithNothingClosed(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.RestoreSessionReq{})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameRestoreSession, payload)
+	d.ops.Wait()
+
+	if len(rec.errs) != 1 || rec.errs[0].Code != "no_closed_sessions" {
+		t.Fatalf("got %+v, want one no_closed_sessions error", rec.errs)
+	}
+}
+
+// TestControlFrameRestoreRoundTrip drives a real close and reopen
+// through the frame layer: the session comes back and the daemon
+// reports what it could not restore.
+func TestControlFrameRestoreRoundTrip(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	reg := d.Registry()
+	if _, err := reg.EnsureDefaultProject(t.TempDir()); err != nil {
+		t.Fatalf("EnsureDefaultProject: %v", err)
+	}
+	e, err := reg.Create(context.Background(), wire.CreateSpec{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := e.ID
+	if err := reg.Kill(id, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.RestoreSessionReq{SessionID: id})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameRestoreSession, payload)
+	d.ops.Wait()
+	defer reg.Kill(id, true)
+
+	if len(rec.errs) != 0 {
+		t.Fatalf("restore errored: %+v", rec.errs)
+	}
+	if reg.Get(id) == nil {
+		t.Fatal("session did not come back")
+	}
+	// SESSION_RESTORED (what was degraded) then CLOSED (the refreshed
+	// reopen list), in that order.
+	want := []wire.FrameType{wire.FrameSessionRestored, wire.FrameClosed}
+	if len(rec.frames) != len(want) {
+		t.Fatalf("got frames %v, want %v", rec.frames, want)
+	}
+	for i, w := range want {
+		if rec.frames[i] != w {
+			t.Errorf("frame %d = %#x, want %#x", i, byte(rec.frames[i]), byte(w))
+		}
+	}
+}
+
+// TestControlFrameRestoreAlreadyOpen: reopening a session that is
+// already open must be its own refusal, not a silent duplicate.
+func TestControlFrameRestoreAlreadyOpen(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	reg := d.Registry()
+	if _, err := reg.EnsureDefaultProject(t.TempDir()); err != nil {
+		t.Fatalf("EnsureDefaultProject: %v", err)
+	}
+	e, err := reg.Create(context.Background(), wire.CreateSpec{Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	id := e.ID
+	if err := reg.Kill(id, true); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if _, _, err := reg.Restore(id, session.Options{Shell: "/bin/bash", Cols: 80, Rows: 24}); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	defer reg.Kill(id, true)
+
+	// The tombstone is gone after a successful restore, so the frame
+	// path reports "no longer restorable" — which is the honest answer
+	// and, importantly, is not a second copy of the session.
+	rec := &recordOps{}
+	payload, _ := json.Marshal(wire.RestoreSessionReq{SessionID: id})
+	d.handleControlFrame(context.Background(), rec.ops(), wire.FrameRestoreSession, payload)
+	d.ops.Wait()
+
+	if len(rec.errs) != 1 {
+		t.Fatalf("got %+v, want exactly one refusal", rec.errs)
+	}
+	if c := rec.errs[0].Code; c != "no_such_closed_session" && c != "session_already_open" {
+		t.Errorf("refusal code = %q, want no_such_closed_session or session_already_open", c)
+	}
+	copies := 0
+	for _, info := range reg.List() {
+		if info.ID == id {
+			copies++
+		}
+	}
+	if copies != 1 {
+		t.Errorf("registry holds %d copies of %s, want 1 — a second restore duplicated it", copies, id)
+	}
+}

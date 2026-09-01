@@ -355,6 +355,33 @@ func (a *App) KillSessionAndWorktree(id string) error {
 	})
 }
 
+// RestoreSession reopens a session closed earlier, rebuilding it from
+// the tombstone the close left in the daemon's state dir. An empty id
+// means "the most recently closed one" — resolved daemon-side so the
+// client cannot race a retention prune between listing and restoring.
+//
+// The restored entry arrives on the ordinary session event stream; a
+// "session:restored" event follows with whatever could not be brought
+// back (scrollback never can be).
+func (a *App) RestoreSession(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameRestoreSession, wire.RestoreSessionReq{SessionID: id})
+}
+
+// ListClosedSessions asks for the sessions that can still be reopened,
+// most recently closed first. The daemon answers with a "closed:list"
+// event rather than a return value, like every other control query.
+func (a *App) ListClosedSessions() error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameListClosed, wire.ListClosedReq{})
+}
+
 // RestartSession asks the daemon to recycle the agent process for
 // the given session in place. The session entry (name/color/order/
 // worktree) is preserved; the new process uses the agent's resume

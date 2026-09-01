@@ -43,7 +43,7 @@ hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI clos
 ## Cross-cutting concerns
 
 - **IPC** — single channel: `internal/wire/`. Every cross-process call (GUI ⇄ daemon, future remote clients) is a wire frame. No side-channel files, no shared sqlite.
-- **Persistence** — owned by `internal/registry/`. The daemon main loop never writes session state directly. State location is resolved by `registry.StateDir()` — see `internal/registry/paths.go` for platform-specific paths. Writes are atomic (temp + rename).
+- **Persistence** — owned by `internal/registry/`. The daemon main loop never writes session state directly. State location is resolved by `registry.StateDir()` — see `internal/registry/paths.go` for platform-specific paths. Writes are atomic (temp + rename). Alongside `sessions/` and `projects/`, the registry owns `closed/`: one tombstone per recently closed session (plus, for a close that deleted a worktree, a recovery patch of its uncommitted state), written before the teardown so a close can be undone. Bounded to the last 20 closes and 7 days.
 - **Build & version** — `internal/buildinfo/` is the single source for version/commit; `cmd/version.go` and the GUI menu both read it.
 - **Notifications** — `internal/notify/` is the only entry point for desktop notifications. Platform splits (`notify_darwin.go`, `notify_linux.go`, `notify_windows.go`, `notify_darwin.m`) live behind one Go interface.
 - **Logging** — stdlib `log`. Daemon logs to a file under the platform state dir; GUI logs to stdout in dev, file in production.

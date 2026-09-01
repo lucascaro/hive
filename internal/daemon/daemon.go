@@ -685,6 +685,60 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 				}
 			}
 		})
+	case wire.FrameListClosed:
+		_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
+	case wire.FrameRestoreSession:
+		req, ok := decodeReq[wire.RestoreSessionReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Off the read loop like every other lifecycle op: a restore
+		// can recreate a worktree, which shells out to git and takes
+		// seconds on a large repo.
+		d.runOp(func() {
+			id := req.SessionID
+			if id == "" {
+				// "Reopen the last one." Resolved daemon-side so the
+				// client cannot race a prune between LIST_CLOSED and
+				// the restore it based on that list.
+				closed := d.reg.ListClosed()
+				if len(closed) == 0 {
+					ops.sendError("no_closed_sessions", "no recently closed session to reopen")
+					return
+				}
+				id = closed[0].SessionID
+			}
+			_, res, err := d.reg.Restore(id, d.cfg.BootstrapSession)
+			if err != nil {
+				switch {
+				case errors.Is(err, registry.ErrNotFound):
+					ops.sendError("no_such_closed_session", "that session is no longer restorable")
+				case errors.Is(err, registry.ErrExists):
+					ops.sendError("session_already_open", "that session is already open")
+				default:
+					ops.sendError("restore_failed", err.Error())
+				}
+				// The reopen list is stale either way — a pruned or
+				// already-restored tombstone is exactly why this
+				// failed, so send it before the client acts again.
+				_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
+				return
+			}
+			// The entry's own "added" event has already gone out to
+			// every listener via the registry broadcast. This reports
+			// only what the restore could not bring back.
+			_ = ops.writeJSON(wire.FrameSessionRestored, wire.RestoredResp{
+				SessionID:         id,
+				ProjectReassigned: res.ProjectReassigned,
+				WorktreeRecreated: res.WorktreeRecreated,
+				WorktreeLost:      res.WorktreeLost,
+				ConversationLost:  res.ConversationLost,
+				AgentFellBack:     res.AgentFellBack,
+				PatchPath:         res.PatchPath,
+				PatchSkipped:      res.PatchSkipped,
+			})
+			_ = ops.writeJSON(wire.FrameClosed, wire.ClosedResp{Closed: d.reg.ListClosed()})
+		})
 	case wire.FrameRestartSession:
 		req, ok := decodeReq[wire.RestartSessionReq](payload, ops.sendError)
 		if !ok {

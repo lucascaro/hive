@@ -12,6 +12,7 @@ import {
   KillSession,
   Confirm,
 } from '../bridge.js';
+import { noteLocalClose } from './undo-close.js';
 import {
   state,
   saveCollapsed,
@@ -429,7 +430,9 @@ function killSession(s: SessionInfo) {
     `Kill ${s.name ?? 'this session'}? Its scrollback is lost.`,
   )
     .then((ok) => {
-      if (ok) KillSession(s.id, false).catch(reportFailure('kill session'));
+      if (!ok) return;
+      noteLocalClose(s.id, s.name ?? 'Session');
+      KillSession(s.id, false).catch(reportFailure('kill session'));
     })
     .catch(reportFailure('kill session'));
 }

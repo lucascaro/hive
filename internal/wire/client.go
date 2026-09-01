@@ -115,6 +115,9 @@ var controlEvents = map[FrameType]string{
 	FrameProjectEvent: "project:event",
 	FrameWorktrees:    "worktree:list",
 	FrameError:        "control:error",
+
+	FrameClosed:          "closed:list",
+	FrameSessionRestored: "session:restored",
 }
 
 var attachEvents = map[FrameType]string{

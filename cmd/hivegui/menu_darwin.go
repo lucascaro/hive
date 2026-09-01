@@ -53,6 +53,13 @@ func buildAppMenu(a *App) *menu.Menu {
 	file.AddText("Close Window",
 		keys.Combo("w", keys.ShiftKey, keys.CmdOrCtrlKey),
 		func(_ *menu.CallbackData) { a.CloseWindow() })
+	// ⌘Z, the reflex after an accidental ⌘W. Hive has no Edit menu, so
+	// there is no stock Undo item to collide with, and ⌘ is not a
+	// terminal modifier — xterm.js never received this chord, so
+	// binding it takes nothing away from the focused agent.
+	file.AddText("Reopen Closed Session",
+		keys.CmdOrCtrl("z"),
+		emit("menu:reopen-closed-session"))
 	file.AddSeparator()
 	file.AddText("Delete Project…",
 		keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey),

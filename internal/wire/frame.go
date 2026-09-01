@@ -97,6 +97,18 @@ const (
 	// still has a worktree goes through REMOVE_WORKTREE instead, so the
 	// directory and the ref never get out of step.
 	FrameDeleteBranch FrameType = 0x1b // C → S, JSON, control
+
+	// Undo-close. A kill leaves a tombstone in the daemon's state dir;
+	// RESTORE_SESSION rebuilds the entry from it and revives the agent,
+	// and LIST_CLOSED reports what is still restorable. The daemon
+	// answers LIST_CLOSED with FrameClosed, and answers a restore with
+	// the ordinary SESSION_EVENT stream (the restored entry arrives as
+	// an "added" event like any other) plus FrameClosed so the client's
+	// reopen list is current without a second request.
+	FrameRestoreSession  FrameType = 0x1c // C → S, JSON, control
+	FrameListClosed      FrameType = 0x1d // C → S, JSON, control
+	FrameClosed          FrameType = 0x1e // S → C, JSON, control
+	FrameSessionRestored FrameType = 0x1f // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -155,6 +167,14 @@ func (t FrameType) String() string {
 		return "RENAME_WORKTREE"
 	case FrameDeleteBranch:
 		return "DELETE_BRANCH"
+	case FrameRestoreSession:
+		return "RESTORE_SESSION"
+	case FrameListClosed:
+		return "LIST_CLOSED"
+	case FrameClosed:
+		return "CLOSED"
+	case FrameSessionRestored:
+		return "SESSION_RESTORED"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

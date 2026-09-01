@@ -6,7 +6,6 @@
 
 import {
   EventsOn,
-  KillSession,
   KillProject,
   Confirm,
   UpdateSession,
@@ -16,6 +15,7 @@ import {
   SetClipboardText,
   Notify,
 } from '../bridge.js';
+import { closeActiveSession, reopenLastClosedSession } from './undo-close.js';
 import { state } from './state.js';
 import { flashStatus, reportFailure } from './dom.js';
 import {
@@ -354,7 +354,14 @@ window.addEventListener(
         // force=false: lets the daemon refuse with worktree_dirty if
         // the worktree has uncommitted changes; the control:error
         // handler then shows a confirm dialog and retries with force.
-        KillSession(state.activeId, false).catch(reportFailure('close'));
+        closeActiveSession();
+      }
+    } else if (e.key === 'z' || e.key === 'Z') {
+      // ⌘Z — undo the close you just made. ⇧⌘Z is left unbound: it
+      // reads as redo, which this has no counterpart for.
+      if (!e.shiftKey) {
+        swallow();
+        reopenLastClosedSession();
       }
     } else if (/^[1-9]$/.test(e.key)) {
       const idx = parseInt(e.key, 10) - 1;
@@ -661,10 +668,8 @@ const menuActions = {
   'menu:command-palette': () => openCommandPalette(),
   'menu:settings': () => openSettings(),
   'menu:worktrees': () => openWorktreesForActiveProject(),
-  'menu:close-session': () => {
-    if (state.activeId)
-      KillSession(state.activeId, false).catch(reportFailure('close'));
-  },
+  'menu:close-session': () => closeActiveSession(),
+  'menu:reopen-closed-session': () => reopenLastClosedSession(),
   'menu:zoom-in': () => deps.bumpFontSize(+1),
   'menu:zoom-out': () => deps.bumpFontSize(-1),
   'menu:zoom-reset': () => deps.resetFontSize(),

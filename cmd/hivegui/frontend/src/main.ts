@@ -9,7 +9,6 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
   ConnectControl,
-  KillSession,
   OpenNewWindow,
   CloseWindow,
   OpenTerminalAt,
@@ -46,6 +45,11 @@ import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
+import {
+  initUndoClose,
+  closeActiveSession,
+  reopenLastClosedSession,
+} from './app/undo-close.js';
 import { initVersionFooter } from './app/version-footer.js';
 import {
   switchTo,
@@ -130,9 +134,13 @@ const paletteCommands = [
     id: 'close-session',
     name: 'Close Session',
     run: () => {
-      if (state.activeId)
-        KillSession(state.activeId, false).catch(reportFailure('close'));
+      if (state.activeId) closeActiveSession();
     },
+  },
+  {
+    id: 'reopen-closed-session',
+    name: 'Reopen Closed Session',
+    run: () => reopenLastClosedSession(),
   },
   {
     id: 'new-window',
@@ -239,6 +247,7 @@ initSidebar({
   refocusActiveTerm,
 });
 initBanners();
+initUndoClose();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 // Seed the status bar's hint slot. setModeHint is otherwise reached only
 // from switchTo() and setView(), and a boot with zero sessions calls
