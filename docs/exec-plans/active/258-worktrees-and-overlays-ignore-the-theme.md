@@ -286,6 +286,20 @@ rows that can be both at once. One general-purpose informational token in the
   that omits one — the assertion could not fail and its comment claimed it
   could. `ui-contrast.mjs` merges the base block into every preset and does
   catch that case, which is now what the comment says.
+- **2026-09-01 (gate)** — The merge gate failed acceptance criterion 4 and it
+  was right: iteration 2 deleted the `--state-*` assertion for being vacuous but
+  put nothing in its place, and `ui-contrast.mjs` cannot stand in for it — that
+  script regex-parses `tokens.css`/`themes.css`, so it validates the *values*
+  and says nothing about whether a rule still points at them. Closed with a new
+  ungated, all-platforms block: for each of the six presets, the four sites that
+  spell a state out in words are asserted to paint the colour the preset
+  resolves for their token, compared through a probe element so the browser does
+  the notation conversion. Mutation-checked — reverting
+  `.worktree-row[data-kind='active'] .worktree-status` to the literal `#7fb3d5`
+  fails it on four presets (hive-dark and classic legitimately value
+  `--state-info` at that same hex, so they still pass, which is correct). The
+  contrast gate stays green through that mutation, which is the point: the two
+  checks cover different halves and neither substitutes for the other.
 - **2026-09-01** — Two existing baselines changed as well as twelve being added:
   `sidebar-hive-light` and `sidebar-native-light`. Why: the session-state icons
   are filled with `--state-running`, and `hive-light`'s value moved. Expected,

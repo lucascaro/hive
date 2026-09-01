@@ -256,6 +256,87 @@ test.describe('preset baselines', () => {
   }
 });
 
+// The state family reaches the surface, under every preset, read from the
+// live cascade — the screenshot baselines above are darwin-local and
+// HIVE_SNAPSHOT-gated, so without this nothing cross-platform proves the
+// worktree kind ramp is wired to tokens at all.
+//
+// It compares the PAINTED colour against the token the preset resolves,
+// which is the part `ui-contrast.mjs` structurally cannot do: that script
+// regex-parses tokens.css/themes.css, so it validates the values and says
+// nothing about whether a rule still points at them. A `color:` reverted to
+// a literal passes the contrast gate and fails here.
+//
+// Not a length check on getPropertyValue: tokens.css's base `:root` declares
+// all four, so reading them off documentElement returns an inherited value
+// for a preset that omits one and the assertion could never fail.
+test.describe('the state family is wired to the surface', () => {
+  // Every site in the worktree browser that spells a state out in words,
+  // and the token each one must resolve to.
+  const PAINTED = [
+    {
+      what: 'active status',
+      sel: ".worktree-row[data-kind='active'] .worktree-status",
+      token: '--state-info',
+    },
+    {
+      what: 'holding status',
+      sel: ".worktree-row[data-kind='holding'] .worktree-status",
+      token: '--state-attention',
+    },
+    {
+      what: 'merged badge',
+      sel: '.worktree-badge.merged',
+      token: '--state-running',
+    },
+    {
+      what: 'destructive action',
+      sel: '.worktree-actions button.danger',
+      token: '--state-error',
+    },
+  ] as const;
+
+  for (const { id } of PRESETS.filter((p) => p.id !== 'system')) {
+    test(`${id}: every state colour is painted from its token`, async ({
+      page,
+    }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await boot(page);
+      await seedWorktrees(page);
+      await page.keyboard.press(`${mod}+e`);
+      await expect(page.locator('#worktrees')).toBeVisible();
+
+      for (const { what, sel, token } of PAINTED) {
+        // Resolve the token through a probe element rather than comparing
+        // hex text to `rgb(...)`: the browser does the conversion, so the
+        // comparison holds whatever notation a preset writes its value in.
+        const [painted, expected] = await page.evaluate(
+          ([s, t]) => {
+            const probe = document.createElement('span');
+            probe.style.color = `var(${t})`;
+            document.body.appendChild(probe);
+            const want = getComputedStyle(probe).color;
+            probe.remove();
+            const el = document.querySelector(s);
+            return [el ? getComputedStyle(el).color : 'MISSING', want];
+          },
+          [sel, token] as const,
+        );
+        // A missing element would make the comparison vacuous, so name it.
+        expect(painted, `${id}: ${what} (${sel}) not rendered`).not.toBe(
+          'MISSING',
+        );
+        expect(painted, `${id}: ${what} should paint var(${token})`).toBe(
+          expected,
+        );
+      }
+    });
+  }
+});
+
 // Standing guard (all platforms, no HIVE_SNAPSHOT gate): the assertion
 // that would have failed before spec 258. `.worktree-row` was
 // `background: #141414`, a near-black card painted on hive-light's white
