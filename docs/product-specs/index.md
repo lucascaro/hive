@@ -9,12 +9,8 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
-| P2 | — | Minimize whole projects from the sidebar | REVIEW | [250-minimize-projects-from-sidebar](250-minimize-projects-from-sidebar.md) |
-| P2 | — | Auto-update with release/latest channels | REVIEW | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
-| P2 | — | Minimized project chips fill the tray with a right-aligned restore | GATE | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
-| P2 | — | UI design system: tokens, themes, icons, primitives | IMPLEMENT | [ui-design-system](ui-design-system.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
 
@@ -23,10 +19,14 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
+| — | Minimized project chips fill the tray with a right-aligned restore | #300 | 2026-08-31 | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
 | #304 | Reopen a closed session (undo close) | #306 | 2026-08-31 | [304-reopen-a-closed-session-undo-close](304-reopen-a-closed-session-undo-close.md) |
+| — | UI design system: tokens, themes, icons, primitives | #312 | 2026-08-31 | [ui-design-system](ui-design-system.md) |
+| — | Auto-update with release/latest channels | #291 | 2026-08-30 | [251-auto-update-with-release-latest-channels](251-auto-update-with-release-latest-channels.md) |
 | — | Keyboard switching skips minimized sessions and projects | #293 | 2026-08-30 | [252-keyboard-switching-skips-minimized-sessions](252-keyboard-switching-skips-minimized-sessions.md) |
 | — | Strip ANSI escape sequences from update build progress lines | #296 | 2026-08-30 | [253-strip-ansi-escapes-from-update-progress](253-strip-ansi-escapes-from-update-progress.md) |
 | — | Show terminal window titles under session names in the sidebar | #288 | 2026-08-29 | [248-sidebar-window-titles-under-session-names](248-sidebar-window-titles-under-session-names.md) |
+| — | Minimize whole projects from the sidebar | #290 | 2026-08-29 | [250-minimize-projects-from-sidebar](250-minimize-projects-from-sidebar.md) |
 | — | GUI: back / forward navigation between sessions | #248 | 2026-08-28 | [247-gui-session-back-forward-navigation](247-gui-session-back-forward-navigation.md) |
 | — | GUI: unbind ⌘/Ctrl+Enter from the grid toggle | #287 | 2026-08-28 | [249-unbind-cmd-enter-grid-toggle](249-unbind-cmd-enter-grid-toggle.md) |
 | — | TypeScript migration for the hive GUI frontend | — | 2026-08-09 | [typescript-migration](typescript-migration.md) |
