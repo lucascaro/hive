@@ -101,6 +101,7 @@ export interface TermTile extends ReplayFlags {
         focus?: () => void;
         options?: {
           fontSize?: number;
+          fontFamily?: string;
           theme?: Partial<ReturnType<typeof xtermTheme>>;
         };
       })

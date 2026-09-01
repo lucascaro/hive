@@ -106,6 +106,17 @@ export function xtermTheme(doc: Document = document) {
   };
 }
 
+// The terminal's font is a token like every other value, so xterm has to
+// be told it explicitly — it has no cascade of its own. The fallback is
+// for jsdom, where no stylesheet resolves and getPropertyValue returns ''.
+export function monoFontFamily(doc: Document = document): string {
+  return (
+    getComputedStyle(doc.documentElement)
+      .getPropertyValue('--font-mono')
+      .trim() || 'Menlo, "DejaVu Sans Mono", monospace'
+  );
+}
+
 export const OVERRIDES_KEY = 'hive.themeOverrides';
 export const OVERRIDES_STYLE_ID = 'theme-overrides';
 
