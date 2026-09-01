@@ -22,6 +22,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
 | — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
+| #304 | Reopen a closed session (undo close) | #306 | 2026-08-31 | [304-reopen-a-closed-session-undo-close](304-reopen-a-closed-session-undo-close.md) |
 | — | Keyboard switching skips minimized sessions and projects | #293 | 2026-08-30 | [252-keyboard-switching-skips-minimized-sessions](252-keyboard-switching-skips-minimized-sessions.md) |
 | — | Strip ANSI escape sequences from update build progress lines | #296 | 2026-08-30 | [253-strip-ansi-escapes-from-update-progress](253-strip-ansi-escapes-from-update-progress.md) |
 | — | Show terminal window titles under session names in the sidebar | #288 | 2026-08-29 | [248-sidebar-window-titles-under-session-names](248-sidebar-window-titles-under-session-names.md) |
