@@ -6,7 +6,8 @@
 /* Bundled brand fonts. Vite rewrites these url()s to hashed files under
    dist/assets/ at build time; //go:embed all:frontend/dist carries them into
    the binary on every platform (cmd/hivegui/assets_test.go asserts that).
-   Licences and provenance: src/theme/fonts/{README.md,LICENSE-*.txt}.
+   Provenance: src/theme/fonts/README.md. Licences: public/fonts/
+   LICENSE-*.txt, which is where they have to live to reach the binary.
    font-display: swap — the system fallback in --font-ui/--font-mono paints
    first, so a slow font decode never shows an empty sidebar.
    No unicode-range: we ship one file per weight and the app renders arbitrary

@@ -26,6 +26,11 @@ async function bootWith(page: Page, theme: string) {
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
+  // The bundled @font-face rules are font-display: swap — see the note in
+  // theme.spec.ts. Capturing before the decode lands is a maxDiffPixels: 0
+  // flake, and a losing race during --update-snapshots bakes the system
+  // fallback into the baseline.
+  await page.evaluate(() => document.fonts.ready);
 }
 
 // Three sessions, all-sessions grid: every tile header renders.

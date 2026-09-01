@@ -23,15 +23,29 @@
       // are stored already-sanitised (writeOverrides), and theme.ts
       // re-sanitises on import, which covers a hand-edited store one paint
       // later.
+      // Two try blocks, not one. The theme stamp and the override
+      // injection fail independently: with a single block, a throw from
+      // the override half (a getItem that denies, a regex on a hostile
+      // value) would land in a catch that re-stamps data-theme and
+      // overwrite the correct preset the first half had already applied.
+      var dark = false;
+      try {
+        dark = matchMedia('(prefers-color-scheme: dark)').matches;
+      } catch (e) { /* no matchMedia: treat as light, same as the module */ }
       try {
         var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
         var t = localStorage.getItem('hive.theme');
-        var dark = matchMedia('(prefers-color-scheme: dark)').matches;
         // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
         // stored value resolves the same way an explicit 'system' does.
         // Keep the two in sync.
         if (t === 'system' || KNOWN.indexOf(t) < 0) t = dark ? 'hive-dark' : 'hive-light';
         document.documentElement.dataset.theme = t;
+      } catch (e) {
+        // Storage denied. Still follow the OS rather than pinning a
+        // dark preset on a light machine.
+        document.documentElement.dataset.theme = dark ? 'hive-dark' : 'hive-light';
+      }
+      try {
         // The store is hand-editable, so it is shape-checked before it
         // reaches the <style>: declarations only, no block, tag, at-rule
         // or comment characters, no backslash (a CSS escape such as
@@ -48,7 +62,7 @@
             return FN_OK.indexOf(f.slice(0, -1).toLowerCase()) >= 0;
           });
         if (ok) document.getElementById('theme-overrides').textContent = ':root:root {\n  ' + o + '\n}';
-      } catch (e) { document.documentElement.dataset.theme = 'hive-dark'; }
+      } catch (e) { /* no overrides; the preset above still stands */ }
     </script>
 </head>
 <body>

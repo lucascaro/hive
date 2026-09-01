@@ -22,6 +22,12 @@ async function boot(page: Page) {
   await page.waitForFunction(
     () => document.querySelectorAll('#projects li').length > 0,
   );
+  // The bundled @font-face rules use font-display: swap, so the system
+  // fallback paints first and the real face swaps in when the woff2
+  // finishes decoding. Every baseline below asserts maxDiffPixels: 0, so
+  // capturing mid-swap is a guaranteed flake — and it would flake toward
+  // a WRONG baseline if it lost the race during --update-snapshots.
+  await page.evaluate(() => document.fonts.ready);
 }
 
 // Shared scene for the sidebar pixel baselines: two projects, three
