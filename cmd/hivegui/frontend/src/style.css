@@ -614,59 +614,9 @@ body.resizing-sidebar #app { transition: none; }
   outline-offset: 1px;
 }
 
-/* Keyboard-shortcuts help overlay (⌘/). The outer element is a
-   full-viewport backdrop; the panel matches the palette's chrome. */
-#help-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 30;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 7vh;
-}
-#help-overlay.hidden { display: none; }
-#help-overlay-panel {
-  width: 640px;
-  max-width: 92vw;
-  max-height: 80vh;
-  background: var(--surface-raised);
-  border: 1px solid var(--hover);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(0,0,0,0.7);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#help-overlay-panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--hover);
-}
-#help-overlay-panel h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  color: var(--fg);
-}
-#help-overlay-close {
-  background: transparent;
-  border: 0;
-  color: var(--fg-muted);
-  font-size: var(--text-xl);
-  cursor: pointer;
-  padding: 0 4px;
-}
-#help-overlay-close:hover { color: #fff; } /* ui-lint: allow — emphasis/hover white, no fg-emphasis token exists yet */
-#help-overlay-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
+/* Keyboard-shortcuts help overlay (⌘/). The shell is the dialog
+   primitive; what is left is this screen's two-column shortcut table. */
 #help-overlay-groups {
-  overflow-y: auto;
-  padding: 8px 14px 14px;
   columns: 2;
   column-gap: 28px;
 }
@@ -693,16 +643,6 @@ body.resizing-sidebar #app { transition: none; }
   margin: 0;
   font-size: var(--text-sm);
   color: #aaa; /* ui-lint: allow */
-}
-#help-overlay-groups kbd {
-  font: 11px Menlo, monospace;
-  color: var(--fg);
-  background: #1d1d1d; /* ui-lint: allow */
-  border: 1px solid #333; /* ui-lint: allow */
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 1px 5px;
-  white-space: nowrap;
 }
 @media (max-width: 700px) {
   #help-overlay-groups { columns: 1; }
@@ -890,31 +830,9 @@ body.resizing-sidebar #app { transition: none; }
    alert cannot express without asking twice — and where work is at
    stake the consequences need more room than an OS alert gives. Shared
    by the worktree browser and the dirty-session close prompt. */
-.choice-dialog {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Above every modal (they sit at 30): the dialog is mounted on
-     <body>, so it has to out-rank whatever asked the question. */
-  z-index: 60;
-}
-.choice-dialog-box {
-  width: 460px;
-  max-width: 88%;
-  background: #141414; /* ui-lint: allow */
-  border: 1px solid #3a3a3a; /* ui-lint: allow */
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.7);
-  padding: 16px 18px;
-}
-.choice-dialog-box h4 {
-  margin: 0 0 8px;
-  font-size: var(--text-md);
-  color: #eee; /* ui-lint: allow */
-}
+/* Mounted on <body>, so it has to out-rank whatever asked the question
+   (every other modal sits at the primitive's z-index 40). */
+.choice-dialog { z-index: 60; }
 .choice-dialog-detail {
   margin: 0 0 10px;
   font-size: 11.5px; /* ui-lint: allow — off-scale, not on the type scale; TODO(phase-6): reconcile with nearest token if it doesn't break the screenshot baseline */
@@ -934,29 +852,6 @@ body.resizing-sidebar #app { transition: none; }
   color: #999; /* ui-lint: allow */
   line-height: 1.5;
 }
-.choice-dialog-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-.choice-dialog-actions button {
-  background: #1e1e1e; /* ui-lint: allow */
-  border: 1px solid #333; /* ui-lint: allow */
-  color: var(--fg);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.choice-dialog-actions button:hover { background: var(--hover); }
-.choice-dialog-actions button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.choice-dialog-actions button.danger {
-  color: #e08585; /* ui-lint: allow */
-  border-color: #4a2626; /* ui-lint: allow */
-}
-.choice-dialog-actions button.danger:hover { background: #3a1f1f; } /* ui-lint: allow */
-.choice-dialog-actions button:first-child { font-weight: 600; }
+.choice-dialog-actions { flex-wrap: wrap; }
+/* The safe answer is first, and reads as the default. */
+.choice-dialog-actions .hv-button:first-child { font-weight: 600; }
