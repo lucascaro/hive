@@ -138,7 +138,7 @@ const flush = () =>
 // Drives an <input> the way a user does. fireEvent, not a hand-built
 // event: these are controlled inputs, and React's value tracker swallows
 // a change made by assigning .value directly.
-function type(input: HTMLInputElement, value: string) {
+function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   fireEvent.change(input, { target: { value } });
 }
 
@@ -473,16 +473,36 @@ describe('appearance a11y', () => {
 });
 
 describe('appearance debounce', () => {
+  // The positive control. Without it the case below passes just as well
+  // when nothing is ever scheduled — which is what a raw `.value =`
+  // assignment does to a controlled textarea, React's value tracker
+  // swallowing the change and no debounce ever starting.
+  it('writes overrides once the debounce elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      open();
+      type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: red;');
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(localStorage.getItem('hive.themeOverrides')).toContain(
+        '--accent: red',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not write overrides after the dialog is closed', async () => {
     vi.useFakeTimers();
     try {
       open();
-      const box = el<HTMLTextAreaElement>('settings-overrides');
-      box.value = '--accent: red;';
-      box.dispatchEvent(new window.Event('input', { bubbles: true }));
+      type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: red;');
       close();
       const before = localStorage.getItem('hive.themeOverrides');
-      vi.advanceTimersByTime(500);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
       expect(localStorage.getItem('hive.themeOverrides')).toBe(before);
     } finally {
       vi.useRealTimers();

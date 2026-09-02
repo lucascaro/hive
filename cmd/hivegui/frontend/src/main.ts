@@ -309,9 +309,6 @@ mountIsland(
     restoreSession,
   }),
 );
-// Sidebar footer: hive/hived version + build. It takes its own
-// "daemon:stale" subscription, so it fills in once the control
-// handshake lands.
 // The two ported modals. Both mount on the root their region already
 // owns and stay mounted; the store decides whether anything renders
 // inside, and the island toggles the root's `hidden` class.
@@ -326,6 +323,9 @@ mountIsland(
   pageEl('settings'),
   createElement(Settings, { root: pageEl('settings') }),
 );
+// Sidebar footer: hive/hived version + build. It takes its own
+// "daemon:stale" subscription, so it fills in once the control
+// handshake lands.
 mountIsland(
   pageEl('sidebar-hints'),
   createElement(VersionFooter, { root: pageEl('sidebar-hints') }),

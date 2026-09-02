@@ -274,6 +274,36 @@ describe('settings: update button', () => {
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
   });
 
+  // The click-time disable is a stopgap for the gap before the first
+  // progress event, not a latch. Once staging is ready the button is the
+  // only way to apply the update — leaving it greyed out stranded the
+  // user with nothing to do but close and reopen Settings.
+  it('re-enables the button when staging finishes after a click', async () => {
+    open();
+    await settle();
+    const action = el<HTMLButtonElement>('settings-update-action');
+    fireEvent.click(action);
+    expect(action.disabled).toBe(true);
+
+    // The same event the banner listens to, delivered through the
+    // subscription EventsOn registered on open.
+    const [, onProgress] = bridge.EventsOn.mock.calls.find(
+      ([name]) => name === 'update:progress',
+    ) as [string, (info: UpdateInfoLike) => void];
+    act(() => {
+      onProgress({
+        available: true,
+        stage: 'ready',
+        latest: '2.5.0',
+        message: 'Update ready',
+        channel: 'release',
+      });
+    });
+
+    expect(action.textContent).toBe('Restart');
+    expect(action.disabled).toBe(false);
+  });
+
   // Staging outlives the modal: closing and reopening must show the
   // work Go is still doing, not a reset button.
   it('re-reads staging state on reopen rather than tracking it locally', async () => {

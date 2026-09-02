@@ -119,6 +119,14 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const [sourceRepo, setSourceRepo] = useState('');
   const [sourceRepoHint, setSourceRepoHint] = useState('');
   const [updateInfo, setUpdateInfo] = useState<main.UpdateInfo | null>(null);
+  // Covers the gap between the click and the first progress event only.
+  // Every progress event clears it: staging succeeding turns the button
+  // into "Restart" (and an error into "Retry"), and a latch that outlived
+  // the event would leave the user staring at a greyed-out button with no
+  // way to apply the update but closing and reopening Settings. The
+  // imperative version got this for free — renderUpdateAction reassigned
+  // .disabled on every event.
+  const [updateBusy, setUpdateBusy] = useState(false);
 
   // Staging runs in Go and outlives this modal, so the button follows
   // the same progress events the banner does rather than any local
@@ -126,9 +134,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // below) rather than tracked while the dialog is closed.
   useEffect(
     () =>
-      EventsOn('update:progress', (info: main.UpdateInfo | null) =>
-        setUpdateInfo(info),
-      ),
+      EventsOn('update:progress', (info: main.UpdateInfo | null) => {
+        setUpdateInfo(info);
+        setUpdateBusy(false);
+      }),
     [],
   );
 
@@ -211,14 +220,18 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
 
   function showError(msg: string) {
     setError(msg);
-    // The slot lives in the scrolling region, so a save rejected after
-    // the user scrolled down would otherwise land off-screen and read as
-    // "the button did nothing". Optional call: jsdom has no layout.
-    if (msg)
-      queueMicrotask(() =>
-        errorRef.current?.scrollIntoView?.({ block: 'nearest' }),
-      );
   }
+
+  // The slot lives in the scrolling region, so a save rejected after the
+  // user scrolled down would otherwise land off-screen and read as "the
+  // button did nothing". It has to run AFTER the commit that un-hides the
+  // slot: `.hv-field-error.hidden` is `display: none`, and scrolling to a
+  // hidden element is a no-op — which is what a microtask scheduled from
+  // showError() got, on exactly the async-rejection path this exists for.
+  // Optional call: jsdom has no layout.
+  useLayoutEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [error]);
 
   // ---------- appearance ----------
 
@@ -308,7 +321,6 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   }
 
   const updateBtn = updateButtonState(updateInfo, isMac);
-  const [updateBusy, setUpdateBusy] = useState(false);
 
   function runUpdate() {
     if (updateBtn.action === 'restart') {

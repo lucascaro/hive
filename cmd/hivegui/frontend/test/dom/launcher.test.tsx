@@ -686,6 +686,83 @@ describe('launcher stale-response handling', () => {
   });
 });
 
+// Both close paths moved from initLauncher() into the island's effects
+// in Phase 3, and they are load-bearing in opposite directions: keyboard.ts
+// bails out for the whole window while #launcher is visible, so a launcher
+// left open with focus elsewhere has nobody listening for Escape — while a
+// close that fires on the very click that OPENED it makes the popup
+// unopenable from the sidebar at all.
+describe('launcher outside interaction', () => {
+  it('closes on a click outside itself', async () => {
+    await open();
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(launcher().classList.contains('hidden')).toBe(true);
+  });
+
+  it('stays open for a click on the project actions that opened it', async () => {
+    const actions = document.createElement('div');
+    actions.className = 'hv-project-card__actions';
+    document.getElementById('app')?.appendChild(actions);
+    try {
+      await open();
+      act(() => {
+        actions.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(launcher().classList.contains('hidden')).toBe(false);
+    } finally {
+      actions.remove();
+    }
+  });
+
+  it('stays open for a click on an opener that opts in with data-opens-launcher', async () => {
+    const opener = document.createElement('button');
+    opener.setAttribute('data-opens-launcher', '');
+    document.getElementById('app')?.appendChild(opener);
+    try {
+      await open();
+      act(() => {
+        opener.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(launcher().classList.contains('hidden')).toBe(false);
+    } finally {
+      opener.remove();
+    }
+  });
+
+  it('closes when focus leaves it for something else', async () => {
+    const outside = document.createElement('button');
+    document.getElementById('app')?.appendChild(outside);
+    try {
+      await open();
+      act(() => {
+        searchBox().dispatchEvent(
+          new FocusEvent('focusout', {
+            bubbles: true,
+            relatedTarget: outside,
+          }),
+        );
+      });
+      expect(launcher().classList.contains('hidden')).toBe(true);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  // relatedTarget null means focus went nowhere — that is closeLauncher's
+  // own blur, so it must not recurse.
+  it('ignores a focusout that goes nowhere', async () => {
+    await open();
+    act(() => {
+      searchBox().dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+      );
+    });
+    expect(launcher().classList.contains('hidden')).toBe(false);
+  });
+});
+
 describe('launcher teardown', () => {
   it('does not throw when closed before it was ever opened', () => {
     expect(() => closeLauncher()).not.toThrow();
