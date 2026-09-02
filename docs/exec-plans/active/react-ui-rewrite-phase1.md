@@ -276,3 +276,9 @@ for the next fresh worktree.
 
 No changeset: the phase is behaviour-preserving and carries `no-changeset`, per
 the spec's Notes. The one changeset for the whole rewrite lands in Phase 6.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration. Built by hand because
+this feature's plans are named rather than `<NNN>`-prefixed, so the skill's
+plan lookup does not find them.
