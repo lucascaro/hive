@@ -3,6 +3,7 @@
 - **Spec:** [docs/product-specs/305-add-ide-inspired-theme-presets.md](../../product-specs/305-add-ide-inspired-theme-presets.md)
 - **Issue:** —
 - **Branch:** `feature/305-add-ide-inspired-theme-presets`
+- **PR:** #316
 - **Status:** active
 
 ## Summary
@@ -201,9 +202,11 @@ Most coverage is already data-driven off the rendered picker and comes free.
 - **2026-09-01** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
 - **2026-09-01** — Contrast strategy reversed mid-implementation (see Decision log); the
   fitted-palette work was discarded before it reached the tree.
-- **2026-09-01** — All ten presets, the picker grouping, the gate opt-out, tests and docs
-  implemented. `ui-lint.sh --contrast` 0 failures / 10 opted out; typecheck, `biome ci`,
-  unit + dom (380 tests) and the theme e2e suite (31 passed) all green.
+- **2026-09-01** — All twelve presets, the picker grouping, the gate opt-out, tests and docs
+  implemented. `ui-lint.sh --contrast` 0 failures / 12 opted out; typecheck, `biome ci`,
+  unit + dom (380 tests), full e2e (253 passed) and `go test ./cmd/hivegui/...` all green.
+  All nineteen presets rendered and eyeballed in a browser.
+- **2026-09-01** — Pushed; PR #316 opened. Stage = REVIEW.
 
 ## Open questions
 

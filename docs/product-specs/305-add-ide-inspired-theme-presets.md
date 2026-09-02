@@ -4,7 +4,8 @@ title: "Add 12 IDE-inspired theme presets"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 316
+stage: REVIEW
 ---
 
 # Add 12 IDE-inspired theme presets
