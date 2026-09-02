@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reorderTarget } from '../../src/lib/reorder.js';
+import { dropTargetIndex, reorderTarget } from '../../src/lib/reorder.js';
 
 // `order` is the session's index in the daemon's r.order — the value
 // reorderTarget must return. The fixtures below deliberately separate
@@ -131,6 +131,106 @@ describe('reorderTarget', () => {
       const target = reorderTarget(display, 's3', +1) as number;
       const after = moveInOrder(raw, 's3', target);
       expect(inProject(after, 'A')).toEqual(['s3', 's1', 's2']);
+      expect(inProject(after, 'B')).toEqual(['t1', 't2']);
+    });
+  });
+});
+
+// dropTargetIndex — the drag-and-drop half of the same conversion.
+//
+// Every case runs the returned index through moveInOrder and asserts the
+// RESULTING order. Asserting the bare index would just re-encode whatever the
+// implementation does; the bug this suite exists for (spec 305) produced a
+// perfectly plausible-looking index that landed the row one slot too low.
+describe('dropTargetIndex', () => {
+  // One project, so r.order index == display position.
+  const flat = ['a', 'b', 'c', 'd'];
+  const sessions = flat.map((id, i) => ({ id, projectId: 'P', order: i }));
+  const drop = (dragged: string, target: string, above: boolean) => {
+    const idx = dropTargetIndex(sessions, dragged, target, above);
+    return idx === null ? flat : moveInOrder(flat, dragged, idx);
+  };
+
+  it('drops above a target further down the list', () => {
+    // The regression: this used to land [b, c, a, d] — one slot too low.
+    expect(drop('a', 'c', true)).toEqual(['b', 'a', 'c', 'd']);
+  });
+
+  it('drops below a target further down the list', () => {
+    expect(drop('a', 'c', false)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('drops above a target further up the list', () => {
+    expect(drop('d', 'b', true)).toEqual(['a', 'd', 'b', 'c']);
+  });
+
+  it('drops below a target further up the list', () => {
+    expect(drop('d', 'b', false)).toEqual(['a', 'b', 'd', 'c']);
+  });
+
+  it('drops at the head of the list', () => {
+    expect(drop('c', 'a', true)).toEqual(['c', 'a', 'b', 'd']);
+  });
+
+  it('drops past the last row', () => {
+    expect(drop('a', 'd', false)).toEqual(['b', 'c', 'd', 'a']);
+  });
+
+  it('is a no-op when the slot is the one the session already holds', () => {
+    expect(dropTargetIndex(sessions, 'a', 'a', true)).toBeNull();
+    expect(dropTargetIndex(sessions, 'a', 'b', true)).toBeNull();
+    expect(dropTargetIndex(sessions, 'b', 'a', false)).toBeNull();
+  });
+
+  it('returns null for an unknown dragged or target session', () => {
+    expect(dropTargetIndex(sessions, 'nope', 'b', true)).toBeNull();
+    expect(dropTargetIndex(sessions, 'a', 'nope', true)).toBeNull();
+  });
+
+  it('reads both projectId and project_id spellings', () => {
+    const snake = [
+      { id: 'a', project_id: 'P', order: 0 },
+      { id: 'b', project_id: 'P', order: 1 },
+      { id: 'c', project_id: 'P', order: 2 },
+    ];
+    const idx = dropTargetIndex(snake, 'c', 'b', true) as number;
+    expect(moveInOrder(['a', 'b', 'c'], 'c', idx)).toEqual(['a', 'c', 'b']);
+  });
+
+  // Same trap as reorderTarget's: r.order is one flat list across projects,
+  // so a project-relative slot must be translated through a sibling's global
+  // index, and the other project must come out untouched.
+  describe('when projects interleave in the daemon order', () => {
+    const raw = ['s1', 't1', 's2', 't2', 's3'];
+    const proj: Record<string, string> = {
+      s1: 'A',
+      t1: 'B',
+      s2: 'A',
+      t2: 'B',
+      s3: 'A',
+    };
+    const all = raw.map((id, i) => ({ id, projectId: proj[id], order: i }));
+    const inProject = (order: string[], pid: string) =>
+      order.filter((id) => proj[id] === pid);
+
+    it('drops above a sibling that is not adjacent in r.order', () => {
+      const idx = dropTargetIndex(all, 's3', 's2', true) as number;
+      const after = moveInOrder(raw, 's3', idx);
+      expect(inProject(after, 'A')).toEqual(['s1', 's3', 's2']);
+      expect(inProject(after, 'B')).toEqual(['t1', 't2']);
+    });
+
+    it('drops below a sibling further down the project', () => {
+      const idx = dropTargetIndex(all, 's1', 's2', false) as number;
+      const after = moveInOrder(raw, 's1', idx);
+      expect(inProject(after, 'A')).toEqual(['s2', 's1', 's3']);
+      expect(inProject(after, 'B')).toEqual(['t1', 't2']);
+    });
+
+    it('drops past the last sibling without swallowing the other project', () => {
+      const idx = dropTargetIndex(all, 's1', 's3', false) as number;
+      const after = moveInOrder(raw, 's1', idx);
+      expect(inProject(after, 'A')).toEqual(['s2', 's3', 's1']);
       expect(inProject(after, 'B')).toEqual(['t1', 't2']);
     });
   });

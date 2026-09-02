@@ -51,6 +51,20 @@
   overflow-x: hidden;
 }
 
+/* Drop placeholder for drag-to-reorder (lib/drag-placeholder.ts). Sized in JS
+   to the dragged element's exact margin box, so swapping the dragged row out
+   of the flow for this leaves the list's height unchanged and nothing below
+   the cursor shifts. pointer-events: none keeps it out of the drag hit-test —
+   it must never become a dragover/dragleave target of its own. */
+.hv-drop-placeholder {
+  list-style: none;
+  box-sizing: border-box;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--hover);
+  pointer-events: none;
+}
+
 
 /* Keyboard-focus rings on the small controls that previously had
    none. :focus-visible only — mouse clicks stay ring-free.

@@ -285,6 +285,163 @@ test.describe('keybinding regressions', () => {
     expect(await sidebarIds(page)).toEqual(before);
   });
 
+  // Drag-to-reorder. The regression (spec 305): the drop slot was resolved
+  // against the sibling list that still CONTAINED the dragged row, so a row
+  // dragged downwards landed one position below where it was dropped.
+  //
+  // The drag is driven by dispatched DragEvents sharing one DataTransfer
+  // rather than by locator.dragTo(): headless Chromium does not synthesise
+  // native HTML5 drag from mouse input here (verified — no dragstart fires),
+  // and the app's handlers are what these tests are about. Everything past
+  // the event dispatch is real: real layout, real CSS, real reorder call.
+  // What this cannot cover is the browser's own decision to *begin* a drag —
+  // notably that hiding the source element must be deferred a tick or the
+  // drag is cancelled. That one needs a human in the built app.
+  async function dragStart(page: Page, sid: string) {
+    await page.evaluate((id) => {
+      const w = window as unknown as { __dt?: DataTransfer };
+      w.__dt = new DataTransfer();
+      const row = document.querySelector<HTMLElement>(
+        `li.hv-session-row[data-sid="${id}"]`,
+      );
+      if (!row) throw new Error(`no row ${id}`);
+      row.dispatchEvent(
+        new DragEvent('dragstart', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: w.__dt,
+        }),
+      );
+    }, sid);
+    // beginDrag defers taking the row out of the flow by one tick.
+    await page.waitForFunction(
+      (id) =>
+        document
+          .querySelector(`li.hv-session-row[data-sid="${id}"]`)
+          ?.classList.contains('dragging') ?? false,
+      sid,
+    );
+  }
+
+  // Both dragover and drop carry the cursor's y, which is what decides the
+  // above/below half; the two must agree or the drop lands somewhere the
+  // placeholder never showed.
+  async function dragEvent(
+    page: Page,
+    type: 'dragover' | 'drop',
+    sid: string,
+    above: boolean,
+  ) {
+    await page.evaluate(
+      ({ kind, id, top }) => {
+        const w = window as unknown as { __dt?: DataTransfer };
+        const row = document.querySelector<HTMLElement>(
+          `li.hv-session-row[data-sid="${id}"]`,
+        );
+        if (!row) throw new Error(`no row ${id}`);
+        const r = row.getBoundingClientRect();
+        row.dispatchEvent(
+          new DragEvent(kind, {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: w.__dt,
+            clientY: top ? r.top + 2 : r.bottom - 2,
+          }),
+        );
+      },
+      { kind: type, id: sid, top: above },
+    );
+  }
+
+  test('a dragged session lands exactly where it was dropped', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const before = await sidebarIds(page);
+
+    await dragStart(page, before[0]);
+    await dragEvent(page, 'dragover', before[2], true);
+    await expect(page.locator('.hv-drop-placeholder')).toHaveCount(1);
+    await dragEvent(page, 'drop', before[2], true);
+
+    // Above the target, not below it. Pre-fix this produced
+    // [1, 2, 0, 3] — one slot too low.
+    await expect
+      .poll(() => sidebarIds(page))
+      .toEqual([before[1], before[0], before[2], before[3]]);
+  });
+
+  test('a session dropped on a lower half lands below that row', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const before = await sidebarIds(page);
+
+    await dragStart(page, before[0]);
+    await dragEvent(page, 'dragover', before[2], false);
+    await dragEvent(page, 'drop', before[2], false);
+
+    await expect
+      .poll(() => sidebarIds(page))
+      .toEqual([before[1], before[2], before[0], before[3]]);
+  });
+
+  test('dragging a session upwards lands it above the target', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const before = await sidebarIds(page);
+
+    await dragStart(page, before[3]);
+    await dragEvent(page, 'dragover', before[1], true);
+    await dragEvent(page, 'drop', before[1], true);
+
+    await expect
+      .poll(() => sidebarIds(page))
+      .toEqual([before[0], before[3], before[1], before[2]]);
+  });
+
+  // vitest is CSS-blind, so the "content does not jump" half of the fix can
+  // only be asserted here: the dragged row leaves the flow and the
+  // placeholder takes over its exact box, which keeps the list's total
+  // height — and everything above the insertion point — pinned for the whole
+  // gesture.
+  test('the drag placeholder keeps the sidebar height stable', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const ids = await sidebarIds(page);
+    const listHeight = () =>
+      page.evaluate(
+        () => document.querySelector('#projects')?.scrollHeight ?? 0,
+      );
+    const topOf = (sid: string) =>
+      page.evaluate(
+        (id) =>
+          document
+            .querySelector(`li.hv-session-row[data-sid="${id}"]`)
+            ?.getBoundingClientRect().top ?? 0,
+        sid,
+      );
+
+    const heightBefore = await listHeight();
+    const firstRowBefore = await topOf(ids[0]);
+
+    await dragStart(page, ids[3]);
+    await dragEvent(page, 'dragover', ids[2], true);
+    await expect(page.locator('.hv-drop-placeholder')).toHaveCount(1);
+
+    // The dragged row is out of the flow and the placeholder occupies its
+    // box, so the list is exactly as tall as it was.
+    expect(await listHeight()).toBe(heightBefore);
+    // Rows before the insertion point do not move at all.
+    expect(await topOf(ids[0])).toBe(firstRowBefore);
+
+    await dragEvent(page, 'drop', ids[2], true);
+    await expect(page.locator('.hv-drop-placeholder')).toHaveCount(0);
+    await expect.poll(listHeight).toBe(heightBefore);
+  });
+
   test('⌘G with a single session does not enter grid mode', async ({
     page,
   }) => {

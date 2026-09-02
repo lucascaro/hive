@@ -117,21 +117,9 @@
   outline: none;
 }
 
-.hv-project-card.dragging { opacity: 0.45; }
-.hv-project-card.drop-above::after,
-.hv-project-card.drop-below::after {
-  content: '';
-  position: absolute;
-  left: var(--space-1);
-  right: var(--space-1);
-  height: 2px;
-  border-radius: 1px; /* ui-lint: allow */
-  background: var(--accent);
-  pointer-events: none;
-  z-index: 2;
-}
-.hv-project-card.drop-above::after { top: -1px; }
-.hv-project-card.drop-below::after { bottom: -1px; }
+/* Drag-to-reorder: the dragged card leaves the flow and
+   .hv-drop-placeholder (sidebar.css) reserves its box at the drop slot. */
+.hv-project-card.dragging { display: none; }
 
 .hv-project-card button:focus-visible {
   outline: 2px solid var(--accent);
