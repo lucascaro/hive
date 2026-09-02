@@ -759,9 +759,16 @@ test.describe('Settings > Appearance', () => {
   // solarized-light / catppuccin-latte / github-light are community ports
   // that keep their upstream values and carry --contrast-exempt in
   // themes.css (spec 305), so holding them to 4.5:1 here would contradict
-  // the gate. They are still covered by the "every preset paints its own
-  // tokens and its own ANSI 16" test above — all sixteen slots, reaching
-  // xterm — which is the part that is not negotiable for any preset.
+  // the gate.
+  //
+  // Do NOT read the "every preset paints its own tokens and its own ANSI 16"
+  // test above as covering the gap that leaves. It reads getComputedStyle,
+  // which resolves through the cascade, so a slot the preset omits comes back
+  // as tokens.css's inherited value and counts as present — the same
+  // blindness that test documents for the --state-* family. Requiring an
+  // exempt light preset to DECLARE all sixteen is ui-contrast.mjs's job (it
+  // reads the preset's own declarations), and scripts/testdata/ui-contrast/
+  // exempt-light-no-ansi.css is the fixture for it.
   for (const preset of ['hive-light', 'native-light'] as const) {
     test(`${preset} gives terminals a palette readable on its own ground`, async ({
       page,

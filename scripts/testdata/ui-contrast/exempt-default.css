@@ -7,8 +7,13 @@
    for a dozen other reasons and would keep doing so if this branch were
    deleted. Isolated, the file passes the moment the branch stops working.
 
-   Every pair here clears its threshold — the ONLY reason this fixture may
-   fail is the NEVER_EXEMPT refusal. */
+   The `terminal` block below restates every token the pair list names, at
+   values that clear every threshold. That is what makes the fixture
+   ISOLATING: an earlier cut declared only the marker, so it also tripped the
+   completeness branch and still exited 1 with NEVER_EXEMPT emptied — i.e. the
+   refusal branch could have been deleted with CI green, which is the exact
+   gap this file exists to close. Verify by mutation, not by reading: empty
+   NEVER_EXEMPT and this file must exit 0. */
 :root {
   --bg: #0b0c10;
   --surface: #13141a;
@@ -28,4 +33,19 @@
 }
 :root[data-theme="terminal"] {
   --contrast-exempt: 1;
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --surface-raised: #0f1015;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
 }

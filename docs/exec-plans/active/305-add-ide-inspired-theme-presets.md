@@ -191,6 +191,20 @@ Most coverage is already data-driven off the rendered picker and comes free.
   language boundary with nothing syncing it. Accepted residual risk: a wrong exemption is a
   reviewable one-line diff that prints a `skip` line on every later run, and themes.md's
   "Adding a preset" says a first-party preset must pass the gate.
+- **2026-09-01** — (review iter 2) Verify a fixture's isolation by **mutation**, not by
+  reading it. The first `exempt-default.css` declared only the marker, so it tripped the
+  completeness branch too and still exited 1 with `NEVER_EXEMPT` emptied — the refusal it
+  exists to protect could have been deleted with CI green. Three comments asserted the
+  opposite. Every exemption fixture now restates the tokens it needs to fail for exactly one
+  reason, and each was checked by mutating its own branch out and confirming it then exits 0.
+- **2026-09-01** — (review iter 2) The exempt completeness set gains `--ansi-0…15` when the
+  preset's own `--term-bg` is a light ground. Why: the gated path fails a light preset with
+  an unset slot, the exempt path never reaches it, and `PAIRS` names no ANSI token — so a
+  future exempt light port could drop all sixteen and inherit tokens.css's Tango palette onto
+  white, where seven are under AA and brightWhite is 1.16:1. Three of the ports here are
+  light, so this was the likeliest way the hole gets hit.
+- **2026-09-01** — (review iter 2) The marker is `=== '1'`, not truthy. A raw declaration
+  string means `--contrast-exempt: 0` would otherwise opt out while reading as opt-in.
 - **2026-09-01** — (review iter 1) Exempt presets are still checked for **completeness**:
   every token named in `PAIRS` must appear in the preset's own declarations. Why: the first
   cut `continue`d straight past the pair loop, which silently removed the only check that
@@ -225,6 +239,8 @@ Most coverage is already data-driven off the rendered picker and comes free.
 Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f407745c…; threads_open: 0; action: fix IMPORTANT findings locally (2 test/comment gaps in the new exemption path); head_sha: 4c57ddc.
+
+- **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1329f29f…; threads_open: 0; action: fix 2 IMPORTANT + 2 MINOR locally (fixture did not isolate its branch; exempt path dropped the ANSI light-ground rule); head_sha: 347afa5.
 
 ## Open questions
 

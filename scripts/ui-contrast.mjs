@@ -164,7 +164,11 @@ for (const p of presets) {
   // Read from p.decls, not the merged view: an exemption has to be declared by
   // the preset itself. Merging base first would let one stray declaration in
   // tokens.css switch the whole gate off for every preset at once.
-  if (p.decls['--contrast-exempt']) {
+  // `=== '1'`, not truthiness: the value is a raw declaration string, so a
+  // typo'd `--contrast-exempt: 0` (or `false`, or `no`) would otherwise opt
+  // the preset out while reading, to anyone skimming the CSS, as if it had
+  // opted in. One spelling, and anything else falls through to the gate.
+  if (p.decls['--contrast-exempt']?.trim() === '1') {
     if (NEVER_EXEMPT.has(p.name)) {
       console.log(
         `FAIL  ${p.name.padEnd(13)} declares --contrast-exempt; ` +
@@ -181,9 +185,20 @@ for (const p of presets) {
     // own tokens" test sees a plausible colour. Contrast was what caught that
     // on a light ground, and the exemption would have taken it away. So every
     // token the pair list names must still be declared by the preset itself.
-    const missing = [
-      ...new Set(PAIRS.flatMap(([fg, bg]) => [fg, bg])),
-    ].filter((t) => !(t in p.decls));
+    //
+    // The ANSI 16 join that set on a LIGHT ground, mirroring the rule below:
+    // there, an unset slot is a failure because the inherited value is
+    // tokens.css's Tango palette, which is unreadable on white (brightWhite
+    // lands at 1.16:1). Leaving them out here would have re-opened exactly
+    // the hole this block exists to close, for exactly the presets most
+    // likely to hit it — three of the ports on this branch are light. Dark
+    // grounds are not required to re-declare, matching the ratio rule, which
+    // exempts them because ANSI 0 is meant to vanish into the background.
+    const termBgOwn = hex(p.decls['--term-bg'], p.decls);
+    const required = new Set(PAIRS.flatMap(([fg, bg]) => [fg, bg]));
+    if (termBgOwn && lum(termBgOwn) >= LIGHT_GROUND)
+      for (let i = 0; i < 16; i++) required.add(`--ansi-${i}`);
+    const missing = [...required].filter((t) => !(t in p.decls));
     if (missing.length) {
       console.log(
         `FAIL  ${p.name.padEnd(13)} exempt from ratios, not from completeness: ` +
