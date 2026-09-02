@@ -191,6 +191,15 @@ Most coverage is already data-driven off the rendered picker and comes free.
   language boundary with nothing syncing it. Accepted residual risk: a wrong exemption is a
   reviewable one-line diff that prints a `skip` line on every later run, and themes.md's
   "Adding a preset" says a first-party preset must pass the gate.
+- **2026-09-01** — (review iter 3) Exclude the `Community` group from the pixel-baseline
+  loop rather than committing ~48 darwin-local PNGs. Why: the loop is data-driven from
+  `PRESETS`, so twelve presets silently added 48 *expected* baselines the PR does not carry —
+  and because the block is skipped without `HIVE_SNAPSHOT`, nothing goes red; the first
+  local run on darwin would have Playwright write all 48 and pin whatever rendered,
+  unreviewed. The failure the pixels catch (a token falling through to hive-dark) is caught
+  structurally for an exempt preset by the completeness rule, so the exclusion is defensible
+  rather than merely cheaper. Verified: `HIVE_SNAPSHOT=1` now passes 59/59 against the
+  committed baselines, writing nothing.
 - **2026-09-01** — (review iter 2) Verify a fixture's isolation by **mutation**, not by
   reading it. The first `exempt-default.css` declared only the marker, so it tripped the
   completeness branch too and still exited 1 with `NEVER_EXEMPT` emptied — the refusal it
@@ -241,6 +250,8 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f407745c…; threads_open: 0; action: fix IMPORTANT findings locally (2 test/comment gaps in the new exemption path); head_sha: 4c57ddc.
 
 - **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1329f29f…; threads_open: 0; action: fix 2 IMPORTANT + 2 MINOR locally (fixture did not isolate its branch; exempt path dropped the ANSI light-ground rule); head_sha: 347afa5.
+
+- **2026-09-01 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 315e13ad…; threads_open: 0; action: fix 1 IMPORTANT locally (baseline loop silently expected 48 uncommitted PNGs); iter-2 fixes all re-verified by mutation; head_sha: 2da6cbb.
 
 ## Open questions
 

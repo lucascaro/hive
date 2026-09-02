@@ -162,14 +162,16 @@ test.describe('preset switching keeps the chrome stable', () => {
 });
 
 // themes.md's "Adding a preset" step 4: sidebar, dialog, worktrees and
-// launcher under every preset. Generated from PRESETS, so a seventh
-// preset gets its set by existing rather than by someone remembering to
-// add a test.
+// launcher under every FIRST-PARTY preset. Generated from PRESETS, so a new
+// one gets its set by existing rather than by someone remembering to add a
+// test — see the loop below for why the Community group is filtered out.
 //
-// These are the only check that catches a preset which parses fine, clears
-// contrast, and still looks broken — a token that falls through to
-// hive-dark's dark surface inside a light preset paints correctly by every
-// other measure we have.
+// For a gated preset these are the only check that catches one which parses
+// fine, clears contrast, and still looks broken — a token that falls through
+// to hive-dark's dark surface inside a light preset paints correctly by every
+// other measure we have. (An exempt preset gets that failure mode caught in
+// ui-contrast.mjs's completeness rule instead, which is what makes excluding
+// it from these pixels defensible rather than just cheaper.)
 //
 // Element-scoped, not full-page: the terminal is live content and would
 // need masking on every shot. The full-page classic guard above is the one
@@ -180,7 +182,28 @@ test.describe('preset baselines', () => {
     'pixel baselines are darwin-local; run with HIVE_SNAPSHOT=1',
   );
 
-  for (const { id } of PRESETS.filter((p) => p.id !== 'system')) {
+  // First-party presets only. The Community group (spec 305) is excluded on
+  // purpose, and the exclusion is written here rather than left implicit:
+  // this loop is data-driven from PRESETS, so twelve new presets silently
+  // added ~48 expected baselines that the PR does not commit. Nothing goes
+  // red — the block is skipped without HIVE_SNAPSHOT — so the first person to
+  // run it on darwin would have Playwright WRITE all 48 and pin whatever
+  // rendered that day, unreviewed. A stated rule beats that.
+  //
+  // What these baselines exist to catch is a preset that parses, passes
+  // contrast, and still looks broken because a token fell through to
+  // hive-dark. For a community preset that failure mode is caught
+  // structurally instead: ui-contrast.mjs requires an exempt preset to
+  // declare every token the pair list names — plus the ANSI 16 on a light
+  // ground — in its own declarations, which is the omission the pixels would
+  // have shown. The state-colour loop below still covers every preset.
+  //
+  // If you want the pixels too, drop the group filter and run
+  // `HIVE_SNAPSHOT=1 … --update-snapshots` on macOS — then EYEBALL all 48
+  // before committing, per themes.md step 4.
+  for (const { id } of PRESETS.filter(
+    (p) => p.id !== 'system' && p.group !== 'Community',
+  )) {
     test(`${id}: sidebar`, async ({ page }) => {
       await page.addInitScript(
         (t) => localStorage.setItem('hive.theme', t),
