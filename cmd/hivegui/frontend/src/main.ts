@@ -56,6 +56,8 @@ import { BootState } from './components/BootState.js';
 import { EmptyState } from './components/EmptyState.js';
 import { MinimizedTray } from './components/MinimizedTray.js';
 import { Sidebar } from './components/Sidebar.js';
+import { Launcher } from './components/modals/Launcher.js';
+import { Settings } from './components/modals/Settings.js';
 import { StatusBar } from './components/StatusBar.js';
 import { VersionFooter } from './components/VersionFooter.js';
 import { mustEl, pageEl } from './app/el.js';
@@ -310,6 +312,20 @@ mountIsland(
 // Sidebar footer: hive/hived version + build. It takes its own
 // "daemon:stale" subscription, so it fills in once the control
 // handshake lands.
+// The two ported modals. Both mount on the root their region already
+// owns and stay mounted; the store decides whether anything renders
+// inside, and the island toggles the root's `hidden` class.
+mountIsland(
+  pageEl('launcher'),
+  createElement(Launcher, {
+    root: pageEl('launcher'),
+    setFocusedTile,
+  }),
+);
+mountIsland(
+  pageEl('settings'),
+  createElement(Settings, { root: pageEl('settings') }),
+);
 mountIsland(
   pageEl('sidebar-hints'),
   createElement(VersionFooter, { root: pageEl('sidebar-hints') }),

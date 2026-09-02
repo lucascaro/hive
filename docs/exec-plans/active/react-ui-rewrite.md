@@ -108,8 +108,8 @@ implemented — the briefs deliberately do not all exist up front.
 |---|---|---|---|
 | 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
-| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | implemented, in review |
-| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | not started |
+| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
+| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | implemented |
 | 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | not started |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
@@ -210,3 +210,73 @@ in this phase too.
 **Sanctioned spec edit.** `test/e2e/nav-history.spec.ts:100` — `MinimizedTray`
 subscribes to `minimized`, so the in-place `.add` stops rendering. Changed to
 the store action, as the master plan pre-authorised.
+
+### Phase 3 — modals A: launcher + settings (written 2026-09-02 against `main` @ fff838f)
+
+**Roots.** Two islands, same shape as Phase 2: React renders the innards, the
+container keeps its id and its container-level classes are applied from a
+`useLayoutEffect`.
+
+| Root container | Component | Container-level state kept by effect |
+|---|---|---|
+| `#launcher` (exists in `index.html`, `class="hidden" role="menu"`) | `Launcher` | `.hidden`, inline `left`/`top` |
+| `#settings` (**new in `index.html`**, `class="hv-dialog hidden"`) | `Settings` via `ModalShell` | `.hidden` |
+
+`#settings` is the one markup addition. Today `settings.ts` builds the whole
+dialog with `ui/dialog.ts` and `initSettings()` appends it to `#app`; a React
+island needs a mount node that exists before the root is created, so the root
+div moves into `index.html` with the attributes `dialog()` set on it
+(`id`, `class="hv-dialog hidden"`, `role="dialog"`, `aria-modal="true"`,
+`aria-labelledby="settings-title"`). Everything inside it is `ModalShell`'s.
+
+**Markup contract extracted from the legacy modules** (the e2e specs assert on
+all of it, unmodified):
+
+- `#launcher` › `input.launcher-search` (`aria-label="Filter agents"`,
+  `placeholder="Filter agents…"`, `autocomplete=off`) · `label.launcher-worktree`
+  (`input[type=checkbox]` + `<span>`, `.disabled` when the project is not a git
+  repo) · `input.launcher-branch` (`aria-label="Worktree branch name"`,
+  `.hidden` while the toggle is off) · `div.launcher-list` ›
+  `div.launcher-item[data-selected][data-available=false][style=--agent-color]`
+  › `span.agent-num` › `kbd.hv-kbd` · `span.agent-dot` · `span.agent-name` ·
+  `span.install-tag[title]`. Empty/loading rows are `div.launcher-empty`
+  ("No agents match" / "No agents found") and `div.launcher-loading`
+  ("Loading agents…"). **Order matters**: search, worktree row, branch box, list.
+- `#settings` › `.hv-dialog__panel#settings-panel[data-size=md]` ›
+  `header.hv-dialog__header` › `h3.hv-dialog__title#settings-title` +
+  `span.hv-dialog__title-suffix`, `button.hv-icon-btn.hv-dialog__close#settings-close`;
+  `div.hv-dialog__body` › `#settings-scroll` (agents then appearance) and
+  `section#settings-updates`; `footer.hv-dialog__footer` ›
+  `div.hv-dialog__actions` › `#settings-cancel`, `#settings-save`.
+  Inside: `#settings-agents-list` › `div.settings-agent-row` ›
+  `span.hv-swatch` › `input[type=color]`, `input.settings-agent-name`,
+  `input.settings-agent-cmd`, `button.settings-agent-delete`; `#settings-agent-add`;
+  `p#settings-error.hv-field-error.settings-error`; `#settings-theme`,
+  `#settings-overrides` + `p#settings-overrides-error`;
+  `#settings-update-channel`, `#settings-source-repo-row` (`.hidden` off the
+  latest channel) › `#settings-source-repo` + `#settings-source-repo-browse`,
+  `p#settings-source-repo-hint`, `#settings-update-action` +
+  `#settings-update-status`. Hint paragraphs are `p.settings-hint`.
+
+**Store additions** (`src/store/store.ts`): `modals: ModalId[]` with
+`openModal`/`closeModal`/`isModalOpen`. The stack is the *render* signal —
+which React modal is mounted-visible — and nothing more.
+
+**Deviation from the plan's `anyModalOpen()` line (see Decision log).** No
+OR-ing of two sources. `registry.ts` already answers `anyModalOpen()` off the
+`.hidden` class of every registered root, and both React roots keep their root
+element registered and keep toggling `.hidden` from the store. The DOM class
+stays the single source of truth for "a modal owns the keyboard", so
+`focus.ts`, `session-term.ts` and every `getElementById(...).classList` gate in
+`keyboard.ts` are untouched.
+
+**Ported behaviour that is easy to lose** (each has a test):
+open-generation token (`ListAgents` / `IsGitRepo` staleness), `openToken`
+(settings load staleness), the overrides debounce (150 ms) and the source-repo
+probe debounce (250 ms) *including their cancellation on close*, digit
+shortcuts only while the raw query is empty and not in the branch box,
+`mousedown` `preventDefault` on everything but the two text boxes, `focusout`
+close, the document-level outside-click close with its
+`.hv-project-card__actions` / `[data-opens-launcher]` exemptions, re-entrant
+`openSettings()` not wiping a draft, `loadFailed` blocking Save, and
+agents-before-update-settings save order.
