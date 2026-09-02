@@ -430,6 +430,54 @@ describe('focus containment', () => {
   });
 });
 
+// The footer advertises [enter] save, so Enter has to actually confirm
+// the dialog — AGENTS.md lists dialog confirm/cancel as a hard-coded
+// binding. The two exclusions are the ones that would break something:
+// a newline in the overrides box, and Cancel closing AND saving on one
+// keystroke.
+describe('enter confirms', () => {
+  it('saves from a text field', async () => {
+    open();
+    await flush();
+    click(el('settings-agent-add'));
+    type(cell(rows()[0], '.settings-agent-name'), 'From Enter');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'entertool');
+    fireEvent.keyDown(cell(rows()[0], '.settings-agent-name'), {
+      key: 'Enter',
+    });
+    await flush();
+    expect(saveCustomAgents).toHaveBeenCalledTimes(1);
+    expect(saveCustomAgents.mock.calls[0][0][0].name).toBe('From Enter');
+  });
+
+  it('saves from a select, which the old text-input-only gate ignored', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-update-channel'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves Enter alone inside the custom-tokens textarea', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-overrides'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+  });
+
+  // Enter on a focused button is that button's own activation. Without
+  // the exclusion, Enter on Cancel would close the dialog and save the
+  // draft it was meant to discard.
+  it('leaves Enter alone on a button', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-cancel'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+  });
+});
+
 describe('escape', () => {
   it('consumes the event so it cannot reach the window handler', async () => {
     open();

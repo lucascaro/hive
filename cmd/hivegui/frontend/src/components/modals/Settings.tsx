@@ -419,10 +419,18 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       .catch((err) => showError(String(err?.message || err)));
   }
 
-  // Enter in a text field saves, as before. Escape and the backdrop are
-  // the shell's. The Appearance textarea is excluded by the type check:
-  // Enter there is a newline, and this would otherwise turn "next line of
-  // overrides" into "save and close".
+  // Enter confirms the dialog — AGENTS.md lists dialog confirm/cancel
+  // (Enter / Esc) as a hard-coded, non-rebindable binding, and the
+  // footer hint says so. Two exclusions:
+  //   * the Appearance textarea, where Enter is a newline (turning
+  //     "next line of overrides" into "save and close" is the bug this
+  //     started as),
+  //   * buttons, where Enter is the button's own activation — Cancel
+  //     would otherwise close AND save on the same keystroke.
+  //
+  // Pre-Phase-3 this fired only from `input[type=text]`, which is why
+  // the hint was inaccurate the moment it was added: Enter did nothing
+  // from the selects or the panel itself.
   //
   // On the root element, not on a wrapper: #settings-scroll and
   // #settings-updates must stay direct children of .hv-dialog__body
@@ -431,14 +439,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // Re-attached each render so it closes over the current draft.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Enter') return;
+      const target = e.target as HTMLElement | null;
       if (
-        e.key === 'Enter' &&
-        e.target instanceof HTMLInputElement &&
-        e.target.type === 'text'
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLButtonElement
       ) {
-        e.preventDefault();
-        saveSettings();
+        return;
       }
+      e.preventDefault();
+      saveSettings();
     }
     root.addEventListener('keydown', onKeyDown);
     return () => root.removeEventListener('keydown', onKeyDown);

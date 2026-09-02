@@ -98,6 +98,18 @@ mount node that exists before the modal is first opened. `#settings-scroll` and
 pins Updates below the scrolling region — so the Enter-to-save listener hangs off
 the root element rather than a wrapper div.
 
+**2026-09-02 — the `[enter] save` hint is new UI, so Enter now confirms the
+dialog.** Review iteration 2 corrected the record: the pre-Phase-3 `dialog({...})`
+call passed no `hints` at all, so the footer hint this phase adds (for the plan's
+"visible confirm/cancel key hints" criterion, and AGENTS.md › Feedback on Action)
+was never a preserved behaviour — and it was inaccurate the moment it landed,
+because the keydown gate fired only for `input[type=text]`. Rather than drop a
+hint the criteria ask for, Enter now saves from anywhere in the dialog except the
+Appearance textarea (Enter is a newline there) and buttons (Enter is the button's
+own activation — Cancel would otherwise close *and* save). AGENTS.md lists dialog
+confirm/cancel as a hard-coded, non-rebindable binding, so this is the behaviour
+the hint should always have described.
+
 ## Progress
 
 **2026-09-02** — Implemented. Store (`modals` slice + `openModal`/`closeModal`/
@@ -123,3 +135,5 @@ No flake-baseline comparison was needed: nothing failed.
 _(opened 2026-09-02 for PR #319; `/hs-review-loop` appends one entry per iteration)_
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 54e8817e; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 2e01fb5.
+- **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged (all three iter-1 IMPORTANTs verified fixed at source); head_sha: 2e01fb5.
+- **2026-09-02 post-loop** — two of the three remaining MINORs applied: unused `modalEntry()` export deleted, and the `[enter] save` hint made honest (see Decision log). The third — a repeated identical error message not re-scrolling — left as-is: the reviewer's own read is that the fix is worse than the bug.

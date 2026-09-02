@@ -782,13 +782,6 @@ export function closeModal(id: ModalId): void {
   if (next.length !== cur.length) set({ modals: next });
 }
 
-export function modalEntry<T extends ModalId>(
-  id: T,
-): Extract<ModalEntry, { id: T }> | null {
-  const found = get().modals.find((m) => m.id === id);
-  return (found as Extract<ModalEntry, { id: T }> | undefined) ?? null;
-}
-
 export function isModalOpen(id: ModalId): boolean {
   return get().modals.some((m) => m.id === id);
 }
