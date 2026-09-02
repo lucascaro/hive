@@ -31,6 +31,12 @@ import { openWorktrees } from './modals/worktrees.js';
 import { beginInlineRename } from './inline-rename.js';
 import { readProjectId } from '../lib/wire.js';
 import { preserveFocus } from '../lib/preserve-focus.js';
+import { dropTargetIndex } from '../lib/reorder.js';
+import {
+  beginDrag,
+  moveTo as movePlaceholder,
+  endDrag,
+} from '../lib/drag-placeholder.js';
 
 // Per-module, not a shared deps union: sidebar wants refocusActiveTerm
 // where view wants focusActiveTerm, and one union type would loosen both.
@@ -341,6 +347,13 @@ function wireProjectDrag(
   header: HTMLElement,
   p: ProjectInfo,
 ) {
+  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
+    const pid = e.dataTransfer?.getData('text/x-hive-project');
+    const targetPID = target.dataset.pid ?? '';
+    if (!pid || !targetPID || pid === targetPID) return;
+    reorderDroppedProject(pid, targetPID, above);
+  };
+
   root.addEventListener('dragstart', (e) => {
     const t = e.target;
     if (t instanceof Element) {
@@ -360,17 +373,14 @@ function wireProjectDrag(
     if (!dt) return;
     dt.effectAllowed = 'move';
     dt.setData('text/x-hive-project', p.id);
-    root.classList.add('dragging');
+    beginDrag(root, commit);
   });
-  root.addEventListener('dragend', () => {
-    root.classList.remove('dragging');
-    document
-      .querySelectorAll(
-        '.hv-project-card.drop-above, .hv-project-card.drop-below',
-      )
-      .forEach((el) => {
-        el.classList.remove('drop-above', 'drop-below');
-      });
+  root.addEventListener('dragend', (e) => {
+    if (e.target instanceof Element && e.target.closest('.hv-session-row')) {
+      // Bubbled from an inner session drag, which owns its own teardown.
+      return;
+    }
+    endDrag();
   });
   root.addEventListener('dragover', (e) => {
     const dt = e.dataTransfer;
@@ -379,33 +389,20 @@ function wireProjectDrag(
     dt.dropEffect = 'move';
     // Use the header's bounds (not the whole card): with sessions
     // expanded, the card is tall, the cursor is almost always above
-    // its midpoint, and the indicator would land far from the
+    // its midpoint, and the placeholder would land far from the
     // cursor. Anchoring both the hit-test and the visual to the
     // header keeps them in sync.
     const r = header.getBoundingClientRect();
-    const above = e.clientY - r.top < r.height / 2;
-    root.classList.toggle('drop-above', above);
-    root.classList.toggle('drop-below', !above);
-  });
-  root.addEventListener('dragleave', (e) => {
-    // Only clear when leaving the card entirely; dragover into a child
-    // re-fires and re-asserts the right class.
-    // `contains(null)` is false, so a relatedTarget that isn't a Node
-    // takes the same "left the card" branch it takes today.
-    if (!(e.relatedTarget instanceof Node) || !root.contains(e.relatedTarget)) {
-      root.classList.remove('drop-above', 'drop-below');
-    }
+    movePlaceholder(root, e.clientY - r.top < r.height / 2);
   });
   root.addEventListener('drop', (e) => {
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
-    const pid = dt.getData('text/x-hive-project');
-    root.classList.remove('drop-above', 'drop-below');
-    if (!pid || pid === p.id) return;
     const r = header.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
-    reorderDroppedProject(pid, p.id, above);
+    endDrag();
+    commit(root, above, e);
   });
 }
 
@@ -507,111 +504,59 @@ function killSession(s: SessionInfo) {
 // Same-project drops only; cross-project moves are not supported
 // yet (would require also updating project_id on the wire).
 function wireSessionDrag(li: HTMLLIElement, s: SessionInfo) {
+  // Shared by the row's own drop handler and the placeholder's: an "insert
+  // above" spacer sits under the cursor, so the release often lands on the
+  // spacer rather than on any row.
+  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
+    const sid = e.dataTransfer?.getData('text/x-hive-session');
+    const targetSID = target.dataset.sid ?? '';
+    if (!sid || !targetSID || sid === targetSID) return;
+    const dragged = state.sessions.find((x) => x.id === sid);
+    const dropped = state.sessions.find((x) => x.id === targetSID);
+    if (!dragged || !dropped) return;
+    // cross-project: not supported yet (would need project_id on the wire).
+    if (readProjectId(dragged) !== readProjectId(dropped)) return;
+    reorderDroppedSession(sid, targetSID, above);
+  };
+
   li.addEventListener('dragstart', (e) => {
     const dt = e.dataTransfer;
     if (!dt) return;
     dt.effectAllowed = 'move';
     dt.setData('text/x-hive-session', s.id);
-    li.classList.add('dragging');
+    beginDrag(li, commit);
   });
-  li.addEventListener('dragend', () => {
-    li.classList.remove('dragging');
-    document
-      .querySelectorAll(
-        '.hv-session-row.drop-above, .hv-session-row.drop-below',
-      )
-      .forEach((el) => {
-        el.classList.remove('drop-above', 'drop-below');
-      });
-  });
+  li.addEventListener('dragend', endDrag);
   li.addEventListener('dragover', (e) => {
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-session')) return;
     e.preventDefault();
     dt.dropEffect = 'move';
     const r = li.getBoundingClientRect();
-    const above = e.clientY - r.top < r.height / 2;
-    li.classList.toggle('drop-above', above);
-    li.classList.toggle('drop-below', !above);
-  });
-  li.addEventListener('dragleave', () => {
-    li.classList.remove('drop-above', 'drop-below');
+    movePlaceholder(li, e.clientY - r.top < r.height / 2);
   });
   li.addEventListener('drop', (e) => {
     e.preventDefault();
-    const sid = e.dataTransfer?.getData('text/x-hive-session');
-    li.classList.remove('drop-above', 'drop-below');
-    if (!sid || sid === s.id) return;
-    const dragged = state.sessions.find((x) => x.id === sid);
-    if (!dragged) return;
-    const draggedPID = readProjectId(dragged);
-    const targetPID = readProjectId(s);
-    if (draggedPID !== targetPID) return; // cross-project: not supported yet
     const r = li.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
-    reorderDroppedSession(sid, s.id, above);
+    endDrag();
+    commit(li, above, e);
   });
 }
 
-// reorderDroppedSession converts a drop position ("above" or "below"
-// the target row) into a global Order argument for UpdateSession.
-//
-// Kept separate from lib/reorder.ts's reorderTarget on purpose: that one
-// answers "swap with the adjacent sibling" (⇧⌘↑/↓) and can name the
-// target's own .order directly, while a drop can land between any two
-// rows and needs the shift compensation below. Both rely on the same
-// invariant — .order IS the index into the daemon's r.order — so if you
-// change that assumption, change it in both.
-// The daemon's moveLocked treats the argument as a global index into
-// r.order; we pick the global Order of whichever neighbor sits at
-// the project-relative drop slot (after pretending the dragged
-// session is gone).
+// reorderDroppedSession hands the drop to lib/reorder.ts's dropTargetIndex
+// and forwards the result. The index math lives there, next to the keyboard
+// path's reorderTarget, because both rest on the same invariant — a session's
+// .order IS its index in the daemon's r.order — and because a pure function
+// is the only way to table-test the off-by-one this used to have.
 function reorderDroppedSession(
   draggedID: string,
   targetID: string,
   above: boolean,
 ) {
-  const target = state.sessions.find((s) => s.id === targetID);
-  if (!target) return;
-  const projID = target.projectId ?? target.project_id ?? '';
-  const projSessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id ?? '') === projID)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const targetIdx = projSessions.findIndex((s) => s.id === targetID);
-  if (targetIdx < 0) return;
-  let projIdx = above ? targetIdx : targetIdx + 1;
-  const pretend = projSessions.filter((s) => s.id !== draggedID);
-  if (pretend.length === 0) return;
-  if (projIdx > pretend.length) projIdx = pretend.length;
-
-  // Find the global index in r.order that we want the dragged session
-  // to land at. We approximate using global Order values: pretend[i]
-  // currently has some Order value, and moveLocked accepts a global
-  // index. Easiest: walk the global ordered list of all sessions and
-  // count to the slot we want.
-  const globalOrdered = [...state.sessions].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  );
-  let globalTargetIdx: number;
-  if (projIdx >= pretend.length) {
-    // Drop after the last neighbor: land just past it.
-    const last = pretend[pretend.length - 1];
-    globalTargetIdx = globalOrdered.findIndex((x) => x.id === last.id) + 1;
-  } else {
-    const neighbor = pretend[projIdx];
-    globalTargetIdx = globalOrdered.findIndex((x) => x.id === neighbor.id);
-  }
-  if (globalTargetIdx < 0) return;
-  // moveLocked is "remove from current pos, then insert at newOrder"
-  // — so if dragged is currently *before* the target index, the
-  // index shifts by 1 after removal. Compensate.
-  const draggedGlobalIdx = globalOrdered.findIndex((x) => x.id === draggedID);
-  if (draggedGlobalIdx >= 0 && draggedGlobalIdx < globalTargetIdx) {
-    globalTargetIdx -= 1;
-  }
-  UpdateSession(draggedID, '', '', globalTargetIdx).catch(
-    reportFailure('reorder'),
-  );
+  const order = dropTargetIndex(state.sessions, draggedID, targetID, above);
+  if (order === null) return;
+  UpdateSession(draggedID, '', '', order).catch(reportFailure('reorder'));
 }
 
 function beginRenameSession(sess: SessionInfo, nameEl: HTMLElement) {

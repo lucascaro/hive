@@ -1,0 +1,199 @@
+# Fix sidebar drag-and-drop ordering and drop placeholder
+
+- **Spec:** [docs/product-specs/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md](../../product-specs/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md)
+- **Issue:** —
+- **PR:** #315
+- **Branch:** quick-moon
+- **Status:** active
+
+## Summary
+
+Two independent sidebar drag defects. The session reorder math resolves the drop
+slot against the wrong list and lands the row one position too low; the drop
+affordance is a zero-height line that reserves no space, so the list reflows all
+at once on drop. Fix the math as a pure, unit-tested function and replace the
+line with a real placeholder that occupies the dragged element's box.
+
+## Research
+
+Authored via plan-first mode. Code touched:
+
+- `cmd/hivegui/frontend/src/app/sidebar.ts:569-613` — `reorderDroppedSession`.
+  `targetIdx`/`projIdx` are computed against `projSessions` (includes the
+  dragged row) and then used to index `pretend` (dragged row filtered out).
+  When the dragged row sits before the target, every `pretend` index is shifted
+  left by one, so the resolved neighbour is one row too far down.
+  Trace `[A,B,C,D]`, drag A above C: `pretend[2]` = D (should be C), global
+  index 3 → compensated to 2 → daemon splices `[B,C,A,D]`. A lands below C.
+- `cmd/hivegui/frontend/src/app/sidebar.ts:416-432` — `reorderDroppedProject`
+  indexes one consistent list and is **not** affected.
+- `internal/registry/registry.go:1040-1060` — `moveInOrder` is
+  delete-then-insert at a global index into `r.order`; `reindexLocked` keeps
+  `Order` equal to that index. Both frontend reorder paths depend on it.
+- `cmd/hivegui/frontend/src/lib/reorder.ts` — `reorderTarget` (keyboard
+  ⇧⌘↑/↓ path) already documents the same invariant and cross-references the
+  drag path. Natural home for the extracted drag math.
+- `cmd/hivegui/frontend/src/theme/components/session-row.css:155-169` and
+  `project-card.css:118-134` — `.dragging { opacity: 0.45 }` plus an
+  absolutely-positioned 2px `::after`; neither reserves layout space.
+- `cmd/hivegui/frontend/src/app/sidebar.ts:96-125` — `sidebarShape()` /
+  `domShape()` select `.hv-project-card, .hv-session-row`; a placeholder must
+  carry neither class or the in-place-update path mistakes it for a row.
+- `renderSidebar()` (`sidebar.ts:76`) clears `projectsUL.innerHTML`, so a poll
+  landing mid-drag wipes drag chrome. The placeholder module re-asserts state
+  on every `dragover` to stay self-healing.
+
+## Approach
+
+Split the two defects.
+
+**Ordering** — extract the index computation into a pure
+`dropTargetIndex(sessions, draggedID, targetID, above)` in `lib/reorder.ts`,
+with the slot derived from `pretend` instead of `projSessions`. Chosen over an
+in-place one-line patch in `sidebar.ts` because the function is untestable where
+it currently lives (module-private, calls `UpdateSession` directly), and this
+class of off-by-one is exactly what a table test catches. It also puts both
+order-index conversions in one file under the shared `.order === r.order index`
+invariant comment.
+
+**Placeholder** — one shared `lib/drag-placeholder.ts` used by both
+`wireSessionDrag` and `wireProjectDrag`: measure the dragged element, take it
+out of flow, insert a spacer of the same margin box at the drop slot. Shared
+rather than duplicated because the two wiring functions already mirror each
+other and the measure/hide/insert/cleanup mechanics are identical.
+
+Two mechanics the implementation must get right:
+
+1. Setting `display: none` on the drag source *inside* `dragstart` aborts the
+   drag (the drag image snapshot is taken after the handler returns). Defer the
+   hidden state by one tick with `setTimeout(…, 0)`.
+2. The spacer must reproduce the full margin box. Project cards carry
+   `margin: var(--space-1) var(--space-2) var(--space-2)`; adjacent-sibling
+   margin collapsing in the `<ul>` means a zero-margin spacer would not occupy
+   the same space. Copy the computed vertical margins onto the spacer alongside
+   the measured content height.
+
+### Files to change
+
+- `cmd/hivegui/frontend/src/lib/reorder.ts` — add `dropTargetIndex(...)`
+  returning the global index for `UpdateSession`, or `null` for a no-op.
+  Extend the header comment to cover the third caller.
+- `cmd/hivegui/frontend/src/app/sidebar.ts` — `reorderDroppedSession` reduces
+  to `dropTargetIndex(...)` + `UpdateSession`. `wireSessionDrag` /
+  `wireProjectDrag`: `dragstart` → `beginDrag`, `dragover` → `moveTo`,
+  `dragend`/`drop` → `endDrag`. The `.drop-above`/`.drop-below` class toggles
+  and both `querySelectorAll` sweeps collapse into `endDrag()`. Project drag
+  keeps its header-rect hit test and `dragleave` `contains()` guard.
+- `cmd/hivegui/frontend/src/theme/components/session-row.css` — drop the
+  `.drop-above/.drop-below::after` rules; `.dragging` → `display: none`.
+- `cmd/hivegui/frontend/src/theme/components/project-card.css` — same.
+- `cmd/hivegui/frontend/src/theme/components/sidebar.css` — add
+  `.hv-drop-placeholder` (dashed token-coloured outline, `--radius-md`,
+  `list-style: none`, `box-sizing: border-box`). Tokens only;
+  `scripts/ui-lint.sh` rejects colour literals. It is deliberately
+  hit-testable — see the decision log entry that reversed the original
+  `pointer-events: none`.
+
+### New files
+
+- `cmd/hivegui/frontend/src/lib/drag-placeholder.ts` — `beginDrag(el)` records
+  the element, its `getBoundingClientRect().height` and computed vertical
+  margins, and defers the hidden state one tick; `moveTo(target, above)`
+  lazily creates/sizes the spacer, re-asserts the hidden state and inserts it
+  before `target` or `target.nextSibling`; `endDrag()` removes the spacer,
+  unhides and clears state (idempotent).
+
+### Tests
+
+- `cmd/hivegui/frontend/test/unit/reorder.test.ts` (extend) — `dropTargetIndex`
+  table test: drag-down-above-target, drag-down-below-target, drag-up-above,
+  drag-up-below, drop onto self (`null`), drop at head, drop past the last row,
+  and the interleaved multi-project case. Each case asserts the
+  post-`moveInOrder` array, not the raw index — a bare index assertion just
+  re-encodes the bug.
+- `cmd/hivegui/frontend/test/dom/drag-placeholder.test.ts` (new) — `moveTo`
+  inserts `.hv-drop-placeholder` at the right sibling position carrying neither
+  row class; `endDrag` removes it and restores the element; a second `moveTo`
+  moves the single spacer rather than creating a second one.
+- `cmd/hivegui/frontend/test/e2e/ordering.spec.ts` (extend) — drag a session
+  onto the top half of another against the Wails mock and assert the row order
+  lands exactly at the drop point; must fail against pre-fix `main`. Also
+  capture `boundingBox().y` of the row below the drop target before and during
+  the drag and assert it is unchanged (vitest is CSS-blind; layout stability is
+  only meaningful in the browser).
+
+## Decision log
+
+- **2026-09-01** — Extract the drag index math into `lib/reorder.ts` rather than
+  patching in place. Why: the private function is untestable where it lives, and
+  the invariant it depends on is already documented next to `reorderTarget`.
+- **2026-09-01** — One placeholder module for both session rows and project
+  cards. Why: identical mechanics, and the user asked for the affordance in both
+  places.
+- **2026-09-01** — Placeholder replaces the 2px line rather than joining it, and
+  the dragged element leaves the flow. Why: only a net-zero height change keeps
+  surrounding content from shifting during the drag.
+
+## Progress
+
+- **2026-09-01** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
+- **2026-09-01** — Implemented, all checks green (794 unit/dom, 15 e2e, Go suite,
+  biome ci, tsc, ui-lint). The four new ordering assertions were confirmed to
+  fail against the pre-fix math. PR #315 opened; stage = REVIEW.
+- **2026-09-01** — Review iteration 1 returned three findings against the
+  placeholder half (drop target lost under the cursor, overclaimed mid-rebuild
+  self-healing, one-frame height jump at drag start). All three verified and
+  fixed on the branch; suite now 797 unit/dom + 246 e2e.
+- **2026-09-01** — Review iteration 2: APPROVE, no BLOCKING or IMPORTANT
+  findings, zero unresolved threads. Its three MINOR nits were cleared anyway
+  (spacer now copies all four margins, `dropTargetIndex` uses `readProjectId`,
+  this plan's Files-to-change no longer contradicts its own decision log).
+  Loop converged; stage = GATE.
+
+## Decision log (cont.)
+
+- **2026-09-01** — The placeholder is a real drop target, not decoration.
+  Review iter 1 caught that an "insert above" spacer is inserted where the
+  cursor already is: it pushes the target row down and the cursor ends up over
+  the spacer. With `pointer-events: none` the hit-test fell through to a
+  container with no `dragover` handler, so nothing called `preventDefault`, the
+  browser disallowed the drop, and releasing there silently no-opped. The
+  "below" branch still worked, which would have read as intermittent. The
+  spacer now handles its own `dragover`/`drop` and resolves its slot from the
+  rows it sits between. Rejected the alternative (container-level handlers on
+  `#projects` and each card body) as more listeners for the same result.
+- **2026-09-01** — Both drop paths read the payload out of the `DataTransfer`
+  rather than module state. A module-level "currently dragged id" was the first
+  shape; it broke `test/dom/minimize-project.test.ts`, which synthesises a drop
+  with `getData()` and no `dragstart` — and that test was right: `getData()` is
+  the canonical source during `drop`, available on the placeholder's drop too.
+- **2026-09-01** — The spacer goes in during `beginDrag`'s deferred tick, at
+  the dragged element's own position, in the same tick that hides it. Review
+  iter 1 caught that inserting it only on the first `dragover` left a window
+  where the list was one row shorter.
+
+## PR convergence ledger
+
+<Append-only. One line per /hs-review-loop iteration.>
+
+- **2026-09-01 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: d5dbc6d8b95e2678; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 770ed58.
+- **2026-09-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 639c3e8.
+
+## Open questions
+
+- Cross-project drags stay unsupported; the placeholder will render over a
+  foreign project's rows and snap back on drop. Acceptable, worth a follow-up.
+- If the deferred `display: none` still cancels the drag in WKWebView, fall back
+  to `visibility: hidden; height: 0` on the source. The e2e test catches it.
+- Resolved during implementation: the project card's `dragleave` handler was
+  removed outright rather than made spacer-safe. A single shared spacer follows
+  the cursor, so there is no stale per-card indicator left behind to clear, and
+  a `dragleave`-driven `endDrag()` would have torn down the whole drag session
+  on the way to the next card.
+- **Open.** Headless Chromium does not synthesise native HTML5 drag against
+  this app's page (no `dragstart`; it works on a bare page — `draggable` is
+  set, `mousedown` is not `preventDefault`ed, the row is not re-rendered
+  mid-gesture; cause not found). The e2e specs dispatch `DragEvent`s instead,
+  so drag *initiation* — the thing the deferred `display: none` depends on —
+  is unverified. Needs one manual drag in the built app. Fallback if it does
+  cancel: `visibility: hidden; height: 0` on the source.
