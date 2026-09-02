@@ -1,0 +1,4 @@
+[github]
+# One of: "opt-out" (create by default), "opt-in" (skip by default), "ask" (no default).
+# The feature pipeline skills honor this when prompting at Gate 1.
+create_issues = "opt-out"
