@@ -547,7 +547,25 @@ test.describe('Settings > Appearance', () => {
       'native-light',
       'terminal',
       'classic',
+      'dracula',
+      'nord',
+      'gruvbox-dark',
+      'tokyo-night',
+      'catppuccin-mocha',
+      'one-dark',
+      'neon',
+      'solarized-light',
+      'catppuccin-latte',
+      'github-light',
     ]);
+    // The community presets ship inside an <optgroup>; `.options` flattens
+    // those, so the list above proves order but not that the grouping
+    // rendered. Phase 6's "data-driven from PRESETS" requirement now covers
+    // the headings too.
+    const groups = await page
+      .locator('#settings-theme optgroup')
+      .evaluateAll((gs) => gs.map((g) => (g as HTMLOptGroupElement).label));
+    expect(groups).toEqual(['Hive', 'Native', 'Community']);
   });
 
   // A preset listed in PRESETS but with no :root[data-theme] block in
@@ -726,11 +744,17 @@ test.describe('Settings > Appearance', () => {
 
   // The gap this closes: with no --ansi-* tokens, xterm kept its Tango
   // defaults under every preset, and seven of those fail WCAG AA on a
-  // white ground (brightWhite at 1.16:1 — invisible). Parametrised over
-  // every light preset rather than hive-light alone: the rule is
-  // themes.md's "a preset on a light ground MUST re-value all sixteen",
-  // and the ratios are computed here rather than pinned as hexes, so a
-  // preset added to this list is checked by the rule, not by a fixture.
+  // white ground (brightWhite at 1.16:1 — invisible). The ratios are
+  // computed here rather than pinned as hexes, so a preset added to this
+  // list is checked by the rule, not by a fixture.
+  //
+  // The list is the FIRST-PARTY light presets, not every light preset:
+  // solarized-light / catppuccin-latte / github-light are community ports
+  // that keep their upstream values and carry --contrast-exempt in
+  // themes.css (spec 305), so holding them to 4.5:1 here would contradict
+  // the gate. They are still covered by the "every preset paints its own
+  // tokens and its own ANSI 16" test above — all sixteen slots, reaching
+  // xterm — which is the part that is not negotiable for any preset.
   for (const preset of ['hive-light', 'native-light'] as const) {
     test(`${preset} gives terminals a palette readable on its own ground`, async ({
       page,

@@ -97,7 +97,11 @@ const themeError = errorSlot('settings-overrides-error');
 const themeSelect = selectInput({
   id: 'settings-theme',
   ariaLabel: 'Theme',
-  options: PRESETS.map((p) => ({ value: p.id, label: p.label })),
+  options: PRESETS.map((p) => ({
+    value: p.id,
+    label: p.label,
+    group: p.group,
+  })),
   onChange: (value) => selectPreset(value as ThemeName),
 });
 

@@ -39,7 +39,9 @@
         dark = matchMedia('(prefers-color-scheme: dark)').matches;
       } catch (e) { /* keep the theme.ts default */ }
       try {
-        var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal'];
+        var KNOWN = ['classic', 'hive-dark', 'hive-light', 'native-dark', 'native-light', 'terminal',
+          'dracula', 'nord', 'gruvbox-dark', 'tokyo-night', 'catppuccin-mocha', 'one-dark', 'neon',
+          'solarized-light', 'catppuccin-latte', 'github-light'];
         var t = localStorage.getItem('hive.theme');
         // DEFAULT_THEME in theme.ts is 'system' — an absent or garbage
         // stored value resolves the same way an explicit 'system' does.

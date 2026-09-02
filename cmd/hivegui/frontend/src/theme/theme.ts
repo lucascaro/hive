@@ -9,30 +9,62 @@ export type ThemeName =
   | 'native-dark'
   | 'native-light'
   | 'terminal'
-  | 'system';
+  | 'system'
+  // Community ports (spec 305). Ordered as the picker shows them.
+  | 'dracula'
+  | 'nord'
+  | 'gruvbox-dark'
+  | 'tokyo-night'
+  | 'catppuccin-mocha'
+  | 'one-dark'
+  | 'neon'
+  | 'solarized-light'
+  | 'catppuccin-latte'
+  | 'github-light';
 export const THEME_KEY = 'hive.theme';
 // Phase 6: new installs follow the OS. Users who already set a preset keep
 // it — readTheme() only falls back when the stored value is absent or
 // garbage. index.html's pre-paint script hard-codes the same fallback;
 // keep the two in sync.
 export const DEFAULT_THEME: ThemeName = 'system';
+// The <optgroup> headings, in the order the picker shows them. Seventeen flat
+// entries is a scanning problem; three named buckets is not.
+export const GROUPS = ['Hive', 'Native', 'Community'] as const;
+export type Group = (typeof GROUPS)[number];
+
 export interface Preset {
   id: ThemeName;
   label: string;
+  group: Group;
 }
 
 // The picker renders from this list, so adding a preset is one line here
 // plus its block in themes.css — plus the duplicated list in index.html's
 // pre-paint script, which cannot import this module and is checked against
 // this one by test/e2e/theme.spec.ts. Order is the order shown.
+//
+// "Community" is the ported-from-another-editor section. Those presets keep
+// their upstream values rather than being re-fitted to this app's contrast
+// bar, and carry `--contrast-exempt` in themes.css to say so; see
+// docs/design-docs/ui/themes.md > Attribution.
 export const PRESETS: readonly Preset[] = [
-  { id: 'system', label: 'System' },
-  { id: 'hive-dark', label: 'Hive Dark' },
-  { id: 'hive-light', label: 'Hive Light' },
-  { id: 'native-dark', label: 'Native Dark' },
-  { id: 'native-light', label: 'Native Light' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'classic', label: 'Classic' },
+  { id: 'system', label: 'System', group: 'Hive' },
+  { id: 'hive-dark', label: 'Hive Dark', group: 'Hive' },
+  { id: 'hive-light', label: 'Hive Light', group: 'Hive' },
+  { id: 'native-dark', label: 'Native Dark', group: 'Native' },
+  { id: 'native-light', label: 'Native Light', group: 'Native' },
+  { id: 'terminal', label: 'Terminal', group: 'Native' },
+  { id: 'classic', label: 'Classic', group: 'Native' },
+  { id: 'dracula', label: 'Dracula', group: 'Community' },
+  { id: 'nord', label: 'Nord', group: 'Community' },
+  { id: 'gruvbox-dark', label: 'Gruvbox Dark', group: 'Community' },
+  { id: 'tokyo-night', label: 'Tokyo Night', group: 'Community' },
+  { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', group: 'Community' },
+  { id: 'one-dark', label: 'One Dark', group: 'Community' },
+  { id: 'neon', label: 'Neon', group: 'Community' },
+  { id: 'solarized-light', label: 'Solarized Light', group: 'Community' },
+  { id: 'catppuccin-latte', label: 'Catppuccin Latte', group: 'Community' },
+  { id: 'github-light', label: 'GitHub Light', group: 'Community' },
 ];
 
 // Everything resolveTheme can stamp on <html>. 'system' is a selection,

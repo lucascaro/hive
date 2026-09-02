@@ -162,3 +162,253 @@
   --ansi-8: #6f6f6f;  --ansi-9: #d98d8d;  --ansi-10: #b4b4b4; --ansi-11: #f0d094;
   --ansi-12: #a0a0a0; --ansi-13: #adadad; --ansi-14: #c2c2c2; --ansi-15: #f2f2f2;
 }
+
+/* ---------------------------------------------------------------------------
+   Community presets — the palettes people arrive with from other editors.
+   Ported at their published values: hues, ANSI 16 and chrome greys are the
+   upstream ones, not re-derived. That is a deliberate choice and it has a
+   cost — several of these do not clear the WCAG AA bar the first-party six
+   are held to (Nord's #bf616a on its own selection is 1.80:1, Catppuccin
+   Mocha's overlay0 is 1.87:1 against a raised card). They are opt-in, and a
+   user who picks "Dracula" wants Dracula, so scripts/ui-contrast.mjs exempts
+   this section by id and reports each one as skipped rather than pretending
+   it passed. Anything painted by DEFAULT — the six above — stays gated.
+
+   Everything else follows the file-header rule: every block re-values every
+   colour, font, radius and shadow token, and inherits the type/space/motion
+   scales from tokens.css. --state-starting/--state-exited are omitted on
+   purpose (tokens.css declares them as var(--fg-subtle), which re-resolves
+   against each preset's own value). See docs/design-docs/ui/themes.md >
+   Attribution for licences.
+   --------------------------------------------------------------------------- */
+
+/* Dracula — MIT, Zeno Rocha. --bg is the darker `background` ports use for
+   chrome, --surface the canonical #282a36; purple is the accent because pink
+   is spoken for by --state-error. ANSI 16 is Dracula's own published set. */
+:root[data-theme="dracula"] {
+  --contrast-exempt: 1;
+  --bg: #21222c; --surface: #282a36; --surface-raised: #2f3140; --border: #44475a;
+  --fg: #f8f8f2; --fg-muted: #c8cee0; --fg-subtle: #6272a4;
+  --accent: #bd93f9; --on-accent: #21222c; --sel: #44475a;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #343746; --btn-border: #4a4d5f;
+  --state-running: #50fa7b; --state-attention: #ffb86c; --state-error: #ff5555;
+  --state-info: #8be9fd;
+  --term-bg: #1e1f29; --term-fg: #f8f8f2;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #21222c; --ansi-1: #ff5555; --ansi-2: #50fa7b; --ansi-3: #f1fa8c;
+  --ansi-4: #bd93f9; --ansi-5: #ff79c6; --ansi-6: #8be9fd; --ansi-7: #f8f8f2;
+  --ansi-8: #6272a4; --ansi-9: #ff6e6e; --ansi-10: #69ff94; --ansi-11: #ffffa5;
+  --ansi-12: #d6acff; --ansi-13: #ff92df; --ansi-14: #a4ffff; --ansi-15: #ffffff;
+}
+
+/* Nord — MIT, Arctic Ice Studio. Polar Night for the grounds (nord0-3), Snow
+   Storm for text, Frost for the accent, Aurora for the states. Nord's own
+   ANSI maps the bright row to the same eight hues as the normal row; that is
+   upstream's choice, kept. */
+:root[data-theme="nord"] {
+  --contrast-exempt: 1;
+  --bg: #2e3440; --surface: #3b4252; --surface-raised: #434c5e; --border: #4c566a;
+  --fg: #eceff4; --fg-muted: #d8dee9; --fg-subtle: #7b88a1;
+  --accent: #88c0d0; --on-accent: #2e3440; --sel: #4c566a;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #434c5e; --btn-border: #5b6879;
+  --state-running: #a3be8c; --state-attention: #ebcb8b; --state-error: #bf616a;
+  --state-info: #81a1c1;
+  --term-bg: #2e3440; --term-fg: #d8dee9;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #3b4252; --ansi-1: #bf616a; --ansi-2: #a3be8c; --ansi-3: #ebcb8b;
+  --ansi-4: #81a1c1; --ansi-5: #b48ead; --ansi-6: #88c0d0; --ansi-7: #e5e9f0;
+  --ansi-8: #4c566a; --ansi-9: #bf616a; --ansi-10: #a3be8c; --ansi-11: #ebcb8b;
+  --ansi-12: #81a1c1; --ansi-13: #b48ead; --ansi-14: #8fbcbb; --ansi-15: #eceff4;
+}
+
+/* Gruvbox Dark — MIT, Pavel Pertsev. bg0/bg0_s/bg1 for the grounds, the
+   "bright" Aurora-equivalents for the states, and gruvbox's own sixteen. */
+:root[data-theme="gruvbox-dark"] {
+  --contrast-exempt: 1;
+  --bg: #282828; --surface: #32302f; --surface-raised: #3c3836; --border: #504945;
+  --fg: #ebdbb2; --fg-muted: #d5c4a1; --fg-subtle: #928374;
+  --accent: #fabd2f; --on-accent: #282828; --sel: #504945;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #3c3836; --btn-border: #665c54;
+  --state-running: #b8bb26; --state-attention: #fe8019; --state-error: #fb4934;
+  --state-info: #83a598;
+  --term-bg: #282828; --term-fg: #ebdbb2;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #282828; --ansi-1: #cc241d; --ansi-2: #98971a; --ansi-3: #d79921;
+  --ansi-4: #458588; --ansi-5: #b16286; --ansi-6: #689d6a; --ansi-7: #a89984;
+  --ansi-8: #928374; --ansi-9: #fb4934; --ansi-10: #b8bb26; --ansi-11: #fabd2f;
+  --ansi-12: #83a598; --ansi-13: #d3869b; --ansi-14: #8ec07c; --ansi-15: #ebdbb2;
+}
+
+/* Tokyo Night — MIT, Enkia. The `storm`-adjacent grounds (#1a1b26/#24283b)
+   with the theme's blue selection, and its published ANSI including the
+   distinct bright row. */
+:root[data-theme="tokyo-night"] {
+  --contrast-exempt: 1;
+  --bg: #1a1b26; --surface: #24283b; --surface-raised: #2a2e42; --border: #3b4261;
+  --fg: #c0caf5; --fg-muted: #a9b1d6; --fg-subtle: #737aa2;
+  --accent: #7aa2f7; --on-accent: #1a1b26; --sel: #364a82;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #2f334d; --btn-border: #414868;
+  --state-running: #9ece6a; --state-attention: #e0af68; --state-error: #f7768e;
+  --state-info: #7dcfff;
+  --term-bg: #1a1b26; --term-fg: #c0caf5;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #15161e; --ansi-1: #f7768e; --ansi-2: #9ece6a; --ansi-3: #e0af68;
+  --ansi-4: #7aa2f7; --ansi-5: #bb9af7; --ansi-6: #7dcfff; --ansi-7: #a9b1d6;
+  --ansi-8: #414868; --ansi-9: #ff899d; --ansi-10: #9fe044; --ansi-11: #faba4a;
+  --ansi-12: #8db0ff; --ansi-13: #c7a9ff; --ansi-14: #a4daff; --ansi-15: #c0caf5;
+}
+
+/* Catppuccin Mocha — MIT, Catppuccin. base/surface0/surface1 for the grounds,
+   text/subtext1/overlay1 for the type ramp, mauve as the accent. */
+:root[data-theme="catppuccin-mocha"] {
+  --contrast-exempt: 1;
+  --bg: #1e1e2e; --surface: #313244; --surface-raised: #3a3c4e; --border: #585b70;
+  --fg: #cdd6f4; --fg-muted: #bac2de; --fg-subtle: #7f849c;
+  --accent: #cba6f7; --on-accent: #1e1e2e; --sel: #45475a;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #45475a; --btn-border: #6c7086;
+  --state-running: #a6e3a1; --state-attention: #f9e2af; --state-error: #f38ba8;
+  --state-info: #89b4fa;
+  --term-bg: #1e1e2e; --term-fg: #cdd6f4;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #45475a; --ansi-1: #f38ba8; --ansi-2: #a6e3a1; --ansi-3: #f9e2af;
+  --ansi-4: #89b4fa; --ansi-5: #f5c2e7; --ansi-6: #94e2d5; --ansi-7: #bac2de;
+  --ansi-8: #585b70; --ansi-9: #f38ba8; --ansi-10: #a6e3a1; --ansi-11: #f9e2af;
+  --ansi-12: #89b4fa; --ansi-13: #f5c2e7; --ansi-14: #94e2d5; --ansi-15: #a6adc8;
+}
+
+/* One Dark — MIT, via Atom's One Dark syntax theme. --fg is lifted to #d7dae0
+   (Atom's UI text) rather than the syntax foreground #abb2bf, which is the
+   muted step here — the same split Atom itself makes between chrome and code. */
+:root[data-theme="one-dark"] {
+  --contrast-exempt: 1;
+  --bg: #21252b; --surface: #282c34; --surface-raised: #2f343d; --border: #3e4451;
+  --fg: #d7dae0; --fg-muted: #abb2bf; --fg-subtle: #7f8796;
+  --accent: #61afef; --on-accent: #21252b; --sel: #3e4451;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #333842; --btn-border: #4b5263;
+  --state-running: #98c379; --state-attention: #e5c07b; --state-error: #e06c75;
+  --state-info: #56b6c2;
+  --term-bg: #282c34; --term-fg: #abb2bf;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #282c34; --ansi-1: #e06c75; --ansi-2: #98c379; --ansi-3: #e5c07b;
+  --ansi-4: #61afef; --ansi-5: #c678dd; --ansi-6: #56b6c2; --ansi-7: #abb2bf;
+  --ansi-8: #5c6370; --ansi-9: #e06c75; --ansi-10: #98c379; --ansi-11: #e5c07b;
+  --ansi-12: #61afef; --ansi-13: #c678dd; --ansi-14: #56b6c2; --ansi-15: #ffffff;
+}
+
+/* Neon — the classic Monokai palette (Wimer Hazenberg's 2006 TextMate theme).
+   Named `neon` on purpose: "Monokai" is an active Monokai Pro trademark and
+   "Sublime" is Sublime HQ's, while the colours themselves are reproduced in
+   every editor. Purple is the accent because green, orange, pink and cyan are
+   all spoken for by the state family. */
+:root[data-theme="neon"] {
+  --contrast-exempt: 1;
+  --bg: #1e1f1c; --surface: #272822; --surface-raised: #2f302a; --border: #49483e;
+  --fg: #f8f8f2; --fg-muted: #cfd0c2; --fg-subtle: #90907e;
+  --accent: #ae81ff; --on-accent: #1e1f1c; --sel: #49483e;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #34352c; --btn-border: #5a5b4c;
+  --state-running: #a6e22e; --state-attention: #fd971f; --state-error: #f92672;
+  --state-info: #66d9ef;
+  --term-bg: #272822; --term-fg: #f8f8f2;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #272822; --ansi-1: #f92672; --ansi-2: #a6e22e; --ansi-3: #e6db74;
+  --ansi-4: #66d9ef; --ansi-5: #ae81ff; --ansi-6: #a1efe4; --ansi-7: #f8f8f2;
+  --ansi-8: #75715e; --ansi-9: #f92672; --ansi-10: #a6e22e; --ansi-11: #e6db74;
+  --ansi-12: #66d9ef; --ansi-13: #ae81ff; --ansi-14: #a1efe4; --ansi-15: #f9f8f5;
+}
+
+/* Solarized Light — MIT, Ethan Schoonover. base3/base2 grounds, base01/base00
+   type, and the accent eight. The bright ANSI row is Solarized's greys by
+   design, which is what makes it the palette that departs furthest from the
+   AA bar on its own #fdf6e3 ground — upstream's intent, kept. */
+:root[data-theme="solarized-light"] {
+  --contrast-exempt: 1;
+  --bg: #fdf6e3; --surface: #eee8d5; --surface-raised: #fdf6e3; --border: #ddd6c1;
+  --fg: #586e75; --fg-muted: #657b83; --fg-subtle: #93a1a1;
+  --accent: #268bd2; --on-accent: #fdf6e3; --sel: #e3ddca;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #fdf6e3; --btn-border: #c9c2ae;
+  --state-running: #859900; --state-attention: #b58900; --state-error: #dc322f;
+  --state-info: #268bd2;
+  --term-bg: #fdf6e3; --term-fg: #586e75;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
+  --ansi-0: #073642; --ansi-1: #dc322f; --ansi-2: #859900; --ansi-3: #b58900;
+  --ansi-4: #268bd2; --ansi-5: #d33682; --ansi-6: #2aa198; --ansi-7: #657b83;
+  --ansi-8: #002b36; --ansi-9: #cb4b16; --ansi-10: #586e75; --ansi-11: #657b83;
+  --ansi-12: #839496; --ansi-13: #6c71c4; --ansi-14: #93a1a1; --ansi-15: #073642;
+}
+
+/* Catppuccin Latte — MIT, Catppuccin. Mantle/base/white for the grounds so a
+   row card genuinely lifts off the panel, text/subtext0/overlay1 for type. */
+:root[data-theme="catppuccin-latte"] {
+  --contrast-exempt: 1;
+  --bg: #e6e9ef; --surface: #eff1f5; --surface-raised: #ffffff; --border: #ccd0da;
+  --fg: #4c4f69; --fg-muted: #5c5f77; --fg-subtle: #8c8fa1;
+  --accent: #8839ef; --on-accent: #ffffff; --sel: #dce0e8;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #ffffff; --btn-border: #bcc0cc;
+  --state-running: #40a02b; --state-attention: #df8e1d; --state-error: #d20f39;
+  --state-info: #1e66f5;
+  --term-bg: #eff1f5; --term-fg: #4c4f69;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
+  --ansi-0: #5c5f77; --ansi-1: #d20f39; --ansi-2: #40a02b; --ansi-3: #df8e1d;
+  --ansi-4: #1e66f5; --ansi-5: #ea76cb; --ansi-6: #179299; --ansi-7: #acb0be;
+  --ansi-8: #6c6f85; --ansi-9: #de293e; --ansi-10: #49af3d; --ansi-11: #eea16f;
+  --ansi-12: #456eff; --ansi-13: #fe85d8; --ansi-14: #2d9fa8; --ansi-15: #bcc0cc;
+}
+
+/* GitHub Light — MIT, GitHub Primer. Primer's canvas/default+subtle grounds,
+   fg.default/fg.muted/fg.subtle type ramp, accent.emphasis blue, and Primer's
+   own terminal ANSI. */
+:root[data-theme="github-light"] {
+  --contrast-exempt: 1;
+  --bg: #ffffff; --surface: #f6f8fa; --surface-raised: #ffffff; --border: #d1d9e0;
+  --fg: #1f2328; --fg-muted: #59636e; --fg-subtle: #818b98;
+  --accent: #0969da; --on-accent: #ffffff; --sel: #dbeeff;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #f6f8fa; --btn-border: #d1d9e0;
+  --state-running: #1a7f37; --state-attention: #9a6700; --state-error: #cf222e;
+  --state-info: #0969da;
+  --term-bg: #ffffff; --term-fg: #1f2328;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(20, 20, 40, 0.15);
+  --ansi-0: #1f2328; --ansi-1: #cf222e; --ansi-2: #116329; --ansi-3: #4d2d00;
+  --ansi-4: #0969da; --ansi-5: #8250df; --ansi-6: #1b7c83; --ansi-7: #6e7781;
+  --ansi-8: #57606a; --ansi-9: #a40e26; --ansi-10: #1a7f37; --ansi-11: #633c01;
+  --ansi-12: #218bff; --ansi-13: #a475f9; --ansi-14: #3192aa; --ansi-15: #8c959f;
+}

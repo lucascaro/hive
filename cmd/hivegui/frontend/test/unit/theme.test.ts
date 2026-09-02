@@ -3,6 +3,7 @@ import {
   resolveTheme,
   DEFAULT_THEME,
   PRESETS,
+  GROUPS,
   OVERRIDES_KEY,
   sanitizeOverrides,
   readOverrides,
@@ -44,9 +45,31 @@ describe('PRESETS', () => {
       'native-light',
       'terminal',
       'classic',
+      'dracula',
+      'nord',
+      'gruvbox-dark',
+      'tokyo-night',
+      'catppuccin-mocha',
+      'one-dark',
+      'neon',
+      'solarized-light',
+      'catppuccin-latte',
+      'github-light',
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(PRESETS.every((p) => p.label.length > 0)).toBe(true);
+  });
+
+  // selectInput buckets by consecutive runs, so a preset carrying a group
+  // that isn't in GROUPS would render under a heading nothing else uses, and
+  // one that breaks the run order would split its section in two. Neither is
+  // visible to the other tests, which only ever read option values.
+  it('groups every preset under a heading in GROUPS, in GROUPS order', () => {
+    expect(PRESETS.every((p) => GROUPS.includes(p.group))).toBe(true);
+    const runs = PRESETS.map((p) => p.group).filter(
+      (g, i, a) => i === 0 || a[i - 1] !== g,
+    );
+    expect(runs).toEqual([...GROUPS]);
   });
 
   it('every non-system preset resolves to itself', () => {

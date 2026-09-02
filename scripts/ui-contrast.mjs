@@ -120,6 +120,23 @@ if (!presets.length) {
   process.exit(1);
 }
 
+// Presets that MUST be checked, whatever the CSS says. The community presets
+// (spec 305) carry `--contrast-exempt: 1` because they are ported at their
+// published values and several do not clear AA — they are opt-in, and a user
+// who picks "Dracula" wants Dracula. That opt-out is a loaded gun pointed at
+// this gate, so the six themes a user can land on WITHOUT opting in are named
+// here and the marker is refused on them. `system` resolves to hive-dark or
+// hive-light, so those two are the real defaults; the rest ship in the picker
+// above the community section.
+const NEVER_EXEMPT = new Set([
+  'hive-dark',
+  'hive-light',
+  'native-dark',
+  'native-light',
+  'terminal',
+  'classic',
+]);
+
 let failed = 0;
 const line = (ok, name, what, fg, bg, r, min) => {
   if (!ok) failed++;
@@ -131,8 +148,25 @@ const line = (ok, name, what, fg, bg, r, min) => {
   }
 };
 
+let exempt = 0;
 for (const p of presets) {
   const decls = { ...base, ...p.decls };
+  // Read from p.decls, not the merged view: an exemption has to be declared by
+  // the preset itself. Merging base first would let one stray declaration in
+  // tokens.css switch the whole gate off for every preset at once.
+  if (p.decls['--contrast-exempt']) {
+    if (NEVER_EXEMPT.has(p.name)) {
+      console.log(
+        `FAIL  ${p.name.padEnd(13)} declares --contrast-exempt; ` +
+          'a default preset may not opt out of the contrast gate',
+      );
+      failed++;
+      continue;
+    }
+    exempt++;
+    console.log(`skip  ${p.name.padEnd(13)} opted out (--contrast-exempt)`);
+    continue;
+  }
   for (const [fgName, bgName, min] of PAIRS) {
     const fg = hex(decls[fgName], decls);
     const bg = hex(decls[bgName], decls);
@@ -159,5 +193,7 @@ for (const p of presets) {
     line(ratio(c, termBg) >= ANSI_MIN, p.name, `--ansi-${i} on --term-bg`, c, termBg, ratio(c, termBg), ANSI_MIN);
   }
 }
-console.log(`ui-contrast: ${presets.length} preset(s), ${failed} failure(s)`);
+console.log(
+  `ui-contrast: ${presets.length} preset(s), ${exempt} opted out, ${failed} failure(s)`,
+);
 process.exit(failed ? 1 : 0);

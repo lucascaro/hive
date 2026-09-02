@@ -46,6 +46,43 @@ describe('field primitives', () => {
     expect(onChange).toHaveBeenCalledWith('a');
   });
 
+  // The theme picker (spec 305) is the only grouped caller; every other
+  // select passes ungrouped options and must keep rendering flat.
+  it('buckets grouped options into optgroups and leaves the rest flat', () => {
+    const s = selectInput({
+      options: [
+        { value: 'a', label: 'A', group: 'One' },
+        { value: 'b', label: 'B', group: 'One' },
+        { value: 'c', label: 'C', group: 'Two' },
+        { value: 'd', label: 'D' },
+      ],
+    });
+    const groups = [...s.querySelectorAll('optgroup')];
+    expect(groups.map((g) => g.label)).toEqual(['One', 'Two']);
+    expect(
+      [...groups[0].children].map((o) => (o as HTMLOptionElement).value),
+    ).toEqual(['a', 'b']);
+    // Ungrouped options stay direct children of the <select>...
+    expect([...s.children].map((n) => n.nodeName)).toEqual([
+      'OPTGROUP',
+      'OPTGROUP',
+      'OPTION',
+    ]);
+    // ...and .options still sees every one of them, in source order, which is
+    // what selectOption() and the e2e preset guard read.
+    expect([...s.options].map((o) => o.value)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('renders no optgroup when no option names a group', () => {
+    const s = selectInput({
+      options: [
+        { value: 'a', label: 'A' },
+        { value: 'b', label: 'B' },
+      ],
+    });
+    expect(s.querySelectorAll('optgroup')).toHaveLength(0);
+  });
+
   it('wraps the native colour picker in a swatch that mirrors the value', () => {
     const { el, input } = colorInput({ value: '#112233', ariaLabel: 'Colour' });
     expect(input.type).toBe('color');
