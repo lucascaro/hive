@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md](../../product-specs/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md)
 - **Issue:** —
+- **PR:** #315
+- **Branch:** quick-moon
 - **Status:** active
 
 ## Summary
@@ -133,6 +135,9 @@ Two mechanics the implementation must get right:
 ## Progress
 
 - **2026-09-01** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
+- **2026-09-01** — Implemented, all checks green (794 unit/dom, 15 e2e, Go suite,
+  biome ci, tsc, ui-lint). The four new ordering assertions were confirmed to
+  fail against the pre-fix math. PR #315 opened; stage = REVIEW.
 
 ## Open questions
 
@@ -140,6 +145,15 @@ Two mechanics the implementation must get right:
   foreign project's rows and snap back on drop. Acceptable, worth a follow-up.
 - If the deferred `display: none` still cancels the drag in WKWebView, fall back
   to `visibility: hidden; height: 0` on the source. The e2e test catches it.
-- The spacer is `pointer-events: none`, which should prevent a spurious
-  `dragleave` on the project card when the cursor crosses it — verify in the
-  browser, not by reasoning.
+- Resolved during implementation: the project card's `dragleave` handler was
+  removed outright rather than made spacer-safe. A single shared spacer follows
+  the cursor, so there is no stale per-card indicator left behind to clear, and
+  a `dragleave`-driven `endDrag()` would have torn down the whole drag session
+  on the way to the next card.
+- **Open.** Headless Chromium does not synthesise native HTML5 drag against
+  this app's page (no `dragstart`; it works on a bare page — `draggable` is
+  set, `mousedown` is not `preventDefault`ed, the row is not re-rendered
+  mid-gesture; cause not found). The e2e specs dispatch `DragEvent`s instead,
+  so drag *initiation* — the thing the deferred `display: none` depends on —
+  is unverified. Needs one manual drag in the built app. Fallback if it does
+  cancel: `visibility: hidden; height: 0` on the source.
