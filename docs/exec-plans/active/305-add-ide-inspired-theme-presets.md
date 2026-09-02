@@ -191,6 +191,11 @@ Most coverage is already data-driven off the rendered picker and comes free.
   language boundary with nothing syncing it. Accepted residual risk: a wrong exemption is a
   reviewable one-line diff that prints a `skip` line on every later run, and themes.md's
   "Adding a preset" says a first-party preset must pass the gate.
+- **2026-09-02** — (review iter 5) Correct the "single worst pair" claim. Nord's
+  `--state-error` on `--sel` at 1.80:1 is the worst of the eleven `--state-error`/`--sel`
+  failures, not the worst pair overall — Catppuccin Latte's `--ansi-15` `#bcc0cc` on its own
+  near-white `--term-bg` is 1.61:1. The disproving line was in the very output the iter-4
+  claim was written from. Both statements now say which superlative they mean.
 - **2026-09-02** — (review iter 4) State the accessibility cost as a measured, reproducible
   count instead of hand-picked examples. Why: both ratios cited in comments were wrong —
   Catppuccin Mocha's `overlay0` is 2.22:1 on a raised card, not 1.87:1 (that is against
@@ -264,6 +269,8 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-01 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 315e13ad…; threads_open: 0; action: fix 1 IMPORTANT locally (baseline loop silently expected 48 uncommitted PNGs); iter-2 fixes all re-verified by mutation; head_sha: 2da6cbb.
 
 - **2026-09-02 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b94731df…; threads_open: 0; action: fix 2 IMPORTANT locally (both were invented ratios in comments); iter-3 fix re-verified by mutation + a no-write HIVE_SNAPSHOT run; head_sha: b122096.
+
+- **2026-09-02 iter 5** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 896cdcc7…; threads_open: 0; action: max iterations reached; 1 IMPORTANT (worst-pair claim off) fixed post-loop WITHOUT a sixth review; head_sha: bac7bf3.
 
 ## Open questions
 

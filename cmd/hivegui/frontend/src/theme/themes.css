@@ -170,11 +170,13 @@
    cost, and here is its size rather than an impression of it: with the
    exemption disabled these twelve fail 84 gated pairs between them. Solarized
    Light alone accounts for 25 and Catppuccin Latte for 21 (both are light
-   grounds, where the ANSI 16 are checked too); the single worst is Nord's
-   --state-error #bf616a on its own --sel, at 1.80:1.
+   grounds, where the ANSI 16 are checked too). The worst pair of all is
+   Catppuccin Latte's --ansi-15 #bcc0cc on its own --term-bg, at 1.61:1 —
+   upstream's lightest grey on a near-white terminal.
+
    Eleven of the twelve fail --state-error on --sel specifically: an upstream
    syntax red on a selection fill is the pair a syntax palette was never
-   designed for. Reproduce the count by flipping the `--contrast-exempt` test
+   designed for. Nord's #bf616a is the worst of those, at 1.80:1. Reproduce the count by flipping the `--contrast-exempt` test
    in scripts/ui-contrast.mjs to `false` and re-running the gate.
 
    They are opt-in, and a user who picks "Dracula" wants Dracula, so the gate
