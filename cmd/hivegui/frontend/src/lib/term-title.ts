@@ -1,9 +1,10 @@
 // Shared presentation rule for the OSC-set terminal window title.
 //
 // Two surfaces render this string — the grid tile header
-// (app/session-term.ts) and the sidebar row (app/sidebar.ts) — and they
-// must agree on when there is nothing worth showing, or the same session
-// reads as "busy" in one place and idle in the other.
+// (app/session-term.ts) and the sidebar row
+// (components/SessionRow.tsx) — and they must agree on when there is
+// nothing worth showing, or the same session reads as "busy" in one
+// place and idle in the other.
 
 /**
  * displayTitle returns the window title to show for a session, or '' when

@@ -47,8 +47,11 @@ import {
 } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
-import { initSidebar } from './app/sidebar.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { Sidebar } from './components/Sidebar.js';
+import { mustEl, pageEl } from './app/el.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import {
   initUndoClose,
@@ -240,17 +243,29 @@ initWorktrees({
     openLauncher(projectId, { worktreePath, continueConversation }),
 });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
-initSidebar({
-  switchTo,
-  switchToProject,
-  minimizeProject,
-  restoreProject,
-  minimizeSession,
-  restoreSession,
-  confirmAndDeleteProject,
-  renderEmptyState,
-  refocusActiveTerm,
-});
+// ---------- React islands ----------
+//
+// One root per migrated region while the rewrite is in flight; Phase 6
+// unmounts them and collapses the sidebar, chrome, modals and grid into
+// a single root. The handles are kept so that phase has something to
+// unmount — see docs/exec-plans/active/react-ui-rewrite.md.
+const reactRoots: Root[] = [];
+
+const sidebarRoot = createRoot(mustEl('projects'));
+sidebarRoot.render(
+  createElement(Sidebar, {
+    switchTo,
+    switchToProject,
+    minimizeProject,
+    restoreProject,
+    minimizeSession,
+    restoreSession,
+    confirmAndDeleteProject,
+    refocusActiveTerm,
+    trayEl: pageEl('minimized-projects'),
+  }),
+);
+reactRoots.push(sidebarRoot);
 initBanners();
 initUndoClose();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
@@ -267,6 +282,7 @@ initKeyboard({
 wireDaemonEvents({
   switchTo,
   renderMinimizedTray,
+  renderEmptyState,
   renderGrid,
   enforceViewFloor,
   updateAppTitle,

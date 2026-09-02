@@ -49,6 +49,7 @@
     "src/lib/**/*",
     "src/app/**/*",
     "src/store/**/*",
+    "src/components/**/*",
     "src/bridge.ts",
     "src/globals.d.ts",
     "src/main.ts",

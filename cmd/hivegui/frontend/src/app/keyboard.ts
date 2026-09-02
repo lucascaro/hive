@@ -64,10 +64,10 @@ import {
   minimizeSession,
   minimizeProject,
   isSessionHidden,
+  renderEmptyState,
 } from './view.js';
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
-import { updateSidebarSelection } from './sidebar.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
 import { reorderTarget } from '../lib/reorder.js';
@@ -497,7 +497,7 @@ export function jumpToAttention() {
     // would pulse while ⌘B insists nothing needs attention.
     if (state.activeId && state.attention.has(state.activeId)) {
       clearAttention(state.activeId);
-      updateSidebarSelection();
+      renderEmptyState();
     }
     flashStatus('no sessions need attention');
     return;

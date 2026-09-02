@@ -10,7 +10,6 @@ import { state, type SessionInfo, type TermTile } from './state.js';
 import * as store from '../store/store.js';
 import { termsHost, setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
-import { updateSidebarSelection, renderSidebar } from './sidebar.js';
 import { openLauncher } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
 import {
@@ -102,7 +101,7 @@ export function switchTo(id: string | null) {
   fallBackToSingleIfActiveHidden();
   if (state.view === 'single') showSingle(id);
   else renderGrid();
-  updateSidebarSelection();
+  renderEmptyState();
   setStatus(info ? (info.name ?? '') : '');
   // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
   // the hint is recomputed here too — a "focus / move" hint on a single
@@ -173,7 +172,7 @@ export function switchToProject(pid: string) {
     store.setActiveId(null);
     if (state.view === 'single') showSingle(null);
     else renderGrid();
-    updateSidebarSelection();
+    renderEmptyState();
   }
 }
 
@@ -409,14 +408,14 @@ export function gridSpatialMove(dCol: number, dRow: number) {
   if (idx < 0) {
     deps.setActive(sessions[0].id);
     renderGrid();
-    updateSidebarSelection();
+    renderEmptyState();
     return;
   }
   const target = computeSpatialMove(gridLayout, idx, dCol, dRow);
   if (target == null) return;
   deps.setActive(sessions[target].id);
   renderGrid();
-  updateSidebarSelection();
+  renderEmptyState();
   setStatus(sessions[target].name ?? '');
 }
 
@@ -463,7 +462,7 @@ export function shiftActiveProject(delta: number) {
   // Same guard as switchToProject: ⌘[ / ⌘] can land on a project whose
   // sessions the grid filters out.
   fallBackToSingleIfActiveHidden();
-  updateSidebarSelection();
+  renderEmptyState();
   setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
@@ -533,9 +532,6 @@ export function minimizeSession(id: string | null) {
     rebaselineGridReplayCols();
   }
   renderMinimizedTray();
-  // The sidebar row carries the same toggle, so it has to learn the
-  // new state — renderMinimizedTray only rebuilds the chip row.
-  renderSidebar();
   enforceViewFloor();
 }
 
@@ -560,7 +556,6 @@ export function restoreSession(id: string | null) {
   const pid = readProjectId(s);
   if (pid && state.minimizedProjects.has(pid)) restoreProject(pid);
   renderMinimizedTray();
-  renderSidebar();
   switchTo(id);
   if (state.view !== 'single') {
     rebaselineGridReplayCols();
@@ -587,7 +582,7 @@ export function minimizeProject(id: string | null) {
     renderGrid();
     rebaselineGridReplayCols();
   }
-  renderSidebar();
+  renderEmptyState();
   enforceViewFloor();
 }
 
@@ -597,7 +592,7 @@ export function minimizeProject(id: string | null) {
 export function restoreProject(id: string | null) {
   if (!id || !state.minimizedProjects.has(id)) return;
   store.restoreProject(id);
-  renderSidebar();
+  renderEmptyState();
   if (state.view !== 'single') {
     renderGrid();
     rebaselineGridReplayCols();
@@ -750,7 +745,7 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   } else {
     renderGrid();
   }
-  updateSidebarSelection();
+  renderEmptyState();
   // Toggling grid/fullscreen via the menu blurs the xterm; restore
   // focus so the user can keep typing into the active session.
   deps.focusActiveTerm();

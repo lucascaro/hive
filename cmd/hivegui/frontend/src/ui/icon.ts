@@ -73,8 +73,9 @@ export function icon(
   return svg;
 }
 
-// State icons (components.md > stateIcon). Used by the sidebar row, the
-// minimized chip and the grid tile header - nowhere else. data-state
+// State icons (components.md > stateIcon). Used by the minimized-session
+// chip and the grid tile header - nowhere else. (The sidebar row's state
+// icon is components/Icon.tsx's StateIcon, which renders the same markup.) data-state
 // drives colour and animation from icon.css; the <title> child is the
 // "words" channel required by README principle 5.
 export function stateIcon(state: SessionState): SVGSVGElement {

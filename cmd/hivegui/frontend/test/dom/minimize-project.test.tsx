@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Minimizing a whole project (src/app/sidebar.ts + src/app/view.ts).
+// Minimizing a whole project (components/Sidebar.tsx + src/app/view.ts).
 //
 // Two invariants this file exists for. First: restore is positional —
 // minimizing never touches the project's Order, so a restored project
@@ -9,6 +9,9 @@
 // Order index it would produce with nothing minimized, because the
 // daemon's index space still counts the minimized project.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import type { SidebarProps } from '../../src/components/Sidebar.js';
 import * as store from '../../src/store/store.js';
 import { setTerm } from '../../src/store/terms.js';
 
@@ -49,7 +52,8 @@ vi.mock('../../src/bridge.js', () => {
 });
 
 let state: typeof import('../../src/app/state.js').state;
-let renderSidebar: () => void;
+let Sidebar: (p: SidebarProps) => ReactNode;
+let sidebarProps: SidebarProps;
 let bridge: typeof import('../../src/bridge.js');
 let gridScopeFor: typeof import('../../src/app/view.js').gridScopeFor;
 let minimizeProject: typeof import('../../src/app/view.js').minimizeProject;
@@ -89,9 +93,8 @@ beforeAll(async () => {
   minimizeSession = view.minimizeSession;
   restoreProject = view.restoreProject;
   ({ navSession, reorderActive } = await import('../../src/app/keyboard.js'));
-  const sidebar = await import('../../src/app/sidebar.js');
-  renderSidebar = sidebar.renderSidebar;
-  sidebar.initSidebar({
+  ({ Sidebar } = await import('../../src/components/Sidebar.js'));
+  sidebarProps = {
     switchTo: noop,
     switchToProject: noop,
     minimizeProject: view.minimizeProject,
@@ -99,10 +102,18 @@ beforeAll(async () => {
     minimizeSession: view.minimizeSession,
     restoreSession: view.restoreSession,
     confirmAndDeleteProject: noop,
-    renderEmptyState: noop,
     refocusActiveTerm: noop,
-  });
+    trayEl: document.getElementById('minimized-projects'),
+  };
 });
+
+// The sidebar island, mounted on the real #projects the same way main.ts
+// mounts it. Re-mounted per test because RTL unmounts after each one.
+function mountSidebar() {
+  const container = document.getElementById('projects');
+  if (!container) throw new Error('no #projects');
+  return render(<Sidebar {...sidebarProps} />, { container });
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -124,7 +135,7 @@ beforeEach(() => {
   state.currentProjectId = null;
   state.view = 'single';
   vi.mocked(bridge.UpdateProject).mockClear();
-  renderSidebar();
+  mountSidebar();
 });
 
 const listedPIDs = () =>
@@ -136,10 +147,13 @@ const chipPIDs = () =>
     ...document.querySelectorAll<HTMLElement>('#minimized-projects .hv-chip'),
   ].map((el) => el.dataset.pid);
 
+// fireEvent, not a bare dispatchEvent: the sidebar is React now, so the
+// store write the click causes has to be flushed inside act() before the
+// assertions read the DOM back.
 function click(sel: string) {
   const el = document.querySelector<HTMLElement>(sel);
   if (!el) throw new Error(`no element for ${sel}`);
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  fireEvent.click(el);
 }
 
 function minimize(pid: string) {
@@ -191,24 +205,27 @@ describe('minimize project', () => {
     ).toEqual([]);
   });
 
-  // updateSidebarSelection, not renderSidebar: switching projects
-  // repaints selection in place, so a chip that only learned its state
-  // at render time would keep a stale highlight.
-  it('moves the active highlight between chips without a rebuild', async () => {
-    const { updateSidebarSelection } = await import('../../src/app/sidebar.js');
+  // Switching projects repaints selection without any structural change,
+  // so a chip that only learned its state when it was first rendered
+  // would keep a stale highlight.
+  it('moves the active highlight between chips without a rebuild', () => {
     minimize('p1');
     minimize('p2');
     const chip = (pid: string) =>
       document.querySelector<HTMLElement>(
         `#minimized-projects .hv-chip[data-pid="${pid}"]`,
       );
-    state.currentProjectId = 'p1';
-    updateSidebarSelection();
+    act(() => {
+      state.currentProjectId = 'p1';
+    });
+    const before = chip('p1');
     expect(chip('p1')?.dataset.active).toBe('');
     expect(chip('p2')?.dataset.active).toBeUndefined();
 
-    state.currentProjectId = 'p2';
-    updateSidebarSelection();
+    act(() => {
+      state.currentProjectId = 'p2';
+    });
+    expect(chip('p1')).toBe(before);
     expect(chip('p1')?.dataset.active).toBeUndefined();
     expect(chip('p2')?.dataset.active).toBe('');
   });
@@ -216,26 +233,30 @@ describe('minimize project', () => {
   // A minimized project has no session rows, so a BEL inside it would
   // otherwise be invisible in the sidebar until ⌘B found it. The chip
   // is the only surface left to carry it.
-  it('marks the chip when a session inside the project rings', async () => {
-    const { updateSidebarSelection } = await import('../../src/app/sidebar.js');
+  it('marks the chip when a session inside the project rings', () => {
     const chip = (pid: string) =>
       document.querySelector<HTMLElement>(
         `#minimized-projects .hv-chip[data-pid="${pid}"]`,
       );
-    state.attention = new Set(['s2']);
+    act(() => {
+      state.attention = new Set(['s2']);
+    });
     minimize('p1');
     minimize('p2');
     expect(chip('p2')?.dataset.state).toBe('attention');
     expect(chip('p1')?.dataset.state).toBeUndefined();
 
     // Clearing repaints in place, the same path clearAttention takes.
-    store.clearAttentionFor('s2');
-    updateSidebarSelection();
+    act(() => {
+      store.clearAttentionFor('s2');
+    });
     expect(chip('p2')?.dataset.state).toBeUndefined();
   });
 
   it('marks the chip active when it is the current project', () => {
-    state.currentProjectId = 'p2';
+    act(() => {
+      state.currentProjectId = 'p2';
+    });
     minimize('p2');
     expect(
       document.querySelector<HTMLElement>(
@@ -244,14 +265,15 @@ describe('minimize project', () => {
     ).toBe('');
   });
 
-  // The prune lives in the project:list / project:event handlers, not
-  // in renderSidebar: renderSidebar runs before the first project list
+  // The prune lives in the project:list / project:event handlers, not in
+  // the render path: the sidebar renders before the first project list
   // arrives, and pruning against an empty state.projects there would
   // wipe the persisted set instead of trimming it.
   it('keeps the set intact across a render with no projects loaded yet', () => {
     minimize('p3');
-    state.projects = [];
-    renderSidebar();
+    act(() => {
+      state.projects = [];
+    });
     expect(state.minimizedProjects.has('p3')).toBe(true);
     expect(
       JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
@@ -272,9 +294,14 @@ describe('session rows', () => {
     document.querySelector<HTMLButtonElement>(
       `.hv-session-row[data-sid="${sid}"] [data-action="minimize"]`,
     );
+  const clickRow = (sid: string) => {
+    const el = rowBtn(sid);
+    if (!el) throw new Error(`no minimize button for ${sid}`);
+    fireEvent.click(el);
+  };
 
   it('minimizes a session from its sidebar row', () => {
-    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    clickRow('s2');
     expect(state.minimized.has('s2')).toBe(true);
     // Same effect as the grid tile's control: out of the grid, still in
     // the session list.
@@ -283,7 +310,7 @@ describe('session rows', () => {
   });
 
   it('toggles back to restore, and marks the row while minimized', () => {
-    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    clickRow('s2');
     const row = document.querySelector<HTMLElement>(
       `.hv-session-row[data-sid="s2"]`,
     );
@@ -293,7 +320,7 @@ describe('session rows', () => {
       '#hv-plus',
     );
 
-    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    clickRow('s2');
     expect(state.minimized.has('s2')).toBe(false);
     expect(
       document.querySelector<HTMLElement>(`.hv-session-row[data-sid="s2"]`)
@@ -303,7 +330,7 @@ describe('session rows', () => {
 
   it('does not switch to the session the button sits on', () => {
     state.activeId = 's1';
-    rowBtn('s2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    clickRow('s2');
     expect(state.activeId).toBe('s1');
   });
 });
@@ -367,6 +394,7 @@ describe('project events', () => {
     wireDaemonEvents({
       switchTo: noop,
       renderMinimizedTray: noop,
+      renderEmptyState: noop,
       renderGrid: noop,
       enforceViewFloor: noop,
       updateAppTitle: noop,
@@ -405,7 +433,7 @@ describe('project events', () => {
 
   it('prunes against an empty authoritative list', async () => {
     // An empty list means every project really is gone — unlike the
-    // empty state.projects a pre-boot renderSidebar would see.
+    // empty state.projects the sidebar sees before the daemon speaks.
     minimize('p3');
     const h = await handlers();
     h.get('project:list')?.(JSON.stringify({ projects: [] }));

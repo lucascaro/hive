@@ -15,8 +15,9 @@ import { readProjectId } from './wire.js';
 // only when sessions happen to have been created project-by-project. Creating
 // sessions alternately across projects makes every display position wrong, and
 // the resulting move silently lands in the wrong place or does nothing.
-// (app/sidebar.ts's drag-to-reorder path resolves the same conversion off
-// `.order` for the same reason — keep the two consistent.)
+// (the sidebar's drag-to-reorder path, components/Sidebar.tsx, resolves the
+// same conversion off `.order` for the same reason — keep the two
+// consistent.)
 //
 // `ordered` must be the display order (app/selectors.ts orderedSessions()):
 // sorted by project, then by session order. Only *adjacency* is read from it;

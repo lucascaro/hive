@@ -40,12 +40,6 @@ import {
 import { deleteTerm } from '../store/terms.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
-import {
-  renderSidebar,
-  updateSidebarRows,
-  updateSidebarSelection,
-  updateSidebarTitles,
-} from './sidebar.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
@@ -58,6 +52,11 @@ import type { ScrollTrace } from '../lib/scroll-debug.js';
 export interface EventsDeps {
   switchTo: (id: string) => void;
   renderMinimizedTray: () => void;
+  // The sidebar renders itself from the store now, but the empty-state
+  // pane does not: it used to be repainted by renderSidebar() /
+  // updateSidebarSelection() at the end of every sidebar path, so every
+  // one of those call sites calls it directly instead.
+  renderEmptyState: () => void;
   // renderGrid / enforceViewFloor come through the deps seam rather
   // than a direct view.ts import: view.ts pulls in sidebar and the
   // modals, and events.ts is deliberately kept out of that graph.
@@ -78,6 +77,7 @@ export interface EventsDeps {
 // and the stub can't drift out of the interface.
 let deps: EventsDeps = {
   switchTo: () => {},
+  renderEmptyState: () => {},
   renderMinimizedTray: () => {},
   renderGrid: () => {},
   enforceViewFloor: () => {},
@@ -181,7 +181,6 @@ export function onSessionBell(info: SessionInfo) {
   addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   state.terms.get(info.id)?.refreshStateIcon?.();
-  updateSidebarSelection();
   deps.renderMinimizedTray();
   if (!alreadyAttention) fireBellNotification(info);
 }
@@ -190,7 +189,6 @@ export function clearAttention(sessionId: string) {
   if (clearAttentionFor(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
     state.terms.get(sessionId)?.refreshStateIcon?.();
-    updateSidebarSelection();
     deps.renderMinimizedTray();
   }
 }
@@ -233,7 +231,7 @@ function onSessionDeath(info: SessionInfo) {
   // Reuse the attention pulse path so the sidebar entry highlights.
   addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
-  updateSidebarSelection();
+  deps.renderEmptyState();
   const proj = state.projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
@@ -275,11 +273,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // setProjects also defaults currentProjectId and drops persisted
     // collapse / minimize entries for projects that no longer exist, so
     // the localStorage keys can't grow forever. That pruning belongs to
-    // this event, not to renderSidebar: this is the arrival of
+    // this event, not to any render path: this is the arrival of
     // authoritative project data, and pruning against a
     // not-yet-populated project list would wipe the sets instead.
     applyProjectList(projects || []);
-    renderSidebar();
+    deps.renderEmptyState();
   });
 
   // The daemon answers LIST_WORKTREES — and every worktree mutation —
@@ -319,7 +317,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
         if (st) st.setProject(ev.project.name, ev.project.color);
       }
     }
-    renderSidebar();
+    deps.renderEmptyState();
   });
 
   // processAliveTransition compares incoming Alive against the last
@@ -390,7 +388,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
     pruneToLiveSessions();
     const liveIds = new Set(state.sessions.map((s) => s.id));
     pruneNav(state.nav, (id) => liveIds.has(id));
-    renderSidebar();
     deps.renderMinimizedTray();
     if (!state.activeId && state.sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
@@ -419,20 +416,18 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     if (ev.kind === 'added') {
       addSession(ev.session);
-      renderSidebar();
+      deps.renderEmptyState();
       deps.switchTo(ev.session.id);
       return;
     }
     // The program on the PTY re-titled itself. Its own kind, not an
-    // `updated`, precisely so it can take the cheap path: patch the
-    // existing rows in place — every write guarded on an actual change,
-    // so a title-only event rewrites the title line and nothing else. A full
-    // renderSidebar() here would wipe and rebuild every row at whatever
-    // rate the child process redraws, eating dblclick pairs on the way
-    // (see updateSidebarSelection's comment).
+    // `updated`, so the store write stays narrow: only the retitled
+    // session's object is replaced. components/Sidebar.tsx's memoized
+    // SessionItem turns that into a single re-rendered row. (The
+    // imperative sidebar needed a whole second patch path here — a
+    // rebuild at the child process's redraw rate ate dblclick pairs.)
     if (ev.kind === 'title') {
       if (i >= 0) updateSession(ev.session);
-      updateSidebarTitles();
       return;
     }
     if (ev.kind === 'updated' && isClosing(phaseOf(ev.session))) {
@@ -522,16 +517,15 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
       if (state.activeId === ev.session.id) deps.updateAppTitle();
     }
-    // `updated` is the high-frequency kind — one per phase step, one per
-    // surviving session when a kill recompacts the order, and one when the
-    // agent-session-id capture poll lands up to 30s after a spawn. It
-    // changes a session's state, not the sidebar's shape, so it takes the
-    // in-place path; updateSidebarRows falls back to a full rebuild by
-    // itself if the shape did move. `removed` is structural: rebuild.
-    if (ev.kind === 'updated') updateSidebarRows();
-    else renderSidebar();
-    if (ev.kind === 'removed' || ev.kind === 'updated')
-      deps.renderMinimizedTray();
+    // Only `removed` and `updated` reach here — `added` and `title` both
+    // returned above. Both are store writes; the sidebar re-renders the
+    // rows whose SessionInfo reference actually changed, so `updated`
+    // (the high-frequency kind: one per phase step, one per surviving
+    // session when a kill recompacts the order, one when the
+    // agent-session-id capture poll lands up to 30s after a spawn) costs
+    // a row, not a rebuild. renderMinimizedTray ends in
+    // renderEmptyState(), so the empty state is covered too.
+    deps.renderMinimizedTray();
   });
 
   EventsOn('pty:data', (id: string, b64: string) => {

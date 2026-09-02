@@ -34,7 +34,7 @@ Implemented in `src/lib/session-state.ts`; the resolver accepts both the `last_e
 
 That's 22 symbols. Adding one: draw it on the 24 grid at 1.75 stroke, add `<symbol id="…">` to the sprite, add a row here, never inline SVG in a feature module.
 
-`settings` (gear) also doubles as the sidebar's edit-project control (`src/app/sidebar.ts`'s `editBtn`) — the 22-icon inventory has no pencil.
+`settings` (gear) also doubles as the sidebar's edit-project control (the project card's `data-action="edit"` control) — the 22-icon inventory has no pencil.
 
 ## Rules
 
