@@ -319,7 +319,7 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   // Anchor under the resolved project's card header so the user
   // can see which project the new session lands in. The header, not
   // its + button: the card's actions are `display: none` until the
-  // header is hovered (ui/project-card.ts), and a display:none anchor
+  // header is hovered (components/ProjectCard.tsx), and a display:none anchor
   // measures as a zero rect at the origin. Falls back to the global
   // new-project button if the project's card isn't currently in the
   // DOM (e.g. the project is minimized), and to a fixed spot over the

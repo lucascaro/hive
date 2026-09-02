@@ -7,9 +7,9 @@
 // One module-level drag at a time: HTML5 drag-and-drop only ever has one.
 //
 // The spacer deliberately carries NEITHER `hv-session-row` nor
-// `hv-project-card`. app/sidebar.ts's domShape() reads the sidebar back with
-// that selector pair to decide whether an in-place update is safe; a spacer
-// wearing either class would read as a phantom row.
+// `hv-project-card`. Anything reading the sidebar back off the DOM with that
+// selector pair — the dom tests, the Playwright specs, and this module's own
+// `resolve()` below — would otherwise count the spacer as a phantom row.
 //
 // The spacer is a REAL drop target, not decoration. An "insert above"
 // placeholder is inserted where the cursor already is, which pushes the target
@@ -29,9 +29,11 @@ const ROW = '.hv-session-row, .hv-project-card';
 type DropHandler = (target: HTMLElement, above: boolean, e: DragEvent) => void;
 
 let dragged: HTMLElement | null = null;
-// A selector for the dragged element, so a renderSidebar() rebuild landing
-// mid-drag (it clears projectsUL.innerHTML) can be recovered from: `dragged`
-// would otherwise point at a detached node for the rest of the gesture.
+// A selector for the dragged element, so a rebuild landing mid-drag can be
+// recovered from: `dragged` would otherwise point at a detached node for the
+// rest of the gesture. Vestigial as of the React sidebar — keyed
+// reconciliation never replaces the dragged row — but kept until Phase 6 of
+// the rewrite retires the last imperative render path.
 let draggedSelector = '';
 let spacer: HTMLElement | null = null;
 let onDrop: DropHandler | null = null;

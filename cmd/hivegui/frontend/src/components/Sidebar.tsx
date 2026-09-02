@@ -17,6 +17,7 @@
 // root, for the same reason initSidebar(deps) took them: importing
 // view.ts / keyboard.ts here would close an import cycle.
 import {
+  memo,
   useEffect,
   useRef,
   type DragEvent as ReactDragEvent,
@@ -170,13 +171,28 @@ interface SessionItemProps {
   selected: boolean;
   minimized: boolean;
   attention: boolean;
-  onSelect: () => void;
-  onMinimize: () => void;
-  onRestore: () => void;
-  refocusActiveTerm: () => void;
+  // The whole prop bag rather than three bound callbacks: main.ts builds
+  // it once for the life of the app, so it is a referentially stable
+  // prop, where `() => switchTo(s.id)` would be a fresh function on
+  // every parent render and would defeat the memo below.
+  sidebar: SidebarProps;
 }
 
-function SessionItem(p: SessionItemProps) {
+// memo, and every other prop a primitive or the session's own object
+// reference: this is where the phase's performance goal is actually
+// collected. `updateSession()` replaces the sessions ARRAY on every
+// title/updated event — one per phase step, one per surviving session
+// when a kill recompacts the order, one when the agent-session-id poll
+// lands — so the sidebar re-renders on each of them. Without this, every
+// row's markup would be rebuilt at the child program's redraw rate,
+// which is exactly the cost `updateSidebarTitles()` was added (spec 248)
+// to avoid. With it, only the row whose SessionInfo reference actually
+// changed re-renders.
+//
+// ProjectItem is deliberately NOT memoized: a card is a header and five
+// icon buttons, its attention count is derived from the whole attention
+// set, and the rows underneath it are already insulated by this memo.
+const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   const id = p.session.id;
   const nameRef = useRef<HTMLSpanElement>(null);
 
@@ -212,9 +228,9 @@ function SessionItem(p: SessionItemProps) {
       minimized={p.minimized}
       index={p.index}
       nameRef={nameRef}
-      onSelect={p.onSelect}
-      onMinimize={p.onMinimize}
-      onRestore={p.onRestore}
+      onSelect={() => p.sidebar.switchTo(id)}
+      onMinimize={() => p.sidebar.minimizeSession(id)}
+      onRestore={() => p.sidebar.restoreSession(id)}
       onRestart={() =>
         RestartSession(id).catch(reportFailure('restart session'))
       }
@@ -237,7 +253,7 @@ function SessionItem(p: SessionItemProps) {
           unmount: (input) => input.replaceWith(el),
           onCommit: (next) =>
             UpdateSession(id, next, '', -1).catch(reportFailure('rename')),
-          onDone: () => p.refocusActiveTerm(),
+          onDone: () => p.sidebar.refocusActiveTerm(),
         });
       }}
       onDragStart={(e: ReactDragEvent<HTMLLIElement>) => {
@@ -266,7 +282,7 @@ function SessionItem(p: SessionItemProps) {
       }}
     />
   );
-}
+});
 
 // ---------- project card ----------
 
@@ -394,10 +410,7 @@ function ProjectItem(o: ProjectItemProps) {
           selected={s.id === o.activeId}
           minimized={o.minimizedSessions.has(s.id)}
           attention={o.attention.has(s.id)}
-          onSelect={() => o.props.switchTo(s.id)}
-          onMinimize={() => o.props.minimizeSession(s.id)}
-          onRestore={() => o.props.restoreSession(s.id)}
-          refocusActiveTerm={o.props.refocusActiveTerm}
+          sidebar={o.props}
         />
       ))}
     </ProjectCard>

@@ -24,7 +24,7 @@ Files to change / delete:
 - `src/main.ts` — mount sidebar root instead of `initSidebar()`.
 - `src/app/sidebar.ts` — deleted. Sidebar-resizer drag becomes `useSidebarResize.ts` hook (or stays a small imperative module wired in `main.ts`; implementer picks one and notes it in the PR).
 - `src/app/events.ts`, `view.ts`, `keyboard.ts`, **`session-term.ts` (calls `updateSidebarSelection()` at :617, imported at :93)** — remove all `renderSidebar()/updateSidebarSelection()/updateSidebarTitles()` calls and their deps seams.
-- `src/ui/session-row.ts`, `project-card.ts`, `chip.ts` — deleted (no remaining callers). `button/icon/icon-button/kbd/banner` stay until Phase 2.
+- `src/ui/session-row.ts`, `project-card.ts` — deleted (no remaining callers). `chip.ts` stays too (see Brief › Deviation 1: view.ts's minimized-session tray), along with `button/icon/icon-button/kbd/banner`, until Phase 2.
 - `src/app/dom.ts` — drop `projectsUL`/`minimizedProjectsUL` singletons.
 
 ## Success criteria
@@ -33,8 +33,11 @@ What `/hs-merge-gate` validates for THIS phase.
 
 - `#projects` and `#minimized-projects` are rendered by a React root; the
   markup is byte-identical on ids, `hv-*` classes and data-attributes.
-- `src/app/sidebar.ts` is deleted, along with `src/ui/session-row.ts`,
-  `project-card.ts` and `chip.ts` — no remaining callers (`rg` clean).
+- `src/app/sidebar.ts` is deleted, along with `src/ui/session-row.ts` and
+  `project-card.ts` — no remaining callers (`rg` clean). **`src/ui/chip.ts`
+  is explicitly NOT part of this criterion** (see Brief › Deviation 1):
+  `src/app/view.ts` still builds the minimized-*session* tray with it, and
+  that tray is Phase 2's chrome island. Phase 2 deletes it.
 - No module calls `renderSidebar` / `updateSidebarSelection` /
   `updateSidebarTitles` any more, including `session-term.ts`.
 - Double-click-to-rename works: the row's DOM node survives the re-render
@@ -277,8 +280,56 @@ for the next fresh worktree.
 No changeset: the phase is behaviour-preserving and carries `no-changeset`, per
 the spec's Notes. The one changeset for the whole rewrite lands in Phase 6.
 
+### Review round 1 (2026-09-02)
+
+`/hs-review-loop` iteration 1 returned **COMMENT** — no BLOCKING findings, zero
+unresolved threads, and the frozen DOM contract independently re-verified (e2e
+green, zero spec edits). Strict mode off means that verdict converges the loop,
+but all four IMPORTANT findings were real and were fixed rather than waved
+through:
+
+1. **RTL never cleaned up between tests.** `vitest.config.js` sets
+   `globals: false`, so `@testing-library/react`'s auto-`afterEach(cleanup)`
+   never registers — every `render()` left a mounted root behind, and
+   `inline-rename.ts`'s module-level `active` editor leaked across tests, which
+   would have let a regression in the second-and-later rename-open path pass.
+   `test/dom/setup-rtl.ts` now runs `cancelInlineRename()` then `cleanup()` in
+   an explicit `afterEach`.
+2. **Nothing was memoized**, so every store write re-rendered every row —
+   undoing exactly what `updateSidebarTitles()` (spec 248) was added to
+   prevent, and missing this rewrite's stated performance goal. `SessionItem`
+   is now `memo`'d, and the three bound callbacks it took were replaced by the
+   referentially stable `sidebar` prop bag (a fresh `() => switchTo(id)` per
+   render would have defeated the memo). `ProjectItem` is deliberately left
+   unmemoized: a card is a header plus five icon buttons, its attention count
+   derives from the whole attention set, and the rows beneath it are now
+   insulated. New `test/dom/sidebar-render-scope.test.tsx` pins the scope by
+   counting `SessionRow` renders — it fails 4/5 with the `memo` removed.
+3. **Six live source comments still cited deleted modules.** Repointed:
+   `drag-placeholder.ts` (×2), `preserve-focus.ts`, `term-title.ts`,
+   `reorder.ts`, `modals/launcher.ts`, `events.ts`. AGENTS.md: stale docs are a
+   bug.
+4. **`src/components/**/*` was missing from `tsconfig.json`'s `include`** — the
+   silent-failure trap that file's own header warns about in capitals. Added.
+
+MINOR items also applied: the two `events.ts` comments that overstated the
+re-render scope now describe what the memo actually does; `IconButton`'s
+declared-but-never-rendered `children` prop is gone; the unreachable
+`else deps.renderEmptyState()` in the `session:event` handler is folded away
+(`added` and `title` both return above it); and this plan's Success criteria no
+longer demand `chip.ts`'s deletion, which contradicted Brief › Deviation 1 and
+would have failed `/hs-merge-gate`. `drag-placeholder.ts`'s now-vestigial
+`resolve()` is left in place with a comment saying so — retiring it belongs to
+Phase 6, with the last imperative render path.
+
+Re-verified after the fixes: typecheck clean · biome 0 errors / 10 pre-existing
+warnings · ui-lint 0 violations · 74 files, 826 vitest tests · 258 e2e passed /
+31 skipped, still zero spec edits · 22 e2e-real passed / 2 skipped.
+
 ## PR convergence ledger
 
 Append-only, one line per `/hs-review-loop` iteration. Built by hand because
 this feature's plans are named rather than `<NNN>`-prefixed, so the skill's
 plan lookup does not find them.
+
+- **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9398f44440be87d2a4269103246c29cb5f4720dfdb24a7d122a5cb1fe91d232e; threads_open: 0; action: stop (converged; 4 IMPORTANT applied by hand — see Review round 1); head_sha: eac2fda.

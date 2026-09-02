@@ -1,7 +1,7 @@
 // Icon-only button. components.md › iconButton(): 24x24 (rows/bars) or
 // 22x22 (sidebar header), 14px icon, aria-label REQUIRED and mirrored
 // into title. Never build an icon-only <button> by hand.
-import type { MouseEvent, ReactNode } from 'react';
+import type { MouseEvent } from 'react';
 import { Icon, type IconName } from './Icon.js';
 
 export interface IconButtonProps {
@@ -12,7 +12,6 @@ export interface IconButtonProps {
   className?: string;
   /** data-action, the hook the e2e specs and CSS select rows' controls by. */
   action?: string;
-  children?: ReactNode;
 }
 
 export function IconButton({

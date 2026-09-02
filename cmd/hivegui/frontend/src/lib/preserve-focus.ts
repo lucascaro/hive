@@ -1,11 +1,11 @@
 // Re-rendering steals the keyboard unless something puts focus back.
 //
-// Two render paths in this app move or destroy live DOM nodes:
-// app/sidebar.ts's renderSidebar does `projectsUL.innerHTML = ''` and
-// rebuilds every row, and app/view.ts's renderGrid re-parents tiles with
-// appendChild — which, on an already-attached node, is a remove+insert
-// the browser treats as a blur. Either way focus lands on <body> and the
-// next keystroke goes nowhere.
+// app/view.ts's renderGrid re-parents tiles with appendChild — which, on
+// an already-attached node, is a remove+insert the browser treats as a
+// blur. Focus lands on <body> and the next keystroke goes nowhere.
+// (The sidebar used to be the other such path, with an
+// `innerHTML = ''` rebuild; the React island reconciles in place, so
+// view.ts is the only caller left.)
 //
 // That matters beyond the terminal: the daemon emits `session:event`
 // `updated` on every phase step, on every surviving session after a kill,

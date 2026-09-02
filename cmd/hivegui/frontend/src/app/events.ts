@@ -273,7 +273,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // setProjects also defaults currentProjectId and drops persisted
     // collapse / minimize entries for projects that no longer exist, so
     // the localStorage keys can't grow forever. That pruning belongs to
-    // this event, not to renderSidebar: this is the arrival of
+    // this event, not to any render path: this is the arrival of
     // authoritative project data, and pruning against a
     // not-yet-populated project list would wipe the sets instead.
     applyProjectList(projects || []);
@@ -422,9 +422,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     // The program on the PTY re-titled itself. Its own kind, not an
     // `updated`, so the store write stays narrow: only the retitled
-    // session's object is replaced, and the sidebar re-renders that one
-    // row. (The imperative sidebar needed a whole second patch path here
-    // — a rebuild at the child process's redraw rate ate dblclick pairs.)
+    // session's object is replaced. components/Sidebar.tsx's memoized
+    // SessionItem turns that into a single re-rendered row. (The
+    // imperative sidebar needed a whole second patch path here — a
+    // rebuild at the child process's redraw rate ate dblclick pairs.)
     if (ev.kind === 'title') {
       if (i >= 0) updateSession(ev.session);
       return;
@@ -516,15 +517,15 @@ export function wireDaemonEvents(injected: EventsDeps) {
       }
       if (state.activeId === ev.session.id) deps.updateAppTitle();
     }
-    // Both kinds are just store writes now — the sidebar re-renders the
-    // rows whose data changed, keyed by session id, so `updated` (the
-    // high-frequency kind: one per phase step, one per surviving session
-    // when a kill recompacts the order, one when the agent-session-id
-    // capture poll lands up to 30s after a spawn) costs a row, not a
-    // rebuild. renderMinimizedTray ends in renderEmptyState().
-    if (ev.kind === 'removed' || ev.kind === 'updated')
-      deps.renderMinimizedTray();
-    else deps.renderEmptyState();
+    // Only `removed` and `updated` reach here — `added` and `title` both
+    // returned above. Both are store writes; the sidebar re-renders the
+    // rows whose SessionInfo reference actually changed, so `updated`
+    // (the high-frequency kind: one per phase step, one per surviving
+    // session when a kill recompacts the order, one when the
+    // agent-session-id capture poll lands up to 30s after a spawn) costs
+    // a row, not a rebuild. renderMinimizedTray ends in
+    // renderEmptyState(), so the empty state is covered too.
+    deps.renderMinimizedTray();
   });
 
   EventsOn('pty:data', (id: string, b64: string) => {
