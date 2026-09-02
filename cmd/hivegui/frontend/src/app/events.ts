@@ -51,12 +51,9 @@ import type { ScrollTrace } from '../lib/scroll-debug.js';
 
 export interface EventsDeps {
   switchTo: (id: string) => void;
-  renderMinimizedTray: () => void;
-  // The sidebar renders itself from the store now, but the empty-state
-  // pane does not: it used to be repainted by renderSidebar() /
-  // updateSidebarSelection() at the end of every sidebar path, so every
-  // one of those call sites calls it directly instead.
-  renderEmptyState: () => void;
+  // The sidebar, the minimized tray and the empty-state pane all render
+  // themselves from the store since Phase 2 of the React rewrite, so
+  // none of them needs a repaint call here any more.
   // renderGrid / enforceViewFloor come through the deps seam rather
   // than a direct view.ts import: view.ts pulls in sidebar and the
   // modals, and events.ts is deliberately kept out of that graph.
@@ -77,8 +74,6 @@ export interface EventsDeps {
 // and the stub can't drift out of the interface.
 let deps: EventsDeps = {
   switchTo: () => {},
-  renderEmptyState: () => {},
-  renderMinimizedTray: () => {},
   renderGrid: () => {},
   enforceViewFloor: () => {},
   updateAppTitle: () => {},
@@ -181,7 +176,6 @@ export function onSessionBell(info: SessionInfo) {
   addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
   state.terms.get(info.id)?.refreshStateIcon?.();
-  deps.renderMinimizedTray();
   if (!alreadyAttention) fireBellNotification(info);
 }
 
@@ -189,7 +183,6 @@ export function clearAttention(sessionId: string) {
   if (clearAttentionFor(sessionId)) {
     state.terms.get(sessionId)?.host.classList.remove('attention');
     state.terms.get(sessionId)?.refreshStateIcon?.();
-    deps.renderMinimizedTray();
   }
 }
 
@@ -231,7 +224,6 @@ function onSessionDeath(info: SessionInfo) {
   // Reuse the attention pulse path so the sidebar entry highlights.
   addAttention(info.id);
   state.terms.get(info.id)?.host.classList.add('attention');
-  deps.renderEmptyState();
   const proj = state.projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
@@ -277,7 +269,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // authoritative project data, and pruning against a
     // not-yet-populated project list would wipe the sets instead.
     applyProjectList(projects || []);
-    deps.renderEmptyState();
   });
 
   // The daemon answers LIST_WORKTREES — and every worktree mutation —
@@ -317,7 +308,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
         if (st) st.setProject(ev.project.name, ev.project.color);
       }
     }
-    deps.renderEmptyState();
   });
 
   // processAliveTransition compares incoming Alive against the last
@@ -388,7 +378,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
     pruneToLiveSessions();
     const liveIds = new Set(state.sessions.map((s) => s.id));
     pruneNav(state.nav, (id) => liveIds.has(id));
-    deps.renderMinimizedTray();
     if (!state.activeId && state.sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
     }
@@ -416,7 +405,6 @@ export function wireDaemonEvents(injected: EventsDeps) {
     }
     if (ev.kind === 'added') {
       addSession(ev.session);
-      deps.renderEmptyState();
       deps.switchTo(ev.session.id);
       return;
     }
@@ -523,9 +511,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // (the high-frequency kind: one per phase step, one per surviving
     // session when a kill recompacts the order, one when the
     // agent-session-id capture poll lands up to 30s after a spawn) costs
-    // a row, not a rebuild. renderMinimizedTray ends in
-    // renderEmptyState(), so the empty state is covered too.
-    deps.renderMinimizedTray();
+    // a row, not a rebuild.
   });
 
   EventsOn('pty:data', (id: string, b64: string) => {

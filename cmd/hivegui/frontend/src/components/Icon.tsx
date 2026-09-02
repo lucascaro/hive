@@ -3,9 +3,10 @@
 // icon(). Feature components never write SVG or a Unicode glyph.
 //
 // The sprite injection itself is NOT duplicated: ensureSprite() still
-// lives in src/ui/icon.ts (which the imperative modals keep using until
-// Phase 2) and is called here on every render, exactly as icon() calls
-// it on every construction.
+// lives in src/ui/icon.ts and is called here on every render, exactly as
+// icon() calls it on every construction. That module outlives the whole
+// migration — app/session-term.ts stays imperative (react-ui-rewrite.md ›
+// Non-goals), so it keeps a consumer after Phase 6.
 import { ensureSprite, type IconName } from '../ui/icon.js';
 import { STATE_WORDS, type SessionState } from '../lib/session-state.js';
 

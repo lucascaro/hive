@@ -393,8 +393,6 @@ describe('project events', () => {
     vi.mocked(bridge.EventsOn).mockClear();
     wireDaemonEvents({
       switchTo: noop,
-      renderMinimizedTray: noop,
-      renderEmptyState: noop,
       renderGrid: noop,
       enforceViewFloor: noop,
       updateAppTitle: noop,

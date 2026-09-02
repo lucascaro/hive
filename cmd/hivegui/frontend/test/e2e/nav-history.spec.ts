@@ -97,7 +97,17 @@ test.describe('session back / forward history', () => {
     const [a, b, c] = await sessionIds(page);
 
     await page.click(`#projects li[data-sid="${a}"]`);
-    await page.evaluate((id) => window.__hive_state?.minimized.add(id), a);
+    // Assignment, not `minimized.add(id)`: the store compares by
+    // reference, so an in-place Set mutation is invisible to a
+    // subscriber — and components/MinimizedTray.tsx became one in Phase
+    // 2 of the React rewrite. The setter routes through setMinimized.
+    // This is the migration's one sanctioned spec edit (see the master
+    // plan's "Known spec-edit exceptions"); it is not a DOM-contract
+    // break.
+    await page.evaluate((id) => {
+      const s = window.__hive_state;
+      if (s) s.minimized = new Set([...s.minimized, id]);
+    }, a);
     await page.click(`#projects li[data-sid="${b}"]`);
     await page.click(`#projects li[data-sid="${c}"]`);
     await page.keyboard.press(`${MOD}+Shift+g`); // grid-all

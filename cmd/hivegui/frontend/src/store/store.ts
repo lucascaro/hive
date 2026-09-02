@@ -34,6 +34,7 @@ import {
   MINIMIZED_PROJECTS_STORAGE_KEY,
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
+import type { ModeHint } from '../lib/status.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
@@ -65,6 +66,54 @@ export interface AppData {
   gridProjectId: string | null;
   fontSize: number;
   sidebarWidth: number;
+  // ---------- chrome (Phase 2) ----------
+  // The status bar's RENDERED output, not a second copy of the flash
+  // engine: lib/status.ts's createStatus still owns FLASH_MIN_MS and the
+  // persistent/transient arbitration, and app/dom.ts hands its render
+  // callback straight to setStatusText.
+  status: StatusView;
+  modeHint: ModeHint[];
+  bootState: BootStateView | null;
+  banners: Record<BannerSlot, BannerData>;
+}
+
+export interface StatusView {
+  text: string;
+  isError: boolean;
+}
+
+// onRetry is a callback, not a serialisable flag: the boot overlay's
+// Retry re-enters main.ts's bounded retryBoot(), and reconstructing that
+// binding inside a component would move the 5-attempt policy out of the
+// composition root.
+export interface BootStateView {
+  text: string;
+  onRetry: (() => void) | null;
+}
+
+export type BannerSlot = 'undo-close' | 'daemon' | 'update';
+
+// Per-action overrides, keyed by the action id the component declares.
+// Only what actually varies at runtime lives here.
+export interface BannerActionData {
+  label?: string;
+  hidden?: boolean;
+  disabled?: boolean;
+  /** Extra data-* on the button (the update action's data-action/version). */
+  data?: Record<string, string>;
+}
+
+// The DATA half of a banner. Its structure — kind, element id, action ids
+// and their click handlers — is declared once in components/Banners.tsx,
+// which is also where ui/banner.ts's markup went. Threading callbacks and
+// action descriptors through the store would just be a second copy of
+// that module's API.
+export interface BannerData {
+  text: string;
+  visible: boolean;
+  /** Extra data-* on the banner root (dismiss keys, the download URL). */
+  data?: Record<string, string>;
+  actions?: Record<string, BannerActionData>;
 }
 
 // ---------- persistence helpers ----------
@@ -205,8 +254,25 @@ function initialData(): AppData {
     gridProjectId: null, // project shown in grid-project mode
     fontSize: loadSavedFontSize(),
     sidebarWidth: loadSavedSidebarWidth(),
+    // index.html paints "connecting…" into #status-text before any
+    // script runs; StatusBar must not blank it on mount.
+    status: { text: 'connecting…', isError: false },
+    modeHint: [],
+    bootState: { text: 'Starting hive…', onRetry: null },
+    banners: {
+      'undo-close': EMPTY_BANNER,
+      daemon: EMPTY_BANNER,
+      // The primary action starts hidden — same as the old markup's
+      // display:none default for a banner with nothing to act on.
+      // renderUpdateAction reveals it once there is something to do.
+      update: { ...EMPTY_BANNER, actions: { action: { hidden: true } } },
+    },
   };
 }
+
+// Shared seed. Frozen so a caller cannot mutate the shape every slot
+// starts from — setBanner always replaces.
+const EMPTY_BANNER: BannerData = Object.freeze({ text: '', visible: false });
 
 export const appStore = createStore<AppData>()(() => initialData());
 
@@ -536,6 +602,127 @@ export function setSidebarWidth(w: number): void {
   const next = clampSidebarWidth(w);
   writeStorage(SIDEBAR_WIDTH_STORAGE_KEY, String(next));
   set({ sidebarWidth: next });
+}
+
+// ---------- chrome ----------
+
+// The status bar's persistent+flash arbitration is NOT here. app/dom.ts
+// owns the createStatus instance and calls this from its render
+// callback, so the store holds only what is on screen.
+export function setStatusText(text: string, isError: boolean): void {
+  const cur = get().status;
+  if (cur.text === text && cur.isError === isError) return;
+  set({ status: { text, isError } });
+}
+
+export function setModeHint(hints: ModeHint[]): void {
+  set({ modeHint: hints });
+}
+
+export function setBootState(view: BootStateView | null): void {
+  set({ bootState: view });
+}
+
+// Merge, not replace: every caller patches one or two fields and would
+// otherwise have to restate the rest.
+//
+// `actions` merges TWO levels down, per action id and then per field.
+// One level would be a bug, not a shortcut: onUpdateAction patches only
+// `{ disabled: true }` on the update banner's primary action, and a
+// whole-entry replace there would drop the label renderUpdateAction just
+// computed along with the data-action the click handler dispatches on —
+// the button would revert to a generic "Update" mid-click.
+//
+// `data`, by contrast, IS replaced wholesale, and showUpdateBanner
+// depends on it: dropping the per-version dismissal key on every show is
+// what stops a transient banner ("up to date") from writing a stale
+// version into localStorage.
+export function setBanner(slot: BannerSlot, patch: Partial<BannerData>): void {
+  const cur = get().banners[slot];
+  let actions = cur.actions;
+  if (patch.actions) {
+    actions = { ...cur.actions };
+    for (const [id, o] of Object.entries(patch.actions)) {
+      actions[id] = { ...actions[id], ...o };
+    }
+  }
+  const next: BannerData = { ...cur, ...patch, actions };
+  // A rebuilt record is always a new reference, so `set`'s own
+  // reference check cannot see a no-op here — this restores the module's
+  // contract that an action changing nothing notifies nobody. It is not
+  // hypothetical: wireDaemonBanner writes the same daemonBuild on every
+  // control connect, and renderUpdateAction re-derives the same button
+  // on every update:progress step.
+  if (sameBanner(cur, next)) return;
+  set({ banners: { ...get().banners, [slot]: next } });
+}
+
+// Compile-time guards for the two comparisons below. A hand-written
+// equality silently swallows any field added to the type after it was
+// written — the failure mode being that a banner stops updating and no
+// test says why. These fail to typecheck instead: add a field to
+// BannerData or BannerActionData and the literal is missing a property.
+// Keep each key in sync with the branch that reads it in sameBanner().
+const BANNER_FIELDS: Record<keyof BannerData, true> = {
+  text: true,
+  visible: true,
+  data: true,
+  actions: true,
+};
+const BANNER_ACTION_FIELDS: Record<keyof BannerActionData, true> = {
+  label: true,
+  hidden: true,
+  disabled: true,
+  data: true,
+};
+void BANNER_FIELDS;
+void BANNER_ACTION_FIELDS;
+
+// Shallow all the way down, which is exactly as deep as BannerData goes:
+// two string/bool fields, a flat string record, and a record of flat
+// records.
+function sameBanner(a: BannerData, b: BannerData): boolean {
+  if (a.text !== b.text || a.visible !== b.visible) return false;
+  if (!sameRecord(a.data, b.data)) return false;
+  const ids = new Set([
+    ...Object.keys(a.actions ?? {}),
+    ...Object.keys(b.actions ?? {}),
+  ]);
+  for (const id of ids) {
+    const x = a.actions?.[id];
+    const y = b.actions?.[id];
+    if (!x || !y) return false;
+    if (
+      x.label !== y.label ||
+      x.hidden !== y.hidden ||
+      x.disabled !== y.disabled
+    ) {
+      return false;
+    }
+    if (!sameRecord(x.data, y.data)) return false;
+  }
+  return true;
+}
+
+function sameRecord(
+  a: Record<string, string> | undefined,
+  b: Record<string, string> | undefined,
+): boolean {
+  const ak = Object.keys(a ?? {});
+  const bk = Object.keys(b ?? {});
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => a?.[k] === b?.[k]);
+}
+
+export function hideBanner(slot: BannerSlot): void {
+  setBanner(slot, { visible: false });
+}
+
+// Full replace, unlike setBanner's merge — the merge is what makes a
+// patch convenient and is also what makes it useless for a reset (an
+// empty `actions` patch leaves every existing entry in place).
+export function resetBanner(slot: BannerSlot): void {
+  set({ banners: { ...get().banners, [slot]: EMPTY_BANNER } });
 }
 
 // ---------- test affordance ----------

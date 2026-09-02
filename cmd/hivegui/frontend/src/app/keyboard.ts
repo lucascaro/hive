@@ -64,7 +64,6 @@ import {
   minimizeSession,
   minimizeProject,
   isSessionHidden,
-  renderEmptyState,
 } from './view.js';
 import { manualUpdateCheck, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
@@ -497,7 +496,6 @@ export function jumpToAttention() {
     // would pulse while ⌘B insists nothing needs attention.
     if (state.activeId && state.attention.has(state.activeId)) {
       clearAttention(state.activeId);
-      renderEmptyState();
     }
     flashStatus('no sessions need attention');
     return;

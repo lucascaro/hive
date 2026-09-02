@@ -4,7 +4,13 @@
 // Updating… → Restart states the Settings modal does, and it must show
 // staging progress and failures without being asked — someone who never
 // opens Settings still needs to see that the update they started broke.
+//
+// Phase 2: the markup is now <Banners /> (components/Banners.tsx), and
+// the store (store/store.ts) holds what's rendered. This mounts the real
+// island and reads its DOM, same as the imperative version did.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { render, fireEvent, act } from '@testing-library/react';
+import { resetStore } from '../../src/store/store.js';
 
 const bridge = vi.hoisted(() => ({
   // Typed params so mock.calls[0] destructures — the dialog's wording
@@ -43,19 +49,30 @@ const bannerText = () => part<HTMLElement>('.hv-banner__text');
 // The handlers registered via EventsOn, captured from the mock so the
 // test can push events the way Go would.
 function emit(event: string, payload: unknown) {
-  for (const call of bridge.EventsOn.mock.calls) {
-    if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
-  }
+  act(() => {
+    for (const call of bridge.EventsOn.mock.calls) {
+      if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+    }
+  });
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
+let Banners: typeof import('../../src/components/Banners.js')['Banners'];
+
 beforeAll(async () => {
+  // dom.ts runs side effects on import (it decorates #terms), and
+  // banners.ts pulls it in for flashStatus — so the scaffold needs
+  // that element even though this file never touches it.
   document.body.innerHTML = `
     <div id="app">
       <div id="terms"></div><ul id="projects"></ul>
       <div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     </div>`;
+  // Dynamic, not static: a top-level import of Banners.tsx would pull in
+  // app/banners.js (and its dom.js side effects) before the scaffold
+  // above is in place.
+  ({ Banners } = await import('../../src/components/Banners.js'));
   const mod = await import('../../src/app/banners.js');
   mod.initBanners();
   await settle();
@@ -65,9 +82,13 @@ beforeEach(() => {
   bridge.StartUpdate.mockClear();
   bridge.ApplyUpdateAndRestart.mockClear();
   bridge.Confirm.mockClear().mockResolvedValue(true);
+  resetStore();
   try {
     localStorage.removeItem('hive.updateDismissedFor');
   } catch {}
+  // RTL's afterEach(cleanup) (setup-rtl.ts) unmounts the tree after every
+  // test, so the island has to be remounted each time rather than once.
+  render(<Banners />);
 });
 
 describe('update banner action button', () => {
@@ -84,7 +105,7 @@ describe('update banner action button', () => {
     expect(action.hidden).toBe(false);
     expect(action.textContent).toBe('Update');
 
-    action.dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(action);
     expect(bridge.StartUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -110,7 +131,7 @@ describe('update banner action button', () => {
     expect(action.textContent).toBe('Restart');
     expect(action.disabled).toBe(false);
 
-    action.dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(action);
     await settle();
     expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     // The dialog has to name what is about to happen, not just ask.
@@ -133,7 +154,7 @@ describe('update banner action button', () => {
       latest: '2.5.0',
       message: 'Update ready',
     });
-    actionBtn().dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(actionBtn());
     await settle();
     expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
@@ -154,8 +175,8 @@ describe('update banner action button', () => {
       latest: '2.5.0',
     });
     const action = actionBtn();
-    action.dispatchEvent(new MouseEvent('click'));
-    action.dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(action);
+    fireEvent.click(action);
     await settle();
     expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     release(true);
@@ -184,9 +205,7 @@ describe('update banner action button', () => {
 // that must not degrade into "never show me anything again".
 describe('update banner dismissal', () => {
   const dismiss = () =>
-    part<HTMLButtonElement>('.hv-banner__dismiss').dispatchEvent(
-      new MouseEvent('click'),
-    );
+    fireEvent.click(part<HTMLButtonElement>('.hv-banner__dismiss'));
 
   it('remembers the dismissed version and stays down for it', () => {
     const available = {

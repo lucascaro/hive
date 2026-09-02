@@ -1,5 +1,5 @@
-// Chip — minimized-project tray (the minimized-session tray is still the
-// imperative src/ui/chip.ts until Phase 2 ports the chrome island).
+// Chip — the minimized-project tray in the sidebar and the
+// minimized-session tray above the status bar.
 // docs/design-docs/ui/components.md › chip.
 //
 // A <span>, not a <button>: the chip body is one action and the restore
@@ -23,6 +23,7 @@ export interface ChipProps {
   restoreLabel?: string;
   /** data-pid / data-sid, whichever the tray keys its chips by. */
   pid?: string;
+  sid?: string;
   /** data-state='attention' for a project whose sessions are ringing. */
   attention?: boolean;
 }
@@ -39,6 +40,7 @@ export function Chip({
   onRestore,
   restoreLabel,
   pid,
+  sid,
   attention,
 }: ChipProps) {
   // Only set when the user actually picked a colour: the CSS falls back to
@@ -51,6 +53,7 @@ export function Chip({
     <span
       className="hv-chip"
       data-pid={pid}
+      data-sid={sid}
       data-state={state ?? (attention ? 'attention' : undefined)}
       data-active={active ? '' : undefined}
       style={style}

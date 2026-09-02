@@ -1,17 +1,21 @@
-// ---------- view / grid / tray / empty state ----------
+// ---------- view / grid ----------
 //
 // Moved verbatim from main.js. ensureTerm / setActive /
 // focusActiveTerm and the scroll tracer are injected via
 // initView(deps) — they live in session-term/focus modules (stage 6)
 // and main.ts.
+//
+// The minimized tray and the empty state left in Phase 2 of the React
+// rewrite: both are pure projections of store state, so they are
+// components subscribed to it (components/MinimizedTray.tsx,
+// EmptyState.tsx) instead of renderX() calls this module had to
+// remember at every repaint.
 
 import { WindowSetTitle, LogFrontend } from '../bridge.js';
 import { state, type SessionInfo, type TermTile } from './state.js';
 import * as store from '../store/store.js';
 import { termsHost, setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
-import { openLauncher } from './modals/launcher.js';
-import { openProjectEditor } from './modals/project-editor.js';
 import {
   buildGridLayout,
   computeSpatialMove,
@@ -20,14 +24,10 @@ import {
 import { resolveView, type ViewMode } from '../lib/view.js';
 import { filterHidden } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
-import { emptyStateModel } from '../lib/empty-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { modeHints } from '../lib/status.js';
-import { button } from '../ui/button.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
-import { chip } from '../ui/chip.js';
-import { sessionState } from '../lib/session-state.js';
 import { preserveFocus } from '../lib/preserve-focus.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
@@ -101,7 +101,6 @@ export function switchTo(id: string | null) {
   fallBackToSingleIfActiveHidden();
   if (state.view === 'single') showSingle(id);
   else renderGrid();
-  renderEmptyState();
   setStatus(info ? (info.name ?? '') : '');
   // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
   // the hint is recomputed here too — a "focus / move" hint on a single
@@ -172,7 +171,6 @@ export function switchToProject(pid: string) {
     store.setActiveId(null);
     if (state.view === 'single') showSingle(null);
     else renderGrid();
-    renderEmptyState();
   }
 }
 
@@ -408,14 +406,12 @@ export function gridSpatialMove(dCol: number, dRow: number) {
   if (idx < 0) {
     deps.setActive(sessions[0].id);
     renderGrid();
-    renderEmptyState();
     return;
   }
   const target = computeSpatialMove(gridLayout, idx, dCol, dRow);
   if (target == null) return;
   deps.setActive(sessions[target].id);
   renderGrid();
-  renderEmptyState();
   setStatus(sessions[target].name ?? '');
 }
 
@@ -462,7 +458,6 @@ export function shiftActiveProject(delta: number) {
   // Same guard as switchToProject: ⌘[ / ⌘] can land on a project whose
   // sessions the grid filters out.
   fallBackToSingleIfActiveHidden();
-  renderEmptyState();
   setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
@@ -503,16 +498,6 @@ export function isSessionHidden(id: string): boolean {
   return !!s && state.minimizedProjects.has(readProjectId(s));
 }
 
-// hiddenSessionIds is the union the empty-state model needs: it asks
-// "is every session in scope hidden?", which must count both kinds.
-function hiddenSessionIds(): Set<string> {
-  const ids = new Set(state.minimized);
-  for (const s of state.sessions) {
-    if (state.minimizedProjects.has(readProjectId(s))) ids.add(s.id);
-  }
-  return ids;
-}
-
 // minimizeSession hides a session from grid views by adding its id to
 // state.minimized. The session stays alive; its tile is removed on the
 // next renderGrid(). Single-session mode is unaffected — the user can
@@ -531,7 +516,6 @@ export function minimizeSession(id: string | null) {
     renderGrid();
     rebaselineGridReplayCols();
   }
-  renderMinimizedTray();
   enforceViewFloor();
 }
 
@@ -555,7 +539,6 @@ export function restoreSession(id: string | null) {
   const s = state.sessions.find((x) => x.id === id);
   const pid = readProjectId(s);
   if (pid && state.minimizedProjects.has(pid)) restoreProject(pid);
-  renderMinimizedTray();
   switchTo(id);
   if (state.view !== 'single') {
     rebaselineGridReplayCols();
@@ -582,7 +565,6 @@ export function minimizeProject(id: string | null) {
     renderGrid();
     rebaselineGridReplayCols();
   }
-  renderEmptyState();
   enforceViewFloor();
 }
 
@@ -592,7 +574,6 @@ export function minimizeProject(id: string | null) {
 export function restoreProject(id: string | null) {
   if (!id || !state.minimizedProjects.has(id)) return;
   store.restoreProject(id);
-  renderEmptyState();
   if (state.view !== 'single') {
     renderGrid();
     rebaselineGridReplayCols();
@@ -620,112 +601,6 @@ function rebaselineGridReplayCols() {
   );
 }
 
-// renderMinimizedTray rebuilds the #minimized-tray chip row from
-// state.minimized. Hidden when the set is empty.
-export function renderMinimizedTray() {
-  const tray = document.getElementById('minimized-tray');
-  if (!tray) return;
-  tray.innerHTML = '';
-  if (state.minimized.size === 0) {
-    tray.classList.add('hidden');
-    renderEmptyState();
-    return;
-  }
-  tray.classList.remove('hidden');
-  // Display order, so the chip row reads left-to-right like the sidebar
-  // reads top-to-bottom.
-  for (const info of orderedSessions().filter((s) =>
-    state.minimized.has(s.id),
-  )) {
-    const proj = state.projects.find((p) => p.id === readProjectId(info));
-    const el = chip({
-      label: info.name ?? '',
-      sublabel: proj?.name,
-      color: info.color,
-      state: sessionState(info, state.attention.has(info.id)),
-      ariaLabel: `Restore ${info.name}`,
-      onClick: () => restoreSession(info.id),
-    });
-    el.dataset.sid = info.id;
-    tray.append(el);
-  }
-  // Minimize/restore changes which sessions are visible without a sidebar
-  // render — re-evaluate the empty state here too.
-  renderEmptyState();
-}
-
-// renderEmptyState shows an actionable hint pane when the current
-// scope has nothing to display (first run, empty project, everything
-// minimized). Pure model in lib/empty-state.ts; this just projects it
-// onto the #empty-state element. Cheap enough to call from every
-// repaint path — DOM is rebuilt only when the model changes.
-export function renderEmptyState() {
-  // getElementById + a guard, deliberately not el.ts's mustEl/pageEl:
-  // this runs on every repaint, not at load, so absence is a tolerated
-  // branch (keyboard.ts imports this module into DOM tests that mount
-  // only the markup they exercise) rather than a contract to assert.
-  const el = document.getElementById('empty-state');
-  if (!el) return;
-  const model = emptyStateModel({
-    projects: state.projects,
-    sessions: state.sessions,
-    view: state.view,
-    // `?? undefined`, not a widening of EmptyStateInput to `| null`: its
-    // `= ''` parameter defaults fire on undefined only, so accepting null
-    // there would change which default applies.
-    currentProjectId: state.currentProjectId ?? undefined,
-    gridProjectId: state.gridProjectId ?? undefined,
-    minimized: hiddenSessionIds(),
-    isMac,
-  });
-  if (!model) {
-    el.classList.add('hidden');
-    el.dataset.kind = '';
-    delete el.dataset.sig;
-    return;
-  }
-  // Key the rebuild off the full model, not just the kind: within
-  // 'first-run' the hint/actions vary with projects.length, so a
-  // kind-only check would leave stale text and buttons behind.
-  const sig = JSON.stringify(model);
-  if (el.dataset.sig !== sig) {
-    el.dataset.sig = sig;
-    el.dataset.kind = model.kind;
-    el.innerHTML = '';
-    const title = document.createElement('div');
-    title.className = 'empty-title';
-    title.textContent = model.title;
-    const hint = document.createElement('div');
-    hint.className = 'empty-hint';
-    hint.textContent = model.hint;
-    el.append(title, hint);
-    if (model.actions.length) {
-      const row = document.createElement('div');
-      row.className = 'empty-actions';
-      // patterns.md: one primary action, the rest default.
-      model.actions.forEach((a, i) => {
-        row.appendChild(
-          button({
-            label: a.label,
-            kind: i === 0 ? 'primary' : 'default',
-            icon: 'plus',
-            onClick: (e) => {
-              // The launcher now opens synchronously; without this, the
-              // same click bubbles to the document-level outside-click
-              // closer and shuts it in the same tick.
-              e.stopPropagation();
-              if (a.id === 'new-session') openLauncher();
-              else if (a.id === 'new-project') openProjectEditor(null);
-            },
-          }),
-        );
-      });
-      el.appendChild(row);
-    }
-  }
-  el.classList.remove('hidden');
-}
-
 export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // A grid of one tile looks like focused mode but loses the focused-mode
   // keybindings, so ⌘G / ⇧⌘G below the floor stay where they are.
@@ -745,7 +620,6 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   } else {
     renderGrid();
   }
-  renderEmptyState();
   // Toggling grid/fullscreen via the menu blurs the xterm; restore
   // focus so the user can keep typing into the active session.
   deps.focusActiveTerm();
@@ -774,7 +648,6 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   // where it is spelled as the shortcut that leaves it.
   setStatus(active ? (active.name ?? '') : '');
   setModeHint(modeHints(view, isMac));
-  renderEmptyState();
 }
 
 // ---------- resize ----------

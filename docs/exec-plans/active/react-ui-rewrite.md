@@ -107,8 +107,8 @@ implemented — the briefs deliberately do not all exist up front.
 | Phase | Plan | PR | State |
 |---|---|---|---|
 | 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
-| 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | implemented, in review |
-| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | — | not started |
+| 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
+| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | implemented, in review |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | not started |
 | 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | not started |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
@@ -159,3 +159,54 @@ into hivesmith bookkeeping, following the `ui-design-system` master/phase layout
 Phase 0 implemented and committed (`dc249dc`); see
 [phase0](../completed/react-ui-rewrite-phase0.md) for its brief, flake baseline and
 decision log.
+
+## Phase briefs
+
+### Phase 2 — chrome island (written 2026-09-02 against `main` @ 950dfaf)
+
+**Regions and their roots.** Six islands, each mounted on the id the region
+already owns; React renders the *innards*, and the container-level class the
+legacy code toggled is applied by a `useLayoutEffect` — the same pattern
+Phase 1 used for the `#minimized-projects` portal, and for the same reason
+(the class sits outside React's tree and a passive effect would paint one
+stale frame).
+
+| Root container | Component | Container-level state kept by effect |
+|---|---|---|
+| `#banners` (new, `display: contents`) | `Banners` | — |
+| `#status` | `StatusBar` | `.error` |
+| `#boot-state` | `BootState` | `.hidden` |
+| `#empty-state` | `EmptyState` | `.hidden`, `data-kind` |
+| `#minimized-tray` | `MinimizedTray` | `.hidden` |
+| `#sidebar-hints` | `VersionFooter` | `.mismatch` |
+
+`#banners` is the one markup addition. The three banners are direct children of
+the `#app` grid today (`banner.css` places `[data-slot='daemon']` on row 1 and
+`[data-slot='update']` on row 2), so a wrapper would collapse them into one row.
+`#banners { display: contents; }` in `layout.css` keeps every existing row rule
+literal. Render order inside it is undo-close, daemon, update — the order
+`initBanners()` + `initUndoClose()` produce by prepending today.
+
+**Store additions** (`src/store/store.ts`, one store — Phase 0 already rejected
+splitting it):
+
+- `status: { text, isError }` — the *rendered output* of `lib/status.ts`'s
+  `createStatus`, which stays in `app/dom.ts` with its `render` callback writing
+  `setStatusText`. `FLASH_MIN_MS` semantics are not reimplemented.
+- `modeHint: ModeHint[]` — written by `setModeHint`.
+- `bootState: { text, onRetry } | null`.
+- `banners: Record<BannerSlot, BannerData>` where `BannerData` is
+  `{ text, visible, data?, actions? }`. **Only the data that changes.** The
+  static structure — kind, element id, action ids/labels/handlers — lives in
+  `Banners.tsx`, which imports the handlers from `banners.ts` / `undo-close.ts`.
+  Threading action descriptors and callbacks through the store would be a
+  second copy of `ui/banner.ts`'s API for no gain.
+
+**Deviation from this plan's file list (see Decision log).** The five `src/ui/*`
+primitives cannot all be deleted here; four have live consumers no phase of this
+migration removes. `banner.ts` does go, because the undo-close banner is ported
+in this phase too.
+
+**Sanctioned spec edit.** `test/e2e/nav-history.spec.ts:100` — `MinimizedTray`
+subscribes to `minimized`, so the in-place `.add` stops rendering. Changed to
+the store action, as the master plan pre-authorised.
