@@ -1,0 +1,145 @@
+// @vitest-environment jsdom
+//
+// The sidebar row's state icon (components/SessionRow.tsx) on a bell.
+//
+// Regression: a bell (events.ts onSessionBell) toggled the `.attention`
+// CSS class but, until this was fixed, never touched the row's
+// <svg class="hv-state-icon dot"> — so the icon kept showing the
+// "running" triangle (shape) and its <title> kept saying "Running"
+// (words) while the row was actually waiting for the user. icons.md
+// makes both channels part of the state contract, so this pins them to
+// data-state and the <use> href rather than the class, which was never
+// the thing lying.
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import type { SessionInfo } from '../../src/app/state.js';
+import * as store from '../../src/store/store.js';
+import {
+  card,
+  loadSidebar,
+  mountSidebar,
+  seed,
+  update,
+} from './sidebar-harness.js';
+
+let Sidebar: Awaited<ReturnType<typeof loadSidebar>>;
+
+beforeAll(async () => {
+  Sidebar = await loadSidebar();
+});
+
+function withSessions(sessions: SessionInfo[]) {
+  seed({
+    projects: [{ id: 'p1', name: 'proj', color: '#888' }],
+    sessions: sessions.map((s) => ({
+      project_id: 'p1',
+      alive: true,
+      phase: '', // PHASE.ready — a session with no phase is in steady state
+      ...s,
+    })),
+    collapsed: new Set(),
+    attention: new Set(),
+    activeId: null,
+  });
+  mountSidebar(Sidebar);
+}
+
+function dot(id: string): SVGSVGElement {
+  const el = document.querySelector<SVGSVGElement>(
+    `.hv-session-row[data-sid="${id}"] .hv-session-row__state`,
+  );
+  if (!el) throw new Error(`no state icon for ${id}`);
+  return el;
+}
+
+beforeEach(() => {
+  seed({});
+});
+
+describe('sidebar row state icon on attention', () => {
+  it('switches to attention when the row gains it, and back when cleared', () => {
+    withSessions([{ id: 'a', name: 'api', order: 0 }]);
+
+    expect(dot('a').dataset.state).toBe('running');
+    expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
+      '#hv-state-running',
+    );
+
+    update(() => store.addAttention('a'));
+
+    expect(dot('a').dataset.state).toBe('attention');
+    expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
+      '#hv-state-attention',
+    );
+    expect(dot('a').querySelector('title')?.textContent).toBe(
+      'Waiting for you',
+    );
+
+    update(() => store.clearAttentionFor('a'));
+
+    expect(dot('a').dataset.state).toBe('running');
+    expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
+      '#hv-state-running',
+    );
+    expect(dot('a').querySelector('title')?.textContent).toBe('Running');
+  });
+
+  it('patches in place rather than rebuilding the row', () => {
+    withSessions([{ id: 'a', name: 'api', order: 0 }]);
+    const before = dot('a');
+    update(() => store.addAttention('a'));
+    expect(dot('a')).toBe(before);
+  });
+});
+
+// Attention on a card is the union of its sessions' (patterns.md ›
+// Attention bubbling), and while the card is collapsed it is also the
+// count line. Both have to move on a bell that arrives with no other
+// change — the imperative card had a separate patch path that once
+// covered only part of this.
+describe('project card on a store update', () => {
+  it('bubbles a new bell to the card and refreshes the collapsed count', () => {
+    withSessions([{ id: 'a', name: 'api', order: 0 }]);
+    update(() => store.toggleCollapsed('p1'));
+
+    const count = () =>
+      card('p1')?.querySelector('.hv-project-card__count')?.textContent;
+
+    expect(card('p1')?.dataset.state).toBeUndefined();
+    expect(count()).toBe('1 session');
+
+    const before = card('p1');
+    update(() => store.addAttention('a'));
+
+    expect(card('p1')).toBe(before); // re-rendered, not rebuilt
+    expect(card('p1')?.dataset.state).toBe('attention');
+    expect(count()).toBe('1 session · 1 needs you');
+
+    update(() => store.clearAttentionFor('a'));
+    expect(card('p1')?.dataset.state).toBeUndefined();
+    expect(count()).toBe('1 session');
+  });
+
+  it('moves the active marker between cards without a rebuild', () => {
+    seed({
+      projects: [
+        { id: 'p1', name: 'one', color: '#888' },
+        { id: 'p2', name: 'two', color: '#888' },
+      ],
+      sessions: [],
+      collapsed: new Set(),
+      attention: new Set(),
+      activeId: null,
+      currentProjectId: 'p1',
+    });
+    mountSidebar(Sidebar);
+
+    const before = card('p1');
+    expect(card('p1')?.dataset.active).toBe('');
+    expect(card('p2')?.dataset.active).toBeUndefined();
+
+    update(() => store.setCurrentProjectId('p2'));
+    expect(card('p1')).toBe(before);
+    expect(card('p1')?.dataset.active).toBeUndefined();
+    expect(card('p2')?.dataset.active).toBe('');
+  });
+});

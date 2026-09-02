@@ -7,19 +7,13 @@ import { kbd } from '../ui/kbd.js';
 import { button } from '../ui/button.js';
 import { mustEl, pageEl } from './el.js';
 
-// index.html owns these three ids; a missing one means the document and
-// this module have drifted, which is a load-time bug, not a runtime
-// condition to branch on. mustEl throws rather than using `!` — it names
-// the id. See el.ts for why the modals use the non-throwing pageEl().
+// index.html owns these ids; a missing one means the document and this
+// module have drifted, which is a load-time bug, not a runtime condition
+// to branch on. mustEl throws rather than using `!` — it names the id.
+// See el.ts for why the modals use the non-throwing pageEl().
 export const termsHost = mustEl('terms');
 termsHost.classList.add('single');
 
-export const projectsUL = mustEl('projects');
-
-// pageEl, not mustEl: the jsdom tests mount partial sidebar markup and
-// must not fail on a tray they never exercise. renderSidebar skips the
-// minimized list when this is null.
-export const minimizedProjectsUL = pageEl('minimized-projects');
 export const status = mustEl('status');
 const statusText = mustEl('status-text');
 const statusHint = mustEl('status-hint');

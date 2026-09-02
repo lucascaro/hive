@@ -1,6 +1,8 @@
 # Components
 
-Primitives live in `src/ui/`, one file each, plain TypeScript DOM builders (no framework — the app is vanilla TS today and stays so). Each exports a function that returns an element and, where the element has state, a small update function. Feature modules (`src/app/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
+Primitives live in two places while the [React rewrite](../../exec-plans/active/react-ui-rewrite.md) is in flight. `src/components/` holds the React ones (`.tsx`, one component per file) and is where new work goes; `src/ui/` holds the original plain-TypeScript DOM builders — a function returning an element plus, where the element has state, a small `updateX()` patch twin — and shrinks one phase at a time as each region is ported. A primitive that exists in both renders byte-identical markup; the React one has no patch twin, because props replace it. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
+
+The signatures below are written in the imperative form. Read a React port's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`.
 
 Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names are `hv-<name>` and `hv-<name>__<part>`; modifiers are data attributes (`data-state="attention"`, `data-selected`), not extra classes.
 
@@ -27,7 +29,7 @@ Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names ar
 
 - Wraps `icon()` for the five states, sets `data-state`, applies animation classes. Used by session row, chip, tile header only.
 
-## `sessionRow({ session, selected, onSelect, onMinimize, onRestart, onKill })`
+## `sessionRow({ session, selected, onSelect, onMinimize, onRestart, onKill })` — React, `src/components/SessionRow.tsx`
 
 Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 inside S3).
 
@@ -39,8 +41,9 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Selected: `--sel` background + 2px `--accent` bar at left edge (`::before`). Hover: `--hover` and reveals actions replacing the meta column — `minus` (minimize), `rotate` (restart, exited/error rows only), `x` (kill, via the native `Confirm()` bridge; `force: false` on a live session so the daemon's dirty-worktree refusal still runs, `force: true` once the session is already dead).
 - Inline rename (existing feature) swaps line 1 for an input with the same metrics.
 - Drag-reorder handle: whole row, as today.
+- The row is composed by `src/components/Sidebar.tsx`, which owns the behaviour around it: drag-reorder, double-click-to-rename, and reading live session state at call time rather than closing over the `SessionInfo` the row was drawn from.
 
-## `projectCard({ project, sessions, collapsed, ... })`
+## `projectCard({ project, sessions, collapsed, ... })` — React, `src/components/ProjectCard.tsx`
 
 - `--surface-raised` body, 1px `--border`, `--radius-md`, margin `var(--space-1) var(--space-2) var(--space-2)`.
 - Header 30px: chevron (collapsed state), 8px colour swatch (`--session-color` data), name `--text-md` 500, session count `--font-mono --text-xs --fg-subtle` right-aligned, then hover actions (`plus` new session, `branch` worktrees, `settings` edit project, `minus` minimize project, `x` delete project). The five buttons take an 18px box, not the primitive's 24px — at the 220px sidebar floor the default size squeezes the name to ~3px.
@@ -49,7 +52,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 
 ## `chip({ label, color?, state?, onClick, onRestore? })`
 
-- Used by minimized-sessions tray and minimized-projects footer. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
+- Two implementations for now: `src/components/Chip.tsx` (React) draws the minimized-projects footer, `src/ui/chip.ts` (imperative) still draws the minimized-sessions tray until that region is ported. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
 - Anatomy: state icon or colour swatch (7px) + label + optional `plus` restore icon button.
 - `data-state="attention"` → state icon pulses; label `--state-attention`.
 

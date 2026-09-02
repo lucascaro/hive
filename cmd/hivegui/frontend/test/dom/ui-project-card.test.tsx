@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { projectCard, updateProjectCard } from '../../src/ui/project-card';
+import { render } from '@testing-library/react';
+import {
+  ProjectCard,
+  type ProjectCardProps,
+} from '../../src/components/ProjectCard';
 import type { ProjectInfo } from '../../src/app/state';
 
 const noop = () => {};
-const make = (over: Partial<Parameters<typeof projectCard>[0]> = {}) =>
-  projectCard({
+
+function props(over: Partial<ProjectCardProps> = {}): ProjectCardProps {
+  return {
     project: { id: 'p1', name: 'hive', color: '#0af' } as ProjectInfo,
     collapsed: false,
     active: false,
@@ -19,10 +24,38 @@ const make = (over: Partial<Parameters<typeof projectCard>[0]> = {}) =>
     onWorktrees: noop,
     onEdit: noop,
     onDelete: noop,
+    onHeaderDoubleClick: noop,
+    headerRef: null,
+    nameRef: null,
+    onDragStart: noop,
+    onDragEnd: noop,
+    onDragOver: noop,
+    onDrop: noop,
     ...over,
-  });
+  };
+}
 
-describe('projectCard', () => {
+function make(over: Partial<ProjectCardProps> = {}) {
+  const r = render(<ProjectCard {...props(over)} />, {
+    container: document.body.appendChild(document.createElement('ul')),
+  });
+  const root = r.container.querySelector<HTMLLIElement>('.hv-project-card');
+  if (!root) throw new Error('no card rendered');
+  const part = <T extends Element>(sel: string): T => {
+    const el = root.querySelector<T>(sel);
+    if (!el) throw new Error(`no ${sel}`);
+    return el;
+  };
+  return {
+    root,
+    header: part<HTMLElement>('.hv-project-card__header'),
+    name: part<HTMLElement>('.hv-project-card__name'),
+    body: part<HTMLUListElement>('.hv-project-card__body'),
+    rerender: r.rerender,
+  };
+}
+
+describe('ProjectCard', () => {
   it('renders name, swatch colour and data-pid', () => {
     const { root, name } = make();
     expect(root.className).toBe('hv-project-card');
@@ -86,7 +119,6 @@ describe('projectCard', () => {
       onDelete: vi.fn(),
     };
     const { root, header } = make(spies);
-    document.body.append(root);
     for (const a of ['new', 'minimize', 'worktrees', 'edit', 'delete']) {
       root.querySelector<HTMLButtonElement>(`[data-action="${a}"]`)?.click();
     }
@@ -98,31 +130,38 @@ describe('projectCard', () => {
     expect(spies.onSelect).not.toHaveBeenCalled();
     header.click();
     expect(spies.onSelect).toHaveBeenCalledTimes(1);
-    root.remove();
   });
 
-  it('returns a body list that is the append target for rows', () => {
-    const { root, body } = make();
-    expect(body.tagName).toBe('UL');
-    expect(body.parentElement).toBe(root);
+  it('renders its rows into the body list', () => {
+    const r = render(
+      <ProjectCard {...props()}>
+        <li className="hv-session-row" data-sid="s1" />
+      </ProjectCard>,
+      { container: document.body.appendChild(document.createElement('ul')) },
+    );
+    const body = r.container.querySelector('.hv-project-card__body');
+    expect(body?.tagName).toBe('UL');
+    expect(body?.querySelector('[data-sid="s1"]')).not.toBeNull();
   });
-});
 
-describe('updateProjectCard', () => {
-  // The build path and the patch path must reconcile the SAME set of
-  // fields. Task 2's regression was a patch that covered only part of
-  // what build renders; this pins every field of ProjectCardState.
-  it('reconciles active, attention, collapsed, chevron and the count', () => {
-    const { root } = make();
+  // What updateProjectCard() used to be. The build path and the patch path
+  // had to reconcile the same set of fields and once didn't; there is only
+  // one path now, and this pins every field of the card's state through it.
+  it('re-renders active, attention, collapsed, chevron and the count', () => {
+    const { root, rerender } = make();
     expect(root.dataset.active).toBeUndefined();
 
-    updateProjectCard(root, 'hive', {
-      collapsed: true,
-      active: true,
-      attention: true,
-      sessionCount: 3,
-      attentionCount: 2,
-    });
+    rerender(
+      <ProjectCard
+        {...props({
+          collapsed: true,
+          active: true,
+          attention: true,
+          sessionCount: 3,
+          attentionCount: 2,
+        })}
+      />,
+    );
     expect(root.dataset.active).toBe('');
     expect(root.dataset.state).toBe('attention');
     expect(root.dataset.collapsed).toBe('');
@@ -136,13 +175,7 @@ describe('updateProjectCard', () => {
       '#hv-chevron-right',
     );
 
-    updateProjectCard(root, 'hive', {
-      collapsed: false,
-      active: false,
-      attention: false,
-      sessionCount: 3,
-      attentionCount: 0,
-    });
+    rerender(<ProjectCard {...props({ sessionCount: 3 })} />);
     expect(root.dataset.active).toBeUndefined();
     expect(root.dataset.state).toBeUndefined();
     expect(root.dataset.collapsed).toBeUndefined();
