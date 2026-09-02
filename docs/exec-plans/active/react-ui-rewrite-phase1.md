@@ -326,6 +326,56 @@ Re-verified after the fixes: typecheck clean · biome 0 errors / 10 pre-existing
 warnings · ui-lint 0 violations · 74 files, 826 vitest tests · 258 e2e passed /
 31 skipped, still zero spec edits · 22 e2e-real passed / 2 skipped.
 
+### Review round 2 (2026-09-02)
+
+Iteration 2 verified all four round-1 fixes as correct (including that the new
+`sidebar-render-scope.test.tsx` genuinely fails with the `memo` stripped) and
+returned **COMMENT** with two IMPORTANT and four MINOR items, on a different
+findings hash — the loop is converging, not stalling.
+
+**Applied:**
+
+- **`preserveFocus`'s rebuild branch was dead code.** Its only caller is
+  `view.ts:332`, which *reparents* tiles, so `root.contains(keep)` always
+  short-circuits before the rebuild path; the sidebar was the only thing that
+  ever replaced nodes, and the `hv-session-row__*` / `data-action` matchers
+  only ever matched sidebar markup. Verified by reading the caller, not taken
+  on the reviewer's word. `matcherFor` and the relocate-by-`data-sid` tail are
+  deleted; the header comment now says why they went.
+- **The tray `.hidden` toggle is a `useLayoutEffect`.** `#minimized-projects`
+  carries a `border-top` and padding, and a passive effect applies the class
+  after paint — restoring the last minimized project could flash one frame of
+  an empty bordered stripe. The deleted `renderMinimizedProjects()` toggled it
+  in the same block that emptied the tray; this is the same synchrony.
+- MINOR: `src/ui/icon.ts`'s `stateIcon` comment no longer claims the sidebar
+  row as a consumer, and every primitive in `docs/design-docs/ui/components.md`
+  now names its implementing file(s) — previously only three of the six ported
+  ones did.
+
+**Investigated and NOT applied — "sidebar reorder blurs focus to `<body>`":**
+not reproducible. A raw `insertBefore` of a focused node does blur, in jsdom as
+in a browser (measured), but React's reconciler moves the minimum set of
+children and the rows that stay keep both their node *and* their parent, so
+nothing is detached and nothing is blurred. Measured directly: with focus on a
+row's kill button and the list reordered underneath it, `document.activeElement`
+is still that button, on every arrangement tried. A focus-restore layout effect
+was written, then deleted — it could not be made to fail without it, and
+untestable speculative behaviour code is worse than the gap it guesses at. What
+landed instead is `sidebar-focus.test.tsx` › "keeps focus on a row control
+across a reorder that moves it", which pins the property that makes the layer
+unnecessary and fails if React ever starts rebuilding rows.
+
+**Investigated and NOT applied — stale `renderSidebar` / `preserveFocus`
+comments inside `test/e2e/*.spec.ts` and `test/dom/drag-placeholder.test.ts`:**
+correct, but touching an e2e spec — even a comment — costs the crispest
+evidence this phase has, that not one spec file changed. Left for Phase 6,
+which deletes the last imperative render path and can fix the comments in the
+same sweep.
+
+Re-verified after these changes: typecheck clean · biome 0 errors / 10
+pre-existing warnings · ui-lint 0 violations · 74 files, 828 vitest tests · 258
+e2e passed / 31 skipped, still zero spec edits · 22 e2e-real passed / 2 skipped.
+
 ## PR convergence ledger
 
 Append-only, one line per `/hs-review-loop` iteration. Built by hand because
@@ -333,3 +383,4 @@ this feature's plans are named rather than `<NNN>`-prefixed, so the skill's
 plan lookup does not find them.
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9398f44440be87d2a4269103246c29cb5f4720dfdb24a7d122a5cb1fe91d232e; threads_open: 0; action: stop (converged; 4 IMPORTANT applied by hand — see Review round 1); head_sha: eac2fda.
+- **2026-09-02 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 88cdfafb994c18aadba6f53db181d0f1aa5ca4280fd9a0f2afa04c3c6d23e7c3; threads_open: 0; action: stop (converged; 2 IMPORTANT + 2 MINOR applied, 1 MINOR investigated and refuted, 1 deferred — see Review round 2); head_sha: 9b68a26.

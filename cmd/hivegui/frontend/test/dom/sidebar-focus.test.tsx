@@ -176,6 +176,79 @@ describe('sidebar repaint and focus', () => {
     expect(killCalls).toEqual([['a', false]]);
   });
 
+  // Reordering is the one update that can MOVE a row rather than patch it,
+  // and a raw insertBefore of a focused node is a remove+insert that blurs
+  // (jsdom included — measured). The imperative sidebar wrapped its whole
+  // render in lib/preserve-focus.ts partly for that.
+  //
+  // Through React it does not happen: the reconciler moves the minimum set
+  // of children, and the surviving rows keep both their node and their
+  // parent, so nothing is detached and nothing is blurred. This pins that
+  // — it is the observation that lets the island carry no focus-restore
+  // layer of its own. If React ever started rebuilding rows here, this
+  // fails.
+  const reorder = (order: string[]) =>
+    update(() => {
+      store.setSessions(
+        order.map((id, i) => ({
+          id,
+          name: id,
+          project_id: 'p1',
+          order: i,
+          alive: true,
+        })),
+      );
+    });
+
+  it('keeps focus on a row control across a reorder that moves it', () => {
+    withSessions([
+      { id: 'a', name: 'a', order: 0 },
+      { id: 'b', name: 'b', order: 1 },
+      { id: 'c', name: 'c', order: 2 },
+    ]);
+    const btn = killBtn('a');
+    btn.focus();
+
+    reorder(['c', 'a', 'b']);
+
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>('.hv-session-row'),
+    ].map((el) => el.dataset.sid);
+    expect(rows).toEqual(['c', 'a', 'b']); // really did move
+    expect(killBtn('a')).toBe(btn); // …without rebuilding the row
+    expect(document.activeElement).toBe(btn);
+  });
+
+  // Never yank the keyboard back from something that claimed it on
+  // purpose during the same update — a terminal, a modal, an inline
+  // rename. Same rule as lib/preserve-focus.ts and app/focus.ts.
+  it('leaves focus where an update deliberately moved it', () => {
+    withSessions([
+      { id: 'a', name: 'a', order: 0 },
+      { id: 'b', name: 'b', order: 1 },
+      { id: 'c', name: 'c', order: 2 },
+    ]);
+    killBtn('a').focus();
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+
+    update(() => {
+      store.setSessions(
+        ['c', 'a', 'b'].map((id, i) => ({
+          id,
+          name: id,
+          project_id: 'p1',
+          order: i,
+          alive: true,
+        })),
+      );
+      elsewhere.focus();
+    });
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
   it('leaves focus alone when it was never inside the sidebar', () => {
     withSessions([{ id: 'a', name: 'api', order: 0 }]);
     const outside = document.createElement('button');

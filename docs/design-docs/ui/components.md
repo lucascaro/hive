@@ -2,7 +2,7 @@
 
 Primitives live in two places while the [React rewrite](../../exec-plans/active/react-ui-rewrite.md) is in flight. `src/components/` holds the React ones (`.tsx`, one component per file) and is where new work goes; `src/ui/` holds the original plain-TypeScript DOM builders — a function returning an element plus, where the element has state, a small `updateX()` patch twin — and shrinks one phase at a time as each region is ported. A primitive that exists in both renders byte-identical markup; the React one has no patch twin, because props replace it. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
 
-The signatures below are written in the imperative form. Read a React port's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`.
+The signatures below are written in the imperative form, and each heading names the file(s) that implement it. Read a React port's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`. A heading with no file marked is imperative-only and has not been ported yet.
 
 Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names are `hv-<name>` and `hv-<name>__<part>`; modifiers are data attributes (`data-state="attention"`, `data-selected`), not extra classes.
 
@@ -13,21 +13,21 @@ Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names ar
 - Tokens: default = `--btn`/`--btn-border`/`--fg-muted`; primary = `--accent`/`--on-accent`; danger = transparent with `--state-error` text and border; ghost = no fill, no border.
 - States: hover `--hover`, active darken 8%, disabled `opacity .5; pointer-events none`, focus-visible ring.
 
-## `iconButton({ icon, label, onClick })`
+## `iconButton({ icon, label, onClick })` — both: `src/components/IconButton.tsx`, `src/ui/icon-button.ts`
 
 - 24×24 (rows/bars) or 22×22 (sidebar header), icon 14px centred, `aria-label` required, `title` mirrored. Same fills as `button` kind `ghost` at rest, `default` on hover.
 
-## `kbd(text)`
+## `kbd(text)` — both: `src/components/Kbd.tsx`, `src/ui/kbd.ts`
 
 - `<kbd class="hv-kbd">`, `--font-mono --text-xs --fg-subtle`. The only way to render a key hint. See patterns.md › Keyboard hints.
 
-## `icon(name, { size? })`
+## `icon(name, { size? })` — both: `src/components/Icon.tsx`, `src/ui/icon.ts`
 
 - Returns `<svg class="hv-icon"><use href="#hv-<name>"/></svg>`. Size 14 default, 12 inline.
 
-## `stateIcon(state)` / `updateStateIcon(el, state)`
+## `stateIcon(state)` / `updateStateIcon(el, state)` — both: `StateIcon` in `src/components/Icon.tsx`, `src/ui/icon.ts`
 
-- Wraps `icon()` for the five states, sets `data-state`, applies animation classes. Used by session row, chip, tile header only.
+- Wraps `icon()` for the five states, sets `data-state`, applies animation classes. Used by session row, chip, tile header only. The React port has no `updateStateIcon` twin — a new `state` prop is the update.
 
 ## `sessionRow({ session, selected, onSelect, onMinimize, onRestart, onKill })` — React, `src/components/SessionRow.tsx`
 
@@ -50,7 +50,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - The card ROOT gets `data-state="attention"` when any child session has attention (that is what the CSS selects): the header's swatch gains the pulse ring. Nothing else on the header changes.
 - Collapsed: body hidden, header shows "n sessions · k need you" in the count slot.
 
-## `chip({ label, color?, state?, onClick, onRestore? })`
+## `chip({ label, color?, state?, onClick, onRestore? })` — both: `src/components/Chip.tsx`, `src/ui/chip.ts`
 
 - Two implementations for now: `src/components/Chip.tsx` (React) draws the minimized-projects footer, `src/ui/chip.ts` (imperative) still draws the minimized-sessions tray until that region is ported. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
 - Anatomy: state icon or colour swatch (7px) + label + optional `plus` restore icon button.

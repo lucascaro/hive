@@ -18,7 +18,7 @@
 // view.ts / keyboard.ts here would close an import cycle.
 import {
   memo,
-  useEffect,
+  useLayoutEffect,
   useRef,
   type DragEvent as ReactDragEvent,
   type MouseEvent,
@@ -441,7 +441,13 @@ export function Sidebar(props: SidebarProps) {
   const minimizedList = projects.filter((p) => minimizedProjects.has(p.id));
 
   const tray = props.trayEl;
-  useEffect(() => {
+  // useLayoutEffect, not useEffect: the class lives on the portal
+  // CONTAINER, outside React's tree, and the tray carries a border-top and
+  // padding. A passive effect applies it after paint, so restoring the last
+  // minimized project flashes one frame of an empty bordered stripe. The
+  // imperative renderMinimizedProjects() toggled it in the same block that
+  // emptied the tray; this is the same synchrony.
+  useLayoutEffect(() => {
     tray?.classList.toggle('hidden', minimizedList.length === 0);
   }, [tray, minimizedList.length]);
 
