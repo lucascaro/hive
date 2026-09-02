@@ -58,8 +58,10 @@ Thumbs.db
 # var set would otherwise leave a few hundred MB untracked in the worktree.
 /.playwright-browsers/
 
-# hivesmith local tooling config
-.hivesmith/
+# hivesmith: project policy is committed, anything else local
+.hivesmith/*
+!.hivesmith/config.toml
+!.hivesmith/template-version
 
 # stray daemon/gui log dumped into the repo root during debugging
 /hive.log
