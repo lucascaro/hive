@@ -657,6 +657,27 @@ export function setBanner(slot: BannerSlot, patch: Partial<BannerData>): void {
   set({ banners: { ...get().banners, [slot]: next } });
 }
 
+// Compile-time guards for the two comparisons below. A hand-written
+// equality silently swallows any field added to the type after it was
+// written — the failure mode being that a banner stops updating and no
+// test says why. These fail to typecheck instead: add a field to
+// BannerData or BannerActionData and the literal is missing a property.
+// Keep each key in sync with the branch that reads it in sameBanner().
+const BANNER_FIELDS: Record<keyof BannerData, true> = {
+  text: true,
+  visible: true,
+  data: true,
+  actions: true,
+};
+const BANNER_ACTION_FIELDS: Record<keyof BannerActionData, true> = {
+  label: true,
+  hidden: true,
+  disabled: true,
+  data: true,
+};
+void BANNER_FIELDS;
+void BANNER_ACTION_FIELDS;
+
 // Shallow all the way down, which is exactly as deep as BannerData goes:
 // two string/bool fields, a flat string record, and a record of flat
 // records.

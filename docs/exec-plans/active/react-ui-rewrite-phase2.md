@@ -140,6 +140,14 @@ paint state, not a property of holding the handle; `showSingle()` re-adds it on
 the first paint (`view.ts:67`); and no test asserts it. Removing it also takes
 one import-time DOM write out of a module ~30 jsdom suites import.
 
+**2026-09-02 (review round 3) — `sameBanner`'s field list is guarded at the
+type level.** A hand-written equality silently swallows any field added to the
+type after it was written, and the failure mode is a banner that stops updating
+with no test to say why. `BANNER_FIELDS` / `BANNER_ACTION_FIELDS` are
+`Record<keyof T, true>` literals, so adding a field to `BannerData` or
+`BannerActionData` fails to compile until the comparison is extended. Verified
+by adding a probe field and watching `tsc` reject it.
+
 **2026-09-02 (review round 2) — `setBanner` no longer notifies on a no-op.** It
 rebuilds the banners record, so a new reference always reached `set()` and the
 module's own "an action that changes nothing never notifies" contract did not
@@ -215,3 +223,4 @@ _(opened 2026-09-02 for PR #318; `/hs-review-loop` appends one entry per iterati
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 51083c23; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 67dcf0a.
 - **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged; MINOR sweep applied + push; head_sha: 59b49d8.
+- **2026-09-02 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; CI all green; action: converged (re-review of the post-approval delta); last MINOR closed at the type level + push; head_sha: 26697ec.
