@@ -554,8 +554,10 @@ test.describe('Settings > Appearance', () => {
       'catppuccin-mocha',
       'one-dark',
       'neon',
+      'solarized-dark',
       'solarized-light',
       'catppuccin-latte',
+      'github-dark',
       'github-light',
     ]);
     // The community presets ship inside an <optgroup>; `.options` flattens

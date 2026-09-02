@@ -30,11 +30,13 @@ What they do **not** do is meet the contrast bar. They are ported at their publi
 | `catppuccin-mocha` | Catppuccin Mocha | `base`/`surface0` grounds, `text`/`subtext1`/`overlay1` type ramp, mauve accent |
 | `one-dark` | Atom One Dark | `--fg` is Atom's UI text `#d7dae0`, not the syntax foreground `#abb2bf` — that is the muted step here, the same chrome/code split Atom makes |
 | `neon` | Monokai (classic) | Wimer Hazenberg's 2006 TextMate palette. **Named `neon` on purpose**: "Monokai" is an active Monokai Pro trademark and "Sublime" is Sublime HQ's. Purple accent; green/orange/pink/cyan are all taken by the state family |
+| `solarized-dark` | Solarized Dark | `base03`/`base02` grounds, `base1`/`base0`/`base01` type, the same accent eight as its light sibling |
 | `solarized-light` | Solarized Light | `base3`/`base2` grounds, `base01`/`base00` type. Its bright ANSI row is Solarized's greys by design, which makes it the preset furthest from the AA bar on its own `#fdf6e3` ground |
 | `catppuccin-latte` | Catppuccin Latte | `mantle`/`base`/white grounds so a row card genuinely lifts off the panel |
+| `github-dark` | GitHub Primer (dark) | Primer's dark canvas grounds and `fg` ramp, `accent.emphasis` blue, Primer's terminal ANSI |
 | `github-light` | GitHub Primer | Primer canvas grounds, `fg.default`/`fg.muted`/`fg.subtle` ramp, `accent.emphasis` blue, Primer's terminal ANSI |
 
-Their dark/light counterparts (`solarized-dark`, `github-dark`) are not shipped yet; each is one `themes.css` block plus one `PRESETS` line.
+Presets that come in both moods (`solarized-*`, `catppuccin-*`, `github-*`) sit next to each other in the picker rather than being sorted dark-then-light — the pair is what the user is looking for.
 
 Selection: Settings → Appearance → Theme (dropdown, grouped into `Hive` / `Native` / `Community` via `<optgroup>`) with "System" mapping to `hive-dark`/`hive-light` via `prefers-color-scheme`. **`system` is the default** since v2.5.0 — an absent or unrecognised `hive.theme` resolves the same way an explicit `system` does. Anyone who already picked a preset keeps it.
 
@@ -50,17 +52,17 @@ Every community palette is MIT-licensed and used as a set of colour values; none
 | `tokyo-night` | [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) | Enkia |
 | `catppuccin-mocha`, `catppuccin-latte` | [Catppuccin](https://catppuccin.com) | Catppuccin org |
 | `one-dark` | Atom One Dark | GitHub / Atom contributors |
-| `solarized-light` | [Solarized](https://ethanschoonover.com/solarized/) | Ethan Schoonover |
-| `github-light` | [Primer](https://primer.style) | GitHub |
+| `solarized-dark`, `solarized-light` | [Solarized](https://ethanschoonover.com/solarized/) | Ethan Schoonover |
+| `github-dark`, `github-light` | [Primer](https://primer.style) | GitHub |
 | `neon` | Monokai (2006 TextMate theme) | Wimer Hazenberg. Shipped under a different name — see the table above |
 
-Contrast: every preset must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1; `--fg` on `--bg` and `--term-fg` on `--term-bg` are ≥4.5:1; and `--on-accent` on `--accent` must be ≥4.5:1 — a primary button must read its own label. The four state hues (`--state-running`, `--state-attention`, `--state-error`, `--state-info`) are checked at ≥4.5:1 on `--surface`: they are not icon-only fills, they colour real text in the worktree browser, the merged badge, the destructive action and the version-mismatch hint.
+Contrast: every preset in the first table must pass WCAG AA for `--fg` on `--surface` (≥4.5:1) and `--fg-muted` on `--surface` (≥4.5:1); `--fg-subtle` is decorative and only needs ≥3:1; `--fg` on `--bg` and `--term-fg` on `--term-bg` are ≥4.5:1; and `--on-accent` on `--accent` must be ≥4.5:1 — a primary button must read its own label. The four state hues (`--state-running`, `--state-attention`, `--state-error`, `--state-info`) are checked at ≥4.5:1 on `--surface`: they are not icon-only fills, they colour real text in the worktree browser, the merged badge, the destructive action and the version-mismatch hint.
 
 On a preset whose `--term-bg` is a **light** ground, all sixteen `--ansi-*` are checked at ≥4.5:1 against it too. Dark grounds are exempt because ANSI 0 is meant to disappear into the background there, which is what every terminal does; on a light ground that same slot is the darkest colour and the rule bites where it should.
 
 `scripts/ui-lint.sh --contrast` is the gate (add `--verbose` for every ratio); it runs on the Linux CI leg, since token values are platform-independent.
 
-A preset can opt out by declaring `--contrast-exempt: 1`, which is how the community ports ship at their upstream values (see below). The gate prints a `skip` line and a count for each, so an exemption is visible in every run rather than silent. It is not a general escape hatch: the six default presets are named in `NEVER_EXEMPT` and the marker is a *failure* on them — a preset a user can land on without opting in must clear the bar.
+A preset can opt out by declaring `--contrast-exempt: 1`, which is how the community ports above ship at their upstream values. The gate prints a `skip` line and a count for each, so an exemption is visible in every run rather than silent. It is not a general escape hatch: the six default presets are named in `NEVER_EXEMPT` and the marker is a *failure* on them — a preset a user can land on without opting in must clear the bar.
 
 ## User overrides
 

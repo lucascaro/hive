@@ -18,8 +18,10 @@ export type ThemeName =
   | 'catppuccin-mocha'
   | 'one-dark'
   | 'neon'
+  | 'solarized-dark'
   | 'solarized-light'
   | 'catppuccin-latte'
+  | 'github-dark'
   | 'github-light';
 export const THEME_KEY = 'hive.theme';
 // Phase 6: new installs follow the OS. Users who already set a preset keep
@@ -27,7 +29,7 @@ export const THEME_KEY = 'hive.theme';
 // garbage. index.html's pre-paint script hard-codes the same fallback;
 // keep the two in sync.
 export const DEFAULT_THEME: ThemeName = 'system';
-// The <optgroup> headings, in the order the picker shows them. Seventeen flat
+// The <optgroup> headings, in the order the picker shows them. Nineteen flat
 // entries is a scanning problem; three named buckets is not.
 export const GROUPS = ['Hive', 'Native', 'Community'] as const;
 export type Group = (typeof GROUPS)[number];
@@ -62,8 +64,10 @@ export const PRESETS: readonly Preset[] = [
   { id: 'catppuccin-mocha', label: 'Catppuccin Mocha', group: 'Community' },
   { id: 'one-dark', label: 'One Dark', group: 'Community' },
   { id: 'neon', label: 'Neon', group: 'Community' },
+  { id: 'solarized-dark', label: 'Solarized Dark', group: 'Community' },
   { id: 'solarized-light', label: 'Solarized Light', group: 'Community' },
   { id: 'catppuccin-latte', label: 'Catppuccin Latte', group: 'Community' },
+  { id: 'github-dark', label: 'GitHub Dark', group: 'Community' },
   { id: 'github-light', label: 'GitHub Light', group: 'Community' },
 ];
 

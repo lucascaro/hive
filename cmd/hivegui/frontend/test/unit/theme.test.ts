@@ -52,8 +52,10 @@ describe('PRESETS', () => {
       'catppuccin-mocha',
       'one-dark',
       'neon',
+      'solarized-dark',
       'solarized-light',
       'catppuccin-latte',
+      'github-dark',
       'github-light',
     ]);
     expect(new Set(ids).size).toBe(ids.length);

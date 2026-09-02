@@ -344,6 +344,29 @@
   --ansi-12: #66d9ef; --ansi-13: #ae81ff; --ansi-14: #a1efe4; --ansi-15: #f9f8f5;
 }
 
+/* Solarized Dark — MIT, Ethan Schoonover. The same accent eight as its light
+   sibling on base03/base02 grounds; base1/base0/base01 for the type ramp.
+   Solarized's bright ANSI row is its grey ramp by design, in both moods. */
+:root[data-theme="solarized-dark"] {
+  --contrast-exempt: 1;
+  --bg: #002b36; --surface: #073642; --surface-raised: #0c4552; --border: #586e75;
+  --fg: #93a1a1; --fg-muted: #839496; --fg-subtle: #586e75;
+  --accent: #268bd2; --on-accent: #002b36; --sel: #0f4a58;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #073642; --btn-border: #586e75;
+  --state-running: #859900; --state-attention: #b58900; --state-error: #dc322f;
+  --state-info: #268bd2;
+  --term-bg: #002b36; --term-fg: #839496;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #073642; --ansi-1: #dc322f; --ansi-2: #859900; --ansi-3: #b58900;
+  --ansi-4: #268bd2; --ansi-5: #d33682; --ansi-6: #2aa198; --ansi-7: #eee8d5;
+  --ansi-8: #002b36; --ansi-9: #cb4b16; --ansi-10: #586e75; --ansi-11: #657b83;
+  --ansi-12: #839496; --ansi-13: #6c71c4; --ansi-14: #93a1a1; --ansi-15: #fdf6e3;
+}
+
 /* Solarized Light — MIT, Ethan Schoonover. base3/base2 grounds, base01/base00
    type, and the accent eight. The bright ANSI row is Solarized's greys by
    design, which is what makes it the palette that departs furthest from the
@@ -388,6 +411,28 @@
   --ansi-4: #1e66f5; --ansi-5: #ea76cb; --ansi-6: #179299; --ansi-7: #acb0be;
   --ansi-8: #6c6f85; --ansi-9: #de293e; --ansi-10: #49af3d; --ansi-11: #eea16f;
   --ansi-12: #456eff; --ansi-13: #fe85d8; --ansi-14: #2d9fa8; --ansi-15: #bcc0cc;
+}
+
+/* GitHub Dark — MIT, GitHub Primer. Primer's dark canvas/default+subtle
+   grounds and fg ramp, accent.emphasis blue, and Primer's terminal ANSI. */
+:root[data-theme="github-dark"] {
+  --contrast-exempt: 1;
+  --bg: #0d1117; --surface: #151b23; --surface-raised: #1c2128; --border: #3d444d;
+  --fg: #e6edf3; --fg-muted: #9198a1; --fg-subtle: #6e7681;
+  --accent: #4493f8; --on-accent: #0d1117; --sel: #1f3a5f;
+  --hover: color-mix(in srgb, var(--sel) 60%, transparent);
+  --btn: #212830; --btn-border: #3d444d;
+  --state-running: #3fb950; --state-attention: #d29922; --state-error: #f85149;
+  --state-info: #4493f8;
+  --term-bg: #0d1117; --term-fg: #e6edf3;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --radius-sm: 4px; --radius-md: 6px;
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --ansi-0: #2f3742; --ansi-1: #ff7b72; --ansi-2: #3fb950; --ansi-3: #d29922;
+  --ansi-4: #58a6ff; --ansi-5: #bc8cff; --ansi-6: #39c5cf; --ansi-7: #b1bac4;
+  --ansi-8: #6e7681; --ansi-9: #ffa198; --ansi-10: #56d364; --ansi-11: #e3b341;
+  --ansi-12: #79c0ff; --ansi-13: #d2a8ff; --ansi-14: #56d4dd; --ansi-15: #f0f6fc;
 }
 
 /* GitHub Light — MIT, GitHub Primer. Primer's canvas/default+subtle grounds,

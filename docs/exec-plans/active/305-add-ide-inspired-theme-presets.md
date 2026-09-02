@@ -1,4 +1,4 @@
-# Add 10 IDE-inspired theme presets
+# Add 12 IDE-inspired theme presets
 
 - **Spec:** [docs/product-specs/305-add-ide-inspired-theme-presets.md](../../product-specs/305-add-ide-inspired-theme-presets.md)
 - **Issue:** —
@@ -7,8 +7,8 @@
 
 ## Summary
 
-Add ten presets drawn from the most-installed IDE themes — seven dark, three light — to
-`themes.css`, register them in `PRESETS`, and group the now-17-entry picker into
+Add twelve presets drawn from the most-installed IDE themes — nine dark, three light — to
+`themes.css`, register them in `PRESETS`, and group the now-19-entry picker into
 `<optgroup>` buckets. Every source palette fails the repo's WCAG gate as published upstream,
 so each block declares `--contrast-exempt: 1` and the gate reports it as skipped instead of
 checking it. The gate's rules are untouched and the six default presets stay under them.
@@ -75,7 +75,9 @@ Follow `themes.md` § "Adding a preset" for all ten, plus one piece of UI work t
 does not cover (the picker outgrows a flat `<select>` at 17 entries).
 
 **Presets.** Dark: `dracula`, `nord`, `gruvbox-dark`, `tokyo-night`, `catppuccin-mocha`,
-`one-dark`, `neon`. Light: `solarized-light`, `catppuccin-latte`, `github-light`.
+`one-dark`, `neon`, `solarized-dark`, `github-dark`. Light: `solarized-light`,
+`catppuccin-latte`, `github-light`. A palette shipping in both moods sits adjacent in the
+picker rather than being sorted dark-then-light — the pair is what the user looks for.
 
 **Token mapping** from each source palette:
 
@@ -94,7 +96,7 @@ them as `var()` references that re-resolve against each preset's own `--sel` / `
 Do **not** invent per-preset type, spacing or motion scales — one scale for the whole app.
 
 Each block opens with `--contrast-exempt: 1` and carries a comment naming its source and
-licence. The section header comment states the trade-off once, for all ten.
+licence. The section header comment states the trade-off once, for all twelve.
 
 **Why exempt rather than correct.** The first draft corrected every palette until it passed,
 the way `native-light` corrects VS Code Light+. Reversed on the owner's call: these presets
@@ -115,17 +117,17 @@ lines in `selectInput`. No custom dropdown, no new component.
 
 ### Files to change
 
-- `cmd/hivegui/frontend/src/theme/themes.css` — ten new `:root[data-theme="…"]` blocks, each
+- `cmd/hivegui/frontend/src/theme/themes.css` — twelve new `:root[data-theme="…"]` blocks, each
   re-valuing every token including ANSI 16, under a `Community presets` header comment. The
   bulk of the diff.
 - `scripts/ui-contrast.mjs` — honour `--contrast-exempt` (read from the preset's own
   declarations, not the base-merged view), refuse it on `NEVER_EXEMPT`, and report the
   opt-out count in the summary line.
-- `cmd/hivegui/frontend/src/theme/theme.ts` — extend `ThemeName`; add ten `PRESETS` entries;
+- `cmd/hivegui/frontend/src/theme/theme.ts` — extend `ThemeName`; add twelve `PRESETS` entries;
   add a `group` field to `Preset` and `export const GROUPS = ['Hive','Native','Community']`;
   tag existing presets (`system`/`hive-*` → Hive, `native-*`/`terminal`/`classic` → Native,
-  the ten new → Community).
-- `cmd/hivegui/frontend/index.html` — add the ten ids to the `KNOWN` array in the pre-paint
+  the twelve new → Community).
+- `cmd/hivegui/frontend/index.html` — add the twelve ids to the `KNOWN` array in the pre-paint
   script.
 - `cmd/hivegui/frontend/src/ui/field.ts` — optional `group?: string` on `selectInput`'s
   option type; when any option carries one, render `<optgroup label>` buckets in first-seen
@@ -151,7 +153,7 @@ Most coverage is already data-driven off the rendered picker and comes free.
 - `test/unit/theme.test.ts` › `PRESETS › every preset declares a group listed in GROUPS` —
   **new**: no preset silently falls out of the picker from a typo'd group.
 - `test/unit/theme.test.ts` › `PRESETS › every non-system preset resolves to itself` —
-  existing, covers the ten new ids for free.
+  existing, covers the twelve new ids for free.
 - `test/unit/field.test.ts` (or wherever `selectInput` is covered) › `selectInput › groups
   options into optgroups` and `› renders flat when no option has a group` — **new**.
 - `test/e2e/theme.spec.ts` › `the preset list is exactly what theme.ts exports` — **update**:
@@ -161,7 +163,7 @@ Most coverage is already data-driven off the rendered picker and comes free.
 - `test/e2e/theme.spec.ts` › `every preset paints its own tokens and its own ANSI 16` —
   existing, proves each block is reached, declares all sixteen, paints a distinct ground, and
   reaches xterm's cached palette.
-- `scripts/ui-lint.sh --contrast` — existing gate; must report 0 failures, 10 opted out.
+- `scripts/ui-lint.sh --contrast` — existing gate; must report 0 failures, 12 opted out.
 - `test/e2e/theme.spec.ts` › `<preset> gives terminals a palette readable on its own ground`
   — loops the FIRST-PARTY light presets only; comment updated to say so and why, since it
   previously claimed to cover every light preset.
@@ -205,5 +207,4 @@ Most coverage is already data-driven off the rendered picker and comes free.
 
 ## Open questions
 
-- None blocking. Outstanding by choice: `solarized-dark` and `github-dark` are not shipped,
-  so two of the three light presets have no dark counterpart in the picker.
+- None.

@@ -1,13 +1,13 @@
 ---
 issue: null
-title: "Add 10 IDE-inspired theme presets"
+title: "Add 12 IDE-inspired theme presets"
 type: enhancement
 complexity: M
 priority: P2
 stage: IMPLEMENT
 ---
 
-# Add 10 IDE-inspired theme presets
+# Add 12 IDE-inspired theme presets
 
 - **Issue:** —
 - **Type:** enhancement
@@ -19,7 +19,8 @@ stage: IMPLEMENT
 
 Hive ships six presets, all of them designed in-house (`hive-*`, `native-*`, `terminal`,
 `classic`). People arriving from VS Code, Neovim or JetBrains have a palette they already
-read fluently — Dracula, Nord, Gruvbox, Tokyo Night, Catppuccin, One Dark, Solarized — and
+read fluently — Dracula, Nord, Gruvbox, Tokyo Night, Catppuccin, One Dark, Solarized,
+GitHub — and
 none of them are here. Spec 258 retired the last colour literals, so a preset is now purely
 a block of token values with no component CSS knowing a theme name; the cost of adding one
 has dropped to a `themes.css` block plus a line in `PRESETS`, which is what makes this worth
@@ -27,7 +28,7 @@ doing now rather than earlier.
 
 ## Desired behavior
 
-Settings › Appearance › Theme offers 16 presets grouped into "Hive", "Native" and
+Settings › Appearance › Theme offers 19 presets grouped into "Hive", "Native" and
 "Community". Picking any of them repaints the whole app *and* the live terminals — chrome,
 worktree browser, overlays and the ANSI 16 — with no restart, exactly as the existing
 presets do.
@@ -39,10 +40,11 @@ makes, and it is stated in the docs rather than buried.
 
 ## Success criteria
 
-- Ten new presets are selectable and each paints its own distinct tokens: `dracula`, `nord`,
-  `gruvbox-dark`, `tokyo-night`, `catppuccin-mocha`, `one-dark`, `neon`, `solarized-light`,
-  `catppuccin-latte`, `github-light`.
-- `scripts/ui-lint.sh --contrast` reports 0 failures. The ten new presets opt out via
+- Twelve new presets are selectable and each paints its own distinct tokens: `dracula`,
+  `nord`, `gruvbox-dark`, `tokyo-night`, `catppuccin-mocha`, `one-dark`, `neon`,
+  `solarized-dark`, `solarized-light`, `catppuccin-latte`, `github-dark`, `github-light`.
+- Presets that ship in both moods sit adjacent in the picker, not sorted dark-then-light.
+- `scripts/ui-lint.sh --contrast` reports 0 failures. The twelve new presets opt out via
   `--contrast-exempt: 1` and are reported as skipped with a count, never silently; no pair
   is removed from or relaxed in `scripts/ui-contrast.mjs`, and the six default presets
   remain strictly gated.
@@ -62,8 +64,6 @@ makes, and it is stated in the docs rather than buried.
 
 ## Non-goals
 
-- `solarized-dark` and `github-dark`. The light halves ship without their dark counterparts;
-  adding them later is one `themes.css` block and one `PRESETS` line each.
 - Correcting the palettes to pass the WCAG gate. Reversed after the measurements below were
   reviewed: the ports ship at their upstream values and opt out of the gate instead. The
   gate's own rules and thresholds are unchanged, and the default presets stay under them.
