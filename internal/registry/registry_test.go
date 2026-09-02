@@ -75,12 +75,19 @@ func TestCreateListKill(t *testing.T) {
 	// Skips the lifecycle-phase `updated` events that create and kill
 	// emit on their way through (covered by TestCreatePhaseSequence /
 	// TestKillPhaseSequence); this test is about added/removed.
+	//
+	// `title` is skipped for a sharper reason: these are real /bin/bash
+	// sessions, and a shell emits its OSC window title whenever it
+	// pleases. A title event landing between `added` and `removed`
+	// failed this test on CI ("event kind: got title, want removed") —
+	// a race the assertion was never about.
 	expectEvent := func(kind string) wire.SessionEvent {
 		deadline := time.After(2 * time.Second)
 		for {
 			select {
 			case ev := <-listener:
-				if ev.Kind == wire.SessionEventUpdated && kind != wire.SessionEventUpdated {
+				if (ev.Kind == wire.SessionEventUpdated ||
+					ev.Kind == wire.SessionEventTitle) && kind != ev.Kind {
 					continue
 				}
 				if ev.Kind != kind {
@@ -106,6 +113,12 @@ func TestCreateListKill(t *testing.T) {
 	if got[0].Order != 0 || got[1].Order != 1 {
 		t.Errorf("order numbers: %+v", got)
 	}
+
+	// Deterministic stand-in for the CI race: on Linux the shell's OSC
+	// title landed here on its own and the assertion below read it as
+	// the kill event. Injecting one makes the skip above load-bearing
+	// rather than timing-dependent.
+	r.noteTitleChange(a.ID)
 
 	if err := r.Kill(a.ID, true); err != nil {
 		t.Fatalf("Kill alpha: %v", err)
