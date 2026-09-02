@@ -121,3 +121,5 @@ No flake-baseline comparison was needed: nothing failed.
 ## PR convergence ledger
 
 _(opened 2026-09-02 for PR #319; `/hs-review-loop` appends one entry per iteration)_
+
+- **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 54e8817e; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 2e01fb5.
