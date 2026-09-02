@@ -43,6 +43,11 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetStore();
+  // resetStore() cannot reach app/dom.ts's createStatus instance, which is
+  // a module-level singleton holding the persistent slot across tests. Left
+  // alone, a case that sets a status leaks it into the next one's starting
+  // state — green today only because of the order they happen to run in.
+  act(() => domSetStatus(''));
   // A fresh container per test, nested one level under document.body:
   // RTL's cleanup() removes a render() container whose parentNode IS
   // document.body, which would rip #status out of the document between

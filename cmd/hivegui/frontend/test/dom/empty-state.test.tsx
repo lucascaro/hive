@@ -71,4 +71,36 @@ describe('EmptyState', () => {
     expect(launcher.openLauncher).toHaveBeenCalledTimes(1);
     expect(projectEditor.openProjectEditor).not.toHaveBeenCalled();
   });
+
+  it("the first-run pane's second action opens the project editor", () => {
+    resetStore({ sessions: [], projects: [] });
+    const root = mount();
+    const secondary = root.querySelector(
+      '.empty-actions .hv-button[data-kind="default"]',
+    ) as HTMLButtonElement;
+    fireEvent.click(secondary);
+    expect(projectEditor.openProjectEditor).toHaveBeenCalledWith(null);
+    expect(launcher.openLauncher).not.toHaveBeenCalled();
+  });
+
+  it('counts a session hidden by its MINIMIZED PROJECT, not just by itself', () => {
+    // The union the component rebuilds from two separate sets. Its own
+    // session is not minimized — only the project holding it is — so a
+    // component reading `minimized` alone would render nothing here and
+    // leave the user staring at an empty grid with no explanation.
+    resetStore({
+      view: 'grid-all',
+      projects: [{ id: 'p1', name: 'proj' } as never],
+      sessions: [{ id: 's1', project_id: 'p1' } as never],
+      minimized: new Set<string>(),
+      minimizedProjects: new Set(['p1']),
+    });
+    const root = mount();
+    expect(root.dataset.kind).toBe('all-minimized');
+    expect(root.querySelector('.empty-title')?.textContent).toBe(
+      'All sessions minimized',
+    );
+    // Nothing to click your way out of — the tray and sidebar own that.
+    expect(root.querySelector('.empty-actions')).toBeNull();
+  });
 });

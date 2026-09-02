@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// The React <Chip>. The imperative chip() it replaces is still alive for
-// the minimized-SESSION tray (src/app/view.ts) until Phase 2 ports the
-// chrome island, so ui-chip.test.ts covers that one and this covers this
-// one. Both assert the same markup contract on purpose.
+// The React <Chip>, now the only one: Phase 2 ported the
+// minimized-SESSION tray (components/MinimizedTray.tsx) and deleted the
+// imperative src/ui/chip.ts along with its ui-chip.test.ts. This file
+// carries the whole markup contract for both trays.
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';

@@ -132,6 +132,22 @@ rebuild off a JSON signature of the model so the renderer could skip an
 `innerHTML` wipe. React reconciles, so the signature went with the wipe that
 needed it. Nothing outside `view.ts` read it (no e2e selector, no test).
 
+**2026-09-02 (review round 2) — the `single` class DID move to `main.ts`, as
+Scope said.** Round 2 caught `app/dom.ts` still doing
+`termsHost.classList.add('single')` at import time while Scope claimed the
+mutation had moved. Honoured the plan rather than amending it: it is initial
+paint state, not a property of holding the handle; `showSingle()` re-adds it on
+the first paint (`view.ts:67`); and no test asserts it. Removing it also takes
+one import-time DOM write out of a module ~30 jsdom suites import.
+
+**2026-09-02 (review round 2) — `setBanner` no longer notifies on a no-op.** It
+rebuilds the banners record, so a new reference always reached `set()` and the
+module's own "an action that changes nothing never notifies" contract did not
+hold for it. Not hypothetical: `wireDaemonBanner` writes the same `daemonBuild`
+on every control connect, and `renderUpdateAction` re-derives the same button on
+every `update:progress` step. `sameBanner()` is shallow all the way down, which
+is exactly as deep as `BannerData` goes.
+
 **2026-09-02 (review round 1) — `MinimizedTray`'s chips are memoized;
 `EmptyState` deliberately is not.** Both subscribe to `sessions`, which
 `updateSession()` replaces on every `title` event — a path the deleted
@@ -198,3 +214,4 @@ Phase 1.
 _(opened 2026-09-02 for PR #318; `/hs-review-loop` appends one entry per iteration)_
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 51083c23; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 67dcf0a.
+- **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged; MINOR sweep applied + push; head_sha: 59b49d8.

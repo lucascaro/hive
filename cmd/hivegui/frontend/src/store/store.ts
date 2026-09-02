@@ -646,9 +646,51 @@ export function setBanner(slot: BannerSlot, patch: Partial<BannerData>): void {
       actions[id] = { ...actions[id], ...o };
     }
   }
-  set({
-    banners: { ...get().banners, [slot]: { ...cur, ...patch, actions } },
-  });
+  const next: BannerData = { ...cur, ...patch, actions };
+  // A rebuilt record is always a new reference, so `set`'s own
+  // reference check cannot see a no-op here — this restores the module's
+  // contract that an action changing nothing notifies nobody. It is not
+  // hypothetical: wireDaemonBanner writes the same daemonBuild on every
+  // control connect, and renderUpdateAction re-derives the same button
+  // on every update:progress step.
+  if (sameBanner(cur, next)) return;
+  set({ banners: { ...get().banners, [slot]: next } });
+}
+
+// Shallow all the way down, which is exactly as deep as BannerData goes:
+// two string/bool fields, a flat string record, and a record of flat
+// records.
+function sameBanner(a: BannerData, b: BannerData): boolean {
+  if (a.text !== b.text || a.visible !== b.visible) return false;
+  if (!sameRecord(a.data, b.data)) return false;
+  const ids = new Set([
+    ...Object.keys(a.actions ?? {}),
+    ...Object.keys(b.actions ?? {}),
+  ]);
+  for (const id of ids) {
+    const x = a.actions?.[id];
+    const y = b.actions?.[id];
+    if (!x || !y) return false;
+    if (
+      x.label !== y.label ||
+      x.hidden !== y.hidden ||
+      x.disabled !== y.disabled
+    ) {
+      return false;
+    }
+    if (!sameRecord(x.data, y.data)) return false;
+  }
+  return true;
+}
+
+function sameRecord(
+  a: Record<string, string> | undefined,
+  b: Record<string, string> | undefined,
+): boolean {
+  const ak = Object.keys(a ?? {});
+  const bk = Object.keys(b ?? {});
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => a?.[k] === b?.[k]);
 }
 
 export function hideBanner(slot: BannerSlot): void {

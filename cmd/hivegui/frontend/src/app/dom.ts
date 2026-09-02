@@ -19,8 +19,12 @@ import { mustEl } from './el.js';
 // index.html owns this id; a missing one means the document and this
 // module have drifted, which is a load-time bug, not a runtime condition
 // to branch on. mustEl throws rather than using `!` — it names the id.
+//
+// The `single` class that used to be added here moved to main.ts: it is
+// initial paint state, not a property of holding the handle, and this
+// module is imported by ~30 jsdom tests that never render a view.
+// showSingle() re-adds it on the first paint either way (view.ts).
 export const termsHost = mustEl('terms');
-termsHost.classList.add('single');
 
 // The flash engine stays here rather than moving into the store: it is
 // the timing policy (FLASH_MIN_MS, the persistent slot that survives a

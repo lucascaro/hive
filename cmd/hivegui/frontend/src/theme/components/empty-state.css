@@ -64,7 +64,6 @@
 /* The spinner belongs to the wait; once the boot has given up the card
    shows a Retry instead. */
 .boot-state-card .phase-spinner.hidden { display: none; }
-#boot-state-retry[hidden] { display: none; }
 
 .phase-overlay {
   position: absolute;
