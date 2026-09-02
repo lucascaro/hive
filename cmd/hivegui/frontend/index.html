@@ -75,6 +75,11 @@
 </head>
 <body>
 <div id="app">
+  <!-- The three banner slots (undo-close, daemon, update). Empty here;
+       components/Banners.tsx renders into it. `display: contents`
+       (layout.css) keeps the banners themselves direct children of the
+       #app grid, where banner.css places them on rows 1 and 2. -->
+  <div id="banners"></div>
   <aside id="sidebar">
     <header>
       <span class="brand">Hive</span>

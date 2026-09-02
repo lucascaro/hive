@@ -91,7 +91,6 @@ import {
   updateAppTitle,
   showSingle,
   renderGrid,
-  renderEmptyState,
 } from './view.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 import { beginInlineRename } from './inline-rename.js';
@@ -620,7 +619,6 @@ export class SessionTerm {
     this.host.addEventListener('mousedown', () => {
       if (state.activeId !== this.info.id) {
         setActive(this.info.id);
-        renderEmptyState();
         if (state.view === 'single') {
           // Switch terms in single mode; in grid mode every tile is
           // already visible so there's nothing else to do.

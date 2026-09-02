@@ -6,7 +6,7 @@ The signatures below are written in the imperative form, and each heading names 
 
 Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names are `hv-<name>` and `hv-<name>__<part>`; modifiers are data attributes (`data-state="attention"`, `data-selected`), not extra classes.
 
-## `button({ label, kind?, icon?, onClick })`
+## `button({ label, kind?, icon?, onClick })` — both: `src/components/Button.tsx`, `src/ui/button.ts`
 
 - `kind`: `default` | `primary` | `danger` | `ghost`.
 - Anatomy: optional leading icon (14px) + label. Height 28px, padding `0 var(--space-3)`, `--text-md`, `--radius-sm`.
@@ -50,9 +50,9 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - The card ROOT gets `data-state="attention"` when any child session has attention (that is what the CSS selects): the header's swatch gains the pulse ring. Nothing else on the header changes.
 - Collapsed: body hidden, header shows "n sessions · k need you" in the count slot.
 
-## `chip({ label, color?, state?, onClick, onRestore? })` — both: `src/components/Chip.tsx`, `src/ui/chip.ts`
+## `chip({ label, color?, state?, onClick, onRestore? })` — `src/components/Chip.tsx`
 
-- Two implementations for now: `src/components/Chip.tsx` (React) draws the minimized-projects footer, `src/ui/chip.ts` (imperative) still draws the minimized-sessions tray until that region is ported. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
+- Draws both trays: the minimized-projects footer in the sidebar and the minimized-sessions tray above the status bar. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
 - Anatomy: state icon or colour swatch (7px) + label + optional `plus` restore icon button.
 - `data-state="attention"` → state icon pulses; label `--state-attention`.
 
@@ -64,7 +64,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Section heading inside bodies: `--text-lg` 500, `--fg`, margin-top `--space-5`.
 - Hint paragraph: `--text-sm --fg-muted`, max-width 60ch.
 
-## `banner({ text, kind, actions })`
+## `banner({ text, kind, actions })` — `src/components/Banner.tsx`
 
 - Full-width row above the app grid (rows 1–2 today). `kind`: `error` (`--state-error` left border 3px, `--surface`) | `info` (`--accent` border).
 - 36px, `--text-md`, actions as `button` kind `ghost`, dismiss as `iconButton(x)`.

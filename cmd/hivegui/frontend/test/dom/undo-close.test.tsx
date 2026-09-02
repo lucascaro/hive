@@ -10,23 +10,39 @@
 // the worktree or the agent conversation while the banner says
 // "reopened" is worse than no undo at all, because the user stops
 // looking.
+//
+// Phase 2: the banner is always mounted (initUndoClose() is gone) —
+// this renders the real <Banners /> island and reads its DOM.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, fireEvent, act } from '@testing-library/react';
+import { Banners } from '../../src/components/Banners.js';
+import { resetStore } from '../../src/store/store.js';
 
 // vi.mock factories are hoisted above every top-level binding, so the
 // spies have to be created inside them and read back afterwards.
 vi.mock('../../src/bridge.js', () => ({
   KillSession: vi.fn(() => Promise.resolve()),
   RestoreSession: vi.fn(() => Promise.resolve()),
+  // Banners.tsx also wires the daemon/update slots (app/banners.js),
+  // which import these from bridge.js — unused by this file's cases,
+  // but the module has to resolve to mount the island at all.
+  Confirm: vi.fn(() => Promise.resolve(true)),
+  RestartDaemon: vi.fn(() => Promise.resolve()),
+  CheckForUpdate: vi.fn(() => Promise.resolve(null)),
+  StartUpdate: vi.fn(() => Promise.resolve()),
+  ApplyUpdateAndRestart: vi.fn(() => Promise.resolve()),
+  OpenURL: vi.fn(() => Promise.resolve()),
+  EventsOn: vi.fn(),
 }));
 
 vi.mock('../../src/app/dom.js', () => ({
   reportFailure: () => () => {},
+  flashStatus: () => {},
 }));
 
 import { KillSession, RestoreSession } from '../../src/bridge.js';
 
 import {
-  initUndoClose,
   noteLocalClose,
   onSessionRemoved,
   onSessionRestored,
@@ -35,6 +51,19 @@ import {
   resetUndoCloseForTest,
 } from '../../src/app/undo-close.js';
 import { state } from '../../src/app/state.js';
+
+function removed(id: string) {
+  act(() => onSessionRemoved(id));
+}
+function restored(ev: Parameters<typeof onSessionRestored>[0]) {
+  act(() => onSessionRestored(ev));
+}
+function closeActive() {
+  act(() => closeActiveSession());
+}
+function reopenLast() {
+  act(() => reopenLastClosedSession());
+}
 
 function bannerEl(): HTMLElement | null {
   return document.querySelector('[data-slot="undo-close"]');
@@ -52,18 +81,18 @@ function visible(): boolean {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetStore();
   resetUndoCloseForTest();
-  document.body.innerHTML = '<div id="app"></div>';
   state.activeId = null;
   state.sessions = [];
-  initUndoClose();
+  render(<Banners />);
 });
 
 describe('undo banner', () => {
   it('shows an undo banner after a locally initiated close', () => {
     expect(visible()).toBe(false);
     noteLocalClose('s1', 'api-refactor');
-    onSessionRemoved('s1');
+    removed('s1');
 
     expect(visible()).toBe(true);
     expect(bannerText()).toContain('api-refactor');
@@ -73,24 +102,24 @@ describe('undo banner', () => {
 
   it('does not show a banner for a close initiated elsewhere', () => {
     // No noteLocalClose: another window (or a project kill) removed it.
-    onSessionRemoved('s-remote');
+    removed('s-remote');
     expect(visible()).toBe(false);
   });
 
   it('offers undo only once per close', () => {
     noteLocalClose('s1', 'one');
-    onSessionRemoved('s1');
-    bannerEl()!.hidden = true;
+    removed('s1');
+    fireEvent.click(undoButton() as HTMLButtonElement);
 
     // A duplicate removed event must not re-raise the offer: the
     // tombstone it referred to is already being acted on.
-    onSessionRemoved('s1');
+    removed('s1');
     expect(visible()).toBe(false);
   });
 
   it('labels a close-and-delete-worktree undo as unrecoverable', () => {
     noteLocalClose('s1', 'api-refactor', true);
-    onSessionRemoved('s1');
+    removed('s1');
 
     expect(bannerText()).toContain('deleted its worktree');
     // Not the word "Undo": the worktree's uncommitted state does not
@@ -100,8 +129,8 @@ describe('undo banner', () => {
 
   it('restores the session the banner is about, not the last one closed', () => {
     noteLocalClose('s1', 'first');
-    onSessionRemoved('s1');
-    undoButton()!.click();
+    removed('s1');
+    fireEvent.click(undoButton() as HTMLButtonElement);
 
     expect(RestoreSession).toHaveBeenCalledWith('s1');
   });
@@ -112,17 +141,17 @@ describe('closeActiveSession', () => {
     state.activeId = 's1';
     state.sessions = [{ id: 's1', name: 'api-refactor' } as never];
 
-    closeActiveSession();
+    closeActive();
 
     expect(KillSession).toHaveBeenCalledWith('s1', false);
-    onSessionRemoved('s1');
+    removed('s1');
     expect(visible()).toBe(true);
     expect(bannerText()).toContain('api-refactor');
   });
 
   it('does nothing with no active session', () => {
     state.activeId = null;
-    closeActiveSession();
+    closeActive();
     expect(KillSession).not.toHaveBeenCalled();
   });
 });
@@ -131,14 +160,14 @@ describe('reopen last closed', () => {
   it('sends an empty id so the daemon picks the newest', () => {
     // Resolving "the last one" client-side would race the retention
     // prune between listing and restoring.
-    reopenLastClosedSession();
+    reopenLast();
     expect(RestoreSession).toHaveBeenCalledWith('');
   });
 });
 
 describe('restore outcome', () => {
   it('reports a clean undo without claiming scrollback came back', () => {
-    onSessionRestored({ session_id: 's1' });
+    restored({ session_id: 's1' });
 
     expect(bannerText()).toContain('Scrollback is gone');
     expect(undoButton()?.hidden).toBe(true);
@@ -151,9 +180,9 @@ describe('restore outcome', () => {
     // about.
     state.sessions = [{ id: 's2', name: 'other-branch' } as never];
     noteLocalClose('s1', 'api-refactor');
-    onSessionRemoved('s1');
+    removed('s1');
 
-    onSessionRestored({ session_id: 's2' });
+    restored({ session_id: 's2' });
 
     expect(bannerText()).toContain('other-branch');
     expect(bannerText()).not.toContain('api-refactor');
@@ -161,12 +190,12 @@ describe('restore outcome', () => {
 
   it('falls back to a generic subject when the session is not in state yet', () => {
     state.sessions = [];
-    onSessionRestored({ session_id: 'not-here-yet' });
+    restored({ session_id: 'not-here-yet' });
     expect(bannerText()).toContain('Session reopened');
   });
 
   it('reports degradation instead of a bare success', () => {
-    onSessionRestored({
+    restored({
       session_id: 's1',
       worktree_lost: true,
       conversation_lost: true,
@@ -178,7 +207,7 @@ describe('restore outcome', () => {
   });
 
   it('surfaces the recovery patch path when the worktree was deleted', () => {
-    onSessionRestored({
+    restored({
       session_id: 's1',
       worktree_recreated: true,
       patch_path: '/state/closed/s1.patch',
@@ -192,13 +221,13 @@ describe('restore outcome', () => {
   it('distinguishes a skipped patch from no patch at all', () => {
     // Empty patch_path plus patch_skipped means work WAS at stake and
     // could not be saved — the opposite of "nothing to save".
-    onSessionRestored({ session_id: 's1', patch_skipped: true });
+    restored({ session_id: 's1', patch_skipped: true });
     expect(bannerText()).toContain('too large to save');
   });
 
   it('reads camelCase payloads too', () => {
     // Wire JSON is snake_case, but the boundary reads both.
-    onSessionRestored({ session_id: 's1', worktreeLost: true });
+    restored({ session_id: 's1', worktreeLost: true });
     expect(bannerText()).toContain('worktree could not be restored');
   });
 });

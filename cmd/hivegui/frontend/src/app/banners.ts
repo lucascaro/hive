@@ -1,9 +1,15 @@
 // ---------- daemon-stale + update banners ----------
 //
-// Moved verbatim from main.js. initBanners() performs the listener
-// and EventsOn registrations plus the boot-time update poll — the
-// module has no side effects on import, matching events.ts's
-// wireDaemonEvents pattern.
+// Policy only. Since Phase 2 of the React rewrite the markup lives in
+// components/Banner.tsx and the per-slot data in the store; this module
+// decides WHEN each banner is up, what it says, and what its actions
+// do. The dismiss handlers and the update action's click handler are
+// exported for components/Banners.tsx, which declares the static half
+// (kind, element id, action ids and labels).
+//
+// initBanners() performs the listener and EventsOn registrations plus
+// the boot-time update poll — the module has no side effects on import,
+// matching events.ts's wireDaemonEvents pattern.
 // isDaemonRestarting() is read by the control:disconnect handler in
 // events.ts so a user-initiated restart doesn't flash a red status.
 
@@ -17,7 +23,7 @@ import {
   OpenURL,
 } from '../bridge.js';
 import { flashStatus, reportFailure } from './dom.js';
-import { banner, type Banner } from '../ui/banner.js';
+import { appStore, hideBanner, setBanner } from '../store/store.js';
 import { isMac } from '../lib/platform.js';
 import { updateButtonState } from '../lib/update-state.js';
 // Type-only, so the generated module is erased before Vite resolves it.
@@ -38,20 +44,23 @@ export function isDaemonRestarting() {
 // Dismissal is keyed on the specific daemonBuild that was dismissed,
 // so a *different* mismatched build later will still surface. A "match"
 // reconnect clears the dismissal flag too.
-// Built lazily by initBanners(): the module is imported by jsdom tests
-// that never open a banner, and a mount on import would inject markup
-// into scaffolds that don't expect it.
-let daemonBanner: Banner | null = null;
-let updateBanner: Banner | null = null;
 let daemonBannerDismissedFor: string | null = null;
 let daemonRestarting = false;
 
 function showDaemonBanner(text: string) {
-  daemonBanner?.setText(text);
-  daemonBanner?.show();
+  setBanner('daemon', { text, visible: true });
 }
 function hideDaemonBanner() {
-  daemonBanner?.hide();
+  hideBanner('daemon');
+}
+
+/** Dismiss handler for the daemon slot; wired in components/Banners.tsx. */
+export function dismissDaemonBanner() {
+  // Dismissals are per-daemon-build: a *different* mismatched build
+  // later still surfaces.
+  daemonBannerDismissedFor =
+    appStore.getState().banners.daemon.data?.daemonBuild ?? '';
+  hideDaemonBanner();
 }
 // restartHive confirms, then asks Go to replace the daemon and
 // relaunch. Exported (like manualUpdateCheck below) because the
@@ -69,10 +78,7 @@ export async function restartHive() {
   // window during which a second invocation would otherwise slip
   // past the check above.
   daemonRestarting = true;
-  // Hoisted once: the menu and palette can reach restartHive before
-  // initBanners() has mounted anything, and `finally` must not throw.
-  const restartBtn = daemonBanner?.action('restart');
-  if (restartBtn) restartBtn.disabled = true;
+  setRestartDisabled(true);
   try {
     // Restart kills hived AND relaunches Hive itself, so every
     // running session ends. Warn first.
@@ -95,16 +101,19 @@ export async function restartHive() {
       showDaemonBanner(`Restart failed: ${err}`);
     }
   } finally {
-    if (restartBtn) restartBtn.disabled = false;
+    setRestartDisabled(false);
     daemonRestarting = false;
   }
+}
+
+function setRestartDisabled(disabled: boolean) {
+  setBanner('daemon', { actions: { restart: { disabled } } });
 }
 
 function wireDaemonBanner() {
   EventsOn('daemon:stale', (ev: DaemonStaleEvent | null) => {
     if (!ev) return;
-    if (daemonBanner)
-      daemonBanner.el.dataset.daemonBuild = ev.daemonBuild || '';
+    setBanner('daemon', { data: { daemonBuild: ev.daemonBuild || '' } });
     if (ev.severity === 'match') {
       daemonBannerDismissedFor = null; // reset so future mismatch can re-show
       hideDaemonBanner();
@@ -192,40 +201,45 @@ let updateBannerAutoHideTimer: ReturnType<typeof setTimeout> | null = null;
 // could not install would be a dead end and the Download link is the
 // real answer.
 function renderUpdateAction(info: main.UpdateInfo | null) {
-  const el = updateBanner?.action('action');
-  if (!el) return;
   const btn = updateButtonState(info, isMac);
   if (!btn.label) {
-    el.hidden = true;
+    setBanner('update', { actions: { action: { hidden: true } } });
     return;
   }
-  el.hidden = false;
-  const label = el.querySelector('.hv-button__label');
-  if (label) label.textContent = btn.label;
-  el.disabled = btn.disabled;
-  el.dataset.action = btn.action;
-  // Kept on the button, not on the banner: banner.dataset.version is the
-  // per-version dismiss key, and showUpdateBanner deletes it on every
-  // show — so by the time the button says Restart it would be gone.
-  el.dataset.version = info?.latest || '';
+  setBanner('update', {
+    actions: {
+      action: {
+        hidden: false,
+        label: btn.label,
+        disabled: btn.disabled,
+        // Kept on the button, not on the banner: the banner's
+        // data-version is the per-version dismiss key, and
+        // showUpdateBanner drops it on every show — so by the time the
+        // button says Restart it would be gone.
+        data: { action: btn.action, version: info?.latest || '' },
+      },
+    },
+  });
 }
 
 function showUpdateBanner(
   text: string,
-  { downloadUrl = '', showDownload = true, autoHideMs = 0 } = {},
+  { downloadUrl = '', showDownload = true, autoHideMs = 0, version = '' } = {},
 ) {
-  if (!updateBanner) return;
-  updateBanner.setText(text);
-  // A banner with no trusted URL still tells the user an update exists;
-  // it just doesn't offer a one-click Download for an untrusted target.
-  updateBanner.action('download').hidden = !(showDownload && downloadUrl);
-  updateBanner.el.dataset.url = downloadUrl;
-  // Clear the per-version dismissal key on every show — only the
-  // "available" branch sets it back. Without this, dismissing a
-  // transient banner ("up to date", "checking…") would write a
-  // stale version into localStorage.
-  delete updateBanner.el.dataset.version;
-  updateBanner.show();
+  setBanner('update', {
+    text,
+    visible: true,
+    // `data` is replaced wholesale, which is how the per-version
+    // dismissal key gets cleared on every show — only the "available"
+    // branch passes one back. Without that, dismissing a transient
+    // banner ("up to date", "checking…") would write a stale version
+    // into localStorage.
+    data: version ? { url: downloadUrl, version } : { url: downloadUrl },
+    // A banner with no trusted URL still tells the user an update
+    // exists; it just doesn't offer a one-click Download for an
+    // untrusted target.
+    actions: { download: { hidden: !(showDownload && downloadUrl) } },
+  });
   if (updateBannerAutoHideTimer) {
     clearTimeout(updateBannerAutoHideTimer);
     updateBannerAutoHideTimer = null;
@@ -238,7 +252,24 @@ function showUpdateBanner(
   }
 }
 function hideUpdateBanner() {
-  updateBanner?.hide();
+  hideBanner('update');
+}
+
+/** Dismiss handler for the update slot; wired in components/Banners.tsx. */
+export function dismissUpdateBanner() {
+  const v = appStore.getState().banners.update.data?.version || '';
+  if (v) {
+    try {
+      localStorage.setItem(UPDATE_DISMISS_KEY, v);
+    } catch {}
+  }
+  hideUpdateBanner();
+}
+
+/** Download handler for the update slot; wired in components/Banners.tsx. */
+export function openDownloadUrl() {
+  const url = appStore.getState().banners.update.data?.url;
+  if (url) OpenURL(url).catch(reportFailure('open link'));
 }
 
 // Transient (non-actionable) banners auto-hide so they don't linger
@@ -296,8 +327,7 @@ function applyUpdateInfo(
     const trustedURL = !!info.url;
     const base = updateButtonState(info, isMac).status;
     const text = trustedURL ? base : `${base} Open releases page manually.`;
-    showUpdateBanner(text, { downloadUrl: info.url });
-    if (updateBanner) updateBanner.el.dataset.version = info.latest;
+    showUpdateBanner(text, { downloadUrl: info.url, version: info.latest });
     return;
   }
   if (manual) {
@@ -353,77 +383,27 @@ export async function manualUpdateCheck() {
 // The update banner's primary action (Update / Updating… / Restart) is
 // driven by renderUpdateAction from the shared reducer; the click
 // handler dispatches on the data-action it wrote.
-function onUpdateAction() {
-  const el = updateBanner?.action('action');
-  if (!el) return;
-  if (el.dataset.action === 'restart') {
+export function onUpdateAction() {
+  const data = appStore.getState().banners.update.actions?.action?.data ?? {};
+  if (data.action === 'restart') {
     // Confirm + guard live in the shared wrapper; never call the
     // binding directly from a click handler.
-    void applyUpdateAndRestart(el.dataset.version || '');
+    void applyUpdateAndRestart(data.version || '');
     return;
   }
-  if (el.dataset.action === 'start') {
-    el.disabled = true;
+  if (data.action === 'start') {
+    setBanner('update', { actions: { action: { disabled: true } } });
     // StartUpdate's refusals return synchronously without emitting an
     // update:progress event, so nothing would re-render the button —
     // re-enable it here or the click dead-ends it permanently.
     StartUpdate().catch((err) => {
-      el.disabled = false;
+      setBanner('update', { actions: { action: { disabled: false } } });
       reportFailure('start update')(err);
     });
   }
 }
 
-function mountBanners() {
-  if (daemonBanner) return;
-  daemonBanner = banner({
-    kind: 'error',
-    id: 'daemon-banner',
-    actions: [{ id: 'restart', label: 'Restart Hive', onClick: restartHive }],
-    onDismiss: () => {
-      // Dismissals are per-daemon-build: a *different* mismatched build
-      // later still surfaces.
-      daemonBannerDismissedFor = daemonBanner?.el.dataset.daemonBuild || '';
-      daemonBanner?.hide();
-    },
-  });
-  daemonBanner.el.dataset.slot = 'daemon';
-  updateBanner = banner({
-    kind: 'info',
-    id: 'update-banner',
-    actions: [
-      { id: 'action', label: 'Update', onClick: onUpdateAction },
-      {
-        id: 'download',
-        label: 'Download',
-        onClick: () => {
-          const url = updateBanner?.el.dataset.url;
-          if (url) OpenURL(url).catch(reportFailure('open link'));
-        },
-      },
-    ],
-    onDismiss: () => {
-      const v = updateBanner?.el.dataset.version || '';
-      if (v) {
-        try {
-          localStorage.setItem(UPDATE_DISMISS_KEY, v);
-        } catch {}
-      }
-      updateBanner?.hide();
-    },
-  });
-  updateBanner.el.dataset.slot = 'update';
-  // Hidden until renderUpdateAction says otherwise — same as the old
-  // markup's display:none default for a banner with nothing to act on.
-  updateBanner.action('action').hidden = true;
-  // Prepended so the two banners are grid rows 1 and 2, above the
-  // sidebar+terms row, exactly where the markup used to sit.
-  const app = document.getElementById('app');
-  app?.prepend(daemonBanner.el, updateBanner.el);
-}
-
 export function initBanners() {
-  mountBanners();
   wireDaemonBanner();
   wireUpdateBanner();
 }

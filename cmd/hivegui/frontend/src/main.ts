@@ -48,27 +48,29 @@ import {
 import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { Banners } from './components/Banners.js';
+import { BootState } from './components/BootState.js';
+import { EmptyState } from './components/EmptyState.js';
+import { MinimizedTray } from './components/MinimizedTray.js';
 import { Sidebar } from './components/Sidebar.js';
+import { StatusBar } from './components/StatusBar.js';
+import { VersionFooter } from './components/VersionFooter.js';
 import { mustEl, pageEl } from './app/el.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import {
-  initUndoClose,
   closeActiveSession,
   reopenLastClosedSession,
 } from './app/undo-close.js';
-import { initVersionFooter } from './app/version-footer.js';
 import {
   switchTo,
   switchToProject,
   updateAppTitle,
-  renderMinimizedTray,
   minimizeProject,
   restoreProject,
   minimizeSession,
   restoreSession,
-  renderEmptyState,
   shiftActiveProject,
   renderGrid,
   enforceViewFloor,
@@ -251,8 +253,20 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 // unmount — see docs/exec-plans/active/react-ui-rewrite.md.
 const reactRoots: Root[] = [];
 
-const sidebarRoot = createRoot(mustEl('projects'));
-sidebarRoot.render(
+// Each island renders INTO the element the region already owned, so
+// every id, grid row and aria attribute in index.html survives. The
+// container-level classes those regions toggle (.hidden, .error,
+// .mismatch) are applied by the components' own layout effects — they
+// sit outside React's tree.
+function mountIsland(el: HTMLElement | null, node: ReactNode): void {
+  if (!el) return;
+  const root = createRoot(el);
+  root.render(node);
+  reactRoots.push(root);
+}
+
+mountIsland(
+  mustEl('projects'),
   createElement(Sidebar, {
     switchTo,
     switchToProject,
@@ -265,9 +279,36 @@ sidebarRoot.render(
     trayEl: pageEl('minimized-projects'),
   }),
 );
-reactRoots.push(sidebarRoot);
+// #banners is `display: contents` (layout.css), so the three banners
+// stay direct children of the #app grid and keep their row placement.
+mountIsland(pageEl('banners'), createElement(Banners));
+mountIsland(
+  pageEl('status'),
+  createElement(StatusBar, { root: pageEl('status') }),
+);
+mountIsland(
+  pageEl('boot-state'),
+  createElement(BootState, { root: pageEl('boot-state') }),
+);
+mountIsland(
+  pageEl('empty-state'),
+  createElement(EmptyState, { root: pageEl('empty-state') }),
+);
+mountIsland(
+  pageEl('minimized-tray'),
+  createElement(MinimizedTray, {
+    root: pageEl('minimized-tray'),
+    restoreSession,
+  }),
+);
+// Sidebar footer: hive/hived version + build. It takes its own
+// "daemon:stale" subscription, so it fills in once the control
+// handshake lands.
+mountIsland(
+  pageEl('sidebar-hints'),
+  createElement(VersionFooter, { root: pageEl('sidebar-hints') }),
+);
 initBanners();
-initUndoClose();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 // Seed the status bar's hint slot. setModeHint is otherwise reached only
 // from switchTo() and setView(), and a boot with zero sessions calls
@@ -281,8 +322,6 @@ initKeyboard({
 });
 wireDaemonEvents({
   switchTo,
-  renderMinimizedTray,
-  renderEmptyState,
   renderGrid,
   enforceViewFloor,
   updateAppTitle,
@@ -292,9 +331,6 @@ wireDaemonEvents({
   scrollTrace,
 });
 
-// Sidebar footer: hive/hived version + build. Populated from the
-// "daemon:stale" event, so it fills in once the control handshake lands.
-initVersionFooter();
 initThemeWatch();
 
 // ---------- sidebar resize ----------

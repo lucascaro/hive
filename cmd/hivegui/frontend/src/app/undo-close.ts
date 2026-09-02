@@ -12,7 +12,12 @@
 import { KillSession, RestoreSession } from '../bridge.js';
 import { state } from './state.js';
 import { reportFailure } from './dom.js';
-import { banner, type Banner } from '../ui/banner.js';
+import {
+  appStore,
+  hideBanner,
+  resetBanner,
+  setBanner,
+} from '../store/store.js';
 
 /** How long the undo offer stays on screen. The tombstone outlives it. */
 const BANNER_MS = 15_000;
@@ -50,7 +55,6 @@ interface PendingClose {
 // not enough to act on.
 const pending = new Map<string, PendingClose>();
 
-let undoBanner: Banner | null = null;
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -79,23 +83,37 @@ export function onSessionRemoved(id: string) {
 }
 
 function showUndo(id: string, p: PendingClose) {
-  if (!undoBanner) return;
-  undoBanner.setText(
-    p.deletedWorktree
+  setBanner('undo-close', {
+    text: p.deletedWorktree
       ? `Closed “${p.name}” and deleted its worktree.`
       : `Closed “${p.name}”.`,
-  );
-  const action = undoBanner.action('undo');
-  action.textContent = p.deletedWorktree ? 'Reopen session' : 'Undo';
-  action.hidden = false;
-  undoBanner.el.dataset.sessionId = id;
-  undoBanner.show();
+    visible: true,
+    data: { sessionId: id },
+    actions: {
+      undo: {
+        label: p.deletedWorktree ? 'Reopen session' : 'Undo',
+        hidden: false,
+      },
+    },
+  });
   restartHideTimer();
 }
 
 function restartHideTimer() {
   if (hideTimer) clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => undoBanner?.hide(), BANNER_MS);
+  hideTimer = setTimeout(() => hideBanner('undo-close'), BANNER_MS);
+}
+
+/** Undo action handler; wired in components/Banners.tsx. */
+export function undoLastClose() {
+  const id = appStore.getState().banners['undo-close'].data?.sessionId || '';
+  hideBanner('undo-close');
+  reopenClosedSession(id);
+}
+
+/** Dismiss handler for the undo slot; wired in components/Banners.tsx. */
+export function dismissUndoBanner() {
+  hideBanner('undo-close');
 }
 
 /**
@@ -139,7 +157,6 @@ export function reopenLastClosedSession() {
  * the conversation would otherwise look like a clean undo.
  */
 export function onSessionRestored(ev: RestoredEvent) {
-  if (!undoBanner) return;
   const losses: string[] = [];
   if (ev.worktree_lost ?? ev.worktreeLost) {
     losses.push('its worktree could not be restored');
@@ -181,37 +198,12 @@ export function onSessionRestored(ev: RestoredEvent) {
     ? `${subject} — scrollback is gone, and ${losses.join('; ')}.`
     : `${subject}. Scrollback is gone; everything else came back.`;
 
-  undoBanner.setText(text);
-  undoBanner.action('undo').hidden = true;
-  undoBanner.show();
-  restartHideTimer();
-}
-
-/**
- * Build and mount the banner. Lazy, like the daemon and update
- * banners: jsdom tests import this module without ever closing a
- * session, and a mount on import would inject markup into scaffolds
- * that do not expect it.
- */
-export function initUndoClose() {
-  if (undoBanner) return;
-  undoBanner = banner({
-    kind: 'info',
-    actions: [
-      {
-        id: 'undo',
-        label: 'Undo',
-        onClick: () => {
-          const id = undoBanner?.el.dataset.sessionId || '';
-          undoBanner?.hide();
-          reopenClosedSession(id);
-        },
-      },
-    ],
-    onDismiss: () => undoBanner?.hide(),
+  setBanner('undo-close', {
+    text,
+    visible: true,
+    actions: { undo: { hidden: true } },
   });
-  undoBanner.el.dataset.slot = 'undo-close';
-  document.getElementById('app')?.prepend(undoBanner.el);
+  restartHideTimer();
 }
 
 /** Test seam: drop all state between cases. */
@@ -219,6 +211,5 @@ export function resetUndoCloseForTest() {
   pending.clear();
   if (hideTimer) clearTimeout(hideTimer);
   hideTimer = null;
-  undoBanner?.el.remove();
-  undoBanner = null;
+  resetBanner('undo-close');
 }

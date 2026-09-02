@@ -1,48 +1,41 @@
-// Shared top-level DOM handles and the status-bar controller. These
-// are app singletons (one #terms, one #status) — modules import them
-// rather than re-querying the document.
+// Shared top-level DOM handles and the status-bar controller.
+//
+// After Phase 2 of the React rewrite this module renders nothing: the
+// status bar, boot overlay and banners are components
+// (src/components/*), and these functions are the compatibility surface
+// the ~40 call sites across app/ already import. Their signatures are
+// unchanged on purpose — `setStatus(text, isError)` is called from
+// events, modals, keyboard and view, and a rename would be a diff
+// through every one of them for no behavioural gain.
+//
+// What is left here: #terms (an app singleton every terminal path needs
+// a handle on) and the lib/status.ts flash engine, whose render callback
+// writes the store.
 
 import { createStatus, type ModeHint } from '../lib/status.js';
-import { kbd } from '../ui/kbd.js';
-import { button } from '../ui/button.js';
-import { mustEl, pageEl } from './el.js';
+import * as store from '../store/store.js';
+import { mustEl } from './el.js';
 
-// index.html owns these ids; a missing one means the document and this
+// index.html owns this id; a missing one means the document and this
 // module have drifted, which is a load-time bug, not a runtime condition
 // to branch on. mustEl throws rather than using `!` — it names the id.
-// See el.ts for why the modals use the non-throwing pageEl().
 export const termsHost = mustEl('terms');
 termsHost.classList.add('single');
 
-export const status = mustEl('status');
-const statusText = mustEl('status-text');
-const statusHint = mustEl('status-hint');
-
+// The flash engine stays here rather than moving into the store: it is
+// the timing policy (FLASH_MIN_MS, the persistent slot that survives a
+// flash), it is already unit-tested in lib/, and the store's job is to
+// hold what is on screen. Its render callback is the only bridge.
 const statusCtl = createStatus({
-  render: (text: string, isError: boolean) => {
-    statusText.textContent = text;
-    // Same reason as banner.setText: the slot ellipsises, and an error
-    // string is exactly the case where the tail matters.
-    statusText.title = text;
-    // The error tint is on the bar, not the span: the whole row flashes.
-    status.classList.toggle('error', isError);
-  },
+  render: store.setStatusText,
   setTimer: (fn: () => void, ms: number) => window.setTimeout(fn, ms),
   clearTimer: (id: number) => window.clearTimeout(id),
   now: () => Date.now(),
 });
 
 // setModeHint owns the right slot: the current mode's top shortcuts.
-// Rebuilt wholesale — two hints is never enough DOM to be worth diffing.
 export function setModeHint(hints: ModeHint[]): void {
-  statusHint.replaceChildren(
-    ...hints.flatMap((h) => {
-      const label = document.createElement('span');
-      label.className = 'hv-status__hint-label';
-      label.textContent = h.label;
-      return [kbd(h.key), label];
-    }),
-  );
+  store.setModeHint(hints);
 }
 
 // setStatus owns the persistent slot: connection state, nav feedback.
@@ -63,51 +56,19 @@ export function flashStatus(text: string, isError = false): void {
 export const reportFailure = (what: string) => (err: unknown) =>
   flashStatus(`${what} failed: ${err}`, true);
 
-// setBootState drives the full-pane boot overlay declared in
-// index.html. Passing null hides it — done once the first session list
-// arrives, which is the first moment the pane can tell the truth
-// (before that, "No sessions yet" may just mean "the daemon has not
-// answered yet").
+// setBootState drives the full-pane boot overlay. Passing null hides it
+// — done once the first session list arrives, which is the first moment
+// the pane can tell the truth (before that, "No sessions yet" may just
+// mean "the daemon has not answered yet").
 //
-// pageEl, not mustEl: the jsdom tests mount partial markup and must
-// not fail on an overlay they never exercise.
-// The retry is a real button primitive, built lazily and parked in the
-// card the first time a boot state renders: dom.ts is imported by jsdom
-// tests that mount partial markup, so a mount at import time would fight
-// scaffolds that never show the overlay.
-let bootRetry: HTMLButtonElement | null = null;
-function bootRetryButton(el: HTMLElement): HTMLButtonElement | null {
-  if (bootRetry?.isConnected) return bootRetry;
-  const card = el.querySelector('.boot-state-card');
-  if (!card) return null;
-  bootRetry = button({ label: 'Retry', kind: 'primary', icon: 'rotate' });
-  // The id is what boot-overlay.spec.ts and boot-state.test.ts select on.
-  bootRetry.id = 'boot-state-retry';
-  bootRetry.hidden = true;
-  card.append(bootRetry);
-  return bootRetry;
-}
-
+// The signature keeps its `{ retry }` shape: main.ts's bounded
+// retryBoot() is the only caller that passes one, and the 5-attempt
+// policy stays there rather than moving into a component.
 export function setBootState(
   text: string | null,
   opts: { retry?: () => void } = {},
 ): void {
-  const el = pageEl('boot-state');
-  if (!el) return;
-  if (text === null) {
-    el.classList.add('hidden');
-    return;
-  }
-  const label = pageEl('boot-state-text');
-  if (label) label.textContent = text;
-  // A card offering Retry is a card that has stopped waiting, so the
-  // spinner goes with it.
-  const spinner = el.querySelector('.phase-spinner');
-  spinner?.classList.toggle('hidden', Boolean(opts.retry));
-  const retry = bootRetryButton(el);
-  if (retry) {
-    retry.hidden = !opts.retry;
-    retry.onclick = opts.retry ? () => opts.retry?.() : null;
-  }
-  el.classList.remove('hidden');
+  store.setBootState(
+    text === null ? null : { text, onRetry: opts.retry ?? null },
+  );
 }
