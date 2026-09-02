@@ -10,6 +10,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
+| P2 | — | Fix sidebar drag-and-drop ordering and drop placeholder | GATE | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | P2 | — | Incremental React 19 rewrite of the hivegui frontend | IMPLEMENT | [react-ui-rewrite](react-ui-rewrite.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |

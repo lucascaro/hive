@@ -111,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lines, the merged badge and the destructive action stay readable under every
   preset.
 - The merged badge loses its green tint; its text and border carry it.
+- Dragging a session in the sidebar now drops it exactly where the indicator
+  showed. The drop slot was resolved against the sibling list that still
+  contained the dragged row, so a row dragged downwards consistently landed
+  one position too low.
+- The drop indicator is now a placeholder the size of the dragged item, and
+  the dragged row leaves the layout while the drag is in flight — so the
+  sidebar's height stays fixed and content no longer jumps on drop. Project
+  cards get the same affordance as session rows.
 - `build.sh` now fails with install instructions when the `wails` CLI on
   `PATH` does not match the version pinned in `scripts/ci-bootstrap.sh`,
   instead of silently building against a stale toolchain after a Wails
