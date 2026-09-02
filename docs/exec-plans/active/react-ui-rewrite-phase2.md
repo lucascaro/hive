@@ -3,6 +3,8 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** [#318](https://github.com/lucascaro/hive/pull/318)
+- **Branch:** `feature/react-ui-rewrite-phase2`
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
@@ -172,3 +174,7 @@ both unrelated to this phase and both green on retry); `npm run test:e2e:real`
 **22 passed**. No flake-baseline comparison was needed: nothing failed. `.plans/react-rewrite-flake-baseline.md`
 is gitignored per-checkout scratch and is absent from this worktree, same as in
 Phase 1.
+
+## PR convergence ledger
+
+_(opened 2026-09-02 for PR #318; `/hs-review-loop` appends one entry per iteration)_

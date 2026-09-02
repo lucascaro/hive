@@ -108,7 +108,7 @@ implemented — the briefs deliberately do not all exist up front.
 |---|---|---|---|
 | 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
-| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | — | implemented |
+| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | implemented, in review |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | — | not started |
 | 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | not started |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
