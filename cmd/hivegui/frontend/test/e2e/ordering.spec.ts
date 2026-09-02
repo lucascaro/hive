@@ -401,6 +401,53 @@ test.describe('keybinding regressions', () => {
       .toEqual([before[0], before[3], before[1], before[2]]);
   });
 
+  // The review regression: an "insert above" placeholder is inserted where the
+  // cursor already is, so the row it displaces moves down and the release
+  // lands on the PLACEHOLDER, not on a row. A placeholder that is not itself
+  // a drop target loses the drop silently.
+  test('a drop released on the placeholder still reorders', async ({
+    page,
+  }) => {
+    await boot(page, 4);
+    const before = await sidebarIds(page);
+
+    await dragStart(page, before[0]);
+    await dragEvent(page, 'dragover', before[2], true);
+    const ph = page.locator('.hv-drop-placeholder');
+    await expect(ph).toHaveCount(1);
+
+    // The placeholder must keep the drag alive on its own …
+    const allowed = await page.evaluate(() => {
+      const w = window as unknown as { __dt?: DataTransfer };
+      const el = document.querySelector('.hv-drop-placeholder') as HTMLElement;
+      const e = new DragEvent('dragover', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: w.__dt,
+      });
+      el.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    expect(allowed).toBe(true);
+
+    // … and resolve its own slot when the drop lands on it.
+    await page.evaluate(() => {
+      const w = window as unknown as { __dt?: DataTransfer };
+      const el = document.querySelector('.hv-drop-placeholder') as HTMLElement;
+      el.dispatchEvent(
+        new DragEvent('drop', {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: w.__dt,
+        }),
+      );
+    });
+
+    await expect
+      .poll(() => sidebarIds(page))
+      .toEqual([before[1], before[0], before[2], before[3]]);
+  });
+
   // vitest is CSS-blind, so the "content does not jump" half of the fix can
   // only be asserted here: the dragged row leaves the flow and the
   // placeholder takes over its exact box, which keeps the list's total

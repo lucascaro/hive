@@ -347,6 +347,13 @@ function wireProjectDrag(
   header: HTMLElement,
   p: ProjectInfo,
 ) {
+  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
+    const pid = e.dataTransfer?.getData('text/x-hive-project');
+    const targetPID = target.dataset.pid ?? '';
+    if (!pid || !targetPID || pid === targetPID) return;
+    reorderDroppedProject(pid, targetPID, above);
+  };
+
   root.addEventListener('dragstart', (e) => {
     const t = e.target;
     if (t instanceof Element) {
@@ -366,9 +373,15 @@ function wireProjectDrag(
     if (!dt) return;
     dt.effectAllowed = 'move';
     dt.setData('text/x-hive-project', p.id);
-    beginDrag(root);
+    beginDrag(root, commit);
   });
-  root.addEventListener('dragend', endDrag);
+  root.addEventListener('dragend', (e) => {
+    if (e.target instanceof Element && e.target.closest('.hv-session-row')) {
+      // Bubbled from an inner session drag, which owns its own teardown.
+      return;
+    }
+    endDrag();
+  });
   root.addEventListener('dragover', (e) => {
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-project')) return;
@@ -386,12 +399,10 @@ function wireProjectDrag(
     const dt = e.dataTransfer;
     if (!dt?.types.includes('text/x-hive-project')) return;
     e.preventDefault();
-    const pid = dt.getData('text/x-hive-project');
     const r = header.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
     endDrag();
-    if (!pid || pid === p.id) return;
-    reorderDroppedProject(pid, p.id, above);
+    commit(root, above, e);
   });
 }
 
@@ -493,12 +504,27 @@ function killSession(s: SessionInfo) {
 // Same-project drops only; cross-project moves are not supported
 // yet (would require also updating project_id on the wire).
 function wireSessionDrag(li: HTMLLIElement, s: SessionInfo) {
+  // Shared by the row's own drop handler and the placeholder's: an "insert
+  // above" spacer sits under the cursor, so the release often lands on the
+  // spacer rather than on any row.
+  const commit = (target: HTMLElement, above: boolean, e: DragEvent) => {
+    const sid = e.dataTransfer?.getData('text/x-hive-session');
+    const targetSID = target.dataset.sid ?? '';
+    if (!sid || !targetSID || sid === targetSID) return;
+    const dragged = state.sessions.find((x) => x.id === sid);
+    const dropped = state.sessions.find((x) => x.id === targetSID);
+    if (!dragged || !dropped) return;
+    // cross-project: not supported yet (would need project_id on the wire).
+    if (readProjectId(dragged) !== readProjectId(dropped)) return;
+    reorderDroppedSession(sid, targetSID, above);
+  };
+
   li.addEventListener('dragstart', (e) => {
     const dt = e.dataTransfer;
     if (!dt) return;
     dt.effectAllowed = 'move';
     dt.setData('text/x-hive-session', s.id);
-    beginDrag(li);
+    beginDrag(li, commit);
   });
   li.addEventListener('dragend', endDrag);
   li.addEventListener('dragover', (e) => {
@@ -511,15 +537,10 @@ function wireSessionDrag(li: HTMLLIElement, s: SessionInfo) {
   });
   li.addEventListener('drop', (e) => {
     e.preventDefault();
-    const sid = e.dataTransfer?.getData('text/x-hive-session');
     const r = li.getBoundingClientRect();
     const above = e.clientY - r.top < r.height / 2;
     endDrag();
-    if (!sid || sid === s.id) return;
-    const dragged = state.sessions.find((x) => x.id === sid);
-    if (!dragged) return;
-    if (readProjectId(dragged) !== readProjectId(s)) return; // cross-project: not supported yet
-    reorderDroppedSession(sid, s.id, above);
+    commit(li, above, e);
   });
 }
 

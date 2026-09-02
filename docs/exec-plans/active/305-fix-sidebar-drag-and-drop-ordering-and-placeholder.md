@@ -138,6 +138,38 @@ Two mechanics the implementation must get right:
 - **2026-09-01** — Implemented, all checks green (794 unit/dom, 15 e2e, Go suite,
   biome ci, tsc, ui-lint). The four new ordering assertions were confirmed to
   fail against the pre-fix math. PR #315 opened; stage = REVIEW.
+- **2026-09-01** — Review iteration 1 returned three findings against the
+  placeholder half (drop target lost under the cursor, overclaimed mid-rebuild
+  self-healing, one-frame height jump at drag start). All three verified and
+  fixed on the branch; suite now 797 unit/dom + 246 e2e.
+
+## Decision log (cont.)
+
+- **2026-09-01** — The placeholder is a real drop target, not decoration.
+  Review iter 1 caught that an "insert above" spacer is inserted where the
+  cursor already is: it pushes the target row down and the cursor ends up over
+  the spacer. With `pointer-events: none` the hit-test fell through to a
+  container with no `dragover` handler, so nothing called `preventDefault`, the
+  browser disallowed the drop, and releasing there silently no-opped. The
+  "below" branch still worked, which would have read as intermittent. The
+  spacer now handles its own `dragover`/`drop` and resolves its slot from the
+  rows it sits between. Rejected the alternative (container-level handlers on
+  `#projects` and each card body) as more listeners for the same result.
+- **2026-09-01** — Both drop paths read the payload out of the `DataTransfer`
+  rather than module state. A module-level "currently dragged id" was the first
+  shape; it broke `test/dom/minimize-project.test.ts`, which synthesises a drop
+  with `getData()` and no `dragstart` — and that test was right: `getData()` is
+  the canonical source during `drop`, available on the placeholder's drop too.
+- **2026-09-01** — The spacer goes in during `beginDrag`'s deferred tick, at
+  the dragged element's own position, in the same tick that hides it. Review
+  iter 1 caught that inserting it only on the first `dragover` left a window
+  where the list was one row shorter.
+
+## PR convergence ledger
+
+<Append-only. One line per /hs-review-loop iteration.>
+
+- **2026-09-01 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: d5dbc6d8b95e2678; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 770ed58.
 
 ## Open questions
 

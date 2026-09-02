@@ -54,15 +54,16 @@
 /* Drop placeholder for drag-to-reorder (lib/drag-placeholder.ts). Sized in JS
    to the dragged element's exact margin box, so swapping the dragged row out
    of the flow for this leaves the list's height unchanged and nothing below
-   the cursor shifts. pointer-events: none keeps it out of the drag hit-test —
-   it must never become a dragover/dragleave target of its own. */
+   the cursor shifts. It is hit-testable on purpose: an "insert above" spacer
+   lands under the cursor, and a pointer-events: none spacer would let the
+   hit-test fall through to a container with no dragover handler — nothing
+   would call preventDefault and the drop would silently no-op. */
 .hv-drop-placeholder {
   list-style: none;
   box-sizing: border-box;
   border: 1px dashed var(--accent);
   border-radius: var(--radius-md);
   background: var(--hover);
-  pointer-events: none;
 }
 
 
