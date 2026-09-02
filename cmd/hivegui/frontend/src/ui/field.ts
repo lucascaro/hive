@@ -59,8 +59,13 @@ export function textInput(o: {
   return el;
 }
 
+// An option may name a `group`; consecutive options sharing one land in a
+// single <optgroup>. Grouping is per-run rather than per-name so the caller's
+// array order is the rendered order, full stop — a caller that interleaves
+// groups gets what it wrote instead of a silent re-sort. Options with no
+// group render bare, so every existing caller is untouched.
 export function selectInput(o: {
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; group?: string }[];
   value?: string;
   ariaLabel?: string;
   className?: string;
@@ -68,11 +73,22 @@ export function selectInput(o: {
   onChange?: (v: string) => void;
 }): HTMLSelectElement {
   const el = document.createElement('select');
+  let group: HTMLOptGroupElement | null = null;
   for (const opt of o.options) {
     const node = document.createElement('option');
     node.value = opt.value;
     node.textContent = opt.label;
-    el.append(node);
+    if (!opt.group) {
+      group = null;
+      el.append(node);
+      continue;
+    }
+    if (group?.label !== opt.group) {
+      group = document.createElement('optgroup');
+      group.label = opt.group;
+      el.append(group);
+    }
+    group.append(node);
   }
   if (o.value != null) el.value = o.value;
   applyCommon(el, o);

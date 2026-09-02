@@ -1,0 +1,41 @@
+/* Fixture: an exempt preset that is exempt from the RATIOS but not from
+   being a complete preset. `--surface` and the state family are absent, so
+   they fall through to the base block above — which is exactly what makes a
+   partial preset invisible to every other check we have: the cascade paints
+   the inherited value, getComputedStyle returns it, and the e2e "paints its
+   own tokens" test sees a plausible colour. On a gated preset the ratios
+   catch it (the base is merged in, so a light preset fails on the inherited
+   dark value). An exempt preset never reaches the ratios, so the gate
+   instead requires every token the pair list names to appear in the preset's
+   own declarations.
+
+   The name is deliberately NOT in NEVER_EXEMPT: this fixture must fail on
+   completeness, not on the refusal branch that exempt-default.css covers. */
+:root {
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+  --surface-raised: #0f1015;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
+}
+:root[data-theme="fixture-partial-port"] {
+  --contrast-exempt: 1;
+  --bg: #282a36;
+  --fg: #f8f8f2;
+  --fg-muted: #c8cee0;
+  --fg-subtle: #6272a4;
+  --accent: #bd93f9;
+  --on-accent: #21222c;
+  --term-bg: #1e1f29;
+  --term-fg: #f8f8f2;
+}

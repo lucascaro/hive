@@ -1,0 +1,51 @@
+/* Fixture: a DEFAULT preset trying to opt out of the contrast gate.
+   --contrast-exempt exists so the community ports can ship at their upstream
+   values (spec 305); the containment that makes that acceptable is that the
+   presets a user can land on WITHOUT opting in may not use it. That refusal
+   is the whole reason the exemption is safe, so it gets its own fixture: put
+   it in bad.css and it would prove nothing, because bad.css already exits 1
+   for a dozen other reasons and would keep doing so if this branch were
+   deleted. Isolated, the file passes the moment the branch stops working.
+
+   The `terminal` block below restates every token the pair list names, at
+   values that clear every threshold. That is what makes the fixture
+   ISOLATING: an earlier cut declared only the marker, so it also tripped the
+   completeness branch and still exited 1 with NEVER_EXEMPT emptied — i.e. the
+   refusal branch could have been deleted with CI green, which is the exact
+   gap this file exists to close. Verify by mutation, not by reading: empty
+   NEVER_EXEMPT and this file must exit 0. */
+:root {
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+  --surface-raised: #0f1015;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
+}
+:root[data-theme="terminal"] {
+  --contrast-exempt: 1;
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --surface-raised: #0f1015;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+}

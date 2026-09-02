@@ -120,6 +120,33 @@ if (!presets.length) {
   process.exit(1);
 }
 
+// Presets that MUST be checked, whatever the CSS says. The community presets
+// (spec 305) carry `--contrast-exempt: 1` because they are ported at their
+// published values and several do not clear AA — they are opt-in, and a user
+// who picks "Dracula" wants Dracula. That opt-out is a loaded gun pointed at
+// this gate, so the six themes a user can land on WITHOUT opting in are named
+// here and the marker is refused on them. `system` resolves to hive-dark or
+// hive-light, so those two are the real defaults; the rest ship in the picker
+// above the community section.
+//
+// What this does NOT do: stop a FUTURE first-party preset from exempting
+// itself, since a name absent from this list is unprotected. Closing that
+// properly means teaching a Node script which PRESETS entries are `group:
+// 'Community'` — a third copy of the preset registry across a language
+// boundary, with nothing keeping it in sync (the repo already pays for the
+// two copies it has, and guards them with an e2e test). The judgement is that
+// a wrong exemption is a reviewable one-line diff that prints a `skip` line
+// on every subsequent run, whereas a silent sync drift is neither. themes.md
+// § "Adding a preset" says plainly that a first-party preset must pass.
+const NEVER_EXEMPT = new Set([
+  'hive-dark',
+  'hive-light',
+  'native-dark',
+  'native-light',
+  'terminal',
+  'classic',
+]);
+
 let failed = 0;
 const line = (ok, name, what, fg, bg, r, min) => {
   if (!ok) failed++;
@@ -131,8 +158,59 @@ const line = (ok, name, what, fg, bg, r, min) => {
   }
 };
 
+let exempt = 0;
 for (const p of presets) {
   const decls = { ...base, ...p.decls };
+  // Read from p.decls, not the merged view: an exemption has to be declared by
+  // the preset itself. Merging base first would let one stray declaration in
+  // tokens.css switch the whole gate off for every preset at once.
+  // `=== '1'`, not truthiness: the value is a raw declaration string, so a
+  // typo'd `--contrast-exempt: 0` (or `false`, or `no`) would otherwise opt
+  // the preset out while reading, to anyone skimming the CSS, as if it had
+  // opted in. One spelling, and anything else falls through to the gate.
+  if (p.decls['--contrast-exempt']?.trim() === '1') {
+    if (NEVER_EXEMPT.has(p.name)) {
+      console.log(
+        `FAIL  ${p.name.padEnd(13)} declares --contrast-exempt; ` +
+          'a default preset may not opt out of the contrast gate',
+      );
+      failed++;
+      continue;
+    }
+    // Opting out of the RATIOS does not opt out of being a complete preset.
+    // Skipping straight to the next preset would have removed the only
+    // check that catches a partial one: `decls` merges the base block in, so
+    // an omitted token reads back as hive-dark's value everywhere — the
+    // cascade paints it, getComputedStyle returns it, and the e2e "paints its
+    // own tokens" test sees a plausible colour. Contrast was what caught that
+    // on a light ground, and the exemption would have taken it away. So every
+    // token the pair list names must still be declared by the preset itself.
+    //
+    // The ANSI 16 join that set on a LIGHT ground, mirroring the rule below:
+    // there, an unset slot is a failure because the inherited value is
+    // tokens.css's Tango palette, which is unreadable on white (brightWhite
+    // lands at 1.16:1). Leaving them out here would have re-opened exactly
+    // the hole this block exists to close, for exactly the presets most
+    // likely to hit it — three of the ports on this branch are light. Dark
+    // grounds are not required to re-declare, matching the ratio rule, which
+    // exempts them because ANSI 0 is meant to vanish into the background.
+    const termBgOwn = hex(p.decls['--term-bg'], p.decls);
+    const required = new Set(PAIRS.flatMap(([fg, bg]) => [fg, bg]));
+    if (termBgOwn && lum(termBgOwn) >= LIGHT_GROUND)
+      for (let i = 0; i < 16; i++) required.add(`--ansi-${i}`);
+    const missing = [...required].filter((t) => !(t in p.decls));
+    if (missing.length) {
+      console.log(
+        `FAIL  ${p.name.padEnd(13)} exempt from ratios, not from completeness: ` +
+          `missing ${missing.join(' ')}`,
+      );
+      failed++;
+      continue;
+    }
+    exempt++;
+    console.log(`skip  ${p.name.padEnd(13)} opted out (--contrast-exempt)`);
+    continue;
+  }
   for (const [fgName, bgName, min] of PAIRS) {
     const fg = hex(decls[fgName], decls);
     const bg = hex(decls[bgName], decls);
@@ -159,5 +237,7 @@ for (const p of presets) {
     line(ratio(c, termBg) >= ANSI_MIN, p.name, `--ansi-${i} on --term-bg`, c, termBg, ratio(c, termBg), ANSI_MIN);
   }
 }
-console.log(`ui-contrast: ${presets.length} preset(s), ${failed} failure(s)`);
+console.log(
+  `ui-contrast: ${presets.length} preset(s), ${exempt} opted out, ${failed} failure(s)`,
+);
 process.exit(failed ? 1 : 0);

@@ -1,0 +1,54 @@
+/* Fixture: an exempt preset on a LIGHT ground that declares no ANSI at all.
+   Complete by the pair list, so it must fail on the ANSI half of the
+   completeness rule and nothing else.
+
+   Why this branch needs its own file: the gated path already fails a light
+   preset with no ANSI (`--ansi-N is not set on a light ground`), but an
+   exempt preset never reaches it. Without the ANSI tokens joining the
+   required set, a future exempt light port could drop all sixteen and
+   inherit tokens.css's Tango palette onto a white terminal — where seven of
+   them are under AA and brightWhite lands at 1.16:1, i.e. invisible. Three of
+   the ports on this branch are light, so this is the likeliest way the hole
+   gets hit.
+
+   The e2e "paints its own tokens and its own ANSI 16" test cannot cover this:
+   it reads getComputedStyle, which resolves through the cascade, so an
+   omitted slot comes back as the inherited value and looks present.
+
+   Verify by mutation: drop the `--ansi-*` additions from the required set in
+   ui-contrast.mjs and this file must exit 0. */
+:root {
+  --bg: #0b0c10;
+  --surface: #13141a;
+  --fg: #e6e7ee;
+  --fg-muted: #a5a8b8;
+  --fg-subtle: #5f6273;
+  --accent: #ffb454;
+  --on-accent: #15120a;
+  --term-bg: #0b0c10;
+  --term-fg: #dfe1ea;
+  --surface-raised: #0f1015;
+  --sel: #1c1e28;
+  --state-running: #5fd7a5;
+  --state-attention: #ff9f43;
+  --state-error: #ff6b6b;
+  --state-info: #7fb3d5;
+}
+:root[data-theme="fixture-light-port-no-ansi"] {
+  --contrast-exempt: 1;
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --surface-raised: #ffffff;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #818b98;
+  --accent: #0969da;
+  --on-accent: #ffffff;
+  --sel: #dbeeff;
+  --state-running: #1a7f37;
+  --state-attention: #9a6700;
+  --state-error: #cf222e;
+  --state-info: #0969da;
+  --term-bg: #ffffff;
+  --term-fg: #1f2328;
+}
