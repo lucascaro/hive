@@ -12,7 +12,7 @@ As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct he
 
 1. **The terminal is the product; chrome recedes.** Sidebar, bars and dialogs exist to route attention to the right terminal. They are quiet by default and loud only for *attention*.
 2. **One channel per fact.** Session name, window title, and state each get exactly one place to live (name line, subtitle line, state icon). No fact is encoded twice, none is dropped.
-3. **Values come from tokens, never from literals.** No hex, no px font-size, no Unicode glyph outside `tokens.css`, `themes.css`, and the icon sprite. Enforced by `scripts/ui-lint.sh` in CI.
+3. **Values come from tokens, never from literals.** No hex, no px font-size, no px `border-radius`, no Unicode glyph outside `tokens.css`, `themes.css`, and the icon sprite. Enforced by `scripts/ui-lint.sh` in CI.
 4. **Theming is data.** A theme is a block of token values. Users can pick a preset or override any token. Light and dark are presets, not code paths.
 5. **State is shape + colour + words.** Colour alone is never the only signal (colour-blind users, monochrome presets).
 6. **Motion only where it carries meaning.** Attention pulses. Nothing else animates except layout transitions ≤120ms. `prefers-reduced-motion` disables all of it.

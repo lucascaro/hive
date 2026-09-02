@@ -1,2 +1,5 @@
 .a { color: #fff /* not #eee — trailing comment must not hide a real violation */; font-size: 12.5px; }
 .b { content: '●'; }
+.c { border-radius: 8px; }
+.d { border-radius: 0 0 4px 4px; }
+.e { border-top-left-radius: 6px; }

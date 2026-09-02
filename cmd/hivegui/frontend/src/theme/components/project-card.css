@@ -43,7 +43,7 @@
   /* Hairline rounding on a 10px square, not a scale step: --radius-sm
      would be 40% of the swatch and read as a circle. Stays literal, and
      stays 2px under `terminal` — at this size it is already square. */
-  border-radius: 2px;
+  border-radius: 2px; /* ui-lint: allow */
   background: var(--project-color, var(--fg-subtle));
 }
 /* Attention bubbles to the swatch and nothing else on the header
@@ -125,7 +125,7 @@
   left: var(--space-1);
   right: var(--space-1);
   height: 2px;
-  border-radius: 1px;
+  border-radius: 1px; /* ui-lint: allow */
   background: var(--accent);
   pointer-events: none;
   z-index: 2;

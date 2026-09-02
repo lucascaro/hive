@@ -22,11 +22,11 @@
   border: 0;
   border-bottom: 1px solid var(--border);
   outline: none;
-  color: #eee; /* ui-lint: allow */
+  color: var(--fg);
   font-size: var(--text-lg);
   padding: 12px 14px;
 }
-#command-palette-input::placeholder { color: #555; } /* ui-lint: allow */
+#command-palette-input::placeholder { color: var(--fg-subtle); }
 #command-palette-list {
   overflow-y: auto;
   padding: 4px;

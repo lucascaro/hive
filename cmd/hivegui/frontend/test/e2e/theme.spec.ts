@@ -30,6 +30,33 @@ async function boot(page: Page) {
   await page.evaluate(() => document.fonts.ready);
 }
 
+// Shared inventory for the worktrees-panel baselines: one row of every
+// kind the CSS distinguishes (main comes free), plus a merged branch so
+// the badge renders. Without all four the ramp has no baseline and the
+// surface this file exists to guard would be pinned half-empty.
+const WORKTREES = [
+  { path: '/mock/.worktrees/clean', branch: 'clean' },
+  { path: '/mock/.worktrees/dirty', branch: 'dirty', uncommitted: true },
+  { path: '/mock/.worktrees/busy', branch: 'busy', session_ids: ['s1'] },
+  {
+    path: '/mock/.worktrees/done',
+    branch: 'done',
+    unpushed: 2,
+    merged: true,
+  },
+];
+
+async function seedWorktrees(page: Page) {
+  await page.evaluate(
+    (w) =>
+      window.__hive.seedWorktrees?.(
+        w as Parameters<NonNullable<typeof window.__hive.seedWorktrees>>[0],
+        [],
+      ),
+    WORKTREES,
+  );
+}
+
 // Shared scene for the sidebar pixel baselines: two projects, three
 // sessions, one minimized, one with attention. Used by the classic guard
 // (Phase 1) and the hive-dark/hive-light baselines (Phase 3) alike, so all
@@ -134,9 +161,10 @@ test.describe('preset switching keeps the chrome stable', () => {
   });
 });
 
-// themes.md's "Adding a preset" step 4: sidebar + dialog under every
-// preset. Generated from PRESETS, so a seventh preset gets its pair by
-// existing rather than by someone remembering to add a test.
+// themes.md's "Adding a preset" step 4: sidebar, dialog, worktrees and
+// launcher under every preset. Generated from PRESETS, so a seventh
+// preset gets its set by existing rather than by someone remembering to
+// add a test.
 //
 // These are the only check that catches a preset which parses fine, clears
 // contrast, and still looks broken — a token that falls through to
@@ -181,6 +209,175 @@ test.describe('preset baselines', () => {
         { maxDiffPixels: 0, animations: 'disabled' },
       );
     });
+
+    // The worktree browser is the densest colour surface in the app —
+    // four row kinds, a merged badge and a destructive action, all of
+    // which were hard-coded near-blacks until spec 258. A baseline per
+    // preset is the only check that would notice one of them going back.
+    test(`${id}: worktrees`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await seedWorktrees(page);
+      await page.keyboard.press(`${mod}+e`);
+      await expect(page.locator('#worktrees')).toBeVisible();
+      await expect(page.locator('#worktrees-list .worktree-row')).toHaveCount(
+        WORKTREES.length + 1,
+      ); // + the main checkout
+      await expect(page.locator('#worktrees-panel')).toHaveScreenshot(
+        `worktrees-${id}.png`,
+        { maxDiffPixels: 0, animations: 'disabled' },
+      );
+    });
+
+    test(`${id}: launcher`, async ({ page }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await page.setViewportSize({ width: 1100, height: 700 });
+      await boot(page);
+      await page.keyboard.press(`${mod}+t`);
+      const launcher = page.locator('#launcher');
+      await expect(launcher).toBeVisible();
+      await expect(launcher.locator('.launcher-search')).toBeFocused();
+      // The branch input only renders while the worktree toggle is on,
+      // and it is one of the two fills this spec's change retokenised.
+      await launcher.locator('.launcher-worktree input').check();
+      await expect(launcher.locator('.launcher-branch')).toBeVisible();
+      await expect(launcher).toHaveScreenshot(`launcher-${id}.png`, {
+        maxDiffPixels: 0,
+        animations: 'disabled',
+      });
+    });
+  }
+});
+
+// The state family reaches the surface, under every preset, read from the
+// live cascade — the screenshot baselines above are darwin-local and
+// HIVE_SNAPSHOT-gated, so without this nothing cross-platform proves the
+// worktree kind ramp is wired to tokens at all.
+//
+// It compares the PAINTED colour against the token the preset resolves,
+// which is the part `ui-contrast.mjs` structurally cannot do: that script
+// regex-parses tokens.css/themes.css, so it validates the values and says
+// nothing about whether a rule still points at them. A `color:` reverted to
+// a literal passes the contrast gate and fails here.
+//
+// Not a length check on getPropertyValue: tokens.css's base `:root` declares
+// all four, so reading them off documentElement returns an inherited value
+// for a preset that omits one and the assertion could never fail.
+test.describe('the state family is wired to the surface', () => {
+  // Every site in the worktree browser that spells a state out in words,
+  // and the token each one must resolve to.
+  const PAINTED = [
+    {
+      what: 'active status',
+      sel: ".worktree-row[data-kind='active'] .worktree-status",
+      token: '--state-info',
+    },
+    {
+      what: 'holding status',
+      sel: ".worktree-row[data-kind='holding'] .worktree-status",
+      token: '--state-attention',
+    },
+    {
+      what: 'merged badge',
+      sel: '.worktree-badge.merged',
+      token: '--state-running',
+    },
+    {
+      what: 'destructive action',
+      sel: '.worktree-actions button.danger',
+      token: '--state-error',
+    },
+  ] as const;
+
+  for (const { id } of PRESETS.filter((p) => p.id !== 'system')) {
+    test(`${id}: every state colour is painted from its token`, async ({
+      page,
+    }) => {
+      await page.addInitScript(
+        (t) => localStorage.setItem('hive.theme', t),
+        id,
+      );
+      await boot(page);
+      await seedWorktrees(page);
+      await page.keyboard.press(`${mod}+e`);
+      await expect(page.locator('#worktrees')).toBeVisible();
+
+      for (const { what, sel, token } of PAINTED) {
+        // Resolve the token through a probe element rather than comparing
+        // hex text to `rgb(...)`: the browser does the conversion, so the
+        // comparison holds whatever notation a preset writes its value in.
+        const [painted, expected] = await page.evaluate(
+          ([s, t]) => {
+            const probe = document.createElement('span');
+            probe.style.color = `var(${t})`;
+            document.body.appendChild(probe);
+            const want = getComputedStyle(probe).color;
+            probe.remove();
+            const el = document.querySelector(s);
+            return [el ? getComputedStyle(el).color : 'MISSING', want];
+          },
+          [sel, token] as const,
+        );
+        // A missing element would make the comparison vacuous, so name it.
+        expect(painted, `${id}: ${what} (${sel}) not rendered`).not.toBe(
+          'MISSING',
+        );
+        expect(painted, `${id}: ${what} should paint var(${token})`).toBe(
+          expected,
+        );
+      }
+    });
+  }
+});
+
+// Standing guard (all platforms, no HIVE_SNAPSHOT gate): the assertion
+// that would have failed before spec 258. `.worktree-row` was
+// `background: #141414`, a near-black card painted on hive-light's white
+// dialog panel — a literal cannot answer [data-theme], and no contrast
+// rule or unit test could see it.
+test('the worktree rows follow the preset, not a literal', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('hive.theme', 'hive-light'),
+  );
+  await page.goto('/');
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li').length > 0,
+  );
+  await seedWorktrees(page);
+  await page.keyboard.press(`${mod}+e`);
+  await expect(page.locator('#worktrees')).toBeVisible();
+
+  // Every row's ground is light, and its text is dark on it — read from
+  // the live cascade, both halves, so neither can regress alone.
+  const rows = await page
+    .locator('#worktrees-list .worktree-row')
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const l = (c: string) => {
+          const [r, g, b] = (c.match(/\d+/g) ?? ['0', '0', '0']).map(Number);
+          return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        };
+        // The row carries the ground; the name carries --fg. Reading
+        // `color` off the row itself would read the --fg-muted the
+        // dialog body hands down instead.
+        const name = el.querySelector('.worktree-name');
+        return {
+          bg: l(getComputedStyle(el).backgroundColor),
+          fg: l(getComputedStyle(name ?? el).color),
+        };
+      }),
+    );
+  expect(rows.length).toBeGreaterThan(1);
+  for (const r of rows) {
+    expect(r.bg).toBeGreaterThan(0.8);
+    expect(r.fg).toBeLessThan(0.3);
   }
 });
 
@@ -387,6 +584,12 @@ test.describe('Settings > Appearance', () => {
       });
       // themes.md's "Adding a preset" step 2: all sixteen, every preset.
       expect(ansi.filter(Boolean), `${id} ANSI`).toHaveLength(16);
+      // No equivalent assertion for the --state-* family: tokens.css's
+      // base :root declares all four, so reading them off documentElement
+      // returns an inherited value for a preset that omits one and the
+      // check could never fail. That gap is ui-contrast.mjs's — it merges
+      // the base block into every preset, so an omitting light preset
+      // fails on the inherited dark value.
       // And they reach xterm, not just the cascade — xterm caches its
       // palette, so the CSS alone proves nothing.
       await expect

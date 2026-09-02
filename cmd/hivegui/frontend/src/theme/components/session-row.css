@@ -161,7 +161,7 @@
   left: var(--space-1);
   right: var(--space-1);
   height: 2px;
-  border-radius: 1px;
+  border-radius: 1px; /* ui-lint: allow */
   background: var(--accent);
   pointer-events: none;
 }

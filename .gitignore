@@ -46,8 +46,12 @@ Thumbs.db
 # hs-plan-html review-loop scratch (rendered plans + feedback server PIDs)
 /.plans/
 
-# Playwright e2e artifacts
+# Playwright e2e artifacts. Playwright writes them relative to CWD, so a run
+# invoked from the repo root rather than cmd/hivegui/frontend/ drops a second
+# copy here — both paths are ignored.
 /cmd/hivegui/frontend/test-results/
+/test-results/
+/playwright-report/
 
 # Playwright browser downloads. CI pins PLAYWRIGHT_BROWSERS_PATH here so one
 # actions/cache entry covers all three OSes; a local run with the same env

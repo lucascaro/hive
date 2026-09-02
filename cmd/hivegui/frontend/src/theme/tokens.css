@@ -20,6 +20,11 @@
   --state-starting: var(--fg-subtle);
   --state-exited: var(--fg-subtle);
   --state-error: #ff6b6b;
+  /* "In use, nothing to do about it" — the neutral member of the state
+     family, hue-distinct from --accent, --state-attention and
+     --state-running so a panel can show "occupied", "needs you" and
+     "done" side by side. Every preset re-values it; see themes.css. */
+  --state-info: #7fb3d5;
   /* ANSI 0-15, the palette xterm paints program output with. These are
      xterm's own defaults (the Tango palette) — stating them here rather
      than leaving them implicit is what lets a preset override them, and
