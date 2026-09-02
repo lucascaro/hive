@@ -89,8 +89,10 @@ Two mechanics the implementation must get right:
 - `cmd/hivegui/frontend/src/theme/components/project-card.css` — same.
 - `cmd/hivegui/frontend/src/theme/components/sidebar.css` — add
   `.hv-drop-placeholder` (dashed token-coloured outline, `--radius-md`,
-  `list-style: none`, `box-sizing: border-box`, `pointer-events: none`).
-  Tokens only; `scripts/ui-lint.sh` rejects colour literals.
+  `list-style: none`, `box-sizing: border-box`). Tokens only;
+  `scripts/ui-lint.sh` rejects colour literals. It is deliberately
+  hit-testable — see the decision log entry that reversed the original
+  `pointer-events: none`.
 
 ### New files
 
@@ -142,6 +144,11 @@ Two mechanics the implementation must get right:
   placeholder half (drop target lost under the cursor, overclaimed mid-rebuild
   self-healing, one-frame height jump at drag start). All three verified and
   fixed on the branch; suite now 797 unit/dom + 246 e2e.
+- **2026-09-01** — Review iteration 2: APPROVE, no BLOCKING or IMPORTANT
+  findings, zero unresolved threads. Its three MINOR nits were cleared anyway
+  (spacer now copies all four margins, `dropTargetIndex` uses `readProjectId`,
+  this plan's Files-to-change no longer contradicts its own decision log).
+  Loop converged; stage = GATE.
 
 ## Decision log (cont.)
 
@@ -170,6 +177,7 @@ Two mechanics the implementation must get right:
 <Append-only. One line per /hs-review-loop iteration.>
 
 - **2026-09-01 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: d5dbc6d8b95e2678; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 770ed58.
+- **2026-09-01 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 639c3e8.
 
 ## Open questions
 

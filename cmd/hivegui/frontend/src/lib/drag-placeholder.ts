@@ -36,7 +36,7 @@ let draggedSelector = '';
 let spacer: HTMLElement | null = null;
 let onDrop: DropHandler | null = null;
 // Captured at dragstart, BEFORE the element leaves the flow.
-let box = { height: 0, marginTop: '0px', marginBottom: '0px' };
+let box = { height: 0, margin: '0px' };
 
 function selectorFor(el: HTMLElement): string {
   const sid = el.dataset.sid;
@@ -94,12 +94,13 @@ function makeSpacer(): HTMLElement {
 function place(before: Node | null, parent: Node | null | undefined) {
   if (!parent) return;
   if (!spacer) spacer = makeSpacer();
-  // Height plus the dragged element's own vertical margins: project cards
-  // carry margins, and a zero-margin spacer would not occupy the same space
-  // once adjacent-sibling margins collapse.
+  // Height plus the dragged element's own margins — all four. Project cards
+  // carry `margin: --space-1 --space-2 --space-2`: without the vertical half
+  // a zero-margin spacer would not occupy the same space once adjacent-sibling
+  // margins collapse, and without the horizontal half the dashed outline would
+  // run the full sidebar width while the card it stands in for is inset.
   spacer.style.height = `${box.height}px`;
-  spacer.style.marginTop = box.marginTop;
-  spacer.style.marginBottom = box.marginBottom;
+  spacer.style.margin = box.margin;
   if (before === spacer) return;
   parent.insertBefore(spacer, before);
 }
@@ -117,8 +118,7 @@ export function beginDrag(el: HTMLElement, handler: DropHandler) {
   const cs = getComputedStyle(el);
   box = {
     height: el.getBoundingClientRect().height,
-    marginTop: cs.marginTop,
-    marginBottom: cs.marginBottom,
+    margin: `${cs.marginTop} ${cs.marginRight} ${cs.marginBottom} ${cs.marginLeft}`,
   };
   setTimeout(() => {
     if (dragged !== el) return;

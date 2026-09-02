@@ -1,3 +1,5 @@
+import { readProjectId } from './wire.js';
+
 // reorderTarget converts "move the active session one slot up/down inside its
 // own project" into the index the daemon wants.
 //
@@ -83,10 +85,10 @@ export function dropTargetIndex(
   const target = globalOrdered.find((s) => s.id === targetID);
   if (draggedIdx < 0 || !target) return null;
 
-  const pid = target.projectId ?? target.project_id ?? '';
+  const pid = readProjectId(target);
   // Siblings WITHOUT the dragged session — the list the drop slot indexes.
   const sibs = globalOrdered.filter(
-    (s) => (s.projectId ?? s.project_id ?? '') === pid && s.id !== draggedID,
+    (s) => readProjectId(s) === pid && s.id !== draggedID,
   );
   const targetIdx = sibs.findIndex((s) => s.id === targetID);
   if (targetIdx < 0) return null;

@@ -4,7 +4,7 @@ title: "Fix sidebar drag-and-drop ordering and drop placeholder"
 type: bug
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 pr: 315
 ---
 
