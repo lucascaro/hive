@@ -53,8 +53,9 @@
 }
 
 /* The exemption's positive case (spec 305). Every pair here is far below
-   threshold — --fg-subtle is 1.35:1 on --surface, --state-error 1.42:1 on
-   --sel — and the file must still pass, because the preset opts out. Without
+   threshold — --fg-subtle is 1.18:1 on --surface, --state-error 1.19:1 on
+   --sel, and no pair the gate checks reaches 1.7:1 — and the file must still
+   pass, because the preset opts out. Without
    this, good.css contains no exempt preset at all, so a completeness check
    that rejected valid exempt presets, or an exemption that quietly stopped
    suppressing the ratios, would both still leave this fixture green.

@@ -191,6 +191,16 @@ Most coverage is already data-driven off the rendered picker and comes free.
   language boundary with nothing syncing it. Accepted residual risk: a wrong exemption is a
   reviewable one-line diff that prints a `skip` line on every later run, and themes.md's
   "Adding a preset" says a first-party preset must pass the gate.
+- **2026-09-02** — (review iter 4) State the accessibility cost as a measured, reproducible
+  count instead of hand-picked examples. Why: both ratios cited in comments were wrong —
+  Catppuccin Mocha's `overlay0` is 2.22:1 on a raised card, not 1.87:1 (that is against
+  `--sel`, and `--btn-border` is in no `PAIRS` entry at all, so it is not a gated pair), and
+  the good.css fixture's figures were invented rather than computed. The real number, from
+  running the gate with the exemption flipped off: **84** failing pairs across the twelve
+  (Solarized Light 25, Catppuccin Latte 21, Solarized Dark 12, Nord 7); eleven of the twelve
+  fail `--state-error` on `--sel`; worst single pair is Nord at 1.80:1. Comments now carry
+  those, plus the one-line mutation that regenerates them, so the claim can be re-checked
+  rather than trusted.
 - **2026-09-01** — (review iter 3) Exclude the `Community` group from the pixel-baseline
   loop rather than committing ~48 darwin-local PNGs. Why: the loop is data-driven from
   `PRESETS`, so twelve presets silently added 48 *expected* baselines the PR does not carry —
@@ -252,6 +262,8 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-01 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 1329f29f…; threads_open: 0; action: fix 2 IMPORTANT + 2 MINOR locally (fixture did not isolate its branch; exempt path dropped the ANSI light-ground rule); head_sha: 347afa5.
 
 - **2026-09-01 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 315e13ad…; threads_open: 0; action: fix 1 IMPORTANT locally (baseline loop silently expected 48 uncommitted PNGs); iter-2 fixes all re-verified by mutation; head_sha: 2da6cbb.
+
+- **2026-09-02 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b94731df…; threads_open: 0; action: fix 2 IMPORTANT locally (both were invented ratios in comments); iter-3 fix re-verified by mutation + a no-write HIVE_SNAPSHOT run; head_sha: b122096.
 
 ## Open questions
 

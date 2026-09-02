@@ -167,11 +167,18 @@
    Community presets — the palettes people arrive with from other editors.
    Ported at their published values: hues, ANSI 16 and chrome greys are the
    upstream ones, not re-derived. That is a deliberate choice and it has a
-   cost — several of these do not clear the WCAG AA bar the first-party six
-   are held to (Nord's #bf616a on its own selection is 1.80:1, Catppuccin
-   Mocha's overlay0 is 1.87:1 against a raised card). They are opt-in, and a
-   user who picks "Dracula" wants Dracula, so scripts/ui-contrast.mjs exempts
-   this section by id and reports each one as skipped rather than pretending
+   cost, and here is its size rather than an impression of it: with the
+   exemption disabled these twelve fail 84 gated pairs between them. Solarized
+   Light alone accounts for 25 and Catppuccin Latte for 21 (both are light
+   grounds, where the ANSI 16 are checked too); the single worst is Nord's
+   --state-error #bf616a on its own --sel, at 1.80:1.
+   Eleven of the twelve fail --state-error on --sel specifically: an upstream
+   syntax red on a selection fill is the pair a syntax palette was never
+   designed for. Reproduce the count by flipping the `--contrast-exempt` test
+   in scripts/ui-contrast.mjs to `false` and re-running the gate.
+
+   They are opt-in, and a user who picks "Dracula" wants Dracula, so the gate
+   exempts this section and reports each one as skipped rather than pretending
    it passed. Anything painted by DEFAULT — the six above — stays gated.
 
    Everything else follows the file-header rule: every block re-values every
