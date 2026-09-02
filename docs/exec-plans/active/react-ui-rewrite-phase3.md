@@ -128,7 +128,15 @@ they are the proof the DOM contract survived.
 0 violations; `vite build` succeeds; vitest **78 files / 848 tests** green;
 `go build ./...` + `go test ./internal/... ./cmd/hivegui/...` green; Playwright
 e2e **258 passed / 0 failed / 31 skipped**; `npm run test:e2e:real` **24 passed**.
-No flake-baseline comparison was needed: nothing failed.
+**2026-09-02 — CI.** All legs green on `a65813f` (Linux, macOS, Windows,
+`block-generated-edits`, `verify-generated`, CodeQL). The macOS leg went red once
+on `worktrees.spec.ts:247` ("the worktree glyph on a session opens the browser",
+a `focus()` → `toBeFocused()` assertion) and passed on retry — `1 flaky / 257
+passed`, which the strict setting reports as a failed leg. Not this phase:
+`worktrees.spec.ts` and the sidebar row it drives are untouched here (the
+worktree browser is Phase 4), the same file flaked on Phase 2's run
+(`worktrees.spec.ts:387`), the spec ran 120/120 locally on macOS at
+`--repeat-each=3`, and a re-run of the failed leg alone came back green.
 
 ## PR convergence ledger
 
@@ -137,3 +145,4 @@ _(opened 2026-09-02 for PR #319; `/hs-review-loop` appends one entry per iterati
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 54e8817e; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 2e01fb5.
 - **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged (all three iter-1 IMPORTANTs verified fixed at source); head_sha: 2e01fb5.
 - **2026-09-02 post-loop** — two of the three remaining MINORs applied: unused `modalEntry()` export deleted, and the `[enter] save` hint made honest (see Decision log). The third — a repeated identical error message not re-scrolling — left as-is: the reviewer's own read is that the fix is worse than the bug.
+- **2026-09-02 post-loop CI** — all legs green on `a65813f` after one retry-green flake on `worktrees.spec.ts:247` (see Verification).
