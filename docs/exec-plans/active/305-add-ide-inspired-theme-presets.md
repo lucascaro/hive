@@ -72,8 +72,8 @@ needed at all, and the record of exactly what is being waived:
 
 ## Approach
 
-Follow `themes.md` § "Adding a preset" for all ten, plus one piece of UI work the checklist
-does not cover (the picker outgrows a flat `<select>` at 17 entries).
+Follow `themes.md` § "Adding a preset" for all twelve, plus one piece of UI work the checklist
+does not cover (the picker outgrows a flat `<select>` at 19 entries).
 
 **Presets.** Dark: `dracula`, `nord`, `gruvbox-dark`, `tokyo-night`, `catppuccin-mocha`,
 `one-dark`, `neon`, `solarized-dark`, `github-dark`. Light: `solarized-light`,
@@ -137,7 +137,7 @@ lines in `selectInput`. No custom dropdown, no new component.
 - `cmd/hivegui/frontend/test/unit/theme.test.ts` — update the pinned id list; add the group
   invariant test.
 - `cmd/hivegui/frontend/test/e2e/theme.spec.ts` — update the pinned option-value list (~:542).
-- `docs/design-docs/ui/themes.md` — ten table rows, a new `## Attribution` section, and a
+- `docs/design-docs/ui/themes.md` — twelve table rows, a new `## Attribution` section, and a
   note in "Adding a preset" about the `group` field.
 - `.changesets/<pr>.md` — new, via `/hs-changelog-update`.
 
@@ -150,7 +150,7 @@ None (beyond the changeset).
 Most coverage is already data-driven off the rendered picker and comes free.
 
 - `test/unit/theme.test.ts` › `PRESETS › lists every selectable theme exactly once, System
-  first` — **update**: the 17-entry id list in picker order, no duplicates.
+  first` — **update**: the 19-entry id list in picker order, no duplicates.
 - `test/unit/theme.test.ts` › `PRESETS › every preset declares a group listed in GROUPS` —
   **new**: no preset silently falls out of the picker from a typo'd group.
 - `test/unit/theme.test.ts` › `PRESETS › every non-system preset resolves to itself` —
@@ -160,7 +160,7 @@ Most coverage is already data-driven off the rendered picker and comes free.
 - `test/e2e/theme.spec.ts` › `the preset list is exactly what theme.ts exports` — **update**:
   option values across optgroups.
 - `test/e2e/theme.spec.ts` › `the boot script knows every preset theme.ts stamps` — existing,
-  proves `KNOWN` covers all ten.
+  proves `KNOWN` covers all twelve.
 - `test/e2e/theme.spec.ts` › `every preset paints its own tokens and its own ANSI 16` —
   existing, proves each block is reached, declares all sixteen, paints a distinct ground, and
   reaches xterm's cached palette.
@@ -183,8 +183,20 @@ Most coverage is already data-driven off the rendered picker and comes free.
   from the preset's own declarations, never the base-merged view — otherwise one line in
   tokens.css would switch the gate off for everything at once.
 - **2026-09-01** — Pin `NEVER_EXEMPT` (the six default presets) rather than pinning the
-  exempt list. Why: pinning the *protected* set fails closed — a new community preset needs
-  no edit there, and a default preset that tries to opt out fails the gate loudly.
+  exempt list. Why: a new community preset then needs no edit there, and a default preset
+  that tries to opt out fails the gate loudly. **This is not "fails closed"** — an earlier
+  draft of this entry claimed that and was wrong. A *future* first-party preset is absent
+  from the list and could exempt itself. Closing that means teaching a Node script which
+  `PRESETS` entries are `group: 'Community'`, i.e. a third copy of the registry across a
+  language boundary with nothing syncing it. Accepted residual risk: a wrong exemption is a
+  reviewable one-line diff that prints a `skip` line on every later run, and themes.md's
+  "Adding a preset" says a first-party preset must pass the gate.
+- **2026-09-01** — (review iter 1) Exempt presets are still checked for **completeness**:
+  every token named in `PAIRS` must appear in the preset's own declarations. Why: the first
+  cut `continue`d straight past the pair loop, which silently removed the only check that
+  catches a partial preset — `decls` merges the base block in, so an omitted token reads
+  back as hive-dark's value through the cascade and every other test sees a plausible
+  colour. Contrast was what caught that, and the exemption had taken it away.
 - **2026-09-01** — Ship the Monokai palette as `neon`. Why: "Monokai" is an active Monokai
   Pro trademark and "Sublime" is Sublime HQ's; the palette itself is not the risk, the name is.
 - **2026-09-01** — Add `<optgroup>` support to `selectInput` rather than a custom dropdown.
@@ -207,6 +219,12 @@ Most coverage is already data-driven off the rendered picker and comes free.
   unit + dom (380 tests), full e2e (253 passed) and `go test ./cmd/hivegui/...` all green.
   All nineteen presets rendered and eyeballed in a browser.
 - **2026-09-01** — Pushed; PR #316 opened. Stage = REVIEW.
+
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
+- **2026-09-01 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: f407745c…; threads_open: 0; action: fix IMPORTANT findings locally (2 test/comment gaps in the new exemption path); head_sha: 4c57ddc.
 
 ## Open questions
 

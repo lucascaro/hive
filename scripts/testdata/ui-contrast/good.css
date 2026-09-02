@@ -51,3 +51,30 @@
   --ansi-8: #4a4d5a; --ansi-9: #91121f; --ansi-10: #0e5a2e; --ansi-11: #6f4600;
   --ansi-12: #0a4ba0; --ansi-13: #62239b; --ansi-14: #0b555c; --ansi-15: #000000;
 }
+
+/* The exemption's positive case (spec 305). Every pair here is far below
+   threshold — --fg-subtle is 1.35:1 on --surface, --state-error 1.42:1 on
+   --sel — and the file must still pass, because the preset opts out. Without
+   this, good.css contains no exempt preset at all, so a completeness check
+   that rejected valid exempt presets, or an exemption that quietly stopped
+   suppressing the ratios, would both still leave this fixture green.
+   Complete on purpose: exempt from the ratios is not exempt from declaring
+   every token the pair list names. exempt-incomplete.css is the other half. */
+:root[data-theme="fixture-community-port"] {
+  --contrast-exempt: 1;
+  --bg: #2a2a30;
+  --surface: #33333a;
+  --surface-raised: #3a3a42;
+  --fg: #4a4a52;
+  --fg-muted: #45454d;
+  --fg-subtle: #3e3e46;
+  --accent: #444450;
+  --on-accent: #4c4c58;
+  --sel: #38383f;
+  --state-running: #454550;
+  --state-attention: #46464f;
+  --state-error: #43434c;
+  --state-info: #47474f;
+  --term-bg: #2a2a30;
+  --term-fg: #3a3a44;
+}

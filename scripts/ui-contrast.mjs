@@ -128,6 +128,16 @@ if (!presets.length) {
 // here and the marker is refused on them. `system` resolves to hive-dark or
 // hive-light, so those two are the real defaults; the rest ship in the picker
 // above the community section.
+//
+// What this does NOT do: stop a FUTURE first-party preset from exempting
+// itself, since a name absent from this list is unprotected. Closing that
+// properly means teaching a Node script which PRESETS entries are `group:
+// 'Community'` — a third copy of the preset registry across a language
+// boundary, with nothing keeping it in sync (the repo already pays for the
+// two copies it has, and guards them with an e2e test). The judgement is that
+// a wrong exemption is a reviewable one-line diff that prints a `skip` line
+// on every subsequent run, whereas a silent sync drift is neither. themes.md
+// § "Adding a preset" says plainly that a first-party preset must pass.
 const NEVER_EXEMPT = new Set([
   'hive-dark',
   'hive-light',
@@ -159,6 +169,25 @@ for (const p of presets) {
       console.log(
         `FAIL  ${p.name.padEnd(13)} declares --contrast-exempt; ` +
           'a default preset may not opt out of the contrast gate',
+      );
+      failed++;
+      continue;
+    }
+    // Opting out of the RATIOS does not opt out of being a complete preset.
+    // Skipping straight to the next preset would have removed the only
+    // check that catches a partial one: `decls` merges the base block in, so
+    // an omitted token reads back as hive-dark's value everywhere — the
+    // cascade paints it, getComputedStyle returns it, and the e2e "paints its
+    // own tokens" test sees a plausible colour. Contrast was what caught that
+    // on a light ground, and the exemption would have taken it away. So every
+    // token the pair list names must still be declared by the preset itself.
+    const missing = [
+      ...new Set(PAIRS.flatMap(([fg, bg]) => [fg, bg])),
+    ].filter((t) => !(t in p.decls));
+    if (missing.length) {
+      console.log(
+        `FAIL  ${p.name.padEnd(13)} exempt from ratios, not from completeness: ` +
+          `missing ${missing.join(' ')}`,
       );
       failed++;
       continue;

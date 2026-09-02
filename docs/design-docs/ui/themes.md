@@ -62,7 +62,15 @@ On a preset whose `--term-bg` is a **light** ground, all sixteen `--ansi-*` are 
 
 `scripts/ui-lint.sh --contrast` is the gate (add `--verbose` for every ratio); it runs on the Linux CI leg, since token values are platform-independent.
 
-A preset can opt out by declaring `--contrast-exempt: 1`, which is how the community ports above ship at their upstream values. The gate prints a `skip` line and a count for each, so an exemption is visible in every run rather than silent. It is not a general escape hatch: the six default presets are named in `NEVER_EXEMPT` and the marker is a *failure* on them — a preset a user can land on without opting in must clear the bar.
+A preset can opt out by declaring `--contrast-exempt: 1`, which is how the community ports above ship at their upstream values. The gate prints a `skip` line and a count for each, so an exemption is visible in every run rather than silent. It is not a general escape hatch:
+
+- The six default presets are named in `NEVER_EXEMPT` and the marker is a *failure* on them — a preset a user can land on without opting in must clear the bar.
+- **Exempt from the ratios is not exempt from being a complete preset.** An exempt block must still declare every token the pair list names, in its own declarations. Without that rule the exemption would delete the only check that catches a partial preset: the base block is merged in, so an omitted token reads back as `hive-dark`'s value through the cascade, and every other check — including the e2e "paints its own tokens" test — sees a plausible colour.
+- The marker is read from the preset's own declarations, never the base-merged view, so one line in `tokens.css` cannot switch the gate off for everything at once.
+
+`NEVER_EXEMPT` names today's defaults, so it does not protect a *future* first-party preset from exempting itself. That is accepted rather than solved — see the comment on `NEVER_EXEMPT` for why, and **if you are adding a first-party preset, it must pass the gate; do not reach for the marker.**
+
+Fixtures: `scripts/testdata/ui-contrast/exempt-default.css` (refusal branch) and `exempt-incomplete.css` (completeness branch) must each fail; `good.css` carries the positive case, an exempt preset whose every pair is far below threshold and which must still pass. They are separate files on purpose — folded into `bad.css` they would prove nothing, since it already exits 1 for dozens of other reasons.
 
 ## User overrides
 

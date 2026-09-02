@@ -118,6 +118,18 @@ jobs:
             echo "expected bad.css to fail ui-contrast" >&2
             exit 1
           fi
+          # The --contrast-exempt opt-out (spec 305) gets its own fixtures
+          # rather than more cases in bad.css: that file already exits 1 for
+          # 37 other reasons and would keep doing so if either branch below
+          # were deleted. Isolated, each file passes the moment its branch
+          # stops working. good.css carries the positive case — an exempt
+          # preset whose every pair is far below threshold must still pass.
+          for f in exempt-default exempt-incomplete; do
+            if ./scripts/ui-lint.sh --contrast "scripts/testdata/ui-contrast/$f.css"; then
+              echo "expected $f.css to fail ui-contrast" >&2
+              exit 1
+            fi
+          done
           ./scripts/ui-lint.sh --contrast scripts/testdata/ui-contrast/good.css
 
       - name: Build

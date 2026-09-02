@@ -607,9 +607,14 @@ test.describe('Settings > Appearance', () => {
       // No equivalent assertion for the --state-* family: tokens.css's
       // base :root declares all four, so reading them off documentElement
       // returns an inherited value for a preset that omits one and the
-      // check could never fail. That gap is ui-contrast.mjs's — it merges
-      // the base block into every preset, so an omitting light preset
-      // fails on the inherited dark value.
+      // check could never fail. That gap is ui-contrast.mjs's. For a gated
+      // preset it closes via the ratios — the base block is merged in, so an
+      // omitting light preset fails on the inherited dark value. A preset
+      // carrying --contrast-exempt never reaches those ratios, so the gate
+      // checks it a second way instead: every token the pair list names must
+      // appear in the preset's OWN declarations. Both paths land in
+      // ui-contrast.mjs; neither is here, because the cascade this test reads
+      // through is exactly what hides the omission.
       // And they reach xterm, not just the cascade — xterm caches its
       // palette, so the CSS alone proves nothing.
       await expect
