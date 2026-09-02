@@ -101,6 +101,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from re-parenting every tile on every repaint. Session updates now patch the
   existing rows in place, the grid reorders only when the order actually
   moved, and both paths restore focus if a genuine rebuild moves it.
+- The worktree browser, the launcher, the command palette, the help overlay and
+  the dead-session overlay follow the chosen theme. They carried 31 hard-coded
+  colours, so on a light preset the worktree list painted near-black rows on a
+  white panel.
+- State colours are text now, not just icon fills, so they are held to WCAG AA
+  on every ground they are painted on: `hive-light`'s "running", "attention" and
+  "error" darken, and `native-dark`'s "error" lightens, so the worktree status
+  lines, the merged badge and the destructive action stay readable under every
+  preset.
+- The merged badge loses its green tint; its text and border carry it.
 - `build.sh` now fails with install instructions when the `wails` CLI on
   `PATH` does not match the version pinned in `scripts/ci-bootstrap.sh`,
   instead of silently building against a stale toolchain after a Wails
