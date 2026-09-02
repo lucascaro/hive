@@ -3,6 +3,8 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** #317
+- **Branch:** `react-phase1-sidebar`
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
