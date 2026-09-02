@@ -6,9 +6,19 @@
 //
 // The imperative renderer keyed its rebuild off a JSON signature of the
 // model (data-sig) so it could skip an innerHTML wipe. React reconciles,
-// so the signature went with the wipe that needed it. The slice
-// subscriptions below are what bounds the work instead: nothing else in
-// the store can re-render this pane.
+// so the signature went with the wipe that needed it.
+//
+// Deliberately NOT memoized, unlike MinimizedTray's chips. `sessions` is
+// replaced on every `title` event, so this does re-run at a busy child
+// program's redraw rate — but a run is one Set build plus
+// emptyStateModel(), and it returns null whenever anything is visible,
+// which is the overwhelmingly common case. That is strictly less work
+// than the renderEmptyState() it replaces, which did the same two things
+// AND a JSON.stringify of the result, from roughly ten call sites
+// including every switchTo(). Memoizing three static nodes behind a
+// derived-key subscription would cost more code than the render it
+// saves. The chips are different: they are per-session markup, and there
+// can be many.
 import { useLayoutEffect, type ReactNode } from 'react';
 import { emptyStateModel } from '../lib/empty-state.js';
 import { isMac } from '../lib/platform.js';

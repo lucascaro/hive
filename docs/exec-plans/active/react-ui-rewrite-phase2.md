@@ -132,6 +132,24 @@ rebuild off a JSON signature of the model so the renderer could skip an
 `innerHTML` wipe. React reconciles, so the signature went with the wipe that
 needed it. Nothing outside `view.ts` read it (no e2e selector, no test).
 
+**2026-09-02 (review round 1) — `MinimizedTray`'s chips are memoized;
+`EmptyState` deliberately is not.** Both subscribe to `sessions`, which
+`updateSession()` replaces on every `title` event — a path the deleted
+`renderMinimizedTray()` was never wired to, so the naive port would have ADDED
+work on the highest-rate event in the app, on the exact axis this migration
+exists to improve. `TrayChip` is `memo`'d with primitive props, the same shape
+Phase 1 gave `SessionItem`, and `test/dom/tray-render-scope.test.tsx` pins it
+(4 of its 6 cases fail with the memo removed). It also records something
+stronger than "only the affected chip rebuilds": a chip shows a session's NAME,
+never its title, so a retitle rebuilds *nothing*.
+
+`EmptyState` is left alone on purpose: a run is one Set build plus
+`emptyStateModel()`, and it returns null whenever anything is visible — strictly
+less work than the `renderEmptyState()` it replaces, which did the same two
+things AND a `JSON.stringify` of the result, from roughly ten call sites
+including every `switchTo()`. Memoizing three static nodes behind a derived-key
+subscription would cost more code than the render it saves.
+
 **2026-09-02 — `#banners` is the phase's one markup addition.** The three
 banners are direct children of the `#app` grid and `banner.css` places two of
 them by row, so a React root on a wrapper would have collapsed all three into
@@ -178,3 +196,5 @@ Phase 1.
 ## PR convergence ledger
 
 _(opened 2026-09-02 for PR #318; `/hs-review-loop` appends one entry per iteration)_
+
+- **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 51083c23; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 67dcf0a.

@@ -1,6 +1,8 @@
 /* docs/design-docs/ui/components.md > banner. 36px, --text-md, left
    border carries the kind. Grid placement (rows 1 and 2 of #app) comes
-   from [data-slot], set by app/banners.ts. */
+   from [data-slot], set by components/Banners.tsx. Its container,
+   #banners, is display:contents (layout.css) so these stay direct grid
+   children. */
 .hv-banner {
   /* Includes the borders — see status-bar.css. */
   box-sizing: border-box;
