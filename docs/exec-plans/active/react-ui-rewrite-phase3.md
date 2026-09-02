@@ -3,6 +3,8 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** https://github.com/lucascaro/hive/pull/319
+- **Branch:** `feature/react-rewrite-phase3`
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
