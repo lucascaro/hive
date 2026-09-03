@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   glyph is dimmed, the same as every other icon button in the app; hovering
   restores the full-strength glyph and brings the background back, now with
   the same short fade the app's other icon buttons use.
+- ⌘⏎ (Ctrl+Enter off macOS) in a grid view now focuses the active session,
+  switching to single view on the tile you navigated to. The binding is
+  deliberately one-way — single → grid stays on ⌘G / ⇧⌘G — so that in single
+  view the key falls through to the terminal, where Claude and Codex bind
+  Cmd+Enter themselves.
 - Theme presets groundwork. `localStorage['hive.theme']` accepts `classic`
   (default), `hive-dark`, `hive-light`, `system`. No visual change by
   default, except that the terminal cursor and selection now use the accent
