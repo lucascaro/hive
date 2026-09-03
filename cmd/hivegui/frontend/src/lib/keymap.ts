@@ -21,7 +21,9 @@ export const NEWLINE_SEQ = '\x0a';
 // carries no Cmd/Ctrl modifier, so the capture-phase window shortcut
 // handler (which gates on Cmd/Ctrl) never sees it and the key reaches
 // the terminal. Plain Enter still submits. Cmd/Ctrl+Enter was the
-// grid-project toggle until #249 unbound it; it is now inert.
+// grid-project toggle until #249 unbound it; #327 re-bound it in the
+// window handler for grid views ONLY (focus the active session), so in
+// single view it is still unclaimed and reaches xterm.
 // Structural, not `KeyboardEvent`: the unit tests build plain fakes.
 // `code` is optional — only navHistoryKey's layout fallback reads it.
 export interface KeyEventLike {

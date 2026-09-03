@@ -1,10 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// E2E coverage for #249: ⌘/Ctrl+Enter is no longer an app binding. It used
-// to toggle single ⇄ grid-project (mirroring ⌘G) and was swallowed by the
-// capture-phase window handler before xterm could see it, which made the
-// chord unusable inside an agent session. It is now unbound — no view
-// change, no replacement behavior. ⌘G / ⇧⌘G remain the grid toggles.
+// E2E coverage for #327: ⌘/Ctrl+Enter focuses the active session from a
+// grid view, and is unbound everywhere else.
+//
+// History: #249 unbound the chord outright. It had toggled single ⇄
+// grid-project (mirroring ⌘G) and was swallowed by the capture-phase
+// window handler before xterm could see it, which made it unusable inside
+// an agent session. #327 re-bound it for grid views ONLY — so the
+// single-view half stays unclaimed and the key still reaches the agent,
+// which is the whole point of the carve-out. ⌘G / ⇧⌘G remain the toggles.
 
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
@@ -32,7 +36,9 @@ const termsClass = (page: Page) =>
     return terms.className;
   });
 
-test.describe('#249 ⌘Enter unbound', () => {
+test.describe('#327 ⌘Enter focuses the active session from grid', () => {
+  // The load-bearing half: in focused mode the chord belongs to the agent
+  // CLI, so the app must not claim it. Regression guard for #217/#327.
   test('⌘Enter in single mode does not enter grid', async ({ page }) => {
     await bootWithSessions(page, 2);
     await expect(page.locator('#terms')).not.toHaveClass(/grid/);
@@ -46,23 +52,35 @@ test.describe('#249 ⌘Enter unbound', () => {
     await expect(page.locator('#terms')).not.toHaveClass(/grid/);
   });
 
-  test('⌘Enter in grid mode does not maximize back to single', async ({
-    page,
-  }) => {
+  test('⌘Enter in grid mode focuses the active session', async ({ page }) => {
     await bootWithSessions(page, 2);
     await page.keyboard.press(`${MOD}+g`);
     await expect(page.locator('#terms')).toHaveClass(/grid/);
+
+    await page.keyboard.press(`${MOD}+Enter`);
+
+    await expect(page.locator('#terms')).not.toHaveClass(/grid/);
+  });
+
+  // One-way: ⌘Enter must not become a second ⌘G. Pressing it again from
+  // the single view it just produced has to leave you there.
+  test('⌘Enter does not toggle back into grid', async ({ page }) => {
+    await bootWithSessions(page, 2);
+    await page.keyboard.press(`${MOD}+g`);
+    await expect(page.locator('#terms')).toHaveClass(/grid/);
+    await page.keyboard.press(`${MOD}+Enter`);
+    await expect(page.locator('#terms')).not.toHaveClass(/grid/);
     const before = await termsClass(page);
 
     await page.keyboard.press(`${MOD}+Enter`);
     await page.waitForTimeout(250);
 
     expect(await termsClass(page)).toBe(before);
-    await expect(page.locator('#terms')).toHaveClass(/grid/);
+    await expect(page.locator('#terms')).not.toHaveClass(/grid/);
   });
 
-  // The control: proves the deletion took only the ⌘Enter binding and left
-  // the real grid toggles working.
+  // The control: proves ⌘Enter's one-way binding left the real grid
+  // toggles working.
   test('⌘G still toggles grid ⇄ single', async ({ page }) => {
     await bootWithSessions(page, 2);
     await page.keyboard.press(`${MOD}+g`);

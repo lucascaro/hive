@@ -322,6 +322,18 @@ window.addEventListener(
       openCommandPalette();
       return;
     }
+    // ⌘⏎ / Ctrl+Enter — from a grid, zoom into the tile you navigated to.
+    // Deliberately ONE-WAY: single → grid stays on ⌘G / ⇧⌘G. A symmetric
+    // toggle would have to claim ⌘⏎ in focused mode too, and that is the
+    // exact conflict spec #217 documented — Claude/Codex bind Cmd+Enter
+    // themselves, so in single view the key must fall through untouched.
+    // ⇧⌘⏎ stays unclaimed in every view for the same reason.
+    if (e.key === 'Enter') {
+      if (e.shiftKey || appData().view === 'single') return;
+      swallow();
+      focusActiveSession();
+      return;
+    }
     // Both ⌘/ and ⌘? open the shortcuts panel — see isHelpOverlayKey.
     if (isHelpOverlayKey(e)) {
       swallow();
@@ -449,6 +461,16 @@ export function toggleSidebar() {
   setTimeout(() => deps.focusActiveTerm(), 32);
   setTimeout(() => deps.focusActiveTerm(), 100);
   setTimeout(() => deps.focusActiveTerm(), 250);
+}
+
+// focusActiveSession is the "zoom into the tile you navigated to" action
+// behind both ⌘⏎ and the command palette, so the two can't drift. A no-op
+// in single view: there is nothing to zoom into, and the palette lists
+// every command in every view. setView already restores terminal focus
+// and snaps the tile to the bottom.
+export function focusActiveSession() {
+  if (appData().view === 'single') return;
+  setView('single');
 }
 
 export function toggleProjectGrid() {
