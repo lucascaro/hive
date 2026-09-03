@@ -4,7 +4,7 @@ title: "Incremental React 19 rewrite of the hivegui frontend"
 type: enhancement
 complexity: L
 priority: P2
-pr: 321
+pr: 324
 stage: IMPLEMENT
 ---
 

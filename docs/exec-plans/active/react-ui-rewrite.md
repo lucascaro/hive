@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
-- **PR:** — (Phase 6 is in flight; its PR is recorded on [phase6](react-ui-rewrite-phase6.md) and in the table below). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **PR:** [#324](https://github.com/lucascaro/hive/pull/324) — the phase currently in flight (Phase 6). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
 - **Branch:** `feature/react-phase6-single-root`
 - **Status:** active
 
@@ -124,7 +124,7 @@ implemented — the briefs deliberately do not all exist up front.
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
 | 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate not yet recorded, so the plan stays in `active/` |
-| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | **in flight** |
+| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | #324 | **in flight** |
 
 **Carried into Phase 6's deletion sweep** (each verified to have zero production
 importers at the phase that stranded it — they are reachable only from their own

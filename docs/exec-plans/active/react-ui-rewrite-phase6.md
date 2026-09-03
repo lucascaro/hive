@@ -4,7 +4,7 @@
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **Branch:** `feature/react-phase6-single-root`
-- **PR:** —
+- **PR:** [#324](https://github.com/lucascaro/hive/pull/324)
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
