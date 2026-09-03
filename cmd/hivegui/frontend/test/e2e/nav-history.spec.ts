@@ -88,7 +88,7 @@ test.describe('session back / forward history', () => {
     page,
   }) => {
     // The regression this catches: gridScopeSessions filters
-    // state.minimized and renderGrid strips .in-grid from every tile
+    // state.minimized and the layout pass strips .in-grid from every tile
     // outside the scope, so a bare switchTo makes the session active
     // with a zero-area tile and keyboard focus on <body> — keystrokes
     // silently dropped. Only a real browser sees the layout, which is

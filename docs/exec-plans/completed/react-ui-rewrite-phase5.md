@@ -1,11 +1,11 @@
 # React UI rewrite — Phase 5: Grid shell
 
-- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](../active/react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** [#321](https://github.com/lucascaro/hive/pull/321)
 - **Branch:** `feature/react-phase5-grid-shell`
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -129,10 +129,11 @@ bar the renames and the `state.terms` → `store/terms.ts` registry swap) and
 field and both calls; `session-term.ts`'s mousedown is `setActive` alone;
 `main.ts` mounts the island on the new `#grid-root`.
 
-Tests: new `test/dom/grid-layout.test.tsx` (8 cases — template-before-attach as
-a spy sequence, reparent-not-recreate by node identity, out-of-scope tile keeps
-its node, plus GridView renders no DOM, repaints on a scope change, and does
-NOT repaint on a bell or a rename). `grid-reorder-focus.test.ts` and
+Tests: new `test/dom/grid-layout.test.tsx` (10 cases — template-before-attach
+as a spy sequence, reparent-not-recreate by node identity, out-of-scope tile
+keeps its node, plus GridView renders no DOM, repaints on a scope change and on
+a reorder, swaps to the single-tile layout on a view change, does NOT repaint on
+a bell or a rename, and re-attaches a reselected active tile without a pass). `grid-reorder-focus.test.ts` and
 `minimize-project.test.tsx` repoint to the new entry points;
 `events-focus.test.ts` drops the `renderGrid` dep. `view-floor`,
 `xterm-reflow`, `attention-jump`, `attention-jump-integration` and dom
@@ -154,7 +155,7 @@ verification block; everything else in it was already green on this branch.
 
 Maintained by hand: `/hs-review-loop` writes into a plan it finds by an
 `<NNN>`-prefixed name, which this feature's plans do not have (see the master
-plan's [Gating convention](react-ui-rewrite.md#gating-convention)).
+plan's [Gating convention](../active/react-ui-rewrite.md#gating-convention)).
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: e37a62b8; threads_open: 0; action: autofix+push; head_sha: 98bc37e. Autofix applied 5 safe fixes (the load-bearing one: the new dom test's deferred-attach `setTimeout` fired after jsdom teardown and made the Linux leg exit 1 with every test passing — fake timers fixed it). 2 risky items surfaced for a human call.
 - **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c247977c; threads_open: 0; action: stop (escalated: risky fix needs human decision); head_sha: 99ea356. Zero BLOCKING, zero MINOR surviving; the one IMPORTANT is the accepted `switchTo(activeId)` delta, re-raised because no test pins the `needsReattach` half of it.
@@ -162,5 +163,20 @@ plan's [Gating convention](react-ui-rewrite.md#gating-convention)).
 
 ## Gate verdict
 
-Not yet run. `/hs-merge-gate` must be pointed at THIS plan, not the master plan
-the spec's `Exec plan:` link resolves to — its success criteria are Phase 6's.
+Run against THIS plan's success criteria, not the master plan's — the spec's
+`Exec plan:` link resolves to the master plan, whose criteria are Phase 6's.
+Both entries below are from the **degraded post-merge path**: PR #321 merged
+(`b9ca655`) before the gate ran, so the range under test was
+`b9ca655~1..b9ca655`.
+
+- **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 2 followups; followups: none filed (both items were documentation, fixed in the gate's own bookkeeping commit rather than tracked as debt); one-line: code and non-goals clean, two stale doc claims.
+  - 2026-09-03 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — all seven criteria verified, two of them adversarially: reversing the `gridTemplate*` assignment to after the attach loop makes the spy-sequence test fail (`expected '' to match /^repeat\(\d+, 1fr\)$/`), and forcing a fresh host per pass fails four identity (`toBe`) assertions. The `renderGrid`/`showSingle` bodies byte-diff against `applyGridLayout`/`applySingle` with only the documented renames. Open only because the validator did not reproduce the "e2e 3× consecutively + `wails build` smoke" sub-claim.
+    - non-goals — PASS — zero CSS, zero `hv-*`, zero `data-testid`, `test/e2e` untouched (0 lines — the "zero spec edits" claim holds), `keyboard.ts`/`bridge.ts`/`*.go` untouched, invariants 1/5/6/9 intact. Both behaviour deltas in the diff match this plan's Decision log verbatim; no undeclared third.
+    - doc accuracy — FAIL — (a) this plan's Progress and the master plan's Tests bullet both said `grid-layout.test.tsx` has "8 cases"; it has 10. (b) Three e2e specs described current behaviour in the present tense using the retired name `renderGrid`: `nav-history.spec.ts:91`, `session-lifecycle.spec.ts:147`, `grid-scroll-regressions.spec.ts:164`. Changeset, master-plan brief and the Phase 6 doc assignment all check out.
+
+- **2026-09-03 (re-run after fixes)** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: both doc-accuracy items fixed and the acceptance follow-up closed by re-running the suite.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — e2e re-run **three consecutive times on the merged code**: 258 passed / 31 skipped each time. The `wails build` smoke (attach, resize, view toggle, background-tile scroll, minimize/restore, theme switch) passed on the branch build; the single commit after it — the one-line reselect `ensureAttached()` — was not re-smoked by hand and is covered by CI on all three platforms plus its own dom test.
+    - non-goals — PASS — unchanged from the first run.
+    - doc accuracy — PASS — the "8 cases" claim corrected to 10 in both plans; the three e2e comments now name the layout pass / `applyGridLayout`. Comment-only edits, no selector or assertion touched.
