@@ -132,3 +132,14 @@ Verification (all from a fresh worktree after `./scripts/ci-bootstrap.sh`):
 violations, unit 403 passed, dom 539 passed (51 files), go all packages ok,
 e2e 258 passed / 31 skipped **three consecutive runs**, `e2e:real` 22 passed.
 No changeset: behaviour-preserving, `no-changeset` label per the master plan.
+
+## PR convergence ledger
+
+Maintained by hand: `/hs-review-loop` writes into a plan it finds by an
+`<NNN>`-prefixed name, which this feature's plans do not have (see the master
+plan's [Gating convention](react-ui-rewrite.md#gating-convention)).
+
+## Gate verdict
+
+Not yet run. `/hs-merge-gate` must be pointed at THIS plan, not the master plan
+the spec's `Exec plan:` link resolves to — its success criteria are Phase 6's.
