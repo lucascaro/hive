@@ -26,10 +26,12 @@ const terms = new Map<string, TermTile>();
 let version = 0;
 const listeners = new Set<() => void>();
 
-// notifyTerms bumps the membership version. Exported because termsMap()
-// hands out the raw map, so the dom tests that seed it wholesale write
-// behind setTerm/deleteTerm's backs and have to say so themselves.
-export function notifyTerms(): void {
+// Bumps the membership version. Deliberately NOT exported: every write
+// to the map goes through setTerm/deleteTerm/clearTerms below, which
+// call this themselves. termsMap() hands out the raw map, so a future
+// caller COULD mutate it directly and would then need to notify — export
+// this at that point, not before.
+function notifyTerms(): void {
   version++;
   for (const l of listeners) l();
 }

@@ -121,6 +121,11 @@ gate.
   publishing the name again would be a second copy that can disagree. The
   CSS variable stays imperative because it is a style on the host element
   SessionTerm owns.
+- **2026-09-03** — `notifyTerms()` un-exported after review. Why: the
+  comment justifying the export described dom tests that do not exist —
+  nothing outside `store/terms.ts` writes through `termsMap()`, all
+  twenty call sites are reads. Export it when a direct mutator actually
+  appears.
 - **2026-09-03** — `IconButton` gained `onMouseDown`, `hidden` and
   `title`. Why: the tile header needs all three (mousedown shielding so
   minimize does not also select the tile; a worktree marker that is
@@ -141,5 +146,15 @@ gate.
   specs unmodified), `npm run test:e2e:real` (22 passed, 2 skipped),
   `ui-lint.sh --strict` (0 violations), `ui-lint.sh --contrast`
   (0 failures), `go build ./...`.
+
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE;
+  findings_hash: 96cd2e341ac5fe67020a6b47c3bb6ec85be279979ba1d2b83e47b26abfca1ac4;
+  threads_open: 0; action: stop; head_sha: f9f5e8e. No BLOCKING. The one
+  IMPORTANT (test isolation) and one MINOR (dead export) were applied in
+  the same PR per AGENTS.md's boil-the-lake rule rather than deferred.
 
 ## Open questions

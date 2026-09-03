@@ -93,6 +93,12 @@ beforeAll(async () => {
 beforeEach(() => {
   OpenSession.mockClear();
   clearTerms();
+  // resetStore FIRST: SessionTerm's constructor now seeds the tileChrome
+  // slice, and without a reset a test that reuses a session id would
+  // read the previous test's phase and info. Today every test here picks
+  // a distinct id, so this is pinning the isolation rather than fixing a
+  // live bug — which is exactly when it is cheap to add.
+  store.resetStore();
   store.setAliveById(new Map());
 });
 
