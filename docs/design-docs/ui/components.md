@@ -56,11 +56,13 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Anatomy: state icon or colour swatch (7px) + label + optional `plus` restore icon button.
 - `data-state="attention"` → state icon pulses; label `--state-attention`.
 
-## `dialog({ title, body, actions, size? })`
+## `<ModalShell {...{ id, root, title, body, actions, size? }} />` — `src/components/modals/ModalShell.tsx`
 
 - Backdrop `rgba(0,0,0,.5)`, panel `--surface`, `--radius-md`, `--shadow-popover`, max-width `sm` 420 / `md` 560 / `lg` 720px.
 - Header 44px: title `--text-xl` 600 + `x` icon button. Body padding `var(--space-4)`. Footer: right-aligned `button`s, primary last.
-- Uses existing `focus-trap.ts`; Escape closes; `role="dialog" aria-modal="true" aria-labelledby`.
+- Uses `src/lib/focus-trap.ts`; Escape closes; `role="dialog" aria-modal="true" aria-labelledby`.
+- The root element is NOT created by the shell — it is declared in `index.html`, and the island that renders the shell toggles its `hidden` class from a layout effect. That class is the open/closed signal every keyboard gate and e2e assertion reads.
+- The imperative `ui/dialog.ts` this replaced was deleted with the Phase 4 modal ports.
 - Section heading inside bodies: `--text-lg` 500, `--fg`, margin-top `--space-5`.
 - Hint paragraph: `--text-sm --fg-muted`, max-width 60ch.
 

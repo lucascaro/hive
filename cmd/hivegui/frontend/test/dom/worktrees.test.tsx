@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 //
-// Covers the worktree browser (src/app/modals/worktrees.ts). The
-// row-classification logic is unit-tested in test/unit/worktrees.test.ts;
+// Covers the worktree browser (src/app/modals/worktrees.ts, rendered by
+// src/components/modals/Worktrees.tsx) and the choice dialog it drives
+// for its destructive confirmations (src/app/modals/choice-dialog.ts,
+// rendered by src/components/modals/ChoiceDialog.tsx). The row-
+// classification logic is unit-tested in test/unit/worktrees.test.ts;
 // what this file pins down is the part that can destroy work:
 //
 //   • a row that cannot be deleted is DISABLED, with the reason visible
@@ -10,8 +13,23 @@
 //   • force is sent only when something actually blocks
 //   • delete_branch follows the button the user pressed
 //   • a reply for a different project never repaints the open list
+//
+// React port (Phase 4): both #worktrees and #choice-dialog are now
+// static roots (index.html) that mount their own islands, so this file
+// renders both with RTL rather than driving one imperative module.
+// openWorktrees/closeWorktrees/handleWorktreesPayload still write a
+// store field rather than painting synchronously, so every call that
+// touches it runs inside act(). The inline rename is unchanged: it is
+// still the imperative helper in app/inline-rename.ts, mounted into an
+// empty .worktree-main — the one behavioral change from the port is that
+// a daemon repaint mid-rename no longer clobbers the input (the React
+// row leaves an empty div for the imperative editor rather than
+// rebuilding it), but no existing case exercised that clobbering, so
+// there is nothing to re-assert here.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import { resetStore } from '../../src/store/store.js';
 
 const ListWorktrees = vi.fn((_p: string): Promise<void> => Promise.resolve());
 const RemoveWorktree = vi.fn(
@@ -53,9 +71,17 @@ vi.mock('../../src/app/dom.js', () => ({
   reportFailure: () => () => {},
 }));
 
-// worktrees.ts builds its own dialog now (the dialog primitive), so the
-// fixture is only the app root it mounts into.
-const MARKUP = `<div id="app"></div>`;
+// The two static roots index.html declares, copied verbatim — both
+// islands mount here. Nested under #app: RTL's cleanup() removes a
+// render() container whose parentNode IS document.body, and each root
+// is itself the render() container below.
+const MARKUP = `
+  <div id="app">
+    <div id="worktrees" class="hv-dialog hidden" role="dialog"
+      aria-modal="true" aria-labelledby="worktrees-title"></div>
+    <div id="choice-dialog" class="hv-dialog hidden choice-dialog" role="alertdialog"
+      aria-modal="true" aria-labelledby="choice-dialog-title"></div>
+  </div>`;
 
 type WorktreesModule = typeof import('../../src/app/modals/worktrees.js');
 let openWorktrees: WorktreesModule['openWorktrees'];
@@ -65,11 +91,20 @@ let handleWorktreesPayload: WorktreesModule['handleWorktreesPayload'];
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
 let openSessionIn: Mock<(projectId: string, worktreePath: string) => void>;
+// Imported after the markup exists, same reason as settings.test.tsx /
+// launcher.test.tsx: the modules they pull in resolve DOM singletons at
+// load time.
+let Worktrees: typeof import('../../src/components/modals/Worktrees.js')['Worktrees'];
+let ChoiceDialog: typeof import('../../src/components/modals/ChoiceDialog.js')['ChoiceDialog'];
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
   ({ openWorktrees, closeWorktrees, initWorktrees, handleWorktreesPayload } =
     await import('../../src/app/modals/worktrees.js'));
+  ({ Worktrees } = await import('../../src/components/modals/Worktrees.js'));
+  ({ ChoiceDialog } = await import(
+    '../../src/components/modals/ChoiceDialog.js'
+  ));
   refocusActiveTerm = vi.fn();
   setFocusedTile = vi.fn();
   openSessionIn = vi.fn();
@@ -95,16 +130,29 @@ beforeEach(() => {
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
   openSessionIn.mockReset();
-  closeWorktrees();
+  resetStore();
+  render(<Worktrees root={el('worktrees')} />, { container: el('worktrees') });
+  render(<ChoiceDialog root={el('choice-dialog')} />, {
+    container: el('choice-dialog'),
+  });
 });
 
-const el = <T extends HTMLElement = HTMLElement>(id: string): T =>
-  document.getElementById(id) as T;
+function el<T extends HTMLElement = HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
+// The panel unmounts entirely when the modal is closed (unlike the old
+// static markup, where #worktrees-list stayed in the DOM, just hidden),
+// so a closed browser has no list element at all — fall back to empty
+// rather than throwing, which is what "nothing rendered" means here.
 const rows = () => [
-  ...el('worktrees-list').querySelectorAll<HTMLElement>('.worktree-row'),
+  ...(document
+    .getElementById('worktrees-list')
+    ?.querySelectorAll<HTMLElement>('.worktree-row') ?? []),
 ];
 const branchRows = () => [
-  ...el('worktrees-branches').querySelectorAll<HTMLElement>('.worktree-row'),
+  ...(document
+    .getElementById('worktrees-branches')
+    ?.querySelectorAll<HTMLElement>('.worktree-row') ?? []),
 ];
 // Buttons are identified by their label, which is also what the user
 // clicks — a renamed button should fail these tests.
@@ -114,7 +162,14 @@ const button = (row: Element, label: string): HTMLButtonElement => {
   );
   return found as HTMLButtonElement;
 };
-const flush = () => new Promise((r) => setTimeout(r, 0));
+// Lets in-flight promises (openChoiceDialog's, the bridge mocks') settle
+// AND React re-render before the assertions: both the mutation flows and
+// handleWorktreesPayload write store state from outside a React event
+// handler.
+const flush = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
 
 const PROJECT = { id: 'p1', name: 'hive', cwd: '/repo' };
 
@@ -131,14 +186,36 @@ function payload(over: Record<string, unknown> = {}) {
 
 // open + deliver one inventory, the state every test starts from.
 async function openWith(p: Record<string, unknown>) {
-  openWorktrees(PROJECT);
+  act(() => {
+    openWorktrees(PROJECT);
+  });
   await flush();
-  handleWorktreesPayload(p);
+  act(() => {
+    handleWorktreesPayload(p);
+  });
 }
+
+// The choice dialog's static root, and whether the question currently on
+// screen is this one — the root itself always exists now (index.html),
+// so "no dialog" means hidden, not absent, unlike the old dynamically
+// built element.
+function dialogRoot(): HTMLElement {
+  return el('choice-dialog');
+}
+function dialog(): HTMLElement | null {
+  const root = dialogRoot();
+  return root.classList.contains('hidden') ? null : root;
+}
+const choice = (name: string): HTMLButtonElement =>
+  document.querySelector(
+    `.choice-dialog button[data-choice="${name}"]`,
+  ) as HTMLButtonElement;
 
 describe('opening', () => {
   it('requests the inventory for the project it was opened on', async () => {
-    openWorktrees(PROJECT);
+    act(() => {
+      openWorktrees(PROJECT);
+    });
     await flush();
     expect(ListWorktrees).toHaveBeenCalledWith('p1');
     expect(el('worktrees').classList.contains('hidden')).toBe(false);
@@ -151,12 +228,16 @@ describe('opening', () => {
   // — every element declares its own — and #worktrees-empty had none,
   // so "Loading…" sat on top of the loaded list.
   it('hides the loading card once the inventory arrives', async () => {
-    openWorktrees(PROJECT);
+    act(() => {
+      openWorktrees(PROJECT);
+    });
     await flush();
     expect(el('worktrees-empty').classList.contains('hidden')).toBe(false);
     expect(el('worktrees-empty-text').textContent).toContain('Reading');
 
-    handleWorktreesPayload(payload());
+    act(() => {
+      handleWorktreesPayload(payload());
+    });
     expect(el('worktrees-empty').classList.contains('hidden')).toBe(true);
     expect(el('worktrees-section-trees').classList.contains('hidden')).toBe(
       false,
@@ -165,12 +246,16 @@ describe('opening', () => {
 
   // The spinner means "still working"; a settled answer must not spin.
   it('spins while loading and stops for a settled answer', async () => {
-    openWorktrees(PROJECT);
+    act(() => {
+      openWorktrees(PROJECT);
+    });
     await flush();
     expect(el('worktrees-empty-spinner').classList.contains('hidden')).toBe(
       false,
     );
-    handleWorktreesPayload(payload({ repo_root: '', worktrees: [] }));
+    act(() => {
+      handleWorktreesPayload(payload({ repo_root: '', worktrees: [] }));
+    });
     expect(el('worktrees-empty-spinner').classList.contains('hidden')).toBe(
       true,
     );
@@ -188,14 +273,20 @@ describe('opening', () => {
   });
 
   it('refocuses the terminal on close', () => {
-    openWorktrees(PROJECT);
-    closeWorktrees();
+    act(() => {
+      openWorktrees(PROJECT);
+    });
+    act(() => {
+      closeWorktrees();
+    });
     expect(el('worktrees').classList.contains('hidden')).toBe(true);
     expect(refocusActiveTerm).toHaveBeenCalled();
   });
 
   it('reports a missing project instead of opening', () => {
-    openWorktrees(null);
+    act(() => {
+      openWorktrees(null);
+    });
     expect(flashStatus).toHaveBeenCalledWith('no project selected', true);
     expect(el('worktrees').classList.contains('hidden')).toBe(true);
   });
@@ -261,12 +352,14 @@ describe('rendering', () => {
         worktrees: [{ path: '/repo/.worktrees/mine', branch: 'mine' }],
       }),
     );
-    handleWorktreesPayload(
-      payload({
-        project_id: 'p2',
-        worktrees: [{ path: '/other/.worktrees/theirs', branch: 'theirs' }],
-      }),
-    );
+    act(() => {
+      handleWorktreesPayload(
+        payload({
+          project_id: 'p2',
+          worktrees: [{ path: '/other/.worktrees/theirs', branch: 'theirs' }],
+        }),
+      );
+    });
     expect(rows().map((r) => r.dataset.path)).toEqual([
       '/repo/.worktrees/mine',
     ]);
@@ -274,12 +367,16 @@ describe('rendering', () => {
 
   it('ignores a payload that arrives after the modal closed', async () => {
     await openWith(payload());
-    closeWorktrees();
-    handleWorktreesPayload(
-      payload({
-        worktrees: [{ path: '/repo/.worktrees/late', branch: 'late' }],
-      }),
-    );
+    act(() => {
+      closeWorktrees();
+    });
+    act(() => {
+      handleWorktreesPayload(
+        payload({
+          worktrees: [{ path: '/repo/.worktrees/late', branch: 'late' }],
+        }),
+      );
+    });
     // Nothing was re-rendered into the closed modal.
     expect(
       rows().every((r) => r.dataset.path !== '/repo/.worktrees/late'),
@@ -308,12 +405,6 @@ describe('deleting', () => {
     session_ids: ['s1', 's2'],
   };
 
-  const dialog = () => document.querySelector('.choice-dialog');
-  const choice = (name: string): HTMLButtonElement =>
-    document.querySelector(
-      `.choice-dialog button[data-choice="${name}"]`,
-    ) as HTMLButtonElement;
-
   it('disables Delete for a worktree with live sessions and says why', async () => {
     await openWith(payload({ worktrees: [busy] }));
     const btn = button(rows()[0], 'Delete');
@@ -323,7 +414,7 @@ describe('deleting', () => {
 
   it('never opens the dialog or calls the daemon for a blocked row', async () => {
     await openWith(payload({ worktrees: [busy] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     expect(dialog()).toBeNull();
     expect(RemoveWorktree).not.toHaveBeenCalled();
@@ -331,7 +422,7 @@ describe('deleting', () => {
 
   it('opens a dialog offering three distinct outcomes', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     expect(dialog()).not.toBeNull();
     expect(choice('cancel')).not.toBeNull();
@@ -344,7 +435,7 @@ describe('deleting', () => {
   // The safe option is the default: a stray Enter must not delete.
   it('focuses Cancel', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     expect(document.activeElement).toBe(choice('cancel'));
   });
@@ -355,7 +446,7 @@ describe('deleting', () => {
   // Asserting it here would only pin which listener happens to own it.
   it('offers no "delete both" for a worktree with no branch', async () => {
     await openWith(payload({ worktrees: [detached] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     expect(choice('both')).toBeNull();
     expect(choice('keep-branch')).not.toBeNull();
@@ -363,9 +454,9 @@ describe('deleting', () => {
 
   it('sends nothing when cancelled, and closes the dialog', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    choice('cancel').click();
+    fireEvent.click(choice('cancel'));
     await flush();
     expect(RemoveWorktree).not.toHaveBeenCalled();
     expect(dialog()).toBeNull();
@@ -375,11 +466,13 @@ describe('deleting', () => {
   // whole browser underneath.
   it('cancels on Escape without closing the browser', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    dialog()?.dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
+    act(() => {
+      dialog()?.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     await flush();
     expect(RemoveWorktree).not.toHaveBeenCalled();
     expect(dialog()).toBeNull();
@@ -388,9 +481,9 @@ describe('deleting', () => {
 
   it('keeps the branch when "Delete, keep branch" is pressed', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    choice('keep-branch').click();
+    fireEvent.click(choice('keep-branch'));
     await flush();
     expect(RemoveWorktree).toHaveBeenCalledWith(
       'p1',
@@ -403,9 +496,9 @@ describe('deleting', () => {
 
   it('deletes the branch when "Delete both" is pressed', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    choice('both').click();
+    fireEvent.click(choice('both'));
     await flush();
     expect(RemoveWorktree).toHaveBeenCalledWith(
       'p1',
@@ -418,9 +511,9 @@ describe('deleting', () => {
 
   it('sends force=true only when something blocks', async () => {
     await openWith(payload({ worktrees: [dirty] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    choice('keep-branch').click();
+    fireEvent.click(choice('keep-branch'));
     await flush();
     expect(RemoveWorktree).toHaveBeenCalledWith(
       'p1',
@@ -437,7 +530,7 @@ describe('deleting', () => {
   // — while "Delete, keep branch" is the non-danger button.
   it('does not promise recoverability when uncommitted work will die', async () => {
     await openWith(payload({ worktrees: [dirty] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     const text = dialog()?.textContent ?? '';
     expect(text).toContain('destroyed either way');
@@ -446,14 +539,14 @@ describe('deleting', () => {
 
   it('still promises recoverability for a clean worktree', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     expect(dialog()?.textContent ?? '').toContain('commits recoverable');
   });
 
   it('names what would be lost, in the dialog itself', async () => {
     await openWith(payload({ worktrees: [{ ...dirty, unpushed: 2 }] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
     const text = dialog()?.textContent ?? '';
     expect(text).toContain('/repo/.worktrees/dirty');
@@ -464,9 +557,11 @@ describe('deleting', () => {
 
   it('does nothing if the browser closed while the dialog was open', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Delete').click();
+    fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
-    closeWorktrees();
+    act(() => {
+      closeWorktrees();
+    });
     choice('both')?.click();
     await flush();
     expect(RemoveWorktree).not.toHaveBeenCalled();
@@ -490,13 +585,15 @@ describe('renaming', () => {
 
   it('commits the new branch name on Enter', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Rename').click();
+    fireEvent.click(button(rows()[0], 'Rename'));
     const input = rows()[0].querySelector('input') as HTMLInputElement;
     expect(input.value).toBe('clean');
     input.value = 'renamed';
-    input.dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-    );
+    act(() => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+    });
     await flush();
     expect(RenameWorktree).toHaveBeenCalledWith(
       'p1',
@@ -505,14 +602,39 @@ describe('renaming', () => {
     );
   });
 
+  // The whole reason the input mounts into an EMPTY .worktree-main: the
+  // daemon repaints this list on every mutation anywhere in the project,
+  // and the imperative version rebuilt the row under the edit. A second
+  // beginInlineRename would be just as bad — two inputs in one row, the
+  // second seeded from the value the user is editing away from.
+  it('survives a repaint mid-edit, exactly once', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    fireEvent.click(button(rows()[0], 'Rename'));
+    const input = rows()[0].querySelector(
+      'input.worktree-rename',
+    ) as HTMLInputElement;
+    input.value = 'half-typed';
+
+    act(() => {
+      handleWorktreesPayload(payload({ worktrees: [clean] }));
+    });
+    await flush();
+
+    const inputs = document.querySelectorAll('input.worktree-rename');
+    expect(inputs.length).toBe(1);
+    expect((inputs[0] as HTMLInputElement).value).toBe('half-typed');
+  });
+
   it('sends nothing on Escape', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Rename').click();
+    fireEvent.click(button(rows()[0], 'Rename'));
     const input = rows()[0].querySelector('input') as HTMLInputElement;
     input.value = 'discarded';
-    input.dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
+    act(() => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     await flush();
     expect(RenameWorktree).not.toHaveBeenCalled();
     // ...and the row is back to normal.
@@ -521,11 +643,13 @@ describe('renaming', () => {
 
   it('sends nothing when the name is unchanged', async () => {
     await openWith(payload({ worktrees: [clean] }));
-    button(rows()[0], 'Rename').click();
+    fireEvent.click(button(rows()[0], 'Rename'));
     const input = rows()[0].querySelector('input') as HTMLInputElement;
-    input.dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-    );
+    act(() => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+    });
     await flush();
     expect(RenameWorktree).not.toHaveBeenCalled();
   });
@@ -538,7 +662,7 @@ describe('resuming work', () => {
         worktrees: [{ path: '/repo/.worktrees/resume', branch: 'resume' }],
       }),
     );
-    button(rows()[0], 'New session').click();
+    fireEvent.click(button(rows()[0], 'New session'));
     expect(openSessionIn).toHaveBeenCalledWith(
       'p1',
       '/repo/.worktrees/resume',
@@ -568,7 +692,7 @@ describe('continuing previous work', () => {
         worktrees: [{ path: '/repo/.worktrees/resume', branch: 'resume' }],
       }),
     );
-    button(rows()[0], 'Continue').click();
+    fireEvent.click(button(rows()[0], 'Continue'));
     expect(openSessionIn).toHaveBeenCalledWith(
       'p1',
       '/repo/.worktrees/resume',
@@ -583,15 +707,9 @@ describe('continuing previous work', () => {
 });
 
 describe('orphaned branches', () => {
-  const dialog = () => document.querySelector('.choice-dialog');
-  const choice = (name: string): HTMLButtonElement =>
-    document.querySelector(
-      `.choice-dialog button[data-choice="${name}"]`,
-    ) as HTMLButtonElement;
-
   it('materializes a worktree for the branch', async () => {
     await openWith(payload({ orphan_branches: [{ name: 'stranded' }] }));
-    button(branchRows()[0], 'Create worktree').click();
+    fireEvent.click(button(branchRows()[0], 'Create worktree'));
     await flush();
     expect(CreateWorktree).toHaveBeenCalledWith('p1', 'stranded');
   });
@@ -603,10 +721,10 @@ describe('orphaned branches', () => {
 
   it('confirms before deleting, and sends nothing on cancel', async () => {
     await openWith(payload({ orphan_branches: [{ name: 'stranded' }] }));
-    button(branchRows()[0], 'Delete').click();
+    fireEvent.click(button(branchRows()[0], 'Delete'));
     await flush();
     expect(dialog()).not.toBeNull();
-    choice('cancel').click();
+    fireEvent.click(choice('cancel'));
     await flush();
     expect(DeleteBranch).not.toHaveBeenCalled();
   });
@@ -616,10 +734,10 @@ describe('orphaned branches', () => {
     await openWith(
       payload({ orphan_branches: [{ name: 'tidy', merged: true }] }),
     );
-    button(branchRows()[0], 'Delete').click();
+    fireEvent.click(button(branchRows()[0], 'Delete'));
     await flush();
     expect(dialog()?.textContent).toContain('nothing is lost');
-    choice('local').click();
+    fireEvent.click(choice('local'));
     await flush();
     expect(DeleteBranch).toHaveBeenCalledWith('p1', 'tidy', false, false);
   });
@@ -629,12 +747,12 @@ describe('orphaned branches', () => {
   // to say what goes.
   it('warns and forces for an unmerged branch', async () => {
     await openWith(payload({ orphan_branches: [{ name: 'wip', ahead: 3 }] }));
-    button(branchRows()[0], 'Delete').click();
+    fireEvent.click(button(branchRows()[0], 'Delete'));
     await flush();
     const text = dialog()?.textContent ?? '';
     expect(text).toContain('lose its commits');
     expect(text).toContain('3 commits that are not merged');
-    choice('local').click();
+    fireEvent.click(choice('local'));
     await flush();
     expect(DeleteBranch).toHaveBeenCalledWith('p1', 'wip', true, false);
   });
@@ -643,9 +761,11 @@ describe('orphaned branches', () => {
 describe('keyboard', () => {
   it('closes on Escape', async () => {
     await openWith(payload());
-    el('worktrees').dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
+    act(() => {
+      el('worktrees').dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     expect(el('worktrees').classList.contains('hidden')).toBe(true);
   });
 
@@ -680,9 +800,11 @@ describe('keyboard', () => {
   it('refreshes on (r)', async () => {
     await openWith(payload());
     ListWorktrees.mockClear();
-    el('worktrees').dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'r', bubbles: true }),
-    );
+    act(() => {
+      el('worktrees').dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'r', bubbles: true }),
+      );
+    });
     expect(ListWorktrees).toHaveBeenCalledWith('p1');
   });
 
@@ -691,12 +813,14 @@ describe('keyboard', () => {
     await openWith(
       payload({ worktrees: [{ path: '/repo/.worktrees/c', branch: 'c' }] }),
     );
-    button(rows()[0], 'Rename').click();
+    fireEvent.click(button(rows()[0], 'Rename'));
     ListWorktrees.mockClear();
     const input = rows()[0].querySelector('input') as HTMLInputElement;
-    input.dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'r', bubbles: true }),
-    );
+    act(() => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'r', bubbles: true }),
+      );
+    });
     expect(ListWorktrees).not.toHaveBeenCalled();
   });
 });

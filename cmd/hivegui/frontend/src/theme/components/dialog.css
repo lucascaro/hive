@@ -1,4 +1,4 @@
-/* dialog primitive — docs/design-docs/ui/components.md › dialog */
+/* dialog shell — docs/design-docs/ui/components.md › ModalShell */
 .hv-dialog {
   position: fixed;
   inset: 0;

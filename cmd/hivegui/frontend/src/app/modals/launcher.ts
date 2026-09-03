@@ -20,8 +20,7 @@ import { DuplicateSession, RestartSession } from '../../bridge.js';
 import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
-import { registerModal } from './registry.js';
-import { releaseFocus } from './focus-trap.js';
+import { releaseFocus } from '../../lib/focus-trap.js';
 import { pageEl } from '../el.js';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
 import type { SessionInfo } from '../state.js';
@@ -168,8 +167,4 @@ export function duplicateActiveSessionChooseTool() {
 
 export function initLauncher(injected: LauncherDeps) {
   deps = injected;
-  // Still registered: anyModalOpen() answers "does a modal own the
-  // keyboard?" off the `.hidden` class of every registered root, and
-  // #launcher keeps that class (toggled by the island's layout effect).
-  registerModal(launcherEl);
 }

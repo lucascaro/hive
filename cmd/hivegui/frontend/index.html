@@ -113,10 +113,33 @@
        something to mount on before the modal is ever opened. -->
   <div id="settings" class="hv-dialog hidden" role="dialog" aria-modal="true"
        aria-labelledby="settings-title"></div>
-  <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
-    <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" aria-label="Search commands" autocomplete="off"/>
-    <div id="command-palette-list" role="listbox"></div>
-  </div>
+  <!-- The worktree browser, the project editor, the ⌘/ help overlay and
+       the choice dialog. Empty: components/modals/*.tsx render the panels
+       into them. The attributes are the ones ui/dialog.ts used to stamp on
+       a dialog root at import time; they live here so each React root has
+       something to mount on before its modal is ever opened, and so the
+       ids the keyboard pipeline and the e2e specs key off exist from the
+       first paint. -->
+  <div id="worktrees" class="hv-dialog hidden" role="dialog" aria-modal="true"
+       aria-labelledby="worktrees-title"></div>
+  <div id="project-editor" class="hv-dialog hidden" role="dialog" aria-modal="true"
+       aria-labelledby="project-editor-title"></div>
+  <div id="help-overlay" class="hv-dialog hidden" role="dialog" aria-modal="true"
+       aria-labelledby="help-overlay-title"></div>
+  <!-- alertdialog. `.choice-dialog` is NOT here: it carries this dialog's
+       one deviation from the primitive (z-index, components/choice-dialog.css)
+       and means "a question is on screen", so the island adds it alongside
+       dropping `hidden` and removes it again on the answer. Before Phase 4
+       the whole element was built per question and removed on close; the
+       class going with it is what keeps that visible to the CSS and to the
+       e2e specs, which count `.choice-dialog` to assert the question is
+       gone. -->
+  <div id="choice-dialog" class="hv-dialog hidden" role="alertdialog"
+       aria-modal="true" aria-labelledby="choice-dialog-title"></div>
+  <!-- Empty: components/modals/CommandPalette.tsx renders the search box
+       and the list into it. Unlike the dialogs above this root is not an
+       hv-dialog — the palette is its own popup. -->
+  <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette"></div>
   <main id="terms" aria-label="Terminals"></main>
   <div id="empty-state" class="hidden"></div>
   <!-- Visible from the first paint: the daemon may take seconds to come

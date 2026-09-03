@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
-// The shared focus trap (src/app/modals/focus-trap.ts). Browser-level
+// The shared focus trap (src/lib/focus-trap.ts). Browser-level
 // behaviour lives in test/e2e/focus-traps.spec.ts — jsdom has no real
 // focus model, so these cover the decision logic: which elements
 // count, and where focus is sent at the boundaries.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { trapFocus, focusableWithin } from '../../src/app/modals/focus-trap.js';
+import { trapFocus, focusableWithin } from '../../src/lib/focus-trap.js';
 
 function mount(html: string): HTMLElement {
   document.body.innerHTML = `<div id="box">${html}</div><button id="outside">out</button>`;

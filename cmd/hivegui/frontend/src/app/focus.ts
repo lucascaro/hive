@@ -16,7 +16,7 @@ import {
   ACTION_FOCUS,
   type FocusSnapshot,
 } from '../lib/focus.js';
-import { anyModalOpen } from './modals/registry.js';
+import { anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
 

@@ -39,3 +39,106 @@ Violating any one reintroduces a shipped bug.
 
 Per the master plan's Verification block, compared against
 `.plans/react-rewrite-flake-baseline.md`.
+
+## Decision log
+
+**2026-09-02 — `anyModalOpen()` moves into the store, and `modals/registry.ts`
+goes.** Phase 3 deliberately kept the DOM `.hidden` class as the single source
+of truth for "a modal owns the keyboard", because the four unported modals had
+no store entry to ask about. That reason expires here: after this phase every
+modal is a store entry, so the render signal and the keyboard-ownership signal
+are the same fact. `anyModalOpen()` is now `modals.length > 0 || choiceDialog
+!== null` in `store.ts`; `app/focus.ts` and `app/session-term.ts` just change
+their import. Keeping the registry would have meant maintaining two sources
+that must agree, for nothing.
+
+**2026-09-02 — `src/ui/dialog.ts` is deleted too.** Not named in the phase
+scope, but its last four callers are exactly the four modals ported here, and
+`ModalShell` is its React replacement with the same markup contract. Leaving a
+dead primitive behind (plus its `test/dom/ui-dialog.test.ts`, whose coverage
+`modal-shell.test.tsx` already carries) would be a second dialog implementation
+that nothing renders. `docs/design-docs/ui/components.md` now documents
+`ModalShell` in its place.
+
+**2026-09-02 — the choice dialog is a store field, not a modal-stack entry.**
+It is mounted over any modal (it can ask about a row in the worktree browser),
+and its answer travels back through a promise `openChoiceDialog()` still owns,
+so it does not behave like the stack's other members. `choiceDialog:
+{ spec, seq } | null` plus a module-scope resolver in
+`app/modals/choice-dialog.ts` keeps every existing `await openChoiceDialog(...)`
+call site untouched — including `events.ts`'s worktree-dirty kill, which is not
+React code at all.
+
+**2026-09-02 — the worktree rename stays imperative.** `beginInlineRename` is
+what makes `inlineRenameActive()` true, and that predicate is layer 1 of the
+keyboard ladder: a React-owned input would make Escape close the whole panel
+instead of cancelling the edit, which is the exact bug the ladder's first gate
+was added for. It now mounts into an EMPTY React-rendered `.worktree-main`
+(React owns no children there while the rename is up), which as a side effect
+fixes a real bug: a daemon repaint mid-edit used to rebuild the row and lose
+the edit.
+
+**2026-09-02 — the confirmations moved to the non-React half.** `askDelete`,
+`askDeleteBranch`, `noteFor` and the two `confirmAnd…` flows are daemon
+round-trips and copy, not rendering, so they live in `app/modals/worktrees.ts`
+with `ListWorktrees` and friends. `Worktrees.tsx` calls them and renders; it
+holds no mutation logic.
+
+**2026-09-02 — the palette's selection is clamped, not reset.** The ported
+version briefly reset the selection to 0 on every keystroke. The imperative
+`renderPalette()` only did that when the narrowed list no longer reached the
+selected index, so the clamp is derived at render instead — a row the user has
+already moved to survives a keystroke that still matches it.
+
+## Progress
+
+**2026-09-02** — Implemented. Store: `ModalId` grew to six ids with payloads for
+`project-editor` and `worktrees`, plus `worktreesPayload`, `choiceDialog`,
+`modalEntry()`, `setWorktreesPayload()`, `setChoiceDialog()` and
+`anyModalOpen()`. New `components/modals/{Worktrees,ProjectEditor,CommandPalette,
+HelpOverlay,ChoiceDialog}.tsx`; `ModalShell` gained `titleSuffix` (the worktree
+browser's `· <project>`) and `showCloseButton` (the choice dialog has none).
+`app/modals/{worktrees,project-editor,command-palette,help-overlay,
+choice-dialog}.ts` gutted to store-backed open/close pairs plus what is not
+rendering; `modals/registry.ts`, `src/ui/dialog.ts` and `test/dom/ui-dialog.test.ts`
+deleted; `modals/focus-trap.ts` moved to `src/lib/focus-trap.ts`; `index.html`
+gained the `#worktrees`, `#project-editor`, `#help-overlay` and `#choice-dialog`
+roots and gave up the command palette's two static children; `keyboard.ts`'s
+ladder reads the store; `main.ts` mounts the five islands.
+
+Tests: `worktrees.test.ts` rewritten to RTL `.tsx` with all 45 cases ported;
+`focus-trap.test.ts` repointed at `src/lib/`; new `keyboard-precedence.test.tsx`
+(table-driven over all 9 layers, plus a capture-phase proof) and
+`choice-dialog.test.tsx`; new dom coverage for the three modals that had none
+(`command-palette`, `project-editor`, `help-overlay`). The e2e specs are
+unmodified — they are the proof the DOM contract survived.
+
+**2026-09-02 — two contract breaks the e2e specs caught, both fixed in the
+component (never in the spec).**
+
+1. *Focus landed nowhere.* `ChoiceDialog` and `ProjectEditor` focused from a
+   layout effect. Layout effects run child-first, and the root's `hidden` class
+   comes off in the PARENT island's layout effect — so both were calling
+   `focus()` on an element still inside a `display:none` subtree, which the
+   browser ignores outright. jsdom has no such rule, so every dom test passed;
+   `focus-traps.spec.ts` failed on the real thing, with Tab walking the modal
+   underneath. Both now focus from a passive effect, like Settings and the help
+   overlay — still the same commit, nothing like the `setTimeout` the imperative
+   project editor used.
+2. *`#command-palette-input` vanished from a cold boot.* The palette's input and
+   list were static children of `#command-palette` in `index.html`, and
+   `ux-polish.spec.ts` reads the input's `aria-label` at boot. The island now
+   renders them whether or not the palette is open — which is exactly what the
+   imperative version did; opening only drops the root's `hidden` class.
+
+   A third, `.choice-dialog` itself: the specs count that selector to assert no
+   question is on screen, because the element used to be built per question.
+   The root is static now, so the island adds and removes the class with the
+   opening — see the Decision log.
+
+**2026-09-02 — Verification.** `npm run typecheck` clean; `npx biome ci .` clean
+(8 warnings, the same set as `main`); `scripts/ui-lint.sh --strict` 0 violations;
+`vite build` succeeds; vitest **82 files / 923 tests** green;
+`go build ./...` + `go test ./internal/... ./cmd/hivegui/...` green under the
+`go.mod` toolchain; Playwright e2e **258 passed / 0 failed / 31 skipped** with
+every spec unmodified; `npm run test:e2e:real` **24 passed**.

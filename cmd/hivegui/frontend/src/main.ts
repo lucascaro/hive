@@ -58,6 +58,11 @@ import { MinimizedTray } from './components/MinimizedTray.js';
 import { Sidebar } from './components/Sidebar.js';
 import { Launcher } from './components/modals/Launcher.js';
 import { Settings } from './components/modals/Settings.js';
+import { ChoiceDialog } from './components/modals/ChoiceDialog.js';
+import { CommandPalette } from './components/modals/CommandPalette.js';
+import { HelpOverlay } from './components/modals/HelpOverlay.js';
+import { ProjectEditor } from './components/modals/ProjectEditor.js';
+import { Worktrees } from './components/modals/Worktrees.js';
 import { StatusBar } from './components/StatusBar.js';
 import { VersionFooter } from './components/VersionFooter.js';
 import { mustEl, pageEl } from './app/el.js';
@@ -309,7 +314,7 @@ mountIsland(
     restoreSession,
   }),
 );
-// The two ported modals. Both mount on the root their region already
+// The two Phase 3 modals. Both mount on the root their region already
 // owns and stay mounted; the store decides whether anything renders
 // inside, and the island toggles the root's `hidden` class.
 mountIsland(
@@ -322,6 +327,29 @@ mountIsland(
 mountIsland(
   pageEl('settings'),
   createElement(Settings, { root: pageEl('settings') }),
+);
+// The five Phase 4 modals. Same shape: the island stays mounted on the
+// root its region owns, the store decides whether anything renders
+// inside it, and the component toggles the root's `hidden` class.
+mountIsland(
+  pageEl('worktrees'),
+  createElement(Worktrees, { root: pageEl('worktrees') }),
+);
+mountIsland(
+  pageEl('project-editor'),
+  createElement(ProjectEditor, { root: pageEl('project-editor') }),
+);
+mountIsland(
+  pageEl('help-overlay'),
+  createElement(HelpOverlay, { root: pageEl('help-overlay') }),
+);
+mountIsland(
+  pageEl('choice-dialog'),
+  createElement(ChoiceDialog, { root: pageEl('choice-dialog') }),
+);
+mountIsland(
+  pageEl('command-palette'),
+  createElement(CommandPalette, { root: pageEl('command-palette') }),
 );
 // Sidebar footer: hive/hived version + build. It takes its own
 // "daemon:stale" subscription, so it fills in once the control

@@ -36,6 +36,8 @@ import {
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { ModeHint } from '../lib/status.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
+import type { WorktreesPayload } from '../lib/worktrees.js';
+import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
 // (docs/design-docs/ui/tokens.md › Spacing); a stored width below it is
@@ -75,20 +77,36 @@ export interface AppData {
   modeHint: ModeHint[];
   bootState: BootStateView | null;
   banners: Record<BannerSlot, BannerData>;
-  // ---------- modals (Phase 3) ----------
-  // The open modals, innermost last. It is the RENDER signal — which
-  // React modal is mounted-visible — and nothing else. "does a modal own
-  // the keyboard?" is still answered by app/modals/registry.ts off the
-  // `.hidden` class of every registered root (the legacy modals have no
-  // entry here at all), so this stack never has to agree with it.
+  // ---------- modals ----------
+  // The open modals, innermost last. Since Phase 4 every modal has an
+  // entry, so this is both the RENDER signal — which React modal is
+  // mounted-visible — and the answer to "does a modal own the keyboard?"
+  // (anyModalOpen below). There is no second source to keep it agreeing
+  // with; the `.hidden` class each island toggles is derived from it.
   modals: ModalEntry[];
+  // The daemon's last worktree inventory for the open project, or null
+  // before the first reply. The daemon answers every mutation with a
+  // fresh inventory, so the browser never patches — it re-renders from
+  // whatever landed here.
+  worktreesPayload: WorktreesPayload | null;
+  // The choice dialog is not in `modals`: it is mounted over any of
+  // them, and its answer travels back to the caller through a promise
+  // rather than through a component. `seq` remounts the body on a
+  // re-ask the same way a modal entry's does.
+  choiceDialog: ChoiceDialogEntry | null;
 }
 
 // A modal is its id plus whatever that opening was parameterised with.
 // The launcher carries a request because every one of its openings is
 // different (which project, duplicate-from, resume-in-worktree); the
 // settings modal has nothing to carry.
-export type ModalId = 'launcher' | 'settings';
+export type ModalId =
+  | 'launcher'
+  | 'settings'
+  | 'project-editor'
+  | 'command-palette'
+  | 'worktrees'
+  | 'help';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -96,7 +114,19 @@ export type ModalId = 'launcher' | 'settings';
 // looking like no change at all.
 export type ModalEntry =
   | { id: 'launcher'; seq: number; req: LauncherRequest }
-  | { id: 'settings'; seq: number };
+  | { id: 'settings'; seq: number }
+  | { id: 'project-editor'; seq: number; editing: ProjectInfo | null }
+  | { id: 'command-palette'; seq: number }
+  | { id: 'worktrees'; seq: number; projectId: string; projectName: string }
+  | { id: 'help'; seq: number };
+
+// The open question, plus the generation that lets a second ask remount
+// the body. The spec is the caller's — see app/modals/choice-dialog.ts,
+// which owns the promise the answer resolves.
+export interface ChoiceDialogEntry {
+  spec: ChoiceSpec;
+  seq: number;
+}
 
 export interface LauncherRequest {
   projectId: string | null;
@@ -298,6 +328,8 @@ function initialData(): AppData {
       update: { ...EMPTY_BANNER, actions: { action: { hidden: true } } },
     },
     modals: [],
+    worktreesPayload: null,
+    choiceDialog: null,
   };
 }
 
@@ -784,6 +816,46 @@ export function closeModal(id: ModalId): void {
 
 export function isModalOpen(id: ModalId): boolean {
   return get().modals.some((m) => m.id === id);
+}
+
+// modalEntry returns the open entry for `id`, narrowed. The modals that
+// carry a payload read it from here when they are outside React
+// (keyboard.ts, the gutted modal modules) rather than through a
+// selector.
+export function modalEntry<T extends ModalId>(
+  id: T,
+): Extract<ModalEntry, { id: T }> | undefined {
+  return get().modals.find((m) => m.id === id) as
+    | Extract<ModalEntry, { id: T }>
+    | undefined;
+}
+
+// anyModalOpen answers "does a modal own the keyboard?" for the focus
+// pipeline (app/focus.ts, app/session-term.ts).
+//
+// Until Phase 4 this was app/modals/registry.ts asking every registered
+// root whether it still had the `hidden` class, because the modals that
+// had not been ported had no store entry to ask about. They all have one
+// now, so the render signal and the keyboard-ownership signal are the
+// same fact and there is nothing left to keep in sync. The choice dialog
+// counts: it is asking a question that may destroy work, and it sits
+// over everything.
+export function anyModalOpen(): boolean {
+  const s = get();
+  return s.modals.length > 0 || s.choiceDialog !== null;
+}
+
+// ---------- worktree browser ----------
+
+export function setWorktreesPayload(payload: WorktreesPayload | null): void {
+  set({ worktreesPayload: payload });
+}
+
+// ---------- choice dialog ----------
+
+let choiceSeq = 0;
+export function setChoiceDialog(spec: ChoiceSpec | null): void {
+  set({ choiceDialog: spec ? { spec, seq: ++choiceSeq } : null });
 }
 
 export function resetStore(seed: Partial<AppData> = {}): void {

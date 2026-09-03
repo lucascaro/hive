@@ -1,12 +1,13 @@
-// ---------- command palette ----------
+// ---------- command palette: the non-React half ----------
 //
-// Moved verbatim from main.js. The command table is BUILT by main.ts
-// (the actions live there until later stages) and handed to
-// initCommandPalette — this module owns only the palette UI.
+// The palette renders from components/modals/CommandPalette.tsx
+// (Phase 4). What stays here is the open/close pair keyboard.ts imports,
+// and the command table itself: main.ts builds it (the actions live
+// there) and hands it over at init, so it has to be reachable from
+// outside React.
 
-import { registerModal } from './registry.js';
-import { pageEl } from '../el.js';
-import { kbd } from '../../ui/kbd.js';
+import { flushSync } from 'react-dom';
+import { closeModal, isModalOpen, openModal } from '../../store/store.js';
 
 // One row of the command table main.ts builds and hands over.
 export interface PaletteCommand {
@@ -23,75 +24,31 @@ export interface CommandPaletteDeps {
 let deps: CommandPaletteDeps = {
   focusActiveTerm: () => {},
 };
-let paletteCommands: PaletteCommand[] = [];
+let commandTable: PaletteCommand[] = [];
 
-export const paletteEl = pageEl('command-palette');
-const paletteInput = pageEl<HTMLInputElement>('command-palette-input');
-const paletteList = pageEl('command-palette-list');
-const paletteState: { items: PaletteCommand[]; selected: number } = {
-  items: [],
-  selected: 0,
-};
-
-function renderPalette() {
-  const q = paletteInput.value.trim().toLowerCase();
-  paletteList.innerHTML = '';
-  paletteState.items = paletteCommands.filter((c) => {
-    if (!q) return true;
-    return (
-      c.name.toLowerCase().includes(q) || c.shortcut.toLowerCase().includes(q)
-    );
-  });
-  if (paletteState.selected >= paletteState.items.length) {
-    paletteState.selected = 0;
-  }
-  paletteState.items.forEach((c, i) => {
-    const row = document.createElement('div');
-    row.className = 'palette-item';
-    if (i === paletteState.selected) row.dataset.selected = '';
-    const name = document.createElement('span');
-    name.className = 'palette-name';
-    name.textContent = c.name;
-    const sc = document.createElement('span');
-    sc.className = 'palette-shortcut';
-    // kbd() is the only way a key hint renders (patterns.md).
-    if (c.shortcut) sc.append(kbd(c.shortcut));
-    row.append(name, sc);
-    row.addEventListener('mouseenter', () => {
-      paletteState.selected = i;
-      for (const el of paletteList.children) {
-        (el as HTMLElement).removeAttribute('data-selected');
-      }
-      row.dataset.selected = '';
-    });
-    row.addEventListener('click', () => activatePalette(i));
-    paletteList.appendChild(row);
-  });
+// paletteCommands is what the component renders. A getter rather than an
+// export of the array itself: initCommandPalette runs after the module
+// graph is evaluated, so a bound reference would be the empty seed.
+export function paletteCommands(): PaletteCommand[] {
+  return commandTable;
 }
 
 export function openCommandPalette() {
-  paletteInput.value = '';
-  paletteState.selected = 0;
-  renderPalette();
-  paletteEl.classList.remove('hidden');
-  paletteInput.focus();
+  if (isModalOpen('command-palette')) return;
+  openModal({ id: 'command-palette' });
 }
 
 export function closeCommandPalette() {
-  // Blur first: focusActiveTerm() bails when activeElement is an INPUT,
-  // and hiding the palette via CSS doesn't move focus off paletteInput.
-  paletteInput.blur();
-  paletteEl.classList.add('hidden');
+  // Blur first: focusActiveTerm() bails when activeElement is an INPUT
+  // (lib/focus.ts), and unmounting the palette does not synchronously
+  // move focus off its search box in every engine.
+  const input = document.getElementById('command-palette-input');
+  if (input instanceof HTMLElement) input.blur();
+  // flushSync for the same reason closeSettings does it: this is called
+  // from plain listeners, and a store write a microtask later would let
+  // focusActiveTerm() run while the palette is still visible.
+  flushSync(() => closeModal('command-palette'));
   deps.focusActiveTerm();
-}
-
-function activatePalette(i: number) {
-  const c = paletteState.items[i];
-  if (!c) return;
-  closeCommandPalette();
-  // Defer so the palette is fully closed before the action runs
-  // (some actions open another modal that owns focus).
-  setTimeout(() => c.run(), 0);
 }
 
 export function initCommandPalette({
@@ -99,37 +56,5 @@ export function initCommandPalette({
   ...injected
 }: CommandPaletteDeps & { commands: PaletteCommand[] }) {
   deps = injected;
-  paletteCommands = commands;
-  registerModal(paletteEl);
-  paletteInput.addEventListener('input', renderPalette);
-  paletteEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      closeCommandPalette();
-    } else if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (paletteState.items.length === 0) return;
-      paletteState.selected =
-        (paletteState.selected + 1) % paletteState.items.length;
-      renderPalette();
-    } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (paletteState.items.length === 0) return;
-      paletteState.selected =
-        (paletteState.selected - 1 + paletteState.items.length) %
-        paletteState.items.length;
-      renderPalette();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      e.stopPropagation();
-      activatePalette(paletteState.selected);
-    }
-  });
-  document.addEventListener('mousedown', (e) => {
-    if (paletteEl.classList.contains('hidden')) return;
-    if (!paletteEl.contains(e.target as Node)) closeCommandPalette();
-  });
+  commandTable = commands;
 }

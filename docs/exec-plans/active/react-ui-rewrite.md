@@ -109,8 +109,8 @@ implemented — the briefs deliberately do not all exist up front.
 | 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
-| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | implemented, in review |
-| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | not started |
+| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
+| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | implemented, in review |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
@@ -280,3 +280,140 @@ close, the document-level outside-click close with its
 `.hv-project-card__actions` / `[data-opens-launcher]` exemptions, re-entrant
 `openSettings()` not wiping a draft, `loadFailed` blocking Save, and
 agents-before-update-settings save order.
+
+### Phase 4 — modals B + keyboard reads the store (written 2026-09-02 against `main` @ 588673b)
+
+**Roots.** Five islands. `#command-palette` already exists in `index.html`
+with its input and list; the other four dialogs are built at import time by
+`ui/dialog.ts` today and their roots move into `index.html` with exactly the
+attributes `dialog()` stamps (`class="hv-dialog hidden"`, `role`,
+`aria-modal="true"`, `aria-labelledby="<id>-title"`) — same reason as Phase 3's
+`#settings`: a React root needs a mount node that exists before the store says
+the modal is open.
+
+| Root container | Component | Container-level state kept by effect |
+|---|---|---|
+| `#worktrees` (**new in `index.html`**) | `Worktrees` via `ModalShell` | `.hidden` |
+| `#project-editor` (**new**) | `ProjectEditor` via `ModalShell` | `.hidden` |
+| `#help-overlay` (**new**) | `HelpOverlay` via `ModalShell` | `.hidden` |
+| `#choice-dialog` (**new**, `role="alertdialog"`) | `ChoiceDialog` via `ModalShell` | `.hidden` |
+| `#command-palette` (exists) | `CommandPalette` | `.hidden` |
+
+`#choice-dialog` stops being built per question. That is the point of the phase:
+the per-question element had to be `unregisterModal`'d on close or
+`anyModalOpen()` answered true forever and stranded the keyboard. A static root
+whose visibility is a store field cannot forget.
+
+**Markup contract extracted from the legacy modules** (the e2e specs assert on
+all of it, unmodified):
+
+- `#worktrees` › `#worktrees-panel[data-size=lg]` › header with
+  `h3#worktrees-title` ("Worktrees") + `span.hv-dialog__title-suffix` ›
+  `span#worktrees-project` (`· <project name>`, empty when the project is
+  unnamed), `button#worktrees-close.hv-icon-btn.hv-dialog__close`; body ›
+  `#worktrees-empty.worktrees-empty` (`.hidden` when a payload rendered) ›
+  `div.worktrees-empty-card` › `span#worktrees-empty-spinner.phase-spinner`
+  (`.hidden` when not spinning) + `span#worktrees-empty-text`, and
+  `#worktrees-body` › `section#worktrees-section-trees` (`h4` "Worktrees",
+  `#worktrees-list`) + `section#worktrees-section-branches` (`h4` "Branches with
+  no worktree", `p.worktrees-hint` "Create a worktree to pick this work back
+  up.", `#worktrees-branches`); footer hints `[esc]` close · `(r)` refresh.
+  Rows: `div.worktree-row[data-kind][data-path]` (worktrees) and
+  `div.worktree-row[data-branch]` (branches) › `div.worktree-main` ›
+  `span.worktree-name[title=path]` + `span.worktree-status` +
+  optional `span.worktree-subject[title]`; optional
+  `span.worktree-badge` / `span.worktree-badge.merged`; `div.worktree-actions` ›
+  plain `<button type=button [title] [data-opens-launcher] [.danger] [disabled]>`.
+  The rename input is `input.worktree-rename[aria-label="New branch name"]`
+  inside `.worktree-main`.
+- `#project-editor` › `#project-editor-panel[data-size=sm]` › `h3#project-editor-title`
+  ("New project" / "Edit project"), `button#project-editor-close`; body › three
+  `ui/field.ts` rows — `#project-editor-name`, then `div.cwd-row` ›
+  `#project-editor-cwd` + `button#project-editor-browse` ("Browse…"), then the
+  `colorInput` wrapper (`--swatch` custom property) › `#project-editor-color`;
+  footer actions `#project-editor-cancel`, `#project-editor-save`.
+- `#help-overlay` › `#help-overlay-panel[data-size=lg]` › `h3#help-overlay-title`
+  ("Keyboard shortcuts"), `button#help-overlay-close`; body ›
+  `#help-overlay-groups` › one `<section>` per `shortcutGroups({isMac})` group ›
+  `h4` + `dl` › `dt` › `kbd.hv-kbd` (via `Kbd`) and `dd` › label. Footer hint
+  `[esc]` close. No actions.
+- `#choice-dialog.choice-dialog[role=alertdialog]` › `#choice-dialog-panel[data-size=sm]`
+  › `h3#choice-dialog-title`, **no close button**; body ›
+  `p.choice-dialog-detail`, `ul.choice-dialog-bullets` › `li`,
+  `p.choice-dialog-note` (each rendered only when present); footer actions ›
+  `button[data-choice=<value>]` in spec order, the danger ones additionally
+  `.danger` (on top of `Button`'s own `data-kind="danger"`).
+- `#command-palette` (unchanged markup) › `#command-palette-input` +
+  `#command-palette-list` › `div.palette-item[data-selected]` ›
+  `span.palette-name` + `span.palette-shortcut` › `kbd.hv-kbd`.
+
+**Store additions** (`src/store/store.ts`):
+
+- `ModalId` grows to `'launcher' | 'settings' | 'project-editor' |
+  'command-palette' | 'worktrees' | 'help'`, with payloads
+  `{ id: 'project-editor'; editing: ProjectInfo | null }` and
+  `{ id: 'worktrees'; projectId: string; projectName: string }`. The palette and
+  the help overlay carry nothing.
+- `worktreesPayload: WorktreesPayload | null` — the daemon's last inventory for
+  the open project, written by `handleWorktreesPayload`, cleared on open. The
+  module keeps the stale-reply filter (`readProjectIdOf(payload) !== projectId`
+  → ignore) because it is protocol logic, not rendering.
+- `choiceDialog: { spec: ChoiceSpec; seq: number } | null` — separate from the
+  `modals` stack because it is mounted over any of them and because its answer
+  travels back through a promise the openers await.
+
+**`anyModalOpen()` moves into the store; `modals/registry.ts` and
+`src/ui/dialog.ts` are deleted.** Phase 3 kept the DOM class as the single
+source of truth precisely because the legacy modals had no store entry. After
+this phase every modal does, so `anyModalOpen()` becomes
+`modals.length > 0 || choiceDialog !== null` and `focus.ts` / `session-term.ts`
+import it from the store. `ui/dialog.ts`'s last four callers are ported here, so
+the primitive goes with them — `ModalShell` is its React replacement and
+`test/dom/modal-shell.test.tsx` its test. `test/dom/ui-dialog.test.ts` is
+deleted with it; `docs/design-docs/ui/components.md` › dialog now documents
+`ModalShell`.
+
+**Keyboard ladder** (`src/app/keyboard.ts`) — order copied verbatim, each layer's
+`.hidden` query replaced by the store read next to it:
+
+| # | Layer | Was | Becomes |
+|---|---|---|---|
+| 1 | inline rename | `inlineRenameActive()` | unchanged (not a modal) |
+| 2 | choice dialog | `choiceDialogOpen()` | `choiceDialogOpen()`, now a store read |
+| 3 | launcher | `!launcherEl.classList.contains('hidden')` | `isModalOpen('launcher')` |
+| 4 | project editor | `!editorEl.classList…` | `isModalOpen('project-editor')` |
+| 5 | command palette | `getElementById('command-palette')…` | `isModalOpen('command-palette')` |
+| 6 | settings | `getElementById('settings')…` | `isModalOpen('settings')` |
+| 7 | worktrees | `getElementById('worktrees')…` | `isModalOpen('worktrees')` |
+| 8 | help overlay | `getElementById('help-overlay')…` | `isModalOpen('help')` |
+| 9 | dead-session overlay | `state.terms.get(activeId).deadOverlayShown` | unchanged |
+| 10 | app bindings | — | unchanged |
+
+`trapFocus` still needs an element, so each layer that traps passes its root via
+`pageEl(<id>)`. The handler stays registered capture-phase, and every layer keeps
+its own `return` — the ladder's shape is what the table-driven test pins.
+
+**Ported behaviour that is easy to lose** (each has a test):
+
+- The worktree rename is still `beginInlineRename` (so `inlineRenameActive()`
+  keeps layer 1 true and Escape cancels the edit instead of closing the panel).
+  It mounts into an *empty* React-rendered `.worktree-main` — React owns no
+  children there while `renaming` is set, so a daemon repaint mid-edit can no
+  longer clobber the input (the imperative version lost the edit).
+- `closeWorktrees()` dismisses an open choice dialog; so does every repaint
+  (`render()` did it because the row being asked about may not survive).
+- Both destructive flows re-check `worktreesOpen() && projectId` after the await.
+- The `(r)` refresh key ignores keystrokes typed into the rename input.
+- The palette: `mouseenter` moves the selection, `ArrowDown`/`Tab` wrap,
+  activation defers the command by `setTimeout(…, 0)` so the palette is fully
+  closed before an action opens another modal, and the outside-click close.
+- `closeCommandPalette()` blurs the input *before* hiding (`focusActiveTerm()`
+  bails while `activeElement` is an INPUT).
+- The project editor focuses its name field synchronously on open (a deferred
+  focus raced ⌘N-then-Escape and typed into a `display:none` dialog), Enter
+  saves from the name and cwd fields only, and an empty name is a no-op save.
+- The help overlay renders its (static) groups once and `toggleHelpOverlay()`
+  stays the single entry point the native ⌘/ menu item drives.
+- The choice dialog's FIRST choice is the safe one: it takes focus, and Escape
+  and a backdrop click resolve to it. Focus returns to the opener only if it is
+  still connected (deleting a worktree takes its row's button with it).
