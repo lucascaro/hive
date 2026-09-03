@@ -3,7 +3,7 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
-- **PR:** —
+- **PR:** [#321](https://github.com/lucascaro/hive/pull/321)
 - **Branch:** `feature/react-phase5-grid-shell`
 - **Status:** active
 
