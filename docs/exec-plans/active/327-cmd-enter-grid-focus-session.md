@@ -63,6 +63,14 @@ In `cmd/hivegui/frontend/test/dom/keyboard-arrows.test.ts`, a new `describe('cmd
 - The `single` case returns without `swallow()`, so the event continues to the terminal — verified against the pattern already used for horizontal ⌘-arrows (`handleArrow` returning `false`).
 - No native menu item is added. `menu_darwin.go` accelerators intercept ⌘ chords before the webview on macOS, so *not* registering ⌘⏎ there is required for the key to reach this handler at all; it also keeps the terminal's single-view half working.
 
+## Gate verdict
+
+- **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 0 followups; followups: none; one-line: an existing e2e spec still asserted the pre-#327 "⌘Enter is unbound" behavior and would have gone red in CI.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — every success criterion traced in code and demonstrated by `test/dom/keyboard-arrows.test.ts` (20 passed), including the single-view carve-out and the ⇧⌘⏎ exclusion.
+    - non-goals — PASS — `menu_darwin.go` and `docs/product-specs/index.md` untouched; `keymap.ts` / `session-term.ts` diffs are comment-only, `isShiftEnter` / `NEWLINE_SEQ` byte-identical to main; no session-id mutation, view-only.
+    - doc accuracy — FAIL — `test/e2e/cmd-enter-unbound.spec.ts` was left asserting the old behavior (its grid-mode test required NO view change). Also reported a missing `CHANGELOG.md` entry; that part is a false positive — AGENTS.md's own Documentation section says `CHANGELOG.md` is generated and `block-generated-edits` fails any PR touching it, so `.changesets/` is the correct surface and it was present.
+
 ## Decision log
 
 - **2026-09-03** — One-way (grid → single) instead of a symmetric toggle. Why: a toggle would have to claim ⌘⏎ in single view, re-creating the agent-input conflict documented in spec #217. Confirmed with the operator at plan time.
@@ -72,6 +80,7 @@ In `cmd/hivegui/frontend/test/dom/keyboard-arrows.test.ts`, a new `describe('cmd
 ## Progress
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
+- **2026-09-03** — Gate FAIL; `test/e2e/cmd-enter-unbound.spec.ts` still asserted #249's "unbound" behavior. Rewritten and renamed to `cmd-enter-grid-focus.spec.ts` (4 tests, all passing), and AGENTS.md's Keybindings Policy item 4 corrected — it told contributors to edit the generated `CHANGELOG.md`, contradicting the same file's Documentation section and misleading the gate.
 
 ## PR convergence ledger
 

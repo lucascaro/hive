@@ -171,8 +171,10 @@ omitting one creates drift that confuses users and other contributors.
 2. **Help overlay + command palette** — make sure the action appears with its
    binding in the `⌘/` keyboard-shortcuts overlay and the command palette.
 3. **README** — update the Keybinds table in `README.md`.
-4. **Changelog** — add a user-facing entry under `[Unreleased]` in
-   `CHANGELOG.md` if the change affects default behaviour.
+4. **Changelog** — add a `.changesets/<slug>.md` entry if the change affects
+   default behaviour. Never edit `CHANGELOG.md` directly: it is generated,
+   and `block-generated-edits` fails any PR that touches it. See
+   *Changelog — add a changeset, never edit `CHANGELOG.md`* below.
 
 ### Hard-coded exceptions (NOT rebindable)
 
