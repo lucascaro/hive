@@ -277,7 +277,11 @@ These skills are provided by [hivesmith](https://github.com/lucascaro/hivesmith)
 
 ### GitHub Labels
 
-Each stage has a corresponding label applied to the GitHub issue: `triaged`, `researching`, `planned`, `implementing`. The `/hs-feature-*` commands manage these automatically.
+Each stage has a corresponding label applied to the GitHub issue: `triaged`,
+`researching`, `planned`, `implementing`, `gate`. `/hs-merge-gate` then swaps
+`gate` for its verdict: `gate-passed`, `gate-failed`, or `gate-followup`. The
+`/hs-feature-*`, `/hs-review-loop` and `/hs-merge-gate` commands manage these
+automatically.
 
 ### Ingesting New Issues
 
