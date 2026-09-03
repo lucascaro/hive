@@ -110,7 +110,7 @@ implemented — the briefs deliberately do not all exist up front.
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
-| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | implemented, in review |
+| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | #320 | implemented, in review |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
