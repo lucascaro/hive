@@ -144,7 +144,7 @@ test('closing a session in grid mode repaints the grid', async ({ page }) => {
   await expect(page.locator('.term-host.in-grid')).toHaveCount(4);
 
   // The layout signature: the container's track template plus each
-  // tile's row span. renderGrid gives the tile above a trailing empty
+  // tile's row span. applyGridLayout gives the tile above a trailing empty
   // cell a `span 2` so the grid has no hole — which is exactly what a
   // missing repaint leaves behind.
   const layout = () =>
