@@ -384,3 +384,25 @@ plan lookup does not find them.
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9398f44440be87d2a4269103246c29cb5f4720dfdb24a7d122a5cb1fe91d232e; threads_open: 0; action: stop (converged; 4 IMPORTANT applied by hand — see Review round 1); head_sha: eac2fda.
 - **2026-09-02 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 88cdfafb994c18aadba6f53db181d0f1aa5ca4280fd9a0f2afa04c3c6d23e7c3; threads_open: 0; action: stop (converged; 2 IMPORTANT + 2 MINOR applied, 1 MINOR investigated and refuted, 1 deferred — see Review round 2); head_sha: 9b68a26.
+
+### Reconstructed for the merge gate (2026-09-03)
+
+`/hs-merge-gate`'s cold-start guard reads this ledger and requires its **latest**
+entry to carry `verdict: APPROVE|COMMENT`, `threads_open: 0` and `action: stop`.
+The entries above predate that requirement and use this project's own wording
+(`action: converged`, or a bare post-loop note), so the gate would refuse a plan
+that had in fact converged. The line below restates the final state of that
+convergence in the vocabulary the gate parses. It adds no new claim: every fact
+in it is taken from the entries above and from `gh pr view`. Appended, never
+rewritten — the ledger is append-only.
+
+- **2026-09-03 reconciliation** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 88cdfafb; threads_open: 0; action: stop; head_sha: 9b68a26. Restates iter 2 above (the loop's last iteration) for the gate's parser; PR #317 merged 2026-09-02 as `950dfaf`.
+
+## Gate verdict
+
+_Not run._ Phase 1's PR (#317) merged on 2026-09-02 (`950dfaf`) before this feature
+adopted `/hs-merge-gate`, so there is no gate record for it. Left empty rather
+than back-filled: a gate verdict asserts that someone walked the success
+criteria against the diff, and writing one now without doing that would be a
+claim, not a record. `/hs-merge-gate` has a degraded post-merge path that can
+still be run against the merge commit if this phase needs a verdict on file.

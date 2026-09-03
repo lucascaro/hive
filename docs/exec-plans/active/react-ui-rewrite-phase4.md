@@ -243,3 +243,7 @@ Escape as the fallback for when focus is elsewhere. `keyboard-precedence.test.ts
 now expects the palette layer to close rather than to be passive, so reverting
 the ladder branch fails it. The legacy palette had the same hazard (same
 listener, same bail); it survived because focus happened to stay put.
+
+## Gate verdict
+
+_(awaiting `/hs-merge-gate`; it appends here)_

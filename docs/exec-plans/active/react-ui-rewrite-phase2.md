@@ -224,3 +224,25 @@ _(opened 2026-09-02 for PR #318; `/hs-review-loop` appends one entry per iterati
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 51083c23; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 67dcf0a.
 - **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged; MINOR sweep applied + push; head_sha: 59b49d8.
 - **2026-09-02 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; CI all green; action: converged (re-review of the post-approval delta); last MINOR closed at the type level + push; head_sha: 26697ec.
+
+### Reconstructed for the merge gate (2026-09-03)
+
+`/hs-merge-gate`'s cold-start guard reads this ledger and requires its **latest**
+entry to carry `verdict: APPROVE|COMMENT`, `threads_open: 0` and `action: stop`.
+The entries above predate that requirement and use this project's own wording
+(`action: converged`, or a bare post-loop note), so the gate would refuse a plan
+that had in fact converged. The line below restates the final state of that
+convergence in the vocabulary the gate parses. It adds no new claim: every fact
+in it is taken from the entries above and from `gh pr view`. Appended, never
+rewritten — the ledger is append-only.
+
+- **2026-09-03 reconciliation** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 26697ec. Restates iter 3 above (the re-review of the post-approval delta) for the gate's parser; PR #318 merged 2026-09-02 as `fff838f`.
+
+## Gate verdict
+
+_Not run._ Phase 2's PR (#318) merged on 2026-09-02 (`fff838f`) before this feature
+adopted `/hs-merge-gate`, so there is no gate record for it. Left empty rather
+than back-filled: a gate verdict asserts that someone walked the success
+criteria against the diff, and writing one now without doing that would be a
+claim, not a record. `/hs-merge-gate` has a degraded post-merge path that can
+still be run against the merge commit if this phase needs a verdict on file.

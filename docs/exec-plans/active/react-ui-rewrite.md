@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** [#320](https://github.com/lucascaro/hive/pull/320) — the phase currently in flight (Phase 4). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **Branch:** `feature/react-phase4-modals-b`
 - **Status:** active
 
 ## Summary
@@ -85,7 +87,17 @@ phase against them would wave the same unmet criterion through six times and
 make the gate meaningless.
 
 So: **each phase plan carries its own `## Success criteria`, and
-`/hs-merge-gate` validates a phase PR against that phase's plan.** The spec's
+`/hs-merge-gate` validates a phase PR against that phase's plan.**
+
+**Running the gate on this feature takes one manual step.** The gate resolves
+its target from the spec's frontmatter and the spec's `Exec plan:` link, which
+points here — so it lands on the master plan, whose success criteria are
+Phase 6's. Point it at the phase plan under test instead (its `PR:`, `Branch:`,
+`## Success criteria`, `## PR convergence ledger` and `## Gate verdict` sections
+are all in the shape the gate expects). The same is true of the ledger the gate
+demands: `/hs-review-loop` writes it into a plan it finds by an `<NNN>`-prefixed
+name, which this feature's plans do not have, so every phase's ledger here is
+maintained by hand. The spec's
 criteria are the gate for Phase 6 only, where they must all pass.
 
 Consequences:
@@ -417,3 +429,26 @@ its own `return` — the ladder's shape is what the table-driven test pins.
 - The choice dialog's FIRST choice is the safe one: it takes focus, and Escape
   and a backdrop click resolve to it. Focus returns to the opener only if it is
   still connected (deleting a worktree takes its row's button with it).
+
+## PR convergence ledger
+
+This feature ships as seven PRs against one spec, so convergence is recorded
+per phase, in each phase plan's own ledger. This section is the index the gate
+reads: one line per phase, copied from that phase's final entry, because
+`/hs-merge-gate` resolves the plan through the spec's `Exec plan:` link — which
+points at this master plan, not at the phase plan whose PR is actually under
+test.
+
+- **Phase 0** — PR #311 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: cd66176. Gate: NEEDS_FOLLOWUP (2026-09-01), accepted; plan in `completed/`.
+- **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
+- **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
+- **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
+- **Phase 4** — PR #320 — see [phase4](react-ui-rewrite-phase4.md#pr-convergence-ledger); in flight.
+
+## Gate verdict
+
+Per the [Gating convention](#gating-convention), a phase PR is gated against
+**its own** plan's success criteria; the spec's criteria are the gate for
+Phase 6 only, where they must all pass. Phase verdicts therefore live in the
+phase plans. This section records only the spec-level gate, and stays empty
+until Phase 6.
