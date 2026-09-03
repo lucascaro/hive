@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 320
-stage: GATE
+stage: IMPLEMENT
 ---
 
 # Incremental React 19 rewrite of the hivegui frontend

@@ -1,11 +1,11 @@
 # React UI rewrite — Phase 4: Modals B + keyboard reads the store
 
-- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](../active/react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** [#320](https://github.com/lucascaro/hive/pull/320)
 - **Branch:** `feature/react-phase4-modals-b`
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -360,3 +360,20 @@ class was removed or renamed.
 This is the second time a *count* in this plan drifted while the prose around it
 stayed true. Counts written mid-review go stale by the next commit; the fix is
 to derive them at the gate, which is what happened here — twice.
+
+- **2026-09-03 (pass 3)** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 1 followup; followups: none filed (the one item is pre-existing and out of scope, recorded below); one-line: the corrected counts hold under independent derivation, and a sweep of every number in both plans found nothing else wrong.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — see the first verdict above.
+    - non-goals — PASS — see the first verdict above.
+    - doc accuracy (pass 3) — PASS — every figure re-derived rather than checked: 45 on `main` and 52 at HEAD by `it(`-count, a name-level diff giving 44 kept / 1 replaced / 8 added, and each of the 8 new tests read and classified by hand to confirm the "1 repaint + 2 keyboard-strand + 5 remote-delete" split. The suites were re-run rather than quoted (934/934 vitest, 13/13 precedence with a `LAYERS` array of exactly 9, 59/59 `theme.spec.ts` under `HIVE_SNAPSHOT=1`), the 7-regenerated / 6-untouched baseline split confirmed against `git diff --stat`, and all 10 `hv-*` classes on removed lines traced to `ModalShell.tsx` at HEAD.
+
+**Follow-up, pre-existing and not filed against this PR:** `.changesets/README.md`
+is cited as the changeset schema by both `AGENTS.md` and `CONTRIBUTING.md` and
+does not exist on `main` either.
+
+**What the gate caught that five review iterations did not.** Both failures were
+in this plan's own bookkeeping, and both were the same shape: a *count* or a
+*file list* written mid-review that the next commit invalidated, sitting inside
+prose that stayed true. Review reads the code; the gate is what reads the claims
+back against the code. Worth remembering for Phase 5 — derive every figure at
+the gate, and never carry one forward from an earlier iteration's summary.

@@ -122,7 +122,7 @@ implemented — the briefs deliberately do not all exist up front.
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
-| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | #320 | implemented, in review |
+| 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **gate PASS**, PR open |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
@@ -461,7 +461,7 @@ test.
 - **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
 - **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
 - **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
-- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Open, awaiting the gate. Five review iterations; see [phase4](react-ui-rewrite-phase4.md#pr-convergence-ledger).
+- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Open, awaiting the gate. Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
 
 ## Gate verdict
 
