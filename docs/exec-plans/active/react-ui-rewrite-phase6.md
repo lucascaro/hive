@@ -127,3 +127,10 @@ the master plan's Gating convention).
     plan; there are 31. The master plan's Summary now states the invariant
     (no phase edits a spec) rather than a count that drifts.
 
+- **2026-09-03 converged** — iteration 2's findings applied in `49aafaf`; all 12
+  CI checks green, zero review threads, MERGEABLE. Loop stops here (COMMENT with
+  strict off and no open threads). Spec advanced `IMPLEMENT` → `GATE`; the master
+  plan's Gating convention holds the spec at `IMPLEMENT` across phases 1–6 and
+  sends it to `DONE` only after this phase's gate, so `REVIEW` is skipped rather
+  than back-filled.
+
