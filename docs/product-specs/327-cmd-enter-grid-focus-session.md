@@ -5,7 +5,8 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 328
-stage: GATE
+shipped: 2026-09-03
+stage: DONE
 ---
 
 # GUI: Cmd+Enter in grid mode focuses the active session
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/327-cmd-enter-grid-focus-session.md](../exec-plans/active/327-cmd-enter-grid-focus-session.md)
+- **Exec plan:** [docs/exec-plans/completed/327-cmd-enter-grid-focus-session.md](../exec-plans/completed/327-cmd-enter-grid-focus-session.md)
 
 ## Problem
 
