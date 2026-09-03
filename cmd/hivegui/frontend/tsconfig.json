@@ -22,8 +22,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // vite/client supplies ImportMetaEnv (state.ts gates the __hive_state
-    // e2e affordance on import.meta.env.VITE_WAILS_*).
+    // vite/client supplies ImportMetaEnv (store/store.ts gates the
+    // __hive_state e2e affordance on import.meta.env.VITE_WAILS_*).
     "types": ["vite/client"],
     "allowJs": true,
     "checkJs": false,

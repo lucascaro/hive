@@ -31,7 +31,7 @@ Component styles are colocated and scoped; the token layer
 
 The `hv-*` classes are not only the CSS contract — they are the **e2e selector
 contract**. There are **zero `data-testid` attributes in the repo**, by an
-explicit decision: the 30 Playwright specs select on ids, `hv-*` classes and
+explicit decision: the 31 Playwright specs select on ids, `hv-*` classes and
 data attributes, which is what made them the safety proof that carried the React
 rewrite through six phases without a spec edit. CSS Modules hash those class
 names, so every one of those selectors breaks at once.

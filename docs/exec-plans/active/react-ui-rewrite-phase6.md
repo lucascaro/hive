@@ -110,3 +110,20 @@ the master plan's Gating convention).
     nesting. Replaced with `DOMParser` + `querySelectorAll('script').remove()`,
     which is exact and leaves no regex behind. Test-only code, but the rule is
     right about the pattern.
+
+- **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash:
+  `acf3a0b6…`; threads_open: 0; action: fixes applied, then stop; head_sha:
+  e86be94. The pass re-verified every iteration-1 fix (tsconfig include,
+  `mustEl` portal targets, the new dom test's negative control and its
+  `PRE_PAINT_SEEDED` drift check, the DOMParser replacement) and independently
+  confirmed the `#grid-root` → `#react-root` rename is complete, no import of
+  the deleted `src/ui/*` survives, and every remaining `app/state.js` import is
+  type-only. Three findings left, all documentation:
+  - the brief still said "fourteen islands" (fifteen shipped — `App.tsx`
+    already said fifteen two files over);
+  - `globals.d.ts` and `tsconfig.json` still credited `app/state.ts` with
+    gating `__hive_state`, which this phase moved to `store/store.ts`;
+  - the CSS-Modules spec inherited "30 Playwright specs" from the Phase 0
+    plan; there are 31. The master plan's Summary now states the invariant
+    (no phase edits a spec) rather than a count that drifts.
+

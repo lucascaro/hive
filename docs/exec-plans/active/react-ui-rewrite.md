@@ -8,7 +8,7 @@
 
 ## Summary
 
-Migrate the hivegui frontend (`cmd/hivegui/frontend`, ~13k lines vanilla TS + xterm.js under Wails) to React 19 with a zustand store, region by region across 7 PRs, each independently green on the full test suite. Goals: performance (selector-scoped re-renders instead of whole-region rebuilds) and maintainability (one render paradigm, reusable components, no manual render bookkeeping). Terminals (`session-term.ts`) stay imperative behind a stable keyed boundary. The id/`hv-*`-class/data-attribute DOM contract is frozen so all 30 Playwright e2e specs pass unmodified throughout.
+Migrate the hivegui frontend (`cmd/hivegui/frontend`, ~13k lines vanilla TS + xterm.js under Wails) to React 19 with a zustand store, region by region across 7 PRs, each independently green on the full test suite. Goals: performance (selector-scoped re-renders instead of whole-region rebuilds) and maintainability (one render paradigm, reusable components, no manual render bookkeeping). Terminals (`session-term.ts`) stay imperative behind a stable keyed boundary. The id/`hv-*`-class/data-attribute DOM contract is frozen so every Playwright e2e spec passes unmodified throughout (30 at Phase 0, 31 at Phase 6 — the count moved for reasons unrelated to the rewrite; the invariant is that no phase edits one).
 
 ## Context
 
@@ -632,7 +632,7 @@ a direct import with no cycle *and* no test stub depends on it. Whatever remains
 is recorded here with the cycle it breaks.
 
 **Single root.** `src/components/App.tsx` composes, in `index.html`'s document
-order, the regions the fourteen islands own today. Two of them are not plain
+order, the regions the fifteen islands own today. Two of them are not plain
 children and constrain the design:
 
 - `Sidebar` renders into `#projects` (a `<ul>` inside `<aside id="sidebar">`) and
