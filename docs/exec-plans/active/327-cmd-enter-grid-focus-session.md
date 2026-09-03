@@ -66,8 +66,13 @@ In `cmd/hivegui/frontend/test/dom/keyboard-arrows.test.ts`, a new `describe('cmd
 ## Decision log
 
 - **2026-09-03** — One-way (grid → single) instead of a symmetric toggle. Why: a toggle would have to claim ⌘⏎ in single view, re-creating the agent-input conflict documented in spec #217. Confirmed with the operator at plan time.
-- **2026-09-03** — No native macOS menu item and no command-palette entry. Why: a menu accelerator would swallow ⌘⏎ before the webview in *every* view, breaking the single-view carve-out.
+- **2026-09-03** — No native macOS menu item. Why: a menu accelerator would swallow ⌘⏎ before the webview in *every* view, breaking the single-view carve-out.
+- **2026-09-03** — Command-palette entry added after review (`focus-active-session`). Why: the original plan lumped the palette in with the native menu, but only the menu carries an accelerator that would swallow the key; AGENTS.md's Keybindings Policy step 2 requires both the overlay and the palette. The action was extracted to an exported `focusActiveSession()` so the key path and the palette path cannot drift — same reason `toggleProjectGrid` exists.
 
 ## Progress
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
+
+## PR convergence ledger
+
+- **2026-09-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 23c5cf74; threads_open: 0; action: stop; head_sha: 6c7124e. Two IMPORTANT drift findings (stale `keymap.ts` / `session-term.ts` comments asserting ⌘⏎ is inert; missing command-palette entry) applied by hand rather than by autofix, since the loop stopped on COMMENT with strict off.

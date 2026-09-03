@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 328
-stage: REVIEW
+stage: GATE
 ---
 
 # GUI: Cmd+Enter in grid mode focuses the active session
@@ -33,12 +33,13 @@ While a grid view is active, ⌘⏎ (Ctrl+Enter off macOS) switches to single vi
 - In `single` view, ⌘⏎ / Ctrl+Enter is **not** consumed and does not change the view — it reaches the terminal.
 - ⇧⌘⏎ is not claimed in any view.
 - ⌘G / ⇧⌘G continue to toggle grids unchanged; Shift+Enter still inserts a newline (#217) unchanged.
-- The binding appears in the ⌘/ shortcuts overlay and the README shortcut table.
+- The binding appears in the ⌘/ shortcuts overlay, the command palette, and the README shortcut table.
+- Invoking the palette command in single view is a no-op (the palette lists every command in every view).
 
 ## Non-goals
 
 - Making ⌘⏎ a two-way toggle (single → grid stays on ⌘G / ⇧⌘G).
-- Adding a native macOS menu item or command-palette entry for it.
+- Adding a native macOS menu item. A `menu_darwin.go` accelerator would swallow ⌘⏎ before the webview in *every* view, breaking the single-view carve-out. (A command-palette entry carries no accelerator and so is **not** excluded — AGENTS.md's Keybindings Policy requires one, and it ships here.)
 - Changing which session is active — ⌘⏎ only changes the view.
 - Any change to Shift+Enter newline handling.
 

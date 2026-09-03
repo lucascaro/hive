@@ -234,6 +234,7 @@ export function paletteShortcuts({
     'toggle-sidebar': m('S'),
     'toggle-project-grid': m('G'),
     'toggle-all-grid': m('G', { shift: true }),
+    'focus-active-session': m('enter'),
     'zoom-in': m('='),
     'zoom-out': m('-'),
     'zoom-reset': m('0'),

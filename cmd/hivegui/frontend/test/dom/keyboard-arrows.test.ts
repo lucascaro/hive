@@ -209,6 +209,15 @@ describe('cmd+Enter focuses the active session from grid', () => {
     expect(setView).not.toHaveBeenCalled();
   });
 
+  // Reachable from the command palette, which lists every command in
+  // every view — so the guard lives in the action, not just the binding.
+  it('focusActiveSession is a no-op in single view', async () => {
+    const { focusActiveSession } = await import('../../src/app/keyboard.js');
+    state.view = 'single';
+    focusActiveSession();
+    expect(setView).not.toHaveBeenCalled();
+  });
+
   it('shift+cmd+Enter is not claimed in grid', () => {
     state.view = 'grid-all';
     const e = press('Enter', { shiftKey: true });
