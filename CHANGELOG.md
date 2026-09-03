@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colour.
 
 ### Changed
+Settings now shows its confirm and cancel key hints (`[esc]` / `[enter]`) in the dialog footer, like every other overlay.
 - Reskinned chrome: notice banners, a real status bar with inline mode
   shortcuts, grid tile headers with state icons, and consistent launcher and
   command-palette rows.
