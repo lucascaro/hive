@@ -47,7 +47,7 @@ import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
 // (docs/design-docs/ui/tokens.md › Spacing); a stored width below it is
-// clamped up on load. Mirrored by main.ts's resizer, which is the only
+// clamped up on load. Mirrored by main.tsx's resizer, which is the only
 // writer.
 export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
@@ -149,7 +149,7 @@ export interface StatusView {
 }
 
 // onRetry is a callback, not a serialisable flag: the boot overlay's
-// Retry re-enters main.ts's bounded retryBoot(), and reconstructing that
+// Retry re-enters main.tsx's bounded retryBoot(), and reconstructing that
 // binding inside a component would move the 5-attempt policy out of the
 // composition root.
 export interface BootStateView {

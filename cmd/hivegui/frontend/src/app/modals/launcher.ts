@@ -4,7 +4,7 @@
 // What stays here is everything that is not rendering:
 //
 //   * openLauncher / closeLauncher, the store actions every caller
-//     (keyboard.ts, events.ts, main.ts, Sidebar.tsx, EmptyState.tsx)
+//     (keyboard.ts, events.ts, main.tsx, Sidebar.tsx, EmptyState.tsx)
 //     already imports from this path,
 //   * the launch-count table the agent list is ordered by,
 //   * the three session actions that never open the launcher at all
@@ -12,7 +12,7 @@
 //     the active session.
 //
 // Focus-pipeline callbacks are injected via initLauncher(deps) — this
-// module must never import the focus pipeline directly (main.ts owns
+// module must never import the focus pipeline directly (main.tsx owns
 // that wiring).
 
 import { flushSync } from 'react-dom';
@@ -82,7 +82,7 @@ export function bumpAgentUsage(id: string | undefined) {
   } catch {}
 }
 
-// projectId is optional, not just nullable: main.ts, keyboard.ts and
+// projectId is optional, not just nullable: main.tsx, keyboard.ts and
 // view.ts all call openLauncher() bare and let the `|| activeProjectId()`
 // fallback below pick the project.
 export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {

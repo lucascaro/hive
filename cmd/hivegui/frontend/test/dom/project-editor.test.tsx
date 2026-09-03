@@ -309,3 +309,47 @@ describe('cancel', () => {
     expect(root().classList.contains('hidden')).toBe(true);
   });
 });
+
+// Field anatomy. The imperative field primitive carried these assertions
+// until the React rewrite's last phase deleted it; the markup it produced
+// is now hand-written per modal, so the contract needs asserting where it
+// is actually rendered. `.hv-field` + `.hv-field__label` is the CSS
+// contract (src/theme/components/*.css) and the label wrapper is the a11y
+// one: an <input> inside its <label> is named by it even without a `for`.
+describe('field anatomy', () => {
+  it('wraps every control in a labelled .hv-field', () => {
+    open();
+    const fields = [
+      ...document.querySelectorAll<HTMLElement>('#project-editor .hv-field'),
+    ];
+    expect(fields.length).toBe(3);
+
+    for (const field of fields) {
+      expect(field.tagName).toBe('LABEL');
+      const label = field.querySelector('.hv-field__label');
+      expect(label, 'every field carries a visible label').not.toBeNull();
+      expect(label?.textContent?.trim()).toBeTruthy();
+      // The control is INSIDE the label, which is what names it — none of
+      // these fields uses a `for`/`id` pairing.
+      expect(field.querySelector('input')).not.toBeNull();
+    }
+  });
+
+  it('gives every control an accessible name matching its visible label', () => {
+    open();
+    for (const id of [
+      'project-editor-name',
+      'project-editor-cwd',
+      'project-editor-color',
+    ]) {
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      expect(input, `#${id} is rendered`).not.toBeNull();
+      const name = input?.getAttribute('aria-label');
+      expect(name, `#${id} has an accessible name`).toBeTruthy();
+      const visible = input
+        ?.closest('.hv-field')
+        ?.querySelector('.hv-field__label')?.textContent;
+      expect(name).toBe(visible?.trim());
+    }
+  });
+});

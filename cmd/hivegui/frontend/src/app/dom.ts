@@ -20,7 +20,7 @@ import { mustEl } from './el.js';
 // module have drifted, which is a load-time bug, not a runtime condition
 // to branch on. mustEl throws rather than using `!` — it names the id.
 //
-// The `single` class that used to be added here moved to main.ts: it is
+// The `single` class that used to be added here moved to main.tsx: it is
 // initial paint state, not a property of holding the handle, and this
 // module is imported by ~30 jsdom tests that never render a view.
 // applySingle() re-adds it on the first paint either way (grid-layout.ts).
@@ -65,7 +65,7 @@ export const reportFailure = (what: string) => (err: unknown) =>
 // the pane can tell the truth (before that, "No sessions yet" may just
 // mean "the daemon has not answered yet").
 //
-// The signature keeps its `{ retry }` shape: main.ts's bounded
+// The signature keeps its `{ retry }` shape: main.tsx's bounded
 // retryBoot() is the only caller that passes one, and the 5-attempt
 // policy stays there rather than moving into a component.
 export function setBootState(

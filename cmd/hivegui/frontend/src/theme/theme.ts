@@ -1,4 +1,4 @@
-// Preset selection. Runs before first paint (imported first in main.ts) so
+// Preset selection. Runs before first paint (imported first in main.tsx) so
 // the app never flashes the default preset. docs/design-docs/ui/themes.md
 // NOTE: index.html contains a matching inline <script> that stamps data-theme
 // synchronously before stylesheets load. Keep both in sync, especially PRESETS.

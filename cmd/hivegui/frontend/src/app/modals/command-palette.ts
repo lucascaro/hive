@@ -2,14 +2,14 @@
 //
 // The palette renders from components/modals/CommandPalette.tsx
 // (Phase 4). What stays here is the open/close pair keyboard.ts imports,
-// and the command table itself: main.ts builds it (the actions live
+// and the command table itself: main.tsx builds it (the actions live
 // there) and hands it over at init, so it has to be reachable from
 // outside React.
 
 import { flushSync } from 'react-dom';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
 
-// One row of the command table main.ts builds and hands over.
+// One row of the command table main.tsx builds and hands over.
 export interface PaletteCommand {
   id: string;
   name: string;

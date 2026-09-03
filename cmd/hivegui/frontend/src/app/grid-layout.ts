@@ -38,7 +38,7 @@ const appData = () => appStore.getState();
 // The same injection seam view.ts has, and for the same reason: this
 // module is imported by session-term.ts's dependents, so importing
 // ensureTerm from it directly would close a cycle. view.ts's initView()
-// forwards its deps here, so a caller (main.ts, a dom test) that wires
+// forwards its deps here, so a caller (main.tsx, a dom test) that wires
 // the view wires the grid with it. Both seams are permanent: a direct import would close the cycle.
 export interface GridDeps {
   ensureTerm: (info: SessionInfo) => TermTile;

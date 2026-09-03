@@ -93,9 +93,9 @@ let deps: KeyboardDeps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
-  // Injected from main.ts like focusActiveTerm above: keyboard.ts must
+  // Injected from main.tsx like focusActiveTerm above: keyboard.ts must
   // not import the focus pipeline directly (see the acyclic-modules
-  // note at the wiring block in main.ts). The default still RUNS fn —
+  // note at the wiring block in main.tsx). The default still RUNS fn —
   // an un-wired harness gets working navigation without suppression,
   // not a silently swallowed switch.
   withoutNavHistory: (fn) => fn(),

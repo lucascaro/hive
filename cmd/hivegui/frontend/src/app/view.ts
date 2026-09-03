@@ -42,7 +42,8 @@ import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 const appData = () => store.appStore.getState();
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
-// refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
+// refocusActiveTerm). Exported so the composition root's injection and
+// the dom-test stubs are typechecked against one shape.
 export interface ViewDeps {
   ensureTerm: (info: SessionInfo) => TermTile;
   setActive: (id: string | null) => void;

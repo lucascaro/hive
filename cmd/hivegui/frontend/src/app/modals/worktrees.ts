@@ -6,7 +6,7 @@
 // lives in ../../lib/worktrees.ts.
 //
 // What stays here is the open/close pair its callers import (keyboard.ts,
-// the sidebar, the session tiles, main.ts), the daemon round-trip, and
+// the sidebar, the session tiles, main.tsx), the daemon round-trip, and
 // the "worktree:list" event sink — the daemon answers every mutation
 // with a fresh inventory, so nothing patches: the store field is
 // replaced and the component re-renders from it.
@@ -63,7 +63,7 @@ let deps: WorktreesDeps = {
   openSessionIn: () => {},
 };
 
-// openSessionIn is the component's one dependency on main.ts's wiring;
+// openSessionIn is the component's one dependency on main.tsx's wiring;
 // it reads it through here rather than taking a prop, so the component
 // mounts with the same shape as the other modals.
 export function openSessionIn(

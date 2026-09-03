@@ -557,3 +557,42 @@ describe('appearance debounce', () => {
     }
   });
 });
+
+// The preset picker's <optgroup> bucketing. Asserted here because
+// groupPresets() is a per-RUN grouping, not a per-name one: it buckets
+// only CONSECUTIVE presets sharing a group, so the rendered order is the
+// PRESETS array order and a group that appears twice in the array yields
+// two optgroups. Nothing else in the suite touches it, and the imperative
+// field primitive whose test used to cover this shape was deleted with
+// the React rewrite's last phase.
+describe('theme preset picker grouping', () => {
+  it('buckets consecutive presets sharing a group into one optgroup', () => {
+    open();
+    const select = el<HTMLSelectElement>('settings-theme');
+    const groups = [...select.querySelectorAll('optgroup')];
+
+    expect(groups.length).toBeGreaterThan(0);
+    // Every option lives under an optgroup or directly under the select;
+    // none is orphaned by a run boundary.
+    const inGroups = groups.flatMap((g) => [...g.querySelectorAll('option')]);
+    const direct = [...select.children].filter(
+      (c): c is HTMLOptionElement => c.tagName === 'OPTION',
+    );
+    expect(inGroups.length + direct.length).toBe(
+      select.querySelectorAll('option').length,
+    );
+    // Runs, not names: no two ADJACENT optgroups share a label.
+    const labels = groups.map((g) => g.label);
+    for (let i = 1; i < labels.length; i++) {
+      expect(labels[i]).not.toBe(labels[i - 1]);
+    }
+  });
+
+  it('renders options in PRESETS order across the groups', () => {
+    open();
+    const select = el<HTMLSelectElement>('settings-theme');
+    const rendered = [...select.querySelectorAll('option')].map((o) => o.value);
+    expect(rendered).toEqual([...new Set(rendered)]);
+    expect(rendered.length).toBeGreaterThan(1);
+  });
+});

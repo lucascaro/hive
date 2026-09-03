@@ -52,7 +52,7 @@ export function MinimizedTray({
   root: HTMLElement | null;
   /**
    * Owned by view.ts: restoring repaints the grid and can move focus.
-   * Referentially stable for the life of the app (main.ts passes the
+   * Referentially stable for the life of the app (main.tsx passes the
    * module function itself), which is what lets TrayChip's memo hold.
    */
   restoreSession: (id: string) => void;

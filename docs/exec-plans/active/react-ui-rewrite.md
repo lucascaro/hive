@@ -641,11 +641,22 @@ children and constrain the design:
 - `GridView` renders no DOM and must not own `#terms`, whose children are
   SessionTerm hosts (Invariant 5).
 
-So App.tsx mounts on `#app` and renders the *whole* `#app` subtree except
+> **Superseded during implementation — see the Decision log entry "the single
+> root renders portals, not markup".** What shipped is the paragraph below with
+> one change, and it is not a detail: App.tsx emits **no markup at all**. It
+> mounts on the empty hidden `#react-root` (the renamed `#grid-root`, not a
+> removed one) and renders each region as a `createPortal` into the element that
+> region already owned. Owning the `#app` subtree, as this paragraph planned,
+> would have blanked and rebuilt `#boot-state`'s pre-paint card at mount, and
+> would have put `#terms` inside React's tree. The mount-order concern below
+> also dissolved: one root means one commit, so there is no gap for the control
+> handshake to land in.
+
+~~So App.tsx mounts on `#app` and renders the *whole* `#app` subtree except
 `#terms` and `#sidebar-resizer`, both of which stay static in `index.html` and
 are reached imperatively as they are today. Mount order effects are preserved by
 component order: `VersionFooter`'s `daemon:stale` subscription must still be
-live before the modals mount (the reason the island array ordered it there).
+live before the modals mount (the reason the island array ordered it there).~~
 
 `src/main.tsx` replaces `src/main.ts`, bootstrap order **theme → hydrate store
 from localStorage → wire daemon events → mount root → freeze heartbeat**. The

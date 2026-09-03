@@ -28,7 +28,7 @@ This file covers how the frontend itself is put together.
 | `src/components/` | React components. `App.tsx` is the tree; `modals/` holds the seven dialogs. |
 | `src/store/` | `store.ts` (the zustand store + every action) and `terms.ts` (the SessionTerm registry, deliberately outside the store). |
 | `src/app/` | Imperative subsystems: daemon events, keyboard, view commands, grid layout, focus pipeline, the terminal class, and the thin modal controllers the components call into. |
-| `src/lib/` | Pure logic — no DOM, no bridge. Unit-tested in the node environment. |
+| `src/lib/` | Shared logic, no bridge calls. Most of it is pure and unit-tested in the node environment; seven modules do touch the DOM (`focus.ts`, `focus-trap.ts`, `preserve-focus.ts`, `drag-placeholder.ts`, `renderer-recovery.ts`, `scroll-debug.ts`, `freeze-heartbeat.ts`) and are tested under `test/dom` instead. |
 | `src/theme/` | Token CSS, presets, and the runtime theme applier. |
 | `src/ui/` | The last two imperative DOM primitives (`icon.ts`, `icon-button.ts`), still used by `session-term.ts`. Everything else was ported to `src/components/`. |
 
@@ -48,7 +48,10 @@ element `index.html` already owns. That is not incidental:
 markup (`#status`, `#boot-state`, `#sidebar-hints`) are emptied in `main.tsx`
 immediately before the root's first commit, which is flushed synchronously so
 no frame lands in between. Add pre-paint markup to a fourth container and it
-needs the same treatment.
+needs the same treatment — `test/dom/app-root.test.tsx` mounts `App` against the
+real `index.html` and fails if any id ends up in the document twice, so the
+drift surfaces there rather than as an unrelated Playwright strict-mode
+failure.
 
 **Container-level classes** (`.hidden`, `.error`, `.mismatch`) sit on the portal
 target, outside React's tree, so each component applies its own in a
@@ -126,7 +129,7 @@ Four layers, run with `scripts/test.sh [layer …]` from the repo root.
 
 | Layer | Environment | What belongs there |
 |---|---|---|
-| `unit` | node | `src/lib/*` and the store. Pure logic, no DOM. |
+| `unit` | node | The pure half of `src/lib/*`, and the store. No DOM. The DOM-touching `lib` modules are tested in the `dom` project. |
 | `dom` | vitest + jsdom | Components via `@testing-library/react`, and the imperative modules that need a document. |
 | `e2e` | Playwright vs the Wails **mock** | User-visible behaviour, against ids and `hv-*` classes. |
 | `e2e-real` | Playwright vs a real `hived` | Terminal/PTY behaviour. `npm run test:e2e:real`. Isolation via `HIVE_SOCKET` + `HIVE_STATE_DIR` is mandatory. |

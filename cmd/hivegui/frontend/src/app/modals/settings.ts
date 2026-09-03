@@ -2,13 +2,13 @@
 //
 // The panel renders from components/modals/Settings.tsx (Phase 3). What
 // stays here is the open/close pair every caller already imports from
-// this path (keyboard.ts, events.ts, main.ts, the command palette), the
+// this path (keyboard.ts, events.ts, main.tsx, the command palette), the
 // argv splitter Go's validator mirrors, and the OS theme watch — which
 // is not part of the modal at all: it runs whether or not Settings has
 // ever been opened.
 //
 // Focus-pipeline callbacks are injected via initSettings(deps) — this
-// module must never import the focus pipeline directly (main.ts owns
+// module must never import the focus pipeline directly (main.tsx owns
 // that wiring).
 
 import { flushSync } from 'react-dom';

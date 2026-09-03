@@ -1,5 +1,6 @@
 // The single React root's tree. Phase 6 of the React rewrite replaced
-// main.ts's fourteen island roots with this one component.
+// the fifteen island roots the composition root used to mount with
+// this one component.
 //
 // Every region is a portal into the element index.html already owns,
 // rather than markup this tree emits, and that is deliberate:
@@ -20,7 +21,7 @@
 //
 // What the single root buys over the islands it replaces: one
 // reconciler and one commit, so every region lands in the same frame
-// and in this file's order, instead of fourteen commits whose relative
+// and in this file's order, instead of fifteen commits whose relative
 // timing had to be reasoned about (the version footer's subscription
 // used to have to be mounted ahead of the modals to win a race with the
 // control handshake — with one commit there is no gap to lose).
@@ -30,7 +31,7 @@
 // target, outside this tree.
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
-import { mustEl, pageEl } from '../app/el.js';
+import { mustEl } from '../app/el.js';
 import { confirmAndDeleteProject } from '../app/keyboard.js';
 import { refocusActiveTerm, setFocusedTile } from '../app/focus.js';
 import {
@@ -72,29 +73,34 @@ const sidebarCallbacks: Omit<SidebarProps, 'trayEl'> = {
 };
 
 export function App(): ReactNode {
-  // getElementById per render rather than a module-scope lookup: the
-  // dom tests mount App against markup they build in beforeEach, and a
-  // module-scope handle would pin the first suite's document. The
-  // lookups are cheap and return the same node, so the `root` props stay
-  // referentially stable.
+  // getElementById per render rather than a module-scope lookup: a
+  // module-scope handle would pin whichever document was loaded when this
+  // module was first imported, which the dom tests (each of which builds
+  // its own markup) would get wrong. The lookups are cheap and return the
+  // same node, so the `root` props stay referentially stable.
+  //
+  // mustEl, not pageEl: pageEl is a cast that yields null for a missing id,
+  // and createPortal(node, null) throws — which, with one root, takes the
+  // whole tree down instead of the one island that used to be skipped.
+  // Failing here names the id that went missing.
   const projects = mustEl('projects');
-  const status = pageEl('status');
-  const bootState = pageEl('boot-state');
-  const emptyState = pageEl('empty-state');
-  const minimizedTray = pageEl('minimized-tray');
-  const sidebarHints = pageEl('sidebar-hints');
-  const launcher = pageEl('launcher');
-  const settings = pageEl('settings');
-  const worktrees = pageEl('worktrees');
-  const projectEditor = pageEl('project-editor');
-  const helpOverlay = pageEl('help-overlay');
-  const choiceDialog = pageEl('choice-dialog');
-  const commandPalette = pageEl('command-palette');
+  const status = mustEl('status');
+  const bootState = mustEl('boot-state');
+  const emptyState = mustEl('empty-state');
+  const minimizedTray = mustEl('minimized-tray');
+  const sidebarHints = mustEl('sidebar-hints');
+  const launcher = mustEl('launcher');
+  const settings = mustEl('settings');
+  const worktrees = mustEl('worktrees');
+  const projectEditor = mustEl('project-editor');
+  const helpOverlay = mustEl('help-overlay');
+  const choiceDialog = mustEl('choice-dialog');
+  const commandPalette = mustEl('command-palette');
 
   return (
     <>
       {createPortal(
-        <Sidebar {...sidebarCallbacks} trayEl={pageEl('minimized-projects')} />,
+        <Sidebar {...sidebarCallbacks} trayEl={mustEl('minimized-projects')} />,
         projects,
       )}
       {/* Renders nothing. Its whole job is a layout effect against
@@ -104,7 +110,7 @@ export function App(): ReactNode {
       {/* #banners is `display: contents` (layout.css), so the three
           banners stay direct children of the #app grid and keep their
           row placement. */}
-      {createPortal(<Banners />, pageEl('banners'))}
+      {createPortal(<Banners />, mustEl('banners'))}
       {createPortal(<StatusBar root={status} />, status)}
       {createPortal(<BootState root={bootState} />, bootState)}
       {createPortal(<EmptyState root={emptyState} />, emptyState)}

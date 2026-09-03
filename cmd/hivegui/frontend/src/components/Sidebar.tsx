@@ -13,7 +13,7 @@
 // around: a full rebuild between two clicks replaced the <li> and ate the
 // dblclick pair that starts a rename.
 //
-// View/focus callbacks arrive as props from main.ts, the composition
+// View/focus callbacks arrive as props from main.tsx, the composition
 // root, for the same reason initSidebar(deps) took them: importing
 // view.ts / keyboard.ts here would close an import cycle.
 import {
@@ -103,7 +103,7 @@ function projectHasAttention(
 // is the rule session-term.ts's _closeDead already follows — there is
 // nothing left to lose once the process is gone.
 //
-// force=false on the live branch, like every other kill path (main.ts's
+// force=false on the live branch, like every other kill path (main.tsx's
 // close-session command, ⌘W, the menu): it lets the daemon refuse with
 // worktree_dirty so events.ts can ask the real three-way question
 // (cancel / close / close and delete the worktree). Forcing here would
@@ -174,7 +174,7 @@ interface SessionItemProps {
   selected: boolean;
   minimized: boolean;
   attention: boolean;
-  // The whole prop bag rather than three bound callbacks: main.ts builds
+  // The whole prop bag rather than three bound callbacks: main.tsx builds
   // it once for the life of the app, so it is a referentially stable
   // prop, where `() => switchTo(s.id)` would be a fresh function on
   // every parent render and would defeat the memo below.

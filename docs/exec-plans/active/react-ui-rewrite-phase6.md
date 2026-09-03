@@ -73,5 +73,33 @@ Per the master plan's Verification block, compared against
 
 ## PR convergence ledger
 
-<Append-only. Maintained by hand for this feature — see the master plan's
-Gating convention.>
+Append-only. Maintained by hand for this feature — `/hs-review-loop` finds a
+plan by an `<NNN>`-prefixed name, which this feature's plans do not have (see
+the master plan's Gating convention).
+
+- **2026-09-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash:
+  `6d2bc40e…`; threads_open: 0; action: fixes applied (COMMENT with strict off
+  and zero threads is a stop, but all 7 IMPORTANT and 5 MINOR findings were
+  high-confidence and low-risk, so they were applied here per AGENTS.md's
+  boil-the-lake rule rather than deferred); head_sha: 601763c.
+  - **The load-bearing one:** `tsconfig.json` still listed the deleted
+    `src/main.ts`. Nothing imports the entry point, so the rewritten
+    composition root was outside the tsc program entirely and this plan's
+    "typecheck clean" was vacuous for it. Fixed, with a comment on the include
+    array; `tsc --noEmit` is clean with `main.tsx` genuinely in the program.
+  - `App.tsx` had zero dom coverage behind a comment claiming otherwise. Added
+    `test/dom/app-root.test.tsx`, which mounts against the **real**
+    `index.html` (`?raw`) and asserts no id occurs twice — closing the finding
+    that `main.tsx`'s hardcoded pre-paint clear list had nothing keeping it in
+    sync with the document. Includes a negative control.
+  - `App.tsx` portalled into `pageEl()` (a cast that yields `null`;
+    `createPortal(node, null)` throws, and with one root that takes the whole
+    tree down). Switched all 13 targets to `mustEl`.
+  - Docs: `components.md` still documented the deleted `ui/{button,kbd}.ts`;
+    `FRONTEND.md` claimed `src/lib` is DOM-free (seven modules are not); the
+    Phase 6 brief still described the `#app`-owning design that was superseded
+    during implementation. All three corrected.
+  - Coverage the deleted `ui-field.test.ts` had been the last to assert:
+    `groupPresets()` optgroup bucketing (2 cases in `settings.test.tsx`) and
+    the project editor's field/label a11y contract (2 in
+    `project-editor.test.tsx`).

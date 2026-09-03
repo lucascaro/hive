@@ -63,6 +63,11 @@ export function activeProjectId(): string {
   // ⌘[/], project-header click, switchTo (synced to session's
   // project), and project events. Empty projects work because they
   // can be the current project even with no active session.
+  // The one destructured read in src/: three fields, all consumed in the
+  // next four lines with no await and no store write between them, and
+  // TS needs the local bindings to narrow `string | null` to `string` on
+  // return. Everywhere else the rule in FRONTEND.md holds — call appData()
+  // per read, never hold a snapshot across anything that can write.
   const { currentProjectId, view, gridProjectId } = appData();
   if (currentProjectId) {
     return currentProjectId;
