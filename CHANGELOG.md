@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upstream values rather than being adjusted to meet Hive's contrast bar, so
   some of their text sits below WCAG AA. They are opt-in; the presets you can
   land on without choosing one are unaffected.
+- Added a "Check for updates" button to the sidebar header, next to the
+  "New project" (+) button. It runs the same check the macOS app menu's
+  "Check for Updates…" item ran, and reports the result in the usual update
+  banner — up to date, update available, or check failed. Until now that check
+  had no in-window trigger at all, and none whatsoever outside macOS.
+
+- Changed the "New project" (+) button to the app's standard icon-button
+  styling so it matches its new neighbour. At rest it is now flat and its
+  glyph is dimmed, the same as every other icon button in the app; hovering
+  restores the full-strength glyph and brings the background back, now with
+  the same short fade the app's other icon buttons use.
 - Theme presets groundwork. `localStorage['hive.theme']` accepts `classic`
   (default), `hive-dark`, `hive-light`, `system`. No visual change by
   default, except that the terminal cursor and selection now use the accent
