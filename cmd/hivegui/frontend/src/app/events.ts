@@ -54,10 +54,9 @@ export interface EventsDeps {
   // The sidebar, the minimized tray and the empty-state pane all render
   // themselves from the store since Phase 2 of the React rewrite, so
   // none of them needs a repaint call here any more.
-  // renderGrid / enforceViewFloor come through the deps seam rather
-  // than a direct view.ts import: view.ts pulls in sidebar and the
-  // modals, and events.ts is deliberately kept out of that graph.
-  renderGrid: () => void;
+  // enforceViewFloor comes through the deps seam rather than a direct
+  // view.ts import: view.ts pulls in sidebar and the modals, and
+  // events.ts is deliberately kept out of that graph.
   enforceViewFloor: () => void;
   updateAppTitle: () => void;
   focusActiveTerm: () => void;
@@ -74,7 +73,6 @@ export interface EventsDeps {
 // and the stub can't drift out of the interface.
 let deps: EventsDeps = {
   switchTo: () => {},
-  renderGrid: () => {},
   enforceViewFloor: () => {},
   updateAppTitle: () => {},
   focusActiveTerm: () => {},
@@ -450,24 +448,18 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // Killing the second-to-last tile leaves a one-tile grid, which is
       // the degenerate state setView refuses to enter.
       deps.enforceViewFloor();
-      // Repaint the grid: one of its cells just went away. Previously
-      // the only repaint on this path was the switchTo above, which
-      // fires solely when the *active* tile was the one killed — so a
-      // grid that lost any other tile kept a stale layout. Focus now
-      // moves at `closing`, so by the time `removed` lands the active
-      // id is already the neighbour and switchTo never runs; without
-      // this, closing a session never refreshed the grid at all.
-      if (state.view !== 'single') deps.renderGrid();
+      // No repaint call: removeSession() drops the id from the grid
+      // scope, which moves GridView's signature. (The explicit
+      // renderGrid() that used to stand here existed because the only
+      // other repaint on this path was the switchTo above, which fires
+      // solely when the *active* tile was the one killed.)
     } else if (ev.kind === 'updated') {
       // A reorder arrives as `updated` events carrying new .order
-      // values. renderGrid appends tiles in gridScopeSessions order, so
-      // without a repaint the sidebar reorders while the tiles keep
-      // their stale DOM order.
-      const prevOrder = i >= 0 ? state.sessions[i].order : undefined;
+      // values. The layout pass appends tiles in gridScopeSessions
+      // order, and that order is part of GridView's signature, so the
+      // store write below is the repaint — a rename, which changes the
+      // sessions array but not the order, still costs nothing.
       if (i >= 0) updateSession(ev.session);
-      if (prevOrder !== ev.session.order && state.view !== 'single') {
-        deps.renderGrid();
-      }
       // Push the new name/color/worktree branch into the cached
       // SessionTerm so the grid tile-header refreshes immediately.
       // Without this, renames look broken in grid mode — the sidebar
@@ -486,8 +478,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
         // off and set needsReattach. Now that the daemon has confirmed
         // a fresh alive=true PTY, reattach the visible term so its
         // resumed stream starts flowing without a manual switch.
-        // Hidden terms are left dirty; switchTo/showSingle/renderGrid
-        // will ensureAttached when they next become visible.
+        // Hidden terms are left dirty; switchTo and the next layout
+        // pass will ensureAttached when they next become visible.
         if (st.needsReattach && ev.session.alive) {
           st.needsReattach = false;
           try {

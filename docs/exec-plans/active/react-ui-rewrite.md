@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
-- **PR:** [#320](https://github.com/lucascaro/hive/pull/320) — the phase currently in flight (Phase 4). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
-- **Branch:** `feature/react-phase4-modals-b`
+- **PR:** [#321](https://github.com/lucascaro/hive/pull/321) — the phase currently in flight (Phase 5). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **Branch:** `feature/react-phase5-grid-shell`
 - **Status:** active
 
 ## Summary
@@ -122,8 +122,8 @@ implemented — the briefs deliberately do not all exist up front.
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
-| 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **gate PASS**, PR open |
-| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
+| 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
+| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **in flight** |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
 **Carried into Phase 6's deletion sweep** (each verified to have zero production
@@ -153,17 +153,30 @@ RTL = `@testing-library/react`. All rewritten tests keep asserting the same clas
   review — the mid-edit repaint, two keyboard-strand-on-close cases, and five
   covering the answers that delete a branch on a remote, which had no coverage
   at all. (Derivation: `grep -cE "^\s*it\("` on each side of `main...HEAD`.) Planned as rewrites but neither turned out to need one — corrected here at the gate rather than left as a forecast the shipped code contradicts: `focus-trap.test.ts` exercises pure helpers whose signatures did not change, so it took an import repoint (and two cases for the new nullable container) and stays plain jsdom; `keyboard-arrows.test.ts` covers arrow routing *below* the modal ladder and was not touched at all. New: `test/dom/choice-dialog.test.tsx` (open → answer → auto-cleanup, keyboard never stranded), `test/dom/keyboard-precedence.test.tsx` (table-driven over all 9 layers, store-backed ladder matches legacy order), `test/dom/inline-rename.test.ts` (the identity guard a React cleanup depends on), and dom coverage for the three modals that had none: `command-palette`, `project-editor`, `help-overlay`.
-- Phase 5 — New: `test/dom/grid-layout.test.tsx` (spy-sequence asserts template-set-before-attach; reparent not recreate — same node identity across renders; out-of-scope tile keeps its DOM node). Update to the new entry points: `view-floor.test.ts`, `xterm-reflow.test.ts`, and the three that import `initView` from `src/app/view.js` (deleted this phase) — `attention-jump.test.ts`, `attention-jump-integration.test.ts`, `test/dom/nav-history.test.ts`.
+- Phase 5 — New: `test/dom/grid-layout.test.tsx` (8 cases: spy-sequence asserts
+  template-set-before-attach; reparent not recreate — same node identity across
+  passes; out-of-scope tile keeps its DOM node; and on the React half, GridView
+  renders no DOM, repaints on a scope change, and does NOT repaint on a bell or
+  a rename). Repointed to the new entry points: `grid-reorder-focus.test.ts`
+  (calls `applyGridLayout()`), `minimize-project.test.tsx` (`gridScopeFor` from
+  `grid-layout.js`) and `events-focus.test.ts` (drops the `renderGrid` dep).
+  Forecast here as needing updates but in the event not touched, because they
+  mock `view.js` or drive it through commands that survive: `view-floor.test.ts`,
+  `xterm-reflow.test.ts`, `attention-jump.test.ts`,
+  `attention-jump-integration.test.ts`, `test/dom/nav-history.test.ts`.
+  `src/app/view.ts` itself is NOT deleted this phase — Phase 6's scope owns
+  that; what goes here is its render half.
 - Phase 6 — New: `test/dom/app-shell.test.tsx` (single root mounts all regions, ids present). Sweep: no test imports a deleted module.
 
 ## Known spec-edit exceptions
 
 Exactly one is sanctioned, surfaced by the Phase 0 review and carried into the
 phase plans that hit it: `test/e2e/nav-history.spec.ts:100` mutates the store's
-`minimized` Set in place. It works until a component subscribes to `minimized`
-(Phase 2's tray, Phase 5's grid), at which point that phase changes the line to
-call an action. It is not a DOM-contract break. Every other spec edit still
-means the contract broke.
+`minimized` Set in place. It worked until a component subscribed to `minimized`: Phase 2's tray got there
+first and converted the line to an assignment (`s.minimized = new Set([...])`,
+which routes through `setMinimized`), so Phase 5's grid found it already
+correct and changed no spec. It was not a DOM-contract break. Every other spec
+edit still means the contract broke.
 
 ## Verification
 
@@ -448,6 +461,87 @@ its own `return` — the ladder's shape is what the table-driven test pins.
   and a backdrop click resolve to it. Focus returns to the opener only if it is
   still connected (deleting a worktree takes its row's button with it).
 
+### Phase 5 — grid shell (written 2026-09-03 against `main` @ e6757d0)
+
+**Verbatim-move list.** Everything below moves from `src/app/view.ts` to the
+new `src/app/grid-layout.ts` unchanged except for the two mechanical edits
+named in "lines that change". Nothing else in these bodies is touched.
+
+| From `view.ts` | To `grid-layout.ts` | Lines that change |
+|---|---|---|
+| `showSingle()` :66 | `applySingle(id)` | rename; `state.terms` → `allTerms()` / `getTerm()` |
+| `_ric` :230 | `_ric` | none |
+| `attachDeferred()` :234 | `attachDeferred` | none |
+| `renderGrid()` :249 | `applyGridLayout()` | rename; `deps.ensureTerm` → imported `ensureTerm`; `deps.scrollTrace` → imported `scrollTrace`; `state.terms` → registry |
+| `gridLayout` cache :210 | module-local + `getGridLayout()` | export accessor for `gridSpatialMove` |
+| `rebaselineGridReplayCols()` :592 | exported | none |
+| `gridScopeFor()` :467, `gridScopeSessions()` :486 | same | none |
+| `#terms` ResizeObserver :665-679 | same | `renderGrid()` → `applyGridLayout()` |
+
+Stays in `view.ts` (commands, not rendering): `isSessionHidden` — it reads
+nothing but the store, and moving it would pull `grid-layout.ts`'s module-scope
+ResizeObserver into `keyboard.ts`'s import graph, which four dom tests mock
+`view.js` specifically to avoid — plus `switchTo`, `switchToProject`,
+`firstVisible`, `fallBackToSingleIfActiveHidden`, `gridSpatialMove`,
+`shiftActiveProject`, `minimizeSession`, `restoreSession`, `minimizeProject`,
+`restoreProject`, `enforceViewFloor`, `setView`, `updateAppTitle`. Each loses
+its `renderGrid()` / `showSingle()` call; the store write that used to precede
+it is what repaints now. `view.ts` is deleted in Phase 6, not here — Phase 6's
+scope line is the authority; this plan's Tests line ("`src/app/view.js`
+(deleted this phase)") is corrected to mean `initView` and the render exports.
+
+**Trigger model.** `GridView` subscribes to a *derived layout signature*, not
+to `sessions`:
+
+```
+`${view}|${activeId}|${gridProjectId}|${gridScopeSessions().map(s => s.id).join('\0')}`
+```
+
+and its single `useLayoutEffect` depends on that string alone. Two findings
+force this shape, both verified in the current code:
+
+- **`attention` must NOT be a dependency**, though this plan's Scope line
+  listed it. Today the attention class is patched straight onto the host by
+  `events.ts:174/177/184/226` and `focus.ts:54` — a bell never calls
+  `renderGrid()`. Subscribing to it would repaint on every bell, and
+  `attachDeferred` calls `ensureAttached()` on every in-grid tile, which
+  re-latches follow-bottom (invariant 2). `applyGridLayout` keeps setting the
+  class during a pass, reading `attention` non-reactively from
+  `store.getState()` — exactly what `renderGrid` does today.
+- **Raw `sessions` must NOT be a dependency.** `session:event(updated)` is the
+  high-frequency kind (one per phase step, one per surviving session after a
+  kill recompacts order, one per agent-id capture poll) and replaces the array
+  reference every time. Today only two of those branches repaint
+  (`events.ts:460` removal, `:469` order change) — both of which change the
+  signature. A rename changes the array but not the signature, and today it
+  does not repaint either.
+
+**Ordering.** Store writes made by a command that has post-layout work
+(`focusActiveTerm`, `snapVisibleTermsToBottom`, `rebaselineGridReplayCols`) are
+wrapped in `flushSync` so the layout effect has already run when that work
+starts — the same pattern the six modals adopted in Phases 3-4 for plain
+listeners. Without it the effect would land after `focusActiveTerm`, inverting
+invariants 3 and 4.
+
+**Call sites that lose their explicit repaint** (the store write now carries
+it): `events.ts` `deps.renderGrid` (seam field deleted, both calls with it);
+`session-term.ts:620-628` mousedown (`setActive` alone — the `activeId` change
+repaints); `main.ts`'s `renderGrid` import and its `wireDaemonEvents` argument.
+
+**Known behaviour delta, accepted:** `switchTo(id)` where `id` is already
+active in a grid view used to run a full `renderGrid()` and thereby re-anchor
+every background tile to the bottom. It now repaints nothing (no signature
+change); the active tile still gets its explicit
+`snapVisibleTermsToBottom([st])`. This is strictly fewer `ensureAttached()`
+calls, which is the direction the invariant allows.
+
+**Mount point.** `GridView` renders `null`, so it needs a container of its own
+rather than `#terms` (whose children are the terminal hosts React must never
+own): `index.html` gains `<div id="grid-root" hidden></div>`. `hidden` is
+`display: none`, so it is not a grid item and the `#app` row placement — every
+region of which is placed explicitly — is unchanged. Phase 6 removes the
+element with the island array.
+
 ## PR convergence ledger
 
 This feature ships as seven PRs against one spec, so convergence is recorded
@@ -461,7 +555,7 @@ test.
 - **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
 - **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
 - **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
-- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Open, awaiting the gate. Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
+- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Merged 2026-09-03 (`d794caa`). Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
 
 ## Gate verdict
 

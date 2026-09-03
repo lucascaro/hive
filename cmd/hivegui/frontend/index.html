@@ -141,6 +141,12 @@
        hv-dialog — the palette is its own popup. -->
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette"></div>
   <main id="terms" aria-label="Terminals"></main>
+  <!-- Mount point for components/GridView.tsx, which renders no DOM: the
+       terminal tiles inside #terms are SessionTerm hosts and React must
+       never own them. `hidden` is display:none, so this is not an #app
+       grid item and every region's explicit row placement is unchanged.
+       Phase 6 of the React rewrite removes it with the island array. -->
+  <div id="grid-root" hidden></div>
   <div id="empty-state" class="hidden"></div>
   <!-- Visible from the first paint: the daemon may take seconds to come
        up on a cold, busy machine, and a black pane with a "connecting…"

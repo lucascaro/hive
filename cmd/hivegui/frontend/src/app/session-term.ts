@@ -86,12 +86,7 @@ import {
   type WheelEventLike,
 } from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
-import {
-  minimizeSession,
-  updateAppTitle,
-  showSingle,
-  renderGrid,
-} from './view.js';
+import { minimizeSession, updateAppTitle } from './view.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 import { beginInlineRename } from './inline-rename.js';
 
@@ -618,14 +613,11 @@ export class SessionTerm {
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
       if (state.activeId !== this.info.id) {
+        // No repaint call: setActive writes activeId, and that is one of
+        // the fields GridView's signature watches — single mode swaps the
+        // shown tile, grid mode moves the .active ring, both from the
+        // layout effect.
         setActive(this.info.id);
-        if (state.view === 'single') {
-          // Switch terms in single mode; in grid mode every tile is
-          // already visible so there's nothing else to do.
-          showSingle(this.info.id);
-        } else {
-          renderGrid();
-        }
       } else {
         // Reclick on the active tile — still clears any leftover
         // attention indicator.
