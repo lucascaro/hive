@@ -126,6 +126,19 @@ implemented — the briefs deliberately do not all exist up front.
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
+**Carried into Phase 6's deletion sweep** (each verified to have zero production
+importers at the phase that stranded it — they are reachable only from their own
+dom tests, so they cost nothing but a reader's time until then):
+
+- `src/ui/button.ts`, `src/ui/field.ts`, `src/ui/kbd.ts` — stranded by Phase 4,
+  which ported their last callers (the four remaining imperative modals) to
+  `components/Button.tsx`, hand-written field markup and `components/Kbd.tsx`.
+  Their `test/dom/ui-{button,field}.test.ts` go with them. Still live and NOT on
+  this list: `src/ui/icon.ts` (3 importers) and `src/ui/icon-button.ts`
+  (`session-term.ts`).
+- `src/app/state.ts`'s compat facade and `window.__hive_state`, per the Phase 0
+  review.
+
 ## Tests
 
 RTL = `@testing-library/react`. All rewritten tests keep asserting the same classes/data-attrs as today. Playwright e2e + e2e-real: **zero spec changes across the whole migration** (any exception needs explicit sign-off in the PR description).
@@ -443,7 +456,7 @@ test.
 - **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
 - **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
 - **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
-- **Phase 4** — PR #320 — see [phase4](react-ui-rewrite-phase4.md#pr-convergence-ledger); in flight.
+- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Open, awaiting the gate. Five review iterations; see [phase4](react-ui-rewrite-phase4.md#pr-convergence-ledger).
 
 ## Gate verdict
 

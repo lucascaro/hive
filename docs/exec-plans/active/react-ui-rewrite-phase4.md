@@ -305,3 +305,21 @@ hardcoded the `choice-dialog` class the island is supposed to toggle (so it
 could not have caught the island failing to), and two ladder comments still
 describing the deleted `ui/dialog.ts`.
 - **2026-09-03 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d676510c; threads_open: 0; action: fixes applied + push (3 of 4 IMPORTANTs stood — island mount order behind the macOS red leg, untested remote-deleting answers, a vacuous close-race test; the fourth, stale worktrees baselines, was refuted by running them); head_sha: afbd37a.
+
+**2026-09-03 — review iteration 5: APPROVE.** Zero BLOCKING, zero IMPORTANT,
+zero threads, and all three `Build, Vet & Test` legs green on `8439446` —
+including macOS, on its first attempt (the workflow sets `failOnFlakyTests`, so
+a green leg means `ux-polish.spec.ts:232` did not need its retry). That is the
+check the mount-order fix targeted, so the fix is confirmed by the thing that
+caught the bug. The iteration-4 fixes were verified at source, and none of the
+four dimension agents re-raised the baseline claim once the refutation was
+passed through to them.
+
+Five MINORs survive, none merge-blocking. The one worth carrying: this phase
+stranded `src/ui/{button,field,kbd}.ts` — their last callers were the four
+modals ported here. They have zero production importers now and are reachable
+only from their own dom tests. Deleting them is Phase 6's job (it is the
+deletion phase, and doing it here would mean re-reviewing a scope expansion
+after an APPROVE), so they are listed explicitly in the master plan's phase
+table rather than left for a future reviewer to rediscover.
+- **2026-09-03 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 8439446. Converged: all three CI legs green (macOS first-attempt, which is what the iteration-4 mount-order fix targeted); iteration-4 fixes verified at source; 5 MINORs left, one of them carried to Phase 6's deletion sweep.
