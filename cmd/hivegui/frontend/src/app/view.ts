@@ -8,12 +8,16 @@
 // Phase 5 of the React rewrite.
 //
 // ensureTerm / setActive / focusActiveTerm and the scroll tracer are
-// still injected via initView(deps) — they live in session-term/focus
-// modules and main.ts. Phase 6 deletes the seam with this file.
+// injected via initView(deps) — they live in session-term/focus modules
+// and main.tsx. The seam is permanent, not scaffolding: session-term.ts
+// imports this file, so importing ensureTerm here directly would close a
+// cycle. Phase 6 audited every deps seam and kept this one for that
+// reason.
 
 import { flushSync } from 'react-dom';
 import { WindowSetTitle } from '../bridge.js';
-import { state, type SessionInfo, type TermTile } from './state.js';
+import type { ProjectInfo, SessionInfo, TermTile } from './state.js';
+import { termsMap } from '../store/terms.js';
 import * as store from '../store/store.js';
 import { setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
@@ -32,8 +36,14 @@ import { isMac } from '../lib/platform.js';
 import { modeHints } from '../lib/status.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => store.appStore.getState();
+
 // Per-module deps (view wants focusActiveTerm where sidebar wants
-// refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
+// refocusActiveTerm). Exported so the composition root's injection and
+// the dom-test stubs are typechecked against one shape.
 export interface ViewDeps {
   ensureTerm: (info: SessionInfo) => TermTile;
   setActive: (id: string | null) => void;
@@ -65,8 +75,8 @@ export function initView(injected: ViewDeps) {
   deps = injected;
   // One wiring call for both halves of the view: grid-layout.ts needs
   // the same ensureTerm and tracer, and importing them there directly
-  // would close a session-term ↔ grid-layout cycle. Phase 6 deletes both
-  // seams together.
+  // would close a session-term ↔ grid-layout cycle. Both seams
+  // stay for that reason.
   initGridLayout(injected);
 }
 
@@ -96,8 +106,8 @@ function withLayout<T>(fn: () => T): T {
 }
 
 export function switchTo(id: string | null) {
-  if (id === state.activeId) {
-    if (state.view === 'single') {
+  if (id === appData().activeId) {
+    if (appData().view === 'single') {
       deps.focusActiveTerm();
       return;
     }
@@ -110,7 +120,7 @@ export function switchTo(id: string | null) {
     // events.ts reattaches visible tiles on the next alive=true event;
     // this is the manual path for when that event never comes. Scoped to
     // the one tile, where the old full pass hit all of them.
-    if (id) state.terms.get(id)?.ensureAttached();
+    if (id) termsMap().get(id)?.ensureAttached();
     // Falls through: the status text, mode hint, app title, focus and
     // bottom-snap below all ran on this path before and still should.
   }
@@ -118,14 +128,14 @@ export function switchTo(id: string | null) {
     deps.setActive(id);
     let found: SessionInfo | undefined;
     if (id) {
-      found = state.sessions.find((s) => s.id === id);
+      found = appData().sessions.find((s) => s.id === id);
       if (found) deps.ensureTerm(found);
     }
     // Retarget the grid scope if the new session belongs to a different
     // project than the one currently shown in grid-project mode.
-    if (state.view === 'grid-project' && found) {
+    if (appData().view === 'grid-project' && found) {
       const pid = found.projectId ?? found.project_id;
-      if (pid && pid !== state.gridProjectId) store.setGridProjectId(pid);
+      if (pid && pid !== appData().gridProjectId) store.setGridProjectId(pid);
     }
     // Before painting: a grid view has no tile for a hidden session, so
     // drop to single first rather than rendering a grid the selection
@@ -139,7 +149,7 @@ export function switchTo(id: string | null) {
   // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
   // the hint is recomputed here too — a "focus / move" hint on a single
   // pane is exactly the lying hint AGENTS.md forbids.
-  setModeHint(modeHints(state.view, isMac));
+  setModeHint(modeHints(appData().view, isMac));
   updateAppTitle();
   // setActive() called focusActiveTerm() before ensureTerm() existed
   // for a brand-new session — re-focus now that the SessionTerm is
@@ -152,7 +162,7 @@ export function switchTo(id: string | null) {
   // whose attach replay won't re-fire. Skips detached/zero-height terms,
   // so a still-deferring tile is a no-op here (Change A catches it on attach).
   if (id) {
-    const st = state.terms.get(id);
+    const st = termsMap().get(id);
     if (st) snapVisibleTermsToBottom([st]);
   }
 }
@@ -171,11 +181,11 @@ export function updateAppTitle() {
   if (_appTitleTimer) return;
   _appTitleTimer = setTimeout(() => {
     _appTitleTimer = null;
-    const id = state.activeId;
-    const info = id ? state.sessions.find((s) => s.id === id) : null;
+    const id = appData().activeId;
+    const info = id ? appData().sessions.find((s) => s.id === id) : null;
     const parts = ['Hive'];
     if (info?.name) parts.push(info.name);
-    const t = id ? state.terms.get(id) : null;
+    const t = id ? termsMap().get(id) : null;
     if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
     const title = parts.join(' — ');
     document.title = title;
@@ -194,9 +204,9 @@ export function updateAppTitle() {
 export function switchToProject(pid: string) {
   if (!pid) return;
   store.setCurrentProjectId(pid);
-  if (state.view === 'grid-project') store.setGridProjectId(pid);
-  const sessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id) === pid)
+  if (appData().view === 'grid-project') store.setGridProjectId(pid);
+  const sessions = appData()
+    .sessions.filter((s) => (s.projectId ?? s.project_id) === pid)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const target = firstVisible(sessions);
   if (target) {
@@ -225,8 +235,8 @@ function firstVisible(sessions: SessionInfo[]): SessionInfo | undefined {
 // single mode ignores the filter, so falling back to it is the fix that
 // keeps "select without restoring" working.
 function fallBackToSingleIfActiveHidden() {
-  if (state.view === 'single') return;
-  const id = state.activeId;
+  if (appData().view === 'single') return;
+  const id = appData().activeId;
   if (!id || !isSessionHidden(id)) return;
   // persist: false — this is a forced fallback, not a preference. The
   // user's saved grid mode has to survive a detour through a minimized
@@ -237,14 +247,14 @@ function fallBackToSingleIfActiveHidden() {
 // isSessionHidden answers the one question every "can I switch to this
 // with a tile to land on?" caller asks: the session is out of the grid
 // either because it was minimized itself, or because its project was.
-// keyboard.ts branches on this rather than on state.minimized directly,
+// keyboard.ts branches on this rather than on appData().minimized directly,
 // so the two mechanisms can never drift apart. It stays here rather than
 // moving to grid-layout.ts with the scope helpers: it reads nothing but
 // the store, and keyboard.ts is the heaviest caller.
 export function isSessionHidden(id: string): boolean {
-  if (state.minimized.has(id)) return true;
-  const s = state.sessions.find((x) => x.id === id);
-  return !!s && state.minimizedProjects.has(readProjectId(s));
+  if (appData().minimized.has(id)) return true;
+  const s = appData().sessions.find((x) => x.id === id);
+  return !!s && appData().minimizedProjects.has(readProjectId(s));
 }
 
 // gridSpatialMove moves the active tile in the given direction.
@@ -254,7 +264,7 @@ export function isSessionHidden(id: string): boolean {
 export function gridSpatialMove(dCol: number, dRow: number) {
   const { sessions } = currentGridLayout();
   if (sessions.length === 0) return;
-  const idx = sessions.findIndex((s) => s.id === state.activeId);
+  const idx = sessions.findIndex((s) => s.id === appData().activeId);
   if (idx < 0) {
     withLayout(() => deps.setActive(sessions[0].id));
     return;
@@ -266,30 +276,30 @@ export function gridSpatialMove(dCol: number, dRow: number) {
 }
 
 export function shiftActiveProject(delta: number) {
-  if (state.projects.length === 0) return;
+  if (appData().projects.length === 0) return;
   const cur = activeProjectId();
-  const i = state.projects.findIndex((p) => p.id === cur);
+  const i = appData().projects.findIndex((p) => p.id === cur);
   if (i < 0) return;
   // Step over minimized projects: a project you put in the tray is out
   // of the keyboard rotation entirely (amends #250, which listed ⌘[/]
   // among the ways a minimized project stays reachable — the sidebar
   // chip, the sidebar and ⌘K are). Nothing visible to move to → stay.
-  const m = state.projects.length;
+  const m = appData().projects.length;
   const step = Math.sign(delta) || 1;
-  let next = null as (typeof state.projects)[number] | null;
+  let next = null as ProjectInfo | null;
   for (let k = 1; k < m && !next; k++) {
-    const cand = state.projects[(((i + step * k) % m) + m) % m];
-    if (!state.minimizedProjects.has(cand.id)) next = cand;
+    const cand = appData().projects[(((i + step * k) % m) + m) % m];
+    if (!appData().minimizedProjects.has(cand.id)) next = cand;
   }
   if (!next) return;
   const chosen = next;
-  const sessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id) === chosen.id)
+  const sessions = appData()
+    .sessions.filter((s) => (s.projectId ?? s.project_id) === chosen.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const target = firstVisible(sessions);
   withLayout(() => {
     store.setCurrentProjectId(chosen.id);
-    if (state.view === 'grid-project') store.setGridProjectId(chosen.id);
+    if (appData().view === 'grid-project') store.setGridProjectId(chosen.id);
     if (target) {
       // ensureTerm before setActive: the single-mode layout only shows a
       // tile that already exists, and this path never went through
@@ -313,18 +323,18 @@ export function shiftActiveProject(delta: number) {
 }
 
 // minimizeSession hides a session from grid views by adding its id to
-// state.minimized. The session stays alive; its tile leaves on the
+// appData().minimized. The session stays alive; its tile leaves on the
 // repaint that store write triggers. Single-session mode is unaffected —
 // the user can still switch to a minimized session via the sidebar / palette.
 export function minimizeSession(id: string | null) {
-  if (!id || state.minimized.has(id)) return;
-  const wasGrid = state.view !== 'single';
+  if (!id || appData().minimized.has(id)) return;
+  const wasGrid = appData().view !== 'single';
   withLayout(() => {
     store.minimizeSession(id);
     // If the active session is the one being minimized while in grid
     // mode, hand focus to the next still-visible session so the focus
     // ring doesn't vanish onto an offscreen tile.
-    if (state.activeId === id && state.view !== 'single') {
+    if (appData().activeId === id && appData().view !== 'single') {
       const next = gridScopeSessions().find((s) => s.id !== id);
       if (next) deps.setActive(next.id);
     }
@@ -337,12 +347,12 @@ export function minimizeSession(id: string | null) {
 // scope has fallen below two tiles (last sibling killed, or minimized
 // away) — the same degenerate one-tile grid setView refuses to enter.
 export function enforceViewFloor() {
-  if (state.view === 'single') return;
+  if (appData().view === 'single') return;
   if (gridScopeSessions().length >= 2) return;
   setView('single');
 }
 
-// restoreSession removes a session from state.minimized and switches
+// restoreSession removes a session from appData().minimized and switches
 // to it. Works from any view — switchTo handles the view-aware repaint.
 export function restoreSession(id: string | null) {
   if (!id) return;
@@ -350,11 +360,11 @@ export function restoreSession(id: string | null) {
   // A session can be hidden by its project rather than by itself, and
   // callers (⌘B, nav history) only know "make this one visible" — so
   // reveal whichever of the two is holding it back.
-  const s = state.sessions.find((x) => x.id === id);
+  const s = appData().sessions.find((x) => x.id === id);
   const pid = readProjectId(s);
-  if (pid && state.minimizedProjects.has(pid)) restoreProject(pid);
+  if (pid && appData().minimizedProjects.has(pid)) restoreProject(pid);
   switchTo(id);
-  if (state.view !== 'single') {
+  if (appData().view !== 'single') {
     rebaselineGridReplayCols();
   }
 }
@@ -366,14 +376,16 @@ export function restoreSession(id: string | null) {
 // twin of minimizeSession, and it repaints on the same three axes:
 // focus handoff, grid, view floor.
 export function minimizeProject(id: string | null) {
-  if (!id || state.minimizedProjects.has(id)) return;
-  const wasGrid = state.view !== 'single';
+  if (!id || appData().minimizedProjects.has(id)) return;
+  const wasGrid = appData().view !== 'single';
   withLayout(() => {
     store.minimizeProject(id);
     // Same reason as minimizeSession: don't leave the focus ring on a
     // tile that just stopped being rendered.
-    if (state.view !== 'single') {
-      const active = state.sessions.find((x) => x.id === state.activeId);
+    if (appData().view !== 'single') {
+      const active = appData().sessions.find(
+        (x) => x.id === appData().activeId,
+      );
       if (active && readProjectId(active) === id) {
         const next = gridScopeSessions()[0];
         if (next) deps.setActive(next.id);
@@ -388,9 +400,9 @@ export function minimizeProject(id: string | null) {
 // no stored position to restore: minimizing never touches the
 // project's Order, so the row reappears exactly where it was.
 export function restoreProject(id: string | null) {
-  if (!id || !state.minimizedProjects.has(id)) return;
+  if (!id || !appData().minimizedProjects.has(id)) return;
   withLayout(() => store.restoreProject(id));
-  if (state.view !== 'single') {
+  if (appData().view !== 'single') {
     rebaselineGridReplayCols();
   }
 }
@@ -431,10 +443,10 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
     if (deps.scrollTrace.rec.enabled) {
       deps.scrollTrace.rec('mode-snap', { view });
     }
-    snapVisibleTermsToBottom(state.terms.values());
+    snapVisibleTermsToBottom(termsMap().values());
   }, 250);
   const ord = orderedSessions();
-  const active = ord.find((s) => s.id === state.activeId);
+  const active = ord.find((s) => s.id === appData().activeId);
   // The left slot names the session; the mode moved to the right slot,
   // where it is spelled as the shortcut that leaves it.
   setStatus(active ? (active.name ?? '') : '');

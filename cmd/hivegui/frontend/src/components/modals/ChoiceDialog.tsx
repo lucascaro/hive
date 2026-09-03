@@ -73,7 +73,7 @@ function ChoiceDialogBody({
   // outside React's tree: by the id/data contract, off the root.
   //
   // A PASSIVE effect on purpose. The root's `hidden` class is dropped by
-  // the parent island's layout effect, and layout effects run child
+  // the parent modal's layout effect, and layout effects run child
   // first — so focusing from one here would run while the dialog was
   // still display:none, which the browser ignores outright, leaving
   // focus (and Tab) on the modal underneath.

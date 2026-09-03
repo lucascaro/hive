@@ -51,7 +51,7 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let Sidebar: (p: SidebarProps) => ReactNode;
 let sidebarProps: SidebarProps;
 let bridge: typeof import('../../src/bridge.js');
@@ -82,7 +82,7 @@ beforeAll(async () => {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   bridge = await import('../../src/bridge.js');
   const view = await import('../../src/app/view.js');
   gridScopeFor = (await import('../../src/app/grid-layout.js')).gridScopeFor;

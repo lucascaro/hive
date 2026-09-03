@@ -1,8 +1,26 @@
 // Composition root. Every subsystem lives in src/app/* (pure logic in
 // src/lib/*); this file builds the command table, injects the
-// cross-module callbacks, and boots the control connection. Keep it
-// free of behavior — if a function body wants to live here, it almost
-// certainly belongs in a module.
+// cross-module callbacks, mounts the single React root, and boots the
+// control connection. Keep it free of behavior — if a function body
+// wants to live here, it almost certainly belongs in a module.
+//
+// Bootstrap order, and why each step is where it is:
+//
+//   1. theme      — ./theme/theme's import stamps data-theme; the
+//                   pre-paint half already ran from index.html's inline
+//                   script (master plan, Invariant 9).
+//   2. hydrate    — importing store/store.js runs initialData(), which
+//                   reads view / collapsed / minimized / font size /
+//                   sidebar width out of localStorage. It is an import
+//                   side effect, not a call, so it is already done by
+//                   the time any line below runs.
+//   3. wire       — the daemon event handlers are registered BEFORE the
+//                   root mounts, so a fast handshake writes the store
+//                   rather than racing a tree that has not subscribed.
+//   4. mount      — one createRoot on #react-root; see components/App.tsx
+//                   for why the regions are portals.
+//   5. heartbeat  — last: it is a diagnostic and must never be in the
+//                   way of first paint.
 
 import './theme/theme';
 import '@xterm/xterm/css/xterm.css';
@@ -18,8 +36,11 @@ import { classifyBeat, jsHeapMB } from './lib/freeze-heartbeat.js';
 import { isMac } from './lib/platform.js';
 import { paletteShortcuts } from './lib/shortcuts.js';
 import { modeHints } from './lib/status.js';
-import { state } from './app/state.js';
 import * as store from './store/store.js';
+import { termsMap } from './store/terms.js';
+
+// Live read of the store, for the heartbeat and the command table.
+const appData = () => store.appStore.getState();
 import {
   setStatus,
   reportFailure,
@@ -49,24 +70,10 @@ import {
 import { initWorktrees } from './app/modals/worktrees.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
-import { createElement, type ReactNode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { Banners } from './components/Banners.js';
-import { BootState } from './components/BootState.js';
-import { EmptyState } from './components/EmptyState.js';
-import { MinimizedTray } from './components/MinimizedTray.js';
-import { Sidebar } from './components/Sidebar.js';
-import { GridView } from './components/GridView.js';
-import { Launcher } from './components/modals/Launcher.js';
-import { Settings } from './components/modals/Settings.js';
-import { ChoiceDialog } from './components/modals/ChoiceDialog.js';
-import { CommandPalette } from './components/modals/CommandPalette.js';
-import { HelpOverlay } from './components/modals/HelpOverlay.js';
-import { ProjectEditor } from './components/modals/ProjectEditor.js';
-import { Worktrees } from './components/modals/Worktrees.js';
-import { StatusBar } from './components/StatusBar.js';
-import { VersionFooter } from './components/VersionFooter.js';
-import { mustEl, pageEl } from './app/el.js';
+import { flushSync } from 'react-dom';
+import { createRoot } from 'react-dom/client';
+import { App } from './components/App.js';
+import { mustEl } from './app/el.js';
 import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
 import {
   closeActiveSession,
@@ -74,12 +81,7 @@ import {
 } from './app/undo-close.js';
 import {
   switchTo,
-  switchToProject,
   updateAppTitle,
-  minimizeProject,
-  restoreProject,
-  minimizeSession,
-  restoreSession,
   shiftActiveProject,
   enforceViewFloor,
   initView,
@@ -89,7 +91,6 @@ import {
   toggleSidebar,
   toggleProjectGrid,
   toggleAllGrid,
-  confirmAndDeleteProject,
   deleteActiveProject,
   openWorktreesForActiveProject,
   navSession,
@@ -152,7 +153,7 @@ const paletteCommands = [
     id: 'close-session',
     name: 'Close Session',
     run: () => {
-      if (state.activeId) closeActiveSession();
+      if (appData().activeId) closeActiveSession();
     },
   },
   {
@@ -253,129 +254,19 @@ initWorktrees({
     openLauncher(projectId, { worktreePath, continueConversation }),
 });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
-// ---------- React islands ----------
-//
-// One root per migrated region while the rewrite is in flight; Phase 6
-// unmounts them and collapses the sidebar, chrome, modals and grid into
-// a single root. The handles are kept so that phase has something to
-// unmount — see docs/exec-plans/active/react-ui-rewrite.md.
+// ---------- boot the app ----------
+
 // The pane starts in focused mode. Set before the first paint rather than
 // waiting for applySingle(), which only runs once a session exists —
 // #terms.single drives the terminal arrangement in layout.css.
 termsHost.classList.add('single');
 
-const reactRoots: Root[] = [];
-
-// Each island renders INTO the element the region already owned, so
-// every id, grid row and aria attribute in index.html survives. The
-// container-level classes those regions toggle (.hidden, .error,
-// .mismatch) are applied by the components' own layout effects — they
-// sit outside React's tree.
-function mountIsland(el: HTMLElement | null, node: ReactNode): void {
-  if (!el) return;
-  const root = createRoot(el);
-  root.render(node);
-  reactRoots.push(root);
-}
-
-mountIsland(
-  mustEl('projects'),
-  createElement(Sidebar, {
-    switchTo,
-    switchToProject,
-    minimizeProject,
-    restoreProject,
-    minimizeSession,
-    restoreSession,
-    confirmAndDeleteProject,
-    refocusActiveTerm,
-    trayEl: pageEl('minimized-projects'),
-  }),
-);
-// The grid shell. It renders nothing — its whole job is to run one
-// layout effect against app/grid-layout.ts when the store's view, active
-// tile or grid scope moves — so it mounts on its own empty, hidden root
-// rather than on #terms, whose children are SessionTerm hosts React must
-// never own. Mounted right after the sidebar so it is subscribed before
-// the first session list lands.
-mountIsland(pageEl('grid-root'), createElement(GridView));
-// #banners is `display: contents` (layout.css), so the three banners
-// stay direct children of the #app grid and keep their row placement.
-mountIsland(pageEl('banners'), createElement(Banners));
-mountIsland(
-  pageEl('status'),
-  createElement(StatusBar, { root: pageEl('status') }),
-);
-mountIsland(
-  pageEl('boot-state'),
-  createElement(BootState, { root: pageEl('boot-state') }),
-);
-mountIsland(
-  pageEl('empty-state'),
-  createElement(EmptyState, { root: pageEl('empty-state') }),
-);
-mountIsland(
-  pageEl('minimized-tray'),
-  createElement(MinimizedTray, {
-    root: pageEl('minimized-tray'),
-    restoreSession,
-  }),
-);
-// Sidebar footer: hive/hived version + build. It takes its own
-// "daemon:stale" subscription, so it fills in once the control
-// handshake lands — which is why it mounts BEFORE the modals. The e2e
-// specs' boot() gate waits on the first island (#projects), and every
-// island after that subscribes a commit later; with the seven modal
-// roots ahead of it, the handshake could land in the gap and the footer
-// would stay empty with nothing to replay it. No modal can be opened
-// before boot finishes, so they are the ones that can afford to wait.
-mountIsland(
-  pageEl('sidebar-hints'),
-  createElement(VersionFooter, { root: pageEl('sidebar-hints') }),
-);
-// The two Phase 3 modals. Both mount on the root their region already
-// owns and stay mounted; the store decides whether anything renders
-// inside, and the island toggles the root's `hidden` class.
-mountIsland(
-  pageEl('launcher'),
-  createElement(Launcher, {
-    root: pageEl('launcher'),
-    setFocusedTile,
-  }),
-);
-mountIsland(
-  pageEl('settings'),
-  createElement(Settings, { root: pageEl('settings') }),
-);
-// The five Phase 4 modals. Same shape: the island stays mounted on the
-// root its region owns, the store decides whether anything renders
-// inside it, and the component toggles the root's `hidden` class.
-mountIsland(
-  pageEl('worktrees'),
-  createElement(Worktrees, { root: pageEl('worktrees') }),
-);
-mountIsland(
-  pageEl('project-editor'),
-  createElement(ProjectEditor, { root: pageEl('project-editor') }),
-);
-mountIsland(
-  pageEl('help-overlay'),
-  createElement(HelpOverlay, { root: pageEl('help-overlay') }),
-);
-mountIsland(
-  pageEl('choice-dialog'),
-  createElement(ChoiceDialog, { root: pageEl('choice-dialog') }),
-);
-mountIsland(
-  pageEl('command-palette'),
-  createElement(CommandPalette, { root: pageEl('command-palette') }),
-);
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });
 // Seed the status bar's hint slot. setModeHint is otherwise reached only
 // from switchTo() and setView(), and a boot with zero sessions calls
 // neither — leaving the first-run screen with no shortcuts at all.
-setModeHint(modeHints(state.view, isMac));
+setModeHint(modeHints(appData().view, isMac));
 initKeyboard({
   bumpFontSize,
   resetFontSize,
@@ -393,6 +284,29 @@ wireDaemonEvents({
 });
 
 initThemeWatch();
+
+// ---------- the React root ----------
+//
+// One root, mounted on the empty hidden #react-root. App renders every
+// region as a portal into the element index.html already owns, so this
+// container holds nothing and needs no placement in the #app grid — see
+// components/App.tsx for why the tree cannot simply own #app.
+//
+// Mounted after wireDaemonEvents so no handshake can land in a gap
+// before the tree is subscribed, and before the heartbeat so the first
+// paint is never behind a diagnostic.
+// index.html seeds three of the portal targets with static markup so the
+// window paints something before any module script runs: #status's two
+// slots ("connecting…"), #boot-state's card, and #sidebar-hints' two
+// version spans. A portal APPENDS into its container — unlike the island
+// roots it replaces, each of which cleared the container it mounted on —
+// so that seed has to go first or every one of those ids would exist
+// twice. Cleared here, with the first commit flushed synchronously, so
+// no frame is ever painted between the two.
+for (const id of ['status', 'boot-state', 'sidebar-hints']) {
+  mustEl(id).replaceChildren();
+}
+flushSync(() => createRoot(mustEl('react-root')).render(<App />));
 
 // ---------- sidebar resize ----------
 //
@@ -524,8 +438,8 @@ initThemeWatch();
             ? 1
             : 0
           : '?',
-      terms: state.terms.size,
-      view: state.view,
+      terms: termsMap().size,
+      view: appData().view,
     };
     if (heap !== null) st.heapMB = heap;
     const line = classifyBeat({

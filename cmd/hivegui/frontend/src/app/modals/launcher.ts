@@ -4,7 +4,7 @@
 // What stays here is everything that is not rendering:
 //
 //   * openLauncher / closeLauncher, the store actions every caller
-//     (keyboard.ts, events.ts, main.ts, Sidebar.tsx, EmptyState.tsx)
+//     (keyboard.ts, events.ts, main.tsx, Sidebar.tsx, EmptyState.tsx)
 //     already imports from this path,
 //   * the launch-count table the agent list is ordered by,
 //   * the three session actions that never open the launcher at all
@@ -12,18 +12,27 @@
 //     the active session.
 //
 // Focus-pipeline callbacks are injected via initLauncher(deps) — this
-// module must never import the focus pipeline directly (main.ts owns
+// module must never import the focus pipeline directly (main.tsx owns
 // that wiring).
 
 import { flushSync } from 'react-dom';
 import { DuplicateSession, RestartSession } from '../../bridge.js';
-import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
 import { pageEl } from '../el.js';
-import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import {
+  appStore,
+  closeModal,
+  isModalOpen,
+  openModal,
+} from '../../store/store.js';
 import type { SessionInfo } from '../state.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 // Narrow on purpose: this modal needs exactly two callbacks off the
 // focus pipeline, so it names those two rather than the whole module.
@@ -73,7 +82,7 @@ export function bumpAgentUsage(id: string | undefined) {
   } catch {}
 }
 
-// projectId is optional, not just nullable: main.ts, keyboard.ts and
+// projectId is optional, not just nullable: main.tsx, keyboard.ts and
 // view.ts all call openLauncher() bare and let the `|| activeProjectId()`
 // fallback below pick the project.
 export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
@@ -130,7 +139,7 @@ export function closeLauncher() {
 }
 
 export function duplicateActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {
@@ -145,7 +154,7 @@ export function duplicateActiveSession() {
 }
 
 export function restartActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) {
     flashStatus('no active session to restart', true);
     return;
@@ -154,7 +163,7 @@ export function restartActiveSession() {
 }
 
 export function duplicateActiveSessionChooseTool() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {

@@ -35,13 +35,19 @@ import {
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { ModeHint } from '../lib/status.js';
-import type { ProjectInfo, SessionInfo } from '../app/state.js';
+import type {
+  AppState,
+  ProjectInfo,
+  SessionInfo,
+  TermTile,
+} from '../app/state.js';
+import { termsMap } from './terms.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import type { ChoiceSpec } from '../app/modals/choice-dialog.js';
 
 // Sidebar width bounds. 220 is the design system's sidebar floor
 // (docs/design-docs/ui/tokens.md › Spacing); a stored width below it is
-// clamped up on load. Mirrored by main.ts's resizer, which is the only
+// clamped up on load. Mirrored by main.tsx's resizer, which is the only
 // writer.
 export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
@@ -82,7 +88,7 @@ export interface AppData {
   // entry, so this is both the RENDER signal — which React modal is
   // mounted-visible — and the answer to "does a modal own the keyboard?"
   // (anyModalOpen below). There is no second source to keep it agreeing
-  // with; the `.hidden` class each island toggles is derived from it.
+  // with; the `.hidden` class each modal toggles is derived from it.
   modals: ModalEntry[];
   // The daemon's last worktree inventory for the open project, or null
   // before the first reply. The daemon answers every mutation with a
@@ -143,7 +149,7 @@ export interface StatusView {
 }
 
 // onRetry is a callback, not a serialisable flag: the boot overlay's
-// Retry re-enters main.ts's bounded retryBoot(), and reconstructing that
+// Retry re-enters main.tsx's bounded retryBoot(), and reconstructing that
 // binding inside a component would move the 5-attempt policy out of the
 // composition root.
 export interface BootStateView {
@@ -636,7 +642,7 @@ export function restoreSession(id: string): void {
 // ---------- selection + view ----------
 
 // Replaces the whole history object. The app never calls this — nav is
-// mutated in place by lib/nav-history.ts — but the state facade needs a
+// mutated in place by lib/nav-history.ts — but hiveStateView needs a
 // setter to back AppState's writable `nav`, and the dom tests seed it.
 export function setNav(nav: NavHistory): void {
   replace({ nav });
@@ -866,4 +872,166 @@ export function resetStore(seed: Partial<AppData> = {}): void {
 // consumer shape, one line.
 export function useAppStore<T>(selector: (s: AppData) => T): T {
   return useStore(appStore, selector);
+}
+
+// ---------- the Playwright state view ----------
+//
+// `window.__hive_state` is a permanent test API: the e2e-real specs read
+// xterm buffers through `state.terms.get(id).term.buffer.active` and poll
+// `state.sessions`, and the dom suite seeds its scenarios through the same
+// object. Its shape is frozen (test/unit/store.test.ts asserts every field).
+//
+// Until Phase 6 this object lived in app/state.ts and thirteen production
+// modules imported it as a compat facade for the pre-store `state`. None do
+// now — they read `appStore.getState()` and `termsMap()` directly — so what
+// is left here is only the exposure itself: a live view over the store plus
+// the terminal registry, which is deliberately not IN the store
+// (store/terms.ts explains why).
+//
+// The setters stay because the dom tests seed through them. They delegate to
+// the owning action, so a plain `hiveStateView.x = v` notifies subscribers.
+// What does NOT work is mutating a collection in place
+// (`hiveStateView.attention.add(id)`): the store compares by reference, so an
+// in-place edit is invisible. Use the actions.
+
+export const hiveStateView: AppState = {
+  get projects() {
+    return appStore.getState().projects;
+  },
+  set projects(v: ProjectInfo[]) {
+    setProjects(v);
+  },
+  get sessions() {
+    return appStore.getState().sessions;
+  },
+  set sessions(v: SessionInfo[]) {
+    setSessions(v);
+  },
+  get collapsed() {
+    return appStore.getState().collapsed;
+  },
+  set collapsed(v: Set<string>) {
+    setCollapsed(v);
+  },
+  get minimizedProjects() {
+    return appStore.getState().minimizedProjects;
+  },
+  set minimizedProjects(v: Set<string>) {
+    setMinimizedProjects(v);
+  },
+  get attention() {
+    return appStore.getState().attention;
+  },
+  set attention(v: Set<string>) {
+    setAttention(v);
+  },
+  get attentionReturnId() {
+    return appStore.getState().attentionReturnId;
+  },
+  set attentionReturnId(v: string | null) {
+    setAttentionReturnId(v);
+  },
+  get attentionRestored() {
+    return appStore.getState().attentionRestored;
+  },
+  set attentionRestored(v: Set<string>) {
+    setAttentionRestored(v);
+  },
+  get attentionRestoredProjects() {
+    return appStore.getState().attentionRestoredProjects;
+  },
+  set attentionRestoredProjects(v: Set<string>) {
+    setAttentionRestoredProjects(v);
+  },
+  // Mutated in place by lib/nav-history.ts — the store holds a stable
+  // reference, so there is nothing to notify. The setter exists only
+  // because AppState types the field writable: without it, a plain
+  // `state.nav = …` compiles and then throws at runtime on a
+  // getter-only property.
+  get nav() {
+    return appStore.getState().nav;
+  },
+  set nav(v: NavHistory) {
+    setNav(v);
+  },
+  get minimized() {
+    return appStore.getState().minimized;
+  },
+  set minimized(v: Set<string>) {
+    setMinimized(v);
+  },
+  get aliveById() {
+    return appStore.getState().aliveById;
+  },
+  set aliveById(v: Map<string, boolean>) {
+    setAliveById(v);
+  },
+  get phaseById() {
+    return appStore.getState().phaseById;
+  },
+  set phaseById(v: Map<string, string>) {
+    setPhaseById(v);
+  },
+  get dismissedDead() {
+    return appStore.getState().dismissedDead;
+  },
+  set dismissedDead(v: Set<string>) {
+    setDismissedDead(v);
+  },
+  // The registry object itself is stable (store/terms.ts owns it), so
+  // an assignment refills it rather than swapping the reference — the
+  // dom tests assign a fresh Map in setup and Playwright holds on to
+  // window.__hive_state.terms across navigations.
+  get terms() {
+    return termsMap();
+  },
+  set terms(v: Map<string, TermTile>) {
+    const reg = termsMap();
+    reg.clear();
+    for (const [k, t] of v) reg.set(k, t);
+  },
+  get activeId() {
+    return appStore.getState().activeId;
+  },
+  set activeId(v: string | null) {
+    setActiveId(v);
+  },
+  get currentProjectId() {
+    return appStore.getState().currentProjectId;
+  },
+  set currentProjectId(v: string | null) {
+    setCurrentProjectId(v);
+  },
+  get view() {
+    return appStore.getState().view;
+  },
+  set view(v: ViewMode) {
+    setView(v);
+  },
+  get gridProjectId() {
+    return appStore.getState().gridProjectId;
+  },
+  set gridProjectId(v: string | null) {
+    setGridProjectId(v);
+  },
+  get fontSize() {
+    return appStore.getState().fontSize;
+  },
+  set fontSize(v: number) {
+    setFontSize(v);
+  },
+};
+
+// E2E test affordance: expose the view under a dunder name so
+// Playwright specs can read xterm buffer contents via
+// state.terms.get(id).term.buffer.active. Gated on the Vite mock/real
+// env vars so production builds drop this — the gates are inlined to
+// string literals by Vite at build time, so the whole block is dead
+// code in a normal wails build.
+if (
+  typeof window !== 'undefined' &&
+  (import.meta.env.VITE_WAILS_MOCK === '1' ||
+    import.meta.env.VITE_WAILS_REAL === '1')
+) {
+  window.__hive_state = hiveStateView;
 }

@@ -1,7 +1,8 @@
 // Debug/e2e-only globals. None of these exist in a normal production
 // build: `__hive_state` is gated on the Vite mock/real env vars
-// (app/state.ts) and the scrolltrace pair is gated on localStorage
-// `hive.debug` (app/trace.ts).
+// (store/store.ts, which took the exposure over from app/state.ts when
+// Phase 6 of the React rewrite deleted that file's compat facade) and the
+// scrolltrace pair is gated on localStorage `hive.debug` (app/trace.ts).
 //
 // `__hive` used to be declared here as `unknown`. It moved to
 // test/e2e/hive-global.d.ts in wave 7b, where the harnesses that inject it
@@ -25,6 +26,11 @@ declare global {
     // read by test/e2e-real/wails-bridge.ts.
     __WS_BRIDGE_URL?: string;
   }
+}
+
+declare module '*.html?raw' {
+  const content: string;
+  export default content;
 }
 
 declare module '*.svg?raw' {

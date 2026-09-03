@@ -36,7 +36,7 @@ import {
   SIDEBAR_MIN_WIDTH,
   SIDEBAR_MAX_WIDTH,
 } from '../../src/store/store.js';
-import { state } from '../../src/app/state.js';
+import { hiveStateView as state } from '../../src/store/store.js';
 import { setTerm, clearTerms } from '../../src/store/terms.js';
 import {
   COLLAPSED_STORAGE_KEY,

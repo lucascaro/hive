@@ -1,6 +1,6 @@
 # React UI rewrite — Phase 0: foundations (zustand store + React tooling)
 
-- **Master plan:** [react-ui-rewrite.md](../active/react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** #311
@@ -44,7 +44,7 @@ What `/hs-merge-gate` validates for THIS phase.
 
 ## Invariants
 
-Every phase honours the Invariants section of the [master plan](../active/react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
+Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
 Violating any one reintroduces a shipped bug.
 
 ## Brief

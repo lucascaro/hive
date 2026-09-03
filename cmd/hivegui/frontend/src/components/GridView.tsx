@@ -6,13 +6,16 @@
 //
 // So: one subscription, one layout effect, no children.
 import { useLayoutEffect, type ReactNode } from 'react';
-import { state } from '../app/state.js';
+
 import {
   applyGridLayout,
   applySingle,
   gridScopeSessions,
 } from '../app/grid-layout.js';
-import { useAppStore } from '../store/store.js';
+import { appStore, useAppStore } from '../store/store.js';
+
+// Live read of the store, for the layout effect's non-reactive lookups.
+const appData = () => appStore.getState();
 
 // The subscription is a derived SIGNATURE, not the raw store fields, and
 // what it leaves out is load-bearing:
@@ -39,9 +42,9 @@ import { useAppStore } from '../store/store.js';
 // that changes none of it re-renders nothing.
 function gridSignature(): string {
   return [
-    state.view,
-    state.activeId ?? '',
-    state.gridProjectId ?? '',
+    appData().view,
+    appData().activeId ?? '',
+    appData().gridProjectId ?? '',
     gridScopeSessions()
       .map((s) => s.id)
       .join(' '),
@@ -57,13 +60,13 @@ export function GridView(): ReactNode {
   // run by the time flushSync returns.
   //
   // The signature IS the dependency. The body reads the store through the
-  // non-reactive `state` facade on purpose — a pass needs fields, like
+  // non-reactive appData() on purpose — a pass needs fields, like
   // `attention`, that must not be allowed to trigger one — so the linter
   // sees a dependency it cannot connect to anything the body names.
   // Dropping it would run the pass on every render instead.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useLayoutEffect(() => {
-    if (state.view === 'single') applySingle(state.activeId);
+    if (appData().view === 'single') applySingle(appData().activeId);
     else applyGridLayout();
   }, [signature]);
 

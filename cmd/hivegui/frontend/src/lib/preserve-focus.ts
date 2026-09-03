@@ -5,7 +5,7 @@
 // blur. Focus lands on <body> and the next keystroke goes nowhere.
 //
 // That is the only path left. The sidebar used to be the other, with an
-// `innerHTML = ''` rebuild that replaced every row; the React island
+// `innerHTML = ''` rebuild that replaced every row; the React sidebar
 // reconciles in place and handles its own move-blur inline (a keyed row
 // is moved, never rebuilt, so there is nothing to relocate focus TO).
 // The half of this helper that found a REBUILT equivalent — by the

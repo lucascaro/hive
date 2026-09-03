@@ -2,13 +2,13 @@
 // (⌘/) renders shortcutGroups(); the command palette pulls its
 // shortcut column from paletteShortcuts() — both consume this module,
 // so the two surfaces cannot drift from each other. (They can still
-// drift from the actual handlers in main.ts/menu.go, which is why
+// drift from the actual handlers in main.tsx/menu.go, which is why
 // every binding change must touch this file too — see AGENTS.md.)
 //
 // The full drift surface for a GUI binding change is five files:
 //   1. the handler — app/keyboard.ts (+ lib/keymap.ts for a predicate)
 //   2. this file — shortcutGroups() AND paletteShortcuts()
-//   3. the palette command table — main.ts
+//   3. the palette command table — main.tsx
 //   4. the native macOS menu — cmd/hivegui/menu_darwin.go (⌘ chords only;
 //      Ctrl-only chords are deliberately JS-side, see the Ctrl+` comment
 //      in app/keyboard.ts)
@@ -59,7 +59,7 @@ function mod(
 }
 
 // Ctrl on every platform (Ctrl+`, Ctrl+Shift+C/V/A — deliberately not
-// ⌘ on mac, see main.ts comments).
+// ⌘ on mac, see main.tsx comments).
 function ctrl(
   isMac: boolean,
   key: string,

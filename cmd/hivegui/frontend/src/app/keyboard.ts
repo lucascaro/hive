@@ -16,7 +16,8 @@ import {
   Notify,
 } from '../bridge.js';
 import { closeActiveSession, reopenLastClosedSession } from './undo-close.js';
-import { state } from './state.js';
+import { appStore } from '../store/store.js';
+import { termsMap } from '../store/terms.js';
 import {
   addAttentionRestored,
   addAttentionRestoredProject,
@@ -76,6 +77,11 @@ import { scrollTrace } from './trace.js';
 import { mustEl, pageEl } from './el.js';
 import type { ProjectInfo } from './state.js';
 
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
+
 export interface KeyboardDeps {
   bumpFontSize: (delta: number) => void;
   resetFontSize: () => void;
@@ -87,9 +93,9 @@ let deps: KeyboardDeps = {
   bumpFontSize: () => {},
   resetFontSize: () => {},
   focusActiveTerm: () => {},
-  // Injected from main.ts like focusActiveTerm above: keyboard.ts must
+  // Injected from main.tsx like focusActiveTerm above: keyboard.ts must
   // not import the focus pipeline directly (see the acyclic-modules
-  // note at the wiring block in main.ts). The default still RUNS fn —
+  // note at the wiring block in main.tsx). The default still RUNS fn —
   // an un-wired harness gets working navigation without suppression,
   // not a silently swallowed switch.
   withoutNavHistory: (fn) => fn(),
@@ -121,7 +127,7 @@ window.addEventListener(
         // event arrive, was it a nav key, where was focus).
         code: e.code,
         mods: `${e.metaKey ? 'M' : ''}${e.ctrlKey ? 'C' : ''}${e.altKey ? 'A' : ''}${e.shiftKey ? 'S' : ''}`,
-        view: state.view,
+        view: appData().view,
         ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
       });
     }
@@ -240,8 +246,9 @@ window.addEventListener(
     // Dead-session overlay: route Enter/Escape to the active session's
     // overlay if it's shown. In grid mode the user can still click any
     // tile's buttons directly; this just handles the focused tile.
-    if (state.activeId) {
-      const t = state.terms.get(state.activeId);
+    const deadOverlayId = appData().activeId;
+    if (deadOverlayId) {
+      const t = termsMap().get(deadOverlayId);
       if (t?.deadOverlayShown) {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -355,9 +362,9 @@ window.addEventListener(
     } else if (e.key === 'g' || e.key === 'G') {
       swallow();
       if (e.shiftKey) {
-        setView(state.view === 'grid-all' ? 'single' : 'grid-all');
+        setView(appData().view === 'grid-all' ? 'single' : 'grid-all');
       } else {
-        setView(state.view === 'grid-project' ? 'single' : 'grid-project');
+        setView(appData().view === 'grid-project' ? 'single' : 'grid-project');
       }
     } else if (e.key === 'n' || e.key === 'N') {
       swallow();
@@ -375,7 +382,7 @@ window.addEventListener(
       swallow();
       if (e.shiftKey) {
         CloseWindow().catch(reportFailure('close window'));
-      } else if (state.activeId) {
+      } else if (appData().activeId) {
         // force=false: lets the daemon refuse with worktree_dirty if
         // the worktree has uncommitted changes; the control:error
         // handler then shows a confirm dialog and retries with force.
@@ -445,11 +452,11 @@ export function toggleSidebar() {
 }
 
 export function toggleProjectGrid() {
-  setView(state.view === 'grid-project' ? 'single' : 'grid-project');
+  setView(appData().view === 'grid-project' ? 'single' : 'grid-project');
 }
 
 export function toggleAllGrid() {
-  setView(state.view === 'grid-all' ? 'single' : 'grid-all');
+  setView(appData().view === 'grid-all' ? 'single' : 'grid-all');
 }
 
 // handleArrow is the single implementation behind both the ⌘-arrow
@@ -466,7 +473,7 @@ export function handleArrow(
   dRow: number,
   shift: boolean,
 ): boolean {
-  if (state.view !== 'single') {
+  if (appData().view !== 'single') {
     gridSpatialMove(dCol, dRow);
     return true;
   }
@@ -486,7 +493,7 @@ export function reorderActive(delta: number) {
 }
 
 // jumpToAttention (⌘B) goes to the next session with an unread bell,
-// recording where you came from in state.attentionReturnId so ⇧⌘B can
+// recording where you came from in appData().attentionReturnId so ⇧⌘B can
 // bring you back. The anchor is written ONLY when the slot is empty, so
 // it holds the session you were working in before the FIRST ⌘B — a round
 // of bells can bounce you through several flagged sessions and ⇧⌘B still
@@ -507,8 +514,9 @@ export function jumpToAttention() {
     // attention unconditionally, even for the session you're looking at.
     // nextAttentionId skips the active session, so without this the row
     // would pulse while ⌘B insists nothing needs attention.
-    if (state.activeId && state.attention.has(state.activeId)) {
-      clearAttention(state.activeId);
+    const staleId = appData().activeId;
+    if (staleId && appData().attention.has(staleId)) {
+      clearAttention(staleId);
     }
     flashStatus('no sessions need attention');
     return;
@@ -520,16 +528,17 @@ export function jumpToAttention() {
   // in the round stay restored — re-minimizing them while the user sits
   // on the anchor would yank tiles out from under them with no keypress
   // to explain it.
-  if (id === state.attentionReturnId) endRound({ reminimize: false });
-  else if (!state.attentionReturnId) setAttentionReturnId(state.activeId);
+  if (id === appData().attentionReturnId) endRound({ reminimize: false });
+  else if (!appData().attentionReturnId)
+    setAttentionReturnId(appData().activeId);
 
   if (isSessionHidden(id)) {
     // Record which of the two mechanisms was hiding it, so ⇧⌘B can put
     // back exactly what ⌘B pulled out — the session, its project, or
     // both.
-    if (state.minimized.has(id)) addAttentionRestored(id);
-    const pid = readProjectId(state.sessions.find((s) => s.id === id));
-    if (pid && state.minimizedProjects.has(pid)) {
+    if (appData().minimized.has(id)) addAttentionRestored(id);
+    const pid = readProjectId(appData().sessions.find((s) => s.id === id));
+    if (pid && appData().minimizedProjects.has(pid)) {
       addAttentionRestoredProject(pid);
     }
     restoreSession(id); // un-minimize + re-render tray, then switchTo
@@ -542,8 +551,8 @@ export function jumpToAttention() {
 // ends the round, so the next ⌘B starts a fresh one. The anchored
 // session can be killed while you're away, hence the still-exists guard.
 export function jumpBack() {
-  const id = state.attentionReturnId;
-  if (!id || !state.sessions.some((s) => s.id === id)) {
+  const id = appData().attentionReturnId;
+  if (!id || !appData().sessions.some((s) => s.id === id)) {
     endRound({ reminimize: true }); // still tidy up any restored tiles
     flashStatus('nowhere to jump back to');
     return;
@@ -558,12 +567,15 @@ export function jumpBack() {
 // endRound releases the return anchor and, when asked, puts back every
 // session ⌘B pulled out of the minimized tray during the round. Sessions
 // killed while you were away are dropped rather than re-minimized —
-// adding a dead id to state.minimized would strand a chip in the tray.
+// adding a dead id to appData().minimized would strand a chip in the tray.
 function endRound({ reminimize }: { reminimize: boolean }) {
   setAttentionReturnId(null);
   if (reminimize) {
-    for (const rid of state.attentionRestored) {
-      if (rid !== state.activeId && state.sessions.some((s) => s.id === rid)) {
+    for (const rid of appData().attentionRestored) {
+      if (
+        rid !== appData().activeId &&
+        appData().sessions.some((s) => s.id === rid)
+      ) {
         minimizeSession(rid);
       }
     }
@@ -572,10 +584,10 @@ function endRound({ reminimize }: { reminimize: boolean }) {
     // the pass above deliberately skips. The same guard applies —
     // never re-minimize the project you are sitting in.
     const activePID = readProjectId(
-      state.sessions.find((s) => s.id === state.activeId),
+      appData().sessions.find((s) => s.id === appData().activeId),
     );
-    for (const pid of state.attentionRestoredProjects) {
-      if (pid !== activePID && state.projects.some((p) => p.id === pid)) {
+    for (const pid of appData().attentionRestoredProjects) {
+      if (pid !== activePID && appData().projects.some((p) => p.id === pid)) {
         minimizeProject(pid);
       }
     }
@@ -591,11 +603,12 @@ function endRound({ reminimize }: { reminimize: boolean }) {
 // sessionExists mirrors jumpBack's still-exists guard: a session on the
 // stack can be killed while you are elsewhere, and the stack walk skips
 // it rather than dead-ending.
-const sessionExists = (id: string) => state.sessions.some((s) => s.id === id);
+const sessionExists = (id: string) =>
+  appData().sessions.some((s) => s.id === id);
 
 // navGo performs the switch a history step resolved to. A minimized
 // session has to be restored on the way in, exactly as ⌘B does at
-// jumpToAttention: gridScopeSessions filters state.minimized, so a bare
+// jumpToAttention: gridScopeSessions filters appData().minimized, so a bare
 // switchTo would make the session active with no tile in the grid — the
 // sidebar selection moves, nothing appears, and keyboard focus lands on
 // <body> where keystrokes are silently dropped.
@@ -613,7 +626,7 @@ function navGo(id: string) {
 }
 
 export function navBack() {
-  const id = goBack(state.nav, state.activeId, sessionExists);
+  const id = goBack(appData().nav, appData().activeId, sessionExists);
   if (!id) {
     flashStatus('nothing to go back to');
     return;
@@ -622,7 +635,7 @@ export function navBack() {
 }
 
 export function navForward() {
-  const id = goForward(state.nav, state.activeId, sessionExists);
+  const id = goForward(appData().nav, appData().activeId, sessionExists);
   if (!id) {
     flashStatus('nothing to go forward to');
     return;
@@ -733,7 +746,7 @@ export async function confirmAndDeleteProject(
   proj: ProjectInfo | undefined | null,
 ) {
   if (!proj) return;
-  const sessions = state.sessions.filter(
+  const sessions = appData().sessions.filter(
     (s) => (s.projectId ?? s.project_id) === proj.id,
   );
   const msg = sessions.length
@@ -748,7 +761,7 @@ export async function confirmAndDeleteProject(
 
 export function deleteActiveProject() {
   const pid = activeProjectId();
-  confirmAndDeleteProject(state.projects.find((p) => p.id === pid));
+  confirmAndDeleteProject(appData().projects.find((p) => p.id === pid));
 }
 
 // The worktree browser is per-project, so the keyboard and palette
@@ -756,7 +769,7 @@ export function deleteActiveProject() {
 // action does.
 export function openWorktreesForActiveProject() {
   const pid = activeProjectId();
-  openWorktrees(state.projects.find((p) => p.id === pid) ?? null);
+  openWorktrees(appData().projects.find((p) => p.id === pid) ?? null);
 }
 
 // moveActiveSession walks the (project_order, session_order) list.
@@ -765,7 +778,7 @@ export function moveActiveSession(delta: number, reorder: boolean) {
   const ord = orderedSessions();
   const n = ord.length;
   if (n === 0) return;
-  const idx = ord.findIndex((s) => s.id === state.activeId);
+  const idx = ord.findIndex((s) => s.id === appData().activeId);
   if (idx < 0) {
     // No active session (an empty project is selected, or the last one
     // was closed): seed on the first VISIBLE session. ord[0] may be
@@ -781,7 +794,7 @@ export function moveActiveSession(delta: number, reorder: boolean) {
     // is the index space the daemon's Update expects. Sending a
     // per-project index here is what used to scatter sessions across
     // project boundaries.
-    const target = reorderTarget(ord, state.activeId, delta);
+    const target = reorderTarget(ord, appData().activeId, delta);
     if (target == null) return;
     UpdateSession(ord[idx].id, '', '', target).catch(reportFailure('reorder'));
     return;

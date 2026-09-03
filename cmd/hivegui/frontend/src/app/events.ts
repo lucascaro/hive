@@ -2,7 +2,7 @@
 //
 // Moved verbatim from main.js. wireDaemonEvents(deps) registers every
 // EventsOn handler; view/focus callbacks and the scroll tracer are
-// injected because they live in main.ts until later stages.
+// injected because they live in main.tsx until later stages.
 
 import {
   EventsOn,
@@ -17,7 +17,6 @@ import {
   onSessionRemoved,
   onSessionRestored,
 } from './undo-close.js';
-import { state } from './state.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
 import {
   addAttention,
@@ -37,7 +36,8 @@ import {
   updateProject,
   updateSession,
 } from '../store/store.js';
-import { deleteTerm } from '../store/terms.js';
+import { deleteTerm, termsMap } from '../store/terms.js';
+import { appStore } from '../store/store.js';
 import { setStatus, flashStatus, reportFailure, setBootState } from './dom.js';
 import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
@@ -48,6 +48,11 @@ import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 import { createScrollTrace } from '../lib/scroll-debug.js';
 import type { ScrollTrace } from '../lib/scroll-debug.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 export interface EventsDeps {
   switchTo: (id: string) => void;
@@ -161,26 +166,26 @@ export async function reconnectControl(
 // emitting bells in a tight loop doesn't spam the OS notification
 // center.
 export function onSessionBell(info: SessionInfo) {
-  const isActive = info.id === state.activeId;
+  const isActive = info.id === appData().activeId;
   const windowFocused = document.hasFocus();
   if (isActive && windowFocused) return;
-  const alreadyAttention = state.attention.has(info.id);
+  const alreadyAttention = appData().attention.has(info.id);
   if (alreadyAttention) {
     // Refresh to re-trigger CSS animation. Only the class is dropped and
     // re-added — the flag itself is already set and stays set, so there
     // is no state transition to make here.
-    state.terms.get(info.id)?.host.classList.remove('attention');
+    termsMap().get(info.id)?.host.classList.remove('attention');
   }
   addAttention(info.id);
-  state.terms.get(info.id)?.host.classList.add('attention');
-  state.terms.get(info.id)?.refreshStateIcon?.();
+  termsMap().get(info.id)?.host.classList.add('attention');
+  termsMap().get(info.id)?.refreshStateIcon?.();
   if (!alreadyAttention) fireBellNotification(info);
 }
 
 export function clearAttention(sessionId: string) {
   if (clearAttentionFor(sessionId)) {
-    state.terms.get(sessionId)?.host.classList.remove('attention');
-    state.terms.get(sessionId)?.refreshStateIcon?.();
+    termsMap().get(sessionId)?.host.classList.remove('attention');
+    termsMap().get(sessionId)?.refreshStateIcon?.();
   }
 }
 
@@ -191,7 +196,7 @@ export function clearAttention(sessionId: string) {
 // repeated bells from the same session and the click handler knows
 // which session to switch to.
 function fireBellNotification(info: SessionInfo) {
-  const proj = state.projects.find(
+  const proj = appData().projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
   const projectName = proj?.name ?? '';
@@ -209,7 +214,7 @@ function fireBellNotification(info: SessionInfo) {
 // notification distinct from a normal bell.
 function onSessionDeath(info: SessionInfo) {
   clearDismissedDead(info.id);
-  const t = state.terms.get(info.id);
+  const t = termsMap().get(info.id);
   if (t) {
     // Flip attached eagerly so a switch-back before pty:disconnect arrives
     // doesn't try to reuse the dying connection.
@@ -221,8 +226,8 @@ function onSessionDeath(info: SessionInfo) {
   }
   // Reuse the attention pulse path so the sidebar entry highlights.
   addAttention(info.id);
-  state.terms.get(info.id)?.host.classList.add('attention');
-  const proj = state.projects.find(
+  termsMap().get(info.id)?.host.classList.add('attention');
+  const proj = appData().projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
   // Best-effort like fireBellNotification: the overlay + sidebar pulse
@@ -254,7 +259,8 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // menu actions can leave the window focused but no element inside it,
   // so typing would land on the body and be lost.
   window.addEventListener('focus', () => {
-    if (state.activeId) clearAttention(state.activeId);
+    const focused = appData().activeId;
+    if (focused) clearAttention(focused);
     deps.refocusActiveTerm();
   });
 
@@ -286,7 +292,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
 
   EventsOn('project:event', (jsonStr: string) => {
     const ev = JSON.parse(jsonStr) as ProjectEvent;
-    const i = state.projects.findIndex((p) => p.id === ev.project.id);
+    const i = appData().projects.findIndex((p) => p.id === ev.project.id);
     if (ev.kind === 'added') {
       // addProject also makes a first-ever project current.
       addProject(ev.project);
@@ -299,10 +305,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // Refresh tile-header project color for every session belonging
       // to this project so grid/single-mode title bars reflect rename
       // and recolor in real time.
-      for (const s of state.sessions) {
+      for (const s of appData().sessions) {
         const pid = s.projectId ?? s.project_id;
         if (pid !== ev.project.id) continue;
-        const st = state.terms.get(s.id);
+        const st = termsMap().get(s.id);
         if (st) st.setProject(ev.project.name, ev.project.color);
       }
     }
@@ -313,9 +319,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // effects on the boundary. First sight of a session (no prior entry)
   // just records the value without firing anything.
   function processAliveTransition(info: SessionInfo) {
-    const prev = state.aliveById.get(info.id);
+    const prev = appData().aliveById.get(info.id);
     const phase = phaseOf(info);
-    const prevPhase = state.phaseById.get(info.id);
+    const prevPhase = appData().phaseById.get(info.id);
     const wasPending = prevPhase !== undefined && !isReady(prevPhase);
     setAlive(info.id, !!info.alive);
     setSessionPhase(info.id, phase);
@@ -336,7 +342,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       onSessionDeath(info);
     } else if (prev === false && info.alive === true) {
       clearDismissedDead(info.id);
-      const t = state.terms.get(info.id);
+      const t = termsMap().get(info.id);
       if (t) {
         // Wipe stale frame from the previous (dead) shell so the revived
         // session's prompt lands on a clean screen instead of stacking on
@@ -364,9 +370,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     setSessions(sessions || []);
-    for (const s of state.sessions) {
+    for (const s of appData().sessions) {
       processAliveTransition(s);
-      state.terms.get(s.id)?.setPhase(phaseOf(s));
+      termsMap().get(s.id)?.setPhase(phaseOf(s));
     }
     // Drop any ids whose sessions no longer exist (e.g. after a daemon
     // restart or list reset) so the tray doesn't leak stale chips and
@@ -374,9 +380,9 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // process. A snapshot is the only path that can retire a session
     // without a per-session `removed` event.
     pruneToLiveSessions();
-    const liveIds = new Set(state.sessions.map((s) => s.id));
-    pruneNav(state.nav, (id) => liveIds.has(id));
-    if (!state.activeId && state.sessions.length > 0) {
+    const liveIds = new Set(appData().sessions.map((s) => s.id));
+    pruneNav(appData().nav, (id) => liveIds.has(id));
+    if (!appData().activeId && appData().sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);
     }
   });
@@ -397,7 +403,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
 
   EventsOn('session:event', (jsonStr: string) => {
     const ev = JSON.parse(jsonStr) as SessionEvent;
-    const i = state.sessions.findIndex((s) => s.id === ev.session.id);
+    const i = appData().sessions.findIndex((s) => s.id === ev.session.id);
     if (ev.kind === 'added' || ev.kind === 'updated') {
       processAliveTransition(ev.session);
     }
@@ -421,7 +427,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // starts closing, hand focus to the neighbour. The tile itself
       // stays (dimmed) until `removed` lands, which can be seconds
       // later on a big worktree.
-      if (state.activeId === ev.session.id) {
+      if (appData().activeId === ev.session.id) {
         const next = neighbourOf(ev.session.id);
         if (next) deps.switchTo(next);
       }
@@ -431,17 +437,21 @@ export function wireDaemonEvents(injected: EventsDeps) {
       onSessionRemoved(ev.session.id);
       forgetSession(ev.session.id);
       const nextId =
-        state.activeId === ev.session.id ? neighbourOf(ev.session.id) : null;
+        appData().activeId === ev.session.id
+          ? neighbourOf(ev.session.id)
+          : null;
       if (i >= 0) removeSession(ev.session.id);
-      const t = state.terms.get(ev.session.id);
+      const t = termsMap().get(ev.session.id);
       if (t) {
         t.destroy();
         deleteTerm(ev.session.id);
       }
       // Prune AFTER the splice above: until then the removed id is
-      // still in state.sessions, so an exists-check would keep it.
-      pruneNav(state.nav, (id) => state.sessions.some((s) => s.id === id));
-      if (state.activeId === ev.session.id) {
+      // still in appData().sessions, so an exists-check would keep it.
+      pruneNav(appData().nav, (id) =>
+        appData().sessions.some((s) => s.id === id),
+      );
+      if (appData().activeId === ev.session.id) {
         setActiveId(null);
         if (nextId) deps.switchTo(nextId);
       }
@@ -464,7 +474,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // SessionTerm so the grid tile-header refreshes immediately.
       // Without this, renames look broken in grid mode — the sidebar
       // updates but the tile keeps showing the old name.
-      const st = state.terms.get(ev.session.id);
+      const st = termsMap().get(ev.session.id);
       if (st) {
         st.setInfo(ev.session);
         // Phase drives the loading panel and the attach gate. Set it
@@ -472,7 +482,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
         // from the fresh info.
         st.setPhase(phaseOf(ev.session));
         const pid = ev.session.projectId ?? ev.session.project_id;
-        const proj = state.projects.find((p) => p.id === pid);
+        const proj = appData().projects.find((p) => p.id === pid);
         st.setProject(proj?.name ?? '', proj?.color ?? '');
         // Restart Session path: pty:disconnect already flipped attached
         // off and set needsReattach. Now that the daemon has confirmed
@@ -487,15 +497,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
           } catch {}
           abandonReplays(st); // the wipe abandons any in-flight restream
           const visible =
-            (state.view === 'single' && state.activeId === ev.session.id) ||
-            (state.view !== 'single' && st.host.classList.contains('in-grid'));
+            (appData().view === 'single' &&
+              appData().activeId === ev.session.id) ||
+            (appData().view !== 'single' &&
+              st.host.classList.contains('in-grid'));
           if (visible) {
             st.ensureAttached();
-            if (state.activeId === ev.session.id) deps.focusActiveTerm();
+            if (appData().activeId === ev.session.id) deps.focusActiveTerm();
           }
         }
       }
-      if (state.activeId === ev.session.id) deps.updateAppTitle();
+      if (appData().activeId === ev.session.id) deps.updateAppTitle();
     }
     // Only `removed` and `updated` reach here — `added` and `title` both
     // returned above. Both are store writes; the sidebar re-renders the
@@ -523,13 +535,13 @@ export function wireDaemonEvents(injected: EventsDeps) {
         });
       }
     }
-    state.terms.get(id)?.writeData(b64);
+    termsMap().get(id)?.writeData(b64);
   });
 
   EventsOn('pty:event', (id: string, jsonStr: string) => {
     try {
       const ev = JSON.parse(jsonStr) as { kind: string };
-      const st = state.terms.get(id);
+      const st = termsMap().get(id);
       if (!st) return;
       // Begin: wipe xterm so replay paints onto a clean slate (otherwise
       // the new bytes would overlay whatever's already rendered — the
@@ -573,7 +585,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
   });
 
   EventsOn('pty:disconnect', (id: string) => {
-    const st = state.terms.get(id);
+    const st = termsMap().get(id);
     if (st) {
       st.attached = false;
       if (isClosing(st.phase)) {
@@ -595,7 +607,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
   });
 
   EventsOn('pty:error', (id: string, jsonStr: string) => {
-    const st = state.terms.get(id);
+    const st = termsMap().get(id);
     // A session mid-create or mid-teardown is *expected* to refuse
     // (session_starting / no_such_session); painting that in red into
     // the pane is how a normal close used to look broken.
@@ -630,7 +642,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
   // modes. switchTo handles the view-aware repaint.
   EventsOn('bell-click', (sessionId: string) => {
     if (!sessionId) return;
-    const info = state.sessions.find((s) => s.id === sessionId);
+    const info = appData().sessions.find((s) => s.id === sessionId);
     if (!info) return;
     deps.switchTo(sessionId);
     clearAttention(sessionId);
@@ -648,7 +660,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // refused to kill, so we can safely retry with force=true if the
     // user accepts.
     if (e.code === 'worktree_dirty' && e.session_id) {
-      const sess = state.sessions.find((s) => s.id === e.session_id);
+      const sess = appData().sessions.find((s) => s.id === e.session_id);
       const branch =
         sess?.worktreeBranch ?? sess?.worktree_branch ?? 'this worktree';
       const answer = await openChoiceDialog({
@@ -674,7 +686,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
       // (or its worktree resolved) while the dialog was open. Re-check
       // before issuing a second kill that would just produce a confusing
       // "no_such_session" control error.
-      if (!state.sessions.find((s) => s.id === e.session_id)) return;
+      if (!appData().sessions.find((s) => s.id === e.session_id)) return;
       const sessName = sess?.name ?? 'Session';
       if (answer === 'close-and-clean') {
         // Deleting the worktree is the one close that destroys work,

@@ -1,4 +1,4 @@
-// The sidebar island — the React replacement for src/app/sidebar.ts.
+// The sidebar — the React replacement for src/app/sidebar.ts.
 //
 // One root on #projects renders the project cards and their session
 // rows; the minimized-project tray (#minimized-projects) is a sibling
@@ -13,7 +13,7 @@
 // around: a full rebuild between two clicks replaced the <li> and ate the
 // dblclick pair that starts a rename.
 //
-// View/focus callbacks arrive as props from main.ts, the composition
+// View/focus callbacks arrive as props from main.tsx, the composition
 // root, for the same reason initSidebar(deps) took them: importing
 // view.ts / keyboard.ts here would close an import cycle.
 import {
@@ -37,7 +37,7 @@ import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
-import { state, type ProjectInfo, type SessionInfo } from '../app/state.js';
+import type { ProjectInfo, SessionInfo } from '../app/state.js';
 import { noteLocalClose } from '../app/undo-close.js';
 import {
   beginDrag,
@@ -47,7 +47,10 @@ import {
 import { dropTargetIndex } from '../lib/reorder.js';
 import { sessionState } from '../lib/session-state.js';
 import { readProjectId } from '../lib/wire.js';
-import { toggleCollapsed, useAppStore } from '../store/store.js';
+import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
+
+// Live read of the store, for the event handlers' non-reactive lookups.
+const appData = () => appStore.getState();
 import { Chip } from './Chip.js';
 import { ProjectCard } from './ProjectCard.js';
 import { SessionRow } from './SessionRow.js';
@@ -100,7 +103,7 @@ function projectHasAttention(
 // is the rule session-term.ts's _closeDead already follows — there is
 // nothing left to lose once the process is gone.
 //
-// force=false on the live branch, like every other kill path (main.ts's
+// force=false on the live branch, like every other kill path (main.tsx's
 // close-session command, ⌘W, the menu): it lets the daemon refuse with
 // worktree_dirty so events.ts can ask the real three-way question
 // (cancel / close / close and delete the worktree). Forcing here would
@@ -134,7 +137,7 @@ function reorderDroppedProject(
   targetID: string,
   above: boolean,
 ) {
-  const ordered = [...state.projects].sort(
+  const ordered = [...appData().projects].sort(
     (a, b) => (a.order ?? 0) - (b.order ?? 0),
   );
   const targetIdx = ordered.findIndex((p) => p.id === targetID);
@@ -158,7 +161,7 @@ function reorderDroppedSession(
   targetID: string,
   above: boolean,
 ) {
-  const order = dropTargetIndex(state.sessions, draggedID, targetID, above);
+  const order = dropTargetIndex(appData().sessions, draggedID, targetID, above);
   if (order === null) return;
   UpdateSession(draggedID, '', '', order).catch(reportFailure('reorder'));
 }
@@ -171,7 +174,7 @@ interface SessionItemProps {
   selected: boolean;
   minimized: boolean;
   attention: boolean;
-  // The whole prop bag rather than three bound callbacks: main.ts builds
+  // The whole prop bag rather than three bound callbacks: main.tsx builds
   // it once for the life of the app, so it is a referentially stable
   // prop, where `() => switchTo(s.id)` would be a fresh function on
   // every parent render and would defeat the memo below.
@@ -201,7 +204,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   // particular branches on `alive`, and a stale `false` there sends
   // force=true, which skips the dirty-worktree refusal entirely.
   const live = (): SessionInfo =>
-    state.sessions.find((x) => x.id === id) ?? p.session;
+    appData().sessions.find((x) => x.id === id) ?? p.session;
 
   // Same-project drops only; cross-project moves are not supported yet
   // (would require also updating project_id on the wire).
@@ -213,8 +216,8 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
     const sid = e.dataTransfer?.getData('text/x-hive-session');
     const targetSID = target.dataset.sid ?? '';
     if (!sid || !targetSID || sid === targetSID) return;
-    const dragged = state.sessions.find((x) => x.id === sid);
-    const dropped = state.sessions.find((x) => x.id === targetSID);
+    const dragged = appData().sessions.find((x) => x.id === sid);
+    const dropped = appData().sessions.find((x) => x.id === targetSID);
     if (!dragged || !dropped) return;
     if (readProjectId(dragged) !== readProjectId(dropped)) return;
     reorderDroppedSession(sid, targetSID, above);
@@ -236,7 +239,9 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
       }
       onKill={() => killSession(live())}
       onWorktrees={() => {
-        const proj = state.projects.find((x) => x.id === readProjectId(live()));
+        const proj = appData().projects.find(
+          (x) => x.id === readProjectId(live()),
+        );
         if (proj) openWorktrees(proj);
       }}
       onColor={(hex) =>
@@ -417,7 +422,7 @@ function ProjectItem(o: ProjectItemProps) {
   );
 }
 
-// ---------- the island ----------
+// ---------- the sidebar ----------
 
 export function Sidebar(props: SidebarProps) {
   const projects = useAppStore((s) => s.projects);
@@ -428,7 +433,7 @@ export function Sidebar(props: SidebarProps) {
   const minimized = useAppStore((s) => s.minimized);
   const attention = useAppStore((s) => s.attention);
   // activeProjectId() reads currentProjectId / view / gridProjectId /
-  // activeId off the state facade rather than taking them as arguments,
+  // activeId off the store rather than taking them as arguments,
   // so it is subscribed as a derived string: the selector re-runs on
   // every store change, but only a different id re-renders the sidebar.
   const activePID = useAppStore(() => activeProjectId());

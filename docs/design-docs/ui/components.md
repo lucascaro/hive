@@ -1,12 +1,12 @@
 # Components
 
-Primitives live in two places while the [React rewrite](../../exec-plans/active/react-ui-rewrite.md) is in flight. `src/components/` holds the React ones (`.tsx`, one component per file) and is where new work goes; `src/ui/` holds the original plain-TypeScript DOM builders — a function returning an element plus, where the element has state, a small `updateX()` patch twin — and shrinks one phase at a time as each region is ported. A primitive that exists in both renders byte-identical markup; the React one has no patch twin, because props replace it. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
+Primitives are React components in `src/components/` (`.tsx`, one per file). `src/ui/` — the original plain-TypeScript DOM builders, a function returning an element plus, where the element has state, a small `updateX()` patch twin — is down to `icon.ts` and `icon-button.ts` after the [React rewrite](../../exec-plans/completed/react-ui-rewrite.md), and those two survive only because `src/app/session-term.ts` builds the terminal tile imperatively. They go when it is ported ([spec](../../product-specs/sessionterm-react.md)). A primitive that still exists in both renders byte-identical markup; the React one has no patch twin, because props replace it. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
 
-The signatures below are written in the imperative form, and each heading names the file(s) that implement it. Read a React port's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`. A heading with no file marked is imperative-only and has not been ported yet.
+The signatures below are written in the imperative form, and each heading names the file(s) that implement it. Read a React component's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`.
 
 Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names are `hv-<name>` and `hv-<name>__<part>`; modifiers are data attributes (`data-state="attention"`, `data-selected`), not extra classes.
 
-## `button({ label, kind?, icon?, onClick })` — both: `src/components/Button.tsx`, `src/ui/button.ts`
+## `button({ label, kind?, icon?, onClick })` — `src/components/Button.tsx`
 
 - `kind`: `default` | `primary` | `danger` | `ghost`.
 - Anatomy: optional leading icon (14px) + label. Height 28px, padding `0 var(--space-3)`, `--text-md`, `--radius-sm`.
@@ -17,7 +17,7 @@ Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names ar
 
 - 24×24 (rows/bars) or 22×22 (sidebar header), icon 14px centred, `aria-label` required, `title` mirrored. Same fills as `button` kind `ghost` at rest, `default` on hover.
 
-## `kbd(text)` — both: `src/components/Kbd.tsx`, `src/ui/kbd.ts`
+## `kbd(text)` — `src/components/Kbd.tsx`
 
 - `<kbd class="hv-kbd">`, `--font-mono --text-xs --fg-subtle`. The only way to render a key hint. See patterns.md › Keyboard hints.
 

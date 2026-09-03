@@ -28,7 +28,7 @@ vi.mock('../../src/bridge.js', () => ({
   EventsOn: vi.fn(),
 }));
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let grid: typeof import('../../src/app/grid-layout.js');
 let GridView: typeof import('../../src/components/GridView.js').GridView;
 let view: typeof import('../../src/app/view.js');
@@ -91,8 +91,8 @@ beforeAll(async () => {
   document.body.innerHTML = `
     <div id="app"><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     <div id="terms"></div><div id="minimized-tray"></div>
-    <div id="empty-state"></div><div id="grid-root" hidden></div></div>`;
-  ({ state } = await import('../../src/app/state.js'));
+    <div id="empty-state"></div><div id="react-root" hidden></div></div>`;
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   grid = await import('../../src/app/grid-layout.js');
   ({ GridView } = await import('../../src/components/GridView.js'));
   view = await import('../../src/app/view.js');

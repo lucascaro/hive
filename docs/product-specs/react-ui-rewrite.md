@@ -4,8 +4,9 @@ title: "Incremental React 19 rewrite of the hivegui frontend"
 type: enhancement
 complexity: L
 priority: P2
-pr: 321
-stage: IMPLEMENT
+pr: 324
+shipped: 2026-09-03
+stage: DONE
 ---
 
 # Incremental React 19 rewrite of the hivegui frontend
@@ -14,8 +15,8 @@ stage: IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Stage:** IMPLEMENT
-- **Exec plan:** [docs/exec-plans/active/react-ui-rewrite.md](../exec-plans/active/react-ui-rewrite.md)
+- **Stage:** DONE
+- **Exec plan:** [docs/exec-plans/completed/react-ui-rewrite.md](../exec-plans/completed/react-ui-rewrite.md)
 
 ## Problem
 

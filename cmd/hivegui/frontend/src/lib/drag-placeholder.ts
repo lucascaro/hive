@@ -32,8 +32,9 @@ let dragged: HTMLElement | null = null;
 // A selector for the dragged element, so a rebuild landing mid-drag can be
 // recovered from: `dragged` would otherwise point at a detached node for the
 // rest of the gesture. Vestigial as of the React sidebar — keyed
-// reconciliation never replaces the dragged row — but kept until Phase 6 of
-// the rewrite retires the last imperative render path.
+// reconciliation never replaces the dragged row — but kept while any
+// imperative render path remains (the terminal tile; see the SessionTerm
+// React-ification spec).
 let draggedSelector = '';
 let spacer: HTMLElement | null = null;
 let onDrop: DropHandler | null = null;

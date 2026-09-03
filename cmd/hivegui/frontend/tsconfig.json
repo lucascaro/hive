@@ -22,8 +22,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // vite/client supplies ImportMetaEnv (state.ts gates the __hive_state
-    // e2e affordance on import.meta.env.VITE_WAILS_*).
+    // vite/client supplies ImportMetaEnv (store/store.ts gates the
+    // __hive_state e2e affordance on import.meta.env.VITE_WAILS_*).
     "types": ["vite/client"],
     "allowJs": true,
     "checkJs": false,
@@ -45,6 +45,11 @@
   // widened in the same commit as the rename.
   // test/e2e-real joined them in wave 7c, the last of the migration. Its
   // globalSetup/globalTeardown stay .mjs and are skipped by `checkJs: false`.
+  // src/main.tsx is named explicitly because nothing imports the entry
+  // point — it is only reachable from index.html's <script src>, so it
+  // drops out of the tsc program entirely if this list forgets it. It did,
+  // once: the Phase 6 rename left "src/main.ts" here and the rewritten
+  // composition root went unchecked. Keep the extension in sync.
   "include": [
     "src/lib/**/*",
     "src/app/**/*",
@@ -52,7 +57,7 @@
     "src/components/**/*",
     "src/bridge.ts",
     "src/globals.d.ts",
-    "src/main.ts",
+    "src/main.tsx",
     "test/unit/**/*",
     "test/dom/**/*",
     "test/e2e/**/*",

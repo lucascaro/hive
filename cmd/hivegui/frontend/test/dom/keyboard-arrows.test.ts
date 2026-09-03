@@ -64,7 +64,7 @@ vi.mock('../../src/bridge.js', () => {
 // Every view export keyboard.ts imports must be listed: a missing entry
 // surfaces as an undefined call deep in a handler, not a clear failure.
 vi.mock('../../src/app/view.js', async () => {
-  const { state } = await import('../../src/app/state.js');
+  const { hiveStateView: state } = await import('../../src/store/store.js');
   return {
     switchTo: vi.fn(),
     setView: vi.fn(),
@@ -87,7 +87,7 @@ vi.mock('../../src/app/view.js', async () => {
 type View = typeof import('../../src/app/view.js');
 type Bridge = typeof import('../../src/bridge.js');
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let gridSpatialMove: MockedFunction<View['gridSpatialMove']>;
 let switchTo: MockedFunction<View['switchTo']>;
 let UpdateSession: MockedFunction<Bridge['UpdateSession']>;
@@ -102,7 +102,7 @@ beforeAll(async () => {
     <div id="project-editor" class="hidden"></div>
     <div id="command-palette" class="hidden"></div>
     <div id="help-overlay" class="hidden"></div>`;
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   const view = await import('../../src/app/view.js');
   gridSpatialMove = vi.mocked(view.gridSpatialMove);
   switchTo = vi.mocked(view.switchTo);

@@ -10,7 +10,7 @@
 // React root has something to mount on before the store says the modal
 // is open, and so the id, `role` and `aria-modal` that the keyboard
 // pipeline and the e2e specs key off exist from the first paint. This
-// component owns everything inside it; the island that renders it owns
+// component owns everything inside it; the modal that renders it owns
 // the root's `hidden` class, because that class has to be right in the
 // frame this component is no longer mounted in.
 //

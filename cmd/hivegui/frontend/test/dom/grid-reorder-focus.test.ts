@@ -61,7 +61,7 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let view: typeof import('../../src/app/view.js');
 // The layout pass itself, called directly: this file is a unit test of
 // preserveFocus inside it, and mounting GridView would only add a
@@ -108,7 +108,7 @@ beforeAll(async () => {
     <div id="app"><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
     <div id="terms"></div><div id="minimized-tray"></div>
     <div id="empty-state"></div></div>`;
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   view = await import('../../src/app/view.js');
   ({ applyGridLayout } = await import('../../src/app/grid-layout.js'));
   const { setActive } = await import('../../src/app/focus.js');

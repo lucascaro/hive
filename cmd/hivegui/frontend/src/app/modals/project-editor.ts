@@ -2,7 +2,7 @@
 //
 // The dialog renders from components/modals/ProjectEditor.tsx (Phase 4).
 // What stays here is the open/close pair every caller already imports
-// from this path (keyboard.ts, main.ts, the sidebar, the empty state and
+// from this path (keyboard.ts, main.tsx, the sidebar, the empty state and
 // the command palette), the default colour both halves need, and the
 // new-project button's icon, which lives in index.html's header rather
 // than in the dialog.

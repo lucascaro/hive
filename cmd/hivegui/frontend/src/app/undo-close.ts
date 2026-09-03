@@ -10,7 +10,7 @@
 // the follow-up message reports what was actually degraded instead of
 // saying "restored" and letting the user discover the gap themselves.
 import { KillSession, RestoreSession } from '../bridge.js';
-import { state } from './state.js';
+
 import { reportFailure } from './dom.js';
 import {
   appStore,
@@ -18,6 +18,11 @@ import {
   resetBanner,
   setBanner,
 } from '../store/store.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 /** How long the undo offer stays on screen. The tombstone outlives it. */
 const BANNER_MS = 15_000;
@@ -130,9 +135,9 @@ export function dismissUndoBanner() {
  * events.ts asks the real three-way question.
  */
 export function closeActiveSession() {
-  const id = state.activeId;
+  const id = appData().activeId;
   if (!id) return;
-  const s = state.sessions.find((x) => x.id === id);
+  const s = appData().sessions.find((x) => x.id === id);
   noteLocalClose(id, s?.name ?? 'Session');
   KillSession(id, false).catch(reportFailure('close'));
 }
@@ -188,7 +193,7 @@ export function onSessionRestored(ev: RestoredEvent) {
   // can be specific; falling back to the generic noun is fine when the
   // added event has not landed yet.
   const id = ev.session_id ?? ev.sessionId ?? '';
-  const name = state.sessions.find((s) => s.id === id)?.name;
+  const name = appData().sessions.find((s) => s.id === id)?.name;
   const subject = name ? `“${name}” reopened` : 'Session reopened';
 
   // Scrollback is unconditional: there is no disk-backed scrollback to

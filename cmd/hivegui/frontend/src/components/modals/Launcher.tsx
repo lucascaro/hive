@@ -1,10 +1,10 @@
 // ---------- agent launcher ----------
 //
-// React port of src/app/modals/launcher.ts. The island mounts on
+// React port of src/app/modals/launcher.ts. The component mounts on
 // #launcher, which keeps its id, its `role="menu"` and its `.hidden`
 // class — the class is the open/closed signal every keyboard gate and
 // e2e assertion reads, so it is applied from a layout effect the same
-// way Phase 2's chrome islands apply theirs.
+// way the chrome components apply theirs.
 //
 // The launcher's own listeners (keydown, mousedown, focusout, and the
 // document-level outside click) stay on the root element rather than on
@@ -34,7 +34,7 @@ import {
 } from '../../bridge.js';
 import { flashStatus, reportFailure } from '../../app/dom.js';
 import { activeProjectId } from '../../app/selectors.js';
-import { state } from '../../app/state.js';
+
 import { cmdOrCtrl } from '../../lib/platform.js';
 import {
   bumpAgentUsage,
@@ -42,7 +42,14 @@ import {
   loadAgentUsage,
   openLauncher,
 } from '../../app/modals/launcher.js';
-import { useAppStore, type LauncherRequest } from '../../store/store.js';
+import {
+  appStore,
+  useAppStore,
+  type LauncherRequest,
+} from '../../store/store.js';
+
+// Live read of the store, for the submit handlers' non-reactive lookups.
+const appData = () => appStore.getState();
 import { Kbd } from '../Kbd.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
@@ -174,7 +181,7 @@ function LauncherBody({
   // child-first, so at that point #launcher is still `.hidden` — and
   // focus() on a display:none element is a silent no-op, which is
   // exactly how it shipped broken to the browser while jsdom (no CSS)
-  // stayed green. Passive effects run after the island's layout effect
+  // stayed green. Passive effects run after the modal's layout effect
   // has revealed the popup.
   useEffect(() => {
     searchRef.current?.focus();
@@ -221,7 +228,8 @@ function LauncherBody({
     };
   }, []);
 
-  const projCwd = state.projects.find((p) => p.id === req.projectId)?.cwd ?? '';
+  const projCwd =
+    appData().projects.find((p) => p.id === req.projectId)?.cwd ?? '';
   useEffect(() => {
     if (!canWorktree || !projCwd) return;
     let live = true;
@@ -269,7 +277,7 @@ function LauncherBody({
     // Anchor the new session under the one it came from (duplicate) or
     // under the active one, so it lands next to its context instead of
     // at the bottom of the sidebar.
-    const anchor = req.duplicateFrom?.id || state.activeId || '';
+    const anchor = req.duplicateFrom?.id || appData().activeId || '';
     if (req.duplicateFrom) {
       DuplicateSession(
         agentId,

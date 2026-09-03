@@ -50,7 +50,7 @@ import {
   reopenLastClosedSession,
   resetUndoCloseForTest,
 } from '../../src/app/undo-close.js';
-import { state } from '../../src/app/state.js';
+import { hiveStateView as state } from '../../src/store/store.js';
 
 function removed(id: string) {
   act(() => onSessionRemoved(id));

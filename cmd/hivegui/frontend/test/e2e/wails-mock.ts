@@ -4,7 +4,7 @@
 // native Wails runtime. Drives the UI through a tiny scripted
 // daemon-state machine that Playwright can poke via window.__hive.
 
-import { state as appState } from '../../src/app/state.js';
+import { hiveStateView as appState } from '../../src/store/store.js';
 import type { ProjectInfo, SessionInfo } from '../../src/app/state.js';
 // Type-only, so it is erased before Vite ever sees it — the whole point of
 // this module is to stand in for wailsjs at runtime. Using the generated

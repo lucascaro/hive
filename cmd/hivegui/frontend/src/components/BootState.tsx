@@ -4,7 +4,7 @@
 // its socket, and a black pane reads as a broken app. This component
 // takes over the same ids on mount.
 //
-// The 5-attempt retry policy is not here: main.ts's retryBoot() owns it
+// The 5-attempt retry policy is not here: main.tsx's retryBoot() owns it
 // and arrives as the store's `onRetry`.
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { useAppStore } from '../store/store.js';

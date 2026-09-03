@@ -187,8 +187,8 @@ function WorktreesPanel({
   );
 }
 
-// A row action. Deliberately a plain <button>, not the ui/button
-// primitive: worktrees.css styles `.worktree-actions button` directly and
+// A row action. Deliberately a plain <button>, not the Button
+// component: worktrees.css styles `.worktree-actions button` directly and
 // the e2e specs select the danger one by class.
 function RowButton({
   label,

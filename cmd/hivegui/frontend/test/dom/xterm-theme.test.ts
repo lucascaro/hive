@@ -109,7 +109,7 @@ describe('ANSI palette', () => {
 
 describe('applyXtermTheme', () => {
   let applyXtermTheme: typeof import('../../src/app/session-term.js').applyXtermTheme;
-  let state: typeof import('../../src/app/state.js').state;
+  let state: typeof import('../../src/store/store.js').hiveStateView;
 
   beforeAll(async () => {
     globalThis.ResizeObserver = class {
@@ -129,7 +129,7 @@ describe('applyXtermTheme', () => {
     })) as unknown as typeof window.matchMedia;
     document.body.innerHTML =
       '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
-    ({ state } = await import('../../src/app/state.js'));
+    ({ hiveStateView: state } = await import('../../src/store/store.js'));
     ({ applyXtermTheme } = await import('../../src/app/session-term.js'));
   });
 

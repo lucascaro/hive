@@ -120,7 +120,7 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
 type Store = typeof import('../../src/store/store.js');
 let openModal: Store['openModal'];
 let resetStore: Store['resetStore'];
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 
 // The dead-session overlay is the ninth layer: not a modal, but it does
 // claim Enter/Escape from the active tile before the app bindings.
@@ -138,7 +138,7 @@ beforeAll(async () => {
     <div id="choice-dialog" class="hv-dialog hidden"></div>
     <div id="command-palette" class="hidden"></div>`;
   ({ openModal, resetStore } = await import('../../src/store/store.js'));
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   await import('../../src/app/keyboard.js');
 });
 

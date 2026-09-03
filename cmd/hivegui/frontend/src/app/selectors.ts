@@ -1,13 +1,19 @@
 // Read-only derivations over the shared state object. No DOM, no
 // bridge calls — pure lookups modules can share without cycles.
 
-import { state, type SessionInfo } from './state.js';
+import type { SessionInfo } from './state.js';
+import { appStore } from '../store/store.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 // orderedSessions returns sessions sorted by (project order, session order)
 // so navigation always matches what the user sees.
 export function orderedSessions(): SessionInfo[] {
-  const projOrder = new Map(state.projects.map((p, i) => [p.id, i]));
-  return [...state.sessions].sort((a, b) => {
+  const projOrder = new Map(appData().projects.map((p, i) => [p.id, i]));
+  return [...appData().sessions].sort((a, b) => {
     const pa = projOrder.get(a.projectId ?? a.project_id ?? '') ?? 1e9;
     const pb = projOrder.get(b.projectId ?? b.project_id ?? '') ?? 1e9;
     if (pa !== pb) return pa - pb;
@@ -25,10 +31,11 @@ export function nextAttentionId(): string | null {
   const ord = orderedSessions();
   const n = ord.length;
   if (n === 0) return null;
-  const start = ord.findIndex((s) => s.id === state.activeId); // -1 → start at 0
+  const start = ord.findIndex((s) => s.id === appData().activeId); // -1 → start at 0
   for (let i = 1; i <= n; i++) {
     const s = ord[(start + i) % n];
-    if (s.id !== state.activeId && state.attention.has(s.id)) return s.id;
+    if (s.id !== appData().activeId && appData().attention.has(s.id))
+      return s.id;
   }
   return null;
 }
@@ -38,8 +45,8 @@ export function nextAttentionId(): string | null {
 // project's cwd, otherwise the user's currently-selected project.
 // Empty string means "let the Go side fall back to launchDir".
 export function activeCwd(): string {
-  const id = state.activeId;
-  const s = id ? state.sessions.find((x) => x.id === id) : null;
+  const id = appData().activeId;
+  const s = id ? appData().sessions.find((x) => x.id === id) : null;
   // Both spellings, like resolveSessionCwd below — a camelCase-only
   // session used to fall through to the project cwd here, so ⌘N landed
   // in the repo root instead of the worktree. Not delegating to
@@ -47,7 +54,7 @@ export function activeCwd(): string {
   const wt = s?.worktree_path ?? s?.worktreePath;
   if (wt) return wt;
   const pid = (s?.projectId ?? s?.project_id) || activeProjectId();
-  const p = pid ? state.projects.find((x) => x.id === pid) : null;
+  const p = pid ? appData().projects.find((x) => x.id === pid) : null;
   return p?.cwd ?? '';
 }
 
@@ -56,18 +63,24 @@ export function activeProjectId(): string {
   // ⌘[/], project-header click, switchTo (synced to session's
   // project), and project events. Empty projects work because they
   // can be the current project even with no active session.
-  if (state.currentProjectId) {
-    return state.currentProjectId;
+  // The one destructured read in src/: three fields, all consumed in the
+  // next four lines with no await and no store write between them, and
+  // TS needs the local bindings to narrow `string | null` to `string` on
+  // return. Everywhere else the rule in FRONTEND.md holds — call appData()
+  // per read, never hold a snapshot across anything that can write.
+  const { currentProjectId, view, gridProjectId } = appData();
+  if (currentProjectId) {
+    return currentProjectId;
   }
-  if (state.view === 'grid-project' && state.gridProjectId) {
-    return state.gridProjectId;
+  if (view === 'grid-project' && gridProjectId) {
+    return gridProjectId;
   }
-  if (state.activeId) {
-    const s = state.sessions.find((x) => x.id === state.activeId);
+  if (appData().activeId) {
+    const s = appData().sessions.find((x) => x.id === appData().activeId);
     const pid = s?.projectId ?? s?.project_id;
     if (pid) return pid;
   }
-  return state.projects[0]?.id ?? '';
+  return appData().projects[0]?.id ?? '';
 }
 
 // resolveSessionCwd picks the directory a session is actually running
@@ -87,6 +100,6 @@ export function resolveSessionCwd(
   const wt = sess.worktree_path ?? sess.worktreePath;
   if (wt) return wt;
   const pid = sess.projectId ?? sess.project_id;
-  const proj = state.projects.find((p) => p.id === pid);
+  const proj = appData().projects.find((p) => p.id === pid);
   return proj?.cwd ?? '';
 }

@@ -25,7 +25,7 @@ export function VersionFooter({
   useEffect(() => {
     // EventsOn returns its own unsubscribe; the imperative module never
     // called it (nothing ever tore the footer down), but a component has
-    // an unmount and Phase 6 will use it.
+    // an unmount, and the single root's teardown goes through it.
     return EventsOn('daemon:stale', (next: DaemonStaleEvent | null) => {
       if (next) setEv(next);
     });

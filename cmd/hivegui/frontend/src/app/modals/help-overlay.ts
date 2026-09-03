@@ -2,8 +2,8 @@
 //
 // The overlay renders from components/modals/HelpOverlay.tsx (Phase 4).
 // What stays here is the open/close/toggle trio every caller already
-// imports from this path (keyboard.ts, main.ts, the command palette) and
-// the focus-pipeline callbacks main.ts injects.
+// imports from this path (keyboard.ts, main.tsx, the command palette) and
+// the focus-pipeline callbacks main.tsx injects.
 
 import { flushSync } from 'react-dom';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
