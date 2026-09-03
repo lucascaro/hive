@@ -158,10 +158,23 @@ module that owns `manualUpdateCheck`.
   green. Pushed as PR #325; stage = REVIEW.
 - **2026-09-03** — Review iteration 1 (COMMENT) caught 12 stale `HIVE_SNAPSHOT`
   pixel baselines; regenerated on darwin and committed.
+- **2026-09-03** — Gate FAIL; README's Updating section named the macOS menu as
+  the only manual trigger and was not updated for the new sidebar button. Fixed
+  on the branch (the PR is open, so no follow-up issue); re-running the gate.
 - **2026-09-03** — Review iteration 2: APPROVE, zero unresolved threads, CI green
   on `50bddbf`. One MINOR left unfixed by choice: the `download` sprite is a
   semantic near-miss for "check for updates", but `ICON_NAMES` has no better
   fit. Stage = GATE.
+
+## Gate verdict
+
+<Append-only. One entry per `/hs-merge-gate` run.>
+
+- **2026-09-03** — verdict: FAIL; checks: 2 passed / 1 failed / 0 followups; followups: none (PR open — fixed in this PR); one-line: README's Updating section still named the macOS menu as the only manual trigger.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all 5 success criteria observable; the brand-ellipsis criterion was verified by narrowing the sidebar to 60px in a throwaway e2e run
+    - non-goals — PASS — `cmd/hivegui/update.go`, `keyboard.ts` and `command-palette.ts` have an empty diff; no React component owns the header
+    - doc accuracy — FAIL — `README.md` "Updating" said the check is "reachable manually from File → Check for Updates…", which this PR makes incomplete; changeset and generated-file checks all passed
 
 ## Open questions
 
