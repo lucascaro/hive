@@ -1,6 +1,6 @@
 # React UI rewrite — Phase 4: Modals B + keyboard reads the store
 
-- **Master plan:** [react-ui-rewrite.md](../active/react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** [#320](https://github.com/lucascaro/hive/pull/320)

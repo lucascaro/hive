@@ -1,6 +1,6 @@
 # React UI rewrite — Phase 1: Sidebar island
 
-- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](../completed/react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** #317
@@ -49,7 +49,7 @@ What `/hs-merge-gate` validates for THIS phase.
 
 ## Invariants
 
-Every phase honours the Invariants section of the [master plan](react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
+Every phase honours the Invariants section of the [master plan](../completed/react-ui-rewrite.md#invariants-every-phase--violating-any-reintroduces-a-shipped-bug).
 Violating any one reintroduces a shipped bug.
 
 ## Verification

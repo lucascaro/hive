@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/react-phase6-single-root`
 - **PR:** [#324](https://github.com/lucascaro/hive/pull/324)
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -69,7 +69,43 @@ Per the master plan's Verification block, compared against
 
 ## Gate verdict
 
-<Filled by `/hs-merge-gate`.>
+- **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 0
+  followups; followups: none (PR open, so the fix landed in this PR rather than
+  as tracked debt); one-line: doc accuracy failed on `FRONTEND.md`'s `src/lib`
+  row, which a review-loop fix had overcorrected from "DOM-free" to seven
+  DOM-touching modules when only three are.
+  - 2026-09-03 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — every spec and phase-plan criterion passed;
+      the single followup was a timing artefact (the CI matrix was mid-run on
+      `be762ad`, which the stage-advance commit had just restarted), not a
+      defect. Independently re-verified both documented deviations: `view.ts` /
+      `el.ts` are live and correctly kept, and exactly nine `init*` deps seams
+      exist and were correctly kept.
+    - non-goals — PASS — 7/7. No theme/token/`hv-*` change, no SessionTerm
+      React-ification, no CSS Modules, no new e2e spec and zero `data-testid`
+      repo-wide, no Go/Wails/wire change, no SSR/routing/Suspense/Compiler.
+    - doc accuracy — FAIL — `FRONTEND.md:31` claimed seven DOM-touching
+      `src/lib` modules tested under `test/dom`; `focus.ts`,
+      `renderer-recovery.ts`, `scroll-debug.ts` and `freeze-heartbeat.ts` make
+      no `document`/`window` call and run in the node-only `unit` project.
+
+- **2026-09-03** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0
+  followups; followups: none; one-line: FRONTEND.md's `src/lib` row corrected in
+  `969afd6`, doc accuracy re-run clean, and the acceptance dimension's only
+  followup closed by CI finishing 12/12 green on that head.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all seven spec Success criteria and every phase-plan
+      criterion verified with evidence: zero `.spec.ts` edits across
+      `main...HEAD`; `hiveStateView` exposes the same 19 fields and
+      `test_window_hive_state_shape_unchanged` passes; the `state` facade is
+      gone and an orphaned-export sweep over `src/` found no dead code;
+      `ui-lint.sh --strict` passes and globs `.tsx`; `#terms` is outside
+      React's tree and `grid-layout.ts` still reparents; bootstrap order,
+      inline theme stamp, docs, changeset and the three debt specs all present.
+    - non-goals — PASS — unchanged from the first run.
+    - doc accuracy — PASS — the three corrected claims re-verified by command
+      (not re-read), plus a full regression sweep of `DESIGN.md`, the UI design
+      docs, the changeset, the debt specs, the plan family and `README.md`.
 
 ## PR convergence ledger
 

@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** [#324](https://github.com/lucascaro/hive/pull/324) — the phase currently in flight (Phase 6). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
 - **Branch:** `feature/react-phase6-single-root`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -118,13 +118,13 @@ implemented — the briefs deliberately do not all exist up front.
 
 | Phase | Plan | PR | State |
 |---|---|---|---|
-| 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
-| 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
-| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
-| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
-| 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
-| 5 — grid shell | [phase5](../completed/react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate PASS |
-| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | #324 | **in flight** |
+| 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | #311 | **merged** |
+| 1 — sidebar island | [phase1](../active/react-ui-rewrite-phase1.md) | #317 | **merged** |
+| 2 — chrome island | [phase2](../active/react-ui-rewrite-phase2.md) | #318 | **merged** |
+| 3 — modals A | [phase3](../active/react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
+| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
+| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate PASS |
+| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | #324 | **gate PASS**, ready to merge |
 
 **Carried into Phase 6's deletion sweep** (each verified to have zero production
 importers at the phase that stranded it — they are reachable only from their own
@@ -203,7 +203,7 @@ Compare any failures against `.plans/react-rewrite-flake-baseline.md` (Phase 0 a
 **2026-09-01** — Migrated from `~/.hivesmith/plans/2026-08-31-react-ui-rewrite.md`
 into hivesmith bookkeeping, following the `ui-design-system` master/phase layout.
 Phase 0 implemented and committed (`dc249dc`); see
-[phase0](../completed/react-ui-rewrite-phase0.md) for its brief, flake baseline and
+[phase0](react-ui-rewrite-phase0.md) for its brief, flake baseline and
 decision log.
 
 ## Phase briefs
@@ -558,8 +558,8 @@ test.
 - **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
 - **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
 - **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
-- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Merged 2026-09-03 (`d794caa`). Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
-- **Phase 5** — PR #321 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: ac1158f. Merged 2026-09-03 (`b9ca655`). Two review iterations; see [phase5](../completed/react-ui-rewrite-phase5.md#pr-convergence-ledger). Gate ran post-merge: FAIL on two stale doc claims, then PASS on the re-run once they were fixed.
+- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Merged 2026-09-03 (`d794caa`). Five review iterations; see [phase4](react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
+- **Phase 5** — PR #321 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: ac1158f. Merged 2026-09-03 (`b9ca655`). Two review iterations; see [phase5](react-ui-rewrite-phase5.md#pr-convergence-ledger). Gate ran post-merge: FAIL on two stale doc claims, then PASS on the re-run once they were fixed.
 
 ## Gate verdict
 
