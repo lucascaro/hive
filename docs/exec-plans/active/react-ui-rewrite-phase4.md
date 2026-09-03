@@ -144,3 +144,7 @@ component (never in the spec).**
 `go build ./...` + `go test ./internal/... ./cmd/hivegui/...` green under the
 `go.mod` toolchain; Playwright e2e **258 passed / 0 failed / 31 skipped** with
 every spec unmodified; `npm run test:e2e:real` **24 passed**.
+
+## PR convergence ledger
+
+_(opened 2026-09-02 for PR #320; `/hs-review-loop` appends one entry per iteration)_
