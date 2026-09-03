@@ -15,9 +15,9 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
+| P3 | — | React-ify SessionTerm's tile chrome | IMPLEMENT | [329-react-ify-sessionterms-tile-chrome](329-react-ify-sessionterms-tile-chrome.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
 | P3 | — | Decompose keyboard.ts into per-scope keymap tables | TRIAGE | [keyboard-keymap-tables](keyboard-keymap-tables.md) |
-| P3 | — | React-ify SessionTerm (the last imperative render path) | TRIAGE | [sessionterm-react](sessionterm-react.md) |
 
 ## Completed
 
