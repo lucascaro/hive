@@ -4,7 +4,7 @@ title: "React-ify SessionTerm's tile chrome"
 type: enhancement
 complexity: L
 priority: P3
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # React-ify SessionTerm's tile chrome
