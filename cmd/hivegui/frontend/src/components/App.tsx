@@ -46,6 +46,7 @@ import { Banners } from './Banners.js';
 import { BootState } from './BootState.js';
 import { EmptyState } from './EmptyState.js';
 import { GridView } from './GridView.js';
+import { TileChromeHost } from './TileChrome.js';
 import { MinimizedTray } from './MinimizedTray.js';
 import { Sidebar, type SidebarProps } from './Sidebar.js';
 import { StatusBar } from './StatusBar.js';
@@ -107,6 +108,9 @@ export function App(): ReactNode {
           app/grid-layout.ts when the view, active tile or grid scope
           moves — which is why it needs no portal at all. */}
       <GridView />
+      {/* One portal per live terminal tile, into hosts app/session-term.ts
+          owns. Renders no layout of its own — see TileChrome.tsx. */}
+      <TileChromeHost />
       {/* #banners is `display: contents` (layout.css), so the three
           banners stay direct children of the #app grid and keep their
           row placement. */}

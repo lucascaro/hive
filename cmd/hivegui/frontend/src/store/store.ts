@@ -67,6 +67,7 @@ export interface AppData {
   minimized: Set<string>;
   aliveById: Map<string, boolean>;
   phaseById: Map<string, string>;
+  tileChrome: Map<string, TileChromeState>;
   dismissedDead: Set<string>;
   activeId: string | null;
   currentProjectId: string | null;
@@ -311,6 +312,12 @@ function initialData(): AppData {
     minimized: new Set(), // session ids hidden from grid views; restored via tray
     aliveById: new Map(), // session id -> last-seen Alive bool (for transition detection)
     phaseById: new Map(), // session id -> last-seen lifecycle phase (see lib/phase-steps.ts)
+    tileChrome: new Map(), // session id -> the tile chrome components/TileChrome.tsx
+    //   renders. Written by SessionTerm's own methods, whose names, call
+    //   sites and timing are unchanged — only the rendering moved. NOT
+    //   pruned by pruneToLiveSessions/forgetSession: its lifetime is the
+    //   SessionTerm's, and destroy() drops it. A `removed` event can
+    //   arrive while the dead tile is still on screen.
     dismissedDead: new Set(), // session ids whose dead overlay user dismissed
     activeId: null,
     currentProjectId: null, // "the project I'm working in"; can be set
@@ -496,6 +503,70 @@ export function setAlive(id: string, alive: boolean): void {
 
 export function setSessionPhase(id: string, phase: string): void {
   set({ phaseById: mapWith(get().phaseById, id, phase) });
+}
+
+// ---------- tile chrome ----------
+//
+// The state components/TileChrome.tsx renders a terminal tile's header
+// and overlays from. Deliberately separate from `sessions` / `phaseById`
+// even where the fields look the same:
+//
+// - `info` is SessionTerm's own snapshot, written by setInfo(). It is
+//   what the imperative header used to patch from, so rendering from it
+//   is byte-identical rather than merely equivalent.
+// - `phase` is the TILE's phase, not phaseById's. setPhase() updates the
+//   tile and never writes back to info; resolving the state icon from
+//   the session list instead would repaint it from whatever the last
+//   snapshot said — stale for exactly the transition setPhase exists for.
+export interface TileChromeState {
+  info: SessionInfo;
+  phase: string;
+  termTitle: string;
+  dead: boolean;
+  deadReason: string;
+  phaseVisible: boolean;
+  phaseFading: boolean;
+}
+
+export function initialTileChrome(info: SessionInfo, phase: string) {
+  return {
+    info,
+    phase,
+    termTitle: '',
+    dead: false,
+    deadReason: '',
+    phaseVisible: false,
+    phaseFading: false,
+  } satisfies TileChromeState;
+}
+
+// One write path, so a no-op patch stays genuinely silent: zustand
+// compares the map by reference, and mapWith only allocates when the
+// value differs. Shallow-comparing the patch first is what makes
+// "same phase again" — which setPhase does on every session:list — free.
+export function patchTileChrome(
+  id: string,
+  patch: Partial<TileChromeState>,
+): void {
+  const cur = get().tileChrome.get(id);
+  if (!cur) return;
+  let changed = false;
+  for (const key of Object.keys(patch) as (keyof TileChromeState)[]) {
+    if (!Object.is(cur[key], patch[key])) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
+  set({ tileChrome: mapWith(get().tileChrome, id, { ...cur, ...patch }) });
+}
+
+export function addTileChrome(id: string, state: TileChromeState): void {
+  set({ tileChrome: mapWith(get().tileChrome, id, state) });
+}
+
+export function dropTileChrome(id: string): void {
+  set({ tileChrome: mapWithout(get().tileChrome, id) });
 }
 
 // Everything a `removed` event has to forget about a session, in one
