@@ -23,7 +23,7 @@ import { mustEl } from './el.js';
 // The `single` class that used to be added here moved to main.ts: it is
 // initial paint state, not a property of holding the handle, and this
 // module is imported by ~30 jsdom tests that never render a view.
-// showSingle() re-adds it on the first paint either way (view.ts).
+// applySingle() re-adds it on the first paint either way (grid-layout.ts).
 export const termsHost = mustEl('terms');
 
 // The flash engine stays here rather than moving into the store: it is

@@ -574,7 +574,7 @@ export class SessionTerm {
     // helper-textarea) are reconciled atomically by setFocusedTile(id),
     // which is the sole writer of .term-focused. Driving the class off
     // browser focusin/focusout events used to race with DOM churn during
-    // view transitions (single ↔ grid, renderGrid's appendChild reorder,
+    // view transitions (single ↔ grid, applyGridLayout's appendChild reorder,
     // xterm.open mounting new helper-textareas), leaving a tile visually
     // focused while keystrokes went nowhere. Visual focus is now a pure
     // projection of state.activeId, gated by whether a modal/rename

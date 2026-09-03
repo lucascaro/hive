@@ -107,6 +107,14 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  // jsdom has no requestIdleCallback, so grid-layout's _ric takes its
+  // setTimeout(16) fallback and every pass leaves a real timer behind for
+  // the deferred (non-active) tiles. Under real timers those stragglers
+  // outlive the test — and, for the last test in the file, the jsdom
+  // environment itself — firing ensureAttached() against a torn-down
+  // `document`. Fake timers keep the chain inert unless a test advances
+  // them on purpose; afterEach discards whatever is still queued.
+  vi.useFakeTimers();
   attachedWithTemplate.length = 0;
   termsHost().innerHTML = '';
   termsHost().removeAttribute('style');
@@ -126,6 +134,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });
 
 describe('a layout pass', () => {
@@ -157,7 +167,13 @@ describe('a layout pass', () => {
     ];
     grid.applyGridLayout();
 
-    expect(hostsInGrid()).toEqual([first[1], first[0]]);
+    // toBe, not toEqual: vitest compares DOM nodes structurally, so two
+    // freshly built hosts carrying the same classes pass toEqual. Only
+    // Object.is can tell "reparented" from "recreated", which is the
+    // whole invariant this case exists to pin.
+    const after = hostsInGrid();
+    expect(after[0]).toBe(first[1]);
+    expect(after[1]).toBe(first[0]);
   });
 
   it('leaves an out-of-scope tile its DOM node', () => {
@@ -167,7 +183,9 @@ describe('a layout pass', () => {
     state.minimized = new Set(['b']);
     grid.applyGridLayout();
 
-    expect(hostsInGrid().map((h) => h)).toEqual([state.terms.get('a')?.host]);
+    const inGrid = hostsInGrid();
+    expect(inGrid).toHaveLength(1);
+    expect(inGrid[0]).toBe(state.terms.get('a')?.host);
     // Still the same node, still in the document, just not in the grid:
     // its scrollback has to survive being minimized and restored.
     expect(state.terms.get('b')?.host).toBe(bHost);
@@ -191,6 +209,28 @@ describe('GridView', () => {
     });
 
     expect(hostsInGrid()).toHaveLength(1);
+  });
+
+  it('lays the grid out when the scope reorders', () => {
+    render(<GridView />);
+    const first = hostsInGrid();
+    expect(first).toHaveLength(2);
+
+    // events.ts no longer calls a repaint on an `updated` reorder — the
+    // ordered ids in GridView's signature are the repaint. This is the
+    // subscription half of it: a signature that stopped carrying order
+    // (sorted, set-ified) would leave the tiles in stale DOM order and
+    // every other case in this file would stay green.
+    act(() => {
+      state.sessions = [
+        { id: 'b', project_id: 'p1', order: 0 },
+        { id: 'a', project_id: 'p1', order: 1 },
+      ];
+    });
+
+    const after = hostsInGrid();
+    expect(after[0]).toBe(first[1]);
+    expect(after[1]).toBe(first[0]);
   });
 
   it('does not lay out again when a bell marks attention', () => {

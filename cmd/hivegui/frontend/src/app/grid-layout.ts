@@ -258,6 +258,10 @@ export function applyGridLayout() {
   // feedback loop) or a single multi-hundred-ms pass points straight at
   // the grid relayout as the stall source. dur is the synchronous cost
   // of this pass; ms is wall-clock so a storm shows as tight spacing.
+  // The `renderGrid` / `render-grid` keys keep the pre-Phase-5 names on
+  // purpose: they are what a freeze-probe dump is grepped for, and
+  // renaming them would make new traces incomparable with every archived
+  // one. Same reason the LogFrontend line above still says "renderGrid".
   if (deps.scrollTrace.rec.enabled) {
     deps.scrollTrace.count('renderGrid');
     deps.scrollTrace.rec('render-grid', {

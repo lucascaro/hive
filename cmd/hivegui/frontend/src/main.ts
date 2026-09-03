@@ -260,7 +260,7 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 // a single root. The handles are kept so that phase has something to
 // unmount — see docs/exec-plans/active/react-ui-rewrite.md.
 // The pane starts in focused mode. Set before the first paint rather than
-// waiting for showSingle(), which only runs once a session exists —
+// waiting for applySingle(), which only runs once a session exists —
 // #terms.single drives the terminal arrangement in layout.css.
 termsHost.classList.add('single');
 

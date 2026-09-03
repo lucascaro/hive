@@ -469,11 +469,11 @@ named in "lines that change". Nothing else in these bodies is touched.
 
 | From `view.ts` | To `grid-layout.ts` | Lines that change |
 |---|---|---|
-| `showSingle()` :66 | `applySingle(id)` | rename; `state.terms` → `allTerms()` / `getTerm()` |
+| `showSingle()` :66 | `applySingle(id)` | rename; `state.terms` → `termsMap()` / `getTerm()` |
 | `_ric` :230 | `_ric` | none |
 | `attachDeferred()` :234 | `attachDeferred` | none |
-| `renderGrid()` :249 | `applyGridLayout()` | rename; `deps.ensureTerm` → imported `ensureTerm`; `deps.scrollTrace` → imported `scrollTrace`; `state.terms` → registry |
-| `gridLayout` cache :210 | module-local + `getGridLayout()` | export accessor for `gridSpatialMove` |
+| `renderGrid()` :249 | `applyGridLayout()` | rename; `state.terms` → registry. **As shipped:** `deps.ensureTerm` / `deps.scrollTrace` stay on a deps seam (`initGridLayout()`, forwarded from `initView()`) rather than becoming direct imports — importing `ensureTerm` here would close a `session-term` ↔ `grid-layout` cycle. Phase 6 deletes both seams. |
+| `gridLayout` cache :210 | module-local + `currentGridLayout()` | export accessor for `gridSpatialMove` (plus `spatialTarget()`, kept next to the cache so the two cannot drift) |
 | `rebaselineGridReplayCols()` :592 | exported | none |
 | `gridScopeFor()` :467, `gridScopeSessions()` :486 | same | none |
 | `#terms` ResizeObserver :665-679 | same | `renderGrid()` → `applyGridLayout()` |
