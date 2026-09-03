@@ -158,6 +158,10 @@ module that owns `manualUpdateCheck`.
   green. Pushed as PR #325; stage = REVIEW.
 - **2026-09-03** — Review iteration 1 (COMMENT) caught 12 stale `HIVE_SNAPSHOT`
   pixel baselines; regenerated on darwin and committed.
+- **2026-09-03** — Review iteration 2: APPROVE, zero unresolved threads, CI green
+  on `50bddbf`. One MINOR left unfixed by choice: the `download` sprite is a
+  semantic near-miss for "check for updates", but `ICON_NAMES` has no better
+  fit. Stage = GATE.
 
 ## Open questions
 
@@ -170,3 +174,4 @@ have surfaced — they are screenshots. Regenerated on darwin and committed.)
 <Append-only. One line per `/hs-review-loop` iteration.>
 
 - **2026-09-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ddd91c6697b0cd86e6ea094147f89854ead4b6fa7aebb6cc2d810c8be4cb0cdf; threads_open: 0; action: fix stale pixel baselines + push; head_sha: 6fac471.
+- **2026-09-03 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 50bddbf.

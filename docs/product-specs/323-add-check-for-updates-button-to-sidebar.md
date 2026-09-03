@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 325
-stage: REVIEW
+stage: GATE
 ---
 
 # Add a "check for updates" button to the sidebar
