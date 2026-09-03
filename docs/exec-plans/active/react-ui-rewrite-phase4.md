@@ -218,3 +218,4 @@ The five surviving MINORs were applied post-loop rather than deferred:
   than a bare `cancelInlineRename()` — had no test for its false branch. New
   `test/dom/inline-rename.test.ts` covers it; deleting the guard fails two of
   its three cases.
+- **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged (iteration-1 fixes verified at source; 5 MINORs applied post-loop); head_sha: adcdc15.
