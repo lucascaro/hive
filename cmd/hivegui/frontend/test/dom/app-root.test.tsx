@@ -107,13 +107,20 @@ let App: typeof import('../../src/components/App.js').App;
 const PRE_PAINT_SEEDED = ['status', 'boot-state', 'sidebar-hints'];
 
 function loadIndexBody(): void {
-  const body = indexHtml.slice(
-    indexHtml.indexOf('<body>') + 6,
-    indexHtml.indexOf('</body>'),
-  );
-  // Drop the module <script>: jsdom would try to fetch it, and booting
+  // Parsed, not sliced-and-regexed. A regex that strips <script> is
+  // hand-rolled HTML sanitization — CodeQL flags the shape (js/bad-tag-filter,
+  // js/incomplete-multi-character-sanitization) and it is right to: the
+  // pattern is wrong for upper-case tags and for anything nested. DOMParser
+  // does the real thing, and removing the parsed <script> elements is exact.
+  //
+  // The scripts have to go: index.html carries the pre-paint theme stamp and
+  // the module entry point, and jsdom would try to run and fetch them. Booting
   // the real composition root is not what this file tests.
-  document.body.innerHTML = body.replace(/<script[\s\S]*?<\/script>/g, '');
+  const parsed = new DOMParser().parseFromString(indexHtml, 'text/html');
+  for (const script of parsed.querySelectorAll('script')) script.remove();
+  document.body.replaceChildren(
+    ...Array.from(parsed.body.childNodes, (n) => document.importNode(n, true)),
+  );
 }
 
 function idCounts(): Map<string, number> {

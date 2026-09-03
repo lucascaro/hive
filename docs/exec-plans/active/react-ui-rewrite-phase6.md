@@ -103,3 +103,10 @@ the master plan's Gating convention).
     `groupPresets()` optgroup bucketing (2 cases in `settings.test.tsx`) and
     the project editor's field/label a11y contract (2 in
     `project-editor.test.tsx`).
+  - **CI caught one of the fixes:** the new dom test stripped `index.html`'s
+    `<script>` tags with a regex, which CodeQL flagged as two HIGH alerts
+    (`js/bad-tag-filter`, `js/incomplete-multi-character-sanitization`) — the
+    hand-rolled-HTML-sanitization shape, wrong for upper-case tags and for
+    nesting. Replaced with `DOMParser` + `querySelectorAll('script').remove()`,
+    which is exact and leaves no regex behind. Test-only code, but the rule is
+    right about the pattern.
