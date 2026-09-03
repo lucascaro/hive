@@ -17,7 +17,7 @@ stage: TRIAGE
 
 ## Problem
 
-`cmd/hivegui/frontend/src/app/keyboard.ts` is one 806-line capture-phase window
+`cmd/hivegui/frontend/src/app/keyboard.ts` is one ~820-line capture-phase window
 handler holding every binding in the app plus the precedence between them:
 choice dialog, project editor, settings, worktrees, help overlay, command
 palette, launcher, inline rename, dead-session overlay, then the global chords.

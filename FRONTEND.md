@@ -28,7 +28,7 @@ This file covers how the frontend itself is put together.
 | `src/components/` | React components. `App.tsx` is the tree; `modals/` holds the seven dialogs. |
 | `src/store/` | `store.ts` (the zustand store + every action) and `terms.ts` (the SessionTerm registry, deliberately outside the store). |
 | `src/app/` | Imperative subsystems: daemon events, keyboard, view commands, grid layout, focus pipeline, the terminal class, and the thin modal controllers the components call into. |
-| `src/lib/` | Shared logic, no bridge calls. Most of it is pure and unit-tested in the node environment; seven modules do touch the DOM (`focus.ts`, `focus-trap.ts`, `preserve-focus.ts`, `drag-placeholder.ts`, `renderer-recovery.ts`, `scroll-debug.ts`, `freeze-heartbeat.ts`) and are tested under `test/dom` instead. |
+| `src/lib/` | Shared logic, no bridge calls. Almost all of it is pure and unit-tested in the node environment. Three modules are the exception — `focus-trap.ts`, `preserve-focus.ts` and `drag-placeholder.ts` call `document` directly and are exercised under `test/dom`. |
 | `src/theme/` | Token CSS, presets, and the runtime theme applier. |
 | `src/ui/` | The last two imperative DOM primitives (`icon.ts`, `icon-button.ts`), still used by `session-term.ts`. Everything else was ported to `src/components/`. |
 
@@ -129,7 +129,7 @@ Four layers, run with `scripts/test.sh [layer …]` from the repo root.
 
 | Layer | Environment | What belongs there |
 |---|---|---|
-| `unit` | node | The pure half of `src/lib/*`, and the store. No DOM. The DOM-touching `lib` modules are tested in the `dom` project. |
+| `unit` | node | The pure part of `src/lib/*`, and the store. No DOM. The three DOM-touching `lib` modules are tested in the `dom` project instead. |
 | `dom` | vitest + jsdom | Components via `@testing-library/react`, and the imperative modules that need a document. |
 | `e2e` | Playwright vs the Wails **mock** | User-visible behaviour, against ids and `hv-*` classes. |
 | `e2e-real` | Playwright vs a real `hived` | Terminal/PTY behaviour. `npm run test:e2e:real`. Isolation via `HIVE_SOCKET` + `HIVE_STATE_DIR` is mandatory. |
@@ -157,6 +157,7 @@ cd cmd/hivegui/frontend && npm run test:e2e:real
 ```
 
 A fresh worktree needs `./scripts/ci-bootstrap.sh` (the wailsjs bindings) and an
-`npm install` first, or `tsc` reports ~20 errors in files you never touched.
+`npm install` first, or `tsc` reports a few dozen errors in files you never
+touched — they are the missing bindings, not your diff.
 Build the app with plain `wails build` — `-s` skips the frontend build and the
 app dies at launch with "no index.html".

@@ -134,3 +134,29 @@ the master plan's Gating convention).
   sends it to `DONE` only after this phase's gate, so `REVIEW` is skipped rather
   than back-filled.
 
+- **2026-09-03 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash:
+  empty; threads_open: 0; action: stop; head_sha: be762ad. Iteration 2's three
+  documentation findings applied in `49aafaf`; nothing outstanding. `COMMENT`
+  with strict mode off and zero unresolved threads is the loop's stop condition
+  (`/hs-review-loop` §2 step 5), so the loop ends here.
+
+## Progress
+
+- **2026-09-03 — Gate FAIL (first run).** Two of three dimensions passed
+  (non-goals 7/7; acceptance passed every spec and phase-plan criterion, with
+  one FOLLOWUP that was an artefact of timing — the CI matrix was mid-run on
+  `be762ad`, which the stage-advance commit had just restarted). Doc accuracy
+  FAILed on one claim, and it was a botched fix rather than an original error:
+  iteration 1 of the review loop corrected `FRONTEND.md`'s "src/lib is DOM-free"
+  claim by listing **seven** DOM-touching modules; only **three** are
+  (`focus-trap.ts`, `preserve-focus.ts`, `drag-placeholder.ts`). The other four
+  — `focus.ts`, `renderer-recovery.ts`, `scroll-debug.ts`, `freeze-heartbeat.ts`
+  — make no `document`/`window` call and are tested in the node-only `unit`
+  vitest project, so the row also misstated where they are tested. Cause: the
+  grep behind the iteration-1 fix matched comments and type names
+  (`HTMLElement`, `Element`) rather than real calls. Corrected here, together
+  with two figures the same validator flagged: `FRONTEND.md`'s "~20 tsc errors"
+  without the wailsjs bindings (36 today, now stated as "a few dozen"), and the
+  two debt specs' line counts, which this PR's own edits had moved
+  (session-term.ts 1705 → 1710, keyboard.ts 806 → 819; both now approximate).
+

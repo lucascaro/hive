@@ -17,7 +17,7 @@ stage: TRIAGE
 
 ## Problem
 
-`cmd/hivegui/frontend/src/app/session-term.ts` (1705 lines) is the one region
+`cmd/hivegui/frontend/src/app/session-term.ts` (~1700 lines) is the one region
 the React rewrite deliberately did not port. It builds the tile — header, state
 icon, title, buttons, the dead-session overlay, the replay loading panel — with
 `document.createElement`, and it is the only remaining production caller of the
