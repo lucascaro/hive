@@ -1,9 +1,10 @@
 // ---------- modal shell ----------
 //
-// The React half of src/ui/dialog.ts: same markup, same class names,
-// same `hidden` contract. The imperative dialog() stays for the four
-// modals Phase 4 still has to port (worktrees, project editor, help
-// overlay, choice dialog); this is what a ported one renders through.
+// The React half of what src/ui/dialog.ts used to build: same markup,
+// same class names, same `hidden` contract. Phase 4 ported the last four
+// imperative dialogs (worktrees, project editor, help overlay, choice
+// dialog) and deleted the primitive, so this is now the only dialog
+// shell in the app.
 //
 // The root element is NOT created here. It lives in index.html so the
 // React root has something to mount on before the store says the modal
@@ -22,10 +23,10 @@
 //     bookkeeping — in-flight loads, drafts — that must run whichever
 //     gesture closed the dialog.
 //
-// See docs/design-docs/ui/components.md › dialog.
+// See docs/design-docs/ui/components.md › ModalShell.
 
 import { useEffect, type ReactNode } from 'react';
-import { trapFocus } from '../../app/modals/focus-trap.js';
+import { trapFocus } from '../../lib/focus-trap.js';
 import { IconButton } from '../IconButton.js';
 import { Kbd } from '../Kbd.js';
 
@@ -44,6 +45,19 @@ export interface ModalShellProps {
   size?: 'sm' | 'md' | 'lg';
   /** Confirm/cancel key hints. Every overlay must show them (AGENTS.md). */
   hints?: ModalHint[];
+  /**
+   * Rendered inside the <h3>, after the title. It rides there rather than
+   * beside it so the accessible name stays one string ("Worktrees ·
+   * hive"), which is what aria-labelledby reads.
+   */
+  titleSuffix?: ReactNode;
+  /**
+   * Default true. The choice dialog is the one caller that opts out: its
+   * safe choice already covers "back out", and a second, unlabelled exit
+   * next to a "delete the branch too" button is a worse affordance, not
+   * a redundant one.
+   */
+  showCloseButton?: boolean;
   actions?: ReactNode;
   children?: ReactNode;
 }
@@ -55,6 +69,8 @@ export function ModalShell({
   onClose,
   size = 'md',
   hints,
+  titleSuffix,
+  showCloseButton = true,
   actions,
   children,
 }: ModalShellProps): ReactNode {
@@ -106,18 +122,25 @@ export function ModalShell({
             with aria-labelledby. */}
         <h3 className="hv-dialog__title" id={`${id}-title`}>
           {title}
-          <span className="hv-dialog__title-suffix" />
+          <span className="hv-dialog__title-suffix">{titleSuffix}</span>
         </h3>
-        <IconButton
-          icon="x"
-          label="Close"
-          className="hv-dialog__close"
-          id={`${id}-close`}
-          onClick={onClose}
-        />
+        {showCloseButton ? (
+          <IconButton
+            icon="x"
+            label="Close"
+            className="hv-dialog__close"
+            id={`${id}-close`}
+            onClick={onClose}
+          />
+        ) : null}
       </header>
       <div className="hv-dialog__body">{children}</div>
-      <footer className="hv-dialog__footer">
+      {/* Hidden when there is nothing in it, which is what dialog() did
+          with footer.hidden — an empty footer is still a bordered strip. */}
+      <footer
+        className="hv-dialog__footer"
+        hidden={hintList.length === 0 && !actions}
+      >
         {hintList.length ? (
           <div className="hv-dialog__hints">
             {hintList.map((h) => (

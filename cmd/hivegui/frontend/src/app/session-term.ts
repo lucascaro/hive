@@ -29,7 +29,7 @@ import { iconButton } from '../ui/icon-button.js';
 import { sessionState } from '../lib/session-state.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
-import { anyModalOpen } from './modals/registry.js';
+import { anyModalOpen } from '../store/store.js';
 import { openWorktrees } from './modals/worktrees.js';
 import { isMac } from '../lib/platform.js';
 import { displayTitle } from '../lib/term-title.js';

@@ -1,4 +1,4 @@
-/* dialog primitive — docs/design-docs/ui/components.md › dialog */
+/* dialog shell — docs/design-docs/ui/components.md › ModalShell */
 .hv-dialog {
   position: fixed;
   inset: 0;
@@ -88,6 +88,11 @@
 }
 .hv-dialog__footer[hidden] { display: none; }
 .hv-dialog__hints { color: var(--fg-subtle); font-size: var(--text-xs); }
+/* The hints are one span per hint, so the separator between them is the
+   CSS's job. The imperative dialog() took its footer as a node list and
+   its callers passed a literal ' · ' text node between the two halves;
+   dropping it ran "[esc] close" straight into "(r) refresh". */
+.hv-dialog__hint + .hv-dialog__hint::before { content: ' · '; }
 /* Pushes the actions right even when there are no hints. Wraps: a
    question with four answers ("Delete, keep branch" / "Delete + local
    branch" / "Delete + branch everywhere" / "Cancel") overflows an `sm`

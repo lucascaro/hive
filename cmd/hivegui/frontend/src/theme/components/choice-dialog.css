@@ -4,7 +4,7 @@
    alert cannot express without asking twice — and where work is at
    stake the consequences need more room than an OS alert gives. Shared
    by the worktree browser and the dirty-session close prompt. */
-/* Mounted on <body>, so it has to out-rank whatever asked the question
+/* Rendered over whatever asked the question, so it has to out-rank it
    (every other modal sits at the primitive's z-index 40). Doubled
    selector, not the bare class: dialog.css loads after style.css, so a
    0,1,0 `.choice-dialog` would lose the tie with `.hv-dialog` and the

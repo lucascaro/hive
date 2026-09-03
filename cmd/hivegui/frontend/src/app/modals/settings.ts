@@ -16,8 +16,7 @@ import { applyTheme, readTheme } from '../../theme/theme.js';
 import { applyXtermTheme } from '../session-term.js';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
 import { pageEl } from '../el.js';
-import { registerModal } from './registry.js';
-import { releaseFocus } from './focus-trap.js';
+import { releaseFocus } from '../../lib/focus-trap.js';
 
 // Narrow on purpose: this modal needs exactly two callbacks off the
 // focus pipeline, so it names those two rather than the whole module.
@@ -106,8 +105,4 @@ export function initThemeWatch(): void {
 
 export function initSettings(injected: SettingsDeps) {
   deps = injected;
-  // Still registered: anyModalOpen() answers "does a modal own the
-  // keyboard?" off the `.hidden` class of every registered root, and
-  // #settings keeps that class (toggled by the island's layout effect).
-  registerModal(settingsEl);
 }

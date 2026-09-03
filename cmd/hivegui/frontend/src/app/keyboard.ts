@@ -21,6 +21,7 @@ import {
   addAttentionRestored,
   addAttentionRestoredProject,
   clearAttentionRestored,
+  isModalOpen,
   setAttentionReturnId,
 } from '../store/store.js';
 import { flashStatus, reportFailure } from './dom.js';
@@ -32,22 +33,23 @@ import {
 } from './selectors.js';
 import { cmdOrCtrl, isMac } from '../lib/platform.js';
 import {
-  launcherEl,
   openLauncher,
   duplicateActiveSession,
   duplicateActiveSessionChooseTool,
   restartActiveSession,
 } from './modals/launcher.js';
-import { editorEl, openProjectEditor } from './modals/project-editor.js';
-import { openCommandPalette } from './modals/command-palette.js';
+import { openProjectEditor } from './modals/project-editor.js';
+import {
+  closeCommandPalette,
+  openCommandPalette,
+} from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openWorktrees, closeWorktrees } from './modals/worktrees.js';
 import {
   choiceDialogOpen,
   dismissChoiceDialog,
-  choiceDialogEl,
 } from './modals/choice-dialog.js';
-import { trapFocus } from './modals/focus-trap.js';
+import { trapFocus } from '../lib/focus-trap.js';
 import { inlineRenameActive, cancelInlineRename } from './inline-rename.js';
 import {
   openHelpOverlay,
@@ -71,7 +73,7 @@ import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
 import { reorderTarget } from '../lib/reorder.js';
 import { scrollTrace } from './trace.js';
-import { mustEl } from './el.js';
+import { mustEl, pageEl } from './el.js';
 import type { ProjectInfo } from './state.js';
 
 export interface KeyboardDeps {
@@ -142,8 +144,9 @@ window.addEventListener(
     // A choice dialog is the topmost thing on screen and is asking a
     // question that may destroy work. It owns the keyboard outright:
     // Escape backs out of the question, and nothing else reaches the
-    // bindings underneath while it is up. Checked before every modal —
-    // it is mounted on <body>, so it can sit over any of them.
+    // bindings underneath while it is up. Checked before every modal:
+    // its root carries a higher z-index than the dialog shell, so it
+    // sits over whichever modal asked the question.
     if (choiceDialogOpen()) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -155,29 +158,41 @@ window.addEventListener(
       // one only fires once focus is already inside the overlay, and a
       // dialog opened over a terminal starts with focus elsewhere — so
       // the first Tab would walk into the page behind it.
-      const dialogEl = choiceDialogEl();
-      if (dialogEl && trapFocus(dialogEl, e)) e.stopPropagation();
+      if (trapFocus(pageEl('choice-dialog'), e)) e.stopPropagation();
       return;
     }
-    if (!launcherEl.classList.contains('hidden')) {
+    if (isModalOpen('launcher')) {
       return; // launcher's own listener handles keys
     }
-    if (!editorEl.classList.contains('hidden')) {
+    if (isModalOpen('project-editor')) {
       // The editor's own listener handles Enter; Escape and the backdrop
-      // are the dialog primitive's. Tab containment has to live here for
+      // are ModalShell's. Tab containment has to live here for
       // the same reason it does for settings: a dialog opened over a
       // terminal starts with focus outside it, so a listener on the
       // dialog would never fire. Without this the editor claims
       // aria-modal="true" while Tab walks out into the sidebar.
-      if (trapFocus(editorEl, e)) e.stopPropagation();
+      if (trapFocus(pageEl('project-editor'), e)) e.stopPropagation();
       return;
     }
-    const _palette = document.getElementById('command-palette');
-    if (_palette && !_palette.classList.contains('hidden')) {
-      return; // palette's own listener handles keys
+    if (isModalOpen('command-palette')) {
+      // The palette's own listener owns the keys — filtering, the
+      // selection, Enter — because they all need its per-open state.
+      // Escape is the exception, and it is here for the same reason
+      // settings and the worktree browser keep theirs here: that
+      // listener sits on #command-palette and only fires for keys typed
+      // INSIDE it, so anything that moves focus out (the focus
+      // pipeline's 8-frame retry is the one that does) leaves the
+      // palette with no way to close and every key falling into a gate
+      // that swallows it. Caught on CI, reproduced by blurring the
+      // search box and pressing Escape.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeCommandPalette();
+      }
+      return; // the palette owns the keyboard while open
     }
-    const _settings = document.getElementById('settings');
-    if (_settings && !_settings.classList.contains('hidden')) {
+    if (isModalOpen('settings')) {
       // Unlike the help overlay, settings is a form with many focusable
       // inputs, so Tab is left alone to walk between them. The modal's
       // own listener also handles Escape and consumes it; this branch is
@@ -187,13 +202,12 @@ window.addEventListener(
         e.preventDefault();
         e.stopPropagation();
         closeSettings();
-      } else if (trapFocus(_settings, e)) {
+      } else if (trapFocus(pageEl('settings'), e)) {
         e.stopPropagation();
       }
       return; // settings owns the keyboard while open
     }
-    const _worktrees = document.getElementById('worktrees');
-    if (_worktrees && !_worktrees.classList.contains('hidden')) {
+    if (isModalOpen('worktrees')) {
       // Same shape as settings: the modal's own listener owns Escape
       // and the refresh key; this branch is the fallback for when
       // focus is still on the terminal, plus the ⌘E toggle-to-close.
@@ -204,18 +218,17 @@ window.addEventListener(
         e.preventDefault();
         e.stopPropagation();
         closeWorktrees();
-      } else if (trapFocus(_worktrees, e)) {
+      } else if (trapFocus(pageEl('worktrees'), e)) {
         e.stopPropagation();
       }
       return; // the worktree browser owns the keyboard while open
     }
-    const _help = document.getElementById('help-overlay');
-    if (_help && !_help.classList.contains('hidden')) {
+    if (isModalOpen('help')) {
       if (e.key === 'Escape' || isHelpOverlayKey(e)) {
         e.preventDefault();
         e.stopPropagation();
         closeHelpOverlay();
-      } else if (trapFocus(_help, e)) {
+      } else if (trapFocus(pageEl('help-overlay'), e)) {
         // One focusable element in there, so the shared trap degenerates
         // to pinning focus on the close button — same result as the
         // hand-rolled version this replaced.

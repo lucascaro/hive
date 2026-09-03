@@ -42,8 +42,16 @@ export function focusableWithin(container: HTMLElement): HTMLElement[] {
 // fields should walk naturally. Only the two boundaries wrap, plus the
 // case where focus has escaped the container entirely (a click
 // elsewhere, or a modal opened while the terminal held focus).
-export function trapFocus(container: HTMLElement, e: KeyboardEvent): boolean {
+// `container` is nullable because every caller reaches it through
+// pageEl(), which casts rather than throws (app/el.ts): a jsdom test that
+// mounts only part of index.html hands this a null, and the ladder in
+// keyboard.ts would then throw on a key the modal was not even open for.
+export function trapFocus(
+  container: HTMLElement | null,
+  e: KeyboardEvent,
+): boolean {
   if (e.key !== 'Tab') return false;
+  if (!container) return false;
   const focusable = focusableWithin(container);
   if (focusable.length === 0) {
     // Nothing to focus, but Tab must still not walk out of the modal.
@@ -83,7 +91,8 @@ export function trapFocus(container: HTMLElement, e: KeyboardEvent): boolean {
 // modal, where keystrokes go somewhere the user cannot see.
 //
 // Call it BEFORE hiding, then send focus wherever it belongs.
-export function releaseFocus(container: HTMLElement): void {
+export function releaseFocus(container: HTMLElement | null): void {
+  if (!container) return;
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && container.contains(focused)) {
     focused.blur();

@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** [#320](https://github.com/lucascaro/hive/pull/320) — the phase currently in flight (Phase 4). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **Branch:** `feature/react-phase4-modals-b`
 - **Status:** active
 
 ## Summary
@@ -49,7 +51,7 @@ Ambiguities resolved with the user via two structured question rounds; see Decis
 
 ## Approach
 
-Strangler migration by region. Phase 0 makes state observable (zustand) with zero rendering change; each subsequent phase mounts one React root on an existing region, deletes that region's legacy renderer *in the same PR* (never both live — double-render risk), and rewrites that region's dom tests to RTL. Phase 6 collapses the islands into a single root and deletes all legacy render code. Reused as-is: all of `src/lib/*` (grid math, reorder, shortcuts, worktrees, update-state, keymap, platform, focus helpers), `src/theme/*`, `src/app/session-term.ts`, `src/bridge.ts`, `src/app/modals/focus-trap.ts` helpers.
+Strangler migration by region. Phase 0 makes state observable (zustand) with zero rendering change; each subsequent phase mounts one React root on an existing region, deletes that region's legacy renderer *in the same PR* (never both live — double-render risk), and rewrites that region's dom tests to RTL. Phase 6 collapses the islands into a single root and deletes all legacy render code. Reused as-is: all of `src/lib/*` (grid math, reorder, shortcuts, worktrees, update-state, keymap, platform, focus helpers), `src/theme/*`, `src/app/session-term.ts`, `src/bridge.ts`, and the focus-trap helpers (moved to `src/lib/focus-trap.ts` in Phase 4).
 
 ### Execution model (per phase)
 
@@ -85,7 +87,17 @@ phase against them would wave the same unmet criterion through six times and
 make the gate meaningless.
 
 So: **each phase plan carries its own `## Success criteria`, and
-`/hs-merge-gate` validates a phase PR against that phase's plan.** The spec's
+`/hs-merge-gate` validates a phase PR against that phase's plan.**
+
+**Running the gate on this feature takes one manual step.** The gate resolves
+its target from the spec's frontmatter and the spec's `Exec plan:` link, which
+points here — so it lands on the master plan, whose success criteria are
+Phase 6's. Point it at the phase plan under test instead (its `PR:`, `Branch:`,
+`## Success criteria`, `## PR convergence ledger` and `## Gate verdict` sections
+are all in the shape the gate expects). The same is true of the ledger the gate
+demands: `/hs-review-loop` writes it into a plan it finds by an `<NNN>`-prefixed
+name, which this feature's plans do not have, so every phase's ledger here is
+maintained by hand. The spec's
 criteria are the gate for Phase 6 only, where they must all pass.
 
 Consequences:
@@ -109,10 +121,23 @@ implemented — the briefs deliberately do not all exist up front.
 | 0 — store + tooling | [phase0](../completed/react-ui-rewrite-phase0.md) | #311 | **merged** |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
-| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | implemented, in review |
-| 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | — | not started |
+| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
+| 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **gate PASS**, PR open |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | — | not started |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
+
+**Carried into Phase 6's deletion sweep** (each verified to have zero production
+importers at the phase that stranded it — they are reachable only from their own
+dom tests, so they cost nothing but a reader's time until then):
+
+- `src/ui/button.ts`, `src/ui/field.ts`, `src/ui/kbd.ts` — stranded by Phase 4,
+  which ported their last callers (the four remaining imperative modals) to
+  `components/Button.tsx`, hand-written field markup and `components/Kbd.tsx`.
+  Their `test/dom/ui-{button,field}.test.ts` go with them. Still live and NOT on
+  this list: `src/ui/icon.ts` (3 importers) and `src/ui/icon-button.ts`
+  (`session-term.ts`).
+- `src/app/state.ts`'s compat facade and `window.__hive_state`, per the Phase 0
+  review.
 
 ## Tests
 
@@ -122,7 +147,12 @@ RTL = `@testing-library/react`. All rewritten tests keep asserting the same clas
 - Phase 1 — RTL rewrites: `test/dom/ui-session-row.test.tsx`, `ui-project-card.test.tsx`, `ui-chip.test.tsx`, `sidebar-title.test.tsx`, `minimize-project.test.tsx`, `attention-icon.test.tsx`, `selectors.test.tsx`. New: `test/dom/sidebar-dblclick-rename.test.tsx` (row node identity survives re-render between the two clicks), `test/dom/sidebar-reorder.test.tsx`.
 - Phase 2 — RTL rewrites: `ui-banner.test.tsx`, `ui-button.test.tsx`, `ui-icon.test.tsx`, `ui-icon-button.test.tsx`, `ui-state-icon.test.tsx` (imports from `src/ui/icon.js`, deleted this phase), `update-banner.test.tsx`, `boot-state.test.tsx`, `restart-hive.test.tsx` (imports `restartHive/isDaemonRestarting/initBanners` from `src/app/banners.js`, gutted this phase). New: `test/dom/status-bar.test.tsx` (setStatus/flash/modeHint render + clear).
 - Phase 3 — RTL rewrites: `launcher.test.tsx`, `settings.test.tsx`, `settings-updates.test.tsx`. New: `test/dom/modal-shell.test.tsx` (hidden-class contract, trap acquire/release, Esc close, key hints visible).
-- Phase 4 — RTL rewrites: `worktrees.test.tsx`, `focus-trap.test.tsx`, `keyboard-arrows.test.tsx`. New: `test/dom/choice-dialog.test.tsx` (open → answer → auto-cleanup, keyboard never stranded), `test/dom/keyboard-precedence.test.tsx` (table-driven over all 9 layers, store-backed ladder matches legacy order).
+- Phase 4 — RTL rewrite: `worktrees.test.tsx` — **45 → 52 cases**: 44 of the
+  original 45 kept, one ("does nothing if the browser closed while the dialog
+  was open") replaced because it asserted nothing, and 8 added across the
+  review — the mid-edit repaint, two keyboard-strand-on-close cases, and five
+  covering the answers that delete a branch on a remote, which had no coverage
+  at all. (Derivation: `grep -cE "^\s*it\("` on each side of `main...HEAD`.) Planned as rewrites but neither turned out to need one — corrected here at the gate rather than left as a forecast the shipped code contradicts: `focus-trap.test.ts` exercises pure helpers whose signatures did not change, so it took an import repoint (and two cases for the new nullable container) and stays plain jsdom; `keyboard-arrows.test.ts` covers arrow routing *below* the modal ladder and was not touched at all. New: `test/dom/choice-dialog.test.tsx` (open → answer → auto-cleanup, keyboard never stranded), `test/dom/keyboard-precedence.test.tsx` (table-driven over all 9 layers, store-backed ladder matches legacy order), `test/dom/inline-rename.test.ts` (the identity guard a React cleanup depends on), and dom coverage for the three modals that had none: `command-palette`, `project-editor`, `help-overlay`.
 - Phase 5 — New: `test/dom/grid-layout.test.tsx` (spy-sequence asserts template-set-before-attach; reparent not recreate — same node identity across renders; out-of-scope tile keeps its DOM node). Update to the new entry points: `view-floor.test.ts`, `xterm-reflow.test.ts`, and the three that import `initView` from `src/app/view.js` (deleted this phase) — `attention-jump.test.ts`, `attention-jump-integration.test.ts`, `test/dom/nav-history.test.ts`.
 - Phase 6 — New: `test/dom/app-shell.test.tsx` (single root mounts all regions, ids present). Sweep: no test imports a deleted module.
 
@@ -280,3 +310,163 @@ close, the document-level outside-click close with its
 `.hv-project-card__actions` / `[data-opens-launcher]` exemptions, re-entrant
 `openSettings()` not wiping a draft, `loadFailed` blocking Save, and
 agents-before-update-settings save order.
+
+### Phase 4 — modals B + keyboard reads the store (written 2026-09-02 against `main` @ 588673b)
+
+**Roots.** Five islands. `#command-palette` already exists in `index.html`
+with its input and list; the other four dialogs are built at import time by
+`ui/dialog.ts` today and their roots move into `index.html` with exactly the
+attributes `dialog()` stamps (`class="hv-dialog hidden"`, `role`,
+`aria-modal="true"`, `aria-labelledby="<id>-title"`) — same reason as Phase 3's
+`#settings`: a React root needs a mount node that exists before the store says
+the modal is open.
+
+| Root container | Component | Container-level state kept by effect |
+|---|---|---|
+| `#worktrees` (**new in `index.html`**) | `Worktrees` via `ModalShell` | `.hidden` |
+| `#project-editor` (**new**) | `ProjectEditor` via `ModalShell` | `.hidden` |
+| `#help-overlay` (**new**) | `HelpOverlay` via `ModalShell` | `.hidden` |
+| `#choice-dialog` (**new**, `role="alertdialog"`) | `ChoiceDialog` via `ModalShell` | `.hidden` |
+| `#command-palette` (exists) | `CommandPalette` | `.hidden` |
+
+`#choice-dialog` stops being built per question. That is the point of the phase:
+the per-question element had to be `unregisterModal`'d on close or
+`anyModalOpen()` answered true forever and stranded the keyboard. A static root
+whose visibility is a store field cannot forget.
+
+**Markup contract extracted from the legacy modules** (the e2e specs assert on
+all of it, unmodified):
+
+- `#worktrees` › `#worktrees-panel[data-size=lg]` › header with
+  `h3#worktrees-title` ("Worktrees") + `span.hv-dialog__title-suffix` ›
+  `span#worktrees-project` (`· <project name>`, empty when the project is
+  unnamed), `button#worktrees-close.hv-icon-btn.hv-dialog__close`; body ›
+  `#worktrees-empty.worktrees-empty` (`.hidden` when a payload rendered) ›
+  `div.worktrees-empty-card` › `span#worktrees-empty-spinner.phase-spinner`
+  (`.hidden` when not spinning) + `span#worktrees-empty-text`, and
+  `#worktrees-body` › `section#worktrees-section-trees` (`h4` "Worktrees",
+  `#worktrees-list`) + `section#worktrees-section-branches` (`h4` "Branches with
+  no worktree", `p.worktrees-hint` "Create a worktree to pick this work back
+  up.", `#worktrees-branches`); footer hints `[esc]` close · `(r)` refresh.
+  Rows: `div.worktree-row[data-kind][data-path]` (worktrees) and
+  `div.worktree-row[data-branch]` (branches) › `div.worktree-main` ›
+  `span.worktree-name[title=path]` + `span.worktree-status` +
+  optional `span.worktree-subject[title]`; optional
+  `span.worktree-badge` / `span.worktree-badge.merged`; `div.worktree-actions` ›
+  plain `<button type=button [title] [data-opens-launcher] [.danger] [disabled]>`.
+  The rename input is `input.worktree-rename[aria-label="New branch name"]`
+  inside `.worktree-main`.
+- `#project-editor` › `#project-editor-panel[data-size=sm]` › `h3#project-editor-title`
+  ("New project" / "Edit project"), `button#project-editor-close`; body › three
+  `ui/field.ts` rows — `#project-editor-name`, then `div.cwd-row` ›
+  `#project-editor-cwd` + `button#project-editor-browse` ("Browse…"), then the
+  `colorInput` wrapper (`--swatch` custom property) › `#project-editor-color`;
+  footer actions `#project-editor-cancel`, `#project-editor-save`.
+- `#help-overlay` › `#help-overlay-panel[data-size=lg]` › `h3#help-overlay-title`
+  ("Keyboard shortcuts"), `button#help-overlay-close`; body ›
+  `#help-overlay-groups` › one `<section>` per `shortcutGroups({isMac})` group ›
+  `h4` + `dl` › `dt` › `kbd.hv-kbd` (via `Kbd`) and `dd` › label. Footer hint
+  `[esc]` close. No actions.
+- `#choice-dialog.choice-dialog[role=alertdialog]` › `#choice-dialog-panel[data-size=sm]`
+  › `h3#choice-dialog-title`, **no close button**; body ›
+  `p.choice-dialog-detail`, `ul.choice-dialog-bullets` › `li`,
+  `p.choice-dialog-note` (each rendered only when present); footer actions ›
+  `button[data-choice=<value>]` in spec order, the danger ones additionally
+  `.danger` (on top of `Button`'s own `data-kind="danger"`).
+- `#command-palette` (unchanged markup) › `#command-palette-input` +
+  `#command-palette-list` › `div.palette-item[data-selected]` ›
+  `span.palette-name` + `span.palette-shortcut` › `kbd.hv-kbd`.
+
+**Store additions** (`src/store/store.ts`):
+
+- `ModalId` grows to `'launcher' | 'settings' | 'project-editor' |
+  'command-palette' | 'worktrees' | 'help'`, with payloads
+  `{ id: 'project-editor'; editing: ProjectInfo | null }` and
+  `{ id: 'worktrees'; projectId: string; projectName: string }`. The palette and
+  the help overlay carry nothing.
+- `worktreesPayload: WorktreesPayload | null` — the daemon's last inventory for
+  the open project, written by `handleWorktreesPayload`, cleared on open. The
+  module keeps the stale-reply filter (`readProjectIdOf(payload) !== projectId`
+  → ignore) because it is protocol logic, not rendering.
+- `choiceDialog: { spec: ChoiceSpec; seq: number } | null` — separate from the
+  `modals` stack because it is mounted over any of them and because its answer
+  travels back through a promise the openers await.
+
+**`anyModalOpen()` moves into the store; `modals/registry.ts` and
+`src/ui/dialog.ts` are deleted.** Phase 3 kept the DOM class as the single
+source of truth precisely because the legacy modals had no store entry. After
+this phase every modal does, so `anyModalOpen()` becomes
+`modals.length > 0 || choiceDialog !== null` and `focus.ts` / `session-term.ts`
+import it from the store. `ui/dialog.ts`'s last four callers are ported here, so
+the primitive goes with them — `ModalShell` is its React replacement and
+`test/dom/modal-shell.test.tsx` its test. `test/dom/ui-dialog.test.ts` is
+deleted with it; `docs/design-docs/ui/components.md` › dialog now documents
+`ModalShell`.
+
+**Keyboard ladder** (`src/app/keyboard.ts`) — order copied verbatim, each layer's
+`.hidden` query replaced by the store read next to it:
+
+| # | Layer | Was | Becomes |
+|---|---|---|---|
+| 1 | inline rename | `inlineRenameActive()` | unchanged (not a modal) |
+| 2 | choice dialog | `choiceDialogOpen()` | `choiceDialogOpen()`, now a store read |
+| 3 | launcher | `!launcherEl.classList.contains('hidden')` | `isModalOpen('launcher')` |
+| 4 | project editor | `!editorEl.classList…` | `isModalOpen('project-editor')` |
+| 5 | command palette | `getElementById('command-palette')…` | `isModalOpen('command-palette')` |
+| 6 | settings | `getElementById('settings')…` | `isModalOpen('settings')` |
+| 7 | worktrees | `getElementById('worktrees')…` | `isModalOpen('worktrees')` |
+| 8 | help overlay | `getElementById('help-overlay')…` | `isModalOpen('help')` |
+| 9 | dead-session overlay | `state.terms.get(activeId).deadOverlayShown` | unchanged |
+| 10 | app bindings | — | unchanged |
+
+`trapFocus` still needs an element, so each layer that traps passes its root via
+`pageEl(<id>)`. The handler stays registered capture-phase, and every layer keeps
+its own `return` — the ladder's shape is what the table-driven test pins.
+
+**Ported behaviour that is easy to lose** (each has a test):
+
+- The worktree rename is still `beginInlineRename` (so `inlineRenameActive()`
+  keeps layer 1 true and Escape cancels the edit instead of closing the panel).
+  It mounts into an *empty* React-rendered `.worktree-main` — React owns no
+  children there while `renaming` is set, so a daemon repaint mid-edit can no
+  longer clobber the input (the imperative version lost the edit).
+- `closeWorktrees()` dismisses an open choice dialog; so does every repaint
+  (`render()` did it because the row being asked about may not survive).
+- Both destructive flows re-check `worktreesOpen() && projectId` after the await.
+- The `(r)` refresh key ignores keystrokes typed into the rename input.
+- The palette: `mouseenter` moves the selection, `ArrowDown`/`Tab` wrap,
+  activation defers the command by `setTimeout(…, 0)` so the palette is fully
+  closed before an action opens another modal, and the outside-click close.
+- `closeCommandPalette()` blurs the input *before* hiding (`focusActiveTerm()`
+  bails while `activeElement` is an INPUT).
+- The project editor focuses its name field synchronously on open (a deferred
+  focus raced ⌘N-then-Escape and typed into a `display:none` dialog), Enter
+  saves from the name and cwd fields only, and an empty name is a no-op save.
+- The help overlay renders its (static) groups once and `toggleHelpOverlay()`
+  stays the single entry point the native ⌘/ menu item drives.
+- The choice dialog's FIRST choice is the safe one: it takes focus, and Escape
+  and a backdrop click resolve to it. Focus returns to the opener only if it is
+  still connected (deleting a worktree takes its row's button with it).
+
+## PR convergence ledger
+
+This feature ships as seven PRs against one spec, so convergence is recorded
+per phase, in each phase plan's own ledger. This section is the index the gate
+reads: one line per phase, copied from that phase's final entry, because
+`/hs-merge-gate` resolves the plan through the spec's `Exec plan:` link — which
+points at this master plan, not at the phase plan whose PR is actually under
+test.
+
+- **Phase 0** — PR #311 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: cd66176. Gate: NEEDS_FOLLOWUP (2026-09-01), accepted; plan in `completed/`.
+- **Phase 1** — PR #317 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: 9b68a26. Merged 2026-09-02 (`950dfaf`). Gate: not run.
+- **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
+- **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
+- **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Open, awaiting the gate. Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
+
+## Gate verdict
+
+Per the [Gating convention](#gating-convention), a phase PR is gated against
+**its own** plan's success criteria; the spec's criteria are the gate for
+Phase 6 only, where they must all pass. Phase verdicts therefore live in the
+phase plans. This section records only the spec-level gate, and stays empty
+until Phase 6.
