@@ -133,6 +133,11 @@ violations, unit 403 passed, dom 539 passed (51 files), go all packages ok,
 e2e 258 passed / 31 skipped **three consecutive runs**, `e2e:real` 22 passed.
 No changeset: behaviour-preserving, `no-changeset` label per the master plan.
 
+**2026-09-03** — Manual `wails build` smoke passed (user-run, on the built
+`.app`): attach, resize, view toggle, scroll up in a background tile,
+minimize/restore, theme switch. That closes the last item of the Phase 5–6
+verification block; everything else in it was already green on this branch.
+
 ## PR convergence ledger
 
 Maintained by hand: `/hs-review-loop` writes into a plan it finds by an
