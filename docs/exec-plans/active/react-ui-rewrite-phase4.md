@@ -304,3 +304,4 @@ Four MINORs also applied: a keydown listener the precedence test left on
 hardcoded the `choice-dialog` class the island is supposed to toggle (so it
 could not have caught the island failing to), and two ladder comments still
 describing the deleted `ui/dialog.ts`.
+- **2026-09-03 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d676510c; threads_open: 0; action: fixes applied + push (3 of 4 IMPORTANTs stood — island mount order behind the macOS red leg, untested remote-deleting answers, a vacuous close-race test; the fourth, stale worktrees baselines, was refuted by running them); head_sha: afbd37a.
