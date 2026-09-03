@@ -39,7 +39,10 @@ import {
   restartActiveSession,
 } from './modals/launcher.js';
 import { openProjectEditor } from './modals/project-editor.js';
-import { openCommandPalette } from './modals/command-palette.js';
+import {
+  closeCommandPalette,
+  openCommandPalette,
+} from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openWorktrees, closeWorktrees } from './modals/worktrees.js';
 import {
@@ -171,7 +174,22 @@ window.addEventListener(
       return;
     }
     if (isModalOpen('command-palette')) {
-      return; // palette's own listener handles keys
+      // The palette's own listener owns the keys — filtering, the
+      // selection, Enter — because they all need its per-open state.
+      // Escape is the exception, and it is here for the same reason
+      // settings and the worktree browser keep theirs here: that
+      // listener sits on #command-palette and only fires for keys typed
+      // INSIDE it, so anything that moves focus out (the focus
+      // pipeline's 8-frame retry is the one that does) leaves the
+      // palette with no way to close and every key falling into a gate
+      // that swallows it. Caught on CI, reproduced by blurring the
+      // search box and pressing Escape.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeCommandPalette();
+      }
+      return; // the palette owns the keyboard while open
     }
     if (isModalOpen('settings')) {
       // Unlike the help overlay, settings is a form with many focusable

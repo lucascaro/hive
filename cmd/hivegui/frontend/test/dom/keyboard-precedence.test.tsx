@@ -96,6 +96,7 @@ vi.mock('../../src/app/modals/choice-dialog.js', () => ({
 const closeSettings = vi.fn();
 const closeWorktrees = vi.fn();
 const closeHelpOverlay = vi.fn();
+const closeCommandPalette = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
   openSettings: vi.fn(),
@@ -104,6 +105,11 @@ vi.mock('../../src/app/modals/settings.js', () => ({
 vi.mock('../../src/app/modals/worktrees.js', () => ({
   closeWorktrees: () => closeWorktrees(),
   openWorktrees: vi.fn(),
+}));
+vi.mock('../../src/app/modals/command-palette.js', () => ({
+  closeCommandPalette: () => closeCommandPalette(),
+  openCommandPalette: vi.fn(),
+  paletteCommands: () => [],
 }));
 vi.mock('../../src/app/modals/help-overlay.js', () => ({
   closeHelpOverlay: () => closeHelpOverlay(),
@@ -197,11 +203,14 @@ const LAYERS: {
     ran: () => false,
     passive: true,
   },
+  // Not passive for Escape: the palette's own listener lives on
+  // #command-palette and only sees keys typed inside it, so the window
+  // handler owns the close — otherwise anything that moves focus out
+  // leaves the palette with no way to shut.
   {
     name: 'command palette',
     open: () => openModal({ id: 'command-palette' }),
-    ran: () => false,
-    passive: true,
+    ran: () => closeCommandPalette.mock.calls.length > 0,
   },
   {
     name: 'settings',
@@ -244,6 +253,7 @@ beforeEach(() => {
     closeSettings,
     closeWorktrees,
     closeHelpOverlay,
+    closeCommandPalette,
     dismissDead,
   ]) {
     m.mockClear();
@@ -281,7 +291,7 @@ describe('every layer wins over the ones below it', () => {
 });
 
 describe('a layer that owns its own keys consumes nothing here', () => {
-  for (const name of ['launcher', 'project editor', 'command palette']) {
+  for (const name of ['launcher', 'project editor']) {
     it(`${name}: Escape is left to the modal's own listener`, () => {
       const layer = LAYERS.find((l) => l.name === name);
       layer?.open();

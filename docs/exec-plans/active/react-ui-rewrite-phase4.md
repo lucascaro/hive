@@ -219,3 +219,27 @@ The five surviving MINORs were applied post-loop rather than deferred:
   `test/dom/inline-rename.test.ts` covers it; deleting the guard fails two of
   its three cases.
 - **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged (iteration-1 fixes verified at source; 5 MINORs applied post-loop); head_sha: adcdc15.
+
+**2026-09-02 — CI caught a real one after the loop converged: the command
+palette could become uncloseable.**
+
+The macOS and Windows legs failed on `focus-traps.spec.ts:533`
+("command palette: open-then-immediately-close leaves focus sane") — the palette
+was still visible 5s after Escape. Not a flake, and not a timing coincidence
+either: the palette's key handling lives on a listener attached to
+`#command-palette`, so it only ever sees keys typed *inside* the palette, and
+`keyboard.ts`'s ladder deliberately bails for the palette on the assumption that
+listener will handle them. Move focus out of the search box — which the focus
+pipeline's 8-frame `focusActiveTerm` retry does on a slow enough machine — and
+Escape reaches the ladder, hits a gate that returns, and nothing closes the
+palette. Every subsequent key dies the same way.
+
+Reproduced deterministically rather than guessed at: open the palette, blur the
+search box, press Escape. It stayed open on this machine every time.
+
+Fixed by giving the palette the same shape settings and the worktree browser
+already have — the modal's own listener owns its keys, and the ladder owns
+Escape as the fallback for when focus is elsewhere. `keyboard-precedence.test.tsx`
+now expects the palette layer to close rather than to be passive, so reverting
+the ladder branch fails it. The legacy palette had the same hazard (same
+listener, same bail); it survived because focus happened to stay put.
