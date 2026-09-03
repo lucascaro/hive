@@ -63,6 +63,10 @@ vi.mock('../../src/bridge.js', () => {
 
 let state: typeof import('../../src/app/state.js').state;
 let view: typeof import('../../src/app/view.js');
+// The layout pass itself, called directly: this file is a unit test of
+// preserveFocus inside it, and mounting GridView would only add a
+// subscription between the store write and the same call.
+let applyGridLayout: typeof import('../../src/app/grid-layout.js').applyGridLayout;
 
 function fakeTerm(): TermTile {
   return {
@@ -106,6 +110,7 @@ beforeAll(async () => {
     <div id="empty-state"></div></div>`;
   ({ state } = await import('../../src/app/state.js'));
   view = await import('../../src/app/view.js');
+  ({ applyGridLayout } = await import('../../src/app/grid-layout.js'));
   const { setActive } = await import('../../src/app/focus.js');
   view.initView({
     ensureTerm: (info) => tile(info.id),
@@ -139,7 +144,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('renderGrid tile reordering', () => {
+describe('grid layout tile reordering', () => {
   // state.terms is re-seeded per test but #terms keeps every host a
   // previous test appended, so clear it or the order assertions below
   // compare against stale tiles.
@@ -168,6 +173,8 @@ describe('renderGrid tile reordering', () => {
 
   it('does not touch the DOM when the tile order already matches', () => {
     view.setView('grid-project');
+    applyGridLayout(); // setView writes the store; GridView, not mounted
+    // here, is what repaints in production.
     const before = hostsInDom();
     const ta = focusableIn(tile('a'));
     ta.focus();
@@ -182,7 +189,7 @@ describe('renderGrid tile reordering', () => {
     const seen = new MutationObserver(() => {});
     seen.observe(terms, { childList: true });
 
-    view.renderGrid();
+    applyGridLayout();
 
     expect(seen.takeRecords()).toEqual([]);
     seen.disconnect();
@@ -200,17 +207,21 @@ describe('renderGrid tile reordering', () => {
     ];
     state.terms = new Map(state.sessions.map((s) => [s.id, fakeTerm()]));
     view.setView('grid-project');
+    applyGridLayout(); // setView writes the store; GridView, not mounted
+    // here, is what repaints in production.
     const ta = focusableIn(tile('a'));
     ta.focus();
 
     state.sessions = state.sessions.filter((s) => s.id !== 'c');
-    view.renderGrid();
+    applyGridLayout();
 
     expect(document.activeElement).toBe(ta);
   });
 
   it('restores focus after a reorder that really does move the tile', () => {
     view.setView('grid-project');
+    applyGridLayout(); // setView writes the store; GridView, not mounted
+    // here, is what repaints in production.
     const ta = focusableIn(tile('a'));
     ta.focus();
 
@@ -220,7 +231,7 @@ describe('renderGrid tile reordering', () => {
       { id: 'b', project_id: 'p1', order: 0 },
       { id: 'a', project_id: 'p1', order: 1 },
     ];
-    view.renderGrid();
+    applyGridLayout();
 
     expect(gridHosts()).toEqual([tile('b').host, tile('a').host]);
     expect(document.activeElement).toBe(ta);

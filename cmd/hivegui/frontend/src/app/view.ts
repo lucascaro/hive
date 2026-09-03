@@ -1,34 +1,36 @@
-// ---------- view / grid ----------
+// ---------- view commands ----------
 //
-// Moved verbatim from main.js. ensureTerm / setActive /
-// focusActiveTerm and the scroll tracer are injected via
-// initView(deps) — they live in session-term/focus modules (stage 6)
-// and main.ts.
+// The verbs: switch to a session or project, change view mode, minimize
+// and restore, move the selection around the grid. What each of them
+// used to do LAST — call renderGrid() or showSingle() — is gone: they
+// write the store, and components/GridView.tsx repaints from a layout
+// effect. The layout code itself moved verbatim to app/grid-layout.ts in
+// Phase 5 of the React rewrite.
 //
-// The minimized tray and the empty state left in Phase 2 of the React
-// rewrite: both are pure projections of store state, so they are
-// components subscribed to it (components/MinimizedTray.tsx,
-// EmptyState.tsx) instead of renderX() calls this module had to
-// remember at every repaint.
+// ensureTerm / setActive / focusActiveTerm and the scroll tracer are
+// still injected via initView(deps) — they live in session-term/focus
+// modules and main.ts. Phase 6 deletes the seam with this file.
 
-import { WindowSetTitle, LogFrontend } from '../bridge.js';
+import { flushSync } from 'react-dom';
+import { WindowSetTitle } from '../bridge.js';
 import { state, type SessionInfo, type TermTile } from './state.js';
 import * as store from '../store/store.js';
-import { termsHost, setStatus, flashStatus, setModeHint } from './dom.js';
+import { setStatus, flashStatus, setModeHint } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import {
-  buildGridLayout,
-  computeSpatialMove,
-  type GridLayout,
-} from '../lib/grid.js';
+  currentGridLayout,
+  gridScopeFor,
+  gridScopeSessions,
+  initGridLayout,
+  rebaselineGridReplayCols,
+  spatialTarget,
+} from './grid-layout.js';
 import { resolveView, type ViewMode } from '../lib/view.js';
-import { filterHidden } from '../lib/minimized.js';
 import { snapVisibleTermsToBottom } from '../lib/view-scroll.js';
 import { readProjectId } from '../lib/wire.js';
 import { isMac } from '../lib/platform.js';
 import { modeHints } from '../lib/status.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
-import { preserveFocus } from '../lib/preserve-focus.js';
 
 // Per-module deps (view wants focusActiveTerm where sidebar wants
 // refocusActiveTerm). Exported so wave 7 can check main.ts's injection.
@@ -48,7 +50,7 @@ let deps: ViewDeps = {
   // is confined to this default: every real path goes through
   // initView(). Kept as a no-op rather than a throw because switchTo()
   // discards the return value, so an uninjected call is a no-op today —
-  // renderGrid's `st.host` is what actually fails, as it already does.
+  // the grid layout's `st.host` is what actually fails, as it already does.
   ensureTerm: () => undefined as unknown as TermTile,
   setActive: () => {},
   focusActiveTerm: () => {},
@@ -61,46 +63,78 @@ let deps: ViewDeps = {
 
 export function initView(injected: ViewDeps) {
   deps = injected;
+  // One wiring call for both halves of the view: grid-layout.ts needs
+  // the same ensureTerm and tracer, and importing them there directly
+  // would close a session-term ↔ grid-layout cycle. Phase 6 deletes both
+  // seams together.
+  initGridLayout(injected);
 }
 
-export function showSingle(id: string | null) {
-  termsHost.classList.add('single');
-  termsHost.classList.remove('grid');
-  // Hide everything except the active tile.
-  for (const [sid, st] of state.terms) {
-    if (sid === id) st.show();
-    else st.hide();
-    st.host.classList.remove('in-grid', 'active');
+// withLayout runs the store writes of a command and flushes the React
+// work they queue, so GridView's layout effect has already repainted by
+// the time the caller reaches its post-layout work (focusActiveTerm,
+// snapVisibleTermsToBottom). Without the flush those updates would land
+// in a microtask AFTER the caller returned, and the snap would measure a
+// tile the grid had not laid out yet — the ordering invariants 3 and 4
+// pin. Same pattern the modals adopted in Phases 3-4 for plain listeners.
+//
+// The depth guard is for the commands that call each other (switchTo →
+// fallBackToSingleIfActiveHidden → setView, switchToProject → switchTo):
+// nested writes ride the outer flush instead of opening a second one,
+// which React does not allow mid-flush. Focus work inside a nested call
+// therefore runs before the repaint — harmless, because focusActiveTerm
+// retries for 8 frames and the outer command re-focuses at its end.
+let _flushDepth = 0;
+function withLayout<T>(fn: () => T): T {
+  if (_flushDepth > 0) return fn();
+  _flushDepth++;
+  try {
+    return flushSync(fn);
+  } finally {
+    _flushDepth--;
   }
-  const st = id ? state.terms.get(id) : null;
-  if (st) st.ensureAttached();
 }
 
 export function switchTo(id: string | null) {
-  if (id === state.activeId && state.view === 'single') {
-    deps.focusActiveTerm();
-    return;
+  if (id === state.activeId) {
+    if (state.view === 'single') {
+      deps.focusActiveTerm();
+      return;
+    }
+    // Grid, same id: nothing GridView watches moved, so no layout pass
+    // runs — and that is the point, a pass would re-anchor every
+    // background tile to the bottom for a selection that did not change.
+    // But reselecting the active tile is also the user's "unstick this"
+    // gesture, and the pass this replaced was what re-attached a tile
+    // carrying needsReattach (set by pty:disconnect on Restart Session).
+    // events.ts reattaches visible tiles on the next alive=true event;
+    // this is the manual path for when that event never comes. Scoped to
+    // the one tile, where the old full pass hit all of them.
+    if (id) state.terms.get(id)?.ensureAttached();
+    // Falls through: the status text, mode hint, app title, focus and
+    // bottom-snap below all ran on this path before and still should.
   }
-  deps.setActive(id);
-  let info: SessionInfo | null | undefined = null;
-  if (id) {
-    info = state.sessions.find((s) => s.id === id);
-    if (info) deps.ensureTerm(info);
-  }
-  // Retarget the grid scope if the new session belongs to a different
-  // project than the one currently shown in grid-project mode.
-  if (state.view === 'grid-project' && info) {
-    const pid = info.projectId ?? info.project_id;
-    if (pid && pid !== state.gridProjectId) store.setGridProjectId(pid);
-  }
-  // Before painting: a grid view has no tile for a hidden session, so
-  // drop to single first rather than rendering a grid the selection
-  // isn't in. Every "make this session active" path lands here —
-  // sidebar click, ⌘1–⌘9, the menu, switchToProject — so the guard
-  // belongs here and not at each caller.
-  fallBackToSingleIfActiveHidden();
-  if (state.view === 'single') showSingle(id);
-  else renderGrid();
+  const info = withLayout(() => {
+    deps.setActive(id);
+    let found: SessionInfo | undefined;
+    if (id) {
+      found = state.sessions.find((s) => s.id === id);
+      if (found) deps.ensureTerm(found);
+    }
+    // Retarget the grid scope if the new session belongs to a different
+    // project than the one currently shown in grid-project mode.
+    if (state.view === 'grid-project' && found) {
+      const pid = found.projectId ?? found.project_id;
+      if (pid && pid !== state.gridProjectId) store.setGridProjectId(pid);
+    }
+    // Before painting: a grid view has no tile for a hidden session, so
+    // drop to single first rather than rendering a grid the selection
+    // isn't in. Every "make this session active" path lands here —
+    // sidebar click, ⌘1–⌘9, the menu, switchToProject — so the guard
+    // belongs here and not at each caller.
+    fallBackToSingleIfActiveHidden();
+    return found;
+  });
   setStatus(info ? (info.name ?? '') : '');
   // fallBackToSingleIfActiveHidden above can drop us out of a grid, so
   // the hint is recomputed here too — a "focus / move" hint on a single
@@ -113,7 +147,7 @@ export function switchTo(id: string | null) {
   // session lands in whichever terminal had focus before.
   if (id) deps.focusActiveTerm();
   // Focusing a pane is a deliberate "show me the latest". ensureAttached
-  // (via showSingle/renderGrid above) already re-latched _followBottom;
+  // (via the layout pass above) already re-latched _followBottom;
   // this makes the move visible immediately for an already-attached tile
   // whose attach replay won't re-fire. Skips detached/zero-height terms,
   // so a still-deferring tile is a no-op here (Change A catches it on attach).
@@ -168,9 +202,7 @@ export function switchToProject(pid: string) {
   if (target) {
     switchTo(target.id);
   } else {
-    store.setActiveId(null);
-    if (state.view === 'single') showSingle(null);
-    else renderGrid();
+    withLayout(() => store.setActiveId(null));
   }
 }
 
@@ -202,216 +234,34 @@ function fallBackToSingleIfActiveHidden() {
   setView('single', { persist: false });
 }
 
-// gridLayout caches the (rows, cols) chosen for the current scope plus
-// the per-tile placement so the keyboard navigation logic doesn't have
-// to recompute. assignments[i] = { row, col, rowSpan } — tiles above
-// last-row empty cells extend downward to fill the grid (matches
-// current Hive's behavior). cellMap[row*cols + col] = session index.
-let gridLayout: GridLayout & { sessions: SessionInfo[] } = {
-  rows: 1,
-  cols: 1,
-  sessions: [],
-  assignments: [],
-  cellMap: [],
-};
-
-// attachDeferred attaches non-active grid tiles one per idle callback so
-// the first paint isn't blocked by N synchronous fit()+replay passes.
-// ensureAttached is idempotent for the ATTACH itself (it returns early once
-// attached), so re-running renderGrid — which re-queues everything — never
-// re-opens a session. It is NOT side-effect-free though: ensureAttached
-// re-latches follow-intent and snaps to the bottom on every call, so each
-// renderGrid pass (switch, minimize, container resize, …) re-anchors every
-// grid tile to the newest output. That is the intended "grid always shows
-// the latest" behavior — the cost is that a background tile can't be parked
-// scrolled up in history across a relayout.
-// requestIdleCallback isn't available in all webviews; fall back to a
-// short-timeout chain so the stagger still happens.
-const _ric = (cb: () => void) =>
-  typeof requestIdleCallback === 'function'
-    ? requestIdleCallback(cb, { timeout: 500 })
-    : setTimeout(cb, 16);
-function attachDeferred(terms: TermTile[]) {
-  let i = 0;
-  const step = () => {
-    if (i >= terms.length) return;
-    const st = terms[i++];
-    // Skip tiles that left the grid before their turn came up.
-    if (st.host.classList.contains('in-grid')) st.ensureAttached();
-    if (i < terms.length) _ric(step);
-  };
-  if (terms.length) _ric(step);
-}
-
-// renderGrid lays out every tile that should be visible in the
-// current grid scope. Tiles for other sessions are hidden but kept
-// alive (so their xterm scrollback persists across mode switches).
-export function renderGrid() {
-  const _t0 = deps.scrollTrace.rec.enabled ? performance.now() : 0;
-  termsHost.classList.remove('single');
-  termsHost.classList.add('grid');
-  const gridSessions = gridScopeSessions();
-  const gridIDs = new Set(gridSessions.map((s) => s.id));
-  const n = gridSessions.length;
-
-  // Pick (rows, cols) that fills the container and apply the grid template
-  // BEFORE the attach loop. The active tile's ensureAttached() runs a
-  // synchronous fit.fit() that measures its body box — if the template
-  // isn't set yet, it measures the pre-grid (single/stale) width and
-  // rebaselineReplayCols('first-attach') anchors the replay baseline to
-  // that wrong width. The tile's ResizeObserver then fires once the
-  // template lays it out, sees a >=REPLAY_COL_THRESHOLD delta vs the stale
-  // baseline, and arms a SECOND scrollback replay on top of the attach
-  // replay — the double-restream that visibly jumps the active tile on
-  // grid entry. buildGridLayout only reads container dims + n, so it has
-  // no dependency on the attach loop. (Per-tile rowSpan is applied below,
-  // after ensureTerm creates the terms — it only affects row height, not
-  // the cols-driven replay trigger.)
-  const w = termsHost.clientWidth || 800;
-  const h = termsHost.clientHeight || 600;
-  const { rows, cols, assignments, cellMap } = buildGridLayout(n, w, h);
-  termsHost.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  termsHost.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-
-  // Startup-fan-out probe: how many tiles this pass builds+attaches and
-  // the synchronous cost of the loop. grid-all attaches every session at
-  // once; ensureTerm builds a new xterm + WebGL addon and ensureAttached
-  // runs a synchronous fit() per tile — the suspected slow-startup stall.
-  // (ensureAttached's await is fire-and-forget here, so this captures the
-  // synchronous DOM/construction cost; the per-tile open latency lands in
-  // the "ensureAttached" feLog lines.)
-  const _fanoutStart = (() => {
-    try {
-      return performance.now();
-    } catch {
-      return 0;
-    }
-  })();
-  let _built = 0;
-
-  // Ensure every grid session has a SessionTerm; attach lazily. Every
-  // grid tile is on-screen (the grid fits all N into the viewport), but
-  // attaching all N synchronously runs N fit()s + kicks off N replays in
-  // one main-thread pass — the startup drag. Attach the ACTIVE tile now
-  // so the user's focus is live immediately; defer the rest to idle
-  // callbacks so they stream in without blocking the first paint.
-  // Move tiles into the desired DOM order (row-major) so that flexbox
-  // / CSS grid honors the navigation order without us having to set
-  // grid-row/column explicitly.
-  const _deferred: TermTile[] = [];
-  const _wanted: HTMLElement[] = [];
-  for (const info of gridSessions) {
-    const existed = state.terms.has(info.id);
-    const st = deps.ensureTerm(info);
-    if (!existed) _built += 1;
-    st.host.classList.add('in-grid');
-    st.host.classList.toggle('active', info.id === state.activeId);
-    st.host.classList.toggle('attention', state.attention.has(info.id));
-    if (info.id === state.activeId) st.ensureAttached();
-    else _deferred.push(st);
-    _wanted.push(st.host);
-  }
-  // Re-order to keep DOM == nav order — but ONLY when the order actually
-  // moved. appendChild on an already-attached node is a remove+insert, and
-  // the browser blurs whatever is focused inside it (the very blur
-  // focus.ts's _focusGuard exists to paper over). renderGrid runs on every
-  // repaint, and most of them change no order at all — killing a non-active
-  // session leaves the survivors exactly where they were — so an
-  // unconditional re-parent dropped keyboard focus for nothing.
-  const _domOrder = Array.from(termsHost.children).filter((c) =>
-    _wanted.includes(c as HTMLElement),
-  );
-  if (
-    _domOrder.length !== _wanted.length ||
-    _wanted.some((h, i) => _domOrder[i] !== h)
-  )
-    // A genuine re-order still moves nodes, so it still blurs. Put focus
-    // back on the same element afterwards — it survived, it just moved.
-    preserveFocus(termsHost, () => {
-      for (const host of _wanted) termsHost.appendChild(host);
-    });
-  attachDeferred(_deferred);
-  // Only log when the pass built new tiles — renderGrid runs on every
-  // repaint (switch, minimize, resize, …), and an unconditional line
-  // would spam the log with built=0 sync=0ms noise on every grid touch.
-  if (_built > 0) {
-    try {
-      const _ms = (() => {
-        try {
-          return Math.round(performance.now() - _fanoutStart);
-        } catch {
-          return -1;
-        }
-      })();
-      LogFrontend(
-        `renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`,
-      );
-    } catch {
-      /* bridge absent in tests */
-    }
-  }
-  // Hide / unmark tiles outside the scope.
-  for (const [sid, st] of state.terms) {
-    if (!gridIDs.has(sid)) {
-      st.host.classList.remove('in-grid', 'active');
-      st.host.style.gridRow = '';
-      st.host.style.gridColumn = '';
-    }
-  }
-
-  // Apply each tile's row span. CSS grid 1-based; row indices are
-  // implicit row-major, so we only need to span when rowSpan > 1.
-  for (let i = 0; i < n; i++) {
-    const a = assignments[i];
-    const st = state.terms.get(gridSessions[i].id);
-    if (!st) continue;
-    if (a.rowSpan > 1) {
-      st.host.style.gridRow = `span ${a.rowSpan}`;
-    } else {
-      st.host.style.gridRow = '';
-    }
-    st.host.style.gridColumn = '';
-  }
-
-  gridLayout = { rows, cols, sessions: gridSessions, assignments, cellMap };
-
-  // Freeze probe: count + time each layout pass. A runaway count (the
-  // container ResizeObserver → renderGrid → tile fit → container resize
-  // feedback loop) or a single multi-hundred-ms pass points straight at
-  // the grid relayout as the stall source. dur is the synchronous cost
-  // of this pass; ms is wall-clock so a storm shows as tight spacing.
-  if (deps.scrollTrace.rec.enabled) {
-    deps.scrollTrace.count('renderGrid');
-    deps.scrollTrace.rec('render-grid', {
-      n,
-      rows,
-      cols,
-      dur: Math.round(performance.now() - _t0),
-    });
-  }
-
-  // No explicit refit pass: each tile's ResizeObserver fires when its
-  // body box changes (CSS grid cell resized, in-grid class toggled,
-  // tile shown/hidden). That's the only place fit.fit() runs.
+// isSessionHidden answers the one question every "can I switch to this
+// with a tile to land on?" caller asks: the session is out of the grid
+// either because it was minimized itself, or because its project was.
+// keyboard.ts branches on this rather than on state.minimized directly,
+// so the two mechanisms can never drift apart. It stays here rather than
+// moving to grid-layout.ts with the scope helpers: it reads nothing but
+// the store, and keyboard.ts is the heaviest caller.
+export function isSessionHidden(id: string): boolean {
+  if (state.minimized.has(id)) return true;
+  const s = state.sessions.find((x) => x.id === id);
+  return !!s && state.minimizedProjects.has(readProjectId(s));
 }
 
 // gridSpatialMove moves the active tile in the given direction.
-// Uses cellMap to honor row-spanned tiles: e.g. with 3 sessions in a
-// 2x2 grid the bottom-right cell is absorbed by tile 1, so pressing
-// "right" from tile 2 lands on tile 1 instead of doing nothing.
+// Uses the cached layout's cellMap to honor row-spanned tiles: e.g. with
+// 3 sessions in a 2x2 grid the bottom-right cell is absorbed by tile 1,
+// so pressing "right" from tile 2 lands on tile 1 instead of doing nothing.
 export function gridSpatialMove(dCol: number, dRow: number) {
-  const { sessions } = gridLayout;
+  const { sessions } = currentGridLayout();
   if (sessions.length === 0) return;
   const idx = sessions.findIndex((s) => s.id === state.activeId);
   if (idx < 0) {
-    deps.setActive(sessions[0].id);
-    renderGrid();
+    withLayout(() => deps.setActive(sessions[0].id));
     return;
   }
-  const target = computeSpatialMove(gridLayout, idx, dCol, dRow);
+  const target = spatialTarget(idx, dCol, dRow);
   if (target == null) return;
-  deps.setActive(sessions[target].id);
-  renderGrid();
+  withLayout(() => deps.setActive(sessions[target].id));
   setStatus(sessions[target].name ?? '');
 }
 
@@ -432,90 +282,54 @@ export function shiftActiveProject(delta: number) {
     if (!state.minimizedProjects.has(cand.id)) next = cand;
   }
   if (!next) return;
-  store.setCurrentProjectId(next.id);
-  if (state.view === 'grid-project') store.setGridProjectId(next.id);
-
+  const chosen = next;
   const sessions = state.sessions
-    .filter((s) => (s.projectId ?? s.project_id) === next.id)
+    .filter((s) => (s.projectId ?? s.project_id) === chosen.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const target = firstVisible(sessions);
-  if (target) {
-    // ensureTerm before setActive: showSingle only shows a tile that
-    // already exists, and this path never went through switchTo. A
-    // session that has not been rendered this run — the normal case
-    // after a restart, and now reachable whenever the grid falls back
-    // to single — would otherwise leave a blank, unfocusable pane.
-    deps.ensureTerm(target);
-    deps.setActive(target.id);
-  } else {
-    // Empty project — keep the project selected but drop the active
-    // session so the user can ⌘N into it. activeProjectId() now
-    // returns the empty project because currentProjectId is set.
-    store.setActiveId(null);
-  }
-  if (state.view === 'single') showSingle(state.activeId);
-  else renderGrid();
-  // Same guard as switchToProject: ⌘[ / ⌘] can land on a project whose
-  // sessions the grid filters out.
-  fallBackToSingleIfActiveHidden();
-  setStatus(`${next.name}${sessions.length === 0 ? ' (empty)' : ''}`);
-}
-
-// gridScopeFor returns the sessions a given grid view would tile, for a
-// view the app is not necessarily in yet — setView needs the count
-// before it commits to the mode.
-export function gridScopeFor(view: ViewMode, projectId?: string) {
-  if (view === 'grid-all') {
-    return filterHidden(
-      orderedSessions(),
-      state.minimized,
-      state.minimizedProjects,
-    );
-  }
-  if (view === 'grid-project') {
-    const scoped = state.sessions
-      .filter((s) => (s.projectId ?? s.project_id) === projectId)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return filterHidden(scoped, state.minimized, state.minimizedProjects);
-  }
-  return [];
-}
-
-// gridScopeSessions returns the list of sessions that should be tiled
-// in the current grid view.
-export function gridScopeSessions() {
-  return gridScopeFor(state.view, state.gridProjectId || activeProjectId());
-}
-
-// isSessionHidden answers the one question every "can I switch to this
-// with a tile to land on?" caller asks: the session is out of the grid
-// either because it was minimized itself, or because its project was.
-// keyboard.ts branches on this rather than on state.minimized directly,
-// so the two mechanisms can never drift apart.
-export function isSessionHidden(id: string): boolean {
-  if (state.minimized.has(id)) return true;
-  const s = state.sessions.find((x) => x.id === id);
-  return !!s && state.minimizedProjects.has(readProjectId(s));
+  withLayout(() => {
+    store.setCurrentProjectId(chosen.id);
+    if (state.view === 'grid-project') store.setGridProjectId(chosen.id);
+    if (target) {
+      // ensureTerm before setActive: the single-mode layout only shows a
+      // tile that already exists, and this path never went through
+      // switchTo. A session that has not been rendered this run — the
+      // normal case after a restart, and now reachable whenever the grid
+      // falls back to single — would otherwise leave a blank, unfocusable
+      // pane.
+      deps.ensureTerm(target);
+      deps.setActive(target.id);
+    } else {
+      // Empty project — keep the project selected but drop the active
+      // session so the user can ⌘N into it. activeProjectId() now
+      // returns the empty project because currentProjectId is set.
+      store.setActiveId(null);
+    }
+    // Same guard as switchToProject: ⌘[ / ⌘] can land on a project whose
+    // sessions the grid filters out.
+    fallBackToSingleIfActiveHidden();
+  });
+  setStatus(`${chosen.name}${sessions.length === 0 ? ' (empty)' : ''}`);
 }
 
 // minimizeSession hides a session from grid views by adding its id to
-// state.minimized. The session stays alive; its tile is removed on the
-// next renderGrid(). Single-session mode is unaffected — the user can
-// still switch to a minimized session via the sidebar / palette.
+// state.minimized. The session stays alive; its tile leaves on the
+// repaint that store write triggers. Single-session mode is unaffected —
+// the user can still switch to a minimized session via the sidebar / palette.
 export function minimizeSession(id: string | null) {
   if (!id || state.minimized.has(id)) return;
-  store.minimizeSession(id);
-  // If the active session is the one being minimized while in grid
-  // mode, hand focus to the next still-visible session so the focus
-  // ring doesn't vanish onto an offscreen tile.
-  if (state.activeId === id && state.view !== 'single') {
-    const next = gridScopeSessions().find((s) => s.id !== id);
-    if (next) deps.setActive(next.id);
-  }
-  if (state.view !== 'single') {
-    renderGrid();
-    rebaselineGridReplayCols();
-  }
+  const wasGrid = state.view !== 'single';
+  withLayout(() => {
+    store.minimizeSession(id);
+    // If the active session is the one being minimized while in grid
+    // mode, hand focus to the next still-visible session so the focus
+    // ring doesn't vanish onto an offscreen tile.
+    if (state.activeId === id && state.view !== 'single') {
+      const next = gridScopeSessions().find((s) => s.id !== id);
+      if (next) deps.setActive(next.id);
+    }
+  });
+  if (wasGrid) rebaselineGridReplayCols();
   enforceViewFloor();
 }
 
@@ -553,18 +367,20 @@ export function restoreSession(id: string | null) {
 // focus handoff, grid, view floor.
 export function minimizeProject(id: string | null) {
   if (!id || state.minimizedProjects.has(id)) return;
-  store.minimizeProject(id);
-  // Same reason as minimizeSession: don't leave the focus ring on a
-  // tile that just stopped being rendered.
-  if (state.view !== 'single') {
-    const active = state.sessions.find((x) => x.id === state.activeId);
-    if (active && readProjectId(active) === id) {
-      const next = gridScopeSessions()[0];
-      if (next) deps.setActive(next.id);
+  const wasGrid = state.view !== 'single';
+  withLayout(() => {
+    store.minimizeProject(id);
+    // Same reason as minimizeSession: don't leave the focus ring on a
+    // tile that just stopped being rendered.
+    if (state.view !== 'single') {
+      const active = state.sessions.find((x) => x.id === state.activeId);
+      if (active && readProjectId(active) === id) {
+        const next = gridScopeSessions()[0];
+        if (next) deps.setActive(next.id);
+      }
     }
-    renderGrid();
-    rebaselineGridReplayCols();
-  }
+  });
+  if (wasGrid) rebaselineGridReplayCols();
   enforceViewFloor();
 }
 
@@ -573,32 +389,10 @@ export function minimizeProject(id: string | null) {
 // project's Order, so the row reappears exactly where it was.
 export function restoreProject(id: string | null) {
   if (!id || !state.minimizedProjects.has(id)) return;
-  store.restoreProject(id);
+  withLayout(() => store.restoreProject(id));
   if (state.view !== 'single') {
-    renderGrid();
     rebaselineGridReplayCols();
   }
-}
-
-// rebaselineGridReplayCols defers a baseline reset to after the next
-// two animation frames. The first rAF lets the CSS grid layout settle
-// and ResizeObserver fire _onBodyResize on each affected tile (which
-// updates this.term.cols via fit.fit() and may arm a 100ms replay
-// debounce). The second rAF then snapshots the new term.cols as the
-// baseline and clears the pending debounce — turning a layout-driven
-// width change into a no-op rather than a spurious scrollback replay.
-// Pure user window resizes still flow through the threshold path in
-// _onBodyResize and continue to request replays as before.
-function rebaselineGridReplayCols() {
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      for (const st of state.terms.values()) {
-        if (st.host.classList.contains('in-grid')) {
-          st.rebaselineReplayCols('layout');
-        }
-      }
-    }),
-  );
 }
 
 export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
@@ -611,15 +405,12 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   );
   if (target !== view) flashStatus('only one session — staying focused');
   view = target;
-  store.setView(view, opts.persist !== false);
-  if (view === 'grid-project') {
-    store.setGridProjectId(activeProjectId());
-  }
-  if (view === 'single') {
-    showSingle(state.activeId);
-  } else {
-    renderGrid();
-  }
+  withLayout(() => {
+    store.setView(view, opts.persist !== false);
+    if (view === 'grid-project') {
+      store.setGridProjectId(activeProjectId());
+    }
+  });
   // Toggling grid/fullscreen via the menu blurs the xterm; restore
   // focus so the user can keep typing into the active session.
   deps.focusActiveTerm();
@@ -649,31 +440,3 @@ export function setView(view: ViewMode, opts: { persist?: boolean } = {}) {
   setStatus(active ? (active.name ?? '') : '');
   setModeHint(modeHints(view, isMac));
 }
-
-// ---------- resize ----------
-//
-// Per-tile fit is driven by each SessionTerm's own ResizeObserver
-// on its body. The only thing left at the page level is re-picking
-// (rows, cols) for the grid when the *container* changes shape —
-// e.g. landscape ↔ portrait window or sidebar drag — so tiles flow
-// from "side-by-side" to "stacked" and back.
-//
-// rAF coalesces the burst of RO entries during a continuous drag
-// into one renderGrid per frame. The guard also dodges the dreaded
-// "ResizeObserver loop completed with undelivered notifications"
-// warning that fires when a callback synchronously mutates layout.
-let _gridReflowQueued = false;
-new ResizeObserver(() => {
-  // Freeze probe: count every container RO firing (including the ones
-  // coalesced away by the queued guard). If this races far ahead of the
-  // render-grid count, the container is being resized in a tight loop —
-  // the classic ResizeObserver feedback storm.
-  if (deps.scrollTrace.rec.enabled)
-    deps.scrollTrace.count('gridContainerResize');
-  if (state.view === 'single' || _gridReflowQueued) return;
-  _gridReflowQueued = true;
-  requestAnimationFrame(() => {
-    _gridReflowQueued = false;
-    if (state.view !== 'single') renderGrid();
-  });
-}).observe(termsHost);

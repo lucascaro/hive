@@ -56,6 +56,7 @@ import { BootState } from './components/BootState.js';
 import { EmptyState } from './components/EmptyState.js';
 import { MinimizedTray } from './components/MinimizedTray.js';
 import { Sidebar } from './components/Sidebar.js';
+import { GridView } from './components/GridView.js';
 import { Launcher } from './components/modals/Launcher.js';
 import { Settings } from './components/modals/Settings.js';
 import { ChoiceDialog } from './components/modals/ChoiceDialog.js';
@@ -80,7 +81,6 @@ import {
   minimizeSession,
   restoreSession,
   shiftActiveProject,
-  renderGrid,
   enforceViewFloor,
   initView,
 } from './app/view.js';
@@ -260,7 +260,7 @@ initHelpOverlay({ setFocusedTile, focusActiveTerm });
 // a single root. The handles are kept so that phase has something to
 // unmount — see docs/exec-plans/active/react-ui-rewrite.md.
 // The pane starts in focused mode. Set before the first paint rather than
-// waiting for showSingle(), which only runs once a session exists —
+// waiting for applySingle(), which only runs once a session exists —
 // #terms.single drives the terminal arrangement in layout.css.
 termsHost.classList.add('single');
 
@@ -292,6 +292,13 @@ mountIsland(
     trayEl: pageEl('minimized-projects'),
   }),
 );
+// The grid shell. It renders nothing — its whole job is to run one
+// layout effect against app/grid-layout.ts when the store's view, active
+// tile or grid scope moves — so it mounts on its own empty, hidden root
+// rather than on #terms, whose children are SessionTerm hosts React must
+// never own. Mounted right after the sidebar so it is subscribed before
+// the first session list lands.
+mountIsland(pageEl('grid-root'), createElement(GridView));
 // #banners is `display: contents` (layout.css), so the three banners
 // stay direct children of the #app grid and keep their row placement.
 mountIsland(pageEl('banners'), createElement(Banners));
@@ -377,7 +384,6 @@ initKeyboard({
 });
 wireDaemonEvents({
   switchTo,
-  renderGrid,
   enforceViewFloor,
   updateAppTitle,
   focusActiveTerm,

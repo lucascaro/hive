@@ -1,6 +1,6 @@
 // Re-rendering steals the keyboard unless something puts focus back.
 //
-// app/view.ts's renderGrid re-parents tiles with appendChild — which, on
+// app/grid-layout.ts's applyGridLayout re-parents tiles with appendChild — which, on
 // an already-attached node, is a remove+insert the browser treats as a
 // blur. Focus lands on <body> and the next keystroke goes nowhere.
 //

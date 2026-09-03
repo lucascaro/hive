@@ -55,7 +55,7 @@ let state: typeof import('../../src/app/state.js').state;
 let Sidebar: (p: SidebarProps) => ReactNode;
 let sidebarProps: SidebarProps;
 let bridge: typeof import('../../src/bridge.js');
-let gridScopeFor: typeof import('../../src/app/view.js').gridScopeFor;
+let gridScopeFor: typeof import('../../src/app/grid-layout.js').gridScopeFor;
 let minimizeProject: typeof import('../../src/app/view.js').minimizeProject;
 let switchToProject: typeof import('../../src/app/view.js').switchToProject;
 let shiftActiveProject: typeof import('../../src/app/view.js').shiftActiveProject;
@@ -85,7 +85,7 @@ beforeAll(async () => {
   ({ state } = await import('../../src/app/state.js'));
   bridge = await import('../../src/bridge.js');
   const view = await import('../../src/app/view.js');
-  gridScopeFor = view.gridScopeFor;
+  gridScopeFor = (await import('../../src/app/grid-layout.js')).gridScopeFor;
   minimizeProject = view.minimizeProject;
   switchToProject = view.switchToProject;
   shiftActiveProject = view.shiftActiveProject;
@@ -393,7 +393,6 @@ describe('project events', () => {
     vi.mocked(bridge.EventsOn).mockClear();
     wireDaemonEvents({
       switchTo: noop,
-      renderGrid: noop,
       enforceViewFloor: noop,
       updateAppTitle: noop,
       focusActiveTerm: noop,

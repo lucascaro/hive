@@ -58,7 +58,7 @@ export function setActive(id: string | null) {
   }
   setActiveId(id);
   // Schedule focus after the next paint so any DOM reorder / visibility
-  // change from renderGrid / showSingle has settled. xterm.focus()
+  // change from applyGridLayout / applySingle has settled. xterm.focus()
   // moves focus to its hidden textarea; that fires .onFocus, which
   // adds .term-focused to the host (the source of truth for the
   // visual focus border).
@@ -73,14 +73,14 @@ export function setActive(id: string | null) {
 // Pass state.activeId to focus the active session. Pass null to drop
 // the visual focus everywhere (e.g. when opening the launcher or a
 // rename input). Every state transition that could change which tile
-// should be focused (setActive, setView, renderGrid, modal open/close,
+// should be focused (setActive, setView, the grid layout pass, modal open/close,
 // rename open/close, dialog close, OS fullscreen toggle, …) MUST end
 // by calling setFocusedTile(...).
 //
 // Previously visual focus was event-driven from focusin/focusout on
 // each .term-host, and keyboard focus was driven separately by
 // focusActiveTerm()'s ta.focus() call. During view transitions (most
-// visibly single → grid: renderGrid's appendChild reorder and the
+// visibly single → grid: applyGridLayout's appendChild reorder and the
 // helper-textarea mounted by xterm.open() for newly-materialized
 // tiles), the two could end up on different tiles. The user would
 // see a session lit up while keystrokes went nowhere. Single writer
@@ -88,7 +88,7 @@ export function setActive(id: string | null) {
 // rAF as the helper-textarea focus.
 // Transient focus guard for the post-view-switch settle window.
 //
-// Switching to grid reparents the active tile (renderGrid's appendChild
+// Switching to grid reparents the active tile (applyGridLayout's appendChild
 // reorder) and triggers async ResizeObserver → fit → WebGL resize on the
 // newly-visible neighbour tiles. Both momentarily blur the active
 // helper-textarea to <body>. A keystroke typed in that sub-frame gap lands
@@ -159,7 +159,7 @@ export function setFocusedTile(id: string | null) {
   }
   // Arm the synchronous blur guard for the settle window, then schedule
   // the focus drive after the next paint so any in-flight DOM transition
-  // (showSingle / renderGrid / appendChild / xterm.open) settles before we
+  // (applySingle / applyGridLayout / appendChild / xterm.open) settles before we
   // read activeElement and move focus.
   armFocusGuard(id);
   requestAnimationFrame(() => applyFocus(id, /*attempt=*/ 0));
@@ -175,7 +175,7 @@ function applyFocus(id: string, attempt: number) {
   // setFocusedTile() calls fire during a grid switch and each arms an
   // 8-frame rAF retry chain; in grid mode with many tiles those chains
   // overlap and can hammer focus() every frame. A focusApply count that
-  // dwarfs the renderGrid count — or focus-apply events that never stop
+  // dwarfs the layout-pass count — or focus-apply events that never stop
   // — would mark the focus reconciliation loop as the storm source.
   if (scrollTrace.rec.enabled) {
     scrollTrace.count('focusApply');
@@ -200,7 +200,7 @@ function applyFocus(id: string, attempt: number) {
   // Drive browser focus to the DOM helper-textarea. xterm's
   // term.focus() early-returns on a stale-true _focused flag (#159);
   // after this transition the flag is stale-false because the
-  // synchronous display:none flip during renderGrid's parent class
+  // synchronous display:none flip during the layout pass's parent class
   // swap (single → grid) fires focusout. ta.focus() drives the real
   // event; the follow-up term.focus() resyncs xterm's internal state.
   const ta = st.host.querySelector<HTMLTextAreaElement>(
@@ -222,13 +222,13 @@ function applyFocus(id: string, attempt: number) {
   // Schedule a verification rAF *next frame* (not this one — focus()
   // just fired and synchronously updated activeElement, so an in-tick
   // check would trivially pass and miss the real failure mode):
-  // post-renderGrid side-effects (ResizeObserver → fit → WebGL canvas
+  // post-layout-pass side-effects (ResizeObserver → fit → WebGL canvas
   // resize on newly-visible neighbour tiles) can synchronously fire
   // focusout ~10ms later. If activeElement has drifted off `ta` by
   // then, re-focus. Cap retries so a genuine modal-takeover or rename
   // doesn't busy-loop.
   // Poll for several frames. A single rAF check is insufficient
-  // because post-renderGrid side-effects (ResizeObserver → fit →
+  // because post-layout-pass side-effects (ResizeObserver → fit →
   // WebGL canvas resize on neighbour tiles) can fire focusout AFTER
   // the rAF batch completes — the disturbance arrives one event-loop
   // turn later than the verify. We watch for FOCUS_MAX_RETRIES frames
