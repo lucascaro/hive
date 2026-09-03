@@ -178,14 +178,14 @@ export function onSessionBell(info: SessionInfo) {
   }
   addAttention(info.id);
   termsMap().get(info.id)?.host.classList.add('attention');
-  termsMap().get(info.id)?.refreshStateIcon?.();
+  // No icon call: the tile's state icon renders from `attention` in
+  // components/TileChrome.tsx, so addAttention above already moved it.
   if (!alreadyAttention) fireBellNotification(info);
 }
 
 export function clearAttention(sessionId: string) {
   if (clearAttentionFor(sessionId)) {
     termsMap().get(sessionId)?.host.classList.remove('attention');
-    termsMap().get(sessionId)?.refreshStateIcon?.();
   }
 }
 

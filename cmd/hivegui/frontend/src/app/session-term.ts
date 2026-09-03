@@ -19,20 +19,23 @@ import {
   SetClipboardText,
   ClipboardGetText,
   OpenURL,
-  UpdateSession,
 } from '../bridge.js';
 import type { SessionInfo } from './state.js';
-import { addDismissedDead, appStore, setFontSize } from '../store/store.js';
+import {
+  addDismissedDead,
+  addTileChrome,
+  appStore,
+  dropTileChrome,
+  initialTileChrome,
+  patchTileChrome,
+  setFontSize,
+} from '../store/store.js';
 import { allTerms, getTerm, setTerm } from '../store/terms.js';
-import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
-import { iconButton } from '../ui/icon-button.js';
-import { sessionState } from '../lib/session-state.js';
+import { icon, stateIcon } from '../ui/icon.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
 import { anyModalOpen } from '../store/store.js';
-import { openWorktrees } from './modals/worktrees.js';
 import { isMac } from '../lib/platform.js';
-import { displayTitle } from '../lib/term-title.js';
 import {
   PHASE,
   phaseOf,
@@ -86,9 +89,8 @@ import {
   type WheelEventLike,
 } from '../lib/wheel-scroll.js';
 import { onSessionBell, clearAttention } from './events.js';
-import { minimizeSession, updateAppTitle } from './view.js';
-import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
-import { beginInlineRename } from './inline-rename.js';
+import { updateAppTitle } from './view.js';
+import { setActive, refocusActiveTerm } from './focus.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
 // module runs inside event handlers and must never cache a slice across
@@ -144,15 +146,16 @@ export class SessionTerm {
   info: SessionInfo;
   decoder: TextDecoder;
   host: HTMLDivElement;
+  // Created here, filled by React. components/TileChrome.tsx portals the
+  // header's CHILDREN into this element and the overlays into
+  // `overlays`; the elements themselves stay ours because their lifetime
+  // is the tile's, not a render's. `header` is created empty rather than
+  // by React because tile-header.css pins it to 28px — an empty header
+  // keeps `body`'s box byte-identical on the frame before React fills
+  // it, which is what keeps first-attach fit() measuring the right rows.
   header: HTMLDivElement;
   body: HTMLDivElement;
-  tileState: SVGSVGElement;
-  tileName: HTMLSpanElement;
-  tileWorktree: HTMLButtonElement;
-  tileProject: HTMLSpanElement;
-  tileTermTitle: HTMLSpanElement;
-  tileActions: HTMLDivElement;
-  tileMinimize: HTMLButtonElement;
+  overlays: HTMLDivElement;
   term: Terminal;
   fit: FitAddon;
   ro: ResizeObserver;
@@ -218,8 +221,6 @@ export class SessionTerm {
   _pendingClickX = 0;
   _pendingClickY = 0;
 
-  _renameInput: HTMLInputElement | null = null;
-
   // writeData burst probe.
   _wroteBytes = 0;
   _wroteCount = 0;
@@ -239,87 +240,31 @@ export class SessionTerm {
     this.host.dataset.sid = info.id;
     this.host.style.setProperty('--session-color', info.color || '#888');
 
-    // Tile header (only visible in grid mode via CSS).
+    // Tile header (only visible in grid mode via CSS). Empty: its
+    // children come from components/TileChrome.tsx. The aria-label stays
+    // ours because it is an attribute of the element we own, and
+    // setInfo() keeps it current.
     this.header = document.createElement('div');
     this.header.className = 'tile-header';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
-    this.tileState = stateIcon(
-      sessionState(info, appData().attention.has(info.id)),
-    );
-    this.tileName = document.createElement('span');
-    this.tileName.className = 'tile-name';
-    this.tileName.textContent = info.name ?? '';
-    // Clicking the worktree marker opens the worktree browser for this
-    // session's project — the same thing the identical icon does in
-    // the sidebar and on the project row. An indicator that looks like
-    // a control but ignores clicks reads as broken.
-    this.tileWorktree = iconButton({
-      icon: 'branch',
-      label: 'Manage worktrees',
-      className: 'tile-worktree',
-      onClick: (e) => {
-        // The tile header also focuses/activates the tile; this click is
-        // about the worktree, not about switching sessions.
-        e.stopPropagation();
-        const pid = this.info?.projectId ?? this.info?.project_id ?? '';
-        const proj = appData().projects.find((p) => p.id === pid);
-        if (proj) openWorktrees(proj);
-      },
-    });
-    {
-      const wtBranch = info.worktreeBranch ?? info.worktree_branch;
-      this.tileWorktree.hidden = !wtBranch;
-      if (wtBranch) {
-        this.tileWorktree.title = `Worktree: ${wtBranch} — click to manage worktrees`;
-      }
-    }
-    this.tileProject = document.createElement('span');
-    this.tileProject.className = 'tile-project';
-    // OSC-set window title from the running TUI (vim, htop, claude…).
-    // Sits between the session name and the project label so the
-    // user can tell at a glance what each tile is currently doing.
-    this.tileTermTitle = document.createElement('span');
-    this.tileTermTitle.className = 'tile-term-title';
-    // Hidden until a title actually arrives: the separator lives in the
-    // element's ::before, so an empty-but-visible span renders a lone
-    // '·' next to the session name.
-    this.tileTermTitle.hidden = true;
-    this.tileMinimize = iconButton({
-      icon: 'minus',
-      label: 'Minimize session',
-      className: 'tile-minimize',
-      onClick: (e) => {
-        e.stopPropagation();
-        minimizeSession(this.info.id);
-      },
-    });
-    this.tileMinimize.addEventListener('mousedown', (e) => {
-      // Block the surrounding tile mousedown so minimizing doesn't
-      // also select / switch to this tile.
-      e.stopPropagation();
-    });
-    // Deliberately NOT hover-revealed (see tile-header.css): a control
-    // that is display:none until hover cannot be reached by keyboard.
-    this.tileActions = document.createElement('div');
-    this.tileActions.className = 'tile-actions';
-    this.tileActions.append(this.tileMinimize);
-    this.header.append(
-      this.tileState,
-      this.tileName,
-      // Outside .tile-actions: worktree-ness is a fact about the session,
-      // not an action, so it has to read at rest like the sidebar row's
-      // marker does. Only the minimize button is hover-revealed.
-      this.tileWorktree,
-      this.tileTermTitle,
-      this.tileProject,
-      this.tileActions,
-    );
 
     this.body = document.createElement('div');
     this.body.className = 'term-body';
 
-    this.host.append(this.header, this.body);
+    // The dead-session and lifecycle-phase overlays mount here. A
+    // `display: contents` wrapper, so it generates no box of its own and
+    // the absolutely-positioned overlays inside it still resolve against
+    // .term-host. After the body, so paint order is unchanged.
+    this.overlays = document.createElement('div');
+    this.overlays.className = 'tile-overlays';
+
+    this.host.append(this.header, this.body, this.overlays);
     mustEl('terms').appendChild(this.host);
+
+    // Seed the chrome state before the host is registered in
+    // store/terms.ts, so the first React pass that sees this id also
+    // sees something to render.
+    addTileChrome(info.id, initialTileChrome(info, this.phase));
 
     this.term = new Terminal({
       // Terminal font follows --font-mono, so the bundled JetBrains Mono
@@ -630,13 +575,8 @@ export class SessionTerm {
       }
     });
 
-    // Double-click the tile name to rename inline (same affordance
-    // as the sidebar). The header's mousedown selects the tile;
-    // dblclick on the name then opens the editor.
-    this.tileName.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      this._beginRename();
-    });
+    // (Double-click-to-rename lives on the tile name, which is now a
+    // React child — see components/TileChrome.tsx.)
 
     // BEL on a non-focused session marks it as needing attention and
     // fires a desktop notification. xterm.js v5 exposes onBell.
@@ -1062,88 +1002,29 @@ export class SessionTerm {
     document.addEventListener('visibilitychange', this._onVisibility);
   }
 
-  // Patches the tile header's state icon in place from current info +
-  // attention, without touching name/title/worktree. setInfo calls this
-  // for the full-refresh path; the attention paths in events.ts (a bell
-  // and its clearing) call it directly since they don't go through
-  // setInfo at all.
-  refreshStateIcon() {
-    // `this.phase` overrides `this.info.phase`: setPhase() updates the
-    // tile's own phase and never writes back to info, so resolving from
-    // info alone would repaint the icon from whatever the last session
-    // list said — stale for exactly the transition setPhase exists for.
-    updateStateIcon(
-      this.tileState,
-      sessionState(
-        { ...this.info, phase: this.phase },
-        appData().attention.has(this.info.id),
-      ),
-    );
-  }
-
   setInfo(info: SessionInfo) {
     this.info = info;
-    this.refreshStateIcon();
     this.host.style.setProperty('--session-color', info.color || '#888');
-    this.tileName.textContent = info.name ?? '';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
-    const wtBranch = info.worktreeBranch ?? info.worktree_branch;
-    this.tileWorktree.hidden = !wtBranch;
-    this.tileWorktree.title = wtBranch
-      ? `Worktree: ${wtBranch} — click to manage worktrees`
-      : '';
-    this._renderTermTitle();
+    // Name, worktree marker and state icon all render from this
+    // snapshot — see components/TileChrome.tsx. Publishing `info` rather
+    // than letting the component read the session list keeps the header
+    // rendering from exactly what it used to patch from.
+    patchTileChrome(info.id, { info });
   }
 
   _renderTermTitle() {
     // The "hide it when it echoes the session name" rule lives in
     // lib/term-title.ts because the sidebar row applies it too — the two
     // surfaces must not disagree about whether a session has anything
-    // worth reporting.
-    const t = displayTitle(this.termTitle, this.info.name);
-    this.tileTermTitle.textContent = t;
-    if (t) this.tileTermTitle.title = t;
-    this.tileTermTitle.hidden = !t;
+    // worth reporting. Applied in the component; the raw title is what
+    // travels.
+    patchTileChrome(this.info.id, { termTitle: this.termTitle });
   }
 
-  // _beginRename hides the tile-name span, drops an input next to
-  // it, and calls UpdateSession on Enter / blur. Escape cancels.
-  // The next session:event(updated) calls setInfo which refreshes
-  // tileName.textContent; we just need to put the span back in DOM.
-  _beginRename() {
-    if (this._renameInput) return; // already editing
-    beginInlineRename({
-      className: 'tile-name-input',
-      value: this.info.name ?? '',
-      mount: (input) => {
-        // Set the reentrancy guard here (mount runs before focus/select)
-        // to match the original's ordering: guard set, then focus stolen.
-        this._renameInput = input;
-        this.tileName.style.display = 'none';
-        // `this.header` rather than `tileName.parentNode`: the span is
-        // appended to the header in the constructor and never reparented,
-        // so this is the same node with no nullable indirection.
-        this.header.insertBefore(input, this.tileName);
-      },
-      // Drop the visual focus border before stealing keyboard focus —
-      // setFocusedTile is the only writer of .term-focused, so without
-      // this the border would linger while the rename input owns input.
-      beforeFocus: () => setFocusedTile(null),
-      unmount: (input) => {
-        input.remove();
-        this._renameInput = null;
-        this.tileName.style.display = '';
-      },
-      onCommit: (next) =>
-        UpdateSession(this.info.id, next, '', -1).catch(
-          reportFailure('rename'),
-        ),
-      onDone: () => refocusActiveTerm(),
-    });
-  }
-
-  setProject(name?: string, color?: string) {
-    this.tileProject.textContent = name || '';
+  // Only the CSS custom property now: the project LABEL renders from the
+  // store, which already holds the authoritative project list.
+  setProject(_name?: string, color?: string) {
     this.host.style.setProperty('--project-color', color || '#888');
   }
 
@@ -1476,6 +1357,7 @@ export class SessionTerm {
     }
     this.webgl = null;
     this.term.dispose();
+    dropTileChrome(this.info.id);
     this.host.remove();
   }
 
@@ -1519,8 +1401,10 @@ export class SessionTerm {
     this.host.classList.toggle('closing', isClosing(phase));
     // Both branches: the phase is half of what sessionState() resolves,
     // so the tile's icon has to move with it or it lies until the next
-    // setInfo.
-    this.refreshStateIcon();
+    // setInfo. `phase` is published separately from `info` because
+    // setPhase never writes back to info — see the TileChromeState
+    // comment in store/store.ts.
+    patchTileChrome(this.info.id, { phase });
     if (!isReady(phase)) {
       this._showPhaseOverlay();
       return;

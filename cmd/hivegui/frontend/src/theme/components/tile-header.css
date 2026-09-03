@@ -3,6 +3,12 @@
    The project colour is deliberately gone from this bar: the sidebar
    owns project identity (README principle 2), and the tile keeps
    --session-color for its border and attention glow. */
+ /* The chrome overlay mount (session-term.ts). `display: contents` so it
+   generates no box: the absolutely-positioned overlays React renders
+   inside it still resolve against .term-host, and .term-host's flex
+   column still sees exactly header + body. */
+.term-host .tile-overlays { display: contents; }
+
 .term-host .tile-header {
   /* Includes the 1px bottom border — see status-bar.css. */
   box-sizing: border-box;

@@ -9,10 +9,19 @@ export interface IconButtonProps {
   label: string;
   id?: string;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
+  /** Needed where a button sits inside a surface that also claims mousedown
+   *  (the terminal tile header selects the tile on mousedown). */
+  onMouseDown?: (e: MouseEvent<HTMLButtonElement>) => void;
   size?: 22 | 24;
   className?: string;
   /** data-action, the hook the e2e specs and CSS select rows' controls by. */
   action?: string;
+  /** For a marker that is present but not always applicable — the tile's
+   *  worktree glyph on a session with no worktree. */
+  hidden?: boolean;
+  /** Overrides the label as the tooltip where the control needs to say
+   *  more at rest than its accessible name does. */
+  title?: string;
 }
 
 export function IconButton({
@@ -20,9 +29,12 @@ export function IconButton({
   label,
   id,
   onClick,
+  onMouseDown,
   size = 24,
   className,
   action,
+  hidden,
+  title,
 }: IconButtonProps) {
   // Accessibility is not a soft requirement here: the icon carries the
   // whole meaning, so an empty label is a bug, not a default.
@@ -33,10 +45,12 @@ export function IconButton({
       id={id}
       className={className ? `hv-icon-btn ${className}` : 'hv-icon-btn'}
       aria-label={label}
-      title={label}
+      title={title ?? label}
+      hidden={hidden}
       data-size={size === 24 ? undefined : String(size)}
       data-action={action}
       onClick={onClick}
+      onMouseDown={onMouseDown}
     >
       <Icon name={icon} />
     </button>

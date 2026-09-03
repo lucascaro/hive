@@ -220,10 +220,13 @@ describe('phase overlay', () => {
 // SessionInfo payload, and the tile's own live phase from setPhase(). Only
 // the latter is current — setPhase never writes back to info — so resolving
 // the icon from info alone repaints the stale answer for exactly the
-// transition setPhase exists to signal. Reverting the override in
-// refreshStateIcon() must fail here.
-describe('tile state icon follows the live phase', () => {
-  const iconState = (st: Tile) => st.tileState.dataset.state;
+// transition setPhase exists to signal. setPhase must therefore publish the
+// tile's phase separately from `info`; dropping that separate field must
+// fail here. (That the header RENDERS it as the state icon is
+// tile-chrome.test.tsx's half of the pair.)
+describe('tile phase publishes the live phase', () => {
+  const livePhase = (st: Tile) =>
+    store.appStore.getState().tileChrome.get(st.info.id)?.phase;
 
   it('leaves "starting" when setPhase says ready, without a fresh info', () => {
     const st = makeTerm({
@@ -234,13 +237,13 @@ describe('tile state icon follows the live phase', () => {
       alive: true,
     });
     st.setPhase('starting');
-    expect(iconState(st)).toBe('starting');
+    expect(livePhase(st)).toBe('starting');
 
     // The payload still says 'starting' — only the tile knows better.
     expect(st.info.phase).toBe('starting');
     // PHASE.ready is the empty string, not 'ready'.
     st.setPhase('');
-    expect(iconState(st)).toBe('running');
+    expect(livePhase(st)).toBe('');
   });
 
   it('shows "starting" when the tile enters a starting phase', () => {
@@ -252,9 +255,9 @@ describe('tile state icon follows the live phase', () => {
       alive: true,
     });
     st.setPhase('');
-    expect(iconState(st)).toBe('running');
+    expect(livePhase(st)).toBe('');
 
     st.setPhase('starting');
-    expect(iconState(st)).toBe('starting');
+    expect(livePhase(st)).toBe('starting');
   });
 });

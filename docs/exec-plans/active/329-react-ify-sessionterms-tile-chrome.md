@@ -175,6 +175,10 @@ vite dev server cannot green a run. `e2e-real` failures are compared against
   frontmatter). Spec renumbered from `sessionterm-react.md` and corrected on two
   stale points (`ensureSprite()` must move rather than be deleted;
   `app/banners.ts` is a second imperative `iconButton()` caller).
+- **2026-09-03** — Phase 1 implemented and green on every layer; see its
+  plan for the verification block. `src/ui/icon.ts` and
+  `src/ui/icon-button.ts` still stand, as designed — the phase overlay and
+  `app/banners.ts` are their last callers, and both are Phase 2's.
 
 ## Open questions
 

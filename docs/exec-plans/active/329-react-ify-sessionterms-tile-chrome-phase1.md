@@ -64,11 +64,20 @@ subscription and the `tileChrome` slice, then ports one region through them.
   - `leaves the header box at 28px before React fills it` — a freshly
     constructed `SessionTerm` has an empty `.tile-header` whose
     `getBoundingClientRect().height` already matches a filled one.
-- `test/dom/tile-rename.test.tsx`
-  - `commits on enter` — `input.tile-name-input` appears, Enter calls
-    `UpdateSession`.
-  - `cancels on escape` — no call, span restored.
-- Updated: any dom test stubbing `TermTile`'s removed header fields.
+  - `renders the session name, project and state icon`.
+  - `follows the live phase, not the phase on the payload` — the render
+    half of the pair `session-phase.test.ts` owns the write half of.
+  - `renders nothing for a term with no chrome state`.
+- `test/dom/tile-chrome.test.tsx` › `tile rename` (same file, same
+  scaffold — the rename is three assertions, not a suite)
+  - `opens an editor on double-click and commits on enter` —
+    `input.tile-name-input` appears, Enter calls `UpdateSession`.
+  - `cancels on escape without calling the daemon`.
+  - `does not commit an unchanged name`.
+- Updated: `test/dom/session-phase.test.ts`'s state-icon pair, which
+  asserted `st.tileState.dataset.state` on a node that no longer exists.
+  It now asserts the published phase; the icon assertion moved to
+  `tile-chrome.test.tsx`.
 
 ## Invariants
 
@@ -95,8 +104,42 @@ gate.
 
 ## Decision log
 
+- **2026-09-03** — The rename reuses `app/inline-rename.ts` imperatively
+  from a React `onDoubleClick`, exactly as `components/Sidebar.tsx`
+  already does, rather than becoming a declarative `renaming` flag in the
+  store. Why: that module already owns focus restoration, the
+  capture-phase key shield and the keyboard.ts handshake; a second,
+  declarative copy of the dance would be the drift the module exists to
+  prevent. `TileChromeState.renaming` was dropped from the slice.
+- **2026-09-03** — `refreshStateIcon()` deleted rather than kept as a
+  no-op. Why: both its inputs (`attention`, the tile's phase) are now
+  store fields the component subscribes to, so `events.ts`'s two bell
+  call sites had nothing left to do. Root cause, not a shim.
+- **2026-09-03** — The tile's project LABEL renders from the store's
+  project list; `setProject()` keeps only the `--project-color` custom
+  property. Why: the store already holds the authoritative projects, so
+  publishing the name again would be a second copy that can disagree. The
+  CSS variable stays imperative because it is a style on the host element
+  SessionTerm owns.
+- **2026-09-03** — `IconButton` gained `onMouseDown`, `hidden` and
+  `title`. Why: the tile header needs all three (mousedown shielding so
+  minimize does not also select the tile; a worktree marker that is
+  present but not always applicable; a tooltip that says more than the
+  accessible name). Adding them to the primitive beat hand-rolling a
+  second icon button, which components.md forbids.
+
 ## Progress
 
 - **2026-09-03** — Scaffolded from the approved plan-first plan.
+- **2026-09-03** — Implemented on `feature/329-tile-chrome-phase1`.
+  Order: terms membership subscription → `tileChrome` slice → component →
+  strip the imperative header → call sites → tests. Green at each step.
+  Verification: `npm run typecheck`, `biome ci .` (12 warnings, 1 info,
+  0 errors — the pre-existing `noUselessFragments` notice on
+  `ProjectEditor.tsx` is a notice, not an error), `scripts/test.sh unit
+  dom` (552 passed), `scripts/test.sh e2e` (260 passed, 31 skipped,
+  specs unmodified), `npm run test:e2e:real` (22 passed, 2 skipped),
+  `ui-lint.sh --strict` (0 violations), `ui-lint.sh --contrast`
+  (0 failures), `go build ./...`.
 
 ## Open questions
