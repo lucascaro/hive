@@ -144,6 +144,11 @@ module that owns `manualUpdateCheck`.
   PR. Why: otherwise the two adjacent header buttons render differently
   (filled vs transparent). Net CSS deletion; the alternative was shipping a
   visible inconsistency.
+- **2026-09-03** — Regenerate all 12 affected `HIVE_SNAPSHOT` pixel baselines
+  here rather than leaving them for whoever next runs with the flag. Why: the
+  suite is `test.skip` without the env var, so CI stays green and the breakage
+  is silent — the next person would get 12 diffs from a change they did not
+  make.
 
 ## Progress
 
@@ -151,9 +156,17 @@ module that owns `manualUpdateCheck`.
   frontmatter). Gate 4 reviewer approved at confidence 8 after one revision.
 - **2026-09-03** — Implemented; go/unit/dom/e2e + ui-lint + biome ci + tsc all
   green. Pushed as PR #325; stage = REVIEW.
+- **2026-09-03** — Review iteration 1 (COMMENT) caught 12 stale `HIVE_SNAPSHOT`
+  pixel baselines; regenerated on darwin and committed.
 
 ## Open questions
 
-- Deleting the `#new-project-btn` rules changes an existing control's look.
-  Grep `test/e2e` and `test/dom` for `new-project-btn` before landing in case an
-  assertion pins its background.
+None. (Resolved: the `#new-project-btn` restyle invalidated 12 committed pixel
+baselines under `HIVE_SNAPSHOT`, which a grep for `new-project-btn` could never
+have surfaced — they are screenshots. Regenerated on darwin and committed.)
+
+## PR convergence ledger
+
+<Append-only. One line per `/hs-review-loop` iteration.>
+
+- **2026-09-03 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: ddd91c6697b0cd86e6ea094147f89854ead4b6fa7aebb6cc2d810c8be4cb0cdf; threads_open: 0; action: fix stale pixel baselines + push; head_sha: 6fac471.
