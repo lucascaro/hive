@@ -161,7 +161,7 @@ test.describe('#208 grid-mode scroll regressions', () => {
   // history, replay MUST fire.
   //
   // Runs in SINGLE view on purpose. In grid, the container ResizeObserver
-  // routes a viewport change through renderGrid → ensureAttached, which
+  // routes a viewport change through applyGridLayout → ensureAttached, which
   // re-latches _followBottom to true for every tile (see attachDeferred) —
   // so a grid tile cannot be held scrolled-up across a resize by design.
   // The single-view observer early-returns (view.ts), so the scrolled-up

@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
-- **PR:** [#321](https://github.com/lucascaro/hive/pull/321) — the phase currently in flight (Phase 5). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
-- **Branch:** `feature/react-phase5-grid-shell`
+- **PR:** — (no phase PR open; Phase 5 merged as [#321](https://github.com/lucascaro/hive/pull/321), Phase 6 not started). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **Branch:** —
 - **Status:** active
 
 ## Summary
@@ -123,7 +123,7 @@ implemented — the briefs deliberately do not all exist up front.
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
 | 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
-| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **in flight** |
+| 5 — grid shell | [phase5](../completed/react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate PASS |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
 
 **Carried into Phase 6's deletion sweep** (each verified to have zero production
@@ -153,11 +153,12 @@ RTL = `@testing-library/react`. All rewritten tests keep asserting the same clas
   review — the mid-edit repaint, two keyboard-strand-on-close cases, and five
   covering the answers that delete a branch on a remote, which had no coverage
   at all. (Derivation: `grep -cE "^\s*it\("` on each side of `main...HEAD`.) Planned as rewrites but neither turned out to need one — corrected here at the gate rather than left as a forecast the shipped code contradicts: `focus-trap.test.ts` exercises pure helpers whose signatures did not change, so it took an import repoint (and two cases for the new nullable container) and stays plain jsdom; `keyboard-arrows.test.ts` covers arrow routing *below* the modal ladder and was not touched at all. New: `test/dom/choice-dialog.test.tsx` (open → answer → auto-cleanup, keyboard never stranded), `test/dom/keyboard-precedence.test.tsx` (table-driven over all 9 layers, store-backed ladder matches legacy order), `test/dom/inline-rename.test.ts` (the identity guard a React cleanup depends on), and dom coverage for the three modals that had none: `command-palette`, `project-editor`, `help-overlay`.
-- Phase 5 — New: `test/dom/grid-layout.test.tsx` (8 cases: spy-sequence asserts
+- Phase 5 — New: `test/dom/grid-layout.test.tsx` (10 cases: spy-sequence asserts
   template-set-before-attach; reparent not recreate — same node identity across
   passes; out-of-scope tile keeps its DOM node; and on the React half, GridView
-  renders no DOM, repaints on a scope change, and does NOT repaint on a bell or
-  a rename). Repointed to the new entry points: `grid-reorder-focus.test.ts`
+  renders no DOM, repaints on a scope change and on a reorder, swaps to the
+  single-tile layout on a view change, does NOT repaint on a bell or a rename,
+  and re-attaches a reselected active tile without running a pass). Repointed to the new entry points: `grid-reorder-focus.test.ts`
   (calls `applyGridLayout()`), `minimize-project.test.tsx` (`gridScopeFor` from
   `grid-layout.js`) and `events-focus.test.ts` (drops the `renderGrid` dep).
   Forecast here as needing updates but in the event not touched, because they
@@ -556,6 +557,7 @@ test.
 - **Phase 2** — PR #318 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 26697ec. Merged 2026-09-02 (`fff838f`). Gate: not run.
 - **Phase 3** — PR #319 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: a65813f. Merged 2026-09-03 (`7af0f7c`). Gate: not run.
 - **Phase 4** — PR #320 — verdict: APPROVE; threads_open: 0; action: stop; head_sha: 8439446. Merged 2026-09-03 (`d794caa`). Five review iterations; see [phase4](../completed/react-ui-rewrite-phase4.md#pr-convergence-ledger). Gate PASS 2026-09-03 (doc accuracy failed twice on stale counts in the plan's own bookkeeping, fixed both times on the branch).
+- **Phase 5** — PR #321 — verdict: COMMENT; threads_open: 0; action: stop; head_sha: ac1158f. Merged 2026-09-03 (`b9ca655`). Two review iterations; see [phase5](../completed/react-ui-rewrite-phase5.md#pr-convergence-ledger). Gate ran post-merge: FAIL on two stale doc claims, then PASS on the re-run once they were fixed.
 
 ## Gate verdict
 
