@@ -108,7 +108,9 @@ gained the `#worktrees`, `#project-editor`, `#help-overlay` and `#choice-dialog`
 roots and gave up the command palette's two static children; `keyboard.ts`'s
 ladder reads the store; `main.ts` mounts the five islands.
 
-Tests: `worktrees.test.ts` rewritten to RTL `.tsx` with all 45 cases ported;
+Tests: `worktrees.test.ts` rewritten to RTL `.tsx` with 44 of its 45 cases
+ported verbatim (the count grew to 52 across the review — see the master plan's
+Tests list for the breakdown);
 `focus-trap.test.ts` repointed at `src/lib/`; new `keyboard-precedence.test.tsx`
 (table-driven over all 9 layers, plus a capture-phase proof) and
 `choice-dialog.test.tsx`; new dom coverage for the three modals that had none
@@ -329,7 +331,7 @@ table rather than left for a future reviewer to rediscover.
 - **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 0 followups; followups: none filed (the PR is open, so the fix goes here); one-line: acceptance and non-goals pass on evidence; doc accuracy found one false claim in the master plan's per-phase Tests forecast.
   - 2026-09-03 dimensions:
     - acceptance — PASS — all six criteria with observable evidence: `modals/registry.ts` deleted and the five modals mounting into the same `index.html` ids (`main.ts:347-364`); the ladder's nine gates in byte-for-byte the same order as `main` but reading `isModalOpen()` instead of `.classList.contains('hidden')`, pinned by a genuinely table-driven test (13/13); `addEventListener('keydown', …, true)` unchanged; the anti-strand test asserting `anyModalOpen() === false` after BOTH close paths rather than merely that a dialog closed; the `focus-trap.ts` rename; and `Worktrees.tsx` importing the classification/sort/blocker logic from `lib/worktrees.ts`. `git diff --stat main...HEAD -- '*.spec.ts'` empty; full vitest 934/934.
-    - non-goals — PASS — every mechanical negative holds (no Go/`go.mod`/`bridge.ts`/`vite.config.js` diff, no spec touched, no `data-testid`, a 61-class `hv-*` census identical to `main`, `session-term.ts` a one-line import reroute). The four behaviour-adjacent changes were each ruled against `main` rather than against their own justification: the palette Escape branch (`main`'s listener was bound to `#command-palette`, so it could never fire once focus left that subtree — the ladder restores an invariant rather than adding UX), the `VersionFooter` mount order (sequencing only), the `· ` separator (`git show main:ui/dialog.ts:144` shows the literal `' · '` text node it reproduces), and the seven regenerated baselines (only `dialog-*` + `settings-classic`; the six `worktrees-*` untouched and still green in a 59/59 run).
+    - non-goals — PASS — every mechanical negative holds (no Go/`go.mod`/`bridge.ts`/`vite.config.js` diff, no spec touched, no `data-testid`, every `hv-*` class on a removed line still present at HEAD — the dialog ones moved from `ui/dialog.ts` into `ModalShell.tsx` rather than disappearing, checked class by class — `session-term.ts` a one-line import reroute). The four behaviour-adjacent changes were each ruled against `main` rather than against their own justification: the palette Escape branch (`main`'s listener was bound to `#command-palette`, so it could never fire once focus left that subtree — the ladder restores an invariant rather than adding UX), the `VersionFooter` mount order (sequencing only), the `· ` separator (`git show main:ui/dialog.ts:144` shows the literal `' · '` text node it reproduces), and the seven regenerated baselines (only `dialog-*` + `settings-classic`; the six `worktrees-*` untouched and still green in a 59/59 run).
     - doc accuracy — FAIL — `react-ui-rewrite.md:150` claimed Phase 4 RTL-rewrites `worktrees.test.tsx`, `focus-trap.test.tsx` and `keyboard-arrows.test.tsx`. Only the first is true: `focus-trap.test.ts` took an import repoint and stays plain jsdom, and `keyboard-arrows.test.ts` was never touched (`git log main...HEAD -- …` empty). Everything else passed — the changeset's bullet verified true against `inline-rename.ts` and its test, `CHANGELOG.md` untouched, the `ModalShell` docs matching the component's real props, and no live import of any deleted module.
 
 **2026-09-03 — Gate FAIL fixed on the branch.** The Tests line was a plan-time
@@ -341,3 +343,20 @@ Both replacement claims were verified before writing them.
 **Follow-up, not this PR's:** `.changesets/README.md` is referenced by
 `AGENTS.md` and `CONTRIBUTING.md` as the changeset schema and does not exist on
 `main` either.
+
+- **2026-09-03 (re-run)** — verdict: FAIL; checks: 0 dimensions passed / 1 failed / 0 followups; followups: none filed; one-line: the FAIL fix replaced one false claim with a differently-false one — the ported-case count was stale, not the file list.
+  - 2026-09-03 dimensions:
+    - doc accuracy (re-run) — FAIL — the `focus-trap.test.ts` and `keyboard-arrows.test.ts` halves of the fix verified true, and so did the six new dom suites, the Phase 4 brief, the phase Scope, and three spot-checked gate-verdict citations (vitest 934/934, `keyboard-precedence` 13/13, `theme.spec.ts` 0 failures). But "all 45 cases ported, plus one for a mid-edit repaint" was written at iteration 4 and never updated as iterations 4 and 5 added more: `worktrees.test.tsx` holds **52** cases, not 46. The validator also could not reproduce the "61-class `hv-*` census" figure the first verdict quoted from the non-goals dimension.
+
+**2026-09-03 — second Gate FAIL fixed on the branch.** Both counts corrected
+from the tree rather than from memory, with the derivation recorded so the next
+reader can re-run it: `grep -cE "^\s*it\("` gives 45 on `main` and 52 at HEAD,
+and a name-level `comm` of the two lists shows 44 kept, 1 replaced, 8 added.
+The unreproducible class census is replaced by the claim that actually matters
+and is checkable: every `hv-*` class appearing on a removed line still exists at
+HEAD — the dialog ones moved from `ui/dialog.ts` into `ModalShell.tsx` — so no
+class was removed or renamed.
+
+This is the second time a *count* in this plan drifted while the prose around it
+stayed true. Counts written mid-review go stale by the next commit; the fix is
+to derive them at the gate, which is what happened here — twice.
