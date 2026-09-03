@@ -109,15 +109,17 @@ function CommandPaletteBody({
   // Re-attached every render, same as Settings' Enter handler, so it
   // closes over the current filtered list and activeIndex rather than a
   // stale one from mount.
+  //
+  // Escape is NOT here. It belongs to keyboard.ts's ladder, which reads
+  // the store rather than the focus location: this listener sits on
+  // #command-palette and only fires for keys typed inside it, so once
+  // anything moves focus out of the search box the palette would have no
+  // way to close (that shipped as a CI failure). The ladder's handler is
+  // capture-phase on window and stops propagation, so a branch here
+  // could never run for Escape anyway.
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        closeCommandPalette();
-        return;
-      }
       if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
         e.preventDefault();
         e.stopPropagation();

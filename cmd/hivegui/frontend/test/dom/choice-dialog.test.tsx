@@ -215,6 +215,14 @@ describe('answering', () => {
     expect(first).toBe('cancel');
     expect(screen.getByText('Something else?')).toBeTruthy();
     expect(document.querySelectorAll('.hv-dialog__panel').length).toBe(1);
+
+    // Answer it. The resolver lives in module scope — it outlives the
+    // component and resetStore() does not clear it — so a question left
+    // hanging here would still be holding the module's `settle` when the
+    // next test opens one.
+    answer('no');
+    await act(async () => {});
+    expect(choiceDialogOpen()).toBe(false);
   });
 
   it('remounts per question, so a re-ask starts on its own safe choice', async () => {

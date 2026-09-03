@@ -247,3 +247,24 @@ listener, same bail); it survived because focus happened to stay put.
 ## Gate verdict
 
 _(awaiting `/hs-merge-gate`; it appends here)_
+
+**2026-09-03 — review iteration 3 (the ladder change, re-reviewed).** One
+IMPORTANT, and a good one: the ladder fix made `CommandPalette.tsx`'s own
+Escape branch dead code. `keyboard.ts` registers capture-phase on `window` and
+calls `stopPropagation()`, so a bubble-phase listener on `#command-palette` can
+never see Escape — and the test covering that branch carried a comment
+asserting the ladder still bails for the palette, which is exactly the belief
+that produced the CI failure the ladder fix repaired. Removed the branch and
+inverted the test: it now asserts the palette does NOT handle Escape, with the
+close itself covered where it actually happens, in `keyboard-precedence.test.tsx`.
+The MINOR — a choice-dialog test leaving its second question unanswered, so the
+module-scope resolver `resetStore()` cannot clear leaked into the next test —
+is fixed by answering it.
+
+The reviewer also verified the ladder change independently: strictly additive
+(it intercepts a key that previously fell into a bare `return`, leaving all nine
+layers' order untouched), no double-close (capture-phase `stopPropagation`
+prevents the palette's own listener from firing), `flushSync` safe from a plain
+DOM handler for the same reason `closeSettings` already does it, and the hazard
+pre-existed in the imperative palette — the React focus pipeline's 8-frame retry
+is what made it reachable.
