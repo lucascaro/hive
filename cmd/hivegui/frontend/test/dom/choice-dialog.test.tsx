@@ -60,6 +60,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // The resolver lives in module scope so it can outlive the component,
+  // which means resetStore() does not clear it — an unanswered question
+  // would hold it into the next test. dismiss is the same door the app
+  // uses.
+  dismissChoiceDialog();
   cleanup();
 });
 

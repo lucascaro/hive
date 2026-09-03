@@ -316,7 +316,8 @@ describe('the handler is registered capture-phase', () => {
   it('sees a key that a bubbling listener stops', () => {
     inlineRenameOpen.value = true;
     const sink = document.getElementById('terms') as HTMLElement;
-    sink.addEventListener('keydown', (e) => e.stopPropagation());
+    const stop = (e: Event) => e.stopPropagation();
+    sink.addEventListener('keydown', stop);
     sink.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Escape',
@@ -325,5 +326,8 @@ describe('the handler is registered capture-phase', () => {
       }),
     );
     expect(cancelInlineRename).toHaveBeenCalled();
+    // The sink outlives this test — every later dispatch on #terms would
+    // be swallowed by a listener that has nothing to do with them.
+    sink.removeEventListener('keydown', stop);
   });
 });

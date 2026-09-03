@@ -314,6 +314,18 @@ mountIsland(
     restoreSession,
   }),
 );
+// Sidebar footer: hive/hived version + build. It takes its own
+// "daemon:stale" subscription, so it fills in once the control
+// handshake lands — which is why it mounts BEFORE the modals. The e2e
+// specs' boot() gate waits on the first island (#projects), and every
+// island after that subscribes a commit later; with the seven modal
+// roots ahead of it, the handshake could land in the gap and the footer
+// would stay empty with nothing to replay it. No modal can be opened
+// before boot finishes, so they are the ones that can afford to wait.
+mountIsland(
+  pageEl('sidebar-hints'),
+  createElement(VersionFooter, { root: pageEl('sidebar-hints') }),
+);
 // The two Phase 3 modals. Both mount on the root their region already
 // owns and stay mounted; the store decides whether anything renders
 // inside, and the island toggles the root's `hidden` class.
@@ -350,13 +362,6 @@ mountIsland(
 mountIsland(
   pageEl('command-palette'),
   createElement(CommandPalette, { root: pageEl('command-palette') }),
-);
-// Sidebar footer: hive/hived version + build. It takes its own
-// "daemon:stale" subscription, so it fills in once the control
-// handshake lands.
-mountIsland(
-  pageEl('sidebar-hints'),
-  createElement(VersionFooter, { root: pageEl('sidebar-hints') }),
 );
 initBanners();
 initView({ ensureTerm, setActive, focusActiveTerm, scrollTrace });

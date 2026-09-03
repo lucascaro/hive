@@ -269,3 +269,38 @@ DOM handler for the same reason `closeSettings` already does it, and the hazard
 pre-existed in the imperative palette — the React focus pipeline's 8-frame retry
 is what made it reachable.
 - **2026-09-03 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 762045d1; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood — the ladder fix had left `CommandPalette.tsx`'s Escape branch dead and its test comment inverted); head_sha: cd359cc.
+
+**2026-09-03 — review iteration 4: four IMPORTANTs, three of them right.**
+
+- *The macOS red leg had a cause.* `ux-polish.spec.ts:232` (the sidebar version
+  footer) failed on macOS and passed on retry, which `failOnFlakyTests` turns
+  into a failed leg. Mechanism: the five Phase 4 islands were mounted **ahead**
+  of `VersionFooter`, which subscribes to `daemon:stale` in an effect, while the
+  e2e `boot()` gate waits on `#projects li` — the *first* island. The handshake
+  could land in the gap with nothing to replay it. `VersionFooter` now mounts
+  before the modals: no modal can be opened before boot finishes, so they are
+  the ones that can afford to wait.
+- *The two answers that reach off this machine had no coverage.* No fixture set
+  `upstream`, so "Delete + branch everywhere" and "Delete local + remote" never
+  rendered and every assertion passed `false` for the remote flag. A swapped
+  boolean would have pushed a branch deletion to a remote with the suite green.
+  Both are tested in both directions now, and both mutation-checked.
+- *A test that asserted nothing.* "does nothing if the browser closed while the
+  dialog was open" clicked a button `closeWorktrees()` had already dismissed, so
+  `?.click()` was a no-op that passed against any implementation. Split into the
+  two guards that actually exist — the dismiss-on-close, and the post-await
+  `projectId` check reached by answering and closing in the same tick — both
+  mutation-checked.
+
+**Rejected: the claim that the `worktrees-*.png` baselines were left stale.**
+They are untouched since `7de6cae` (pre-React) and the snapshot suite runs
+**59/59 green**, re-verified after these fixes. The finding inferred staleness
+from "the dialog baselines were regenerated and these were not" without running
+them. That they pass *unregenerated* is the evidence this phase is pixel-identical;
+regenerating them would have destroyed the proof rather than confirmed it.
+
+Four MINORs also applied: a keydown listener the precedence test left on
+`#terms`, teardown for the choice dialog's module-scope resolver, a fixture that
+hardcoded the `choice-dialog` class the island is supposed to toggle (so it
+could not have caught the island failing to), and two ladder comments still
+describing the deleted `ui/dialog.ts`.

@@ -144,8 +144,9 @@ window.addEventListener(
     // A choice dialog is the topmost thing on screen and is asking a
     // question that may destroy work. It owns the keyboard outright:
     // Escape backs out of the question, and nothing else reaches the
-    // bindings underneath while it is up. Checked before every modal —
-    // it is mounted on <body>, so it can sit over any of them.
+    // bindings underneath while it is up. Checked before every modal:
+    // its root carries a higher z-index than the dialog shell, so it
+    // sits over whichever modal asked the question.
     if (choiceDialogOpen()) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -165,7 +166,7 @@ window.addEventListener(
     }
     if (isModalOpen('project-editor')) {
       // The editor's own listener handles Enter; Escape and the backdrop
-      // are the dialog primitive's. Tab containment has to live here for
+      // are ModalShell's. Tab containment has to live here for
       // the same reason it does for settings: a dialog opened over a
       // terminal starts with focus outside it, so a listener on the
       // dialog would never fire. Without this the editor claims

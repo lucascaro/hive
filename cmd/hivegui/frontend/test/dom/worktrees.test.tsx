@@ -31,6 +31,7 @@ import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import { resetStore } from '../../src/store/store.js';
 import { inlineRenameActive } from '../../src/app/inline-rename.js';
+import { dismissChoiceDialog } from '../../src/app/modals/choice-dialog.js';
 
 const ListWorktrees = vi.fn((_p: string): Promise<void> => Promise.resolve());
 const RemoveWorktree = vi.fn(
@@ -80,7 +81,7 @@ const MARKUP = `
   <div id="app">
     <div id="worktrees" class="hv-dialog hidden" role="dialog"
       aria-modal="true" aria-labelledby="worktrees-title"></div>
-    <div id="choice-dialog" class="hv-dialog hidden choice-dialog" role="alertdialog"
+    <div id="choice-dialog" class="hv-dialog hidden" role="alertdialog"
       aria-modal="true" aria-labelledby="choice-dialog-title"></div>
   </div>`;
 
@@ -556,15 +557,103 @@ describe('deleting', () => {
     expect(text).toContain('lose work');
   });
 
-  it('does nothing if the browser closed while the dialog was open', async () => {
+  // Two different guards, and the previous version of this test hit
+  // neither: closeWorktrees() dismisses the question on its way out, so
+  // by the time it clicked, the button was gone and `?.click()` was a
+  // no-op that would have passed against any implementation.
+  it('cancels the question when the browser closes under it', async () => {
     await openWith(payload({ worktrees: [clean] }));
     fireEvent.click(button(rows()[0], 'Delete'));
     await flush();
+    expect(dialog()).not.toBeNull();
+
     act(() => {
       closeWorktrees();
     });
-    choice('both')?.click();
     await flush();
+
+    expect(dialog()).toBeNull();
+    expect(RemoveWorktree).not.toHaveBeenCalled();
+  });
+
+  // The post-await guard: the user answers, and the panel closes before
+  // the answer's continuation runs. The click settles the promise and
+  // the `.then` is a microtask, so a synchronous close lands in between
+  // — which is the real race (a project switch, a modal closed by a
+  // keystroke) that `if (!projectId) return` exists for.
+  // The two answers that reach beyond this machine. No fixture set
+  // `upstream` before, so neither choice ever rendered and every
+  // assertion passed `false` for the remote flag — a swapped boolean
+  // would have pushed a branch deletion to the remote with the suite
+  // green.
+  it('offers the remote answer only when there is an upstream', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    fireEvent.click(button(rows()[0], 'Delete'));
+    await flush();
+    expect(choice('everywhere')).toBeNull();
+
+    act(() => {
+      dismissChoiceDialog();
+    });
+    await flush();
+
+    await openWith(
+      payload({
+        worktrees: [{ ...clean, upstream: 'origin/clean' }],
+      }),
+    );
+    fireEvent.click(button(rows()[0], 'Delete'));
+    await flush();
+    expect(choice('everywhere')).toBeTruthy();
+    expect(dialog()?.textContent).toContain('origin/clean');
+  });
+
+  it('deletes the remote branch only for “everywhere”', async () => {
+    const withUpstream = { ...clean, upstream: 'origin/clean' };
+    await openWith(payload({ worktrees: [withUpstream] }));
+    fireEvent.click(button(rows()[0], 'Delete'));
+    await flush();
+    act(() => {
+      choice('both')?.click();
+    });
+    await flush();
+    // path, force, delete-branch, delete-remote
+    expect(RemoveWorktree).toHaveBeenCalledWith(
+      'p1',
+      '/repo/.worktrees/clean',
+      false,
+      true,
+      false,
+    );
+
+    RemoveWorktree.mockClear();
+    await openWith(payload({ worktrees: [withUpstream] }));
+    fireEvent.click(button(rows()[0], 'Delete'));
+    await flush();
+    act(() => {
+      choice('everywhere')?.click();
+    });
+    await flush();
+    expect(RemoveWorktree).toHaveBeenCalledWith(
+      'p1',
+      '/repo/.worktrees/clean',
+      false,
+      true,
+      true,
+    );
+  });
+
+  it('sends nothing when the answer lands after the browser closed', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    fireEvent.click(button(rows()[0], 'Delete'));
+    await flush();
+
+    act(() => {
+      choice('both')?.click();
+      closeWorktrees();
+    });
+    await flush();
+
     expect(RemoveWorktree).not.toHaveBeenCalled();
   });
 });
@@ -778,6 +867,37 @@ describe('orphaned branches', () => {
   // An unmerged branch is the case that loses commits: git refuses it
   // outright, so the override has to be explicit — and the dialog has
   // to say what goes.
+  // The branch half of the same untested pair: 'remote' is the only
+  // answer that reaches off this machine.
+  it('deletes the remote branch only when the user asked for it', async () => {
+    const orphan = {
+      name: 'feature',
+      merged: false,
+      ahead: 2,
+      upstream: 'origin/feature',
+    };
+    await openWith(payload({ orphan_branches: [orphan] }));
+    fireEvent.click(button(branchRows()[0], 'Delete'));
+    await flush();
+    expect(dialog()?.textContent).toContain('origin/feature');
+    act(() => {
+      choice('local')?.click();
+    });
+    await flush();
+    // project, branch, force (unmerged), delete-remote
+    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'feature', true, false);
+
+    DeleteBranch.mockClear();
+    await openWith(payload({ orphan_branches: [orphan] }));
+    fireEvent.click(button(branchRows()[0], 'Delete'));
+    await flush();
+    act(() => {
+      choice('remote')?.click();
+    });
+    await flush();
+    expect(DeleteBranch).toHaveBeenCalledWith('p1', 'feature', true, true);
+  });
+
   it('warns and forces for an unmerged branch', async () => {
     await openWith(payload({ orphan_branches: [{ name: 'wip', ahead: 3 }] }));
     fireEvent.click(button(branchRows()[0], 'Delete'));
