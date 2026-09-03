@@ -193,3 +193,5 @@ ports are pixel-identical, so they were run:
   the `[esc] cancel · [enter] save` footer hints; the baselines predate them),
   so they failed on `main` too. Regenerated here — the only image files this PR
   touches — leaving the full suite 59/59 green for the first time since #319.
+
+- **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 911f9cd4; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: b5e3def.
