@@ -10,15 +10,20 @@
 }
 
 
+/* gap + `margin-right: auto` on .brand rather than plain
+   space-between: with three children (brand + two icon buttons)
+   space-between would spread the buttons to opposite ends of the
+   header. The brand still eats the slack, so it keeps truncating. */
 #sidebar header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
 }
 
 #sidebar header .brand {
+  margin-right: auto;
   font-weight: 600;
   font-size: var(--text-md);
   letter-spacing: 0.04em;
@@ -28,19 +33,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-#new-project-btn {
-  background: var(--btn);
-  color: var(--fg);
-  border: none;
-  border-radius: var(--radius-sm);
-  width: 22px;
-  height: 22px;
-  cursor: pointer;
-  font-size: var(--text-lg);
-  line-height: 1;
-}
-#new-project-btn:hover { background: var(--hover); }
 
 #sessions, #projects {
   list-style: none;
@@ -67,11 +59,4 @@
 }
 
 
-/* Keyboard-focus rings on the small controls that previously had
-   none. :focus-visible only — mouse clicks stay ring-free.
-   Was one comma-separated rule with .settings-agent-delete in
-   style.css; the two halves moved to their own component files. */
-#new-project-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
+

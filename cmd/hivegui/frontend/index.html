@@ -83,7 +83,13 @@
   <aside id="sidebar">
     <header>
       <span class="brand">Hive</span>
-      <button id="new-project-btn" title="New project (⌘N)" aria-label="New project"></button>
+      <!-- Both header buttons are the shared iconButton primitive
+           (.hv-icon-btn, 22px). This one keeps its id because
+           initProjectEditor(), the launcher's focus fallback and the DOM
+           tests all reach it that way; its sibling "Check for updates" is
+           built at runtime by initBanners(). -->
+      <button id="new-project-btn" type="button" class="hv-icon-btn" data-size="22"
+              title="New project (⌘N)" aria-label="New project"></button>
     </header>
     <ul id="projects"></ul>
     <!-- Projects the user minimized out of the list above. Pinned to
