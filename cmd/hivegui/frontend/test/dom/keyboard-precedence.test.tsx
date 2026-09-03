@@ -260,10 +260,16 @@ describe('every layer wins over the ones below it', () => {
       // Open this layer and everything under it. Only the topmost may
       // act on the key.
       for (const l of LAYERS.slice(i)) l.open();
-      press('Escape');
+      const e = press('Escape');
 
-      // A passive layer's proof is the silence below it, asserted next.
-      if (!layer.passive) expect(layer.ran()).toBe(true);
+      if (layer.passive) {
+        // A passive layer owns the keyboard by NOT acting: its own
+        // listener handles the key, so this handler must leave the event
+        // alone — and, asserted below, must not let a lower layer act.
+        expect(e.defaultPrevented).toBe(false);
+      } else {
+        expect(layer.ran()).toBe(true);
+      }
       for (const below of LAYERS.slice(i + 1)) {
         expect(
           below.ran(),

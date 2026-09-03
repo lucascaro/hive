@@ -10,7 +10,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { beginInlineRename } from '../../app/inline-rename.js';
+import {
+  beginInlineRename,
+  cancelInlineRenameFor,
+} from '../../app/inline-rename.js';
 import {
   closeWorktrees,
   confirmAndDelete,
@@ -264,7 +267,7 @@ function WorktreeRow({
     const main = mainRef.current;
     if (!main) return;
     const { w: row, onEndRename: done } = opts.current;
-    beginInlineRename({
+    const input = beginInlineRename({
       value: row.branch ?? '',
       className: 'worktree-rename',
       mount: (input) => {
@@ -275,6 +278,16 @@ function WorktreeRow({
       onCommit: (next) => renameWorktreeTo(row.path, next),
       onDone: done,
     });
+    // beginInlineRename registers the edit module-side, and only
+    // Enter/Escape/blur clear that registration. React removing a
+    // focused input does not fire blur, so a row that unmounts mid-edit
+    // (the daemon dropped it, or the panel closed) would leave
+    // inlineRenameActive() true — and that is the FIRST branch of
+    // keyboard.ts's ladder, which swallows every keystroke in the app
+    // until an Escape it no longer has an input to cancel.
+    return () => {
+      cancelInlineRenameFor(input);
+    };
   }, [renaming]);
 
   const kind = classifyWorktree(w);

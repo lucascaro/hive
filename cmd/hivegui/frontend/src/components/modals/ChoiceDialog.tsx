@@ -49,7 +49,10 @@ function ChoiceDialogBody({
   root: HTMLElement;
   spec: ChoiceSpec;
 }): ReactNode {
-  const safe = spec.choices[0];
+  // A spec with no choices is a caller bug, but it must not become a
+  // dialog nothing can close: dismissChoiceDialog() falls back to the
+  // same literal, so Escape still settles the promise.
+  const safeValue = spec.choices[0]?.value ?? 'cancel';
 
   // Whatever had focus when the question was asked. Restored on
   // unmount, but only if it is still on the page: the button that
@@ -91,7 +94,7 @@ function ChoiceDialogBody({
       showCloseButton={false}
       // The FIRST choice is the safe one: Escape and a backdrop click
       // resolve to it, so a stray key can never destroy anything.
-      onClose={() => resolveChoiceDialog(safe.value)}
+      onClose={() => resolveChoiceDialog(safeValue)}
       actions={spec.choices.map((c) => (
         <Button
           key={c.value}

@@ -135,7 +135,12 @@ export function ModalShell({
         ) : null}
       </header>
       <div className="hv-dialog__body">{children}</div>
-      <footer className="hv-dialog__footer">
+      {/* Hidden when there is nothing in it, which is what dialog() did
+          with footer.hidden — an empty footer is still a bordered strip. */}
+      <footer
+        className="hv-dialog__footer"
+        hidden={hintList.length === 0 && !actions}
+      >
         {hintList.length ? (
           <div className="hv-dialog__hints">
             {hintList.map((h) => (

@@ -148,3 +148,48 @@ every spec unmodified; `npm run test:e2e:real` **24 passed**.
 ## PR convergence ledger
 
 _(opened 2026-09-02 for PR #320; `/hs-review-loop` appends one entry per iteration)_
+
+**2026-09-02 — review iteration 1 (three IMPORTANTs, all stood).**
+
+- *The dialog footer lost its hint separator.* `ModalShell` renders one
+  `<span class="hv-dialog__hint">` per hint and `.hv-dialog__hints` had no
+  `gap` and no `.hv-dialog__hint` rule, so `[esc] close · (r) refresh` came out
+  as `[esc] close(r) refresh` — the imperative `dialog()` took a literal
+  `' · '` text node between the two, which the props-based shell has nowhere to
+  put. Fixed in `dialog.css` with `.hv-dialog__hint + .hv-dialog__hint::before
+  { content: ' · '; }`, which is the same three characters in the same place.
+  Phase 3's Settings footer had the same shape, so this was already wrong on
+  `main` — it is only *visible* here because Worktrees is the first two-hint
+  footer whose separator used to be spelled out.
+- *The rename could strand the keyboard.* `beginInlineRename` registers the edit
+  module-side and only Enter/Escape/blur clear it; React removing a focused
+  input fires no blur, so a row that unmounted mid-edit (the daemon dropped the
+  worktree) left `inlineRenameActive()` true — layer 1 of the ladder, which
+  then swallows every keystroke in the app. The effect now returns a cleanup,
+  and `inline-rename.ts` gained `cancelInlineRenameFor(input)` so a React
+  cleanup can only ever cancel its own editor, never one that started after it.
+  Two tests; the row-removal one fails against the un-cleaned-up version.
+- *The palette's Escape branch was covered by nothing.* The ladder deliberately
+  bails for the palette, so that branch is the only keyboard close path, and
+  deleting it left the suite green. Now tested.
+
+Plus three MINORs: the empty-footer `hidden` the primitive used to set,
+`spec.choices[0]` guarded in the component the way the module half guards it,
+and the passive ladder layers now assert `defaultPrevented === false` rather
+than only the silence below them.
+
+**2026-09-02 — the snapshot baselines, which are the real proof.**
+`theme.spec.ts`'s `maxDiffPixels: 0` baselines only run under `HIVE_SNAPSHOT=1`
+(never in CI), and they were last regenerated at `7de6cae` — before any React
+phase. Run against this branch they are the strongest available check that the
+ports are pixel-identical, so they were run:
+
+- **worktrees, sidebar, launcher, chrome: all green against pre-React
+  baselines** — including all six preset variants of the worktree browser,
+  which is the panel this phase rewrote. That is the phase's central claim,
+  independently verified. They failed *before* the separator fix and pass
+  after, which is also how that regression was confirmed.
+- **The seven settings-dialog baselines were stale from Phase 3** (#319 added
+  the `[esc] cancel · [enter] save` footer hints; the baselines predate them),
+  so they failed on `main` too. Regenerated here — the only image files this PR
+  touches — leaving the full suite 59/59 green for the first time since #319.

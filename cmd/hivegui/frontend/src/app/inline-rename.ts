@@ -42,6 +42,17 @@ export function inlineRenameActive(): boolean {
   return active !== null;
 }
 
+// cancelInlineRenameFor aborts the rename owned by `input`, and only
+// that one. React callers need the identity check: their cleanup runs
+// after the rename may already have finished (and after an unrelated one
+// may have started), and cancelling someone else's editor would discard
+// an edit the user is still typing.
+export function cancelInlineRenameFor(input: HTMLInputElement): boolean {
+  if (active?.input !== input) return false;
+  active.cancel();
+  return true;
+}
+
 // cancelInlineRename aborts the open rename and reports whether there
 // was one.
 export function cancelInlineRename(): boolean {

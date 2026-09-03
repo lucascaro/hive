@@ -270,3 +270,23 @@ describe('closing', () => {
     expect(focusActiveTerm).toHaveBeenCalled();
   });
 });
+
+// The ladder in keyboard.ts deliberately BAILS for the palette
+// (keyboard-precedence.test.tsx pins that bail), so this branch is the
+// only thing that closes the palette from the keyboard. Deleting it
+// leaves the palette uncloseable with an otherwise green suite.
+describe("Escape is the palette's own to handle", () => {
+  it('closes the palette, and consumes the key', () => {
+    open();
+    const e = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      palette().dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(true);
+    expect(palette().classList.contains('hidden')).toBe(true);
+  });
+});

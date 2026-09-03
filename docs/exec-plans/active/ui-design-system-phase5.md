@@ -4,6 +4,14 @@
 
 **PR:** #310 · **Branch:** `feature/ui-design-system-phase5`
 
+> **Superseded in part (2026-09-02, PR #320).** This plan is shipped history
+> — it is described here as it was executed. The `src/ui/dialog.ts` primitive
+> and `src/app/modals/registry.ts` it introduced were deleted by Phase 4 of the
+> React rewrite once every modal rendered through `components/modals/ModalShell.tsx`
+> and the store answered `anyModalOpen()`. The form fields, the theme picker and
+> the override pipeline are untouched. Do not execute the dialog sections of this
+> plan against the current tree.
+
 **Goal:** Replace four hand-rolled dialog implementations with one `dialog()` primitive and one set of form fields, and give the theme layer a user interface — a preset picker and a custom-token override box that apply live, including to every open terminal.
 
 **Architecture:** `src/ui/dialog.ts` builds a backdrop + panel + header + body + footer, owning the four behaviours every modal in this app re-implements today: Escape, the backdrop mousedown/click pair, the close button, and registration with `modals/registry.ts`. Focus containment stays where it already works — `keyboard.ts` calls `trapFocus()` on the open modal's root — so `dialog()` only has to keep the contract that root depends on: a stable `id` and the `hidden` class as the open/closed signal. `src/ui/field.ts` supplies the label+control pairs (text, select, textarea, colour swatch) and the shared error slot. The four static dialog blocks leave `index.html` and are built in TypeScript at module scope, so the module-level `export const settingsEl` / `editorEl` / `worktreesEl` / `helpEl` refs that `keyboard.ts` and the tests import keep working unchanged.

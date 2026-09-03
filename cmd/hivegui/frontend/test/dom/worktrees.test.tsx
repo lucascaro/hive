@@ -30,6 +30,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import { resetStore } from '../../src/store/store.js';
+import { inlineRenameActive } from '../../src/app/inline-rename.js';
 
 const ListWorktrees = vi.fn((_p: string): Promise<void> => Promise.resolve());
 const RemoveWorktree = vi.fn(
@@ -623,6 +624,38 @@ describe('renaming', () => {
     const inputs = document.querySelectorAll('input.worktree-rename');
     expect(inputs.length).toBe(1);
     expect((inputs[0] as HTMLInputElement).value).toBe('half-typed');
+  });
+
+  // beginInlineRename registers the edit module-side and only
+  // Enter/Escape/blur clear it. React removing a focused input fires no
+  // blur, so a row (or panel) that goes away mid-edit would leave
+  // inlineRenameActive() true — and that is keyboard.ts's FIRST ladder
+  // branch, which then swallows every keystroke in the app.
+  it('does not strand the keyboard when the panel closes mid-edit', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    fireEvent.click(button(rows()[0], 'Rename'));
+    expect(inlineRenameActive()).toBe(true);
+
+    act(() => {
+      closeWorktrees();
+    });
+    await flush();
+
+    expect(inlineRenameActive()).toBe(false);
+  });
+
+  it('does not strand the keyboard when the row itself goes away', async () => {
+    await openWith(payload({ worktrees: [clean] }));
+    fireEvent.click(button(rows()[0], 'Rename'));
+    expect(inlineRenameActive()).toBe(true);
+
+    // The daemon dropped the worktree while its branch was being renamed.
+    act(() => {
+      handleWorktreesPayload(payload({ worktrees: [] }));
+    });
+    await flush();
+
+    expect(inlineRenameActive()).toBe(false);
   });
 
   it('sends nothing on Escape', async () => {
