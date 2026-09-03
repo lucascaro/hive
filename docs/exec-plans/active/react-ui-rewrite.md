@@ -494,7 +494,7 @@ scope line is the authority; this plan's Tests line ("`src/app/view.js`
 to `sessions`:
 
 ```
-`${view}|${activeId}|${gridProjectId}|${gridScopeSessions().map(s => s.id).join('\0')}`
+`${view}|${activeId}|${gridProjectId}|${gridScopeSessions().map(s => s.id).join(' ')}`
 ```
 
 and its single `useLayoutEffect` depends on that string alone. Two findings

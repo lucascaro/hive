@@ -145,6 +145,7 @@ Maintained by hand: `/hs-review-loop` writes into a plan it finds by an
 plan's [Gating convention](react-ui-rewrite.md#gating-convention)).
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: e37a62b8; threads_open: 0; action: autofix+push; head_sha: 98bc37e. Autofix applied 5 safe fixes (the load-bearing one: the new dom test's deferred-attach `setTimeout` fired after jsdom teardown and made the Linux leg exit 1 with every test passing — fake timers fixed it). 2 risky items surfaced for a human call.
+- **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: c247977c; threads_open: 0; action: stop (escalated: risky fix needs human decision); head_sha: 99ea356. Zero BLOCKING, zero MINOR surviving; the one IMPORTANT is the accepted `switchTo(activeId)` delta, re-raised because no test pins the `needsReattach` half of it.
 
 ## Gate verdict
 
