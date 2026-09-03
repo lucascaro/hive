@@ -5,7 +5,11 @@
 // focus model, so these cover the decision logic: which elements
 // count, and where focus is sent at the boundaries.
 import { describe, it, expect, beforeEach } from 'vitest';
-import { trapFocus, focusableWithin } from '../../src/lib/focus-trap.js';
+import {
+  trapFocus,
+  focusableWithin,
+  releaseFocus,
+} from '../../src/lib/focus-trap.js';
 
 function mount(html: string): HTMLElement {
   document.body.innerHTML = `<div id="box">${html}</div><button id="outside">out</button>`;
@@ -158,5 +162,29 @@ describe('trapFocus', () => {
     // b2 is the last ENABLED one, so this wraps.
     expect(trapFocus(box, tab())).toBe(true);
     expect(document.activeElement).toBe(el('b1'));
+  });
+});
+
+// Both helpers take their container from pageEl(), which casts instead of
+// throwing (app/el.ts) — so a jsdom mount of part of index.html hands
+// them a null. keyboard.ts calls trapFocus on EVERY key while a modal is
+// open, so throwing here would take the whole keyboard with it.
+describe('a missing container is not a crash', () => {
+  it('trapFocus reports the key as unhandled', () => {
+    const e = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      cancelable: true,
+    });
+    expect(trapFocus(null, e)).toBe(false);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('releaseFocus leaves focus where it is', () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    input.focus();
+    releaseFocus(null);
+    expect(document.activeElement).toBe(input);
+    input.remove();
   });
 });

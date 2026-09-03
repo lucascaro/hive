@@ -195,3 +195,26 @@ ports are pixel-identical, so they were run:
   touches — leaving the full suite 59/59 green for the first time since #319.
 
 - **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 911f9cd4; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: b5e3def.
+
+**2026-09-02 — review iteration 2: APPROVE.** Zero BLOCKING, zero IMPORTANT,
+zero review threads; the three iteration-1 fixes verified at source rather than
+taken on trust; the reviewer independently re-ran the snapshot suite
+(59/59 at `maxDiffPixels: 0`) and confirmed the six non-regenerated
+`worktrees-*` baselines are still exact — i.e. no baseline was quietly masked.
+
+The five surviving MINORs were applied post-loop rather than deferred:
+
+- `components.md`'s `ModalShell` signature was the pre-React `dialog()` one —
+  it now documents `children`, `hints`, `titleSuffix` and `showCloseButton`.
+- `choice-dialog.css`'s comment still said the dialog is mounted on `<body>`.
+- The master plan still listed `focus-trap.ts` at its pre-move path.
+- `trapFocus`/`releaseFocus` take `HTMLElement | null` now. Every caller reaches
+  them through `pageEl()`, which casts rather than throws (`app/el.ts`), so a
+  jsdom mount of part of `index.html` hands them a null — and `keyboard.ts`
+  calls `trapFocus` on *every* key while a modal is open, so a throw there takes
+  the whole keyboard with it. Unreachable through the real `index.html`; fixed
+  because the cost is a guard and the failure mode is total.
+- `cancelInlineRenameFor`'s identity guard — the entire reason it exists rather
+  than a bare `cancelInlineRename()` — had no test for its false branch. New
+  `test/dom/inline-rename.test.ts` covers it; deleting the guard fails two of
+  its three cases.

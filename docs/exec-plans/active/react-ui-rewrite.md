@@ -49,7 +49,7 @@ Ambiguities resolved with the user via two structured question rounds; see Decis
 
 ## Approach
 
-Strangler migration by region. Phase 0 makes state observable (zustand) with zero rendering change; each subsequent phase mounts one React root on an existing region, deletes that region's legacy renderer *in the same PR* (never both live — double-render risk), and rewrites that region's dom tests to RTL. Phase 6 collapses the islands into a single root and deletes all legacy render code. Reused as-is: all of `src/lib/*` (grid math, reorder, shortcuts, worktrees, update-state, keymap, platform, focus helpers), `src/theme/*`, `src/app/session-term.ts`, `src/bridge.ts`, `src/app/modals/focus-trap.ts` helpers.
+Strangler migration by region. Phase 0 makes state observable (zustand) with zero rendering change; each subsequent phase mounts one React root on an existing region, deletes that region's legacy renderer *in the same PR* (never both live — double-render risk), and rewrites that region's dom tests to RTL. Phase 6 collapses the islands into a single root and deletes all legacy render code. Reused as-is: all of `src/lib/*` (grid math, reorder, shortcuts, worktrees, update-state, keymap, platform, focus helpers), `src/theme/*`, `src/app/session-term.ts`, `src/bridge.ts`, and the focus-trap helpers (moved to `src/lib/focus-trap.ts` in Phase 4).
 
 ### Execution model (per phase)
 
