@@ -59,9 +59,12 @@ auto-spawns the daemon at startup.
 ## Updating
 
 Hive checks for updates in the background — once on launch and every
-six hours — and shows an "Update available" banner. The check is also
-reachable manually from **File → Check for Updates…**. Which updates it
-looks for depends on the channel you pick in **Settings → Updates**:
+six hours — and shows an "Update available" banner. You can also run the
+check yourself: the ⤓ button in the sidebar header, next to **+**, or
+**File → Check for Updates…** on macOS. Either way the result lands in
+the same banner, including "up to date" and check failures. Which
+updates it looks for depends on the channel you pick in
+**Settings → Updates**:
 
 | Channel | Checks | Applying it |
 |---------|--------|-------------|
