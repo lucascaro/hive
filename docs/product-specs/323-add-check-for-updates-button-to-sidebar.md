@@ -4,7 +4,8 @@ title: "Add a check for updates button to the sidebar"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 325
+stage: REVIEW
 ---
 
 # Add a "check for updates" button to the sidebar

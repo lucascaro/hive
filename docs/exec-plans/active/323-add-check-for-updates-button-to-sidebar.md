@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/323-add-check-for-updates-button-to-sidebar.md](../../product-specs/323-add-check-for-updates-button-to-sidebar.md)
 - **Issue:** #323
+- **PR:** #325
+- **Branch:** `feature/323-add-check-for-updates-button-to-sidebar`
 - **Status:** active
 
 ## Summary
@@ -147,6 +149,8 @@ module that owns `manualUpdateCheck`.
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec
   frontmatter). Gate 4 reviewer approved at confidence 8 after one revision.
+- **2026-09-03** — Implemented; go/unit/dom/e2e + ui-lint + biome ci + tsc all
+  green. Pushed as PR #325; stage = REVIEW.
 
 ## Open questions
 
