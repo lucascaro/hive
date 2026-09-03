@@ -138,6 +138,7 @@ Settings now shows its confirm and cancel key hints (`[esc]` / `[enter]`) in the
   bump.
 - Added `scripts/check-changeset.sh`, a local mirror of the changesets CI
   gate that can be installed as a `pre-push` hook.
+Renaming a worktree no longer loses the edit when the daemon repaints the list underneath it.
 
 ## [2.4.0] — 2026-08-29
 
