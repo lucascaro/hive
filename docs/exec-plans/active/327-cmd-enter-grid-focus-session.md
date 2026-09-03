@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/327-cmd-enter-grid-focus-session.md](../../product-specs/327-cmd-enter-grid-focus-session.md)
 - **Issue:** #327
+- **PR:** #328
+- **Branch:** feature/327-cmd-enter-grid-focus-session
 - **Status:** active
 
 ## Summary

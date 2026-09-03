@@ -4,7 +4,8 @@ title: "GUI: Cmd+Enter in grid mode focuses the active session"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 328
+stage: REVIEW
 ---
 
 # GUI: Cmd+Enter in grid mode focuses the active session
