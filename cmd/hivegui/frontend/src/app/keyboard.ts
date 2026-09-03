@@ -322,6 +322,19 @@ window.addEventListener(
       openCommandPalette();
       return;
     }
+    // ⌘⏎ / Ctrl+Enter — from a grid, zoom into the tile you navigated to.
+    // Deliberately ONE-WAY: single → grid stays on ⌘G / ⇧⌘G. A symmetric
+    // toggle would have to claim ⌘⏎ in focused mode too, and that is the
+    // exact conflict spec #217 documented — Claude/Codex bind Cmd+Enter
+    // themselves, so in single view the key must fall through untouched.
+    // ⇧⌘⏎ stays unclaimed in every view for the same reason.
+    if (e.key === 'Enter') {
+      if (e.shiftKey || appData().view === 'single') return;
+      swallow();
+      // setView already restores terminal focus and snaps to bottom.
+      setView('single');
+      return;
+    }
     // Both ⌘/ and ⌘? open the shortcuts panel — see isHelpOverlayKey.
     if (isHelpOverlayKey(e)) {
       swallow();

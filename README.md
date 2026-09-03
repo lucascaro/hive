@@ -130,6 +130,7 @@ build.sh           # macOS universal build
 | ⌘Z | Reopen the last closed session |
 | ⇧⌘W | Close this window |
 | ⌘G / ⇧⌘G | Per-project grid / all-sessions grid |
+| ⌘⏎ | Grid: focus the active session (single view) |
 | ⌘↑ / ⌘↓ | Previous / next session (focused) / move between tiles vertically (grid) |
 | ⌘← / ⌘→ | Spatial nav between tiles in grid view. In focused mode they move the cursor to the start / end of the line (macOS; ⇧⌘← / ⇧⌘→ do the same). On Windows and Linux use Ctrl+← / Ctrl+→ for word-wise movement, as in any terminal |
 | ⇧⌘↑ / ⇧⌘↓ | Move the session up / down within its project (wraps) |

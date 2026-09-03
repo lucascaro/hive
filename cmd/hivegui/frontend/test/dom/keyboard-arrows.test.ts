@@ -90,6 +90,7 @@ type Bridge = typeof import('../../src/bridge.js');
 let state: typeof import('../../src/store/store.js').hiveStateView;
 let gridSpatialMove: MockedFunction<View['gridSpatialMove']>;
 let switchTo: MockedFunction<View['switchTo']>;
+let setView: MockedFunction<View['setView']>;
 let UpdateSession: MockedFunction<Bridge['UpdateSession']>;
 let EventsOn: MockedFunction<Bridge['EventsOn']>;
 
@@ -106,6 +107,7 @@ beforeAll(async () => {
   const view = await import('../../src/app/view.js');
   gridSpatialMove = vi.mocked(view.gridSpatialMove);
   switchTo = vi.mocked(view.switchTo);
+  setView = vi.mocked(view.setView);
   const bridge = await import('../../src/bridge.js');
   UpdateSession = vi.mocked(bridge.UpdateSession);
   EventsOn = vi.mocked(bridge.EventsOn);
@@ -132,6 +134,7 @@ function press(key: string, opts: KeyboardEventInit = {}) {
 beforeEach(() => {
   gridSpatialMove.mockClear();
   switchTo.mockClear();
+  setView.mockClear();
   UpdateSession.mockClear();
   // Global display order: [a0, a1, b0, b1, b2] — indices 0..4, which is
   // the index space the daemon's Update expects.
@@ -183,6 +186,34 @@ describe('arrows in grid mode are spatial navigation', () => {
   it('cmd+ArrowRight moves right', () => {
     press('ArrowRight');
     expect(gridSpatialMove).toHaveBeenCalledWith(+1, 0);
+  });
+});
+
+describe('cmd+Enter focuses the active session from grid', () => {
+  // One-way on purpose: single -> grid stays on cmd+G. See spec #327.
+  for (const view of ['grid-all', 'grid-project'] as const) {
+    it(`cmd+Enter in ${view} switches to single view`, () => {
+      state.view = view;
+      const e = press('Enter');
+      expect(e.defaultPrevented).toBe(true);
+      expect(setView).toHaveBeenCalledWith('single');
+    });
+  }
+
+  // The regression guard for spec #217: agent CLIs bind cmd+Enter, so in
+  // focused mode the app must let it through to the terminal.
+  it('cmd+Enter in single view is left to the terminal', () => {
+    state.view = 'single';
+    const e = press('Enter');
+    expect(e.defaultPrevented).toBe(false);
+    expect(setView).not.toHaveBeenCalled();
+  });
+
+  it('shift+cmd+Enter is not claimed in grid', () => {
+    state.view = 'grid-all';
+    const e = press('Enter', { shiftKey: true });
+    expect(e.defaultPrevented).toBe(false);
+    expect(setView).not.toHaveBeenCalled();
   });
 });
 
