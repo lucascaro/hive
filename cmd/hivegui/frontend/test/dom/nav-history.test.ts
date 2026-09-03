@@ -64,7 +64,7 @@ vi.mock('../../src/bridge.js', () => {
 // edge and nothing else.
 vi.mock('../../src/app/view.js', async () => {
   const { setActive } = await import('../../src/app/focus.js');
-  const { state } = await import('../../src/app/state.js');
+  const { hiveStateView: state } = await import('../../src/store/store.js');
   return {
     switchTo: vi.fn((id: string | null) => setActive(id)),
     setView: vi.fn(),
@@ -92,7 +92,7 @@ type View = typeof import('../../src/app/view.js');
 type Focus = typeof import('../../src/app/focus.js');
 type Keyboard = typeof import('../../src/app/keyboard.js');
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let setActive: Focus['setActive'];
 let withoutNavHistory: Focus['withoutNavHistory'];
 let navBack: Keyboard['navBack'];
@@ -119,7 +119,7 @@ beforeAll(async () => {
     <div id="project-editor" class="hidden"></div>
     <div id="command-palette" class="hidden"></div>
     <div id="help-overlay" class="hidden"></div>`;
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   ({ setActive, withoutNavHistory } = await import('../../src/app/focus.js'));
   const view = await import('../../src/app/view.js');
   switchTo = vi.mocked(view.switchTo);

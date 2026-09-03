@@ -61,7 +61,7 @@ export function MinimizedTray({
   const minimized = useAppStore((s) => s.minimized);
   const attention = useAppStore((s) => s.attention);
   // Subscribed for the re-render; orderedSessions() reads the same list
-  // back off the state facade. Calling it inside a selector instead would
+  // back off the store. Calling it inside a selector instead would
   // hand useSyncExternalStore a fresh array on every store notification.
   useAppStore((s) => s.sessions);
 

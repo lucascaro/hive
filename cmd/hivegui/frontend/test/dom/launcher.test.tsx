@@ -20,7 +20,7 @@ import { resetStore } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 import { isMac } from '../../src/lib/platform.js';
-import { state } from '../../src/app/state.js';
+import { hiveStateView as state } from '../../src/store/store.js';
 
 const AGENTS: main.AgentInfo[] = [
   {

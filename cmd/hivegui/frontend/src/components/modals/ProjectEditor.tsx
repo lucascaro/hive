@@ -69,7 +69,7 @@ function ProjectEditorDialog({
 
   // Focus in a passive effect, which is the earliest point the field is
   // actually focusable: the root's `hidden` class comes off in the
-  // parent island's layout effect, and layout effects run child first,
+  // parent modal's layout effect, and layout effects run child first,
   // so a layout effect here would call focus() on a field still inside a
   // display:none dialog and the browser would drop it on the floor.
   // This is still the same commit — nothing like the setTimeout the

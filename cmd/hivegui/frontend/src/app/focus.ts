@@ -3,7 +3,8 @@
 // Moved from the original composition root. This module stays independent
 // of session-term because session-term imports the focus pipeline.
 
-import { state } from './state.js';
+import { appStore } from '../store/store.js';
+import { termsMap } from '../store/terms.js';
 import {
   clearAttentionFor,
   setActiveId,
@@ -19,6 +20,11 @@ import {
 import { anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
 import { scrollTrace } from './trace.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 // setActive centralizes "the focused session changed" so every code
 // path (click, arrow nav, project switch, switchTo) clears the bell
@@ -47,12 +53,12 @@ export function setActive(id: string | null) {
   // (session-term.ts), gridSpatialMove / shiftActiveProject /
   // minimizeSession (view.ts). "No matter how you switched" is the
   // feature, so the hook has to sit on the choke point.
-  if (!_navSuppress && id && id !== state.activeId)
-    pushNav(state.nav, state.activeId);
+  if (!_navSuppress && id && id !== appData().activeId)
+    pushNav(appData().nav, appData().activeId);
   if (id) {
     clearAttentionFor(id);
-    state.terms.get(id)?.host.classList.remove('attention');
-    const s = state.sessions.find((x) => x.id === id);
+    termsMap().get(id)?.host.classList.remove('attention');
+    const s = appData().sessions.find((x) => x.id === id);
     const pid = s?.projectId ?? s?.project_id;
     if (pid) setCurrentProjectId(pid);
   }
@@ -68,9 +74,9 @@ export function setActive(id: string | null) {
 // setFocusedTile is the SOLE writer of .term-focused. It reconciles
 // visual focus and keyboard focus atomically — in the same rAF tick —
 // so they can never drift. Visual focus is a pure projection of
-// state.activeId gated by whether a modal/rename owns the keyboard.
+// appData().activeId gated by whether a modal/rename owns the keyboard.
 //
-// Pass state.activeId to focus the active session. Pass null to drop
+// Pass appData().activeId to focus the active session. Pass null to drop
 // the visual focus everywhere (e.g. when opening the launcher or a
 // rename input). Every state transition that could change which tile
 // should be focused (setActive, setView, the grid layout pass, modal open/close,
@@ -130,9 +136,9 @@ document.addEventListener(
       _focusGuard = null;
       return;
     }
-    if (state.activeId !== g.id) return; // active tile changed → let it go
+    if (appData().activeId !== g.id) return; // active tile changed → let it go
     if (focusSnapshot(g.id).modalOpen) return; // modal/rename owns keyboard
-    const st = state.terms.get(g.id);
+    const st = termsMap().get(g.id);
     if (!st) return;
     const ta = st.host.querySelector<HTMLTextAreaElement>(
       '.xterm-helper-textarea',
@@ -152,7 +158,7 @@ export function setFocusedTile(id: string | null) {
   // should clear, do it immediately so a modal/null transition can't be
   // overtaken by a stale in-flight focus rAF.
   const snap = focusSnapshot(id);
-  if (snap.modalOpen || id == null || !state.terms.get(id)) {
+  if (snap.modalOpen || id == null || !termsMap().get(id)) {
     _focusGuard = null;
     sweepFocusBorder();
     return;
@@ -166,7 +172,7 @@ export function setFocusedTile(id: string | null) {
 }
 
 function applyFocus(id: string, attempt: number) {
-  const st = state.terms.get(id);
+  const st = termsMap().get(id);
   if (!st) {
     sweepFocusBorder();
     return;
@@ -183,7 +189,7 @@ function applyFocus(id: string, attempt: number) {
     scrollTrace.rec('focus-apply', {
       id,
       attempt,
-      view: state.view,
+      view: appData().view,
       ae: ae ? `${ae.tagName}.${ae.className || ''}`.trim() : 'none',
     });
   }
@@ -262,7 +268,7 @@ function focusSnapshot(id: string | null): FocusSnapshot {
     modalOpen: anyModalOpen(),
     activeTag: ae ? ae.tagName : '',
     activeClasses: ae ? ae.classList : '',
-    knownTermIds: state.terms,
+    knownTermIds: termsMap(),
   };
 }
 
@@ -277,7 +283,7 @@ function debugFocusEnabled() {
 function scheduleFocusConsistencyCheck(id: string) {
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
-      const st = state.terms.get(id);
+      const st = termsMap().get(id);
       if (!st) return;
       const ta = st.host.querySelector<HTMLTextAreaElement>(
         '.xterm-helper-textarea',
@@ -287,8 +293,8 @@ function scheduleFocusConsistencyCheck(id: string) {
       if (focusedHost !== st.host || ae !== ta) {
         // eslint-disable-next-line no-console
         console.warn('[focus] inconsistent state', {
-          view: state.view,
-          activeId: state.activeId,
+          view: appData().view,
+          activeId: appData().activeId,
           wantId: id,
           aeTag: ae ? ae.tagName : null,
           aeClass: ae ? ae.className : null,
@@ -301,12 +307,12 @@ function scheduleFocusConsistencyCheck(id: string) {
 
 // focusActiveTerm / refocusActiveTerm are thin wrappers retained so
 // every existing callsite (and any third-party readers of the code)
-// keeps working. Both reduce to setFocusedTile(state.activeId): the
+// keeps working. Both reduce to setFocusedTile(appData().activeId): the
 // gate inside setFocusedTile decides whether to apply or clear.
 export function focusActiveTerm() {
-  setFocusedTile(state.activeId);
+  setFocusedTile(appData().activeId);
 }
 
 export function refocusActiveTerm() {
-  setFocusedTile(state.activeId);
+  setFocusedTile(appData().activeId);
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state } from '../../src/app/state.js';
+import { hiveStateView as state } from '../../src/store/store.js';
 import { nextAttentionId } from '../../src/app/selectors.js';
 
 // Three sessions in one project, display order a → b → c.

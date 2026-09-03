@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
-- **PR:** [#321](https://github.com/lucascaro/hive/pull/321) — the phase currently in flight (Phase 5). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
-- **Branch:** `feature/react-phase5-grid-shell`
+- **PR:** — (Phase 6 is in flight; its PR is recorded on [phase6](react-ui-rewrite-phase6.md) and in the table below). This field tracks the open phase PR, because the spec's `Exec plan:` link points here and `/hs-merge-gate` resolves the plan through it; the per-phase PRs are in the table under [Phases](#phases).
+- **Branch:** `feature/react-phase6-single-root`
 - **Status:** active
 
 ## Summary
@@ -123,12 +123,14 @@ implemented — the briefs deliberately do not all exist up front.
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
 | 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
 | 4 — modals B + keyboard | [phase4](../completed/react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
-| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **in flight** |
-| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | not started |
+| 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate not yet recorded, so the plan stays in `active/` |
+| 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | — | **in flight** |
 
 **Carried into Phase 6's deletion sweep** (each verified to have zero production
 importers at the phase that stranded it — they are reachable only from their own
 dom tests, so they cost nothing but a reader's time until then):
+
+*(Both items below were carried out in Phase 6.)*
 
 - `src/ui/button.ts`, `src/ui/field.ts`, `src/ui/kbd.ts` — stranded by Phase 4,
   which ported their last callers (the four remaining imperative modals) to
@@ -564,3 +566,146 @@ Per the [Gating convention](#gating-convention), a phase PR is gated against
 Phase 6 only, where they must all pass. Phase verdicts therefore live in the
 phase plans. This section records only the spec-level gate, and stays empty
 until Phase 6.
+
+### Phase 6 — single root, legacy deletion, docs (written 2026-09-03 against `main` @ b9ca655)
+
+Three lines of the Phase 6 scope were written in Phase 0 and have gone stale;
+this brief supersedes them.
+
+| Stale line | Reality at `b9ca655` | Brief |
+|---|---|---|
+| "Delete `src/app/view.ts`" | Phase 5 moved the *rendering* out (`grid-layout.ts`); what is left is the 442-line **view-command** module — `switchTo`, `setView`, `minimizeProject`, `shiftActiveProject`, `enforceViewFloor`. Deleting it deletes behaviour. | **Keep.** Nothing to delete. |
+| "Delete `src/app/el.ts`" | Still imported by `app/dom.ts` (`termsHost`), `keyboard.ts` (`trapFocus` roots, `#app`), `session-term.ts` (`#terms`) and five modals (`releaseFocus` roots). | **Keep both `mustEl` and `pageEl`.** Only `main.ts`'s 20 `pageEl`/`mustEl` island calls go. |
+| "`ui/button.ts` has zero production importers" | True. The two apparent importers (`components/Button.tsx`, `components/modals/Worktrees.tsx`) name it in comments only. | **Delete** `ui/button.ts`, `ui/field.ts`, `ui/kbd.ts` and their dom tests. `ui/icon.ts` and `ui/icon-button.ts` stay (live importers). |
+
+**The `state` facade (the bulk of the phase).** 247 `state.*` references across 13
+production files, and — the number the original scope did not have — **zero
+write sites** in `src/`: every mutation was converted to a store action in
+Phases 0–5. So the facade is a read-only surface, and its deletion is a
+mechanical read conversion, not a semantic one.
+
+Per-module idiom, chosen over a new shared export so no second state API
+appears:
+
+```ts
+import { appStore } from '../store/store.js';
+import { termsMap } from '../store/terms.js';
+// Live read. A function, not a destructured snapshot: these modules run
+// inside event handlers and must never cache a slice across a store write.
+const s = () => appStore.getState();
+```
+
+`state.<field>` → `s().<field>` for every `AppData` field; `state.terms` →
+`termsMap()` (the registry is deliberately outside the store — `store/terms.ts`).
+
+**Where the facade goes.** The object moves verbatim into `src/store/store.ts`
+as `hiveStateView`, together with the `VITE_WAILS_MOCK`/`VITE_WAILS_REAL`-gated
+`window.__hive_state` assignment. Shape unchanged (Invariant 7). This is not a
+rename of the compat layer: what made it a compat layer was that thirteen
+production modules imported it, and after this phase **none do**. It survives as
+exactly one thing — the Playwright API the specs read
+`.terms.get(id).term.buffer.active` and `.sessions` off.
+
+`src/app/state.ts` is left as a types-only module (`SessionInfo`, `ProjectInfo`,
+`TermTile`, `AppState`) — the file is not renamed, because ~30 files import
+those types and a rename is a diff through all of them for no gain. Its five
+dead re-exports (`loadSavedView`, `loadSavedCollapsed`,
+`loadSavedMinimizedProjects`, `saveCollapsed`, `saveMinimizedProjects` — zero
+importers) go with the facade. Side effect worth noting: `state.ts` stops
+importing `store.ts`, so the `app/state ↔ store/store` import cycle disappears.
+
+**Tests keep writing through the facade, by design.** The dom suite seeds state
+with `state.sessions = […]` at 192 sites across 14 files. Those sites are NOT
+converted: rewriting the seeding of the tests that are the safety proof for this
+refactor, in the same commit as the refactor, is how a false green happens. The
+14 files change one import line each — `src/app/state.js` → `src/store/store.js`,
+`state` → `hiveStateView` — and nothing else. `test/unit/store.test.ts`'s
+`window.__hive_state` shape assertion re-points at the new home.
+
+**Deps seams — audit, don't sweep.** Nine `init*`/`wireDaemonEvents` seams exist.
+They are the acyclic-module design (modals ⇢ focus, view ⇢ session-term), not
+render scaffolding, and the dom tests inject stubs through them. Each is checked
+individually: a seam is removed only if its injected members become reachable by
+a direct import with no cycle *and* no test stub depends on it. Whatever remains
+is recorded here with the cycle it breaks.
+
+**Single root.** `src/components/App.tsx` composes, in `index.html`'s document
+order, the regions the fourteen islands own today. Two of them are not plain
+children and constrain the design:
+
+- `Sidebar` renders into `#projects` (a `<ul>` inside `<aside id="sidebar">`) and
+  portals its minimized tray into `#minimized-projects`, a sibling. `VersionFooter`
+  owns `#sidebar-hints`, another sibling.
+- `GridView` renders no DOM and must not own `#terms`, whose children are
+  SessionTerm hosts (Invariant 5).
+
+So App.tsx mounts on `#app` and renders the *whole* `#app` subtree except
+`#terms` and `#sidebar-resizer`, both of which stay static in `index.html` and
+are reached imperatively as they are today. Mount order effects are preserved by
+component order: `VersionFooter`'s `daemon:stale` subscription must still be
+live before the modals mount (the reason the island array ordered it there).
+
+`src/main.tsx` replaces `src/main.ts`, bootstrap order **theme → hydrate store
+from localStorage → wire daemon events → mount root → freeze heartbeat**. The
+`index.html` `<script src>` and `vite.config.js` entry follow. `index.html`
+keeps: the theme-stamp inline script (Invariant 9), the stylesheet links, the
+static boot overlay markup, `#app`, `#terms`, `#sidebar-resizer`. `#grid-root`
+is removed with the island array.
+
+**Verification** additionally runs the e2e suite 3× and a `wails build` smoke
+(never `-s`), per the master Verification block.
+
+## Decision log
+
+- **2026-09-03 (Phase 6) — three scope lines were stale; the brief supersedes
+  them.** "Delete `src/app/view.ts`" and "delete `src/app/el.ts`" were written
+  in Phase 0, before Phase 5 turned view.ts into the view-*command* module and
+  while el.ts still had only main.ts as a consumer. Both files are live and
+  stay; see the Phase 6 brief's table for what actually got deleted. Deleting
+  them as written would have removed `switchTo`/`setView`/`minimizeProject` and
+  the `mustEl` handles `dom.ts`, `keyboard.ts`, `session-term.ts` and five
+  modals import.
+
+- **2026-09-03 (Phase 6) — the facade conversion was read-only.** All 247
+  `state.*` references in `src/` are reads; Phases 0-5 had already converted
+  every write to a store action. So deleting the facade was a mechanical
+  substitution (`appData()` / `termsMap()`), not a semantic change, which is why
+  it could land in the same PR as the single root.
+
+- **2026-09-03 (Phase 6) — the dom tests keep seeding through the facade
+  object, deliberately.** 192 seeding sites across 14 files write
+  `state.sessions = […]`. Converting them to store actions in the same commit
+  as the refactor they are the safety proof for is how a false green happens, so
+  they were left alone: each file changed one import line
+  (`src/app/state.js` → `src/store/store.js`, `state` → `hiveStateView`) and
+  nothing else. The object they seed through is the same one Playwright reads,
+  which is the property that makes it honest rather than a test-only shim.
+
+- **2026-09-03 (Phase 6) — deps-seam audit: all nine stay.** The user's call was
+  "remove only the seams `main` no longer needs", audited individually. Result:
+  **zero**. `initView` and `initGridLayout` break a real
+  `session-term ↔ view/grid-layout` cycle (session-term.ts imports view.js).
+  `wireDaemonEvents` registers listeners and is not a seam in the same sense.
+  `initCommandPalette` and part of `initWorktrees` carry main-owned wiring (the
+  palette command table, `openSessionIn`). The five modal seams
+  (`initLauncher`, `initProjectEditor`, `initSettings`, `initHelpOverlay`,
+  `initWorktrees`) inject only members of `app/focus.ts`, which imports nothing
+  that would cycle — so those are removable on cycle grounds alone. They stayed
+  anyway: **each is the injection point a dom test uses to spy on focus
+  behaviour** (`launcher`, `project-editor`, `settings`, `settings-updates`,
+  `worktrees`, `help-overlay`, `command-palette`, `nav-history`). Removing them
+  means rewriting those seven suites to module mocks in the same PR as the root
+  collapse — the same false-green risk as the seeding sites above, for no
+  user-visible gain. Filed as a candidate for a standalone follow-up instead.
+
+- **2026-09-03 (Phase 6) — the single root renders portals, not markup.** The
+  tree cannot own `#app`: `#terms`' children are SessionTerm hosts (Invariant
+  5), and `#boot-state`'s card is painted pre-script on purpose, so a tree that
+  emitted `#app`'s children would blank and rebuild it at mount. The root mounts
+  on an empty hidden `#react-root` (the former `#grid-root`) and every region is
+  a portal into the element it already owned — which also makes Invariant 1
+  free. **The trap this exposed:** an island root *clears* its container on
+  first render, a portal *appends*. `#status`, `#boot-state` and
+  `#sidebar-hints` are seeded with pre-paint markup, so the first run duplicated
+  their ids and 12 e2e specs failed. `main.tsx` now empties exactly those three
+  and flushes the first commit synchronously, so no frame lands between.

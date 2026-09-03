@@ -53,14 +53,14 @@ vi.mock('../../src/bridge.js', () => {
   };
 });
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
 
 beforeAll(async () => {
   // dom.ts dereferences #terms at import time; give it the singletons.
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   ({ wireDaemonEvents } = await import('../../src/app/events.js'));
 });
 

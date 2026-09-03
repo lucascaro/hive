@@ -10,7 +10,7 @@ Per-decision detail belongs in `docs/design-docs/`. This file is the map. The GU
 - **Registry** (`internal/registry/`) — the daemon's source of truth for open sessions, projects, ordering, and per-session metadata (name, color, agent type). Owns on-disk persistence.
 - **Wire protocol** (`internal/wire/`) — versioned IPC frames between GUI and daemon. Pure types + framing; no I/O policy.
 - **Daemon** (`internal/daemon/`, `cmd/hived/`) — multi-session PTY host. Accepts Unix-socket connections, dispatches by HELLO mode (`control` / `attach` / `create`), spawns/kills sessions through the registry.
-- **GUI** (`cmd/hivegui/`, `hivegui/frontend/`) — Wails desktop app. Thin client over the wire protocol; xterm.js renders terminal output, the JS layer owns sidebar/layout/agent UX.
+- **GUI** (`cmd/hivegui/`, `hivegui/frontend/`) — Wails desktop app. Thin client over the wire protocol; xterm.js renders terminal output, and a React 19 + zustand frontend owns sidebar/layout/agent UX. Terminals stay imperative behind a stable boundary (`src/app/session-term.ts`); everything else renders from the store. Frontend conventions: [FRONTEND.md](FRONTEND.md).
 - **Worktrees** (`internal/worktree/`) — git worktree lifecycle for agent sessions: create, inventory (`List`/`ListBranches`), safety status (`Inspect`), rename and removal. Tracks uncommitted and unpushed state so the registry can refuse destructive operations.
 - **Agents** (`internal/agent/`) — canonical agent catalog (`claude`, `codex`, `gemini`, …) and human-readable name generation.
 - **Notifications** (`internal/notify/`) — platform-specific desktop notifications. Bell/audio support (`internal/audio/`) is planned but not yet implemented.
@@ -34,7 +34,8 @@ Runtime process topology is separate from the dependency graph:
 ```
 hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI close)
                         │
-                        └── Wails frontend (JS / xterm.js, in-process with hivegui)
+                        └── Wails frontend (React 19 + zustand / xterm.js,
+                            in-process with hivegui)
 ```
 
 - `internal/wire/` imports nothing from Hive; `internal/session/` and `internal/agent/` know nothing about persistence; `internal/registry/` knows nothing about the socket; `internal/daemon/` is the only place that owns the connection state machine.

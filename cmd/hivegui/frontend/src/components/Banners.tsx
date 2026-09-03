@@ -1,7 +1,7 @@
 // The three banner slots, in the DOM order the imperative code produced
 // by prepending into #app: undo-close, then daemon, then update.
 // banner.css places [data-slot='daemon'] on grid row 1 and
-// [data-slot='update'] on row 2, so this island's container carries
+// [data-slot='update'] on row 2, so this region's container carries
 // `display: contents` (layout.css) and the banners stay direct grid
 // children of #app.
 //

@@ -15,7 +15,8 @@
 // WebGL slot and a live PTY attachment that must never be recreated.
 
 import { LogFrontend } from '../bridge.js';
-import { state, type SessionInfo, type TermTile } from './state.js';
+import type { SessionInfo, TermTile } from './state.js';
+import { appStore } from '../store/store.js';
 import { termsHost } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
 import { getTerm, termsMap } from '../store/terms.js';
@@ -29,11 +30,16 @@ import { filterHidden } from '../lib/minimized.js';
 import { preserveFocus } from '../lib/preserve-focus.js';
 import { createScrollTrace, type ScrollTrace } from '../lib/scroll-debug.js';
 
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
+
 // The same injection seam view.ts has, and for the same reason: this
 // module is imported by session-term.ts's dependents, so importing
 // ensureTerm from it directly would close a cycle. view.ts's initView()
 // forwards its deps here, so a caller (main.ts, a dom test) that wires
-// the view wires the grid with it. Both seams go away in Phase 6.
+// the view wires the grid with it. Both seams are permanent: a direct import would close the cycle.
 export interface GridDeps {
   ensureTerm: (info: SessionInfo) => TermTile;
   scrollTrace: Pick<ScrollTrace, 'rec' | 'count'>;
@@ -183,9 +189,9 @@ export function applyGridLayout() {
     const st = deps.ensureTerm(info);
     if (!existed) _built += 1;
     st.host.classList.add('in-grid');
-    st.host.classList.toggle('active', info.id === state.activeId);
-    st.host.classList.toggle('attention', state.attention.has(info.id));
-    if (info.id === state.activeId) st.ensureAttached();
+    st.host.classList.toggle('active', info.id === appData().activeId);
+    st.host.classList.toggle('attention', appData().attention.has(info.id));
+    if (info.id === appData().activeId) st.ensureAttached();
     else _deferred.push(st);
     _wanted.push(st.host);
   }
@@ -222,7 +228,7 @@ export function applyGridLayout() {
         }
       })();
       LogFrontend(
-        `renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${state.view}`,
+        `renderGrid fanout tiles=${n} built=${_built} sync=${_ms}ms view=${appData().view}`,
       );
     } catch {
       /* bridge absent in tests */
@@ -284,15 +290,19 @@ export function gridScopeFor(view: ViewMode, projectId?: string) {
   if (view === 'grid-all') {
     return filterHidden(
       orderedSessions(),
-      state.minimized,
-      state.minimizedProjects,
+      appData().minimized,
+      appData().minimizedProjects,
     );
   }
   if (view === 'grid-project') {
-    const scoped = state.sessions
-      .filter((s) => (s.projectId ?? s.project_id) === projectId)
+    const scoped = appData()
+      .sessions.filter((s) => (s.projectId ?? s.project_id) === projectId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return filterHidden(scoped, state.minimized, state.minimizedProjects);
+    return filterHidden(
+      scoped,
+      appData().minimized,
+      appData().minimizedProjects,
+    );
   }
   return [];
 }
@@ -300,7 +310,10 @@ export function gridScopeFor(view: ViewMode, projectId?: string) {
 // gridScopeSessions returns the list of sessions that should be tiled
 // in the current grid view.
 export function gridScopeSessions() {
-  return gridScopeFor(state.view, state.gridProjectId || activeProjectId());
+  return gridScopeFor(
+    appData().view,
+    appData().gridProjectId || activeProjectId(),
+  );
 }
 
 // rebaselineGridReplayCols defers a baseline reset to after the next
@@ -349,10 +362,10 @@ new ResizeObserver(() => {
   // the classic ResizeObserver feedback storm.
   if (deps.scrollTrace.rec.enabled)
     deps.scrollTrace.count('gridContainerResize');
-  if (state.view === 'single' || _gridReflowQueued) return;
+  if (appData().view === 'single' || _gridReflowQueued) return;
   _gridReflowQueued = true;
   requestAnimationFrame(() => {
     _gridReflowQueued = false;
-    if (state.view !== 'single') applyGridLayout();
+    if (appData().view !== 'single') applyGridLayout();
   });
 }).observe(termsHost);

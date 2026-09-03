@@ -35,8 +35,8 @@ export function allTerms(): IterableIterator<TermTile> {
 }
 
 // The raw map. Exposed for the two callers that genuinely need the
-// object itself: app/state.ts's compat layer (window.__hive_state.terms
-// is a Playwright API — specs call .get(id).term.buffer.active) and the
+// object itself: store.ts's hiveStateView (window.__hive_state.terms is
+// a Playwright API — specs call .get(id).term.buffer.active) and the
 // dom tests, which seed and clear it wholesale.
 export function termsMap(): Map<string, TermTile> {
   return terms;

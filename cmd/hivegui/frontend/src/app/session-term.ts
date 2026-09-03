@@ -21,8 +21,8 @@ import {
   OpenURL,
   UpdateSession,
 } from '../bridge.js';
-import { state, type SessionInfo } from './state.js';
-import { addDismissedDead, setFontSize } from '../store/store.js';
+import type { SessionInfo } from './state.js';
+import { addDismissedDead, appStore, setFontSize } from '../store/store.js';
 import { allTerms, getTerm, setTerm } from '../store/terms.js';
 import { icon, stateIcon, updateStateIcon } from '../ui/icon.js';
 import { iconButton } from '../ui/icon-button.js';
@@ -89,6 +89,11 @@ import { onSessionBell, clearAttention } from './events.js';
 import { minimizeSession, updateAppTitle } from './view.js';
 import { setActive, setFocusedTile, refocusActiveTerm } from './focus.js';
 import { beginInlineRename } from './inline-rename.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 // Monotonic millisecond clock for the scroll-jump detector. Falls back
 // to 0 where performance isn't available (never in a real renderer).
@@ -239,7 +244,7 @@ export class SessionTerm {
     this.header.className = 'tile-header';
     this.header.setAttribute('aria-label', `Session ${info.name}`);
     this.tileState = stateIcon(
-      sessionState(info, state.attention.has(info.id)),
+      sessionState(info, appData().attention.has(info.id)),
     );
     this.tileName = document.createElement('span');
     this.tileName.className = 'tile-name';
@@ -257,7 +262,7 @@ export class SessionTerm {
         // about the worktree, not about switching sessions.
         e.stopPropagation();
         const pid = this.info?.projectId ?? this.info?.project_id ?? '';
-        const proj = state.projects.find((p) => p.id === pid);
+        const proj = appData().projects.find((p) => p.id === pid);
         if (proj) openWorktrees(proj);
       },
     });
@@ -322,7 +327,7 @@ export class SessionTerm {
       // too. Read at construction; applyXtermTheme() re-reads it whenever
       // the theme changes, which is the only time it can move.
       fontFamily: monoFontFamily(),
-      fontSize: state.fontSize,
+      fontSize: appData().fontSize,
       // cursorBlink causes a repaint twice a second per terminal —
       // material on older machines with many tiles. Off by default.
       cursorBlink: false,
@@ -577,7 +582,7 @@ export class SessionTerm {
     // view transitions (single ↔ grid, applyGridLayout's appendChild reorder,
     // xterm.open mounting new helper-textareas), leaving a tile visually
     // focused while keystrokes went nowhere. Visual focus is now a pure
-    // projection of state.activeId, gated by whether a modal/rename
+    // projection of appData().activeId, gated by whether a modal/rename
     // owns the keyboard — they can't drift.
 
     this.attached = false;
@@ -595,7 +600,7 @@ export class SessionTerm {
     this.term.onTitleChange((title) => {
       this.termTitle = title || '';
       this._renderTermTitle();
-      if (state.activeId === this.info.id) updateAppTitle();
+      if (appData().activeId === this.info.id) updateAppTitle();
     });
 
     this._writePty = (data) => {
@@ -612,7 +617,7 @@ export class SessionTerm {
 
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
-      if (state.activeId !== this.info.id) {
+      if (appData().activeId !== this.info.id) {
         // No repaint call: setActive writes activeId, and that is one of
         // the fields GridView's signature watches — single mode swaps the
         // shown tile, grid mode moves the .active ring, both from the
@@ -896,7 +901,7 @@ export class SessionTerm {
           bufType: buf.type,
           cols: this.term.cols,
           rows: this.term.rows,
-          view: state.view,
+          view: appData().view,
           attached: this.attached,
           following: this._followBottom,
           sinceReplayMs:
@@ -1071,7 +1076,7 @@ export class SessionTerm {
       this.tileState,
       sessionState(
         { ...this.info, phase: this.phase },
-        state.attention.has(this.info.id),
+        appData().attention.has(this.info.id),
       ),
     );
   }
@@ -1374,7 +1379,7 @@ export class SessionTerm {
     }
     // Don't attempt to attach to a session known to be dead — the daemon
     // will refuse. Show the dead overlay with the error reason instead.
-    if (state.aliveById.get(this.info.id) === false) {
+    if (appData().aliveById.get(this.info.id) === false) {
       this.setDead(
         true,
         this.info.last_error || 'The process failed to start.',
@@ -1521,7 +1526,7 @@ export class SessionTerm {
       return;
     }
     if (isReady(prev)) return; // no edge
-    if (state.aliveById.get(this.info.id) === false) {
+    if (appData().aliveById.get(this.info.id) === false) {
       // Ready but dead: the spawn failed. There is no terminal coming,
       // so drop the panel at once and let the dead overlay (which
       // events.ts raises on this same edge) own the tile — otherwise
@@ -1658,7 +1663,7 @@ export function applyFontSize() {
     // is optional because the DOM-test stubs omit it. Every real tile has
     // one, so this is the same write on every path that matters.
     const opts = st.term?.options;
-    if (opts) opts.fontSize = state.fontSize;
+    if (opts) opts.fontSize = appData().fontSize;
     // Body box doesn't change on font-size change, so ResizeObserver
     // won't fire — call the resize handler explicitly so fit.fit()
     // recomputes (cols, rows) from new char metrics.
@@ -1667,20 +1672,20 @@ export function applyFontSize() {
 }
 
 export function bumpFontSize(delta: number) {
-  const next = clampFont(state.fontSize + delta);
-  if (next === state.fontSize) return;
+  const next = clampFont(appData().fontSize + delta);
+  if (next === appData().fontSize) return;
   setFontSize(next);
   applyFontSize();
   // flashStatus (not setStatus): per-action feedback must auto-revert,
   // not overwrite the persistent slot ("control disconnected", session
   // name) until the next nav event.
-  flashStatus(`font ${state.fontSize}px`);
+  flashStatus(`font ${appData().fontSize}px`);
 }
 
 export function resetFontSize() {
   setFontSize(DEFAULT_FONT_SIZE);
   applyFontSize();
-  flashStatus(`font ${state.fontSize}px`);
+  flashStatus(`font ${appData().fontSize}px`);
 }
 
 export function ensureTerm(info: SessionInfo) {
@@ -1697,7 +1702,7 @@ export function ensureTerm(info: SessionInfo) {
   // panel, with its attach gated, not attach immediately and get
   // refused.
   st.setPhase(phaseOf(info));
-  const proj = state.projects.find(
+  const proj = appData().projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),
   );
   st.setProject(proj?.name ?? '', proj?.color ?? '');

@@ -58,7 +58,7 @@ vi.mock('../../src/bridge.js', () => {
 // switchTo owns real DOM/xterm work; the slot logic is what's under test.
 // The real chain is covered end-to-end in attention-jump-integration.test.ts.
 vi.mock('../../src/app/view.js', async () => {
-  const { state } = await import('../../src/app/state.js');
+  const { hiveStateView: state } = await import('../../src/store/store.js');
   return {
     switchTo: vi.fn(),
     setView: vi.fn(),
@@ -81,7 +81,7 @@ vi.mock('../../src/app/view.js', async () => {
 
 type View = typeof import('../../src/app/view.js');
 
-let state: typeof import('../../src/app/state.js').state;
+let state: typeof import('../../src/store/store.js').hiveStateView;
 let jumpToAttention: typeof import('../../src/app/keyboard.js').jumpToAttention;
 let jumpBack: typeof import('../../src/app/keyboard.js').jumpBack;
 // vi.mocked over a `Mock<…>` annotation: the module is vi.mock'd above,
@@ -100,7 +100,7 @@ beforeAll(async () => {
     <div id="project-editor" class="hidden"></div>
     <div id="command-palette" class="hidden"></div>
     <div id="help-overlay" class="hidden"></div>`;
-  ({ state } = await import('../../src/app/state.js'));
+  ({ hiveStateView: state } = await import('../../src/store/store.js'));
   const view = await import('../../src/app/view.js');
   switchTo = vi.mocked(view.switchTo);
   restoreSession = vi.mocked(view.restoreSession);

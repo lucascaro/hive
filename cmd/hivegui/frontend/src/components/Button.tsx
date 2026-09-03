@@ -1,10 +1,7 @@
-// React port of src/ui/button.ts's button(). The only way a feature
-// component makes a labelled button. Kinds are data attributes so a
+// The only way a feature component makes a labelled button (it began as
+// a port of the deleted src/ui/button.ts). Kinds are data attributes so a
 // variant never needs a second class and CSS can select on [data-kind].
 // docs/design-docs/ui/components.md › button.
-//
-// The imperative button() stays for now — modals (Phases 3-4) and
-// view.ts (Phase 5) still build buttons by hand.
 import type { MouseEvent, ReactNode } from 'react';
 import { Icon, type IconName } from './Icon.js';
 

@@ -3,9 +3,16 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **Branch:** `feature/react-phase6-single-root`
+- **PR:** —
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
+
+> **Three lines of this Scope were written in Phase 0 and are stale.**
+> `src/app/view.ts` and `src/app/el.ts` are both live and stay — see the
+> **Phase 6 brief** in the [master plan](react-ui-rewrite.md#phase-briefs),
+> which supersedes them and records what was deleted instead.
 
 ## Scope
 
@@ -27,8 +34,10 @@ What `/hs-merge-gate` validates for THIS phase.
 - `src/app/state.ts`'s compat facade is deleted and the `window.__hive_state`
   exposure has moved into `src/store/store.ts` under the same env gates, with an
   unchanged shape.
-- All legacy render code is gone (`view.ts`, residual deps seams, unused
-  `src/ui/`), and `rg` finds no orphaned exports.
+- All legacy render code is gone — the stranded `src/ui/` primitives
+  (`button.ts`, `field.ts`, `kbd.ts`) and their dom tests — and `rg` finds no
+  orphaned exports. (`view.ts` is not legacy render code; the deps seams were
+  audited and kept, both recorded in the master plan's Decision log.)
 - The freeze heartbeat still reads real state every second; the theme-stamp
   script is still inline in `index.html` ahead of first paint.
 - `FRONTEND.md` is filled in; `DESIGN.md` and `docs/design-docs/ui/README.md`
@@ -48,3 +57,21 @@ Violating any one reintroduces a shipped bug.
 
 Per the master plan's Verification block, compared against
 `.plans/react-rewrite-flake-baseline.md`.
+
+## Progress
+
+- **2026-09-03** — Implemented on `feature/react-phase6-single-root`. JIT brief
+  written into the master plan first, per the execution model. Order: facade
+  deletion → dead `src/ui/` primitives → single root → docs → changeset → debt
+  specs. Green at each step; the single root's first run failed 12 e2e specs on
+  duplicated ids (portals append where island roots cleared), fixed in
+  `main.tsx`.
+
+## Gate verdict
+
+<Filled by `/hs-merge-gate`.>
+
+## PR convergence ledger
+
+<Append-only. Maintained by hand for this feature — see the master plan's
+Gating convention.>

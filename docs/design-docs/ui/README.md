@@ -24,7 +24,7 @@ As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct he
 | [tokens.md](tokens.md) | Semantic token roles: colour, type scale, spacing, radius, elevation, motion |
 | [themes.md](themes.md) | Presets (`system` default, resolving to `hive-dark`/`hive-light`; plus `native-dark`, `native-light`, `terminal`, `classic`), user overrides, xterm mapping |
 | [icons.md](icons.md) | SVG sprite inventory, state shapes, rules |
-| [components.md](components.md) | Primitives in `src/ui/`: anatomy, states, tokens used |
+| [components.md](components.md) | The primitives: anatomy, states, tokens used. They are React components in `src/components/` — `src/ui/` holds only the two (`icon`, `icon-button`) that `app/session-term.ts` still builds imperatively |
 | [patterns.md](patterns.md) | Cross-component behaviour: attention bubbling, selection vs attention, empty/error states, keyboard hints |
 | [mocks/](mocks/) | The option comparisons the decisions were made from. Open in a browser. |
 
@@ -40,8 +40,9 @@ As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct he
 
 ## How to change the UI from now on
 
-1. Read `components.md` for the primitive you're touching. If none fits, add one — don't hand-roll markup in a feature module.
+1. Read `components.md` for the primitive you're touching. If none fits, add one — don't hand-roll markup in a feature component. Primitives are React components under `src/components/` (`Button`, `Banner`, `Chip`, `Icon`, `IconButton`, `Kbd`, `SessionRow`, `ProjectCard`); the imperative `src/ui/*` versions were deleted with the React rewrite, all but `icon.ts` and `icon-button.ts`, which `app/session-term.ts` calls while the terminal tile stays imperative.
 2. Use tokens. If a token is missing, add it to `tokens.md` *and* `tokens.css` in the same PR, with a role name (not a colour name).
 3. Need an icon? Add it to the sprite per `icons.md`. Never paste a Unicode symbol.
 4. Run `scripts/ui-lint.sh` locally; CI runs it too.
 5. For anything with a visual choice, put a mock in `mocks/` and record the decision in this README's table.
+6. The `hv-*` class names and data attributes are the contract between the components, the CSS and the Playwright specs. Renaming one is an API change: it breaks selectors in `test/e2e/` that were deliberately written without `data-testid`. See [FRONTEND.md](../../../FRONTEND.md).

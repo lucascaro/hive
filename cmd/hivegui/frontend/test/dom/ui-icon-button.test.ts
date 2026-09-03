@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 //
-// iconButton() and kbd() (src/ui/). The aria-label assertion is the
-// point of the file: an icon-only control with no label is invisible to
-// a screen reader, so the primitive refuses to build one.
+// iconButton() (src/ui/). The aria-label assertion is the point of the
+// file: an icon-only control with no label is invisible to a screen
+// reader, so the primitive refuses to build one.
+//
+// kbd() was covered here too until Phase 6 deleted the primitive; its
+// React replacement is components/Kbd.tsx.
 import { describe, it, expect, vi } from 'vitest';
 import { iconButton } from '../../src/ui/icon-button.js';
-import { kbd } from '../../src/ui/kbd.js';
 
 describe('iconButton()', () => {
   it('is a type=button with the icon inside and no text', () => {
@@ -44,14 +46,5 @@ describe('iconButton()', () => {
     expect(
       iconButton({ icon: 'x', label: 'Close', size: 22 }).dataset.size,
     ).toBe('22');
-  });
-});
-
-describe('kbd()', () => {
-  it('renders a <kbd class="hv-kbd"> with the literal text', () => {
-    const el = kbd('[esc]');
-    expect(el.tagName).toBe('KBD');
-    expect(el.className).toBe('hv-kbd');
-    expect(el.textContent).toBe('[esc]');
   });
 });

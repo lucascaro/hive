@@ -17,13 +17,22 @@
 
 import { flushSync } from 'react-dom';
 import { DuplicateSession, RestartSession } from '../../bridge.js';
-import { state } from '../state.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { activeProjectId, resolveSessionCwd } from '../selectors.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
 import { pageEl } from '../el.js';
-import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import {
+  appStore,
+  closeModal,
+  isModalOpen,
+  openModal,
+} from '../../store/store.js';
 import type { SessionInfo } from '../state.js';
+
+// Live read of the store. A function, not a destructured snapshot: this
+// module runs inside event handlers and must never cache a slice across
+// a store write.
+const appData = () => appStore.getState();
 
 // Narrow on purpose: this modal needs exactly two callbacks off the
 // focus pipeline, so it names those two rather than the whole module.
@@ -130,7 +139,7 @@ export function closeLauncher() {
 }
 
 export function duplicateActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {
@@ -145,7 +154,7 @@ export function duplicateActiveSession() {
 }
 
 export function restartActiveSession() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) {
     flashStatus('no active session to restart', true);
     return;
@@ -154,7 +163,7 @@ export function restartActiveSession() {
 }
 
 export function duplicateActiveSessionChooseTool() {
-  const s = state.sessions.find((x) => x.id === state.activeId);
+  const s = appData().sessions.find((x) => x.id === appData().activeId);
   if (!s) return;
   const cwd = resolveSessionCwd(s);
   if (!cwd) {

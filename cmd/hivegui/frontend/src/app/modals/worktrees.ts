@@ -64,7 +64,7 @@ let deps: WorktreesDeps = {
 };
 
 // openSessionIn is the component's one dependency on main.ts's wiring;
-// it reads it through here rather than taking a prop, so the island
+// it reads it through here rather than taking a prop, so the component
 // mounts with the same shape as the other modals.
 export function openSessionIn(
   projectId: string,
