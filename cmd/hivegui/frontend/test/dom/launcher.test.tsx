@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 //
-// Covers the agent launcher's filter box (src/app/modals/launcher.ts):
+// Covers the agent launcher's filter box
+// (src/components/modals/Launcher.tsx, opened through the
+// openLauncher/closeLauncher pair in src/app/modals/launcher.ts):
 // the substring narrowing itself, and the four things around it that
 // carry real risk —
 //   * the digit shortcuts (1–9) must keep working while the box is
@@ -13,6 +15,8 @@
 //     already-open launcher.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import { resetStore } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 import { isMac } from '../../src/lib/platform.js';
@@ -98,11 +102,16 @@ vi.mock('../../src/bridge.js', () => ({
 // resolves with mustEl at import time — launcher.ts pulls dom.ts in for
 // flashStatus, so they must exist before the dynamic import below even
 // though this suite never touches them.
+//
+// #launcher is nested one level under <body>: RTL's cleanup() removes a
+// render() container whose parentNode IS document.body, which would rip
+// the element pageEl('launcher') resolved at import time out of the
+// document and turn every later lookup into a silent null.
 const MARKUP = `
   <main id="terms"></main>
   <ul id="projects"></ul>
   <div id="status"><span id="status-text"></span><span id="status-hint"></span></div>
-  <div id="launcher" class="hidden" role="menu"></div>`;
+  <div id="app"><div id="launcher" class="hidden" role="menu"></div></div>`;
 
 type LauncherModule = typeof import('../../src/app/modals/launcher.js');
 let openLauncher: LauncherModule['openLauncher'];
@@ -110,6 +119,9 @@ let closeLauncher: LauncherModule['closeLauncher'];
 let initLauncher: LauncherModule['initLauncher'];
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
+// Imported with the module below, for the same reason: the component
+// pulls app/dom.ts in, which resolves #terms with mustEl at load.
+let Launcher: typeof import('../../src/components/modals/Launcher.js')['Launcher'];
 
 function launcher() {
   return document.getElementById('launcher') as HTMLElement;
@@ -129,26 +141,31 @@ function selectedName() {
   return launcher().querySelector('.launcher-item[data-selected] .agent-name')
     ?.textContent;
 }
-// The launcher owns its keys via a listener on #launcher, so events
-// must be dispatched from inside it (bubbling), exactly as a real
-// keystroke into the focused filter box would.
+// The launcher owns its keys via a plain listener on #launcher, so
+// events must be dispatched from inside it (bubbling), exactly as a real
+// keystroke into the focused filter box would. That listener is not a
+// React one, so the state it sets needs act() around the dispatch.
 // Returns false when the handler called preventDefault — i.e. when the
 // launcher consumed the key rather than letting it reach the input.
 function press(key: string, init: KeyboardEventInit = {}) {
-  return searchBox().dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key,
-      bubbles: true,
-      cancelable: true,
-      ...init,
-    }),
-  );
+  let delivered = true;
+  act(() => {
+    delivered = searchBox().dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      }),
+    );
+  });
+  return delivered;
 }
-// Typing = set the value, then fire `input`. jsdom won't do the former
-// for us from a KeyboardEvent, and the digit path is keydown-only.
+// Typing goes through fireEvent, not a hand-built input event: the box
+// is a controlled input, and React's value tracker swallows a change
+// made by assigning .value directly.
 function type(text: string) {
-  searchBox().value = text;
-  searchBox().dispatchEvent(new Event('input', { bubbles: true }));
+  fireEvent.change(searchBox(), { target: { value: text } });
 }
 // Open and let ListAgents settle.
 // A few turns of the microtask queue: the IsGitRepo probe chains off
@@ -158,11 +175,25 @@ async function flushMicrotasks() {
   await new Promise((r) => setTimeout(r, 0));
 }
 
+// Opening writes the store from outside a React event handler, and the
+// agent list lands in a promise callback — both need act() for the
+// island to have re-rendered by the time the assertions run.
+async function openWith(fn: () => void) {
+  await act(async () => {
+    fn();
+  });
+}
+async function settleAgents(list: main.AgentInfo[] = AGENTS) {
+  await act(async () => {
+    resolveAgents(list);
+    await agentsPromise;
+    await Promise.resolve();
+  });
+}
+
 async function open() {
-  openLauncher('p1');
-  resolveAgents(AGENTS);
-  await agentsPromise;
-  await Promise.resolve();
+  await openWith(() => openLauncher('p1'));
+  await settleAgents();
 }
 
 beforeAll(async () => {
@@ -172,6 +203,7 @@ beforeAll(async () => {
   Element.prototype.scrollIntoView = vi.fn();
   // Imported AFTER the markup exists: launcherEl is resolved at module
   // load via pageEl('launcher').
+  ({ Launcher } = await import('../../src/components/modals/Launcher.js'));
   const mod = await import('../../src/app/modals/launcher.js');
   openLauncher = mod.openLauncher;
   closeLauncher = mod.closeLauncher;
@@ -185,7 +217,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   listAgents.mockImplementation(() => freshAgentsPromise());
-  closeLauncher();
+  resetStore();
+  render(<Launcher root={launcher()} setFocusedTile={setFocusedTile} />, {
+    container: launcher(),
+  });
 });
 
 describe('launcher filter box', () => {
@@ -216,17 +251,15 @@ describe('launcher filter box', () => {
   });
 
   it('distinguishes an empty agent list from an empty filter result', async () => {
-    openLauncher('p1');
-    resolveAgents([]);
-    await agentsPromise;
-    await Promise.resolve();
+    await openWith(() => openLauncher('p1'));
+    await settleAgents([]);
     expect(launcher().querySelector('.launcher-empty')?.textContent).toBe(
       'No agents found',
     );
   });
 
   it('keeps showing the loading row when the user types before agents arrive', async () => {
-    openLauncher('p1');
+    await openWith(() => openLauncher('p1'));
     expect(launcher().querySelector('.launcher-loading')).not.toBeNull();
     // The keystroke re-renders the list. While the request is in flight
     // there are no agents to filter, and an empty result must not be
@@ -236,9 +269,7 @@ describe('launcher filter box', () => {
       'Loading agents…',
     );
     expect(launcher().querySelector('.launcher-empty')).toBeNull();
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
+    await settleAgents();
     expect(launcher().querySelector('.launcher-loading')).toBeNull();
     expect(names()).toEqual(['Claude']);
   });
@@ -247,20 +278,18 @@ describe('launcher filter box', () => {
     await open();
     // Reopen without closing: until the new response lands there is no
     // list yet, so the stale one must not be what the query filters.
-    openLauncher('p1');
+    await openWith(() => openLauncher('p1'));
     type('cla');
     expect(rows()).toHaveLength(0);
     expect(launcher().querySelector('.launcher-loading')).not.toBeNull();
   });
 
   it('honors a query typed while ListAgents is still in flight', async () => {
-    openLauncher('p1');
+    await openWith(() => openLauncher('p1'));
     // Still loading — the filter box is already on screen and focused.
     expect(launcher().querySelector('.launcher-loading')).not.toBeNull();
     type('codex');
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
+    await settleAgents();
     expect(names()).toEqual(['Codex CLI']);
   });
 
@@ -353,9 +382,7 @@ describe('launcher keyboard', () => {
     // cmdOrCtrl() rejects the cross-platform combo outright, so the
     // modifier has to match the platform the module resolved at load.
     press('t', isMac ? { metaKey: true } : { ctrlKey: true });
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
+    await settleAgents();
     expect(searchBox().value).toBe('');
     expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
   });
@@ -364,9 +391,8 @@ describe('launcher keyboard', () => {
     await open();
     searchBox().focus();
     const box = searchBox();
-    // Cleared AFTER opening: beforeEach calls closeLauncher(), which
-    // already ran refocusActiveTerm once, so a bare toHaveBeenCalled()
-    // here would pass even if Escape did nothing.
+    // Cleared AFTER opening, so a bare toHaveBeenCalled() here cannot
+    // pass on a refocus some earlier close already made.
     refocusActiveTerm.mockClear();
     press('Escape');
     expect(launcher().classList.contains('hidden')).toBe(true);
@@ -382,8 +408,7 @@ describe('launcher worktree row', () => {
     const wt = launcher().querySelector('.launcher-worktree');
     expect(wt).not.toBeNull();
     const box = wt?.querySelector('input[type=checkbox]') as HTMLInputElement;
-    box.checked = true;
-    box.dispatchEvent(new Event('change', { bubbles: true }));
+    fireEvent.click(box);
     expect(localStorage.getItem('hive.worktree')).toBe('1');
   });
 
@@ -408,15 +433,13 @@ describe('launcher branch name', () => {
     launcher().querySelector(
       '.launcher-worktree input[type=checkbox]',
     ) as HTMLInputElement;
+  // Controlled inputs both: a click is what flips a checkbox, and
+  // fireEvent.change is the only way past React's value tracker.
   const toggleWorktree = (on: boolean) => {
-    const box = wtBox();
-    box.checked = on;
-    box.dispatchEvent(new Event('change', { bubbles: true }));
+    if (wtBox().checked !== on) fireEvent.click(wtBox());
   };
   const typeBranch = (value: string) => {
-    const box = branchBox();
-    box.value = value;
-    box.dispatchEvent(new Event('input', { bubbles: true }));
+    fireEvent.change(branchBox(), { target: { value } });
   };
 
   // The launcher preventDefaults mousedown on everything but its text
@@ -430,7 +453,9 @@ describe('launcher branch name', () => {
       bubbles: true,
       cancelable: true,
     });
-    branchBox().dispatchEvent(ev);
+    act(() => {
+      branchBox().dispatchEvent(ev);
+    });
     expect(
       ev.defaultPrevented,
       'mousedown was preventDefaulted, so the box can never take focus',
@@ -445,7 +470,9 @@ describe('launcher branch name', () => {
       bubbles: true,
       cancelable: true,
     });
-    rowEl.dispatchEvent(ev);
+    act(() => {
+      rowEl.dispatchEvent(ev);
+    });
     expect(ev.defaultPrevented).toBe(true);
   });
 
@@ -461,7 +488,9 @@ describe('launcher branch name', () => {
       bubbles: true,
       cancelable: true,
     });
-    branchBox().dispatchEvent(ev);
+    act(() => {
+      branchBox().dispatchEvent(ev);
+    });
     expect(ev.defaultPrevented, 'digit was consumed as a row shortcut').toBe(
       false,
     );
@@ -473,9 +502,11 @@ describe('launcher branch name', () => {
     await open();
     branchBox().focus();
     typeBranch('typed-here');
-    branchBox().dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-    );
+    act(() => {
+      branchBox().dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+    });
     expect(createSession).toHaveBeenCalled();
     expect(createSession.mock.calls[0][8]).toBe('typed-here');
   });
@@ -484,9 +515,11 @@ describe('launcher branch name', () => {
     localStorage.setItem('hive.worktree', '1');
     await open();
     branchBox().focus();
-    branchBox().dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
+    act(() => {
+      branchBox().dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     expect(launcher().classList.contains('hidden')).toBe(true);
   });
 
@@ -532,7 +565,7 @@ describe('launcher branch name', () => {
     localStorage.setItem('hive.worktree', '1');
     await open();
     typeBranch('first-only');
-    closeLauncher();
+    act(() => closeLauncher());
     await open();
     expect(branchBox().value).toBe('');
     press('Enter');
@@ -558,7 +591,9 @@ describe('launcher branch name', () => {
     state.projects = [{ id: 'p1', name: 'p', cwd: '/not-a-repo' }];
     try {
       await open();
-      await flushMicrotasks();
+      await act(async () => {
+        await flushMicrotasks();
+      });
       expect(branchBox().classList.contains('hidden')).toBe(true);
       expect(wtBox().checked).toBe(false);
     } finally {
@@ -569,10 +604,10 @@ describe('launcher branch name', () => {
 
 describe('launcher resume-in-worktree mode', () => {
   it('offers neither the worktree toggle nor a branch field', async () => {
-    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
+    await openWith(() =>
+      openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' }),
+    );
+    await settleAgents();
     expect(launcher().querySelector('.launcher-worktree')).toBeNull();
     expect(launcher().querySelector('.launcher-branch')).toBeNull();
   });
@@ -580,21 +615,21 @@ describe('launcher resume-in-worktree mode', () => {
   it('passes the worktree path and never asks for a new worktree', async () => {
     // Sticky preference is on; resume mode must still not create one.
     localStorage.setItem('hive.worktree', '1');
-    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
+    await openWith(() =>
+      openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' }),
+    );
+    await settleAgents();
     press('Enter');
     expect(createSession.mock.calls[0][6]).toBe(false);
     expect(createSession.mock.calls[0][9]).toBe('/repo/.worktrees/resume');
   });
 
   it('does not leak the path into the next regular opening', async () => {
-    openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' });
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
-    closeLauncher();
+    await openWith(() =>
+      openLauncher('p1', { worktreePath: '/repo/.worktrees/resume' }),
+    );
+    await settleAgents();
+    act(() => closeLauncher());
     await open();
     press('Enter');
     expect(createSession.mock.calls[0][9]).toBe('');
@@ -607,19 +642,23 @@ describe('launcher stale-response handling', () => {
     // stale one must not touch the DOM the second open now owns. The
     // `hidden` guard alone can't catch this — the launcher is visible
     // again by the time the first response lands.
-    openLauncher('p1');
+    await openWith(() => openLauncher('p1'));
     const resolveFirst = resolveAgents;
     const first = agentsPromise;
-    openLauncher('p1');
+    await openWith(() => openLauncher('p1'));
     const resolveSecond = resolveAgents;
     const second = agentsPromise;
 
-    resolveFirst(AGENTS);
-    await first;
-    await Promise.resolve();
-    resolveSecond(AGENTS);
-    await second;
-    await Promise.resolve();
+    await act(async () => {
+      resolveFirst(AGENTS);
+      await first;
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveSecond(AGENTS);
+      await second;
+      await Promise.resolve();
+    });
 
     expect(launcher().querySelectorAll('.launcher-worktree')).toHaveLength(1);
     expect(launcher().querySelectorAll('.launcher-branch')).toHaveLength(1);
@@ -634,14 +673,93 @@ describe('launcher stale-response handling', () => {
 
   it('does not close a reopened launcher when a superseded request rejects', async () => {
     listAgents.mockImplementationOnce(() => Promise.reject(new Error('boom')));
-    openLauncher('p1');
-    openLauncher('p1');
-    resolveAgents(AGENTS);
-    await agentsPromise;
-    await Promise.resolve();
-    await Promise.resolve();
+    await openWith(() => openLauncher('p1'));
+    await openWith(() => openLauncher('p1'));
+    await act(async () => {
+      resolveAgents(AGENTS);
+      await agentsPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(launcher().classList.contains('hidden')).toBe(false);
     expect(names()).toEqual(['Shell', 'Claude', 'Codex CLI']);
+  });
+});
+
+// Both close paths moved from initLauncher() into the island's effects
+// in Phase 3, and they are load-bearing in opposite directions: keyboard.ts
+// bails out for the whole window while #launcher is visible, so a launcher
+// left open with focus elsewhere has nobody listening for Escape — while a
+// close that fires on the very click that OPENED it makes the popup
+// unopenable from the sidebar at all.
+describe('launcher outside interaction', () => {
+  it('closes on a click outside itself', async () => {
+    await open();
+    act(() => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(launcher().classList.contains('hidden')).toBe(true);
+  });
+
+  it('stays open for a click on the project actions that opened it', async () => {
+    const actions = document.createElement('div');
+    actions.className = 'hv-project-card__actions';
+    document.getElementById('app')?.appendChild(actions);
+    try {
+      await open();
+      act(() => {
+        actions.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(launcher().classList.contains('hidden')).toBe(false);
+    } finally {
+      actions.remove();
+    }
+  });
+
+  it('stays open for a click on an opener that opts in with data-opens-launcher', async () => {
+    const opener = document.createElement('button');
+    opener.setAttribute('data-opens-launcher', '');
+    document.getElementById('app')?.appendChild(opener);
+    try {
+      await open();
+      act(() => {
+        opener.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      expect(launcher().classList.contains('hidden')).toBe(false);
+    } finally {
+      opener.remove();
+    }
+  });
+
+  it('closes when focus leaves it for something else', async () => {
+    const outside = document.createElement('button');
+    document.getElementById('app')?.appendChild(outside);
+    try {
+      await open();
+      act(() => {
+        searchBox().dispatchEvent(
+          new FocusEvent('focusout', {
+            bubbles: true,
+            relatedTarget: outside,
+          }),
+        );
+      });
+      expect(launcher().classList.contains('hidden')).toBe(true);
+    } finally {
+      outside.remove();
+    }
+  });
+
+  // relatedTarget null means focus went nowhere — that is closeLauncher's
+  // own blur, so it must not recurse.
+  it('ignores a focusout that goes nowhere', async () => {
+    await open();
+    act(() => {
+      searchBox().dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
+      );
+    });
+    expect(launcher().classList.contains('hidden')).toBe(false);
   });
 });
 
@@ -652,9 +770,11 @@ describe('launcher teardown', () => {
 
   it('does not throw when ListAgents rejects', async () => {
     listAgents.mockImplementationOnce(() => Promise.reject(new Error('boom')));
-    openLauncher('p1');
-    await Promise.resolve();
-    await Promise.resolve();
+    await openWith(() => openLauncher('p1'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(launcher().classList.contains('hidden')).toBe(true);
   });
 });

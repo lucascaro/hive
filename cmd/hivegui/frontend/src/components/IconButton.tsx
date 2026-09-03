@@ -7,6 +7,7 @@ import { Icon, type IconName } from './Icon.js';
 export interface IconButtonProps {
   icon: IconName;
   label: string;
+  id?: string;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   size?: 22 | 24;
   className?: string;
@@ -17,6 +18,7 @@ export interface IconButtonProps {
 export function IconButton({
   icon,
   label,
+  id,
   onClick,
   size = 24,
   className,
@@ -28,6 +30,7 @@ export function IconButton({
   return (
     <button
       type="button"
+      id={id}
       className={className ? `hv-icon-btn ${className}` : 'hv-icon-btn'}
       aria-label={label}
       title={label}

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 //
-// Covers the settings modal (src/app/modals/settings.ts): the
+// Covers the settings modal (src/components/modals/Settings.tsx, opened
+// through the openSettings/closeSettings pair in
+// src/app/modals/settings.ts): the
 // add/edit/delete round-trip, the exact payload handed to
 // SaveCustomAgents, and the two behaviors that carry real risk —
 // existing ids must survive a rename (registry entries persist only
@@ -8,6 +10,8 @@
 // Go must surface its error instead of closing the modal.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import { resetStore } from '../../src/store/store.js';
 // Type-only: erased, so the generated module is never resolved at runtime.
 import type { main } from '../../wailsjs/go/models';
 
@@ -63,11 +67,13 @@ vi.mock('../../src/app/session-term.js', () => ({
 // wrapper, so this file now pulls banners.ts -> dom.ts in transitively.
 // dom.ts resolves its singletons with mustEl at import time, so their
 // markup has to exist even though nothing here exercises them.
-// settings.ts builds its own dialog now (dialog + field primitives), so
-// the fixture is only the app root it mounts into plus the singletons
-// dom.ts resolves at import time.
+// The dialog root is declared in index.html and the component renders
+// into it, so the fixture carries the same element — nested under #app,
+// because RTL's cleanup() removes a render() container whose parentNode
+// IS document.body.
 const MARKUP = `
-  <div id="app"></div>
+  <div id="app"><div id="settings" class="hv-dialog hidden" role="dialog"
+    aria-modal="true" aria-labelledby="settings-title"></div></div>
   <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>`;
 
 // Typed off the module itself rather than restated, so a changed export
@@ -82,12 +88,17 @@ let splitCommand: SettingsModule['splitCommand'];
 // the SettingsDeps fields initSettings expects.
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
+// Imported after the markup exists: the module resolves #settings with
+// pageEl at load, and the component pulls app/dom.ts in for its own
+// singletons.
+let Settings: typeof import('../../src/components/modals/Settings.js')['Settings'];
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
   ({ openSettings, closeSettings, initSettings, splitCommand } = await import(
     '../../src/app/modals/settings.js'
   ));
+  ({ Settings } = await import('../../src/components/modals/Settings.js'));
   refocusActiveTerm = vi.fn();
   setFocusedTile = vi.fn();
   initSettings({ setFocusedTile, refocusActiveTerm });
@@ -98,7 +109,8 @@ beforeEach(() => {
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
-  el('settings').classList.add('hidden');
+  resetStore();
+  render(<Settings root={el('settings')} />, { container: el('settings') });
 });
 
 // MARKUP above is this file's contract, so a missing id is a bug in the
@@ -115,13 +127,25 @@ const cell = <T extends HTMLElement = HTMLInputElement>(
   row: Element,
   sel: string,
 ): T => row.querySelector(sel) as T;
-const flush = () => new Promise((r) => setTimeout(r, 0));
+// Lets the load promises settle AND React re-render before the
+// assertions: both the open and every bridge callback write state from
+// outside a React event handler.
+const flush = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
 
-// Drives an <input> the way a user does: set the value, fire 'input'.
-function type(input: HTMLInputElement, value: string) {
-  input.value = value;
-  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+// Drives an <input> the way a user does. fireEvent, not a hand-built
+// event: these are controlled inputs, and React's value tracker swallows
+// a change made by assigning .value directly.
+function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  fireEvent.change(input, { target: { value } });
 }
+
+// The open/close pair writes the store from outside React.
+const open = () => act(() => openSettings());
+const close = () => act(() => closeSettings());
+const click = (target: HTMLElement) => fireEvent.click(target);
 
 describe('splitCommand', () => {
   it('splits a command line into argv on whitespace', () => {
@@ -154,7 +178,7 @@ describe('settings modal', () => {
       },
     ]);
 
-    openSettings();
+    open();
     expect(el('settings').classList.contains('hidden')).toBe(false);
     expect(setFocusedTile).toHaveBeenCalledWith(null);
     await flush();
@@ -165,21 +189,21 @@ describe('settings modal', () => {
       'claude --model haiku',
     );
 
-    closeSettings();
+    close();
     expect(el('settings').classList.contains('hidden')).toBe(true);
     expect(refocusActiveTerm).toHaveBeenCalled();
   });
 
   it('adds an agent and saves it with an empty id for Go to assign', async () => {
-    openSettings();
+    open();
     await flush();
 
-    el('settings-agent-add').click();
+    click(el('settings-agent-add'));
     expect(rows()).toHaveLength(1);
     type(cell(rows()[0], '.settings-agent-name'), 'Claude Lite');
     type(cell(rows()[0], '.settings-agent-cmd'), 'claude --model haiku');
 
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
 
     expect(saveCustomAgents).toHaveBeenCalledWith([
@@ -205,11 +229,11 @@ describe('settings modal', () => {
         color: '#8b5cf6',
       },
     ]);
-    openSettings();
+    open();
     await flush();
 
     type(cell(rows()[0], '.settings-agent-name'), 'Claude Litest');
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
 
     const [payload] = saveCustomAgents.mock.calls[0];
@@ -223,14 +247,14 @@ describe('settings modal', () => {
       { id: 'two', name: 'Two', cmd: ['two'], color: '#222222' },
       { id: 'three', name: 'Three', cmd: ['three'], color: '#333333' },
     ]);
-    openSettings();
+    open();
     await flush();
     expect(rows()).toHaveLength(3);
 
-    cell(rows()[1], '.settings-agent-delete').click();
+    click(cell(rows()[1], '.settings-agent-delete'));
     expect(rows()).toHaveLength(2);
 
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
 
     const [payload] = saveCustomAgents.mock.calls[0];
@@ -238,15 +262,15 @@ describe('settings modal', () => {
   });
 
   it('drops fully-blank rows so a stray "+ Add agent" does not block the save', async () => {
-    openSettings();
+    open();
     await flush();
 
-    el('settings-agent-add').click();
+    click(el('settings-agent-add'));
     type(cell(rows()[0], '.settings-agent-name'), 'Real');
     type(cell(rows()[0], '.settings-agent-cmd'), 'realtool');
-    el('settings-agent-add').click(); // left entirely blank
+    click(el('settings-agent-add')); // left entirely blank
 
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
 
     const [payload] = saveCustomAgents.mock.calls[0];
@@ -258,13 +282,13 @@ describe('settings modal', () => {
     saveCustomAgents.mockRejectedValue(
       new Error('"claude" is a built-in agent and cannot be redefined'),
     );
-    openSettings();
+    open();
     await flush();
 
-    el('settings-agent-add').click();
+    click(el('settings-agent-add'));
     type(cell(rows()[0], '.settings-agent-name'), 'Claude');
     type(cell(rows()[0], '.settings-agent-cmd'), 'claude');
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
 
     expect(el('settings').classList.contains('hidden')).toBe(false);
@@ -274,7 +298,7 @@ describe('settings modal', () => {
 
   it('reports a failed load without throwing', async () => {
     listCustomAgents.mockRejectedValue(new Error('boom'));
-    openSettings();
+    open();
     await flush();
 
     expect(el('settings-error').classList.contains('hidden')).toBe(false);
@@ -285,26 +309,28 @@ describe('settings modal', () => {
     listCustomAgents.mockResolvedValue([
       { id: 'keep', name: 'Keep', cmd: ['keep'], color: '#111111' },
     ]);
-    openSettings();
+    open();
     await flush();
     type(cell(rows()[0], '.settings-agent-name'), 'Scribbled');
 
-    el('settings-cancel').click();
+    click(el('settings-cancel'));
     expect(el('settings').classList.contains('hidden')).toBe(true);
     expect(saveCustomAgents).not.toHaveBeenCalled();
 
     // Reopening re-reads from disk rather than showing the discarded draft.
-    openSettings();
+    open();
     await flush();
     expect(cell(rows()[0], '.settings-agent-name').value).toBe('Keep');
   });
 
   it('closes on Escape', async () => {
-    openSettings();
+    open();
     await flush();
-    el('settings').dispatchEvent(
-      new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
-    );
+    act(() => {
+      el('settings').dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
     expect(el('settings').classList.contains('hidden')).toBe(true);
   });
 });
@@ -318,7 +344,7 @@ describe('failed load', () => {
     listCustomAgents.mockRejectedValue(
       new Error('parse agents.json: invalid character'),
     );
-    openSettings();
+    open();
     await flush();
 
     expect(el('settings-error').classList.contains('hidden')).toBe(false);
@@ -326,26 +352,26 @@ describe('failed load', () => {
     expect(el<HTMLButtonElement>('settings-save').disabled).toBe(true);
     expect(el<HTMLButtonElement>('settings-agent-add').disabled).toBe(true);
 
-    el('settings-save').click();
+    click(el('settings-save'));
     await flush();
     expect(saveCustomAgents).not.toHaveBeenCalled();
     // The modal stays open so the error remains visible.
     expect(el('settings').classList.contains('hidden')).toBe(false);
-    closeSettings();
+    close();
   });
 
   it('re-enables editing on a later successful open', async () => {
     listCustomAgents.mockRejectedValue(new Error('boom'));
-    openSettings();
+    open();
     await flush();
-    closeSettings();
+    close();
 
     listCustomAgents.mockResolvedValue([]);
-    openSettings();
+    open();
     await flush();
     expect(el<HTMLButtonElement>('settings-save').disabled).toBe(false);
     expect(el<HTMLButtonElement>('settings-agent-add').disabled).toBe(false);
-    closeSettings();
+    close();
   });
 });
 
@@ -357,13 +383,13 @@ describe('load race', () => {
         resolveFirst = r;
       }),
     );
-    openSettings();
+    open();
 
-    closeSettings();
+    close();
     listCustomAgents.mockResolvedValue([
       { id: 'kept', name: 'Kept', cmd: ['kept'], color: '#111111' },
     ]);
-    openSettings();
+    open();
     await flush();
 
     resolveFirst([
@@ -373,7 +399,7 @@ describe('load race', () => {
 
     expect(rows()).toHaveLength(1);
     expect(cell(rows()[0], '.settings-agent-name').value).toBe('Kept');
-    closeSettings();
+    close();
   });
 });
 
@@ -383,7 +409,7 @@ describe('focus containment', () => {
       { id: 'one', name: 'One', cmd: ['one'], color: '#111111' },
       { id: 'two', name: 'Two', cmd: ['two'], color: '#222222' },
     ]);
-    openSettings();
+    open();
     await flush();
 
     const del = cell(rows()[0], '.settings-agent-delete');
@@ -397,27 +423,77 @@ describe('focus containment', () => {
     expect(el('settings').contains(document.activeElement)).toBe(true);
 
     // Deleting the last remaining row falls back to "+ Add agent".
-    cell(rows()[0], '.settings-agent-delete').click();
+    click(cell(rows()[0], '.settings-agent-delete'));
     expect(rows()).toHaveLength(0);
     expect(document.activeElement).toBe(el('settings-agent-add'));
-    closeSettings();
+    close();
+  });
+});
+
+// The footer advertises [enter] save, so Enter has to actually confirm
+// the dialog — AGENTS.md lists dialog confirm/cancel as a hard-coded
+// binding. The two exclusions are the ones that would break something:
+// a newline in the overrides box, and Cancel closing AND saving on one
+// keystroke.
+describe('enter confirms', () => {
+  it('saves from a text field', async () => {
+    open();
+    await flush();
+    click(el('settings-agent-add'));
+    type(cell(rows()[0], '.settings-agent-name'), 'From Enter');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'entertool');
+    fireEvent.keyDown(cell(rows()[0], '.settings-agent-name'), {
+      key: 'Enter',
+    });
+    await flush();
+    expect(saveCustomAgents).toHaveBeenCalledTimes(1);
+    expect(saveCustomAgents.mock.calls[0][0][0].name).toBe('From Enter');
+  });
+
+  it('saves from a select, which the old text-input-only gate ignored', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-update-channel'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves Enter alone inside the custom-tokens textarea', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-overrides'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+  });
+
+  // Enter on a focused button is that button's own activation. Without
+  // the exclusion, Enter on Cancel would close the dialog and save the
+  // draft it was meant to discard.
+  it('leaves Enter alone on a button', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(el('settings-cancel'), { key: 'Enter' });
+    await flush();
+    expect(saveCustomAgents).not.toHaveBeenCalled();
   });
 });
 
 describe('escape', () => {
   it('consumes the event so it cannot reach the window handler', async () => {
-    openSettings();
+    open();
     await flush();
 
     const seen = vi.fn();
     window.addEventListener('keydown', seen);
-    el('settings').dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      }),
-    );
+    act(() => {
+      el('settings').dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
     window.removeEventListener('keydown', seen);
 
     expect(el('settings').classList.contains('hidden')).toBe(true);
@@ -430,7 +506,11 @@ describe('escape', () => {
 // window writes it back over what the box now shows — including
 // writeOverrides('') when the field was cleared on the way out.
 describe('appearance a11y', () => {
-  it('links the custom-tokens box to the slot it reports into', () => {
+  it('links the custom-tokens box to the slot it reports into', async () => {
+    // The controls exist only while the dialog is open now: React
+    // renders the panel on open and unmounts it on close.
+    open();
+    await flush();
     expect(
       el<HTMLTextAreaElement>('settings-overrides').getAttribute(
         'aria-describedby',
@@ -441,16 +521,36 @@ describe('appearance a11y', () => {
 });
 
 describe('appearance debounce', () => {
+  // The positive control. Without it the case below passes just as well
+  // when nothing is ever scheduled — which is what a raw `.value =`
+  // assignment does to a controlled textarea, React's value tracker
+  // swallowing the change and no debounce ever starting.
+  it('writes overrides once the debounce elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      open();
+      type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: red;');
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(localStorage.getItem('hive.themeOverrides')).toContain(
+        '--accent: red',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not write overrides after the dialog is closed', async () => {
     vi.useFakeTimers();
     try {
-      openSettings();
-      const box = el<HTMLTextAreaElement>('settings-overrides');
-      box.value = '--accent: red;';
-      box.dispatchEvent(new window.Event('input', { bubbles: true }));
-      closeSettings();
+      open();
+      type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: red;');
+      close();
       const before = localStorage.getItem('hive.themeOverrides');
-      vi.advanceTimersByTime(500);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
       expect(localStorage.getItem('hive.themeOverrides')).toBe(before);
     } finally {
       vi.useRealTimers();

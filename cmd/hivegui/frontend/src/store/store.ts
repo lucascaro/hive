@@ -75,6 +75,36 @@ export interface AppData {
   modeHint: ModeHint[];
   bootState: BootStateView | null;
   banners: Record<BannerSlot, BannerData>;
+  // ---------- modals (Phase 3) ----------
+  // The open modals, innermost last. It is the RENDER signal — which
+  // React modal is mounted-visible — and nothing else. "does a modal own
+  // the keyboard?" is still answered by app/modals/registry.ts off the
+  // `.hidden` class of every registered root (the legacy modals have no
+  // entry here at all), so this stack never has to agree with it.
+  modals: ModalEntry[];
+}
+
+// A modal is its id plus whatever that opening was parameterised with.
+// The launcher carries a request because every one of its openings is
+// different (which project, duplicate-from, resume-in-worktree); the
+// settings modal has nothing to carry.
+export type ModalId = 'launcher' | 'settings';
+
+// `seq` is the opening's generation, minted by openModal. A component
+// keys its per-open state off it (`key={entry.seq}`), which is what makes
+// a re-open — ⌘T over an already-open launcher — start clean instead of
+// looking like no change at all.
+export type ModalEntry =
+  | { id: 'launcher'; seq: number; req: LauncherRequest }
+  | { id: 'settings'; seq: number };
+
+export interface LauncherRequest {
+  projectId: string | null;
+  useWorktree: boolean;
+  duplicateFrom: SessionInfo | null;
+  duplicateCwd: string;
+  worktreePath: string;
+  continueConversation: boolean;
 }
 
 export interface StatusView {
@@ -267,6 +297,7 @@ function initialData(): AppData {
       // renderUpdateAction reveals it once there is something to do.
       update: { ...EMPTY_BANNER, actions: { action: { hidden: true } } },
     },
+    modals: [],
   };
 }
 
@@ -729,6 +760,32 @@ export function resetBanner(slot: BannerSlot): void {
 
 // Reset to a freshly-loaded state, optionally seeded. Only the dom/unit
 // suites call this — the app itself boots the store exactly once.
+// ---------- modals ----------
+
+// openModal pushes, replacing an entry that is already open rather than
+// stacking a second copy of it: re-opening the launcher over itself is a
+// real gesture (⌘T while it is up) and must leave exactly one.
+let modalSeq = 0;
+export function openModal(entry: DistributiveOmit<ModalEntry, 'seq'>): void {
+  const rest = get().modals.filter((m) => m.id !== entry.id);
+  set({ modals: [...rest, { ...entry, seq: ++modalSeq } as ModalEntry] });
+}
+
+// Omit over a union distributes only if it is applied per member.
+type DistributiveOmit<T, K extends keyof T> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+export function closeModal(id: ModalId): void {
+  const cur = get().modals;
+  const next = cur.filter((m) => m.id !== id);
+  if (next.length !== cur.length) set({ modals: next });
+}
+
+export function isModalOpen(id: ModalId): boolean {
+  return get().modals.some((m) => m.id === id);
+}
+
 export function resetStore(seed: Partial<AppData> = {}): void {
   replace({ ...initialData(), ...seed }, true);
 }

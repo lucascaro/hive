@@ -6,6 +6,8 @@
 // Cancel must not be able to lose a running download.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
+import { act, fireEvent, render } from '@testing-library/react';
+import { resetStore } from '../../src/store/store.js';
 import type { UpdateInfoLike } from '../../src/lib/update-state.js';
 
 const bridge = vi.hoisted(() => ({
@@ -59,11 +61,13 @@ vi.mock('../../src/app/session-term.js', () => ({
   applyXtermTheme: vi.fn(),
 }));
 
-// settings.ts builds its own dialog now (dialog + field primitives), so
-// the fixture is only the app root it mounts into plus the singletons
-// dom.ts resolves at import time.
+// The dialog root is declared in index.html and the component renders
+// into it, so the fixture carries the same element — nested under #app,
+// because RTL's cleanup() removes a render() container whose parentNode
+// IS document.body.
 const MARKUP = `
-  <div id="app"></div>
+  <div id="app"><div id="settings" class="hv-dialog hidden" role="dialog"
+    aria-modal="true" aria-labelledby="settings-title"></div></div>
   <div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>`;
 
 type SettingsModule = typeof import('../../src/app/modals/settings.js');
@@ -72,6 +76,7 @@ let closeSettings: SettingsModule['closeSettings'];
 let initSettings: SettingsModule['initSettings'];
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
+let Settings: typeof import('../../src/components/modals/Settings.js')['Settings'];
 
 function el<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -79,17 +84,30 @@ function el<T extends HTMLElement>(id: string): T {
   return found as T;
 }
 
-// Lets every pending bridge promise settle before asserting on the DOM.
-const settle = () => new Promise((r) => setTimeout(r, 0));
+// Lets every pending bridge promise settle AND React re-render before
+// asserting on the DOM: the bridge callbacks write state from outside a
+// React event handler.
+const settle = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
 // The source-repo probe is debounced (it stats its way up a directory
 // tree), so its assertions have to wait past that window rather than a
 // microtask.
-const settleProbe = () => new Promise((r) => setTimeout(r, 320));
+const settleProbe = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 320));
+  });
+
+// The open/close pair writes the store from outside React.
+const open = () => act(() => openSettings());
+const close = () => act(() => closeSettings());
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
   const mod = await import('../../src/app/modals/settings.js');
   ({ openSettings, closeSettings, initSettings } = mod);
+  ({ Settings } = await import('../../src/components/modals/Settings.js'));
   refocusActiveTerm = vi.fn();
   setFocusedTile = vi.fn();
   initSettings({ refocusActiveTerm, setFocusedTile });
@@ -101,12 +119,13 @@ beforeEach(async () => {
     channel: 'release',
     source_repo: '',
   });
-  closeSettings();
+  resetStore();
+  render(<Settings root={el('settings')} />, { container: el('settings') });
 });
 
 describe('settings: update channel', () => {
   it('hides the source-repo row on the release channel', async () => {
-    openSettings();
+    open();
     await settle();
     expect(el<HTMLSelectElement>('settings-update-channel').value).toBe(
       'release',
@@ -117,11 +136,10 @@ describe('settings: update channel', () => {
   });
 
   it('reveals the source-repo row and its detected path on latest', async () => {
-    openSettings();
+    open();
     await settle();
     const channel = el<HTMLSelectElement>('settings-update-channel');
-    channel.value = 'latest';
-    channel.dispatchEvent(new Event('change'));
+    fireEvent.change(channel, { target: { value: 'latest' } });
     await settleProbe();
 
     expect(el('settings-source-repo-row').classList.contains('hidden')).toBe(
@@ -131,12 +149,11 @@ describe('settings: update channel', () => {
   });
 
   it('saves the channel alongside the agents', async () => {
-    openSettings();
+    open();
     await settle();
     const channel = el<HTMLSelectElement>('settings-update-channel');
-    channel.value = 'latest';
-    channel.dispatchEvent(new Event('change'));
-    el('settings-save').dispatchEvent(new MouseEvent('click'));
+    fireEvent.change(channel, { target: { value: 'latest' } });
+    fireEvent.click(el('settings-save'));
     await settle();
 
     expect(bridge.SaveUpdateSettings).toHaveBeenCalledWith(
@@ -158,9 +175,9 @@ describe('settings: update channel', () => {
     bridge.SaveUpdateSettings.mockRejectedValueOnce(
       new Error('no hive checkout found'),
     );
-    openSettings();
+    open();
     await settle();
-    el('settings-save').dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(el('settings-save'));
     await settle();
 
     expect(el('settings-error').textContent).toContain('no hive checkout');
@@ -171,18 +188,16 @@ describe('settings: update channel', () => {
   // both wasteful and unordered, so a slow answer for "/Use" could
   // overwrite the fast one for "/Users/me/hive".
   it('debounces the source-repo probe across rapid typing', async () => {
-    openSettings();
+    open();
     await settle();
     const channel = el<HTMLSelectElement>('settings-update-channel');
-    channel.value = 'latest';
-    channel.dispatchEvent(new Event('change'));
+    fireEvent.change(channel, { target: { value: 'latest' } });
     await settleProbe();
     bridge.SourceRepoStatusFor.mockClear();
 
     const input = el<HTMLInputElement>('settings-source-repo');
     for (const v of ['/U', '/Us', '/User', '/Users/me/hive']) {
-      input.value = v;
-      input.dispatchEvent(new Event('input'));
+      fireEvent.change(input, { target: { value: v } });
     }
     await settleProbe();
 
@@ -191,12 +206,11 @@ describe('settings: update channel', () => {
   });
 
   it('fills the path from the directory picker', async () => {
-    openSettings();
+    open();
     await settle();
     const channel = el<HTMLSelectElement>('settings-update-channel');
-    channel.value = 'latest';
-    channel.dispatchEvent(new Event('change'));
-    el('settings-source-repo-browse').dispatchEvent(new MouseEvent('click'));
+    fireEvent.change(channel, { target: { value: 'latest' } });
+    fireEvent.click(el('settings-source-repo-browse'));
     await settleProbe();
 
     expect(el<HTMLInputElement>('settings-source-repo').value).toBe(
@@ -207,7 +221,7 @@ describe('settings: update channel', () => {
 
 describe('settings: update button', () => {
   it('offers Update when one is available', async () => {
-    openSettings();
+    open();
     await settle();
     const action = el<HTMLButtonElement>('settings-update-action');
     expect(action.textContent).toBe('Update');
@@ -216,9 +230,9 @@ describe('settings: update button', () => {
   });
 
   it('starts staging on click', async () => {
-    openSettings();
+    open();
     await settle();
-    el('settings-update-action').dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(el('settings-update-action'));
     await settle();
     expect(bridge.StartUpdate).toHaveBeenCalledTimes(1);
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
@@ -232,11 +246,11 @@ describe('settings: update button', () => {
       message: 'Update ready',
       channel: 'release',
     });
-    openSettings();
+    open();
     await settle();
     const action = el<HTMLButtonElement>('settings-update-action');
     expect(action.textContent).toBe('Restart');
-    action.dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(action);
     await settle();
     expect(bridge.Confirm).toHaveBeenCalledTimes(1);
     expect(bridge.ApplyUpdateAndRestart).toHaveBeenCalledTimes(1);
@@ -253,26 +267,56 @@ describe('settings: update button', () => {
       latest: '2.5.0',
       channel: 'release',
     });
-    openSettings();
+    open();
     await settle();
-    el('settings-update-action').dispatchEvent(new MouseEvent('click'));
+    fireEvent.click(el('settings-update-action'));
     await settle();
     expect(bridge.ApplyUpdateAndRestart).not.toHaveBeenCalled();
+  });
+
+  // The click-time disable is a stopgap for the gap before the first
+  // progress event, not a latch. Once staging is ready the button is the
+  // only way to apply the update — leaving it greyed out stranded the
+  // user with nothing to do but close and reopen Settings.
+  it('re-enables the button when staging finishes after a click', async () => {
+    open();
+    await settle();
+    const action = el<HTMLButtonElement>('settings-update-action');
+    fireEvent.click(action);
+    expect(action.disabled).toBe(true);
+
+    // The same event the banner listens to, delivered through the
+    // subscription EventsOn registered on open.
+    const [, onProgress] = bridge.EventsOn.mock.calls.find(
+      ([name]) => name === 'update:progress',
+    ) as [string, (info: UpdateInfoLike) => void];
+    act(() => {
+      onProgress({
+        available: true,
+        stage: 'ready',
+        latest: '2.5.0',
+        message: 'Update ready',
+        channel: 'release',
+      });
+    });
+
+    expect(action.textContent).toBe('Restart');
+    expect(action.disabled).toBe(false);
   });
 
   // Staging outlives the modal: closing and reopening must show the
   // work Go is still doing, not a reset button.
   it('re-reads staging state on reopen rather than tracking it locally', async () => {
-    openSettings();
+    open();
     await settle();
-    closeSettings();
+    close();
     bridge.UpdateStatus.mockResolvedValueOnce({
       available: true,
       stage: 'staging',
       message: 'Downloading…',
       channel: 'release',
     });
-    openSettings();
+    open();
     await settle();
 
     const action = el<HTMLButtonElement>('settings-update-action');

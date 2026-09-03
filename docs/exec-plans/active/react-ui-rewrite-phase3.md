@@ -3,6 +3,8 @@
 - **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
+- **PR:** https://github.com/lucascaro/hive/pull/319
+- **Branch:** `feature/react-rewrite-phase3`
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
@@ -41,3 +43,106 @@ Violating any one reintroduces a shipped bug.
 
 Per the master plan's Verification block, compared against
 `.plans/react-rewrite-flake-baseline.md`.
+
+## Decision log
+
+**2026-09-02 — `anyModalOpen()` does NOT OR two sources.** Scope called for the
+store to be a second source of "is a modal open" alongside `modals/registry.ts`.
+It isn't needed: the registry already answers off the `.hidden` class of every
+registered root, and both React modals keep their root registered and keep
+toggling that class (from the island's layout effect). So the DOM class stays
+the single source of truth for "a modal owns the keyboard", and `app/focus.ts`,
+`app/session-term.ts` and every `getElementById(...).classList` gate in
+`keyboard.ts` are untouched — the smaller diff *and* the one with no
+two-sources-of-truth to keep in agreement.
+
+**2026-09-02 — modal entries, not bare ids.** `modals: ModalEntry[]` where an
+entry is `{ id: 'launcher'; seq; req }` or `{ id: 'settings'; seq }`, rather than
+the planned `ModalId[]`. Every launcher opening is parameterised (which project,
+duplicate-from, resume-in-worktree), and `seq` — minted by `openModal` — is what
+the component keys its per-open state off (`key={entry.seq}`). That key IS the
+port of the imperative `openGeneration` / `openToken` counters: a re-open
+remounts the body, so a stale response lands on an unmounted component and the
+"did it get reopened under me?" check is just the unmount guard.
+
+**2026-09-02 — `flushSync` on both close paths.** `closeLauncher` and
+`closeSettings` run from plain window/DOM listeners, so an ordinary store write
+is flushed a microtask later — the modal would still be visible when
+`refocusActiveTerm()` ran, and `app/focus.ts` refuses to touch the terminal
+while a modal is open. Four e2e specs caught exactly that ("closing returns the
+keyboard to the terminal"). Wrapping the `closeModal` call in `flushSync` keeps
+the blur → hide → refocus order the imperative version had.
+
+**2026-09-02 — focus-on-open is a passive effect, not a layout one.** Layout
+effects run child-first, so when the body's ran, the island had not yet removed
+`.hidden` — and `focus()` on a `display: none` element is a silent no-op. jsdom
+has no CSS, so the DOM tests stayed green while the browser lost the filter box's
+focus entirely. Positioning stays in the layout effect (no flash); focus moved to
+a passive one, which runs after the island's layout effect has revealed the
+popup.
+
+**2026-09-02 — `settings.ts` and `launcher.ts` are gutted, not deleted.**
+Scope said "deleted". Both files still export the open/close pair every caller
+imports from that path, plus what is not rendering: the launch-count table, the
+three session actions (duplicate / restart / duplicate-choose-tool), the argv
+splitter Go's validator mirrors, and `initThemeWatch`, which is not part of the
+modal at all. Deleting the modules would have meant rewriting every import in
+`keyboard.ts`, `events.ts`, `main.ts`, `Sidebar.tsx` and `EmptyState.tsx` for no
+gain — the same shape as Phase 2's gutted `banners.ts`.
+
+**2026-09-02 — the dialog root moved into `index.html`.** `#settings` is now a
+static empty `div.hv-dialog.hidden` with the `role`/`aria-modal`/
+`aria-labelledby` `ui/dialog.ts` used to stamp, because a React root needs a
+mount node that exists before the modal is first opened. `#settings-scroll` and
+`#settings-updates` stay direct children of `.hv-dialog__body` — `settings.css`
+pins Updates below the scrolling region — so the Enter-to-save listener hangs off
+the root element rather than a wrapper div.
+
+**2026-09-02 — the `[enter] save` hint is new UI, so Enter now confirms the
+dialog.** Review iteration 2 corrected the record: the pre-Phase-3 `dialog({...})`
+call passed no `hints` at all, so the footer hint this phase adds (for the plan's
+"visible confirm/cancel key hints" criterion, and AGENTS.md › Feedback on Action)
+was never a preserved behaviour — and it was inaccurate the moment it landed,
+because the keydown gate fired only for `input[type=text]`. Rather than drop a
+hint the criteria ask for, Enter now saves from anywhere in the dialog except the
+Appearance textarea (Enter is a newline there) and buttons (Enter is the button's
+own activation — Cancel would otherwise close *and* save). AGENTS.md lists dialog
+confirm/cancel as a hard-coded, non-rebindable binding, so this is the behaviour
+the hint should always have described.
+
+## Progress
+
+**2026-09-02** — Implemented. Store (`modals` slice + `openModal`/`closeModal`/
+`isModalOpen`/`modalEntry`); new `components/modals/{ModalShell,Launcher,Settings}.tsx`;
+`app/modals/{launcher,settings}.ts` gutted to the store-backed open/close pairs;
+`index.html` gained the `#settings` root; `main.ts` mounts the two islands;
+`IconButton` gained an `id` prop (the dialog close button needs `#settings-close`).
+
+Tests: `launcher.test.ts`, `settings.test.ts` and `settings-updates.test.ts`
+rewritten to RTL `.tsx` with every case ported and counts unchanged
+(36 / 19 / 11); new `modal-shell.test.tsx` (7). The e2e specs are unmodified —
+they are the proof the DOM contract survived.
+
+**2026-09-02 — Verification.** `npm run typecheck` clean; `npx biome ci .` clean
+(8 pre-existing warnings, same set as `main`); `scripts/ui-lint.sh --strict`
+0 violations; `vite build` succeeds; vitest **78 files / 848 tests** green;
+`go build ./...` + `go test ./internal/... ./cmd/hivegui/...` green; Playwright
+e2e **258 passed / 0 failed / 31 skipped**; `npm run test:e2e:real` **24 passed**.
+**2026-09-02 — CI.** All legs green on `a65813f` (Linux, macOS, Windows,
+`block-generated-edits`, `verify-generated`, CodeQL). The macOS leg went red once
+on `worktrees.spec.ts:247` ("the worktree glyph on a session opens the browser",
+a `focus()` → `toBeFocused()` assertion) and passed on retry — `1 flaky / 257
+passed`, which the strict setting reports as a failed leg. Not this phase:
+`worktrees.spec.ts` and the sidebar row it drives are untouched here (the
+worktree browser is Phase 4), the same file flaked on Phase 2's run
+(`worktrees.spec.ts:387`), the spec ran 120/120 locally on macOS at
+`--repeat-each=3`, and a re-run of the failed leg alone came back green.
+
+## PR convergence ledger
+
+_(opened 2026-09-02 for PR #319; `/hs-review-loop` appends one entry per iteration)_
+
+- **2026-09-02 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 54e8817e; threads_open: 0; action: fixes applied + push (3 IMPORTANT stood, so not convergence under the loop's "COMMENT with only MINOR remaining" bar); head_sha: 2e01fb5.
+- **2026-09-02 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: converged (all three iter-1 IMPORTANTs verified fixed at source); head_sha: 2e01fb5.
+- **2026-09-02 post-loop** — two of the three remaining MINORs applied: unused `modalEntry()` export deleted, and the `[enter] save` hint made honest (see Decision log). The third — a repeated identical error message not re-scrolling — left as-is: the reviewer's own read is that the fix is worse than the bug.
+- **2026-09-02 post-loop CI** — all legs green on `a65813f` after one retry-green flake on `worktrees.spec.ts:247` (see Verification).

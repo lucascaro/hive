@@ -107,6 +107,12 @@
          title="Drag to resize (← / → to adjust, ⇧ for larger steps)"></div>
   </aside>
   <div id="launcher" class="hidden" role="menu"></div>
+  <!-- The settings dialog's root. Empty: components/modals/Settings.tsx
+       renders the panel into it. The attributes are the ones ui/dialog.ts
+       stamps on a dialog root, and they live here so the React root has
+       something to mount on before the modal is ever opened. -->
+  <div id="settings" class="hv-dialog hidden" role="dialog" aria-modal="true"
+       aria-labelledby="settings-title"></div>
   <div id="command-palette" class="hidden" role="dialog" aria-label="Command palette">
     <input id="command-palette-input" type="text" placeholder="Search actions, shortcuts…" aria-label="Search commands" autocomplete="off"/>
     <div id="command-palette-list" role="listbox"></div>
