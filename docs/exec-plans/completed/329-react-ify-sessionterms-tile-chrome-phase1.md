@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/329-tile-chrome-phase1`
 - **PR:** [#329](https://github.com/lucascaro/hive/pull/329)
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -136,6 +136,12 @@ gate.
 ## Progress
 
 - **2026-09-03** — Scaffolded from the approved plan-first plan.
+- **2026-09-03** — Gate NEEDS_FOLLOWUP, then PASS: `components.md`'s
+  causal claim about why `src/ui/` survives was stale in a way this PR
+  itself caused. Rewritten to name each file's real remaining caller
+  (`session-term.ts`'s overlays for `icon.ts`, `banners.ts` for
+  `icon-button.ts`) and to record that `ensureSprite()` moves rather than
+  dies. Fixed on the branch, not filed as debt — the PR was open.
 - **2026-09-03** — Implemented on `feature/329-tile-chrome-phase1`.
   Order: terms membership subscription → `tileChrome` slice → component →
   strip the imperative header → call sites → tests. Green at each step.
@@ -146,6 +152,44 @@ gate.
   specs unmodified), `npm run test:e2e:real` (22 passed, 2 skipped),
   `ui-lint.sh --strict` (0 violations), `ui-lint.sh --contrast`
   (0 failures), `go build ./...`.
+
+## Gate verdict
+
+- **2026-09-03** — verdict: NEEDS_FOLLOWUP; checks: 2 dimensions passed /
+  0 failed / 1 followup; followups: none (PR open, so the fix landed in
+  this PR rather than as tracked debt); one-line: doc accuracy caught a
+  stale causal claim in `docs/design-docs/ui/components.md` — it still
+  said `icon.ts` and `icon-button.ts` "survive only because
+  session-term.ts builds the terminal tile imperatively", which this PR
+  made false (`session-term.ts` no longer imports `iconButton` at all;
+  `app/banners.ts` is its sole remaining caller).
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all 9 phase criteria and the master plan's
+      invariants observed: the 8 imperative header fields are gone with
+      no dangling references, `useTermIds`/`subscribeTerms` make
+      membership reactive while `TileChromeState` holds plain data only,
+      `git diff --stat main...HEAD -- test/e2e test/e2e-real` is empty,
+      `TileChrome.tsx` has no effect hook and no `ensureAttached` call,
+      the constructor's empty `.tile-header` is appended before any React
+      pass, and `applyXtermTheme`/`applyFontSize` still iterate
+      `allTerms()`. `tile-chrome.test.tsx` 11/11; `tsc --noEmit` clean.
+    - non-goals — PASS — React owns no part of the xterm lifecycle (no
+      `@xterm` or `webgl-budget` import in any `src/components/` file),
+      `keyboard.ts` is a 0-line diff, no CSS Modules, both overlays are
+      still `document.createElement`, `src/ui/` and
+      `wireCheckUpdatesButton()` are intact, `.changesets/` is empty, and
+      no Go outside `cmd/hivegui/frontend/` is touched.
+    - doc accuracy — NEEDS_FOLLOWUP — the `components.md` sentence above.
+      Everything else accurate: `Icon.tsx`'s and `terms.ts`'s header
+      comments hold, `FRONTEND.md`/`DESIGN.md` are imprecise but not
+      false (Phase 2 finishes them), the plan matches the diff, and the
+      `no-changeset` framing is correct — the diff is a render-path swap
+      behind an unchanged DOM contract.
+- **2026-09-03** — verdict: PASS; checks: 3 dimensions passed / 0 failed
+  / 0 followups; followups: none; one-line: the `components.md` claim was
+  rewritten in this PR to name each primitive's real remaining caller, so
+  the followup that produced the NEEDS_FOLLOWUP is closed on the branch
+  rather than deferred.
 
 ## PR convergence ledger
 

@@ -4,7 +4,7 @@ title: "React-ify SessionTerm's tile chrome"
 type: enhancement
 complexity: L
 priority: P3
-stage: GATE
+stage: IMPLEMENT
 ---
 
 # React-ify SessionTerm's tile chrome
@@ -13,7 +13,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P3
-- **Exec plan:** [docs/exec-plans/active/329-react-ify-sessionterms-tile-chrome.md](../exec-plans/active/329-react-ify-sessionterms-tile-chrome.md)
+- **Exec plan:** [master](../exec-plans/active/329-react-ify-sessionterms-tile-chrome.md) · [phase 1](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase1.md) (completed) · [phase 2](../exec-plans/active/329-react-ify-sessionterms-tile-chrome-phase2.md)
 
 ## Problem
 
@@ -82,6 +82,21 @@ These are the reasons this was deferred, not incidental details:
   across all four.
 - `SessionTerm` still creates, owns and destroys `host`, `body`, the xterm
   instance and the WebGL slot. No `SessionTerm` instance enters React state.
+
+## Phases
+
+This spec ships in two PRs (master plan's `## Phases`). The spec's
+`## Success criteria` are the gate at **phase 2**, not phase 1 — the same
+convention the React rewrite used across its seven phases. `stage:`
+therefore tracks the phase in flight, and only phase 2's gate writes
+`DONE`.
+
+- **Phase 1** — portal boundary + the tile header. PR
+  [#329](https://github.com/lucascaro/hive/pull/329); gate PASS
+  2026-09-03; [plan](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase1.md).
+- **Phase 2** — the overlays, `src/ui/` deletion, `banners.ts`, docs, the
+  changeset. Not started;
+  [plan](../exec-plans/active/329-react-ify-sessionterms-tile-chrome-phase2.md).
 
 ## Notes
 

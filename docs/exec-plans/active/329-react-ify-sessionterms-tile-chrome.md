@@ -119,7 +119,7 @@ move; only the rendering does.
 
 ## Phases
 
-- **Phase 1 — portal infrastructure + the tile header.**
+- **Phase 1 — portal infrastructure + the tile header.** ([plan](../completed/329-react-ify-sessionterms-tile-chrome-phase1.md), PR #329, gate PASS)
   `store/terms.ts` version counter, the `tileChrome` slice, `TileChromeHost`,
   `TileHeader`, the inline rename. `session-term.ts` loses the header block.
   Ends with `src/ui/icon.ts`'s `stateIcon`/`icon` still alive (the phase overlay
