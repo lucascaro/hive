@@ -268,3 +268,4 @@ prevents the palette's own listener from firing), `flushSync` safe from a plain
 DOM handler for the same reason `closeSettings` already does it, and the hazard
 pre-existed in the imperative palette — the React focus pipeline's 8-frame retry
 is what made it reachable.
+- **2026-09-03 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 762045d1; threads_open: 0; action: fixes applied + push (1 IMPORTANT stood — the ladder fix had left `CommandPalette.tsx`'s Escape branch dead and its test comment inverted); head_sha: cd359cc.
