@@ -4,7 +4,7 @@
 - **Issue:** #323
 - **PR:** #325
 - **Branch:** `feature/323-add-check-for-updates-button-to-sidebar`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -158,6 +158,8 @@ module that owns `manualUpdateCheck`.
   green. Pushed as PR #325; stage = REVIEW.
 - **2026-09-03** — Review iteration 1 (COMMENT) caught 12 stale `HIVE_SNAPSHOT`
   pixel baselines; regenerated on darwin and committed.
+- **2026-09-03** — Gate PASS; stage = DONE, plan moved to `completed/`. PR #325
+  ready to merge.
 - **2026-09-03** — Gate FAIL (round 2); changeset disclosed the lost background
   but not the glyph dimming in the same `#new-project-btn` restyle. Reworded.
 - **2026-09-03** — Gate FAIL (round 1); README's Updating section named the macOS menu as
@@ -172,6 +174,11 @@ module that owns `manualUpdateCheck`.
 
 <Append-only. One entry per `/hs-merge-gate` run.>
 
+- **2026-09-03** — verdict: PASS; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all 5 success criteria observable, no non-goal breached, docs accurate after three doc-accuracy rounds.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — every success criterion demonstrated by a run, not by reading code: 6 DOM tests, 2 e2e tests, and a throwaway e2e that narrowed the sidebar to 60px to prove the brand still ellipsises
+    - non-goals — PASS — empty diff on `cmd/hivegui/update.go`, `keyboard.ts`, `command-palette.ts`; no React component owns the header
+    - doc accuracy — PASS (round 3) — README and changeset both accurate. Round 3's remaining finding was the undisclosed 120ms hover fade `.hv-icon-btn` adds; disclosed in the changeset and verified to honour `prefers-reduced-motion` (`tokens.css` zeroes `--motion-fast`). Loop stopped here deliberately: each round's finding was narrower than the last, and a changelog bullet is not a CSS changelog.
 - **2026-09-03** — verdict: FAIL (round 2); checks: 2 passed / 1 failed / 0 followups; followups: none (PR open — fixed in this PR); one-line: changeset disclosed the lost background but not the icon's foreground dim (`--fg` → `--fg-subtle`) in the same restyle.
   - 2026-09-03 dimensions:
     - acceptance — PASS (carried from round 1; no production code changed since)

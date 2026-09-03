@@ -5,7 +5,8 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 325
-stage: GATE
+shipped: 2026-09-03
+stage: DONE
 ---
 
 # Add a "check for updates" button to the sidebar
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/323-add-check-for-updates-button-to-sidebar.md](../exec-plans/active/323-add-check-for-updates-button-to-sidebar.md)
+- **Exec plan:** [docs/exec-plans/completed/323-add-check-for-updates-button-to-sidebar.md](../exec-plans/completed/323-add-check-for-updates-button-to-sidebar.md)
 
 ## Problem
 
