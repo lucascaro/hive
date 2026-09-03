@@ -144,6 +144,8 @@ Maintained by hand: `/hs-review-loop` writes into a plan it finds by an
 `<NNN>`-prefixed name, which this feature's plans do not have (see the master
 plan's [Gating convention](react-ui-rewrite.md#gating-convention)).
 
+- **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: e37a62b8; threads_open: 0; action: autofix+push; head_sha: 98bc37e. Autofix applied 5 safe fixes (the load-bearing one: the new dom test's deferred-attach `setTimeout` fired after jsdom teardown and made the Linux leg exit 1 with every test passing — fake timers fixed it). 2 risky items surfaced for a human call.
+
 ## Gate verdict
 
 Not yet run. `/hs-merge-gate` must be pointed at THIS plan, not the master plan
