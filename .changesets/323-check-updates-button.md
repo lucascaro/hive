@@ -11,5 +11,6 @@ bump: minor
   had no in-window trigger at all, and none whatsoever outside macOS.
 
 - Changed the "New project" (+) button to the app's standard icon-button
-  styling so it matches its new neighbour: it is flat and picks up its
-  background on hover, rather than carrying one at rest.
+  styling so it matches its new neighbour. At rest it is now flat and its
+  glyph is dimmed, the same as every other icon button in the app; hovering
+  restores the full-strength glyph and brings the background back.

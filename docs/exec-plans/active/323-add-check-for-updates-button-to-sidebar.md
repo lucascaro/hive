@@ -158,7 +158,9 @@ module that owns `manualUpdateCheck`.
   green. Pushed as PR #325; stage = REVIEW.
 - **2026-09-03** — Review iteration 1 (COMMENT) caught 12 stale `HIVE_SNAPSHOT`
   pixel baselines; regenerated on darwin and committed.
-- **2026-09-03** — Gate FAIL; README's Updating section named the macOS menu as
+- **2026-09-03** — Gate FAIL (round 2); changeset disclosed the lost background
+  but not the glyph dimming in the same `#new-project-btn` restyle. Reworded.
+- **2026-09-03** — Gate FAIL (round 1); README's Updating section named the macOS menu as
   the only manual trigger and was not updated for the new sidebar button. Fixed
   on the branch (the PR is open, so no follow-up issue); re-running the gate.
 - **2026-09-03** — Review iteration 2: APPROVE, zero unresolved threads, CI green
@@ -170,7 +172,12 @@ module that owns `manualUpdateCheck`.
 
 <Append-only. One entry per `/hs-merge-gate` run.>
 
-- **2026-09-03** — verdict: FAIL; checks: 2 passed / 1 failed / 0 followups; followups: none (PR open — fixed in this PR); one-line: README's Updating section still named the macOS menu as the only manual trigger.
+- **2026-09-03** — verdict: FAIL (round 2); checks: 2 passed / 1 failed / 0 followups; followups: none (PR open — fixed in this PR); one-line: changeset disclosed the lost background but not the icon's foreground dim (`--fg` → `--fg-subtle`) in the same restyle.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS (carried from round 1; no production code changed since)
+    - non-goals — PASS (carried from round 1)
+    - doc accuracy — FAIL — README fix accepted; changeset's disclosure of the `#new-project-btn` restyle was incomplete
+- **2026-09-03** — verdict: FAIL (round 1); checks: 2 passed / 1 failed / 0 followups; followups: none (PR open — fixed in this PR); one-line: README's Updating section still named the macOS menu as the only manual trigger.
   - 2026-09-03 dimensions:
     - acceptance — PASS — all 5 success criteria observable; the brand-ellipsis criterion was verified by narrowing the sidebar to 60px in a throwaway e2e run
     - non-goals — PASS — `cmd/hivegui/update.go`, `keyboard.ts` and `command-palette.ts` have an empty diff; no React component owns the header
