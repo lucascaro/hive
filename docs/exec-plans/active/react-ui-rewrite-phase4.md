@@ -323,3 +323,21 @@ deletion phase, and doing it here would mean re-reviewing a scope expansion
 after an APPROVE), so they are listed explicitly in the master plan's phase
 table rather than left for a future reviewer to rediscover.
 - **2026-09-03 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 8439446. Converged: all three CI legs green (macOS first-attempt, which is what the iteration-4 mount-order fix targeted); iteration-4 fixes verified at source; 5 MINORs left, one of them carried to Phase 6's deletion sweep.
+
+## Gate verdict
+
+- **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 0 followups; followups: none filed (the PR is open, so the fix goes here); one-line: acceptance and non-goals pass on evidence; doc accuracy found one false claim in the master plan's per-phase Tests forecast.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all six criteria with observable evidence: `modals/registry.ts` deleted and the five modals mounting into the same `index.html` ids (`main.ts:347-364`); the ladder's nine gates in byte-for-byte the same order as `main` but reading `isModalOpen()` instead of `.classList.contains('hidden')`, pinned by a genuinely table-driven test (13/13); `addEventListener('keydown', …, true)` unchanged; the anti-strand test asserting `anyModalOpen() === false` after BOTH close paths rather than merely that a dialog closed; the `focus-trap.ts` rename; and `Worktrees.tsx` importing the classification/sort/blocker logic from `lib/worktrees.ts`. `git diff --stat main...HEAD -- '*.spec.ts'` empty; full vitest 934/934.
+    - non-goals — PASS — every mechanical negative holds (no Go/`go.mod`/`bridge.ts`/`vite.config.js` diff, no spec touched, no `data-testid`, a 61-class `hv-*` census identical to `main`, `session-term.ts` a one-line import reroute). The four behaviour-adjacent changes were each ruled against `main` rather than against their own justification: the palette Escape branch (`main`'s listener was bound to `#command-palette`, so it could never fire once focus left that subtree — the ladder restores an invariant rather than adding UX), the `VersionFooter` mount order (sequencing only), the `· ` separator (`git show main:ui/dialog.ts:144` shows the literal `' · '` text node it reproduces), and the seven regenerated baselines (only `dialog-*` + `settings-classic`; the six `worktrees-*` untouched and still green in a 59/59 run).
+    - doc accuracy — FAIL — `react-ui-rewrite.md:150` claimed Phase 4 RTL-rewrites `worktrees.test.tsx`, `focus-trap.test.tsx` and `keyboard-arrows.test.tsx`. Only the first is true: `focus-trap.test.ts` took an import repoint and stays plain jsdom, and `keyboard-arrows.test.ts` was never touched (`git log main...HEAD -- …` empty). Everything else passed — the changeset's bullet verified true against `inline-rename.ts` and its test, `CHANGELOG.md` untouched, the `ModalShell` docs matching the component's real props, and no live import of any deleted module.
+
+**2026-09-03 — Gate FAIL fixed on the branch.** The Tests line was a plan-time
+forecast that the shipped code contradicted; it now describes what actually
+happened and why neither of the other two files needed a rewrite (the focus-trap
+helpers' signatures did not change; arrow routing sits below the modal ladder).
+Both replacement claims were verified before writing them.
+
+**Follow-up, not this PR's:** `.changesets/README.md` is referenced by
+`AGENTS.md` and `CONTRIBUTING.md` as the changeset schema and does not exist on
+`main` either.
