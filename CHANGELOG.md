@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 Settings now shows its confirm and cancel key hints (`[esc]` / `[enter]`) in the dialog footer, like every other overlay.
+- Rewrote the desktop GUI's frontend in React 19 with a zustand store, region by
+  region, replacing ~13k lines of hand-written DOM bookkeeping. The app looks and
+  behaves identically — this is an internal change — but the sidebar, chrome,
+  modals and grid now repaint only the parts that actually changed instead of
+  rebuilding a whole region on every update. Terminals are untouched: xterm keeps
+  its own imperative lifecycle, and no terminal is ever recreated by a re-render.
 - Reskinned chrome: notice banners, a real status bar with inline mode
   shortcuts, grid tile headers with state icons, and consistent launcher and
   command-palette rows.
