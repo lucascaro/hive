@@ -31,13 +31,17 @@ vi.mock('../../src/bridge.js', () => ({
 let state: typeof import('../../src/app/state.js').state;
 let grid: typeof import('../../src/app/grid-layout.js');
 let GridView: typeof import('../../src/components/GridView.js').GridView;
+let view: typeof import('../../src/app/view.js');
 
 // Every ensureAttached() call records the grid template as it stood at
 // that moment, which is what makes "template before attach" observable
 // as a sequence rather than an end state.
 const attachedWithTemplate: string[] = [];
+// Per-tile attach counts, for the assertions that care WHICH tiles a
+// path touched rather than how many attaches happened in total.
+const attachCount = new Map<string, number>();
 
-function fakeTerm(): TermTile {
+function fakeTerm(id: string): TermTile {
   const host = document.createElement('div');
   return {
     host,
@@ -50,6 +54,7 @@ function fakeTerm(): TermTile {
     ensureAttached() {
       const terms = document.getElementById('terms');
       attachedWithTemplate.push(terms?.style.gridTemplateColumns ?? '');
+      attachCount.set(id, (attachCount.get(id) ?? 0) + 1);
     },
     show() {},
     hide() {},
@@ -90,7 +95,14 @@ beforeAll(async () => {
   ({ state } = await import('../../src/app/state.js'));
   grid = await import('../../src/app/grid-layout.js');
   ({ GridView } = await import('../../src/components/GridView.js'));
-  grid.initGridLayout({
+  view = await import('../../src/app/view.js');
+  // initView forwards its deps to initGridLayout, so this wires both
+  // halves — and exercises that forwarding.
+  view.initView({
+    setActive: (id) => {
+      state.activeId = id;
+    },
+    focusActiveTerm: () => {},
     // The real ensureTerm builds an xterm; here the tile is pre-seeded
     // and this only hands it back, which is also what makes "reparent,
     // never recreate" checkable by node identity.
@@ -116,6 +128,7 @@ beforeEach(() => {
   // them on purpose; afterEach discards whatever is still queued.
   vi.useFakeTimers();
   attachedWithTemplate.length = 0;
+  attachCount.clear();
   termsHost().innerHTML = '';
   termsHost().removeAttribute('style');
   state.projects = [{ id: 'p1' }];
@@ -123,7 +136,7 @@ beforeEach(() => {
     { id: 'a', project_id: 'p1', order: 0 },
     { id: 'b', project_id: 'p1', order: 1 },
   ];
-  state.terms = new Map(state.sessions.map((s) => [s.id, fakeTerm()]));
+  state.terms = new Map(state.sessions.map((s) => [s.id, fakeTerm(s.id)]));
   state.activeId = 'a';
   state.currentProjectId = 'p1';
   state.view = 'grid-project';
@@ -274,5 +287,25 @@ describe('GridView', () => {
 
     expect(termsHost().classList.contains('single')).toBe(true);
     expect(termsHost().classList.contains('grid')).toBe(false);
+  });
+});
+
+describe('reselecting the active tile in a grid', () => {
+  // The pass this phase deleted from switchTo() was also what re-attached
+  // a tile carrying needsReattach (pty:disconnect sets it on Restart
+  // Session). events.ts covers the case where a fresh alive=true event
+  // follows; clicking the tile is the manual path when one never does.
+  it('re-attaches that tile without running a layout pass', () => {
+    render(<GridView />);
+    attachedWithTemplate.length = 0;
+    attachCount.clear();
+
+    view.switchTo('a');
+
+    expect(attachCount.get('a')).toBe(1);
+    // The whole point of not repainting: tile b is not re-anchored to the
+    // bottom for a selection that did not change. A full pass would
+    // ensureAttached() every in-grid tile.
+    expect(attachCount.get('b')).toBeUndefined();
   });
 });

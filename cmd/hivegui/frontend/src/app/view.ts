@@ -96,9 +96,23 @@ function withLayout<T>(fn: () => T): T {
 }
 
 export function switchTo(id: string | null) {
-  if (id === state.activeId && state.view === 'single') {
-    deps.focusActiveTerm();
-    return;
+  if (id === state.activeId) {
+    if (state.view === 'single') {
+      deps.focusActiveTerm();
+      return;
+    }
+    // Grid, same id: nothing GridView watches moved, so no layout pass
+    // runs — and that is the point, a pass would re-anchor every
+    // background tile to the bottom for a selection that did not change.
+    // But reselecting the active tile is also the user's "unstick this"
+    // gesture, and the pass this replaced was what re-attached a tile
+    // carrying needsReattach (set by pty:disconnect on Restart Session).
+    // events.ts reattaches visible tiles on the next alive=true event;
+    // this is the manual path for when that event never comes. Scoped to
+    // the one tile, where the old full pass hit all of them.
+    if (id) state.terms.get(id)?.ensureAttached();
+    // Falls through: the status text, mode hint, app title, focus and
+    // bottom-snap below all ran on this path before and still should.
   }
   const info = withLayout(() => {
     deps.setActive(id);
