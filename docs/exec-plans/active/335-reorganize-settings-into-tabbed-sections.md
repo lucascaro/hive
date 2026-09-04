@@ -231,11 +231,14 @@ npm run typecheck         # needs ./scripts/ci-bootstrap.sh in a fresh worktree
   flagged the `as TabId` cast at the call site; a generic removes it, and an
   unchecked cast on a value coming back from a child is exactly what breaks
   silently when a tab id is added.
-- **2026-09-03** — Dropped the `activeTab` fallback that re-selected Agents when
-  `tab` named a tab missing from the strip. Why: `MenuBarLoginItemStatus` is read
-  once at mount and never re-read, so a tab can only ever be *added* to the
-  strip — the state it guarded is unreachable, and the test for it could not
-  fail.
+- **2026-09-03** — Restored the `activeTab` fallback that re-selects Agents when
+  `tab` names a tab missing from the strip. It was dropped earlier on the wrong
+  premise ("the status is read once and never re-read"); review iteration 2
+  caught that `toggleMenuBarLoginItem` re-reads it after every toggle, and that
+  `"unsupported"` is Go's `default:` branch in `loginitem_darwin.go`, not just
+  macOS ≤ 12. So the tab can leave the strip while selected, and the failure is
+  a strip with nothing selected, no visible panel and dead arrow keys. `Tabs`
+  also no longer goes inert on an `active` outside its list.
 
 ## Progress
 
@@ -262,6 +265,8 @@ Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: CONFLICTING; findings_hash: 511f85f4; threads_open: 0; action: escalated:risky fix needs human decision (main gained a #settings-menubar section inside the deleted #settings-scroll; which tab owns it is an IA call); head_sha: 9d64f72.
 - **2026-09-03 iter 1 (resolution)** — rebased onto origin/main; Menu bar placed in its own macOS-only tab; findings 2 and 3 fixed; baselines regenerated and reviewed.
+- **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 21471a1d; threads_open: 0; action: stop (strict off, no threads); head_sha: 7c64152.
+- **2026-09-03 iter 2 (follow-up)** — the one IMPORTANT was a false invariant in a comment this branch added; corrected, the clamp restored, and covered by a dom test verified to fail without it.
 
 ## Open questions
 

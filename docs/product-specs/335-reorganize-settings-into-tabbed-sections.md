@@ -5,7 +5,7 @@ title: "Reorganize Settings into tabbed sections"
 type: enhancement
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Reorganize Settings into tabbed sections

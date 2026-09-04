@@ -758,4 +758,33 @@ describe('settings menu-bar tab', () => {
     await flush();
     expect(setMenuBarLoginItem).toHaveBeenCalledWith(true);
   });
+
+  // The toggle re-reads the status, and "unsupported" is Go's default:
+  // branch — so an unexpected status code can take the tab away while it
+  // is the selected one. Without the activeTab clamp the body renders a
+  // strip with nothing selected, no visible panel, and dead arrow keys.
+  it('falls back to Agents if the tab leaves the strip while selected', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    click(el('settings-tab-menubar'));
+    expect(el('settings-panel-menubar').classList.contains('hidden')).toBe(
+      false,
+    );
+
+    // The next status read is the one the toggle makes.
+    menuBarStatus = 'unsupported';
+    click(el('settings-menubar-login-item'));
+    await flush();
+
+    expect(document.getElementById('settings-tab-menubar')).toBeNull();
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+    expect(el('settings-tab-agents').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(el('settings-panel-agents').classList.contains('hidden')).toBe(
+      false,
+    );
+  });
 });

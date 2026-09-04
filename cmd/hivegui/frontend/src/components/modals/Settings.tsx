@@ -386,12 +386,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const updateBtn = updateButtonState(updateInfo, isMac);
 
   // MenuBarLoginItemStatus resolves after mount, so the strip gains its
-  // fourth tab once the answer arrives. It only ever gains one: the
-  // status is read once and never re-read, so a tab cannot leave the
-  // strip while it is the selected one, and `tab` always names a tab
-  // that is there.
+  // fourth tab once the answer arrives — and toggleMenuBarLoginItem
+  // re-reads the status after every toggle, so the tab can leave the
+  // strip too. "unsupported" is Go's default: branch (loginitem_darwin.go),
+  // not just macOS 12 and earlier, so an unexpected status code is enough
+  // to lose the tab under the user mid-session. activeTab is what keeps
+  // that from rendering as a strip with no selected tab, no visible panel,
+  // and — because Tabs resolves the active id by index — dead arrow keys.
   const showMenuBar = isMac && menuBarStatus !== 'unsupported';
   const tabs = tabsFor(showMenuBar);
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   function runUpdate() {
     if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
@@ -555,10 +559,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         id="settings"
         label="Settings sections"
         tabs={tabs}
-        active={tab}
+        active={activeTab}
         onChange={setTab}
       />
-      <Panel tab="agents" active={tab}>
+      <Panel tab="agents" active={activeTab}>
         {/* No <h4>: the selected tab is this section's heading, and the
             panel is aria-labelledby it. */}
         <p className="settings-hint">
@@ -627,7 +631,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         />
       </Panel>
 
-      <Panel tab="appearance" active={tab}>
+      <Panel tab="appearance" active={activeTab}>
         <p className="settings-hint">
           Applies as you change it, and is remembered. Cancel does not undo it.
         </p>
@@ -692,7 +696,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       </Panel>
 
       {showMenuBar ? (
-        <Panel tab="menubar" active={tab}>
+        <Panel tab="menubar" active={activeTab}>
           {/* The menu bar is macOS-only and starts itself whenever hived or
             a window does, so this tab is about ONE thing: whether launchd
             should start it at login too. Unsigned builds cannot register
@@ -723,7 +727,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         </Panel>
       ) : null}
 
-      <Panel tab="updates" active={tab}>
+      <Panel tab="updates" active={activeTab}>
         <p className="settings-hint">
           Hive checks for updates in the background. Nothing is downloaded or
           built until you press Update.

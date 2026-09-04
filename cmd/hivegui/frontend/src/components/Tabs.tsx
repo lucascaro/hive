@@ -56,8 +56,15 @@ export function Tabs<T extends string>({
   // the pattern's default for panels that are already mounted: there is
   // nothing to load, so an extra Enter to activate would be friction.
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    const i = tabs.findIndex((t) => t.id === active);
-    if (i < 0) return;
+    // An `active` that is not in `tabs` would otherwise leave the arrow
+    // keys dead. Treat it as "before the first tab" so the strip is still
+    // navigable; a caller should clamp, but the primitive should not go
+    // inert when one forgets.
+    const i = Math.max(
+      0,
+      tabs.findIndex((t) => t.id === active),
+    );
+    if (tabs.length === 0) return;
     let next = -1;
     if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
     else if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
