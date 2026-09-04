@@ -143,6 +143,9 @@ test('terminal hosts survive every chrome repaint', async ({ page }) => {
   // 4. Theme switch: applyXtermTheme() walks every live terminal.
   await page.keyboard.press(`${MOD}+,`);
   await expect(page.locator('#settings')).toBeVisible();
+  // Settings opens on the Agents tab; the theme picker lives on Appearance.
+  await page.locator('#settings-tab-appearance').click();
+  await expect(page.locator('#settings-panel-appearance')).toBeVisible();
   await page.locator('#settings-theme').selectOption('hive-light');
   await expect(page.locator('html')).toHaveAttribute(
     'data-theme',
