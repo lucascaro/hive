@@ -43,7 +43,7 @@ import { orderedSessions } from './selectors.js';
 import { handleWorktreesPayload } from './modals/worktrees.js';
 import { openChoiceDialog } from './modals/choice-dialog.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
-import { phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
+import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 import { createScrollTrace } from '../lib/scroll-debug.js';
@@ -422,11 +422,18 @@ export function wireDaemonEvents(injected: EventsDeps) {
       if (i >= 0) updateSession(ev.session);
       return;
     }
-    if (ev.kind === 'updated' && isClosing(phaseOf(ev.session))) {
+    if (ev.kind === 'updated' && phaseOf(ev.session) === PHASE.closing) {
       // Don't make the user watch a teardown: the moment the daemon
       // starts closing, hand focus to the neighbour. The tile itself
       // stays (dimmed) until `removed` lands, which can be seconds
       // later on a big worktree.
+      //
+      // `closing` only, not isClosing() — that also covers `checking`,
+      // the daemon's pre-flight `git status` on the worktree, which can
+      // still end in a refusal and the "Close this session anyway?"
+      // dialog. Switching then puts that dialog over a different
+      // session than the one it is about, and a cancel leaves the user
+      // parked on the neighbour.
       if (appData().activeId === ev.session.id) {
         const next = neighbourOf(ev.session.id);
         if (next) deps.switchTo(next);
