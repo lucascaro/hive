@@ -344,9 +344,12 @@ func TestBellCountsOnTheHookTier(t *testing.T) {
 	if got := m.Snapshot().State; got != wire.StateIdle {
 		t.Fatalf("state = %q, want idle", got)
 	}
-	// A permission wait is the agent's to resolve, not the client's.
+	// A keystroke into a permission dialog is the answer, too.
 	m.Apply(hookEvent(KindWaitingPermission, t0.Add(2*time.Second), ""))
-	if m.ClearWaiting() {
-		t.Fatal("keystroke cleared a permission wait")
+	if !m.ClearWaiting() {
+		t.Fatal("keystroke did not clear a permission wait")
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Fatalf("state after answering a permission = %q, want working (the tool is running)", got)
 	}
 }

@@ -730,7 +730,12 @@ decision-log entry with the log excerpt BEFORE any code changes.
   is the table. While the tier is fresh (`HookStaleAfter` = 30 s) output
   is ignored; past it, output demotes to heuristic `working`. BEL is
   honoured on every tier (idle/working → waiting_input, tier unchanged)
-  and a keystroke clears waiting_input on every tier: a hooked Claude
+  and a keystroke clears waiting_input AND waiting_permission on every
+  tier (amended again after a declined question tool left a session
+  lit "waiting for permission" with no agent event to end it; clearing
+  waiting_permission lands on `working`, because Claude fires no hook
+  between the allow and the tool finishing — PreToolUse runs before the
+  dialog, measured on 2.1.261): a hooked Claude
   rings when its turn finishes and Stop maps to idle, so the bell is the
   only "come look" a finished turn produces — the alert users have
   today. Amended 2026-09-04 after the user reported exactly that

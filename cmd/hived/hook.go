@@ -126,11 +126,20 @@ func mapHookPayload(raw []byte) wire.AgentEvent {
 			ev.Kind = wire.AgentEventPing
 		}
 	case "PermissionRequest":
-		ev.Kind = wire.AgentEventWaitingPermission
-	case "PostToolUse":
-		// A tool ran, so whatever the agent was waiting on just got
-		// answered. Cheap and exact — no need to track which specific
-		// permission was outstanding.
+		// The question tool is not a permission: the agent wants an
+		// answer, not a yes. Rendered as waiting_input so the glyph says
+		// what the user will find.
+		if firstString(p, "tool_name") == "AskUserQuestion" {
+			ev.Kind = wire.AgentEventWaitingInput
+		} else {
+			ev.Kind = wire.AgentEventWaitingPermission
+		}
+	case "PreToolUse", "PostToolUse", "PostToolUseFailure":
+		// A tool is starting, ran, or failed: whatever the agent was
+		// waiting on has been answered. PreToolUse is the one that
+		// matters for latency — a tool that runs for a minute is
+		// "working", not "waiting for you" — and the other two cover a
+		// build of Claude Code that does not fire it.
 		ev.Kind = wire.AgentEventPermissionResolved
 	case "SessionEnd":
 		ev.Kind = wire.AgentEventSessionEnd

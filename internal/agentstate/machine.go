@@ -191,20 +191,30 @@ func (m *Machine) Exit() bool {
 	return true
 }
 
-// ClearWaiting resolves waiting_input back to idle. It is the "the
-// user has now looked at this session" transition, which only a client
-// can observe, and it applies on every tier: no agent reports "the
-// user started typing", its next event is the prompt itself, so the
-// client's keystroke is the real resolution. waiting_permission is
-// not cleared here — only the agent knows when a prompt was answered.
+// ClearWaiting resolves either wait back to idle. It is the "the user
+// has now acted on this session" transition, which only a client can
+// observe, and it applies on every tier and to both kinds of wait: a
+// keystroke into a permission dialog IS the answer, and a dismissed
+// dialog does not always produce an agent event (a declined question
+// tool ends the turn with nothing Hive hears). Under-alerting for one
+// keystroke beats a session lit "waiting for permission" for an hour.
 //
 // Deliberately not folded into Apply: this is not something an agent
 // reported, so it must not touch the tier or the staleness clock.
 func (m *Machine) ClearWaiting() bool {
-	if m.state != wire.StateWaitingInput {
+	switch m.state {
+	case wire.StateWaitingInput:
+		// Nothing runs until the next prompt is submitted.
+		m.state = wire.StateIdle
+	case wire.StateWaitingPermission:
+		// The agent was mid-turn and the answer resumes it. Claude fires
+		// no hook between "allowed" and the tool finishing (PreToolUse
+		// runs BEFORE the dialog), so this keystroke is the only signal
+		// that the tool is now running.
+		m.state = wire.StateWorking
+	default:
 		return false
 	}
-	m.state = wire.StateIdle
 	return true
 }
 

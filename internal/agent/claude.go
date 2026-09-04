@@ -82,7 +82,8 @@ func claudeResumeArgs(sessionID, cwd string) []string {
 // `hived hook`. See cmd/hived/hook.go for the mapping each becomes.
 var claudeHookEvents = []string{
 	"SessionStart", "UserPromptSubmit", "Stop", "StopFailure",
-	"Notification", "PermissionRequest", "PostToolUse", "SessionEnd",
+	"Notification", "PermissionRequest", "PreToolUse", "PostToolUse",
+	"PostToolUseFailure", "SessionEnd",
 }
 
 type claudeHookEntry struct {

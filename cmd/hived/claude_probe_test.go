@@ -176,3 +176,69 @@ func TestClaudeProbeWaitingPermission(t *testing.T) {
 		return i.State == wire.StateExited
 	}, "exited")
 }
+
+// TestClaudeProbePermissionResolved: allowing the prompt must move the
+// session off waiting_permission BEFORE the tool finishes. A tool that
+// runs for a minute is "working", not "waiting for you" — and a session
+// that only leaves waiting_permission on PostToolUse sits lit for the
+// whole minute.
+func TestClaudeProbePermissionResolved(t *testing.T) {
+	if os.Getenv("HIVE_PROBE_CLAUDE") != "1" {
+		t.Skip("set HIVE_PROBE_CLAUDE=1 to run the real-claude probe")
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Skip("claude not on PATH")
+	}
+	for _, kv := range os.Environ() {
+		k, _, _ := strings.Cut(kv, "=")
+		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") {
+			_ = os.Unsetenv(k)
+		}
+	}
+	d := startHookTestDaemon(t)
+	def, _ := agent.Get(agent.IDClaude)
+	exe, _ := os.Executable()
+	cmd := append([]string{"claude", "--permission-mode", "default"},
+		def.SpawnArgs(agent.SpawnInfo{HivedPath: exe})...)
+	e, err := d.Registry().Create(context.Background(), wire.CreateSpec{
+		Agent: "claude", Cmd: cmd, Cwd: t.TempDir(), Cols: 120, Rows: 40,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	id := e.ID
+	t.Cleanup(func() { _ = d.Registry().Kill(id, true) })
+	wait := func(within time.Duration, cond func(wire.SessionInfo) bool, what string) wire.SessionInfo {
+		t.Helper()
+		deadline := time.Now().Add(within)
+		for {
+			info, ok := findSessionByID(d, id)
+			if ok && cond(info) {
+				return info
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; last info = %+v", what, info)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	wait(20*time.Second, func(i wire.SessionInfo) bool { return i.Alive }, "alive")
+	sess := d.Registry().Get(id).Session()
+	wait(30*time.Second, func(i wire.SessionInfo) bool { return i.StateSource == wire.StateSourceHook }, "hook tier")
+	time.Sleep(2 * time.Second)
+	_, _ = sess.Write([]byte("use the Bash tool to run exactly: sleep 12; touch probe.txt\r"))
+	wait(90*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWaitingPermission }, "waiting_permission")
+	time.Sleep(500 * time.Millisecond)
+	allowed := time.Now()
+	_, _ = sess.Write([]byte("\r")) // "Yes"
+	// The GUI reports the keystroke as "the user acted on this session";
+	// Claude fires nothing between the allow and the tool finishing.
+	_ = d.Registry().SetAttention(id, false)
+	info := wait(5*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateWorking }, "working while the tool runs")
+	if took := time.Since(allowed); took > 2*time.Second {
+		t.Errorf("left waiting_permission %v after allowing (state=%s)", took, info.State)
+	}
+	// PostToolUse (still working), then Stop -> idle once the reply ends.
+	wait(60*time.Second, func(i wire.SessionInfo) bool { return i.State == wire.StateIdle && i.LastSummary != "" }, "turn_end after the tool")
+	_, _ = sess.Write([]byte("/exit\r"))
+}

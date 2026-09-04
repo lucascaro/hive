@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {"questions": []}
+}
