@@ -667,6 +667,33 @@ describe('settings tabs', () => {
     expect(tab('agents').tabIndex).toBe(-1);
   });
 
+  // The spec promises the whole edit survives a switch, not just the
+  // list: Appearance holds a select and a debounced textarea, and both
+  // live in a panel that is hidden rather than unmounted. Covering only
+  // the agent draft would leave the two controls whose state is easiest
+  // to lose untested.
+  it('keeps the theme choice and token overrides across a tab round-trip', async () => {
+    open();
+    await flush();
+    click(el('settings-tab-appearance'));
+
+    const theme = el<HTMLSelectElement>('settings-theme');
+    // Whatever the second preset is — the point is a value that is not
+    // the mount default, not which preset it happens to be.
+    const picked = [...theme.querySelectorAll('option')][1].value;
+    fireEvent.change(theme, { target: { value: picked } });
+    type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: #123456;');
+
+    click(el('settings-tab-agents'));
+    click(el('settings-tab-updates'));
+    click(el('settings-tab-appearance'));
+
+    expect(el<HTMLSelectElement>('settings-theme').value).toBe(picked);
+    expect(el<HTMLTextAreaElement>('settings-overrides').value).toBe(
+      '--accent: #123456;',
+    );
+  });
+
   it('keeps an in-progress agent draft across a tab round-trip', async () => {
     open();
     await flush();
