@@ -321,16 +321,55 @@ Shell: `scripts/testdata/` fixtures driving `check-daemon-contract.sh`.
 - **2026-09-03** — "Check for Updates…" in the menu bar delegates to the GUI.
   Why: the GUI owns ~3300 lines of update logic and has to restart anyway;
   duplicating it in `hivebar` buys nothing.
+- **2026-09-03** — The updater compares the staged daemon's contract against
+  the RUNNING daemon's, not against this GUI's constant. Why: after the swap it
+  is the staged GUI driving the running daemon, and the staged GUI carries the
+  staged contract; using this GUI's would be correct only by coincidence.
+- **2026-09-03** — Scope added: attention ("which sessions want you") moved from
+  the GUI store into the daemon, with a stateful bell scanner in
+  `internal/session`, `SessionInfo.needs_attention`, a new `attention` event
+  kind, and client-driven clearing through `UPDATE_SESSION`. Why: the menu bar
+  holds no attach connection, so the flag was unreachable — and it was already
+  wrong, with each window keeping its own answer. Operator chose this over
+  shipping the menu bar without the count. First `DaemonContract` bump (1 → 2),
+  which exercises the new CI gate for real.
+- **2026-09-03** — `PROTOCOL_VERSION` still not bumped despite four new frames
+  and two new fields. Why: all additive, and the daemon's strict HELLO check
+  makes a bump actively harmful (see Research).
+- **2026-09-03** — `SMAppService` registration verified working on an
+  ad-hoc-signed bundle, contradicting the pre-implementation research. Why it
+  matters: the toggle was designed around an expected failure, and the code
+  comments and Settings copy asserted a signing requirement that does not
+  exist. What actually governs it is the CALLING bundle — registration fails
+  with "Invalid argument" from a bare binary and succeeds from inside
+  `Hive.app`.
 
 ## Progress
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec
   frontmatter). Spec has no GitHub issue (operator chose local-only).
+- **2026-09-03** — Phase 1 landed: `DaemonContract`, `Welcome.daemon_contract`,
+  `hived --version [--json]`, the four-way severity split, and
+  `wire.ErrProtocolMismatch` routed to the banner.
+- **2026-09-03** — Phase 2 landed: `CLIENT_COMMAND`/`CLIENT_BROADCAST`, the
+  daemon command hub, `App.ReloadGUI` / `RequestReloadAllGUIs`, and the two
+  File-menu items.
+- **2026-09-03** — Phase 3 landed: staged-bundle contract probe,
+  `UpdateInfo.RestartKind`, and the Reload/Restart split in the update button
+  and the stale-daemon banner.
+- **2026-09-03** — Phase 4a landed (scope added mid-implementation, see the
+  decision log): attention moved into the daemon; `DaemonContract` 1 → 2.
+- **2026-09-03** — Phase 4b landed: `cmd/hivebar`, `internal/menubar`,
+  `build.sh` bundling, and the Settings login-item toggle.
+- **2026-09-03** — Verified on a real `./build.sh` bundle: hivebar launches,
+  takes the singleton lock, connects to the running daemon, and the operator
+  confirmed the icon and menu render correctly.
+- **2026-09-03** — Phase 5 landed: `scripts/check-daemon-contract.sh`, its
+  six-case self-test, and the `daemon-contract` CI job.
 
 ## Open questions
 
-- Does `SMAppService` registration actually fail on this project's unsigned
-  bundle? Verified empirically as the first step of Phase 4; the toggle's error
-  text depends on the answer.
 - Does `cmd/hivegui/window_state.go` restore behave when several windows
   relaunch at once via `open -n`? Each reloaded window gets a new PID.
+  Not reachable by an automated test — needs the manual multi-window pass in
+  the spec's verification section.
