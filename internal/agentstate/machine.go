@@ -160,20 +160,22 @@ func (m *Machine) Output(now time.Time) bool {
 	return changed
 }
 
-// Bell records a terminal bell. On the heuristic tier a bell is the
-// only signal that the program wants something, so it means
-// waiting_input. On a trusted tier it is ignored: the agents that ring
-// also report the same moment through their hooks, and honouring both
-// notifies the user twice.
+// Bell records a terminal bell: the program wants the user, so
+// waiting_input — on EVERY tier. A hooked agent rings when it finishes
+// a turn, and its Stop hook maps to idle, which raises nothing; the
+// bell is the only "come look" a finished turn produces, and dropping
+// it on the trusted tier is exactly what broke the alert people rely
+// on today. A wait already in progress (either kind) absorbs the bell,
+// so a permission prompt that also rings notifies once.
+//
+// The tier is left alone: a bell says nothing about who owns the
+// session, and demoting a hooked session over one would hand its next
+// redraw to the heuristic tier.
 func (m *Machine) Bell(now time.Time) bool {
-	if m.trusted(now) {
-		return false
-	}
 	if m.state != wire.StateIdle && m.state != wire.StateWorking {
 		return false
 	}
 	m.state = wire.StateWaitingInput
-	m.source = wire.StateSourceHeuristic
 	return true
 }
 
@@ -189,16 +191,17 @@ func (m *Machine) Exit() bool {
 	return true
 }
 
-// ClearWaiting resolves a heuristic waiting_input back to idle. It is
-// the "the user has now looked at this session" transition, which only
-// a client can observe, and it applies only to the heuristic tier —
-// the hook and extension tiers report the real resolution themselves,
-// and guessing at it here would race them.
+// ClearWaiting resolves waiting_input back to idle. It is the "the
+// user has now looked at this session" transition, which only a client
+// can observe, and it applies on every tier: no agent reports "the
+// user started typing", its next event is the prompt itself, so the
+// client's keystroke is the real resolution. waiting_permission is
+// not cleared here — only the agent knows when a prompt was answered.
 //
 // Deliberately not folded into Apply: this is not something an agent
 // reported, so it must not touch the tier or the staleness clock.
 func (m *Machine) ClearWaiting() bool {
-	if m.state != wire.StateWaitingInput || m.source != wire.StateSourceHeuristic {
+	if m.state != wire.StateWaitingInput {
 		return false
 	}
 	m.state = wire.StateIdle

@@ -727,8 +727,14 @@ decision-log entry with the log excerpt BEFORE any code changes.
   | any | anything | error | never — `error` is agent-reported only |
 
   Agent tiers (`hook` / `extension`): `Apply` in `agentstate/machine.go`
-  is the table. While the tier is fresh (`HookStaleAfter` = 30 s) BEL and
-  output are ignored; past it, output demotes to heuristic `working`.
+  is the table. While the tier is fresh (`HookStaleAfter` = 30 s) output
+  is ignored; past it, output demotes to heuristic `working`. BEL is
+  honoured on every tier (idle/working → waiting_input, tier unchanged)
+  and a keystroke clears waiting_input on every tier: a hooked Claude
+  rings when its turn finishes and Stop maps to idle, so the bell is the
+  only "come look" a finished turn produces — the alert users have
+  today. Amended 2026-09-04 after the user reported exactly that
+  regression; the first cut ignored the bell on trusted tiers.
 
   Derived, never stored: `needs_attention = state ∈ {waiting_input,
   waiting_permission}`. Owner is the daemon; clients keep no copy. The

@@ -196,10 +196,9 @@ func TestAgentTierOverridesTheHeuristicOne(t *testing.T) {
 		t.Errorf("state = %q, want it held at waiting_permission", got)
 	}
 
-	// Same for the bell: the agents that ring also report through
-	// hooks, and honouring both notifies the user twice.
+	// A bell during a permission wait is absorbed: one wait, one alert.
 	if m.Bell(t0.Add(3 * time.Second)) {
-		t.Error("bell moved a hook-owned session")
+		t.Error("bell moved a session already waiting")
 	}
 
 	// And the quiet timer must not invent a turn end for a tier that
@@ -321,5 +320,33 @@ func TestNonZeroExitIsExitedNotError(t *testing.T) {
 	m.Exit()
 	if got := m.Snapshot().State; got != wire.StateExited {
 		t.Errorf("state = %q, want %q", got, wire.StateExited)
+	}
+}
+
+// A hooked agent rings when its turn finishes; Stop maps to idle, so
+// the bell is the only "come look" that moment produces. It must count
+// on the hook tier, without demoting the tier, and a keystroke must
+// clear it even though the tier is not heuristic.
+func TestBellCountsOnTheHookTier(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
+	m.Apply(hookEvent(KindTurnEnd, t0.Add(time.Second), "done"))
+	if !m.Bell(t0.Add(time.Second)) {
+		t.Fatal("bell ignored on the hook tier")
+	}
+	got := m.Snapshot()
+	if got.State != wire.StateWaitingInput || got.Source != wire.StateSourceHook {
+		t.Fatalf("snapshot = %+v, want waiting_input still on the hook tier", got)
+	}
+	if !m.ClearWaiting() {
+		t.Fatal("keystroke did not clear a hook-tier bell wait")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Fatalf("state = %q, want idle", got)
+	}
+	// A permission wait is the agent's to resolve, not the client's.
+	m.Apply(hookEvent(KindWaitingPermission, t0.Add(2*time.Second), ""))
+	if m.ClearWaiting() {
+		t.Fatal("keystroke cleared a permission wait")
 	}
 }
