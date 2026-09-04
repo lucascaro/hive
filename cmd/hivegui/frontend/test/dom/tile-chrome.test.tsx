@@ -266,23 +266,26 @@ describe('tile header', () => {
   });
 
   it('repaints one tile on a bell, and reaches no attach path', () => {
-    // GridView.tsx keeps `attention` out of its subscription because a
-    // grid pass calls ensureAttached() on every in-grid tile, which
-    // re-latches follow-bottom. This component may subscribe to it only
-    // because it renders no layout — the stub's ensureAttached throws,
-    // so a regression that routes a bell into one fails here.
+    // needs_attention lives on the session itself, read off the same
+    // `info` selector the rest of the header uses — there is no second
+    // `attention` subscription left to keep narrow. GridView.tsx never
+    // calls a layout pass for it either way — the stub's ensureAttached
+    // throws, so a regression that routes a bell into one fails here.
     const { session } = mount();
     const state = () =>
       header()?.querySelector('.hv-state-icon')?.getAttribute('data-state');
     expect(state()).toBe('running');
 
     act(() => {
-      store.addAttention(session.id);
+      store.updateSession({ ...session, needs_attention: true });
     });
     expect(state()).toBe('attention');
 
     act(() => {
-      store.addAttention('someone-else');
+      // Unknown id: updateSession no-ops rather than touching the
+      // sessions array, so this session's tile has nothing to repaint
+      // from anyway.
+      store.updateSession({ id: 'someone-else', needs_attention: true });
     });
     expect(state()).toBe('attention');
   });

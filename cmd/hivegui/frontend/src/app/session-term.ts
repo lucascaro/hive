@@ -86,7 +86,7 @@ import {
   shouldScrollViewport,
   type WheelEventLike,
 } from '../lib/wheel-scroll.js';
-import { onSessionBell, clearAttention, noteUserInput } from './events.js';
+import { clearAttention, noteUserInput } from './events.js';
 import { updateAppTitle } from './view.js';
 import { setActive, refocusActiveTerm } from './focus.js';
 
@@ -578,11 +578,12 @@ export class SessionTerm {
     // (Double-click-to-rename lives on the tile name, which is now a
     // React child — see components/TileChrome.tsx.)
 
-    // BEL on a non-focused session marks it as needing attention and
-    // fires a desktop notification. xterm.js v5 exposes onBell.
-    this.term.onBell(() => {
-      onSessionBell(this.info);
-    });
+    // No onBell handler: the PTY BEL byte no longer decides anything
+    // here. The daemon's own bell scanner sees the same byte and raises
+    // needs_attention through the `attention` session event, which
+    // drives the pulse class and the notification edge in
+    // app/events.ts's syncAttentionClass. See the frozen transition
+    // table, docs/exec-plans/active/336-session-state-model.md.
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum

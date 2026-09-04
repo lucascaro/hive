@@ -21,10 +21,8 @@ import {
 import type { SessionInfo, ProjectInfo } from './state.js';
 import { readNeedsAttention } from './state.js';
 import {
-  addAttention,
   addProject,
   addSession,
-  clearAttentionFor,
   clearDismissedDead,
   forgetSession,
   pruneToLiveSessions,
@@ -32,7 +30,6 @@ import {
   removeSession,
   setActiveId,
   setAlive,
-  setAttention,
   applyProjectList,
   setSessionPhase,
   setSessions,
@@ -171,38 +168,45 @@ export async function reconnectControl(
   }
 }
 
-// onSessionBell is fired by SessionTerm whenever its xterm receives
-// BEL. Active + window-focused session: ignore. Otherwise: mark
-// attention, repaint sidebar, and fire a desktop notification — but
-// only on the transition from no-attention → attention, so a session
-// emitting bells in a tight loop doesn't spam the OS notification
-// center.
-export function onSessionBell(info: SessionInfo) {
-  const isActive = info.id === appData().activeId;
-  const windowFocused = document.hasFocus();
-  // A session you are already watching gets no desktop notification and
-  // no local flag from this window — but the daemon still raised it, and
-  // the flag reaches this window through the `attention` event like any
-  // other. That is deliberate: a bell is a request, and having the
-  // window focused is not an answer to it. noteUserInput below is what
-  // answers it.
-  if (isActive && windowFocused) return;
-  const alreadyAttention = appData().attention.has(info.id);
-  // Refresh to re-trigger the CSS animation. Cosmetic only — the flag
-  // itself is the daemon's, and arrives on the `attention` event.
-  const host = termsMap().get(info.id)?.host;
-  if (alreadyAttention) host?.classList.remove('attention');
-  host?.classList.add('attention');
-  // Deliberately NOT addAttention: this window does not get to decide
-  // that a session wants the user. The daemon saw the same bell and
-  // says so on the `attention` event, which is the only writer of the
-  // local set. Deciding here as well is what let the two disagree —
-  // and they did, in both directions.
-  //
-  // What this window DOES decide is whether to interrupt: an OS
-  // notification is a judgement about the person, not about the
-  // session, and it is rightly local.
-  if (!alreadyAttention) fireBellNotification(info);
+// The PTY BEL byte no longer decides anything: the daemon's bell
+// scanner sees the same byte and raises needs_attention through the
+// `attention` session event below, which is the only writer of this
+// window's copy — there is no local flag left to disagree with it.
+// SessionTerm's onBell hook was deleted along with onSessionBell; what
+// it existed for (the CSS pulse + the OS notification) now lives here,
+// driven off the session's own field.
+//
+// attentionEdge tracks, per session id, whether this window currently
+// believes the session needs attention — ONLY to detect the false→true
+// EDGE for a desktop notification. It is not a second "wants the user"
+// answer: every reader of that question (sidebar, tile, ⌘B, the pulse
+// class) reads session.needs_attention straight off the session list.
+// See the frozen transition table,
+// docs/exec-plans/active/336-session-state-model.md.
+const attentionEdge = new Set<string>();
+let sawFirstSessionList = false;
+
+// syncAttentionClass keeps a tile's `.attention` pulse class in sync
+// with its session's needs_attention field and fires the notification
+// on the edge. `silent` is for the very first session:list snapshot: a
+// session that was already waiting before this window opened should be
+// visible, not announced — the same rule the old syncAttentionFromSessions
+// followed.
+function syncAttentionClass(session: SessionInfo, silent = false) {
+  const wants = readNeedsAttention(session);
+  termsMap().get(session.id)?.host.classList.toggle('attention', wants);
+  const was = attentionEdge.has(session.id);
+  if (wants && !was) {
+    attentionEdge.add(session.id);
+    if (silent) return;
+    const isActive = session.id === appData().activeId;
+    // A session you are already watching gets no desktop notification —
+    // a bell is a request, and having the window focused is not an
+    // answer to it. noteUserInput/setActive are what answer it.
+    if (!(isActive && document.hasFocus())) fireBellNotification(session);
+  } else if (!wants && was) {
+    attentionEdge.delete(session.id);
+  }
 }
 
 // noteUserInput records that the user typed into a session, which is
@@ -213,35 +217,22 @@ export function onSessionBell(info: SessionInfo) {
 // forever while the person it was waiting for was looking right at it.
 //
 // Cheap on the hot path by design: this runs per keystroke, and the
-// common case is a set lookup that finds nothing.
+// common case is that the session doesn't need attention.
 export function noteUserInput(sessionId: string) {
-  if (!appData().attention.has(sessionId)) return;
+  const s = appData().sessions.find((x) => x.id === sessionId);
+  if (!s || !readNeedsAttention(s)) return;
   clearAttention(sessionId);
 }
 
 export function clearAttention(sessionId: string) {
-  const wasFlagged = clearAttentionFor(sessionId);
-  if (wasFlagged) {
-    termsMap().get(sessionId)?.host.classList.remove('attention');
-  }
-  // Tell the daemon regardless of the local state. The flag lives on
-  // the daemon now, and this window's copy can be behind — another
-  // window may have seen the bell first, or this one may have missed
-  // it. Clearing locally without saying so would leave the menu bar
-  // and every other window still insisting the session wants you.
+  // The flag lives on the daemon, not here. Its reply arrives on the
+  // session list / `attention` event like any other client's — that is
+  // what drives the class and the edge tracker above. Told regardless of
+  // this window's belief: another window may have seen the bell first,
+  // or this one may have missed it, and skipping the RPC would leave the
+  // menu bar and every other window still insisting the session wants
+  // you.
   SetSessionAttention(sessionId, false).catch(reportFailure('clear attention'));
-}
-
-// syncAttentionFromSessions replaces the local attention set with the
-// daemon's view.
-//
-// The daemon is the source of truth: it sees the bell whether or not
-// this window has the session open, so a window that was closed, or
-// reloaded, or simply never attached still learns what rang. The local
-// onSessionBell path stays because it is instant and drives the
-// notification — this is what corrects it.
-function syncAttentionFromSessions(sessions: SessionInfo[]) {
-  setAttention(new Set(sessions.filter(readNeedsAttention).map((s) => s.id)));
 }
 
 // fireBellNotification routes through Go because Wails' WKWebView on
@@ -308,14 +299,20 @@ function neighbourOf(id: string): string | null {
 export function wireDaemonEvents(injected: EventsDeps) {
   deps = injected;
 
-  // Whenever the window regains focus, clear the active session's
-  // attention state — the user is presumably looking at it. Also
-  // restore xterm focus: macOS fullscreen toggles, ⌘-tab returns, and
-  // menu actions can leave the window focused but no element inside it,
-  // so typing would land on the body and be lost.
+  // Whenever the window regains focus, restore xterm focus: macOS
+  // fullscreen toggles, ⌘-tab returns, and menu actions can leave the
+  // window focused but no element inside it, so typing would land on
+  // the body and be lost.
+  //
+  // Deliberately NOT a third place that clears attention: the frozen
+  // transition table allows exactly two client-driven clears —
+  // noteUserInput (a keystroke) and setActive's switch guard — and a
+  // window regaining focus is neither. An earlier version of this
+  // handler did clear here too, which is a real "I looked" in some
+  // cases but not others (a window can be refocused with the mouse over
+  // a background tile), so it is left to the two paths that are always
+  // unambiguous.
   window.addEventListener('focus', () => {
-    const focused = appData().activeId;
-    if (focused) clearAttention(focused);
     deps.refocusActiveTerm();
   });
 
@@ -452,14 +449,17 @@ export function wireDaemonEvents(injected: EventsDeps) {
     setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     setSessions(sessions || []);
-    // Before anything renders: a fresh page load (or a GUI reload)
-    // starts with an empty set, and the snapshot is where it learns
-    // what rang while this window did not exist.
-    syncAttentionFromSessions(appData().sessions);
+    // A fresh page load (or a GUI reload) starts with no local edge
+    // tracking at all, so the very first snapshot is where this window
+    // learns what was already waiting — silently, like the old
+    // syncAttentionFromSessions: a session that rang before this window
+    // existed should be visible, not announced.
     for (const s of appData().sessions) {
+      syncAttentionClass(s, !sawFirstSessionList);
       processAliveTransition(s);
       termsMap().get(s.id)?.setPhase(phaseOf(s));
     }
+    sawFirstSessionList = true;
     // Drop any ids whose sessions no longer exist (e.g. after a daemon
     // restart or list reset) so the tray doesn't leak stale chips and
     // the transition-detection maps don't grow for the life of the
@@ -515,6 +515,11 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // rate. The narrow store write repaints one sidebar row.
     if (ev.kind === 'state') {
       if (i >= 0) updateSession(ev.session);
+      // needs_attention is derived from state, so a state change can
+      // flip it too (a future hook-tier turn_end, say) — keep the pulse
+      // and the notification edge in sync here as well, not only on the
+      // `attention` kind below.
+      syncAttentionClass(ev.session);
       return;
     }
     // The daemon's bell scanner fired, or another client reported that
@@ -522,12 +527,7 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // triggers the full re-render that 'updated' means.
     if (ev.kind === 'attention') {
       if (i >= 0) updateSession(ev.session);
-      if (readNeedsAttention(ev.session)) {
-        addAttention(ev.session.id);
-        termsMap().get(ev.session.id)?.host.classList.add('attention');
-      } else if (clearAttentionFor(ev.session.id)) {
-        termsMap().get(ev.session.id)?.host.classList.remove('attention');
-      }
+      syncAttentionClass(ev.session);
       return;
     }
     if (ev.kind === 'updated' && phaseOf(ev.session) === PHASE.closing) {

@@ -177,7 +177,6 @@ export interface AppState {
   sessions: SessionInfo[];
   collapsed: Set<string>;
   minimizedProjects: Set<string>;
-  attention: Set<string>;
   attentionReturnId: string | null;
   attentionRestored: Set<string>;
   attentionRestoredProjects: Set<string>;

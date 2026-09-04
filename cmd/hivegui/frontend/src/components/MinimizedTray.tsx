@@ -59,7 +59,6 @@ export function MinimizedTray({
 }): ReactNode {
   const projects = useAppStore((s) => s.projects);
   const minimized = useAppStore((s) => s.minimized);
-  const attention = useAppStore((s) => s.attention);
   // Subscribed for the re-render; orderedSessions() reads the same list
   // back off the store. Calling it inside a selector instead would
   // hand useSyncExternalStore a fresh array on every store notification.
@@ -82,7 +81,7 @@ export function MinimizedTray({
           label={info.name ?? ''}
           sublabel={projects.find((p) => p.id === readProjectId(info))?.name}
           color={info.color}
-          state={sessionState(info, attention.has(info.id))}
+          state={sessionState(info)}
           onRestore={restoreSession}
         />
       ))}

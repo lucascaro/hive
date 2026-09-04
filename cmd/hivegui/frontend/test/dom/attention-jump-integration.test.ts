@@ -97,6 +97,15 @@ function tile(id: string): TermTile {
   return t as TermTile;
 }
 
+// needs_attention lives on the session itself — there is no local set
+// left to poke, so "these sessions are flagged" is a session patch.
+function flag(ids: string[]) {
+  state.sessions = state.sessions.map((s) => ({
+    ...s,
+    needs_attention: ids.includes(s.id),
+  }));
+}
+
 beforeAll(async () => {
   // view.ts installs a container ResizeObserver at module load; jsdom
   // has no implementation. The grid-reflow path it drives is not what
@@ -139,7 +148,6 @@ beforeEach(() => {
   ];
   state.terms = new Map(state.sessions.map((s) => [s.id, fakeTerm()]));
   state.activeId = 'a';
-  state.attention = new Set();
   state.attentionReturnId = null;
   state.attentionRestored = new Set();
   state.attentionRestoredProjects = new Set();
@@ -150,23 +158,29 @@ beforeEach(() => {
 });
 
 describe('⌘B through the real switchTo/setActive chain', () => {
-  it('clears the flag on the session it lands on', () => {
-    state.attention = new Set(['b']);
+  beforeEach(() => {
+    vi.mocked(bridge.SetSessionAttention).mockClear();
+  });
+
+  it('tells the daemon the flag is cleared on the session it lands on', () => {
+    flag(['b']);
     jumpToAttention();
     expect(state.activeId).toBe('b');
     // The assertion the mocked suite cannot make: setActive really ran.
-    expect(state.attention.has('b')).toBe(false);
+    // needs_attention is the daemon's field; this window only reports
+    // the look, it does not clear anything locally.
+    expect(bridge.SetSessionAttention).toHaveBeenCalledWith('b', false);
   });
 
   it('drops the .attention class from the landed-on tile', () => {
-    state.attention = new Set(['b']);
+    flag(['b']);
     tile('b').host.classList.add('attention');
     jumpToAttention();
     expect(tile('b').host.classList.contains('attention')).toBe(false);
   });
 
   it('syncs currentProjectId when the flagged session is in another project', () => {
-    state.attention = new Set(['z']);
+    flag(['z']);
     jumpToAttention();
     expect(state.activeId).toBe('z');
     expect(state.currentProjectId).toBe('p2');
@@ -175,32 +189,32 @@ describe('⌘B through the real switchTo/setActive chain', () => {
   it('retargets the grid scope when jumping across projects in grid-project view', () => {
     state.view = 'grid-project';
     state.gridProjectId = 'p1';
-    state.attention = new Set(['z']);
+    flag(['z']);
     jumpToAttention();
     expect(state.gridProjectId).toBe('p2');
   });
 
-  it('does not re-visit a session whose flag it already cleared', () => {
-    state.attention = new Set(['b']);
-    jumpToAttention(); // a → b, flag cleared for real
-    jumpToAttention(); // nothing left to jump to
+  it('does not re-visit a session once it reports the flag cleared', () => {
+    flag(['b']);
+    jumpToAttention(); // a → b, the daemon told "user looked" for real
+    jumpToAttention(); // nothing left to jump to (the mock never flips b back)
     expect(state.activeId).toBe('b');
   });
 
-  it('clears a stale flag on the active session instead of claiming none exist', () => {
+  it('reports the look for a stale flag on the active session instead of claiming none exist', () => {
     // onSessionDeath flags the active session unconditionally; nextAttentionId
     // skips the active session, so the row would pulse forever otherwise.
-    state.attention = new Set(['a']);
+    flag(['a']);
     jumpToAttention();
     expect(state.activeId).toBe('a');
-    expect(state.attention.has('a')).toBe(false);
+    expect(bridge.SetSessionAttention).toHaveBeenCalledWith('a', false);
   });
 });
 
 describe('minimized sessions round-trip', () => {
   it('restores a minimized flagged session on the way in', () => {
     state.minimized = new Set(['b']);
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention();
     expect(state.minimized.has('b')).toBe(false);
     expect(state.activeId).toBe('b');
@@ -208,7 +222,7 @@ describe('minimized sessions round-trip', () => {
 
   it('re-minimizes it when you jump back', () => {
     state.minimized = new Set(['b']);
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention(); // a → b, b restored
     jumpBack(); // back to a, b returns to the tray
     expect(state.activeId).toBe('a');
@@ -217,7 +231,7 @@ describe('minimized sessions round-trip', () => {
   });
 
   it('leaves a session alone if it was not minimized to begin with', () => {
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention();
     jumpBack();
     expect(state.minimized.has('b')).toBe(false);
@@ -225,7 +239,7 @@ describe('minimized sessions round-trip', () => {
 
   it('re-minimizes every session restored across a multi-hop round', () => {
     state.minimized = new Set(['b', 'z']);
-    state.attention = new Set(['b', 'z']);
+    flag(['b', 'z']);
     jumpToAttention(); // a → b (restored)
     jumpToAttention(); // b → z (restored)
     jumpBack(); // home to a; both go back in the tray
@@ -236,7 +250,7 @@ describe('minimized sessions round-trip', () => {
 
   it('does not re-minimize a restored session that was killed while away', () => {
     state.minimized = new Set(['b']);
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention();
     state.sessions = state.sessions.filter((s) => s.id !== 'b'); // b dies
     jumpBack();
@@ -246,7 +260,7 @@ describe('minimized sessions round-trip', () => {
 
   it('keeps you visible when the anchor died: releases the round, no self-minimize', () => {
     state.minimized = new Set(['b']);
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention(); // anchor = a, b restored, now sitting in b
     state.sessions = state.sessions.filter((s) => s.id !== 'a'); // anchor dies
     jumpBack(); // "nowhere to jump back to"
@@ -267,7 +281,7 @@ describe('⌘B into a minimized project', () => {
   // project back into the sidebar for good.
   it('reveals the project on the way in and re-minimizes it on the way back', () => {
     state.minimizedProjects = new Set(['p2']);
-    state.attention = new Set(['z']);
+    flag(['z']);
 
     jumpToAttention();
     expect(state.activeId).toBe('z');
@@ -285,7 +299,7 @@ describe('⌘B into a minimized project', () => {
     // session is still inside p2. Re-minimizing it there would yank the
     // tile out from under the user with no keypress to explain it.
     state.minimizedProjects = new Set(['p2']);
-    state.attention = new Set(['z']);
+    flag(['z']);
     jumpToAttention();
     expect(state.activeId).toBe('z');
 

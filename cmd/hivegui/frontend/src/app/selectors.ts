@@ -2,6 +2,7 @@
 // bridge calls — pure lookups modules can share without cycles.
 
 import type { SessionInfo } from './state.js';
+import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
@@ -34,8 +35,7 @@ export function nextAttentionId(): string | null {
   const start = ord.findIndex((s) => s.id === appData().activeId); // -1 → start at 0
   for (let i = 1; i <= n; i++) {
     const s = ord[(start + i) % n];
-    if (s.id !== appData().activeId && appData().attention.has(s.id))
-      return s.id;
+    if (s.id !== appData().activeId && readNeedsAttention(s)) return s.id;
   }
   return null;
 }

@@ -106,7 +106,10 @@ describe('minimized tray re-render scope', () => {
   });
 
   it('rebuilds the chip whose session starts ringing', () => {
-    update(() => store.addAttention('b'));
+    update(() => {
+      const s = appStore.getState().sessions.find((x) => x.id === 'b');
+      if (s) store.updateSession({ ...s, needs_attention: true });
+    });
     expect(renders).toEqual(['b']);
   });
 

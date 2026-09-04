@@ -5,11 +5,7 @@
 
 import { appStore } from '../store/store.js';
 import { termsMap } from '../store/terms.js';
-import {
-  clearAttentionFor,
-  setActiveId,
-  setCurrentProjectId,
-} from '../store/store.js';
+import { setActiveId, setCurrentProjectId } from '../store/store.js';
 import {
   decideFocusAction,
   ACTION_CLEAR,
@@ -58,12 +54,8 @@ export function setActive(id: string | null) {
     pushNav(appData().nav, appData().activeId);
   const switched = id !== null && id !== appData().activeId;
   if (id) {
-    // Only on an actual switch, and clearAttention rather than
-    // clearAttentionFor.
-    //
-    // The kind, because dropping it locally and saying nothing left the
-    // daemon still insisting the session wanted you, and the next
-    // session list put the flag straight back.
+    // Only on an actual switch. clearAttention is an RPC to the daemon,
+    // not a local write — there is no local copy left to drop.
     //
     // The guard, because setActive is a choke point that many paths
     // re-enter for the session that is ALREADY active — a grid move, a

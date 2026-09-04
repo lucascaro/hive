@@ -16,6 +16,7 @@
 
 import { LogFrontend } from '../bridge.js';
 import type { SessionInfo, TermTile } from './state.js';
+import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import { termsHost } from './dom.js';
 import { orderedSessions, activeProjectId } from './selectors.js';
@@ -190,7 +191,7 @@ export function applyGridLayout() {
     if (!existed) _built += 1;
     st.host.classList.add('in-grid');
     st.host.classList.toggle('active', info.id === appData().activeId);
-    st.host.classList.toggle('attention', appData().attention.has(info.id));
+    st.host.classList.toggle('attention', readNeedsAttention(info));
     if (info.id === appData().activeId) st.ensureAttached();
     else _deferred.push(st);
     _wanted.push(st.host);

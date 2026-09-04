@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { SidebarProps } from '../../src/components/Sidebar.js';
+import type { SessionInfo } from '../../src/app/state.js';
 import * as store from '../../src/store/store.js';
 import { setTerm } from '../../src/store/terms.js';
 
@@ -130,7 +131,6 @@ beforeEach(() => {
   state.collapsed = new Set();
   state.minimized = new Set();
   state.minimizedProjects = new Set();
-  state.attention = new Set();
   state.activeId = null;
   state.currentProjectId = null;
   state.view = 'single';
@@ -238,8 +238,13 @@ describe('minimize project', () => {
       document.querySelector<HTMLElement>(
         `#minimized-projects .hv-chip[data-pid="${pid}"]`,
       );
+    const setNeedsAttention = (id: string, want: boolean) => {
+      const s = state.sessions.find((x) => x.id === id) as SessionInfo;
+      store.updateSession({ ...s, needs_attention: want });
+    };
+
     act(() => {
-      state.attention = new Set(['s2']);
+      setNeedsAttention('s2', true);
     });
     minimize('p1');
     minimize('p2');
@@ -248,7 +253,7 @@ describe('minimize project', () => {
 
     // Clearing repaints in place, the same path clearAttention takes.
     act(() => {
-      store.clearAttentionFor('s2');
+      setNeedsAttention('s2', false);
     });
     expect(chip('p2')?.dataset.state).toBeUndefined();
   });

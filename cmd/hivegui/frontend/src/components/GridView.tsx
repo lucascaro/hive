@@ -27,13 +27,17 @@ const appData = () => appStore.getState();
 //   repaint the grid (a removal, and an order change); both move this
 //   signature, while a rename moves neither the signature nor, today,
 //   the grid.
-// - `attention` is out for the same reason, sharper: a bell never called
-//   renderGrid(). events.ts and focus.ts patch the class straight onto
-//   the host, and applyGridLayout() reads `attention` non-reactively when
-//   a pass happens for some other reason. Subscribing would run a full
-//   pass per bell, and every pass calls ensureAttached() on every in-grid
-//   tile — which re-latches follow-bottom and would drag background tiles
-//   out of history at bell rate.
+// - A session's needs_attention flipping is out for the same reason,
+//   sharper: a bell never called renderGrid(). events.ts patches the
+//   class straight onto the host, and applyGridLayout() reads
+//   session.needs_attention non-reactively when a pass happens for some
+//   other reason. The signature below is an id list, not the sessions
+//   themselves, so a bell (which changes `sessions` but not which ids
+//   are in scope or their order) can't move it. Subscribing to the raw
+//   array would run a full pass per bell, and every pass calls
+//   ensureAttached() on every in-grid tile — which re-latches
+//   follow-bottom and would drag background tiles out of history at
+//   bell rate.
 //
 // What IS in: the view mode, the active tile, the grid's project scope,
 // and the ordered id list of the sessions the scope actually tiles —

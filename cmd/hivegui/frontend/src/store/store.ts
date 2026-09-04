@@ -60,7 +60,6 @@ export interface AppData {
   sessions: SessionInfo[];
   collapsed: Set<string>;
   minimizedProjects: Set<string>;
-  attention: Set<string>;
   attentionReturnId: string | null;
   attentionRestored: Set<string>;
   attentionRestoredProjects: Set<string>;
@@ -297,7 +296,6 @@ function initialData(): AppData {
     minimizedProjects: loadSavedMinimizedProjects(), // project ids pulled out of
     //   the sidebar list into the tray at its bottom; their sessions are
     //   hidden from grid views too. Persisted, like `collapsed`.
-    attention: new Set(), // session ids that have unread bells
     attentionReturnId: null, // session to jump back to (⇧⌘B): the one you
     //   were in before the FIRST ⌘B. Written only when empty, so a round
     //   of bells that walks you through several flagged sessions keeps
@@ -585,24 +583,13 @@ export function forgetSession(id: string): void {
 }
 
 // ---------- attention ----------
-
-export function addAttention(id: string): void {
-  set({ attention: setWith(get().attention, id) });
-}
-
-// Returns whether the id was flagged, mirroring the `Set.delete`
-// return value the legacy call sites branch on.
-export function clearAttentionFor(id: string): boolean {
-  const cur = get().attention;
-  const next = setWithout(cur, id);
-  if (next === cur) return false;
-  set({ attention: next });
-  return true;
-}
-
-export function setAttention(ids: Set<string>): void {
-  set({ attention: new Set(ids) });
-}
+//
+// needs_attention is derived server-side and lives on SessionInfo
+// itself (session.needs_attention) — there is no local Set here. See
+// the frozen transition table in
+// docs/exec-plans/active/336-session-state-model.md. What stays is the
+// ⌘B/⇧⌘B round-tripping bookkeeping below, which is genuinely local UI
+// state (which sessions/projects a bell round pulled out of the tray).
 
 export function setAttentionReturnId(id: string | null): void {
   set({ attentionReturnId: id });
@@ -965,7 +952,7 @@ export function useAppStore<T>(selector: (s: AppData) => T): T {
 // The setters stay because the dom tests seed through them. They delegate to
 // the owning action, so a plain `hiveStateView.x = v` notifies subscribers.
 // What does NOT work is mutating a collection in place
-// (`hiveStateView.attention.add(id)`): the store compares by reference, so an
+// (`hiveStateView.minimized.add(id)`): the store compares by reference, so an
 // in-place edit is invisible. Use the actions.
 
 export const hiveStateView: AppState = {
@@ -992,12 +979,6 @@ export const hiveStateView: AppState = {
   },
   set minimizedProjects(v: Set<string>) {
     setMinimizedProjects(v);
-  },
-  get attention() {
-    return appStore.getState().attention;
-  },
-  set attention(v: Set<string>) {
-    setAttention(v);
   },
   get attentionReturnId() {
     return appStore.getState().attentionReturnId;

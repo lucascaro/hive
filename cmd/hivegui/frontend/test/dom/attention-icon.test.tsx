@@ -2,8 +2,8 @@
 //
 // The sidebar row's state icon (components/SessionRow.tsx) on a bell.
 //
-// Regression: a bell (events.ts onSessionBell) toggled the `.attention`
-// CSS class but, until this was fixed, never touched the row's
+// Regression: a bell toggled the `.attention` CSS class but, until this
+// was fixed, never touched the row's
 // <svg class="hv-state-icon dot"> — so the icon kept showing the
 // "running" triangle (shape) and its <title> kept saying "Idle"
 // (words) while the row was actually waiting for the user. icons.md
@@ -37,7 +37,6 @@ function withSessions(sessions: SessionInfo[]) {
       ...s,
     })),
     collapsed: new Set(),
-    attention: new Set(),
     activeId: null,
   });
   mountSidebar(Sidebar);
@@ -49,6 +48,14 @@ function dot(id: string): SVGSVGElement {
   );
   if (!el) throw new Error(`no state icon for ${id}`);
   return el;
+}
+
+// needs_attention lives on the session itself — there is no local set
+// left to poke, so a "bell" in these tests is a session patch.
+function setAttn(id: string, want: boolean) {
+  const s = store.appStore.getState().sessions.find((x) => x.id === id);
+  if (!s) throw new Error(`no session ${id}`);
+  store.updateSession({ ...s, needs_attention: want });
 }
 
 beforeEach(() => {
@@ -64,7 +71,7 @@ describe('sidebar row state icon on attention', () => {
       '#hv-state-running',
     );
 
-    update(() => store.addAttention('a'));
+    update(() => setAttn('a', true));
 
     expect(dot('a').dataset.state).toBe('attention');
     expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
@@ -74,7 +81,7 @@ describe('sidebar row state icon on attention', () => {
       'Waiting for you',
     );
 
-    update(() => store.clearAttentionFor('a'));
+    update(() => setAttn('a', false));
 
     expect(dot('a').dataset.state).toBe('running');
     expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
@@ -109,7 +116,7 @@ describe('sidebar row state icon on attention', () => {
   it('patches in place rather than rebuilding the row', () => {
     withSessions([{ id: 'a', name: 'api', order: 0 }]);
     const before = dot('a');
-    update(() => store.addAttention('a'));
+    update(() => setAttn('a', true));
     expect(dot('a')).toBe(before);
   });
 });
@@ -131,13 +138,13 @@ describe('project card on a store update', () => {
     expect(count()).toBe('1 session');
 
     const before = card('p1');
-    update(() => store.addAttention('a'));
+    update(() => setAttn('a', true));
 
     expect(card('p1')).toBe(before); // re-rendered, not rebuilt
     expect(card('p1')?.dataset.state).toBe('attention');
     expect(count()).toBe('1 session · 1 needs you');
 
-    update(() => store.clearAttentionFor('a'));
+    update(() => setAttn('a', false));
     expect(card('p1')?.dataset.state).toBeUndefined();
     expect(count()).toBe('1 session');
   });
@@ -150,7 +157,6 @@ describe('project card on a store update', () => {
       ],
       sessions: [],
       collapsed: new Set(),
-      attention: new Set(),
       activeId: null,
       currentProjectId: 'p1',
     });

@@ -479,6 +479,33 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
 3. **Pi extension.**
 4. **hivebar + notification wording + tooltip polish.**
 
+### Manual smoke checklist
+
+Run against an iso build (`wails build`, never `-s`) with the daemon
+started as `HIVE_DEBUG_STATE=1`. Every row is pass/fail with the log
+line that proves it; "looks fine" is not a result. Record the Claude
+version and the table in Progress before each push that touches state.
+
+| # | Session | Action | Expected glyph (sidebar = tile) | Expected log line |
+|---|---------|--------|----------------------------------|-------------------|
+| 1 | shell | `sleep 1; ls -R /usr/lib \| head -200` | working during output, idle ≤ 3 s after | `idle -> working reason=output`, `working -> idle reason=tick` |
+| 2 | shell | `printf '\a'` while the session is NOT active | waiting_input pulse; OS notification; sidebar row lit | `-> waiting_input reason=bell` |
+| 3 | shell | switch to that session | idle; row unlit | `waiting_input -> idle reason=clear` |
+| 4 | shell | `printf '\a'` while active + window focused, do nothing 10 s | stays waiting_input (no self-clear); no OS notification | one `bell` line, NO `clear` line |
+| 5 | shell | then press any key | idle | `reason=clear` |
+| 6 | shell | `exit` | exited (hollow grey) | `-> exited reason=exit` |
+| 7 | claude | launch, sit at prompt 30 s | idle after startup paint; `state_source=hook` after SessionStart | `-> idle reason=tick`, then `reason=ping src=hook` |
+| 8 | claude | type a prompt, Enter | working within 1 s | `-> working src=hook reason=prompt` |
+| 9 | claude | ask it to run `ls` with Bash (default permissions) | waiting_permission (distinct colour) + notification | `-> waiting_permission src=hook reason=waiting_permission` |
+| 10 | claude | allow | working, then idle when the reply ends | `reason=permission_resolved`, `-> idle reason=turn_end` |
+| 11 | claude | leave it idle > 60 s after a reply | waiting_input (Claude `idle_prompt`) | `reason=waiting_input src=hook` |
+| 12 | claude | `/exit` | exited | `-> exited reason=session_end` or `reason=exit` |
+| 13 | claude | kill `hived`, restart, reopen GUI | every session idle / heuristic, empty tooltip | no state lines until output |
+| 14 | codex or pi | run a prompt | working → idle on the heuristic tier; glyph shows the uncertain ring | `src=heuristic` only |
+
+Rows 7–12 are phase 2. A row that fails goes into this plan as a
+decision-log entry with the log excerpt BEFORE any code changes.
+
 ## Decision log
 
 - **2026-09-04** — State lives in the daemon, not the GUI. Why: same
@@ -763,6 +790,47 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   samples a screen digest instead of byte arrival, which covers every
   session, and the end-to-end PTY tests that should have caught all of
   this in the first place are in place.
+- **2026-09-04** — Phase 2 implemented on `feature/336-session-state-model`:
+  `wire.ModeEvent` + `wire.AgentEvent`/`AgentEventKinds` +
+  `wire.FrameAgentEvent` (0x22), `DaemonContract` 3 → 4; the daemon's
+  `ModeEvent` HELLO arm (`serveEvent`: one frame, 2s read deadline,
+  kind/source validated, text truncated to `MaxSummaryLen`, closes with
+  no reply); `Registry.ApplyAgentEvent`, `SetSocketPath`/`SetHivedPath`,
+  and `HIVE_SESSION_ID`/`HIVE_SOCKET` injected into every spawned
+  session's env on create, Revive (boot path) and Restart; `Def.SpawnArgs`
+  + `SpawnInfo` on `internal/agent.Def`, wired for Claude only
+  (`claude.go`: `--settings` hooks JSON built with `encoding/json`,
+  shell-quoted `hivedPath`, a `sync.Once` version gate at
+  `minHooksVersion = "2.1.0"`); `cmd/hived/hook.go` (`hived hook`
+  subcommand, dispatched before `flag.Parse`, tolerant JSON mapping of
+  every Claude hook event Hive wires, 2s dial/write deadlines, always
+  exits 0, never writes stdout). Deviations from the plan, both because
+  the referenced code didn't exist as described: there is no literal
+  "raw-Cmd branch" file/line in `create.go` — the equivalent is
+  `resolveAgentCmd`'s early return when `spec.Cmd` is already set, which
+  is where the "env yes, SpawnArgs no" rule actually lives; and
+  `maxKnownBadHooksVersion` is implemented but currently unset (no known
+  bad release yet) rather than carrying a real value. `Notification`'s
+  and `UserPromptSubmit`'s exact hook-payload field names could not be
+  confirmed from a fetchable, literal JSON example in Anthropic's docs
+  at write time, so `hived hook` reads `prompt`/`user_message`/`message`
+  and `error_type`/`error`/`reason` as a fallback chain instead of a
+  single hard-coded key — `scripts/probe-claude.sh` (not yet written;
+  deferred, see below) is what would catch a wrong guess against a real
+  `claude` binary. The Pi extension, `hivebar`, and GUI/notification
+  wording (phases 3–4) are untouched, as phased.
+  Verified: `go build ./...`, `go vet ./...` (host, `GOOS=linux`,
+  `GOOS=windows`), `go test -race ./internal/... ./cmd/hived/...`
+  (including new daemon `TestEventMode*`, registry
+  `TestSpawnEnvCarriesHiveIDs`/`TestRawCmdGetsEnvNotSpawnArgs`/
+  `TestCreateAppendsSpawnArgsForResolvedAgent`/`TestRestartAppendsSpawnArgs`/
+  `TestReviveStartsIdleHeuristicEmptyText`/`TestAgentEventBeforeReadyApplied`,
+  agent `TestClaudeSettingsJSONQuotesPath` and the version-gate tests,
+  and `cmd/hived`'s `TestHookMapsEveryEvent` fixture table plus two
+  integration tests driving a real daemon end-to-end through every hook
+  fixture). Not done in this pass: `scripts/probe-claude.sh` (the
+  real-`claude` drift probe) and a manual checklist run against an
+  actual `claude` binary — see the open item below.
 
 ## Open questions
 

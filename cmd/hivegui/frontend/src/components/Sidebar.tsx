@@ -48,6 +48,7 @@ import {
 } from '../lib/drag-placeholder.js';
 import { dropTargetIndex } from '../lib/reorder.js';
 import { sessionState } from '../lib/session-state.js';
+import { readNeedsAttention } from '../app/state.js';
 import { readProjectId } from '../lib/wire.js';
 import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
 
@@ -94,12 +95,10 @@ function keyHints(): Map<string, number> {
 // ringing. A minimized project has no session rows in the sidebar, so
 // the chip is the only surface left to carry the bell — without this a
 // BEL inside a minimized project is invisible until ⌘B finds it.
-function projectHasAttention(
-  pid: string,
-  sessions: SessionInfo[],
-  attention: ReadonlySet<string>,
-): boolean {
-  return sessions.some((s) => readProjectId(s) === pid && attention.has(s.id));
+function projectHasAttention(pid: string, sessions: SessionInfo[]): boolean {
+  return sessions.some(
+    (s) => readProjectId(s) === pid && readNeedsAttention(s),
+  );
 }
 
 // killSession routes a live session through the native confirm (AGENTS.md:
@@ -177,7 +176,6 @@ interface SessionItemProps {
   index: number | null;
   selected: boolean;
   minimized: boolean;
-  attention: boolean;
   // The whole prop bag rather than three bound callbacks: main.tsx builds
   // it once for the life of the app, so it is a referentially stable
   // prop, where `() => switchTo(s.id)` would be a fresh function on
@@ -230,7 +228,7 @@ const SessionItem = memo(function SessionItem(p: SessionItemProps) {
   return (
     <SessionRow
       session={p.session}
-      state={sessionState(p.session, p.attention)}
+      state={sessionState(p.session)}
       selected={p.selected}
       minimized={p.minimized}
       index={p.index}
@@ -299,7 +297,6 @@ interface ProjectItemProps {
   project: ProjectInfo;
   sessions: SessionInfo[];
   activePID: string;
-  attention: ReadonlySet<string>;
   collapsed: boolean;
   props: SidebarProps;
   hints: Map<string, number>;
@@ -311,7 +308,7 @@ function ProjectItem(o: ProjectItemProps) {
   const p = o.project;
   const nameRef = useRef<HTMLSpanElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const attentionCount = o.sessions.filter((s) => o.attention.has(s.id)).length;
+  const attentionCount = o.sessions.filter(readNeedsAttention).length;
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs. We must not preventDefault in that case (it would
@@ -418,7 +415,6 @@ function ProjectItem(o: ProjectItemProps) {
           index={o.hints.get(s.id) ?? null}
           selected={s.id === o.activeId}
           minimized={o.minimizedSessions.has(s.id)}
-          attention={o.attention.has(s.id)}
           sidebar={o.props}
         />
       ))}
@@ -435,7 +431,6 @@ export function Sidebar(props: SidebarProps) {
   const collapsed = useAppStore((s) => s.collapsed);
   const minimizedProjects = useAppStore((s) => s.minimizedProjects);
   const minimized = useAppStore((s) => s.minimized);
-  const attention = useAppStore((s) => s.attention);
   // activeProjectId() reads currentProjectId / view / gridProjectId /
   // activeId off the store rather than taking them as arguments,
   // so it is subscribed as a derived string: the selector re-runs on
@@ -470,7 +465,6 @@ export function Sidebar(props: SidebarProps) {
             .filter((s) => readProjectId(s) === p.id)
             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))}
           activePID={activePID}
-          attention={attention}
           collapsed={collapsed.has(p.id)}
           props={props}
           hints={hints}
@@ -492,7 +486,7 @@ export function Sidebar(props: SidebarProps) {
                 // The chip is the only surface left carrying a bell for a
                 // project whose rows are gone (patterns.md › Attention
                 // bubbling).
-                attention={projectHasAttention(p.id, sessions, attention)}
+                attention={projectHasAttention(p.id, sessions)}
                 // Clicking the chip body restores the project — the same
                 // thing the restore control does. A minimized row is a
                 // thing you put away; the only reason to click it is to
