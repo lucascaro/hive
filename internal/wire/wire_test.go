@@ -465,3 +465,52 @@ func TestWelcomeOmitsDaemonContractWhenZero(t *testing.T) {
 		t.Errorf("DaemonContract = %d, want 0", w.DaemonContract)
 	}
 }
+
+func TestClientCommandRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, FrameClientCommand, ClientCommand{
+		Cmd: CmdFocusSession, SessionID: "s1",
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var cmd ClientCommand
+	if ft, err := ReadJSON(&buf, &cmd); err != nil || ft != FrameClientCommand {
+		t.Fatalf("read: ft=%s err=%v", ft, err)
+	}
+	if cmd.Cmd != CmdFocusSession || cmd.SessionID != "s1" {
+		t.Errorf("cmd = %+v", cmd)
+	}
+}
+
+// TestProtocolVersionUnchangedByClientCommand pins the reasoning
+// behind the frame pair, not just its existence.
+//
+// The daemon refuses any HELLO whose Version differs (see
+// internal/daemon), so bumping PROTOCOL_VERSION for a purely additive
+// frame would stop a new GUI from handshaking with an old daemon at
+// all — and it could then never read the daemon contract it needs to
+// decide between a cheap reload and a full restart. Unknown frames are
+// merely logged, so adding frames stays backward compatible.
+//
+// If a genuine protocol break ever lands, bump both this and
+// buildinfo.DaemonContract, and update this test's reasoning with it.
+func TestProtocolVersionUnchangedByClientCommand(t *testing.T) {
+	if PROTOCOL_VERSION != 1 {
+		t.Fatalf("PROTOCOL_VERSION = %d; adding frames must not bump it — see the doc comment above",
+			PROTOCOL_VERSION)
+	}
+}
+
+// The allowlist and the verb constants must not drift apart: the
+// daemon refuses anything not in the map, so a verb defined but not
+// listed is silently unusable.
+func TestClientCommandsAllowlistCoversEveryVerb(t *testing.T) {
+	for _, verb := range []string{CmdReloadGUI, CmdFocusSession} {
+		if !ClientCommands[verb] {
+			t.Errorf("verb %q is not in ClientCommands; the daemon will refuse it", verb)
+		}
+	}
+	if len(ClientCommands) != 2 {
+		t.Errorf("ClientCommands has %d entries; add the new verb to this test", len(ClientCommands))
+	}
+}

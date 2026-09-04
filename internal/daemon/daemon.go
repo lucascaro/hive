@@ -43,6 +43,10 @@ type Daemon struct {
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
 
+	// commands relays client-to-client verbs (see commands.go). Not
+	// state, so it is not in the registry.
+	commands *commandHub
+
 	// shutdown is closed by Shutdown to stop Run the same way a
 	// cancelled context does. A client asking to exit in-band (the
 	// GUI's Restart action) has no handle on the daemon's context,
@@ -223,6 +227,7 @@ func New(cfg Config) (*Daemon, error) {
 
 		orphanCandidates: orphanCandidates,
 		clients:          make(map[net.Conn]struct{}),
+		commands:         newCommandHub(),
 		shutdown:         make(chan struct{}),
 		stop:             make(chan struct{}),
 	}
@@ -380,6 +385,9 @@ func (d *Daemon) Close() error {
 	}
 	d.clients = nil
 	d.mu.Unlock()
+	if d.commands != nil {
+		d.commands.Close()
+	}
 	if d.ln != nil {
 		_ = d.ln.Close()
 	}
@@ -496,6 +504,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	defer unsub()
 	pListener, pUnsub := d.reg.SubscribeProjects()
 	defer pUnsub()
+	cmdListener, cmdUnsub := d.commands.Subscribe()
+	defer cmdUnsub()
 
 	// Per-conn write mutex so the snapshot/event goroutines don't
 	// interleave bytes with each other or with the response writes
@@ -527,6 +537,13 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 					return
 				}
 				if err := writeJSON(wire.FrameProjectEvent, ev); err != nil {
+					return
+				}
+			case cmd, ok := <-cmdListener:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FrameClientBroadcast, cmd); err != nil {
 					return
 				}
 			case <-stop:
@@ -833,6 +850,23 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch)
 			ops.finishMutation(req.ProjectID, err, "rename_worktree_failed")
 		})
+	case wire.FrameClientCommand:
+		cmd, ok := decodeReq[wire.ClientCommand](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Validate, don't interpret. The daemon is the only thing every
+		// client holds a connection to, so it is the relay — but the
+		// verbs are about client-side UI state and mean nothing here.
+		// The allowlist exists so a typo is refused to its sender
+		// rather than fanned out as a frame every window has to guess
+		// at.
+		if !wire.ClientCommands[cmd.Cmd] {
+			ops.sendError("unknown_client_command",
+				fmt.Sprintf("client command %q is not recognised", cmd.Cmd))
+			return false
+		}
+		d.commands.Publish(cmd)
 	default:
 		log.Printf("hived: unexpected control frame: %s", ft)
 	}

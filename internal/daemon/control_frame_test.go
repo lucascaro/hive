@@ -307,3 +307,70 @@ func TestControlFrameRestoreAlreadyOpen(t *testing.T) {
 		t.Errorf("registry holds %d copies of %s, want 1 — a second restore duplicated it", copies, id)
 	}
 }
+
+// TestClientCommandRelaysToSubscribers pins the relay contract: a
+// recognised verb reaches every control connection, and the daemon
+// itself does nothing with it.
+func TestClientCommandRelaysToSubscribers(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ch, unsub := d.commands.Subscribe()
+	defer unsub()
+
+	var r recordOps
+	payload, _ := json.Marshal(wire.ClientCommand{Cmd: wire.CmdFocusSession, SessionID: "s7"})
+	if stop := d.handleControlFrame(context.Background(), r.ops(), wire.FrameClientCommand, payload); stop {
+		t.Fatal("a client command must not end the connection")
+	}
+	if len(r.errs) != 0 {
+		t.Fatalf("unexpected errors: %+v", r.errs)
+	}
+
+	select {
+	case got := <-ch:
+		if got.Cmd != wire.CmdFocusSession || got.SessionID != "s7" {
+			t.Errorf("relayed %+v, want focus_session/s7", got)
+		}
+	default:
+		t.Fatal("command was not relayed to the subscriber")
+	}
+}
+
+// An unrecognised verb is refused to its sender rather than fanned
+// out. The daemon is the only thing every client holds a connection
+// to, so a typo must not become a frame every window has to guess at.
+func TestClientCommandRejectsUnknownVerb(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	ch, unsub := d.commands.Subscribe()
+	defer unsub()
+
+	var r recordOps
+	payload, _ := json.Marshal(wire.ClientCommand{Cmd: "rm_minus_rf"})
+	if stop := d.handleControlFrame(context.Background(), r.ops(), wire.FrameClientCommand, payload); stop {
+		t.Fatal("a rejected client command must not end the connection")
+	}
+	if len(r.errs) != 1 || r.errs[0].Code != "unknown_client_command" {
+		t.Fatalf("errs = %+v, want one unknown_client_command", r.errs)
+	}
+	select {
+	case got := <-ch:
+		t.Fatalf("unknown verb was relayed anyway: %+v", got)
+	default:
+	}
+}
+
+// A frame this daemon does not know must be logged and ignored, never
+// treated as fatal. That is what makes adding frames backward
+// compatible, and it is why wire.PROTOCOL_VERSION does not have to be
+// bumped for the client-command pair: an older daemon meeting a newer
+// GUI's CLIENT_COMMAND keeps serving the connection.
+func TestUnknownControlFrameKeepsConnectionAlive(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	var r recordOps
+	// 0x7e: not allocated now and not plausibly allocated soon.
+	if stop := d.handleControlFrame(context.Background(), r.ops(), wire.FrameType(0x7e), []byte(`{}`)); stop {
+		t.Fatal("an unknown frame must not end the connection")
+	}
+	if len(r.errs) != 0 || len(r.frames) != 0 {
+		t.Errorf("unknown frame should be silent to the client: errs=%+v frames=%+v", r.errs, r.frames)
+	}
+}

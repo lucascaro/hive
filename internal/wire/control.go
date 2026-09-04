@@ -433,6 +433,45 @@ const (
 // former is fixed by restarting the daemon.
 var ErrProtocolMismatch = errors.New("wire: protocol version mismatch")
 
+// ---------- client commands ----------
+
+// ClientCommand is the payload of both CLIENT_COMMAND (one client
+// asking) and CLIENT_BROADCAST (the daemon relaying to every control
+// client, sender included).
+//
+// The daemon never acts on one of these. It validates Cmd against
+// ClientCommands and forwards it verbatim — the semantics live
+// entirely in the clients. That is deliberate: these verbs are about
+// client-side UI state ("relaunch yourself", "bring this session
+// forward"), which the daemon has no business knowing about.
+type ClientCommand struct {
+	Cmd string `json:"cmd"`
+	// SessionID scopes a command to one session. Only meaningful for
+	// CmdFocusSession; ignored otherwise.
+	SessionID string `json:"session_id,omitempty"`
+}
+
+// Client command verbs.
+const (
+	// CmdReloadGUI asks every GUI window to relaunch its own process,
+	// leaving the daemon and every running session untouched. This is
+	// the cheap half of what used to be a single "Restart Hive" —
+	// picking up new GUI code no longer has to kill the user's PTYs.
+	CmdReloadGUI = "reload_gui"
+	// CmdFocusSession asks the GUI to bring one session forward. Sent
+	// by hivebar, which has no window of its own.
+	CmdFocusSession = "focus_session"
+)
+
+// ClientCommands is the allowlist the daemon validates against. An
+// unrecognised verb is refused rather than relayed: the daemon is the
+// only thing standing between one client and every other, so a typo
+// must not become a frame that every window has to guess at.
+var ClientCommands = map[string]bool{
+	CmdReloadGUI:    true,
+	CmdFocusSession: true,
+}
+
 // ---------- worktree management ----------
 
 // ListWorktreesReq asks for the worktree inventory of one project.
