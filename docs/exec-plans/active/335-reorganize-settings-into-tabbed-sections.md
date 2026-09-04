@@ -225,6 +225,12 @@ npm run typecheck         # needs ./scripts/ci-bootstrap.sh in a fresh worktree
   `tsc --noEmit` clean, `npm run build` succeeds. No Go files touched, so the
   `go` layer was not re-run.
 
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
+- **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: CONFLICTING; findings_hash: 511f85f4; threads_open: 0; action: escalated:risky fix needs human decision (main gained a #settings-menubar section inside the deleted #settings-scroll; which tab owns it is an IA call); head_sha: 9d64f72.
+
 ## Open questions
 
 None blocking. Two settled at plan time: the tab strip lives inside the dialog
