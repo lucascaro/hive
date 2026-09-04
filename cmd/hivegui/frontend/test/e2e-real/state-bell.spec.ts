@@ -120,3 +120,23 @@ test('rows 2–3: a bell in another session lights it; switching to it clears it
     .poll(() => rowState(page, 'main'), { timeout: 6000 })
     .not.toBe('attention');
 });
+
+test('a terminal query reply is not the user answering the bell', async ({
+  page,
+}) => {
+  await expectRowState(page, 'main', 'running');
+  // Ring; then, once the flag is up, have the program ask the terminal
+  // where its cursor is and enable focus reporting. xterm answers both
+  // through the same channel keystrokes travel on; fish, pi and Claude
+  // all do this while idle.
+  await page.keyboard.type(
+    "printf '\\a'; sleep 1.5; printf '\\e[6n\\e[?1004h'; sleep 1\n",
+  );
+  await expectRowState(page, 'main', 'attention');
+  await page.waitForTimeout(4000);
+  expect(await rowState(page, 'main')).toBe('attention');
+  // The shell echoed the reply; that is output, and output settles.
+  await page.keyboard.type(' ');
+  await expectRowState(page, 'main', 'running', 8000);
+  await page.keyboard.type("printf '\\e[?1004l'\n");
+});

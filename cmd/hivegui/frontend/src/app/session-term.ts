@@ -552,13 +552,15 @@ export class SessionTerm {
       // The disconnect itself is surfaced once ("control disconnected").
       WriteStdin(this.info.id, btoa(bin));
     };
-    this.term.onData((data) => {
-      // Typing here answers whatever this session was asking for. Done
-      // on the input edge rather than on window focus — see
-      // noteUserInput.
-      noteUserInput(this.info.id);
-      this._writePty(data);
-    });
+    this.term.onData((data) => this._writePty(data));
+    // Typing here answers whatever this session was asking for. onKey,
+    // NOT onData: onData also carries xterm's own replies to the program
+    // — cursor-position reports, device attributes, focus in/out when
+    // the program enabled ?1004h. Fish, pi and Claude all ask, so on
+    // onData the bell was "answered" by the terminal replying to a
+    // query, within a frame of ringing. A paste is also the user.
+    this.term.onKey(() => noteUserInput(this.info.id));
+    this.host.addEventListener('paste', () => noteUserInput(this.info.id));
 
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
