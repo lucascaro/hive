@@ -1,3 +1,8 @@
+// The e2e build (-tags=e2e) has its own TestMain in e2e_test.go; the
+// probe is opt-in and needs the hook dispatch below, so it lives in the
+// default build only.
+//go:build !e2e
+
 package main
 
 import (
