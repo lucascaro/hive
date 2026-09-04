@@ -32,6 +32,18 @@ type Menu struct {
 	// cannot outlive the item it was watching.
 	stop chan struct{}
 
+	// ready gates every systray call. main starts the client goroutine
+	// before systray.Run, and the daemon's snapshot arrives on
+	// handshake — so the first Model can and does land before onReady
+	// has created a single menu item. Adding items to a systray that
+	// has not started is not merely early; it is undefined.
+	//
+	// pending holds the newest Model seen while not ready, so nothing
+	// is lost in that window: without it the menu would sit empty
+	// until the next daemon event, which on a quiet machine is never.
+	ready   bool
+	pending *Model
+
 	// Static footer items, created once.
 	openGUI   *systray.MenuItem
 	reloadGUI *systray.MenuItem
@@ -61,12 +73,29 @@ func (m *Menu) Ready() {
 	m.quit = systray.AddMenuItem("Quit Hive", "Stop the daemon and close the menu bar")
 
 	go m.watchFooter()
+
+	m.mu.Lock()
+	m.ready = true
+	held := m.pending
+	m.pending = nil
+	m.mu.Unlock()
+	if held != nil {
+		m.Update(*held)
+	} else {
+		// Nothing has arrived yet, so say so rather than showing a
+		// header-less menu until the daemon answers.
+		m.Update(Disconnected())
+	}
 }
 
 // Update redraws the dynamic half. Safe to call from any goroutine.
 func (m *Menu) Update(model Model) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.ready {
+		m.pending = &model
+		return
+	}
 
 	// Stop the click watchers before removing what they watch, then
 	// hand the next generation a fresh channel.

@@ -188,3 +188,40 @@ func TestHeaderLineDegradesGracefully(t *testing.T) {
 		t.Errorf("HeaderLine = %q; missing fields must be named, not blank", got)
 	}
 }
+
+// main starts the client goroutine before systray.Run, and the daemon
+// sends its snapshot on handshake — so the first Model routinely
+// arrives before onReady has created a single menu item. Touching
+// systray then is undefined, and dropping the Model instead would
+// leave the menu empty until the next daemon event, which on a quiet
+// machine never comes.
+//
+// Only the not-ready path is exercised here: the ready path calls into
+// systray, which needs a real status bar and cannot run under `go
+// test`. That is exactly why the decision this gate makes lives in a
+// plain bool rather than inside the systray call site.
+func TestMenuHoldsUpdatesUntilReady(t *testing.T) {
+	m := NewMenu()
+
+	early := BuildModel(
+		[]wire.ProjectInfo{{ID: "p1", Name: "early"}},
+		[]wire.SessionInfo{{ID: "a", ProjectID: "p1", Alive: true}},
+		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
+	)
+	m.Update(early) // must not reach systray
+
+	if m.pending == nil {
+		t.Fatal("a pre-ready Model was dropped; the menu would stay empty")
+	}
+	if len(m.dynamic) != 0 {
+		t.Error("a pre-ready Update built menu items")
+	}
+
+	// Only the newest is worth keeping — the older one is already stale.
+	later := BuildModel(nil, nil, welcome(buildinfo.DaemonContract), buildinfo.DaemonContract)
+	m.Update(later)
+	if m.pending.Sessions != later.Sessions {
+		t.Errorf("held Model has %d sessions, want the newest (%d)",
+			m.pending.Sessions, later.Sessions)
+	}
+}
