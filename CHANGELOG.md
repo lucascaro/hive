@@ -46,6 +46,13 @@ build's daemon for its contract before you commit to anything.
   and the theme picker and update channel are one click away rather than a
   scroll away. Switching tabs never discards an edit in progress, and the tabs
   are keyboard-navigable with the arrow keys.
+- The terminal tile's chrome — its header, the dead-session card and the
+  loading panel a starting session shows — now renders from the same React
+  tree as the rest of the app, and the frontend's last imperative DOM
+  primitives are gone with it. The terminal itself is untouched: hosts are
+  still reparented rather than recreated, so scrollback, WebGL slots and PTY
+  attachments survive every repaint exactly as before. No visible change; the
+  markup, classes and keyboard behaviour are identical.
 
 ## [2.5.0] — 2026-09-03
 

@@ -10,12 +10,9 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |----------|-------|-------|-------|------|
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
-| P2 | — | Add 12 IDE-inspired theme presets | REVIEW | [305-add-ide-inspired-theme-presets](305-add-ide-inspired-theme-presets.md) |
-| P2 | — | Fix sidebar drag-and-drop ordering and drop placeholder | GATE | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
-| P3 | — | React-ify SessionTerm's tile chrome | IMPLEMENT | [329-react-ify-sessionterms-tile-chrome](329-react-ify-sessionterms-tile-chrome.md) |
 | P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
 | P3 | — | Decompose keyboard.ts into per-scope keymap tables | TRIAGE | [keyboard-keymap-tables](keyboard-keymap-tables.md) |
@@ -27,9 +24,12 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | — | Add GUI-only reload and a daemon menu-bar agent | #333 | 2026-09-04 | [330-add-gui-only-reload-and-a-daemon-menu-bar-agent](330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md) |
 | #323 | Add a check for updates button to the sidebar | #325 | 2026-09-03 | [323-add-check-for-updates-button-to-sidebar](323-add-check-for-updates-button-to-sidebar.md) |
 | #327 | GUI: Cmd+Enter in grid mode focuses the active session | #328 | 2026-09-03 | [327-cmd-enter-grid-focus-session](327-cmd-enter-grid-focus-session.md) |
+| — | React-ify SessionTerm's tile chrome | #334 | 2026-09-03 | [329-react-ify-sessionterms-tile-chrome](329-react-ify-sessionterms-tile-chrome.md) |
 | — | Reorganize Settings into tabbed sections | #335 | 2026-09-03 | [335-reorganize-settings-into-tabbed-sections](335-reorganize-settings-into-tabbed-sections.md) |
 | #330 | GUI: don't switch sessions while the close confirmation is up | #331 | 2026-09-03 | [close-confirm-no-switch](close-confirm-no-switch.md) |
 | — | Incremental React 19 rewrite of the hivegui frontend | #324 | 2026-09-03 | [react-ui-rewrite](react-ui-rewrite.md) |
+| — | Add 12 IDE-inspired theme presets | #316 | 2026-09-02 | [305-add-ide-inspired-theme-presets](305-add-ide-inspired-theme-presets.md) |
+| — | Fix sidebar drag-and-drop ordering and drop placeholder | #315 | 2026-09-02 | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
 | — | Worktrees, overlays and the launcher ignore the chosen theme | #313 | 2026-09-01 | [258-worktrees-and-overlays-ignore-the-theme](258-worktrees-and-overlays-ignore-the-theme.md) |
 | — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |
 | — | Minimized project chips fill the tray with a right-aligned restore | #300 | 2026-08-31 | [255-minimized-project-chips-fill-the-tray](255-minimized-project-chips-fill-the-tray.md) |
