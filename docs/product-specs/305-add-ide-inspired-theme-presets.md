@@ -5,7 +5,7 @@ type: enhancement
 complexity: M
 priority: P2
 pr: 316
-stage: REVIEW
+stage: DONE
 ---
 
 # Add 12 IDE-inspired theme presets
@@ -14,7 +14,7 @@ stage: REVIEW
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/305-add-ide-inspired-theme-presets.md](../exec-plans/active/305-add-ide-inspired-theme-presets.md)
+- **Exec plan:** [docs/exec-plans/completed/305-add-ide-inspired-theme-presets.md](../exec-plans/completed/305-add-ide-inspired-theme-presets.md)
 
 ## Problem
 

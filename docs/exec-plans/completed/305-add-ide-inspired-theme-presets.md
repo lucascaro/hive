@@ -4,7 +4,7 @@
 - **Issue:** —
 - **Branch:** `feature/305-add-ide-inspired-theme-presets`
 - **PR:** #316
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -275,3 +275,13 @@ Append-only. One line per `/hs-review-loop` iteration.
 ## Open questions
 
 - None.
+
+## Gate verdict
+
+- **2026-09-04** — no gate was run. The PR was merged on 2026-09-02 without
+  `/hs-merge-gate` recording a verdict, and the stage was never advanced,
+  so the plan sat in `active/` long after it shipped. Reconciled here
+  rather than gated after the fact: a PASS invented from a merged diff
+  would be a record of nothing, and the workflow's gate exists to hold an
+  OPEN PR against its spec. Nothing regressed in the meantime — the twelve presets are covered by `test/e2e/theme.spec.ts`'s
+  per-preset contrast and picker-grouping cases, green on `main`.
