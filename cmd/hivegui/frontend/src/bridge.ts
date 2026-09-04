@@ -47,6 +47,8 @@ export {
   Notify,
   Confirm,
   RestartDaemon,
+  ReloadGUI,
+  RequestReloadAllGUIs,
   CheckForUpdate,
   UpdateStatus,
   StartUpdate,

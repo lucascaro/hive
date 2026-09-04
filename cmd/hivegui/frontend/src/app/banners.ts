@@ -17,6 +17,7 @@ import {
   EventsOn,
   Confirm,
   RestartDaemon,
+  RequestReloadAllGUIs,
   CheckForUpdate,
   StartUpdate,
   ApplyUpdateAndRestart,
@@ -35,12 +36,17 @@ export function isDaemonRestarting() {
   return daemonRestarting;
 }
 
-// Stale-daemon banner. The Go side compares its own buildinfo.BuildID
-// to the value advertised in WELCOME and emits "daemon:stale" on every
-// connect with severity "match" / "mismatch" / "unknown". Mismatch is
-// symmetric (the daemon could be older OR newer than the GUI — bisect,
-// stash, reverse-checkout all flip the direction), so the copy is
-// deliberately direction-neutral.
+// Stale-daemon banner. The Go side emits "daemon:stale" on every
+// connect with severity "match" / "reloadable" / "mismatch" /
+// "unknown". Build IDs say whether anything changed; the daemon
+// CONTRACT says what it costs to apply — equal contracts mean a GUI
+// reload is enough and every session survives, anything else means the
+// daemon has to restart and they all end.
+//
+// Both the reloadable and mismatch cases are symmetric (the daemon
+// could be older OR newer than the GUI — bisect, stash,
+// reverse-checkout all flip the direction), so the copy is deliberately
+// direction-neutral about which side moved.
 //
 // Dismissal is keyed on the specific daemonBuild that was dismissed,
 // so a *different* mismatched build later will still surface. A "match"
@@ -111,6 +117,47 @@ function setRestartDisabled(disabled: boolean) {
   setBanner('daemon', { actions: { restart: { disabled } } });
 }
 
+// reloadGui relaunches every GUI window and leaves the daemon — and
+// every running shell and agent — alone.
+//
+// Deliberately NOT behind a confirm dialog, unlike restartHive. AGENTS.md
+// requires the confirm for destructive actions, and this one destroys
+// nothing: the sessions keep running, the windows come back. Putting a
+// "are you sure?" in front of it would train the user to click through
+// the dialog that DOES matter.
+//
+// It asks Go to broadcast rather than reloading this window, because
+// each window is its own process — reloading only this one would leave
+// the others running the old binary against the same daemon.
+export async function reloadGui() {
+  if (daemonRestarting) return;
+  daemonRestarting = true;
+  try {
+    showDaemonBanner('Reloading Hive…');
+    await RequestReloadAllGUIs();
+    // Every window, this one included, is now relaunching. Control
+    // returns here only if the request never reached the daemon.
+  } catch (err) {
+    flashStatus(`reload failed: ${err}`, true);
+    showDaemonBanner(`Reload failed: ${err}`);
+  } finally {
+    daemonRestarting = false;
+  }
+}
+
+// Which of the two actions the daemon banner offers. Exactly one is
+// visible at a time: offering both would ask the user to understand
+// the daemon contract to pick, which is precisely the judgement this
+// feature exists to make on their behalf.
+function setDaemonBannerAction(kind: 'reload' | 'restart') {
+  setBanner('daemon', {
+    actions: {
+      reload: { hidden: kind !== 'reload' },
+      restart: { hidden: kind !== 'restart' },
+    },
+  });
+}
+
 function wireDaemonBanner() {
   EventsOn('daemon:stale', (ev: DaemonStaleEvent | null) => {
     if (!ev) return;
@@ -122,12 +169,24 @@ function wireDaemonBanner() {
     }
     // Same build the user already dismissed: stay hidden.
     if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
-    if (ev.severity === 'mismatch') {
+    if (ev.severity === 'reloadable') {
+      // The cheap case, and the common one: only the GUI changed.
+      // Say what it costs (nothing) — the previous copy demanded a
+      // full restart here and users learned to expect losing their
+      // agents to a CSS tweak.
+      setDaemonBannerAction('reload');
       showDaemonBanner(
-        `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}). ` +
-          `Restart Hive to apply changes.`,
+        `This GUI (${ev.guiBuild}) is a newer build than the running one (${ev.daemonBuild}), ` +
+          `but the daemon is unchanged. Reload to apply — your sessions keep running.`,
+      );
+    } else if (ev.severity === 'mismatch') {
+      setDaemonBannerAction('restart');
+      showDaemonBanner(
+        `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}) ` +
+          `and the daemon itself changed. Restarting Hive ends every running session.`,
       );
     } else {
+      setDaemonBannerAction('restart');
       showDaemonBanner(
         `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
           `If something looks wrong, restart Hive.`,
@@ -139,11 +198,20 @@ function wireDaemonBanner() {
 // applyUpdateAndRestart is the ONE way either surface applies a staged
 // update. Both the banner and the Settings modal call it.
 //
-// It exists because ApplyUpdateAndRestart ends in RestartDaemon, which
-// is exactly as destructive as the Restart Hive action beside it: every
-// running shell and agent dies. AGENTS.md requires destructive actions
-// to go through the confirm overlay, and the first cut of this feature
-// wired both buttons straight to the binding instead.
+// It exists because ApplyUpdateAndRestart can end in RestartDaemon,
+// which is exactly as destructive as the Restart Daemon action beside
+// it: every running shell and agent dies. AGENTS.md requires
+// destructive actions to go through the confirm overlay, and the first
+// cut of this feature wired both buttons straight to the binding
+// instead.
+//
+// `kind` says which it will be, and the dialog follows it. A
+// GUI-only update destroys nothing, so it is applied without a
+// confirm — putting a warning in front of a harmless action is how
+// users learn to click through the one that matters. Go decides which
+// it is (from the staged daemon's contract) and the reducer carries
+// the answer here; anything other than 'gui' takes the destructive
+// path, so a missing value is safe.
 //
 // It also claims `daemonRestarting`, which is what stops events.ts from
 // flashing a red "disconnected" status while the daemon we deliberately
@@ -153,23 +221,25 @@ function wireDaemonBanner() {
 // versionLabel names what is about to be installed ("2.5.0", or a commit
 // on the latest channel); empty is tolerated so a caller that has lost
 // track of it still gets a truthful, if vaguer, dialog.
-export async function applyUpdateAndRestart(versionLabel = '') {
+export async function applyUpdateAndRestart(versionLabel = '', kind = '') {
   // Same re-entrancy shape as restartHive: claimed before the first
   // await, because the confirm dialog is itself a window in which a
   // second click on the other surface would slip past.
   if (daemonRestarting) return;
   daemonRestarting = true;
   try {
-    const title = versionLabel
-      ? `Install ${versionLabel} and restart Hive?`
-      : 'Install the update and restart Hive?';
-    const ok = await Confirm(
-      title,
-      'Hive will close, terminate every running shell and agent, and ' +
-        'reopen on the new version. Save your work first.\n\n' +
-        'Continue?',
-    );
-    if (!ok) return;
+    if (kind !== 'gui') {
+      const title = versionLabel
+        ? `Install ${versionLabel} and restart Hive?`
+        : 'Install the update and restart Hive?';
+      const ok = await Confirm(
+        title,
+        'Hive will close, terminate every running shell and agent, and ' +
+          'reopen on the new version. Save your work first.\n\n' +
+          'Continue?',
+      );
+      if (!ok) return;
+    }
     try {
       await ApplyUpdateAndRestart();
       // On success this process is already quitting; control reaching
@@ -386,10 +456,13 @@ export async function manualUpdateCheck() {
 // handler dispatches on the data-action it wrote.
 export function onUpdateAction() {
   const data = appStore.getState().banners.update.actions?.action?.data ?? {};
-  if (data.action === 'restart') {
+  if (data.action === 'restart' || data.action === 'reload') {
     // Confirm + guard live in the shared wrapper; never call the
     // binding directly from a click handler.
-    void applyUpdateAndRestart(data.version || '');
+    void applyUpdateAndRestart(
+      data.version || '',
+      data.action === 'reload' ? 'gui' : 'full',
+    );
     return;
   }
   if (data.action === 'start') {

@@ -29,6 +29,7 @@ Actions on rows, card headers and tile headers are hidden until hover or keyboar
 - **No sessions in a project:** card body shows one ghost row "New session…" (`--fg-subtle`, `plus` icon) that opens the launcher.
 - **Session starting:** terminal area shows the existing phase checklist, restyled: steps use `icon(check)` / `state-starting` / `--fg-subtle` dot; no Unicode.
 - **Daemon unreachable:** `banner` kind `error` with "Restart Hive" primary action; terminal area keeps last content dimmed to 50%.
+- **Daemon build differs:** `banner` kind `error` with exactly one action, chosen by the daemon contract — "Reload GUI" when the contracts agree (nothing is lost, so no confirm), "Restart Hive" when they don't (every session ends, so the confirm overlay is mandatory). Never show both: picking between them is the app's job, not the user's.
 
 ## Errors
 

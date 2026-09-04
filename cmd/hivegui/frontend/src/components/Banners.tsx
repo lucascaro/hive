@@ -17,6 +17,7 @@ import {
   dismissUpdateBanner,
   onUpdateAction,
   openDownloadUrl,
+  reloadGui,
   restartHive,
 } from '../app/banners.js';
 import { dismissUndoBanner, undoLastClose } from '../app/undo-close.js';
@@ -39,7 +40,12 @@ export function Banners(): ReactNode {
         kind="error"
         id="daemon-banner"
         data={banners.daemon}
+        // Exactly one of these is visible at a time; app/banners.ts
+        // picks which from the daemon-contract severity. Reload first
+        // so the cheap, non-destructive action is the one in the
+        // habitual position.
         actions={[
+          { id: 'reload', label: 'Reload GUI', onClick: reloadGui },
           { id: 'restart', label: 'Restart Hive', onClick: restartHive },
         ]}
         onDismiss={dismissDaemonBanner}

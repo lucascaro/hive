@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -81,11 +82,12 @@ func (a *App) ConnectControl() error {
 		return fmt.Errorf("control: %w", err)
 	}
 
+	w := cs.Welcome()
 	a.mu.Lock()
 	a.control = cs
+	a.daemonContract = w.DaemonContract
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	w := cs.Welcome()
 	a.emitDaemonVersionStatus(w.BuildID, w.Release, w.DaemonContract)
 	return nil
 }
@@ -237,9 +239,41 @@ func (a *App) RestartDaemon() error {
 		return fmt.Errorf("hived still answering on %s after shutdown and signal; not restarting", sock)
 	}
 
-	// The daemon is gone; these conns are dead sockets now. Release
-	// them before the relaunch so the outgoing process isn't holding
-	// half-open fds while the new GUI comes up.
+	// The daemon is gone; these conns are dead sockets now.
+	return a.relaunchSelf("restart")
+}
+
+// relaunchSelf replaces this GUI process with a fresh one and quits.
+// It is the tail RestartDaemon and ReloadGUI share: release the
+// connections so the outgoing process isn't holding half-open fds
+// while the new GUI comes up, spawn the replacement, then quit.
+//
+// It says nothing about the daemon, deliberately. RestartDaemon has
+// already confirmed hived is gone by the time it gets here; ReloadGUI
+// requires it to still be running. Keeping the "is the daemon alive"
+// decision entirely with the callers is what makes ReloadGUI provably
+// unable to kill a session.
+//
+// why is a log tag naming which caller this is, so the daemon-restart
+// and GUI-reload paths stay distinguishable in hivegui.log.
+// Seams for the reload/restart tests, for the same reason
+// restartDaemonFn is seamed in update_action.go and more urgently:
+// spawnNewGUI re-execs os.Executable(), which in a test binary is the
+// test binary — a test that reached it once spawned a detached copy of
+// the whole suite, against the developer's real state directory.
+var (
+	spawnNewGUIFn = spawnNewGUI
+	quitFn        = func(a *App) { wruntime.Quit(a.ctx) }
+	// emitFn is seamed for a different reason than the two above:
+	// EventsEmit rejects a context it did not issue, so any test that
+	// drives a code path ending in an emit aborts the whole binary
+	// rather than failing one case.
+	emitFn = func(a *App, name string, data ...any) {
+		wruntime.EventsEmit(a.ctx, name, data...)
+	}
+)
+
+func (a *App) relaunchSelf(why string) error {
 	a.mu.Lock()
 	if a.control != nil {
 		_ = a.control.Close()
@@ -251,12 +285,97 @@ func (a *App) RestartDaemon() error {
 	a.attaches = make(map[string]*wire.Client)
 	a.mu.Unlock()
 
-	if err := spawnNewGUI(a.launchDir); err != nil {
+	if err := spawnNewGUIFn(a.launchDir); err != nil {
 		return fmt.Errorf("relaunch GUI: %w", err)
 	}
-	log.Printf("hivegui: restart: relaunched, quitting")
-	wruntime.Quit(a.ctx)
+	log.Printf("hivegui: %s: relaunched, quitting", why)
+	quitFn(a)
 	return nil
+}
+
+// ReloadGUI relaunches this GUI process and leaves hived — and every
+// PTY it owns — running.
+//
+// This is the cheap half of what used to be a single "Restart Hive".
+// hived is spawned detached and has no idle exit, so it outlives a GUI
+// quit on its own; picking up new frontend code never needed to kill
+// the user's sessions, and doing so was costing a full restart for
+// what is usually a CSS change.
+//
+// It must never send FrameShutdown and never call killRunningHived.
+// Those are RestartDaemon's, and a reload that reaches either of them
+// is a reload that ended someone's agent run. TestReloadGUINeverKills
+// pins that.
+//
+// Callers reach this through RequestReloadAllGUIs so every window
+// relaunches together; calling it directly reloads only this one and
+// leaves siblings on the old binary.
+func (a *App) ReloadGUI() error {
+	if !a.beginReload() {
+		// A reload is already in flight. The broadcast reaches every
+		// window including the sender, and a user can click twice, so
+		// this is reachable in normal use: spawning a second
+		// replacement would leave the user with two new windows.
+		log.Printf("hivegui: reload: already in flight, ignoring")
+		return nil
+	}
+	log.Printf("hivegui: reload: relaunching GUI, leaving hived alone")
+	return a.relaunchSelf("reload")
+}
+
+// beginReload latches the reload flag, returning false if one is
+// already running.
+func (a *App) beginReload() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.reloading {
+		return false
+	}
+	a.reloading = true
+	return true
+}
+
+// RequestReloadAllGUIs asks the daemon to tell every GUI window to
+// relaunch, this one included.
+//
+// It goes through the daemon rather than reloading in place because
+// each window is its own process (OpenNewWindow re-execs), so a local
+// reload would leave the other windows running the old binary against
+// the new daemon — the exact drift this feature exists to remove.
+func (a *App) RequestReloadAllGUIs() error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	if err := cs.WriteJSON(wire.FrameClientCommand,
+		wire.ClientCommand{Cmd: wire.CmdReloadGUI}); err != nil {
+		return fmt.Errorf("request reload: %w", err)
+	}
+	return nil
+}
+
+// handleClientCommand acts on a command another client (or this one)
+// asked the daemon to relay.
+//
+// reload_gui is handled here in Go rather than forwarded to the
+// frontend: the reload is a process relaunch, which the webview cannot
+// perform, and routing it through JS would put a page that is about to
+// be destroyed in charge of destroying itself. Everything else is
+// frontend business and goes out as a Wails event.
+func (a *App) handleClientCommand(payload []byte) {
+	var cmd wire.ClientCommand
+	if err := json.Unmarshal(payload, &cmd); err != nil {
+		log.Printf("hivegui: control: bad client command payload: %v", err)
+		return
+	}
+	switch cmd.Cmd {
+	case wire.CmdReloadGUI:
+		if err := a.ReloadGUI(); err != nil {
+			log.Printf("hivegui: reload: %v", err)
+		}
+	default:
+		emitFn(a, "client:command", string(payload))
+	}
 }
 
 // detachControl clears the installed control connection and returns it, so
@@ -304,6 +423,10 @@ func (a *App) controlReadLoop(cs *wire.Client) {
 				log.Printf("hivegui: control read: %v", err)
 			}
 			return
+		}
+		if ft == wire.FrameClientBroadcast {
+			a.handleClientCommand(payload)
+			continue
 		}
 		if name, ok := wire.ControlEventName(ft); ok {
 			wruntime.EventsEmit(a.ctx, name, string(payload))

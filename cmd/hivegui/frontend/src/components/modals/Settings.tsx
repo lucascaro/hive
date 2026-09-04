@@ -323,11 +323,14 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const updateBtn = updateButtonState(updateInfo, isMac);
 
   function runUpdate() {
-    if (updateBtn.action === 'restart') {
+    if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
       // Shared with the banner: confirm overlay + re-entrancy guard +
       // the daemon-restart flag live there, and applying is exactly as
       // destructive from here as it is from the banner.
-      void applyUpdateAndRestart(updateInfo?.latest || '');
+      void applyUpdateAndRestart(
+        updateInfo?.latest || '',
+        updateBtn.action === 'reload' ? 'gui' : 'full',
+      );
       return;
     }
     if (updateBtn.action === 'start') {

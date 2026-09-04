@@ -66,9 +66,20 @@ func buildAppMenu(a *App) *menu.Menu {
 		emit("menu:delete-project"))
 	file.AddSeparator()
 	file.AddText("Check for Updates…", nil, emit("menu:check-for-updates"))
+	// Reload relaunches every GUI window and leaves hived — and every
+	// running shell and agent — alone. It is the cheap half of what
+	// used to be a single "Restart Hive".
+	//
+	// No accelerator, even though this one is harmless. ⌘R is the
+	// browser reload reflex, and a user who fires it out of habit while
+	// an agent is mid-run loses their window (and their scroll
+	// position) for nothing. The palette and this menu are enough.
+	file.AddText("Reload GUI", nil, emit("menu:reload-gui"))
 	// No accelerator: this terminates every running shell and agent,
-	// which is not something to leave one fat-finger away.
-	file.AddText("Restart Hive…", nil, emit("menu:restart-hive"))
+	// which is not something to leave one fat-finger away. The label
+	// names the cost, because it now sits next to an item that looks
+	// similar and costs nothing.
+	file.AddText("Restart Daemon… (ends all sessions)", nil, emit("menu:restart-hive"))
 	// macOS convention puts Settings in the app menu, but Wails v2
 	// builds that menu entirely in Objective-C from a role enum
 	// (WailsMenu.m's appendRole) — processMenuItem returns as soon as

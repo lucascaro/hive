@@ -198,3 +198,38 @@ func TestReopenClosedSessionAccelerator(t *testing.T) {
 		}
 	}
 }
+
+// TestReloadAndRestartMenuItems pins the two items that now sit next to
+// each other in File and differ enormously in cost.
+//
+// Neither carries an accelerator, for different reasons: Restart Daemon
+// ends every running shell and agent, and Reload GUI would otherwise
+// answer the ⌘R browser reflex by throwing away the user's window
+// mid-agent-run for no benefit.
+func TestReloadAndRestartMenuItems(t *testing.T) {
+	m := buildAppMenu(&App{})
+	if m == nil {
+		t.Fatal("buildAppMenu returned nil on darwin")
+	}
+
+	for _, label := range []string{
+		"Reload GUI",
+		"Restart Daemon… (ends all sessions)",
+	} {
+		item := findItem(m.Items, label)
+		if item == nil {
+			t.Errorf("menu item %q not found", label)
+			continue
+		}
+		if item.Accelerator != nil {
+			t.Errorf("%q has accelerator %+v; both items are deliberately unbound",
+				label, item.Accelerator)
+		}
+	}
+
+	// The old label must be gone: it named the cheap action while doing
+	// the expensive one, which is the confusion this split removes.
+	if findItem(m.Items, "Restart Hive…") != nil {
+		t.Error(`"Restart Hive…" still present; it was renamed to name its cost`)
+	}
+}

@@ -334,7 +334,11 @@ function initialData(): AppData {
     bootState: { text: 'Starting hive…', onRetry: null },
     banners: {
       'undo-close': EMPTY_BANNER,
-      daemon: EMPTY_BANNER,
+      // Exactly one of the daemon banner's two actions is ever shown;
+      // app/banners.ts picks from the severity. Reload starts hidden so
+      // a banner raised by anything that does not set it (a failure
+      // message, say) offers the conservative action.
+      daemon: { ...EMPTY_BANNER, actions: { reload: { hidden: true } } },
       // The primary action starts hidden — same as the old markup's
       // display:none default for a banner with nothing to act on.
       // renderUpdateAction reveals it once there is something to do.

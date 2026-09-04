@@ -110,3 +110,51 @@ describe('describeVersion', () => {
     ).toContain('commit 8e65349');
   });
 });
+
+// The reducer is where "what will this cost me?" becomes visible. Go
+// works the answer out from the staged daemon's contract; if the label
+// does not follow it, every update keeps reading as destructive and
+// the whole feature is invisible.
+describe('updateButtonState restart kind', () => {
+  it('offers Reload and promises the sessions survive', () => {
+    const s = updateButtonState(
+      { stage: 'ready', restartKind: 'gui', latest: '2.5.0' },
+      true,
+    );
+    expect(s.label).toBe('Reload');
+    expect(s.action).toBe('reload');
+    expect(s.status).toMatch(/sessions keep running/i);
+  });
+
+  it('offers Restart and names the cost when the daemon changed', () => {
+    const s = updateButtonState(
+      { stage: 'ready', restartKind: 'full', latest: '2.5.0' },
+      true,
+    );
+    expect(s.label).toBe('Restart');
+    expect(s.action).toBe('restart');
+    expect(s.status).toMatch(/ends every running session/i);
+  });
+
+  // A bundle staged by an older build carries no kind. Defaulting to
+  // reload there would silently drop a GUI into a daemon it may not
+  // understand, so the missing case must take the safe path.
+  it('falls back to Restart when the kind is missing', () => {
+    const s = updateButtonState({ stage: 'ready', latest: '2.5.0' }, true);
+    expect(s.action).toBe('restart');
+  });
+
+  // Go's own message wins when it has one — it is more specific than
+  // anything the reducer can say.
+  it('prefers the backend message over its own copy', () => {
+    const s = updateButtonState(
+      {
+        stage: 'ready',
+        restartKind: 'gui',
+        message: 'Update ready — reload to apply',
+      },
+      true,
+    );
+    expect(s.status).toBe('Update ready — reload to apply');
+  });
+});

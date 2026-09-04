@@ -21,6 +21,9 @@ var (
 	// where it runs the whole suite again. A test that reached it once
 	// spawned a daemon against the developer's real state directory.
 	restartDaemonFn = (*App).RestartDaemon
+	// requestReloadAllGUIsFn is the cheap counterpart, seamed for the
+	// same reason: it writes to the real control connection.
+	requestReloadAllGUIsFn = (*App).RequestReloadAllGUIs
 )
 
 // updateState is everything the Update/Restart button needs to know,
@@ -45,6 +48,10 @@ type updateState struct {
 	// staging that a newer release has already obsoleted.
 	bundle    string
 	stagedFor string
+	// restartKind is what applying `bundle` will cost, computed once
+	// when the bundle is published rather than at click time: the probe
+	// runs a binary, and the Restart button must not stall on it.
+	restartKind string
 	// gen increments whenever the settings a staging run was started
 	// under stop being current. The staging goroutine captures it and
 	// refuses to publish a bundle staged under superseded settings —
@@ -77,6 +84,7 @@ func (a *App) rememberCheck(info UpdateInfo) {
 		}
 		a.update.bundle = ""
 		a.update.stagedFor = ""
+		a.update.restartKind = ""
 	}
 	a.update.last = info
 }
@@ -94,6 +102,7 @@ func (a *App) forgetUpdateState() {
 	a.update.last = UpdateInfo{}
 	a.update.bundle = ""
 	a.update.stagedFor = ""
+	a.update.restartKind = ""
 	// Anything staging right now was started under settings that no
 	// longer apply; bumping gen is what stops it publishing.
 	a.update.gen++
@@ -184,7 +193,26 @@ func (a *App) StartUpdate() error {
 		a.update.bundle = bundle
 		a.update.stagedFor = info.Latest
 		a.update.mu.Unlock()
-		a.setStage(StageReady, "Update ready — restart to apply")
+
+		// Ask the staged daemon what it is before promising the user
+		// anything. This is what lets the button say "Reload GUI —
+		// your sessions keep running" instead of the blanket restart
+		// warning every update used to carry.
+		a.mu.Lock()
+		running := a.daemonContract
+		a.mu.Unlock()
+		kind := restartKindFor(bundle, running)
+
+		a.update.mu.Lock()
+		a.update.restartKind = kind
+		a.update.last.RestartKind = kind
+		a.update.mu.Unlock()
+
+		if kind == RestartGUI {
+			a.setStage(StageReady, "Update ready — reload to apply")
+		} else {
+			a.setStage(StageReady, "Update ready — restart to apply")
+		}
 	}()
 	return nil
 }
@@ -199,6 +227,7 @@ func (a *App) ApplyUpdateAndRestart() error {
 	a.update.mu.Lock()
 	bundle := a.update.bundle
 	busy := a.update.busy
+	kind := a.update.restartKind
 	a.update.mu.Unlock()
 	if busy {
 		return fmt.Errorf("an update is still being prepared")
@@ -222,6 +251,15 @@ func (a *App) ApplyUpdateAndRestart() error {
 	// failing with a path error instead of saying the update is done.
 	pruneStagingDirs()
 	a.forgetUpdateState()
+
+	// The staged daemon is contract-compatible with the one already
+	// running, so the swapped-in hived does not have to replace it —
+	// relaunching the windows is enough, and every shell and agent
+	// survives the update. The new hived on disk is simply what the
+	// NEXT daemon start will use.
+	if kind == RestartGUI {
+		return requestReloadAllGUIsFn(a)
+	}
 	// RestartDaemon owns the whole teardown: in-band shutdown frame,
 	// socket-liveness probe, signal escalation, refuse-if-still-alive,
 	// relaunch, quit. Reusing it is also what picks up the *new* hived,

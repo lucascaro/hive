@@ -74,7 +74,12 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { App } from './components/App.js';
 import { mustEl } from './app/el.js';
-import { isDaemonRestarting, initBanners, restartHive } from './app/banners.js';
+import {
+  isDaemonRestarting,
+  initBanners,
+  reloadGui,
+  restartHive,
+} from './app/banners.js';
 import {
   closeActiveSession,
   reopenLastClosedSession,
@@ -233,7 +238,12 @@ const paletteCommands = [
     run: () => openHelpOverlay(),
   },
   { id: 'settings', name: 'Settings…', run: () => openSettings() },
-  { id: 'restart-hive', name: 'Restart Hive…', run: () => restartHive() },
+  { id: 'reload-gui', name: 'Reload GUI', run: () => reloadGui() },
+  {
+    id: 'restart-hive',
+    name: 'Restart Daemon… (ends all sessions)',
+    run: () => restartHive(),
+  },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `switch-${i + 1}`,
     name: `Switch to Session ${i + 1}`,
