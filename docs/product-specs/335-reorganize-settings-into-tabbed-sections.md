@@ -18,9 +18,11 @@ stage: REVIEW
 
 ## Problem
 
-The Settings modal is one long scroll holding three unrelated concerns: **Custom
-agents** (a list that grows without bound), **Appearance** (theme picker plus a
-four-row token textarea), and **Updates** (channel, source repo, action button).
+The Settings modal is one long scroll holding several unrelated concerns:
+**Custom agents** (a list that grows without bound), **Appearance** (theme
+picker plus a four-row token textarea), **Menu bar** (macOS-only, whether
+launchd starts the menu bar at login) and **Updates** (channel, source repo,
+action button).
 The flat layout only works because of a structural workaround —
 `#settings-scroll` scrolls while `#settings-updates` is pinned below it at its
 natural height — added precisely so a dozen custom agents cannot push the
@@ -36,8 +38,11 @@ error raised from any section is visible whichever tab is active.
 
 ## Success criteria
 
-- The Settings body renders a tab strip with three tabs — Agents, Appearance,
-  Updates — and opens with Agents selected.
+- The Settings body renders a tab strip — Agents, Appearance, Updates, plus
+  Menu bar between Appearance and Updates on macOS — and opens with Agents
+  selected.
+- The Menu bar tab is absent, not disabled, wherever its section was absent
+  before: off macOS, and on a Mac whose build cannot register a login item.
 - The strip follows the ARIA tabs pattern: `role="tablist"` / `role="tab"` /
   `role="tabpanel"`, `aria-selected` on the active tab, roving `tabindex`, and
   Left/Right/Home/End moving focus and selection together.
@@ -62,7 +67,8 @@ error raised from any section is visible whichever tab is active.
   table are untouched.
 - A command-palette deep link into a specific tab ("Settings → Updates").
 - Widening the dialog from `md` (560px) to `lg`.
-- Any change to what the three sections do — this is layout only.
+- Any change to what the sections do — this is layout only. `main`'s Menu bar
+  section moves into a tab unaltered.
 
 ## Notes
 

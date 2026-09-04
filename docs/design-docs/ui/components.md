@@ -74,6 +74,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - `role="tablist"` (`aria-label` from `label`) over `role="tab"` buttons with `aria-selected` and `aria-controls`. Roving `tabindex`: the selected tab is `0`, the rest `-1`, so the strip is one Tab stop. Left/Right wrap, Home/End jump; selection follows focus, and focus is moved with it.
 - Ids are `<id>-tabs` for the strip and `<id>-tab-<tabId>` for each tab — a selector contract for the e2e specs, like the `hv-*` names (FRONTEND.md).
 - Callers pair each tab with a `role="tabpanel"` element at `<id>-panel-<tabId>`, `aria-labelledby` its tab, hidden with `display: none` when inactive — which is also what takes its controls out of the tab order.
+- Generic over the caller's id union (`Tabs<TabId>`), so `onChange` hands back that union rather than a bare `string` the call site has to cast. A conditional tab is built into the `tabs` array (Settings' macOS-only Menu bar tab), not rendered disabled.
 
 ## `banner({ text, kind, actions })` — `src/components/Banner.tsx`
 

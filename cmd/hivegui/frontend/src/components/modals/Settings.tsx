@@ -386,13 +386,12 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const updateBtn = updateButtonState(updateInfo, isMac);
 
   // MenuBarLoginItemStatus resolves after mount, so the strip gains its
-  // fourth tab once the answer arrives. activeTab guards the window in
-  // between — and any future case where a tab leaves the strip while it
-  // is the selected one — so the body can never render with every panel
-  // hidden and no tab looking selected.
+  // fourth tab once the answer arrives. It only ever gains one: the
+  // status is read once and never re-read, so a tab cannot leave the
+  // strip while it is the selected one, and `tab` always names a tab
+  // that is there.
   const showMenuBar = isMac && menuBarStatus !== 'unsupported';
   const tabs = tabsFor(showMenuBar);
-  const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   function runUpdate() {
     if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
@@ -507,10 +506,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // the hint was inaccurate the moment it was added: Enter did nothing
   // from the selects or the panel itself.
   //
-  // On the root element, not on a wrapper: #settings-scroll and
-  // #settings-updates must stay direct children of .hv-dialog__body
-  // (settings.css pins Updates below the scrolling region), so this
-  // subtree has no element of its own to hang a React handler on.
+  // On the root element, not on a wrapper: the body's children are the
+  // tab strip, one panel per tab and the error slot, so there is no
+  // single element covering the fields to hang a React handler on.
   // Re-attached each render so it closes over the current draft.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -557,10 +555,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         id="settings"
         label="Settings sections"
         tabs={tabs}
-        active={activeTab}
-        onChange={(id) => setTab(id as TabId)}
+        active={tab}
+        onChange={setTab}
       />
-      <Panel tab="agents" active={activeTab}>
+      <Panel tab="agents" active={tab}>
         {/* No <h4>: the selected tab is this section's heading, and the
             panel is aria-labelledby it. */}
         <p className="settings-hint">
@@ -629,7 +627,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         />
       </Panel>
 
-      <Panel tab="appearance" active={activeTab}>
+      <Panel tab="appearance" active={tab}>
         <p className="settings-hint">
           Applies as you change it, and is remembered. Cancel does not undo it.
         </p>
@@ -694,7 +692,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
       </Panel>
 
       {showMenuBar ? (
-        <Panel tab="menubar" active={activeTab}>
+        <Panel tab="menubar" active={tab}>
           {/* The menu bar is macOS-only and starts itself whenever hived or
             a window does, so this tab is about ONE thing: whether launchd
             should start it at login too. Unsigned builds cannot register
@@ -725,7 +723,7 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         </Panel>
       ) : null}
 
-      <Panel tab="updates" active={activeTab}>
+      <Panel tab="updates" active={tab}>
         <p className="settings-hint">
           Hive checks for updates in the background. Nothing is downloaded or
           built until you press Update.

@@ -426,3 +426,36 @@ test('Tab never reaches a control in a hidden panel', async ({ page }) => {
     expect(landed.inHidden).toBe(false);
   }
 });
+
+// The menu-bar tab is macOS-only: the wails mock reports a real login-item
+// status, but `isMac` still decides, so the strip is three tabs on Linux
+// CI and four on a Mac. Asserting the platform-correct shape in one test
+// keeps it honest on both legs.
+test('the menu-bar tab is present only on macOS', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  const menuBarTab = page.locator('#settings-tab-menubar');
+  if (process.platform !== 'darwin') {
+    await expect(menuBarTab).toHaveCount(0);
+    await expect(page.locator('#settings-panel-menubar')).toHaveCount(0);
+    return;
+  }
+
+  await expect(menuBarTab).toBeVisible();
+  await menuBarTab.click();
+  const toggle = page.locator('#settings-menubar-login-item');
+  await expect(toggle).toBeVisible();
+  // Reachable, not merely rendered: the whole point of the split is that
+  // no other section can push it out from under the pointer.
+  const onTop = await toggle.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.x + r.width / 2,
+      r.y + r.height / 2,
+    );
+    return el.contains(hit) || el === hit;
+  });
+  expect(onTop).toBe(true);
+});

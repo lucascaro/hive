@@ -62,9 +62,17 @@ plan-mode iteration:
 
 ## Approach
 
-Three tabs — **Agents** (default) / **Appearance** / **Updates** — with the
-strip rendered by a new `Tabs` primitive inside the dialog body, above the
-panels.
+Tabs — **Agents** (default) / **Appearance** / **Menu bar**, macOS-only /
+**Updates** — with the strip rendered by a new `Tabs` primitive inside the
+dialog body, above the panels.
+
+**Menu bar is its own tab.** `main` gained a macOS-only Menu bar section (PR
+#333) inside the `#settings-scroll` div this branch deletes, so the rebase had
+to place it somewhere. It is neither appearance nor updates — it is whether
+launchd starts a background agent at login — so it gets a fourth tab, built
+into the strip behind the same `isMac && status !== 'unsupported'` guard the
+section carried. The tab is absent, not disabled, everywhere that guard fails,
+so no platform sees a tab that opens onto an explanation of why it is empty.
 
 **A primitive, not inline markup.** `docs/design-docs/ui/README.md` rule 1
 forbids hand-rolled markup in a feature component. The strip is ~50 lines and
@@ -214,6 +222,21 @@ npm run typecheck         # needs ./scripts/ci-bootstrap.sh in a fresh worktree
   clip inside `max-height: 80vh` on a short window, and the browser screenshots
   showed the switch reads fine without it.
 
+- **2026-09-03** — Menu bar gets its own macOS-only tab rather than riding on
+  Appearance. Why: review iteration 1 surfaced the conflict with `main`'s new
+  `#settings-menubar` section; a launchd login item is not appearance, and
+  Appearance would become a junk drawer. Absent rather than disabled off macOS,
+  matching the guard the section already had.
+- **2026-09-03** — `Tabs` is generic over the caller's id union. Why: the review
+  flagged the `as TabId` cast at the call site; a generic removes it, and an
+  unchecked cast on a value coming back from a child is exactly what breaks
+  silently when a tab id is added.
+- **2026-09-03** — Dropped the `activeTab` fallback that re-selected Agents when
+  `tab` named a tab missing from the strip. Why: `MenuBarLoginItemStatus` is read
+  once at mount and never re-read, so a tab can only ever be *added* to the
+  strip — the state it guarded is unreachable, and the test for it could not
+  fail.
+
 ## Progress
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec
@@ -224,12 +247,21 @@ npm run typecheck         # needs ./scripts/ci-bootstrap.sh in a fresh worktree
   e2e (265) green, `ui-lint --strict` / `--contrast` clean, `biome ci` and
   `tsc --noEmit` clean, `npm run build` succeeds. No Go files touched, so the
   `go` layer was not re-run.
+- **2026-09-03** — Review-loop iteration 1: REQUEST_CHANGES, escalated on a
+  merge conflict needing a human IA call. Rebased onto `origin/main` (PR #333
+  landed mid-flight), resolved by giving Menu bar its own macOS-only tab, fixed
+  the stale comment citing the deleted pin, typed `Tabs` generically, added four
+  dom cases and one e2e spec for the new tab, and regenerated the seven
+  invalidated screenshot baselines on macOS (eyeballed per themes.md step 4).
+  All checks re-run green: dom 566 / e2e 266, ui-lint, contrast, biome, tsc,
+  build.
 
 ## PR convergence ledger
 
 Append-only. One line per `/hs-review-loop` iteration.
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: CONFLICTING; findings_hash: 511f85f4; threads_open: 0; action: escalated:risky fix needs human decision (main gained a #settings-menubar section inside the deleted #settings-scroll; which tab owns it is an IA call); head_sha: 9d64f72.
+- **2026-09-03 iter 1 (resolution)** — rebased onto origin/main; Menu bar placed in its own macOS-only tab; findings 2 and 3 fixed; baselines regenerated and reviewed.
 
 ## Open questions
 

@@ -48,13 +48,27 @@ const updateBridge = {
   OpenURL: vi.fn(() => Promise.resolve()),
 };
 
+// Both are read at render time, so a getter-backed `let` is enough to
+// drive them per test — `isMac` is a module const, not a call.
+let menuBarStatus = 'unsupported';
+let onMac = false;
+const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
+
+vi.mock('../../src/lib/platform.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/lib/platform.js')>()),
+  get isMac() {
+    return onMac;
+  },
+}));
+
 vi.mock('../../src/bridge.js', () => ({
   ListCustomAgents: (...a: Parameters<typeof listCustomAgents>) =>
     listCustomAgents(...a),
   SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
     saveCustomAgents(...a),
-  MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
-  SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
+  MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
+  SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
+    setMenuBarLoginItem(...a),
   ...updateBridge,
 }));
 
@@ -111,6 +125,9 @@ beforeEach(() => {
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
+  setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
+  menuBarStatus = 'unsupported';
+  onMac = false;
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
 });
@@ -679,5 +696,66 @@ describe('settings tabs', () => {
   it('keeps the error slot outside every panel', () => {
     open();
     expect(el('settings-error').closest('.settings-panel')).toBeNull();
+  });
+});
+
+// ---------- the menu-bar tab ----------
+//
+// The section this replaced was rendered behind `isMac && status !==
+// 'unsupported'`; the tab carries the same guard, so on every other
+// platform the strip is the three portable tabs and the panel does not
+// exist at all — not a tab that opens onto an explanation of why it is
+// empty.
+describe('settings menu-bar tab', () => {
+  const tabIds = () =>
+    [...document.querySelectorAll('#settings-tabs [role="tab"]')].map(
+      (t) => t.id,
+    );
+
+  it('is absent when the platform is not a Mac', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = false;
+    open();
+    await flush();
+    expect(tabIds()).toEqual([
+      'settings-tab-agents',
+      'settings-tab-appearance',
+      'settings-tab-updates',
+    ]);
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+  });
+
+  it('is absent on a Mac that cannot register a login item', async () => {
+    menuBarStatus = 'unsupported';
+    onMac = true;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-menubar');
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+  });
+
+  it('appears between Appearance and Updates and owns the toggle', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    expect(tabIds()).toEqual([
+      'settings-tab-agents',
+      'settings-tab-appearance',
+      'settings-tab-menubar',
+      'settings-tab-updates',
+    ]);
+
+    click(el('settings-tab-menubar'));
+    expect(el('settings-panel-menubar').classList.contains('hidden')).toBe(
+      false,
+    );
+    const toggle = el<HTMLButtonElement>('settings-menubar-login-item');
+    expect(toggle.textContent).toContain('Start at login');
+    expect(el('settings-panel-menubar').contains(toggle)).toBe(true);
+
+    click(toggle);
+    await flush();
+    expect(setMenuBarLoginItem).toHaveBeenCalledWith(true);
   });
 });

@@ -16,35 +16,36 @@
 
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 
-export interface TabDef {
-  id: string;
+export interface TabDef<T extends string = string> {
+  id: T;
   label: string;
 }
 
-export interface TabsProps {
+export interface TabsProps<T extends string = string> {
   /** Prefix for every generated id; also the tablist's own id. */
   id: string;
-  tabs: TabDef[];
-  active: string;
-  onChange: (id: string) => void;
+  tabs: TabDef<T>[];
+  active: T;
+  /** Typed with the caller's own id union, so no cast at the call site. */
+  onChange: (id: T) => void;
   /** Names the strip for screen readers, e.g. "Settings sections". */
   label: string;
 }
 
-export function Tabs({
+export function Tabs<T extends string>({
   id,
   tabs,
   active,
   onChange,
   label,
-}: TabsProps): ReactNode {
+}: TabsProps<T>): ReactNode {
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // Roving tabindex means the newly selected tab is the only tabbable
   // one, so focus has to be moved explicitly — the browser will not do
   // it, and leaving focus on a tab that is now tabindex="-1" strands the
   // keyboard user outside the strip's own tab order.
-  function select(next: string) {
+  function select(next: T) {
     onChange(next);
     listRef.current
       ?.querySelector<HTMLElement>(`#${CSS.escape(`${id}-tab-${next}`)}`)
