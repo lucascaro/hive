@@ -1,10 +1,11 @@
 ---
 issue: null
+pr: 335
 title: "Reorganize Settings into tabbed sections"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Reorganize Settings into tabbed sections

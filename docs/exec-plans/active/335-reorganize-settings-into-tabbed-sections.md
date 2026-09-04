@@ -2,8 +2,8 @@
 
 - **Spec:** [docs/product-specs/335-reorganize-settings-into-tabbed-sections.md](../../product-specs/335-reorganize-settings-into-tabbed-sections.md)
 - **Issue:** —
-- **Branch:** —
-- **PR:** —
+- **Branch:** `feature/335-reorganize-settings-into-tabbed-sections`
+- **PR:** [#335](https://github.com/lucascaro/hive/pull/335)
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
