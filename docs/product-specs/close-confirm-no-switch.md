@@ -5,7 +5,8 @@ type: bug
 complexity: S
 priority: P2
 pr: 331
-stage: GATE
+stage: DONE
+shipped: 2026-09-03
 ---
 
 # GUI: don't switch sessions while the close confirmation is up
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/close-confirm-no-switch.md](../exec-plans/active/close-confirm-no-switch.md)
+- **Exec plan:** [docs/exec-plans/completed/close-confirm-no-switch.md](../exec-plans/completed/close-confirm-no-switch.md)
 
 ## Problem
 

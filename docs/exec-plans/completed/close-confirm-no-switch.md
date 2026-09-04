@@ -4,7 +4,7 @@
 - **Issue:** #330
 - **PR:** #331
 - **Branch:** `feature/330-close-confirm-no-switch`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -66,11 +66,20 @@ worktree and is exactly when the user wants to see that something is happening.
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
 - **2026-09-03** — Implemented; PR #331 open; stage = REVIEW.
+- **2026-09-03** — Gate PASS; stage = DONE.
 - **2026-09-03** — Review loop converged (APPROVE, 1 iteration, 0 open threads); applied the one MINOR test-hygiene nit; stage = GATE.
 
 ## PR convergence ledger
 
 - **2026-09-03 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 53d3532.
+
+## Gate verdict
+
+- **2026-09-03** — verdict: PASS; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all three success criteria demonstrated, no non-goal bleed, changeset and docs accurate.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — `checking` no longer switches focus, `closing` still does, cancel leaves the user in place (daemon resets to ready on refusal).
+    - non-goals — PASS — `isClosing()` untouched and its three other callers still cover both phases; no Go/daemon change.
+    - doc accuracy — PASS — changeset present and schema-correct; spec/plan match the diff; no README/AGENTS.md claim invalidated.
 
 ## Open questions
 
