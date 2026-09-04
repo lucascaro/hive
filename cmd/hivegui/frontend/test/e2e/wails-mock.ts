@@ -714,6 +714,48 @@ export async function Confirm(_title: string, _body: string) {
 export async function RestartDaemon() {
   return '';
 }
+
+// --- reload / menu bar ---
+//
+// The daemon relays reload_gui to every window and the Go side acts on
+// it (App.handleClientCommand), so there is nothing for the browser to
+// model here beyond the call itself. Mocked so the module's export
+// surface still matches the generated bindings — a missing name is not
+// a silent no-op, it is a module-load error that stops the app booting.
+
+export async function ReloadGUI() {
+  maybeFail('ReloadGUI');
+  return '';
+}
+export async function RequestReloadAllGUIs() {
+  maybeFail('RequestReloadAllGUIs');
+  return '';
+}
+
+// The attention flag lives on the daemon. Model the clear, so a spec
+// that focuses a session sees needs_attention drop the way the real
+// daemon would broadcast it, rather than the flag surviving only in
+// the store.
+export async function SetSessionAttention(id: string, want: boolean) {
+  maybeFail('SetSessionAttention');
+  const s = state.sessions.find((x) => x.id === id);
+  if (s && !!s.needs_attention !== want) {
+    s.needs_attention = want;
+    emit('session:event', JSON.stringify({ kind: 'attention', session: s }));
+  }
+  return '';
+}
+
+// Login-item registration is a real macOS service call with no browser
+// equivalent. "not-registered" is the honest default: it is what an
+// install that has never been toggled reports.
+export async function MenuBarLoginItemStatus() {
+  return 'not-registered';
+}
+export async function SetMenuBarLoginItem(_enable: boolean) {
+  maybeFail('SetMenuBarLoginItem');
+  return '';
+}
 export async function CheckForUpdate() {
   return null;
 }
