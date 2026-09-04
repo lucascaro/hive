@@ -679,6 +679,37 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   (`cmd/hivegui/app.go`), the daemon never imports `internal/notify`.
   Why: that is where they live today; moving them is out of scope.
 
+- **2026-09-04** — **Transition table frozen.** Three rewrites of the
+  clear rule (focus → bell → keystroke) each moved the bug rather than
+  fixing it. The table below is the contract; a change to it is a
+  decision-log entry with sign-off, not a fix commit.
+
+  Heuristic tier (every session; `state_source` empty):
+
+  | From | Observation | To | Reason tag |
+  |------|-------------|----|------------|
+  | idle | screen digest changed | working | `output` |
+  | working | digest unchanged for `QuietAfter` (2 s) | idle | `tick` |
+  | idle, working | BEL | waiting_input | `bell` |
+  | waiting_input | digest changed | waiting_input (no change) | — |
+  | waiting_input | user typed into it, or switched *to* it | idle | `clear` |
+  | any but exited | child exited (any code) | exited | `exit` |
+  | any | anything | error | never — `error` is agent-reported only |
+
+  Agent tiers (`hook` / `extension`): `Apply` in `agentstate/machine.go`
+  is the table. While the tier is fresh (`HookStaleAfter` = 30 s) BEL and
+  output are ignored; past it, output demotes to heuristic `working`.
+
+  Derived, never stored: `needs_attention = state ∈ {waiting_input,
+  waiting_permission}`. Owner is the daemon; clients keep no copy. The
+  GUI decides one thing locally — whether to post an OS notification —
+  and that is on the attention edge, only when the session is not active
+  or the window is unfocused.
+
+  Evidence rule: `HIVE_DEBUG_STATE=1 hived` logs
+  `state: <id> <prev> -> <next> src=<tier> reason=<tag>`. A "still
+  wrong" report without that transcript is not actionable.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:

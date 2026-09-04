@@ -366,8 +366,38 @@ func (r *Registry) noteBell(id string) {
 	}
 	prev := e.stateSnapshot()
 	if e.machine().Bell(time.Now()) {
-		r.announceStateLocked(e, prev)
+		r.announceStateLocked(e, prev, "bell")
 	}
+}
+
+// debugState is HIVE_DEBUG_STATE=1: log every state transition with
+// what caused it. The one tool that turns "the dot is wrong" into a
+// transcript — read once so the hot path pays a bool.
+var debugState = os.Getenv("HIVE_DEBUG_STATE") == "1"
+
+// logStateLocked prints one transition line when debugState is on.
+// reason names the feeder (bell / output / tick / clear / exit / event
+// kind) so a wrong dot can be traced to the observation that moved it.
+func logStateLocked(e *Entry, prev, cur agentstate.Snapshot, reason string) {
+	if !debugState {
+		return
+	}
+	log.Printf("state: %s %s -> %s src=%s reason=%s",
+		e.ID, stateName(prev.State), stateName(cur.State), sourceName(cur.Source), reason)
+}
+
+func stateName(s string) string {
+	if s == wire.StateIdle {
+		return "idle"
+	}
+	return s
+}
+
+func sourceName(s string) string {
+	if s == wire.StateSourceHeuristic {
+		return "heuristic"
+	}
+	return s
 }
 
 // announceStateLocked broadcasts a state change and raises attention
@@ -379,11 +409,12 @@ func (r *Registry) noteBell(id string) {
 // turning that into the flag that drives desktop notifications would
 // make the flag worthless within a minute of use. On that tier the bell
 // remains the only thing that asks for the user, exactly as before.
-func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot) {
+func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reason string) {
 	cur := e.stateSnapshot()
 	if cur == prev {
 		return
 	}
+	logStateLocked(e, prev, cur, reason)
 	// Both kinds when the derived flag moved, attention first: clients
 	// key notifications off "attention" and glyphs off "state", this is
 	// one moment that genuinely is both, and "attention" is the one
@@ -421,7 +452,7 @@ func (r *Registry) SetAttention(id string, want bool) error {
 	if want || !e.machine().ClearWaiting() {
 		return nil
 	}
-	r.announceStateLocked(e, prev)
+	r.announceStateLocked(e, prev, "clear")
 	return nil
 }
 
@@ -564,16 +595,18 @@ func (r *Registry) sampleStateLocked(e *Entry, now time.Time) {
 		return
 	}
 	prev := e.stateSnapshot()
-	changed := false
+	reason := ""
 	if d := e.sess.ScreenDigest(); d != e.screenDigest {
 		e.screenDigest = d
-		changed = e.machine().Output(now)
+		if e.machine().Output(now) {
+			reason = "output"
+		}
 	}
 	if e.machine().Tick(now) {
-		changed = true
+		reason = "tick"
 	}
-	if changed {
-		r.announceStateLocked(e, prev)
+	if reason != "" {
+		r.announceStateLocked(e, prev, reason)
 	}
 }
 
@@ -958,7 +991,9 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 	// so the same broadcast carries both Alive:false and the exited
 	// state. Done inline rather than through a session hook because
 	// this is the one place that already owns the exit path.
+	prev := e.stateSnapshot()
 	e.machine().Exit()
+	logStateLocked(e, prev, e.stateSnapshot(), "exit")
 	// Stop any post-spawn AgentSessionID capture that's still
 	// polling — the session is gone, no point waiting for codex's
 	// rollout file. The capture goroutine will return ctx.Canceled

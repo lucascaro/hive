@@ -271,7 +271,7 @@ func TestAgentReportedWaitingRaisesAttention(t *testing.T) {
 		At:     time.Now(),
 		Text:   "",
 	})
-	r.announceStateLocked(ent, prev)
+	r.announceStateLocked(ent, prev, "event")
 	r.mu.Unlock()
 
 	info := r.Get(e.ID).Info()
