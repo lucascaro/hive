@@ -6,6 +6,7 @@ complexity: S
 priority: P2
 stage: DONE
 pr: 315
+shipped: 2026-09-02
 ---
 
 # Fix sidebar drag-and-drop ordering and drop placeholder

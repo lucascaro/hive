@@ -38,6 +38,16 @@ async function boot(page: Page, sessions = 3) {
     (n) => (window.__hive.state?.sessions.length ?? 0) >= n,
     sessions,
   );
+  // Wait for every tile to be attached before anything writes to it. A
+  // deferred ensureAttached() replays the scrollback, and replay-begin
+  // calls term.reset() (lib/scrollback.ts) — which would wipe markers
+  // written before it and read back as a phantom host remount, the exact
+  // bug this spec exists to detect.
+  await page.waitForFunction((n) => {
+    const terms = window.__hive_state?.terms;
+    if (!terms || terms.size < n) return false;
+    return [...terms.values()].every((t) => (t as SessionTerm).attached);
+  }, sessions);
 }
 
 // Tag every live host and give each terminal something in its buffer, so

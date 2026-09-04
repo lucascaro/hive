@@ -6,6 +6,7 @@ complexity: M
 priority: P2
 pr: 316
 stage: DONE
+shipped: 2026-09-02
 ---
 
 # Add 12 IDE-inspired theme presets

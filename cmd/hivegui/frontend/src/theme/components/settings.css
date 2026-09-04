@@ -1,5 +1,5 @@
 /* Settings — composition only. The dialog shell, fields, buttons and the
-   error slot come from the primitives (src/ui/); what is left here is how
+   error slot come from the primitives (src/components/); what is left here is how
    this screen's controls share a line. */
 .settings-hint {
   margin: 0 0 var(--space-3);

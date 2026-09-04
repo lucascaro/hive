@@ -219,15 +219,23 @@ describe('dead-session overlay', () => {
     expect(document.activeElement).not.toBe(dead()?.querySelector('.dead-btn'));
   });
 
-  it('survives an unmount while shown', async () => {
+  it('survives an unmount while shown', () => {
     // destroy() with the overlay up: the deferred focus must not fire
     // against a detached button.
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { view } = mount({ dead: true });
-    view.unmount();
-    await tick();
-    expect(err).not.toHaveBeenCalled();
-    err.mockRestore();
+    //
+    // The assertion is the timer count, not a console spy: React nulls
+    // closeRef on unmount, so a LEAKED timer would run `undefined?.focus()`
+    // and neither throw nor log. Only "the timeout is gone" distinguishes
+    // the effect's cleanup from no cleanup at all.
+    vi.useFakeTimers();
+    try {
+      const { view } = mount({ dead: true });
+      expect(vi.getTimerCount()).toBe(1);
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
