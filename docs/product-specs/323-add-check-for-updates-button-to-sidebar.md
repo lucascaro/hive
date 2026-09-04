@@ -41,9 +41,13 @@ checking, up to date, update available, or check failed.
 - Clicking it invokes the same manual update check path the menu item uses, and
   the update banner surfaces every outcome including "up to date" and failures.
 - Rapid repeated clicks do not fire parallel GitHub API calls.
-- The button is built from the shared `iconButton()` primitive and the icon
+- The button is built from the shared icon-button primitive and the icon
   sprite, carries no bespoke CSS, and visually matches the adjacent
-  "New project" button.
+  "New project" button. (It was the imperative `iconButton()` as this spec
+  shipped; the primitive is `components/IconButton.tsx` since the
+  [tile-chrome port](329-react-ify-sessionterms-tile-chrome.md), which also
+  moved the button itself into `components/Sidebar.tsx`. The criterion is
+  unchanged — same primitive, same sprite, same absence of bespoke CSS.)
 - The sidebar brand still truncates with an ellipsis at narrow widths.
 
 ## Non-goals

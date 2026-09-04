@@ -22,6 +22,7 @@ import {
   useRef,
   type DragEvent as ReactDragEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -31,6 +32,7 @@ import {
   UpdateProject,
   UpdateSession,
 } from '../bridge.js';
+import { manualUpdateCheck } from '../app/banners.js';
 import { reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
@@ -52,6 +54,8 @@ import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
 // Live read of the store, for the event handlers' non-reactive lookups.
 const appData = () => appStore.getState();
 import { Chip } from './Chip.js';
+import { Icon } from './Icon.js';
+import { IconButton } from './IconButton.js';
 import { ProjectCard } from './ProjectCard.js';
 import { SessionRow } from './SessionRow.js';
 
@@ -501,6 +505,42 @@ export function Sidebar(props: SidebarProps) {
             tray,
           )
         : null}
+    </>
+  );
+}
+
+// ---------- the sidebar header's icon controls ----------
+
+// index.html owns the <header> and the #new-project-btn element itself —
+// initProjectEditor() wires its click, the launcher uses it as a focus
+// fallback and the dom tests reach it by id — so React fills in the icon
+// and appends the sibling rather than owning the markup.
+//
+// "Check for updates" sits next to "New project" because until it existed
+// the only manual trigger was the macOS app menu's "Check for Updates…"
+// item, invisible on every other platform and undiscoverable on that one.
+//
+// Null-guarded on purpose, exactly as the imperative
+// wireCheckUpdatesButton() was: dom tests mount scaffolds with no sidebar
+// header at all (update-banner, restart-hive), and a missing header must
+// render nothing rather than throw.
+export function SidebarHeaderControls(): ReactNode {
+  const newProjectBtn = document.getElementById('new-project-btn');
+  const header = newProjectBtn?.parentElement;
+  if (!newProjectBtn || !header) return null;
+  return (
+    <>
+      {createPortal(<Icon name="plus" />, newProjectBtn)}
+      {createPortal(
+        <IconButton
+          id="check-updates-btn"
+          icon="download"
+          label="Check for updates"
+          size={22}
+          onClick={() => void manualUpdateCheck()}
+        />,
+        header,
+      )}
     </>
   );
 }

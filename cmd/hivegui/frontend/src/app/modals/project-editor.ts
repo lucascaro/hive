@@ -4,13 +4,12 @@
 // What stays here is the open/close pair every caller already imports
 // from this path (keyboard.ts, main.tsx, the sidebar, the empty state and
 // the command palette), the default colour both halves need, and the
-// new-project button's icon, which lives in index.html's header rather
-// than in the dialog.
+// click wiring for the new-project button, which lives in index.html's
+// header rather than in the dialog.
 
 import { flushSync } from 'react-dom';
 import { closeModal, isModalOpen, openModal } from '../../store/store.js';
 import { pageEl } from '../el.js';
-import { icon } from '../../ui/icon.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
 import type { ProjectInfo } from '../state.js';
 
@@ -53,7 +52,9 @@ export function closeProjectEditor() {
 
 export function initProjectEditor(injected: ProjectEditorDeps) {
   deps = injected;
-  const newProjectBtn = pageEl('new-project-btn');
-  newProjectBtn.replaceChildren(icon('plus'));
-  newProjectBtn.addEventListener('click', () => openProjectEditor(null));
+  // The button's icon is rendered by components/Sidebar.tsx's
+  // SidebarHeaderControls; what stays here is the click.
+  pageEl('new-project-btn').addEventListener('click', () =>
+    openProjectEditor(null),
+  );
 }

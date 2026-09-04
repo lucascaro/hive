@@ -117,14 +117,18 @@ function makeTerm(info: Info) {
   return st;
 }
 
-// Read the label span's text, not the li's whole textContent: an
-// 'active' step's leading mark is a stateIcon with a <title> child
-// ("Starting"), which would otherwise leak into the li's textContent.
+// The panel is a model in the store now, not DOM: components/
+// TileOverlays.tsx renders it, and tile-overlays.test.tsx pins that
+// half. What this file owns is the imperative half — which phase edge
+// raises the panel, which drops it, and the attach gate around them.
+const chrome = (st: Tile) => {
+  const c = store.appStore.getState().tileChrome.get(st.info.id);
+  if (!c) throw new Error(`no tile chrome for ${st.info.id}`);
+  return c;
+};
+
 const steps = (st: Tile) =>
-  Array.from(st.phaseSteps.children).map(
-    (li) =>
-      `${(li as HTMLElement).dataset.state}:${li.querySelector('span')?.textContent}`,
-  );
+  (chrome(st).phasePanel?.steps ?? []).map((s) => `${s.state}:${s.label}`);
 
 describe('phase overlay', () => {
   it('shows the checklist while the session is still being created', () => {
@@ -137,7 +141,7 @@ describe('phase overlay', () => {
     });
     st.setPhase('starting');
 
-    expect(st.phaseOverlay.hidden).toBe(false);
+    expect(chrome(st).phaseVisible).toBe(true);
     expect(steps(st)).toEqual([
       'active:Registered session',
       'todo:Fetching origin',
@@ -146,7 +150,9 @@ describe('phase overlay', () => {
     ]);
 
     st.setPhase('worktree');
-    expect(st.phaseStatus.textContent).toBe('Creating worktree stone-valley…');
+    expect(chrome(st).phasePanel?.status).toBe(
+      'Creating worktree stone-valley…',
+    );
   });
 
   it('does not attach while pending, and attaches on the ready edge', async () => {
@@ -175,7 +181,10 @@ describe('phase overlay', () => {
 
     st.revealAfterReplay();
     expect(st.phaseOverlayShown).toBe(false);
-    expect(st.phaseOverlay.hidden).toBe(true);
+    expect(chrome(st).phaseVisible).toBe(false);
+    // The model stays put behind `hidden`: dropping the panel is one
+    // attribute flip, not a rebuild.
+    expect(chrome(st).phasePanel).not.toBeNull();
   });
 
   it('ignores a replay that lands while the session is not ready', () => {
@@ -265,5 +274,40 @@ describe('tile phase publishes the live phase', () => {
 
     st.setPhase('starting');
     expect(livePhase(st)).toBe('starting');
+  });
+});
+
+// setDead()'s store write, against a REAL SessionTerm. tile-overlays.test.tsx
+// covers what a given store shape renders, but it patches the store by hand
+// and every other `setDead` under test/ is a stub — so a regression in this
+// method (dropping the reason, or clearing it on a later call) would pass
+// every other test in the suite.
+describe('setDead', () => {
+  it('publishes the reason, and never clears it once set', () => {
+    const st = makeTerm({ id: 'd1', name: 'doomed', alive: true });
+
+    expect(chrome(st).dead).toBe(false);
+    expect(chrome(st).deadReason).toBe('');
+
+    st.setDead(true, 'exit status 127');
+    expect(chrome(st).dead).toBe(true);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+    // The class on the host stays SessionTerm's — it dims the whole tile,
+    // and it is not part of what React renders.
+    expect(st.host.classList.contains('dead')).toBe(true);
+
+    // Sticky by design, exactly as the imperative subtitle was: the write
+    // is guarded on a reason being supplied, so a later transition with
+    // none leaves the last one in place behind the hidden overlay.
+    st.setDead(true);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+
+    st.setDead(false);
+    expect(chrome(st).dead).toBe(false);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+    expect(st.host.classList.contains('dead')).toBe(false);
+    // keyboard.ts routes Enter/Escape off this flag, so it tracks the
+    // store write rather than lagging it.
+    expect(st.deadOverlayShown).toBe(false);
   });
 });

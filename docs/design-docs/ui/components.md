@@ -1,8 +1,8 @@
 # Components
 
-Primitives are React components in `src/components/` (`.tsx`, one per file). `src/ui/` — the original plain-TypeScript DOM builders, a function returning an element plus, where the element has state, a small `updateX()` patch twin — is down to `icon.ts` and `icon-button.ts` after the [React rewrite](../../exec-plans/completed/react-ui-rewrite.md), and each now has exactly one caller keeping it alive: `icon.ts` because `src/app/session-term.ts` still builds the tile's dead-session and phase overlays imperatively, `icon-button.ts` because `src/app/banners.ts` injects the check-for-updates control into the sidebar header. Both go in phase 2 of the tile-chrome port ([spec](../../product-specs/329-react-ify-sessionterms-tile-chrome.md)); `ensureSprite()` moves out of `icon.ts` rather than dying with it, since `components/Icon.tsx` calls it on every render. The tile *header* is already React (`components/TileChrome.tsx`, phase 1). A primitive that still exists in both renders byte-identical markup; the React one has no patch twin, because props replace it. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
+Primitives are React components in `src/components/` (`.tsx`, one per file). `src/ui/` — the original plain-TypeScript DOM builders, a function returning an element plus, where the element has state, a small `updateX()` patch twin — is gone: the [React rewrite](../../exec-plans/completed/react-ui-rewrite.md) took all but `icon.ts` and `icon-button.ts`, and the [tile-chrome port](../../product-specs/329-react-ify-sessionterms-tile-chrome.md) took those two with the terminal tile's last imperative markup. The sprite outlived them: `ensureSprite()`, `ICON_NAMES` and `icons.svg` moved to `src/lib/icon-sprite.ts`, which `components/Icon.tsx` calls on every render. There is no imperative path to markup left — a feature module that needs a control renders a component. Feature modules (`src/app/*`, `src/components/*`) compose primitives; they do not create `button`/`li`/`div` with hand-written classes for anything listed here.
 
-The signatures below are written in the imperative form, and each heading names the file(s) that implement it. Read a React component's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`.
+The signatures below are written in the imperative form, and each heading names the file that implements it. Read a React component's props as the same fields: `sessionRow({ session, selected, … })` is `<SessionRow session={…} selected={…} … />`.
 
 Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names are `hv-<name>` and `hv-<name>__<part>`; modifiers are data attributes (`data-state="attention"`, `data-selected`), not extra classes.
 
@@ -13,7 +13,7 @@ Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names ar
 - Tokens: default = `--btn`/`--btn-border`/`--fg-muted`; primary = `--accent`/`--on-accent`; danger = transparent with `--state-error` text and border; ghost = no fill, no border.
 - States: hover `--hover`, active darken 8%, disabled `opacity .5; pointer-events none`, focus-visible ring.
 
-## `iconButton({ icon, label, onClick })` — both: `src/components/IconButton.tsx`, `src/ui/icon-button.ts`
+## `iconButton({ icon, label, onClick })` — `src/components/IconButton.tsx`
 
 - 24×24 (rows/bars) or 22×22 (sidebar header), icon 14px centred, `aria-label` required, `title` mirrored. Same fills as `button` kind `ghost` at rest, `default` on hover.
 
@@ -21,13 +21,13 @@ Each primitive owns its CSS in `src/theme/components/<name>.css`. Class names ar
 
 - `<kbd class="hv-kbd">`, `--font-mono --text-xs --fg-subtle`. The only way to render a key hint. See patterns.md › Keyboard hints.
 
-## `icon(name, { size? })` — both: `src/components/Icon.tsx`, `src/ui/icon.ts`
+## `icon(name, { size? })` — `src/components/Icon.tsx` (sprite: `src/lib/icon-sprite.ts`)
 
 - Returns `<svg class="hv-icon"><use href="#hv-<name>"/></svg>`. Size 14 default, 12 inline.
 
-## `stateIcon(state)` / `updateStateIcon(el, state)` — both: `StateIcon` in `src/components/Icon.tsx`, `src/ui/icon.ts`
+## `stateIcon(state)` — `StateIcon` in `src/components/Icon.tsx`
 
-- Wraps `icon()` for the five states, sets `data-state`, applies animation classes. Used by session row, chip, tile header only. The React port has no `updateStateIcon` twin — a new `state` prop is the update.
+- Wraps `icon()` for the five states, sets `data-state`, applies animation classes. Used by session row, chip, tile header and the loading panel's active step. There is no `updateStateIcon` twin any more — a new `state` prop is the update.
 
 ## `sessionRow({ session, selected, onSelect, onMinimize, onRestart, onKill })` — React, `src/components/SessionRow.tsx`
 

@@ -1,11 +1,11 @@
 # React UI rewrite — Phase 2: Chrome island: status bar, banners, boot/empty state, tray, footer
 
-- **Master plan:** [react-ui-rewrite.md](../completed/react-ui-rewrite.md)
+- **Master plan:** [react-ui-rewrite.md](react-ui-rewrite.md)
 - **Spec:** [docs/product-specs/react-ui-rewrite.md](../../product-specs/react-ui-rewrite.md)
 - **Issue:** —
 - **PR:** [#318](https://github.com/lucascaro/hive/pull/318)
 - **Branch:** `feature/react-ui-rewrite-phase2`
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 

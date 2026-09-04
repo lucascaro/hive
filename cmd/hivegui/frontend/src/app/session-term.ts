@@ -31,10 +31,8 @@ import {
   setFontSize,
 } from '../store/store.js';
 import { allTerms, getTerm, setTerm } from '../store/terms.js';
-import { icon, stateIcon } from '../ui/icon.js';
 import { flashStatus, reportFailure } from './dom.js';
 import { mustEl } from './el.js';
-import { anyModalOpen } from '../store/store.js';
 import { isMac } from '../lib/platform.js';
 import {
   PHASE,
@@ -167,18 +165,15 @@ export class SessionTerm {
   // the constructor calls and would otherwise trip strictPropertyInitialization.
   _writePty: (data: string) => void;
 
-  // Dead-session overlay.
-  deadOverlay: HTMLDivElement;
-  deadCloseBtn: HTMLButtonElement;
-  deadDismissBtn: HTMLButtonElement;
-  deadOverlayShown: boolean;
+  // Dead-session overlay. The element is components/TileOverlays.tsx's;
+  // this flag is the tile's own copy of "is it up", because keyboard.ts
+  // routes Enter/Escape off it.
+  deadOverlayShown = false;
 
   // Lifecycle-phase overlay: the loading panel shown while the daemon
   // is still creating (or tearing down) this session. See
-  // lib/phase-steps.ts for the model.
-  phaseOverlay: HTMLDivElement;
-  phaseStatus: HTMLDivElement;
-  phaseSteps: HTMLUListElement;
+  // lib/phase-steps.ts for the model and TileOverlays.tsx for the
+  // rendering.
   phase: string = PHASE.ready;
   // The panel outlives PhaseReady until the terminal has painted (see
   // _revealAfterPhase), so "is the overlay up" is its own flag.
@@ -584,66 +579,6 @@ export class SessionTerm {
     this.term.onBell(() => {
       onSessionBell(this.info);
     });
-
-    // Dead-session overlay: hidden until the underlying process exits
-    // (Alive transitions true→false). Centered card with primary
-    // "Close session" (Enter) and secondary "Dismiss" (Escape).
-    this.deadOverlay = document.createElement('div');
-    this.deadOverlay.className = 'dead-overlay';
-    this.deadOverlay.setAttribute('role', 'alertdialog');
-    this.deadOverlay.setAttribute('aria-label', 'Session ended');
-    this.deadOverlay.hidden = true;
-    const card = document.createElement('div');
-    card.className = 'dead-card';
-    const title = document.createElement('div');
-    title.className = 'dead-title';
-    title.textContent = 'Session ended';
-    const subtitle = document.createElement('div');
-    subtitle.className = 'dead-subtitle';
-    subtitle.textContent = 'The process running in this session has exited.';
-    const buttons = document.createElement('div');
-    buttons.className = 'dead-buttons';
-    this.deadCloseBtn = document.createElement('button');
-    this.deadCloseBtn.className = 'dead-btn primary';
-    this.deadCloseBtn.textContent = 'Close session';
-    this.deadCloseBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._closeDead();
-    });
-    this.deadDismissBtn = document.createElement('button');
-    this.deadDismissBtn.className = 'dead-btn secondary';
-    this.deadDismissBtn.textContent = 'Dismiss';
-    this.deadDismissBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._dismissDead();
-    });
-    buttons.append(this.deadCloseBtn, this.deadDismissBtn);
-    card.append(title, subtitle, buttons);
-    this.deadOverlay.append(card);
-    this.host.append(this.deadOverlay);
-    this.deadOverlayShown = false;
-
-    // Phase overlay: opaque panel over the terminal body while the
-    // session is being created. It covers the window in which the
-    // shell paints its startup output, so the user lands on a settled
-    // screen instead of watching rc-files scroll past.
-    this.phaseOverlay = document.createElement('div');
-    this.phaseOverlay.className = 'phase-overlay';
-    this.phaseOverlay.setAttribute('role', 'status');
-    this.phaseOverlay.setAttribute('aria-live', 'polite');
-    this.phaseOverlay.hidden = true;
-    const phaseCard = document.createElement('div');
-    phaseCard.className = 'phase-card';
-    const spinner = document.createElement('div');
-    spinner.className = 'phase-spinner';
-    spinner.setAttribute('aria-hidden', 'true');
-    this.phaseStatus = document.createElement('div');
-    this.phaseStatus.className = 'phase-status';
-    this.phaseSteps = document.createElement('ul');
-    this.phaseSteps.className = 'phase-steps';
-    phaseCard.append(spinner, this.phaseStatus, this.phaseSteps);
-    this.phaseOverlay.append(phaseCard);
-    this.host.append(this.phaseOverlay);
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum
@@ -1364,27 +1299,18 @@ export class SessionTerm {
 
   setDead(isDead: boolean, reason?: string) {
     this.deadOverlayShown = isDead;
-    this.deadOverlay.hidden = !isDead;
+    // `dead` on the host stays ours: it is a class on the element this
+    // class owns, and the CSS dims the whole tile with it.
     this.host.classList.toggle('dead', isDead);
-    if (isDead) {
-      const subtitle = this.deadOverlay.querySelector('.dead-subtitle');
-      if (subtitle && reason) {
-        subtitle.textContent = reason;
-      }
-      // Defer focus so it lands after the visibility flip and after
-      // any pending blur from the dying xterm.
-      //
-      // Never while a modal is open. A session can die at any moment —
-      // the daemon drives this, not the user — and stealing focus out
-      // of a modal mid-keystroke is hostile in every case: it drops
-      // what you were typing into the project editor or the command
-      // palette. For the launcher it is worse than that, because the
-      // launcher closes when focus leaves it, so an unrelated session
-      // exiting would make the popup and its query vanish outright.
-      setTimeout(() => {
-        if (this.deadOverlayShown && !anyModalOpen()) this.deadCloseBtn.focus();
-      }, 0);
-    }
+    // The reason is written only when one is supplied, and never
+    // cleared — the same stickiness the imperative subtitle had. It is
+    // behind a hidden overlay the rest of the time.
+    patchTileChrome(this.info.id, {
+      dead: isDead,
+      ...(isDead && reason ? { deadReason: reason } : {}),
+    });
+    // Focus moves in TileOverlays.tsx's effect, not here: the button
+    // does not exist until React commits this write.
   }
 
   /**
@@ -1439,27 +1365,8 @@ export class SessionTerm {
       clearTimeout(this._phaseRevealTimer);
       this._phaseRevealTimer = 0;
     }
-    this.phaseStatus.textContent = panel.status;
-    this.phaseSteps.replaceChildren(
-      ...panel.steps.map((step) => {
-        const li = document.createElement('li');
-        li.className = 'phase-step';
-        // A variant is a data attribute, never a second class.
-        li.dataset.state = step.state;
-        // The mark used to be a CSS ::before dot/check/half-circle glyph;
-        // it is an icon now so it matches the rest of the family. 'todo'
-        // gets no mark - the indent in phase-step::before holds the column.
-        if (step.state === 'done') li.append(icon('check', { size: 12 }));
-        else if (step.state === 'active') li.append(stateIcon('starting'));
-        const label = document.createElement('span');
-        label.textContent = step.label;
-        li.append(label);
-        return li;
-      }),
-    );
     this.phaseOverlayShown = true;
-    this.phaseOverlay.hidden = false;
-    this.phaseOverlay.classList.remove('fading');
+    patchTileChrome(this.info.id, { phaseVisible: true, phasePanel: panel });
   }
 
   _hidePhaseOverlay() {
@@ -1469,8 +1376,9 @@ export class SessionTerm {
     }
     if (!this.phaseOverlayShown) return;
     this.phaseOverlayShown = false;
-    this.phaseOverlay.hidden = true;
-    this.phaseOverlay.classList.remove('fading');
+    // The panel model is left as it was: it is behind `hidden`, and
+    // keeping it means a re-show of the same phase repaints nothing.
+    patchTileChrome(this.info.id, { phaseVisible: false });
   }
 
   /**
@@ -1501,7 +1409,6 @@ export class SessionTerm {
    */
   revealAfterReplay() {
     if (!this.phaseOverlayShown || !isReady(this.phase)) return;
-    this.phaseOverlay.classList.add('fading');
     this._hidePhaseOverlay();
   }
 

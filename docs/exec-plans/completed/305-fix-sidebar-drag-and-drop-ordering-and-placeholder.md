@@ -4,7 +4,7 @@
 - **Issue:** —
 - **PR:** #315
 - **Branch:** quick-moon
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -197,3 +197,14 @@ Two mechanics the implementation must get right:
   so drag *initiation* — the thing the deferred `display: none` depends on —
   is unverified. Needs one manual drag in the built app. Fallback if it does
   cancel: `visibility: hidden; height: 0` on the source.
+
+## Gate verdict
+
+- **2026-09-03** — no gate was run. The PR was merged on 2026-09-02 without
+  `/hs-merge-gate` recording a verdict, and the stage was never advanced,
+  so the plan sat in `active/` long after it shipped. Reconciled here
+  rather than gated after the fact: a PASS invented from a merged diff
+  would be a record of nothing, and the workflow's gate exists to hold an
+  OPEN PR against its spec. Nothing regressed in the meantime — the drag fixes are covered by `test/unit/reorder.test.ts`,
+  `test/dom/drag-placeholder.test.ts` and `test/e2e/ordering.spec.ts`, all
+  green on `main`.

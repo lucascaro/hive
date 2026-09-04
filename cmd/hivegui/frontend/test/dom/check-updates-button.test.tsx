@@ -4,11 +4,14 @@
 // the only manual trigger was the macOS app menu's "Check for Updates…"
 // item — invisible on every other platform, undiscoverable on that one.
 //
-// The button is built at runtime by initBanners() from the iconButton()
-// primitive rather than written into index.html, so these tests are the
-// only place its markup, its accessible name and its placement next to
-// #new-project-btn are pinned down.
+// The button is rendered by components/Sidebar.tsx › SidebarHeaderControls
+// rather than written into index.html, so these tests are the only place
+// its markup, its accessible name and its placement next to
+// #new-project-btn are pinned down. (It was built by initBanners() from
+// the imperative iconButton() until that primitive was deleted with the
+// rest of src/ui/.)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render } from '@testing-library/react';
 import type { appStore as AppStore } from '../../src/store/store.js';
 
 const bridge = vi.hoisted(() => ({
@@ -24,15 +27,15 @@ vi.mock('../../src/bridge.js', () => bridge);
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
-// A fresh module registry per test: initBanners() guards against a
-// double append, and manualUpdateCheck()'s in-flight flag is module
-// state that the "two rapid clicks" case has to start clean.
-// `store` is re-read from the fresh registry on every init: vi.resetModules()
-// gives banners.ts a NEW store module, and a top-level import here would hold
-// the stale instance whose banner state nothing ever writes.
+// A fresh module registry per test: manualUpdateCheck()'s in-flight flag
+// is module state that the "two rapid clicks" case has to start clean.
+// `store` is re-read from the fresh registry on every mount:
+// vi.resetModules() gives banners.ts a NEW store module, and a top-level
+// import here would hold the stale instance whose banner state nothing
+// ever writes.
 let store: typeof AppStore;
 
-async function init(withHeader: boolean) {
+async function mount(withHeader: boolean) {
   document.body.innerHTML = `
     <div id="app">
       <div id="terms"></div>
@@ -47,13 +50,10 @@ async function init(withHeader: boolean) {
     </div>`;
   // A fresh registry means a fresh store; no reset needed.
   ({ appStore: store } = await import('../../src/store/store.js'));
-  const mod = await import('../../src/app/banners.js');
-  mod.initBanners();
-  // wireUpdateBanner() fires a boot-time CheckForUpdate(); clear it so
-  // the click assertions below count only the clicks.
-  await settle();
-  bridge.CheckForUpdate.mockClear();
-  return mod;
+  const { SidebarHeaderControls } = await import(
+    '../../src/components/Sidebar.js'
+  );
+  return render(<SidebarHeaderControls />);
 }
 
 function btn(): HTMLButtonElement {
@@ -75,8 +75,8 @@ afterEach(() => {
 });
 
 describe('sidebar check-for-updates button', () => {
-  it('is added to the sidebar header next to New project', async () => {
-    await init(true);
+  it('is rendered into the sidebar header next to New project', async () => {
+    await mount(true);
     const el = btn();
     expect(el.classList.contains('hv-icon-btn')).toBe(true);
     expect(el.dataset.size).toBe('22');
@@ -90,21 +90,37 @@ describe('sidebar check-for-updates button', () => {
     expect(use?.getAttribute('href')).toBe('#hv-download');
   });
 
-  it('is a no-op when the sidebar header is not mounted', async () => {
-    // update-banner.test.tsx and restart-hive.test.tsx both call
-    // initBanners() on a scaffold with no header; it must not throw.
-    await expect(init(false)).resolves.toBeDefined();
+  it('fills in the New project button’s icon', async () => {
+    // index.html owns that button (initProjectEditor wires its click and
+    // the launcher uses it as a focus fallback); only the icon is React's.
+    await mount(true);
+    expect(
+      document
+        .getElementById('new-project-btn')
+        ?.querySelector('svg.hv-icon use')
+        ?.getAttribute('href'),
+    ).toBe('#hv-plus');
+  });
+
+  it('renders nothing when the sidebar header is not mounted', async () => {
+    // The dom scaffolds in update-banner.test.tsx and restart-hive.test.tsx
+    // have no sidebar header; a missing one must render nothing rather
+    // than throw.
+    await expect(mount(false)).resolves.toBeDefined();
     expect(document.getElementById('check-updates-btn')).toBeNull();
   });
 
-  it('is not appended twice when initBanners runs again', async () => {
-    const mod = await init(true);
-    mod.initBanners();
+  it('stays a single button across a re-render', async () => {
+    const { rerender } = await mount(true);
+    const { SidebarHeaderControls } = await import(
+      '../../src/components/Sidebar.js'
+    );
+    rerender(<SidebarHeaderControls />);
     expect(document.querySelectorAll('#check-updates-btn')).toHaveLength(1);
   });
 
   it('runs a manual update check on click', async () => {
-    await init(true);
+    await mount(true);
     btn().click();
     expect(updateBannerText()).toBe('Checking for updates…');
     expect(bridge.CheckForUpdate).toHaveBeenCalledTimes(1);
@@ -112,7 +128,7 @@ describe('sidebar check-for-updates button', () => {
   });
 
   it('does not fire parallel checks on rapid clicks', async () => {
-    await init(true);
+    await mount(true);
     btn().click();
     btn().click();
     expect(bridge.CheckForUpdate).toHaveBeenCalledTimes(1);
@@ -120,7 +136,7 @@ describe('sidebar check-for-updates button', () => {
   });
 
   it('surfaces a failed check in the update banner', async () => {
-    await init(true);
+    await mount(true);
     bridge.CheckForUpdate.mockRejectedValueOnce(new Error('network down'));
     btn().click();
     await settle();

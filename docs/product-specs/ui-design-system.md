@@ -42,6 +42,16 @@ component layer, and CI keeps literals out.
 - `scripts/ui-lint.sh` runs in CI at error level, including a contrast check.
 - Each phase leaves the app shippable and ships as its own PR.
 
+> **Layout note (2026-09-03).** The two criteria naming `src/ui/` describe the
+> layout as this spec shipped it, and are kept as the historical record. That
+> directory no longer exists: the primitives are React components in
+> `src/components/` after the [React rewrite](react-ui-rewrite.md), and the
+> sprite is `src/lib/icon-sprite.ts` + `src/lib/icons.svg` after the
+> [tile-chrome port](329-react-ify-sessionterms-tile-chrome.md). The rules
+> themselves — one sprite, no Unicode glyphs, a primitive layer feature code
+> composes rather than hand-rolls — are unchanged and still enforced by
+> `scripts/ui-lint.sh`.
+
 ## Non-goals
 
 - Redesigning GUI layout or information architecture; this is a styling and

@@ -2,7 +2,7 @@
    surface-specific files come after the primitives they override.
    Vite inlines these @imports at build; index.html links only this file. */
 
-/* Primitives (src/ui/) first: everything below may override them. */
+/* Primitives (src/components/) first: everything below may override them. */
 @import './icon.css';
 @import './icon-button.css';
 @import './kbd.css';

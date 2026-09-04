@@ -4,8 +4,9 @@ title: "Fix sidebar drag-and-drop ordering and drop placeholder"
 type: bug
 complexity: S
 priority: P2
-stage: GATE
+stage: DONE
 pr: 315
+shipped: 2026-09-02
 ---
 
 # Fix sidebar drag-and-drop ordering and drop placeholder
@@ -14,7 +15,7 @@ pr: 315
 - **Type:** bug
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md](../exec-plans/active/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md)
+- **Exec plan:** [docs/exec-plans/completed/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md](../exec-plans/completed/305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md)
 
 ## Problem
 

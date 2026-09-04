@@ -83,11 +83,12 @@
   <aside id="sidebar">
     <header>
       <span class="brand">Hive</span>
-      <!-- Both header buttons are the shared iconButton primitive
-           (.hv-icon-btn, 22px). This one keeps its id because
-           initProjectEditor(), the launcher's focus fallback and the DOM
-           tests all reach it that way; its sibling "Check for updates" is
-           built at runtime by initBanners(). -->
+      <!-- Both header buttons are the shared icon-button primitive
+           (.hv-icon-btn, 22px). This one is markup rather than React
+           because initProjectEditor(), the launcher's focus fallback and
+           the DOM tests all reach it by id; React fills in its icon and
+           appends its sibling "Check for updates" — see
+           components/Sidebar.tsx › SidebarHeaderControls. -->
       <button id="new-project-btn" type="button" class="hv-icon-btn" data-size="22"
               title="New project (⌘N)" aria-label="New project"></button>
     </header>
