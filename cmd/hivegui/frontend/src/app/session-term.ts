@@ -86,7 +86,7 @@ import {
   shouldScrollViewport,
   type WheelEventLike,
 } from '../lib/wheel-scroll.js';
-import { onSessionBell, clearAttention } from './events.js';
+import { onSessionBell, clearAttention, noteUserInput } from './events.js';
 import { updateAppTitle } from './view.js';
 import { setActive, refocusActiveTerm } from './focus.js';
 
@@ -552,7 +552,13 @@ export class SessionTerm {
       // The disconnect itself is surfaced once ("control disconnected").
       WriteStdin(this.info.id, btoa(bin));
     };
-    this.term.onData((data) => this._writePty(data));
+    this.term.onData((data) => {
+      // Typing here answers whatever this session was asking for. Done
+      // on the input edge rather than on window focus — see
+      // noteUserInput.
+      noteUserInput(this.info.id);
+      this._writePty(data);
+    });
 
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {

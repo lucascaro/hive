@@ -50,6 +50,7 @@ interface HiveTestApi {
   ): Promise<string>;
   killSession?(id: string, force?: boolean): Promise<string>;
   setSessionState?(id: string, next: string, source?: string): void;
+  ringBell?(id: string): void;
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
   seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
   replayLog?: { id: string; t: number }[];

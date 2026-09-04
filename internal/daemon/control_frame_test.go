@@ -426,10 +426,18 @@ func TestUpdateSessionAttentionEmitsAttentionKind(t *testing.T) {
 		<-ch
 	}
 
-	set := true
+	// The clear, not the set. needs_attention is derived from the
+	// session state now (registry.needsAttention), so a client cannot
+	// assert that a session wants the user — only report that the user
+	// has looked, which is the one thing a client can actually observe.
+	d.reg.NoteBellForTest(id)
+	for len(ch) > 0 {
+		<-ch
+	}
+	clear := false
 	var r recordOps
 	payload, _ := json.Marshal(wire.UpdateSessionReq{
-		SessionID: id, NeedsAttention: &set,
+		SessionID: id, NeedsAttention: &clear,
 	})
 	d.handleControlFrame(context.Background(), r.ops(), wire.FrameUpdateSession, payload)
 

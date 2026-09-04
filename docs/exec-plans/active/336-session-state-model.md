@@ -607,6 +607,38 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   Why: an agent that rings and then keeps redrawing was burying its own
   request for attention within one tick. This matches what
   `NeedsAttention` has always done, so the two can no longer disagree.
+- **2026-09-04 (phase 1, third smoke test)** — `needs_attention` is
+  **derived**, not stored: `needsAttention(state) = state ∈
+  {waiting_input, waiting_permission}`. `Entry.NeedsAttention` is gone,
+  and the GUI no longer writes its local `attention` set at all — the
+  daemon's `attention` event and the session list are its only writers.
+  Why: this is the root cause of every regression in this feature.
+  "Wants the user" and "what the session is doing" were two independent
+  pieces of daemon state saying overlapping things, and each client kept
+  a third copy it wrote to optimistically. Three answers to one
+  question, and they diverged in both directions — a session lit up
+  forever because the GUI cleared its copy and told nobody
+  (`focus.ts` called `clearAttentionFor`, the local-only one, on every
+  session switch), and a bell looked delayed because the local copy was
+  suppressed while the daemon's was not. One owner ends the class.
+  The GUI still decides one thing locally, and correctly: whether to
+  post an OS notification. That is a judgement about the person, not
+  about the session.
+- **2026-09-04 (phase 1, third smoke test)** — A wait is ended by user
+  *input* to the session (`noteUserInput`, on the xterm `onData` edge),
+  not by window focus. Why: a focused window can sit untouched for an
+  hour, and a bell arriving while the session is already active fires no
+  focus event at all — so there was no way out of the flag. Typing is
+  the one unambiguous "I have seen this". An earlier attempt cleared on
+  the bell itself when the session was active and focused, which made
+  `printf '\a'` in the session you are watching raise nothing at all;
+  that is a request being discarded rather than answered.
+- **2026-09-04 (phase 1, third smoke test)** — FOLLOW-UP for phase 2:
+  `turn_end` currently maps to `idle`, so an agent finishing a turn no
+  longer raises attention (it used to, via the separate flag). Under the
+  derived model the honest mapping is `turn_end → waiting_input` — an
+  agent that has finished IS waiting for you. Decide it with the hook
+  tier, where a real `turn_end` exists to test against.
 - **2026-09-04 (phase 1, second smoke test)** — Test coverage was the
   real defect. Every bell test called `registry.noteBell` directly,
   which skips the bell scanner, the hook installation, and the tier

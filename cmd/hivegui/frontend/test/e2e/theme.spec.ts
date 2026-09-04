@@ -116,7 +116,7 @@ async function seedSidebar(page: Page) {
   // is active by now and s1 is the non-active session a BEL can mark.
   // onSessionBell ignores a bell on the active+focused session, the same
   // path a real bell in the PTY stream drives.
-  await page.evaluate(() => window.__hive.emit('pty:data', 's1', btoa('\x07')));
+  await page.evaluate(() => window.__hive.ringBell?.('s1'));
   await expect(
     page.locator('#projects li.hv-session-row[data-sid="s1"]'),
   ).toHaveAttribute('data-state', 'attention');

@@ -19,6 +19,7 @@ import {
 } from '../lib/focus.js';
 import { anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
+import { clearAttention } from './events.js';
 import { scrollTrace } from './trace.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
@@ -56,7 +57,10 @@ export function setActive(id: string | null) {
   if (!_navSuppress && id && id !== appData().activeId)
     pushNav(appData().nav, appData().activeId);
   if (id) {
-    clearAttentionFor(id);
+    // clearAttention, not clearAttentionFor: dropping it locally and
+    // saying nothing left the daemon still insisting the session wanted
+    // you, and the next session list put the flag straight back.
+    clearAttention(id);
     termsMap().get(id)?.host.classList.remove('attention');
     const s = appData().sessions.find((x) => x.id === id);
     const pid = s?.projectId ?? s?.project_id;

@@ -116,35 +116,31 @@ func TestTerminalQueriesAreNotWork(t *testing.T) {
 	}
 }
 
-// The counterpart: text on the screen is work, for an agent as much as
-// a shell. Both tiers, because the reported bug was that agents got
-// nothing at all.
+// The counterpart: text on the screen is work.
+//
+// One case, not one per agent: Entry.Agent no longer changes anything
+// on this path, and setting it makes Create spawn the real binary
+// instead of the `cat` this test wants — which is how this test came to
+// crash on a machine where claude exited at startup. Real agents are
+// covered by TestAgentTUIStateFlow.
 func TestVisibleOutputIsWork(t *testing.T) {
 	skipOnWindows(t)
-	for _, agent := range []string{"", "claude"} {
-		name := "shell"
-		if agent != "" {
-			name = agent
-		}
-		t.Run(name, func(t *testing.T) {
-			r := freshRegistry(t)
-			e, sess := liveSession(t, r, wire.CreateSpec{Name: name, Agent: agent})
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "shell"})
 
-			now := time.Now()
-			sample(r, e, now)
-			paint(t, e, sess, "working on it\n")
-			sample(r, e, now)
-			if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
-				t.Fatalf("state = %q, want %q", got, wire.StateWorking)
-			}
+	now := time.Now()
+	sample(r, e, now)
+	paint(t, e, sess, "working on it\n")
+	sample(r, e, now)
+	if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
+		t.Fatalf("state = %q, want %q", got, wire.StateWorking)
+	}
 
-			// Nothing more painted: the quiet window ends the turn.
-			sample(r, e, now.Add(agentstate.QuietAfter))
-			if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
-				t.Errorf("state = %q after %s of a still screen, want %q",
-					got, agentstate.QuietAfter, wire.StateIdle)
-			}
-		})
+	// Nothing more painted: the quiet window ends the turn.
+	sample(r, e, now.Add(agentstate.QuietAfter))
+	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+		t.Errorf("state = %q after %s of a still screen, want %q",
+			got, agentstate.QuietAfter, wire.StateIdle)
 	}
 }
 
@@ -204,43 +200,35 @@ func TestQuietGoesIdle(t *testing.T) {
 
 // A bell puts a session into waiting_input, and only the client
 // reporting that the user looked takes it out again. Redrawing must
-// not: that was the reported regression, where an agent rang and then
+// not: that was the reported regression, where a session rang and then
 // painted over its own request for attention.
 func TestBellWaitsUntilTheUserLooks(t *testing.T) {
 	skipOnWindows(t)
-	for _, agent := range []string{"", "claude"} {
-		name := "shell"
-		if agent != "" {
-			name = agent
-		}
-		t.Run(name, func(t *testing.T) {
-			r := freshRegistry(t)
-			e, sess := liveSession(t, r, wire.CreateSpec{Name: name, Agent: agent})
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "bell"})
 
-			r.noteBell(e.ID)
-			if got := r.Get(e.ID).Info().State; got != wire.StateWaitingInput {
-				t.Fatalf("state = %q, want %q", got, wire.StateWaitingInput)
-			}
+	r.noteBell(e.ID)
+	if got := r.Get(e.ID).Info().State; got != wire.StateWaitingInput {
+		t.Fatalf("state = %q, want %q", got, wire.StateWaitingInput)
+	}
 
-			// The agent keeps painting. The request must survive it.
-			now := time.Now()
-			paint(t, e, sess, "still thinking\n")
-			sample(r, e, now)
-			info := r.Get(e.ID).Info()
-			if info.State != wire.StateWaitingInput {
-				t.Errorf("state = %q after a redraw; the bell was buried", info.State)
-			}
-			if !info.NeedsAttention {
-				t.Error("NeedsAttention was lost")
-			}
+	// The program keeps painting. The request must survive it.
+	now := time.Now()
+	paint(t, e, sess, "still thinking\n")
+	sample(r, e, now)
+	info := r.Get(e.ID).Info()
+	if info.State != wire.StateWaitingInput {
+		t.Errorf("state = %q after a redraw; the bell was buried", info.State)
+	}
+	if !info.NeedsAttention {
+		t.Error("NeedsAttention was lost")
+	}
 
-			if err := r.SetAttention(e.ID, false); err != nil {
-				t.Fatalf("SetAttention: %v", err)
-			}
-			if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
-				t.Errorf("state = %q after the user looked, want %q", got, wire.StateIdle)
-			}
-		})
+	if err := r.SetAttention(e.ID, false); err != nil {
+		t.Fatalf("SetAttention: %v", err)
+	}
+	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+		t.Errorf("state = %q after the user looked, want %q", got, wire.StateIdle)
 	}
 }
 

@@ -98,16 +98,6 @@ type Entry struct {
 	// is wire.PhaseReady.
 	Phase string
 
-	// NeedsAttention is set when the session rings the terminal bell
-	// and cleared when a client reports that the user has looked (an
-	// UPDATE_SESSION carrying needs_attention:false). In-memory only,
-	// like Phase, so a daemon restart starts every session quiet.
-	//
-	// It is deliberately NOT cleared when the session dies: "this
-	// finished and you have not looked at it yet" is the case the flag
-	// is most useful for.
-	NeedsAttention bool
-
 	// screenDigest is the hash of the visible screen as of the last
 	// tick. The heuristic tier calls a session "working" when this
 	// changes and "idle" when it stops changing — not when bytes
@@ -182,6 +172,19 @@ func (e *Entry) stateSnapshot() agentstate.Snapshot {
 	return e.state.Snapshot()
 }
 
+// needsAttention derives the wire's needs_attention flag from the
+// session state. It is NOT a field.
+//
+// "Wants the user" and "what the session is doing" were two independent
+// pieces of daemon state saying overlapping things, and every client
+// then kept a third copy. Three answers to one question is how a
+// session came to sit lit up forever while the GUI thought it had
+// cleared it, and how a bell could look six seconds late: whichever
+// copy you read, another one disagreed. There is now one.
+func needsAttention(state string) bool {
+	return state == wire.StateWaitingInput || state == wire.StateWaitingPermission
+}
+
 // Alive reports whether this entry has a live session attached.
 func (e *Entry) Alive() bool { return e.sess != nil }
 
@@ -205,7 +208,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		LastError:      e.LastError,
 		Phase:          e.Phase,
 		Title:          e.title(),
-		NeedsAttention: e.NeedsAttention,
+		NeedsAttention: needsAttention(st.State),
 		State:          st.State,
 		StateSource:    st.Source,
 		LastPrompt:     st.LastPrompt,
@@ -361,15 +364,7 @@ func (r *Registry) noteBell(id string) {
 	if !ok {
 		return
 	}
-	// The attention flag first, and unconditionally: it predates the
-	// state model, every client drives notifications from it, and it is
-	// the only thing a session that is not on the heuristic tier gets
-	// out of a bell.
 	prev := e.stateSnapshot()
-	if !e.NeedsAttention {
-		e.NeedsAttention = true
-		r.broadcastLocked(wire.SessionEventAttention, e.Info())
-	}
 	if e.machine().Bell(time.Now()) {
 		r.announceStateLocked(e, prev)
 	}
@@ -389,34 +384,15 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot) {
 	if cur == prev {
 		return
 	}
-	// Both kinds, attention first: clients key notifications off
-	// "attention" and glyphs off "state", this is one moment that
-	// genuinely is both, and every other site here emits them in that
-	// order because "attention" is the one older consumers know.
-	if wantsAttention(prev, cur) && !e.NeedsAttention {
-		e.NeedsAttention = true
+	// Both kinds when the derived flag moved, attention first: clients
+	// key notifications off "attention" and glyphs off "state", this is
+	// one moment that genuinely is both, and "attention" is the one
+	// older consumers know. Two notifications of one fact — not two
+	// facts.
+	if needsAttention(cur.State) != needsAttention(prev.State) {
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
 	r.broadcastLocked(wire.SessionEventState, e.Info())
-}
-
-// wantsAttention reports whether a state transition is one the user
-// needs to know about: the session started waiting on them, or it
-// finished the turn they were waiting on.
-func wantsAttention(prev, cur agentstate.Snapshot) bool {
-	if cur.Source == wire.StateSourceHeuristic {
-		return false
-	}
-	if cur.State == prev.State {
-		return false
-	}
-	switch cur.State {
-	case wire.StateWaitingInput, wire.StateWaitingPermission:
-		return true
-	case wire.StateIdle, wire.StateExited, wire.StateError:
-		return prev.State == wire.StateWorking
-	}
-	return false
 }
 
 // SetAttention records whether a session still wants the user's
@@ -433,23 +409,19 @@ func (r *Registry) SetAttention(id string, want bool) error {
 	if !ok {
 		return ErrNotFound
 	}
-	// Clearing the flag is the client saying "the user has now looked".
-	// On the heuristic tier that also answers the only question that
-	// tier can ask: the bell meant waiting_input, and looking is the
-	// resolution. Sessions on the hook or extension tier are left
-	// alone — they report the real transition themselves, and guessing
-	// here would race it.
-	cleared := !want && e.machine().ClearWaiting()
-	if e.NeedsAttention != want {
-		e.NeedsAttention = want
-		r.broadcastLocked(wire.SessionEventAttention, e.Info())
+	// "The user has now looked" — the one thing only a client can
+	// observe. It resolves the wait, and the flag follows from that
+	// rather than being set beside it.
+	//
+	// want=true is accepted for protocol compatibility but does not
+	// invent a wait: nothing in the tree sends it, and a client
+	// asserting "this session wants me" would be a second writer of the
+	// state this consolidation exists to give one owner.
+	prev := e.stateSnapshot()
+	if want || !e.machine().ClearWaiting() {
+		return nil
 	}
-	// After the attention broadcast, not before: consumers written
-	// against the older protocol key off `attention`, and they should
-	// see the moment in the order they always did.
-	if cleared {
-		r.broadcastLocked(wire.SessionEventState, e.Info())
-	}
+	r.announceStateLocked(e, prev)
 	return nil
 }
 
@@ -583,6 +555,14 @@ func (r *Registry) tickStates() {
 // Sampling the rendered screen rather than counting bytes is the whole
 // point; see Entry.screenDigest for the measurement that forced it.
 func (r *Registry) sampleStateLocked(e *Entry, now time.Time) {
+	// A session can die between any two samples — watchSessionExit nils
+	// e.sess the moment the child exits, and it already recorded the
+	// exit on the machine. The ticker checks this too; the check lives
+	// here as well so the invariant belongs to the function rather than
+	// to one of its callers.
+	if e.sess == nil {
+		return
+	}
 	prev := e.stateSnapshot()
 	changed := false
 	if d := e.sess.ScreenDigest(); d != e.screenDigest {
@@ -1393,3 +1373,9 @@ func (r *Registry) persistProjectIndexLoggedLocked(op string) {
 		log.Printf("registry: %s: persist project index failed (on-disk order now stale): %v", op, err)
 	}
 }
+
+// NoteBellForTest rings the bell on a session from another package's
+// test. The daemon's control-frame tests need a session that is
+// genuinely asking for the user, and since needs_attention is derived
+// from the state there is no field for them to set.
+func (r *Registry) NoteBellForTest(id string) { r.noteBell(id) }

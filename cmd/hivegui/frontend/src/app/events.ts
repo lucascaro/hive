@@ -180,27 +180,43 @@ export async function reconnectControl(
 export function onSessionBell(info: SessionInfo) {
   const isActive = info.id === appData().activeId;
   const windowFocused = document.hasFocus();
-  if (isActive && windowFocused) {
-    // The user is looking straight at it, so this window raises nothing
-    // — but the DAEMON raised it, for every other client and for its
-    // own session state, and no focus change is coming to undo that.
-    // Say so, or the session sits marked "waiting for you" forever
-    // while the one person it is waiting for already answered.
-    clearAttention(info.id);
-    return;
-  }
+  // A session you are already watching gets no desktop notification and
+  // no local flag from this window — but the daemon still raised it, and
+  // the flag reaches this window through the `attention` event like any
+  // other. That is deliberate: a bell is a request, and having the
+  // window focused is not an answer to it. noteUserInput below is what
+  // answers it.
+  if (isActive && windowFocused) return;
   const alreadyAttention = appData().attention.has(info.id);
-  if (alreadyAttention) {
-    // Refresh to re-trigger CSS animation. Only the class is dropped and
-    // re-added — the flag itself is already set and stays set, so there
-    // is no state transition to make here.
-    termsMap().get(info.id)?.host.classList.remove('attention');
-  }
-  addAttention(info.id);
-  termsMap().get(info.id)?.host.classList.add('attention');
-  // No icon call: the tile's state icon renders from `attention` in
-  // components/TileChrome.tsx, so addAttention above already moved it.
+  // Refresh to re-trigger the CSS animation. Cosmetic only — the flag
+  // itself is the daemon's, and arrives on the `attention` event.
+  const host = termsMap().get(info.id)?.host;
+  if (alreadyAttention) host?.classList.remove('attention');
+  host?.classList.add('attention');
+  // Deliberately NOT addAttention: this window does not get to decide
+  // that a session wants the user. The daemon saw the same bell and
+  // says so on the `attention` event, which is the only writer of the
+  // local set. Deciding here as well is what let the two disagree —
+  // and they did, in both directions.
+  //
+  // What this window DOES decide is whether to interrupt: an OS
+  // notification is a judgement about the person, not about the
+  // session, and it is rightly local.
   if (!alreadyAttention) fireBellNotification(info);
+}
+
+// noteUserInput records that the user typed into a session, which is
+// the one unambiguous "I have seen this" signal there is. Window focus
+// is not: a focused window can sit untouched for an hour, and a bell
+// that arrives while the session is already active fires no focus event
+// at all — which is how a session came to sit marked "waiting for you"
+// forever while the person it was waiting for was looking right at it.
+//
+// Cheap on the hot path by design: this runs per keystroke, and the
+// common case is a set lookup that finds nothing.
+export function noteUserInput(sessionId: string) {
+  if (!appData().attention.has(sessionId)) return;
+  clearAttention(sessionId);
 }
 
 export function clearAttention(sessionId: string) {
@@ -263,8 +279,8 @@ function onSessionDeath(info: SessionInfo) {
       info.last_error || 'The process running in this session has exited.',
     );
   }
-  // Reuse the attention pulse path so the sidebar entry highlights.
-  addAttention(info.id);
+  // The pulse class only: a dead session already renders as `exited`
+  // from its state, and the attention flag belongs to the daemon.
   termsMap().get(info.id)?.host.classList.add('attention');
   const proj = appData().projects.find(
     (p) => p.id === (info.projectId ?? info.project_id),

@@ -949,6 +949,21 @@ if (typeof window !== 'undefined') {
     killSession(id: string, force?: boolean) {
       return KillSession(id, force);
     },
+    // A bell, both halves. The real thing is two independent paths that
+    // happen to see the same byte: it reaches this window's xterm as
+    // PTY data, and the daemon's own scanner reads it off the same
+    // stream and broadcasts the flag. A spec that emits only the first
+    // is testing a GUI that invents attention locally — which is
+    // exactly the duplicate source of truth spec 336 removed.
+    ringBell(id: string) {
+      emit('pty:data', id, btoa('\x07'));
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s || s.needs_attention) return;
+      s.needs_attention = true;
+      s.state = 'waiting_input';
+      emit('session:event', JSON.stringify({ kind: 'attention', session: s }));
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
     // The daemon broadcasts SESSION_EVENT(state) whenever a session
     // starts or stops working, or an agent reports what it is blocked
     // on. Modelled here rather than left to specs to hand-emit, so the
