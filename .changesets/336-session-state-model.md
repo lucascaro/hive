@@ -4,11 +4,11 @@ pr: null
 type: added
 bump: minor
 ---
-- Every session now shows what it is doing. The sidebar row and the grid
-  tile header carry a state glyph — working, idle, waiting for you,
-  exited — so a screen of ten agents can be read at a glance instead of
-  clicked through one at a time. Hovering a row names the state in
-  words. This first pass derives the state from the terminal itself, so
-  it works for every agent and for plain shells; agents that can report
-  their own state, including telling a permission prompt apart from an
-  ordinary wait, follow in a later release.
+- Shell sessions now show what they are doing. The sidebar row and the
+  grid tile header carry a state glyph — working, waiting for you,
+  exited — so a screen of sessions can be read at a glance instead of
+  clicked through one at a time. Hovering names the state in words.
+  Agent sessions are unchanged for now: the state is inferred from the
+  terminal, which is only honest for a program that goes quiet when it
+  finishes, and agents redraw continuously. They report their own state
+  in a later release.

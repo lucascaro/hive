@@ -159,7 +159,6 @@ export class SessionTerm {
   ro: ResizeObserver;
   attached: boolean;
   needsReattach: boolean;
-  termTitle: string;
   // Assigned in the constructor body (it closes over `this.info`), so no
   // initializer — unlike the fields below, which are written by helpers
   // the constructor calls and would otherwise trip strictPropertyInitialization.
@@ -259,7 +258,7 @@ export class SessionTerm {
     // Seed the chrome state before the host is registered in
     // store/terms.ts, so the first React pass that sees this id also
     // sees something to render.
-    addTileChrome(info.id, initialTileChrome(info, this.phase));
+    addTileChrome(info.id, initialTileChrome(this.phase));
 
     this.term = new Terminal({
       // Terminal font follows --font-mono, so the bundled JetBrains Mono
@@ -534,13 +533,12 @@ export class SessionTerm {
     // having to switch sessions and back.
     this.needsReattach = false;
 
-    // Track the OSC-set window title from the running TUI (vim, htop,
-    // claude code, etc.) so the app title bar can show it after the
-    // session name when this session is active.
-    this.termTitle = '';
-    this.term.onTitleChange((title) => {
-      this.termTitle = title || '';
-      this._renderTermTitle();
+    // The title itself is read from the session list — the daemon parses
+    // the OSC off the PTY and broadcasts it (SESSION_EVENT(title)), which
+    // is the only copy that is right for an unattached tile. This
+    // listener only nudges the title bar, so the active window repaints
+    // on the local edge instead of waiting for the round trip.
+    this.term.onTitleChange(() => {
       if (appData().activeId === this.info.id) updateAppTitle();
     });
 
@@ -942,20 +940,11 @@ export class SessionTerm {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.header.setAttribute('aria-label', `Session ${info.name}`);
-    // Name, worktree marker and state icon all render from this
-    // snapshot — see components/TileChrome.tsx. Publishing `info` rather
-    // than letting the component read the session list keeps the header
-    // rendering from exactly what it used to patch from.
-    patchTileChrome(info.id, { info });
-  }
-
-  _renderTermTitle() {
-    // The "hide it when it echoes the session name" rule lives in
-    // lib/term-title.ts because the sidebar row applies it too — the two
-    // surfaces must not disagree about whether a session has anything
-    // worth reporting. Applied in the component; the raw title is what
-    // travels.
-    patchTileChrome(this.info.id, { termTitle: this.termTitle });
+    // Name, worktree marker and state icon are NOT published here: the
+    // header reads them from the session list (components/TileChrome.tsx),
+    // so a session event repaints the tile and the sidebar alike. This
+    // used to publish a snapshot refreshed only when the layout ran
+    // ensureTerm(), which is how the two surfaces came to disagree.
   }
 
   // Only the CSS custom property now: the project LABEL renders from the

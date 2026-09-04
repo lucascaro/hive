@@ -10,7 +10,7 @@ Shapes come from option I3; drawn as SVG so they align and render identically on
 
 | Name | Shape | Fill | Meaning | Animates |
 |---|---|---|---|---|
-| `state-running` | ▶ triangle | `--state-running` | alive, phase ready, idle — nothing running | no |
+| `state-running` | ▶ triangle | `--state-running` | alive, phase ready — the steady state | no |
 | `state-working` | ⋯ three dots | `--state-running` | the session is producing output / mid-turn | yes — `--motion-pulse` on opacity |
 | `state-attention` | ◆ diamond | `--state-attention` | agent waiting on the user (a bell, or a reported `waiting_input`) | yes — `--motion-pulse` on a `box-shadow` ring |
 | `state-waiting-permission` | ? question | `--state-attention` | agent blocked on an explicit yes/no | yes — `--motion-pulse` on a `box-shadow` ring |
@@ -32,7 +32,9 @@ state === working              → working
 else                           → running
 ```
 
-`state` is `SessionInfo.state` (`internal/wire/control.go` `State*`), owned by the daemon. Empty means idle — both the `omitempty` case and what a daemon predating spec 336 sends, so no branch here needs an "unknown".
+`state` is `SessionInfo.state` (`internal/wire/control.go` `State*`), owned by the daemon. Empty means "no claim" — the `omitempty` case, what a daemon predating spec 336 sends, **and** what every agent session sends today, so no branch here needs an "unknown".
+
+Only sessions running a plain shell carry a state right now. The daemon infers it from the PTY, and that inference is honest only for a program that stops writing when it is done. An agent TUI never does: a measured idle Claude Code session emits an `ESC[?6n` cursor-position query every 200 ms, which renders nothing and never lets the quiet timer fire. Agents therefore keep the pre-336 behaviour — the bell raises attention, nothing claims more — until they report their own state through the hook and extension tiers (spec 336 phases 2–3). `waiting-permission` is in the table because it is the wire vocabulary those tiers use; nothing produces it yet.
 
 Two rules in that order are deliberate. An agent-reported permission prompt outranks the local attention flag, because "blocked on a yes/no" versus "rang the bell" is the distinction the state model exists to draw. An unacknowledged bell outranks `working`, because the one that wants a human is the one worth showing.
 

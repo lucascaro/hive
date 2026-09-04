@@ -174,6 +174,55 @@ func TestAgentReportedWaitingRaisesAttention(t *testing.T) {
 	}
 }
 
+// An agent session is off the heuristic tier entirely. Measured cause:
+// an idle Claude Code session writes an ESC[?6n cursor-position query
+// every 200ms forever — it renders nothing, but it means "no bytes for
+// two seconds" never happens, so the session would read as permanently
+// working and every bell would be overwritten by the next poll.
+func TestAgentSessionIsOffTheHeuristicTier(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "agent", Agent: "claude"})
+
+	// The output hook is not even installed, so this is what the PTY
+	// hammering away would do if it were.
+	r.noteOutput(e.ID)
+	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+		t.Errorf("state = %q after output; an agent must report nothing "+
+			"until it can report the truth", got)
+	}
+
+	// The bell keeps doing exactly what it did before the state model:
+	// it raises attention, and does not invent a state.
+	r.noteBell(e.ID)
+	info := r.Get(e.ID).Info()
+	if !info.NeedsAttention {
+		t.Error("a bell on an agent session must still ask for the user")
+	}
+	if info.State != wire.StateIdle {
+		t.Errorf("state = %q after a bell on an agent, want none", info.State)
+	}
+}
+
+// A shell is the one thing the heuristic tier is honest about: it stops
+// writing when it is done.
+func TestShellSessionIsOnTheHeuristicTier(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "shell"})
+
+	r.noteOutput(e.ID)
+	if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
+		t.Errorf("state = %q, want %q", got, wire.StateWorking)
+	}
+	r.noteBell(e.ID)
+	info := r.Get(e.ID).Info()
+	if info.State != wire.StateWaitingInput || !info.NeedsAttention {
+		t.Errorf("bell gave state=%q attention=%v, want waiting_input + attention",
+			info.State, info.NeedsAttention)
+	}
+}
+
 // The state is in-memory only. If it ever reached session.json, a
 // daemon restart would resurrect a stale "working" for a session whose
 // process is long gone.

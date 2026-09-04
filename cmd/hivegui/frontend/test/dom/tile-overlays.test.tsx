@@ -135,7 +135,7 @@ function mount(chrome: Partial<store.TileChromeState> = {}) {
   store.setSessions([SESSION]);
   const tile = stubTile(SESSION.id);
   store.addTileChrome(SESSION.id, {
-    ...store.initialTileChrome(SESSION, ''),
+    ...store.initialTileChrome(''),
     ...chrome,
   });
   setTerm(SESSION.id, tile);

@@ -185,8 +185,11 @@ export function updateAppTitle() {
     const info = id ? appData().sessions.find((s) => s.id === id) : null;
     const parts = ['Hive'];
     if (info?.name) parts.push(info.name);
-    const t = id ? termsMap().get(id) : null;
-    if (t?.termTitle && t.termTitle !== info?.name) parts.push(t.termTitle);
+    // info.title, not the tile's own xterm: the daemon parses the OSC
+    // off the PTY and broadcasts it, so this is right for a session
+    // whose tile is not attached and survives a renderer rebuild. The
+    // local copy was neither.
+    if (info?.title && info.title !== info?.name) parts.push(info.title);
     const title = parts.join(' — ');
     document.title = title;
     try {

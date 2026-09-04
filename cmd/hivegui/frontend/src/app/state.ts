@@ -118,7 +118,6 @@ export interface TermTile extends ReplayFlags {
   // React. Optional because the DOM-test stubs render no chrome.
   header?: HTMLElement;
   overlays?: HTMLElement;
-  termTitle?: string;
   // Required, not optional: session-term.ts:514,520 always initializes
   // both and every reader branches on the value, never on absence
   // (scrollback.ts:28 states the rule).

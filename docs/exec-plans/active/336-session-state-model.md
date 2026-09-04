@@ -571,6 +571,40 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   `HIVE_SOCKET`) is deferred to phase 2 with the `event` wire mode.
   Why: pointing an agent at a socket that has no `event` arm to dial is
   a lie the daemon would have to keep for a release.
+- **2026-09-04 (phase 1, after smoke test)** — The heuristic tier
+  applies to shell sessions only (`Entry.Agent == ""`); agents keep
+  exactly their pre-336 behaviour until their hook/extension tier
+  lands. Why: measured on a live session, an idle Claude Code emits an
+  `ESC[?6n` cursor-position query every 200 ms — 61 DATA frames in
+  12 s, max gap 0.21 s, zero visible characters. The plan's premise
+  ("no bytes for QuietAfter ⇒ idle") is therefore false for an agent
+  TUI: the session reads as permanently `working`, and a bell's
+  `waiting_input` is overwritten by the next poll before any client can
+  paint it. A bare `claude` in a plain PTY is silent when idle — it
+  only polls when something answers — which is why no test caught it.
+  Alternatives considered and rejected: a screen-content fingerprint
+  sampled on the tick (correct for any agent, but a bigger change than
+  phase 1 warrants), and a denylist of no-op sequences (silently breaks
+  on the next agent that polls differently). Phases 2–3 make the
+  question moot for the agents that matter.
+- **2026-09-04 (phase 1, after smoke test)** — `STATE_WORDS.running`
+  reverts to "Running". Why: with agents off the heuristic tier, an
+  empty `state` means "no claim", not "idle", and an agent session
+  would otherwise be labelled with a fact nothing established.
+- **2026-09-04 (phase 1, after smoke test)** — The tile header renders
+  from the session list, not from `TileChromeState.info`. Why: that
+  snapshot was refreshed only when the layout ran `ensureTerm()`, so a
+  `SESSION_EVENT(state)` repainted the sidebar and left the tile stale —
+  the same session disagreeing with itself. `info` had exactly one
+  consumer, so the field is deleted rather than kept in sync.
+  `chrome.phase` stays: it is genuinely the tile's own.
+- **2026-09-04 (phase 1, after smoke test)** — Same for the window
+  title: `TileChromeState.termTitle` and `SessionTerm.termTitle` are
+  deleted in favour of `SessionInfo.title`. Why: the local copy came
+  from that tile's own xterm `onTitleChange`, so a tile that was never
+  attached or was rebuilt had none — the reported "tile titles
+  sometimes don't work". Pre-existing, not introduced by 336, and
+  carries its own changeset.
 - **2026-09-04** — Desktop notifications stay in the GUI
   (`cmd/hivegui/app.go`), the daemon never imports `internal/notify`.
   Why: that is where they live today; moving them is out of scope.
@@ -619,6 +653,11 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   suite including the new `state-glyphs.spec`.
   Phases 2–4 (the `event` wire mode + `hived hook` + Claude adapter; the
   Pi extension; hivebar and notification wording) are untouched.
+- **2026-09-04** — Smoke-tested in an iso build; three bugs found and
+  fixed (see the Decision log): agents pinned to `working` and their
+  bells swallowed (measured `ESC[?6n` polling), sidebar and tile
+  disagreeing on state, and tile window titles missing. Phase 1's
+  user-visible scope is now shell sessions.
 
 ## Open questions
 

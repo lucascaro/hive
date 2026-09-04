@@ -27,7 +27,7 @@ describe('sessionState', () => {
       'working',
     );
   });
-  it('is idle-shaped for the empty state, which is what an old daemon sends', () => {
+  it('is steady-shaped for the empty state, which is what an agent and an old daemon both send', () => {
     expect(sessionState({ alive: true, state: '' }, false)).toBe('running');
     expect(sessionState({ alive: true }, false)).toBe('running');
   });

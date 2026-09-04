@@ -509,20 +509,17 @@ export function setSessionPhase(id: string, phase: string): void {
 // ---------- tile chrome ----------
 //
 // The state components/TileChrome.tsx renders a terminal tile's header
-// and overlays from. Deliberately separate from `sessions` / `phaseById`
-// even where the fields look the same:
+// and overlays from. It holds only what is genuinely the TILE's, not
+// the session's: everything else the header shows — name, worktree,
+// project, session state — is read straight from the session list, so
+// the tile and the sidebar can never disagree about the same session.
 //
-// - `info` is SessionTerm's own snapshot, written by setInfo(). It is
-//   what the imperative header used to patch from, so rendering from it
-//   is byte-identical rather than merely equivalent.
 // - `phase` is the TILE's phase, not phaseById's. setPhase() updates the
 //   tile and never writes back to info; resolving the state icon from
 //   the session list instead would repaint it from whatever the last
 //   snapshot said — stale for exactly the transition setPhase exists for.
 export interface TileChromeState {
-  info: SessionInfo;
   phase: string;
-  termTitle: string;
   dead: boolean;
   deadReason: string;
   // The loading panel: whether it is up, and the model it renders.
@@ -536,11 +533,9 @@ export interface TileChromeState {
   phasePanel: PhasePanel | null;
 }
 
-export function initialTileChrome(info: SessionInfo, phase: string) {
+export function initialTileChrome(phase: string) {
   return {
-    info,
     phase,
-    termTitle: '',
     dead: false,
     deadReason: '',
     phaseVisible: false,

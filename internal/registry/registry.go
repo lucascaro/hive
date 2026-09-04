@@ -163,6 +163,25 @@ func (e *Entry) machine() *agentstate.Machine {
 	return e.state
 }
 
+// heuristicState reports whether this entry's state may be inferred
+// from the PTY alone.
+//
+// Only sessions running a plain shell qualify. The inference is "bytes
+// arrived, so it is working; none for two seconds, so it is idle", and
+// that is simply false for an agent TUI: a measured idle Claude Code
+// session writes an ESC[?6n cursor-position query every 200ms forever,
+// which renders nothing but never lets the quiet timer fire. Reporting
+// such a session as permanently working is worse than reporting
+// nothing, and a bell would be overwritten by the next poll before any
+// client could paint it.
+//
+// Agents therefore keep exactly the behaviour they had before this
+// state model existed — the bell sets NeedsAttention, nothing else —
+// until they can report their own state through the hook and extension
+// tiers. Their State stays empty, which every client already reads as
+// "steady".
+func (e *Entry) heuristicState() bool { return e.Agent == "" }
+
 // stateSnapshot reads the entry's state without creating a machine.
 // The zero Snapshot is idle-on-the-heuristic-tier-with-no-text, which
 // is exactly what a session that has never been observed is, so "no
@@ -329,7 +348,12 @@ func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
 	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })
-	sess.SetOutputHook(func() { r.noteOutput(id) })
+	// Not installed for agents: nothing would read the result, and the
+	// hook fires once per PTY chunk — which for a polling agent TUI is
+	// five times a second, forever, taking r.mu each time.
+	if e.heuristicState() {
+		sess.SetOutputHook(func() { r.noteOutput(id) })
+	}
 }
 
 // noteOutput folds one delivered PTY chunk into the session's state.
@@ -342,7 +366,10 @@ func (r *Registry) noteOutput(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.entries[id]
-	if !ok {
+	// The eligibility check is here as well as at hook-installation
+	// time, so "an agent's state is never inferred from its bytes" is
+	// true of the function rather than of one caller.
+	if !ok || !e.heuristicState() {
 		return
 	}
 	prev := e.stateSnapshot()
@@ -360,10 +387,12 @@ func (r *Registry) noteOutput(id string) {
 // session deliberately does not throttle for this reason — "wants
 // attention" does not get truer the second time.
 //
-// The bell is routed through the state machine rather than straight at
-// NeedsAttention so that a session on the hook or extension tier can
-// ignore it: the agents that ring the bell also report the same moment
-// through their hooks, and honouring both notifies the user twice.
+// On a shell the bell also moves the session state to waiting_input —
+// it is the only "the program wants you" signal the heuristic tier
+// has. On an agent it does not: agents are off that tier entirely
+// (see heuristicState), and once they report their own state, the ones
+// that ring will be reporting the same moment through their hooks —
+// honouring both would notify the user twice.
 func (r *Registry) noteBell(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -371,15 +400,18 @@ func (r *Registry) noteBell(id string) {
 	if !ok {
 		return
 	}
+	// The attention flag first, and unconditionally: it predates the
+	// state model, every client drives notifications from it, and it is
+	// the only thing a session that is not on the heuristic tier gets
+	// out of a bell.
 	prev := e.stateSnapshot()
-	if !e.machine().Bell(time.Now()) {
-		return
-	}
 	if !e.NeedsAttention {
 		e.NeedsAttention = true
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
-	r.announceStateLocked(e, prev)
+	if e.heuristicState() && e.machine().Bell(time.Now()) {
+		r.announceStateLocked(e, prev)
+	}
 }
 
 // announceStateLocked broadcasts a state change and raises attention
@@ -573,7 +605,7 @@ func (r *Registry) tickStates() {
 			r.mu.Lock()
 			for _, id := range r.order {
 				e := r.entries[id]
-				if e == nil || e.sess == nil {
+				if e == nil || e.sess == nil || !e.heuristicState() {
 					continue
 				}
 				prev := e.stateSnapshot()

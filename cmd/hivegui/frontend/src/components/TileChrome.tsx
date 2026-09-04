@@ -107,18 +107,30 @@ function TileHeader({
   attention: boolean;
 }): ReactNode {
   const nameRef = useRef<HTMLSpanElement>(null);
-  const info = chrome.info;
+  // The session list, not a snapshot of it. The header used to render
+  // from SessionTerm's own copy, refreshed only when the layout ran
+  // ensureTerm() — so a session event that repainted the sidebar left
+  // the tile showing the previous value, and the two surfaces disagreed
+  // about the same session. One source, narrowly subscribed: the
+  // selector returns this session's object, so a change to any other
+  // re-renders nothing.
+  const info = useAppStore((s) => s.sessions.find((x) => x.id === id));
   // `chrome.phase` overrides `info.phase`: setPhase() updates the tile's
-  // own phase and never writes back to info, so resolving from info
-  // alone would repaint the icon from whatever the last session list
-  // said — stale for exactly the transition setPhase exists for.
+  // own phase and never writes back to the session list, so resolving
+  // from the list alone would repaint the icon from whatever the last
+  // list said — stale for exactly the transition setPhase exists for.
   const state = sessionState({ ...info, phase: chrome.phase }, attention);
-  const branch = info.worktreeBranch ?? info.worktree_branch;
-  const title = displayTitle(chrome.termTitle, info.name);
-  const projectId = info.projectId ?? info.project_id ?? '';
+  const branch = info?.worktreeBranch ?? info?.worktree_branch;
+  const title = displayTitle(info?.title, info?.name);
+  const projectId = info?.projectId ?? info?.project_id ?? '';
   const project = useAppStore((s) =>
     s.projects.find((p) => p.id === projectId),
   );
+  // A tile briefly outlives its session row on teardown: `removed`
+  // drops the session before dropTileChrome runs. Render nothing rather
+  // than a header full of blanks. After every hook, so the hook order
+  // is the same on every render.
+  if (!info) return null;
   return (
     <>
       <StateIcon state={state} />
