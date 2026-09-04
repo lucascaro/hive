@@ -57,9 +57,11 @@ export function Tabs<T extends string>({
   // nothing to load, so an extra Enter to activate would be friction.
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     // An `active` that is not in `tabs` would otherwise leave the arrow
-    // keys dead. Treat it as "before the first tab" so the strip is still
-    // navigable; a caller should clamp, but the primitive should not go
-    // inert when one forgets.
+    // keys dead. Treat it as the first tab so the strip stays navigable —
+    // ArrowRight from there lands on tabs[1], which is the cost of not
+    // going inert. Reaching the strip by Tab is still lost in that state,
+    // since no button holds tabIndex 0; a caller should clamp (Settings
+    // does), and this is the floor for one that forgets.
     const i = Math.max(
       0,
       tabs.findIndex((t) => t.id === active),

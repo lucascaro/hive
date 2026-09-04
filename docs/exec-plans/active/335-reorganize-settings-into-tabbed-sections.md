@@ -267,6 +267,7 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-03 iter 1 (resolution)** — rebased onto origin/main; Menu bar placed in its own macOS-only tab; findings 2 and 3 fixed; baselines regenerated and reviewed.
 - **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 21471a1d; threads_open: 0; action: stop (strict off, no threads); head_sha: 7c64152.
 - **2026-09-03 iter 2 (follow-up)** — the one IMPORTANT was a false invariant in a comment this branch added; corrected, the clamp restored, and covered by a dom test verified to fail without it.
+- **2026-09-03 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 7df8e8f. Run because iter 2's convergence predated the follow-up commit; re-verified the clamp, the Tabs index fallback and the corrected comment. One MINOR (an inaccurate comment in Tabs.tsx) fixed after.
 
 ## Open questions
 
