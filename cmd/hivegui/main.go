@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -61,6 +62,11 @@ func setupLogFile() {
 
 func main() {
 	setupLogFile()
+	// Belt and braces with hived's own call: a user who opens the GUI
+	// on a machine where the daemon was already running would otherwise
+	// have no menu bar until the next daemon start. hivebar's flock
+	// decides who wins, so firing blindly is the intended usage.
+	menubar.Spawn()
 	launchDir := resolveLaunchDir()
 	app := NewApp(launchDir)
 

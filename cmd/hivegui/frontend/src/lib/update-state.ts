@@ -21,10 +21,21 @@ export interface UpdateInfoLike {
   channel?: string;
   stage?: string;
   message?: string;
+  /** What applying the staged update will cost. 'gui' means the staged
+   * daemon is contract-compatible with the running one, so relaunching
+   * the windows is enough and every session survives; 'full' means
+   * hived itself is replaced, which ends them. Absent until something
+   * is staged, and treated as 'full' whenever it is missing — guessing
+   * the cheap answer would silently reload a GUI into a daemon it does
+   * not understand. */
+  restartKind?: string;
 }
 
-/** Actions the button can perform. `none` means it should be hidden. */
-export type UpdateAction = 'none' | 'start' | 'restart';
+/** Actions the button can perform. `none` means it should be hidden.
+ * `reload` and `restart` both apply a staged build; they differ only in
+ * what it costs the user, which is why they are separate actions rather
+ * than one action with two labels — the confirm dialog hangs off this. */
+export type UpdateAction = 'none' | 'start' | 'reload' | 'restart';
 
 export interface UpdateButtonState {
   label: string;
@@ -89,11 +100,27 @@ export function updateButtonState(
     };
   }
   if (info.stage === 'ready') {
+    // Say what the button costs, not just what it does. Every update
+    // used to end every running shell and agent; most no longer have
+    // to, and a user who cannot tell the two apart will keep treating
+    // both as destructive.
+    if (info.restartKind === 'gui') {
+      return {
+        label: 'Reload',
+        action: 'reload',
+        disabled: false,
+        status:
+          info.message ||
+          'Update ready — reload to apply. Your sessions keep running.',
+      };
+    }
     return {
       label: 'Restart',
       action: 'restart',
       disabled: false,
-      status: info.message || 'Update ready — restart to apply.',
+      status:
+        info.message ||
+        'Update ready — restart to apply. This ends every running session.',
     };
   }
   if (info.skipped) {

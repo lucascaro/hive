@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -601,8 +602,18 @@ func TestE2E_ProtocolVersionMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected handshake error on bogus version")
 	}
-	if !strings.Contains(err.Error(), "refused") {
-		t.Errorf("expected 'refused' in error, got %v", err)
+	// errors.Is, not a substring: the refusal now carries
+	// wire.ErrProtocolMismatch, which is the thing clients actually
+	// branch on (the GUI routes it to a "restart the daemon" banner —
+	// it is the one connect failure a user can act on). Matching the
+	// sentinel pins that contract instead of the wording.
+	if !errors.Is(err, wire.ErrProtocolMismatch) {
+		t.Errorf("expected wire.ErrProtocolMismatch, got %v", err)
+	}
+	// The daemon's own wording must still survive the wrap: it names
+	// both versions, which is what makes the message diagnosable.
+	if !strings.Contains(err.Error(), "server speaks v1") {
+		t.Errorf("refusal lost the daemon's message: %v", err)
 	}
 }
 

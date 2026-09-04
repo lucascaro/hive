@@ -2,6 +2,7 @@ package wire
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -94,11 +95,18 @@ type Welcome struct {
 	// unstamped build. Distinct from Version above, which is the
 	// integer protocol version. Omitempty so a daemon predating this
 	// field still parses; "" means "unknown".
-	Release   string `json:"release,omitempty"`
-	Mode      Mode   `json:"mode,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Cols      int    `json:"cols,omitempty"`
-	Rows      int    `json:"rows,omitempty"`
+	Release string `json:"release,omitempty"`
+	// DaemonContract is the daemon's compatibility generation (see
+	// internal/buildinfo.DaemonContract). A client compares it to its
+	// own to decide whether a cheap GUI-only reload is enough or a
+	// full daemon restart is required. Omitempty so a daemon
+	// predating this field still parses; 0 means "unknown", which
+	// clients must treat as "restart required" — never as a match.
+	DaemonContract int    `json:"daemon_contract,omitempty"`
+	Mode           Mode   `json:"mode,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	Cols           int    `json:"cols,omitempty"`
+	Rows           int    `json:"rows,omitempty"`
 }
 
 // SessionInfo is the public-facing description of one daemon session.
@@ -128,6 +136,19 @@ type SessionInfo struct {
 	// session with no live process reports "". Capped at
 	// MaxTitleLen bytes, since the content comes from the child process.
 	Title string `json:"title,omitempty"`
+	// NeedsAttention is true when the program on this session rang the
+	// terminal bell and nobody has looked since. Daemon-owned and
+	// in-memory like Phase and Title, so a daemon restart starts every
+	// session quiet.
+	//
+	// It lives on the wire, rather than in each client's head, because
+	// more than one client needs it and only one of them holds an
+	// attach connection. A GUI window learns about a bell from the PTY
+	// stream it is already reading; hivebar has no such stream, and a
+	// second GUI window has its own. Deriving it per client meant three
+	// answers to one question and no way for the menu bar to have any
+	// answer at all.
+	NeedsAttention bool `json:"needs_attention,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -267,6 +288,11 @@ type UpdateSessionReq struct {
 	Color     *string `json:"color,omitempty"`
 	Order     *int    `json:"order,omitempty"`
 	ProjectID *string `json:"project_id,omitempty"` // reassign session
+	// NeedsAttention clears (or, in principle, sets) the bell flag.
+	// The client that focuses a session is the only thing that knows
+	// the user has now looked at it, so clearing is a client-driven
+	// update rather than something the daemon can infer.
+	NeedsAttention *bool `json:"needs_attention,omitempty"`
 }
 
 // SessionEventKind enumerates the kinds carried by SESSION_EVENT.
@@ -287,6 +313,12 @@ const (
 	// Clients that do not know this kind ignore it and simply show no
 	// titles, so the field and the kind are both additive.
 	SessionEventTitle = "title"
+	// SessionEventAttention reports that SessionInfo.NeedsAttention
+	// changed. Kept apart from "updated" for the same reason "title"
+	// is: it is driven by the child process, not by the daemon's own
+	// view of the session, and consumers that re-render everything on
+	// "updated" should not be made to do so on every bell.
+	SessionEventAttention = "attention"
 )
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every
@@ -411,7 +443,64 @@ const (
 	// has no PTY yet; the client should wait for the SESSION_EVENT
 	// that moves it to PhaseReady rather than treating it as dead.
 	ErrCodeSessionStarting = "session_starting"
+	// ErrCodeProtocolVersionMismatch is returned INSTEAD of a WELCOME
+	// when the client's HELLO names a different PROTOCOL_VERSION. The
+	// daemon refuses the connection outright, so this is the client's
+	// only signal — Handshake turns it into ErrProtocolMismatch.
+	ErrCodeProtocolVersionMismatch = "protocol_version_mismatch"
 )
+
+// ErrProtocolMismatch wraps a handshake refused for speaking a
+// different PROTOCOL_VERSION. Callers match it with errors.Is to tell
+// "this daemon is too old/new to talk to" apart from an ordinary
+// connection failure — the two need opposite remedies, and only the
+// former is fixed by restarting the daemon.
+var ErrProtocolMismatch = errors.New("wire: protocol version mismatch")
+
+// ---------- client commands ----------
+
+// ClientCommand is the payload of both CLIENT_COMMAND (one client
+// asking) and CLIENT_BROADCAST (the daemon relaying to every control
+// client, sender included).
+//
+// The daemon never acts on one of these. It validates Cmd against
+// ClientCommands and forwards it verbatim — the semantics live
+// entirely in the clients. That is deliberate: these verbs are about
+// client-side UI state ("relaunch yourself", "bring this session
+// forward"), which the daemon has no business knowing about.
+type ClientCommand struct {
+	Cmd string `json:"cmd"`
+	// SessionID scopes a command to one session. Only meaningful for
+	// CmdFocusSession; ignored otherwise.
+	SessionID string `json:"session_id,omitempty"`
+}
+
+// Client command verbs.
+const (
+	// CmdReloadGUI asks every GUI window to relaunch its own process,
+	// leaving the daemon and every running session untouched. This is
+	// the cheap half of what used to be a single "Restart Hive" —
+	// picking up new GUI code no longer has to kill the user's PTYs.
+	CmdReloadGUI = "reload_gui"
+	// CmdFocusSession asks the GUI to bring one session forward. Sent
+	// by hivebar, which has no window of its own.
+	CmdFocusSession = "focus_session"
+	// CmdCheckUpdate asks the GUI to run an update check. Also
+	// hivebar's: the GUI owns staging, verification and the bundle
+	// swap, and is the thing being replaced, so the menu bar delegates
+	// rather than duplicating any of it.
+	CmdCheckUpdate = "check_update"
+)
+
+// ClientCommands is the allowlist the daemon validates against. An
+// unrecognised verb is refused rather than relayed: the daemon is the
+// only thing standing between one client and every other, so a typo
+// must not become a frame that every window has to guess at.
+var ClientCommands = map[string]bool{
+	CmdReloadGUI:    true,
+	CmdFocusSession: true,
+	CmdCheckUpdate:  true,
+}
 
 // ---------- worktree management ----------
 

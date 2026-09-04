@@ -109,6 +109,24 @@ const (
 	FrameListClosed      FrameType = 0x1d // C → S, JSON, control
 	FrameClosed          FrameType = 0x1e // S → C, JSON, control
 	FrameSessionRestored FrameType = 0x1f // S → C, JSON, control
+
+	// Client commands. One client asks the daemon to relay a command
+	// to every other control client; the daemon fans it back out as
+	// CLIENT_BROADCAST, including to the sender.
+	//
+	// This is a relay, not an operation: the daemon validates the verb
+	// and forwards it, and never acts on one itself. It exists because
+	// the clients cannot see each other — every GUI window is its own
+	// process, and hivebar is a fourth process again, so the daemon is
+	// the only thing they all hold a connection to. "Reload every
+	// window" has no other route, and reloading only the window that
+	// asked leaves its siblings running old code against a new daemon.
+	//
+	// One generic pair rather than a frame pair per verb: reload_gui
+	// and focus_session both need this today. See wire.ClientCommand
+	// for the verb set.
+	FrameClientCommand   FrameType = 0x20 // C → S, JSON, control
+	FrameClientBroadcast FrameType = 0x21 // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -175,6 +193,10 @@ func (t FrameType) String() string {
 		return "CLOSED"
 	case FrameSessionRestored:
 		return "SESSION_RESTORED"
+	case FrameClientCommand:
+		return "CLIENT_COMMAND"
+	case FrameClientBroadcast:
+		return "CLIENT_BROADCAST"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

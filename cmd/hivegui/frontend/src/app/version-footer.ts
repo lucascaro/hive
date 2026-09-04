@@ -22,14 +22,24 @@
 // field is a required string; daemonVersionEvent() fills all five and the
 // struct carries no omitempty.
 export interface DaemonStaleEvent {
-  // Closed set — daemonVersionEvent() in app.go emits exactly these
-  // three. A literal union catches a typo'd comparison at the three
+  // Closed set — daemonVersionEvent() in app_control.go emits exactly
+  // these four. A literal union catches a typo'd comparison at the
   // call sites in banners.ts / components/VersionFooter.tsx.
-  severity: 'match' | 'mismatch' | 'unknown';
+  //
+  // 'reloadable' is the one that matters for what the user is offered:
+  // the builds differ but the daemon contracts agree, so relaunching
+  // the GUI alone picks up the change and every session survives.
+  // 'mismatch' means the daemon itself has to restart, which ends them.
+  severity: 'match' | 'reloadable' | 'mismatch' | 'unknown';
   guiBuild: string;
   daemonBuild: string;
   guiRelease: string;
   daemonRelease: string;
+  // The two daemon contracts (buildinfo.DaemonContract), so the copy
+  // can say why a restart is needed instead of just asserting it. 0 on
+  // the daemon side means it predates the field.
+  guiContract: number;
+  daemonContract: number;
 }
 
 // Renders one binary as "<name> <release> (<build>)", degrading as

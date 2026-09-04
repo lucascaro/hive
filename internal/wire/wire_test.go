@@ -422,3 +422,95 @@ func TestWorktreesHasControlEventName(t *testing.T) {
 		}
 	}
 }
+
+// TestWelcomeCarriesDaemonContract pins the field the GUI's
+// reload-vs-restart decision is built on. Its omitempty contract is
+// load-bearing: a daemon that predates the field sends nothing, which
+// must decode to 0 ("unknown"), and the GUI must never read 0 as a
+// match — silently reloading into a daemon of unknown behavior is the
+// worst outcome the feature can produce.
+func TestWelcomeCarriesDaemonContract(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, FrameWelcome, Welcome{
+		Version: PROTOCOL_VERSION, BuildID: "def5678", DaemonContract: 7,
+		Mode: ModeControl,
+	}); err != nil {
+		t.Fatalf("write welcome: %v", err)
+	}
+	var w Welcome
+	if _, err := ReadJSON(&buf, &w); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	if w.DaemonContract != 7 {
+		t.Errorf("DaemonContract = %d, want 7", w.DaemonContract)
+	}
+}
+
+func TestWelcomeOmitsDaemonContractWhenZero(t *testing.T) {
+	var buf bytes.Buffer
+	// A daemon built before the contract field existed.
+	if err := WriteJSON(&buf, FrameWelcome, Welcome{
+		Version: PROTOCOL_VERSION, BuildID: "old", Mode: ModeControl,
+	}); err != nil {
+		t.Fatalf("write welcome: %v", err)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("daemon_contract")) {
+		t.Errorf("zero DaemonContract must be omitted; frame = %s", buf.Bytes())
+	}
+	var w Welcome
+	if _, err := ReadJSON(&buf, &w); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	if w.DaemonContract != 0 {
+		t.Errorf("DaemonContract = %d, want 0", w.DaemonContract)
+	}
+}
+
+func TestClientCommandRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, FrameClientCommand, ClientCommand{
+		Cmd: CmdFocusSession, SessionID: "s1",
+	}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var cmd ClientCommand
+	if ft, err := ReadJSON(&buf, &cmd); err != nil || ft != FrameClientCommand {
+		t.Fatalf("read: ft=%s err=%v", ft, err)
+	}
+	if cmd.Cmd != CmdFocusSession || cmd.SessionID != "s1" {
+		t.Errorf("cmd = %+v", cmd)
+	}
+}
+
+// TestProtocolVersionUnchangedByClientCommand pins the reasoning
+// behind the frame pair, not just its existence.
+//
+// The daemon refuses any HELLO whose Version differs (see
+// internal/daemon), so bumping PROTOCOL_VERSION for a purely additive
+// frame would stop a new GUI from handshaking with an old daemon at
+// all — and it could then never read the daemon contract it needs to
+// decide between a cheap reload and a full restart. Unknown frames are
+// merely logged, so adding frames stays backward compatible.
+//
+// If a genuine protocol break ever lands, bump both this and
+// buildinfo.DaemonContract, and update this test's reasoning with it.
+func TestProtocolVersionUnchangedByClientCommand(t *testing.T) {
+	if PROTOCOL_VERSION != 1 {
+		t.Fatalf("PROTOCOL_VERSION = %d; adding frames must not bump it — see the doc comment above",
+			PROTOCOL_VERSION)
+	}
+}
+
+// The allowlist and the verb constants must not drift apart: the
+// daemon refuses anything not in the map, so a verb defined but not
+// listed is silently unusable.
+func TestClientCommandsAllowlistCoversEveryVerb(t *testing.T) {
+	for _, verb := range []string{CmdReloadGUI, CmdFocusSession, CmdCheckUpdate} {
+		if !ClientCommands[verb] {
+			t.Errorf("verb %q is not in ClientCommands; the daemon will refuse it", verb)
+		}
+	}
+	if len(ClientCommands) != 3 {
+		t.Errorf("ClientCommands has %d entries; add the new verb to this test", len(ClientCommands))
+	}
+}

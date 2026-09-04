@@ -47,6 +47,17 @@ export interface SessionInfo {
   // daemon emits `title` and there is no camelCase variant to fall back
   // to.
   title?: string;
+  // True while the program on this session has rung the terminal bell
+  // and nobody has looked since (internal/wire SessionInfo.NeedsAttention).
+  // Daemon-owned, so every window and the menu bar agree; omitted when
+  // false. Single-spelled, like `title`.
+  needs_attention?: boolean;
+}
+
+/** Reads the daemon's attention flag off a session, defaulting to false
+ * for the omitempty case and for a daemon too old to send it. */
+export function readNeedsAttention(s: SessionInfo): boolean {
+  return s.needs_attention === true;
 }
 
 export interface ProjectInfo {

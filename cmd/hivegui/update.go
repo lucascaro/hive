@@ -70,7 +70,22 @@ type UpdateInfo struct {
 	// text while staging, the reason when Skipped, the failure when
 	// Stage is error.
 	Message string `json:"message"`
+	// RestartKind says what applying this update will cost, and is the
+	// reason the staging path bothers to run the staged hived at all.
+	// RestartGUI means the staged daemon's contract matches the running
+	// one, so the GUI can be relaunched and every session survives;
+	// RestartFull means hived itself has to be replaced, which ends
+	// them. Empty until a bundle is staged, and RestartFull whenever we
+	// could not find out — never guess in the direction that silently
+	// reloads into an incompatible daemon.
+	RestartKind string `json:"restartKind,omitempty"`
 }
+
+// Values of UpdateInfo.RestartKind.
+const (
+	RestartGUI  = "gui"
+	RestartFull = "full"
+)
 
 // Stages of the update action button. The frontend maps these to
 // labels (Update / Updating… / Restart) in lib/update-state.ts.

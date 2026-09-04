@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -68,21 +69,44 @@ func (a *App) ConnectControl() error {
 		Mode:    wire.ModeControl,
 	}, bootDialBudget)
 	if err != nil {
+		// A protocol rejection is the one connect failure the user can
+		// actually fix, and it is invisible from the error alone: the
+		// daemon refused the HELLO, so there is no WELCOME to derive a
+		// banner from. Emit the mismatch severity by hand — contract 0
+		// on the daemon side, because a daemon we could not handshake
+		// with has told us nothing — so the banner offers "Restart
+		// Daemon" instead of leaving a bare "could not connect".
+		if errors.Is(err, wire.ErrProtocolMismatch) {
+			a.emitDaemonVersionStatus("incompatible", "", 0)
+		}
 		return fmt.Errorf("control: %w", err)
 	}
 
+	w := cs.Welcome()
 	a.mu.Lock()
 	a.control = cs
+	a.daemonContract = w.DaemonContract
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	a.emitDaemonVersionStatus(cs.Welcome().BuildID, cs.Welcome().Release)
+	a.emitDaemonVersionStatus(w.BuildID, w.Release, w.DaemonContract)
 	return nil
 }
 
 // DaemonStaleEvent is the payload of the "daemon:stale" Wails event.
-// Severity is "match" (silent — emitted so the frontend can clear a
-// previously-shown banner), "mismatch" (both builds known and differ),
-// or "unknown" (one or both sides did not advertise a build).
+//
+// Severity is one of:
+//
+//	match       both sides are the same build — silent, but still
+//	            emitted so the frontend can clear a stale banner.
+//	reloadable  the builds differ but the daemon contracts agree, so
+//	            the two are compatible. The frontend keeps this SILENT:
+//	            reloading cannot change which build hived is, so a
+//	            banner offering it would never clear. The sidebar
+//	            footer shows both builds instead.
+//	mismatch    the contracts differ (or the daemon advertised none),
+//	            so the daemon itself must be restarted — which ends
+//	            every session.
+//	unknown     a build ID is missing; treated like mismatch.
 //
 // The *Release fields carry the human-readable versions (buildinfo.Version)
 // so the sidebar footer can display them; they are informational only and
@@ -93,29 +117,45 @@ type DaemonStaleEvent struct {
 	DaemonBuild   string `json:"daemonBuild"`
 	GuiRelease    string `json:"guiRelease"`
 	DaemonRelease string `json:"daemonRelease"`
+	// The two contracts, so the footer and banner can say *why* a
+	// restart is required rather than just asserting it. 0 on the
+	// daemon side means it predates the field.
+	GuiContract    int `json:"guiContract"`
+	DaemonContract int `json:"daemonContract"`
 }
 
 // daemonVersionEvent builds the "daemon:stale" payload. Split out from
 // the emit so it is testable without a live Wails context.
 //
-// Severity is computed from build IDs alone: those are git revisions, so
-// equal build IDs already imply equal releases, and comparing releases too
-// would only add a second source of truth to keep in sync. daemonRelease is
-// empty when talking to a daemon built before Welcome gained the Release
-// field — consumers fall back to build-ID-only display.
-func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
+// Build IDs decide only whether anything changed at all; they are git
+// revisions, so they differ after a CSS tweak. What decides the ACTION
+// is the daemon contract: equal contracts mean a GUI-only reload is
+// enough, and the user keeps every session. Comparing build IDs for
+// that (which is what this did before contracts existed) charged a
+// full restart — every PTY killed — for a frontend-only rebuild.
+//
+// A daemon advertising contract 0 predates the field entirely, so
+// nothing is known about its behavior; that is a mismatch, never a
+// match. daemonRelease is likewise empty on a daemon built before
+// Welcome gained the Release field — consumers fall back to
+// build-ID-only display.
+func daemonVersionEvent(daemonBuild, daemonRelease string, daemonContract int) DaemonStaleEvent {
 	gui := buildinfo.BuildID()
 	ev := DaemonStaleEvent{
-		GuiBuild:      gui,
-		DaemonBuild:   daemonBuild,
-		GuiRelease:    buildinfo.Version(),
-		DaemonRelease: daemonRelease,
+		GuiBuild:       gui,
+		DaemonBuild:    daemonBuild,
+		GuiRelease:     buildinfo.Version(),
+		DaemonRelease:  daemonRelease,
+		GuiContract:    buildinfo.DaemonContract,
+		DaemonContract: daemonContract,
 	}
 	switch {
 	case gui == "" || daemonBuild == "":
 		ev.Severity = "unknown"
 	case gui == daemonBuild:
 		ev.Severity = "match"
+	case daemonContract != 0 && daemonContract == buildinfo.DaemonContract:
+		ev.Severity = "reloadable"
 	default:
 		ev.Severity = "mismatch"
 	}
@@ -125,8 +165,9 @@ func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
 // emitDaemonVersionStatus reports the GUI/daemon build relationship to the
 // frontend. Both the stale-daemon banner and the sidebar version footer
 // listen for this event.
-func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string) {
-	wruntime.EventsEmit(a.ctx, "daemon:stale", daemonVersionEvent(daemonBuild, daemonRelease))
+func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string, daemonContract int) {
+	wruntime.EventsEmit(a.ctx, "daemon:stale",
+		daemonVersionEvent(daemonBuild, daemonRelease, daemonContract))
 }
 
 // restartKillBudget bounds each of the two kill channels' wait for
@@ -200,9 +241,41 @@ func (a *App) RestartDaemon() error {
 		return fmt.Errorf("hived still answering on %s after shutdown and signal; not restarting", sock)
 	}
 
-	// The daemon is gone; these conns are dead sockets now. Release
-	// them before the relaunch so the outgoing process isn't holding
-	// half-open fds while the new GUI comes up.
+	// The daemon is gone; these conns are dead sockets now.
+	return a.relaunchSelf("restart")
+}
+
+// relaunchSelf replaces this GUI process with a fresh one and quits.
+// It is the tail RestartDaemon and ReloadGUI share: release the
+// connections so the outgoing process isn't holding half-open fds
+// while the new GUI comes up, spawn the replacement, then quit.
+//
+// It says nothing about the daemon, deliberately. RestartDaemon has
+// already confirmed hived is gone by the time it gets here; ReloadGUI
+// requires it to still be running. Keeping the "is the daemon alive"
+// decision entirely with the callers is what makes ReloadGUI provably
+// unable to kill a session.
+//
+// why is a log tag naming which caller this is, so the daemon-restart
+// and GUI-reload paths stay distinguishable in hivegui.log.
+// Seams for the reload/restart tests, for the same reason
+// restartDaemonFn is seamed in update_action.go and more urgently:
+// spawnNewGUI re-execs os.Executable(), which in a test binary is the
+// test binary — a test that reached it once spawned a detached copy of
+// the whole suite, against the developer's real state directory.
+var (
+	spawnNewGUIFn = spawnNewGUI
+	quitFn        = func(a *App) { wruntime.Quit(a.ctx) }
+	// emitFn is seamed for a different reason than the two above:
+	// EventsEmit rejects a context it did not issue, so any test that
+	// drives a code path ending in an emit aborts the whole binary
+	// rather than failing one case.
+	emitFn = func(a *App, name string, data ...any) {
+		wruntime.EventsEmit(a.ctx, name, data...)
+	}
+)
+
+func (a *App) relaunchSelf(why string) error {
 	a.mu.Lock()
 	if a.control != nil {
 		_ = a.control.Close()
@@ -214,12 +287,97 @@ func (a *App) RestartDaemon() error {
 	a.attaches = make(map[string]*wire.Client)
 	a.mu.Unlock()
 
-	if err := spawnNewGUI(a.launchDir); err != nil {
+	if err := spawnNewGUIFn(a.launchDir); err != nil {
 		return fmt.Errorf("relaunch GUI: %w", err)
 	}
-	log.Printf("hivegui: restart: relaunched, quitting")
-	wruntime.Quit(a.ctx)
+	log.Printf("hivegui: %s: relaunched, quitting", why)
+	quitFn(a)
 	return nil
+}
+
+// ReloadGUI relaunches this GUI process and leaves hived — and every
+// PTY it owns — running.
+//
+// This is the cheap half of what used to be a single "Restart Hive".
+// hived is spawned detached and has no idle exit, so it outlives a GUI
+// quit on its own; picking up new frontend code never needed to kill
+// the user's sessions, and doing so was costing a full restart for
+// what is usually a CSS change.
+//
+// It must never send FrameShutdown and never call killRunningHived.
+// Those are RestartDaemon's, and a reload that reaches either of them
+// is a reload that ended someone's agent run. TestReloadGUINeverKills
+// pins that.
+//
+// Callers reach this through RequestReloadAllGUIs so every window
+// relaunches together; calling it directly reloads only this one and
+// leaves siblings on the old binary.
+func (a *App) ReloadGUI() error {
+	if !a.beginReload() {
+		// A reload is already in flight. The broadcast reaches every
+		// window including the sender, and a user can click twice, so
+		// this is reachable in normal use: spawning a second
+		// replacement would leave the user with two new windows.
+		log.Printf("hivegui: reload: already in flight, ignoring")
+		return nil
+	}
+	log.Printf("hivegui: reload: relaunching GUI, leaving hived alone")
+	return a.relaunchSelf("reload")
+}
+
+// beginReload latches the reload flag, returning false if one is
+// already running.
+func (a *App) beginReload() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.reloading {
+		return false
+	}
+	a.reloading = true
+	return true
+}
+
+// RequestReloadAllGUIs asks the daemon to tell every GUI window to
+// relaunch, this one included.
+//
+// It goes through the daemon rather than reloading in place because
+// each window is its own process (OpenNewWindow re-execs), so a local
+// reload would leave the other windows running the old binary against
+// the new daemon — the exact drift this feature exists to remove.
+func (a *App) RequestReloadAllGUIs() error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	if err := cs.WriteJSON(wire.FrameClientCommand,
+		wire.ClientCommand{Cmd: wire.CmdReloadGUI}); err != nil {
+		return fmt.Errorf("request reload: %w", err)
+	}
+	return nil
+}
+
+// handleClientCommand acts on a command another client (or this one)
+// asked the daemon to relay.
+//
+// reload_gui is handled here in Go rather than forwarded to the
+// frontend: the reload is a process relaunch, which the webview cannot
+// perform, and routing it through JS would put a page that is about to
+// be destroyed in charge of destroying itself. Everything else is
+// frontend business and goes out as a Wails event.
+func (a *App) handleClientCommand(payload []byte) {
+	var cmd wire.ClientCommand
+	if err := json.Unmarshal(payload, &cmd); err != nil {
+		log.Printf("hivegui: control: bad client command payload: %v", err)
+		return
+	}
+	switch cmd.Cmd {
+	case wire.CmdReloadGUI:
+		if err := a.ReloadGUI(); err != nil {
+			log.Printf("hivegui: reload: %v", err)
+		}
+	default:
+		emitFn(a, "client:command", string(payload))
+	}
 }
 
 // detachControl clears the installed control connection and returns it, so
@@ -267,6 +425,10 @@ func (a *App) controlReadLoop(cs *wire.Client) {
 				log.Printf("hivegui: control read: %v", err)
 			}
 			return
+		}
+		if ft == wire.FrameClientBroadcast {
+			a.handleClientCommand(payload)
+			continue
 		}
 		if name, ok := wire.ControlEventName(ft); ok {
 			wruntime.EventsEmit(a.ctx, name, string(payload))

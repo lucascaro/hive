@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lucascaro/hive/internal/buildinfo"
 )
 
 func TestRemovePidfile(t *testing.T) {
@@ -88,4 +91,47 @@ func TestRemovePidfile(t *testing.T) {
 			t.Errorf("expected 'remove pidfile' warning; got %q", buf.String())
 		}
 	})
+}
+
+// TestPrintIdentityJSON pins the shape the GUI's updater parses out of
+// a staged bundle. This is the only way to ask a hived on disk what
+// its daemon contract is, and getting it wrong makes the updater fall
+// back to a full restart — killing sessions it did not have to.
+func TestPrintIdentityJSON(t *testing.T) {
+	t.Cleanup(buildinfo.SetForTest("abc1234"))
+	t.Cleanup(buildinfo.SetVersionForTest("0.9.9"))
+
+	var buf bytes.Buffer
+	printIdentity(&buf, true)
+
+	var id buildinfo.Identity
+	if err := json.Unmarshal(buf.Bytes(), &id); err != nil {
+		t.Fatalf("unmarshal %q: %v", buf.String(), err)
+	}
+	if id.BuildID != "abc1234" || id.Release != "0.9.9" {
+		t.Errorf("identity = %+v", id)
+	}
+	if id.DaemonContract != buildinfo.DaemonContract {
+		t.Errorf("DaemonContract = %d, want %d", id.DaemonContract, buildinfo.DaemonContract)
+	}
+}
+
+// The human form must stay human: a developer running `hived --version`
+// should not get a JSON blob.
+func TestPrintIdentityHuman(t *testing.T) {
+	t.Cleanup(buildinfo.SetForTest("abc1234"))
+	t.Cleanup(buildinfo.SetVersionForTest("0.9.9"))
+
+	var buf bytes.Buffer
+	printIdentity(&buf, false)
+
+	out := buf.String()
+	for _, want := range []string{"hived", "0.9.9", "abc1234", "daemon contract"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q missing from %q", want, out)
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		t.Errorf("human form emitted JSON: %q", out)
+	}
 }

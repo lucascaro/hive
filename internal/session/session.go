@@ -51,6 +51,19 @@ type Session struct {
 	title      string
 	titleHook  func(string)
 	titleTimer *time.Timer
+
+	// Terminal-bell plumbing. bells scans the PTY stream for real BEL
+	// bytes (see bell.go); bellHook is installed by the registry to
+	// mark the session as wanting attention. Like titleHook it is
+	// invoked from readLoop with mu released, keeping the
+	// registry→session lock order one-way.
+	//
+	// There is no throttle here, unlike the title: a program that rings
+	// twice is still just "wants attention", and the registry drops the
+	// hook call when the flag is already set — so a bell storm costs a
+	// bool compare, not a frame per bell.
+	bells    bellScanner
+	bellHook func()
 }
 
 // titleThrottle bounds how often a session reports a title change. Some
@@ -209,6 +222,7 @@ func (s *Session) readLoop() {
 			// session and never the reverse, so firing here (mu already
 			// released) keeps that a one-way edge instead of a lock cycle.
 			s.noteTitle()
+			s.noteBell(buf[:n])
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -262,6 +276,35 @@ func (s *Session) SetTitleHook(fn func(string)) {
 // or "" if it never set one.
 func (s *Session) Title() string {
 	return s.vt.Title()
+}
+
+// SetBellHook installs the callback invoked when the program running on
+// this session rings the terminal bell. Passing nil disables reporting.
+// Same contract as SetTitleHook: it runs on the readLoop goroutine with
+// no session lock held, and must not block for long — the PTY drain is
+// stalled while it runs.
+func (s *Session) SetBellHook(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bellHook = fn
+}
+
+// noteBell scans one delivered chunk for a real bell and reports it.
+// Called from readLoop after deliver, for the same lock-ordering reason
+// as noteTitle.
+//
+// The scanner is stateful across chunks, so it must see every chunk in
+// order — including when no hook is installed. Skipping the scan on a
+// nil hook would leave the state machine mid-OSC and make the next
+// title's terminator read as a bell.
+func (s *Session) noteBell(p []byte) {
+	s.mu.Lock()
+	rang := s.bells.Scan(p)
+	hook := s.bellHook
+	s.mu.Unlock()
+	if rang && hook != nil {
+		hook()
+	}
 }
 
 // noteTitle reports a changed window title to the hook, at most once per

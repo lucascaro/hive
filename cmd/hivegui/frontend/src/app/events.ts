@@ -11,6 +11,7 @@ import {
   KillSessionAndWorktree,
   ConnectControl,
   LogFrontend,
+  SetSessionAttention,
 } from '../bridge.js';
 import {
   noteLocalClose,
@@ -18,6 +19,7 @@ import {
   onSessionRestored,
 } from './undo-close.js';
 import type { SessionInfo, ProjectInfo } from './state.js';
+import { readNeedsAttention } from './state.js';
 import {
   addAttention,
   addProject,
@@ -30,6 +32,7 @@ import {
   removeSession,
   setActiveId,
   setAlive,
+  setAttention,
   applyProjectList,
   setSessionPhase,
   setSessions,
@@ -67,6 +70,11 @@ export interface EventsDeps {
   focusActiveTerm: () => void;
   refocusActiveTerm: () => void;
   isDaemonRestarting: () => boolean;
+  // Runs the update check. Comes through the deps seam rather than a
+  // direct banners.ts import for the same reason enforceViewFloor
+  // does: banners.ts is not in events.ts's import graph and should
+  // stay out of it.
+  checkForUpdates: () => void;
   // Unlike view.ts's Pick<…, 'rec' | 'count'>, the pty:data probe also
   // reads `counters` directly.
   scrollTrace: Pick<ScrollTrace, 'rec' | 'count' | 'counters'>;
@@ -83,6 +91,7 @@ let deps: EventsDeps = {
   focusActiveTerm: () => {},
   refocusActiveTerm: () => {},
   isDaemonRestarting: () => false,
+  checkForUpdates: () => {},
   scrollTrace: createScrollTrace({ enabled: false }),
 };
 
@@ -95,10 +104,13 @@ interface ProjectEvent {
 }
 
 interface SessionEvent {
-  // 'title' is a session-only kind: the program on the PTY re-titled
-  // itself (internal/wire/control.go SessionEventTitle). Kept separate
-  // from 'updated' so title churn never triggers a full re-render.
-  kind: 'added' | 'removed' | 'updated' | 'title';
+  // 'title' and 'attention' are session-only kinds driven by the child
+  // process rather than by the daemon's own view of the session — a
+  // re-title (SessionEventTitle) and a terminal bell
+  // (SessionEventAttention). Both are kept out of 'updated' so that
+  // churn from the PTY never triggers the full re-render 'updated'
+  // means.
+  kind: 'added' | 'removed' | 'updated' | 'title' | 'attention';
   session: SessionInfo;
 }
 
@@ -184,9 +196,28 @@ export function onSessionBell(info: SessionInfo) {
 }
 
 export function clearAttention(sessionId: string) {
-  if (clearAttentionFor(sessionId)) {
+  const wasFlagged = clearAttentionFor(sessionId);
+  if (wasFlagged) {
     termsMap().get(sessionId)?.host.classList.remove('attention');
   }
+  // Tell the daemon regardless of the local state. The flag lives on
+  // the daemon now, and this window's copy can be behind — another
+  // window may have seen the bell first, or this one may have missed
+  // it. Clearing locally without saying so would leave the menu bar
+  // and every other window still insisting the session wants you.
+  SetSessionAttention(sessionId, false).catch(reportFailure('clear attention'));
+}
+
+// syncAttentionFromSessions replaces the local attention set with the
+// daemon's view.
+//
+// The daemon is the source of truth: it sees the bell whether or not
+// this window has the session open, so a window that was closed, or
+// reloaded, or simply never attached still learns what rang. The local
+// onSessionBell path stays because it is instant and drives the
+// notification — this is what corrects it.
+function syncAttentionFromSessions(sessions: SessionInfo[]) {
+  setAttention(new Set(sessions.filter(readNeedsAttention).map((s) => s.id)));
 }
 
 // fireBellNotification routes through Go because Wails' WKWebView on
@@ -262,6 +293,33 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const focused = appData().activeId;
     if (focused) clearAttention(focused);
     deps.refocusActiveTerm();
+  });
+
+  // Commands relayed by the daemon from another client — in practice
+  // the menu bar, which has no window of its own and so cannot focus a
+  // session or open the update flow directly. reload_gui never gets
+  // here: Go handles it (see App.handleClientCommand), because the
+  // reload destroys this page and a page cannot be put in charge of
+  // that.
+  EventsOn('client:command', (jsonStr: string) => {
+    let cmd: { cmd?: string; session_id?: string };
+    try {
+      cmd = JSON.parse(jsonStr);
+    } catch {
+      return;
+    }
+    if (cmd.cmd === 'focus_session' && cmd.session_id) {
+      // Only if we still have it: the menu bar's list can be a moment
+      // stale, and switching to a session that has gone would leave
+      // the user staring at an empty pane.
+      if (appData().sessions.some((s) => s.id === cmd.session_id)) {
+        deps.switchTo(cmd.session_id);
+      }
+      return;
+    }
+    if (cmd.cmd === 'check_update') {
+      deps.checkForUpdates();
+    }
   });
 
   EventsOn('project:list', (jsonStr: string) => {
@@ -370,6 +428,10 @@ export function wireDaemonEvents(injected: EventsDeps) {
     setBootState(null);
     const { sessions } = JSON.parse(jsonStr) as { sessions?: SessionInfo[] };
     setSessions(sessions || []);
+    // Before anything renders: a fresh page load (or a GUI reload)
+    // starts with an empty set, and the snapshot is where it learns
+    // what rang while this window did not exist.
+    syncAttentionFromSessions(appData().sessions);
     for (const s of appData().sessions) {
       processAliveTransition(s);
       termsMap().get(s.id)?.setPhase(phaseOf(s));
@@ -420,6 +482,19 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // rebuild at the child process's redraw rate ate dblclick pairs.)
     if (ev.kind === 'title') {
       if (i >= 0) updateSession(ev.session);
+      return;
+    }
+    // The daemon's bell scanner fired, or another client reported that
+    // the user looked. Its own kind, like 'title', so a bell never
+    // triggers the full re-render that 'updated' means.
+    if (ev.kind === 'attention') {
+      if (i >= 0) updateSession(ev.session);
+      if (readNeedsAttention(ev.session)) {
+        addAttention(ev.session.id);
+        termsMap().get(ev.session.id)?.host.classList.add('attention');
+      } else if (clearAttentionFor(ev.session.id)) {
+        termsMap().get(ev.session.id)?.host.classList.remove('attention');
+      }
       return;
     }
     if (ev.kind === 'updated' && phaseOf(ev.session) === PHASE.closing) {

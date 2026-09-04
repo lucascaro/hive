@@ -17,6 +17,7 @@ import { resetStore } from '../../src/store/store.js';
 const bridge = vi.hoisted(() => ({
   Confirm: vi.fn(() => Promise.resolve(true)),
   RestartDaemon: vi.fn(() => Promise.resolve()),
+  RequestReloadAllGUIs: vi.fn(() => Promise.resolve()),
   CheckForUpdate: vi.fn(() => Promise.resolve()),
   OpenURL: vi.fn(() => Promise.resolve()),
   EventsOn: vi.fn(),
@@ -25,6 +26,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock('../../src/bridge.js', () => bridge);
 
 let restartHive: typeof import('../../src/app/banners.js').restartHive;
+let reloadGui: typeof import('../../src/app/banners.js').reloadGui;
 let isDaemonRestarting: typeof import('../../src/app/banners.js').isDaemonRestarting;
 let initBanners: typeof import('../../src/app/banners.js').initBanners;
 let Banners: typeof import('../../src/components/Banners.js')['Banners'];
@@ -62,7 +64,7 @@ beforeAll(async () => {
   // app/banners.js (and its dom.js side effects) before the scaffold
   // above is in place.
   ({ Banners } = await import('../../src/components/Banners.js'));
-  ({ restartHive, isDaemonRestarting, initBanners } = await import(
+  ({ restartHive, reloadGui, isDaemonRestarting, initBanners } = await import(
     '../../src/app/banners.js'
   ));
   initBanners();
@@ -71,6 +73,7 @@ beforeAll(async () => {
 beforeEach(() => {
   bridge.Confirm.mockClear().mockResolvedValue(true);
   bridge.RestartDaemon.mockClear().mockResolvedValue(undefined);
+  bridge.RequestReloadAllGUIs.mockClear().mockResolvedValue(undefined);
   resetStore();
   // RTL's afterEach(cleanup) (setup-rtl.ts) unmounts the tree after every
   // test, so the island has to be remounted each time rather than once.
@@ -212,5 +215,120 @@ describe('daemon banner dismissal', () => {
     // Reset means a later mismatch on that same build surfaces again.
     stale('daemon-3');
     expect(bannerEl().hidden).toBe(false);
+  });
+});
+
+// The reload/restart split is the point of the daemon-contract work:
+// the daemon decides which of the two the user is offered, and the
+// banner must never present the destructive one when the cheap one
+// would do (or vice versa, which would silently leave a changed daemon
+// running).
+describe('daemon banner reload vs restart', () => {
+  function actionLabels(): string[] {
+    return Array.from(bannerEl().querySelectorAll<HTMLButtonElement>('button'))
+      .filter((b) => !b.hidden && !b.classList.contains('hv-banner__dismiss'))
+      .map((b) => b.textContent ?? '');
+  }
+
+  beforeEach(() => {
+    emit('daemon:stale', {
+      severity: 'match',
+      daemonBuild: 'baseline',
+      guiBuild: 'gui-1',
+      guiContract: 1,
+      daemonContract: 1,
+    });
+  });
+
+  // Equal contracts means compatible, so a differing daemon build is
+  // unactionable: reloading the GUI cannot change which build hived is.
+  // A banner offering it would reappear the moment a reload succeeded
+  // and never clear. The sidebar footer reports the two builds instead.
+  it('stays silent when the contracts agree', () => {
+    emit('daemon:stale', {
+      severity: 'reloadable',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-new',
+      guiContract: 1,
+      daemonContract: 1,
+    });
+
+    expect(bannerEl().hidden).toBe(true);
+  });
+
+  // The stuck-banner case, driven end to end: a reload leaves the GUI
+  // new and the daemon on its old build, and that must not re-raise
+  // the banner the user just acted on.
+  it('does not re-raise after a reload leaves the daemon on its old build', () => {
+    emit('daemon:stale', {
+      severity: 'mismatch',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-old',
+      guiContract: 2,
+      daemonContract: 1,
+    });
+    expect(bannerEl().hidden).toBe(false);
+
+    // ...user restarts, or updates; now the contracts agree and only
+    // the build ids differ.
+    emit('daemon:stale', {
+      severity: 'reloadable',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-new',
+      guiContract: 1,
+      daemonContract: 1,
+    });
+    expect(bannerEl().hidden).toBe(true);
+  });
+
+  it('offers only Restart Hive when the contracts differ', () => {
+    emit('daemon:stale', {
+      severity: 'mismatch',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-new',
+      guiContract: 2,
+      daemonContract: 1,
+    });
+
+    expect(bannerEl().hidden).toBe(false);
+    expect(actionLabels()).toEqual(['Restart Hive']);
+    // And it must name the cost before the user clicks.
+    expect(bannerText().textContent).toMatch(/ends every running session/i);
+  });
+
+  it('offers Restart when the daemon build cannot be verified', () => {
+    emit('daemon:stale', {
+      severity: 'unknown',
+      daemonBuild: '',
+      guiBuild: 'gui-new',
+      guiContract: 1,
+      daemonContract: 0,
+    });
+
+    expect(actionLabels()).toEqual(['Restart Hive']);
+  });
+});
+
+// reloadGui destroys nothing, so it must NOT sit behind the confirm
+// overlay: a dialog in front of a harmless action trains the user to
+// click through the one that matters.
+describe('reloadGui', () => {
+  it('broadcasts without a confirmation dialog', async () => {
+    await reloadGui();
+    expect(bridge.Confirm).not.toHaveBeenCalled();
+    expect(bridge.RequestReloadAllGUIs).toHaveBeenCalledTimes(1);
+    expect(bridge.RestartDaemon).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failure in the banner', async () => {
+    bridge.RequestReloadAllGUIs.mockRejectedValue(new Error('no control conn'));
+    await reloadGui();
+    expect(bannerEl().hidden).toBe(false);
+    expect(bannerText().textContent).toMatch(/Reload failed.*no control conn/);
+  });
+
+  it('clears the restarting flag so the status bar does not flash', async () => {
+    await reloadGui();
+    expect(isDaemonRestarting()).toBe(false);
   });
 });

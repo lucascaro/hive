@@ -13,6 +13,8 @@ import type { UpdateInfoLike } from '../../src/lib/update-state.js';
 const bridge = vi.hoisted(() => ({
   ListCustomAgents: vi.fn(() => Promise.resolve([])),
   SaveCustomAgents: vi.fn(() => Promise.resolve()),
+  MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
+  SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
   GetUpdateSettings: vi.fn(() =>
     Promise.resolve({ channel: 'release', source_repo: '' }),
   ),

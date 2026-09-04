@@ -398,6 +398,7 @@ describe('project events', () => {
       focusActiveTerm: noop,
       refocusActiveTerm: noop,
       isDaemonRestarting: () => false,
+      checkForUpdates: () => {},
       scrollTrace: createScrollTrace({ enabled: false }),
     });
     const map = new Map<string, (json: string) => void>();

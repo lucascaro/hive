@@ -33,6 +33,20 @@ type App struct {
 	control  *wire.Client            // control connection (or nil)
 	attaches map[string]*wire.Client // session id → attach connection
 
+	// daemonContract is the contract the running hived advertised in
+	// WELCOME (0 = it predates the field). The updater compares the
+	// STAGED daemon against this, not against this GUI's own constant:
+	// after the swap it is the staged GUI driving the running daemon.
+	// Guarded by mu.
+	daemonContract int
+
+	// reloading latches once this process has committed to relaunching
+	// itself. The reload broadcast reaches every window including the
+	// one that asked, and a user can click the menu item twice, so
+	// without the latch a single reload could spawn two replacements.
+	// Guarded by mu; see App.beginReload.
+	reloading bool
+
 	// openMu serializes OpenSession calls. Without it, two concurrent
 	// OpenSession(id) calls both observe an empty attaches[id], both
 	// dial the daemon, and both register attach subscribers — the

@@ -62,6 +62,15 @@ func Handshake(conn net.Conn, hello Hello) (*Client, error) {
 		_ = conn.Close()
 		var werr Error
 		if json.Unmarshal(payload, &werr) == nil && werr.Message != "" {
+			// Wrap the protocol rejection in a sentinel. The daemon
+			// refuses a mismatched HELLO outright, so this is the one
+			// failure a client cannot diagnose from the connection it
+			// never got: without the sentinel, a GUI facing an
+			// incompatible daemon shows a generic "could not connect"
+			// and the user has no idea a restart is what fixes it.
+			if werr.Code == ErrCodeProtocolVersionMismatch {
+				return nil, fmt.Errorf("%w: %s", ErrProtocolMismatch, werr.Message)
+			}
 			return nil, fmt.Errorf("daemon refused connection: %s", werr.Message)
 		}
 		return nil, fmt.Errorf("daemon refused connection")

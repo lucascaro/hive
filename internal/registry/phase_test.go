@@ -801,3 +801,110 @@ func TestReviveDoesNotResurrectAKilledEntry(t *testing.T) {
 		}
 	}
 }
+
+// The attention flag is what lets a client that holds no attach
+// connection — the menu bar, a second window — know a session rang.
+// These pin the daemon-side half.
+func TestAttentionSetAndClear(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "bell"})
+
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	drain(ch)
+
+	r.noteBell(e.ID)
+	ev := nextEvent(t, ch)
+	if ev.Kind != wire.SessionEventAttention {
+		t.Errorf("kind = %q, want %q", ev.Kind, wire.SessionEventAttention)
+	}
+	if !ev.Session.NeedsAttention {
+		t.Error("NeedsAttention not set on the broadcast entry")
+	}
+
+	// A second bell while the flag is already set must be silent: the
+	// hook is unthrottled on purpose, so this guard is what keeps a
+	// program ringing in a loop from broadcasting to every client on
+	// every ring.
+	r.noteBell(e.ID)
+	select {
+	case extra := <-ch:
+		t.Fatalf("second bell broadcast %+v; it must be swallowed", extra)
+	default:
+	}
+
+	if err := r.SetAttention(e.ID, false); err != nil {
+		t.Fatalf("SetAttention: %v", err)
+	}
+	ev = nextEvent(t, ch)
+	if ev.Session.NeedsAttention {
+		t.Error("NeedsAttention still set after the client reported a look")
+	}
+
+	// Clearing what is already clear is a no-op, so a GUI that
+	// re-asserts focus on every render costs nothing.
+	if err := r.SetAttention(e.ID, false); err != nil {
+		t.Fatalf("SetAttention (idempotent): %v", err)
+	}
+	select {
+	case extra := <-ch:
+		t.Fatalf("redundant clear broadcast %+v", extra)
+	default:
+	}
+}
+
+func TestSetAttentionUnknownSession(t *testing.T) {
+	r := freshRegistry(t)
+	if err := r.SetAttention("nope", false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// nextEvent reads one session event, failing rather than hanging if the
+// broadcast never arrives.
+func nextEvent(t *testing.T, ch Listener) wire.SessionEvent {
+	t.Helper()
+	select {
+	case ev := <-ch:
+		return ev
+	case <-time.After(2 * time.Second):
+		t.Fatal("no session event within 2s")
+		return wire.SessionEvent{}
+	}
+}
+
+// End-to-end: a program writing BEL on the PTY must reach a control
+// client as an attention event. The unit tests above drive noteBell
+// directly, which would keep passing if the hook were never installed.
+func TestBellFromPTYReachesListeners(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e := mustCreate(t, r, wire.CreateSpec{Name: "ringer"})
+
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	drain(ch)
+
+	sess := e.Session()
+	if sess == nil {
+		t.Fatal("no live session")
+	}
+	// printf, not echo: portable across the /bin/bash builtins and it
+	// emits the bare byte with no trailing newline games.
+	if _, err := sess.Write([]byte("printf '\\a'\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-ch:
+			if ev.Kind == wire.SessionEventAttention && ev.Session.NeedsAttention {
+				return // what we came for
+			}
+		case <-deadline:
+			t.Fatal("no attention event within 5s of the session ringing the bell")
+		}
+	}
+}

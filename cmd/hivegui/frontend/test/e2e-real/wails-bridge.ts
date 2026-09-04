@@ -305,6 +305,28 @@ export async function Confirm() {
 export async function RestartDaemon() {
   return '';
 }
+
+// Reload and menu-bar bindings. Stubs, like the block above: the
+// reload is a process relaunch the browser has no equivalent for, and
+// the login item is a macOS service call. They exist because this
+// module must mirror the mock's export surface — a name bridge.ts
+// re-exports but neither harness defines is a module-load error that
+// stops the app booting, not a missing method.
+export async function ReloadGUI() {
+  return '';
+}
+export async function RequestReloadAllGUIs() {
+  return '';
+}
+export async function SetSessionAttention() {
+  return '';
+}
+export async function MenuBarLoginItemStatus() {
+  return 'not-registered';
+}
+export async function SetMenuBarLoginItem() {
+  return '';
+}
 export async function CheckForUpdate() {
   return null;
 }

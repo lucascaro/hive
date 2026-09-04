@@ -16,13 +16,21 @@ vi.mock('../../src/bridge.js', () => bridge);
 // The handler registered via EventsOn, replayed the way Go would. Wrapped
 // in act() since it fires the listener directly rather than through a DOM
 // event RTL already wraps.
-function emit(payload: DaemonStaleEvent | null) {
+// The contract fields are defaulted so these cases stay about the
+// footer's own job — rendering two build identities — rather than
+// about the reload-vs-restart decision, which version-footer.ts takes
+// no part in. banners.test.tsx covers that.
+function emit(payload: Partial<DaemonStaleEvent> | null) {
   const call = bridge.EventsOn.mock.calls.find(
     (c: unknown[]) => c[0] === 'daemon:stale',
   );
   if (!call) throw new Error('daemon:stale listener was never registered');
+  const full =
+    payload === null
+      ? null
+      : ({ guiContract: 1, daemonContract: 1, ...payload } as DaemonStaleEvent);
   act(() => {
-    (call[1] as (p: DaemonStaleEvent | null) => void)(payload);
+    (call[1] as (p: DaemonStaleEvent | null) => void)(full);
   });
 }
 

@@ -45,7 +45,7 @@ hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI clos
 
 - **IPC** — single channel: `internal/wire/`. Every cross-process call (GUI ⇄ daemon, future remote clients) is a wire frame. No side-channel files, no shared sqlite.
 - **Persistence** — owned by `internal/registry/`. The daemon main loop never writes session state directly. State location is resolved by `registry.StateDir()` — see `internal/registry/paths.go` for platform-specific paths. Writes are atomic (temp + rename). Alongside `sessions/` and `projects/`, the registry owns `closed/`: one tombstone per recently closed session (plus, for a close that deleted a worktree, a recovery patch of its uncommitted state), written before the teardown so a close can be undone. Bounded to the last 20 closes and 7 days.
-- **Build & version** — `internal/buildinfo/` is the single source for version/commit; `cmd/version.go` and the GUI menu both read it.
+- **Build & version** — `internal/buildinfo/` is the single source for version/commit; `cmd/version.go` and the GUI menu both read it. It also owns `DaemonContract`, the integer naming the compatibility generation of everything the daemon exposes; the GUI compares it (from `WELCOME`, and from `hived --version --json` on a staged update bundle) to decide between relaunching the GUI alone and restarting the daemon. See [docs/design-docs/daemon-contract.md](docs/design-docs/daemon-contract.md).
 - **Notifications** — `internal/notify/` is the only entry point for desktop notifications. Platform splits (`notify_darwin.go`, `notify_linux.go`, `notify_windows.go`, `notify_darwin.m`) live behind one Go interface.
 - **Logging** — stdlib `log`. Daemon logs to a file under the platform state dir; GUI logs to stdout in dev, file in production.
 
@@ -53,6 +53,32 @@ hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI clos
 
 Architectural invariants. Each one should ideally be enforceable by `gc-sweep` or a custom lint.
 
+- **`hivebar` is a client, like the GUI.** The menu-bar agent
+  (`cmd/hivebar/`, darwin only) may not open a PTY, import
+  `internal/session`, or write anything under `registry.StateDir()`
+  except its own lock file. Everything it knows arrives on one control
+  connection. It also never spawns `hived` on its own — only as the
+  explicit Restart Daemon action — so a menu bar cannot resurrect a
+  daemon the user just quit.
+- **A GUI reload never touches the daemon.** `App.ReloadGUI` relaunches the
+  GUI process and leaves `hived` and every PTY it owns running; only
+  `App.RestartDaemon` may send `FrameShutdown` or signal the daemon. Grep
+  guard: no `FrameShutdown` write and no `killRunningHived` call reachable
+  from the reload path. The two are told apart by the daemon contract, never
+  by build ID.
+- **`CLIENT_COMMAND` is a relay, not an operation.** The daemon validates the
+  verb against `wire.ClientCommands` and fans it back out as
+  `CLIENT_BROADCAST`; it never acts on one. The verbs describe client-side UI
+  state, so the fan-out hub lives in `internal/daemon/`, not in the registry —
+  the registry writes persisted state, and "relaunch your window" is not
+  state.
+- **Adding a wire frame does not bump `PROTOCOL_VERSION`.** The daemon refuses
+  a mismatched `hello.Version` outright, so a bump makes a new client unable
+  to handshake at all — including with the daemon it needs to interrogate.
+  Unknown frames are logged and ignored, which is what makes additions safe.
+  Bump `PROTOCOL_VERSION` only for a genuine break (a frame whose meaning
+  changed, a field an old peer would misread), and bump `DaemonContract`
+  alongside it.
 - **Wire JSON is `snake_case` on the wire, `CamelCase` in Go.** Every field in `internal/wire/` carries an explicit `json:"snake_case"` tag. JS readers in `hivegui/frontend/` use `snake_case ?? camelCase` at the boundary.
 - **The GUI never opens a PTY.** All PTY operations go through the wire protocol. Grep guard: no `os/exec`, `creack/pty`, or `internal/session` imports in `cmd/hivegui/` or `hivegui/`.
 - **The registry is the only writer of persisted *session* state.** No file writes under `registry.StateDir()` from `internal/daemon/`, `internal/session/`, or anywhere else. Atomic writes only — never partial truncates. The GUI owns three files in that same directory that are *not* session state and never cross the wire: `agents.json` (custom agents, also read by hived), `window.json` (window geometry), and `update.json` (update channel + source-repo override). They follow the same temp + rename discipline. Anything the daemon must agree about goes through the wire protocol and the registry instead.
