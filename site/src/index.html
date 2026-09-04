@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <title>Hive — every coding agent, one window</title>
+  <meta name="description" content="A native desktop app for running many AI coding agent sessions — Claude, Codex, Gemini, Copilot, Aider — across projects. Sessions live in a daemon and survive the GUI.">
+  <meta property="og:title" content="Hive — every coding agent, one window">
+  <meta property="og:description" content="Run many Claude, Codex, Gemini, Copilot and Aider sessions across projects in one native window.">
+  <meta property="og:image" content="https://lucascaro.github.io/hive/screenshots/grid.png">
+</head>
+<body>
+  <nav class="nav wrap">
+    <a class="brand" href="./"><img src="icon.png" alt="">Hive</a>
+    <div class="nav-links">
+      <a href="./#features">Features</a>
+      <a href="./changelog.html">Changelog</a>
+      <a href="https://github.com/lucascaro/hive">GitHub</a>
+    </div>
+  </nav>
+  <header class="hero wrap">
+    <h1>Every coding agent. <em>One window.</em></h1>
+    <p>A native desktop app for running many Claude, Codex, Gemini, Copilot and Aider sessions across projects. Sessions live in a small daemon, so they outlive the window.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/lucascaro/hive/releases/latest">Download for macOS</a>
+      <a class="btn" href="https://github.com/lucascaro/hive#build">Build from source</a>
+    </div>
+    <div class="meta">v{{ version }} · macOS, Windows, Linux · Go + Wails · MIT</div>
+    <img class="shot" src="screenshots/grid.png" alt="Hive showing four agent sessions in grid view with the project sidebar" width="2048" height="1464">
+  </header>
+
+  <section id="features" class="wrap">
+    <div class="section-head"><h2>What it does</h2><a href="https://github.com/lucascaro/hive/blob/main/site/features.yml">edit this list</a></div>
+    <div class="features">
+      {{ features_shipped }}
+    </div>
+    <div class="planned-label">Not yet shipping</div>
+    <ul class="planned">
+      {{ features_planned }}
+    </ul>
+  </section>
+
+  <section id="screens" class="wrap">
+    <div class="section-head"><h2>A closer look</h2></div>
+    <div class="shots">
+      <figure><img src="screenshots/launcher.png" alt="The agent launcher dialog" loading="lazy"><figcaption>⌘T — pick an agent, a project, optionally a fresh worktree.</figcaption></figure>
+      <figure><img src="screenshots/themes.png" alt="Settings › Appearance with theme presets" loading="lazy"><figcaption>Settings › Appearance — Hive, native and community presets.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="changelog" class="wrap">
+    <div class="section-head"><h2>What changed</h2><a href="./changelog.html">full changelog</a></div>
+    {{ changelog_recent }}
+  </section>
+
+  <footer class="wrap">
+    <span>Hive — MIT licensed.</span>
+    <a href="https://github.com/lucascaro/hive">Source</a>
+    <a href="https://github.com/lucascaro/hive/releases">Releases</a>
+    <a href="https://github.com/lucascaro/hive/issues">Issues</a>
+    <a href="https://github.com/lucascaro/hive/blob/main/README.md#keybinds">Keybinds</a>
+  </footer>
+</body>
+</html>

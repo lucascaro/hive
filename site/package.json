@@ -1,0 +1,13 @@
+{
+  "name": "hive-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node build.mjs && npx serve dist"
+  },
+  "devDependencies": {
+    "marked": "^15.0.0",
+    "yaml": "^2.7.0"
+  }
+}
