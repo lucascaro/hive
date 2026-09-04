@@ -1,7 +1,7 @@
 # Feature: Session state model: know what every agent is doing
 
 - **GitHub Issue:** —
-- **Stage:** PLAN
+- **Stage:** IMPLEMENT
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
