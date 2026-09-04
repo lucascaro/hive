@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-09-03
+
 ### Added
 - In-app updates. Settings now carries an update channel: **Release**
   follows tagged versions, **Latest** follows the tip of your source
@@ -1033,7 +1035,8 @@ own session daemon, replacing the v1 tmux + Bubble Tea architecture.
   sidebar/grid and fire an OS notification.
 - No telemetry in shipped binaries.
 
-[Unreleased]: https://github.com/lucascaro/hive/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/lucascaro/hive/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/lucascaro/hive/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/lucascaro/hive/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/lucascaro/hive/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/lucascaro/hive/compare/v2.2.0...v2.2.1
