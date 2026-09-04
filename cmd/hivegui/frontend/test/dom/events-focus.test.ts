@@ -57,13 +57,16 @@ vi.mock('../../src/bridge.js', () => {
 
 let state: typeof import('../../src/store/store.js').hiveStateView;
 let wireDaemonEvents: typeof import('../../src/app/events.js').wireDaemonEvents;
+let onSessionBell: typeof import('../../src/app/events.js').onSessionBell;
 
 beforeAll(async () => {
   // dom.ts dereferences #terms at import time; give it the singletons.
   document.body.innerHTML =
     '<div id="terms"></div><ul id="projects"></ul><div id="status"><span id="status-text"></span><span id="status-hint"></span></div>';
   ({ hiveStateView: state } = await import('../../src/store/store.js'));
-  ({ wireDaemonEvents } = await import('../../src/app/events.js'));
+  ({ wireDaemonEvents, onSessionBell } = await import(
+    '../../src/app/events.js'
+  ));
 });
 
 const switchTo = vi.fn();
@@ -233,5 +236,43 @@ describe('relayed client commands', () => {
     emit('client:command', 'not json');
     expect(switchTo).not.toHaveBeenCalled();
     expect(checkForUpdates).not.toHaveBeenCalled();
+  });
+});
+
+// The bell a session rings while you are already looking at it.
+//
+// This window raises nothing — there is nobody to notify. But the
+// DAEMON raised it, for every other client and for its own session
+// state, and no focus change is coming to undo that: the window is
+// already focused and the session is already active. Left alone, the
+// session sits marked "waiting for you" forever while the one person it
+// is waiting for has already answered. That is exactly what shipped.
+describe('a bell on the session you are already watching', () => {
+  it('tells the daemon the user is looking, rather than staying silent', () => {
+    const setAttention = vi.mocked(bridge.SetSessionAttention);
+    setAttention.mockClear();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    state.activeId = 'sess-4';
+    onSessionBell({ id: 'sess-4', name: 'active' });
+
+    expect(state.attention.has('sess-4')).toBe(false);
+    expect(setAttention).toHaveBeenCalledWith('sess-4', false);
+    vi.mocked(document.hasFocus).mockRestore();
+  });
+
+  // The other half of the branch: a bell on a session you are NOT
+  // watching must still raise the flag locally.
+  it('still raises attention for a session that is not active', () => {
+    const setAttention = vi.mocked(bridge.SetSessionAttention);
+    setAttention.mockClear();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    state.activeId = 'sess-4';
+    onSessionBell({ id: 'sess-5', name: 'background' });
+
+    expect(state.attention.has('sess-5')).toBe(true);
+    expect(setAttention).not.toHaveBeenCalled();
+    vi.mocked(document.hasFocus).mockRestore();
   });
 });

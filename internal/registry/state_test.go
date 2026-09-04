@@ -12,14 +12,22 @@ import (
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// liveSession creates a session running `cat` — which echoes whatever
-// is written to its PTY, so a test can put arbitrary text on the screen
-// — and returns the entry and the live session.
+// liveSession creates a session whose program is `cat` — it echoes
+// whatever is written to its PTY, so a test can put arbitrary text on
+// the screen — and returns the entry and the live session.
+//
+// Shell, not Cmd, and the distinction matters twice. Cmd is run as
+// `<shell> -l -i -c <line>`, so it pays the user's full login shell
+// startup (measured at ~6s on a developer machine with real dotfiles)
+// and, worse, hands the bytes a test writes to a shell that EXECUTES
+// them. Both effects read as product latency and nearly sent a
+// six-second "bell delay" bug hunt into the daemon, which turned out
+// to answer in 1.4ms.
 func liveSession(t *testing.T, r *Registry, spec wire.CreateSpec) (*Entry, *session.Session) {
 	t.Helper()
 	spec.Cols, spec.Rows = 80, 24
-	if len(spec.Cmd) == 0 {
-		spec.Cmd = []string{"cat"}
+	if len(spec.Cmd) == 0 && spec.Shell == "" {
+		spec.Shell = "/bin/cat"
 	}
 	e, err := r.Create(context.Background(), spec)
 	if err != nil {
@@ -372,91 +380,51 @@ func TestUnobservedEntryReportsIdle(t *testing.T) {
 	}
 }
 
-// End to end through a real PTY, for both tiers: a BEL in the output
-// stream must reach NeedsAttention and broadcast an attention event.
+// End to end through a real PTY: a BEL in the output stream must reach
+// NeedsAttention and broadcast an attention event.
 //
 // This is the test that was missing. The earlier ones call noteBell
 // directly, which skips the whole chain the user actually depends on —
-// the bell scanner in internal/session, the hook installed at each
-// Entry.sess assignment site, and the registry's decision about which
-// of those to install. A regression anywhere in that chain, for one
-// tier and not the other, is invisible to a test that starts halfway
-// along it.
+// the bell scanner in internal/session, and the hook installed at each
+// Entry.sess assignment site. A regression anywhere along it is
+// invisible to a test that starts halfway.
 //
-// `cat` echoes what is written to the PTY straight back out, so writing
-// a BEL byte produces one in the output stream exactly as a real
-// program ringing would. Agent is set independently of Cmd, so the
-// agent-flagged case runs the same harmless process.
+// Real agent binaries are covered separately by TestAgentTUIStateFlow;
+// Entry.Agent no longer changes anything on this path, so running one
+// here would only add startup time and a program that does not echo.
 func TestBellReachesAttentionThroughTheRealPTY(t *testing.T) {
 	skipOnWindows(t)
-	for _, tc := range []struct {
-		name  string
-		agent string
-	}{
-		{"shell", ""},
-		{"agent", "claude"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := freshRegistry(t)
-			e, err := r.Create(context.Background(), wire.CreateSpec{
-				Name: "bell-" + tc.name, Cols: 80, Rows: 24,
-				Cmd: []string{"cat"}, Agent: tc.agent,
-			})
-			if err != nil {
-				t.Fatalf("Create: %v", err)
-			}
-			if got := r.Get(e.ID).Agent; got != tc.agent {
-				t.Fatalf("entry agent = %q, want %q — the tier split reads this", got, tc.agent)
-			}
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "bell"})
 
-			listener, unsub := r.Subscribe()
-			defer unsub()
-			drain(listener)
+	listener, unsub := r.Subscribe()
+	defer unsub()
+	drain(listener)
 
-			r.mu.Lock()
-			sess := r.entries[e.ID].sess
-			r.mu.Unlock()
-			if sess == nil {
-				t.Fatal("created session has no live process")
+	// The newline matters: `cat` is line buffered, so without it the
+	// only thing on the output stream is the tty's own "^G" echo — two
+	// printable bytes, not a bell. A test that writes a bare \a passes
+	// nothing through the scanner and fails for the wrong reason.
+	//
+	// Written once, not on a retry loop: the path answers in
+	// milliseconds, and a loop would hide it if it ever stopped.
+	if _, err := sess.Write([]byte("\a\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case ev := <-listener:
+			if ev.Session.ID != e.ID {
+				continue
 			}
-
-			// Retried for the same reason the title test retries: a
-			// single early write can land before the child has exec'd.
-			stop := make(chan struct{})
-			defer close(stop)
-			go func() {
-				for {
-					select {
-					case <-stop:
-						return
-					default:
-					}
-					// The newline matters: `cat` is line buffered, so
-					// without it the only thing on the output stream is
-					// the tty's own "^G" echo — two printable bytes, not
-					// a bell. A test that writes a bare \a passes nothing
-					// through the scanner and fails for the wrong reason.
-					_, _ = sess.Write([]byte("\a\n"))
-					time.Sleep(200 * time.Millisecond)
-				}
-			}()
-
-			deadline := time.After(20 * time.Second)
-			for {
-				select {
-				case ev := <-listener:
-					if ev.Session.ID != e.ID {
-						continue
-					}
-					if ev.Kind == wire.SessionEventAttention && ev.Session.NeedsAttention {
-						return
-					}
-				case <-deadline:
-					t.Fatalf("no attention event after 20s of bells (agent=%q); "+
-						"NeedsAttention is now %v",
-						tc.agent, r.Get(e.ID).Info().NeedsAttention)
-				}
+			if ev.Kind == wire.SessionEventAttention && ev.Session.NeedsAttention {
+				return
 			}
-		})
+		case <-deadline:
+			t.Fatalf("no attention event from a bell; NeedsAttention is now %v",
+				r.Get(e.ID).Info().NeedsAttention)
+		}
 	}
 }

@@ -180,7 +180,15 @@ export async function reconnectControl(
 export function onSessionBell(info: SessionInfo) {
   const isActive = info.id === appData().activeId;
   const windowFocused = document.hasFocus();
-  if (isActive && windowFocused) return;
+  if (isActive && windowFocused) {
+    // The user is looking straight at it, so this window raises nothing
+    // — but the DAEMON raised it, for every other client and for its
+    // own session state, and no focus change is coming to undo that.
+    // Say so, or the session sits marked "waiting for you" forever
+    // while the one person it is waiting for already answered.
+    clearAttention(info.id);
+    return;
+  }
   const alreadyAttention = appData().attention.has(info.id);
   if (alreadyAttention) {
     // Refresh to re-trigger CSS animation. Only the class is dropped and
