@@ -12,11 +12,11 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Add 12 IDE-inspired theme presets | REVIEW | [305-add-ide-inspired-theme-presets](305-add-ide-inspired-theme-presets.md) |
 | P2 | — | Fix sidebar drag-and-drop ordering and drop placeholder | GATE | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
-| P2 | — | Add GUI-only reload and a daemon menu-bar agent | REVIEW | [330-add-gui-only-reload-and-a-daemon-menu-bar-agent](330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |
 | P3 | — | React-ify SessionTerm's tile chrome | IMPLEMENT | [329-react-ify-sessionterms-tile-chrome](329-react-ify-sessionterms-tile-chrome.md) |
+| P3 | — | Move SocketPath out of internal/daemon so clients stop linking the daemon | TRIAGE | [331-move-socketpath-out-of-internal-daemon](331-move-socketpath-out-of-internal-daemon.md) |
 | P3 | — | Migrate the frontend to CSS Modules | TRIAGE | [frontend-css-modules](frontend-css-modules.md) |
 | P3 | — | Decompose keyboard.ts into per-scope keymap tables | TRIAGE | [keyboard-keymap-tables](keyboard-keymap-tables.md) |
 
@@ -24,6 +24,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| — | Add GUI-only reload and a daemon menu-bar agent | #333 | 2026-09-04 | [330-add-gui-only-reload-and-a-daemon-menu-bar-agent](330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md) |
 | #323 | Add a check for updates button to the sidebar | #325 | 2026-09-03 | [323-add-check-for-updates-button-to-sidebar](323-add-check-for-updates-button-to-sidebar.md) |
 | #327 | GUI: Cmd+Enter in grid mode focuses the active session | #328 | 2026-09-03 | [327-cmd-enter-grid-focus-session](327-cmd-enter-grid-focus-session.md) |
 | — | Reorganize Settings into tabbed sections | #335 | 2026-09-03 | [335-reorganize-settings-into-tabbed-sections](335-reorganize-settings-into-tabbed-sections.md) |
