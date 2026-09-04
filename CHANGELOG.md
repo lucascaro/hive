@@ -7,6 +7,172 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- In-app updates. Settings now carries an update channel: **Release**
+  follows tagged versions, **Latest** follows the tip of your source
+  checkout (auto-detected when Hive is running from one, or pointed at a
+  directory you pick). Hive still only *checks* in the background —
+  nothing is downloaded or built until you press **Update**. The button
+  reports progress while it works and turns into **Restart** when the new
+  build is ready; pressing it swaps the app in place and relaunches on
+  the new version. Release downloads are verified against a SHA-256
+  manifest now published with every release, and a mismatch is discarded
+  rather than installed. The in-place swap is macOS-only for now —
+  Windows and Linux keep the existing Download link.
+- Undo for an accidental session close. Closing a session now leaves a
+  record behind, so it can be reopened — with its name, colour, project,
+  worktree and (for agents that support resume) its conversation. An
+  **Undo** banner appears the moment you close something, and **⌘Z** /
+  **File ▸ Reopen Closed Session** reopens the most recent close at any
+  time, including after a restart. Reopening is honest about what it
+  cannot bring back: scrollback is always gone, and the banner says so
+  along with anything else that was lost. Closing a session and deleting
+  its worktree now saves a recovery patch of the uncommitted changes
+  first, so even that path is no longer a dead end.
+- Added twelve theme presets ported from popular editor palettes: Dracula,
+  Nord, Gruvbox Dark, Tokyo Night, Catppuccin Mocha, One Dark, Neon (the
+  classic Monokai palette), Solarized Dark and Light, Catppuccin Latte, and
+  GitHub Dark and Light. They appear under a "Community" heading in
+  Settings › Appearance, which now groups the theme list into Hive / Native /
+  Community. Each one repaints the whole app and every open terminal, ANSI
+  palette included, the same way the built-in presets do.
+
+  Unlike the built-in presets, the community palettes ship at their published
+  upstream values rather than being adjusted to meet Hive's contrast bar, so
+  some of their text sits below WCAG AA. They are opt-in; the presets you can
+  land on without choosing one are unaffected.
+- Added a "Check for updates" button to the sidebar header, next to the
+  "New project" (+) button. It runs the same check the macOS app menu's
+  "Check for Updates…" item ran, and reports the result in the usual update
+  banner — up to date, update available, or check failed. Until now that check
+  had no in-window trigger at all, and none whatsoever outside macOS.
+
+- Changed the "New project" (+) button to the app's standard icon-button
+  styling so it matches its new neighbour. At rest it is now flat and its
+  glyph is dimmed, the same as every other icon button in the app; hovering
+  restores the full-strength glyph and brings the background back, now with
+  the same short fade the app's other icon buttons use.
+- ⌘⏎ (Ctrl+Enter off macOS) in a grid view now focuses the active session,
+  switching to single view on the tile you navigated to. The binding is
+  deliberately one-way — single → grid stays on ⌘G / ⇧⌘G — so that in single
+  view the key falls through to the terminal, where Claude and Codex bind
+  Cmd+Enter themselves.
+- A project website at https://lucascaro.github.io/hive — what Hive is,
+  screenshots, a living feature list (`site/features.yml`) and the changelog
+  rendered from `CHANGELOG.md`. It rebuilds on GitHub Pages after every push
+  to `main`, triggered off the `changesets` workflow so the regenerated
+  changelog is what gets published.
+- Theme presets groundwork. `localStorage['hive.theme']` accepts `classic`
+  (default), `hive-dark`, `hive-light`, `system`. No visual change by
+  default, except that the terminal cursor and selection now use the accent
+  colour.
+
+### Changed
+Settings now shows its confirm and cancel key hints (`[esc]` / `[enter]`) in the dialog footer, like every other overlay.
+- Rewrote the desktop GUI's frontend in React 19 with a zustand store, region by
+  region, replacing ~13k lines of hand-written DOM bookkeeping. The app looks and
+  behaves identically — this is an internal change — but the sidebar, chrome,
+  modals and grid now repaint only the parts that actually changed instead of
+  rebuilding a whole region on every update. Terminals are untouched: xterm keeps
+  its own imperative lifecycle, and no terminal is ever recreated by a re-render.
+- Reskinned chrome: notice banners, a real status bar with inline mode
+  shortcuts, grid tile headers with state icons, and consistent launcher and
+  command-palette rows.
+- Every dialog — Settings, the worktree browser, the project editor, the help
+  overlay and the confirm prompts — is now built on one shell with consistent
+  Escape, backdrop and focus behaviour, and one set of form fields.
+- New Settings > Appearance: pick a theme preset (System, Hive Dark, Hive
+  Light, Classic) and override any design token by hand. Changes apply as you
+  make them, reach open terminals, and are remembered.
+- Terminal colours now follow the theme: each preset carries its own ANSI
+  palette, so Hive Light no longer renders program output in colours tuned
+  for a dark background.
+- **New look by default.** Hive now follows your system light/dark setting out
+  of the box instead of starting on the v2.4 pure-black theme. The v2.4
+  appearance is still there as Settings > Appearance > Classic.
+- Three more presets: Native Dark, Native Light and Terminal, each with its own
+  terminal colour palette. Every preset — and every ANSI colour on a light
+  background — is checked against WCAG AA contrast in CI, so no theme ships
+  with text you cannot read.
+- IBM Plex Sans and JetBrains Mono are bundled with the app, so the Hive themes
+  look the same on macOS, Windows and Linux instead of falling back to whatever
+  the machine happens to have. The terminal font follows the theme too.
+- GUI icon sprite. The GUI's controls and session-state indicators are now
+  SVG icons instead of Unicode symbols, so they render identically on every
+  platform. Session state reads as a shape as well as a colour: a triangle
+  for running, a diamond when the agent needs you, a dotted ring while
+  starting, a square when exited, and a cross on error.
+- The sidebar is rebuilt on the design system: two-line rows (name over the
+  live window title, or its state when there is none), project cards,
+  geometric state icons, and `[n]` hints showing which session ⌘1–9 selects.
+  Exited sessions stay in the list, struck through, with restart and kill on
+  hover. Minimum sidebar width is now 220px.
+
+### Fixed
+- Fixed the `e2e-real` test harness, which had been failing on `main` for
+  reasons unrelated to any diff. `hived-ws-bridge` dispatched every JSON-RPC
+  frame on its own goroutine, so under CPU contention adjacent `WriteStdin`
+  keystrokes reached the pty out of order and the commands the specs typed
+  were not the commands the shell ran. `WriteStdin` is now applied in arrival
+  order. Test-only: the shipped GUI does not use this bridge.
+- Re-instated the CI quarantine on the `e2e-real` test "viewport converges to
+  the bottom after a mode switch", which PR #307 lifted on insufficient
+  evidence. It failed CI macOS on both attempts with the same
+  `resizeDecisions() === 0` symptom it was originally quarantined for. Test-only.
+- Keyboard switching now skips what you minimized. ⌘↑ / ⌘↓ step over
+  sessions in the tray and sessions whose project is minimized — they no
+  longer pull you back into a project you put away, or drop you out of a
+  grid view when they do. ⌘[ / ⌘] likewise cycles only projects still in
+  the sidebar. A minimized project stays reachable from its tray chip,
+  the sidebar, and ⌘K.
+- Fixed raw escape characters in the update banner. Build output shown in
+  the update banner is now plain text — ANSI colour codes, cursor-control
+  sequences and carriage-return redraws from `build.sh` no longer leak
+  through as literal `ESC[32m` garbage.
+- Fixed the layout of minimized projects in the sidebar. A minimized
+  project now spans the full width of its tray with the restore `+`
+  pinned to the right edge, and clicking anywhere on the row restores
+  the project instead of only the project name.
+- Fixed keyboard focus being silently lost in the sidebar and the grid. A
+  daemon `session:event` update — one arrives on every phase step, on every
+  surviving session after a kill, and whenever the agent-session-id capture
+  poll lands, up to 30s after a session starts — rebuilt the whole sidebar,
+  destroying whatever the user had focused. `renderGrid` had the same problem
+  from re-parenting every tile on every repaint. Session updates now patch the
+  existing rows in place, the grid reorders only when the order actually
+  moved, and both paths restore focus if a genuine rebuild moves it.
+- The worktree browser, the launcher, the command palette, the help overlay and
+  the dead-session overlay follow the chosen theme. They carried 31 hard-coded
+  colours, so on a light preset the worktree list painted near-black rows on a
+  white panel.
+- State colours are text now, not just icon fills, so they are held to WCAG AA
+  on every ground they are painted on: `hive-light`'s "running", "attention" and
+  "error" darken, and `native-dark`'s "error" lightens, so the worktree status
+  lines, the merged badge and the destructive action stay readable under every
+  preset.
+- The merged badge loses its green tint; its text and border carry it.
+- Dragging a session in the sidebar now drops it exactly where the indicator
+  showed. The drop slot was resolved against the sibling list that still
+  contained the dragged row, so a row dragged downwards consistently landed
+  one position too low.
+- The drop indicator is now a placeholder the size of the dragged item, and
+  the dragged row leaves the layout while the drag is in flight — so the
+  sidebar's height stays fixed and content no longer jumps on drop. Project
+  cards get the same affordance as session rows.
+- `build.sh` now fails with install instructions when the `wails` CLI on
+  `PATH` does not match the version pinned in `scripts/ci-bootstrap.sh`,
+  instead of silently building against a stale toolchain after a Wails
+  bump.
+- Added `scripts/check-changeset.sh`, a local mirror of the changesets CI
+  gate that can be installed as a `pre-push` hook.
+- Closing a session no longer moves you to a different session while the
+  "Close this session anyway?" confirmation is on screen. The jump used to
+  happen during the daemon's pre-flight worktree check — before you had been
+  asked anything — so the dialog appeared over a neighbouring session and
+  cancelling left you there. Focus now moves only once the session is really
+  closing.
+Renaming a worktree no longer loses the edit when the daemon repaints the list underneath it.
+
 ## [2.5.0] — 2026-09-03
 
 ### Added
