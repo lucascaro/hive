@@ -99,8 +99,10 @@ func (a *App) ConnectControl() error {
 //	match       both sides are the same build — silent, but still
 //	            emitted so the frontend can clear a stale banner.
 //	reloadable  the builds differ but the daemon contracts agree, so
-//	            relaunching the GUI alone picks up the new code and
-//	            every running session survives.
+//	            the two are compatible. The frontend keeps this SILENT:
+//	            reloading cannot change which build hived is, so a
+//	            banner offering it would never clear. The sidebar
+//	            footer shows both builds instead.
 //	mismatch    the contracts differ (or the daemon advertised none),
 //	            so the daemon itself must be restarted — which ends
 //	            every session.

@@ -240,7 +240,11 @@ describe('daemon banner reload vs restart', () => {
     });
   });
 
-  it('offers only Reload GUI when the contracts agree', () => {
+  // Equal contracts means compatible, so a differing daemon build is
+  // unactionable: reloading the GUI cannot change which build hived is.
+  // A banner offering it would reappear the moment a reload succeeded
+  // and never clear. The sidebar footer reports the two builds instead.
+  it('stays silent when the contracts agree', () => {
     emit('daemon:stale', {
       severity: 'reloadable',
       daemonBuild: 'daemon-old',
@@ -249,11 +253,32 @@ describe('daemon banner reload vs restart', () => {
       daemonContract: 1,
     });
 
+    expect(bannerEl().hidden).toBe(true);
+  });
+
+  // The stuck-banner case, driven end to end: a reload leaves the GUI
+  // new and the daemon on its old build, and that must not re-raise
+  // the banner the user just acted on.
+  it('does not re-raise after a reload leaves the daemon on its old build', () => {
+    emit('daemon:stale', {
+      severity: 'mismatch',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-old',
+      guiContract: 2,
+      daemonContract: 1,
+    });
     expect(bannerEl().hidden).toBe(false);
-    expect(actionLabels()).toEqual(['Reload GUI']);
-    // The copy has to say the sessions survive — that is the whole
-    // difference the user cares about.
-    expect(bannerText().textContent).toMatch(/sessions keep running/i);
+
+    // ...user restarts, or updates; now the contracts agree and only
+    // the build ids differ.
+    emit('daemon:stale', {
+      severity: 'reloadable',
+      daemonBuild: 'daemon-old',
+      guiBuild: 'gui-new',
+      guiContract: 1,
+      daemonContract: 1,
+    });
+    expect(bannerEl().hidden).toBe(true);
   });
 
   it('offers only Restart Hive when the contracts differ', () => {

@@ -145,48 +145,30 @@ export async function reloadGui() {
   }
 }
 
-// Which of the two actions the daemon banner offers. Exactly one is
-// visible at a time: offering both would ask the user to understand
-// the daemon contract to pick, which is precisely the judgement this
-// feature exists to make on their behalf.
-function setDaemonBannerAction(kind: 'reload' | 'restart') {
-  setBanner('daemon', {
-    actions: {
-      reload: { hidden: kind !== 'reload' },
-      restart: { hidden: kind !== 'restart' },
-    },
-  });
-}
-
 function wireDaemonBanner() {
   EventsOn('daemon:stale', (ev: DaemonStaleEvent | null) => {
     if (!ev) return;
     setBanner('daemon', { data: { daemonBuild: ev.daemonBuild || '' } });
-    if (ev.severity === 'match') {
+    // 'reloadable' is silent, like 'match'. Equal contracts means the
+    // two are compatible, so a differing daemon BUILD is both harmless
+    // and unactionable: reloading the GUI cannot change which build
+    // hived is, so a banner offering it would reappear immediately
+    // after a successful reload and never clear. The sidebar footer
+    // reports the two builds instead — the right surface for a fact
+    // the user cannot act on.
+    if (ev.severity === 'match' || ev.severity === 'reloadable') {
       daemonBannerDismissedFor = null; // reset so future mismatch can re-show
       hideDaemonBanner();
       return;
     }
     // Same build the user already dismissed: stay hidden.
     if (daemonBannerDismissedFor === (ev.daemonBuild || '')) return;
-    if (ev.severity === 'reloadable') {
-      // The cheap case, and the common one: only the GUI changed.
-      // Say what it costs (nothing) — the previous copy demanded a
-      // full restart here and users learned to expect losing their
-      // agents to a CSS tweak.
-      setDaemonBannerAction('reload');
-      showDaemonBanner(
-        `This GUI (${ev.guiBuild}) is a newer build than the running one (${ev.daemonBuild}), ` +
-          `but the daemon is unchanged. Reload to apply — your sessions keep running.`,
-      );
-    } else if (ev.severity === 'mismatch') {
-      setDaemonBannerAction('restart');
+    if (ev.severity === 'mismatch') {
       showDaemonBanner(
         `hived build (${ev.daemonBuild}) doesn't match this GUI (${ev.guiBuild}) ` +
           `and the daemon itself changed. Restarting Hive ends every running session.`,
       );
     } else {
-      setDaemonBannerAction('restart');
       showDaemonBanner(
         `Could not verify daemon build (gui=${ev.guiBuild || '?'}, daemon=${ev.daemonBuild || '?'}). ` +
           `If something looks wrong, restart Hive.`,

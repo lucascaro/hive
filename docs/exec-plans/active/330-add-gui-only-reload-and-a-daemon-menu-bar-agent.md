@@ -109,7 +109,7 @@ becomes:
 | Severity | Meaning | Offered action |
 |---|---|---|
 | `match` | same build ID | none (clears the banner) |
-| `reloadable` | build IDs differ, contracts equal and non-zero | Reload GUI — sessions survive |
+| `reloadable` | build IDs differ, contracts equal and non-zero | none — compatible, and the footer says so (see the decision log) |
 | `mismatch` | contracts differ, or either is 0 | Restart Daemon — ends all sessions |
 | `unknown` | a build ID is missing | Restart Daemon |
 
@@ -347,6 +347,16 @@ Shell: `scripts/testdata/` fixtures driving `check-daemon-contract.sh`.
   copying `internal/session`'s title throttle. Why: same cause as above —
   nothing in a menu is worth showing at a child process's redraw rate — and
   a trailing window means the final state of a burst still lands.
+- **2026-09-03** — The stale-daemon banner stays SILENT on `reloadable`,
+  reversing an earlier choice. Why: equal contracts means compatible, so a
+  differing daemon build is unactionable — reloading cannot change which
+  build hived is, so the banner reappeared immediately after a successful
+  reload and could never clear. The sidebar footer already renders both
+  builds on two lines without the mismatch styling, which is the right
+  surface for a fact the user cannot act on. The banner's Reload action was
+  then dead and was removed; Reload GUI remains on the File menu, the
+  palette, the menu bar and the update flow. Operator chose this over
+  keeping the button.
 - **2026-09-03** — `SMAppService` registration verified working on an
   ad-hoc-signed bundle, contradicting the pre-implementation research. Why it
   matters: the toggle was designed around an expected failure, and the code
