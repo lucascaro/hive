@@ -105,7 +105,7 @@ whole-port checklist must pass.
 
 ## Decision log
 
-- **2026-09-04** — `.fading` is NOT reproduced, and `phaseFading` was
+- **2026-09-03** — `.fading` is NOT reproduced, and `phaseFading` was
   dropped from the `tileChrome` slice. Why: the master plan's open
   question turned out to be moot. `revealAfterReplay()` adds `.fading`
   and then calls `_hidePhaseOverlay()`, which sets `hidden` and removes
@@ -116,21 +116,21 @@ whole-port checklist must pass.
   observable state (hidden, no class) and the planned
   `fades before hiding` test was not written, because it would assert
   behaviour the imperative code never had.
-- **2026-09-04** — `phasePanel: PhasePanel | null` added to the slice
+- **2026-09-03** — `phasePanel: PhasePanel | null` added to the slice
   (the plan's field list did not have it). Why: the panel outlives the
   phase it describes — `_revealAfterPhase()` holds it past PhaseReady,
   where `phasePanel()` returns null — so deriving it in the component
   would blank the steps on the ready edge and leave a bare spinner.
   `_showPhaseOverlay()` already computed the model to decide whether to
   show at all, so storing it costs nothing.
-- **2026-09-04** — The dead card's focus grab moved into
+- **2026-09-03** — The dead card's focus grab moved into
   `TileOverlays.tsx` as an effect instead of staying at the `setDead()`
   call site. Why: the button does not exist until React commits the
   store write, so the old `setTimeout(…, 0)` would race the commit. The
   effect keeps the same deferral and the same `anyModalOpen()` guard, and
   its cleanup covers the tile being destroyed while the overlay is up —
   which used to focus a detached button.
-- **2026-09-04** — `src/app/modals/project-editor.ts` was a third
+- **2026-09-03** — `src/app/modals/project-editor.ts` was a third
   imperative `icon()` caller the plan's file list missed
   (`newProjectBtn.replaceChildren(icon('plus'))`), and `src/ui/` could
   not be deleted without it. Handled with the check-for-updates control
@@ -139,7 +139,7 @@ whole-port checklist must pass.
   index.html keeps owning the button element itself, because
   `initProjectEditor()` wires its click, the launcher uses it as a focus
   fallback and the dom tests reach it by id.
-- **2026-09-04** — `ui-icon`, `ui-icon-button` and `ui-state-icon` tests
+- **2026-09-03** — `ui-icon`, `ui-icon-button` and `ui-state-icon` tests
   were REWRITTEN against the React primitives rather than deleted as the
   plan said. Why: the plan assumed `ui-state-icon.test.tsx` already
   covered React `StateIcon`, but no such file existed — the suite had
@@ -147,20 +147,20 @@ whole-port checklist must pass.
   `<Icon>`, `<IconButton>` or `<StateIcon>`. Deleting them would have
   dropped the "an icon-only button without a label throws" and "every
   declared name has a sprite symbol" contracts on the floor.
-- **2026-09-04** — The two planned overlay test files are one,
+- **2026-09-03** — The two planned overlay test files are one,
   `test/dom/tile-overlays.test.tsx`: they share the scaffold entirely and
   neither is large enough to earn a second copy of it. The imperative
   half (which edge raises the panel, which drops it) stays in
   `session-phase.test.ts`, repointed from the deleted DOM fields to the
   store.
-- **2026-09-04** — `scripts/ui-lint.sh` drops `$FE/src/ui` from its
+- **2026-09-03** — `scripts/ui-lint.sh` drops `$FE/src/ui` from its
   default glyph targets. `find` on the missing directory was being
   swallowed by `2>/dev/null`, so the rule would have gone on passing
   while silently scanning one directory fewer.
 ## Progress
 
 - **2026-09-03** — Scaffolded from the approved plan-first plan.
-- **2026-09-04** — Implemented on `feature/329-tile-chrome-phase2`.
+- **2026-09-03** — Implemented on `feature/329-tile-chrome-phase2`.
   Green on every layer: `npm run typecheck`, `biome ci .` (exit 0),
   `scripts/ui-lint.sh --strict` (0 violations), `scripts/test.sh unit dom
   e2e` (571 dom/unit, 262 e2e passed / 31 skipped), `npm run
@@ -175,3 +175,5 @@ whole-port checklist must pass.
 
 - The `.fading` → `hidden` transition timing (master plan's **Open questions**).
 - `display: contents` fallback (master plan's **Open questions**).
+
+- **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4606dfb140c957b8aac6422943cce123ee955b756c10b9979a0abba87dfb686d; threads_open: 0; action: autofix+push; head_sha: 159cd7e.

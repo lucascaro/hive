@@ -124,7 +124,7 @@ move; only the rendering does.
   `TileHeader`, the inline rename. `session-term.ts` loses the header block.
   Ends with `src/ui/icon.ts`'s `stateIcon`/`icon` still alive (the phase overlay
   uses them).
-- **Phase 2 — the overlays and the last of `src/ui/`.** ([plan](329-react-ify-sessionterms-tile-chrome-phase2.md), implemented 2026-09-04)
+- **Phase 2 — the overlays and the last of `src/ui/`.** ([plan](329-react-ify-sessionterms-tile-chrome-phase2.md), implemented 2026-09-03)
   `DeadOverlay`, `PhaseOverlay`, `src/ui/icon.ts` → `src/lib/icon-sprite.ts`,
   `wireCheckUpdatesButton()` → `Sidebar.tsx`, `src/ui/` deleted, the
   host-identity e2e spec, docs.
@@ -175,7 +175,7 @@ vite dev server cannot green a run. `e2e-real` failures are compared against
   frontmatter). Spec renumbered from `sessionterm-react.md` and corrected on two
   stale points (`ensureSprite()` must move rather than be deleted;
   `app/banners.ts` is a second imperative `iconButton()` caller).
-- **2026-09-04** — Phase 2 implemented: both overlays render from
+- **2026-09-03** — Phase 2 implemented: both overlays render from
   `components/TileOverlays.tsx`, `src/ui/` is deleted (the sprite moved to
   `src/lib/icon-sprite.ts`), and the sidebar header's two icon controls
   render from `Sidebar.tsx`. `session-term.ts` now creates only `host`,

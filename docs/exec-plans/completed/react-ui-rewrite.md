@@ -121,7 +121,7 @@ implemented — the briefs deliberately do not all exist up front.
 | 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | #311 | **merged** |
 | 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
 | 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
-| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; no gate was ever recorded for it — the plan sat in `active/` until the bookkeeping was reconciled on 2026-09-04) |
+| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; no gate was ever recorded for it — the plan sat in `active/` until the bookkeeping was reconciled on 2026-09-03) |
 | 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate PASS |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | #324 | **gate PASS**, ready to merge |
@@ -200,7 +200,7 @@ Compare any failures against `.plans/react-rewrite-flake-baseline.md` (Phase 0 a
 
 ## Progress
 
-- **2026-09-04** — Bookkeeping reconciliation: phases 1–3 moved from
+- **2026-09-03** — Bookkeeping reconciliation: phases 1–3 moved from
   `active/` to `completed/`. All three PRs (#317, #318, #319) merged on
   2026-09-01/02 and phases 4–6 shipped on top of them, so leaving them in
   `active/` misreported the master plan as still in flight; phase 3's

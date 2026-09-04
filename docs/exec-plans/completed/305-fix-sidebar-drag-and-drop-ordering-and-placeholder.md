@@ -200,7 +200,7 @@ Two mechanics the implementation must get right:
 
 ## Gate verdict
 
-- **2026-09-04** — no gate was run. The PR was merged on 2026-09-02 without
+- **2026-09-03** — no gate was run. The PR was merged on 2026-09-02 without
   `/hs-merge-gate` recording a verdict, and the stage was never advanced,
   so the plan sat in `active/` long after it shipped. Reconciled here
   rather than gated after the fact: a PASS invented from a merged diff
