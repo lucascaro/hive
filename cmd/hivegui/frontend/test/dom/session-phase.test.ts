@@ -276,3 +276,38 @@ describe('tile phase publishes the live phase', () => {
     expect(livePhase(st)).toBe('starting');
   });
 });
+
+// setDead()'s store write, against a REAL SessionTerm. tile-overlays.test.tsx
+// covers what a given store shape renders, but it patches the store by hand
+// and every other `setDead` under test/ is a stub — so a regression in this
+// method (dropping the reason, or clearing it on a later call) would pass
+// every other test in the suite.
+describe('setDead', () => {
+  it('publishes the reason, and never clears it once set', () => {
+    const st = makeTerm({ id: 'd1', name: 'doomed', alive: true });
+
+    expect(chrome(st).dead).toBe(false);
+    expect(chrome(st).deadReason).toBe('');
+
+    st.setDead(true, 'exit status 127');
+    expect(chrome(st).dead).toBe(true);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+    // The class on the host stays SessionTerm's — it dims the whole tile,
+    // and it is not part of what React renders.
+    expect(st.host.classList.contains('dead')).toBe(true);
+
+    // Sticky by design, exactly as the imperative subtitle was: the write
+    // is guarded on a reason being supplied, so a later transition with
+    // none leaves the last one in place behind the hidden overlay.
+    st.setDead(true);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+
+    st.setDead(false);
+    expect(chrome(st).dead).toBe(false);
+    expect(chrome(st).deadReason).toBe('exit status 127');
+    expect(st.host.classList.contains('dead')).toBe(false);
+    // keyboard.ts routes Enter/Escape off this flag, so it tracks the
+    // store write rather than lagging it.
+    expect(st.deadOverlayShown).toBe(false);
+  });
+});

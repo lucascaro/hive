@@ -160,6 +160,17 @@ whole-port checklist must pass.
 ## Progress
 
 - **2026-09-03** — Scaffolded from the approved plan-first plan.
+- **2026-09-03** — Review loop converged in 2 iterations. Iteration 1's
+  BLOCKING finding was in the bookkeeping, not the port: both spec-305
+  files were advanced to `stage: DONE` without the `shipped:` date
+  `scripts/regen-generated.py` requires, failing `verify-generated`.
+  Autofix also caught two of this phase's own tests being unable to
+  fail — `survives an unmount while shown` (React nulls the ref, so a
+  leaked timer runs `undefined?.focus()` silently) and the new e2e
+  spec's host tagging (racing a deferred attach, whose replay
+  `term.reset()`s the buffer — which reads back as exactly the phantom
+  remount the spec exists to detect). Iteration 2 found no blocking
+  defect; its one IMPORTANT finding is closed above.
 - **2026-09-03** — Implemented on `feature/329-tile-chrome-phase2`.
   Green on every layer: `npm run typecheck`, `biome ci .` (exit 0),
   `scripts/ui-lint.sh --strict` (0 violations), `scripts/test.sh unit dom
@@ -177,3 +188,4 @@ whole-port checklist must pass.
 - `display: contents` fallback (master plan's **Open questions**).
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4606dfb140c957b8aac6422943cce123ee955b756c10b9979a0abba87dfb686d; threads_open: 0; action: autofix+push; head_sha: 159cd7e.
+- **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: abf26b9accb3c87992e6e2f78850b370cb3db26664763a86e332fe9e57ecb02b; threads_open: 0; action: stop (converged; the one IMPORTANT finding — `setDead()`'s reason-merge branch untested against a real `SessionTerm` — was closed by hand rather than deferred, and mutation-checked: dropping the `deadReason` write fails it); head_sha: 86e017a.

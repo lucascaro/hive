@@ -5,7 +5,7 @@ type: enhancement
 complexity: L
 priority: P3
 pr: 334
-stage: REVIEW
+stage: GATE
 ---
 
 # React-ify SessionTerm's tile chrome
