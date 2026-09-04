@@ -25,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |-------|-------|----|---------|------|
 | #323 | Add a check for updates button to the sidebar | #325 | 2026-09-03 | [323-add-check-for-updates-button-to-sidebar](323-add-check-for-updates-button-to-sidebar.md) |
 | #327 | GUI: Cmd+Enter in grid mode focuses the active session | #328 | 2026-09-03 | [327-cmd-enter-grid-focus-session](327-cmd-enter-grid-focus-session.md) |
+| #330 | GUI: don't switch sessions while the close confirmation is up | #331 | 2026-09-03 | [close-confirm-no-switch](close-confirm-no-switch.md) |
 | — | Incremental React 19 rewrite of the hivegui frontend | #324 | 2026-09-03 | [react-ui-rewrite](react-ui-rewrite.md) |
 | — | Worktrees, overlays and the launcher ignore the chosen theme | #313 | 2026-09-01 | [258-worktrees-and-overlays-ignore-the-theme](258-worktrees-and-overlays-ignore-the-theme.md) |
 | — | The e2e-real Playwright suite fails on main and blocks every PR | #307 | 2026-08-31 | [245-flaky-e2e-real-suite-blocks-every-pr](245-flaky-e2e-real-suite-blocks-every-pr.md) |

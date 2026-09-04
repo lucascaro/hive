@@ -160,6 +160,12 @@ Settings now shows its confirm and cancel key hints (`[esc]` / `[enter]`) in the
   bump.
 - Added `scripts/check-changeset.sh`, a local mirror of the changesets CI
   gate that can be installed as a `pre-push` hook.
+- Closing a session no longer moves you to a different session while the
+  "Close this session anyway?" confirmation is on screen. The jump used to
+  happen during the daemon's pre-flight worktree check — before you had been
+  asked anything — so the dialog appeared over a neighbouring session and
+  cancelling left you there. Focus now moves only once the session is really
+  closing.
 Renaming a worktree no longer loses the edit when the daemon repaints the list underneath it.
 
 ## [2.4.0] — 2026-08-29
