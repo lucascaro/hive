@@ -227,3 +227,24 @@ func TestMenuHoldsUpdatesUntilReady(t *testing.T) {
 			m.pending.Sessions, later.Sessions)
 	}
 }
+
+// The confirm dialog guards "this ends every running shell and agent",
+// so its text is built by string interpolation into AppleScript — and
+// session names, which come from the user's shell, reach these
+// dialogs. Quoting is the boundary.
+func TestAsAppleScriptStringQuotes(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`plain`, `"plain"`},
+		{`say "hi"`, `"say \"hi\""`},
+		{`back\slash`, `"back\\slash"`},
+		{"two\nlines", `"two\nlines"`},
+		// The shape that would otherwise close the string and run
+		// whatever follows.
+		{`" & (do shell script "id") & "`, `"\" & (do shell script \"id\") & \""`},
+	}
+	for _, c := range cases {
+		if got := asAppleScriptString(c.in); got != c.want {
+			t.Errorf("asAppleScriptString(%q) = %s, want %s", c.in, got, c.want)
+		}
+	}
+}

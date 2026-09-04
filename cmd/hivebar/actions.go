@@ -147,8 +147,18 @@ func socketDead(sock string, budget time.Duration) bool {
 // false on any error, so a broken dialog can never be read as consent
 // for something that ends every running agent.
 func Confirm(title, body string) bool {
+	// Through System Events, and with an explicit `activate`, because
+	// hivebar is an LSUIElement accessory: a dialog it puts up on its
+	// own can land behind whatever the user is looking at. A confirm
+	// nobody sees in front of "this ends every running agent" is worse
+	// than no confirm at all — it makes Restart Daemon look broken.
+	//
+	// `default button "Cancel"` so Return does the safe thing.
 	script := fmt.Sprintf(
-		`display dialog %s with title %s buttons {"Cancel", "Continue"} default button "Cancel" with icon caution`,
+		`tell application "System Events"
+			activate
+			display dialog %s with title %s buttons {"Cancel", "Continue"} default button "Cancel" with icon caution
+		end tell`,
 		asAppleScriptString(body), asAppleScriptString(title))
 	// -e, and the strings quoted above, so nothing here is shell- or
 	// AppleScript-injectable. The text is ours, but session names reach
