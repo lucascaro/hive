@@ -18,9 +18,10 @@
 //   first-attach fit() measuring the right rows. Creating the header in
 //   React would shrink the body for one frame and fire a spurious PTY
 //   resize mid-attach.
-// - The overlays (Phase 2) mount into `.tile-overlays`, a `display:
-//   contents` wrapper after the body. They are absolutely positioned, so
-//   they contribute no layout and cost nothing either way.
+// - The overlays mount into `.tile-overlays`, a `display: contents`
+//   wrapper after the body, and React creates them outright. They are
+//   absolutely positioned, so they contribute no layout and cost nothing
+//   either way. See TileOverlays.tsx.
 //
 // Membership comes from store/terms.ts's useTermIds — which ids have a
 // live host, never the SessionTerm values. Observable, not reactive.
@@ -39,6 +40,7 @@ import { appStore, useAppStore, type TileChromeState } from '../store/store.js';
 import { getTerm, useTermIds } from '../store/terms.js';
 import { StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
+import { TileOverlays } from './TileOverlays.js';
 
 const appData = () => appStore.getState();
 
@@ -66,12 +68,26 @@ function TileChrome({ id }: { id: string }): ReactNode {
   const chrome = useAppStore((s) => s.tileChrome.get(id));
   const attention = useAppStore((s) => s.attention.has(id));
   const term = getTerm(id);
-  // `header` is optional on TermTile because the dom-test stubs render no
-  // chrome at all; a real tile always has one.
+  // `header` and `overlays` are optional on TermTile because the
+  // dom-test stubs render no chrome at all; a real tile always has both.
   if (!chrome || !term?.header) return null;
-  return createPortal(
-    <TileHeader id={id} chrome={chrome} attention={attention} />,
-    term.header,
+  return (
+    <>
+      {createPortal(
+        <TileHeader id={id} chrome={chrome} attention={attention} />,
+        term.header,
+      )}
+      {term.overlays
+        ? createPortal(
+            <TileOverlays
+              chrome={chrome}
+              onClose={() => term._closeDead()}
+              onDismiss={() => term._dismissDead()}
+            />,
+            term.overlays,
+          )
+        : null}
+    </>
   );
 }
 

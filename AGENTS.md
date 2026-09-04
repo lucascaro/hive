@@ -130,7 +130,7 @@ custom agents at runtime via the GUI Settings screen (persisted to
 
 ## UX Best Practices
 
-Always apply these principles when adding or modifying UI elements in the GUI. Visual rules (tokens, themes, icons, component primitives) live in [docs/design-docs/ui/](docs/design-docs/ui/README.md) — read it before touching `src/theme/`, `src/ui/`, or any markup; `scripts/ui-lint.sh` enforces the token/icon rules in CI.
+Always apply these principles when adding or modifying UI elements in the GUI. Visual rules (tokens, themes, icons, component primitives) live in [docs/design-docs/ui/](docs/design-docs/ui/README.md) — read it before touching `src/theme/`, `src/components/`, or any markup; `scripts/ui-lint.sh` enforces the token/icon rules in CI.
 
 ### Key Discoverability
 - **Always show the key next to the action it triggers.** If a number, letter, or chord activates something, display it inline — e.g. `[1] ProjectName`, `(n) new`, `[enter] attach`.

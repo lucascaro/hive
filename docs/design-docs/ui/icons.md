@@ -1,6 +1,6 @@
 # Icons
 
-One inline SVG sprite, `src/ui/icons.svg` (inlined into `index.html` at build), rendered through `icon(name)` from `src/ui/icon.ts`. Mocked in [mocks/state-icons.html](mocks/state-icons.html).
+One inline SVG sprite, `src/lib/icons.svg` (injected into the document on first use by `ensureSprite()` in `src/lib/icon-sprite.ts`), rendered through `<Icon name>` from `src/components/Icon.tsx`. Mocked in [mocks/state-icons.html](mocks/state-icons.html).
 
 Geometry: 24×24 viewBox, `stroke: currentColor`, `stroke-width: 1.75`, round caps/joins, `fill: none` unless noted. Rendered at 14px (rows, chips, tile headers) or 12px (inline in text). Colour always comes from the parent's `color`, set by a token.
 

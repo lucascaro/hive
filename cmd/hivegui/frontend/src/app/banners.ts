@@ -26,7 +26,6 @@ import { flashStatus, reportFailure } from './dom.js';
 import { appStore, hideBanner, setBanner } from '../store/store.js';
 import { isMac } from '../lib/platform.js';
 import { updateButtonState } from '../lib/update-state.js';
-import { iconButton } from '../ui/icon-button.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../wailsjs/go/models';
 import type { DaemonStaleEvent } from './version-footer.js';
@@ -404,39 +403,7 @@ export function onUpdateAction() {
   }
 }
 
-// wireCheckUpdatesButton puts a "Check for updates" control in the
-// sidebar header, next to "New project". Until now the only manual
-// trigger was the macOS app menu's "Check for Updates…" item, which is
-// invisible on every other platform and undiscoverable on that one.
-//
-// Built here rather than in index.html because components.md forbids
-// hand-rolled icon-only buttons: iconButton() supplies the markup, the
-// aria-label/title pair and the .hv-icon-btn styling, so this adds no
-// CSS of its own.
-//
-// Null-guarded on purpose: initBanners() is called by DOM tests that
-// mount a scaffold with no sidebar header at all (update-banner and
-// restart-hive), and a missing header must not throw there. The
-// already-wired check keeps a second initBanners() from appending a
-// duplicate.
-const CHECK_UPDATES_ID = 'check-updates-btn';
-
-function wireCheckUpdatesButton() {
-  if (document.getElementById(CHECK_UPDATES_ID)) return;
-  const newProjectBtn = document.getElementById('new-project-btn');
-  if (!newProjectBtn?.parentElement) return;
-  const btn = iconButton({
-    icon: 'download',
-    label: 'Check for updates',
-    size: 22,
-    onClick: () => void manualUpdateCheck(),
-  });
-  btn.id = CHECK_UPDATES_ID;
-  newProjectBtn.after(btn);
-}
-
 export function initBanners() {
   wireDaemonBanner();
   wireUpdateBanner();
-  wireCheckUpdatesButton();
 }

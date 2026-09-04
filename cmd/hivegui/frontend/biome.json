@@ -12,7 +12,7 @@
       "!**/*.css",
       "!**/*.html",
       "!**/wailsjs",
-      "!src/ui/icons.svg"
+      "!src/lib/icons.svg"
     ]
   },
   "formatter": {

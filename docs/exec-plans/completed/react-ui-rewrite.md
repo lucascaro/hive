@@ -119,9 +119,9 @@ implemented — the briefs deliberately do not all exist up front.
 | Phase | Plan | PR | State |
 |---|---|---|---|
 | 0 — store + tooling | [phase0](react-ui-rewrite-phase0.md) | #311 | **merged** |
-| 1 — sidebar island | [phase1](../active/react-ui-rewrite-phase1.md) | #317 | **merged** |
-| 2 — chrome island | [phase2](../active/react-ui-rewrite-phase2.md) | #318 | **merged** |
-| 3 — modals A | [phase3](../active/react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; its gate has not been recorded, so the plan stays in `active/` for `/hs-merge-gate`) |
+| 1 — sidebar island | [phase1](react-ui-rewrite-phase1.md) | #317 | **merged** |
+| 2 — chrome island | [phase2](react-ui-rewrite-phase2.md) | #318 | **merged** |
+| 3 — modals A | [phase3](react-ui-rewrite-phase3.md) | #319 | **merged** (PR merged 2026-09-02; no gate was ever recorded for it — the plan sat in `active/` until the bookkeeping was reconciled on 2026-09-04) |
 | 4 — modals B + keyboard | [phase4](react-ui-rewrite-phase4.md) | #320 | **merged** (2026-09-03, `d794caa`); gate PASS |
 | 5 — grid shell | [phase5](react-ui-rewrite-phase5.md) | #321 | **merged** (2026-09-03, `b9ca655`); gate PASS |
 | 6 — single root + deletion | [phase6](react-ui-rewrite-phase6.md) | #324 | **gate PASS**, ready to merge |
@@ -199,6 +199,14 @@ Compare any failures against `.plans/react-rewrite-flake-baseline.md` (Phase 0 a
 - **2026-08-31** — 3-way review (grounding/gaps/YAGNI) against main @ 62db856. Grounding: all paths, symbols, line claims, and verification commands check out; fixed the Worktrees.tsx source-file conflation (`src/app/modals/worktrees.ts` is the 581-line port source, `src/lib/worktrees.ts` is the reused 278-line lib); added missing `attentionReturnId` to the Phase 0 field list. Gaps: added `session-term.ts` (`updateSidebarSelection` caller at :617) to Phase 1's change list; added orphaned tests `restart-hive` + `ui-state-icon` to Phase 2 and `attention-jump`, `attention-jump-integration`, dom `nav-history` to Phase 5; added `hive.sidebarWidth` to Phase 0's persistence migration. YAGNI: dropped `src/store/hooks.ts` (hook exported from store.ts) and `src/roots.ts` (plain `createRoot` calls + local array in main.ts); inlined `useInlineRename`/`useDragReorder` into Sidebar.tsx until a second consumer exists; Phase 2 store no longer duplicates `src/lib/status.ts` flash timing, `empty-state.ts` model, or `minimized.ts` tray filtering (all derived via selectors/lib calls); `@testing-library/user-event` now conditional on fireEvent proving insufficient; anchored `state.ts` compat-layer deletion to Phase 6 with `window.__hive_state` moving to store.ts.
 
 ## Progress
+
+- **2026-09-04** — Bookkeeping reconciliation: phases 1–3 moved from
+  `active/` to `completed/`. All three PRs (#317, #318, #319) merged on
+  2026-09-01/02 and phases 4–6 shipped on top of them, so leaving them in
+  `active/` misreported the master plan as still in flight; phase 3's
+  missing gate record is noted in the table rather than manufactured
+  after the fact. Done alongside the tile-chrome phase-2 port, which is
+  what surfaced the drift.
 
 **2026-09-01** — Migrated from `~/.hivesmith/plans/2026-08-31-react-ui-rewrite.md`
 into hivesmith bookkeeping, following the `ui-design-system` master/phase layout.

@@ -64,20 +64,19 @@ if [[ ${#targets[@]} -eq 0 ]]; then
   custom=0
   targets=("$FE/src" "$FE/index.html")
 fi
-# Glyph rule defaults to src/app + src/ui + src/theme + index.html when no
-# explicit targets are given, but honours explicit targets like the other
-# two rules do — otherwise `ui-lint.sh --strict some/fixture.ts` would
+# Glyph rule defaults to src/app + src/components + src/theme + index.html
+# when no explicit targets are given, but honours explicit targets like the
+# other two rules do — otherwise `ui-lint.sh --strict some/fixture.ts` would
 # silently ignore the argument and scan the whole app tree instead.
 glyph_targets=("${targets[@]}")
 if [[ $custom -eq 0 ]]; then
-  # src/ui and src/theme are where the sprite, the icon/iconButton/kbd
-  # primitives and their stylesheets live, and where new icon code will
-  # land — they must be scanned too. Deliberately NOT src/lib: grid.ts
+  # src/components and src/theme are where the icon/button/kbd primitives
+  # and their stylesheets live, and where new icon code will land — they
+  # must be scanned too. (src/ui, the imperative half, is gone: the tile
+  # chrome port deleted the last of it.) Deliberately NOT src/lib: grid.ts
   # legitimately uses "×" for w×h dimensions, and scanning it would
   # produce a false positive that invites a suppression.
-  # src/components is where the React ports of the src/ui primitives
-  # land during the React rewrite, so it is scanned on the same footing.
-  glyph_targets=("$FE/src/app" "$FE/src/ui" "$FE/src/components" "$FE/src/theme" "$FE/index.html")
+  glyph_targets=("$FE/src/app" "$FE/src/components" "$FE/src/theme" "$FE/index.html")
 fi
 
 n=0

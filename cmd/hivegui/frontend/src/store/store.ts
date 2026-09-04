@@ -34,6 +34,7 @@ import {
   MINIMIZED_PROJECTS_STORAGE_KEY,
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
+import type { PhasePanel } from '../lib/phase-steps.js';
 import type { ModeHint } from '../lib/status.js';
 import type {
   AppState,
@@ -524,8 +525,15 @@ export interface TileChromeState {
   termTitle: string;
   dead: boolean;
   deadReason: string;
+  // The loading panel: whether it is up, and the model it renders.
+  //
+  // `phasePanel` is stored rather than derived from `phase` because the
+  // panel outlives the phase it describes — _revealAfterPhase() holds it
+  // past PhaseReady until the replay has painted, and phasePanel(ready)
+  // is null. Deriving in the component would blank the steps on the
+  // ready edge and leave a bare spinner for that window.
   phaseVisible: boolean;
-  phaseFading: boolean;
+  phasePanel: PhasePanel | null;
 }
 
 export function initialTileChrome(info: SessionInfo, phase: string) {
@@ -536,7 +544,7 @@ export function initialTileChrome(info: SessionInfo, phase: string) {
     dead: false,
     deadReason: '',
     phaseVisible: false,
-    phaseFading: false,
+    phasePanel: null,
   } satisfies TileChromeState;
 }
 

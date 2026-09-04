@@ -105,9 +105,71 @@ whole-port checklist must pass.
 
 ## Decision log
 
+- **2026-09-04** — `.fading` is NOT reproduced, and `phaseFading` was
+  dropped from the `tileChrome` slice. Why: the master plan's open
+  question turned out to be moot. `revealAfterReplay()` adds `.fading`
+  and then calls `_hidePhaseOverlay()`, which sets `hidden` and removes
+  the class again — both in the same tick, so the browser never painted a
+  faded frame and the CSS transition never ran. Reproducing the class in
+  React would either change nothing or, if split across two commits,
+  introduce a fade that does not exist today. The port keeps the net
+  observable state (hidden, no class) and the planned
+  `fades before hiding` test was not written, because it would assert
+  behaviour the imperative code never had.
+- **2026-09-04** — `phasePanel: PhasePanel | null` added to the slice
+  (the plan's field list did not have it). Why: the panel outlives the
+  phase it describes — `_revealAfterPhase()` holds it past PhaseReady,
+  where `phasePanel()` returns null — so deriving it in the component
+  would blank the steps on the ready edge and leave a bare spinner.
+  `_showPhaseOverlay()` already computed the model to decide whether to
+  show at all, so storing it costs nothing.
+- **2026-09-04** — The dead card's focus grab moved into
+  `TileOverlays.tsx` as an effect instead of staying at the `setDead()`
+  call site. Why: the button does not exist until React commits the
+  store write, so the old `setTimeout(…, 0)` would race the commit. The
+  effect keeps the same deferral and the same `anyModalOpen()` guard, and
+  its cleanup covers the tile being destroyed while the overlay is up —
+  which used to focus a detached button.
+- **2026-09-04** — `src/app/modals/project-editor.ts` was a third
+  imperative `icon()` caller the plan's file list missed
+  (`newProjectBtn.replaceChildren(icon('plus'))`), and `src/ui/` could
+  not be deleted without it. Handled with the check-for-updates control
+  in one place: `SidebarHeaderControls` in `Sidebar.tsx` portals the plus
+  icon into `#new-project-btn` and the new IconButton into the header.
+  index.html keeps owning the button element itself, because
+  `initProjectEditor()` wires its click, the launcher uses it as a focus
+  fallback and the dom tests reach it by id.
+- **2026-09-04** — `ui-icon`, `ui-icon-button` and `ui-state-icon` tests
+  were REWRITTEN against the React primitives rather than deleted as the
+  plan said. Why: the plan assumed `ui-state-icon.test.tsx` already
+  covered React `StateIcon`, but no such file existed — the suite had
+  only the imperative `.ts` versions, and nothing anywhere rendered
+  `<Icon>`, `<IconButton>` or `<StateIcon>`. Deleting them would have
+  dropped the "an icon-only button without a label throws" and "every
+  declared name has a sprite symbol" contracts on the floor.
+- **2026-09-04** — The two planned overlay test files are one,
+  `test/dom/tile-overlays.test.tsx`: they share the scaffold entirely and
+  neither is large enough to earn a second copy of it. The imperative
+  half (which edge raises the panel, which drops it) stays in
+  `session-phase.test.ts`, repointed from the deleted DOM fields to the
+  store.
+- **2026-09-04** — `scripts/ui-lint.sh` drops `$FE/src/ui` from its
+  default glyph targets. `find` on the missing directory was being
+  swallowed by `2>/dev/null`, so the rule would have gone on passing
+  while silently scanning one directory fewer.
 ## Progress
 
 - **2026-09-03** — Scaffolded from the approved plan-first plan.
+- **2026-09-04** — Implemented on `feature/329-tile-chrome-phase2`.
+  Green on every layer: `npm run typecheck`, `biome ci .` (exit 0),
+  `scripts/ui-lint.sh --strict` (0 violations), `scripts/test.sh unit dom
+  e2e` (571 dom/unit, 262 e2e passed / 31 skipped), `npm run
+  test:e2e:real` (22 passed / 2 skipped, all with `CI=1`), and `go test
+  ./...` after a `npm run build` (the embedded-assets tests need a real
+  `dist/`, not ci-bootstrap's placeholder). No e2e or e2e-real spec was
+  edited to accommodate the port; the one change under `test/e2e/` is a
+  comment in `sidebar-header-actions.spec.ts` that named
+  `initBanners()`.
 
 ## Open questions
 

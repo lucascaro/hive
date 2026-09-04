@@ -1,4 +1,4 @@
-<!-- Icon sprite. Inlined once by src/ui/icon.ts (`?raw` import).
+<!-- Icon sprite. Inlined once by src/lib/icon-sprite.ts (`?raw` import).
      Geometry rules and the inventory: docs/design-docs/ui/icons.md.
      24x24 grid, stroke 1.75, round caps. Never inline an SVG in a
      feature module - add a <symbol> here and a row in icons.md. -->

@@ -124,7 +124,7 @@ move; only the rendering does.
   `TileHeader`, the inline rename. `session-term.ts` loses the header block.
   Ends with `src/ui/icon.ts`'s `stateIcon`/`icon` still alive (the phase overlay
   uses them).
-- **Phase 2 — the overlays and the last of `src/ui/`.**
+- **Phase 2 — the overlays and the last of `src/ui/`.** ([plan](329-react-ify-sessionterms-tile-chrome-phase2.md), implemented 2026-09-04)
   `DeadOverlay`, `PhaseOverlay`, `src/ui/icon.ts` → `src/lib/icon-sprite.ts`,
   `wireCheckUpdatesButton()` → `Sidebar.tsx`, `src/ui/` deleted, the
   host-identity e2e spec, docs.
@@ -175,6 +175,12 @@ vite dev server cannot green a run. `e2e-real` failures are compared against
   frontmatter). Spec renumbered from `sessionterm-react.md` and corrected on two
   stale points (`ensureSprite()` must move rather than be deleted;
   `app/banners.ts` is a second imperative `iconButton()` caller).
+- **2026-09-04** — Phase 2 implemented: both overlays render from
+  `components/TileOverlays.tsx`, `src/ui/` is deleted (the sprite moved to
+  `src/lib/icon-sprite.ts`), and the sidebar header's two icon controls
+  render from `Sidebar.tsx`. `session-term.ts` now creates only `host`,
+  `.tile-header`, `.term-body` and `.tile-overlays`. See the phase plan's
+  decision log for the five deviations from its file list.
 - **2026-09-03** — Phase 1 implemented and green on every layer; see its
   plan for the verification block. `src/ui/icon.ts` and
   `src/ui/icon-button.ts` still stand, as designed — the phase overlay and
@@ -182,12 +188,18 @@ vite dev server cannot green a run. `e2e-real` failures are compared against
 
 ## Open questions
 
-- `_revealAfterPhase()`'s `.fading` class becomes React-owned. Today the class
-  and `hidden` are set in the same tick and the transition relies on browser
-  batching; React batches identically, but this is the one place the port could
-  change observable behaviour. Covered by `session-lifecycle.spec.ts` — confirm
-  in Phase 2 rather than assuming.
-- `display: contents` on `.tile-overlays` with absolutely-positioned children:
-  correct per spec and supported in the Chromium/WebKit Wails ships, but it is
-  the one layout trick here. Fallback if it misbehaves:
-  `position: absolute; inset: 0; pointer-events: none`.
+Both were answered in Phase 2; kept here with their answers rather than
+deleted, since the reasoning is what a later reader needs.
+
+- ~~`_revealAfterPhase()`'s `.fading` class becomes React-owned.~~
+  **Answered:** there is no fade to preserve. `revealAfterReplay()` adds
+  the class and then `_hidePhaseOverlay()` sets `hidden` and removes it,
+  both in the same tick — the browser never painted a faded frame and the
+  transition never ran. The port keeps the net state and drops the class;
+  `session-lifecycle.spec.ts` passes unchanged.
+- ~~`display: contents` on `.tile-overlays` with absolutely-positioned
+  children.~~ **Answered:** correct in the shipped Chromium. Both
+  overlays resolve against `.term-host` and `ux-polish.spec.ts` /
+  `session-lifecycle.spec.ts` see them at the right size and place. The
+  `position: absolute; inset: 0; pointer-events: none` fallback was not
+  needed.

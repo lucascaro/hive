@@ -28,9 +28,8 @@ This file covers how the frontend itself is put together.
 | `src/components/` | React components. `App.tsx` is the tree; `modals/` holds the seven dialogs. |
 | `src/store/` | `store.ts` (the zustand store + every action) and `terms.ts` (the SessionTerm registry, deliberately outside the store). |
 | `src/app/` | Imperative subsystems: daemon events, keyboard, view commands, grid layout, focus pipeline, the terminal class, and the thin modal controllers the components call into. |
-| `src/lib/` | Shared logic, no bridge calls. Almost all of it is pure and unit-tested in the node environment. Three modules are the exception — `focus-trap.ts`, `preserve-focus.ts` and `drag-placeholder.ts` call `document` directly and are exercised under `test/dom`. |
+| `src/lib/` | Shared logic, no bridge calls. Plus `icon-sprite.ts` + `icons.svg`, the icon symbol set `components/Icon.tsx` draws from. Almost all of it is pure and unit-tested in the node environment. Three modules are the exception — `focus-trap.ts`, `preserve-focus.ts` and `drag-placeholder.ts` call `document` directly and are exercised under `test/dom`. |
 | `src/theme/` | Token CSS, presets, and the runtime theme applier. |
-| `src/ui/` | The last two imperative DOM primitives (`icon.ts`, `icon-button.ts`), still used by `session-term.ts`. Everything else was ported to `src/components/`. |
 
 ## Rendering
 
@@ -62,7 +61,13 @@ the content it belongs to.
 
 `src/app/session-term.ts` stays imperative and React must never recreate one. A
 `SessionTerm` owns an xterm instance, one of eight process-wide WebGL slots
-(`src/lib/webgl-budget.ts`) and a live PTY attachment. The rules:
+(`src/lib/webgl-budget.ts`) and a live PTY attachment. It no longer *renders*,
+though: the tile's chrome — header, dead-session card, loading panel — is
+`components/TileChrome.tsx` and `components/TileOverlays.tsx`, portalled into
+the two mount points `SessionTerm` creates (`.tile-header` empty, so its 28px
+box exists before React fills it; `.tile-overlays`, a `display: contents`
+wrapper after the body). `setDead()` / `setPhase()` keep their names and timing
+and write the store. The rules:
 
 - Terminal hosts are reparented, never unmounted and remounted.
 - The grid template is written **before** attach, or the scrollback restream

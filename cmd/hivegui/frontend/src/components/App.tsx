@@ -48,7 +48,11 @@ import { EmptyState } from './EmptyState.js';
 import { GridView } from './GridView.js';
 import { TileChromeHost } from './TileChrome.js';
 import { MinimizedTray } from './MinimizedTray.js';
-import { Sidebar, type SidebarProps } from './Sidebar.js';
+import {
+  Sidebar,
+  SidebarHeaderControls,
+  type SidebarProps,
+} from './Sidebar.js';
 import { StatusBar } from './StatusBar.js';
 import { VersionFooter } from './VersionFooter.js';
 import { ChoiceDialog } from './modals/ChoiceDialog.js';
@@ -104,6 +108,12 @@ export function App(): ReactNode {
         <Sidebar {...sidebarCallbacks} trayEl={mustEl('minimized-projects')} />,
         projects,
       )}
+      {/* The sidebar header's two icon controls. Portals of its own
+          rather than props of the tree above: they land in index.html's
+          <header>, a sibling of #projects. Renders null when there is no
+          header, which is how the dom-test scaffolds get away with
+          omitting it. */}
+      <SidebarHeaderControls />
       {/* Renders nothing. Its whole job is a layout effect against
           app/grid-layout.ts when the view, active tile or grid scope
           moves — which is why it needs no portal at all. */}

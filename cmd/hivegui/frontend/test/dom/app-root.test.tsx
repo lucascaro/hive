@@ -97,7 +97,7 @@ vi.mock('../../src/bridge.js', () => ({
 let App: typeof import('../../src/components/App.js').App;
 
 // The real document, pulled in with Vite's `?raw` — the same idiom
-// src/ui/icon.ts uses for the sprite. No node:fs: the dom project's
+// src/lib/icon-sprite.ts uses for the sprite. No node:fs: the dom project's
 // tsconfig has only vite/client types, and a path resolved at runtime
 // would be one more thing that can drift.
 

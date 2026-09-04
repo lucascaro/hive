@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // Layout check for the sidebar header's two action buttons (spec 323).
-// The DOM test proves initBanners() appends #check-updates-btn next to
-// #new-project-btn; only a real browser proves the header actually
+// The DOM test proves SidebarHeaderControls renders #check-updates-btn
+// next to #new-project-btn; only a real browser proves the header actually
 // LAYS THEM OUT that way. The header used to be `justify-content:
 // space-between` with two children, which with three children would
 // fling the two buttons to opposite ends of the sidebar — a bug no
