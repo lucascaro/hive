@@ -68,7 +68,7 @@ import {
   minimizeProject,
   isSessionHidden,
 } from './view.js';
-import { manualUpdateCheck, restartHive } from './banners.js';
+import { manualUpdateCheck, reloadGui, restartHive } from './banners.js';
 import { clearAttention } from './events.js';
 import { goBack, goForward } from '../lib/nav-history.js';
 import { readProjectId } from '../lib/wire.js';
@@ -743,6 +743,7 @@ const menuActions = {
   'menu:next-project': () => shiftActiveProject(+1),
   'menu:prev-project': () => shiftActiveProject(-1),
   'menu:check-for-updates': () => manualUpdateCheck(),
+  'menu:reload-gui': () => reloadGui(),
   'menu:restart-hive': () => restartHive(),
   // Must toggle, not just open: the native ⌘/ accelerator intercepts
   // the key before the webview on macOS, so the keydown close path

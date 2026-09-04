@@ -81,8 +81,10 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/worktree/` | Git worktree lifecycle; tracks dirty state so the registry can refuse destructive ops. |
 | `internal/notify/` | Desktop notifications; platform splits behind one Go interface. |
 | `internal/activity/` | Per-session activity / attention tracking. |
-| `internal/buildinfo/` | Single source for version + commit. |
+| `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
+| `cmd/hivebar/` | macOS menu-bar agent (darwin only). Pure wire client; ships as its own `.app` inside the GUI bundle. |
+| `internal/menubar/` | Starts `hivebar` best-effort from both `hived` and `hivegui`. No-op off macOS. |
 | `cmd/hived-ws-bridge/` | WebSocket bridge fronting the daemon for the `e2e-real` browser tests. |
 
 ### Common change patterns
@@ -92,6 +94,19 @@ Package one-liners (full detail in `DESIGN.md`):
 production ones (`cmd/hivegui/app_calls.go` / `app_control.go` /
 `app_attach.go`, and `cmd/hived-ws-bridge/main.go`) and
 `internal/wire/testclient` — plus any `snake_case ?? camelCase` JS readers.
+
+**Daemon-side behaviour change:** bump `buildinfo.DaemonContract`
+(`internal/buildinfo/contract.go`) whenever a GUI built against your tree
+could not correctly drive a daemon built without it. The GUI reads that
+number to choose between relaunching itself (sessions survive) and
+restarting `hived` (they all die), so a missed bump silently reloads a GUI
+into a daemon it does not understand, and a needless one costs every user
+their running agents. `scripts/check-daemon-contract.sh` fails CI on a PR
+touching `internal/{wire,daemon,session,registry}/` or `cmd/hived/` without
+a bump; apply the `daemon-contract-override` label for refactors and
+test-only changes. Do **not** bump `wire.PROTOCOL_VERSION` for a new frame —
+see the hard rule in `DESIGN.md` and
+[docs/design-docs/daemon-contract.md](docs/design-docs/daemon-contract.md).
 
 **Add an agent:** extend the catalog in `internal/agent/`. Users can also add
 custom agents at runtime via the GUI Settings screen (persisted to
@@ -333,6 +348,10 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   exactly how `internal/notify`'s activation callback got through. Before
   relying on a green local run: `for os in darwin linux windows; do GOOS=$os
   staticcheck ./... ; GOOS=$os go vet ./... ; done`.
+- `scripts/check-daemon-contract.sh <base> <head>` — the local form of the
+  CI gate that requires a `buildinfo.DaemonContract` bump for daemon-side
+  changes. `scripts/check-daemon-contract-selftest.sh` proves the gate still
+  fires; CI runs it before trusting the gate.
 - `scripts/check-plan-lifecycle.sh` — asks `gh` what happened to every PR referenced from `exec-plans/active/`, and checks every spec's `Exec plan:` link still resolves. Not in CI (no `gh` token there, and the answer changes without the tree changing), so run it when moving a plan between `active/` and `completed/`, and alongside `/hs-doc-garden`.
 
 <!-- BEGIN HIVESMITH -->

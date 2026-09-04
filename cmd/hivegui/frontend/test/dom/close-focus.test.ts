@@ -28,6 +28,7 @@ vi.mock('../../src/bridge.js', () => {
     CreateSession: fn(),
     DuplicateSession: fn(),
     KillSession: fn(),
+    SetSessionAttention: vi.fn(() => Promise.resolve()),
     KillSessionAndWorktree: fn(),
     RestartSession: fn(),
     UpdateSession: fn(),
@@ -87,6 +88,7 @@ function sessionEventHandler() {
     focusActiveTerm: vi.fn(),
     refocusActiveTerm: vi.fn(),
     isDaemonRestarting: () => false,
+    checkForUpdates: vi.fn(),
     scrollTrace: createScrollTrace({ enabled: false }),
   });
   const call = vi

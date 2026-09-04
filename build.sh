@@ -2,7 +2,8 @@
 # build.sh — Build the Hive desktop app.
 #
 # Default target: macOS universal .app at cmd/hivegui/build/bin/hivegui.app
-# (with hived bundled inside Contents/MacOS/).
+# (with hived bundled inside Contents/MacOS/ and the hivebar menu-bar
+# agent inside Contents/Library/LoginItems/).
 #
 # Optional flags:
 #   --platform <macos|windows|all>   target (default: macos)
@@ -128,12 +129,37 @@ build_macos() {
     -o .build/hived-darwin-arm64 ./cmd/hived
   lipo -create -output cmd/hivegui/build/bin/hivegui.app/Contents/MacOS/hived \
     .build/hived-darwin-amd64 .build/hived-darwin-arm64
+
+  echo "==> [macos] Building hivebar (universal)"
+  # cgo, because the status item is AppKit. That rules out cross-arch
+  # builds from one host without an SDK per arch, so each slice is
+  # built with the matching CGO_ARCH flags and lipo'd like hived.
+  CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CGO_CFLAGS="-arch x86_64" CGO_LDFLAGS="-arch x86_64" \
+    go build -trimpath -ldflags="${ldflags_id}" \
+    -o .build/hivebar-darwin-amd64 ./cmd/hivebar
+  CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 CGO_CFLAGS="-arch arm64" CGO_LDFLAGS="-arch arm64" \
+    go build -trimpath -ldflags="${ldflags_id}" \
+    -o .build/hivebar-darwin-arm64 ./cmd/hivebar
+
+  # The menu bar agent ships as its own .app inside the GUI's bundle.
+  # macOS will not show a status item for a bare binary, and
+  # Contents/Library/LoginItems is where an embedded helper belongs —
+  # it is what SMAppService looks for, so the login-item toggle works
+  # the day Hive is code-signed.
+  BAR="cmd/hivegui/build/bin/hivegui.app/Contents/Library/LoginItems/hivebar.app"
+  mkdir -p "$BAR/Contents/MacOS"
+  lipo -create -output "$BAR/Contents/MacOS/hivebar" \
+    .build/hivebar-darwin-amd64 .build/hivebar-darwin-arm64
+  sed "s/__VERSION__/${version}/g" cmd/hivebar/build/darwin/Info.plist \
+    > "$BAR/Contents/Info.plist"
+
   rm -rf .build
 
   APP=cmd/hivegui/build/bin/hivegui.app
   echo "==> [macos] Built $APP"
   file "$APP/Contents/MacOS/hivegui" | head -1
   file "$APP/Contents/MacOS/hived"   | head -1
+  file "$APP/Contents/Library/LoginItems/hivebar.app/Contents/MacOS/hivebar" | head -1
 
   if [[ $zip_artifact -eq 1 ]]; then
     mkdir -p release

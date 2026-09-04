@@ -12,6 +12,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Add 12 IDE-inspired theme presets | REVIEW | [305-add-ide-inspired-theme-presets](305-add-ide-inspired-theme-presets.md) |
 | P2 | — | Fix sidebar drag-and-drop ordering and drop placeholder | GATE | [305-fix-sidebar-drag-and-drop-ordering-and-placeholder](305-fix-sidebar-drag-and-drop-ordering-and-placeholder.md) |
+| P2 | — | Add GUI-only reload and a daemon menu-bar agent | REVIEW | [330-add-gui-only-reload-and-a-daemon-menu-bar-agent](330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md) |
 | P2 | — | In-house VT emulator (replace hinshun/vt10x) | IMPLEMENT | [in-house-vt-emulator](in-house-vt-emulator.md) |
 | — | #142 | vt snapshot: CJK / wide-char column misalignment | TRIAGE | [142-vt-snapshot-cjk-wide-char-column-misalignment](142-vt-snapshot-cjk-wide-char-column-misalignment.md) |
 | — | — | Resume conversations on daemon restart | TRIAGE | [254-resume-conversations-on-daemon-restart](254-resume-conversations-on-daemon-restart.md) |

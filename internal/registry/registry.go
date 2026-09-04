@@ -97,6 +97,16 @@ type Entry struct {
 	// is wire.PhaseReady.
 	Phase string
 
+	// NeedsAttention is set when the session rings the terminal bell
+	// and cleared when a client reports that the user has looked (an
+	// UPDATE_SESSION carrying needs_attention:false). In-memory only,
+	// like Phase, so a daemon restart starts every session quiet.
+	//
+	// It is deliberately NOT cleared when the session dies: "this
+	// finished and you have not looked at it yet" is the case the flag
+	// is most useful for.
+	NeedsAttention bool
+
 	// captureCancel cancels the post-spawn AgentSessionID capture
 	// goroutine when the session exits before capture completes.
 	// nil when no capture is in flight.
@@ -147,6 +157,7 @@ func (e *Entry) Info() wire.SessionInfo {
 		LastError:      e.LastError,
 		Phase:          e.Phase,
 		Title:          e.title(),
+		NeedsAttention: e.NeedsAttention,
 	}
 }
 
@@ -264,6 +275,48 @@ func (r *Registry) setPhase(id, phase string) {
 // registry→session call.
 func (r *Registry) attachTitleHook(id string, sess *session.Session) {
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
+	sess.SetBellHook(func() { r.noteBell(id) })
+}
+
+// noteBell marks an entry as wanting attention after its session rang
+// the terminal bell, and announces it.
+//
+// The already-set guard is what makes an unthrottled hook affordable:
+// a program that rings in a loop costs one bool compare per bell after
+// the first, instead of a broadcast to every connected client. The
+// session deliberately does not throttle for this reason — "wants
+// attention" does not get truer the second time.
+func (r *Registry) noteBell(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok || e.NeedsAttention {
+		return
+	}
+	e.NeedsAttention = true
+	r.broadcastLocked(wire.SessionEventAttention, e.Info())
+}
+
+// SetAttention records whether a session still wants the user's
+// attention, announcing the change. Clients call it (through
+// UPDATE_SESSION) when the user focuses a session — only the client
+// knows the user has actually looked.
+//
+// Returns without broadcasting when nothing changed, so a GUI that
+// re-asserts "focused" on every render costs nothing.
+func (r *Registry) SetAttention(id string, want bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if e.NeedsAttention == want {
+		return nil
+	}
+	e.NeedsAttention = want
+	r.broadcastLocked(wire.SessionEventAttention, e.Info())
+	return nil
 }
 
 // noteTitleChange announces an entry after its session reported a new

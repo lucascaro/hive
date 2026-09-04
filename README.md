@@ -19,7 +19,9 @@ What works:
 - BEL → desktop notification + visual pulse on non-focused sessions
 
 - In-app updates (macOS): pick a release or latest-commit channel in
-  Settings, then Update → Restart
+  Settings, then Update → Reload (or Restart, when the daemon changed)
+- **Reload GUI** — picks up a new GUI build without touching `hived`,
+  so every running shell and agent survives
 
 Not yet shipping: scrollback resume across daemon restart, splits
 inside grid cells, workflows / agent teams, code signing and
@@ -94,10 +96,20 @@ not a compromised release. Signing and notarization are tracked
 separately.
 
 **Nothing is downloaded or built until you press Update.** The button
-shows progress while it works, then becomes **Restart** — that step
-replaces the installed app and relaunches it, restarting `hived` so both
-halves come from the same build. That restart terminates every running
-shell and agent — save your work before pressing it.
+shows progress while it works, then becomes either **Reload** or
+**Restart**, and the difference matters:
+
+- **Reload** — the update only changes the GUI. Hive relaunches its
+  windows and leaves `hived` running, so every shell and agent keeps
+  going. Nothing is lost and there is no confirmation prompt.
+- **Restart** — the update changes the daemon too. Hive replaces
+  `hived`, which terminates every running shell and agent. This one
+  confirms first; save your work before pressing it.
+
+Hive works out which by asking the staged build's `hived` for its
+*daemon contract* (`hived --version --json`) and comparing it to the
+running daemon's. Only a change the daemon actually exposes bumps that
+contract, so a frontend-only release costs you nothing.
 
 Applying an update in place is macOS-only. On Windows and Linux the
 banner keeps its Download button, which opens the release page.

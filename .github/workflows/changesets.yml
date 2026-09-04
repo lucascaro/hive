@@ -5,6 +5,8 @@
 # `docs/product-specs/index.md` / `docs/exec-plans/tech-debt-tracker.md`
 # out of the PR-conflict surface:
 #
+#   0. daemon-contract    — fails any PR changing daemon-side code without
+#      bumping buildinfo.DaemonContract. Bypass: `daemon-contract-override`.
 #   1. block-generated-edits — hard-fails any PR diff touching a generated
 #      file. Bypass: apply the `regen-override` label.
 #   2. verify-generated     — runs the regenerator against the PR merge ref
@@ -65,6 +67,36 @@ jobs:
             exit 1
           fi
           echo "OK: no generated files were touched."
+
+  # The GUI reads buildinfo.DaemonContract to choose between relaunching
+  # itself (every session survives) and restarting hived (they all die).
+  # A forgotten bump silently reloads a GUI into a daemon it does not
+  # understand and nothing downstream catches it, so the gate lives
+  # here. Bypass: the `daemon-contract-override` label, for refactors
+  # and test-only changes. See docs/design-docs/daemon-contract.md.
+  daemon-contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Self-test the gate
+        # The gate is the only thing standing between a forgotten bump
+        # and a silent incompatible reload, so it proves it still fires
+        # before it is trusted to judge this PR.
+        run: scripts/check-daemon-contract-selftest.sh
+      - name: Require a contract bump for daemon-side changes
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: |
+          if printf '%s' "$PR_LABELS" | jq -e '.[] | select(.name == "daemon-contract-override")' >/dev/null 2>&1; then
+            echo "OK: daemon-contract-override label present — bypassing check."
+            exit 0
+          fi
+          scripts/check-daemon-contract.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
 
   verify-generated:
     if: github.event_name == 'pull_request'

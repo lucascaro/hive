@@ -30,7 +30,9 @@ import {
   EventsOn,
   GetUpdateSettings,
   ListCustomAgents,
+  MenuBarLoginItemStatus,
   PickDirectory,
+  SetMenuBarLoginItem,
   SaveCustomAgents,
   SaveUpdateSettings,
   SourceRepoStatusFor,
@@ -127,6 +129,55 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // imperative version got this for free — renderUpdateAction reassigned
   // .disabled on every event.
   const [updateBusy, setUpdateBusy] = useState(false);
+
+  // Menu-bar login item. Status is re-read on open rather than tracked
+  // while the modal is closed: the user can add or remove the login
+  // item from System Settings, so anything cached here would be a
+  // guess.
+  const [menuBarStatus, setMenuBarStatus] = useState('unsupported');
+  const [menuBarBusy, setMenuBarBusy] = useState(false);
+  const [menuBarError, setMenuBarError] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    MenuBarLoginItemStatus()
+      .then((s) => {
+        if (live) setMenuBarStatus(s);
+      })
+      .catch(() => {
+        if (live) setMenuBarStatus('unsupported');
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function toggleMenuBarLoginItem() {
+    const enable = menuBarStatus !== 'enabled';
+    setMenuBarBusy(true);
+    setMenuBarError('');
+    try {
+      await SetMenuBarLoginItem(enable);
+      setMenuBarStatus(await MenuBarLoginItemStatus());
+    } catch (err) {
+      // Verbatim, not flattened into "could not enable": on the builds
+      // Hive currently ships this fails with a code-signing error, and
+      // that is the only thing telling the user it is not their fault
+      // and not fixable from here.
+      setMenuBarError(String(err));
+    } finally {
+      setMenuBarBusy(false);
+    }
+  }
+
+  const menuBarHint = menuBarError
+    ? `Could not change the login item: ${menuBarError}`
+    : menuBarStatus === 'enabled'
+      ? 'macOS starts the Hive menu bar at login.'
+      : menuBarStatus === 'requires-approval'
+        ? 'Waiting for approval in System Settings ▸ General ▸ Login Items.'
+        : 'Off by default. The menu bar already appears whenever the daemon ' +
+          'or a window starts; this adds it at login before either has run.';
 
   // Staging runs in Go and outlives this modal, so the button follows
   // the same progress events the banner does rather than any local
@@ -323,11 +374,14 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   const updateBtn = updateButtonState(updateInfo, isMac);
 
   function runUpdate() {
-    if (updateBtn.action === 'restart') {
+    if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
       // Shared with the banner: confirm overlay + re-entrancy guard +
       // the daemon-restart flag live there, and applying is exactly as
       // destructive from here as it is from the banner.
-      void applyUpdateAndRestart(updateInfo?.latest || '');
+      void applyUpdateAndRestart(
+        updateInfo?.latest || '',
+        updateBtn.action === 'reload' ? 'gui' : 'full',
+      );
       return;
     }
     if (updateBtn.action === 'start') {
@@ -625,6 +679,37 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           {overridesError}
         </p>
       </div>
+
+      {/* The menu bar is macOS-only and starts itself whenever hived or
+          a window does, so this section is about ONE thing: whether
+          launchd should start it at login too. Unsigned builds cannot
+          register a login item, and the error says so rather than the
+          toggle springing silently back. */}
+      {isMac && menuBarStatus !== 'unsupported' && (
+        <section id="settings-menubar">
+          <h4>Menu bar</h4>
+          <p className="settings-hint">
+            The Hive menu bar shows the daemon's version and sessions, and keeps
+            working when every window is closed. It starts on its own whenever
+            Hive does.
+          </p>
+          <div className="settings-field">
+            <Button
+              id="settings-menubar-login-item"
+              label={
+                menuBarStatus === 'enabled'
+                  ? 'Stop starting at login'
+                  : 'Start at login'
+              }
+              disabled={menuBarBusy}
+              onClick={toggleMenuBarLoginItem}
+            />
+          </div>
+          <p id="settings-menubar-hint" className="settings-hint">
+            {menuBarHint}
+          </p>
+        </section>
+      )}
 
       {/* Updates sits outside the scrolling part of the body, at its
           natural height: a dozen custom agents must never push the

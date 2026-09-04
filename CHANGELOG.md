@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+**Reload GUI** — pick up a new GUI build without restarting the daemon.
+Every running shell and agent keeps going, with its scrollback intact.
+Available from **File ▸ Reload GUI**, the command palette, and the
+menu bar. Hive decides whether a restart is really needed by comparing
+the two builds' *daemon contract*: only a change the daemon actually
+exposes costs you a full restart now, so a frontend-only build no
+longer kills your sessions. The stale-daemon banner follows the same
+rule, and no longer nags about a daemon that is simply a different
+build of the same behaviour.
+- Hive now has a macOS menu-bar icon. It shows the running daemon's
+  version, how many sessions are open across which projects, and which
+  ones are waiting on you — and it keeps working when every window is
+  closed. Click a session to jump straight to it (Hive opens if it
+  isn't running), or use it to reload the GUI, restart the daemon, or
+  check for updates. Settings gains a "Start at login" toggle for it,
+  which needs a signed build; until then the menu bar appears whenever
+  the daemon or a window starts.
+
+### Changed
+- Sessions that ring the terminal bell are now tracked by the daemon
+  rather than by each window on its own. Every window agrees on which
+  sessions want you, a window that was closed or reloaded still learns
+  what rang while it was away, and focusing a session clears the flag
+  everywhere at once.
+**File ▸ Restart Hive…** is now **Restart Daemon… (ends all sessions)**.
+It sits next to the new Reload GUI item, which looks similar and costs
+nothing, so the destructive one names its cost.
+The update button now says what applying it will cost. A GUI-only
+update reads **Reload** and applies without a confirmation prompt,
+because it ends nothing; one that replaces the daemon reads **Restart**
+and still warns first. Hive tells them apart by asking the staged
+build's daemon for its contract before you commit to anything.
 
 ## [2.5.0] — 2026-09-03
 

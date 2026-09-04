@@ -26,6 +26,7 @@ export {
   RestoreSession,
   ListClosedSessions,
   UpdateSession,
+  SetSessionAttention,
   ListAgents,
   ListCustomAgents,
   SaveCustomAgents,
@@ -47,6 +48,8 @@ export {
   Notify,
   Confirm,
   RestartDaemon,
+  ReloadGUI,
+  RequestReloadAllGUIs,
   CheckForUpdate,
   UpdateStatus,
   StartUpdate,
@@ -57,6 +60,8 @@ export {
   SetClipboardText,
   LogFrontend,
   SetDebugTrace,
+  MenuBarLoginItemStatus,
+  SetMenuBarLoginItem,
 } from '../wailsjs/go/main/App';
 export {
   EventsOn,

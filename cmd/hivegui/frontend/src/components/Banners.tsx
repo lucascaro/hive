@@ -39,6 +39,11 @@ export function Banners(): ReactNode {
         kind="error"
         id="daemon-banner"
         data={banners.daemon}
+        // Only Restart. The daemon banner is raised solely for states
+        // the user must act on, and the only such state ends every
+        // session — a compatible daemon on a different build is
+        // reported by the sidebar footer, not here. Reload GUI lives
+        // on the File menu, the command palette and the update flow.
         actions={[
           { id: 'restart', label: 'Restart Hive', onClick: restartHive },
         ]}
