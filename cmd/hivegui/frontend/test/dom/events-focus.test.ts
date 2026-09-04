@@ -8,6 +8,7 @@
 // This test drives the real handler through a real DOM 'focus' event
 // so any missed deps.* substitution in that path throws here.
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import * as bridge from '../../src/bridge.js';
 import { createScrollTrace } from '../../src/lib/scroll-debug.js';
 import * as store from '../../src/store/store.js';
 
@@ -27,6 +28,7 @@ vi.mock('../../src/bridge.js', () => {
     CreateSession: fn(),
     DuplicateSession: fn(),
     KillSession: fn(),
+    SetSessionAttention: fn(),
     RestartSession: fn(),
     UpdateSession: fn(),
     ListAgents: fn(),
@@ -89,5 +91,96 @@ describe('wireDaemonEvents window-focus handler', () => {
 
     expect(refocusActiveTerm).toHaveBeenCalledTimes(1);
     expect(state.attention.has('sess-1')).toBe(false);
+  });
+});
+
+// Attention now lives on the daemon, so clearing it locally is only
+// half the job: another window, and the menu bar, are still showing
+// the flag until the daemon is told.
+describe('attention is reported to the daemon', () => {
+  it('tells the daemon when the window focus clears a session', () => {
+    const setAttention = vi.mocked(bridge.SetSessionAttention);
+    setAttention.mockClear();
+
+    state.activeId = 'sess-2';
+    store.addAttention('sess-2');
+    window.dispatchEvent(new Event('focus'));
+
+    expect(setAttention).toHaveBeenCalledWith('sess-2', false);
+  });
+
+  // The local copy can be behind — another window may have seen the
+  // bell first. Clearing only when this window happened to know about
+  // it would strand the flag everywhere else.
+  it('reports the clear even when this window never saw the bell', () => {
+    const setAttention = vi.mocked(bridge.SetSessionAttention);
+    setAttention.mockClear();
+
+    state.activeId = 'sess-3';
+    // deliberately no addAttention
+    window.dispatchEvent(new Event('focus'));
+
+    expect(setAttention).toHaveBeenCalledWith('sess-3', false);
+  });
+});
+
+// The daemon is the source of truth. A window that was closed, never
+// attached, or has just reloaded learns what rang from the snapshot and
+// the attention event — the local xterm BEL path can only ever see the
+// sessions this window has open.
+describe('attention arrives from the daemon', () => {
+  function emit(event: string, payload: unknown) {
+    for (const call of vi.mocked(bridge.EventsOn).mock.calls) {
+      if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+    }
+  }
+
+  it('seeds the set from the session snapshot', () => {
+    emit(
+      'session:list',
+      JSON.stringify({
+        sessions: [
+          { id: 'a', needs_attention: true },
+          { id: 'b' },
+          { id: 'c', needs_attention: true },
+        ],
+      }),
+    );
+
+    expect(state.attention.has('a')).toBe(true);
+    expect(state.attention.has('b')).toBe(false);
+    expect(state.attention.has('c')).toBe(true);
+  });
+
+  it('follows the attention event in both directions', () => {
+    emit(
+      'session:list',
+      JSON.stringify({ sessions: [{ id: 'a' }, { id: 'b' }] }),
+    );
+    expect(state.attention.has('a')).toBe(false);
+
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'attention',
+        session: { id: 'a', needs_attention: true },
+      }),
+    );
+    expect(state.attention.has('a')).toBe(true);
+
+    // Another client reported that the user looked.
+    emit(
+      'session:event',
+      JSON.stringify({ kind: 'attention', session: { id: 'a' } }),
+    );
+    expect(state.attention.has('a')).toBe(false);
+  });
+
+  // A snapshot is authoritative: a flag the daemon no longer reports
+  // must not survive in this window's copy.
+  it('drops a stale local flag on the next snapshot', () => {
+    store.addAttention('a');
+    emit('session:list', JSON.stringify({ sessions: [{ id: 'a' }] }));
+    expect(state.attention.has('a')).toBe(false);
   });
 });

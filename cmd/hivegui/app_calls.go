@@ -432,6 +432,27 @@ func (a *App) UpdateSession(id, name, color string, order int) error {
 	return cs.WriteJSON(wire.FrameUpdateSession, req)
 }
 
+// SetSessionAttention tells the daemon whether a session still wants
+// the user's attention. The GUI calls it with false when the user
+// focuses a session — the daemon sets the flag from the terminal bell,
+// but only a client knows the user has actually looked.
+//
+// Its own binding rather than another positional argument on
+// UpdateSession: everything that one carries is persisted state
+// broadcast as "updated", and this is neither. The daemon routes the
+// two apart for that reason, and a shared entry point would invite
+// them back together.
+func (a *App) SetSessionAttention(id string, want bool) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameUpdateSession, wire.UpdateSessionReq{
+		SessionID:      id,
+		NeedsAttention: &want,
+	})
+}
+
 func (a *App) requireControl() (*wire.Client, error) {
 	a.mu.Lock()
 	cs := a.control

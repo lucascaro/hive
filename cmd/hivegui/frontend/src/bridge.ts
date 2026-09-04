@@ -26,6 +26,7 @@ export {
   RestoreSession,
   ListClosedSessions,
   UpdateSession,
+  SetSessionAttention,
   ListAgents,
   ListCustomAgents,
   SaveCustomAgents,
