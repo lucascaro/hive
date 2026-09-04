@@ -4,7 +4,7 @@
 - **Spec:** [docs/product-specs/329-react-ify-sessionterms-tile-chrome.md](../../product-specs/329-react-ify-sessionterms-tile-chrome.md)
 - **Issue:** —
 - **Branch:** `feature/329-tile-chrome-phase2`
-- **PR:** —
+- **PR:** [#334](https://github.com/lucascaro/hive/pull/334)
 - **Status:** active
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
