@@ -336,6 +336,17 @@ Shell: `scripts/testdata/` fixtures driving `check-daemon-contract.sh`.
 - **2026-09-03** — `PROTOCOL_VERSION` still not bumped despite four new frames
   and two new fields. Why: all additive, and the daemon's strict HELLO check
   makes a bump actively harmful (see Research).
+- **2026-09-03** — The menu is a FIXED pool of items, created once and only
+  ever retitled, shown or hidden. Why: `systray.AddMenuItem` appends, so
+  rebuilding the dynamic half re-added it below the static footer and the
+  menu visibly reordered itself — and the daemon emits a `title` event per
+  shell prompt redraw, so that happened many times a second. The project
+  name moved onto each row because a submenu tree cannot be a fixed pool
+  without one pool per project.
+- **2026-09-03** — hivebar coalesces publishes on a 400ms trailing window,
+  copying `internal/session`'s title throttle. Why: same cause as above —
+  nothing in a menu is worth showing at a child process's redraw rate — and
+  a trailing window means the final state of a burst still lands.
 - **2026-09-03** — `SMAppService` registration verified working on an
   ad-hoc-signed bundle, contradicting the pre-implementation research. Why it
   matters: the toggle was designed around an expected failure, and the code
@@ -366,6 +377,12 @@ Shell: `scripts/testdata/` fixtures driving `check-daemon-contract.sh`.
   confirmed the icon and menu render correctly.
 - **2026-09-03** — Phase 5 landed: `scripts/check-daemon-contract.sh`, its
   six-case self-test, and the `daemon-contract` CI job.
+- **2026-09-03** — Rebased onto `origin/main` after v2.5.0 shipped; one
+  conflict in `events.ts` where main had narrowed the closing-phase check,
+  resolved in main's favour.
+- **2026-09-03** — Operator reported the menu bar reordering itself on every
+  daemon event. Root-caused and fixed (see the decision log); operator
+  confirmed it holds still.
 
 ## Open questions
 
