@@ -1,0 +1,51 @@
+# Builds site/ and deploys it to GitHub Pages.
+#
+# Triggered by the `changesets` workflow finishing on main rather than by
+# `push`: the regenerate-generated job pushes CHANGELOG.md with `[skip ci]`,
+# which suppresses push-triggered workflows, so a push trigger would never
+# see the fresh changelog. `changesets` runs on every push to main, so
+# listening to its completion covers site edits too.
+name: pages
+
+on:
+  workflow_run:
+    workflows: [changesets]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
