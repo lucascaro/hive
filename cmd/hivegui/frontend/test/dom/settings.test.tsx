@@ -48,13 +48,27 @@ const updateBridge = {
   OpenURL: vi.fn(() => Promise.resolve()),
 };
 
+// Both are read at render time, so a getter-backed `let` is enough to
+// drive them per test — `isMac` is a module const, not a call.
+let menuBarStatus = 'unsupported';
+let onMac = false;
+const setMenuBarLoginItem = vi.fn(() => Promise.resolve());
+
+vi.mock('../../src/lib/platform.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/lib/platform.js')>()),
+  get isMac() {
+    return onMac;
+  },
+}));
+
 vi.mock('../../src/bridge.js', () => ({
   ListCustomAgents: (...a: Parameters<typeof listCustomAgents>) =>
     listCustomAgents(...a),
   SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
     saveCustomAgents(...a),
-  MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
-  SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
+  MenuBarLoginItemStatus: () => Promise.resolve(menuBarStatus),
+  SetMenuBarLoginItem: (...a: Parameters<typeof setMenuBarLoginItem>) =>
+    setMenuBarLoginItem(...a),
   ...updateBridge,
 }));
 
@@ -111,6 +125,9 @@ beforeEach(() => {
   saveCustomAgents.mockReset().mockResolvedValue(undefined);
   refocusActiveTerm.mockReset();
   setFocusedTile.mockReset();
+  setMenuBarLoginItem.mockReset().mockResolvedValue(undefined);
+  menuBarStatus = 'unsupported';
+  onMac = false;
   resetStore();
   render(<Settings root={el('settings')} />, { container: el('settings') });
 });
@@ -596,5 +613,205 @@ describe('theme preset picker grouping', () => {
     const rendered = [...select.querySelectorAll('option')].map((o) => o.value);
     expect(rendered).toEqual([...new Set(rendered)]);
     expect(rendered.length).toBeGreaterThan(1);
+  });
+});
+
+// ---------- tabs ----------
+//
+// Every panel stays mounted; only its visibility changes. jsdom applies
+// no stylesheet, so `display: none` is not observable here — the
+// assertions read the `hidden` class and the `hidden` attribute, which
+// are what settings.css keys off. The e2e suite covers the rendered
+// consequence (Tab never reaching a hidden panel's controls).
+describe('settings tabs', () => {
+  const panel = (id: string) => el(`settings-panel-${id}`);
+  const tab = (id: string) => el<HTMLButtonElement>(`settings-tab-${id}`);
+
+  it('opens on the Agents tab with the other panels hidden', () => {
+    open();
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+    expect(panel('agents').classList.contains('hidden')).toBe(false);
+    expect(panel('appearance').classList.contains('hidden')).toBe(true);
+    expect(panel('updates').classList.contains('hidden')).toBe(true);
+  });
+
+  it('clicking a tab swaps which panel is visible', () => {
+    open();
+    click(tab('updates'));
+    expect(panel('updates').classList.contains('hidden')).toBe(false);
+    expect(panel('agents').classList.contains('hidden')).toBe(true);
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    expect(tab('agents').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('arrow keys move selection and wrap around the strip', () => {
+    open();
+    tab('agents').focus();
+    fireEvent.keyDown(tab('agents'), { key: 'ArrowLeft' });
+    // Wrapped backwards past Agents to the last tab.
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('updates'), { key: 'ArrowRight' });
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('agents'), { key: 'End' });
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('updates'), { key: 'Home' });
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('moves focus with the selection so the roving tabindex is followable', () => {
+    open();
+    tab('agents').focus();
+    fireEvent.keyDown(tab('agents'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('appearance'));
+    expect(tab('appearance').tabIndex).toBe(0);
+    expect(tab('agents').tabIndex).toBe(-1);
+  });
+
+  // The spec promises the whole edit survives a switch, not just the
+  // list: Appearance holds a select and a debounced textarea, and both
+  // live in a panel that is hidden rather than unmounted. Covering only
+  // the agent draft would leave the two controls whose state is easiest
+  // to lose untested.
+  it('keeps the theme choice and token overrides across a tab round-trip', async () => {
+    open();
+    await flush();
+    click(el('settings-tab-appearance'));
+
+    const theme = el<HTMLSelectElement>('settings-theme');
+    // Whatever the second preset is — the point is a value that is not
+    // the mount default, not which preset it happens to be.
+    const picked = [...theme.querySelectorAll('option')][1].value;
+    fireEvent.change(theme, { target: { value: picked } });
+    type(el<HTMLTextAreaElement>('settings-overrides'), '--accent: #123456;');
+
+    click(el('settings-tab-agents'));
+    click(el('settings-tab-updates'));
+    click(el('settings-tab-appearance'));
+
+    expect(el<HTMLSelectElement>('settings-theme').value).toBe(picked);
+    expect(el<HTMLTextAreaElement>('settings-overrides').value).toBe(
+      '--accent: #123456;',
+    );
+  });
+
+  it('keeps an in-progress agent draft across a tab round-trip', async () => {
+    open();
+    await flush();
+    click(el('settings-agent-add'));
+    type(cell(rows()[0], '.settings-agent-name'), 'Roundtrip');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'roundtrip --x');
+
+    click(tab('appearance'));
+    click(tab('agents'));
+
+    expect(cell(rows()[0], '.settings-agent-name').value).toBe('Roundtrip');
+    expect(cell(rows()[0], '.settings-agent-cmd').value).toBe('roundtrip --x');
+  });
+
+  // The root Enter handler excludes buttons so Cancel cannot close AND
+  // save on one keystroke; a tab button is the same case.
+  it('does not save when Enter activates a tab', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(tab('updates'), { key: 'Enter' });
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+  });
+
+  // The slot is the dialog's only error surface, and half its errors come
+  // from the Updates section. Inside a panel it would render invisibly
+  // whenever another tab is up.
+  it('keeps the error slot outside every panel', () => {
+    open();
+    expect(el('settings-error').closest('.settings-panel')).toBeNull();
+  });
+});
+
+// ---------- the menu-bar tab ----------
+//
+// The section this replaced was rendered behind `isMac && status !==
+// 'unsupported'`; the tab carries the same guard, so on every other
+// platform the strip is the three portable tabs and the panel does not
+// exist at all — not a tab that opens onto an explanation of why it is
+// empty.
+describe('settings menu-bar tab', () => {
+  const tabIds = () =>
+    [...document.querySelectorAll('#settings-tabs [role="tab"]')].map(
+      (t) => t.id,
+    );
+
+  it('is absent when the platform is not a Mac', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = false;
+    open();
+    await flush();
+    expect(tabIds()).toEqual([
+      'settings-tab-agents',
+      'settings-tab-appearance',
+      'settings-tab-updates',
+    ]);
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+  });
+
+  it('is absent on a Mac that cannot register a login item', async () => {
+    menuBarStatus = 'unsupported';
+    onMac = true;
+    open();
+    await flush();
+    expect(tabIds()).not.toContain('settings-tab-menubar');
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+  });
+
+  it('appears between Appearance and Updates and owns the toggle', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    expect(tabIds()).toEqual([
+      'settings-tab-agents',
+      'settings-tab-appearance',
+      'settings-tab-menubar',
+      'settings-tab-updates',
+    ]);
+
+    click(el('settings-tab-menubar'));
+    expect(el('settings-panel-menubar').classList.contains('hidden')).toBe(
+      false,
+    );
+    const toggle = el<HTMLButtonElement>('settings-menubar-login-item');
+    expect(toggle.textContent).toContain('Start at login');
+    expect(el('settings-panel-menubar').contains(toggle)).toBe(true);
+
+    click(toggle);
+    await flush();
+    expect(setMenuBarLoginItem).toHaveBeenCalledWith(true);
+  });
+
+  // The toggle re-reads the status, and "unsupported" is Go's default:
+  // branch — so an unexpected status code can take the tab away while it
+  // is the selected one. Without the activeTab clamp the body renders a
+  // strip with nothing selected, no visible panel, and dead arrow keys.
+  it('falls back to Agents if the tab leaves the strip while selected', async () => {
+    menuBarStatus = 'not-registered';
+    onMac = true;
+    open();
+    await flush();
+    click(el('settings-tab-menubar'));
+    expect(el('settings-panel-menubar').classList.contains('hidden')).toBe(
+      false,
+    );
+
+    // The next status read is the one the toggle makes.
+    menuBarStatus = 'unsupported';
+    click(el('settings-menubar-login-item'));
+    await flush();
+
+    expect(document.getElementById('settings-tab-menubar')).toBeNull();
+    expect(document.getElementById('settings-panel-menubar')).toBeNull();
+    expect(el('settings-tab-agents').getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(el('settings-panel-agents').classList.contains('hidden')).toBe(
+      false,
+    );
   });
 });

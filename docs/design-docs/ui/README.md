@@ -37,6 +37,7 @@ As of v2.4.0 `style.css` was 2159 lines with one custom property, 51 distinct he
 | Sidebar row | compact / two-line / grouped cards | **Two-line rows inside project cards**; subtitle = window title | [sidebar-structure.html](mocks/sidebar-structure.html) |
 | Iconography | geometric dots / SVG line set / mono glyphs | **SVG line set** for everything; **geometric shapes** for states | [state-icons.html](mocks/state-icons.html) |
 | Enforcement | docs / docs+lint / docs+lint+components | **Docs + lint + component layer** | — |
+| Settings layout (2026-09-03) | one scroll with Updates pinned / tabbed sections / left rail | **Tabbed sections** — `Tabs` primitive, panels all mounted with the inactive ones `display: none` | — (no mock; one sane layout) |
 
 ## How to change the UI from now on
 

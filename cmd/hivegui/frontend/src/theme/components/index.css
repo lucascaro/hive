@@ -17,6 +17,7 @@
 @import './session-row.css';
 @import './tile-header.css';
 @import './launcher-item.css';
+@import './tabs.css';
 
 /* Surfaces: one file per screen, composed from the primitives above. */
 @import './sidebar.css';

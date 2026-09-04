@@ -28,7 +28,7 @@ test('⌘, opens settings, Esc closes it, typing reaches the terminal again', as
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
   await expect(page.locator('#settings')).toBeVisible();
-  await expect(page.locator('#settings')).toContainText('Custom agents');
+  await expect(page.locator('#settings-tabs')).toContainText('Agents');
 
   await page.keyboard.press('Escape');
   await expect(page.locator('#settings')).toBeHidden();
@@ -229,11 +229,13 @@ test('cancel discards edits', async ({ page }) => {
   await expect(page.locator('.settings-agent-row')).toHaveCount(0);
 });
 
-// The Updates section shares the panel with a scrolling agent list.
-// jsdom cannot tell whether it is actually on screen, so this runs in a
-// real browser: the channel control must be visible and clickable even
-// with enough agents to overflow the list above it.
-test('the Updates section stays reachable under a long agent list', async ({
+// Updates used to be pinned below a scrolling agent list so a long list
+// could not push it off screen; it is its own tab now, and the tab is
+// what holds that invariant. jsdom cannot tell whether a control is
+// actually on screen, so this stays in a real browser: with enough
+// agents to overflow the list, the channel control must still be
+// visible and hittable one tab click away.
+test('the Updates tab shows the channel picker under a long agent list', async ({
   page,
 }) => {
   await boot(page);
@@ -242,6 +244,7 @@ test('the Updates section stays reachable under a long agent list', async ({
 
   for (let i = 0; i < 12; i++) await addAgent(page, `Agent ${i}`, `cmd${i}`);
 
+  await page.locator('#settings-tab-updates').click();
   const channel = page.locator('#settings-update-channel');
   await expect(channel).toBeVisible();
 
@@ -270,6 +273,7 @@ test('choosing the latest channel reveals the source-repo row', async ({
 }) => {
   await boot(page);
   await page.keyboard.press(`${mod}+,`);
+  await page.locator('#settings-tab-updates').click();
   await expect(page.locator('#settings-source-repo-row')).toBeHidden();
 
   await page.locator('#settings-update-channel').selectOption('latest');
@@ -279,7 +283,9 @@ test('choosing the latest channel reveals the source-repo row', async ({
 
 // Appearance is a preference; the agent list is what people open
 // Settings to edit. Putting Appearance first pushed the list off-screen
-// on open, which is the one thing this dialog must not do.
+// on open, which is the one thing this dialog must not do — which is
+// why Agents is the tab Settings opens on, and why this assertion still
+// means what it meant before the split.
 test('the agent list is on screen the moment Settings opens', async ({
   page,
 }) => {
@@ -315,6 +321,9 @@ test('a rejected save renders as an error, not as another hint', async ({
 
   const err = page.locator('#settings-error');
   await expect(err).toBeVisible();
+  // Outside the tab panels, so it is still on screen from any tab.
+  await page.locator('#settings-tab-updates').click();
+  await expect(err).toBeVisible();
   const [errColor, hintColor] = await Promise.all([
     err.evaluate((el) => getComputedStyle(el).color),
     page
@@ -323,4 +332,130 @@ test('a rejected save renders as an error, not as another hint', async ({
       .evaluate((el) => getComputedStyle(el).color),
   ]);
   expect(errColor).not.toBe(hintColor);
+});
+
+// ---------- tabs ----------
+
+test('Settings opens on Agents and the tabs swap panels', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  await expect(page.locator('#settings-tab-agents')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('#settings-panel-agents')).toBeVisible();
+  await expect(page.locator('#settings-panel-appearance')).toBeHidden();
+  await expect(page.locator('#settings-panel-updates')).toBeHidden();
+
+  await page.locator('#settings-tab-updates').click();
+  await expect(page.locator('#settings-panel-updates')).toBeVisible();
+  await expect(page.locator('#settings-panel-agents')).toBeHidden();
+  await expect(page.locator('#settings-tab-updates')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+// Arrows are grid navigation everywhere else in the app; inside the
+// strip they are the ARIA tabs pattern, and keyboard.ts's modal branch
+// has to keep letting them through to the focused element.
+test('arrow keys walk the tab strip and wrap', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await page.locator('#settings-tab-agents').focus();
+
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#settings-panel-appearance')).toBeVisible();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft'); // wraps past Agents to Updates
+  await expect(page.locator('#settings-panel-updates')).toBeVisible();
+
+  // Roving tabindex: focus follows selection, or the keyboard user is
+  // stranded on a tab that is no longer tabbable.
+  await expect(page.locator('#settings-tab-updates')).toBeFocused();
+
+  // The grid must not have moved behind the backdrop.
+  await expect(page.locator('#terms')).not.toHaveClass(/grid/);
+});
+
+// The whole point of keeping every panel mounted: a switch must not cost
+// the user an edit, and Save must still see it.
+test('an unsaved agent survives a tab round-trip and still saves', async ({
+  page,
+}) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await addAgent(page, 'Roundtrip', 'roundtrip --x');
+
+  await page.locator('#settings-tab-appearance').click();
+  await page.locator('#settings-tab-updates').click();
+  await page.locator('#settings-tab-agents').click();
+
+  const row = page.locator('.settings-agent-row').first();
+  await expect(row.locator('.settings-agent-name')).toHaveValue('Roundtrip');
+  await expect(row.locator('.settings-agent-cmd')).toHaveValue('roundtrip --x');
+
+  await page.locator('#settings-save').click();
+  await expect(page.locator('#settings')).toBeHidden();
+  await page.keyboard.press(`${mod}+,`);
+  await expect(
+    page.locator('.settings-agent-row').first().locator('.settings-agent-name'),
+  ).toHaveValue('Roundtrip');
+});
+
+// display:none is what keeps a hidden panel's controls out of the tab
+// order. If that ever regresses, Tab lands on an invisible field and the
+// dialog looks like it swallowed the keyboard.
+test('Tab never reaches a control in a hidden panel', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await page.locator('#settings-tab-agents').focus();
+
+  for (let i = 0; i < 14; i++) {
+    await page.keyboard.press('Tab');
+    const landed = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      const settings = document.getElementById('settings');
+      if (!settings || !el) throw new Error('#settings or focus missing');
+      const hiddenPanel = el.closest('.settings-panel.hidden');
+      return { inside: settings.contains(el), inHidden: !!hiddenPanel };
+    });
+    expect(landed.inside).toBe(true);
+    expect(landed.inHidden).toBe(false);
+  }
+});
+
+// The menu-bar tab is macOS-only: the wails mock reports a real login-item
+// status, but `isMac` still decides, so the strip is three tabs on Linux
+// CI and four on a Mac. Asserting the platform-correct shape in one test
+// keeps it honest on both legs.
+test('the menu-bar tab is present only on macOS', async ({ page }) => {
+  await boot(page);
+  await page.keyboard.press(`${mod}+,`);
+  await expect(page.locator('#settings')).toBeVisible();
+
+  const menuBarTab = page.locator('#settings-tab-menubar');
+  if (process.platform !== 'darwin') {
+    await expect(menuBarTab).toHaveCount(0);
+    await expect(page.locator('#settings-panel-menubar')).toHaveCount(0);
+    return;
+  }
+
+  await expect(menuBarTab).toBeVisible();
+  await menuBarTab.click();
+  const toggle = page.locator('#settings-menubar-login-item');
+  await expect(toggle).toBeVisible();
+  // Reachable, not merely rendered: the whole point of the split is that
+  // no other section can push it out from under the pointer.
+  const onTop = await toggle.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.x + r.width / 2,
+      r.y + r.height / 2,
+    );
+    return el.contains(hit) || el === hit;
+  });
+  expect(onTop).toBe(true);
 });

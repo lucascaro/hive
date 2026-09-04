@@ -1,4 +1,11 @@
-// ---------- settings (appearance + custom agents + updates) ----------
+// ---------- settings (custom agents + appearance + updates) ----------
+//
+// The body is three tabbed panels. All three stay mounted and the
+// inactive ones are hidden: that is what keeps the agent draft, the
+// theme state, the update:progress subscription and the source-repo
+// debounce alive across a switch, and `display: none` takes their
+// controls out of the tab order for free. The error slot deliberately
+// sits OUTSIDE the panels — see #settings-error below.
 //
 // React port of src/app/modals/settings.ts. The ids the keyboard
 // pipeline and the e2e specs key off are set explicitly here and are
@@ -61,12 +68,26 @@ import { applyXtermTheme } from '../../app/session-term.js';
 import { closeSettings, splitCommand } from '../../app/modals/settings.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
+import { Tabs } from '../Tabs.js';
 import { IconButton } from '../IconButton.js';
 import { ModalShell } from './ModalShell.js';
 // Type-only, so the generated module is erased before Vite resolves it.
 import type { main } from '../../../wailsjs/go/models';
 
 const DEFAULT_COLOR = '#64748b';
+
+type TabId = 'agents' | 'appearance' | 'menubar' | 'updates';
+// Menu bar is macOS-only and needs a login item the build can actually
+// register, so its tab is absent — not disabled — everywhere else, which
+// is what the section it replaced did with the same guard.
+function tabsFor(showMenuBar: boolean): { id: TabId; label: string }[] {
+  return [
+    { id: 'agents', label: 'Agents' },
+    { id: 'appearance', label: 'Appearance' },
+    ...(showMenuBar ? [{ id: 'menubar' as TabId, label: 'Menu bar' }] : []),
+    { id: 'updates', label: 'Updates' },
+  ];
+}
 
 // Applying overrides is not free: a style invalidation, then a
 // getComputedStyle and a palette rebuild on EVERY live terminal, then a
@@ -129,6 +150,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // imperative version got this for free — renderUpdateAction reassigned
   // .disabled on every event.
   const [updateBusy, setUpdateBusy] = useState(false);
+  // Always opens on Agents: it is the section people open Settings to
+  // edit, and the one that grows. Deliberately not persisted.
+  const [tab, setTab] = useState<TabId>('agents');
 
   // Menu-bar login item. Status is re-read on open rather than tracked
   // while the modal is closed: the user can add or remove the login
@@ -192,7 +216,6 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
     [],
   );
 
-  const errorRef = useRef<HTMLParagraphElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   // The row index whose delete button took the last click. render()
   // destroyed the button that had focus, dropping it to <body> — from
@@ -272,17 +295,6 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   function showError(msg: string) {
     setError(msg);
   }
-
-  // The slot lives in the scrolling region, so a save rejected after the
-  // user scrolled down would otherwise land off-screen and read as "the
-  // button did nothing". It has to run AFTER the commit that un-hides the
-  // slot: `.hv-field-error.hidden` is `display: none`, and scrolling to a
-  // hidden element is a no-op — which is what a microtask scheduled from
-  // showError() got, on exactly the async-rejection path this exists for.
-  // Optional call: jsdom has no layout.
-  useLayoutEffect(() => {
-    if (error) errorRef.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [error]);
 
   // ---------- appearance ----------
 
@@ -372,6 +384,18 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   }
 
   const updateBtn = updateButtonState(updateInfo, isMac);
+
+  // MenuBarLoginItemStatus resolves after mount, so the strip gains its
+  // fourth tab once the answer arrives — and toggleMenuBarLoginItem
+  // re-reads the status after every toggle, so the tab can leave the
+  // strip too. "unsupported" is Go's default: branch (loginitem_darwin.go),
+  // not just macOS 12 and earlier, so an unexpected status code is enough
+  // to lose the tab under the user mid-session. activeTab is what keeps
+  // that from rendering as a strip with no selected tab, no visible panel,
+  // and — because Tabs resolves the active id by index — dead arrow keys.
+  const showMenuBar = isMac && menuBarStatus !== 'unsupported';
+  const tabs = tabsFor(showMenuBar);
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : 'agents';
 
   function runUpdate() {
     if (updateBtn.action === 'restart' || updateBtn.action === 'reload') {
@@ -486,10 +510,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
   // the hint was inaccurate the moment it was added: Enter did nothing
   // from the selects or the panel itself.
   //
-  // On the root element, not on a wrapper: #settings-scroll and
-  // #settings-updates must stay direct children of .hv-dialog__body
-  // (settings.css pins Updates below the scrolling region), so this
-  // subtree has no element of its own to hang a React handler on.
+  // On the root element, not on a wrapper: the body's children are the
+  // tab strip, one panel per tab and the error slot, so there is no
+  // single element covering the fields to hang a React handler on.
   // Re-attached each render so it closes over the current draft.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -532,13 +555,16 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         </>
       }
     >
-      {/* Everything above Updates scrolls together. Agents first: it is
-          the section people open Settings to edit, and it is the only one
-          that grows — putting Appearance above it pushed the list
-          off-screen on open for anyone with more than a couple of
-          agents. */}
-      <div id="settings-scroll">
-        <h4>Custom agents</h4>
+      <Tabs
+        id="settings"
+        label="Settings sections"
+        tabs={tabs}
+        active={activeTab}
+        onChange={setTab}
+      />
+      <Panel tab="agents" active={activeTab}>
+        {/* No <h4>: the selected tab is this section's heading, and the
+            panel is aria-labelledby it. */}
         <p className="settings-hint">
           Define your own tools — a command and its arguments. They appear in
           the new-session menu alongside the built-ins.
@@ -603,20 +629,9 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           disabled={!editingEnabled}
           onClick={addAgentRow}
         />
-        <p
-          id="settings-error"
-          ref={errorRef}
-          role="alert"
-          className={
-            error
-              ? 'hv-field-error settings-error'
-              : 'hv-field-error settings-error hidden'
-          }
-        >
-          {error}
-        </p>
+      </Panel>
 
-        <h4>Appearance</h4>
+      <Panel tab="appearance" active={activeTab}>
         <p className="settings-hint">
           Applies as you change it, and is remembered. Cancel does not undo it.
         </p>
@@ -678,16 +693,17 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
         >
           {overridesError}
         </p>
-      </div>
+      </Panel>
 
-      {/* The menu bar is macOS-only and starts itself whenever hived or
-          a window does, so this section is about ONE thing: whether
-          launchd should start it at login too. Unsigned builds cannot
-          register a login item, and the error says so rather than the
-          toggle springing silently back. */}
-      {isMac && menuBarStatus !== 'unsupported' && (
-        <section id="settings-menubar">
-          <h4>Menu bar</h4>
+      {showMenuBar ? (
+        <Panel tab="menubar" active={activeTab}>
+          {/* The menu bar is macOS-only and starts itself whenever hived or
+            a window does, so this tab is about ONE thing: whether launchd
+            should start it at login too. Unsigned builds cannot register
+            a login item, and the error says so rather than the toggle
+            springing silently back. The tab itself is absent wherever the
+            section would have been (see TABS below), so this panel only
+            ever renders on a Mac that supports the login item. */}
           <p className="settings-hint">
             The Hive menu bar shows the daemon's version and sessions, and keeps
             working when every window is closed. It starts on its own whenever
@@ -708,14 +724,10 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
           <p id="settings-menubar-hint" className="settings-hint">
             {menuBarHint}
           </p>
-        </section>
-      )}
+        </Panel>
+      ) : null}
 
-      {/* Updates sits outside the scrolling part of the body, at its
-          natural height: a dozen custom agents must never push the
-          channel picker below the fold (test/e2e/settings.spec.ts). */}
-      <section id="settings-updates">
-        <h4>Updates</h4>
+      <Panel tab="updates" active={activeTab}>
         <p className="settings-hint">
           Hive checks for updates in the background. Nothing is downloaded or
           built until you press Update.
@@ -791,8 +803,54 @@ function SettingsDialog({ root }: { root: HTMLElement }): ReactNode {
             {updateBtn.status}
           </span>
         </div>
-      </section>
+      </Panel>
+
+      {/* Outside the panels on purpose. This is the slot for EVERY error
+          the dialog raises, and half of them come from the Updates
+          section (a rejected SaveUpdateSettings, a failed PickDirectory —
+          test/dom/settings-updates.test.tsx). Inside the agents panel it
+          would render invisibly whenever another tab is active. Being
+          outside the scrolling region is also why it no longer needs a
+          scrollIntoView to be seen. */}
+      <p
+        id="settings-error"
+        role="alert"
+        className={
+          error
+            ? 'hv-field-error settings-error'
+            : 'hv-field-error settings-error hidden'
+        }
+      >
+        {error}
+      </p>
     </ModalShell>
+  );
+}
+
+// A hidden panel is `display: none` (settings.css), which is what keeps
+// its controls out of the Tab order while its React state stays alive.
+// `role="tabpanel"` is not tabbable itself — every panel here contains
+// its own focusable controls, so the pattern's "make the panel tabbable
+// when it has none" case does not apply.
+function Panel({
+  tab,
+  active,
+  children,
+}: {
+  tab: TabId;
+  active: TabId;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <section
+      id={`settings-panel-${tab}`}
+      className={tab === active ? 'settings-panel' : 'settings-panel hidden'}
+      role="tabpanel"
+      aria-labelledby={`settings-tab-${tab}`}
+      hidden={tab !== active}
+    >
+      {children}
+    </section>
   );
 }
 

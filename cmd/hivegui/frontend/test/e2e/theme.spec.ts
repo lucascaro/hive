@@ -483,10 +483,14 @@ test('no Unicode glyph is used as a control label', async ({ page }) => {
 // repaints the app, that a bad override line is reported instead of
 // injected, and that a good one survives a reload.
 test.describe('Settings > Appearance', () => {
+  // Settings opens on the Agents tab; everything below lives on
+  // Appearance, so the tab click is part of "open appearance" now.
   async function openAppearance(page: Page) {
     await boot(page);
     await page.keyboard.press(`${mod}+,`);
     await expect(page.locator('#settings')).toBeVisible();
+    await page.locator('#settings-tab-appearance').click();
+    await expect(page.locator('#settings-panel-appearance')).toBeVisible();
   }
 
   test('picking a preset repaints the sidebar and is remembered', async ({
