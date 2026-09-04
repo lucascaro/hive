@@ -42,7 +42,14 @@ import (
 // recolours for the menu bar's appearance. Shipping a coloured icon
 // here is the classic way to end up invisible in dark mode.
 //
-//go:embed icon/hive-template.png
+// It lives in assets/ and not icon/ because the widely-used global
+// gitignore rule for macOS's `Icon\r` files is a bare `Icon`, and
+// macOS matches that case-insensitively against a directory named
+// `icon`. The file was then silently skipped by `git add -A` and
+// absent from `git status`, and the failure surfaced only as a CI
+// build error on the embed.
+//
+//go:embed assets/hive-template.png
 var iconTemplate []byte
 
 func main() {

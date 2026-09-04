@@ -83,4 +83,4 @@ have both binaries call it.
 | `menu.go` | model → systray items, click routing |
 | `actions.go` | launching the GUI, restarting the daemon, native confirms |
 | `singleton.go` | the flock that keeps one icon in the menu bar |
-| `icon/` | 22pt template PNG (black + alpha; macOS recolours it) |
+| `assets/` | 22pt template PNG (black + alpha; macOS recolours it) |
