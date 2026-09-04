@@ -485,6 +485,11 @@ const (
 	// CmdFocusSession asks the GUI to bring one session forward. Sent
 	// by hivebar, which has no window of its own.
 	CmdFocusSession = "focus_session"
+	// CmdCheckUpdate asks the GUI to run an update check. Also
+	// hivebar's: the GUI owns staging, verification and the bundle
+	// swap, and is the thing being replaced, so the menu bar delegates
+	// rather than duplicating any of it.
+	CmdCheckUpdate = "check_update"
 )
 
 // ClientCommands is the allowlist the daemon validates against. An
@@ -494,6 +499,7 @@ const (
 var ClientCommands = map[string]bool{
 	CmdReloadGUI:    true,
 	CmdFocusSession: true,
+	CmdCheckUpdate:  true,
 }
 
 // ---------- worktree management ----------

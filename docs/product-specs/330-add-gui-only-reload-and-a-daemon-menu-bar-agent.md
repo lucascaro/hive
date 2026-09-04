@@ -66,9 +66,10 @@ reload the GUI, restart the daemon, check for updates, open Hive, and quit.
 
 ## Non-goals
 
-- Code signing and notarization of the app bundle. `SMAppService` login-item
-  registration is shipped as an opt-in toggle that reports its real error;
-  making it succeed is a separate piece of work.
+- Code signing and notarization of the app bundle. `SMAppService`
+  login-item registration turns out to work on an ad-hoc-signed bundle
+  (verified against a real `build.sh` build), so signing is not a
+  prerequisite for this feature — it remains its own separate work.
 - A menu bar on Windows or Linux. The reload path itself is cross-platform.
 - Hot-reloading frontend assets without relaunching the process. The frontend
   is embedded in the `hivegui` binary, so new frontend code means a new

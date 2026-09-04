@@ -53,6 +53,13 @@ hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI clos
 
 Architectural invariants. Each one should ideally be enforceable by `gc-sweep` or a custom lint.
 
+- **`hivebar` is a client, like the GUI.** The menu-bar agent
+  (`cmd/hivebar/`, darwin only) may not open a PTY, import
+  `internal/session`, or write anything under `registry.StateDir()`
+  except its own lock file. Everything it knows arrives on one control
+  connection. It also never spawns `hived` on its own — only as the
+  explicit Restart Daemon action — so a menu bar cannot resurrect a
+  daemon the user just quit.
 - **A GUI reload never touches the daemon.** `App.ReloadGUI` relaunches the
   GUI process and leaves `hived` and every PTY it owns running; only
   `App.RestartDaemon` may send `FrameShutdown` or signal the daemon. Grep

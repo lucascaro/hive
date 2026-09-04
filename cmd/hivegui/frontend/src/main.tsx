@@ -77,6 +77,7 @@ import { mustEl } from './app/el.js';
 import {
   isDaemonRestarting,
   initBanners,
+  manualUpdateCheck,
   reloadGui,
   restartHive,
 } from './app/banners.js';
@@ -296,6 +297,7 @@ wireDaemonEvents({
   focusActiveTerm,
   refocusActiveTerm,
   isDaemonRestarting,
+  checkForUpdates: () => void manualUpdateCheck(),
   scrollTrace,
 });
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/lucascaro/hive/internal/agent"
 	"github.com/lucascaro/hive/internal/daemon"
+	"github.com/lucascaro/hive/internal/menubar"
 	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/session"
 )
@@ -59,6 +60,14 @@ func main() {
 	// only the agent ID, so every Revive/Restart re-resolves the
 	// command through agent.Get.
 	agent.SetCustomDir(stateDir)
+
+	// Start the menu-bar agent, if this platform and this install have
+	// one. hived owns this rather than only the GUI because the menu
+	// bar reports on the daemon: it should exist exactly as long as
+	// there is a daemon to report on, including when every window is
+	// closed. Best-effort and non-blocking; hivebar's own lock sorts
+	// out the race with hivegui doing the same thing.
+	menubar.Spawn()
 
 	if f, err := registry.OpenLogFile("hived.log"); err == nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))

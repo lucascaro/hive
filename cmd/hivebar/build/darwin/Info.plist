@@ -1,0 +1,33 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>Hive Menu Bar</string>
+        <key>CFBundleExecutable</key>
+        <string>hivebar</string>
+        <!-- Prefixed with the GUI's identifier so the two read as one
+             app to LaunchServices, and so SMAppService can associate
+             this helper with the bundle that contains it. -->
+        <key>CFBundleIdentifier</key>
+        <string>com.wails.hivegui.hivebar</string>
+        <key>CFBundleVersion</key>
+        <string>__VERSION__</string>
+        <key>CFBundleShortVersionString</key>
+        <string>__VERSION__</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>11.0</string>
+        <key>NSHighResolutionCapable</key>
+        <true/>
+        <!-- Accessory app: a status-bar item with no Dock tile and no
+             menu bar of its own. Without this the menu bar agent would
+             appear in the Dock and in ⌘-tab as a second Hive. -->
+        <key>LSUIElement</key>
+        <true/>
+        <!-- Same reasoning as the GUI's: a menu bar that stops updating
+             when it is not the foreground app is not a menu bar. -->
+        <key>NSAppSleepDisabled</key>
+        <true/>
+    </dict>
+</plist>

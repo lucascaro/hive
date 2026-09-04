@@ -70,6 +70,11 @@ export interface EventsDeps {
   focusActiveTerm: () => void;
   refocusActiveTerm: () => void;
   isDaemonRestarting: () => boolean;
+  // Runs the update check. Comes through the deps seam rather than a
+  // direct banners.ts import for the same reason enforceViewFloor
+  // does: banners.ts is not in events.ts's import graph and should
+  // stay out of it.
+  checkForUpdates: () => void;
   // Unlike view.ts's Pick<…, 'rec' | 'count'>, the pty:data probe also
   // reads `counters` directly.
   scrollTrace: Pick<ScrollTrace, 'rec' | 'count' | 'counters'>;
@@ -86,6 +91,7 @@ let deps: EventsDeps = {
   focusActiveTerm: () => {},
   refocusActiveTerm: () => {},
   isDaemonRestarting: () => false,
+  checkForUpdates: () => {},
   scrollTrace: createScrollTrace({ enabled: false }),
 };
 
@@ -287,6 +293,33 @@ export function wireDaemonEvents(injected: EventsDeps) {
     const focused = appData().activeId;
     if (focused) clearAttention(focused);
     deps.refocusActiveTerm();
+  });
+
+  // Commands relayed by the daemon from another client — in practice
+  // the menu bar, which has no window of its own and so cannot focus a
+  // session or open the update flow directly. reload_gui never gets
+  // here: Go handles it (see App.handleClientCommand), because the
+  // reload destroys this page and a page cannot be put in charge of
+  // that.
+  EventsOn('client:command', (jsonStr: string) => {
+    let cmd: { cmd?: string; session_id?: string };
+    try {
+      cmd = JSON.parse(jsonStr);
+    } catch {
+      return;
+    }
+    if (cmd.cmd === 'focus_session' && cmd.session_id) {
+      // Only if we still have it: the menu bar's list can be a moment
+      // stale, and switching to a session that has gone would leave
+      // the user staring at an empty pane.
+      if (appData().sessions.some((s) => s.id === cmd.session_id)) {
+        deps.switchTo(cmd.session_id);
+      }
+      return;
+    }
+    if (cmd.cmd === 'check_update') {
+      deps.checkForUpdates();
+    }
   });
 
   EventsOn('project:list', (jsonStr: string) => {

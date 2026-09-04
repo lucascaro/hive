@@ -3,6 +3,7 @@ module github.com/lucascaro/hive
 go 1.25.14
 
 require (
+	fyne.io/systray v1.12.2
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
 	github.com/atotto/clipboard v0.1.4
 	github.com/aymanbagabas/go-pty v0.2.3
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	fyne.io/systray v1.12.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

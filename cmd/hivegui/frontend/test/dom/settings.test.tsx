@@ -53,6 +53,8 @@ vi.mock('../../src/bridge.js', () => ({
     listCustomAgents(...a),
   SaveCustomAgents: (...a: Parameters<typeof saveCustomAgents>) =>
     saveCustomAgents(...a),
+  MenuBarLoginItemStatus: vi.fn(() => Promise.resolve('unsupported')),
+  SetMenuBarLoginItem: vi.fn(() => Promise.resolve()),
   ...updateBridge,
 }));
 

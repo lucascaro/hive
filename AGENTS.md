@@ -83,6 +83,8 @@ Package one-liners (full detail in `DESIGN.md`):
 | `internal/activity/` | Per-session activity / attention tracking. |
 | `internal/buildinfo/` | Single source for version + commit, plus `DaemonContract` (the GUI's reload-vs-restart signal). |
 | `cmd/hivegui/` + `frontend/` | Wails desktop client. JS + xterm.js; thin client over the wire, never opens a PTY. |
+| `cmd/hivebar/` | macOS menu-bar agent (darwin only). Pure wire client; ships as its own `.app` inside the GUI bundle. |
+| `internal/menubar/` | Starts `hivebar` best-effort from both `hived` and `hivegui`. No-op off macOS. |
 | `cmd/hived-ws-bridge/` | WebSocket bridge fronting the daemon for the `e2e-real` browser tests. |
 
 ### Common change patterns
@@ -346,6 +348,10 @@ This repository uses Graphify to maintain a structural map of its logic and asse
   exactly how `internal/notify`'s activation callback got through. Before
   relying on a green local run: `for os in darwin linux windows; do GOOS=$os
   staticcheck ./... ; GOOS=$os go vet ./... ; done`.
+- `scripts/check-daemon-contract.sh <base> <head>` — the local form of the
+  CI gate that requires a `buildinfo.DaemonContract` bump for daemon-side
+  changes. `scripts/check-daemon-contract-selftest.sh` proves the gate still
+  fires; CI runs it before trusting the gate.
 - `scripts/check-plan-lifecycle.sh` — asks `gh` what happened to every PR referenced from `exec-plans/active/`, and checks every spec's `Exec plan:` link still resolves. Not in CI (no `gh` token there, and the answer changes without the tree changing), so run it when moving a plan between `active/` and `completed/`, and alongside `/hs-doc-garden`.
 
 <!-- BEGIN HIVESMITH -->

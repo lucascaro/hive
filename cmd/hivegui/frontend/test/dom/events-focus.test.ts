@@ -66,16 +66,20 @@ beforeAll(async () => {
   ({ wireDaemonEvents } = await import('../../src/app/events.js'));
 });
 
+const switchTo = vi.fn();
+const checkForUpdates = vi.fn();
+
 describe('wireDaemonEvents window-focus handler', () => {
   it('clears active-session attention and refocuses the active term', () => {
     const refocusActiveTerm = vi.fn();
     wireDaemonEvents({
-      switchTo: vi.fn(),
+      switchTo,
       enforceViewFloor: vi.fn(),
       updateAppTitle: vi.fn(),
       focusActiveTerm: vi.fn(),
       refocusActiveTerm,
       isDaemonRestarting: () => false,
+      checkForUpdates,
       // A real disabled tracer, not a hand-rolled `{ rec }` literal: the
       // pty:data path also reads .count()/.counters, which the literal
       // never had (wave 5b's view.ts lesson).
@@ -182,5 +186,52 @@ describe('attention arrives from the daemon', () => {
     store.addAttention('a');
     emit('session:list', JSON.stringify({ sessions: [{ id: 'a' }] }));
     expect(state.attention.has('a')).toBe(false);
+  });
+});
+
+// The menu bar has no window of its own, so these are the only routes
+// it has into a GUI: the daemon relays the verb and this window acts.
+describe('relayed client commands', () => {
+  function emit(event: string, payload: unknown) {
+    for (const call of vi.mocked(bridge.EventsOn).mock.calls) {
+      if (call[0] === event) (call[1] as (p: unknown) => void)(payload);
+    }
+  }
+
+  it('focuses a session the menu bar named', () => {
+    emit('session:list', JSON.stringify({ sessions: [{ id: 'sess-x' }] }));
+    emit(
+      'client:command',
+      JSON.stringify({ cmd: 'focus_session', session_id: 'sess-x' }),
+    );
+
+    expect(switchTo).toHaveBeenCalledWith('sess-x');
+  });
+
+  // The menu bar's list can be a moment stale. Switching to a session
+  // that has gone would leave the user staring at an empty pane.
+  it('ignores a focus for a session that no longer exists', () => {
+    emit('session:list', JSON.stringify({ sessions: [{ id: 'sess-x' }] }));
+    switchTo.mockClear();
+    emit(
+      'client:command',
+      JSON.stringify({ cmd: 'focus_session', session_id: 'ghost' }),
+    );
+
+    expect(switchTo).not.toHaveBeenCalled();
+  });
+
+  it('runs the update check on check_update', () => {
+    checkForUpdates.mockClear();
+    emit('client:command', JSON.stringify({ cmd: 'check_update' }));
+    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a malformed relay payload', () => {
+    switchTo.mockClear();
+    checkForUpdates.mockClear();
+    emit('client:command', 'not json');
+    expect(switchTo).not.toHaveBeenCalled();
+    expect(checkForUpdates).not.toHaveBeenCalled();
   });
 });

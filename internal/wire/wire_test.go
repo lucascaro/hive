@@ -505,12 +505,12 @@ func TestProtocolVersionUnchangedByClientCommand(t *testing.T) {
 // daemon refuses anything not in the map, so a verb defined but not
 // listed is silently unusable.
 func TestClientCommandsAllowlistCoversEveryVerb(t *testing.T) {
-	for _, verb := range []string{CmdReloadGUI, CmdFocusSession} {
+	for _, verb := range []string{CmdReloadGUI, CmdFocusSession, CmdCheckUpdate} {
 		if !ClientCommands[verb] {
 			t.Errorf("verb %q is not in ClientCommands; the daemon will refuse it", verb)
 		}
 	}
-	if len(ClientCommands) != 2 {
+	if len(ClientCommands) != 3 {
 		t.Errorf("ClientCommands has %d entries; add the new verb to this test", len(ClientCommands))
 	}
 }

@@ -60,6 +60,8 @@ export {
   SetClipboardText,
   LogFrontend,
   SetDebugTrace,
+  MenuBarLoginItemStatus,
+  SetMenuBarLoginItem,
 } from '../wailsjs/go/main/App';
 export {
   EventsOn,
