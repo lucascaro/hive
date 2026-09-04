@@ -8,7 +8,8 @@ set -euo pipefail
 # What it does:
 #   1. Validates inputs and working tree
 #   2. Bumps the version in VERSION_FILE
-#   3. Stamps CHANGELOG.md with the release date
+#   3. Rolls .changesets/*.md into a stamped CHANGELOG section and deletes
+#      them (falls back to a plain date stamp if the repo has no changesets)
 #   4. Commits and tags
 #   5. (Optional) cross-compiles artifacts via BUILD_CMD
 #   6. Creates a GitHub release with artifacts attached
@@ -66,6 +67,21 @@ grep -q '## \[Unreleased\]' CHANGELOG.md || { echo "Error: CHANGELOG.md has no [
 active_plans=$(find docs/exec-plans/active -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 [[ "$active_plans" -gt 0 ]] && echo "Note: $active_plans exec-plan(s) still in docs/exec-plans/active/ — move any shipped in this release to completed/ (see PLANS.md)."
 
+# Pin to the start-of-release SHA. Every step below operates against this
+# revision; if main advances mid-release (e.g. the regenerator bot lands a
+# commit), we detect the drift before pushing and refuse to clobber it.
+RELEASE_SHA="$(git rev-parse HEAD)"
+echo "Pinned release base: ${RELEASE_SHA}"
+
+# Detect the changeset-driven layout. New layout: the CHANGELOG's
+# [Unreleased] body is generated from .changesets/*.md by
+# scripts/regen-generated.sh. Old layout: CHANGELOG.md is hand-edited.
+USE_CHANGESETS=0
+if [[ -d .changesets ]] && [[ -x scripts/regen-generated.sh ]]; then
+    USE_CHANGESETS=1
+    echo "Detected .changesets/ layout — release will roll changesets into the version section."
+fi
+
 # ---- VERSION BUMP --------------------------------------------------------
 
 if [[ -n "$VERSION_FILE" ]]; then
@@ -89,7 +105,14 @@ echo "Stamping changelog..."
 PREV_TAG=$(git -c versionsort.suffix=- tag -l 'v*' --sort=-v:refname | head -1)
 [[ -n "$PREV_TAG" ]] || PREV_TAG="v0.0.0"
 
-sed -i.bak "s/^## \[Unreleased\]/## [Unreleased]\n\n## [${VERSION}] — ${TODAY}/" CHANGELOG.md
+if [[ "$USE_CHANGESETS" == "1" ]]; then
+    # Promotes the generated [Unreleased] body into a stamped section and
+    # leaves [Unreleased] empty; the consumed changesets go with it.
+    scripts/regen-generated.sh --release "$VERSION"
+    find .changesets -name '*.md' ! -name 'README.md' ! -name '.gitkeep' -delete
+else
+    sed -i.bak "s/^## \[Unreleased\]/## [Unreleased]\n\n## [${VERSION}] — ${TODAY}/" CHANGELOG.md
+fi
 
 # Update or append compare links at bottom
 if grep -q "^\[Unreleased\]: " CHANGELOG.md; then
@@ -101,6 +124,9 @@ rm -f CHANGELOG.md.bak
 
 echo "Committing and tagging ${TAG}..."
 git add CHANGELOG.md ${VERSION_FILE:+"$VERSION_FILE"}
+if [[ "$USE_CHANGESETS" == "1" ]]; then
+    git add -A .changesets/
+fi
 git commit -m "release: ${TAG}"
 git tag "$TAG"
 
@@ -132,6 +158,18 @@ SUMS="release/checksums.txt"
 ARTIFACTS+=("$SUMS")
 
 # ---- PUSH ----------------------------------------------------------------
+
+# Pin check: refuse to push if main advanced after we started.
+echo "Verifying release base is still tip of main..."
+git fetch origin main --quiet
+CURRENT_REMOTE_SHA="$(git rev-parse origin/main)"
+if [[ "$CURRENT_REMOTE_SHA" != "$RELEASE_SHA" ]]; then
+    echo "Error: origin/main has advanced since release started." >&2
+    echo "  release base : ${RELEASE_SHA}" >&2
+    echo "  current main : ${CURRENT_REMOTE_SHA}" >&2
+    echo "Rebase and retry: git reset --hard ${TAG}^ && git tag -d ${TAG} && git pull --ff-only && $0 ${VERSION}" >&2
+    exit 1
+fi
 
 echo "Pushing to origin..."
 git push origin HEAD "$TAG"
