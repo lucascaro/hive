@@ -67,6 +67,14 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - Section heading inside bodies: `--text-lg` 500, `--fg`, margin-top `--space-5`.
 - Hint paragraph: `--text-sm --fg-muted`, max-width 60ch.
 
+## `<Tabs {...{ id, tabs, active, onChange, label }} />` — `src/components/Tabs.tsx`
+
+- Splits a surface into sections. `tabs` is `{ id, label }[]`; `active` is a tab id; `onChange` is called with the newly selected id. The panels are **not** owned here — the caller renders them and hides the inactive ones, which is what keeps their state alive across a switch.
+- Strip 1px `--border` bottom, `--space-1` gap. Tab: `--text-md`, `--fg-muted` at rest, `--fg` on hover and when selected, `--space-2`/`--space-3` padding, 2px bottom border (`transparent` → `--accent` when selected) so the selection is shape as well as colour.
+- `role="tablist"` (`aria-label` from `label`) over `role="tab"` buttons with `aria-selected` and `aria-controls`. Roving `tabindex`: the selected tab is `0`, the rest `-1`, so the strip is one Tab stop. Left/Right wrap, Home/End jump; selection follows focus, and focus is moved with it.
+- Ids are `<id>-tabs` for the strip and `<id>-tab-<tabId>` for each tab — a selector contract for the e2e specs, like the `hv-*` names (FRONTEND.md).
+- Callers pair each tab with a `role="tabpanel"` element at `<id>-panel-<tabId>`, `aria-labelledby` its tab, hidden with `display: none` when inactive — which is also what takes its controls out of the tab order.
+
 ## `banner({ text, kind, actions })` — `src/components/Banner.tsx`
 
 - Full-width row above the app grid (rows 1–2 today). `kind`: `error` (`--state-error` left border 3px, `--surface`) | `info` (`--accent` border).

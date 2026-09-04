@@ -17,25 +17,26 @@
 .settings-field.hidden { display: none; }
 .settings-field .hv-field { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
 
-/* Appearance and the agent list scroll together; Updates is pinned below
-   them at its natural height. A dozen custom agents must never push the
-   channel picker out of reach (test/e2e/settings.spec.ts, "stays reachable
-   under a long agent list"). */
+/* Tab strip at the top, one scrolling panel below it, the shared error
+   slot pinned under both. Updates used to be pinned here at its natural
+   height so a dozen custom agents could not push the channel picker out
+   of reach; it is its own tab now, so the pin is gone and the tab holds
+   that invariant instead (test/e2e/settings.spec.ts). */
 #settings-panel .hv-dialog__body {
   display: flex;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
-#settings-scroll {
+.settings-panel {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
-#settings-updates {
+.settings-panel.hidden { display: none; }
+#settings-error {
   flex: 0 0 auto;
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  margin: var(--space-3) 0 0;
 }
 #settings-agents-list {
   display: flex;

@@ -1,0 +1,34 @@
+/* tabs — docs/design-docs/ui/components.md › tabs */
+.hv-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+  flex: 0 0 auto;
+}
+.hv-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  /* The selected underline is this border, so every tab reserves the
+     space for it — otherwise selecting one shifts the whole strip. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-md);
+  line-height: 1.2;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.hv-tab:hover { color: var(--fg); }
+/* Shape as well as colour: the underline is the second channel, so the
+   selected tab is still identifiable in a monochrome preset. */
+.hv-tab[data-selected] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.hv-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

@@ -184,6 +184,13 @@ describe('settings: update channel', () => {
 
     expect(el('settings-error').textContent).toContain('no hive checkout');
     expect(el('settings').classList.contains('hidden')).toBe(false);
+    // The rejection comes from the Updates section, so the slot showing
+    // it must not be inside a panel a tab can hide. It used to live in
+    // the agents section, where it would render invisibly the moment the
+    // user was on any other tab.
+    fireEvent.click(el('settings-tab-updates'));
+    expect(el('settings-error').closest('.settings-panel')).toBeNull();
+    expect(el('settings-error').classList.contains('hidden')).toBe(false);
   });
 
   // The probe stats its way up a directory tree; one per keystroke is

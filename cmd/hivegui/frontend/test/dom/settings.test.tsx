@@ -598,3 +598,86 @@ describe('theme preset picker grouping', () => {
     expect(rendered.length).toBeGreaterThan(1);
   });
 });
+
+// ---------- tabs ----------
+//
+// Every panel stays mounted; only its visibility changes. jsdom applies
+// no stylesheet, so `display: none` is not observable here — the
+// assertions read the `hidden` class and the `hidden` attribute, which
+// are what settings.css keys off. The e2e suite covers the rendered
+// consequence (Tab never reaching a hidden panel's controls).
+describe('settings tabs', () => {
+  const panel = (id: string) => el(`settings-panel-${id}`);
+  const tab = (id: string) => el<HTMLButtonElement>(`settings-tab-${id}`);
+
+  it('opens on the Agents tab with the other panels hidden', () => {
+    open();
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+    expect(panel('agents').classList.contains('hidden')).toBe(false);
+    expect(panel('appearance').classList.contains('hidden')).toBe(true);
+    expect(panel('updates').classList.contains('hidden')).toBe(true);
+  });
+
+  it('clicking a tab swaps which panel is visible', () => {
+    open();
+    click(tab('updates'));
+    expect(panel('updates').classList.contains('hidden')).toBe(false);
+    expect(panel('agents').classList.contains('hidden')).toBe(true);
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    expect(tab('agents').getAttribute('aria-selected')).toBe('false');
+  });
+
+  it('arrow keys move selection and wrap around the strip', () => {
+    open();
+    tab('agents').focus();
+    fireEvent.keyDown(tab('agents'), { key: 'ArrowLeft' });
+    // Wrapped backwards past Agents to the last tab.
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('updates'), { key: 'ArrowRight' });
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('agents'), { key: 'End' });
+    expect(tab('updates').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tab('updates'), { key: 'Home' });
+    expect(tab('agents').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('moves focus with the selection so the roving tabindex is followable', () => {
+    open();
+    tab('agents').focus();
+    fireEvent.keyDown(tab('agents'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tab('appearance'));
+    expect(tab('appearance').tabIndex).toBe(0);
+    expect(tab('agents').tabIndex).toBe(-1);
+  });
+
+  it('keeps an in-progress agent draft across a tab round-trip', async () => {
+    open();
+    await flush();
+    click(el('settings-agent-add'));
+    type(cell(rows()[0], '.settings-agent-name'), 'Roundtrip');
+    type(cell(rows()[0], '.settings-agent-cmd'), 'roundtrip --x');
+
+    click(tab('appearance'));
+    click(tab('agents'));
+
+    expect(cell(rows()[0], '.settings-agent-name').value).toBe('Roundtrip');
+    expect(cell(rows()[0], '.settings-agent-cmd').value).toBe('roundtrip --x');
+  });
+
+  // The root Enter handler excludes buttons so Cancel cannot close AND
+  // save on one keystroke; a tab button is the same case.
+  it('does not save when Enter activates a tab', async () => {
+    open();
+    await flush();
+    fireEvent.keyDown(tab('updates'), { key: 'Enter' });
+    expect(saveCustomAgents).not.toHaveBeenCalled();
+  });
+
+  // The slot is the dialog's only error surface, and half its errors come
+  // from the Updates section. Inside a panel it would render invisibly
+  // whenever another tab is up.
+  it('keeps the error slot outside every panel', () => {
+    open();
+    expect(el('settings-error').closest('.settings-panel')).toBeNull();
+  });
+});
