@@ -24,6 +24,12 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	4 — ModeEvent + FrameAgentEvent: a new connection mode an agent's
+//	    hook (`hived hook`) or extension dials to report a state
+//	    observation. A GUI never opens this mode itself, but a daemon
+//	    that predates it answers HELLO{mode:event} with unknown_mode,
+//	    which is why the bump: an old daemon paired with a new hook is
+//	    silently missing the hook tier rather than erroring loudly.
 //	3 — SessionInfo gained state, state_source, last_prompt and
 //	    last_summary, plus the SESSION_EVENT(state) kind that reports
 //	    them. A GUI built before this shows no state glyphs at all; a
@@ -34,7 +40,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 3
+const DaemonContract = 4
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

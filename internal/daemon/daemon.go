@@ -16,7 +16,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
@@ -142,6 +144,8 @@ func New(cfg Config) (*Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
+	reg.SetSocketPath(sock)
+	reg.SetHivedPath(resolveHivedPath())
 
 	// Ensure a default project exists, then migrate any orphan
 	// sessions to it. This is idempotent: existing installs (Phase
@@ -241,6 +245,26 @@ func New(cfg Config) (*Daemon, error) {
 	d.runOp(d.reviveAll)
 	d.runOp(d.reclaimWorktrees)
 	return d, nil
+}
+
+// resolveHivedPath resolves the absolute path of the running hived
+// binary once, at daemon start — what the Claude adapter's SpawnArgs
+// shells out to via `hived hook`. Symlinks are followed
+// (filepath.EvalSymlinks) so a Homebrew/npm shim or a dev symlink
+// resolves to the real binary. Returns "" on any failure; callers must
+// treat that as "unavailable, skip your surface", never as an error.
+func resolveHivedPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("hived: resolve own path: %v", err)
+		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		log.Printf("hived: resolve own path %s: %v", exe, err)
+		return ""
+	}
+	return resolved
 }
 
 // Run accepts clients until ctx is cancelled or the listener is closed.
@@ -481,11 +505,60 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 			return
 		}
 		d.serveAttach(conn, e.ID)
+	case wire.ModeEvent:
+		d.serveEvent(conn)
 	default:
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    "unknown_mode",
-			Message: fmt.Sprintf("mode %q; want control|attach|create", hello.Mode),
+			Message: fmt.Sprintf("mode %q; want control|attach|create|event", hello.Mode),
 		})
+	}
+}
+
+// eventReadDeadline bounds a ModeEvent connection's single read. A hook
+// process dials, writes one frame and closes; a client that connects
+// and then stalls (or never sends the frame at all) must not pin a
+// goroutine forever.
+const eventReadDeadline = 2 * time.Second
+
+// serveEvent handles a ModeEvent connection: read exactly one frame,
+// which must be FrameAgentEvent, validate it, apply it to the
+// registry, and close. No Welcome, no reply of any kind — the hook
+// that dialed has nothing useful to do with one and never waits for
+// one (see cmd/hived/hook.go).
+func (d *Daemon) serveEvent(conn net.Conn) {
+	_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
+	ft, payload, err := wire.ReadFrame(conn)
+	if err != nil {
+		log.Printf("hived: event mode: read frame: %v", err)
+		return
+	}
+	if ft != wire.FrameAgentEvent {
+		log.Printf("hived: event mode: expected AGENT_EVENT, got %s", ft)
+		return
+	}
+	var ev wire.AgentEvent
+	if err := jsonUnmarshal(payload, &ev); err != nil {
+		log.Printf("hived: event mode: malformed AGENT_EVENT: %v", err)
+		return
+	}
+	if !wire.AgentEventKinds[ev.Kind] {
+		log.Printf("hived: event mode: unknown kind %q", ev.Kind)
+		return
+	}
+	if ev.Source != wire.StateSourceHook && ev.Source != wire.StateSourceExtension {
+		log.Printf("hived: event mode: unknown source %q", ev.Source)
+		return
+	}
+	if len(ev.Text) > wire.MaxSummaryLen {
+		ev.Text = ev.Text[:wire.MaxSummaryLen]
+	}
+	if err := d.reg.ApplyAgentEvent(ev.SessionID, ev); err != nil {
+		// Unknown session id: the agent's hook fired after the session
+		// was already killed, or against a stale HIVE_SESSION_ID from a
+		// copied env. Ordinary, not worth more than a quiet log line —
+		// the hook itself never sees this, it already closed.
+		log.Printf("hived: event mode: %s: %v", ev.SessionID, err)
 	}
 }
 

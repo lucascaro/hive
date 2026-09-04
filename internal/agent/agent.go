@@ -55,6 +55,27 @@ type Def struct {
 	// persisted on the registry Entry; an error or empty string means
 	// "no capture this run" and Restart falls back to ResumeCmd.
 	CaptureSessionIDFn func(ctx context.Context, cwd string, spawnedAt time.Time) (string, error)
+	// SpawnArgs, when non-nil, returns extra argv appended at first
+	// spawn AND on every resume/restart (after
+	// SessionIDFlag/ResumeArgs/ResumeCmd) — the hook-tier wiring for
+	// agents that support it. nil for every agent but Claude. Only the
+	// SpawnInfo fields an adapter actually reads are guaranteed
+	// non-empty; an empty field means "unavailable, skip your surface"
+	// rather than an error.
+	SpawnArgs func(sp SpawnInfo) []string
+}
+
+// SpawnInfo is what an adapter may need at spawn time to build
+// SpawnArgs. The session id is deliberately not included: neither
+// adapter needs it, since Claude gets it via SessionIDFlag and Pi via
+// its own --session-id.
+type SpawnInfo struct {
+	// HivedPath is the absolute path of the running daemon binary
+	// (os.Executable(), resolved through filepath.EvalSymlinks once at
+	// daemon start); "" if it could not be resolved.
+	HivedPath string
+	// StateDir is registry.StateDir() for this daemon.
+	StateDir string
 }
 
 // Available reports whether the agent's binary is on PATH right now.
@@ -84,6 +105,7 @@ var (
 			InstallCmd:    []string{"npm", "install", "-g", "@anthropic-ai/claude-code"},
 			SessionIDFlag: "--session-id",
 			ResumeArgs:    claudeResumeArgs,
+			SpawnArgs:     claudeSpawnArgs,
 		},
 		IDCodex: {
 			ID:         IDCodex,

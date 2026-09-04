@@ -19,7 +19,12 @@ What works:
 - BEL → desktop notification + visual pulse on non-focused sessions
 - Per-session state in the sidebar and tile headers — working, idle,
   waiting for you, exited — derived from what the terminal renders, so
-  every agent and plain shell gets it
+  every agent and plain shell gets it. Claude sessions get a more
+  precise answer via Claude Code hooks: every session Hive spawns sets
+  `HIVE_SESSION_ID` / `HIVE_SOCKET` in the child's environment, and
+  `hived hook` (invoked by hooks Hive wires through `claude --settings`)
+  reports prompts, turn-end, and permission prompts back to the daemon
+  over that socket
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

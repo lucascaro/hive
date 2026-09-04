@@ -16,6 +16,12 @@ const (
 	ModeControl Mode = "control" // session management; never streams DATA
 	ModeAttach  Mode = "attach"  // attach to an existing session by ID
 	ModeCreate  Mode = "create"  // create a new session, then behave as attach
+	// ModeEvent is a one-shot connection used by an agent's hook or
+	// extension tier to report a state observation (`hived hook`, or
+	// the Pi extension). Exactly one FrameAgentEvent frame is read and
+	// applied, then the connection is closed — there is no Welcome and
+	// the connection never streams DATA.
+	ModeEvent Mode = "event"
 )
 
 // CreateSpec is the payload for ModeCreate's create field, and also
@@ -413,6 +419,59 @@ const (
 	// be made to do so on every turn.
 	SessionEventState = "state"
 )
+
+// AgentEvent is the payload of FrameAgentEvent — the sole frame of a
+// ModeEvent connection. It carries one observation from an agent's
+// hook or extension tier (`hived hook`, or the Pi extension) about
+// what the session it is running is doing right now.
+type AgentEvent struct {
+	SessionID string `json:"session_id"`
+	// Kind is one of AgentEventKinds; see agentstate.Machine.Apply for
+	// what each does to the session's state.
+	Kind string `json:"kind"`
+	// Source names the reporting tier: StateSourceHook or
+	// StateSourceExtension. Anything else is refused.
+	Source string `json:"source"`
+	// Text is prompt/summary/error text, capped at MaxSummaryLen by the
+	// daemon (truncated, not rejected — same reasoning as Title).
+	Text string `json:"text,omitempty"`
+	// At is when the reporter observed this, RFC3339Nano. Empty or
+	// unparseable falls back to the daemon's own time.Now() rather than
+	// being refused — a clock the daemon does not control should not be
+	// able to drop an otherwise-valid event.
+	At string `json:"at,omitempty"`
+}
+
+// AgentEvent kinds. These are the wire spelling of agentstate.Kind*;
+// kept as separate string constants (rather than importing agentstate,
+// which would make the domain package depend on the wire format it is
+// deliberately ignorant of) but must stay byte-identical to it.
+const (
+	AgentEventPrompt             = "prompt"
+	AgentEventTurnEnd            = "turn_end"
+	AgentEventWaitingInput       = "waiting_input"
+	AgentEventWaitingPermission  = "waiting_permission"
+	AgentEventPing               = "ping"
+	AgentEventPermissionResolved = "permission_resolved"
+	AgentEventError              = "error"
+	AgentEventSessionEnd         = "session_end"
+)
+
+// AgentEventKinds is the validation allowlist for AgentEvent.Kind, the
+// same pattern as ClientCommands: an unrecognised kind is refused
+// rather than applied, since Apply's tolerant-parsing fallback (ping)
+// is for a hook the machine already trusts, not for anything on the
+// wire.
+var AgentEventKinds = map[string]bool{
+	AgentEventPrompt:             true,
+	AgentEventTurnEnd:            true,
+	AgentEventWaitingInput:       true,
+	AgentEventWaitingPermission:  true,
+	AgentEventPing:               true,
+	AgentEventPermissionResolved: true,
+	AgentEventError:              true,
+	AgentEventSessionEnd:         true,
+}
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every
 // control connection on any registry change.

@@ -1,0 +1,4 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "SomeFutureEvent"
+}

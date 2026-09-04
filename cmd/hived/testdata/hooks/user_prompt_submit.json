@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/tmp/proj",
+  "prompt": "reply pong"
+}

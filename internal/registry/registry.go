@@ -250,6 +250,19 @@ type Registry struct {
 	order    []string
 	stateDir string
 
+	// socketPath is the Unix socket this registry's daemon is bound to.
+	// Set once by the daemon right after Open (SetSocketPath) — the
+	// registry has no way to know it otherwise, and it is what create,
+	// Revive and Restart put in a spawned agent's HIVE_SOCKET so its
+	// hooks/extension know where to dial back.
+	socketPath string
+	// hivedPath is the resolved absolute path of the running hived
+	// binary (os.Executable() + filepath.EvalSymlinks, done once at
+	// daemon start). Set by SetHivedPath; "" if it could not be
+	// resolved, in which case agent.SpawnInfo carries it through
+	// unresolved and the Claude adapter skips wiring hooks.
+	hivedPath string
+
 	projects     map[string]*Project
 	projectOrder []string
 
@@ -368,6 +381,40 @@ func (r *Registry) noteBell(id string) {
 	if e.machine().Bell(time.Now()) {
 		r.announceStateLocked(e, prev, "bell")
 	}
+}
+
+// ApplyAgentEvent folds one hook/extension-reported observation
+// (wire.AgentEvent, arrived over a ModeEvent connection) into the
+// named session's state machine, and broadcasts if it changed
+// anything. Unknown session id is a silent no-op — the daemon's
+// ModeEvent arm has already resolved that case into "log + close", and
+// a hook racing a session's own teardown is an ordinary occurrence,
+// not something worth a second log line here.
+//
+// The entry's machine is never nil (see Entry.machine), so an event
+// that races a spawn — the entry exists, Phase != Ready — is applied
+// rather than dropped.
+func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
+	at, err := time.Parse(time.RFC3339Nano, ev.At)
+	if err != nil {
+		at = time.Now()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return ErrNotFound
+	}
+	prev := e.stateSnapshot()
+	if e.machine().Apply(agentstate.Event{
+		Kind:   ev.Kind,
+		Source: ev.Source,
+		At:     at,
+		Text:   ev.Text,
+	}) {
+		r.announceStateLocked(e, prev, ev.Kind)
+	}
+	return nil
 }
 
 // debugState is HIVE_DEBUG_STATE=1: log every state transition with
@@ -522,6 +569,60 @@ func (r *Registry) setPhaseIf(id, from, to string) bool {
 	r.broadcastLocked(wire.SessionEventUpdated, info)
 	r.mu.Unlock()
 	return true
+}
+
+// SetSocketPath records the Unix socket this registry's daemon is
+// bound to. Called once by the daemon right after Open, before any
+// session can be created.
+func (r *Registry) SetSocketPath(p string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.socketPath = p
+}
+
+// SetHivedPath records the resolved absolute path of the running
+// hived binary. Called once by the daemon at startup; "" (the zero
+// value) means it could not be resolved, which the Claude adapter
+// treats as "skip wiring hooks" rather than an error.
+func (r *Registry) SetHivedPath(p string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hivedPath = p
+}
+
+// hiveEnv returns the HIVE_SESSION_ID / HIVE_SOCKET pair every spawned
+// session's environment carries, so an agent's hook or extension tier
+// (and, per spec 337, anything else that wants to dial the daemon back)
+// knows its own id and where to reach it. Takes r.mu.
+func (r *Registry) hiveEnv(id string) []string {
+	r.mu.Lock()
+	sock := r.socketPath
+	r.mu.Unlock()
+	return []string{"HIVE_SESSION_ID=" + id, "HIVE_SOCKET=" + sock}
+}
+
+// spawnInfo builds the agent.SpawnInfo a Def.SpawnArgs call needs.
+// Takes r.mu.
+func (r *Registry) spawnInfo() agent.SpawnInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir}
+}
+
+// appendSpawnArgs appends the agent's Def.SpawnArgs (if any) to cmd —
+// the hook-tier wiring for Restart and the boot-revive path in Revive.
+// No-op (returns cmd unchanged) for an unknown agent or one with no
+// SpawnArgs.
+func (r *Registry) appendSpawnArgs(cmd []string, agentID string) []string {
+	def, ok := agent.Get(agent.ID(agentID))
+	if !ok || def.SpawnArgs == nil {
+		return cmd
+	}
+	extra := def.SpawnArgs(r.spawnInfo())
+	if len(extra) == 0 {
+		return cmd
+	}
+	return append(append([]string(nil), cmd...), extra...)
 }
 
 // Open creates or loads a Registry rooted at stateDir. Existing
@@ -843,8 +944,10 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			} else {
 				opts.Cmd = def.Cmd
 			}
+			opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
 		}
 	}
+	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)
 
 	sess, err := spawn(opts)
 	if err != nil {
@@ -958,6 +1061,7 @@ func (r *Registry) Restart(id string) error {
 		default:
 			opts.Cmd = def.Cmd
 		}
+		opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
 	}
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed

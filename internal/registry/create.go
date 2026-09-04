@@ -99,7 +99,7 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 // (see internal/daemon), so a slow git can no longer stall every other
 // client request.
 func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateSpec, p createPlan) error {
-	cmd := resolveAgentCmd(spec, p.id)
+	cmd := r.resolveAgentCmd(spec, p.id)
 	r.materializeWorktree(ctx, &p)
 	if p.nameFromBranch && p.wtBranch == "" {
 		r.renameAfterWorktreeFailure(e, spec)
@@ -112,6 +112,7 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		Cwd:   p.cwd,
 		Cols:  spec.Cols,
 		Rows:  spec.Rows,
+		Env:   r.hiveEnv(p.id),
 	})
 	if err != nil {
 		log.Printf("registry: session.Start failed for %s (agent=%q cmd=%v): %v",
@@ -395,7 +396,12 @@ func (r *Registry) insertEntry(spec wire.CreateSpec, p createPlan) (*Entry, erro
 
 // resolveAgentCmd returns the argv to spawn. If the spec names an
 // agent (and no explicit Cmd), look up its default command and use it.
-func resolveAgentCmd(spec wire.CreateSpec, id string) []string {
+//
+// SpawnArgs (the hook-tier wiring) is appended only in that same
+// branch — an explicit spec.Cmd is the "raw Cmd from a client that
+// doesn't speak agent IDs" case, and we don't mutate user-supplied
+// argv there any more than we inject SessionIDFlag into it.
+func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	cmd := spec.Cmd
 	if len(cmd) > 0 || spec.Agent == "" {
 		return cmd
@@ -411,14 +417,16 @@ func resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 	// have — the previous session's id died with its entry. Falls back
 	// to a fresh launch for agents that define no resume argv.
 	if spec.ContinueConversation && len(def.ResumeCmd) > 0 {
-		return def.ResumeCmd
-	}
-	// Pin the agent's conversation to our entry id so Restart can
-	// resume by id even when sibling sessions share this cwd. Skipped
-	// when the caller passed an explicit spec.Cmd (we don't mutate
-	// user-supplied argv).
-	if def.SessionIDFlag != "" {
+		cmd = def.ResumeCmd
+	} else if def.SessionIDFlag != "" {
+		// Pin the agent's conversation to our entry id so Restart can
+		// resume by id even when sibling sessions share this cwd.
 		cmd = append(append([]string(nil), cmd...), def.SessionIDFlag, id)
+	}
+	if def.SpawnArgs != nil {
+		if extra := def.SpawnArgs(r.spawnInfo()); len(extra) > 0 {
+			cmd = append(append([]string(nil), cmd...), extra...)
+		}
 	}
 	return cmd
 }
