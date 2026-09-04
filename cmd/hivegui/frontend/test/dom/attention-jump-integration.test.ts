@@ -11,6 +11,7 @@
 // green. So this file wires the real modules with stub *dependencies*
 // (no xterm, no Wails) and asserts the end-to-end effects.
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import * as bridge from '../../src/bridge.js';
 import { createScrollTrace } from '../../src/lib/scroll-debug.js';
 import type { TermTile } from '../../src/app/state.js';
 
@@ -294,5 +295,29 @@ describe('⌘B into a minimized project', () => {
     jumpBack();
     expect(state.activeId).toBe('z');
     expect(state.minimizedProjects.has('p2')).toBe(false);
+  });
+});
+
+// setActive is a choke point that many paths re-enter for the session
+// that is already active — a grid move, a project switch, a re-render.
+// It must not report "the user just looked" on those, or a bell that
+// arrives while you are sitting in the session is wiped before you can
+// see it. That is exactly what shipped: `printf '\a'` in the shell you
+// were watching cleared itself instantly.
+describe('setActive and the daemon', () => {
+  beforeEach(() => {
+    vi.mocked(bridge.SetSessionAttention).mockClear();
+  });
+
+  it('reports the look when you arrive at a session', () => {
+    state.activeId = 'a';
+    setActive('z');
+    expect(bridge.SetSessionAttention).toHaveBeenCalledWith('z', false);
+  });
+
+  it('says nothing when re-selecting the session already active', () => {
+    state.activeId = 'z';
+    setActive('z');
+    expect(bridge.SetSessionAttention).not.toHaveBeenCalled();
   });
 });

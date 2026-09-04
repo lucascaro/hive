@@ -56,11 +56,23 @@ export function setActive(id: string | null) {
   // feature, so the hook has to sit on the choke point.
   if (!_navSuppress && id && id !== appData().activeId)
     pushNav(appData().nav, appData().activeId);
+  const switched = id !== null && id !== appData().activeId;
   if (id) {
-    // clearAttention, not clearAttentionFor: dropping it locally and
-    // saying nothing left the daemon still insisting the session wanted
-    // you, and the next session list put the flag straight back.
-    clearAttention(id);
+    // Only on an actual switch, and clearAttention rather than
+    // clearAttentionFor.
+    //
+    // The kind, because dropping it locally and saying nothing left the
+    // daemon still insisting the session wanted you, and the next
+    // session list put the flag straight back.
+    //
+    // The guard, because setActive is a choke point that many paths
+    // re-enter for the session that is ALREADY active — a grid move, a
+    // project switch, a re-render. Without it every one of those told
+    // the daemon "the user just looked", so a bell on the session you
+    // are sitting in was wiped before it could be seen. Arriving at a
+    // session is the signal; being parked in one is not. Typing is what
+    // answers a bell you are already looking at — see noteUserInput.
+    if (switched) clearAttention(id);
     termsMap().get(id)?.host.classList.remove('attention');
     const s = appData().sessions.find((x) => x.id === id);
     const pid = s?.projectId ?? s?.project_id;

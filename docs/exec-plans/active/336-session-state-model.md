@@ -633,6 +633,16 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   the bell itself when the session was active and focused, which made
   `printf '\a'` in the session you are watching raise nothing at all;
   that is a request being discarded rather than answered.
+- **2026-09-04 (phase 1, fourth smoke test)** — `setActive` reports "the
+  user looked" only on an actual switch (`id !== activeId`), not on
+  every call. Why: it is a choke point many paths re-enter for the
+  session that is *already* active — a grid move, a project switch, a
+  re-render — and once the clear became a daemon RPC, each of those
+  wiped a bell before it could be seen. Symptom: `printf '\a'` in the
+  shell you were watching cleared itself instantly and the state fell
+  through waiting_input → working (the shell's next prompt) → idle.
+  Arriving at a session is the signal; being parked in one is not, and
+  `noteUserInput` covers that case.
 - **2026-09-04 (phase 1, third smoke test)** — FOLLOW-UP for phase 2:
   `turn_end` currently maps to `idle`, so an agent finishing a turn no
   longer raises attention (it used to, via the separate flag). Under the
