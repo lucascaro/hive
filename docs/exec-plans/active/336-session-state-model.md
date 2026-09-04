@@ -402,7 +402,9 @@ assistant message ends with `?` — a heuristic, flagged in a comment
 - `scripts/probe-claude.sh` — drift probe: scratch `hived` on a temp
   socket + state dir (`HIVE_SOCKET`/`HIVE_STATE_DIR`, never the user's),
   `claude -p "say ok"` launched with Hive's `--settings` JSON, assert
-  `prompt` and `turn_end` events arrive within 60 s. Exits 0 with
+  `prompt` and `turn_end` events arrive within 60 s, and that a
+  project-level `Stop` hook in the scratch dir still fires alongside
+  Hive's (hooks concatenate). Exits 0 with
   "skipped" when `claude` is not on PATH. Wired into `scripts/test.sh`
   behind `HIVE_PROBE_CLAUDE=1` and into the release checklist.
 
@@ -509,6 +511,15 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   already yields an AF_UNIX path under `%LOCALAPPDATA%\Hive`, which
   both `hived hook` and `node:net` can dial. Resolves former open
   question 3; verified in the release matrix.
+- **2026-09-04** — `--settings` `hooks` **concatenate** with hooks from
+  other settings sources; they do not replace them. Verified on Claude
+  Code 2.1.260: a project `.claude/settings.json` `Stop` hook and a
+  `--settings '{…}'` `Stop` hook both fired on one `-p` turn. So the
+  Claude adapter emits only Hive's hooks and never has to read the
+  user's settings. `scripts/probe-claude.sh` repeats this exact check
+  (two `Stop` hooks, both must fire) so a future change in merge
+  semantics shows up as a probe failure, not a silent loss of the
+  user's hooks. Resolves former open question 1.
 - **2026-09-04** — Desktop notifications stay in the GUI
   (`cmd/hivegui/app.go`), the daemon never imports `internal/notify`.
   Why: that is where they live today; moving them is out of scope.
@@ -542,15 +553,8 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
 ## Progress
 
 - **2026-09-04** — Spec and plan written; stage PLAN.
-- **2026-09-04** — Plan reviewed; ready for `/hs-feature-plan-handoff 336`.
+- **2026-09-04** — Plan reviewed; open question 1 answered by experiment (hooks concatenate, Claude 2.1.260). Ready for `/hs-feature-plan-handoff 336`.
 
 ## Open questions
 
-1. **Claude `--settings` hooks merge — known risk, gates phase 2.** Docs
-   say keys merge; unclear whether the `hooks` array concatenates with
-   the user's own hooks or replaces them. Trigger: before starting
-   phase 2, put a `Stop` hook in `~/.claude/settings.json`, launch with
-   `--settings` carrying a different `Stop` hook, observe whether both
-   fire. If they replace, the Claude adapter must read and re-emit user
-   hooks (settings.json + settings.local.json + project
-   `.claude/settings.json`) and this plan's Decision log records it.
+<Empty — resolved into the Decision log.>
