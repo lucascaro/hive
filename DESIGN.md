@@ -56,7 +56,9 @@ Architectural invariants. Each one should ideally be enforceable by `gc-sweep` o
 - **`hivebar` is a client, like the GUI.** The menu-bar agent
   (`cmd/hivebar/`, darwin only) may not open a PTY, import
   `internal/session`, or write anything under `registry.StateDir()`
-  except its own lock file. Everything it knows arrives on one control
+  except its own singleton lock and its log file (`hivebar.log`, the
+  same courtesy `hived` and `hivegui` already take — a bundled agent
+  has no terminal for its stderr). Everything it knows arrives on one control
   connection. It also never spawns `hived` on its own — only as the
   explicit Restart Daemon action — so a menu bar cannot resurrect a
   daemon the user just quit.

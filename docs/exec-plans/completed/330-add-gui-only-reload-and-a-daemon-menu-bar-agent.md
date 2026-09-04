@@ -4,7 +4,7 @@
 - **Issue:** —
 - **Branch:** `feature/330-gui-only-reload-menubar`
 - **PR:** [#333](https://github.com/lucascaro/hive/pull/333)
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -395,10 +395,43 @@ Shell: `scripts/testdata/` fixtures driving `check-daemon-contract.sh`.
 - **2026-09-03** — Operator reported the menu bar reordering itself on every
   daemon event. Root-caused and fixed (see the decision log); operator
   confirmed it holds still.
+- **2026-09-04** — PR #333 merged (squash `a1a6ea5`) before the gate ran, so
+  the pipeline's DONE bookkeeping did not ride along in the feature PR as it
+  normally would. `/hs-review-loop` was never run either, which is why nothing
+  made the REVIEW → GATE transition and the spec sat at `stage: REVIEW`.
+  Reconciled here — stage advanced to GATE so the gate could run on its
+  degraded post-merge path — rather than editing the guard's precondition
+  away. There is consequently no `## PR convergence ledger` for this feature;
+  the merged-PR path does not require one.
+
+## Gate verdict
+
+<!-- Append-only. One entry per /hs-merge-gate run; the latest is
+     authoritative. -->
+
+- **2026-09-04** — verdict: FAIL; checks: 15 passed / 2 failed / 1 followup; followups: none filed (see below); one-line: spec criteria hold, but a build artifact reached main and two docs contradicted the code.
+  - 2026-09-04 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — 7 of 8 criteria verified against code and tests; "a menu-bar icon appears on macOS" is only confirmable by eye.
+    - non-goals — FAIL — DESIGN.md's new hard rule says hivebar may write nothing under `registry.StateDir()` "except its own lock file", but `cmd/hivebar/main.go` also writes `hivebar.log`. The rule was wrong, not the code: `hived` and `hivegui` log to the same directory.
+    - doc accuracy — FAIL — README.md had no mention of the menu bar or the Settings "Start at login" toggle, a shipped user-visible feature. Everything else (changesets, DESIGN.md, daemon-contract.md, AGENTS.md, cmd/hivebar/README.md, README's Updating section) verified accurate.
+  - 2026-09-04 also found, outside the graded checks: a 6.5MB compiled `hivebar` Mach-O committed to the repo root by `a1a6ea5`. `.gitignore` listed `/hive`, `/hivegui` and `/hived-ws-bridge` but not `/hivebar`, and `go build ./cmd/hivebar/` writes `./hivebar`.
+
+- **2026-09-04** — verdict: NEEDS_FOLLOWUP; checks: 17 passed / 0 failed / 1 followup; followups: none filed (fixed in the follow-up PR instead); one-line: both failures fixed and re-validated; one criterion remains hand-only.
+  - 2026-09-04 dimensions (re-run after fixes):
+    - acceptance — NEEDS_FOLLOWUP — criterion 5 (visible macOS menu bar) confirmed by the operator on a real `./build.sh` bundle during implementation, so it is evidenced rather than assumed. The open item is criteria 1 and 4's REAL multi-window relaunch: the daemon fan-out is covered by unit tests with fake clients, but no test launches two `hivegui` processes and reloads them.
+    - non-goals — PASS — reworded rule now matches the two files hivebar writes exactly, and was checked for being widened into vacuity; it still forbids every other StateDir write.
+    - doc accuracy — PASS — the new README sections were re-validated claim by claim against `cmd/hivebar/`, `internal/menubar/`, `build.sh`, `loginitem_darwin.go` and `banners.ts`.
+  - 2026-09-04 deviation from the skill's post-merge FAIL path: no follow-up issues were filed. That path assumes shipped code cannot be fixed in the PR, but a follow-up PR was already open for the DONE bookkeeping, so all three defects were fixed there instead of becoming tickets.
+  - 2026-09-04 noted for later, not gating: `cmd/hivebar` links `internal/session` and `creack/pty` transitively through `internal/daemon`, purely to call `hdaemon.SocketPath()`. DESIGN.md defines the no-PTY rule as a grep guard on direct imports, which is satisfied, and `cmd/hivegui` has the same shape — but a leaf package for the socket path would stop every client linking the daemon.
 
 ## Open questions
 
-- Does `cmd/hivegui/window_state.go` restore behave when several windows
-  relaunch at once via `open -n`? Each reloaded window gets a new PID.
-  Not reachable by an automated test — needs the manual multi-window pass in
-  the spec's verification section.
+- **Accepted at gate, not closed.** No test exercises a REAL multi-window
+  reload: two `hivegui` processes relaunching at once via `open -n`, each
+  getting a new PID, and `window_state.go` restoring both. The daemon-side
+  fan-out is covered by unit tests with multiple fake subscribers, which is
+  not the same claim. The operator chose to accept this at the gate without
+  filing an issue, so this entry is the record of it.
+- **Noted, deferred to its own spec.** `cmd/hivebar` links `internal/session`
+  and `creack/pty` transitively through `internal/daemon`, only to call
+  `hdaemon.SocketPath()`.

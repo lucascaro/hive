@@ -22,6 +22,9 @@ What works:
   Settings, then Update → Reload (or Restart, when the daemon changed)
 - **Reload GUI** — picks up a new GUI build without touching `hived`,
   so every running shell and agent survives
+- Menu-bar agent (macOS) — daemon version, session list and attention
+  count, with reload / restart / update actions, live even with every
+  window closed
 
 Not yet shipping: scrollback resume across daemon restart, splits
 inside grid cells, workflows / agent teams, code signing and
@@ -57,6 +60,52 @@ GOOS=linux GOARCH=amd64 go build -o cmd/hivegui/build/bin/hived ./cmd/hived
 
 `hivegui` and `hived` must live in the same directory; the GUI
 auto-spawns the daemon at startup.
+
+## The menu bar (macOS)
+
+Hive puts an icon in the menu bar. It reports on the **daemon**, not on
+any window, so it keeps working with every window closed — which is
+also the only time you can't ask the GUI. It shows:
+
+- the running `hived`'s version and build, and a warning line when that
+  daemon is too old for this build to drive;
+- how many sessions are open across how many projects, and how many are
+  waiting on you;
+- every session, `project · session`, with a dot on the ones that rang.
+  Clicking one jumps straight to it, launching Hive if it isn't running.
+
+Plus **Reload GUI**, **Restart Daemon…** (confirmed — it ends every
+running shell and agent), **Check for Updates…**, **Open Hive** and
+**Quit Hive**.
+
+It starts on its own whenever `hived` or a window does, so in normal use
+it is simply there. `Settings ▸ Menu bar ▸ Start at login` additionally
+registers it with macOS so it appears at login before either has run.
+Set `HIVE_NO_MENUBAR=1` to suppress it; an isolated run
+(`HIVE_STATE_DIR` set, e.g. `scripts/dev-iso.sh`) never starts one.
+
+The agent ships inside the app bundle at
+`hivegui.app/Contents/Library/LoginItems/hivebar.app` (whatever you
+renamed the bundle to on install). It is a client like
+the GUI — it talks to the daemon over the wire protocol and never opens
+a PTY of its own.
+
+## Reloading vs restarting
+
+Picking up a new build of Hive does not have to cost you your sessions.
+`hived` outlives the GUI, so when only the GUI has changed, **File ▸
+Reload GUI** relaunches every window and leaves every shell and agent
+running, with its scrollback intact. It needs no confirmation because it
+destroys nothing.
+
+**File ▸ Restart Daemon…** is the other half, and it does end every
+running session — so it confirms first.
+
+Hive decides which you need by comparing the two builds' *daemon
+contract*, an integer that changes only when the daemon's observable
+behaviour does. A frontend-only build leaves it untouched, so a rebuild
+no longer costs you a restart. See
+[docs/design-docs/daemon-contract.md](docs/design-docs/daemon-contract.md).
 
 ## Updating
 
@@ -120,12 +169,15 @@ banner keeps its Download button, which opens the release page.
 cmd/
   hived/           # session daemon
   hivegui/         # Wails GUI client
+  hivebar/         # macOS menu-bar agent (client, like the GUI)
 internal/
   wire/            # protocol v1 (frame format + JSON control messages)
   session/         # one PTY + scrollback
   registry/        # sessions + projects + persistence
   daemon/          # socket listener + dispatch
   agent/           # built-in agent launcher catalog
+  buildinfo/       # version, build id, and the daemon contract
+  menubar/         # starts hivebar from hived and hivegui (no-op off macOS)
 DESIGN.md          # architecture map
 build.sh           # macOS universal build
 ```
