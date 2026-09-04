@@ -465,9 +465,12 @@ scripts/test.sh                         # go · unit · dom · e2e (mock)
 ( cd cmd/hivegui/frontend && npx biome ci . && npm run typecheck && CI=1 npx playwright test )
 ```
 
-Phase 2 additionally: `HIVE_PROBE_CLAUDE=1 scripts/probe-claude.sh`
-(skips cleanly when `claude` is not on PATH) and the manual checklist
-above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
+Phase 2 additionally: the live probe (one API call; skips cleanly when
+`claude` is not on PATH) and the manual checklist above.
+
+```sh
+HIVE_PROBE_CLAUDE=1 HIVE_DEBUG_STATE=1 go test ./cmd/hived/ -run TestClaudeProbe -v
+``` Phase 3: `node --test internal/agent/pi/` when `node` is present.
 
 ### Phasing (each phase = one PR, one agent run)
 
@@ -831,6 +834,34 @@ decision-log entry with the log excerpt BEFORE any code changes.
   fixture). Not done in this pass: `scripts/probe-claude.sh` (the
   real-`claude` drift probe) and a manual checklist run against an
   actual `claude` binary — see the open item below.
+
+- **2026-09-04** — Solidification pass after the phase-1 churn:
+  transition log (`HIVE_DEBUG_STATE=1`), frozen transition table, GUI
+  attention set deleted (daemon `needs_attention` is the only owner),
+  recorded PTY fixtures replayed through VT + machine in CI
+  (`internal/session/state_fixture_test.go`), phase 2 hook tier, and
+  the live probe `TestClaudeProbeWaitingPermission`. Probe transcript on
+  claude 2.1.261 (checklist rows 7–12):
+
+  ```
+  idle -> idle               src=hook reason=ping                 (SessionStart)
+  idle -> working            src=hook reason=prompt               (UserPromptSubmit, 2 s after typing)
+  working -> waiting_permission src=hook reason=waiting_permission (PermissionRequest, 3 s)
+  waiting_permission -> exited  src=hook reason=session_end        (/exit)
+  working -> idle            src=hook reason=turn_end             (Stop, earlier run)
+  idle -> waiting_input      src=hook reason=waiting_input        (idle_prompt, 60 s after Stop)
+  ```
+
+  Two findings worth knowing: (1) with the user's Claude default set to
+  auto mode nothing ever prompts, so `waiting_permission` cannot be
+  observed without `--permission-mode default` — that is Claude config,
+  not a Hive bug; (2) a bare-PTY recording of an idle claude contains
+  zero bytes even when DSR/DA1 queries are answered, so the "ESC[?6n
+  every 200 ms" measurement behind the screen digest only reproduces
+  with the GUI attached. The digest is correct either way; the fixture
+  test guards the byte-free case and `TestAgentTUIStateFlow` the other.
+  Rows 1–6 and 13–14 of the checklist remain a manual pass in the iso
+  build.
 
 ## Open questions
 

@@ -816,8 +816,9 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 //
 // This is how "is this session working" is answered, in place of "did
 // bytes arrive". The two are not the same question, and the difference
-// is not academic: a measured idle Claude Code session writes an
-// ESC[?6n cursor-position query every 200ms forever. Those bytes are a
+// is not academic: an idle Claude Code session attached to the GUI was
+// measured writing an ESC[?6n cursor-position query every 200ms (a
+// bare-PTY recording shows none — see testdata/state/README.md). Those bytes are a
 // question for the terminal, not output for the user — they change no
 // cell — so a timer keyed on arrival never fires and the session reads
 // as permanently busy.
