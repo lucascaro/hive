@@ -2,6 +2,7 @@
 type: changed
 bump: minor
 issue: null
+pr: 333
 ---
 
 The update button now says what applying it will cost. A GUI-only

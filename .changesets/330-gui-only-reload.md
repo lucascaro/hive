@@ -2,6 +2,7 @@
 type: added
 bump: minor
 issue: null
+pr: 333
 ---
 
 **Reload GUI** — pick up a new GUI build without restarting the daemon.

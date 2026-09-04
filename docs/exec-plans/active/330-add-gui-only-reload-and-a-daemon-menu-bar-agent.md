@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md](../../product-specs/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md)
 - **Issue:** —
+- **Branch:** `feature/330-gui-only-reload-menubar`
+- **PR:** [#333](https://github.com/lucascaro/hive/pull/333)
 - **Status:** active
 
 ## Summary

@@ -4,7 +4,8 @@ title: "Add GUI-only reload and a daemon menu-bar agent"
 type: enhancement
 complexity: L
 priority: P2
-stage: IMPLEMENT
+pr: 333
+stage: REVIEW
 ---
 
 # Add GUI-only reload and a daemon menu-bar agent
