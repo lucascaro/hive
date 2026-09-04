@@ -2,7 +2,7 @@
 
 - **Spec:** [docs/product-specs/329-react-ify-sessionterms-tile-chrome.md](../../product-specs/329-react-ify-sessionterms-tile-chrome.md)
 - **Issue:** —
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -124,7 +124,7 @@ move; only the rendering does.
   `TileHeader`, the inline rename. `session-term.ts` loses the header block.
   Ends with `src/ui/icon.ts`'s `stateIcon`/`icon` still alive (the phase overlay
   uses them).
-- **Phase 2 — the overlays and the last of `src/ui/`.** ([plan](329-react-ify-sessionterms-tile-chrome-phase2.md), implemented 2026-09-03)
+- **Phase 2 — the overlays and the last of `src/ui/`.** ([plan](329-react-ify-sessionterms-tile-chrome-phase2.md), PR #334, gate PASS 2026-09-03)
   `DeadOverlay`, `PhaseOverlay`, `src/ui/icon.ts` → `src/lib/icon-sprite.ts`,
   `wireCheckUpdatesButton()` → `Sidebar.tsx`, `src/ui/` deleted, the
   host-identity e2e spec, docs.

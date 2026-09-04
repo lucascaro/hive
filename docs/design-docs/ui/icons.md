@@ -39,6 +39,6 @@ That's 22 symbols. Adding one: draw it on the 24 grid at 1.75 stroke, add `<symb
 ## Rules
 
 - **No Unicode glyphs as UI.** `×`, `＋`, `●`, `◐`, `✓`, `⎇`, `—` are all replaced. Text content that *is* text (`…`, `·` separators, keyboard hint characters like `⌘`) is fine. `scripts/ui-lint.sh` flags anything outside the allow-list in `src/app/**` and `index.html`.
-- Icons are never the only label on a control: `iconButton()` requires `aria-label`, and `title` is set from it.
+- Icons are never the only label on a control: `IconButton` requires `aria-label`, and `title` is set from it.
 - State icons appear in exactly three places: sidebar row, minimized chip, grid tile header. Same size, same resolution function.
 - No emoji anywhere in the GUI.

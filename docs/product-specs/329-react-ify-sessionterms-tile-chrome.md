@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P3
 pr: 334
-stage: GATE
+shipped: 2026-09-03
+stage: DONE
 ---
 
 # React-ify SessionTerm's tile chrome
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P3
-- **Exec plan:** [master](../exec-plans/active/329-react-ify-sessionterms-tile-chrome.md) · [phase 1](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase1.md) (completed) · [phase 2](../exec-plans/active/329-react-ify-sessionterms-tile-chrome-phase2.md)
+- **Exec plan:** [master](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome.md) · [phase 1](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase1.md) (completed) · [phase 2](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase2.md)
 
 ## Problem
 
@@ -96,8 +97,9 @@ therefore tracks the phase in flight, and only phase 2's gate writes
   [#329](https://github.com/lucascaro/hive/pull/329); gate PASS
   2026-09-03; [plan](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase1.md).
 - **Phase 2** — the overlays, `src/ui/` deletion, `banners.ts`, docs, the
-  changeset. Not started;
-  [plan](../exec-plans/active/329-react-ify-sessionterms-tile-chrome-phase2.md).
+  changeset. PR [#334](https://github.com/lucascaro/hive/pull/334); gate PASS
+  2026-09-03;
+  [plan](../exec-plans/completed/329-react-ify-sessionterms-tile-chrome-phase2.md).
 
 ## Notes
 

@@ -116,8 +116,9 @@ the e2e specs — treat them as an API.
 
 ## Accessibility
 
-- Every icon-only control carries an `aria-label` — `iconButton()` refuses to
-  build one without it, and that assertion is the point of its test.
+- Every icon-only control carries an `aria-label` — `components/IconButton.tsx`
+  throws rather than build one without it, and that assertion is the point of
+  its test.
 - Dialogs are `role="dialog" aria-modal="true"` with `aria-labelledby`, and trap
   focus via `src/lib/focus-trap.ts`; the choice dialog is `alertdialog`.
 - The keyboard handler is a single **capture-phase** window listener

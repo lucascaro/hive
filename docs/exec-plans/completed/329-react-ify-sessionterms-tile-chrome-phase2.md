@@ -5,7 +5,7 @@
 - **Issue:** —
 - **Branch:** `feature/329-tile-chrome-phase2`
 - **PR:** [#334](https://github.com/lucascaro/hive/pull/334)
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -186,6 +186,62 @@ whole-port checklist must pass.
 
 - The `.fading` → `hidden` transition timing (master plan's **Open questions**).
 - `display: contents` fallback (master plan's **Open questions**).
+
+## Gate verdict
+
+- **2026-09-03** — verdict: FAIL; checks: 2 dimensions passed / 1 failed / 0
+  followups; followups: none (the PR is open, so the fix lands in it rather
+  than as tracked debt); one-line: doc accuracy — the spec's own `## Phases`
+  section still called phase 2 "Not started" and linked the `active/` plan,
+  contradicting the frontmatter (`stage: GATE`, `pr: 334`) three sections
+  above it, and `docs/product-specs/ui-design-system.md` still described
+  `src/ui/` as the live primitive layer.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all 9 criteria plus the master plan's invariants
+      observed against `main...HEAD`: `src/ui/` gone with the sprite
+      relocated and imported by `Icon.tsx`; `session-term.ts` creates
+      exactly `host` / `.tile-header` / `.term-body` / `.tile-overlays`; no
+      `useState`/`useReducer` holds a `SessionTerm` and no component calls
+      `ensureAttached()`; the only diff under `test/e2e` is one comment
+      plus the new stability spec, and `test/e2e-real` is untouched.
+      Suites re-run under `CI=1`: e2e 262 passed / 31 skipped, e2e-real 22
+      passed / 2 skipped, and `tile-chrome-stability.spec.ts` twice via
+      `--repeat-each=2`.
+    - non-goals — PASS — `keyboard.ts` and `*.module.css` untouched;
+      `store/terms.ts` diff empty, so the registry stays outside the
+      reactive store; `CHANGELOG.md` and `product-specs/index.md` absent
+      from the diff. The cross-feature bookkeeping was checked for code
+      bleed and is metadata-only, with its `shipped:` dates cross-checked
+      against `gh pr view` merge timestamps.
+    - doc accuracy — FAIL — the two stale statements above. Everything else
+      checked out, including the changeset's schema and the `.fading`
+      claim, verified line-by-line against
+      `git show main:.../session-term.ts`.
+- **2026-09-03** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0
+  followups; followups: none; one-line: the two stale statements above were
+  fixed on the branch and the doc dimension re-run, which cleared them and
+  caught two more of the same class — `FRONTEND.md`'s accessibility rule still
+  named `iconButton()` (now `components/IconButton.tsx`, which throws on an
+  empty label just as the imperative primitive did) and spec 323's success
+  criterion, annotated the same way `ui-design-system.md` was rather than
+  rewritten. `docs/design-docs/ui/icons.md`'s aria-label rule was repointed
+  too; the remaining `iconButton(` uses in `components.md` are its own
+  documented imperative-signature convention, not staleness.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — unchanged from the first run; no code moved
+      between the two.
+    - non-goals — PASS — unchanged from the first run.
+    - doc accuracy — PASS — items 1 and 2 verified fixed (the layout note
+      checked field-by-field against the tree, the Phases bullet against
+      the frontmatter and the phase-1 convention); the phase-2 plan's new
+      `## Gate verdict` and `## PR convergence ledger` sections verified
+      structurally sane; changeset schema and scope re-confirmed;
+      `CHANGELOG.md` and `product-specs/index.md` still absent from the
+      diff.
+
+## PR convergence ledger
+
+Append-only; one line per `/hs-review-loop` iteration.
 
 - **2026-09-03 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 4606dfb140c957b8aac6422943cce123ee955b756c10b9979a0abba87dfb686d; threads_open: 0; action: autofix+push; head_sha: 159cd7e.
 - **2026-09-03 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: abf26b9accb3c87992e6e2f78850b370cb3db26664763a86e332fe9e57ecb02b; threads_open: 0; action: stop (converged; the one IMPORTANT finding — `setDead()`'s reason-merge branch untested against a real `SessionTerm` — was closed by hand rather than deferred, and mutation-checked: dropping the `deadReason` write fails it); head_sha: 86e017a.
