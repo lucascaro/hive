@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/close-confirm-no-switch.md](../../product-specs/close-confirm-no-switch.md)
 - **Issue:** #330
+- **PR:** #331
+- **Branch:** `feature/330-close-confirm-no-switch`
 - **Status:** active
 
 ## Summary
@@ -63,6 +65,7 @@ worktree and is exactly when the user wants to see that something is happening.
 ## Progress
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
+- **2026-09-03** — Implemented; PR #331 open; stage = REVIEW.
 
 ## Open questions
 

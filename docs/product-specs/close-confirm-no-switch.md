@@ -4,7 +4,8 @@ title: "GUI: don't switch sessions while the close confirmation is up"
 type: bug
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 331
+stage: REVIEW
 ---
 
 # GUI: don't switch sessions while the close confirmation is up
