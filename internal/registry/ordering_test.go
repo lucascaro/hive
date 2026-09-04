@@ -185,10 +185,11 @@ func TestCreateAppendEmitsNoShiftedUpdates(t *testing.T) {
 	for {
 		select {
 		case ev := <-listener:
-			if ev.Kind == wire.SessionEventTitle {
+			if ev.Kind == wire.SessionEventTitle || ev.Kind == wire.SessionEventState {
 				// The program on the PTY re-titled itself (a shell does
-				// this from its prompt). Asynchronous and unrelated to
-				// ordering — which is precisely why titles have their own
+				// this from its prompt), or produced output and so moved
+				// its session state. Asynchronous and unrelated to
+				// ordering — which is precisely why both have their own
 				// kind rather than riding `updated`.
 				continue
 			}

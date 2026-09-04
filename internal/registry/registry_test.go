@@ -87,7 +87,8 @@ func TestCreateListKill(t *testing.T) {
 			select {
 			case ev := <-listener:
 				if (ev.Kind == wire.SessionEventUpdated ||
-					ev.Kind == wire.SessionEventTitle) && kind != ev.Kind {
+					ev.Kind == wire.SessionEventTitle ||
+					ev.Kind == wire.SessionEventState) && kind != ev.Kind {
 					continue
 				}
 				if ev.Kind != kind {

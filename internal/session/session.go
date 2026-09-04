@@ -64,6 +64,10 @@ type Session struct {
 	// bool compare, not a frame per bell.
 	bells    bellScanner
 	bellHook func()
+	// outputHook is installed by the registry to drive the session
+	// state machine: "bytes arrived" is the only signal the heuristic
+	// tier has for "this session is working".
+	outputHook func()
 }
 
 // titleThrottle bounds how often a session reports a title change. Some
@@ -223,6 +227,7 @@ func (s *Session) readLoop() {
 			// released) keeps that a one-way edge instead of a lock cycle.
 			s.noteTitle()
 			s.noteBell(buf[:n])
+			s.noteOutput()
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -287,6 +292,32 @@ func (s *Session) SetBellHook(fn func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.bellHook = fn
+}
+
+// SetOutputHook installs the callback invoked once per delivered PTY
+// chunk. Passing nil disables reporting. Same contract as SetTitleHook:
+// it runs on the readLoop goroutine with no session lock held, and must
+// not block for long — the PTY drain is stalled while it runs, and this
+// one fires for every chunk rather than only on a change, so its
+// implementation has to be cheap enough to run at PTY speed.
+func (s *Session) SetOutputHook(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.outputHook = fn
+}
+
+// noteOutput reports that a chunk was delivered. Deliberately
+// unconditional and unthrottled: the state machine on the other end
+// needs the timestamp of the most recent byte to decide when the
+// session has gone quiet, and throttling here would make "quiet" mean
+// "quiet since the last sample" instead.
+func (s *Session) noteOutput() {
+	s.mu.Lock()
+	hook := s.outputHook
+	s.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
 }
 
 // noteBell scans one delivered chunk for a real bell and reports it.

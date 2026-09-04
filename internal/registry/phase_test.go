@@ -31,7 +31,10 @@ func (p *phaseLog) add(ev wire.SessionEvent) {
 	//
 	// This is the reason titles have their own SessionEvent kind instead
 	// of riding `updated`: consumers that care about lifecycle can say so.
-	if ev.Kind == wire.SessionEventTitle {
+	// State events are dropped for the same reason: they are driven by
+	// bytes arriving on the PTY, so a real /bin/bash emits them at
+	// times no lifecycle assertion can predict.
+	if ev.Kind == wire.SessionEventTitle || ev.Kind == wire.SessionEventState {
 		return
 	}
 	p.mu.Lock()
@@ -822,6 +825,14 @@ func TestAttentionSetAndClear(t *testing.T) {
 	if !ev.Session.NeedsAttention {
 		t.Error("NeedsAttention not set on the broadcast entry")
 	}
+	// The bell also moves the session state, which rides its own kind.
+	// Attention comes first: that is the older of the two, and the one
+	// existing clients drive notifications from.
+	ev = nextEvent(t, ch)
+	if ev.Kind != wire.SessionEventState || ev.Session.State != wire.StateWaitingInput {
+		t.Errorf("second event = %s/%q, want %s/%q",
+			ev.Kind, ev.Session.State, wire.SessionEventState, wire.StateWaitingInput)
+	}
 
 	// A second bell while the flag is already set must be silent: the
 	// hook is unthrottled on purpose, so this guard is what keeps a
@@ -838,8 +849,19 @@ func TestAttentionSetAndClear(t *testing.T) {
 		t.Fatalf("SetAttention: %v", err)
 	}
 	ev = nextEvent(t, ch)
+	if ev.Kind != wire.SessionEventAttention {
+		t.Errorf("kind = %q, want %q", ev.Kind, wire.SessionEventAttention)
+	}
 	if ev.Session.NeedsAttention {
 		t.Error("NeedsAttention still set after the client reported a look")
+	}
+	// "The user looked" also resolves the heuristic tier's
+	// waiting_input — looking is the answer to the only question a
+	// bell can ask.
+	ev = nextEvent(t, ch)
+	if ev.Kind != wire.SessionEventState || ev.Session.State != wire.StateIdle {
+		t.Errorf("clear did not return the session to idle: %s/%q",
+			ev.Kind, ev.Session.State)
 	}
 
 	// Clearing what is already clear is a no-op, so a GUI that

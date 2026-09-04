@@ -1,0 +1,321 @@
+package agentstate
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/lucascaro/hive/internal/wire"
+)
+
+var t0 = time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+
+// hookEvent is the shorthand every table row below uses for "the agent
+// reported something".
+func hookEvent(kind string, at time.Time, text string) Event {
+	return Event{Kind: kind, Source: wire.StateSourceHook, At: at, Text: text}
+}
+
+func TestNewIsIdleOnTheHeuristicTier(t *testing.T) {
+	got := New(t0).Snapshot()
+	want := Snapshot{}
+	if got != want {
+		t.Errorf("New = %+v, want the zero snapshot %+v — registry.Entry "+
+			"relies on those being the same thing", got, want)
+	}
+}
+
+// The heuristic tier is the whole of phase 1: it is what a plain shell
+// and every agent without hooks gets.
+func TestHeuristicTier(t *testing.T) {
+	tests := []struct {
+		name    string
+		steps   func(m *Machine) bool
+		want    string
+		changed bool // what the last step returned
+	}{
+		{
+			name:    "output starts working",
+			steps:   func(m *Machine) bool { return m.Output(t0) },
+			want:    wire.StateWorking,
+			changed: true,
+		},
+		{
+			name: "more output while working changes nothing",
+			steps: func(m *Machine) bool {
+				m.Output(t0)
+				return m.Output(t0.Add(10 * time.Millisecond))
+			},
+			want:    wire.StateWorking,
+			changed: false,
+		},
+		{
+			name: "quiet goes idle",
+			steps: func(m *Machine) bool {
+				m.Output(t0)
+				return m.Tick(t0.Add(QuietAfter))
+			},
+			want:    wire.StateIdle,
+			changed: true,
+		},
+		{
+			name: "not yet quiet stays working",
+			steps: func(m *Machine) bool {
+				m.Output(t0)
+				return m.Tick(t0.Add(QuietAfter - time.Millisecond))
+			},
+			want:    wire.StateWorking,
+			changed: false,
+		},
+		{
+			name:    "bell while idle waits for input",
+			steps:   func(m *Machine) bool { return m.Bell(t0) },
+			want:    wire.StateWaitingInput,
+			changed: true,
+		},
+		{
+			name: "bell while working waits for input",
+			steps: func(m *Machine) bool {
+				m.Output(t0)
+				return m.Bell(t0.Add(time.Second))
+			},
+			want:    wire.StateWaitingInput,
+			changed: true,
+		},
+		{
+			name: "a second bell is not news",
+			steps: func(m *Machine) bool {
+				m.Bell(t0)
+				return m.Bell(t0.Add(time.Second))
+			},
+			want:    wire.StateWaitingInput,
+			changed: false,
+		},
+		{
+			name: "output while waiting takes the session back to working",
+			steps: func(m *Machine) bool {
+				m.Bell(t0)
+				return m.Output(t0.Add(time.Second))
+			},
+			want:    wire.StateWorking,
+			changed: true,
+		},
+		{
+			name: "waiting does not time out into idle",
+			steps: func(m *Machine) bool {
+				m.Bell(t0)
+				return m.Tick(t0.Add(time.Hour))
+			},
+			want:    wire.StateWaitingInput,
+			changed: false,
+		},
+		{
+			name:    "exit",
+			steps:   func(m *Machine) bool { return m.Exit() },
+			want:    wire.StateExited,
+			changed: true,
+		},
+		{
+			name: "a second exit is not news",
+			steps: func(m *Machine) bool {
+				m.Exit()
+				return m.Exit()
+			},
+			want:    wire.StateExited,
+			changed: false,
+		},
+		{
+			name: "output after exit cannot resurrect the session",
+			steps: func(m *Machine) bool {
+				m.Exit()
+				return m.Output(t0.Add(time.Second))
+			},
+			want:    wire.StateExited,
+			changed: false,
+		},
+		{
+			name: "clear waiting resolves the bell",
+			steps: func(m *Machine) bool {
+				m.Bell(t0)
+				return m.ClearWaiting()
+			},
+			want:    wire.StateIdle,
+			changed: true,
+		},
+		{
+			name: "clear waiting on a working session is a no-op",
+			steps: func(m *Machine) bool {
+				m.Output(t0)
+				return m.ClearWaiting()
+			},
+			want:    wire.StateWorking,
+			changed: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(t0)
+			changed := tc.steps(m)
+			if got := m.Snapshot().State; got != tc.want {
+				t.Errorf("state = %q, want %q", got, tc.want)
+			}
+			if changed != tc.changed {
+				t.Errorf("last step reported changed=%v, want %v — the "+
+					"registry broadcasts on exactly this", changed, tc.changed)
+			}
+			if src := m.Snapshot().Source; src != wire.StateSourceHeuristic {
+				t.Errorf("source = %q, want the heuristic tier", src)
+			}
+		})
+	}
+}
+
+func TestAgentTierOverridesTheHeuristicOne(t *testing.T) {
+	m := New(t0)
+	m.Output(t0) // working, heuristic
+
+	if !m.Apply(hookEvent(KindWaitingPermission, t0.Add(time.Second), "")) {
+		t.Fatal("a permission prompt must be a change")
+	}
+	if got := m.Snapshot(); got.State != wire.StateWaitingPermission || got.Source != wire.StateSourceHook {
+		t.Fatalf("snapshot = %+v, want waiting_permission on the hook tier", got)
+	}
+
+	// The prompt repainting itself must not read as "working again".
+	// This is the single most important rule in the file: without it
+	// every permission prompt flickers back to working on its next
+	// redraw and the user never sees it.
+	if m.Output(t0.Add(2 * time.Second)) {
+		t.Error("output moved a hook-owned session")
+	}
+	if got := m.Snapshot().State; got != wire.StateWaitingPermission {
+		t.Errorf("state = %q, want it held at waiting_permission", got)
+	}
+
+	// Same for the bell: the agents that ring also report through
+	// hooks, and honouring both notifies the user twice.
+	if m.Bell(t0.Add(3 * time.Second)) {
+		t.Error("bell moved a hook-owned session")
+	}
+
+	// And the quiet timer must not invent a turn end for a tier that
+	// reports its own.
+	if m.Tick(t0.Add(time.Hour)) {
+		t.Error("tick moved a hook-owned session")
+	}
+}
+
+func TestHookTierGoesStaleAndOutputTakesOver(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
+	if got := m.Snapshot().Source; got != wire.StateSourceHook {
+		t.Fatalf("source = %q, want hook", got)
+	}
+
+	// Still fresh: output changes nothing.
+	if m.Output(t0.Add(HookStaleAfter)) {
+		t.Error("output moved a session whose hook is still fresh")
+	}
+	// One instant past the window, with bytes still arriving: the hook
+	// is gone (crashed, killed, uninstalled) and the heuristic tier
+	// must take the session back rather than leave it pinned forever.
+	if !m.Output(t0.Add(HookStaleAfter + time.Nanosecond)) {
+		t.Fatal("a stale hook tier must be demoted by continuing output")
+	}
+	if got := m.Snapshot(); got.Source != wire.StateSourceHeuristic || got.State != wire.StateWorking {
+		t.Errorf("snapshot = %+v, want working on the heuristic tier", got)
+	}
+}
+
+func TestApplyMapsEveryKind(t *testing.T) {
+	tests := []struct {
+		kind string
+		want string
+	}{
+		{KindPrompt, wire.StateWorking},
+		{KindTurnEnd, wire.StateIdle},
+		{KindWaitingInput, wire.StateWaitingInput},
+		{KindWaitingPermission, wire.StateWaitingPermission},
+		{KindPermissionResolved, wire.StateWorking},
+		{KindError, wire.StateError},
+		{KindSessionEnd, wire.StateExited},
+	}
+	for _, tc := range tests {
+		t.Run(tc.kind, func(t *testing.T) {
+			m := New(t0)
+			m.Apply(hookEvent(tc.kind, t0, ""))
+			if got := m.Snapshot().State; got != tc.want {
+				t.Errorf("state = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// A ping — and anything the agent invents that we have not heard of —
+// must keep the tier alive without moving the state. That is what stops
+// a renamed hook event in a future Claude release from silently
+// dropping every session back to the heuristic tier.
+func TestPingAndUnknownKindsHoldTheTierWithoutMovingState(t *testing.T) {
+	for _, kind := range []string{KindPing, "some_future_event"} {
+		t.Run(kind, func(t *testing.T) {
+			m := New(t0)
+			m.Apply(hookEvent(KindWaitingPermission, t0, ""))
+			if m.Apply(hookEvent(kind, t0.Add(time.Second), "")) {
+				t.Error("reported a change")
+			}
+			if got := m.Snapshot().State; got != wire.StateWaitingPermission {
+				t.Errorf("state = %q, want it unmoved", got)
+			}
+			// The tier is still fresh a moment after the ping, which is
+			// the point: the staleness clock was reset.
+			if m.Output(t0.Add(HookStaleAfter)) {
+				t.Error("the ping did not refresh the staleness clock")
+			}
+		})
+	}
+}
+
+func TestLastPromptKeepsTheFirstQuestion(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindPrompt, t0, "port the parser"))
+	m.Apply(hookEvent(KindTurnEnd, t0.Add(time.Minute), "done"))
+	m.Apply(hookEvent(KindPrompt, t0.Add(2*time.Minute), "now add tests"))
+
+	got := m.Snapshot()
+	if got.LastPrompt != "port the parser" {
+		t.Errorf("LastPrompt = %q; it must hold the ask the session was "+
+			"opened for, which is what the user scans a list of ten for",
+			got.LastPrompt)
+	}
+	if got.LastSummary != "done" {
+		t.Errorf("LastSummary = %q, want the last turn's summary", got.LastSummary)
+	}
+}
+
+func TestTextIsCappedAtTheWireLimit(t *testing.T) {
+	m := New(t0)
+	long := strings.Repeat("x", wire.MaxSummaryLen*3)
+	m.Apply(hookEvent(KindPrompt, t0, long))
+	m.Apply(hookEvent(KindError, t0, long))
+
+	got := m.Snapshot()
+	if len(got.LastPrompt) != wire.MaxSummaryLen {
+		t.Errorf("LastPrompt is %d bytes, want it capped at %d",
+			len(got.LastPrompt), wire.MaxSummaryLen)
+	}
+	if len(got.LastSummary) != wire.MaxSummaryLen {
+		t.Errorf("LastSummary is %d bytes, want it capped at %d",
+			len(got.LastSummary), wire.MaxSummaryLen)
+	}
+}
+
+// The exit code is deliberately not consulted: a shell exiting 1 is
+// exited, not error, or a red dot stops meaning anything.
+func TestNonZeroExitIsExitedNotError(t *testing.T) {
+	m := New(t0)
+	m.Output(t0)
+	m.Exit()
+	if got := m.Snapshot().State; got != wire.StateExited {
+		t.Errorf("state = %q, want %q", got, wire.StateExited)
+	}
+}

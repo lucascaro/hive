@@ -17,6 +17,9 @@ What works:
 - Grid view: per-project (⌘G) or all-sessions (⇧⌘G), spatial arrow nav
 - Multi-window (⇧⌘N) — independent windows share the same daemon
 - BEL → desktop notification + visual pulse on non-focused sessions
+- Per-session state in the sidebar and tile headers — working, idle,
+  waiting for you, exited — derived from the PTY, so every agent and
+  plain shell gets it
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

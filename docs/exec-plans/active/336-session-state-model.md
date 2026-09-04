@@ -520,6 +520,57 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   (two `Stop` hooks, both must fire) so a future change in merge
   semantics shows up as a probe failure, not a silent loss of the
   user's hooks. Resolves former open question 1.
+- **2026-09-04 (phase 1)** — Every machine mutator returns `changed
+  bool`; the registry broadcasts on that rather than diffing snapshots
+  before/after. Why: the plan specified both mechanisms (a bool from
+  `Apply`/`Tick`, a snapshot diff elsewhere) and two ways to answer one
+  question is how they drift. `Snapshot` remains, for `Entry.Info()`.
+- **2026-09-04 (phase 1)** — `Entry.state` is created lazily by
+  `machine()` rather than assigned at every construction site. Why:
+  there are four such sites (two disk-load paths, create, and the test
+  helpers) and a missed one is a nil deref, not a missing dot.
+  `Entry.Info()` reads through a separate read-only `stateSnapshot()`
+  whose zero value *is* idle-on-the-heuristic-tier, so the two call
+  sites that render an entry after releasing `r.mu` stay race-free.
+- **2026-09-04 (phase 1)** — The heuristic tier never raises
+  `NeedsAttention` on its own; only an agent-reported transition does,
+  and the bell keeps doing exactly what it did before. Why: the plan's
+  rule ("attention when state enters idle from working") is true of
+  every `ls` in every shell, and that flag drives desktop
+  notifications. Phase 1 ships only the heuristic tier, so following
+  the plan literally would have made the flag worthless on day one.
+  `wantsAttention` in `registry.go` holds the line.
+- **2026-09-04 (phase 1)** — `SetAttention` gained `ClearWaiting` on the
+  machine rather than reusing `Apply(turn_end)`. Why: "the user looked"
+  is not something an agent reported, so it must not touch the tier or
+  the staleness clock — and `turn_end` would also clear `LastSummary`.
+- **2026-09-04 (phase 1)** — No `StateDot.tsx`. The GUI already resolves
+  a session to one of five icon shapes (`lib/session-state.ts` +
+  `components/Icon.tsx` `StateIcon`), used by the sidebar row, the
+  minimized chip and the tile header. Phase 1 extends that union with
+  `working` and `waiting-permission` instead of adding a second,
+  parallel state component. Both new shapes reuse the existing
+  `--state-running` / `--state-attention` tokens: those are already
+  picked for all 18 themes, and shape plus motion carries the
+  difference without asking anyone to pick 18 more colours.
+- **2026-09-04 (phase 1)** — `STATE_WORDS.running` now reads "Idle",
+  not "Running". Why: with a real `working` state beside it, "Running"
+  described the wrong one of the two.
+- **2026-09-04 (phase 1)** — Session-state fields on the JS side are
+  single-spelled `snake_case`, matching `title` and `needs_attention`
+  in the same interface, not the `snake_case ?? camelCase` pair the
+  plan called for. Why: `SessionInfo` reaches the frontend as raw wire
+  JSON, where the daemon's struct tags are the only spelling that
+  exists; the camelCase fallbacks in that file are for Wails-bound
+  types, which this is not.
+- **2026-09-04 (phase 1)** — `hivebar` and the notification wording are
+  untouched. Why: the phasing puts both in phase 4, and threading
+  fields no reader uses is scope with no payoff. `hivebar` keeps
+  working off `needs_attention`, whose semantics phase 1 did not change.
+- **2026-09-04 (phase 1)** — Env injection (`HIVE_SESSION_ID` /
+  `HIVE_SOCKET`) is deferred to phase 2 with the `event` wire mode.
+  Why: pointing an agent at a socket that has no `event` arm to dial is
+  a lie the daemon would have to keep for a release.
 - **2026-09-04** — Desktop notifications stay in the GUI
   (`cmd/hivegui/app.go`), the daemon never imports `internal/notify`.
   Why: that is where they live today; moving them is out of scope.
@@ -554,6 +605,20 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
 
 - **2026-09-04** — Spec and plan written; stage PLAN.
 - **2026-09-04** — Plan reviewed; open question 1 answered by experiment (hooks concatenate, Claude 2.1.260). Ready for `/hs-feature-plan-handoff 336`.
+- **2026-09-04** — Stage → IMPLEMENT.
+- **2026-09-04** — Phase 1 implemented on `feature/336-session-state-model`:
+  `internal/agentstate/` (machine + exhaustive table tests), the four
+  `SessionInfo` state fields and `SESSION_EVENT(state)`,
+  `session.SetOutputHook`, the registry's per-chunk/bell/exit feeders
+  and its 500 ms quiet ticker, `DaemonContract` 2 → 3, and the two new
+  GUI state glyphs across sidebar / minimized chip / tile header.
+  Verified: `go build ./...`, `go vet ./...`, `staticcheck` and
+  `go vet` for darwin/linux/windows, `go test -race` on
+  registry/agentstate/wire/session, `scripts/test.sh` (go · unit · dom ·
+  e2e), `biome ci .`, `npm run typecheck`, and the full Playwright mock
+  suite including the new `state-glyphs.spec`.
+  Phases 2–4 (the `event` wire mode + `hived hook` + Claude adapter; the
+  Pi extension; hivebar and notification wording) are untouched.
 
 ## Open questions
 

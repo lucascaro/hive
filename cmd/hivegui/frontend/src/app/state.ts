@@ -52,6 +52,25 @@ export interface SessionInfo {
   // Daemon-owned, so every window and the menu bar agree; omitted when
   // false. Single-spelled, like `title`.
   needs_attention?: boolean;
+  // What the daemon believes this session is doing right now
+  // (internal/wire/control.go State*). Absent means idle — that is the
+  // omitempty case AND what a daemon too old to send it looks like, on
+  // purpose, so no client needs an "unknown" branch.
+  //
+  // Single-spelled snake_case like `title` and `needs_attention`: these
+  // come straight off the wire as JSON, where the daemon's struct tags
+  // are the only spelling that exists.
+  state?: string;
+  // Which tier produced `state` (internal/wire/control.go StateSource*).
+  // Absent means the heuristic tier — derived from PTY bytes alone, and
+  // so a guess. The UI marks the difference rather than presenting a
+  // guess as a fact.
+  state_source?: string;
+  // The first thing this session was asked to do, and what the agent
+  // said as it finished its last turn. Both absent on the heuristic
+  // tier, which cannot know either.
+  last_prompt?: string;
+  last_summary?: string;
 }
 
 /** Reads the daemon's attention flag off a session, defaulting to false

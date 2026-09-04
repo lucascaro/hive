@@ -514,3 +514,65 @@ func TestClientCommandsAllowlistCoversEveryVerb(t *testing.T) {
 		t.Errorf("ClientCommands has %d entries; add the new verb to this test", len(ClientCommands))
 	}
 }
+
+// Session state travels as four optional fields. The empty-value
+// defaults are what let a client built against this generation read a
+// daemon built before it: absent state means idle, absent source means
+// the heuristic tier — not "unknown", which every client would then
+// need a branch for.
+func TestSessionInfoStateDefaultsToIdleHeuristic(t *testing.T) {
+	var got SessionInfo
+	if err := json.Unmarshal([]byte(`{"id":"a","name":"n"}`), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.State != StateIdle {
+		t.Errorf("State = %q, want %q for a payload from an older daemon",
+			got.State, StateIdle)
+	}
+	if got.StateSource != StateSourceHeuristic {
+		t.Errorf("StateSource = %q, want %q", got.StateSource, StateSourceHeuristic)
+	}
+}
+
+func TestSessionInfoStateRoundTrips(t *testing.T) {
+	want := SessionInfo{
+		ID: "a", Name: "n",
+		State:       StateWaitingPermission,
+		StateSource: StateSourceHook,
+		LastPrompt:  "port the parser",
+		LastSummary: "may I run git push?",
+	}
+	b, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	// The wire is snake_case; a camelCase tag here would be read by
+	// nobody on the JS side and silently render every session idle.
+	for _, key := range []string{`"state"`, `"state_source"`, `"last_prompt"`, `"last_summary"`} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("payload is missing %s: %s", key, b)
+		}
+	}
+	var got SessionInfo
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got != want {
+		t.Errorf("round trip = %+v, want %+v", got, want)
+	}
+}
+
+// An idle session on the heuristic tier must not put any of the four
+// fields on the wire. They are broadcast on every session event, for
+// every session, and the common case is all four empty.
+func TestIdleSessionCarriesNoStateFields(t *testing.T) {
+	b, err := json.Marshal(SessionInfo{ID: "a", Name: "n"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, key := range []string{"state", "state_source", "last_prompt", "last_summary"} {
+		if strings.Contains(string(b), key) {
+			t.Errorf("idle session carries %q: %s", key, b)
+		}
+	}
+}

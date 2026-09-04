@@ -149,6 +149,34 @@ type SessionInfo struct {
 	// answers to one question and no way for the menu bar to have any
 	// answer at all.
 	NeedsAttention bool `json:"needs_attention,omitempty"`
+
+	// State is what the session is doing right now — see the State*
+	// constants. Daemon-owned and in-memory like Phase, Title and
+	// NeedsAttention, so a daemon restart starts every session idle.
+	//
+	// Empty means StateIdle. That is deliberate: it keeps the field
+	// omitempty, and it means a client built against this generation
+	// reads a daemon built before it as "everything idle" rather than
+	// as "everything in an unknown state it must render specially".
+	State string `json:"state,omitempty"`
+	// StateSource names the tier that produced State — see the
+	// StateSource* constants. Clients render the difference, because
+	// "the agent told us it is waiting for permission" and "no bytes
+	// arrived for two seconds" are not the same claim and should not
+	// look the same. Empty means StateSourceHeuristic.
+	StateSource string `json:"state_source,omitempty"`
+	// LastPrompt is the first thing the user asked this session to do,
+	// as reported by the agent. It answers "what is this one for" in a
+	// list of ten. Empty when the agent reports nothing (every session
+	// on the heuristic tier).
+	//
+	// Capped at MaxSummaryLen bytes at the boundary, like Title: the
+	// content is whatever was typed at a prompt.
+	LastPrompt string `json:"last_prompt,omitempty"`
+	// LastSummary is what the agent said as it finished its most
+	// recent turn, or the error it reported. Same capping rules and
+	// same in-memory lifetime as LastPrompt.
+	LastSummary string `json:"last_summary,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -157,6 +185,63 @@ type SessionInfo struct {
 // truncated at the boundary rather than trusted. 256 bytes is far more
 // than any sane title and far less than a problem.
 const MaxTitleLen = 256
+
+// MaxSummaryLen bounds SessionInfo.LastPrompt and LastSummary. Same
+// reasoning as MaxTitleLen — the content is supplied by the child
+// process or typed by the user and is rebroadcast to every connected
+// client — with a larger budget, because a one-line summary of a turn
+// is genuinely longer than a window title and is rendered in a
+// tooltip rather than a row.
+const MaxSummaryLen = 512
+
+// Session states, carried by SessionInfo.State. The daemon owns them;
+// clients render them.
+//
+// The set is deliberately small and answers exactly one question: does
+// this session need me, and if not, is it still going? Anything finer
+// belongs in LastSummary, which is text, not a state a client has to
+// have an icon for.
+const (
+	// StateIdle is the steady state: alive, nothing running, nobody
+	// waiting. It is the empty string so it is also what a client
+	// reads from a daemon that predates the field.
+	StateIdle = ""
+	// StateWorking means the session is producing output or the agent
+	// reported it is mid-turn.
+	StateWorking = "working"
+	// StateWaitingInput means the program wants something typed. On
+	// the heuristic tier this is what a terminal bell means.
+	StateWaitingInput = "waiting_input"
+	// StateWaitingPermission means the agent is blocked on an explicit
+	// yes/no. Only the hook and extension tiers can tell this apart
+	// from StateWaitingInput; the distinction is the whole reason the
+	// tiers exist.
+	StateWaitingPermission = "waiting_permission"
+	// StateExited means the child process is gone, whatever its exit
+	// code. A shell that exits 1 is exited, not StateError.
+	StateExited = "exited"
+	// StateError is reserved for failures the agent itself reported.
+	// Keeping it apart from StateExited is what stops a red dot from
+	// meaning "a command returned non-zero once".
+	StateError = "error"
+)
+
+// State tiers, carried by SessionInfo.StateSource, in increasing order
+// of trust.
+const (
+	// StateSourceHeuristic is derived from the PTY alone: bytes
+	// arrived, bytes stopped, a bell rang. Available for every
+	// session including plain shells, and never more than a guess —
+	// clients mark it as uncertain. The empty string, so it is also
+	// what a pre-field daemon reads as.
+	StateSourceHeuristic = ""
+	// StateSourceHook is reported by the agent's own hook mechanism
+	// (Claude Code hooks calling `hived hook`).
+	StateSourceHook = "hook"
+	// StateSourceExtension is reported by an in-process agent
+	// extension (the Hive-shipped Pi extension).
+	StateSourceExtension = "extension"
+)
 
 // Session lifecycle phases, carried by SessionInfo.Phase. The daemon
 // owns them; clients render them. They are in-memory only — nothing
@@ -319,6 +404,14 @@ const (
 	// view of the session, and consumers that re-render everything on
 	// "updated" should not be made to do so on every bell.
 	SessionEventAttention = "attention"
+	// SessionEventState reports that SessionInfo.State (or any of the
+	// text that travels with it) changed. Kept apart from "updated"
+	// for the same reason "title" and "attention" are: it is driven by
+	// the child process rather than by the daemon's own view of the
+	// session, and it fires as often as an agent changes what it is
+	// doing. Consumers that re-render the world on "updated" must not
+	// be made to do so on every turn.
+	SessionEventState = "state"
 )
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

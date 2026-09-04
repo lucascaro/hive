@@ -104,13 +104,13 @@ interface ProjectEvent {
 }
 
 interface SessionEvent {
-  // 'title' and 'attention' are session-only kinds driven by the child
+  // 'title', 'attention' and 'state' are session-only kinds driven by the child
   // process rather than by the daemon's own view of the session — a
   // re-title (SessionEventTitle) and a terminal bell
   // (SessionEventAttention). Both are kept out of 'updated' so that
   // churn from the PTY never triggers the full re-render 'updated'
   // means.
-  kind: 'added' | 'removed' | 'updated' | 'title' | 'attention';
+  kind: 'added' | 'removed' | 'updated' | 'title' | 'attention' | 'state';
   session: SessionInfo;
 }
 
@@ -481,6 +481,15 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // imperative sidebar needed a whole second patch path here — a
     // rebuild at the child process's redraw rate ate dblclick pairs.)
     if (ev.kind === 'title') {
+      if (i >= 0) updateSession(ev.session);
+      return;
+    }
+    // The session started or stopped working, or an agent reported what
+    // it is blocked on. Its own kind for the same reason as 'title':
+    // this fires at the rate an agent changes what it is doing, and
+    // riding 'updated' would make every consumer re-render at that
+    // rate. The narrow store write repaints one sidebar row.
+    if (ev.kind === 'state') {
       if (i >= 0) updateSession(ev.session);
       return;
     }

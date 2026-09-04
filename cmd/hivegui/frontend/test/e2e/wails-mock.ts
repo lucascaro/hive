@@ -949,6 +949,17 @@ if (typeof window !== 'undefined') {
     killSession(id: string, force?: boolean) {
       return KillSession(id, force);
     },
+    // The daemon broadcasts SESSION_EVENT(state) whenever a session
+    // starts or stops working, or an agent reports what it is blocked
+    // on. Modelled here rather than left to specs to hand-emit, so the
+    // payload shape stays in one place and matches Entry.Info().
+    setSessionState(id: string, next: string, source = '') {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s) return;
+      s.state = next;
+      s.state_source = source;
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
     listeners,
     stdinLog,
     stdinText(id?: string) {
