@@ -30,10 +30,14 @@ Existing plumbing to copy, not reinvent:
   delivered chunk and calls the `SetBellHook` callback; the registry
   wires it at `registry.go:278` to `r.noteBell(id)` →
   `broadcastLocked(wire.SessionEventAttention, e.Info())`. The state
-  machine hooks in at the same two points (per-chunk + exit).
+  machine hooks in at the same per-chunk point. Process exit is
+  observed in `Registry.watchSessionExit` (`registry.go:777`), which
+  blocks on `sess.Done()` and sets `e.sess = nil` at `:785` —
+  `Entry.Alive()` (`:139`) is computed from that, not a field that
+  flips. `machine.Exit` is called there, inline.
 - `internal/registry/registry.go:73` — `Entry` holds in-memory-only
   fields `Phase`, `NeedsAttention`. New state fields sit beside them and
-  are copied into `wire.SessionInfo` in `Entry.Info()` (`registry.go:160`).
+  are copied into `wire.SessionInfo` in `Entry.Info()` (`registry.go:145`).
 - `internal/registry/registry.go:307` — `SetAttention(id, want)` is the
   client-driven "I looked" clear, reached from `FrameUpdateSession`
   (`daemon.go:770`). Keep it; it now also clears `waiting_*` → `idle`.
@@ -41,7 +45,13 @@ Existing plumbing to copy, not reinvent:
   fan-out. Reuse with a new event kind; do not add a second hub.
 - `internal/registry/create.go:109` — the single `spawn(session.Options{…})`
   call; `create.go:420` appends `SessionIDFlag` + id. Agent-specific
-  argv/env injection goes next to it.
+  argv/env injection goes next to it. `create.go:511-520` is the
+  raw-`Cmd`-from-client branch ("we don't mutate user-supplied cmd"):
+  env is still injected there (env is not cmd) but `SpawnArgs` is not.
+- `internal/registry/registry.go:546,585` (`Revive`/`ReviveWithPhase`)
+  and `:690` (`Restart`) build `opts.Cmd` from `ResumeArgs`/`ResumeCmd`
+  (call sites `:637`, `:745`). Both must append `SpawnArgs` too, or a
+  restarted Claude session silently drops to the heuristic tier.
 - `internal/agent/agent.go` — `Def` per agent. Claude has
   `SessionIDFlag: "--session-id"`; Pi has `--session-id` too. Add the
   adapter hooks to `Def` so the registry stays agent-agnostic.
@@ -61,11 +71,24 @@ Existing plumbing to copy, not reinvent:
 - `cmd/hivegui/frontend/src/app/state.ts:54-60,162` —
   `needs_attention` on the session type, `attention: Set<string>` in the
   store, `attentionReturnId` for ⌘B/⇧⌘B (spec 240).
-  `components/SessionRow.tsx`, `TileChrome.tsx`, `Sidebar.tsx` render the
-  pulse. `store/store.ts` holds the reducers.
-- `cmd/hivebar/` — reads sessions over one control connection and shows
-  an attention count; darwin only.
-- `internal/notify/` — desktop notifications, one interface.
+  `components/SessionRow.tsx` (`:143` already sets `title={sub}` — the
+  tooltip pattern to extend), `TileChrome.tsx`, `Sidebar.tsx` render the
+  pulse via `hv-state-pulse` (`theme/components/icon.css:36`, driven by
+  `--motion-pulse` in `tokens.css:57`) — reuse, don't add a keyframe.
+  `store/store.ts` holds the reducers.
+  `test/e2e/wails-mock.ts` — the Playwright Wails mock; `MockSession =
+  SessionInfo & {…}` and it emits only `added`/`updated`/`removed`
+  session events today. It must learn the `state` kind.
+- `cmd/hivebar/` — reads sessions over one control connection through
+  its own `client.go` / `model.go` types (`model.go:97,195` read
+  `NeedsAttention` for the count and marker); darwin only. Those types
+  need the new fields threaded through.
+- `internal/daemon/daemon.go:483` — HELLO `default:` arm's error text
+  says `want control|attach|create`; update the string with the case.
+- `internal/notify/` — desktop notifications, one interface. The
+  **GUI**, not the daemon, fires them: `cmd/hivegui/app.go:113`
+  (`notify.Notify`) on `SessionEventAttention`. The daemon never imports
+  `internal/notify`.
 - Claude local registry: `~/.claude/sessions/<pid>.json` with keys
   `sessionId`, `status`, `messagingSocketPath`, `pid`, `cwd`, `name`.
   Not needed in this spec (338 uses it) but confirms the id correlation.
@@ -150,23 +173,34 @@ Rules (table-driven, tested exhaustively):
   `FrameAgentEvent`; validates `Kind ∈ AgentEventKinds`, `Source ∈
   {hook, extension}`, `len(Text) ≤ MaxSummaryLen` (truncate, don't
   reject); calls `registry.ApplyAgentEvent(sessionID, ev)`; closes.
-  Unknown session id → log + close (no error frame; the hook has nothing
-  useful to do with one). Reject any other frame on an event connection.
+  Unknown session id, malformed JSON, or any frame type other than
+  `FrameAgentEvent` → log + close, no error frame (the hook has nothing
+  useful to do with one). Read deadline 2 s on the connection so a
+  stalled client cannot pin a goroutine.
 - `Config` gains nothing; the socket path is already known. The
   daemon passes `SocketPath` to the registry (`registry.New` option or a
   setter) so `create.go` can put it in the environment.
 
 ### Registry (`internal/registry/`)
 
-- `Entry` gains `state *agentstate.Machine` (nil until spawned; `Info()`
-  reads `Snapshot()` when non-nil, else zero values).
+- `Entry` gains `state *agentstate.Machine` (always non-nil; `Info()`
+  reads `Snapshot()`). Revive/restart replace it with `agentstate.New`,
+  which is what makes "daemon restart starts every session idle /
+  heuristic / empty text" true.
 - `create.go`: after resolving cwd and before `spawn`, build
-  `Env: []string{"HIVE_SESSION_ID="+id, "HIVE_SOCKET="+r.socketPath, "HIVE_PROJECT_ID="+projectID}`
-  and append `def.SpawnEnv(id)` / `def.SpawnArgs(id, hivedPath)` from the
-  agent adapter (below). Wire the session callbacks: extend the existing
-  `SetBellHook` pattern with `SetOutputHook(func())` and
-  `SetExitHook(func(code int))` on `session.Session` (exit already has a
-  path — find where `Alive` flips false and call the machine there).
+  `Env: []string{"HIVE_SESSION_ID="+id, "HIVE_SOCKET="+r.socketPath}`
+  (spec 337 adds `HIVE_PROJECT_ID` when something reads it) and, when
+  `spec.Agent` resolves through `agent.Get`, append `def.SpawnArgs(sp)`
+  (below). The raw-`Cmd` branch (`create.go:511`) gets env only. Wire
+  the per-chunk callback by extending the existing `SetBellHook`
+  pattern with `SetOutputHook(func())` on `session.Session`; exit needs
+  no new hook — `watchSessionExit` (`registry.go:777`) calls
+  `machine.Exit` inline before it nils `e.sess`.
+  `Revive`/`ReviveWithPhase`/`Restart` append the same `SpawnArgs` after
+  `ResumeArgs`/`ResumeCmd` (`registry.go:637`, `:745`).
+- `Entry.state` is created when the entry is registered (boot load or
+  create), never nil, so an `AGENT_EVENT` that races the spawn (entry
+  exists, `Phase != Ready`) is applied, not dropped and not a nil deref.
 - `ApplyAgentEvent(id, ev)`: lock, `Apply`, if changed → `broadcastLocked(SessionEventState, info)`.
 - A single registry ticker goroutine (`time.Ticker`, 500 ms) calls
   `Tick` on every alive entry; broadcast on change. Stopped in `Close`.
@@ -187,11 +221,22 @@ Rules (table-driven, tested exhaustively):
 `Def` gains two optional funcs, so `create.go` stays agent-agnostic:
 
 ```go
+// SpawnInfo is what an adapter may need at spawn time. Only the fields
+// an adapter reads are guaranteed non-empty; an empty field means
+// "unavailable, skip your surface".
+type SpawnInfo struct {
+    HivedPath string // absolute path of the running daemon (os.Executable()); "" if unresolvable
+    StateDir  string // registry.StateDir()
+}
 // SpawnArgs returns extra argv appended at first spawn AND on
-// resume/restart (after SessionIDFlag/ResumeArgs). hivedPath is the
-// absolute path of the running daemon binary (os.Executable()).
-SpawnArgs func(sessionID, hivedPath, stateDir string) []string
+// resume/restart (after SessionIDFlag/ResumeArgs/ResumeCmd).
+SpawnArgs func(sp SpawnInfo) []string
 ```
+
+`HivedPath` is resolved once at daemon start (`os.Executable()`,
+`filepath.EvalSymlinks`); on error it is `""` and the Claude adapter
+returns nil (log once). The session id is not passed: Claude gets it via
+`SessionIDFlag`, Pi via its own `--session-id`.
 
 - **Claude** (`claude.go`): `SpawnArgs` returns
   `["--settings", <json>]` where the JSON is
@@ -203,11 +248,15 @@ SpawnArgs func(sessionID, hivedPath, stateDir string) []string
   `Application Support`). **Open question 1** (hooks merge) must be
   resolved before this lands; the fallback is to read
   `~/.claude/settings.json`'s `hooks` and prepend them.
-- **Pi** (`pi.go`, new): `SpawnArgs` returns `["-e", <stateDir>/pi/hive.ts]`.
+- **Pi** (`pi.go`, new): `SpawnArgs` returns `["-e", <stateDir>/pi/hive.ts]`
+  only if that file exists (`os.Stat`); otherwise nil (log once).
   The extension source lives at `internal/agent/pi/hive.ts` and is
   embedded with `//go:embed`; `agent.EnsurePiExtension(stateDir)`
   writes it (atomic temp+rename, only if content differs) at daemon
   start — called from `cmd/hived/main.go` right after `agent.SetCustomDir`.
+  A write failure is logged and **does not** stop the daemon; the Pi
+  adapter's `os.Stat` check above is what turns that into "heuristic
+  tier for Pi" instead of a broken spawn.
   This is not registry state; it lives under `StateDir()/pi/` the way
   `agents.json` does, and the design rule gets one more named exception.
 - Others: nil. Shell: nil.
@@ -219,8 +268,8 @@ SpawnArgs func(sessionID, hivedPath, stateDir string) []string
   reason). Log one line per daemon lifetime when skipped. See the
   design doc's "Surviving Claude Code's churn".
 
-Restart/Revive paths call the same `SpawnArgs` (grep `ResumeArgs` call
-sites in `create.go` and the restart file; there are two).
+Restart/Revive paths call the same `SpawnArgs` (`registry.go:637` and
+`:745`; both are in `registry.go`, there is no separate restart file).
 
 ### `hived hook` (`cmd/hived/hook.go`)
 
@@ -245,12 +294,14 @@ untouched for the daemon path):
    - anything else, or a payload missing `hook_event_name` → `ping`
      (unknown/renamed events keep the tier alive without changing state;
      this is the tolerant-parsing rule from the design doc).
-3. Dial `HIVE_SOCKET` with a 2 s timeout, `HELLO{mode:event, version}`,
-   `AGENT_EVENT`, close. Always exit 0; never print to stdout (Claude
-   parses hook stdout for some events). Log failures to stderr only when
+3. Dial `HIVE_SOCKET` with a 2 s timeout, set a 2 s write deadline on
+   the conn, write `HELLO{mode:event, version}` + `AGENT_EVENT`, close
+   without waiting for a reply (the daemon sends none). Always exit 0;
+   never print to stdout (Claude parses hook stdout for some events).
+   Malformed/empty stdin → `ping`. Log failures to stderr only when
    `HIVE_HOOK_DEBUG=1`.
-4. Total wall time budget < 100 ms; the hook runs on Claude's turn
-   boundary.
+4. Wall time is < 100 ms on the happy path; the deadlines above are the
+   hard ceiling when the daemon is gone or wedged.
 
 ### Pi extension (`internal/agent/pi/hive.ts`)
 
@@ -291,15 +342,19 @@ assistant message ends with `?` — a heuristic, flagged in a comment
 - `components/SessionRow.tsx`, `TileChrome.tsx`: a `StateDot` component
   (new `components/StateDot.tsx`) taking `state` + `source`; CSS in the
   design system tokens (`docs/design-docs/ui/` — add the six states and
-  the heuristic "uncertain" ring treatment). `title` attribute /
+  the heuristic "uncertain" ring treatment); reuse `hv-state-pulse` /
+  `--motion-pulse` for the waiting states. `title` attribute /
   tooltip: `last_prompt` on the first line, `last_summary` on the
   second, `state_source` in the footer.
-- `hivebar`: count `state ∈ {waiting_input, waiting_permission}` for
-  the "waiting on you" line; fall back to `needs_attention` when
-  `state` is empty (old daemon).
-- Notifications: the daemon already notifies on attention; change the
-  message to name the state ("Claude is waiting for permission in
-  *twilight-gate*").
+- `hivebar` (`cmd/hivebar/client.go`, `model.go`): thread `state` /
+  `state_source` through its own session types; count
+  `state ∈ {waiting_input, waiting_permission}` for the "waiting on
+  you" line; fall back to `needs_attention` when `state` is empty (old
+  daemon).
+- Notifications: `cmd/hivegui/app.go:113` fires `notify.Notify` on
+  `SessionEventAttention`; change the message there to name the state
+  ("Claude is waiting for permission in *twilight-gate*"). The daemon
+  stays out of notifications.
 
 ### Files to change
 
@@ -308,23 +363,32 @@ assistant message ends with `?` — a heuristic, flagged in a comment
   + `AgentEventKinds`.
 - `internal/wire/frame.go` — `FrameAgentEvent = 0x22`.
 - `internal/buildinfo/contract.go` — `DaemonContract++`.
-- `internal/session/session.go` — `SetOutputHook`, `SetExitHook`; call
-  sites next to `noteBell` and where the process reaper marks exit.
-- `internal/registry/registry.go` — `Entry.state`, `Info()`, ticker,
-  `ApplyAgentEvent`, attention rules, `socketPath` field + option.
-- `internal/registry/create.go` — env injection, `SpawnArgs`, hooks.
-- `internal/registry/<restart file>.go` — same `SpawnArgs` on restart/revive.
-- `internal/daemon/daemon.go` — `ModeEvent` arm; pass socket path to registry.
-- `internal/agent/agent.go` — `Def.SpawnArgs`; Pi def gets it.
-- `internal/agent/claude.go` — hooks settings JSON builder.
-- `cmd/hived/main.go` — `hook` subcommand dispatch; `EnsurePiExtension`.
+- `internal/session/session.go` — `SetOutputHook`; call site next to
+  `noteBell` (`:225`).
+- `internal/registry/registry.go` — `Entry.state`, `Info()` (`:145`),
+  ticker, `ApplyAgentEvent`, attention rules, `socketPath` field +
+  option, `machine.Exit` in `watchSessionExit` (`:777`), `SpawnArgs` in
+  `Revive`/`ReviveWithPhase`/`Restart` (`:637`, `:745`).
+- `internal/registry/create.go` — env injection, `SpawnArgs` (agent
+  branch only), hooks.
+- `internal/daemon/daemon.go` — `ModeEvent` arm (`:469-473`), update the
+  `default:` error text (`:483`); pass socket path to registry.
+- `internal/agent/agent.go` — `SpawnInfo`, `Def.SpawnArgs`; Pi def gets it.
+- `internal/agent/claude.go` — hooks settings JSON builder, version gate.
+- `cmd/hived/main.go` — `hook` subcommand dispatch; `EnsurePiExtension`;
+  `HivedPath` resolution.
+- `cmd/hivegui/app.go` — notification text names the state (`:113`).
 - `cmd/hivegui/frontend/src/app/state.ts`, `store/store.ts`,
   `components/SessionRow.tsx`, `components/TileChrome.tsx`,
-  `components/Sidebar.tsx` (tooltip).
-- `cmd/hivebar/` — waiting count.
+  `components/Sidebar.tsx` (tooltip), `test/e2e/wails-mock.ts` (emit
+  `state` events).
+- `cmd/hivebar/client.go`, `cmd/hivebar/model.go` — new fields, waiting count.
 - `DESIGN.md` — Domains: add `internal/agentstate/`; Hard rules: the
   `event` mode is one-frame-and-close; `StateDir()/pi/` exception.
 - `docs/design-docs/ui/` — state glyph tokens.
+- `README.md` — "What works" gains the state line.
+- `.changesets/336-session-state-model.md` — required by CI
+  (AGENTS.md changeset rule); one entry per phase PR.
 
 ### New files
 
@@ -350,19 +414,29 @@ assistant message ends with `?` — a heuristic, flagged in a comment
 - `wire`: round-trip `AgentEvent`; `SessionInfo` with empty `State`
   decodes to `""` (old daemon compatibility).
 - `daemon`: `TestEventModeAcceptsOneFrame`, `TestEventModeRejectsControlFrame`,
-  `TestEventModeUnknownSessionDropped`.
+  `TestEventModeUnknownSessionDropped`, `TestEventModeMalformedJSONDropped`,
+  `TestEventModeReadDeadline`.
 - `registry`: `TestOutputBurstBroadcastsOnce`, `TestQuietGoesIdle`,
   `TestBellWhileIdleWaitsInput`, `TestHookOverridesHeuristic`,
   `TestHookStaleFallsBack`, `TestAttentionSetOnWaiting`,
-  `TestMetaFileUnchangedByState`, `TestSpawnEnvCarriesHiveIDs`.
+  `TestAttentionClearMovesWaitingToIdleHeuristicOnly`,
+  `TestMetaFileUnchangedByState`, `TestSpawnEnvCarriesHiveIDs`,
+  `TestRawCmdGetsEnvNotSpawnArgs`, `TestRestartAppendsSpawnArgs`,
+  `TestReviveStartsIdleHeuristicEmptyText`, `TestAgentEventBeforeReadyApplied`.
 - `cmd/hived`: `TestHookMapsEveryEvent` (fixtures → expected
   `AgentEvent`), `TestHookNoEnvExitsZero`, e2e: spawn a fake "agent"
   that is a shell script invoking `hived hook` with a fixture, assert
   `SESSION_EVENT(state)` arrives on a control connection.
 - `agent`: `TestClaudeSettingsJSONQuotesPath`, `TestEnsurePiExtensionIdempotent`,
   `TestClaudeVersionGateSkipsBelowMin`, `TestClaudeVersionGateSkipsKnownBad`,
-  `TestClaudeVersionUnknownSkips`.
-- `cmd/hived`: `TestHookUnknownEventIsPing`, `TestHookMalformedJSONExitsZero`.
+  `TestClaudeVersionUnknownSkips`, `TestClaudeSpawnArgsNilWithoutHivedPath`,
+  `TestEnsurePiExtensionRewritesOnDiff`, `TestPiSpawnArgsNilWhenFileMissing`.
+- `cmd/hived`: `TestHookUnknownEventIsPing`, `TestHookMalformedJSONExitsZero`,
+  `TestHookWriteDeadlineExitsZero` (daemon accepts, never reads),
+  `TestEnsurePiExtensionFailureDoesNotStopDaemon`.
+- Manual checklist (phase 2 deliverable, appended to this plan's
+  Progress with the Claude version): each of the six states observed on
+  a real `claude` session launched from Hive.
 - Frontend: vitest for the store reducer and `StateDot`; Playwright
   mock e2e `state-glyphs.spec` driving `SESSION_EVENT(state)` through
   the Wails mock and asserting via `elementFromPoint`-free DOM checks
@@ -370,6 +444,28 @@ assistant message ends with `?` — a heuristic, flagged in a comment
   project memory.
 - `scripts/test.sh` green; `biome ci .`; `npm run typecheck` after
   `scripts/ci-bootstrap.sh`.
+
+## Verification
+
+Run from the repo root of the worktree. Fresh worktree first:
+
+```sh
+scripts/ci-bootstrap.sh                 # pinned Wails CLI + generated bindings
+```
+
+Then, per phase:
+
+```sh
+go build ./... && go vet ./...
+go test ./internal/... ./cmd/hived/...
+scripts/check-daemon-contract.sh        # the bump is required by phase 1
+scripts/test.sh                         # go · unit · dom · e2e (mock)
+( cd cmd/hivegui/frontend && npx biome ci . && npm run typecheck && CI=1 npx playwright test )
+```
+
+Phase 2 additionally: `HIVE_PROBE_CLAUDE=1 scripts/probe-claude.sh`
+(skips cleanly when `claude` is not on PATH) and the manual checklist
+above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
 
 ### Phasing (each phase = one PR, one agent run)
 
@@ -398,25 +494,63 @@ assistant message ends with `?` — a heuristic, flagged in a comment
   Why: content is attacker-influenced (any program on the PTY / any
   prompt); same reasoning as `MaxTitleLen`.
 
+- **2026-09-04** — `HIVE_PROJECT_ID` deferred to spec 337. Why: nothing
+  in 336 reads it; inject env when a reader exists.
+- **2026-09-04** — `SpawnArgs` takes a `SpawnInfo` struct, not the
+  session id. Why: neither adapter needs the id (both get it from their
+  own flag); a struct lets a field be "unavailable" without a signature
+  change.
+- **2026-09-04** — No `SetExitHook`. Why: one caller; the registry
+  already owns the exit path in `watchSessionExit`.
+- **2026-09-04** — Bell is ignored while `Source != heuristic`. Why:
+  Claude rings the bell on the same prompts its hooks report; honouring
+  both double-notifies. Resolves former open question 2.
+- **2026-09-04** — Windows needs no design change: `daemon.SocketPath`
+  already yields an AF_UNIX path under `%LOCALAPPDATA%\Hive`, which
+  both `hived hook` and `node:net` can dial. Resolves former open
+  question 3; verified in the release matrix.
+- **2026-09-04** — Desktop notifications stay in the GUI
+  (`cmd/hivegui/app.go`), the daemon never imports `internal/notify`.
+  Why: that is where they live today; moving them is out of scope.
+
+## Review log
+
+- **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
+  grounding, gaps, YAGNI). Changes:
+  - Fixed `Entry.Info()` line (145, not 160); replaced the non-existent
+    "restart file" with the real `Revive`/`Restart` sites in `registry.go`
+    and required `SpawnArgs` there too (a restarted Claude session would
+    otherwise silently lose its hooks).
+  - Exit is observed in `watchSessionExit`; dropped `SetExitHook`.
+  - Notifications are fired by the GUI (`app.go:113`), not the daemon;
+    moved that work item.
+  - Added the raw-`Cmd` branch (`create.go:511`) rule: env yes, args no.
+  - Added `cmd/hivebar/client.go`+`model.go`, `test/e2e/wails-mock.ts`,
+    `cmd/hivegui/app.go`, `README.md`, `.changesets/` to Files to change;
+    named `hv-state-pulse` / `--motion-pulse` and `SessionRow.tsx:143`
+    `title=` as the patterns to reuse.
+  - Error paths made explicit: event-mode malformed JSON / read
+    deadline; hook write deadline; `EnsurePiExtension` failure is
+    non-fatal; `HivedPath` unresolvable ⇒ adapter skipped; state machine
+    always non-nil so a pre-ready `AGENT_EVENT` applies.
+  - YAGNI cuts: `HIVE_PROJECT_ID` (to 337), session id out of
+    `SpawnArgs`, `SetExitHook`.
+  - Tests added for each of the above; `## Verification` backfilled.
+  - Open questions 2 and 3 resolved into Decisions; 1 stays as the
+    phase-2 gate.
+
 ## Progress
 
 - **2026-09-04** — Spec and plan written; stage PLAN.
+- **2026-09-04** — Plan reviewed; ready for `/hs-feature-plan-handoff 336`.
 
 ## Open questions
 
-1. **Claude `--settings` hooks merge.** Docs say keys merge; unclear
-   whether the `hooks` array concatenates with the user's own hooks or
-   replaces them. Test on the installed `claude` before phase 2: put a
-   `Stop` hook in `~/.claude/settings.json`, launch with `--settings`
-   carrying a different `Stop` hook, observe whether both fire. If they
-   replace, the Claude adapter must read and re-emit user hooks
-   (settings.json + settings.local.json + project `.claude/settings.json`),
-   which is ugly enough to record as a decision.
-2. **Bell semantics on hook-tier sessions.** Claude rings the bell on
-   `idle_prompt`/`permission_prompt` too. With the hook tier active the
-   bell is redundant; the rule above ignores `Bell` while
-   `Source != heuristic`. Confirm no double-notification.
-3. **Windows.** Unix socket dial from `hived hook` works on Windows only
-   if `hived` already uses AF_UNIX there (it does, per `daemon.SocketPath`).
-   The Pi extension uses `node:net` which supports the same. Verify in
-   the release matrix; no design change expected.
+1. **Claude `--settings` hooks merge — known risk, gates phase 2.** Docs
+   say keys merge; unclear whether the `hooks` array concatenates with
+   the user's own hooks or replaces them. Trigger: before starting
+   phase 2, put a `Stop` hook in `~/.claude/settings.json`, launch with
+   `--settings` carrying a different `Stop` hook, observe whether both
+   fire. If they replace, the Claude adapter must read and re-emit user
+   hooks (settings.json + settings.local.json + project
+   `.claude/settings.json`) and this plan's Decision log records it.

@@ -47,8 +47,9 @@ one click. Written so a smaller agent can implement each phase alone.
   `control`, one request, print, exit.
 - `internal/wire/client.go:20` — `wire.Client`, the control-mode client
   helper the GUI uses; reuse from the CLI.
-- Env: `HIVE_SESSION_ID`, `HIVE_PROJECT_ID`, `HIVE_SOCKET` injected by
-  336 into every session.
+- Env: `HIVE_SESSION_ID`, `HIVE_SOCKET` injected by 336 into every
+  session. **This spec adds `HIVE_PROJECT_ID`** next to them in
+  `create.go` (336 deferred it because nothing there reads it).
 - GUI: `cmd/hivegui/frontend/src/app/keyboard.ts` (keymap tables —
   see `docs/product-specs/keyboard-keymap-tables.md`), `app/modals/`
   and `components/modals/` (the launcher and close-confirm sheets are
@@ -174,7 +175,7 @@ one request, exit.
 - `internal/registry/persist.go` — `IdeaFile`, ideas dir, load/save.
 - `internal/registry/registry.go` — boot load, `Entry.pendingPrompt`,
   idle listener.
-- `internal/registry/create.go` — `PromptArgs`, `CreateForIdea`.
+- `internal/registry/create.go` — `PromptArgs`, `CreateForIdea`, `HIVE_PROJECT_ID` env.
 - `internal/daemon/daemon.go` — frame arms + fan-out.
 - `internal/agent/agent.go`, `claude.go`, `pi.go` — `PromptArgs`.
 - `cmd/hived/main.go` — `idea` subcommand.
