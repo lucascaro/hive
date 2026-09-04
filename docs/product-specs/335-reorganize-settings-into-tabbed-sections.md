@@ -1,11 +1,12 @@
 ---
 issue: null
 pr: 335
+shipped: 2026-09-03
 title: "Reorganize Settings into tabbed sections"
 type: enhancement
 complexity: S
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Reorganize Settings into tabbed sections
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/335-reorganize-settings-into-tabbed-sections.md](../exec-plans/active/335-reorganize-settings-into-tabbed-sections.md)
+- **Exec plan:** [docs/exec-plans/completed/335-reorganize-settings-into-tabbed-sections.md](../exec-plans/completed/335-reorganize-settings-into-tabbed-sections.md)
 
 ## Problem
 

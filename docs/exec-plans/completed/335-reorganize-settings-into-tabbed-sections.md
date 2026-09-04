@@ -4,7 +4,7 @@
 - **Issue:** —
 - **Branch:** `feature/335-reorganize-settings-into-tabbed-sections`
 - **PR:** [#335](https://github.com/lucascaro/hive/pull/335)
-- **Status:** active
+- **Status:** completed
 
 All paths relative to `cmd/hivegui/frontend/` unless rooted.
 
@@ -258,6 +258,15 @@ npm run typecheck         # needs ./scripts/ci-bootstrap.sh in a fresh worktree
   invalidated screenshot baselines on macOS (eyeballed per themes.md step 4).
   All checks re-run green: dom 566 / e2e 266, ui-lint, contrast, biome, tsc,
   build.
+
+## Gate verdict
+
+- **2026-09-03** — verdict: PASS; checks: 9 acceptance / 6 non-goals / 8 doc — 0 failed, 0 followups; followups: none; one-line: tabbed Settings delivers every success criterion, stays inside its non-goals, and the docs match what shipped.
+  - 2026-09-03 dimensions:
+    - acceptance — PASS — all nine criteria verified against running code. First pass returned NEEDS_FOLLOWUP: the criterion "editing state survives tab switches" had a shipped test for the agent draft only, leaving the theme select and token textarea uncovered. Closed on this branch in d1ca455 and re-checked; the new test is non-vacuous (unmounting inactive panels turns 9 of 38 cases red).
+    - non-goals — PASS — no tab persistence, `keymap.ts` and README untouched (0-line diff), dialog still `md`, no palette deep link, and main's menu-bar logic relocated byte-identical apart from the JSX wrapper.
+    - doc accuracy — PASS — changeset valid and accurate, `Tabs` contract in components.md matches Tabs.tsx verbatim, decision row present, and a repo-wide sweep found no current-tense doc still describing the pre-tabs layout.
+  - Note: this worktree's local `main` ref is stale (a6dec3e, missing PR #333) because `main` is checked out in the primary clone; every dimension used `origin/main...HEAD` as the range.
 
 ## PR convergence ledger
 
