@@ -40,10 +40,19 @@ func startHookTestDaemon(t *testing.T) *daemon.Daemon {
 		t.Fatalf("daemon.New: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() { _ = d.Run(ctx) }()
+	runDone := make(chan struct{})
+	go func() {
+		defer close(runDone)
+		_ = d.Run(ctx)
+	}()
 	t.Cleanup(func() {
 		cancel()
 		_ = d.Close()
+		// Wait for Run to return: its teardown logs asynchronously, and a
+		// later test in this package that captures log output
+		// (TestRemovePidfile) would otherwise see this daemon's last
+		// lines land in its buffer.
+		<-runDone
 	})
 	return d
 }

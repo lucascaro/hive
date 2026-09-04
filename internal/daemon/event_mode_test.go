@@ -34,6 +34,7 @@ func dialEvent(t *testing.T, d *Daemon) net.Conn {
 // the named session's state, and the connection is closed by the
 // daemon afterwards (no reply of any kind).
 func TestEventModeAcceptsOneFrame(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
 
@@ -74,6 +75,7 @@ func findSession(d *Daemon, id string) wire.SessionInfo {
 // AGENT_EVENT is refused (the connection is simply closed, no error
 // frame — the hook has nothing useful to do with one).
 func TestEventModeRejectsControlFrame(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := dialEvent(t, d)
 	defer c.Close()
@@ -87,6 +89,7 @@ func TestEventModeRejectsControlFrame(t *testing.T) {
 // id the registry doesn't know is a silent no-op — no panic, no error
 // frame, connection just closes.
 func TestEventModeUnknownSessionDropped(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := dialEvent(t, d)
 	defer c.Close()
@@ -103,6 +106,7 @@ func TestEventModeUnknownSessionDropped(t *testing.T) {
 // TestEventModeMalformedJSONDropped: a payload that doesn't even parse
 // as AgentEvent's shape closes the connection rather than panicking.
 func TestEventModeMalformedJSONDropped(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := dialEvent(t, d)
 	defer c.Close()
@@ -115,6 +119,7 @@ func TestEventModeMalformedJSONDropped(t *testing.T) {
 // TestEventModeUnknownKindDropped: a kind outside wire.AgentEventKinds
 // is refused rather than applied.
 func TestEventModeUnknownKindDropped(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	id := bootstrapSessionID(t, d)
 	c := dialEvent(t, d)
@@ -135,6 +140,7 @@ func TestEventModeUnknownKindDropped(t *testing.T) {
 // never sends a frame gets dropped within the read deadline, not held
 // forever.
 func TestEventModeReadDeadline(t *testing.T) {
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	c := dialEvent(t, d)
 	defer c.Close()
