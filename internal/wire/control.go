@@ -136,6 +136,19 @@ type SessionInfo struct {
 	// session with no live process reports "". Capped at
 	// MaxTitleLen bytes, since the content comes from the child process.
 	Title string `json:"title,omitempty"`
+	// NeedsAttention is true when the program on this session rang the
+	// terminal bell and nobody has looked since. Daemon-owned and
+	// in-memory like Phase and Title, so a daemon restart starts every
+	// session quiet.
+	//
+	// It lives on the wire, rather than in each client's head, because
+	// more than one client needs it and only one of them holds an
+	// attach connection. A GUI window learns about a bell from the PTY
+	// stream it is already reading; hivebar has no such stream, and a
+	// second GUI window has its own. Deriving it per client meant three
+	// answers to one question and no way for the menu bar to have any
+	// answer at all.
+	NeedsAttention bool `json:"needs_attention,omitempty"`
 }
 
 // MaxTitleLen bounds SessionInfo.Title. The title is attacker-influenced
@@ -275,6 +288,11 @@ type UpdateSessionReq struct {
 	Color     *string `json:"color,omitempty"`
 	Order     *int    `json:"order,omitempty"`
 	ProjectID *string `json:"project_id,omitempty"` // reassign session
+	// NeedsAttention clears (or, in principle, sets) the bell flag.
+	// The client that focuses a session is the only thing that knows
+	// the user has now looked at it, so clearing is a client-driven
+	// update rather than something the daemon can infer.
+	NeedsAttention *bool `json:"needs_attention,omitempty"`
 }
 
 // SessionEventKind enumerates the kinds carried by SESSION_EVENT.
@@ -295,6 +313,12 @@ const (
 	// Clients that do not know this kind ignore it and simply show no
 	// titles, so the field and the kind are both additive.
 	SessionEventTitle = "title"
+	// SessionEventAttention reports that SessionInfo.NeedsAttention
+	// changed. Kept apart from "updated" for the same reason "title"
+	// is: it is driven by the child process, not by the daemon's own
+	// view of the session, and consumers that re-render everything on
+	// "updated" should not be made to do so on every bell.
+	SessionEventAttention = "attention"
 )
 
 // SessionEvent is the SESSION_EVENT payload, broadcast to every

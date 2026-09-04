@@ -772,6 +772,21 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
+		// The attention flag is handled apart from the rest of the
+		// update. Everything else in this request is persisted state
+		// and broadcast as "updated"; attention is neither — it is
+		// in-memory only and has its own event kind, so that clients
+		// re-rendering on "updated" are not made to do so every time
+		// someone focuses a session.
+		if req.NeedsAttention != nil {
+			if err := d.reg.SetAttention(req.SessionID, *req.NeedsAttention); err != nil {
+				ops.sendError("update_failed", err.Error())
+				return false
+			}
+		}
+		if !updatesPersistedFields(req) {
+			return false
+		}
 		if _, err := d.reg.Update(req); err != nil {
 			ops.sendError("update_failed", err.Error())
 		}

@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	fyne.io/systray v1.12.2 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

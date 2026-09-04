@@ -374,3 +374,72 @@ func TestUnknownControlFrameKeepsConnectionAlive(t *testing.T) {
 		t.Errorf("unknown frame should be silent to the client: errs=%+v frames=%+v", r.errs, r.frames)
 	}
 }
+
+// An UPDATE_SESSION that only clears the attention flag must not reach
+// Registry.Update: that path persists the entry, rewrites the index and
+// broadcasts "updated". Focusing a session happens many times a minute,
+// and it records something that is never persisted at all.
+func TestUpdateSessionAttentionOnlySkipsPersistence(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	sessions := d.reg.List()
+	if len(sessions) == 0 {
+		t.Fatal("expected the bootstrap session")
+	}
+	id := sessions[0].ID
+
+	ch, unsub := d.reg.Subscribe()
+	defer unsub()
+	for len(ch) > 0 {
+		<-ch
+	}
+
+	clear := false
+	var r recordOps
+	payload, _ := json.Marshal(wire.UpdateSessionReq{
+		SessionID: id, NeedsAttention: &clear,
+	})
+	d.handleControlFrame(context.Background(), r.ops(), wire.FrameUpdateSession, payload)
+
+	if len(r.errs) != 0 {
+		t.Fatalf("unexpected errors: %+v", r.errs)
+	}
+	// Already clear, so SetAttention is a no-op and Update must not have
+	// run — any event at all here means one of them fired.
+	select {
+	case ev := <-ch:
+		t.Errorf("clearing an already-clear flag broadcast %s", ev.Kind)
+	default:
+	}
+}
+
+func TestUpdateSessionAttentionEmitsAttentionKind(t *testing.T) {
+	d := newFrameTestDaemon(t)
+	sessions := d.reg.List()
+	if len(sessions) == 0 {
+		t.Fatal("expected the bootstrap session")
+	}
+	id := sessions[0].ID
+
+	ch, unsub := d.reg.Subscribe()
+	defer unsub()
+	for len(ch) > 0 {
+		<-ch
+	}
+
+	set := true
+	var r recordOps
+	payload, _ := json.Marshal(wire.UpdateSessionReq{
+		SessionID: id, NeedsAttention: &set,
+	})
+	d.handleControlFrame(context.Background(), r.ops(), wire.FrameUpdateSession, payload)
+
+	select {
+	case ev := <-ch:
+		if ev.Kind != wire.SessionEventAttention {
+			t.Errorf("kind = %q, want %q — clients that re-render on "+
+				"\"updated\" must not be woken by a bell", ev.Kind, wire.SessionEventAttention)
+		}
+	default:
+		t.Fatal("no event")
+	}
+}

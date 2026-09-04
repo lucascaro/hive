@@ -96,3 +96,16 @@ func (h *commandHub) Close() {
 		close(ch)
 	}
 }
+
+// updatesPersistedFields reports whether an UPDATE_SESSION carries
+// anything the registry has to write to disk.
+//
+// A request that only clears the attention flag must not reach
+// Registry.Update: that path persists the entry, rewrites the index,
+// and broadcasts "updated" to every client. Focusing a session would
+// then cost two disk writes and a full re-render everywhere, several
+// times a minute, to record something that is never persisted at all.
+func updatesPersistedFields(req wire.UpdateSessionReq) bool {
+	return req.Name != nil || req.Color != nil ||
+		req.Order != nil || req.ProjectID != nil
+}

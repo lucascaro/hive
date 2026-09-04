@@ -21,7 +21,15 @@ package buildinfo
 //
 // scripts/check-daemon-contract.sh fails CI on a PR that touches
 // daemon-side code without changing this value.
-const DaemonContract = 1
+// History (newest first), so a bump is a decision with a record and
+// not just a number going up:
+//
+//	2 — SessionInfo gained needs_attention, driven by a daemon-side
+//	    bell scanner and cleared through UPDATE_SESSION. A GUI built
+//	    before this cannot see or clear the flag.
+//	1 — first contract; everything up to and including the
+//	    CLIENT_COMMAND relay.
+const DaemonContract = 2
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
