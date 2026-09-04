@@ -30,8 +30,16 @@ func main() {
 		cwd   = flag.String("cwd", "", "default working directory for new sessions")
 		cols  = flag.Int("cols", 80, "initial PTY width in columns")
 		rows  = flag.Int("rows", 24, "initial PTY height in rows")
+
+		showVersion = flag.Bool("version", false, "print build identity and exit")
+		asJSON      = flag.Bool("json", false, "with --version, print machine-readable JSON")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		printIdentity(os.Stdout, *asJSON)
+		return
+	}
 
 	// Chdir to the user-supplied launch directory so session.Start's
 	// os.Getwd() fallback picks it up for any session created without

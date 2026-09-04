@@ -68,6 +68,16 @@ func (a *App) ConnectControl() error {
 		Mode:    wire.ModeControl,
 	}, bootDialBudget)
 	if err != nil {
+		// A protocol rejection is the one connect failure the user can
+		// actually fix, and it is invisible from the error alone: the
+		// daemon refused the HELLO, so there is no WELCOME to derive a
+		// banner from. Emit the mismatch severity by hand — contract 0
+		// on the daemon side, because a daemon we could not handshake
+		// with has told us nothing — so the banner offers "Restart
+		// Daemon" instead of leaving a bare "could not connect".
+		if errors.Is(err, wire.ErrProtocolMismatch) {
+			a.emitDaemonVersionStatus("incompatible", "", 0)
+		}
 		return fmt.Errorf("control: %w", err)
 	}
 
@@ -75,14 +85,24 @@ func (a *App) ConnectControl() error {
 	a.control = cs
 	a.mu.Unlock()
 	go a.controlReadLoop(cs)
-	a.emitDaemonVersionStatus(cs.Welcome().BuildID, cs.Welcome().Release)
+	w := cs.Welcome()
+	a.emitDaemonVersionStatus(w.BuildID, w.Release, w.DaemonContract)
 	return nil
 }
 
 // DaemonStaleEvent is the payload of the "daemon:stale" Wails event.
-// Severity is "match" (silent — emitted so the frontend can clear a
-// previously-shown banner), "mismatch" (both builds known and differ),
-// or "unknown" (one or both sides did not advertise a build).
+//
+// Severity is one of:
+//
+//	match       both sides are the same build — silent, but still
+//	            emitted so the frontend can clear a stale banner.
+//	reloadable  the builds differ but the daemon contracts agree, so
+//	            relaunching the GUI alone picks up the new code and
+//	            every running session survives.
+//	mismatch    the contracts differ (or the daemon advertised none),
+//	            so the daemon itself must be restarted — which ends
+//	            every session.
+//	unknown     a build ID is missing; treated like mismatch.
 //
 // The *Release fields carry the human-readable versions (buildinfo.Version)
 // so the sidebar footer can display them; they are informational only and
@@ -93,29 +113,45 @@ type DaemonStaleEvent struct {
 	DaemonBuild   string `json:"daemonBuild"`
 	GuiRelease    string `json:"guiRelease"`
 	DaemonRelease string `json:"daemonRelease"`
+	// The two contracts, so the footer and banner can say *why* a
+	// restart is required rather than just asserting it. 0 on the
+	// daemon side means it predates the field.
+	GuiContract    int `json:"guiContract"`
+	DaemonContract int `json:"daemonContract"`
 }
 
 // daemonVersionEvent builds the "daemon:stale" payload. Split out from
 // the emit so it is testable without a live Wails context.
 //
-// Severity is computed from build IDs alone: those are git revisions, so
-// equal build IDs already imply equal releases, and comparing releases too
-// would only add a second source of truth to keep in sync. daemonRelease is
-// empty when talking to a daemon built before Welcome gained the Release
-// field — consumers fall back to build-ID-only display.
-func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
+// Build IDs decide only whether anything changed at all; they are git
+// revisions, so they differ after a CSS tweak. What decides the ACTION
+// is the daemon contract: equal contracts mean a GUI-only reload is
+// enough, and the user keeps every session. Comparing build IDs for
+// that (which is what this did before contracts existed) charged a
+// full restart — every PTY killed — for a frontend-only rebuild.
+//
+// A daemon advertising contract 0 predates the field entirely, so
+// nothing is known about its behavior; that is a mismatch, never a
+// match. daemonRelease is likewise empty on a daemon built before
+// Welcome gained the Release field — consumers fall back to
+// build-ID-only display.
+func daemonVersionEvent(daemonBuild, daemonRelease string, daemonContract int) DaemonStaleEvent {
 	gui := buildinfo.BuildID()
 	ev := DaemonStaleEvent{
-		GuiBuild:      gui,
-		DaemonBuild:   daemonBuild,
-		GuiRelease:    buildinfo.Version(),
-		DaemonRelease: daemonRelease,
+		GuiBuild:       gui,
+		DaemonBuild:    daemonBuild,
+		GuiRelease:     buildinfo.Version(),
+		DaemonRelease:  daemonRelease,
+		GuiContract:    buildinfo.DaemonContract,
+		DaemonContract: daemonContract,
 	}
 	switch {
 	case gui == "" || daemonBuild == "":
 		ev.Severity = "unknown"
 	case gui == daemonBuild:
 		ev.Severity = "match"
+	case daemonContract != 0 && daemonContract == buildinfo.DaemonContract:
+		ev.Severity = "reloadable"
 	default:
 		ev.Severity = "mismatch"
 	}
@@ -125,8 +161,9 @@ func daemonVersionEvent(daemonBuild, daemonRelease string) DaemonStaleEvent {
 // emitDaemonVersionStatus reports the GUI/daemon build relationship to the
 // frontend. Both the stale-daemon banner and the sidebar version footer
 // listen for this event.
-func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string) {
-	wruntime.EventsEmit(a.ctx, "daemon:stale", daemonVersionEvent(daemonBuild, daemonRelease))
+func (a *App) emitDaemonVersionStatus(daemonBuild, daemonRelease string, daemonContract int) {
+	wruntime.EventsEmit(a.ctx, "daemon:stale",
+		daemonVersionEvent(daemonBuild, daemonRelease, daemonContract))
 }
 
 // restartKillBudget bounds each of the two kill channels' wait for

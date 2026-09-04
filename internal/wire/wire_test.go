@@ -422,3 +422,46 @@ func TestWorktreesHasControlEventName(t *testing.T) {
 		}
 	}
 }
+
+// TestWelcomeCarriesDaemonContract pins the field the GUI's
+// reload-vs-restart decision is built on. Its omitempty contract is
+// load-bearing: a daemon that predates the field sends nothing, which
+// must decode to 0 ("unknown"), and the GUI must never read 0 as a
+// match — silently reloading into a daemon of unknown behavior is the
+// worst outcome the feature can produce.
+func TestWelcomeCarriesDaemonContract(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteJSON(&buf, FrameWelcome, Welcome{
+		Version: PROTOCOL_VERSION, BuildID: "def5678", DaemonContract: 7,
+		Mode: ModeControl,
+	}); err != nil {
+		t.Fatalf("write welcome: %v", err)
+	}
+	var w Welcome
+	if _, err := ReadJSON(&buf, &w); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	if w.DaemonContract != 7 {
+		t.Errorf("DaemonContract = %d, want 7", w.DaemonContract)
+	}
+}
+
+func TestWelcomeOmitsDaemonContractWhenZero(t *testing.T) {
+	var buf bytes.Buffer
+	// A daemon built before the contract field existed.
+	if err := WriteJSON(&buf, FrameWelcome, Welcome{
+		Version: PROTOCOL_VERSION, BuildID: "old", Mode: ModeControl,
+	}); err != nil {
+		t.Fatalf("write welcome: %v", err)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("daemon_contract")) {
+		t.Errorf("zero DaemonContract must be omitted; frame = %s", buf.Bytes())
+	}
+	var w Welcome
+	if _, err := ReadJSON(&buf, &w); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	if w.DaemonContract != 0 {
+		t.Errorf("DaemonContract = %d, want 0", w.DaemonContract)
+	}
+}

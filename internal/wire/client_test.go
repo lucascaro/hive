@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"strings"
 	"sync"
@@ -183,5 +184,58 @@ func TestEventNameTables(t *testing.T) {
 		if got != tc.want || ok != tc.known {
 			t.Errorf("event name for %s: got (%q,%v), want (%q,%v)", tc.t, got, ok, tc.want, tc.known)
 		}
+	}
+}
+
+// TestHandshake_ProtocolMismatchIsSentinel pins the one refusal a
+// client can act on. The daemon rejects a mismatched HELLO before any
+// WELCOME exists, so this error is all the client ever learns about
+// that daemon — without the sentinel the GUI shows a generic "could
+// not connect" and the user has no way to know that restarting the
+// daemon is the fix.
+func TestHandshake_ProtocolMismatchIsSentinel(t *testing.T) {
+	cli, srv := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handshakeServer(t, srv, FrameError, Error{
+			Code:    ErrCodeProtocolVersionMismatch,
+			Message: "server speaks v1; client speaks v2",
+		})
+	}()
+
+	_, err := Handshake(cli, Hello{Version: 2, Mode: ModeControl})
+	<-done
+	if !errors.Is(err, ErrProtocolMismatch) {
+		t.Fatalf("want ErrProtocolMismatch, got %v", err)
+	}
+	// The daemon's own wording must survive the wrap — it names both
+	// versions, which is what makes the banner actionable.
+	if !strings.Contains(err.Error(), "server speaks v1") {
+		t.Errorf("sentinel wrap dropped the daemon message: %v", err)
+	}
+}
+
+// TestHandshake_OtherRefusalIsNotSentinel guards the opposite
+// direction: an ordinary refusal must NOT be reported as a protocol
+// mismatch, or the GUI would tell the user to restart a daemon that is
+// perfectly compatible.
+func TestHandshake_OtherRefusalIsNotSentinel(t *testing.T) {
+	cli, srv := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handshakeServer(t, srv, FrameError, Error{
+			Code: "unknown_mode", Message: "mode \"nope\"",
+		})
+	}()
+
+	_, err := Handshake(cli, Hello{Mode: "nope"})
+	<-done
+	if err == nil {
+		t.Fatal("expected error on refused handshake")
+	}
+	if errors.Is(err, ErrProtocolMismatch) {
+		t.Errorf("unrelated refusal reported as protocol mismatch: %v", err)
 	}
 }

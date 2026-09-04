@@ -451,7 +451,7 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 	}
 	if hello.Version != wire.PROTOCOL_VERSION {
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
-			Code:    "protocol_version_mismatch",
+			Code:    wire.ErrCodeProtocolVersionMismatch,
 			Message: fmt.Sprintf("server speaks v%d; client speaks v%d", wire.PROTOCOL_VERSION, hello.Version),
 		})
 		return
@@ -484,10 +484,11 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 // serveControl handles a session-management connection.
 func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
-		Version: wire.PROTOCOL_VERSION,
-		BuildID: buildinfo.BuildID(),
-		Release: buildinfo.Version(),
-		Mode:    wire.ModeControl,
+		Version:        wire.PROTOCOL_VERSION,
+		BuildID:        buildinfo.BuildID(),
+		Release:        buildinfo.Version(),
+		DaemonContract: buildinfo.DaemonContract,
+		Mode:           wire.ModeControl,
 	}); err != nil {
 		return
 	}
@@ -881,13 +882,14 @@ func (d *Daemon) serveAttach(conn net.Conn, sessionID string) {
 		rows = 24
 	}
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
-		Version:   wire.PROTOCOL_VERSION,
-		BuildID:   buildinfo.BuildID(),
-		Release:   buildinfo.Version(),
-		Mode:      wire.ModeAttach,
-		SessionID: entry.ID,
-		Cols:      cols,
-		Rows:      rows,
+		Version:        wire.PROTOCOL_VERSION,
+		BuildID:        buildinfo.BuildID(),
+		Release:        buildinfo.Version(),
+		DaemonContract: buildinfo.DaemonContract,
+		Mode:           wire.ModeAttach,
+		SessionID:      entry.ID,
+		Cols:           cols,
+		Rows:           rows,
 	}); err != nil {
 		return
 	}

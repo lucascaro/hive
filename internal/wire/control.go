@@ -2,6 +2,7 @@ package wire
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -94,11 +95,18 @@ type Welcome struct {
 	// unstamped build. Distinct from Version above, which is the
 	// integer protocol version. Omitempty so a daemon predating this
 	// field still parses; "" means "unknown".
-	Release   string `json:"release,omitempty"`
-	Mode      Mode   `json:"mode,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Cols      int    `json:"cols,omitempty"`
-	Rows      int    `json:"rows,omitempty"`
+	Release string `json:"release,omitempty"`
+	// DaemonContract is the daemon's compatibility generation (see
+	// internal/buildinfo.DaemonContract). A client compares it to its
+	// own to decide whether a cheap GUI-only reload is enough or a
+	// full daemon restart is required. Omitempty so a daemon
+	// predating this field still parses; 0 means "unknown", which
+	// clients must treat as "restart required" — never as a match.
+	DaemonContract int    `json:"daemon_contract,omitempty"`
+	Mode           Mode   `json:"mode,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	Cols           int    `json:"cols,omitempty"`
+	Rows           int    `json:"rows,omitempty"`
 }
 
 // SessionInfo is the public-facing description of one daemon session.
@@ -411,7 +419,19 @@ const (
 	// has no PTY yet; the client should wait for the SESSION_EVENT
 	// that moves it to PhaseReady rather than treating it as dead.
 	ErrCodeSessionStarting = "session_starting"
+	// ErrCodeProtocolVersionMismatch is returned INSTEAD of a WELCOME
+	// when the client's HELLO names a different PROTOCOL_VERSION. The
+	// daemon refuses the connection outright, so this is the client's
+	// only signal — Handshake turns it into ErrProtocolMismatch.
+	ErrCodeProtocolVersionMismatch = "protocol_version_mismatch"
 )
+
+// ErrProtocolMismatch wraps a handshake refused for speaking a
+// different PROTOCOL_VERSION. Callers match it with errors.Is to tell
+// "this daemon is too old/new to talk to" apart from an ordinary
+// connection failure — the two need opposite remedies, and only the
+// former is fixed by restarting the daemon.
+var ErrProtocolMismatch = errors.New("wire: protocol version mismatch")
 
 // ---------- worktree management ----------
 
