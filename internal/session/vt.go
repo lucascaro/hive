@@ -809,3 +809,50 @@ func writeColor(buf *bytes.Buffer, c vt10x.Color, isFG bool) {
 		// These represent "default" — emit nothing.
 	}
 }
+
+// ScreenDigest returns a hash of the visible screen: every cell's rune
+// and its attributes, plus the geometry. Two calls returning the same
+// value mean the user would see the same thing.
+//
+// This is how "is this session working" is answered, in place of "did
+// bytes arrive". The two are not the same question, and the difference
+// is not academic: a measured idle Claude Code session writes an
+// ESC[?6n cursor-position query every 200ms forever. Those bytes are a
+// question for the terminal, not output for the user — they change no
+// cell — so a timer keyed on arrival never fires and the session reads
+// as permanently busy.
+//
+// The cursor position is deliberately excluded. A program parking its
+// cursor, blinking it, or asking where it is has not done anything the
+// user can see, and every one of those is a byte on the wire.
+func (v *VT) ScreenDigest() uint64 {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	cols, rows := v.term.Size()
+	// FNV-1a, inlined: this runs once per session per tick, and the
+	// allocation-free loop is the whole reason it is affordable there.
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	h := uint64(offset64)
+	mix := func(x uint64) {
+		for i := 0; i < 8; i++ {
+			h ^= x & 0xff
+			h *= prime64
+			x >>= 8
+		}
+	}
+	mix(uint64(cols))
+	mix(uint64(rows))
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			c := v.term.Cell(x, y)
+			mix(uint64(c.Char))
+			mix(uint64(c.Mode))
+			mix(uint64(c.FG))
+			mix(uint64(c.BG))
+		}
+	}
+	return h
+}

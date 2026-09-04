@@ -92,13 +92,17 @@ func TestHeuristicTier(t *testing.T) {
 			changed: false,
 		},
 		{
-			name: "output while waiting takes the session back to working",
+			// The reported regression: an agent rang the bell and then
+			// carried on redrawing, and the redraw buried its own
+			// request for attention before any client could paint it.
+			// Only the user looking (ClearWaiting) ends a wait.
+			name: "redrawing does not answer a request for the user",
 			steps: func(m *Machine) bool {
 				m.Bell(t0)
 				return m.Output(t0.Add(time.Second))
 			},
-			want:    wire.StateWorking,
-			changed: true,
+			want:    wire.StateWaitingInput,
+			changed: false,
 		},
 		{
 			name: "waiting does not time out into idle",

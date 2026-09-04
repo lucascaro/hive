@@ -51,7 +51,7 @@ export const STATE_WORDS: Record<SessionState, string> = {
   attention: 'Waiting for you',
   'waiting-permission': 'Waiting for permission',
   working: 'Working',
-  running: 'Running',
+  running: 'Idle',
   exited: 'Exited',
   error: 'Exited with an error',
 };

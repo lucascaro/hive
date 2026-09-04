@@ -127,10 +127,24 @@ func (m *Machine) trusted(now time.Time) bool {
 	return now.Sub(m.hookSeenAt) <= HookStaleAfter
 }
 
-// Output records that the session emitted bytes. Returns whether the
-// visible state changed.
+// Output records that the session's visible screen changed. Returns
+// whether the state changed with it.
+//
+// The caller samples a screen digest rather than watching the byte
+// stream, because those are different questions: an idle agent TUI can
+// write continuously (cursor-position queries, cursor blinks) without
+// changing a single cell. See session.VT.ScreenDigest.
 func (m *Machine) Output(now time.Time) bool {
 	if m.state == wire.StateExited {
+		return false
+	}
+	// A session that asked for the user stays asking until the user
+	// answers. Redrawing is not an answer — and a program that rings
+	// and then keeps painting would otherwise bury its own request
+	// within one tick. ClearWaiting, driven by the client that sees
+	// the user look, is the only way out.
+	if m.state == wire.StateWaitingInput || m.state == wire.StateWaitingPermission {
+		m.lastOutputAt = now
 		return false
 	}
 	m.lastOutputAt = now

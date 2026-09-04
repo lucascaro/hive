@@ -571,10 +571,9 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   `HIVE_SOCKET`) is deferred to phase 2 with the `event` wire mode.
   Why: pointing an agent at a socket that has no `event` arm to dial is
   a lie the daemon would have to keep for a release.
-- **2026-09-04 (phase 1, after smoke test)** — The heuristic tier
-  applies to shell sessions only (`Entry.Agent == ""`); agents keep
-  exactly their pre-336 behaviour until their hook/extension tier
-  lands. Why: measured on a live session, an idle Claude Code emits an
+- **2026-09-04 (phase 1, after smoke test, SUPERSEDED below)** — The
+  heuristic tier applies to shell sessions only (`Entry.Agent == ""`).
+  Why: measured on a live session, an idle Claude Code emits an
   `ESC[?6n` cursor-position query every 200 ms — 61 DATA frames in
   12 s, max gap 0.21 s, zero visible characters. The plan's premise
   ("no bytes for QuietAfter ⇒ idle") is therefore false for an agent
@@ -587,10 +586,39 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
   phase 1 warrants), and a denylist of no-op sequences (silently breaks
   on the next agent that polls differently). Phases 2–3 make the
   question moot for the agents that matter.
-- **2026-09-04 (phase 1, after smoke test)** — `STATE_WORDS.running`
-  reverts to "Running". Why: with agents off the heuristic tier, an
-  empty `state` means "no claim", not "idle", and an agent session
-  would otherwise be labelled with a fact nothing established.
+- **2026-09-04 (phase 1, second smoke test)** — Supersedes the descope
+  above: the heuristic tier applies to every session again, but it is
+  driven by a **screen digest** (`session.VT.ScreenDigest`, an FNV hash
+  of every visible cell's rune and attributes) sampled on the existing
+  500 ms tick, not by byte arrival. Working means the rendered screen
+  changed; idle means it stopped changing for `QuietAfter`.
+  Why: descoping was correct about the measurement and wrong about the
+  remedy — it left the flagship agent with no state at all, which the
+  user rejected on sight ("claude is doing something and it shows
+  idle"). The digest answers the question the plan meant to ask. The
+  `ESC[?6n` flood changes no cell, so it reads as idle; a streaming
+  reply changes cells, so it reads as working. Cost is one hash per
+  live session per tick, and the per-chunk output hook
+  (`session.SetOutputHook`, `registry.noteOutput`) is deleted with it —
+  that was taking `r.mu` at PTY speed.
+- **2026-09-04 (phase 1, second smoke test)** — `Machine.Output` no
+  longer leaves `waiting_input` / `waiting_permission`; only
+  `ClearWaiting` (the client reporting that the user looked) does.
+  Why: an agent that rings and then keeps redrawing was burying its own
+  request for attention within one tick. This matches what
+  `NeedsAttention` has always done, so the two can no longer disagree.
+- **2026-09-04 (phase 1, second smoke test)** — Test coverage was the
+  real defect. Every bell test called `registry.noteBell` directly,
+  which skips the bell scanner, the hook installation, and the tier
+  decision — the entire chain a user depends on. `state_test.go` now
+  drives real PTYs end to end: `TestBellReachesAttentionThroughTheRealPTY`
+  (both tiers), `TestTerminalQueriesAreNotWork` (a child emitting
+  `ESC[?6n` at 20 Hz must still go idle), `TestVisibleOutputIsWork`,
+  `TestBellWaitsUntilTheUserLooks`. Two harness traps found while
+  writing them, both worth remembering: a bare `\a` written into a PTY
+  never reaches the scanner (`cat` is line buffered), and bytes written
+  *into* a PTY are echoed by the line discipline as visible text, so a
+  query must be emitted by the child to test as a query.
 - **2026-09-04 (phase 1, after smoke test)** — The tile header renders
   from the session list, not from `TileChromeState.info`. Why: that
   snapshot was refreshed only when the layout ran `ensureTerm()`, so a
@@ -656,8 +684,12 @@ above. Phase 3: `node --test internal/agent/pi/` when `node` is present.
 - **2026-09-04** — Smoke-tested in an iso build; three bugs found and
   fixed (see the Decision log): agents pinned to `working` and their
   bells swallowed (measured `ESC[?6n` polling), sidebar and tile
-  disagreeing on state, and tile window titles missing. Phase 1's
-  user-visible scope is now shell sessions.
+  disagreeing on state, and tile window titles missing.
+- **2026-09-04** — Second smoke test rejected the descope: an agent with
+  no state at all is not an acceptable answer. The heuristic tier now
+  samples a screen digest instead of byte arrival, which covers every
+  session, and the end-to-end PTY tests that should have caught all of
+  this in the first place are in place.
 
 ## Open questions
 

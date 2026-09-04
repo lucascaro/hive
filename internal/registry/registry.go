@@ -108,6 +108,14 @@ type Entry struct {
 	// is most useful for.
 	NeedsAttention bool
 
+	// screenDigest is the hash of the visible screen as of the last
+	// tick. The heuristic tier calls a session "working" when this
+	// changes and "idle" when it stops changing — not when bytes
+	// arrive, which is a different question with a different answer: a
+	// measured idle Claude Code session writes an ESC[?6n
+	// cursor-position query every 200ms forever, changing no cell.
+	screenDigest uint64
+
 	// state answers "what is this session doing right now". Created
 	// lazily by machine() and replaced wholesale whenever a new
 	// process is attached, which is what makes "a daemon restart, a
@@ -162,25 +170,6 @@ func (e *Entry) machine() *agentstate.Machine {
 	}
 	return e.state
 }
-
-// heuristicState reports whether this entry's state may be inferred
-// from the PTY alone.
-//
-// Only sessions running a plain shell qualify. The inference is "bytes
-// arrived, so it is working; none for two seconds, so it is idle", and
-// that is simply false for an agent TUI: a measured idle Claude Code
-// session writes an ESC[?6n cursor-position query every 200ms forever,
-// which renders nothing but never lets the quiet timer fire. Reporting
-// such a session as permanently working is worse than reporting
-// nothing, and a bell would be overwritten by the next poll before any
-// client could paint it.
-//
-// Agents therefore keep exactly the behaviour they had before this
-// state model existed — the bell sets NeedsAttention, nothing else —
-// until they can report their own state through the hook and extension
-// tiers. Their State stays empty, which every client already reads as
-// "steady".
-func (e *Entry) heuristicState() bool { return e.Agent == "" }
 
 // stateSnapshot reads the entry's state without creating a machine.
 // The zero Snapshot is idle-on-the-heuristic-tier-with-no-text, which
@@ -348,34 +337,7 @@ func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
 	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })
-	// Not installed for agents: nothing would read the result, and the
-	// hook fires once per PTY chunk — which for a polling agent TUI is
-	// five times a second, forever, taking r.mu each time.
-	if e.heuristicState() {
-		sess.SetOutputHook(func() { r.noteOutput(id) })
-	}
-}
-
-// noteOutput folds one delivered PTY chunk into the session's state.
-//
-// This runs once per chunk at PTY speed, so the cheap path has to stay
-// cheap: the machine records the timestamp unconditionally but reports
-// a change only on the idle → working edge, which is at most once per
-// burst of output rather than once per 4 KB.
-func (r *Registry) noteOutput(id string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	e, ok := r.entries[id]
-	// The eligibility check is here as well as at hook-installation
-	// time, so "an agent's state is never inferred from its bytes" is
-	// true of the function rather than of one caller.
-	if !ok || !e.heuristicState() {
-		return
-	}
-	prev := e.stateSnapshot()
-	if e.machine().Output(time.Now()) {
-		r.announceStateLocked(e, prev)
-	}
+	e.screenDigest = sess.ScreenDigest()
 }
 
 // noteBell marks an entry as wanting attention after its session rang
@@ -387,12 +349,11 @@ func (r *Registry) noteOutput(id string) {
 // session deliberately does not throttle for this reason — "wants
 // attention" does not get truer the second time.
 //
-// On a shell the bell also moves the session state to waiting_input —
-// it is the only "the program wants you" signal the heuristic tier
-// has. On an agent it does not: agents are off that tier entirely
-// (see heuristicState), and once they report their own state, the ones
-// that ring will be reporting the same moment through their hooks —
-// honouring both would notify the user twice.
+// The bell also moves the session state to waiting_input: on the
+// heuristic tier it is the only "the program wants you" signal there
+// is. Nothing but the user looking clears it again — see
+// Machine.ClearWaiting — so a program that rings and then carries on
+// redrawing cannot bury its own request for attention.
 func (r *Registry) noteBell(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -409,7 +370,7 @@ func (r *Registry) noteBell(id string) {
 		e.NeedsAttention = true
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
-	if e.heuristicState() && e.machine().Bell(time.Now()) {
+	if e.machine().Bell(time.Now()) {
 		r.announceStateLocked(e, prev)
 	}
 }
@@ -605,16 +566,34 @@ func (r *Registry) tickStates() {
 			r.mu.Lock()
 			for _, id := range r.order {
 				e := r.entries[id]
-				if e == nil || e.sess == nil || !e.heuristicState() {
+				if e == nil || e.sess == nil {
 					continue
 				}
-				prev := e.stateSnapshot()
-				if e.machine().Tick(now) {
-					r.announceStateLocked(e, prev)
-				}
+				r.sampleStateLocked(e, now)
 			}
 			r.mu.Unlock()
 		}
+	}
+}
+
+// sampleStateLocked folds one observation of a live session into its
+// state: the screen either changed since the last sample (it is
+// working) or it has not changed for long enough to be idle.
+//
+// Sampling the rendered screen rather than counting bytes is the whole
+// point; see Entry.screenDigest for the measurement that forced it.
+func (r *Registry) sampleStateLocked(e *Entry, now time.Time) {
+	prev := e.stateSnapshot()
+	changed := false
+	if d := e.sess.ScreenDigest(); d != e.screenDigest {
+		e.screenDigest = d
+		changed = e.machine().Output(now)
+	}
+	if e.machine().Tick(now) {
+		changed = true
+	}
+	if changed {
+		r.announceStateLocked(e, prev)
 	}
 }
 

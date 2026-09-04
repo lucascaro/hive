@@ -1,90 +1,185 @@
 package registry
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/lucascaro/hive/internal/agentstate"
+	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
-// nextStateEvent reads events until one carries the state kind for id,
-// failing rather than hanging. A real /bin/bash session emits title and
-// phase events at times no assertion can predict, so every test here
-// filters rather than indexes.
-func nextStateEvent(t *testing.T, ch Listener, id string) wire.SessionEvent {
+// liveSession creates a session running `cat` — which echoes whatever
+// is written to its PTY, so a test can put arbitrary text on the screen
+// — and returns the entry and the live session.
+func liveSession(t *testing.T, r *Registry, spec wire.CreateSpec) (*Entry, *session.Session) {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
-	for {
-		select {
-		case ev := <-ch:
-			if ev.Kind == wire.SessionEventState && ev.Session.ID == id {
-				return ev
-			}
-		case <-deadline:
-			t.Fatal("no state event arrived")
-			return wire.SessionEvent{}
-		}
+	spec.Cols, spec.Rows = 80, 24
+	if len(spec.Cmd) == 0 {
+		spec.Cmd = []string{"cat"}
 	}
+	e, err := r.Create(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	r.mu.Lock()
+	sess := r.entries[e.ID].sess
+	ent := r.entries[e.ID]
+	r.mu.Unlock()
+	if sess == nil {
+		t.Fatal("created session has no live process")
+	}
+	return ent, sess
 }
 
-// A burst of PTY output must cost one broadcast, not one per chunk. The
-// session hook is deliberately unthrottled — the machine needs every
-// timestamp to know when output stopped — so the coalescing has to
-// happen here, on the "did the visible state change" test.
-func TestOutputBurstBroadcastsOnce(t *testing.T) {
-	skipOnWindows(t)
-	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "busy"})
-
-	// Settle first: the shell has already produced its prompt, which is
-	// itself a legitimate idle → working transition.
-	time.Sleep(100 * time.Millisecond)
-	ch, unsub := r.Subscribe()
-	defer unsub()
-	r.mu.Lock()
-	r.entries[e.ID].machine().Tick(time.Now().Add(time.Hour)) // force idle
-	r.mu.Unlock()
-	drain(ch)
-
-	for range 50 {
-		r.noteOutput(e.ID)
+// paint writes text and waits for it to reach the VT, so the next
+// sample sees a changed screen rather than racing the PTY.
+func paint(t *testing.T, e *Entry, sess *session.Session, text string) {
+	t.Helper()
+	before := sess.ScreenDigest()
+	if _, err := sess.Write([]byte(text)); err != nil {
+		t.Fatalf("write: %v", err)
 	}
-
-	ev := nextStateEvent(t, ch, e.ID)
-	if ev.Session.State != wire.StateWorking {
-		t.Errorf("state = %q, want %q", ev.Session.State, wire.StateWorking)
-	}
-	// Nothing else: 49 more broadcasts to every connected client is the
-	// cost this guard exists to avoid.
-	for {
-		select {
-		case extra := <-ch:
-			if extra.Kind == wire.SessionEventState && extra.Session.ID == e.ID {
-				t.Fatalf("a second state broadcast for one burst: %+v", extra.Session.State)
-			}
-		default:
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if sess.ScreenDigest() != before {
 			return
 		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("screen never changed after writing %q", text)
+}
+
+// sample drives one tick of the state sampler at a chosen time.
+func sample(r *Registry, e *Entry, now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sampleStateLocked(e, now)
+}
+
+// The measurement behind the whole design: a session can write
+// continuously without changing anything the user sees. An idle Claude
+// Code emits ESC[?6n every 200ms forever. Those bytes must not read as
+// work, or the session is pinned to "working" and its quiet timer never
+// fires — which is exactly what shipped and had to be fixed.
+//
+// The child emits the queries itself rather than the test writing them
+// into the PTY: an inbound write is echoed by the line discipline as
+// visible text, which changes the screen and would make this pass or
+// fail for a reason that has nothing to do with the rule under test.
+func TestTerminalQueriesAreNotWork(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, _ := liveSession(t, r, wire.CreateSpec{
+		Name: "poller", Agent: "claude",
+		Cmd: []string{"sh", "-c",
+			`printf 'hello\n'; i=0; while [ $i -lt 200 ]; do printf '\033[?6n'; sleep 0.05; i=$((i+1)); done`},
+	})
+
+	// Wait for the one visible thing the child prints.
+	r.mu.Lock()
+	sess := r.entries[e.ID].sess
+	r.mu.Unlock()
+	deadline := time.Now().Add(10 * time.Second)
+	start := sess.ScreenDigest()
+	for time.Now().Before(deadline) && sess.ScreenDigest() == start {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	now := time.Now()
+	sample(r, e, now)
+	if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
+		t.Fatalf("state = %q after real output, want %q", got, wire.StateWorking)
+	}
+
+	// The child is now doing nothing but polling the terminal, at five
+	// times the rate the quiet window allows. Let real time pass so the
+	// queries genuinely stream through the VT, then sample past the
+	// window.
+	time.Sleep(time.Second)
+	sample(r, e, now.Add(agentstate.QuietAfter))
+
+	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+		t.Errorf("state = %q; a session that only asked the terminal "+
+			"questions must go idle, whatever its byte rate", got)
 	}
 }
 
-// The quiet timer is driven by a registry-wide ticker. Asserting through
-// it rather than calling Tick directly is the point: a machine that is
-// correct but never ticked leaves every session stuck at "working".
+// The counterpart: text on the screen is work, for an agent as much as
+// a shell. Both tiers, because the reported bug was that agents got
+// nothing at all.
+func TestVisibleOutputIsWork(t *testing.T) {
+	skipOnWindows(t)
+	for _, agent := range []string{"", "claude"} {
+		name := "shell"
+		if agent != "" {
+			name = agent
+		}
+		t.Run(name, func(t *testing.T) {
+			r := freshRegistry(t)
+			e, sess := liveSession(t, r, wire.CreateSpec{Name: name, Agent: agent})
+
+			now := time.Now()
+			sample(r, e, now)
+			paint(t, e, sess, "working on it\n")
+			sample(r, e, now)
+			if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
+				t.Fatalf("state = %q, want %q", got, wire.StateWorking)
+			}
+
+			// Nothing more painted: the quiet window ends the turn.
+			sample(r, e, now.Add(agentstate.QuietAfter))
+			if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+				t.Errorf("state = %q after %s of a still screen, want %q",
+					got, agentstate.QuietAfter, wire.StateIdle)
+			}
+		})
+	}
+}
+
+// A sample that sees an unchanged screen must broadcast nothing. This
+// runs for every session every 500ms, so a stray broadcast here is a
+// broadcast to every connected client, forever.
+func TestUnchangedScreenBroadcastsNothing(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "still"})
+
+	now := time.Now()
+	paint(t, e, sess, "settled\n")
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter))
+
+	ch, unsub := r.Subscribe()
+	defer unsub()
+	drain(ch)
+	for i := 0; i < 20; i++ {
+		sample(r, e, now.Add(agentstate.QuietAfter+time.Duration(i)*time.Second))
+	}
+	select {
+	case ev := <-ch:
+		t.Fatalf("a still screen broadcast %s", ev.Kind)
+	default:
+	}
+}
+
+// The quiet timer is driven by a registry-wide ticker. Asserting
+// through it rather than calling the sampler is the point: a sampler
+// that is correct but never ticked leaves every session stuck.
 func TestQuietGoesIdle(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "quiet"})
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "quiet"})
 
 	ch, unsub := r.Subscribe()
 	defer unsub()
 	drain(ch)
-	r.noteOutput(e.ID)
+	paint(t, e, sess, "one burst\n")
 
-	deadline := time.After(agentstate.QuietAfter + 5*time.Second)
+	deadline := time.After(agentstate.QuietAfter + 10*time.Second)
 	for {
 		select {
 		case ev := <-ch:
@@ -93,48 +188,69 @@ func TestQuietGoesIdle(t *testing.T) {
 				return
 			}
 		case <-deadline:
-			t.Fatalf("session never went idle after %s of silence", agentstate.QuietAfter)
+			t.Fatalf("session never went idle after %s of a still screen",
+				agentstate.QuietAfter)
 		}
 	}
 }
 
-// A bell puts a heuristic session into waiting_input, and the client
-// reporting that the user looked resolves it. This is the entire
-// user-facing loop of the heuristic tier.
-func TestBellWaitsThenClientLookResolves(t *testing.T) {
+// A bell puts a session into waiting_input, and only the client
+// reporting that the user looked takes it out again. Redrawing must
+// not: that was the reported regression, where an agent rang and then
+// painted over its own request for attention.
+func TestBellWaitsUntilTheUserLooks(t *testing.T) {
 	skipOnWindows(t)
-	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "bell"})
+	for _, agent := range []string{"", "claude"} {
+		name := "shell"
+		if agent != "" {
+			name = agent
+		}
+		t.Run(name, func(t *testing.T) {
+			r := freshRegistry(t)
+			e, sess := liveSession(t, r, wire.CreateSpec{Name: name, Agent: agent})
 
-	r.noteBell(e.ID)
-	if got := r.Get(e.ID).Info().State; got != wire.StateWaitingInput {
-		t.Fatalf("state = %q, want %q", got, wire.StateWaitingInput)
-	}
-	if err := r.SetAttention(e.ID, false); err != nil {
-		t.Fatalf("SetAttention: %v", err)
-	}
-	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
-		t.Errorf("state = %q after the user looked, want %q", got, wire.StateIdle)
+			r.noteBell(e.ID)
+			if got := r.Get(e.ID).Info().State; got != wire.StateWaitingInput {
+				t.Fatalf("state = %q, want %q", got, wire.StateWaitingInput)
+			}
+
+			// The agent keeps painting. The request must survive it.
+			now := time.Now()
+			paint(t, e, sess, "still thinking\n")
+			sample(r, e, now)
+			info := r.Get(e.ID).Info()
+			if info.State != wire.StateWaitingInput {
+				t.Errorf("state = %q after a redraw; the bell was buried", info.State)
+			}
+			if !info.NeedsAttention {
+				t.Error("NeedsAttention was lost")
+			}
+
+			if err := r.SetAttention(e.ID, false); err != nil {
+				t.Fatalf("SetAttention: %v", err)
+			}
+			if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
+				t.Errorf("state = %q after the user looked, want %q", got, wire.StateIdle)
+			}
+		})
 	}
 }
 
 // The heuristic tier must never raise the attention flag on its own.
-// "No bytes for two seconds" is true of every `ls` in every shell, and
+// "The screen stopped changing" is true of every finished command, and
 // the flag drives desktop notifications.
 func TestHeuristicIdleDoesNotRaiseAttention(t *testing.T) {
 	skipOnWindows(t)
 	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "shell"})
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "shell"})
 
-	r.noteOutput(e.ID)
-	r.mu.Lock()
-	prev := r.entries[e.ID].stateSnapshot()
-	r.entries[e.ID].machine().Tick(time.Now().Add(time.Hour))
-	r.announceStateLocked(r.entries[e.ID], prev)
-	r.mu.Unlock()
+	now := time.Now()
+	paint(t, e, sess, "ls output\n")
+	sample(r, e, now)
+	sample(r, e, now.Add(agentstate.QuietAfter))
 
 	if r.Get(e.ID).Info().NeedsAttention {
-		t.Error("a shell going quiet asked for the user's attention")
+		t.Error("a session going quiet asked for the user's attention")
 	}
 }
 
@@ -171,55 +287,6 @@ func TestAgentReportedWaitingRaisesAttention(t *testing.T) {
 	}
 	if info.StateSource != wire.StateSourceHook {
 		t.Errorf("source = %q, want %q", info.StateSource, wire.StateSourceHook)
-	}
-}
-
-// An agent session is off the heuristic tier entirely. Measured cause:
-// an idle Claude Code session writes an ESC[?6n cursor-position query
-// every 200ms forever — it renders nothing, but it means "no bytes for
-// two seconds" never happens, so the session would read as permanently
-// working and every bell would be overwritten by the next poll.
-func TestAgentSessionIsOffTheHeuristicTier(t *testing.T) {
-	skipOnWindows(t)
-	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "agent", Agent: "claude"})
-
-	// The output hook is not even installed, so this is what the PTY
-	// hammering away would do if it were.
-	r.noteOutput(e.ID)
-	if got := r.Get(e.ID).Info().State; got != wire.StateIdle {
-		t.Errorf("state = %q after output; an agent must report nothing "+
-			"until it can report the truth", got)
-	}
-
-	// The bell keeps doing exactly what it did before the state model:
-	// it raises attention, and does not invent a state.
-	r.noteBell(e.ID)
-	info := r.Get(e.ID).Info()
-	if !info.NeedsAttention {
-		t.Error("a bell on an agent session must still ask for the user")
-	}
-	if info.State != wire.StateIdle {
-		t.Errorf("state = %q after a bell on an agent, want none", info.State)
-	}
-}
-
-// A shell is the one thing the heuristic tier is honest about: it stops
-// writing when it is done.
-func TestShellSessionIsOnTheHeuristicTier(t *testing.T) {
-	skipOnWindows(t)
-	r := freshRegistry(t)
-	e := mustCreate(t, r, wire.CreateSpec{Name: "shell"})
-
-	r.noteOutput(e.ID)
-	if got := r.Get(e.ID).Info().State; got != wire.StateWorking {
-		t.Errorf("state = %q, want %q", got, wire.StateWorking)
-	}
-	r.noteBell(e.ID)
-	info := r.Get(e.ID).Info()
-	if info.State != wire.StateWaitingInput || !info.NeedsAttention {
-		t.Errorf("bell gave state=%q attention=%v, want waiting_input + attention",
-			info.State, info.NeedsAttention)
 	}
 }
 
@@ -302,5 +369,94 @@ func TestUnobservedEntryReportsIdle(t *testing.T) {
 	}
 	if e.state != nil {
 		t.Error("Info() created a machine; it must stay read-only")
+	}
+}
+
+// End to end through a real PTY, for both tiers: a BEL in the output
+// stream must reach NeedsAttention and broadcast an attention event.
+//
+// This is the test that was missing. The earlier ones call noteBell
+// directly, which skips the whole chain the user actually depends on —
+// the bell scanner in internal/session, the hook installed at each
+// Entry.sess assignment site, and the registry's decision about which
+// of those to install. A regression anywhere in that chain, for one
+// tier and not the other, is invisible to a test that starts halfway
+// along it.
+//
+// `cat` echoes what is written to the PTY straight back out, so writing
+// a BEL byte produces one in the output stream exactly as a real
+// program ringing would. Agent is set independently of Cmd, so the
+// agent-flagged case runs the same harmless process.
+func TestBellReachesAttentionThroughTheRealPTY(t *testing.T) {
+	skipOnWindows(t)
+	for _, tc := range []struct {
+		name  string
+		agent string
+	}{
+		{"shell", ""},
+		{"agent", "claude"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := freshRegistry(t)
+			e, err := r.Create(context.Background(), wire.CreateSpec{
+				Name: "bell-" + tc.name, Cols: 80, Rows: 24,
+				Cmd: []string{"cat"}, Agent: tc.agent,
+			})
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if got := r.Get(e.ID).Agent; got != tc.agent {
+				t.Fatalf("entry agent = %q, want %q — the tier split reads this", got, tc.agent)
+			}
+
+			listener, unsub := r.Subscribe()
+			defer unsub()
+			drain(listener)
+
+			r.mu.Lock()
+			sess := r.entries[e.ID].sess
+			r.mu.Unlock()
+			if sess == nil {
+				t.Fatal("created session has no live process")
+			}
+
+			// Retried for the same reason the title test retries: a
+			// single early write can land before the child has exec'd.
+			stop := make(chan struct{})
+			defer close(stop)
+			go func() {
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					// The newline matters: `cat` is line buffered, so
+					// without it the only thing on the output stream is
+					// the tty's own "^G" echo — two printable bytes, not
+					// a bell. A test that writes a bare \a passes nothing
+					// through the scanner and fails for the wrong reason.
+					_, _ = sess.Write([]byte("\a\n"))
+					time.Sleep(200 * time.Millisecond)
+				}
+			}()
+
+			deadline := time.After(20 * time.Second)
+			for {
+				select {
+				case ev := <-listener:
+					if ev.Session.ID != e.ID {
+						continue
+					}
+					if ev.Kind == wire.SessionEventAttention && ev.Session.NeedsAttention {
+						return
+					}
+				case <-deadline:
+					t.Fatalf("no attention event after 20s of bells (agent=%q); "+
+						"NeedsAttention is now %v",
+						tc.agent, r.Get(e.ID).Info().NeedsAttention)
+				}
+			}
+		})
 	}
 }

@@ -5,7 +5,7 @@
 // Regression: a bell (events.ts onSessionBell) toggled the `.attention`
 // CSS class but, until this was fixed, never touched the row's
 // <svg class="hv-state-icon dot"> — so the icon kept showing the
-// "running" triangle (shape) and its <title> kept saying "Running"
+// "running" triangle (shape) and its <title> kept saying "Idle"
 // (words) while the row was actually waiting for the user. icons.md
 // makes both channels part of the state contract, so this pins them to
 // data-state and the <use> href rather than the class, which was never
@@ -80,7 +80,7 @@ describe('sidebar row state icon on attention', () => {
     expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
       '#hv-state-running',
     );
-    expect(dot('a').querySelector('title')?.textContent).toBe('Running');
+    expect(dot('a').querySelector('title')?.textContent).toBe('Idle');
   });
 
   it('renders the daemon state glyphs the sidebar gained in spec 336', () => {
