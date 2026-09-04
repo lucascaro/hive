@@ -101,7 +101,11 @@ function emitPhase(
   id: string,
   phase: string,
 ): void {
-  const session = { ...SESSIONS.find((s) => s.id === id), phase };
+  const known = SESSIONS.find((s) => s.id === id);
+  // Spreading a missing session would make the two negative assertions
+  // pass vacuously — an id typo has to fail loudly instead.
+  if (!known) throw new Error(`no such fixture session: ${id}`);
+  const session = { ...known, phase };
   emit(JSON.stringify({ kind: 'updated', session }));
 }
 

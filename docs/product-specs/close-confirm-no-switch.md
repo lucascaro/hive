@@ -5,7 +5,7 @@ type: bug
 complexity: S
 priority: P2
 pr: 331
-stage: REVIEW
+stage: GATE
 ---
 
 # GUI: don't switch sessions while the close confirmation is up

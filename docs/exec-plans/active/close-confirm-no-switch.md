@@ -66,6 +66,11 @@ worktree and is exactly when the user wants to see that something is happening.
 
 - **2026-09-03** — Plan-first scaffold; stage = IMPLEMENT (set in spec frontmatter).
 - **2026-09-03** — Implemented; PR #331 open; stage = REVIEW.
+- **2026-09-03** — Review loop converged (APPROVE, 1 iteration, 0 open threads); applied the one MINOR test-hygiene nit; stage = GATE.
+
+## PR convergence ledger
+
+- **2026-09-03 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 53d3532.
 
 ## Open questions
 
