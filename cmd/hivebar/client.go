@@ -30,6 +30,18 @@ func buildContract() int { return buildinfo.DaemonContract }
 // this is about hivebar's own wakeups rather than daemon load.
 var reconnectDelay = 2 * time.Second
 
+// publishInterval coalesces menu updates.
+//
+// The daemon emits a `title` event every time a shell redraws its
+// prompt, so an uncoalesced menu retitles itself many times a second
+// while the user is reading it. This is the same trailing-coalesce
+// shape internal/session uses for the titles themselves, and for the
+// same reason: the last state of a burst is the one that matters, and
+// nothing here is worth showing at a child process's redraw rate.
+//
+// Trailing, not dropping — the final update of a burst always lands.
+var publishInterval = 400 * time.Millisecond
+
 // Client keeps one control connection to hived and publishes a Model
 // whenever the daemon's view changes.
 //
@@ -46,6 +58,12 @@ type Client struct {
 	welcome  wire.Welcome
 	projects []wire.ProjectInfo
 	sessions []wire.SessionInfo
+
+	// Coalescing state, guarded by mu. timer is non-nil while a
+	// trailing publish is pending; dirty records that something
+	// changed while it was.
+	timer *time.Timer
+	dirty bool
 }
 
 func NewClient(onChange func(Model)) *Client {
@@ -173,9 +191,40 @@ func (c *Client) applySessionEvent(ev wire.SessionEvent) {
 	c.sessions = append(c.sessions, ev.Session)
 }
 
+// publish pushes a fresh Model, at most once per publishInterval.
+//
+// The first change in a quiet period goes out immediately — a menu that
+// lagged 400ms behind every click would feel broken — and anything
+// during the window that follows is coalesced into one trailing update.
 func (c *Client) publish() {
 	c.mu.Lock()
+	if c.timer != nil {
+		// A trailing publish is already pending; it will build from
+		// whatever state exists when it fires.
+		c.dirty = true
+		c.mu.Unlock()
+		return
+	}
 	m := BuildModel(c.projects, c.sessions, c.welcome, buildinfo.DaemonContract)
+	c.timer = time.AfterFunc(publishInterval, c.flush)
+	c.mu.Unlock()
+	c.onChange(m)
+}
+
+// flush runs when a coalescing window closes, and publishes again only
+// if something changed while it was open.
+func (c *Client) flush() {
+	c.mu.Lock()
+	c.timer = nil
+	if !c.dirty {
+		c.mu.Unlock()
+		return
+	}
+	c.dirty = false
+	m := BuildModel(c.projects, c.sessions, c.welcome, buildinfo.DaemonContract)
+	// Re-arm: the burst is evidently still going, so keep coalescing
+	// rather than letting the next event through unthrottled.
+	c.timer = time.AfterFunc(publishInterval, c.flush)
 	c.mu.Unlock()
 	c.onChange(m)
 }

@@ -179,8 +179,14 @@ func (m Model) SummaryLine() string {
 	return s
 }
 
-// Label renders one session row.
-func (m SessionRow) Label() string {
+// LabelIn renders one session row, naming the project it belongs to.
+//
+// The project rides on the row instead of being a submenu the row sits
+// inside: the menu is a fixed pool of items so that it never reorders
+// itself (see menu.go), and a submenu tree cannot be a fixed pool
+// without one pool per project. A row you can click from the top level
+// also beats one you have to hover a parent to reach.
+func (m SessionRow) LabelIn(project string) string {
 	name := m.Name
 	if name == "" {
 		name = m.ID
@@ -194,6 +200,9 @@ func (m SessionRow) Label() string {
 		prefix = "● "
 	}
 	label := prefix + name
+	if project != "" {
+		label = prefix + project + " · " + name
+	}
 	if !m.Alive {
 		label += " (stopped)"
 	} else if m.Title != "" && m.Title != name {

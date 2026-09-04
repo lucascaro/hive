@@ -154,24 +154,26 @@ func TestContractLine(t *testing.T) {
 
 func TestSessionRowLabel(t *testing.T) {
 	cases := []struct {
-		name string
-		row  SessionRow
-		want string
+		name    string
+		row     SessionRow
+		project string
+		want    string
 	}{
-		{"plain", SessionRow{Name: "alpha", Alive: true}, "  alpha"},
-		{"attention marker leads", SessionRow{Name: "alpha", Alive: true, NeedsAttention: true}, "● alpha"},
-		{"dead session", SessionRow{Name: "alpha"}, "  alpha (stopped)"},
-		{"title appended", SessionRow{Name: "alpha", Title: "npm test", Alive: true}, "  alpha — npm test"},
+		{"plain", SessionRow{Name: "alpha", Alive: true}, "", "  alpha"},
+		{"project named", SessionRow{Name: "alpha", Alive: true}, "hive", "  hive · alpha"},
+		{"attention marker leads", SessionRow{Name: "alpha", Alive: true, NeedsAttention: true}, "hive", "● hive · alpha"},
+		{"dead session", SessionRow{Name: "alpha"}, "", "  alpha (stopped)"},
+		{"title appended", SessionRow{Name: "alpha", Title: "npm test", Alive: true}, "", "  alpha — npm test"},
 		// A title identical to the name is noise, not information.
-		{"redundant title dropped", SessionRow{Name: "alpha", Title: "alpha", Alive: true}, "  alpha"},
+		{"redundant title dropped", SessionRow{Name: "alpha", Title: "alpha", Alive: true}, "", "  alpha"},
 		// A dead session's title is stale by definition, so the
 		// stopped marker wins.
-		{"dead outranks title", SessionRow{Name: "alpha", Title: "npm test"}, "  alpha (stopped)"},
-		{"nameless falls back to id", SessionRow{ID: "abc123", Alive: true}, "  abc123"},
+		{"dead outranks title", SessionRow{Name: "alpha", Title: "npm test"}, "", "  alpha (stopped)"},
+		{"nameless falls back to id", SessionRow{ID: "abc123", Alive: true}, "", "  abc123"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := c.row.Label(); got != c.want {
+			if got := c.row.LabelIn(c.project); got != c.want {
 				t.Errorf("Label() = %q, want %q", got, c.want)
 			}
 		})
@@ -213,8 +215,8 @@ func TestMenuHoldsUpdatesUntilReady(t *testing.T) {
 	if m.pending == nil {
 		t.Fatal("a pre-ready Model was dropped; the menu would stay empty")
 	}
-	if len(m.dynamic) != 0 {
-		t.Error("a pre-ready Update built menu items")
+	if m.header != nil {
+		t.Error("a pre-ready Update touched systray")
 	}
 
 	// Only the newest is worth keeping — the older one is already stale.

@@ -3,48 +3,62 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"sync"
 
 	"fyne.io/systray"
 )
 
-// Menu owns the status-bar item and rebuilds it from a Model.
+// maxSessionRows bounds the session list.
 //
-// Rebuild-on-change rather than diffing: the whole menu is a dozen
-// items, systray.MenuItem.Remove really removes (it is not a hide), and
-// a diff would need its own model of what is currently on screen — a
-// second source of truth for something that costs nothing to redraw.
+// A fixed pool is what keeps the menu still (see Menu), so it has to
+// have a size. 24 is well past what fits on screen next to a menu bar
+// and past any plausible session count; anything beyond it is reported
+// by the overflow row rather than dropped silently.
+const maxSessionRows = 24
+
+// Menu owns the status-bar item.
 //
-// Every field is touched from two goroutines (the client's read loop
-// and systray's click callbacks), so mu guards the item list and the
-// click routing together.
+// Every item is created ONCE, in Ready, and afterwards only ever
+// retitled, shown or hidden. Nothing is added or removed while the menu
+// is alive, and that is the whole design:
+//
+//   - systray.AddMenuItem APPENDS. An earlier cut rebuilt the dynamic
+//     half on every update, which re-appended the header and the session
+//     list BELOW the static footer, so the menu visibly reordered itself.
+//   - The daemon emits a `title` event every time a shell redraws its
+//     prompt, so "on every update" is many times a second. Even without
+//     the reordering, tearing rows down and building them back up made
+//     the list jump while the user was reading it.
+//
+// A fixed pool costs a bounded number of hidden items and buys a menu
+// that only ever changes its text. It also removes the per-rebuild
+// click-watcher goroutines: each row has exactly one watcher for the
+// life of the process, reading whichever session id the row currently
+// stands for.
 type Menu struct {
 	client *Client
 
 	mu sync.Mutex
-	// dynamic holds every item built from the last Model, in creation
-	// order, so a rebuild can remove exactly what it added and leave
-	// the static footer alone.
-	dynamic []*systray.MenuItem
-	// stop closes the goroutines watching the current dynamic items.
-	// A rebuild closes it before dropping the items, so a click handler
-	// cannot outlive the item it was watching.
-	stop chan struct{}
-
 	// ready gates every systray call. main starts the client goroutine
-	// before systray.Run, and the daemon's snapshot arrives on
-	// handshake — so the first Model can and does land before onReady
-	// has created a single menu item. Adding items to a systray that
-	// has not started is not merely early; it is undefined.
-	//
-	// pending holds the newest Model seen while not ready, so nothing
-	// is lost in that window: without it the menu would sit empty
-	// until the next daemon event, which on a quiet machine is never.
+	// before systray.Run and the daemon's snapshot arrives on
+	// handshake, so the first Model routinely lands before onReady has
+	// created anything. pending holds the newest one seen until then —
+	// dropping it would leave the menu blank until the next daemon
+	// event, which on a quiet machine never comes.
 	ready   bool
 	pending *Model
+	// rowIDs[i] is the session id row i currently stands for, or "" if
+	// the row is hidden. Read by that row's click watcher.
+	rowIDs [maxSessionRows]string
 
-	// Static footer items, created once.
+	header   *systray.MenuItem
+	contract *systray.MenuItem
+	summary  *systray.MenuItem
+	rows     [maxSessionRows]*systray.MenuItem
+	overflow *systray.MenuItem
+
 	openGUI   *systray.MenuItem
 	reloadGUI *systray.MenuItem
 	restart   *systray.MenuItem
@@ -52,26 +66,43 @@ type Menu struct {
 	quit      *systray.MenuItem
 }
 
-func NewMenu() *Menu { return &Menu{stop: make(chan struct{})} }
+func NewMenu() *Menu { return &Menu{} }
 
 // Attach records the client the menu drives. Split from NewMenu because
 // the client needs the menu's Update method to exist first.
 func (m *Menu) Attach(c *Client) { m.client = c }
 
-// Ready builds the static half. Called from systray's onReady.
+// Ready builds every item, in final order. Called from systray's
+// onReady, and the only place that adds anything to the menu.
 func (m *Menu) Ready() {
 	systray.SetTemplateIcon(iconTemplate, iconTemplate)
 	systray.SetTooltip("Hive")
 
-	// The footer is created once and never rebuilt, so its click
-	// goroutines are started once too.
+	m.header = systray.AddMenuItem("", "")
+	m.header.Disable()
+	m.contract = systray.AddMenuItem("", "The menu bar and the daemon come from different builds")
+	m.contract.Disable()
+	m.contract.Hide()
+	m.summary = systray.AddMenuItem("", "")
+	m.summary.Disable()
+
+	systray.AddSeparator()
+	for i := range m.rows {
+		m.rows[i] = systray.AddMenuItem("", "Focus this session in Hive")
+		m.rows[i].Hide()
+		m.watchRow(i)
+	}
+	m.overflow = systray.AddMenuItem("", "")
+	m.overflow.Disable()
+	m.overflow.Hide()
+
+	systray.AddSeparator()
 	m.openGUI = systray.AddMenuItem("Open Hive", "Bring the Hive window forward")
 	m.reloadGUI = systray.AddMenuItem("Reload GUI", "Relaunch the windows; sessions keep running")
 	m.restart = systray.AddMenuItem("Restart Daemon…", "Ends every running shell and agent")
 	m.update = systray.AddMenuItem("Check for Updates…", "Opens Hive and runs the check")
 	systray.AddSeparator()
 	m.quit = systray.AddMenuItem("Quit Hive", "Stop the daemon and close the menu bar")
-
 	go m.watchFooter()
 
 	m.mu.Lock()
@@ -79,16 +110,19 @@ func (m *Menu) Ready() {
 	held := m.pending
 	m.pending = nil
 	m.mu.Unlock()
+
 	if held != nil {
 		m.Update(*held)
-	} else {
-		// Nothing has arrived yet, so say so rather than showing a
-		// header-less menu until the daemon answers.
-		m.Update(Disconnected())
+		return
 	}
+	// Say "not running" rather than showing an empty menu until the
+	// daemon answers — an empty session list reads as "nothing is
+	// running", which is a different claim.
+	m.Update(Disconnected())
 }
 
-// Update redraws the dynamic half. Safe to call from any goroutine.
+// Update retitles the existing items. Safe to call from any goroutine,
+// and never adds or removes anything — see the type comment.
 func (m *Menu) Update(model Model) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -97,67 +131,67 @@ func (m *Menu) Update(model Model) {
 		return
 	}
 
-	// Stop the click watchers before removing what they watch, then
-	// hand the next generation a fresh channel.
-	close(m.stop)
-	m.stop = make(chan struct{})
-	for _, it := range m.dynamic {
-		it.Remove()
-	}
-	m.dynamic = m.dynamic[:0]
-
-	header := systray.AddMenuItem(model.HeaderLine(), "")
-	header.Disable()
-	m.dynamic = append(m.dynamic, header)
-
+	m.header.SetTitle(model.HeaderLine())
 	if line, show := model.ContractLine(); show {
-		warn := systray.AddMenuItem(line, "The menu bar and the daemon come from different builds")
-		warn.Disable()
-		m.dynamic = append(m.dynamic, warn)
+		m.contract.SetTitle(line)
+		m.contract.Show()
+	} else {
+		m.contract.Hide()
 	}
+	m.summary.SetTitle(model.SummaryLine())
 
-	summary := systray.AddMenuItem(model.SummaryLine(), "")
-	summary.Disable()
-	m.dynamic = append(m.dynamic, summary)
-
+	// Flatten the grouped model into the fixed pool. The project name
+	// rides on each row instead of becoming a submenu: a submenu tree
+	// cannot be a fixed pool without one pool per project, and a row
+	// you can click straight from the top level beats one you have to
+	// hover a parent to reach.
+	i := 0
 	for _, p := range model.Projects {
-		name := p.Name
-		if name == "" {
-			name = "Untitled project"
-		}
-		parent := systray.AddMenuItem(name, "")
-		m.dynamic = append(m.dynamic, parent)
 		for _, s := range p.Sessions {
-			row := parent.AddSubMenuItem(s.Label(), "Focus this session in Hive")
-			m.dynamic = append(m.dynamic, row)
-			m.watchSession(row, s.ID, m.stop)
+			if i >= len(m.rows) {
+				break
+			}
+			m.rows[i].SetTitle(s.LabelIn(p.Name))
+			m.rows[i].Show()
+			m.rowIDs[i] = s.ID
+			i++
 		}
 	}
-	sep := systray.AddMenuItem("", "")
-	sep.Disable()
-	m.dynamic = append(m.dynamic, sep)
+	for ; i < len(m.rows); i++ {
+		m.rows[i].Hide()
+		m.rowIDs[i] = ""
+	}
+
+	if hidden := model.Sessions - len(m.rows); hidden > 0 {
+		m.overflow.SetTitle(fmt.Sprintf("…and %d more in Hive", hidden))
+		m.overflow.Show()
+	} else {
+		m.overflow.Hide()
+	}
 }
 
-// watchSession routes one session row's clicks until stop closes.
+// watchRow routes one pool row's clicks for the life of the process.
 //
-// The stop channel is what makes rebuilding safe: without it, every
-// redraw would leak a goroutine parked on a removed item's channel, and
-// a menu that redraws on every bell redraws a lot.
-func (m *Menu) watchSession(item *systray.MenuItem, id string, stop <-chan struct{}) {
+// The row's meaning changes as the pool is reassigned, so the id is
+// read at click time rather than captured: a watcher that closed over
+// the id it was created with would focus whatever session happened to
+// be in that slot when the menu was built.
+func (m *Menu) watchRow(i int) {
 	go func() {
-		for {
-			select {
-			case <-item.ClickedCh:
-				// Focus first, then raise: the GUI may not be running,
-				// and OpenGUI's launch is what makes the focus land
-				// somewhere. Both are best-effort — a click that
-				// reaches neither is a no-op, not an error dialog.
-				m.client.FocusSession(id)
-				if err := OpenGUI(); err != nil {
-					log.Printf("hivebar: open GUI: %v", err)
-				}
-			case <-stop:
-				return
+		for range m.rows[i].ClickedCh {
+			m.mu.Lock()
+			id := m.rowIDs[i]
+			m.mu.Unlock()
+			if id == "" {
+				continue // hidden row; nothing to focus
+			}
+			// Focus first, then raise: the GUI may not be running, and
+			// OpenGUI's launch is what makes the focus land somewhere.
+			// Both are best-effort — a click that reaches neither is a
+			// no-op, not an error dialog.
+			m.client.FocusSession(id)
+			if err := OpenGUI(); err != nil {
+				log.Printf("hivebar: open GUI: %v", err)
 			}
 		}
 	}()
