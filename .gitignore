@@ -1,6 +1,13 @@
-# Build output
+# Build output.
+#
+# Every cmd/ target is listed, including the ones nobody builds at the
+# repo root today: `go build ./cmd/<x>/` writes ./<x>, and a missing
+# entry here means the next `git add -A` commits a ~7MB binary. That
+# is exactly how a compiled hivebar reached main in a1a6ea5.
 /hive
 /hivegui
+/hived
+/hivebar
 /cmd/hivegui/hivegui
 /hived-ws-bridge
 

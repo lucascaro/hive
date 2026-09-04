@@ -5,7 +5,8 @@ type: enhancement
 complexity: L
 priority: P2
 pr: 333
-stage: REVIEW
+shipped: 2026-09-04
+stage: DONE
 ---
 
 # Add GUI-only reload and a daemon menu-bar agent
@@ -14,7 +15,7 @@ stage: REVIEW
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md](../exec-plans/active/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md)
+- **Exec plan:** [docs/exec-plans/completed/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md](../exec-plans/completed/330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md)
 
 ## Problem
 
