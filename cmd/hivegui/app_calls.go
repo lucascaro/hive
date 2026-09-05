@@ -6,12 +6,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
 )
@@ -268,6 +271,24 @@ func (a *App) UpdateProject(id, name, color, cwd string, order int) error {
 // LaunchDir returns the cwd captured at GUI startup; useful for the
 // new-project default cwd.
 func (a *App) LaunchDir() string { return a.launchDir }
+
+// StateDirID identifies the daemon registry this GUI is attached to,
+// as the first 8 hex chars of sha256(registry.StateDir()).
+//
+// Every hivegui process shares ONE webview localStorage — WKWebView
+// keys its store on the bundle id, not on the socket — while each
+// daemon owns a registry with its own project UUIDs. The frontend
+// suffixes its persisted project-id sets with this value so a GUI on
+// one state dir stops pruning away another's ids as "projects that no
+// longer exist" (#340).
+//
+// Hashed rather than returned raw so a filesystem path never lands in
+// web storage; truncated because 8 hex chars is plenty to separate the
+// handful of state dirs one machine ever has.
+func (a *App) StateDirID() string {
+	sum := sha256.Sum256([]byte(registry.StateDir()))
+	return hex.EncodeToString(sum[:])[:8]
+}
 
 // PickDirectory opens the OS native folder picker and returns the
 // selected path, or "" if the user cancelled. defaultDir, if

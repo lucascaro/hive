@@ -32,6 +32,7 @@ import {
   pruneCollapsed,
   COLLAPSED_STORAGE_KEY,
   MINIMIZED_PROJECTS_STORAGE_KEY,
+  namespacedKey,
 } from '../lib/collapsed.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { PhasePanel } from '../lib/phase-steps.js';
@@ -60,6 +61,10 @@ export interface AppData {
   sessions: SessionInfo[];
   collapsed: Set<string>;
   minimizedProjects: Set<string>;
+  // False until hydratePersistedProjectSets has run. applyProjectList
+  // refuses to prune while it is false: pruning an un-hydrated (empty)
+  // set persists [] and wipes the user's tray — bug #340 exactly.
+  projectSetsHydrated: boolean;
   attentionReturnId: string | null;
   attentionRestored: Set<string>;
   attentionRestoredProjects: Set<string>;
@@ -205,16 +210,71 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+function removeStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* private mode etc. — nothing to remove */
+  }
+}
+
 export function loadSavedView(): ViewMode {
   return normalizeView(readStorage(VIEW_STORAGE_KEY));
 }
 
-export function loadSavedCollapsed(): Set<string> {
-  return loadCollapsed(readStorage(COLLAPSED_STORAGE_KEY));
+// The daemon-state-dir id the two project-id keys are suffixed with,
+// and the gate that keeps us from writing before we know it. Both are
+// module state rather than store state: they are storage plumbing, not
+// anything a component renders. resetStore() clears them so a
+// namespace cannot leak between vitest files sharing a worker.
+let storageNS = '';
+let persistProjectSets = false;
+
+function collapsedKey(): string {
+  return namespacedKey(COLLAPSED_STORAGE_KEY, storageNS);
 }
 
-export function loadSavedMinimizedProjects(): Set<string> {
-  return loadCollapsed(readStorage(MINIMIZED_PROJECTS_STORAGE_KEY));
+function minimizedProjectsKey(): string {
+  return namespacedKey(MINIMIZED_PROJECTS_STORAGE_KEY, storageNS);
+}
+
+// Hydrate the two persisted project-id sets under `ns` — the id of the
+// daemon registry this GUI is attached to (App.StateDirID). Call it
+// once at boot, BEFORE ConnectControl: the first project:list would
+// otherwise prune sets that have not been loaded yet.
+//
+// An empty ns means the daemon could not be identified. Persistence
+// then stays off for the session rather than falling back to the bare
+// key: writing that key is what lets one instance clobber another's
+// state, and it would resurrect a legacy key a prior migration
+// deleted, which the other GUI would then adopt.
+export function hydratePersistedProjectSets(ns: string): void {
+  if (!ns) return;
+  storageNS = ns;
+  migrateLegacyProjectSets();
+  persistProjectSets = true;
+  set({
+    collapsed: loadCollapsed(readStorage(collapsedKey())),
+    minimizedProjects: loadCollapsed(readStorage(minimizedProjectsKey())),
+    projectSetsHydrated: true,
+  });
+}
+
+// One-time move of the pre-#340 un-namespaced values into this
+// instance's namespace. Only ever runs with a non-empty storageNS: with
+// an empty one the two key names are identical and "adopt then delete"
+// would destroy the value it just read.
+function migrateLegacyProjectSets(): void {
+  if (!storageNS) return;
+  for (const [legacy, next] of [
+    [COLLAPSED_STORAGE_KEY, collapsedKey()],
+    [MINIMIZED_PROJECTS_STORAGE_KEY, minimizedProjectsKey()],
+  ]) {
+    const raw = readStorage(legacy);
+    if (raw === null) continue;
+    if (readStorage(next) === null) writeStorage(next, raw);
+    removeStorage(legacy);
+  }
 }
 
 export function loadSavedFontSize(): number {
@@ -233,11 +293,13 @@ function clampSidebarWidth(w: number): number {
 }
 
 function persistCollapsed(set: ReadonlySet<string>): void {
-  writeStorage(COLLAPSED_STORAGE_KEY, serializeCollapsed(set));
+  if (!persistProjectSets) return;
+  writeStorage(collapsedKey(), serializeCollapsed(set));
 }
 
 function persistMinimizedProjects(set: ReadonlySet<string>): void {
-  writeStorage(MINIMIZED_PROJECTS_STORAGE_KEY, serializeCollapsed(set));
+  if (!persistProjectSets) return;
+  writeStorage(minimizedProjectsKey(), serializeCollapsed(set));
 }
 
 // ---------- immutable set/map helpers ----------
@@ -292,10 +354,14 @@ function initialData(): AppData {
   return {
     projects: [], // ProjectInfo[] in display order
     sessions: [], // SessionInfo[] in display order
-    collapsed: loadSavedCollapsed(), // project ids that are collapsed — persisted
-    minimizedProjects: loadSavedMinimizedProjects(), // project ids pulled out of
-    //   the sidebar list into the tray at its bottom; their sessions are
-    //   hidden from grid views too. Persisted, like `collapsed`.
+    collapsed: new Set(), // project ids that are collapsed — persisted, but
+    //   NOT loaded here: the storage key is suffixed with the daemon's
+    //   state-dir id, which only an async binding can tell us. main.tsx
+    //   calls hydratePersistedProjectSets before connecting.
+    minimizedProjects: new Set(), // project ids pulled out of the sidebar
+    //   list into the tray at its bottom; their sessions are hidden from
+    //   grid views too. Persisted and hydrated exactly like `collapsed`.
+    projectSetsHydrated: false,
     attentionReturnId: null, // session to jump back to (⇧⌘B): the one you
     //   were in before the FIRST ⌘B. Written only when empty, so a round
     //   of bells that walks you through several flagged sessions keeps
@@ -392,6 +458,15 @@ export function setProjects(projects: ProjectInfo[]): void {
 export function applyProjectList(projects: ProjectInfo[]): void {
   const list = projects || [];
   const s = get();
+  // Before hydration the sets are empty, so pruning would persist [] and
+  // wipe the tray. Apply the list, skip the tidy-up (#340).
+  if (!s.projectSetsHydrated) {
+    set({
+      projects: list,
+      currentProjectId: s.currentProjectId ?? list[0]?.id ?? null,
+    });
+    return;
+  }
   const ids = list.map((p) => p.id);
   const pruned = pruneCollapsed(s.collapsed, ids);
   const prunedMin = pruneCollapsed(s.minimizedProjects, ids);
@@ -926,6 +1001,8 @@ export function setChoiceDialog(spec: ChoiceSpec | null): void {
 }
 
 export function resetStore(seed: Partial<AppData> = {}): void {
+  storageNS = '';
+  persistProjectSets = false;
   replace({ ...initialData(), ...seed }, true);
 }
 

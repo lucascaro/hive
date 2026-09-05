@@ -677,6 +677,13 @@ export async function UpdateProject(
 export async function LaunchDir() {
   return '';
 }
+// Must be non-empty: an empty namespace means "daemon unidentified",
+// which disables persistence of the collapse/minimize sets entirely
+// (store.ts › hydratePersistedProjectSets).
+export const MOCK_STATE_DIR_ID = 'mock1234';
+export async function StateDirID() {
+  return MOCK_STATE_DIR_ID;
+}
 export async function PickDirectory() {
   return '';
 }

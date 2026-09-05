@@ -13,6 +13,21 @@ export const COLLAPSED_STORAGE_KEY = 'hive.collapsedProjects';
 // takes the whole project out of the list and out of grid views.
 export const MINIMIZED_PROJECTS_STORAGE_KEY = 'hive.minimizedProjects';
 
+// Suffix a base storage key with the id of the daemon state dir this
+// GUI is attached to. Every hivegui process shares ONE webview
+// localStorage (WKWebView keys its store on the bundle id, not on the
+// socket), while each daemon owns a registry with its own project
+// UUIDs — so an unsuffixed key lets one instance prune away another's
+// ids as "projects that no longer exist" (#340).
+//
+// An empty namespace returns the bare key. That case means "we could
+// not identify the daemon"; callers must treat it as a signal to stop
+// persisting rather than as a usable key — writing the bare key back
+// is what re-creates the shared-key bug.
+export function namespacedKey(base: string, ns: string): string {
+  return ns ? `${base}.${ns}` : base;
+}
+
 // raw: the localStorage string (or null). Returns a Set of project id
 // strings; anything malformed degrades to an empty/filtered set.
 export function loadCollapsed(raw: string | null | undefined): Set<string> {

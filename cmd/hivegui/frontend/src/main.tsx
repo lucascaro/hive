@@ -10,10 +10,13 @@
 //                   pre-paint half already ran from index.html's inline
 //                   script (master plan, Invariant 9).
 //   2. hydrate    — importing store/store.js runs initialData(), which
-//                   reads view / collapsed / minimized / font size /
-//                   sidebar width out of localStorage. It is an import
-//                   side effect, not a call, so it is already done by
-//                   the time any line below runs.
+//                   reads view / font size / sidebar width out of
+//                   localStorage. It is an import side effect, not a
+//                   call, so it is already done by the time any line
+//                   below runs. The collapsed / minimized project sets
+//                   are the exception: their keys are namespaced by the
+//                   daemon's state-dir id, so the bootstrap block at the
+//                   bottom hydrates them asynchronously, before connect.
 //   3. wire       — the daemon event handlers are registered BEFORE the
 //                   root mounts, so a fast handshake writes the store
 //                   rather than racing a tree that has not subscribed.
@@ -27,6 +30,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import {
   ConnectControl,
+  StateDirID,
   OpenNewWindow,
   CloseWindow,
   OpenTerminalAt,
@@ -495,6 +499,17 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
   }
   setStatus('connecting…');
   setBootState('Starting hive…');
+  // Load the persisted collapse/minimize sets BEFORE connecting. Their
+  // storage keys are suffixed with the daemon's state-dir id, which only
+  // this binding knows, and the first project:list would prune sets that
+  // had not been loaded yet — persisting [] and emptying the tray (#340).
+  // A failure here leaves persistence off for the session rather than
+  // falling back to the shared un-suffixed key.
+  try {
+    store.hydratePersistedProjectSets(await StateDirID());
+  } catch {
+    LogFrontend('boot: StateDirID failed; project sets not persisted');
+  }
   try {
     await ConnectControl();
     setStatus('connected');

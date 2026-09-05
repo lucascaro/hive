@@ -178,3 +178,40 @@ test('a project chip spans the tray, right-aligns +, and restores on any click',
   await page.mouse.click(slackX, slackY);
   await expect(listed).toHaveCount(before);
 });
+
+// Repro for #340: a minimized project must still be minimized after the
+// window reloads. Persistence lives in localStorage (`hive.minimizedProjects`)
+// and is pruned against the project:list snapshot on reconnect, so only a
+// real reload exercises the write → read → prune round trip.
+test('a minimized project stays minimized across a reload', async ({
+  page,
+}) => {
+  await boot(page);
+  const listed = page.locator('#projects > li.hv-project-card');
+  const before = await listed.count();
+  const first = listed.first();
+  const pid = await first.getAttribute('data-pid');
+
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+  await expect(listed).toHaveCount(before - 1);
+
+  // The key is namespaced by the daemon's state-dir id (#340), which
+  // wails-mock.ts reports as MOCK_STATE_DIR_ID.
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('hive.minimizedProjects.mock1234'),
+    ),
+  ).toContain(pid);
+
+  await page.reload();
+
+  // The tray chip is the boot signal here: the mock seeds one project,
+  // so a correct restore leaves #projects empty.
+  await expect(
+    page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`),
+  ).toBeVisible();
+  await expect(listed).toHaveCount(before - 1);
+});
