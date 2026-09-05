@@ -238,6 +238,23 @@ func (m *Machine) Tick(now time.Time) bool {
 // session to the event's tier and refreshes the staleness clock, even
 // when it changes no state — that is what KindPing is for.
 func (m *Machine) Apply(ev Event) bool {
+	// Out-of-order guard. A report is one short-lived connection —
+	// `hived hook` is a whole process per Claude hook event, and the Pi
+	// extension opens one socket per event — and the daemon serves each
+	// on its own goroutine, so two events reported milliseconds apart
+	// can reach Apply in either order. An inverted pair is a wrong glyph
+	// that nothing corrects until the next event or HookStaleAfter.
+	//
+	// ev.At is comparable to what is already recorded: the reporter
+	// reached us over a unix socket, so it shares this host's clock.
+	// An event older than the last one applied describes a moment that
+	// has already passed, and it is dropped whole — including the
+	// staleness clock, which is already newer. Equal stamps apply, since
+	// nothing distinguishes them.
+	if !m.hookSeenAt.IsZero() && ev.At.Before(m.hookSeenAt) {
+		return false
+	}
+
 	before := m.Snapshot()
 
 	m.source = ev.Source

@@ -156,6 +156,16 @@ extension calling `ctx.ui.confirm()`, so Hive reads the
 blocking extension prompt. `confirm`/`select` map to
 `waiting_permission`, the rest to `waiting_input`.
 
+Both reporting tiers are one-shot connections — `hived hook` is a whole
+process per Claude hook event, the Pi extension opens one socket per
+event — and the daemon serves each on its own goroutine, so a pair
+reported milliseconds apart can reach the machine inverted. Ordering is
+enforced once, in `agentstate.Machine.Apply`: an event stamped earlier
+than the last one applied is dropped whole. The reporter always shares
+the daemon's host (it reached us over a unix socket), so its clock is
+comparable. Doing it in the machine rather than per tier is what makes
+it true for every future feeder as well.
+
 ## What is deliberately *not* here
 
 - **Task DAGs, fan-out/fan-in, cross-agent dependencies.** Orchestration

@@ -818,6 +818,38 @@ decision-log entry with the log excerpt BEFORE any code changes.
   running the cross-language frame check in CI — the one place it earns
   its keep.
 
+- **2026-09-05 (phase 3, review iter 2)** — `session_shutdown` reports
+  `session_end` only for `reason == "quit"`; every other reason
+  (`new`, `resume`, `fork`, `reload`) reports `turn_end` with no text.
+  Why: only `quit` ends the pi process. The other four tear the session
+  runtime down *inside a live pi* and immediately stand another one up,
+  and `StateExited` is terminal in `Machine.Apply` (it returns early on
+  every later event), so an ordinary `/new` would have pinned the Hive
+  session at "exited" for the rest of its life with the PTY still
+  running. `turn_end` rather than nothing, because the command arrives
+  as an `input` event first and has already moved the session to
+  `working`; posting nothing would strand it there until the tier went
+  stale. Empty text clears `lastSummary`, which is correct — the
+  previous conversation's closing line does not describe the new one.
+  Known ceiling, marked `ponytail:` in the extension: `lastPrompt`
+  survives the swap, because `Apply` sets it once and no wire kind
+  resets it. Clearing it needs a session-reset kind, i.e. a wire change.
+
+- **2026-09-05 (phase 3, review iter 2)** — Event ordering is enforced
+  in `agentstate.Machine.Apply`, not in the Pi extension: an event
+  stamped before the last one applied is dropped whole, staleness clock
+  included. Why: every reporting tier is one short-lived connection per
+  event served on its own goroutine, so an inverted pair is possible on
+  the Claude hook tier (shipped in #338) exactly as much as on the new
+  Pi one — more so, since each Claude event is a separate process.
+  Serializing `post()` inside the extension was the narrower fix and was
+  rejected: it would have left the hook tier racy, and a chained post
+  can still be in flight when pi exits, trading a rare ordering bug for
+  a rare dropped-event bug. The reporter always shares the daemon's host
+  (it dialled a unix socket), so comparing its timestamps is sound.
+  Equal stamps still apply, since nothing distinguishes them.
+
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1012,6 +1044,20 @@ decision-log entry with the log excerpt BEFORE any code changes.
   since `hived hook` dials `net.Dial("unix", ...)` too.
 
 
+- **2026-09-05 (phase 3, review iter 2 fixes)** — Applied on PR #341:
+  the `session_shutdown` reason gate and the `Machine.Apply` ordering
+  guard above, plus `EnsurePiExtension`'s file modes tightened from
+  `0o755`/`0o644` to `0o700`/`0o600` to match every other writer under
+  `StateDir()` (`registry/persist.go`, `registry/logfile.go`). New
+  tests: `internal/agentstate` gains `TestApplyDropsOutOfOrderEvents`,
+  `TestApplyAcceptsEqualTimestamps` and
+  `TestApplyFirstEventNeverDropped` (the zero-`hookSeenAt` boundary),
+  and the TS suite gains a table case asserting the reported kind for
+  all five shutdown reasons plus the missing-reason fallback.
+  Verified: `go vet` (host, linux, windows), `scripts/test.sh go` green,
+  `node --test internal/agent/pi/hive.test.ts` 8/8.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1021,3 +1067,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-04 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2854c4ad3033402a11277eece2de916447c9861b2f3263fe8b2546f591750ec2; threads_open: 0; action: continue (2 IMPORTANT remain); head_sha: 4423148.
 - **2026-09-04 iter 2** — verdict: COMMENT (strict); mergeable: MERGEABLE; findings_hash: bf94a2f0c66b9cec2198ab14123a12cac7906dff824e342940e56b9bab769543; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ac893ca.
 - **2026-09-05 iter 1 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 933fe7284759ec8b0b78ddf7426686dd96f3263ed89a5358a9ee055ef1aa3d69; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 73ec301.
+- **2026-09-05 iter 2 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: aeb45dd6f258cc7b432bc46e97db046988fdfc0417ce97805863f9762d5972c8; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 52310a7.

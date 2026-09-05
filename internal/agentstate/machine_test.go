@@ -386,3 +386,77 @@ func TestBellCountsOnTheHookTier(t *testing.T) {
 		t.Fatalf("state after answering a permission = %q, want working (the tool is running)", got)
 	}
 }
+
+// TestApplyDropsOutOfOrderEvents pins the ordering guard. Each report
+// is its own connection served on its own goroutine, so a pair sent
+// milliseconds apart can arrive inverted; without the guard the older
+// event wins and leaves a glyph nothing corrects until HookStaleAfter.
+func TestApplyDropsOutOfOrderEvents(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0, Text: "do a thing"}) {
+		t.Fatal("prompt should have changed state")
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Fatalf("state = %q, want %q", got, wire.StateWorking)
+	}
+
+	// The turn ends a second later.
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(time.Second), Text: "done"}) {
+		t.Fatal("turn_end should have changed state")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Fatalf("state = %q, want %q", got, wire.StateIdle)
+	}
+
+	// A permission_resolved stamped BEFORE the turn end lands late.
+	// Applying it would report "working" for a turn that is over.
+	before := m.Snapshot()
+	if m.Apply(Event{Kind: KindPermissionResolved, Source: wire.StateSourceHook, At: t0.Add(500 * time.Millisecond)}) {
+		t.Error("a stale event reported a change")
+	}
+	if got := m.Snapshot(); got != before {
+		t.Errorf("stale event mutated the machine: %+v -> %+v", before, got)
+	}
+
+	// The clock is not rewound either: a fresh event at the real "now"
+	// still applies, and staleness is still measured from the newest
+	// event seen, not the stale one.
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0.Add(2 * time.Second), Text: "next"}) {
+		t.Error("a newer event after a stale one should still apply")
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Errorf("state = %q, want %q", got, wire.StateWorking)
+	}
+}
+
+// TestApplyAcceptsEqualTimestamps guards the boundary: two events in
+// the same nanosecond are indistinguishable, so the guard must not
+// silently drop the second one.
+func TestApplyAcceptsEqualTimestamps(t *testing.T) {
+	m := New(time.Now())
+	at := time.Now()
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: at})
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: at, Text: "done"}) {
+		t.Fatal("an event with an equal timestamp was dropped")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	}
+}
+
+// TestApplyFirstEventNeverDropped guards the zero-value case: the guard
+// keys off hookSeenAt, which is zero until the first agent event, and
+// must not compare against it.
+func TestApplyFirstEventNeverDropped(t *testing.T) {
+	m := New(time.Now())
+	// An At well in the past — a reporter that stamped early, or a
+	// replayed fixture — must still promote the session off heuristics.
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: time.Now().Add(-time.Hour)}) {
+		t.Fatal("the first agent event was dropped")
+	}
+	if got := m.Snapshot().Source; got != wire.StateSourceHook {
+		t.Errorf("source = %q, want %q", got, wire.StateSourceHook)
+	}
+}

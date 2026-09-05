@@ -195,3 +195,33 @@ test("truncate keeps a U+FFFD the user actually typed at the cut", () => {
   assert.equal(Buffer.from(out, "utf8").length, 512);
   assert.ok(out.endsWith("\uFFFD"), "the cut stripped a genuine U+FFFD");
 });
+
+test("session_shutdown reports session_end only for quit", unixOnly, async () => {
+  // StateExited is terminal in agentstate.Machine.Apply, so reporting
+  // session_end for /new, /resume, /fork or a reload would pin a live
+  // session at "exited" with no recovery path.
+  for (const [reason, want] of [
+    ["quit", "session_end"],
+    ["new", "turn_end"],
+    ["resume", "turn_end"],
+    ["fork", "turn_end"],
+    ["reload", "turn_end"],
+    [undefined, "turn_end"],
+  ] as Array<[string | undefined, string]>) {
+    const events = await collectFrames(async (sock) => {
+      await new Promise<void>((resolve) => {
+        withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+          const pi = handlerPi();
+          mod.default(pi as never);
+          pi.handlers.get("session_shutdown")!({ reason }, {});
+          setTimeout(resolve, 200);
+        });
+      });
+    }, 1);
+    assert.equal(events.length, 1, `reason=${reason}`);
+    assert.equal(events[0].kind, want, `reason=${reason}`);
+    if (want === "turn_end") {
+      assert.ok(!events[0].text, `reason=${reason}: stale summary carried over`);
+    }
+  }
+});

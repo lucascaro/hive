@@ -41,7 +41,7 @@ func EnsurePiExtension(stateDir string) error {
 	if cur, err := os.ReadFile(dst); err == nil && string(cur) == piExtensionSource {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(dst), ".hive-*.ts")
@@ -56,7 +56,7 @@ func EnsurePiExtension(stateDir string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp.Name(), dst)

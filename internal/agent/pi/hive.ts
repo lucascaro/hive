@@ -145,8 +145,29 @@ export default function (pi: ExtensionAPI) {
     else post("turn_end", lastAssistantText(ctx));
   });
 
-  pi.on("session_shutdown", () => {
-    post("session_end");
+  // Only "quit" ends the pi process. "new", "resume", "fork" and
+  // "reload" tear down the session runtime *inside a live pi* and
+  // immediately stand another one up, so reporting session_end for them
+  // would be a lie with no way back: StateExited is terminal in
+  // agentstate.Machine.Apply, which drops every later event, and the
+  // PTY is still very much alive.
+  //
+  // The replacement path reports turn_end rather than nothing, because
+  // the command that triggered it (`/new`) arrives as an `input` event
+  // first and has already moved the session to working. Posting nothing
+  // would strand it there until the tier goes stale. turn_end with no
+  // text also clears lastSummary, which is right: the previous
+  // conversation's closing line does not describe the new one.
+  //
+  // ponytail: lastPrompt survives the swap and will still show the old
+  // session's first prompt — Apply only ever sets it once and no wire
+  // kind resets it. Fixing that needs a session-reset event kind, which
+  // is a wire change; revisit if the stale prompt is confusing in
+  // practice.
+  pi.on("session_shutdown", (event) => {
+    turnInFlight = false;
+    if (event?.reason === "quit") post("session_end");
+    else post("turn_end");
   });
 }
 
