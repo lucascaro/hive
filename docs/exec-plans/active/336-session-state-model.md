@@ -506,9 +506,11 @@ version and the table in Progress before each push that touches state.
 | 11 | claude | leave it idle > 60 s after a reply | waiting_input (Claude `idle_prompt`) | `reason=waiting_input src=hook` |
 | 12 | claude | `/exit` | exited | `-> exited reason=session_end` or `reason=exit` |
 | 13 | claude | kill `hived`, restart, reopen GUI | every session idle / heuristic, empty tooltip | no state lines until output |
-| 14 | codex or pi | run a prompt | working → idle on the heuristic tier; glyph shows the uncertain ring | `src=heuristic` only |
+| 14 | codex or pi | run a prompt | codex: working → idle, `src=heuristic`. pi: working → idle with `src=extension` and the prompt in the tooltip — the glyph itself is identical on every tier, so read the tooltip's last line, not the shape | `src=heuristic` (codex) / `src=extension` (pi) |
+| 15 | claude + shell | with one agent at a permission prompt and one shell idle, open the menu bar | summary reads "… · 1 waiting on you"; the dot is on the agent row only | — (hivebar has no state log; read the menu) |
+| 16 | claude | hover the sidebar row's state glyph mid-turn, then after the reply | tooltip stacks state, the prompt in quotes, the last summary, then "reported by the agent"; a shell's tooltip ends "guessed from terminal output" | — |
 
-Rows 7–12 are phase 2. A row that fails goes into this plan as a
+Rows 7–12 are phase 2; rows 15–16 are phase 4. A row that fails goes into this plan as a
 decision-log entry with the log excerpt BEFORE any code changes.
 
 ## Decision log
@@ -1347,6 +1349,24 @@ decision-log entry with the log excerpt BEFORE any code changes.
   since phase 2, and no row covers the menu bar at all — so the waiting
   count and the tooltip have never been seen in a running app.
 
+- **2026-09-05 (merge gate, phase 4)** — Gate NEEDS_FOLLOWUP on the
+  open PR #344 (pre-merge path; ledger converged at iter 2, APPROVE,
+  zero threads). Items:
+  - Criterion 2: `error` never observed on a real `claude`; checklist
+    rows 1–6 and 13–14 still unrun in an iso build.
+  - Criterion 3: no state ever observed from a real `pi` (row 14).
+  - Criteria 6 and 7: implemented and unit-covered, but never seen in a
+    running app — the checklist has no menu-bar row at all.
+  - Criterion 5: implementation demotes at `HookStaleAfter = 30s` and
+    only while the screen changes, not "within the quiet threshold" as
+    the spec words it. Deliberate; the spec bullet is what is wrong.
+  - `internal/agent/claude.go:111` cites `scripts/probe-claude.sh`,
+    which has never existed.
+  - Plan checklist row 14 (`:509`) instructs the operator to look for
+    an "uncertain ring" that this plan refutes at `:948`.
+  - No committed test drives `exited` through a real child exit.
+  Non-goals passed clean. Stage stays at GATE.
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1362,6 +1382,12 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.
 
 ## Gate verdict
+
+- **2026-09-05** — verdict: NEEDS_FOLLOWUP; checks: 5 passed / 0 failed / 3 followups; followups: none filed (pending user decision); one-line: every criterion is implemented and unit-evidenced and all six non-goals hold, but four criteria have never been exercised against a real binary or a running app, criterion 5's fallback is not the one the spec words, and two stale prose references survive outside the docs that were swept.
+  - 2026-09-05 dimensions:
+    - acceptance — NEEDS_FOLLOWUP — criteria 1, 4, 6, 7, 8 PASS with executed evidence (`TestBuildModelCountsWaiting`/`IgnoresBellWhenStateIsAvailable`/`FallsBackToBellOnOldDaemon`; tooltip text asserted verbatim at `test/dom/attention-icon.test.tsx:135`; `TestMetaFileUnchangedByState`; real-PTY working/idle/bell). Criterion 2 followup: the recorded manual transcript covers rows 7–12 on claude 2.1.261 but never observed `error`, and `TestClaudeProbe*` skip without a real binary. Criterion 3 followup: no state ever observed from a real `pi` (row 14 unrun). Criterion 5 deviation: spec says fallback "within the quiet threshold", implementation demotes at `HookStaleAfter = 30s` (`internal/agentstate/machine.go:48`) and only while the screen keeps changing — a hooked session whose hook dies with a static screen holds its last hook state indefinitely; deliberate and recorded in the Approach, but not the spec's wording. Coverage gap: no committed test drives `exited` through a real child exit (`registry.go:1113`); a throwaway PTY test proved the path works and was deleted.
+    - non-goals — PASS — all six hold after phase 4. The one at risk was the bell: `events.ts:249-261` branches the notification body only on `waiting_permission` and falls through to the original wording for bare-bell sessions (pinned by `events-focus.test.ts:284`), and hivebar's switch to the state predicate cannot drop bell sessions because a bell sets `waiting_input` and `waiting()` falls back below contract 3.
+    - doc accuracy — NEEDS_FOLLOWUP — all three original gate failures and all three review-iteration-1 prose defects verified genuinely fixed by executed commands (every artefact `control-plane.md` now names exists; no `Subagent*` in Go; nothing under `src/theme/` or `Icon.tsx` reads `state_source`, so the tier line's replacement justification is true). Two residuals: `internal/agent/claude.go:111` still cites `scripts/probe-claude.sh` as an existing verification source (pre-existing from #338, the same defect class phase 4 swept from the docs but not from Go comments), and the plan's own smoke checklist row 14 (`:509`) still tells the operator to expect "the uncertain ring", which this file refutes at `:948`. Rows 13–14 are outstanding work, so that is live wrong guidance.
 
 - **2026-09-05** — verdict: FAIL; checks: 11 passed / 3 failed / 2 followups; followups: none filed (pending user decision); one-line: phases 1–3 are delivered and evidenced, but two of the spec's eight success criteria (hivebar count, prompt+summary tooltip) are phase-4 work that was never implemented, and three design-doc paragraphs describe unshipped or already-shipped things in the wrong tense.
   - 2026-09-05 dimensions:

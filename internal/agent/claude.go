@@ -107,9 +107,11 @@ var claudeHivedPathWarnOnce sync.Once
 // hived path, or claude's version is outside the verified range).
 //
 // --settings hooks CONCATENATE with hooks from other settings sources
-// rather than replacing them (verified on Claude Code 2.1.260 — see
-// the plan's decision log and scripts/probe-claude.sh), so this never
-// has to read the user's own settings.json first.
+// rather than replacing them (verified by hand on Claude Code 2.1.260;
+// see the plan's decision log), so this never has to read the user's
+// own settings.json first. Re-check it with
+// cmd/hived/claude_probe_test.go under HIVE_PROBE_CLAUDE=1, which
+// drives a real claude — there is no probe script.
 func claudeSpawnArgs(sp SpawnInfo) []string {
 	if sp.HivedPath == "" {
 		claudeHivedPathWarnOnce.Do(func() {

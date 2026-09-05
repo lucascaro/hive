@@ -76,8 +76,15 @@ settings untouched.
   flows, `idle` after two seconds of silence, `waiting_input` on a bell,
   `exited` on exit — verified by a Go test feeding a fake PTY.
 - A session whose hook stops firing (simulated by killing the event
-  connection path) falls back to heuristic state within the quiet
-  threshold; `state_source` flips to `heuristic`.
+  connection path) but whose screen keeps changing falls back to
+  heuristic state within 30 s of the last hook event
+  (`agentstate.HookStaleAfter`); `state_source` flips to `heuristic`.
+  Note the deliberate limit: demotion is driven by output, so a hooked
+  session whose hook dies while its screen is static holds its last
+  reported state until either output resumes or the process exits.
+  Nothing polls it back to reality, because a timer that overrode a
+  quiet `waiting_permission` would erase a real prompt the user has
+  not answered yet.
 - Sidebar rows and tile headers render the six states; the tooltip
   shows prompt + summary when present. Playwright mock e2e covers the
   glyphs; unit tests cover the store reducers.

@@ -416,3 +416,40 @@ func TestBellReachesAttentionThroughTheRealPTY(t *testing.T) {
 		}
 	}
 }
+
+// The exit path is the one state transition no other test drives
+// through a real process: watchSessionExit calls machine().Exit()
+// inline (registry.go, next to the Alive:false write) rather than
+// through a session hook, so a unit test on the machine proves the
+// mapping but not the wiring. /bin/cat exits on EOT.
+//
+// The gate that found this gap proved it with a throwaway; this is
+// that test, kept.
+func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying"})
+
+	if got := r.Get(e.ID).Info().State; got == wire.StateExited {
+		t.Fatal("test setup: session was already exited before EOT")
+	}
+
+	// EOT closes cat's stdin, which ends the process.
+	if _, err := sess.Write([]byte{0x04}); err != nil {
+		t.Fatalf("write EOT: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		info := r.Get(e.ID).Info()
+		if !info.Alive {
+			if info.State != wire.StateExited {
+				t.Fatalf("dead session reports state %q, want %q",
+					info.State, wire.StateExited)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("session never reported the exit")
+}
