@@ -238,6 +238,50 @@ func (m *Machine) Tick(now time.Time) bool {
 // session to the event's tier and refreshes the staleness clock, even
 // when it changes no state — that is what KindPing is for.
 func (m *Machine) Apply(ev Event) bool {
+	// Out-of-order guard. A report is one short-lived connection —
+	// `hived hook` is a whole process per Claude hook event, and the Pi
+	// extension opens one socket per event — and the daemon serves each
+	// on its own goroutine, so two events reported milliseconds apart
+	// can reach Apply in either order. An inverted pair is a wrong glyph
+	// that nothing corrects until the next event or HookStaleAfter.
+	//
+	// ev.At is comparable to what is already recorded: the reporter
+	// reached us over a unix socket, so it shares this host's clock.
+	// An event older than the last one applied describes a moment that
+	// has already passed, and it is dropped whole — including the
+	// staleness clock, which is already newer. Equal stamps apply, since
+	// nothing distinguishes them.
+	//
+	// The window is bounded, and that bound is load-bearing. ev.At is
+	// parsed from the wire and carries no monotonic reading, so this is
+	// wall-clock arithmetic: if the host's clock steps backward (a VM
+	// resume, a large NTP correction), an unbounded guard would drop
+	// every later event for the whole duration of the step, while
+	// trusted() computed a negative age that never exceeds
+	// HookStaleAfter — so nothing would correct it. A delivery inversion
+	// is milliseconds apart; a gap of HookStaleAfter or more is a clock
+	// that moved, and the newest report wins.
+	//
+	// Accepting the far-behind event restores recovery for working and
+	// idle, which is where a wedge actually strands a user: Observe
+	// reclaims on the next byte, and Tick times a stale working out. It
+	// does NOT recover a wait — Observe returns early on
+	// waiting_input/waiting_permission by design (a prompt repainting
+	// itself must not clear itself) and Tick only demotes working — so a
+	// report landing HookStaleAfter or more behind, on a wait, pins that
+	// wait until ClearWaiting or the next agent event. Reaching that
+	// needs a reporter stalled longer than the staleness horizon: the Pi
+	// extension destroys its connection after 2s, so only a
+	// pathologically wedged `hived hook` qualifies. Left as-is rather
+	// than special-cased — a state-dependent rewind rule is more machine
+	// for a case that is hard to reach and self-corrects on the next
+	// event.
+	if !m.hookSeenAt.IsZero() {
+		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
+			return false
+		}
+	}
+
 	before := m.Snapshot()
 
 	m.source = ev.Source

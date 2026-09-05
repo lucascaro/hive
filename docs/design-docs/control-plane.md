@@ -149,7 +149,22 @@ Rules that follow:
 Pi is the mirror image: its extension API is documented and versioned
 with the package, and Hive controls both ends (the extension is
 embedded in `hived`). The same rules apply — inert without env, silent
-on failure, heuristic fallback — but the risk is lower.
+on failure, heuristic fallback — but the risk is lower. Pi has no
+built-in permission prompt to hook: a permission gate there is an
+extension calling `ctx.ui.confirm()`, so Hive reads the
+`ui_prompt_start` / `ui_prompt_end` pair that fires around *every*
+blocking extension prompt. `confirm`/`select` map to
+`waiting_permission`, the rest to `waiting_input`.
+
+Both reporting tiers are one-shot connections — `hived hook` is a whole
+process per Claude hook event, the Pi extension opens one socket per
+event — and the daemon serves each on its own goroutine, so a pair
+reported milliseconds apart can reach the machine inverted. Ordering is
+enforced once, in `agentstate.Machine.Apply`: an event stamped earlier
+than the last one applied is dropped whole. The reporter always shares
+the daemon's host (it reached us over a unix socket), so its clock is
+comparable. Doing it in the machine rather than per tier is what makes
+it true for every future feeder as well.
 
 ## What is deliberately *not* here
 

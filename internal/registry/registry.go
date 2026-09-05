@@ -395,12 +395,27 @@ func (r *Registry) noteBell(id string) {
 // that races a spawn — the entry exists, Phase != Ready — is applied
 // rather than dropped.
 func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
-	at, err := time.Parse(time.RFC3339Nano, ev.At)
-	if err != nil {
-		at = time.Now()
-	}
+	// A reporter's clock is not ours to trust. Since Machine.Apply
+	// orders events by this stamp and trusted() measures staleness from
+	// it, one future-dated event would otherwise freeze the session for
+	// good: every later event sorts older and is dropped, and
+	// now.Sub(hookSeenAt) stays negative so the heuristic tier can never
+	// reclaim it either. Clamping forward-dated stamps to now keeps the
+	// wire contract's promise that a clock the daemon does not control
+	// cannot drop an otherwise-valid event.
+	parsed, parseErr := time.Parse(time.RFC3339Nano, ev.At)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Sampled under the lock: for the documented empty/unparseable
+	// fallback the daemon's own clock IS the ordering key, so reading it
+	// outside would let two events be stamped in one order and applied
+	// in the other — the exact inversion Machine.Apply's guard exists to
+	// stop.
+	now := time.Now()
+	at := parsed
+	if parseErr != nil || at.After(now) {
+		at = now
+	}
 	e, ok := r.entries[id]
 	if !ok {
 		return ErrNotFound

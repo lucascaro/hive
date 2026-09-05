@@ -57,7 +57,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Bootstrap Wails (seed dist, install CLI, generate bindings)
         # Shared with build.sh docs; pins the Wails CLI version in one place.

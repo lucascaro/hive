@@ -386,3 +386,151 @@ func TestBellCountsOnTheHookTier(t *testing.T) {
 		t.Fatalf("state after answering a permission = %q, want working (the tool is running)", got)
 	}
 }
+
+// TestApplyDropsOutOfOrderEvents pins the ordering guard. Each report
+// is its own connection served on its own goroutine, so a pair sent
+// milliseconds apart can arrive inverted; without the guard the older
+// event wins and leaves a glyph nothing corrects until HookStaleAfter.
+func TestApplyDropsOutOfOrderEvents(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0, Text: "do a thing"}) {
+		t.Fatal("prompt should have changed state")
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Fatalf("state = %q, want %q", got, wire.StateWorking)
+	}
+
+	// The turn ends a second later.
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(time.Second), Text: "done"}) {
+		t.Fatal("turn_end should have changed state")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Fatalf("state = %q, want %q", got, wire.StateIdle)
+	}
+
+	// A permission_resolved stamped BEFORE the turn end lands late.
+	// Applying it would report "working" for a turn that is over.
+	before := m.Snapshot()
+	if m.Apply(Event{Kind: KindPermissionResolved, Source: wire.StateSourceHook, At: t0.Add(500 * time.Millisecond)}) {
+		t.Error("a stale event reported a change")
+	}
+	if got := m.Snapshot(); got != before {
+		t.Errorf("stale event mutated the machine: %+v -> %+v", before, got)
+	}
+
+	// The clock is not rewound either: a fresh event at the real "now"
+	// still applies, and staleness is still measured from the newest
+	// event seen, not the stale one.
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0.Add(2 * time.Second), Text: "next"}) {
+		t.Error("a newer event after a stale one should still apply")
+	}
+	if got := m.Snapshot().State; got != wire.StateWorking {
+		t.Errorf("state = %q, want %q", got, wire.StateWorking)
+	}
+}
+
+// TestApplyAcceptsEqualTimestamps guards the boundary: two events in
+// the same nanosecond are indistinguishable, so the guard must not
+// silently drop the second one.
+func TestApplyAcceptsEqualTimestamps(t *testing.T) {
+	m := New(time.Now())
+	at := time.Now()
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: at})
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: at, Text: "done"}) {
+		t.Fatal("an event with an equal timestamp was dropped")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	}
+}
+
+// TestApplyFirstEventNeverDropped guards the zero-value case: the guard
+// keys off hookSeenAt, which is zero until the first agent event, and
+// must not compare against it.
+func TestApplyFirstEventNeverDropped(t *testing.T) {
+	m := New(time.Now())
+	// An At well in the past — a reporter that stamped early, or a
+	// replayed fixture — must still promote the session off heuristics.
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: time.Now().Add(-time.Hour)}) {
+		t.Fatal("the first agent event was dropped")
+	}
+	if got := m.Snapshot().Source; got != wire.StateSourceHook {
+		t.Errorf("source = %q, want %q", got, wire.StateSourceHook)
+	}
+}
+
+// TestApplyRecoversFromBackwardClockStep pins the ordering guard's
+// upper bound. ev.At is wall-clock (time.Parse keeps no monotonic
+// reading), so a host clock that steps backward must not be able to
+// wedge a session: an unbounded guard would drop every later event for
+// the length of the step, while trusted() measured a negative age that
+// never exceeds HookStaleAfter, leaving Observe and Tick unable to
+// reclaim it either.
+func TestApplyRecoversFromBackwardClockStep(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0}) {
+		t.Fatal("prompt should have applied")
+	}
+
+	// The clock steps back an hour. The reporter is honest; the host is
+	// not where it was.
+	stepped := t0.Add(-time.Hour)
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: stepped, Text: "done"}) {
+		t.Fatal("an event after a backward clock step was dropped; the session is wedged")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	}
+
+	// And the watermark followed the step, so the tier is live again
+	// rather than pinned to a future timestamp.
+	if !m.trusted(stepped.Add(time.Second)) {
+		t.Error("tier went stale at the stepped clock; hookSeenAt did not follow")
+	}
+}
+
+// TestApplyStillDropsARealInversion guards the other side of that
+// bound: a genuine delivery inversion is milliseconds apart and must
+// still be dropped, or the guard buys nothing.
+func TestApplyStillDropsARealInversion(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+	m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(time.Second), Text: "done"})
+
+	before := m.Snapshot()
+	if m.Apply(Event{Kind: KindPermissionResolved, Source: wire.StateSourceHook, At: t0.Add(500 * time.Millisecond)}) {
+		t.Error("a millisecond-scale inversion was applied")
+	}
+	if got := m.Snapshot(); got != before {
+		t.Errorf("inverted event mutated the machine: %+v -> %+v", before, got)
+	}
+}
+
+// TestApplyOrderingBoundary pins the guard's boundary exactly, the way
+// TestTrustedBoundary pins trusted()'s. Without these, flipping the
+// guard's < to <= leaves the whole suite green.
+func TestApplyOrderingBoundary(t *testing.T) {
+	t.Run("exactly HookStaleAfter behind applies", func(t *testing.T) {
+		m := New(time.Now())
+		t0 := time.Now()
+		m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+		if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(-HookStaleAfter)}) {
+			t.Error("an event exactly HookStaleAfter behind was dropped; the bound is exclusive by design")
+		}
+	})
+
+	t.Run("one nanosecond inside the window drops", func(t *testing.T) {
+		m := New(time.Now())
+		t0 := time.Now()
+		m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+		if m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(-HookStaleAfter + time.Nanosecond)}) {
+			t.Error("an event inside the reordering window was applied")
+		}
+	})
+}

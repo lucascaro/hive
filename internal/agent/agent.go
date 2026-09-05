@@ -58,8 +58,8 @@ type Def struct {
 	// SpawnArgs, when non-nil, returns extra argv appended at first
 	// spawn AND on every resume/restart (after
 	// SessionIDFlag/ResumeArgs/ResumeCmd) — the hook-tier wiring for
-	// agents that support it. nil for every agent but Claude. Only the
-	// SpawnInfo fields an adapter actually reads are guaranteed
+	// agents that support it. nil for every agent but Claude and Pi.
+	// Only the SpawnInfo fields an adapter actually reads are guaranteed
 	// non-empty; an empty field means "unavailable, skip your surface"
 	// rather than an error.
 	SpawnArgs func(sp SpawnInfo) []string
@@ -171,6 +171,7 @@ var (
 			ResumeArgs: func(id, _ string) []string {
 				return []string{"pi", "--session-id", id}
 			},
+			SpawnArgs: piSpawnArgs,
 		},
 	}
 

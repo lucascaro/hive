@@ -1,10 +1,11 @@
 ---
 issue: null
+pr: 341
 title: "Session state model: know what every agent is doing"
 type: enhancement
 complexity: L
 priority: P1
-stage: REVIEW
+stage: GATE
 ---
 
 # Session state model: know what every agent is doing

@@ -10,7 +10,7 @@ Thank you for your interest in contributing! This document explains how to build
   deliberate: `go.mod` pins it because CI's `setup-go` installs the `go`
   directive verbatim, and the earlier 1.25.0 shipped stdlib advisories that
   `govulncheck` reports as reachable.
-- **Node 20+** and the **Wails CLI** for the desktop GUI:
+- **Node 24+** and the **Wails CLI** for the desktop GUI:
   run `scripts/ci-bootstrap.sh` (installs the pinned Wails CLI version)
 
 ### Build
@@ -30,7 +30,7 @@ Hive has four test layers, all orchestrated by `scripts/test.sh`:
 
 | Layer | What it covers                                        | Runtime  |
 |-------|-------------------------------------------------------|----------|
-| `go`  | Go unit + daemon integration tests (`internal/...`)   | ~5s      |
+| `go`  | Go unit + daemon integration tests (`internal/...`); shells out to `node` for the Pi extension's own suite, which skips when node cannot load TypeScript | ~5s      |
 | `unit`| Pure JS modules under `cmd/hivegui/frontend/src/lib/` | <1s      |
 | `dom` | Vitest jsdom tests (sidebar tree, visibility gate)    | <1s      |
 | `e2e` | Playwright vs. the Wails-mock bridge                  | ~5s      |

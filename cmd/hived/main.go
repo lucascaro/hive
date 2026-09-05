@@ -84,6 +84,18 @@ func main() {
 		log.Printf("hived: log tee to %s", filepath.Join(stateDir, "hived.log"))
 	}
 
+	// Drop the embedded Pi reporter extension into the state dir. Pi
+	// sessions are spawned with `-e <stateDir>/pi/hive.ts` so they
+	// report their own state instead of being guessed at from the PTY.
+	// A failure is not fatal — agent.piSpawnArgs stats the file and
+	// falls back to the heuristic tier — but it must be written after
+	// the log tee above: the GUI-spawned daemon has stdout and stderr
+	// on /dev/null, and this line is the only explanation a user gets
+	// for Pi sessions staying on the heuristic tier.
+	if err := agent.EnsurePiExtension(stateDir); err != nil {
+		log.Printf("hived: write pi extension: %v; pi sessions run on the heuristic state tier only", err)
+	}
+
 	d, err := daemon.New(daemon.Config{
 		SocketPath: *sock,
 		BootstrapSession: session.Options{

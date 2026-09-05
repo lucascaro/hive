@@ -3,8 +3,9 @@
 - **Spec:** [docs/product-specs/336-session-state-model.md](../../product-specs/336-session-state-model.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/336-session-state-model`
-- **PR:** —
+- **Branch:** `feature/336-phase3-pi-extension` (phases 1–2 shipped from
+  `feature/336-session-state-model`, now merged and dead)
+- **PR:** #338 (phases 1–2, merged) · #341 (phase 3)
 - **Status:** active
 
 ## Summary
@@ -751,6 +752,146 @@ decision-log entry with the log excerpt BEFORE any code changes.
   `state: <id> <prev> -> <next> src=<tier> reason=<tag>`. A "still
   wrong" report without that transcript is not actionable.
 
+- **2026-09-05 (phase 3)** — The Pi extension reports
+  `waiting_permission` / `waiting_input` from `ui_prompt_start` (and
+  `permission_resolved` from `ui_prompt_end`), not from the planned
+  "last assistant message ends with `?`" heuristic, which is deleted.
+  Why: pi 0.85.0's `docs/extensions.md` documents `ui_prompt_start` /
+  `ui_prompt_end` as notification-only events fired around every
+  blocking extension UI prompt (`ctx.ui.select/confirm/input/editor/
+  custom`), coalescing nested prompts into one outer waiting span —
+  precisely "the session is waiting for the user", reported by pi
+  itself. The plan assumed Pi had no such surface because it has no
+  built-in permission prompt; that is true (a permission gate in Pi is
+  an extension calling `ctx.ui.confirm()`) but irrelevant, because the
+  prompt those gates raise fires these events. `confirm`/`select` map
+  to `waiting_permission` and every other kind to `waiting_input`. This
+  removes the one deliberate ceiling phase 3 was going to carry, so no
+  `ponytail:` comment is warranted.
+
+- **2026-09-05 (phase 3)** — The extension's frame encoder is checked
+  from Go by running real `node`, not by a hand-written byte fixture.
+  Why: `hive.ts` hand-rolls the 5-byte header because it is the only
+  encoder of Hive frames outside the `internal/wire` package, and a
+  fixture is one more copy of the thing that can drift. `encodeFrames`
+  is exported for exactly this, and the Go test decodes its live output
+  with `wire.ReadFrame` + the daemon's own `AgentEventKinds` allowlist,
+  so a header change on either side fails the build. Both
+  node-dependent tests skip when no node that can *load TypeScript* is
+  available — see the correction below; "CI has node" was the wrong
+  test.
+
+- **2026-09-05 (phase 3)** — `hive.ts` is written in erasable-syntax
+  TypeScript (type annotations and `import type` only, no enums, no
+  parameter properties) so node's default type stripping loads it
+  directly. Why: pi loads extensions through jiti and needs no build
+  step, but the tests do — `node --test pi/hive.test.ts` and the Go
+  frame test both import the extension as-is. Keeping the syntax
+  erasable is what lets the tested artifact be the shipped artifact
+  rather than a compiled copy of it.
+
+
+- **2026-09-05 (phase 3, after review iter 1)** — CI's node pin moves 20
+  → 24 (`.github/workflows/ci.yml:60`, `pages.yml:39`) and the tests'
+  node guard becomes capability-based instead of presence-based. Why:
+  the guard shipped as `exec.LookPath("node")`, which answers "is there
+  a node" — the wrong question. Node strips types only from 22.6 (behind
+  `--experimental-strip-types`) and 23.6 (by default), CI pinned 20, and
+  both node-backed tests failed `ERR_UNKNOWN_FILE_EXTENSION` on all
+  three legs while passing locally on node 24. The verification claim in
+  the phase-3 progress entry was therefore true locally and false in CI,
+  which is exactly the class of miss the plan's "record the log line
+  that proves it" rule exists to stop.
+  The guard now writes a one-line `.ts` file and runs it, so it probes
+  the behaviour rather than parsing a version string — node has moved
+  this default twice already. A contributor on an older node gets a
+  skip; CI, pinned to 24, actually runs them. Node 20 reached end of
+  life in April 2026, so the bump is overdue on its own merits; the
+  frontend toolchain (Vite, Vitest, Playwright, tsc) is current enough
+  to be unaffected.
+  Considered and rejected: shipping the extension as plain `.js`, which
+  would make every node version work and need no CI change (verified: pi
+  0.85.0 loads a `.js` extension and exits 0). Rejected because pi's
+  documented idiom is TypeScript and `import type { ExtensionAPI }` is
+  the only thing tying the file to the API it implements. Rejected too:
+  a capability guard *without* the CI bump, which goes green by never
+  running the cross-language frame check in CI — the one place it earns
+  its keep.
+
+- **2026-09-05 (phase 3, review iter 2)** — `session_shutdown` reports
+  `session_end` only for `reason == "quit"`; every other reason
+  (`new`, `resume`, `fork`, `reload`) reports `turn_end` with no text.
+  Why: only `quit` ends the pi process. The other four tear the session
+  runtime down *inside a live pi* and immediately stand another one up,
+  and `StateExited` is terminal in `Machine.Apply` (it returns early on
+  every later event), so an ordinary `/new` would have pinned the Hive
+  session at "exited" for the rest of its life with the PTY still
+  running. `turn_end` rather than nothing, because the command arrives
+  as an `input` event first and has already moved the session to
+  `working`; posting nothing would strand it there until the tier went
+  stale. Empty text clears `lastSummary`, which is correct — the
+  previous conversation's closing line does not describe the new one.
+  Known ceiling, marked `ponytail:` in the extension: `lastPrompt`
+  survives the swap, because `Apply` sets it once and no wire kind
+  resets it. Clearing it needs a session-reset kind, i.e. a wire change.
+
+- **2026-09-05 (phase 3, review iter 2)** — Event ordering is enforced
+  in `agentstate.Machine.Apply`, not in the Pi extension: an event
+  stamped before the last one applied is dropped whole, staleness clock
+  included. Why: every reporting tier is one short-lived connection per
+  event served on its own goroutine, so an inverted pair is possible on
+  the Claude hook tier (shipped in #338) exactly as much as on the new
+  Pi one — more so, since each Claude event is a separate process.
+  Serializing `post()` inside the extension was the narrower fix and was
+  rejected: it would have left the hook tier racy, and a chained post
+  can still be in flight when pi exits, trading a rare ordering bug for
+  a rare dropped-event bug. The reporter always shares the daemon's host
+  (it dialled a unix socket), so comparing its timestamps is sound.
+  Equal stamps still apply, since nothing distinguishes them.
+
+
+- **2026-09-05 (phase 3, review iter 3)** — `Registry.ApplyAgentEvent`
+  clamps a forward-dated reporter stamp to `time.Now()`. Why: iter 2's
+  ordering guard made an old weakness permanent. `ev.At` arrives from
+  the reporter and was parsed unbounded; `Machine.Apply` now orders by
+  it and `trusted()` already measured staleness from it, so a single
+  future-dated event froze the session for its whole life — every later
+  event sorted older and was dropped, while `now.Sub(hookSeenAt)` stayed
+  negative so the heuristic tier could not reclaim it either. One bad
+  stamp must cost one event, not the session. Clamping (rather than
+  refusing the event) keeps the wire doc's stated promise that a clock
+  the daemon does not control cannot drop an otherwise-valid event.
+  Backward-dated stamps are still honoured as-is: that is the ordering
+  signal the guard exists to read.
+
+- **2026-09-05 (phase 3, review iter 3)** — The Pi extension stamps `at`
+  when it observes the event, not inside the `connect` callback. Why:
+  stamping at connect time makes the stamp track connect order, which is
+  the same order delivery already has — so the daemon's ordering guard
+  would have been close to inert for the tier it was added for, and an
+  inverted connect pair would have made it permanently drop the
+  semantically newer event. It also broke `wire.AgentEvent`'s documented
+  contract ("At is when the reporter observed this").
+
+
+- **2026-09-05 (phase 3, review iter 4)** — The ordering guard's window
+  is bounded by `HookStaleAfter`: an event is dropped only when it is
+  behind the watermark by *less* than that. Why: `ev.At` is parsed off
+  the wire and carries no monotonic reading, so this is wall-clock
+  arithmetic. With an unbounded guard, a host clock that stepped
+  backward (VM resume, a large NTP correction) would drop every
+  subsequent event for the length of the step, while `trusted()`
+  computed a negative age that never exceeds `HookStaleAfter` — so
+  `Observe` and `Tick` could not reclaim the session either, and nothing
+  would correct it. That was a regression introduced by iter 2's guard:
+  before it, the stuck-tier half existed but the next report still
+  applied and unstuck the state. A delivery inversion is milliseconds
+  apart; a larger backward gap is a clock that moved, and the newest
+  report wins. Both sides are pinned
+  (`TestApplyRecoversFromBackwardClockStep`,
+  `TestApplyStillDropsARealInversion`).
+
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -874,6 +1015,178 @@ decision-log entry with the log excerpt BEFORE any code changes.
   Rows 1–6 and 13–14 of the checklist remain a manual pass in the iso
   build.
 
+- **2026-09-05 (phase 3)** — Pi extension implemented on
+  `feature/336-phase3-pi-extension` (branched off `main` after #338
+  squash-merged; the old `feature/336-session-state-model` branch is
+  dead). Shipped: `internal/agent/pi/hive.ts` (the extension),
+  `internal/agent/pi.go` (`//go:embed` of it, `EnsurePiExtension`,
+  `piSpawnArgs`), `SpawnArgs: piSpawnArgs` on the `IDPi` catalog def,
+  and the `agent.EnsurePiExtension(stateDir)` call in
+  `cmd/hived/main.go` immediately after `agent.SetCustomDir`. No wire,
+  daemon, or registry change was needed: phase 2 already built the
+  `event` mode, the `extension` source allowlist entry, `SpawnInfo`
+  carrying `StateDir`, and `appendSpawnArgs` on every create/revive/
+  restart path.
+  Deviations from the plan, both verified against the installed pi
+  0.85.0 `docs/extensions.md` rather than assumed: the `?`-suffix
+  `waiting_input` heuristic is gone, replaced by the real
+  `ui_prompt_start`/`ui_prompt_end` events (see the decision-log entry
+  below); and `lastAssistantText` walks
+  `ctx.sessionManager.getBranch()` entries (`{type:"message",
+  message:{role, content}}`) rather than the `ctx.messages` /
+  `event.messages` shape the plan sketched, which does not exist on
+  `agent_settled`.
+  Verified: `go build ./...`, `go vet ./...` (host, `GOOS=linux`,
+  `GOOS=windows`), `go test -race ./internal/... ./cmd/hived/...` all
+  clean, including the new `internal/agent` tests —
+  `TestPiDefUsesSpawnArgs`,
+  `TestEnsurePiExtensionWritesAtomicallyAndOnlyWhenStale`,
+  `TestEnsurePiExtensionIgnoresEmptyStateDir`, `TestPiSpawnArgs`,
+  `TestPiExtensionFramesAreValidWireFrames` (drives real `node` to run
+  the extension's own encoder and decodes both frames with
+  `wire.ReadFrame`), `TestPiExtensionKindsAreOnTheAllowlist`, and
+  `TestPiExtensionRunsNodeTests` (`node --test pi/hive.test.ts`, four
+  TS cases: inert without env, the exact subscribed event set, byte-not-
+  character truncation at `MaxSummaryLen`, and the session-format walk).
+  Both node-dependent tests skip cleanly when no TS-capable node is
+  present (see the CI correction below).
+  Not done in this pass: checklist row 14 as a manual pass in an iso
+  build against a real `pi`, and `scripts/probe-claude.sh` (still
+  outstanding from phase 2). Phase 4 (hivebar + notification wording +
+  tooltip polish) is untouched, as phased.
+
+- **2026-09-05 (phase 3)** — `daemon-contract-override` is claimed for
+  this PR rather than bumping `buildinfo.DaemonContract` 4 → 5. The
+  diff touches `cmd/hived/main.go`, which the gate watches, but a GUI
+  built from this tree drives a daemon built without it perfectly: no
+  frame, no registry field, and no session semantic changed. The only
+  difference an old daemon shows is that Pi sessions stay on the
+  heuristic tier — a feature that is absent, not a mixing hazard. A
+  bump would cost every user their running agents to ship it.
+
+- **2026-09-05 (phase 3, review iter 1 fixes)** — Applied on PR #341:
+  the CI node bump and capability guard above; `ui_prompt_end` now posts
+  `turn_end` when no turn is in flight (`turnInFlight`, set on
+  `agent_start`, cleared on `agent_settled`) instead of always posting
+  `permission_resolved`, which the machine reads as `working` and would
+  have stranded a session there until `HookStaleAfter` for any blocking
+  prompt raised outside a turn — an extension slash command, or a
+  `confirm()` after `agent_settled`; `truncate` walks back over UTF-8
+  continuation bytes rather than stripping a trailing replacement char,
+  so a U+FFFD the user really typed survives, matching the Go side's
+  `strings.ToValidUTF8`; and the kind-allowlist test strips `//`
+  comments before scanning, since the extension names every kind in
+  prose and the test would otherwise pass on a kind that survives only
+  in a comment. Three new TS cases cover the two `ui_prompt_end`
+  branches over a real unix socket (the extension's own encoder, a real
+  connection) and the U+FFFD-at-the-cut case. The two socket-backed
+  cases skip on Windows (`node:net` cannot bind a unix socket at a
+  temp path there: `listen EACCES`), matching how the daemon's own
+  event-mode tests already skip — the whole event tier is unix-only,
+  since `hived hook` dials `net.Dial("unix", ...)` too.
+
+
+- **2026-09-05 (phase 3, review iter 2 fixes)** — Applied on PR #341:
+  the `session_shutdown` reason gate and the `Machine.Apply` ordering
+  guard above, plus `EnsurePiExtension`'s file modes tightened from
+  `0o755`/`0o644` to `0o700`/`0o600` to match every other writer under
+  `StateDir()` (`registry/persist.go`, `registry/logfile.go`). New
+  tests: `internal/agentstate` gains `TestApplyDropsOutOfOrderEvents`,
+  `TestApplyAcceptsEqualTimestamps` and
+  `TestApplyFirstEventNeverDropped` (the zero-`hookSeenAt` boundary),
+  and the TS suite gains a table case asserting the reported kind for
+  all five shutdown reasons plus the missing-reason fallback.
+  Verified: `go vet` (host, linux, windows), `scripts/test.sh go` green,
+  `node --test internal/agent/pi/hive.test.ts` 8/8.
+
+
+- **2026-09-05 (phase 3, review iter 3 fixes)** — Applied on PR #341:
+  the `at`-stamp hoist and the `ApplyAgentEvent` clamp above, plus
+  `README.md`'s toolchain line corrected to Node 24+ (it still said 20+
+  after this PR moved CI's pin, so a contributor following it would
+  silently skip the only cross-language wire-frame check). New test:
+  `TestApplyAgentEventClampsFutureStamp` — a 24-hour-future event
+  followed by a correctly stamped one, asserting the second still
+  applies. Deliberately not taken from iter 3's MINORs:
+  `lastAssistantText` re-walking the branch per settle (a short list
+  walked at human speed; caching it would add invalidation for no
+  measurable gain) and `piExtensionWarnOnce` being a package global
+  (it mirrors `claudeHivedPathWarnOnce` exactly — changing one adapter's
+  shape and not the other's costs more in consistency than it buys in
+  testability).
+
+
+- **2026-09-05 (phase 3, verification note)** — Every node subprocess
+  the tests spawn is now bounded (`exec.CommandContext`, 90 s / 60 s /
+  30 s): the capability probe, the frame-encoder run, and
+  `node --test`. Why: `TestPiExtensionRunsNodeTests` shelled out with
+  `exec.Command(...).CombinedOutput()` and no deadline, so a node that
+  failed to exit would block until the package timeout and surface as
+  "the package hung", naming no test. Found while chasing a local
+  timeout that turned out to be something else entirely — the bound is
+  worth having regardless, since a hang that reports itself as a hang
+  costs one line and saves an investigation.
+  On the local timeout itself, for the next person who hits it: the
+  full suite fails on a loaded machine with every in-flight package
+  killed at exactly 180 s, including packages that finish in under a
+  second. That number is not `scripts/test.sh`'s `-timeout 120s`; it is
+  cmd/go's own kill timer, which fires at timeout + 60 s when a test
+  binary does not die on its own. `go test ./... -p 1` passes the whole
+  suite in ~85 s on the same tree, and CI passes it in parallel, so it
+  is contention on the developer machine (Hive's suite spawns many PTYs
+  and daemons, and a dev box is usually already running real `hived`
+  instances), not a defect. Reach for `-p 1` before believing a
+  wholesale local red.
+
+
+- **2026-09-05 (phase 3, review iter 4 fixes)** — Applied on PR #341:
+  the bounded ordering window above; TS coverage for the two untested
+  behaviours the tier is built on — `ui_prompt_start`'s
+  confirm/select → `waiting_permission` vs everything else →
+  `waiting_input` mapping (one of this PR's two documented deviations
+  from the plan, previously assertable only by reading the source) and
+  the `input` `source !== "extension"` filter; the Node 20 → 24 sweep
+  finished in `CONTRIBUTING.md` and `build.sh` (three files had stated
+  three different floors), with the `go` test-layer row now noting that
+  it shells out to node; `EnsurePiExtension` moved after the `hived.log`
+  tee in `cmd/hived/main.go`, since the GUI-spawned daemon has
+  stdout/stderr on /dev/null and that line is the only explanation a
+  user gets for Pi staying on the heuristic tier; the idempotence
+  assertion switched from `ModTime` equality to `os.SameFile`, which
+  sees the temp+rename inode swap exactly; the kind-allowlist test now
+  scrapes kinds out of `post(...)` calls instead of walking a hardcoded
+  list (it caught `"confirm"`/`"select"` from the ternary's comparison
+  operands on the first run, which is the sort of thing a hardcoded list
+  can never catch); and `ApplyAgentEvent` samples `time.Now()` under the
+  registry lock, since for the empty-`at` fallback that clock *is* the
+  ordering key.
+  Verified: `go vet` (host, linux, windows); `./internal/agent`,
+  `./internal/agentstate`, `./internal/registry`, `./internal/daemon`
+  green; `node --test internal/agent/pi/hive.test.ts` 10/10.
+
+
+- **2026-09-05 (phase 3, review iter 5 fixes)** — Applied on PR #341:
+  the ordering guard's boundary is now pinned on both sides
+  (`TestApplyOrderingBoundary`: exactly `HookStaleAfter` behind must
+  apply, one nanosecond inside the window must drop) — without them,
+  flipping the guard's `<` to `<=` left the whole suite green, and the
+  file already pins `trusted()`'s boundary the same way. The guard's
+  comment no longer claims `Observe`/`Tick` recover every case: they
+  recover `working` and `idle`, but `Observe` returns early on a wait by
+  design and `Tick` only demotes `working`, so a report landing
+  `HookStaleAfter` or more behind *on a wait* pins that wait until
+  `ClearWaiting` or the next agent event. Reaching it needs a reporter
+  stalled past the staleness horizon — the Pi extension destroys its
+  connection after 2 s, so only a wedged `hived hook` qualifies — and it
+  is left as-is rather than special-cased, since a state-dependent
+  rewind rule is more machine than the case is worth. The kind-scrape
+  test's doc comment now states its actual scope (string literals at the
+  call site).
+  Verified: `go vet` (host, linux, windows); `./internal/agent`,
+  `./internal/agentstate`, `./internal/registry`, `./internal/daemon`
+  green; `node --test internal/agent/pi/hive.test.ts` 10/10.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -882,3 +1195,8 @@ decision-log entry with the log excerpt BEFORE any code changes.
 
 - **2026-09-04 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2854c4ad3033402a11277eece2de916447c9861b2f3263fe8b2546f591750ec2; threads_open: 0; action: continue (2 IMPORTANT remain); head_sha: 4423148.
 - **2026-09-04 iter 2** — verdict: COMMENT (strict); mergeable: MERGEABLE; findings_hash: bf94a2f0c66b9cec2198ab14123a12cac7906dff824e342940e56b9bab769543; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ac893ca.
+- **2026-09-05 iter 1 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 933fe7284759ec8b0b78ddf7426686dd96f3263ed89a5358a9ee055ef1aa3d69; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 73ec301.
+- **2026-09-05 iter 2 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: aeb45dd6f258cc7b432bc46e97db046988fdfc0417ce97805863f9762d5972c8; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 52310a7.
+- **2026-09-05 iter 3 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be5b1f45d0d6110670ca570825b18153cb3812780652253e88c0861f28d5277a; threads_open: 0; action: continue (3 IMPORTANT remain; loop's stop rule met but boil-the-lake says fix them); head_sha: 7c97502.
+- **2026-09-05 iter 4 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 27e41405647bee014b40872c51634cc5e5605e836fb8f36b328c2543d025406d; threads_open: 0; action: continue (3 IMPORTANT + 5 MINOR fixed; stop rule met but one finding was a regression from iter 2); head_sha: 9592c67.
+- **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.
