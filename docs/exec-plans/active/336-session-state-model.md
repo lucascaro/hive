@@ -3,8 +3,9 @@
 - **Spec:** [docs/product-specs/336-session-state-model.md](../../product-specs/336-session-state-model.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/336-session-state-model`
-- **PR:** —
+- **Branch:** `feature/336-phase3-pi-extension` (phases 1–2 shipped from
+  `feature/336-session-state-model`, now merged and dead)
+- **PR:** #338 (phases 1–2, merged) · #341 (phase 3)
 - **Status:** active
 
 ## Summary

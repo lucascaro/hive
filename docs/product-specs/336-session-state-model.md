@@ -1,5 +1,6 @@
 ---
 issue: null
+pr: 341
 title: "Session state model: know what every agent is doing"
 type: enhancement
 complexity: L
