@@ -5,10 +5,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -71,17 +74,24 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 		t.Skip("pi not on PATH")
 	}
 	// Preflight: the daemon launches agents through a login shell, so
-	// the `pi` that matters is the one that shell resolves — with the
-	// node IT puts on PATH. A machine whose login shell still points at
-	// an old node runs a pi that dies in its own bundle before the
-	// extension ever loads, and the probe would report that as a bare
-	// timeout on the extension tier. Say which it was.
+	// the node that matters is the one THAT shell resolves. A login
+	// shell still pointing at an old node (an nvm default, say) runs a
+	// pi that dies in its own bundle — `SyntaxError: Unexpected token
+	// '??='` — before the extension ever loads, and the probe would
+	// report that as a bare timeout on the extension tier. Say which it
+	// was. `node -v` rather than `pi --version`: pi wants a TTY and
+	// exits non-zero without one, so it cannot answer a preflight.
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/zsh"
 	}
-	if out, err := exec.Command(shell, "-l", "-i", "-c", "pi --version").CombinedOutput(); err != nil {
-		t.Skipf("login shell cannot run pi (%v): %s", err, out)
+	out, err := exec.Command(shell, "-l", "-i", "-c", "node -v").CombinedOutput()
+	major := 0
+	if m := regexp.MustCompile(`v(\d+)\.`).FindSubmatch(out); m != nil {
+		major, _ = strconv.Atoi(string(m[1]))
+	}
+	if err != nil || major < 20 {
+		t.Skipf("login shell (%s) resolves node %q, err=%v; pi needs node 20+ and dies in its own bundle below that", shell, bytes.TrimSpace(out), err)
 	}
 
 	d, _ := startPiTestDaemon(t)
@@ -145,16 +155,21 @@ func TestPiProbeReportsThroughTheExtension(t *testing.T) {
 	if _, err := sess.Write([]byte("reply with the single word pong\r")); err != nil {
 		t.Fatalf("write prompt: %v", err)
 	}
-	info := wait(30*time.Second, func(i wire.SessionInfo) bool {
+	// Two separate waits, not one: the tier is promoted by the
+	// session_start ping, which can land while the heuristic tier
+	// already has the session working from the TUI's own repaint. A
+	// single wait on working+extension is therefore satisfied before
+	// the `prompt` event carrying the text has arrived.
+	wait(30*time.Second, func(i wire.SessionInfo) bool {
 		return i.State == wire.StateWorking && i.StateSource == wire.StateSourceExtension
-	}, "working after prompt")
-	if !strings.Contains(info.LastPrompt, "pong") {
-		t.Errorf("LastPrompt = %q, want the typed prompt", info.LastPrompt)
-	}
+	}, "working on the extension tier")
+	wait(30*time.Second, func(i wire.SessionInfo) bool {
+		return strings.Contains(i.LastPrompt, "pong")
+	}, "the typed prompt in LastPrompt")
 
 	// The reply lands the session back on idle through agent_settled,
 	// still on the extension tier — not on the heuristic quiet tick.
-	info = wait(120*time.Second, func(i wire.SessionInfo) bool {
+	info := wait(120*time.Second, func(i wire.SessionInfo) bool {
 		return i.State == wire.StateIdle && i.StateSource == wire.StateSourceExtension
 	}, "idle after the reply")
 	if info.LastSummary == "" {
