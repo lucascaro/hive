@@ -4,7 +4,8 @@ title: "Persist minimized projects across restarts"
 type: bug
 complexity: M
 priority: P2
-stage: IMPLEMENT
+pr: 342
+stage: REVIEW
 ---
 
 # Persist minimized projects across restarts

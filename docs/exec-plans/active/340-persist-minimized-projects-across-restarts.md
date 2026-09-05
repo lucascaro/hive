@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/340-persist-minimized-projects-across-restarts.md](../../product-specs/340-persist-minimized-projects-across-restarts.md)
 - **Issue:** #340
+- **PR:** #342
+- **Branch:** `feature/340-persist-minimized-projects-across-restarts`
 - **Status:** active
 
 ## Summary

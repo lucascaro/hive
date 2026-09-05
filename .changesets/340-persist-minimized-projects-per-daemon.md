@@ -1,6 +1,6 @@
 ---
 issue: 340
-pr: null
+pr: 342
 type: fixed
 bump: patch
 ---
