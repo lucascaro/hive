@@ -564,6 +564,20 @@ func (d *Daemon) serveEvent(conn net.Conn) {
 
 // serveControl handles a session-management connection.
 func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
+	// Subscribe BEFORE the client can learn it is connected. A client
+	// that reads WELCOME and immediately causes an event (the hook
+	// integration test does exactly that; a GUI reload racing a hook
+	// does it in the wild) would otherwise have that event broadcast to
+	// nobody. The initial snapshot below is taken after subscribing, so
+	// the remaining window produces a duplicate event rather than a
+	// lost one, and every event kind here is idempotent.
+	listener, unsub := d.reg.Subscribe()
+	defer unsub()
+	pListener, pUnsub := d.reg.SubscribeProjects()
+	defer pUnsub()
+	cmdListener, cmdUnsub := d.commands.Subscribe()
+	defer cmdUnsub()
+
 	if err := wire.WriteJSON(conn, wire.FrameWelcome, wire.Welcome{
 		Version:        wire.PROTOCOL_VERSION,
 		BuildID:        buildinfo.BuildID(),
@@ -573,12 +587,6 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	}); err != nil {
 		return
 	}
-	listener, unsub := d.reg.Subscribe()
-	defer unsub()
-	pListener, pUnsub := d.reg.SubscribeProjects()
-	defer pUnsub()
-	cmdListener, cmdUnsub := d.commands.Subscribe()
-	defer cmdUnsub()
 
 	// Per-conn write mutex so the snapshot/event goroutines don't
 	// interleave bytes with each other or with the response writes
