@@ -7,22 +7,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: '**/*.spec.{js,ts}',
-  // EXPERIMENT (see PR #345) — revert this hunk if CI does not improve.
-  //
-  // With `fullyParallel: false` each FILE is a serial chain pinned to one
-  // worker, so wall clock floors at the longest single file. This suite is
-  // badly unbalanced: theme.spec.ts is 59 tests, focus-traps.spec.ts 41,
-  // worktrees.spec.ts 40 — 140 of 303 in three files. That is why simply
-  // raising the worker count bought exactly nothing (Linux: 4.9m on 2
-  // workers, 4.9m on 4) and cost Windows 2.3m: there was no second unit of
-  // work for the extra workers to pick up, only more contention.
-  //
-  // Parallelising WITHIN files is the only thing that lowers that floor.
-  // Verified green locally at 4 workers (272 passed, 3 runs), but local has
-  // far more cores than a 4-vCPU runner, so the local timing says nothing
-  // about the CI gain. This PR's own CI run is the measurement.
-  fullyParallel: true,
-  workers: process.env.CI ? 4 : undefined,
+  fullyParallel: false,
   timeout: 30000,
   // One retry on CI, but `failOnFlakyTests` means a retry buys diagnostics
   // (both attempts' traces), NOT a green check. Spec 245's re-gate criterion
