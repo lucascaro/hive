@@ -1,10 +1,11 @@
 ---
 issue: 343
+pr: 346
 title: "Show session count and attention state on minimized project chips"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Show session count and attention state on minimized project chips

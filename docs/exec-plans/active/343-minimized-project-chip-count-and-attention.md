@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/343-minimized-project-chip-count-and-attention.md](../../product-specs/343-minimized-project-chip-count-and-attention.md)
 - **Issue:** #343
+- **PR:** #346
+- **Branch:** `feature/343-minimized-project-chip-count-and-attention`
 - **Status:** active
 
 ## Summary

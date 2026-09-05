@@ -1,6 +1,6 @@
 ---
 issue: 343
-pr: null
+pr: 346
 type: changed
 bump: minor
 ---
