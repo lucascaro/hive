@@ -511,3 +511,26 @@ func TestApplyStillDropsARealInversion(t *testing.T) {
 		t.Errorf("inverted event mutated the machine: %+v -> %+v", before, got)
 	}
 }
+
+// TestApplyOrderingBoundary pins the guard's boundary exactly, the way
+// TestTrustedBoundary pins trusted()'s. Without these, flipping the
+// guard's < to <= leaves the whole suite green.
+func TestApplyOrderingBoundary(t *testing.T) {
+	t.Run("exactly HookStaleAfter behind applies", func(t *testing.T) {
+		m := New(time.Now())
+		t0 := time.Now()
+		m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+		if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(-HookStaleAfter)}) {
+			t.Error("an event exactly HookStaleAfter behind was dropped; the bound is exclusive by design")
+		}
+	})
+
+	t.Run("one nanosecond inside the window drops", func(t *testing.T) {
+		m := New(time.Now())
+		t0 := time.Now()
+		m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+		if m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(-HookStaleAfter + time.Nanosecond)}) {
+			t.Error("an event inside the reordering window was applied")
+		}
+	})
+}

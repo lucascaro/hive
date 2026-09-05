@@ -228,6 +228,10 @@ process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T1
 // to it, so a new post("...") with a kind the ModeEvent arm refuses
 // would pass. A refused kind is dropped silently at the daemon, which
 // looks exactly like "Pi never reports anything".
+//
+// Scope: this reads string literals passed to post(...). Every call in
+// the extension is written that way on purpose; a future post(someVar)
+// would not be seen here, so keep the kind literal at the call site.
 func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 	// Comments name every kind in prose, so strip them before scraping.
 	var code strings.Builder

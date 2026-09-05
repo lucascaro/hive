@@ -1165,6 +1165,28 @@ decision-log entry with the log excerpt BEFORE any code changes.
   green; `node --test internal/agent/pi/hive.test.ts` 10/10.
 
 
+- **2026-09-05 (phase 3, review iter 5 fixes)** — Applied on PR #341:
+  the ordering guard's boundary is now pinned on both sides
+  (`TestApplyOrderingBoundary`: exactly `HookStaleAfter` behind must
+  apply, one nanosecond inside the window must drop) — without them,
+  flipping the guard's `<` to `<=` left the whole suite green, and the
+  file already pins `trusted()`'s boundary the same way. The guard's
+  comment no longer claims `Observe`/`Tick` recover every case: they
+  recover `working` and `idle`, but `Observe` returns early on a wait by
+  design and `Tick` only demotes `working`, so a report landing
+  `HookStaleAfter` or more behind *on a wait* pins that wait until
+  `ClearWaiting` or the next agent event. Reaching it needs a reporter
+  stalled past the staleness horizon — the Pi extension destroys its
+  connection after 2 s, so only a wedged `hived hook` qualifies — and it
+  is left as-is rather than special-cased, since a state-dependent
+  rewind rule is more machine than the case is worth. The kind-scrape
+  test's doc comment now states its actual scope (string literals at the
+  call site).
+  Verified: `go vet` (host, linux, windows); `./internal/agent`,
+  `./internal/agentstate`, `./internal/registry`, `./internal/daemon`
+  green; `node --test internal/agent/pi/hive.test.ts` 10/10.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1177,3 +1199,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 2 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: aeb45dd6f258cc7b432bc46e97db046988fdfc0417ce97805863f9762d5972c8; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 52310a7.
 - **2026-09-05 iter 3 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be5b1f45d0d6110670ca570825b18153cb3812780652253e88c0861f28d5277a; threads_open: 0; action: continue (3 IMPORTANT remain; loop's stop rule met but boil-the-lake says fix them); head_sha: 7c97502.
 - **2026-09-05 iter 4 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 27e41405647bee014b40872c51634cc5e5605e836fb8f36b328c2543d025406d; threads_open: 0; action: continue (3 IMPORTANT + 5 MINOR fixed; stop rule met but one finding was a regression from iter 2); head_sha: 9592c67.
+- **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.

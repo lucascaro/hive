@@ -258,10 +258,24 @@ func (m *Machine) Apply(ev Event) bool {
 	// resume, a large NTP correction), an unbounded guard would drop
 	// every later event for the whole duration of the step, while
 	// trusted() computed a negative age that never exceeds
-	// HookStaleAfter — so Observe and Tick could not reclaim the session
-	// either, and nothing would correct it. A delivery inversion is
-	// milliseconds apart; a gap of HookStaleAfter or more is a clock
+	// HookStaleAfter — so nothing would correct it. A delivery inversion
+	// is milliseconds apart; a gap of HookStaleAfter or more is a clock
 	// that moved, and the newest report wins.
+	//
+	// Accepting the far-behind event restores recovery for working and
+	// idle, which is where a wedge actually strands a user: Observe
+	// reclaims on the next byte, and Tick times a stale working out. It
+	// does NOT recover a wait — Observe returns early on
+	// waiting_input/waiting_permission by design (a prompt repainting
+	// itself must not clear itself) and Tick only demotes working — so a
+	// report landing HookStaleAfter or more behind, on a wait, pins that
+	// wait until ClearWaiting or the next agent event. Reaching that
+	// needs a reporter stalled longer than the staleness horizon: the Pi
+	// extension destroys its connection after 2s, so only a
+	// pathologically wedged `hived hook` qualifies. Left as-is rather
+	// than special-cased — a state-dependent rewind rule is more machine
+	// for a case that is hard to reach and self-corrects on the next
+	// event.
 	if !m.hookSeenAt.IsZero() {
 		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
 			return false
