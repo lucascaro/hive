@@ -13,7 +13,7 @@ They never share a colour (`--accent` ≠ `--state-attention` in every non-monoc
 
 ## Attention bubbling
 
-Attention on a session propagates *up* to every container that can hide it: project card header (swatch ring), collapsed project ("k need you" count), minimized session chip, minimized project chip. It propagates *nowhere else* — no window-level flashing, no dock badge beyond what `internal/notify` already does. Clearing: attention clears when the session receives input or is selected, as today; every bubbled indicator clears with it in the same render.
+Attention on a session propagates *up* to every container that can hide it: project card header (swatch ring), collapsed project ("k need you" count), minimized session chip, minimized project chip (state icon + "k" alert count, and the label colour / dot pulse). The collapsed card and the minimized chip both derive their number from one helper, `attentionSummary()` in `lib/session-state.ts`, so the two cannot disagree; it resolves through `sessionState()`, which means a session that is still starting or already gone stops bubbling even if its last-known `needs_attention` flag was set. It propagates *nowhere else* — no window-level flashing, no dock badge beyond what `internal/notify` already does. Clearing: attention clears when the session receives input or is selected, as today; every bubbled indicator clears with it in the same render.
 
 ## Exited sessions
 

@@ -9,6 +9,21 @@ on:
   pull_request:
     branches: [main]
 
+# A second push to a PR supersedes the first: cancel the in-flight matrix
+# rather than paying for two full runs and queueing behind the stale one.
+#
+# `main` gets a per-run group (`github.run_id` is unique), NOT a shared one.
+# `cancel-in-progress: false` alone would not have kept the promise below:
+# GitHub's queue default is to cancel any previously PENDING run in the
+# group when a new one queues — at most one running and one pending survive.
+# So two merges landing while a run is in flight would silently cancel the
+# middle commit's run before it ever started. A group that can never
+# collide is the only form that actually guarantees the invariant:
+# every commit on `main` keeps its own green check.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: Build, Vet & Test (${{ matrix.label }})
@@ -254,7 +269,14 @@ jobs:
         # CI the `install chromium` step alone has been observed to skip
         # the shell, leading to "Executable doesn't exist" at launch.
         working-directory: cmd/hivegui/frontend
-        run: ./node_modules/.bin/playwright install --with-deps chromium chromium-headless-shell
+        #
+        # `--with-deps` is Linux-only on purpose. On Linux it apt-installs the
+        # shared libs Chromium needs, which are not cacheable and genuinely
+        # required. On Windows it does exactly one thing: enable the Media
+        # Foundation optional feature (audio/video codecs) — 179s of the
+        # Windows leg's 10.6m, every run, behind a browser cache that already
+        # HIT. No spec plays media. On macOS it is a no-op. So: Linux only.
+        run: ./node_modules/.bin/playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium chromium-headless-shell
 
       - name: Assert every spec file is collected
         if: matrix.biome

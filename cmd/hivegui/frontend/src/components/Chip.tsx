@@ -8,7 +8,7 @@
 import type { CSSProperties } from 'react';
 import { StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
-import type { SessionState } from '../lib/session-state.js';
+import type { AttentionSummary, SessionState } from '../lib/session-state.js';
 
 export interface ChipProps {
   label: string;
@@ -24,8 +24,17 @@ export interface ChipProps {
   /** data-pid / data-sid, whichever the tray keys its chips by. */
   pid?: string;
   sid?: string;
-  /** data-state='attention' for a project whose sessions are ringing. */
-  attention?: boolean;
+  /**
+   * Total sessions, for a chip that stands for a project. The session
+   * tray leaves it unset — a session has no sessions.
+   */
+  count?: number;
+  /**
+   * What a project's sessions collectively want from the user, from
+   * attentionSummary(). Drives data-state and the alert slot; unset when
+   * nothing is ringing, and always unset on a session chip.
+   */
+  attention?: Omit<AttentionSummary, 'state'> & { state: SessionState };
 }
 
 export function Chip({
@@ -41,6 +50,7 @@ export function Chip({
   restoreLabel,
   pid,
   sid,
+  count,
   attention,
 }: ChipProps) {
   // Only set when the user actually picked a colour: the CSS falls back to
@@ -54,7 +64,7 @@ export function Chip({
       className="hv-chip"
       data-pid={pid}
       data-sid={sid}
-      data-state={state ?? (attention ? 'attention' : undefined)}
+      data-state={state ?? attention?.state}
       data-active={active ? '' : undefined}
       style={style}
     >
@@ -70,8 +80,10 @@ export function Chip({
       >
         {/* State icon when the chip stands for a session (it carries the
             bell for a session that has no row on screen); a plain colour
-            dot when it stands for a project, whose state is the union of
-            its sessions' and is carried by the pulse on the dot. */}
+            dot when it stands for a project, whose identity colour is the
+            only thing besides the label naming it. A project's own state
+            is the union of its sessions' and rides the alert slot below,
+            not this one. */}
         {state ? (
           <StateIcon state={state} />
         ) : (
@@ -79,6 +91,18 @@ export function Chip({
         )}
         <span className="hv-chip__label">{label}</span>
         {sublabel ? <span className="hv-chip__sub">{sublabel}</span> : null}
+        {/* Count then alert, the order the project card header uses
+            (swatch, name, count, actions). Left-packed rather than
+            right-aligned on purpose: the slack between the label and the
+            restore + is a click target that restores the project, and
+            filling it would take that away (spec 255). */}
+        {count == null ? null : <span className="hv-chip__count">{count}</span>}
+        {attention ? (
+          <span className="hv-chip__alert">
+            <StateIcon state={attention.state} />
+            {attention.count}
+          </span>
+        ) : null}
       </button>
       {onRestore ? (
         <IconButton

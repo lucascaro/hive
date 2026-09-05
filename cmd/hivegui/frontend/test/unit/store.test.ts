@@ -33,12 +33,14 @@ import {
   updateProject,
   SIDEBAR_MIN_WIDTH,
   SIDEBAR_MAX_WIDTH,
+  hydratePersistedProjectSets,
 } from '../../src/store/store.js';
 import { hiveStateView as state } from '../../src/store/store.js';
 import { setTerm, clearTerms } from '../../src/store/terms.js';
 import {
   COLLAPSED_STORAGE_KEY,
   MINIMIZED_PROJECTS_STORAGE_KEY,
+  namespacedKey,
 } from '../../src/lib/collapsed.js';
 import { VIEW_STORAGE_KEY } from '../../src/lib/view.js';
 
@@ -60,6 +62,9 @@ beforeEach(() => {
   store.clear();
   (globalThis as { localStorage?: unknown }).localStorage = stubStorage;
   resetStore();
+  // Persistence of the collapse/minimize sets is off until the daemon
+  // is identified, so every test that asserts a write hydrates first.
+  hydratePersistedProjectSets(TEST_NS);
 });
 
 afterEach(() => {
@@ -67,6 +72,12 @@ afterEach(() => {
 });
 
 const s = () => appStore.getState();
+
+// The two project-id keys are suffixed with the daemon's state-dir id
+// (#340), so every assertion about them has to read the namespaced key.
+const TEST_NS = 'ns0';
+const CK = namespacedKey(COLLAPSED_STORAGE_KEY, TEST_NS);
+const MK = namespacedKey(MINIMIZED_PROJECTS_STORAGE_KEY, TEST_NS);
 
 describe('setSessions', () => {
   it('test_setSessions_replaces_reference_and_notifies', () => {
@@ -137,14 +148,12 @@ describe('collapsed', () => {
     toggleCollapsed('p1');
 
     expect(s().collapsed.has('p1')).toBe(true);
-    expect(JSON.parse(store.get(COLLAPSED_STORAGE_KEY) as string)).toEqual([
-      'p1',
-    ]);
+    expect(JSON.parse(store.get(CK) as string)).toEqual(['p1']);
 
     toggleCollapsed('p1');
 
     expect(s().collapsed.has('p1')).toBe(false);
-    expect(JSON.parse(store.get(COLLAPSED_STORAGE_KEY) as string)).toEqual([]);
+    expect(JSON.parse(store.get(CK) as string)).toEqual([]);
   });
 
   it('applyProjectList prunes collapsed entries for projects that are gone', () => {
@@ -154,9 +163,7 @@ describe('collapsed', () => {
     applyProjectList([{ id: 'p1' }]);
 
     expect([...s().collapsed]).toEqual(['p1']);
-    expect(JSON.parse(store.get(COLLAPSED_STORAGE_KEY) as string)).toEqual([
-      'p1',
-    ]);
+    expect(JSON.parse(store.get(CK) as string)).toEqual(['p1']);
   });
 });
 
@@ -188,15 +195,11 @@ describe('minimize', () => {
 
     minimizeProject('p1');
     expect([...s().minimizedProjects]).toEqual(['p1']);
-    expect(
-      JSON.parse(store.get(MINIMIZED_PROJECTS_STORAGE_KEY) as string),
-    ).toEqual(['p1']);
+    expect(JSON.parse(store.get(MK) as string)).toEqual(['p1']);
 
     restoreProject('p1');
     expect([...s().minimizedProjects]).toEqual([]);
-    expect(
-      JSON.parse(store.get(MINIMIZED_PROJECTS_STORAGE_KEY) as string),
-    ).toEqual([]);
+    expect(JSON.parse(store.get(MK) as string)).toEqual([]);
   });
 
   it('session minimize/restore round-trips without touching projects', () => {
@@ -262,19 +265,112 @@ describe('persistence load branches', () => {
   // exercises the loadSaved* path. Without this the boot path is never
   // covered: beforeEach clears storage before every reset.
   it('hydrates every persisted field from storage', () => {
-    store.set(COLLAPSED_STORAGE_KEY, JSON.stringify(['p1', 'p2']));
-    store.set(MINIMIZED_PROJECTS_STORAGE_KEY, JSON.stringify(['p3']));
+    store.set(CK, JSON.stringify(['p1', 'p2']));
+    store.set(MK, JSON.stringify(['p3']));
     store.set(VIEW_STORAGE_KEY, 'grid-all');
     store.set('hive.fontSize', '21');
     store.set('hive.sidebarWidth', '333');
 
     resetStore();
+    hydratePersistedProjectSets(TEST_NS);
 
     expect([...s().collapsed].sort()).toEqual(['p1', 'p2']);
     expect([...s().minimizedProjects]).toEqual(['p3']);
     expect(s().view).toBe('grid-all');
     expect(s().fontSize).toBe(21);
     expect(s().sidebarWidth).toBe(333);
+  });
+
+  // The project-id sets are the exception to "hydrated on import": their
+  // key is namespaced by the daemon's state-dir id, which only an async
+  // binding knows (#340). resetStore alone must leave them empty.
+  it('leaves the project-id sets empty until hydration', () => {
+    store.set(CK, JSON.stringify(['p1']));
+    store.set(MK, JSON.stringify(['p3']));
+
+    resetStore();
+
+    expect([...s().collapsed]).toEqual([]);
+    expect([...s().minimizedProjects]).toEqual([]);
+    expect(s().projectSetsHydrated).toBe(false);
+  });
+
+  // THE REGRESSION GATE for #340. On main, initialData() loads the bare
+  // key and applyProjectList prunes it against a project list from a
+  // DIFFERENT daemon, persisting [] — which is how one GUI wiped
+  // another's tray. After the fix the un-hydrated boot neither loads nor
+  // writes that key.
+  it('does not touch persisted project sets before hydration', () => {
+    store.set(MINIMIZED_PROJECTS_STORAGE_KEY, JSON.stringify(['foreign']));
+    store.set(COLLAPSED_STORAGE_KEY, JSON.stringify(['foreign']));
+
+    resetStore(); // no hydratePersistedProjectSets: daemon not identified
+    applyProjectList([{ id: 'p1' }, { id: 'p2' }]);
+
+    expect(store.get(MINIMIZED_PROJECTS_STORAGE_KEY)).toBe(
+      JSON.stringify(['foreign']),
+    );
+    expect(store.get(COLLAPSED_STORAGE_KEY)).toBe(JSON.stringify(['foreign']));
+    // The list still applied — only the tidy-up was skipped.
+    expect(s().projects.map((p) => p.id)).toEqual(['p1', 'p2']);
+  });
+
+  // Failing safe means writing nothing: falling back to the bare key is
+  // what lets one instance clobber another's state.
+  it('persists nothing when the daemon cannot be identified', () => {
+    resetStore();
+    hydratePersistedProjectSets('');
+
+    minimizeProject('p1');
+
+    expect(s().minimizedProjects.has('p1')).toBe(true);
+    expect(store.get(MINIMIZED_PROJECTS_STORAGE_KEY)).toBeUndefined();
+    expect(store.get(MK)).toBeUndefined();
+  });
+
+  // One-time move of pre-#340 values into this instance's namespace.
+  it('adopts the legacy un-namespaced keys once, then removes them', () => {
+    store.set(MINIMIZED_PROJECTS_STORAGE_KEY, JSON.stringify(['p3']));
+    store.set(COLLAPSED_STORAGE_KEY, JSON.stringify(['p1']));
+
+    resetStore();
+    hydratePersistedProjectSets(TEST_NS);
+
+    expect([...s().minimizedProjects]).toEqual(['p3']);
+    expect([...s().collapsed]).toEqual(['p1']);
+    expect(store.get(MK)).toBe(JSON.stringify(['p3']));
+    expect(store.get(MINIMIZED_PROJECTS_STORAGE_KEY)).toBeUndefined();
+    expect(store.get(COLLAPSED_STORAGE_KEY)).toBeUndefined();
+  });
+
+  // The whole point of #340: a boot under one daemon must not touch the
+  // set another daemon's GUI persisted. Before the fix both instances
+  // shared one key and each prune wiped the other's ids.
+  it("leaves another daemon's set alone across a full boot", () => {
+    const otherNS = 'ns1';
+    const otherKey = namespacedKey(MINIMIZED_PROJECTS_STORAGE_KEY, otherNS);
+    store.set(otherKey, JSON.stringify(['their-project']));
+
+    resetStore();
+    hydratePersistedProjectSets(TEST_NS);
+    minimizeProject('our-project');
+    applyProjectList([{ id: 'our-project' }]);
+
+    expect(store.get(otherKey)).toBe(JSON.stringify(['their-project']));
+    expect(JSON.parse(store.get(MK) as string)).toEqual(['our-project']);
+  });
+
+  // Restore-then-reboot must come back restored. The empty-set round
+  // trip is the case that looks identical to "hydration never ran".
+  it('round-trips an emptied set across a reboot', () => {
+    minimizeProject('p1');
+    restoreProject('p1');
+
+    resetStore();
+    hydratePersistedProjectSets(TEST_NS);
+
+    expect([...s().minimizedProjects]).toEqual([]);
+    expect(s().projectSetsHydrated).toBe(true);
   });
 
   it('degrades to defaults on garbage, rather than throwing at boot', () => {

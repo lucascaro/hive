@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { sessionState, stateTooltip } from '../../src/lib/session-state.js';
+import {
+  attentionSummary,
+  sessionState,
+  stateTooltip,
+} from '../../src/lib/session-state.js';
 
 describe('sessionState', () => {
   it('is starting for any non-ready phase, alive or not', () => {
@@ -120,5 +124,67 @@ describe('stateTooltip', () => {
     expect(stateTooltip({ alive: true, state_source: 'something-new' })).toBe(
       'Idle\nreported by the agent',
     );
+  });
+});
+
+describe('attentionSummary', () => {
+  const live = { alive: true, phase: '' };
+
+  it('returns count 0 and state null for an empty list', () => {
+    expect(attentionSummary([])).toEqual({ count: 0, state: null });
+  });
+
+  it('ignores sessions that do not want the user', () => {
+    expect(
+      attentionSummary([
+        { ...live },
+        { ...live, state: 'working' },
+        { alive: false },
+      ]),
+    ).toEqual({ count: 0, state: null });
+  });
+
+  it('counts attention and waiting-permission together', () => {
+    expect(
+      attentionSummary([
+        { ...live, needs_attention: true },
+        { ...live, state: 'waiting_permission' },
+        { ...live, state: 'working' },
+      ]).count,
+    ).toBe(2);
+  });
+
+  it('reports waiting-permission when any session is waiting on one', () => {
+    expect(
+      attentionSummary([
+        { ...live, needs_attention: true },
+        { ...live, state: 'waiting_permission' },
+      ]).state,
+    ).toBe('waiting-permission');
+  });
+
+  it('reports plain attention when none is a permission prompt', () => {
+    expect(attentionSummary([{ ...live, state: 'waiting_input' }])).toEqual({
+      count: 1,
+      state: 'attention',
+    });
+  });
+
+  // The two below are the whole reason this helper resolves through
+  // sessionState() rather than reading needs_attention directly. A bell
+  // that outlives its session, or rings before it exists, is the stale
+  // indicator patterns.md's "clears in the same render" rule prevents.
+  it('does not count a session that has not finished starting', () => {
+    expect(
+      attentionSummary([
+        { alive: true, phase: 'worktree', needs_attention: true },
+      ]),
+    ).toEqual({ count: 0, state: null });
+  });
+
+  it('does not count a session whose process is gone', () => {
+    expect(
+      attentionSummary([{ alive: false, phase: '', needs_attention: true }]),
+    ).toEqual({ count: 0, state: null });
   });
 });

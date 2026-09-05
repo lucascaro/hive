@@ -138,3 +138,44 @@ export function sessionState(s: StateCarrier): SessionState {
   if (s.state === DAEMON_STATE.working) return 'working';
   return 'running';
 }
+
+/** What a project's sessions collectively want from the user. */
+export interface AttentionSummary {
+  /** How many of the project's sessions are waiting on the user. */
+  count: number;
+  /** The most specific of those states, or null when count is 0. */
+  state: SessionState | null;
+}
+
+// attentionSummary is the one aggregation from a project's sessions to the
+// pair of numbers two surfaces show: the collapsed project card's
+// "k waiting on you" and the minimized project chip's alert count. It lives
+// beside sessionState(), for the reason given at the top of this file — the
+// card and the chip computed attention separately until now, by two
+// different routes, which is exactly how they come to disagree.
+//
+// A session counts when its state is one of the two the daemon derives
+// `needs_attention` from. This is deliberately NOT the same as reading
+// `needs_attention` directly: sessionState() short-circuits on isReady()
+// and `alive` first, so a session that is still starting, or already
+// exited, stops counting even if its last-known flag was set. That is the
+// reading we want — a dead session cannot want anything from the user, and
+// a bell that outlives its session is the stale indicator patterns.md's
+// "clears in the same render" rule exists to prevent.
+export function attentionSummary(sessions: StateCarrier[]): AttentionSummary {
+  let count = 0;
+  let permission = false;
+  for (const s of sessions) {
+    const st = sessionState(s);
+    if (st !== 'attention' && st !== 'waiting-permission') continue;
+    count++;
+    if (st === 'waiting-permission') permission = true;
+  }
+  // "Waiting for permission" is the more specific of the two, and the
+  // distinction the state model exists to draw, so it wins the one icon
+  // the chip has room for.
+  return {
+    count,
+    state: count === 0 ? null : permission ? 'waiting-permission' : 'attention',
+  };
+}

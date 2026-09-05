@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,5 +185,32 @@ func TestListClosedSessionsCall(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatalf("ListClosedSessions: %v", err)
+	}
+}
+
+// StateDirID namespaces the frontend's persisted project-id sets, so a
+// GUI on one state dir stops pruning away another's ids (#340). Two
+// properties matter: stable for a given dir (or the sets are lost on
+// every boot) and distinct across dirs (or the bug is unchanged).
+func TestStateDirID(t *testing.T) {
+	var a App
+
+	t.Setenv("HIVE_STATE_DIR", "/tmp/hive-state-one")
+	first := a.StateDirID()
+	if len(first) != 8 {
+		t.Fatalf("StateDirID() = %q, want 8 hex chars", first)
+	}
+	for _, r := range first {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			t.Fatalf("StateDirID() = %q, want lowercase hex", first)
+		}
+	}
+	if again := a.StateDirID(); again != first {
+		t.Errorf("StateDirID() not stable: %q then %q", first, again)
+	}
+
+	t.Setenv("HIVE_STATE_DIR", "/tmp/hive-state-two")
+	if other := a.StateDirID(); other == first {
+		t.Errorf("StateDirID() = %q for both state dirs; must differ", other)
 	}
 }

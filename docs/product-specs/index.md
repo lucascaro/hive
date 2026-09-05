@@ -24,6 +24,8 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 
 | Issue | Title | PR | Shipped | Spec |
 |-------|-------|----|---------|------|
+| #340 | Persist minimized projects across restarts | #342 | 2026-09-05 | [340-persist-minimized-projects-across-restarts](340-persist-minimized-projects-across-restarts.md) |
+| #343 | Show session count and attention state on minimized project chips | #346 | 2026-09-05 | [343-minimized-project-chip-count-and-attention](343-minimized-project-chip-count-and-attention.md) |
 | — | Add GUI-only reload and a daemon menu-bar agent | #333 | 2026-09-04 | [330-add-gui-only-reload-and-a-daemon-menu-bar-agent](330-add-gui-only-reload-and-a-daemon-menu-bar-agent.md) |
 | #323 | Add a check for updates button to the sidebar | #325 | 2026-09-03 | [323-add-check-for-updates-button-to-sidebar](323-add-check-for-updates-button-to-sidebar.md) |
 | #327 | GUI: Cmd+Enter in grid mode focuses the active session | #328 | 2026-09-03 | [327-cmd-enter-grid-focus-session](327-cmd-enter-grid-focus-session.md) |

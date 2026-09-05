@@ -35,6 +35,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   works for every agent and for plain shells, and a session that is
   waiting on you keeps saying so until you look at it.
 
+### Changed
+- A minimized project chip now shows how many sessions the project holds
+  and how many of them are waiting on you, next to the same state icon the
+  sidebar rows and grid tiles use — so a minimized project tells you what
+  a collapsed one does, including whether a session is waiting for
+  permission rather than just waiting.
+- A minimized chip and a collapsed project card now derive "needs you"
+  from one shared rule, so the two can no longer disagree. That rule is
+  stricter than the old one on both: a session that has exited, or that
+  has not finished starting, no longer counts as waiting on you, so a
+  stale bell can't outlive the session that raised it.
+- CI is a little faster and its cancellation rules are now correct. The
+  Windows leg spent three minutes of every run enabling a Windows media
+  codec feature that no test uses, and two pushes to the same pull request
+  both ran the full three-platform matrix instead of the first being
+  superseded. Developer-facing only — nothing about the app itself changes.
+
 ### Fixed
 - A session's state glyph no longer gets stuck showing the wrong thing
   when an agent reports two events at almost the same moment. Each
@@ -49,6 +66,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilt — so a session could disagree with itself depending on where
   you looked, and a tile's window title could stay blank for a session
   whose tile had been rebuilt or was never attached.
+- Minimized and collapsed projects stay that way across a restart when
+  you run more than one Hive daemon. Every GUI process shares one
+  webview storage area, so instances attached to different state
+  directories were overwriting each other's sidebar state — each launch
+  pruned the other's project ids as "projects that no longer exist" and
+  emptied the tray. The two keys (`hive.minimizedProjects`,
+  `hive.collapsedProjects`) are now suffixed with an id derived from the
+  daemon's state directory. Your existing sidebar state carries over to
+  one instance; the others start from a clean slate once and keep their
+  state from then on.
 - Restarting Hive no longer risks leaving the daemon unreachable. When
   the old `hived` shut down while its replacement had already taken
   over the socket path, it could delete the replacement's socket —

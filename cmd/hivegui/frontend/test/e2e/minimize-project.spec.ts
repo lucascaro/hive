@@ -1,4 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
+// The persisted key is namespaced by the daemon's state-dir id (#340).
+// Kept in sync by hand with MOCK_STATE_DIR_ID in wails-mock.ts: that
+// module runs in the browser and imports the store, so importing it from
+// the Playwright node context fails on `import.meta`.
+const MIN_KEY = 'hive.minimizedProjects.mock1234';
 
 // Layout check for the minimized-projects tray. The DOM test proves the
 // rows move; only a real browser proves the tray actually sits at the
@@ -81,8 +86,18 @@ test('a bell inside a minimized project lights its chip', async ({ page }) => {
   await expect(chip).toBeVisible();
   await expect(chip).not.toHaveAttribute('data-state', 'attention');
 
+  await expect(chip.locator('.hv-chip__alert')).toHaveCount(0);
+
   await page.evaluate((id) => window.__hive.ringBell?.(id), sid as string);
   await expect(chip).toHaveAttribute('data-state', 'attention');
+  // The chip says how many want you, not just that something does — and
+  // does it visibly, which is the half jsdom cannot check.
+  const alert = chip.locator('.hv-chip__alert');
+  await expect(alert).toBeVisible();
+  // Anchored on the end: StateIcon carries a <title> for the words
+  // channel, so the slot's text is "Waiting for you1".
+  await expect(alert).toHaveText(/1$/);
+  await expect(alert.locator('.hv-state-icon')).toBeVisible();
 });
 
 // jsdom applies no CSS, so it will happily "click" a control the theme
@@ -170,11 +185,79 @@ test('a project chip spans the tray, right-aligns +, and restores on any click',
   // would land on the label and pass without testing anything.
   const slackX = restoreBox.x - 12;
   const slackY = chipBox.y + chipBox.height / 2;
-  const onLabel = await page.evaluate(
-    ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.hv-chip__label'),
+  // Every node the chip can grow, not just the label: the count and alert
+  // slots sit between the label and the +, and a check that named only the
+  // label would keep passing on a chip that had swallowed the whole slack.
+  const onContent = await page.evaluate(
+    ({ x, y }) =>
+      !!document
+        .elementFromPoint(x, y)
+        ?.closest('.hv-chip__label, .hv-chip__count, .hv-chip__alert'),
     { x: slackX, y: slackY },
   );
-  expect(onLabel, 'the click point is on the label, not the slack').toBe(false);
+  expect(onContent, 'the click point is on chip content, not the slack').toBe(
+    false,
+  );
   await page.mouse.click(slackX, slackY);
   await expect(listed).toHaveCount(before);
+});
+
+// Repro for #340: a minimized project must still be minimized after the
+// window reloads. Persistence lives in a per-daemon localStorage key and is
+// pruned against the project:list snapshot on reconnect, so only a real
+// reload exercises the write → read → prune round trip.
+test('a minimized project stays minimized across a reload', async ({
+  page,
+}) => {
+  await boot(page);
+  const listed = page.locator('#projects > li.hv-project-card');
+  const before = await listed.count();
+  const first = listed.first();
+  const pid = await first.getAttribute('data-pid');
+
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+  await expect(listed).toHaveCount(before - 1);
+
+  expect(
+    await page.evaluate((key) => localStorage.getItem(key), MIN_KEY),
+  ).toContain(pid);
+
+  await page.reload();
+
+  // The tray chip is the boot signal here: the mock seeds one project,
+  // so a correct restore leaves #projects empty.
+  await expect(
+    page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`),
+  ).toBeVisible();
+  await expect(listed).toHaveCount(before - 1);
+});
+
+// Losing the daemon id must cost persistence, not the app. StateDirID
+// throws when the Wails bridge is unavailable — and so does LogFrontend,
+// so an unwrapped log call inside that catch would reject the bootstrap
+// IIFE and ConnectControl would never run.
+test('boot still connects when StateDirID fails', async ({ page }) => {
+  await page.goto('/?failStateDirID=1');
+  // Project cards only exist once the daemon snapshot arrived, so this
+  // rendering IS the proof ConnectControl ran. (The status bar has moved
+  // past "connected" to the project name by then.)
+  await page.waitForFunction(
+    () => document.querySelectorAll('#projects li.hv-project-card').length > 0,
+  );
+
+  // Persistence is off, not falling back to the shared un-suffixed key —
+  // writing that key is what let one daemon's GUI clobber another's.
+  const listed = page.locator('#projects > li.hv-project-card');
+  await listed.first().locator('.hv-project-card__header').hover();
+  await listed
+    .first()
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+  await expect(page.locator('#minimized-projects .hv-chip')).toHaveCount(1);
+  expect(
+    await page.evaluate(() => localStorage.getItem('hive.minimizedProjects')),
+  ).toBeNull();
 });

@@ -53,6 +53,30 @@
   letter-spacing: 0.08em;
 }
 
+/* Count then alert, for a chip that stands for a project: how many
+   sessions it holds, and how many of those want the user. Mirrors
+   .hv-project-card__count so a minimized project and a collapsed one read
+   the same. Unscoped is safe here because only the project chip passes
+   the props that render these — a session chip has neither. */
+.hv-chip__count {
+  flex-shrink: 0;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.hv-chip__alert {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  color: var(--state-attention);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Attention bubbles up to the chip: the label takes the attention colour
    and the state icon pulses on its own (see icons.md). A colour-dot chip
    (project) pulses the dot, since it has no state icon. */

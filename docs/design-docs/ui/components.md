@@ -50,11 +50,12 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - The card ROOT gets `data-state="attention"` when any child session has attention (that is what the CSS selects): the header's swatch gains the pulse ring. Nothing else on the header changes.
 - Collapsed: body hidden, header shows "n sessions · k waiting on you" in the count slot — the same wording the menu bar summary uses, off the same predicate.
 
-## `chip({ label, color?, state?, onClick, onRestore? })` — `src/components/Chip.tsx`
+## `chip({ label, color?, state?, count?, attention?, onClick, onRestore? })` — `src/components/Chip.tsx`
 
 - Draws both trays: the minimized-projects footer in the sidebar and the minimized-sessions tray above the status bar. 24px tall, `--radius-sm`, `--btn` fill, `--text-sm`.
-- Anatomy: state icon or colour swatch (7px) + label + optional `plus` restore icon button.
-- `data-state="attention"` → state icon pulses; label `--state-attention`.
+- Anatomy: state icon or colour swatch (7px) + label + optional count + optional alert (state icon + number) + optional `plus` restore icon button.
+- A **session** chip passes `state` and draws the state icon in the leading slot. A **project** chip keeps its identity colour dot there and instead passes `count` (its sessions) and `attention` (`{ count, state }` from `attentionSummary()`), which render as the two trailing slots — so a minimized project reads like the collapsed card it replaces. Both trailing slots sit *inside* `.hv-chip__open`, left-packed after the label: the slack before the `+` is a restore target and must stay empty.
+- `data-state="attention"` → state icon pulses; label `--state-attention`. A project chip can also carry `data-state="waiting-permission"`; `minimized.css` gives it the same label colour and dot pulse, scoped to `#minimized-projects` so session chips are unaffected.
 
 ## `<ModalShell {...{ id, root, title, size?, hints?, titleSuffix?, showCloseButton?, actions? }}>{children}</ModalShell>` — `src/components/modals/ModalShell.tsx`
 
