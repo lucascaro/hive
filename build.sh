@@ -11,7 +11,7 @@
 #   --version <tag>                  version string for the zip name (default: dev)
 #   --open                           open the macOS .app on success
 #
-# Requires: go (1.22+), node (18+),
+# Requires: go (1.22+), node (24+),
 #           wails (install the pinned version: `scripts/ci-bootstrap.sh`),
 #           lipo (Xcode command line tools, macOS target only).
 set -euo pipefail

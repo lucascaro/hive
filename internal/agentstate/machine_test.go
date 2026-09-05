@@ -460,3 +460,54 @@ func TestApplyFirstEventNeverDropped(t *testing.T) {
 		t.Errorf("source = %q, want %q", got, wire.StateSourceHook)
 	}
 }
+
+// TestApplyRecoversFromBackwardClockStep pins the ordering guard's
+// upper bound. ev.At is wall-clock (time.Parse keeps no monotonic
+// reading), so a host clock that steps backward must not be able to
+// wedge a session: an unbounded guard would drop every later event for
+// the length of the step, while trusted() measured a negative age that
+// never exceeds HookStaleAfter, leaving Observe and Tick unable to
+// reclaim it either.
+func TestApplyRecoversFromBackwardClockStep(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	if !m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0}) {
+		t.Fatal("prompt should have applied")
+	}
+
+	// The clock steps back an hour. The reporter is honest; the host is
+	// not where it was.
+	stepped := t0.Add(-time.Hour)
+	if !m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: stepped, Text: "done"}) {
+		t.Fatal("an event after a backward clock step was dropped; the session is wedged")
+	}
+	if got := m.Snapshot().State; got != wire.StateIdle {
+		t.Errorf("state = %q, want %q", got, wire.StateIdle)
+	}
+
+	// And the watermark followed the step, so the tier is live again
+	// rather than pinned to a future timestamp.
+	if !m.trusted(stepped.Add(time.Second)) {
+		t.Error("tier went stale at the stepped clock; hookSeenAt did not follow")
+	}
+}
+
+// TestApplyStillDropsARealInversion guards the other side of that
+// bound: a genuine delivery inversion is milliseconds apart and must
+// still be dropped, or the guard buys nothing.
+func TestApplyStillDropsARealInversion(t *testing.T) {
+	m := New(time.Now())
+	t0 := time.Now()
+
+	m.Apply(Event{Kind: KindPrompt, Source: wire.StateSourceHook, At: t0})
+	m.Apply(Event{Kind: KindTurnEnd, Source: wire.StateSourceHook, At: t0.Add(time.Second), Text: "done"})
+
+	before := m.Snapshot()
+	if m.Apply(Event{Kind: KindPermissionResolved, Source: wire.StateSourceHook, At: t0.Add(500 * time.Millisecond)}) {
+		t.Error("a millisecond-scale inversion was applied")
+	}
+	if got := m.Snapshot(); got != before {
+		t.Errorf("inverted event mutated the machine: %+v -> %+v", before, got)
+	}
+}

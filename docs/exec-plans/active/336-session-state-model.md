@@ -874,6 +874,24 @@ decision-log entry with the log excerpt BEFORE any code changes.
   contract ("At is when the reporter observed this").
 
 
+- **2026-09-05 (phase 3, review iter 4)** — The ordering guard's window
+  is bounded by `HookStaleAfter`: an event is dropped only when it is
+  behind the watermark by *less* than that. Why: `ev.At` is parsed off
+  the wire and carries no monotonic reading, so this is wall-clock
+  arithmetic. With an unbounded guard, a host clock that stepped
+  backward (VM resume, a large NTP correction) would drop every
+  subsequent event for the length of the step, while `trusted()`
+  computed a negative age that never exceeds `HookStaleAfter` — so
+  `Observe` and `Tick` could not reclaim the session either, and nothing
+  would correct it. That was a regression introduced by iter 2's guard:
+  before it, the stuck-tier half existed but the next report still
+  applied and unstuck the state. A delivery inversion is milliseconds
+  apart; a larger backward gap is a clock that moved, and the newest
+  report wins. Both sides are pinned
+  (`TestApplyRecoversFromBackwardClockStep`,
+  `TestApplyStillDropsARealInversion`).
+
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1121,6 +1139,32 @@ decision-log entry with the log excerpt BEFORE any code changes.
   wholesale local red.
 
 
+- **2026-09-05 (phase 3, review iter 4 fixes)** — Applied on PR #341:
+  the bounded ordering window above; TS coverage for the two untested
+  behaviours the tier is built on — `ui_prompt_start`'s
+  confirm/select → `waiting_permission` vs everything else →
+  `waiting_input` mapping (one of this PR's two documented deviations
+  from the plan, previously assertable only by reading the source) and
+  the `input` `source !== "extension"` filter; the Node 20 → 24 sweep
+  finished in `CONTRIBUTING.md` and `build.sh` (three files had stated
+  three different floors), with the `go` test-layer row now noting that
+  it shells out to node; `EnsurePiExtension` moved after the `hived.log`
+  tee in `cmd/hived/main.go`, since the GUI-spawned daemon has
+  stdout/stderr on /dev/null and that line is the only explanation a
+  user gets for Pi staying on the heuristic tier; the idempotence
+  assertion switched from `ModTime` equality to `os.SameFile`, which
+  sees the temp+rename inode swap exactly; the kind-allowlist test now
+  scrapes kinds out of `post(...)` calls instead of walking a hardcoded
+  list (it caught `"confirm"`/`"select"` from the ternary's comparison
+  operands on the first run, which is the sort of thing a hardcoded list
+  can never catch); and `ApplyAgentEvent` samples `time.Now()` under the
+  registry lock, since for the empty-`at` fallback that clock *is* the
+  ordering key.
+  Verified: `go vet` (host, linux, windows); `./internal/agent`,
+  `./internal/agentstate`, `./internal/registry`, `./internal/daemon`
+  green; `node --test internal/agent/pi/hive.test.ts` 10/10.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1132,3 +1176,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 1 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 933fe7284759ec8b0b78ddf7426686dd96f3263ed89a5358a9ee055ef1aa3d69; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 73ec301.
 - **2026-09-05 iter 2 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: aeb45dd6f258cc7b432bc46e97db046988fdfc0417ce97805863f9762d5972c8; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 52310a7.
 - **2026-09-05 iter 3 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be5b1f45d0d6110670ca570825b18153cb3812780652253e88c0861f28d5277a; threads_open: 0; action: continue (3 IMPORTANT remain; loop's stop rule met but boil-the-lake says fix them); head_sha: 7c97502.
+- **2026-09-05 iter 4 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 27e41405647bee014b40872c51634cc5e5605e836fb8f36b328c2543d025406d; threads_open: 0; action: continue (3 IMPORTANT + 5 MINOR fixed; stop rule met but one finding was a regression from iter 2); head_sha: 9592c67.

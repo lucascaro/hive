@@ -225,3 +225,62 @@ test("session_shutdown reports session_end only for quit", unixOnly, async () =>
     }
   }
 });
+
+test("ui_prompt_start maps confirm/select to waiting_permission, the rest to waiting_input", unixOnly, async () => {
+  // One of this PR's two documented deviations from the plan, and the
+  // reason the `?`-suffix heuristic could be deleted. Inverting these
+  // two kinds is invisible without this test.
+  for (const [kind, want] of [
+    ["confirm", "waiting_permission"],
+    ["select", "waiting_permission"],
+    ["input", "waiting_input"],
+    ["editor", "waiting_input"],
+    ["custom", "waiting_input"],
+    [undefined, "waiting_input"],
+  ] as Array<[string | undefined, string]>) {
+    const events = await collectFrames(async (sock) => {
+      await new Promise<void>((resolve) => {
+        withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+          const pi = handlerPi();
+          mod.default(pi as never);
+          pi.handlers.get("ui_prompt_start")!({ kind }, {});
+          setTimeout(resolve, 200);
+        });
+      });
+    }, 1);
+    assert.equal(events.length, 1, `kind=${kind}`);
+    assert.equal(events[0].kind, want, `kind=${kind}`);
+  }
+});
+
+test("input reports the user's prompt but not an extension's injection", unixOnly, async () => {
+  // An extension-injected message is not the user asking for something;
+  // reporting it would show the session working on nobody's request.
+  const injected = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        pi.handlers.get("input")!({ source: "extension", text: "injected" }, {});
+        setTimeout(resolve, 300);
+      });
+    });
+  }, 1);
+  assert.deepEqual(injected, [], "an extension-injected message was reported as a prompt");
+
+  for (const source of ["interactive", "rpc"]) {
+    const events = await collectFrames(async (sock) => {
+      await new Promise<void>((resolve) => {
+        withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+          const pi = handlerPi();
+          mod.default(pi as never);
+          pi.handlers.get("input")!({ source, text: "what does this do?" }, {});
+          setTimeout(resolve, 200);
+        });
+      });
+    }, 1);
+    assert.equal(events.length, 1, `source=${source}`);
+    assert.equal(events[0].kind, "prompt", `source=${source}`);
+    assert.equal(events[0].text, "what does this do?", `source=${source}`);
+  }
+});

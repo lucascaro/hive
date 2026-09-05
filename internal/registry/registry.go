@@ -403,13 +403,19 @@ func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
 	// reclaim it either. Clamping forward-dated stamps to now keeps the
 	// wire contract's promise that a clock the daemon does not control
 	// cannot drop an otherwise-valid event.
-	now := time.Now()
-	at, err := time.Parse(time.RFC3339Nano, ev.At)
-	if err != nil || at.After(now) {
-		at = now
-	}
+	parsed, parseErr := time.Parse(time.RFC3339Nano, ev.At)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Sampled under the lock: for the documented empty/unparseable
+	// fallback the daemon's own clock IS the ordering key, so reading it
+	// outside would let two events be stamped in one order and applied
+	// in the other — the exact inversion Machine.Apply's guard exists to
+	// stop.
+	now := time.Now()
+	at := parsed
+	if parseErr != nil || at.After(now) {
+		at = now
+	}
 	e, ok := r.entries[id]
 	if !ok {
 		return ErrNotFound

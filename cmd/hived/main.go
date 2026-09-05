@@ -71,15 +71,6 @@ func main() {
 	// command through agent.Get.
 	agent.SetCustomDir(stateDir)
 
-	// Drop the embedded Pi reporter extension next to it. Pi sessions
-	// are spawned with `-e <stateDir>/pi/hive.ts` so they report their
-	// own state instead of being guessed at from the PTY. A failure
-	// here is not fatal: agent.piSpawnArgs stats the file and falls
-	// back to the heuristic tier when it is missing.
-	if err := agent.EnsurePiExtension(stateDir); err != nil {
-		log.Printf("hived: write pi extension: %v; pi sessions run on the heuristic state tier only", err)
-	}
-
 	// Start the menu-bar agent, if this platform and this install have
 	// one. hived owns this rather than only the GUI because the menu
 	// bar reports on the daemon: it should exist exactly as long as
@@ -91,6 +82,18 @@ func main() {
 	if f, err := registry.OpenLogFile("hived.log"); err == nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 		log.Printf("hived: log tee to %s", filepath.Join(stateDir, "hived.log"))
+	}
+
+	// Drop the embedded Pi reporter extension into the state dir. Pi
+	// sessions are spawned with `-e <stateDir>/pi/hive.ts` so they
+	// report their own state instead of being guessed at from the PTY.
+	// A failure is not fatal — agent.piSpawnArgs stats the file and
+	// falls back to the heuristic tier — but it must be written after
+	// the log tee above: the GUI-spawned daemon has stdout and stderr
+	// on /dev/null, and this line is the only explanation a user gets
+	// for Pi sessions staying on the heuristic tier.
+	if err := agent.EnsurePiExtension(stateDir); err != nil {
+		log.Printf("hived: write pi extension: %v; pi sessions run on the heuristic state tier only", err)
 	}
 
 	d, err := daemon.New(daemon.Config{

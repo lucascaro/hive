@@ -251,8 +251,21 @@ func (m *Machine) Apply(ev Event) bool {
 	// has already passed, and it is dropped whole — including the
 	// staleness clock, which is already newer. Equal stamps apply, since
 	// nothing distinguishes them.
-	if !m.hookSeenAt.IsZero() && ev.At.Before(m.hookSeenAt) {
-		return false
+	//
+	// The window is bounded, and that bound is load-bearing. ev.At is
+	// parsed from the wire and carries no monotonic reading, so this is
+	// wall-clock arithmetic: if the host's clock steps backward (a VM
+	// resume, a large NTP correction), an unbounded guard would drop
+	// every later event for the whole duration of the step, while
+	// trusted() computed a negative age that never exceeds
+	// HookStaleAfter — so Observe and Tick could not reclaim the session
+	// either, and nothing would correct it. A delivery inversion is
+	// milliseconds apart; a gap of HookStaleAfter or more is a clock
+	// that moved, and the newest report wins.
+	if !m.hookSeenAt.IsZero() {
+		if behind := m.hookSeenAt.Sub(ev.At); behind > 0 && behind < HookStaleAfter {
+			return false
+		}
 	}
 
 	before := m.Snapshot()

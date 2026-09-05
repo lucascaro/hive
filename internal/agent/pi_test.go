@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,11 @@ func TestEnsurePiExtensionWritesAtomicallyAndOnlyWhenStale(t *testing.T) {
 	}
 
 	// Same content: the file must not be touched, or every daemon
-	// restart would churn a file Pi may be reading.
+	// restart would churn a file Pi may be reading. Compared with
+	// os.SameFile rather than ModTime: the write path is temp+rename,
+	// so a needless rewrite swaps the inode — which SameFile sees
+	// exactly, while a coarse mtime clock can report two distinct files
+	// as unchanged.
 	before, err := os.Stat(dst)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +58,7 @@ func TestEnsurePiExtensionWritesAtomicallyAndOnlyWhenStale(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !after.ModTime().Equal(before.ModTime()) {
+	if !os.SameFile(before, after) {
 		t.Error("EnsurePiExtension rewrote an already-current extension")
 	}
 
@@ -216,14 +221,15 @@ process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T1
 	}
 }
 
-// TestPiExtensionKindsAreOnTheAllowlist pins every kind string the
-// extension can post against the daemon's allowlist: a typo there is
-// silently dropped at the ModeEvent arm, which looks exactly like "Pi
-// never reports anything".
+// TestPiExtensionKindsAreOnTheAllowlist extracts every kind the
+// extension can post and checks it against the daemon's allowlist. The
+// kinds are scraped from the source rather than listed here on purpose:
+// a hardcoded list only ever proves the kinds someone remembered to add
+// to it, so a new post("...") with a kind the ModeEvent arm refuses
+// would pass. A refused kind is dropped silently at the daemon, which
+// looks exactly like "Pi never reports anything".
 func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
-	// Comments in the extension mention every kind by name, so scanning
-	// the raw source would keep passing for a kind that survives only in
-	// prose. Strip line comments first.
+	// Comments name every kind in prose, so strip them before scraping.
 	var code strings.Builder
 	for _, line := range strings.Split(piExtensionSource, "\n") {
 		if i := strings.Index(line, "//"); i >= 0 {
@@ -232,17 +238,39 @@ func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 		code.WriteString(line)
 		code.WriteByte('\n')
 	}
-	src := code.String()
 
+	// Every string literal appearing in a post(...) call — which covers
+	// post("x") and the ternary in the ui_prompt_start handler. The
+	// comparison operands of that ternary (`kind === "confirm"`) are
+	// pi's event vocabulary, not Hive's, so equality tests are dropped
+	// before the literals are read.
+	postCall := regexp.MustCompile(`post\(([^;]*?)\)`)
+	comparison := regexp.MustCompile(`[=!]==\s*"[a-z_]+"`)
+	literal := regexp.MustCompile(`"([a-z_]+)"`)
+
+	found := map[string]bool{}
+	for _, call := range postCall.FindAllStringSubmatch(code.String(), -1) {
+		for _, lit := range literal.FindAllStringSubmatch(comparison.ReplaceAllString(call[1], ""), -1) {
+			found[lit[1]] = true
+		}
+	}
+	if len(found) == 0 {
+		t.Fatal("scraped no kinds from the extension; the regex no longer matches post(...)")
+	}
+	for kind := range found {
+		if !wire.AgentEventKinds[kind] {
+			t.Errorf("extension posts %q, which wire.AgentEventKinds refuses", kind)
+		}
+	}
+
+	// And the kinds the tier is built on are all still reported, so a
+	// silently deleted handler fails here too.
 	for _, kind := range []string{
 		"ping", "prompt", "permission_resolved", "turn_end",
 		"waiting_permission", "waiting_input", "session_end",
 	} {
-		if !strings.Contains(src, `"`+kind+`"`) {
-			t.Errorf("extension no longer posts %q; update this test or the extension", kind)
-		}
-		if !wire.AgentEventKinds[kind] {
-			t.Errorf("extension posts %q, which wire.AgentEventKinds refuses", kind)
+		if !found[kind] {
+			t.Errorf("extension no longer posts %q", kind)
 		}
 	}
 }
