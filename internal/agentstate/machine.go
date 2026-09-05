@@ -28,8 +28,10 @@ type State = string
 // Source records which tier produced the current State. It matters
 // because the tiers are not equally trustworthy: a hook knows the agent
 // asked a question, while the heuristic tier only knows bytes stopped
-// arriving. Clients render the difference (an "uncertain" ring on
-// heuristic states) and the machine uses it to decide who wins.
+// arriving. The machine uses it to decide who wins, and clients render
+// the difference in words — the state icon's tooltip ends "reported by
+// the agent" or "guessed from terminal output" (see the frontend's
+// stateTooltip). The glyph itself is identical on every tier.
 type Source = string
 
 // Tunables for the heuristic tier.
@@ -41,10 +43,16 @@ const (
 	QuietAfter = 2 * time.Second
 
 	// HookStaleAfter is how long the machine keeps trusting a hook or
-	// extension tier that has gone silent while output keeps arriving.
-	// Past it, output demotes the session back to the heuristic tier —
-	// otherwise a crashed hook would pin a session at whatever state it
-	// last reported, forever.
+	// extension tier that has gone silent. Past it the heuristic tier
+	// takes the session back — through Output if the screen is still
+	// changing, through Tick if it has gone quiet — because otherwise a
+	// crashed hook would pin a session at whatever state it last
+	// reported, forever.
+	//
+	// The one state this does NOT rescue is a wait: waiting_input and
+	// waiting_permission are held until the user acts (ClearWaiting) or
+	// the process exits, on every tier, because no amount of elapsed
+	// time is evidence that an unanswered prompt was answered.
 	HookStaleAfter = 30 * time.Second
 )
 
@@ -231,6 +239,14 @@ func (m *Machine) Tick(now time.Time) bool {
 		return false
 	}
 	m.state = wire.StateIdle
+	// The tier is stale by definition here — trusted() said so above —
+	// so this idle is ours, inferred from silence, not something the
+	// agent reported. Say so, the way Output does when it takes a
+	// stale session back. Without this the session reports idle while
+	// still claiming state_source=hook, and every surface that renders
+	// provenance (the tooltip's last line) credits the agent with a
+	// state it never sent.
+	m.source = wire.StateSourceHeuristic
 	return true
 }
 

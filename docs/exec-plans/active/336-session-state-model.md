@@ -345,7 +345,12 @@ assistant message ends with `?` — a heuristic, flagged in a comment
   (new `components/StateDot.tsx`) taking `state` + `source`; CSS in the
   design system tokens (`docs/design-docs/ui/` — add the six states and
   the heuristic "uncertain" ring treatment); reuse `hv-state-pulse` /
-  `--motion-pulse` for the waiting states. `title` attribute /
+  `--motion-pulse` for the waiting states.
+  **SUPERSEDED (phases 1 and 4):** no `StateDot.tsx` was built (the
+  existing `StateIcon` already had the job), and the "uncertain" ring
+  was never built either — the tiers differ only in the tooltip's last
+  line. Both decisions are in the Decision log; this paragraph is kept
+  as the original intent, not as a description of the tree. `title` attribute /
   tooltip: `last_prompt` on the first line, `last_summary` on the
   second, `state_source` in the footer.
 - `hivebar` (`cmd/hivebar/client.go`, `model.go`): thread `state` /

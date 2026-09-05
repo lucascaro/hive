@@ -534,3 +534,29 @@ func TestApplyOrderingBoundary(t *testing.T) {
 		}
 	})
 }
+
+// A hooked session whose hook dies with a STATIC screen is demoted by
+// Tick, not by Output — and Tick used to change the state while
+// leaving source at the dead tier, so the session reported idle with
+// state_source=hook. Phase 4 made that visible: the tooltip's last
+// line credits the agent ("reported by the agent") for a state no
+// agent sent. Found by the merge gate on PR #344.
+func TestStaleTickDemotesTheSourceNotJustTheState(t *testing.T) {
+	m := New(t0)
+	m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
+	if got := m.Snapshot(); got.State != wire.StateWorking || got.Source != wire.StateSourceHook {
+		t.Fatalf("setup: %+v, want working/hook", got)
+	}
+
+	// Well past HookStaleAfter, with nothing painted since.
+	m.Tick(t0.Add(HookStaleAfter + time.Second))
+
+	got := m.Snapshot()
+	if got.State != wire.StateIdle {
+		t.Errorf("State = %q, want idle", got.State)
+	}
+	if got.Source != wire.StateSourceHeuristic {
+		t.Errorf("Source = %q, want heuristic — a tick-derived idle is our "+
+			"inference, not the agent's report", got.Source)
+	}
+}

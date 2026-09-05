@@ -238,8 +238,10 @@ const (
 	// StateSourceHeuristic is derived from the PTY alone: bytes
 	// arrived, bytes stopped, a bell rang. Available for every
 	// session including plain shells, and never more than a guess —
-	// clients mark it as uncertain. The empty string, so it is also
-	// what a pre-field daemon reads as.
+	// clients say so in the state icon's tooltip ("guessed from
+	// terminal output"), which is the only place the tiers look
+	// different. The empty string, so it is also what a pre-field
+	// daemon reads as.
 	StateSourceHeuristic = ""
 	// StateSourceHook is reported by the agent's own hook mechanism
 	// (Claude Code hooks calling `hived hook`).
