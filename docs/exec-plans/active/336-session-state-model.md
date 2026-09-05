@@ -881,3 +881,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 ## PR convergence ledger
 
 - **2026-09-04 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2854c4ad3033402a11277eece2de916447c9861b2f3263fe8b2546f591750ec2; threads_open: 0; action: continue (2 IMPORTANT remain); head_sha: 4423148.
+- **2026-09-04 iter 2** — verdict: COMMENT (strict); mergeable: MERGEABLE; findings_hash: bf94a2f0c66b9cec2198ab14123a12cac7906dff824e342940e56b9bab769543; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ac893ca.
