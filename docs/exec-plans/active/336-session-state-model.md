@@ -1050,6 +1050,30 @@ decision-log entry with the log excerpt BEFORE any code changes.
   entry above, and `docs/exec-plans/active/338-session-messaging.md`
   no longer presupposes the script exists.
 
+- **2026-09-05 (phase 4, gate iter 3)** — `TestExitedReachesTheStateThroughTheRealPTY`
+  read state through `r.Get(id).Info()` and raced `watchSessionExit`
+  deterministically under `-race`. `Get` drops the registry mutex before
+  returning the entry, so `Info()` reads `e.sess` unlocked while the
+  exit path writes it. Every other test in `state_test.go` uses the same
+  `Get().Info()` idiom and gets away with it only because its process
+  stays alive for the assertion; this test races the exit path by
+  construction, which is the whole point of it. Fixed by reading through
+  `r.List()`, which holds the lock across `Info()`. Production is not
+  affected — its `Info()` calls are all under the lock
+  (`broadcastLocked` and friends). CI runs plain `go test ./...` with no
+  `-race`, so nothing would have caught this before merge; three
+  consecutive `-race` runs are now clean.
+
+- **2026-09-05 (phase 4, gate iter 3)** — Criterion 5's wait exception
+  named `ClearWaiting` and process exit as the ONLY ways out of a wait.
+  A probe showed `permission_resolved`, `turn_end` and `session_end`
+  also end one. The true invariant is narrower and is what the design
+  actually rests on: a wait is immune to elapsed time and to output,
+  because neither is evidence an unanswered prompt was answered — it
+  ends only on something that constitutes an answer. Corrected in the
+  spec, in `HookStaleAfter`'s comment, and in `Output`'s, which carried
+  the same absolute claim.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:

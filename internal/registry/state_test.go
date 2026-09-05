@@ -430,7 +430,24 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 	r := freshRegistry(t)
 	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying"})
 
-	if got := r.Get(e.ID).Info().State; got == wire.StateExited {
+	// Read through List(), never r.Get(id).Info(): Get drops the
+	// registry mutex before returning the entry, so Info() would read
+	// e.sess while watchSessionExit is writing it. Every other test in
+	// this file gets away with Get().Info() only because its process
+	// stays alive; this one races the exit path by construction, which
+	// is the whole point of it. List() holds the lock across Info().
+	infoOf := func(t *testing.T) wire.SessionInfo {
+		t.Helper()
+		for _, s := range r.List() {
+			if s.ID == e.ID {
+				return s
+			}
+		}
+		t.Fatalf("session %s vanished from the registry", e.ID)
+		return wire.SessionInfo{}
+	}
+
+	if got := infoOf(t).State; got == wire.StateExited {
 		t.Fatal("test setup: session was already exited before EOT")
 	}
 
@@ -441,7 +458,7 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		info := r.Get(e.ID).Info()
+		info := infoOf(t)
 		if !info.Alive {
 			if info.State != wire.StateExited {
 				t.Fatalf("dead session reports state %q, want %q",

@@ -83,12 +83,15 @@ settings untouched.
   `working`/`heuristic`, and `Tick` takes a quiet one to
   `idle`/`heuristic`.
   The deliberate exception is a wait. `waiting_input` and
-  `waiting_permission` are held on every tier until the user acts
-  (`ClearWaiting`) or the process exits — no amount of elapsed time is
-  evidence that an unanswered prompt was answered, and a timer that
-  flipped a quiet `waiting_permission` to idle would erase a real
-  request the user has not seen yet. So a session whose hook dies
-  mid-prompt keeps that prompt until a human resolves it.
+  `waiting_permission` are never ended by elapsed time or by output on
+  any tier — only by something that constitutes an actual answer: the
+  user acting (`ClearWaiting`), the agent reporting the wait resolved
+  (`permission_resolved`, `turn_end`, `session_end`), or the process
+  exiting. No amount of silence is evidence that an unanswered prompt
+  was answered, and a timer that flipped a quiet `waiting_permission`
+  to idle would erase a real request the user has not seen yet. So a
+  session whose hook dies mid-prompt — with no agent left to report a
+  resolution — keeps that prompt until a human resolves it.
 - Sidebar rows and tile headers render the six states; the tooltip
   shows prompt + summary when present. Playwright mock e2e covers the
   glyphs; unit tests cover the store reducers.
