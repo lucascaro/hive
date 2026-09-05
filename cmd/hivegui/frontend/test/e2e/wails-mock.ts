@@ -677,11 +677,23 @@ export async function UpdateProject(
 export async function LaunchDir() {
   return '';
 }
+// ?failStateDirID=1 makes StateDirID reject AND LogFrontend throw. That
+// pairing is the real-world case, not a contrived one: StateDirID fails
+// when the Wails bridge is unavailable, which is exactly when
+// LogFrontend fails too. Boot must still connect — persistence going off
+// must not take the app down (#340).
+function stateDirIDFails(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    new URLSearchParams(window.location.search).get('failStateDirID') === '1'
+  );
+}
 // Must be non-empty: an empty namespace means "daemon unidentified",
 // which disables persistence of the collapse/minimize sets entirely
 // (store.ts › hydratePersistedProjectSets).
 export const MOCK_STATE_DIR_ID = 'mock1234';
 export async function StateDirID() {
+  if (stateDirIDFails()) throw new Error('no bridge');
   return MOCK_STATE_DIR_ID;
 }
 export async function PickDirectory() {
@@ -709,8 +721,14 @@ export async function OpenTerminalAt(_dir: string) {
 export async function Notify(_title: string, _body: string) {
   return '';
 }
-export async function LogFrontend(_msg: string) {
-  return '';
+// Deliberately NOT async when armed: a missing Wails binding fails as a
+// synchronous TypeError at the call site, and that is what the sync
+// try/catch around every LogFrontend call is there to absorb. An async
+// rejection would sail past those guards as an unhandled rejection and
+// prove nothing.
+export function LogFrontend(_msg: string): Promise<string> {
+  if (stateDirIDFails()) throw new Error('no bridge');
+  return Promise.resolve('');
 }
 export async function SetDebugTrace(_on: boolean) {
   return '';

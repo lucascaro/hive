@@ -297,6 +297,8 @@ a changeset note covering the documented key name.
 - **2026-09-05** — Namespace the keys rather than delete the prune. Why: operator's call at clarifying round B; the sets are per-daemon by nature, and dropping the prune trades one bug for unbounded growth.
 - **2026-09-05** — Namespace = `sha256(registry.StateDir())[:8]`, not the raw path. Why: keeps the key short and avoids putting a filesystem path in web storage.
 - **2026-09-05** — `test/e2e-real/wails-bridge.ts` also needed the `StateDirID` stub. Why: an existing test ("real harness defines every name bridge.ts re-exports") caught it — the e2e-real harness is a second binding surface the plan had not listed.
+- **2026-09-05** — Fixed review iter 1's IMPORTANT: wrapped the `LogFrontend` call inside the `StateDirID` catch. Why: `LogFrontend` throws synchronously when the Wails binding is missing — the same bridge-absent condition that makes `StateDirID` fail — so the unwrapped call rejected the bootstrap IIFE and `ConnectControl()` never ran. Proved by reverting the wrap: the new e2e test hangs with no project cards.
+- **2026-09-05** — Reviewer's MINOR "use the exported MOCK_STATE_DIR_ID in the spec" not applied as suggested. Why: `wails-mock.ts` imports the store and runs in the browser, so importing it from Playwright's node context dies on `import.meta`. Used a hand-synced constant with a comment saying why.
 - **2026-09-05** — `storageNS` / `persistProjectSets` live as module state, not store state. Why: they are storage plumbing no component renders; putting them in `AppData` would widen the frozen `window.__hive_state` shape for no reader.
 
 ## Progress
@@ -306,6 +308,12 @@ a changeset note covering the documented key name.
 - **2026-09-05** — Plan approved (no section feedback); stage IMPLEMENT.
 - **2026-09-05** — Root cause confirmed; spec rewritten, complexity S→M, stage PLAN.
 - **2026-09-04** — Spec + plan created, stage RESEARCH. Repro scenario from operator: quit and relaunch BOTH daemon and GUI; every minimized project returns expanded, every time.
+
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+
+- **2026-09-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 0ae4ada1ce675449; threads_open: 0; action: fixed IMPORTANT + 2 MINOR, push, re-review; head_sha: 37f15e2.
 
 ## Open questions
 

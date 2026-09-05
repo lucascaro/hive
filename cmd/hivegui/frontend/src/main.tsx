@@ -508,7 +508,16 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
   try {
     store.hydratePersistedProjectSets(await StateDirID());
   } catch {
-    LogFrontend('boot: StateDirID failed; project sets not persisted');
+    // Wrapped like every other LogFrontend in this file: the reason
+    // StateDirID throws is usually "no bridge", which is exactly when
+    // LogFrontend throws too. An unwrapped call here would reject the
+    // bootstrap IIFE and ConnectControl below would never run — turning
+    // "persistence is off this session" into "the app never connects".
+    try {
+      LogFrontend('boot: StateDirID failed; project sets not persisted');
+    } catch {
+      /* ignore */
+    }
   }
   try {
     await ConnectControl();
