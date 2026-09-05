@@ -81,8 +81,18 @@ test('a bell inside a minimized project lights its chip', async ({ page }) => {
   await expect(chip).toBeVisible();
   await expect(chip).not.toHaveAttribute('data-state', 'attention');
 
+  await expect(chip.locator('.hv-chip__alert')).toHaveCount(0);
+
   await page.evaluate((id) => window.__hive.ringBell?.(id), sid as string);
   await expect(chip).toHaveAttribute('data-state', 'attention');
+  // The chip says how many want you, not just that something does — and
+  // does it visibly, which is the half jsdom cannot check.
+  const alert = chip.locator('.hv-chip__alert');
+  await expect(alert).toBeVisible();
+  // Anchored on the end: StateIcon carries a <title> for the words
+  // channel, so the slot's text is "Waiting for you1".
+  await expect(alert).toHaveText(/1$/);
+  await expect(alert.locator('.hv-state-icon')).toBeVisible();
 });
 
 // jsdom applies no CSS, so it will happily "click" a control the theme
@@ -170,11 +180,19 @@ test('a project chip spans the tray, right-aligns +, and restores on any click',
   // would land on the label and pass without testing anything.
   const slackX = restoreBox.x - 12;
   const slackY = chipBox.y + chipBox.height / 2;
-  const onLabel = await page.evaluate(
-    ({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.hv-chip__label'),
+  // Every node the chip can grow, not just the label: the count and alert
+  // slots sit between the label and the +, and a check that named only the
+  // label would keep passing on a chip that had swallowed the whole slack.
+  const onContent = await page.evaluate(
+    ({ x, y }) =>
+      !!document
+        .elementFromPoint(x, y)
+        ?.closest('.hv-chip__label, .hv-chip__count, .hv-chip__alert'),
     { x: slackX, y: slackY },
   );
-  expect(onLabel, 'the click point is on the label, not the slack').toBe(false);
+  expect(onContent, 'the click point is on chip content, not the slack').toBe(
+    false,
+  );
   await page.mouse.click(slackX, slackY);
   await expect(listed).toHaveCount(before);
 });

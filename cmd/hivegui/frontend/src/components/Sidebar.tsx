@@ -47,8 +47,7 @@ import {
   moveTo as movePlaceholder,
 } from '../lib/drag-placeholder.js';
 import { dropTargetIndex } from '../lib/reorder.js';
-import { sessionState } from '../lib/session-state.js';
-import { readNeedsAttention } from '../app/state.js';
+import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { readProjectId } from '../lib/wire.js';
 import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
 
@@ -91,14 +90,20 @@ function keyHints(): Map<string, number> {
   return hints;
 }
 
-// projectHasAttention reports whether any session in the project is
-// ringing. A minimized project has no session rows in the sidebar, so
-// the chip is the only surface left to carry the bell — without this a
-// BEL inside a minimized project is invisible until ⌘B finds it.
-function projectHasAttention(pid: string, sessions: SessionInfo[]): boolean {
-  return sessions.some(
-    (s) => readProjectId(s) === pid && readNeedsAttention(s),
-  );
+// restoreChipLabel is the words channel for what a minimized project chip
+// shows as glyphs. A screen reader gets no count from a number rendered in
+// a span next to an icon, so the accessible name carries both — the same
+// obligation the state icon meets with its own <title> (icons.md › state
+// is shape + colour + words).
+function restoreChipLabel(
+  name: string,
+  total: number,
+  wanting: number,
+): string {
+  const n = `${total} session${total === 1 ? '' : 's'}`;
+  const k =
+    wanting === 0 ? '' : `, ${wanting} need${wanting === 1 ? 's' : ''} you`;
+  return `Restore ${name}, ${n}${k}`;
 }
 
 // killSession routes a live session through the native confirm (AGENTS.md:
@@ -308,7 +313,9 @@ function ProjectItem(o: ProjectItemProps) {
   const p = o.project;
   const nameRef = useRef<HTMLSpanElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const attentionCount = o.sessions.filter(readNeedsAttention).length;
+  // Same helper the minimized chip uses, so the collapsed card's
+  // "k need you" and the chip's alert count can never disagree.
+  const attentionCount = attentionSummary(o.sessions).count;
 
   // dragstart bubbles, so a session-row drag fires here too after its own
   // handler runs. We must not preventDefault in that case (it would
@@ -474,28 +481,42 @@ export function Sidebar(props: SidebarProps) {
       ))}
       {tray
         ? createPortal(
-            minimizedList.map((p) => (
-              <Chip
-                key={p.id}
-                pid={p.id}
-                label={p.name ?? ''}
-                color={p.color}
-                active={p.id === activePID}
-                title={p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '')}
-                ariaLabel={`Restore ${p.name}`}
-                // The chip is the only surface left carrying a bell for a
-                // project whose rows are gone (patterns.md › Attention
-                // bubbling).
-                attention={projectHasAttention(p.id, sessions)}
-                // Clicking the chip body restores the project — the same
-                // thing the restore control does. A minimized row is a
-                // thing you put away; the only reason to click it is to
-                // get it back.
-                onClick={() => props.restoreProject(p.id)}
-                onRestore={() => props.restoreProject(p.id)}
-                restoreLabel={`Restore ${p.name}`}
-              />
-            )),
+            minimizedList.map((p) => {
+              const own = sessions.filter((s) => readProjectId(s) === p.id);
+              // The chip is the only surface left carrying attention for a
+              // project whose rows are gone (patterns.md › Attention
+              // bubbling), and now the only one carrying its size too.
+              const sum = attentionSummary(own);
+              const restore = restoreChipLabel(
+                p.name ?? '',
+                own.length,
+                sum.count,
+              );
+              return (
+                <Chip
+                  key={p.id}
+                  pid={p.id}
+                  label={p.name ?? ''}
+                  color={p.color}
+                  active={p.id === activePID}
+                  title={p.cwd ? `${p.name} — ${p.cwd}` : (p.name ?? '')}
+                  ariaLabel={restore}
+                  count={own.length}
+                  attention={
+                    sum.state
+                      ? { count: sum.count, state: sum.state }
+                      : undefined
+                  }
+                  // Clicking the chip body restores the project — the same
+                  // thing the restore control does. A minimized row is a
+                  // thing you put away; the only reason to click it is to
+                  // get it back.
+                  onClick={() => props.restoreProject(p.id)}
+                  onRestore={() => props.restoreProject(p.id)}
+                  restoreLabel={restore}
+                />
+              );
+            }),
             tray,
           )
         : null}
