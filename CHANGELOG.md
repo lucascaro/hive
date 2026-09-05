@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rebuilt — so a session could disagree with itself depending on where
   you looked, and a tile's window title could stay blank for a session
   whose tile had been rebuilt or was never attached.
+- Minimized and collapsed projects stay that way across a restart when
+  you run more than one Hive daemon. Every GUI process shares one
+  webview storage area, so instances attached to different state
+  directories were overwriting each other's sidebar state — each launch
+  pruned the other's project ids as "projects that no longer exist" and
+  emptied the tray. The two keys (`hive.minimizedProjects`,
+  `hive.collapsedProjects`) are now suffixed with an id derived from the
+  daemon's state directory. Your existing sidebar state carries over to
+  one instance; the others start from a clean slate once and keep their
+  state from then on.
 - Restarting Hive no longer risks leaving the daemon unreachable. When
   the old `hived` shut down while its replacement had already taken
   over the socket path, it could delete the replacement's socket —
