@@ -91,18 +91,17 @@ export function Chip({
         )}
         <span className="hv-chip__label">{label}</span>
         {sublabel ? <span className="hv-chip__sub">{sublabel}</span> : null}
-        {/* Count then alert, the order the project card header uses
-            (swatch, name, count, actions). Left-packed rather than
-            right-aligned on purpose: the slack between the label and the
-            restore + is a click target that restores the project, and
-            filling it would take that away (spec 255). */}
-        {count == null ? null : <span className="hv-chip__count">{count}</span>}
+        {/* Alert then count, right-aligned (the label takes the slack —
+            see minimized.css): the session count is the rightmost thing
+            so counts line up down the list, with the attention badge
+            immediately left of it. */}
         {attention ? (
           <span className="hv-chip__alert">
             <StateIcon state={attention.state} />
             {attention.count}
           </span>
         ) : null}
+        {count == null ? null : <span className="hv-chip__count">{count}</span>}
       </button>
       {onRestore ? (
         <IconButton
