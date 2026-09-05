@@ -447,8 +447,12 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 		return wire.SessionInfo{}
 	}
 
-	if got := infoOf(t).State; got == wire.StateExited {
-		t.Fatal("test setup: session was already exited before we ended it")
+	// Assert the live shape positively: `got == StateExited` could never
+	// fire here, since a live session's state is StateIdle ("") — a
+	// guard that cannot fail is not a guard.
+	if got := infoOf(t); !got.Alive || got.State == wire.StateExited {
+		t.Fatalf("test setup: want a live non-exited session, got alive=%v state=%q",
+			got.Alive, got.State)
 	}
 
 	// Close kills the child and releases the PTY. Deliberately NOT an
