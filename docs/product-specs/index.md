@@ -9,7 +9,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 | Priority | Issue | Title | Stage | Spec |
 |----------|-------|-------|-------|------|
 | P1 | — | Sidebar and grid repaints silently drop keyboard focus | REVIEW | [257-mock-e2e-worktree-glyph-loses-focus](257-mock-e2e-worktree-glyph-loses-focus.md) |
-| P1 | — | Session state model: know what every agent is doing | REVIEW | [336-session-state-model](336-session-state-model.md) |
+| P1 | — | Session state model: know what every agent is doing | GATE | [336-session-state-model](336-session-state-model.md) |
 | P1 | — | Idea inbox: capture ideas mid-session, start a session from one later | PLAN | [337-idea-inbox](337-idea-inbox.md) |
 | P2 | — | A red CI check name should say which stage failed | TRIAGE | [256-ci-check-names-identify-the-failing-stage](256-ci-check-names-identify-the-failing-stage.md) |
 | P2 | — | Session messaging: hand a session a message, get told when it idles | PLAN | [338-session-messaging](338-session-messaging.md) |

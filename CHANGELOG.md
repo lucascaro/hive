@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tooltip get a real prompt/summary instead of nothing. Falls back to
   the existing heuristic tier automatically when `claude` predates the
   hooks it needs.
+- Pi sessions now report their own state, the way Claude Code sessions
+  already do. Hive ships a small Pi extension with the daemon and loads
+  it into every Pi session it spawns, so the sidebar and tile glyphs
+  show what Pi is actually doing — working on your prompt, waiting on a
+  confirmation, or settled after a reply — with the last thing Pi said
+  in the tooltip. Nothing to install: the extension is written to
+  Hive's state directory at startup and is inert if you run `pi`
+  yourself. Falls back to the existing heuristic tier if it cannot be
+  written.
 - Every session now shows what it is doing. The sidebar row and the grid
   tile header carry a state glyph — working, idle, waiting for you,
   exited — so a screen of ten agents can be read at a glance instead of
@@ -27,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   waiting on you keeps saying so until you look at it.
 
 ### Fixed
+- A session's state glyph no longer gets stuck showing the wrong thing
+  when an agent reports two events at almost the same moment. Each
+  report arrives on its own connection, so a fast pair could be applied
+  out of order and leave a finished session showing "working" (or a
+  resolved prompt still showing "waiting") until the next event. Reports
+  that arrive late are now ignored in favour of what the daemon already
+  knows. Affects Claude and Pi sessions alike.
 - A grid tile's header now shows the same thing its sidebar row does.
   Both read the session the daemon broadcasts, where the header
   previously rendered from a copy refreshed only when the grid was
