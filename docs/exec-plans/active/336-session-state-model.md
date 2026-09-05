@@ -943,6 +943,46 @@ decision-log entry with the log excerpt BEFORE any code changes.
   presentational component; its button already carries a `title`, and
   the success criterion names the sidebar row and the tile header.
 
+- **2026-09-05 (phase 4, review iter 1)** — CORRECTS the phase-4 entry
+  above, which justified the always-on tier line as "what explains the
+  uncertain ring to someone who hovered to ask about it". There is no
+  uncertain ring. Nothing in `theme/` or `Icon.tsx` reads
+  `state_source`; the glyph is identical on every tier. The entry
+  described an affordance the tree does not have — the same drift class
+  the merge gate had just flagged in `control-plane.md`, reintroduced
+  in the commit that fixed it. The tier line's real justification is
+  that it is the ONLY surface carrying the `state_source` distinction,
+  which is why it stays; `docs/design-docs/ui/icons.md` now says that
+  instead.
+
+- **2026-09-05 (phase 4, review iter 1)** — The tier line is omitted for
+  `starting` and for a dead session's `exited`/`error`. It is a claim
+  about where a state came from, and no tier produced those:
+  `starting` is resolved client-side from `phase`, and death is
+  observed from the process exiting. Appending "guessed from terminal
+  output" to them fabricated a provenance — and two tests had pinned
+  the fabrication as expected.
+
+- **2026-09-05 (phase 4, review iter 1)** — `SOURCE_WORDS`, a map of
+  the two tiers that exist, became `sourceWords()`, a truthiness test.
+  Only the heuristic tier is spelled `""` on the wire, so a tier a
+  future daemon adds is reported by definition; the map would have
+  silently relabelled it a guess.
+
+- **2026-09-05 (phase 4, review iter 1)** — The changeset's claim that
+  "an agent that rang once and went back to work no longer counts
+  against you" was withdrawn: it describes #338, not this PR.
+  `internal/registry/registry.go:211` sets `NeedsAttention:
+  needsAttention(st.State)`, and `needsAttention` (`:184`) is
+  bit-for-bit the predicate `waiting()` now applies — so on any daemon
+  at contract ≥ 3 the old count and the new one are identical, and
+  below it `waiting()` returns `NeedsAttention` verbatim. The rename is
+  still worth having (hivebar stops depending on a derivation it does
+  not own, and the old-daemon fallback becomes explicit rather than
+  accidental), but it is a decoupling, not a user-visible fix. The
+  user-visible change is the wording alone. README carried the same
+  misleading contrast and was trimmed with it.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1301,3 +1341,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
     - acceptance — FAIL — criterion 7 ("`hivebar` shows 'N waiting on you' using the new state, not the bell") not delivered: `cmd/hivebar/model.go:53,97,104,195` build rows solely from `wire.SessionInfo.NeedsAttention`, and the string appears nowhere in the tree. Criterion 6 partially delivered: glyphs ship and are covered (`test/e2e/state-glyphs.spec.ts`, 35 unit tests), but the tooltip half is absent — `last_prompt`/`last_summary` exist only as optional type fields at `cmd/hivegui/frontend/src/app/state.ts:72-73` and are read by zero components. Criteria 1, 4, 5, 8 PASS with green tests; 2 and 3 NEEDS_FOLLOWUP on their manual halves only (checklist rows 1–6 and 13–14 unrun in an iso build; `TestAgentTUIStateFlow` skips by default).
     - non-goals — PASS — all six negative checks clean. Strongest evidence on "no persisted state": `persist.go`/`closed.go`/`store.go` have zero diff in `ad8f4aa~1..origin/main`, `TestMetaFileUnchangedByState` byte-compares `session.json` across a full state tour, and a runtime enumeration of `agent.All()` confirms `SpawnArgs` is non-nil only for `claude` and `pi`.
     - doc accuracy — FAIL — `docs/design-docs/control-plane.md:137-144` states in the present tense that `scripts/probe-claude.sh` exists, runs in CI and is on the release checklist, and that fixtures live under `testdata/claude-hooks/`; neither exists in the tree or anywhere in history. `docs/design-docs/ui/icons.md:37` still says the Pi extension "will in phase 3" after phase 3 merged as `d49551c`. `docs/design-docs/control-plane.md:38` claims the hook tier learns "subagent activity"; no `Subagent*` handling exists in Go. Changesets (5), CHANGELOG generation, README, and the plan header/Progress log all PASS.
+- **2026-09-05 iter 1 (PR #344)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b530c88feba83824bccf91b3c0e9765522fe74e8635811954d5b27a4a2b83238; threads_open: 0; action: continue (stop rule met — COMMENT, strict off, zero threads — but 3 IMPORTANT prose findings stood and boil-the-lake says fix them); head_sha: 8abfa67.

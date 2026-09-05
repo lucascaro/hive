@@ -72,14 +72,17 @@ export const STATE_WORDS: Record<SessionState, string> = {
 // How the state was arrived at, in words. Rendered because "the agent
 // told us it is waiting for permission" and "no bytes arrived for two
 // seconds" are not the same claim (internal/wire/control.go on
-// StateSource). hook and extension collapse to one phrase on purpose:
+// StateSource). Every reported tier collapses to one phrase on purpose:
 // which transport the agent used to say it is not the user's business,
 // only that the agent said it rather than us inferring it.
-const SOURCE_WORDS: Record<string, string> = {
-  hook: 'reported by the agent',
-  extension: 'reported by the agent',
-};
-const HEURISTIC_WORDS = 'guessed from terminal output';
+//
+// A truthiness test rather than a map of the known tiers: only the
+// heuristic tier is spelled "" on the wire, so any tier a future daemon
+// adds reads as reported — which is what it would be. A lookup table
+// would silently relabel it as a guess.
+function sourceWords(source: string | undefined): string {
+  return source ? 'reported by the agent' : 'guessed from terminal output';
+}
 
 /**
  * The full tooltip for a session's state icon: the state in words, what
@@ -92,12 +95,21 @@ const HEURISTIC_WORDS = 'guessed from terminal output';
  * doing.
  */
 export function stateTooltip(s: StateCarrier, state?: SessionState): string {
-  const lines = [STATE_WORDS[state ?? sessionState(s)]];
+  const resolved = state ?? sessionState(s);
+  const lines = [STATE_WORDS[resolved]];
   // Quoted: a prompt is the user's own words being read back, and
   // without the quotes it runs together with the state line above it.
   if (s.last_prompt) lines.push(`“${s.last_prompt}”`);
   if (s.last_summary) lines.push(s.last_summary);
-  lines.push(SOURCE_WORDS[s.state_source ?? ''] ?? HEURISTIC_WORDS);
+  // The tier line is a claim about where a state came from, so it is
+  // only honest for the states a tier actually produced. `starting`
+  // is resolved here from `phase`, and a dead session's exited/error
+  // comes from the process exiting — no tier observed either, and
+  // saying "guessed from terminal output" over them would be a
+  // fabricated provenance.
+  if (resolved !== 'starting' && s.alive) {
+    lines.push(sourceWords(s.state_source));
+  }
   return lines.join('\n');
 }
 

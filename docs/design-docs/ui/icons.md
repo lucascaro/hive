@@ -49,7 +49,7 @@ Needs to run rm -rf build/      ← last_summary
 reported by the agent           ← state_source; heuristic reads "guessed from terminal output"
 ```
 
-The tier line is always present, because it is what explains the uncertain ring to someone who hovered to ask about it. `hook` and `extension` deliberately collapse to one phrase: which transport the agent used to speak is not the user's business, only that it spoke rather than we inferred.
+The tier line carries the whole weight of the `state_source` distinction, because nothing else in the UI does: the glyph is identical whether the agent reported the state or Hive inferred it from PTY cadence, and those are not the same claim. It appears for every state a tier actually produced, and is omitted for `starting` (resolved here from `phase`) and for a dead session's `exited`/`error` (observed from the process exiting) — asserting a tier over those would invent a provenance. Any non-empty `state_source` reads as reported: only the heuristic tier is spelled `""`, so a tier a future daemon adds is described correctly rather than relabelled a guess.
 
 `state-working` and `state-waiting-permission` reuse `--state-running` and `--state-attention` rather than claiming tokens of their own: those two colours are already picked for all 18 themes, and shape plus motion carries the busy/idle and bell/permission difference without asking anyone to pick 18 more values.
 
