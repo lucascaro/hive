@@ -7,7 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Claude Code sessions now report their own state instead of relying on
+  a guess from terminal output alone. Every session Hive spawns gets
+  `HIVE_SESSION_ID` / `HIVE_SOCKET` in its environment, and Claude
+  sessions get hooks wired through `claude --settings` that call
+  `hived hook` on prompt submit, turn end, and permission prompts. A
+  waiting-for-permission session now shows exactly that — not a guess
+  from "no output for two seconds" — and the sidebar/tile glyph and
+  tooltip get a real prompt/summary instead of nothing. Falls back to
+  the existing heuristic tier automatically when `claude` predates the
+  hooks it needs.
+- Every session now shows what it is doing. The sidebar row and the grid
+  tile header carry a state glyph — working, idle, waiting for you,
+  exited — so a screen of ten agents can be read at a glance instead of
+  clicked through one at a time. Hovering names the state in words.
+  Hive reads the state from what the terminal actually renders, so it
+  works for every agent and for plain shells, and a session that is
+  waiting on you keeps saying so until you look at it.
+
 ### Fixed
+- A grid tile's header now shows the same thing its sidebar row does.
+  Both read the session the daemon broadcasts, where the header
+  previously rendered from a copy refreshed only when the grid was
+  rebuilt — so a session could disagree with itself depending on where
+  you looked, and a tile's window title could stay blank for a session
+  whose tile had been rebuilt or was never attached.
 - Restarting Hive no longer risks leaving the daemon unreachable. When
   the old `hived` shut down while its replacement had already taken
   over the socket path, it could delete the replacement's socket —
