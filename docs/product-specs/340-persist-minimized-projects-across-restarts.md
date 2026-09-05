@@ -5,7 +5,8 @@ type: bug
 complexity: M
 priority: P2
 pr: 342
-stage: GATE
+shipped: 2026-09-05
+stage: DONE
 ---
 
 # Persist minimized projects across restarts
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** bug
 - **Complexity:** M
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/340-persist-minimized-projects-across-restarts.md](../exec-plans/active/340-persist-minimized-projects-across-restarts.md)
+- **Exec plan:** [docs/exec-plans/completed/340-persist-minimized-projects-across-restarts.md](../exec-plans/completed/340-persist-minimized-projects-across-restarts.md)
 
 ## Problem
 

@@ -4,7 +4,7 @@
 - **Issue:** #340
 - **PR:** #342
 - **Branch:** `feature/340-persist-minimized-projects-across-restarts`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -297,6 +297,7 @@ a changeset note covering the documented key name.
 - **2026-09-05** — Namespace the keys rather than delete the prune. Why: operator's call at clarifying round B; the sets are per-daemon by nature, and dropping the prune trades one bug for unbounded growth.
 - **2026-09-05** — Namespace = `sha256(registry.StateDir())[:8]`, not the raw path. Why: keeps the key short and avoids putting a filesystem path in web storage.
 - **2026-09-05** — `test/e2e-real/wails-bridge.ts` also needed the `StateDirID` stub. Why: an existing test ("real harness defines every name bridge.ts re-exports") caught it — the e2e-real harness is a second binding surface the plan had not listed.
+- **2026-09-05** — Gate PASS on the open PR; plan moved to `completed/`, spec advanced to DONE. Bookkeeping ships inside PR #342.
 - **2026-09-05** — Applied iter 2's three MINORs rather than deferring: `filepath.Clean` before hashing the state dir, `seed()` in the dom harness now models the post-boot hydrated state, and the changeset drops a legacy-adoption claim that only held for sequential launches. Why: AGENTS.md's boil-the-lake rule — all three are low-risk and the harness one would have quietly hidden the prune path from future tests.
 - **2026-09-05** — Fixed review iter 1's IMPORTANT: wrapped the `LogFrontend` call inside the `StateDirID` catch. Why: `LogFrontend` throws synchronously when the Wails binding is missing — the same bridge-absent condition that makes `StateDirID` fail — so the unwrapped call rejected the bootstrap IIFE and `ConnectControl()` never ran. Proved by reverting the wrap: the new e2e test hangs with no project cards.
 - **2026-09-05** — Reviewer's MINOR "use the exported MOCK_STATE_DIR_ID in the spec" not applied as suggested. Why: `wails-mock.ts` imports the store and runs in the browser, so importing it from Playwright's node context dies on `import.meta`. Used a hand-synced constant with a comment saying why.
@@ -309,6 +310,18 @@ a changeset note covering the documented key name.
 - **2026-09-05** — Plan approved (no section feedback); stage IMPLEMENT.
 - **2026-09-05** — Root cause confirmed; spec rewritten, complexity S→M, stage PLAN.
 - **2026-09-04** — Spec + plan created, stage RESEARCH. Repro scenario from operator: quit and relaunch BOTH daemon and GUI; every minimized project returns expanded, every time.
+
+## Gate verdict
+
+- **2026-09-05** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: all three success criteria demonstrated behaviorally, no non-goal bleed, docs accurate.
+  - 2026-09-05 dimensions:
+    - acceptance — PASS — all three criteria proved by executed tests, not code reading. Criterion 3 (a deleted project is dropped, not stranded) verified specifically against the *hydrated* path: `minimize-project.test.tsx:416/426/435` run under a `beforeEach` that hydrates with a non-empty namespace, so the new `projectSetsHydrated` gate suppresses pruning only in the pre-handshake window, not in steady state.
+    - non-goals — PASS — session-level `appData().minimized` untouched; `git diff main...HEAD -- internal/wire internal/registry` empty, so no daemon-owned state and no new wire frame (`StateDirID` only *reads* `registry.StateDir()`); no window-identity or cross-window coordination added. No scope creep.
+    - doc accuracy — PASS — changeset schema and prose correct (`type: fixed`, `bump: patch`, `pr: 342`), `CHANGELOG.md` and `docs/product-specs/index.md` untouched, no current-tense doc misdescribes the now-namespaced keys, spec/plan cross-links resolve.
+
+  Noted, out of scope for this PR: `AGENTS.md:217` and `CONTRIBUTING.md:63` both point at `.changesets/README.md`, which does not exist in the repo. Pre-existing, unrelated to #340.
+
+  Caveat on the convergence signal: review iteration 2's APPROVE was recorded at `e0c7092`; the three MINOR commits it requested landed after, so head `e232082` was gated but never re-reviewed. CI is green on `e232082`.
 
 ## PR convergence ledger
 
