@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   waiting on you keeps saying so until you look at it.
 
 ### Changed
+- The menu bar's summary now reads "2 waiting on you" instead of
+  "2 need you", and says the same thing the dots beside the sessions
+  do. The collapsed project card in the main window uses the same
+  wording, so the two surfaces no longer describe the same count
+  differently.
+- Hovering a session's state icon, in the sidebar or on a tile, now
+  shows what that session was asked to do, the last thing the agent
+  said, and whether the state was reported by the agent or guessed from
+  its terminal output.
+- Desktop notifications say which kind of answer is wanted: "waiting
+  for permission" when an agent is blocked on a yes/no, "waiting for
+  input" otherwise.
 - A minimized project chip now shows how many sessions the project holds
   and how many of them are waiting on you, next to the same state icon the
   sidebar rows and grid tiles use — so a minimized project tells you what
@@ -63,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolved prompt still showing "waiting") until the next event. Reports
   that arrive late are now ignored in favour of what the daemon already
   knows. Affects Claude and Pi sessions alike.
+- A session whose agent stopped reporting no longer claims the agent
+  said it was idle. When Hive falls back to guessing because an agent's
+  hooks went quiet, the state icon's tooltip now says "guessed from
+  terminal output" instead of continuing to credit the agent for a
+  state it never sent.
 - A grid tile's header now shows the same thing its sidebar row does.
   Both read the session the daemon broadcasts, where the header
   previously rendered from a copy refreshed only when the grid was
