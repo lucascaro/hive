@@ -165,7 +165,9 @@ shell) message any other session with the same semantics the GUI has.
 - `cmd/hived/msg.go`, `msg_test.go`
 - `cmd/hivegui/frontend/src/components/modals/MessageSession.tsx` + test
 - `scripts/check-no-claude-keys.sh` (grep guard, wired into `scripts/test.sh`)
-- `scripts/probe-claude.sh` gains a 338 section: assert
+- The drift probe (which shipped as `cmd/hived/claude_probe_test.go`
+  behind `HIVE_PROBE_CLAUDE=1`, NOT as the `scripts/probe-claude.sh`
+  this line originally assumed) gains a 338 section: assert
   `~/.claude/sessions/<pid>.json` for the probe session still carries
   `sessionId`, `messagingSocketPath`, `pid`; send one message over the
   socket and assert the `-p` session's output echoes it.

@@ -406,10 +406,14 @@ assistant message ends with `?` — a heuristic, flagged in a comment
 - `testdata/claude-hooks/<claude-version>/*.json` — one recorded payload
   per hook event (capture from a real session with `HIVE_HOOK_DEBUG=1`
   once; the version directory is what a drift diff compares against)
-- `scripts/probe-claude.sh` — drift probe: scratch `hived` on a temp
-  socket + state dir (`HIVE_SOCKET`/`HIVE_STATE_DIR`, never the user's),
-  `claude -p "say ok"` launched with Hive's `--settings` JSON, assert
-  `prompt` and `turn_end` events arrive within 60 s, and that a
+- `scripts/probe-claude.sh` — **NEVER BUILT (see Progress).** The drift
+  probe shipped instead as `cmd/hived/claude_probe_test.go` behind
+  `HIVE_PROBE_CLAUDE=1`, and the recorded payloads live at
+  `cmd/hived/testdata/hooks/`, not under a version directory. The
+  original intent, kept for the record: drift probe: scratch `hived` on
+  a temp socket + state dir (`HIVE_SOCKET`/`HIVE_STATE_DIR`, never the
+  user's), `claude -p "say ok"` launched with Hive's `--settings` JSON,
+  assert `prompt` and `turn_end` events arrive within 60 s, and that a
   project-level `Stop` hook in the scratch dir still fires alongside
   Hive's (hooks concatenate). Exits 0 with
   "skipped" when `claude` is not on PATH. Wired into `scripts/test.sh`
@@ -555,10 +559,15 @@ decision-log entry with the log excerpt BEFORE any code changes.
   Code 2.1.260: a project `.claude/settings.json` `Stop` hook and a
   `--settings '{…}'` `Stop` hook both fired on one `-p` turn. So the
   Claude adapter emits only Hive's hooks and never has to read the
-  user's settings. `scripts/probe-claude.sh` repeats this exact check
-  (two `Stop` hooks, both must fire) so a future change in merge
-  semantics shows up as a probe failure, not a silent loss of the
-  user's hooks. Resolves former open question 1.
+  user's settings. The intent was for `scripts/probe-claude.sh` to repeat
+  this exact check (two `Stop` hooks, both must fire) so a future change
+  in merge semantics would show up as a probe failure rather than a
+  silent loss of the user's hooks. That script was never written, and
+  `cmd/hived/claude_probe_test.go` does NOT cover this: it installs only
+  Hive's own hooks, so it cannot tell concatenate from replace. The
+  finding therefore rests on the one manual check above, and a drift in
+  it would surface as the user's own hooks quietly not firing.
+  Resolves former open question 1.
 - **2026-09-04 (phase 1)** — Every machine mutator returns `changed
   bool`; the registry broadcasts on that rather than diffing snapshots
   before/after. Why: the plan specified both mechanisms (a bool from
@@ -1025,6 +1034,21 @@ decision-log entry with the log excerpt BEFORE any code changes.
   stale session with no output at all. The lesson is the one this
   feature keeps re-teaching: prose about a state machine has to be
   written against a probe, not against a reading.
+
+- **2026-09-05 (phase 4, gate iter 2)** — The comment that replaced the
+  stale `scripts/probe-claude.sh` reference in `internal/agent/claude.go`
+  was ITSELF an overclaim, caught by the gate's doc re-check: it told
+  the reader to re-verify the hooks-concatenate finding with
+  `cmd/hived/claude_probe_test.go`, which installs only Hive's own hooks
+  and therefore cannot tell concatenation from replacement. Fixing a
+  false citation by writing a second false citation is the exact loop
+  this feature keeps falling into. The comment now says what is true and
+  uncomfortable: the finding rests on one manual check on Claude Code
+  2.1.260, nothing re-checks it, and a change in Anthropic's merge
+  semantics would surface as the user's own hooks silently not firing.
+  The same correction is recorded against the `--settings` decision
+  entry above, and `docs/exec-plans/active/338-session-messaging.md`
+  no longer presupposes the script exists.
 
 ## Review log
 
