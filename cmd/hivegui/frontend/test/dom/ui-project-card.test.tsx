@@ -64,7 +64,7 @@ describe('ProjectCard', () => {
     expect(root.style.getPropertyValue('--project-color')).toBe('#0af');
   });
 
-  it('shows the session count expanded and "n sessions · k need you" collapsed', () => {
+  it('shows the session count expanded and "n sessions · k waiting on you" collapsed', () => {
     expect(
       make().root.querySelector('.hv-project-card__count')?.textContent,
     ).toBe('2');
@@ -72,7 +72,7 @@ describe('ProjectCard', () => {
     expect(collapsed.root.dataset.collapsed).toBe('');
     expect(
       collapsed.root.querySelector('.hv-project-card__count')?.textContent,
-    ).toBe('2 sessions · 1 needs you');
+    ).toBe('2 sessions · 1 waiting on you');
     expect(
       make({
         collapsed: true,
@@ -166,7 +166,7 @@ describe('ProjectCard', () => {
     expect(root.dataset.state).toBe('attention');
     expect(root.dataset.collapsed).toBe('');
     expect(root.querySelector('.hv-project-card__count')?.textContent).toBe(
-      '3 sessions · 2 need you',
+      '3 sessions · 2 waiting on you',
     );
     const chev = root.querySelector('.hv-project-card__chevron');
     expect(chev?.getAttribute('aria-expanded')).toBe('false');

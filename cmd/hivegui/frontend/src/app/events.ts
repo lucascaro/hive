@@ -45,6 +45,7 @@ import { openChoiceDialog } from './modals/choice-dialog.js';
 import type { WorktreesPayload } from '../lib/worktrees.js';
 import { PHASE, phaseOf, isReady, isClosing } from '../lib/phase-steps.js';
 import { pruneNav } from '../lib/nav-history.js';
+import { DAEMON_STATE } from '../lib/session-state.js';
 import { handleScrollbackEvent, abandonReplays } from '../lib/scrollback.js';
 import { createScrollTrace } from '../lib/scroll-debug.js';
 import type { ScrollTrace } from '../lib/scroll-debug.js';
@@ -248,7 +249,16 @@ function fireBellNotification(info: SessionInfo) {
   const projectName = proj?.name ?? '';
   const title = info.name || 'Session';
   const subtitle = projectName;
-  const body = 'Waiting for input — click to switch.';
+  // Name the state rather than saying "input" for everything: a
+  // permission prompt is a different ask from an open-ended question,
+  // and a notification that blurs the two makes the user open the
+  // window to find out which it was. Anything else that reaches
+  // needs_attention (a bare bell on the heuristic tier) keeps the
+  // original wording, which is still true for it.
+  const body =
+    info.state === DAEMON_STATE.waitingPermission
+      ? 'Waiting for permission — click to switch.'
+      : 'Waiting for input — click to switch.';
   Notify(title, subtitle, body, info.id).catch(() => {
     // Best-effort; the visual sidebar pulse covers the user even if
     // the OS notification fails (no notify-send installed, etc.).

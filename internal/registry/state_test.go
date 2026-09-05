@@ -416,3 +416,66 @@ func TestBellReachesAttentionThroughTheRealPTY(t *testing.T) {
 		}
 	}
 }
+
+// The exit path is the one state transition no other test drives
+// through a real process: watchSessionExit calls machine().Exit()
+// inline (registry.go, next to the Alive:false write) rather than
+// through a session hook, so a unit test on the machine proves the
+// mapping but not the wiring. /bin/cat exits on EOT.
+//
+// The gate that found this gap proved it with a throwaway; this is
+// that test, kept.
+func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
+	skipNonPosix(t)
+	r := freshRegistry(t)
+	e, sess := liveSession(t, r, wire.CreateSpec{Name: "dying"})
+
+	// Read through List(), never r.Get(id).Info(): Get drops the
+	// registry mutex before returning the entry, so Info() would read
+	// e.sess while watchSessionExit is writing it. Every other test in
+	// this file gets away with Get().Info() only because its process
+	// stays alive; this one races the exit path by construction, which
+	// is the whole point of it. List() holds the lock across Info().
+	infoOf := func(t *testing.T) wire.SessionInfo {
+		t.Helper()
+		for _, s := range r.List() {
+			if s.ID == e.ID {
+				return s
+			}
+		}
+		t.Fatalf("session %s vanished from the registry", e.ID)
+		return wire.SessionInfo{}
+	}
+
+	// Assert the live shape positively: `got == StateExited` could never
+	// fire here, since a live session's state is StateIdle ("") — a
+	// guard that cannot fail is not a guard.
+	if got := infoOf(t); !got.Alive || got.State == wire.StateExited {
+		t.Fatalf("test setup: want a live non-exited session, got alive=%v state=%q",
+			got.Alive, got.State)
+	}
+
+	// Close kills the child and releases the PTY. Deliberately NOT an
+	// EOT written to the terminal: that ends /bin/cat on macOS but not
+	// reliably on Linux (this test timed out there at 10 s on the first
+	// CI run), because whether a lone ^D means EOF depends on the line
+	// discipline's canonical-mode state. The transition under test is
+	// "the child process is gone", so end it by ending it.
+	if err := sess.Close(); err != nil {
+		t.Fatalf("close session: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		info := infoOf(t)
+		if !info.Alive {
+			if info.State != wire.StateExited {
+				t.Fatalf("dead session reports state %q, want %q",
+					info.State, wire.StateExited)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("session never reported the exit")
+}
