@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stricter than the old one on both: a session that has exited, or that
   has not finished starting, no longer counts as waiting on you, so a
   stale bell can't outlive the session that raised it.
+- CI is a little faster and its cancellation rules are now correct. The
+  Windows leg spent three minutes of every run enabling a Windows media
+  codec feature that no test uses, and two pushes to the same pull request
+  both ran the full three-platform matrix instead of the first being
+  superseded. Developer-facing only — nothing about the app itself changes.
 
 ### Fixed
 - A session's state glyph no longer gets stuck showing the wrong thing
