@@ -81,7 +81,9 @@ also the only time you can't ask the GUI. It shows:
   daemon is too old for this build to drive;
 - how many sessions are open across how many projects, and how many are
   waiting on you;
-- every session, `project · session`, with a dot on the ones that rang.
+- every session, `project · session`, with a dot on the ones that are
+  actually blocked on you — an agent waiting for input or for a
+  permission answer, not merely one that rang the bell a while ago.
   Clicking one jumps straight to it, launching Hive if it isn't running.
 
 Plus **Reload GUI**, **Restart Daemon…** (confirmed — it ends every

@@ -892,6 +892,56 @@ decision-log entry with the log excerpt BEFORE any code changes.
   `TestApplyStillDropsARealInversion`).
 
 
+- **2026-09-05 (phase 4)** — hivebar decides "is this session waiting"
+  from the daemon's contract number, NOT from whether `state` is empty.
+  The Approach above says to "fall back to `needs_attention` when
+  `state` is empty (old daemon)", and that rule is wrong: `StateIdle`
+  IS the empty string, so an idle session on a current daemon and every
+  session on a pre-contract-3 daemon are byte-identical on the wire.
+  Reading it literally would have made an old daemon report a permanent
+  zero and — worse — made every idle session on a current one fall
+  through to the bell flag, resurrecting exactly the "rang once an hour
+  ago, still counted" behavior phase 4 exists to kill.
+  `internal/buildinfo/contract.go`'s own history entry 3 names this
+  trap ("a GUI built after it, talking to an older daemon, would show
+  every session as permanently idle"). `Welcome.DaemonContract` already
+  reaches `BuildModel`, so the discriminator cost nothing: `waiting()`
+  falls back to `needs_attention` below contract 3 and reads `state`
+  at or above it. Pinned by `TestBuildModelFallsBackToBellOnOldDaemon`
+  and `TestBuildModelIgnoresBellWhenStateIsAvailable`.
+
+- **2026-09-05 (phase 4)** — The notification wording is composed in
+  `app/events.ts` (`fireBellNotification`), not in `cmd/hivegui/app.go`
+  as the Files-to-change list says. `App.Notify` is a four-argument
+  pass-through to `internal/notify`; it has no idea what a session is,
+  and giving it one would have put a second state vocabulary in Go for
+  no gain. Only `waiting_permission` gets its own body — everything
+  else that reaches `needs_attention` (a bare bell on the heuristic
+  tier) keeps "Waiting for input", which is still true for it.
+
+- **2026-09-05 (phase 4)** — No `StateDot.tsx`, and no separate tooltip
+  element: the tooltip is the existing `StateIcon`'s `<title>`, filled
+  from a new `stateTooltip()` beside `sessionState()` in
+  `lib/session-state.ts`. Same argument the phase-1 entry above makes
+  for not adding the component — the icon already exists, already has
+  the words channel, and a second surface for the same session could
+  disagree with the first. The tier line ("reported by the agent" /
+  "guessed from terminal output") is always present because it is what
+  explains the uncertain ring to someone who hovered to ask about it;
+  `hook` and `extension` collapse to one phrase, since which transport
+  the agent used to speak is not the user's business.
+
+- **2026-09-05 (phase 4)** — `verbS()` is deleted from
+  `cmd/hivebar/model.go`. "N waiting on you" reads correctly at every
+  count, so the helper that existed only to conjugate "N need/needs
+  you" had no second caller.
+
+- **2026-09-05 (phase 4)** — The minimized `Chip` does NOT get the new
+  tooltip. It takes a resolved `SessionState` rather than a session, so
+  feeding it one would have meant threading the carrier through a
+  presentational component; its button already carries a `title`, and
+  the success criterion names the sidebar row and the tile header.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1187,6 +1237,48 @@ decision-log entry with the log excerpt BEFORE any code changes.
   green; `node --test internal/agent/pi/hive.test.ts` 10/10.
 
 
+- **2026-09-05 (merge gate)** — Gate FAIL, run on the degraded post-merge
+  path (PR #341 already merged as `d49551c`; range evaluated as the whole
+  feature, `ad8f4aa~1..origin/main`). Failing checks:
+  - Success criterion 7 (`hivebar` count off the new state) — not
+    implemented; phase 4 work.
+  - Success criterion 6, tooltip half (prompt + summary) — not
+    implemented; phase 4 work. Glyph half passes.
+  - `docs/design-docs/control-plane.md:137-144` documents
+    `scripts/probe-claude.sh` and `testdata/claude-hooks/` as existing;
+    neither is in the tree or in history.
+  - `docs/design-docs/ui/icons.md:37` says the Pi extension "will in
+    phase 3" after phase 3 shipped.
+  - `docs/design-docs/control-plane.md:38` claims the hook tier learns
+    "subagent activity"; no `Subagent*` handling exists.
+  Non-goals dimension passed clean. Stage stays at GATE. No follow-up
+  issues filed yet — the gate's failing criteria are the already-planned
+  phase 4 plus a three-paragraph doc correction, not unplanned debt.
+
+- **2026-09-05 (phase 4)** — hivebar, notification wording and the
+  state tooltip. `cmd/hivebar/model.go`: `Model.Attention` →
+  `Model.Waiting` and `SessionRow.NeedsAttention` → `SessionRow.Waiting`,
+  both fed by one `waiting()` predicate so the summary line and the row
+  markers cannot disagree; summary reads "N waiting on you".
+  `lib/session-state.ts` gained `stateTooltip()`, wired into
+  `StateIcon`'s new optional `detail` prop from `SessionRow.tsx` and
+  `TileChrome.tsx`. `app/events.ts` names `waiting_permission` in the
+  notification body. Docs: `control-plane.md` drift-probe paragraph now
+  describes the probe that exists (`cmd/hived/claude_probe_test.go`,
+  `HIVE_PROBE_CLAUDE=1`, fixtures at `cmd/hived/testdata/hooks/`)
+  instead of the never-committed `scripts/probe-claude.sh`; the tier
+  table drops the "subagent activity" claim (no `Subagent*` handling
+  exists); `ui/icons.md` stops saying the Pi extension "will" report
+  waiting_permission and documents the tooltip stack; README's menu-bar
+  bullet says the dot means blocked-on-you, not rang.
+  Verified: `go vet` host/linux/windows clean; `go test ./internal/...
+  ./cmd/hived/ ./cmd/hivebar/` green; `scripts/check-daemon-contract.sh
+  origin/main HEAD` → "no daemon-side changes" (so no contract bump);
+  `biome ci .` clean; `tsc --noEmit` clean; vitest 1027/1027 in 88
+  files; `CI=1 npx playwright test` 270 passed / 31 skipped.
+  Not done in this pass: the manual smoke checklist in an iso build
+  (rows 1–6 and 13–14 still unrun, and no row covers the menu bar).
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1200,3 +1292,11 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 3 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be5b1f45d0d6110670ca570825b18153cb3812780652253e88c0861f28d5277a; threads_open: 0; action: continue (3 IMPORTANT remain; loop's stop rule met but boil-the-lake says fix them); head_sha: 7c97502.
 - **2026-09-05 iter 4 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 27e41405647bee014b40872c51634cc5e5605e836fb8f36b328c2543d025406d; threads_open: 0; action: continue (3 IMPORTANT + 5 MINOR fixed; stop rule met but one finding was a regression from iter 2); head_sha: 9592c67.
 - **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.
+
+## Gate verdict
+
+- **2026-09-05** — verdict: FAIL; checks: 11 passed / 3 failed / 2 followups; followups: none filed (pending user decision); one-line: phases 1–3 are delivered and evidenced, but two of the spec's eight success criteria (hivebar count, prompt+summary tooltip) are phase-4 work that was never implemented, and three design-doc paragraphs describe unshipped or already-shipped things in the wrong tense.
+  - 2026-09-05 dimensions:
+    - acceptance — FAIL — criterion 7 ("`hivebar` shows 'N waiting on you' using the new state, not the bell") not delivered: `cmd/hivebar/model.go:53,97,104,195` build rows solely from `wire.SessionInfo.NeedsAttention`, and the string appears nowhere in the tree. Criterion 6 partially delivered: glyphs ship and are covered (`test/e2e/state-glyphs.spec.ts`, 35 unit tests), but the tooltip half is absent — `last_prompt`/`last_summary` exist only as optional type fields at `cmd/hivegui/frontend/src/app/state.ts:72-73` and are read by zero components. Criteria 1, 4, 5, 8 PASS with green tests; 2 and 3 NEEDS_FOLLOWUP on their manual halves only (checklist rows 1–6 and 13–14 unrun in an iso build; `TestAgentTUIStateFlow` skips by default).
+    - non-goals — PASS — all six negative checks clean. Strongest evidence on "no persisted state": `persist.go`/`closed.go`/`store.go` have zero diff in `ad8f4aa~1..origin/main`, `TestMetaFileUnchangedByState` byte-compares `session.json` across a full state tour, and a runtime enumeration of `agent.All()` confirms `SpawnArgs` is non-nil only for `claude` and `pi`.
+    - doc accuracy — FAIL — `docs/design-docs/control-plane.md:137-144` states in the present tense that `scripts/probe-claude.sh` exists, runs in CI and is on the release checklist, and that fixtures live under `testdata/claude-hooks/`; neither exists in the tree or anywhere in history. `docs/design-docs/ui/icons.md:37` still says the Pi extension "will in phase 3" after phase 3 merged as `d49551c`. `docs/design-docs/control-plane.md:38` claims the hook tier learns "subagent activity"; no `Subagent*` handling exists in Go. Changesets (5), CHANGELOG generation, README, and the plan header/Progress log all PASS.

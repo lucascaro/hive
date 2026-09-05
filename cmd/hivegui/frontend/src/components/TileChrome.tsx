@@ -34,7 +34,7 @@ import { beginInlineRename } from '../app/inline-rename.js';
 import { setFocusedTile, refocusActiveTerm } from '../app/focus.js';
 import { minimizeSession } from '../app/view.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
-import { sessionState } from '../lib/session-state.js';
+import { sessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
 import { appStore, useAppStore, type TileChromeState } from '../store/store.js';
 import { getTerm, useTermIds } from '../store/terms.js';
@@ -121,7 +121,10 @@ function TileHeader({
   if (!info) return null;
   return (
     <>
-      <StateIcon state={state} />
+      <StateIcon
+        state={state}
+        detail={stateTooltip({ ...info, phase: chrome.phase }, state)}
+      />
       {/* Double-click the tile name to rename inline, the same affordance
           the sidebar row has (SessionRow.tsx carries the identical
           ignore, for the identical reason). The listener is carried over

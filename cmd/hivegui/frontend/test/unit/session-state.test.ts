@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sessionState } from '../../src/lib/session-state.js';
+import { sessionState, stateTooltip } from '../../src/lib/session-state.js';
 
 describe('sessionState', () => {
   it('is starting for any non-ready phase, alive or not', () => {
@@ -65,5 +65,45 @@ describe('sessionState', () => {
     expect(sessionState({ alive: false, last_error: 'boom' })).toBe('error');
     expect(sessionState({ alive: false, lastError: 'boom' })).toBe('error');
     expect(sessionState({ alive: false, last_error: '' })).toBe('exited');
+  });
+});
+
+describe('stateTooltip', () => {
+  it('is the state words plus the tier when the agent reported nothing', () => {
+    // The heuristic tier knows neither field, and must still produce
+    // the one-line tooltip the icon had before prompt/summary existed.
+    expect(stateTooltip({ alive: true })).toBe(
+      'Idle\nguessed from terminal output',
+    );
+  });
+  it('stacks prompt then summary then tier', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'waiting_permission',
+        state_source: 'hook',
+        last_prompt: 'refactor the parser',
+        last_summary: 'Needs to run rm -rf build/',
+      }),
+    ).toBe(
+      'Waiting for permission\n“refactor the parser”\nNeeds to run rm -rf build/\nreported by the agent',
+    );
+  });
+  it('drops the lines whose fields are empty', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'working',
+        state_source: 'extension',
+        last_prompt: 'ship it',
+      }),
+    ).toBe('Working\n“ship it”\nreported by the agent');
+  });
+  it('honours a caller-resolved state so the icon and its words agree', () => {
+    // TileChrome resolves with an overriding phase; passing the result
+    // back in is what stops the tooltip disagreeing with the glyph.
+    expect(stateTooltip({ alive: true }, 'starting')).toBe(
+      'Starting\nguessed from terminal output',
+    );
   });
 });

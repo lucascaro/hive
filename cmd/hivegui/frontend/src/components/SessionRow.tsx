@@ -23,7 +23,7 @@ import { StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
-import type { SessionState } from '../lib/session-state.js';
+import { type SessionState, stateTooltip } from '../lib/session-state.js';
 import { displayTitle } from '../lib/term-title.js';
 import type { SessionInfo } from '../app/state.js';
 
@@ -135,7 +135,11 @@ export function SessionRow(p: SessionRowProps) {
       onDragOver={p.onDragOver}
       onDrop={p.onDrop}
     >
-      <StateIcon state={p.state} className="hv-session-row__state" />
+      <StateIcon
+        state={p.state}
+        className="hv-session-row__state"
+        detail={stateTooltip(s, p.state)}
+      />
       <span className="hv-session-row__text">
         <span className="hv-session-row__name" ref={p.nameRef}>
           {s.name ?? ''}

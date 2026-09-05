@@ -78,7 +78,7 @@ describe('sidebar row state icon on attention', () => {
       '#hv-state-attention',
     );
     expect(dot('a').querySelector('title')?.textContent).toBe(
-      'Waiting for you',
+      'Waiting for you\nguessed from terminal output',
     );
 
     update(() => setAttn('a', false));
@@ -87,7 +87,9 @@ describe('sidebar row state icon on attention', () => {
     expect(dot('a').querySelector('use')?.getAttribute('href')).toBe(
       '#hv-state-running',
     );
-    expect(dot('a').querySelector('title')?.textContent).toBe('Idle');
+    expect(dot('a').querySelector('title')?.textContent).toBe(
+      'Idle\nguessed from terminal output',
+    );
   });
 
   it('renders the daemon state glyphs the sidebar gained in spec 336', () => {
@@ -100,7 +102,9 @@ describe('sidebar row state icon on attention', () => {
     expect(dot('w').querySelector('use')?.getAttribute('href')).toBe(
       '#hv-state-working',
     );
-    expect(dot('w').querySelector('title')?.textContent).toBe('Working');
+    expect(dot('w').querySelector('title')?.textContent).toBe(
+      'Working\nguessed from terminal output',
+    );
 
     // The distinction the whole state model exists for: a yes/no the
     // agent is blocked on does not look like a bell.
@@ -109,7 +113,27 @@ describe('sidebar row state icon on attention', () => {
       '#hv-state-waiting-permission',
     );
     expect(dot('p').querySelector('title')?.textContent).toBe(
-      'Waiting for permission',
+      'Waiting for permission\nguessed from terminal output',
+    );
+  });
+
+  // The tooltip is where "what is this session even for" gets answered
+  // in a sidebar of ten rows — the glyph can only carry the state.
+  it('stacks the agent-reported prompt, summary and tier into the tooltip', () => {
+    withSessions([
+      {
+        id: 'q',
+        name: 'api',
+        order: 0,
+        state: 'waiting_permission',
+        state_source: 'hook',
+        last_prompt: 'refactor the parser',
+        last_summary: 'Needs to run rm -rf build/',
+      },
+    ]);
+
+    expect(dot('q').querySelector('title')?.textContent).toBe(
+      'Waiting for permission\n\u201crefactor the parser\u201d\nNeeds to run rm -rf build/\nreported by the agent',
     );
   });
 

@@ -35,7 +35,7 @@ session carries which tier it is on (`state_source` on the wire):
 
 | Tier | Source | Agents | What Hive learns |
 |------|--------|--------|------------------|
-| `hook` | Agent-native lifecycle hooks calling back into `hived` | Claude Code | exact turn boundaries, permission prompts, prompt/summary text, subagent activity |
+| `hook` | Agent-native lifecycle hooks calling back into `hived` | Claude Code | exact turn boundaries, permission prompts, prompt/summary text |
 | `extension` | A Hive-shipped extension loaded into the agent at spawn | Pi | exact turn boundaries (`agent_start` / `agent_settled`), prompt/summary text, a per-session inbox socket |
 | `heuristic` | PTY output cadence + bell + OSC title + process exit | shell, Codex, Gemini, Copilot, Aider, custom | working / idle / exited, "waiting" only via bell |
 
@@ -134,14 +134,16 @@ Rules that follow:
    surface is skipped, not attempted. Above an *observed-broken*
    maximum (a constant bumped by hand when drift is found) it is also
    skipped, so a known-bad release does not spam logs.
-5. **Drift probe, not drift hope.** `scripts/probe-claude.sh` launches
-   `claude -p` with Hive's hook settings against a trivial prompt and
-   asserts that the expected `AGENT_EVENT`s reach a scratch `hived`;
-   for 338 it also checks that `~/.claude/sessions/*.json` still carries
-   the three fields. It runs in CI when `claude` is on PATH (the macOS
-   leg) and is part of the release checklist. Recorded hook payloads
-   live under `testdata/claude-hooks/` with the Claude version in the
-   filename, so a diff against a fresh capture is the review.
+5. **Drift probe, not drift hope.** `cmd/hived/claude_probe_test.go`
+   launches a real `claude` from the daemon with Hive's hook settings
+   and asserts that the expected `AGENT_EVENT`s arrive with
+   `src=hook`. It is opt-in rather than automatic — `HIVE_PROBE_CLAUDE=1`,
+   with `HIVE_PROBE_AGENTS=1` for the equivalent TUI-tier probe in
+   `internal/registry` — because it needs the real binary, which no CI
+   leg has. What *does* run everywhere is the fixture table:
+   recorded hook payloads live under `cmd/hived/testdata/hooks/`, and
+   `TestHookMapsEveryEvent` replays every one of them, so a diff
+   against a fresh capture is the review.
 6. **One file per surface.** Each row above maps to one Go file; a
    Claude change is a one-file diff plus a fixture refresh. Nothing in
    `internal/registry/` or `internal/daemon/` knows a Claude field name.
