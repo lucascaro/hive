@@ -1447,6 +1447,18 @@ decision-log entry with the log excerpt BEFORE any code changes.
   - No committed test drives `exited` through a real child exit.
   Non-goals passed clean. Stage stays at GATE.
 
+- **2026-09-05 (re-gate)** — Gate NEEDS_FOLLOWUP, down from FAIL on two
+  dimensions. Everything fixable from this branch is fixed: the
+  `Tick` source defect, the `-race` failure, the `exited` coverage gap,
+  criterion 5's wording (twice), and every stale prose reference.
+  What remains is manual verification that no code change can close:
+  - Criterion 2: `error` never observed on a real `claude`; checklist
+    rows 1–6 and 13–14 unrun in an iso build.
+  - Criterion 3: no state observed from a real `pi` (row 14).
+  - Criteria 6 and 7: rows 15–16 now exist for the menu bar and the
+    tooltip, but have never been run.
+  These need `wails build` (never `-s`) and a human. Stage stays GATE.
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1462,6 +1474,16 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.
 
 ## Gate verdict
+
+- **2026-09-05 (re-gate after fixes)** — verdict: NEEDS_FOLLOWUP; checks: 6 passed / 0 failed / 2 followups; followups: none filed (manual verification only); one-line: every criterion is implemented, evidenced and now race-clean, and the prose defects are swept; what remains is that four criteria have never been exercised against a real binary or a running app.
+  - 2026-09-05 dimensions (after `fc020de`):
+    - acceptance — NEEDS_FOLLOWUP — criteria 1, 4, 6, 7, 8 PASS. Criterion 5 now PASSES in substance: the gate found `Tick` demoted `state` without `source`, that was fixed and pinned by `TestStaleTickDemotesTheSourceNotJustTheState` (mutation-checked), and the criterion was reworded against probes. Criteria 2 and 3 remain followups purely for want of a real `claude` / `pi` binary. The `exited` coverage gap is closed by `TestExitedReachesTheStateThroughTheRealPTY`.
+    - non-goals — PASS — unchanged from the previous run; all six hold, the bell survives as both a heuristic input and the shell notification path.
+    - doc accuracy — PASS (after three rounds) — every `scripts/probe-claude.sh` and "uncertain ring" reference in the tree is now either labelled intent-not-built, labelled superseded, or a record correctly stating the thing does not exist. Verified by tree-wide grep across all file types, not just docs.
+  - 2026-09-05 defects the gate itself found and got fixed, for the record:
+    - `agentstate.Machine.Tick` moved `state` but not `source`, so a stale-tier idle reported `state_source=hook`. Invisible until phase 4 rendered provenance in the tooltip.
+    - `TestExitedReachesTheStateThroughTheRealPTY` raced `watchSessionExit` under `-race` (deterministic). CI runs no `-race`, so nothing else would have caught it before merge.
+    - Two rounds of my own corrections were themselves unsupported: an "uncertain ring" that was never built, and a citation to a probe test that cannot observe the property it was cited for.
 
 - **2026-09-05** — verdict: NEEDS_FOLLOWUP; checks: 5 passed / 0 failed / 3 followups; followups: none filed (pending user decision); one-line: every criterion is implemented and unit-evidenced and all six non-goals hold, but four criteria have never been exercised against a real binary or a running app, criterion 5's fallback is not the one the spec words, and two stale prose references survive outside the docs that were swept.
   - 2026-09-05 dimensions:
