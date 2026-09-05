@@ -1494,6 +1494,34 @@ decision-log entry with the log excerpt BEFORE any code changes.
   reporting an env failure as a bare timeout on the extension tier.
   Criterion 3 stays a followup until the probe runs green.
 
+- **2026-09-05 (smoke checklist, browser-driven)** — the checklist rows
+  that had been outstanding since phase 2 were run against a REAL
+  daemon and the REAL frontend, not a mock: `wails dev` in the worktree
+  with `HIVE_SOCKET`/`HIVE_STATE_DIR` pointed at the iso dir, driven
+  through its browser dev server (`http://localhost:34115`) with a
+  throwaway Playwright script. Screen recording is not permitted to
+  this agent, so `screencapture` and the native window were both dead
+  ends; the dev server is the way in, and it is strictly better
+  evidence than a photograph — the assertions read
+  `svg.hv-state-icon[data-state]` and its `<title>` directly.
+
+  | Row | Result | Observed |
+  |---|---|---|
+  | 1 | PASS | `ls -R /usr/lib` → `working` during output, `running` (idle) 4 s later, sidebar and tile agree |
+  | 2 | PARTIAL | `printf '\a'` → `attention` on both glyphs (see `bell.png`). The OS notification is fired by the GUI process, which a headless browser has none of — not observed |
+  | 3 | not run | one session in the iso registry, so "switch to that session" has no counterpart |
+  | 4 | PASS | bell + 8 s with no key: still `attention`, no self-clear |
+  | 5 | PASS | keypress clears it. Lands on `working`, not `idle` — the keystroke echoes, and echo is output; it settles to idle on the next quiet tick. The row's "idle" is imprecise, the behaviour is right |
+  | 6 | PASS | `exit` → `exited`, tooltip drops the provenance line (dead session, no tier observed — `stateTooltip`'s `s.alive` guard) |
+  | 13 | PASS | daemon killed and restarted under the running GUI: the session that had been hook-tier with prompt+summary came back `Idle` / `guessed from terminal output` / no text |
+  | 15 | not run | hivebar is an `NSStatusItem`; its menu cannot be opened or read without screen control. Still needs a human |
+  | 16 | PASS (both tiers) | heuristic: `"Idle\nguessed from terminal output"`. Hook tier, fired by the real `hived hook` binary over the real event socket with the repo's own fixtures: `"Idle\n“reply pong”\npong\nreported by the agent"` — state, quoted prompt, summary, provenance, identical on the sidebar row and the tile header |
+
+  Criteria 6 and 7's tooltip half is therefore observed in a real
+  browser against a real daemon. What is still unobserved: the menu bar
+  (row 15), the desktop notification (row 2's second half), and the
+  extension tier (row 14, blocked above).
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
