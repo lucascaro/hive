@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   codec feature that no test uses, and two pushes to the same pull request
   both ran the full three-platform matrix instead of the first being
   superseded. Developer-facing only — nothing about the app itself changes.
+- On a minimized project chip in the sidebar, the session count is now
+  right-aligned instead of sitting next to the project name, with the
+  attention badge immediately to its left. Counts line up down the list.
 
 ### Fixed
 - A session's state glyph no longer gets stuck showing the wrong thing
