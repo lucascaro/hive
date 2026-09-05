@@ -71,6 +71,15 @@ func main() {
 	// command through agent.Get.
 	agent.SetCustomDir(stateDir)
 
+	// Drop the embedded Pi reporter extension next to it. Pi sessions
+	// are spawned with `-e <stateDir>/pi/hive.ts` so they report their
+	// own state instead of being guessed at from the PTY. A failure
+	// here is not fatal: agent.piSpawnArgs stats the file and falls
+	// back to the heuristic tier when it is missing.
+	if err := agent.EnsurePiExtension(stateDir); err != nil {
+		log.Printf("hived: write pi extension: %v; pi sessions run on the heuristic state tier only", err)
+	}
+
 	// Start the menu-bar agent, if this platform and this install have
 	// one. hived owns this rather than only the GUI because the menu
 	// bar reports on the daemon: it should exist exactly as long as

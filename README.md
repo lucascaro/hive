@@ -24,7 +24,9 @@ What works:
   `HIVE_SESSION_ID` / `HIVE_SOCKET` in the child's environment, and
   `hived hook` (invoked by hooks Hive wires through `claude --settings`)
   reports prompts, turn-end, and permission prompts back to the daemon
-  over that socket
+  over that socket. Pi sessions get the same precision through a small
+  extension Hive ships with the daemon and loads with `pi -e` — nothing
+  to install, and inert when you run `pi` outside Hive
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

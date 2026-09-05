@@ -1,0 +1,156 @@
+// hive.ts is the Hive extension-tier reporter for Pi. hived writes this
+// file to <stateDir>/pi/hive.ts at daemon start (see
+// internal/agent/pi.go) and every Pi session Hive spawns is launched
+// with `pi -e <that path>`, so Pi reports what it is doing instead of
+// leaving the session on the PTY heuristic tier.
+//
+// Outside Hive the extension is inert: without HIVE_SESSION_ID and
+// HIVE_SOCKET in the environment it subscribes to nothing and returns.
+//
+// Wire format (keep in sync with internal/wire/frame.go — this is the
+// only encoder of Hive frames outside Go):
+//
+//   +-------+--------------+---------+
+//   | type  | len (BE u32) | payload |
+//   | 1 B   | 4 B          | len B   |
+//   +-------+--------------+---------+
+//
+// A report is one connection: HELLO{mode:"event"} then one
+// AGENT_EVENT, then close. The daemon replies to neither, so nothing
+// here ever reads from the socket.
+import net from "node:net";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+
+const FRAME_HELLO = 0x01;
+const FRAME_AGENT_EVENT = 0x22;
+const PROTOCOL_VERSION = 1;
+
+// Mirrors wire.MaxSummaryLen. The daemon truncates again on receipt;
+// capping here is what keeps a pasted-file-sized prompt under
+// wire.MaxPayload, where an oversized frame would be refused whole and
+// lose the kind along with the text.
+const MAX_SUMMARY_LEN = 512;
+
+function frame(type: number, payload: unknown): Buffer {
+  const body = Buffer.from(JSON.stringify(payload), "utf8");
+  const head = Buffer.alloc(5);
+  head.writeUInt8(type, 0);
+  head.writeUInt32BE(body.length, 1);
+  return Buffer.concat([head, body]);
+}
+
+// encodeFrames builds the two frames one report consists of. Exported
+// so a Go test can decode what this encoder actually produces rather
+// than trusting a hand-written fixture to stay in sync.
+export function encodeFrames(sessionId: string, kind: string, text: string, at: string): Buffer {
+  const hello = frame(FRAME_HELLO, {
+    version: PROTOCOL_VERSION,
+    client: "hive-pi-ext",
+    mode: "event",
+  });
+  const event = frame(FRAME_AGENT_EVENT, {
+    session_id: sessionId,
+    kind,
+    source: "extension",
+    ...(text ? { text: truncate(text) } : {}),
+    at,
+  });
+  return Buffer.concat([hello, event]);
+}
+
+// truncate cuts to MAX_SUMMARY_LEN *bytes* (the Go side's unit), then
+// drops any partial UTF-8 sequence the cut created.
+export function truncate(s: string): string {
+  const b = Buffer.from(s, "utf8");
+  if (b.length <= MAX_SUMMARY_LEN) return s;
+  return new TextDecoder("utf-8", { fatal: false })
+    .decode(b.subarray(0, MAX_SUMMARY_LEN))
+    .replace(/�+$/, "");
+}
+
+export default function (pi: ExtensionAPI) {
+  const sid = process.env.HIVE_SESSION_ID;
+  const sock = process.env.HIVE_SOCKET;
+  if (!sid || !sock) return; // not under Hive: inert
+
+  // Fire-and-forget. Every failure mode here — no daemon, a wedged
+  // daemon, a socket that vanished with a restarted hived — must look
+  // exactly like no extension was loaded, never like a Pi error.
+  const post = (kind: string, text = "") => {
+    try {
+      const conn = net.createConnection(sock);
+      conn.on("error", () => {});
+      conn.setTimeout(2000, () => conn.destroy());
+      conn.on("connect", () => {
+        conn.end(encodeFrames(sid, kind, text, new Date().toISOString()));
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  pi.on("session_start", () => {
+    post("ping");
+  });
+
+  pi.on("input", (event) => {
+    // "extension" input is a message another extension injected, not
+    // the user typing; reporting it as a prompt would show the session
+    // as working on something nobody asked for.
+    if (event.source !== "extension") post("prompt", event.text);
+  });
+
+  pi.on("agent_start", () => {
+    post("permission_resolved");
+  });
+
+  // agent_end can be followed by an auto-retry or a queued follow-up;
+  // agent_settled is the one that means Pi has stopped on its own.
+  pi.on("agent_settled", (_event, ctx) => {
+    post("turn_end", lastAssistantText(ctx));
+  });
+
+  // Pi has no built-in permission prompt the way Claude does — a
+  // permission gate is an extension calling ctx.ui.confirm(). These
+  // two events fire around every blocking extension UI prompt, which
+  // is exactly "the session is waiting for the user".
+  pi.on("ui_prompt_start", (event) => {
+    const kind = event?.kind;
+    post(kind === "confirm" || kind === "select" ? "waiting_permission" : "waiting_input");
+  });
+
+  pi.on("ui_prompt_end", () => {
+    post("permission_resolved");
+  });
+
+  pi.on("session_shutdown", () => {
+    post("session_end");
+  });
+}
+
+// lastAssistantText digs the most recent assistant message's text out
+// of the session so the tile can show what Pi just said. The shape is
+// Pi's session format: getBranch() returns entries, and a message entry
+// is {type:"message", message:{role, content}} where an assistant
+// message's content is an array of typed blocks. Every step is
+// optional-chained and the whole walk is wrapped: this reads another
+// package's data shape, and a rename there must cost us the summary,
+// not the turn_end event.
+export function lastAssistantText(ctx: any): string {
+  try {
+    const entries = ctx?.sessionManager?.getBranch?.() ?? [];
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const msg = entries[i]?.message;
+      if (msg?.role !== "assistant") continue;
+      const text = (msg.content ?? [])
+        .filter((b: any) => b?.type === "text" && typeof b.text === "string")
+        .map((b: any) => b.text)
+        .join("")
+        .trim();
+      if (text) return text;
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}

@@ -751,6 +751,44 @@ decision-log entry with the log excerpt BEFORE any code changes.
   `state: <id> <prev> -> <next> src=<tier> reason=<tag>`. A "still
   wrong" report without that transcript is not actionable.
 
+- **2026-09-05 (phase 3)** — The Pi extension reports
+  `waiting_permission` / `waiting_input` from `ui_prompt_start` (and
+  `permission_resolved` from `ui_prompt_end`), not from the planned
+  "last assistant message ends with `?`" heuristic, which is deleted.
+  Why: pi 0.85.0's `docs/extensions.md` documents `ui_prompt_start` /
+  `ui_prompt_end` as notification-only events fired around every
+  blocking extension UI prompt (`ctx.ui.select/confirm/input/editor/
+  custom`), coalescing nested prompts into one outer waiting span —
+  precisely "the session is waiting for the user", reported by pi
+  itself. The plan assumed Pi had no such surface because it has no
+  built-in permission prompt; that is true (a permission gate in Pi is
+  an extension calling `ctx.ui.confirm()`) but irrelevant, because the
+  prompt those gates raise fires these events. `confirm`/`select` map
+  to `waiting_permission` and every other kind to `waiting_input`. This
+  removes the one deliberate ceiling phase 3 was going to carry, so no
+  `ponytail:` comment is warranted.
+
+- **2026-09-05 (phase 3)** — The extension's frame encoder is checked
+  from Go by running real `node`, not by a hand-written byte fixture.
+  Why: `hive.ts` hand-rolls the 5-byte header because it is the only
+  encoder of Hive frames outside the `internal/wire` package, and a
+  fixture is one more copy of the thing that can drift. `encodeFrames`
+  is exported for exactly this, and the Go test decodes its live output
+  with `wire.ReadFrame` + the daemon's own `AgentEventKinds` allowlist,
+  so a header change on either side fails the build. Both
+  node-dependent tests `t.Skip` when `node` is off PATH; CI has it,
+  since it runs the frontend suites.
+
+- **2026-09-05 (phase 3)** — `hive.ts` is written in erasable-syntax
+  TypeScript (type annotations and `import type` only, no enums, no
+  parameter properties) so node's default type stripping loads it
+  directly. Why: pi loads extensions through jiti and needs no build
+  step, but the tests do — `node --test pi/hive.test.ts` and the Go
+  frame test both import the extension as-is. Keeping the syntax
+  erasable is what lets the tested artifact be the shipped artifact
+  rather than a compiled copy of it.
+
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -873,6 +911,54 @@ decision-log entry with the log excerpt BEFORE any code changes.
   test guards the byte-free case and `TestAgentTUIStateFlow` the other.
   Rows 1–6 and 13–14 of the checklist remain a manual pass in the iso
   build.
+
+- **2026-09-05 (phase 3)** — Pi extension implemented on
+  `feature/336-phase3-pi-extension` (branched off `main` after #338
+  squash-merged; the old `feature/336-session-state-model` branch is
+  dead). Shipped: `internal/agent/pi/hive.ts` (the extension),
+  `internal/agent/pi.go` (`//go:embed` of it, `EnsurePiExtension`,
+  `piSpawnArgs`), `SpawnArgs: piSpawnArgs` on the `IDPi` catalog def,
+  and the `agent.EnsurePiExtension(stateDir)` call in
+  `cmd/hived/main.go` immediately after `agent.SetCustomDir`. No wire,
+  daemon, or registry change was needed: phase 2 already built the
+  `event` mode, the `extension` source allowlist entry, `SpawnInfo`
+  carrying `StateDir`, and `appendSpawnArgs` on every create/revive/
+  restart path.
+  Deviations from the plan, both verified against the installed pi
+  0.85.0 `docs/extensions.md` rather than assumed: the `?`-suffix
+  `waiting_input` heuristic is gone, replaced by the real
+  `ui_prompt_start`/`ui_prompt_end` events (see the decision-log entry
+  below); and `lastAssistantText` walks
+  `ctx.sessionManager.getBranch()` entries (`{type:"message",
+  message:{role, content}}`) rather than the `ctx.messages` /
+  `event.messages` shape the plan sketched, which does not exist on
+  `agent_settled`.
+  Verified: `go build ./...`, `go vet ./...` (host, `GOOS=linux`,
+  `GOOS=windows`), `go test -race ./internal/... ./cmd/hived/...` all
+  clean, including the new `internal/agent` tests —
+  `TestPiDefUsesSpawnArgs`,
+  `TestEnsurePiExtensionWritesAtomicallyAndOnlyWhenStale`,
+  `TestEnsurePiExtensionIgnoresEmptyStateDir`, `TestPiSpawnArgs`,
+  `TestPiExtensionFramesAreValidWireFrames` (drives real `node` to run
+  the extension's own encoder and decodes both frames with
+  `wire.ReadFrame`), `TestPiExtensionKindsAreOnTheAllowlist`, and
+  `TestPiExtensionRunsNodeTests` (`node --test pi/hive.test.ts`, four
+  TS cases: inert without env, the exact subscribed event set, byte-not-
+  character truncation at `MaxSummaryLen`, and the session-format walk).
+  Both node-dependent tests skip cleanly when `node` is absent.
+  Not done in this pass: checklist row 14 as a manual pass in an iso
+  build against a real `pi`, and `scripts/probe-claude.sh` (still
+  outstanding from phase 2). Phase 4 (hivebar + notification wording +
+  tooltip polish) is untouched, as phased.
+
+- **2026-09-05 (phase 3)** — `daemon-contract-override` is claimed for
+  this PR rather than bumping `buildinfo.DaemonContract` 4 → 5. The
+  diff touches `cmd/hived/main.go`, which the gate watches, but a GUI
+  built from this tree drives a daemon built without it perfectly: no
+  frame, no registry field, and no session semantic changed. The only
+  difference an old daemon shows is that Pi sessions stay on the
+  heuristic tier — a feature that is absent, not a mixing hazard. A
+  bump would cost every user their running agents to ship it.
 
 ## Open questions
 

@@ -149,7 +149,12 @@ Rules that follow:
 Pi is the mirror image: its extension API is documented and versioned
 with the package, and Hive controls both ends (the extension is
 embedded in `hived`). The same rules apply — inert without env, silent
-on failure, heuristic fallback — but the risk is lower.
+on failure, heuristic fallback — but the risk is lower. Pi has no
+built-in permission prompt to hook: a permission gate there is an
+extension calling `ctx.ui.confirm()`, so Hive reads the
+`ui_prompt_start` / `ui_prompt_end` pair that fires around *every*
+blocking extension prompt. `confirm`/`select` map to
+`waiting_permission`, the rest to `waiting_input`.
 
 ## What is deliberately *not* here
 
