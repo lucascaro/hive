@@ -1471,6 +1471,29 @@ decision-log entry with the log excerpt BEFORE any code changes.
     tooltip, but have never been run.
   These need `wails build` (never `-s`) and a human. Stage stays GATE.
 
+- **2026-09-05 (row 14 attempt, extension tier)** — criterion 3 is now
+  covered by a committed probe rather than a checklist row a human has
+  to remember: `TestPiProbeReportsThroughTheExtension`
+  (`cmd/hived/pi_probe_test.go`), the Pi twin of `TestClaudeProbe*` —
+  opt-in with `HIVE_PROBE_PI=1`, it launches a real `pi` through the
+  daemon with the embedded extension and asserts the extension tier
+  (`session_start` ping), `working` + `LastPrompt` after a typed
+  prompt, and `idle` + a non-empty `LastSummary` on `agent_settled`.
+  It has NOT yet passed on this machine, and the reason is not Hive:
+  the daemon spawns agents through a login shell, and this login shell
+  resolves `node` to v14.15.0 (an nvm default that no PATH prepend
+  survives), so `pi`'s own bundle dies at
+  `SyntaxError: Unexpected token '??='` in
+  `internal/modules/esm/translators.js:141` about five seconds in —
+  before the extension loads. The session correctly shows
+  `heuristic` → `working` → `idle` → `exited`, which is the right
+  answer for an agent that crashed. Any Hive-launched `pi` on this
+  machine has the same fate, so this is worth fixing in the shell
+  config, not in the plan. The probe now preflights `pi --version`
+  through the login shell and SKIPs with that output rather than
+  reporting an env failure as a bare timeout on the extension tier.
+  Criterion 3 stays a followup until the probe runs green.
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
