@@ -1005,7 +1005,11 @@ decision-log entry with the log excerpt BEFORE any code changes.
   prose and the test would otherwise pass on a kind that survives only
   in a comment. Three new TS cases cover the two `ui_prompt_end`
   branches over a real unix socket (the extension's own encoder, a real
-  connection) and the U+FFFD-at-the-cut case.
+  connection) and the U+FFFD-at-the-cut case. The two socket-backed
+  cases skip on Windows (`node:net` cannot bind a unix socket at a
+  temp path there: `listen EACCES`), matching how the daemon's own
+  event-mode tests already skip — the whole event tier is unix-only,
+  since `hived hook` dials `net.Dial("unix", ...)` too.
 
 
 ## Open questions

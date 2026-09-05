@@ -144,7 +144,13 @@ test("lastAssistantText takes the newest assistant text, tolerating junk", () =>
   assert.equal(mod.lastAssistantText({ sessionManager: { getBranch: () => null } }), "");
 });
 
-test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", async () => {
+// The whole event tier is unix-socket only — `hived hook` dials
+// net.Dial("unix", ...) too — so the socket-backed cases below cannot
+// run on Windows, the same way the daemon's own event-mode tests skip
+// there. Everything else in this file is platform-neutral.
+const unixOnly = process.platform === "win32" ? { skip: "unix sockets only" } : {};
+
+test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", unixOnly, async () => {
   // Reporting permission_resolved here would leave the session showing
   // "working" with no agent_settled coming to clear it — only the 30 s
   // staleness timer, and only while PTY bytes keep arriving.
@@ -164,7 +170,7 @@ test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", a
   assert.equal(events[0].source, "extension");
 });
 
-test("ui_prompt_end reports permission_resolved inside a turn", async () => {
+test("ui_prompt_end reports permission_resolved inside a turn", unixOnly, async () => {
   const events = await collectFrames(async (sock) => {
     await new Promise<void>((resolve) => {
       withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
