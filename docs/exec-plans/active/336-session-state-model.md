@@ -999,6 +999,33 @@ decision-log entry with the log excerpt BEFORE any code changes.
   and three test assertions moved with it. The divergence was this
   PR's own doing, which is why it is fixed here rather than deferred.
 
+- **2026-09-05 (phase 4, gate iter 2)** — `Machine.Tick` now demotes
+  `source` alongside `state`, and `daemon-contract-override` is claimed
+  for it rather than bumping `DaemonContract` 4 → 5. The change is
+  daemon-side and client-visible in the strict sense — a tick-derived
+  idle on a stale tier now reports `state_source=heuristic` instead of
+  `hook` — but a GUI built from this tree drives a daemon built without
+  it perfectly. The only difference an old daemon shows is the previous
+  wrong tooltip line ("reported by the agent") on a state no agent
+  reported, in the narrow window where a hooked session's hook has died
+  AND its screen has gone quiet. That is a cosmetic staleness, not a
+  mixing hazard, and a bump costs every user their running agents to
+  ship it. Same reasoning, and same override, as the phase-3 entry
+  above.
+
+- **2026-09-05 (phase 4, gate iter 2)** — Criterion 5 was reworded
+  TWICE. The first rewording was written from my reading of
+  `machine.go` and was wrong in both directions; the gate's acceptance
+  re-check probed the machine instead of trusting the prose and
+  demonstrated both errors. (a) "holds its last reported state until
+  output resumes" is false for a wait: `Output` returns early on
+  `waiting_*` before the demotion branch, so resumed output never
+  releases one — only `ClearWaiting` or `Exit` does. (b) "demotion is
+  driven by output" is false for `working`: `Tick` demotes a quiet
+  stale session with no output at all. The lesson is the one this
+  feature keeps re-teaching: prose about a state machine has to be
+  written against a probe, not against a reading.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
