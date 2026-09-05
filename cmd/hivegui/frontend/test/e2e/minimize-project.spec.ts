@@ -180,26 +180,41 @@ test('a project chip spans the tray, right-aligns +, and restores on any click',
     chipBox.x + chipBox.width - 12,
   );
 
-  // Click the slack between the label and the +. Assert first that the
-  // point really is dead space — with a long enough project name this
-  // would land on the label and pass without testing anything.
-  const slackX = restoreBox.x - 12;
-  const slackY = chipBox.y + chipBox.height / 2;
-  // Every node the chip can grow, not just the label: the count and alert
-  // slots sit between the label and the +, and a check that named only the
-  // label would keep passing on a chip that had swallowed the whole slack.
-  const onContent = await page.evaluate(
-    ({ x, y }) =>
-      !!document
-        .elementFromPoint(x, y)
-        ?.closest('.hv-chip__label, .hv-chip__count, .hv-chip__alert'),
-    { x: slackX, y: slackY },
-  );
-  expect(onContent, 'the click point is on chip content, not the slack').toBe(
-    false,
-  );
-  await page.mouse.click(slackX, slackY);
+  // The count is right-aligned now, so the strip left of the + is no
+  // longer guaranteed to be dead space — it is the count on a chip that
+  // has one. What spec 255 actually promised is that clicking there
+  // restores either way, since every node lives inside .hv-chip__open.
+  const nearRestoreX = restoreBox.x - 12;
+  const rowY = chipBox.y + chipBox.height / 2;
+  await page.mouse.click(nearRestoreX, rowY);
   await expect(listed).toHaveCount(before);
+});
+
+// The session count hugs the + rather than the label, so counts line up
+// down the list; the attention badge, when there is one, sits to its left.
+test('a project chip right-aligns its session count', async ({ page }) => {
+  await boot(page);
+  const first = page.locator('#projects > li.hv-project-card').first();
+  const pid = await first.getAttribute('data-pid');
+  await first.locator('.hv-project-card__header').hover();
+  await first
+    .locator('.hv-project-card__header [data-action="minimize"]')
+    .click();
+
+  const chip = page.locator(`#minimized-projects .hv-chip[data-pid="${pid}"]`);
+  const labelBox = (await chip.locator('.hv-chip__label').boundingBox())!;
+  const countBox = (await chip.locator('.hv-chip__count').boundingBox())!;
+  const restoreBox = (await chip.locator('.hv-chip__restore').boundingBox())!;
+
+  // Flush against the +, not trailing the name.
+  expect(countBox.x + countBox.width).toBeGreaterThan(restoreBox.x - 12);
+  expect(countBox.x).toBeGreaterThan(labelBox.x + labelBox.width - 1);
+
+  const alert = chip.locator('.hv-chip__alert');
+  if (await alert.count()) {
+    const alertBox = (await alert.boundingBox())!;
+    expect(alertBox.x + alertBox.width).toBeLessThanOrEqual(countBox.x + 1);
+  }
 });
 
 // Repro for #340: a minimized project must still be minimized after the
