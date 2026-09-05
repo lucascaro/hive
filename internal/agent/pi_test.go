@@ -106,6 +106,33 @@ func TestPiSpawnArgs(t *testing.T) {
 	}
 }
 
+// nodeForTS returns the path to a node that can load a .ts file
+// directly, or "" when there is none. It probes the real behaviour
+// rather than parsing a version string: node has moved type stripping
+// twice (behind --experimental-strip-types in 22.6, on by default in
+// 23.6), so "which node" and "which flags" are both wrong questions to
+// hard-code in a test.
+//
+// The distinction matters because LookPath("node") succeeding does not
+// mean the node it found can run these tests — a contributor on an
+// older node must get a skip, not a red suite. CI pins node 24
+// (.github/workflows/ci.yml), so these tests do run there.
+func nodeForTS(t *testing.T) string {
+	t.Helper()
+	node, err := exec.LookPath("node")
+	if err != nil {
+		return ""
+	}
+	probe := filepath.Join(t.TempDir(), "probe.ts")
+	if err := os.WriteFile(probe, []byte("export const n: number = 1;\n"), 0o644); err != nil {
+		t.Fatalf("write ts probe: %v", err)
+	}
+	if err := exec.Command(node, probe).Run(); err != nil {
+		return ""
+	}
+	return node
+}
+
 // TestPiExtensionFramesAreValidWireFrames is the cross-language
 // contract check: the extension hand-rolls Hive's frame header in
 // TypeScript, so the only thing that proves it stays in sync with
@@ -113,9 +140,9 @@ func TestPiSpawnArgs(t *testing.T) {
 // Skipped when node is unavailable (it is present in CI, which runs the
 // frontend suites).
 func TestPiExtensionFramesAreValidWireFrames(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node not on PATH")
+	node := nodeForTS(t)
+	if node == "" {
+		t.Skip("no node that can load .ts (needs node >= 23.6, or 22.6 with --experimental-strip-types)")
 	}
 	script := `
 const m = await import("./pi/hive.ts");
@@ -188,11 +215,24 @@ process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T1
 // silently dropped at the ModeEvent arm, which looks exactly like "Pi
 // never reports anything".
 func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
+	// Comments in the extension mention every kind by name, so scanning
+	// the raw source would keep passing for a kind that survives only in
+	// prose. Strip line comments first.
+	var code strings.Builder
+	for _, line := range strings.Split(piExtensionSource, "\n") {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
+		}
+		code.WriteString(line)
+		code.WriteByte('\n')
+	}
+	src := code.String()
+
 	for _, kind := range []string{
 		"ping", "prompt", "permission_resolved", "turn_end",
 		"waiting_permission", "waiting_input", "session_end",
 	} {
-		if !strings.Contains(piExtensionSource, `"`+kind+`"`) {
+		if !strings.Contains(src, `"`+kind+`"`) {
 			t.Errorf("extension no longer posts %q; update this test or the extension", kind)
 		}
 		if !wire.AgentEventKinds[kind] {
@@ -205,9 +245,9 @@ func TestPiExtensionKindsAreOnTheAllowlist(t *testing.T) {
 // inert-outside-Hive guard, the event subscriptions, truncation, and
 // the session-format walk) so `scripts/test.sh go` covers it too.
 func TestPiExtensionRunsNodeTests(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node not on PATH")
+	node := nodeForTS(t)
+	if node == "" {
+		t.Skip("no node that can load .ts (needs node >= 23.6, or 22.6 with --experimental-strip-types)")
 	}
 	cmd := exec.Command(node, "--test", filepath.Join("pi", "hive.test.ts"))
 	out, err := cmd.CombinedOutput()

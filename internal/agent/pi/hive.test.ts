@@ -5,6 +5,10 @@
 //
 // Run: node --test internal/agent/pi/
 import assert from "node:assert/strict";
+import net from "node:net";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 const mod = await import("./hive.ts");
@@ -12,6 +16,56 @@ const mod = await import("./hive.ts");
 function fakePi() {
   const events: string[] = [];
   return { events, on: (name: string) => events.push(name) };
+}
+
+// handlerPi records the handlers instead of just their names, so a test
+// can fire one and watch what reaches the socket.
+function handlerPi() {
+  const handlers = new Map<string, (event: unknown, ctx: unknown) => void>();
+  return { handlers, on: (name: string, fn: never) => handlers.set(name, fn) };
+}
+
+// collectFrames runs body against a throwaway unix socket server and
+// resolves with every AGENT_EVENT payload the extension posted. This is
+// the real socket path — the extension's own encoder, over a real
+// connection — not a stub of it.
+async function collectFrames(
+  body: (sock: string) => void | Promise<void>,
+  expected: number,
+): Promise<Array<Record<string, string>>> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hive-pi-"));
+  const sock = path.join(dir, "h.sock");
+  const events: Array<Record<string, string>> = [];
+  let resolveDone: () => void;
+  const done = new Promise<void>((r) => {
+    resolveDone = r;
+  });
+
+  const server = net.createServer((conn) => {
+    const chunks: Buffer[] = [];
+    conn.on("data", (c) => chunks.push(c));
+    conn.on("end", () => {
+      let buf = Buffer.concat(chunks);
+      while (buf.length >= 5) {
+        const type = buf.readUInt8(0);
+        const len = buf.readUInt32BE(1);
+        if (buf.length < 5 + len) break;
+        if (type === 0x22) events.push(JSON.parse(buf.subarray(5, 5 + len).toString("utf8")));
+        buf = buf.subarray(5 + len);
+      }
+      if (events.length >= expected) resolveDone();
+    });
+  });
+
+  await new Promise<void>((r) => server.listen(sock, r));
+  try {
+    await body(sock);
+    await Promise.race([done, new Promise((r) => setTimeout(r, 5000))]);
+  } finally {
+    server.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return events;
 }
 
 function withEnv(env: Record<string, string | undefined>, fn: () => void) {
@@ -88,4 +142,50 @@ test("lastAssistantText takes the newest assistant text, tolerating junk", () =>
   assert.equal(mod.lastAssistantText({ sessionManager: { getBranch: () => branch } }), "new");
   assert.equal(mod.lastAssistantText({}), "");
   assert.equal(mod.lastAssistantText({ sessionManager: { getBranch: () => null } }), "");
+});
+
+test("ui_prompt_end reports turn_end outside a turn, not permission_resolved", async () => {
+  // Reporting permission_resolved here would leave the session showing
+  // "working" with no agent_settled coming to clear it — only the 30 s
+  // staleness timer, and only while PTY bytes keep arriving.
+  const events = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        pi.handlers.get("ui_prompt_end")!({}, { sessionManager: { getBranch: () => [] } });
+        setTimeout(resolve, 200);
+      });
+    });
+  }, 1);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, "turn_end");
+  assert.equal(events[0].source, "extension");
+});
+
+test("ui_prompt_end reports permission_resolved inside a turn", async () => {
+  const events = await collectFrames(async (sock) => {
+    await new Promise<void>((resolve) => {
+      withEnv({ HIVE_SESSION_ID: "s1", HIVE_SOCKET: sock }, () => {
+        const pi = handlerPi();
+        mod.default(pi as never);
+        pi.handlers.get("agent_start")!({}, {});
+        pi.handlers.get("ui_prompt_end")!({}, {});
+        setTimeout(resolve, 200);
+      });
+    });
+  }, 2);
+
+  assert.deepEqual(events.map((e) => e.kind), ["permission_resolved", "permission_resolved"]);
+});
+
+test("truncate keeps a U+FFFD the user actually typed at the cut", () => {
+  // 509 bytes + a 3-byte U+FFFD lands the cut exactly after it, so a
+  // trailing-replacement-char strip would eat text the user really
+  // typed. The cut must back off continuation bytes instead.
+  const s = "a".repeat(509) + "\uFFFD" + "b".repeat(20);
+  const out = mod.truncate(s);
+  assert.equal(Buffer.from(out, "utf8").length, 512);
+  assert.ok(out.endsWith("\uFFFD"), "the cut stripped a genuine U+FFFD");
 });

@@ -777,8 +777,9 @@ decision-log entry with the log excerpt BEFORE any code changes.
   is exported for exactly this, and the Go test decodes its live output
   with `wire.ReadFrame` + the daemon's own `AgentEventKinds` allowlist,
   so a header change on either side fails the build. Both
-  node-dependent tests `t.Skip` when `node` is off PATH; CI has it,
-  since it runs the frontend suites.
+  node-dependent tests skip when no node that can *load TypeScript* is
+  available — see the correction below; "CI has node" was the wrong
+  test.
 
 - **2026-09-05 (phase 3)** — `hive.ts` is written in erasable-syntax
   TypeScript (type annotations and `import type` only, no enums, no
@@ -789,6 +790,33 @@ decision-log entry with the log excerpt BEFORE any code changes.
   erasable is what lets the tested artifact be the shipped artifact
   rather than a compiled copy of it.
 
+
+- **2026-09-05 (phase 3, after review iter 1)** — CI's node pin moves 20
+  → 24 (`.github/workflows/ci.yml:60`, `pages.yml:39`) and the tests'
+  node guard becomes capability-based instead of presence-based. Why:
+  the guard shipped as `exec.LookPath("node")`, which answers "is there
+  a node" — the wrong question. Node strips types only from 22.6 (behind
+  `--experimental-strip-types`) and 23.6 (by default), CI pinned 20, and
+  both node-backed tests failed `ERR_UNKNOWN_FILE_EXTENSION` on all
+  three legs while passing locally on node 24. The verification claim in
+  the phase-3 progress entry was therefore true locally and false in CI,
+  which is exactly the class of miss the plan's "record the log line
+  that proves it" rule exists to stop.
+  The guard now writes a one-line `.ts` file and runs it, so it probes
+  the behaviour rather than parsing a version string — node has moved
+  this default twice already. A contributor on an older node gets a
+  skip; CI, pinned to 24, actually runs them. Node 20 reached end of
+  life in April 2026, so the bump is overdue on its own merits; the
+  frontend toolchain (Vite, Vitest, Playwright, tsc) is current enough
+  to be unaffected.
+  Considered and rejected: shipping the extension as plain `.js`, which
+  would make every node version work and need no CI change (verified: pi
+  0.85.0 loads a `.js` extension and exits 0). Rejected because pi's
+  documented idiom is TypeScript and `import type { ExtensionAPI }` is
+  the only thing tying the file to the API it implements. Rejected too:
+  a capability guard *without* the CI bump, which goes green by never
+  running the cross-language frame check in CI — the one place it earns
+  its keep.
 
 ## Review log
 
@@ -946,7 +974,8 @@ decision-log entry with the log excerpt BEFORE any code changes.
   `TestPiExtensionRunsNodeTests` (`node --test pi/hive.test.ts`, four
   TS cases: inert without env, the exact subscribed event set, byte-not-
   character truncation at `MaxSummaryLen`, and the session-format walk).
-  Both node-dependent tests skip cleanly when `node` is absent.
+  Both node-dependent tests skip cleanly when no TS-capable node is
+  present (see the CI correction below).
   Not done in this pass: checklist row 14 as a manual pass in an iso
   build against a real `pi`, and `scripts/probe-claude.sh` (still
   outstanding from phase 2). Phase 4 (hivebar + notification wording +
@@ -961,6 +990,24 @@ decision-log entry with the log excerpt BEFORE any code changes.
   heuristic tier — a feature that is absent, not a mixing hazard. A
   bump would cost every user their running agents to ship it.
 
+- **2026-09-05 (phase 3, review iter 1 fixes)** — Applied on PR #341:
+  the CI node bump and capability guard above; `ui_prompt_end` now posts
+  `turn_end` when no turn is in flight (`turnInFlight`, set on
+  `agent_start`, cleared on `agent_settled`) instead of always posting
+  `permission_resolved`, which the machine reads as `working` and would
+  have stranded a session there until `HookStaleAfter` for any blocking
+  prompt raised outside a turn — an extension slash command, or a
+  `confirm()` after `agent_settled`; `truncate` walks back over UTF-8
+  continuation bytes rather than stripping a trailing replacement char,
+  so a U+FFFD the user really typed survives, matching the Go side's
+  `strings.ToValidUTF8`; and the kind-allowlist test strips `//`
+  comments before scanning, since the extension names every kind in
+  prose and the test would otherwise pass on a kind that survives only
+  in a comment. Three new TS cases cover the two `ui_prompt_end`
+  branches over a real unix socket (the extension's own encoder, a real
+  connection) and the U+FFFD-at-the-cut case.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -969,3 +1016,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 
 - **2026-09-04 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2854c4ad3033402a11277eece2de916447c9861b2f3263fe8b2546f591750ec2; threads_open: 0; action: continue (2 IMPORTANT remain); head_sha: 4423148.
 - **2026-09-04 iter 2** — verdict: COMMENT (strict); mergeable: MERGEABLE; findings_hash: bf94a2f0c66b9cec2198ab14123a12cac7906dff824e342940e56b9bab769543; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ac893ca.
+- **2026-09-05 iter 1 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 933fe7284759ec8b0b78ddf7426686dd96f3263ed89a5358a9ee055ef1aa3d69; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 73ec301.
