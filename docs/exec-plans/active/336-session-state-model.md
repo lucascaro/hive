@@ -983,6 +983,15 @@ decision-log entry with the log excerpt BEFORE any code changes.
   user-visible change is the wording alone. README carried the same
   misleading contrast and was trimmed with it.
 
+- **2026-09-05 (phase 4, review iter 2)** — The GUI's collapsed project
+  card said "k need(s) you" while the menu bar now said "N waiting on
+  you", off the same predicate. Aligned on the menu bar's wording
+  rather than the card's: it is the one the spec's success criterion
+  names, and "waiting on you" needs no plural form, so the card's
+  conjugation went away with it. `docs/design-docs/ui/components.md`
+  and three test assertions moved with it. The divergence was this
+  PR's own doing, which is why it is fixed here rather than deferred.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1320,6 +1329,24 @@ decision-log entry with the log excerpt BEFORE any code changes.
   Not done in this pass: the manual smoke checklist in an iso build
   (rows 1–6 and 13–14 still unrun, and no row covers the menu bar).
 
+- **2026-09-05 (phase 4, review converged)** — PR #344 converged on
+  review iteration 2: APPROVE, zero unresolved threads, MERGEABLE.
+  Iteration 1 returned COMMENT with three IMPORTANT findings, all of
+  them prose asserting things the tree did not support (see the
+  correction entries in the Decision log); iteration 2 verified each
+  fix individually against the tree and found the diff's remaining doc
+  claims — `control-plane.md`'s five named probe artefacts,
+  `icons.md`'s Pi claim, the plan header's branch — all resolve to
+  things that exist. Its one MINOR (menu-bar vs project-card wording)
+  was fixed in the same pass.
+  Verified after the wording alignment: `biome ci .` clean, `tsc
+  --noEmit` clean, vitest 1029/1029 across 88 files, `CI=1 npx
+  playwright test` 270 passed / 31 skipped, `go vet ./...` clean.
+  Still not done, and not in phase 4's scope to fix: the manual smoke
+  checklist in an iso build. Rows 1–6 and 13–14 have been outstanding
+  since phase 2, and no row covers the menu bar at all — so the waiting
+  count and the tooltip have never been seen in a running app.
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1342,3 +1369,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
     - non-goals — PASS — all six negative checks clean. Strongest evidence on "no persisted state": `persist.go`/`closed.go`/`store.go` have zero diff in `ad8f4aa~1..origin/main`, `TestMetaFileUnchangedByState` byte-compares `session.json` across a full state tour, and a runtime enumeration of `agent.All()` confirms `SpawnArgs` is non-nil only for `claude` and `pi`.
     - doc accuracy — FAIL — `docs/design-docs/control-plane.md:137-144` states in the present tense that `scripts/probe-claude.sh` exists, runs in CI and is on the release checklist, and that fixtures live under `testdata/claude-hooks/`; neither exists in the tree or anywhere in history. `docs/design-docs/ui/icons.md:37` still says the Pi extension "will in phase 3" after phase 3 merged as `d49551c`. `docs/design-docs/control-plane.md:38` claims the hook tier learns "subagent activity"; no `Subagent*` handling exists in Go. Changesets (5), CHANGELOG generation, README, and the plan header/Progress log all PASS.
 - **2026-09-05 iter 1 (PR #344)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b530c88feba83824bccf91b3c0e9765522fe74e8635811954d5b27a4a2b83238; threads_open: 0; action: continue (stop rule met — COMMENT, strict off, zero threads — but 3 IMPORTANT prose findings stood and boil-the-lake says fix them); head_sha: 8abfa67.
+- **2026-09-05 iter 2 (PR #344)** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop (converged; iter 1's three IMPORTANT findings each re-verified as fixed, one MINOR wording divergence fixed in the same pass); head_sha: 20f21f5.

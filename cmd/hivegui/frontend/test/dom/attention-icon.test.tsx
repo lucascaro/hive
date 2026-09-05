@@ -166,7 +166,7 @@ describe('project card on a store update', () => {
 
     expect(card('p1')).toBe(before); // re-rendered, not rebuilt
     expect(card('p1')?.dataset.state).toBe('attention');
-    expect(count()).toBe('1 session · 1 needs you');
+    expect(count()).toBe('1 session · 1 waiting on you');
 
     update(() => setAttn('a', false));
     expect(card('p1')?.dataset.state).toBeUndefined();
