@@ -5,7 +5,7 @@ type: bug
 complexity: M
 priority: P2
 pr: 342
-stage: REVIEW
+stage: GATE
 ---
 
 # Persist minimized projects across restarts

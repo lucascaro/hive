@@ -11,6 +11,6 @@ bump: patch
   pruned the other's project ids as "projects that no longer exist" and
   emptied the tray. The two keys (`hive.minimizedProjects`,
   `hive.collapsedProjects`) are now suffixed with an id derived from the
-  daemon's state directory. Any existing value is adopted by whichever
-  GUI launches first; other instances start from a clean slate once and
-  keep their state from then on.
+  daemon's state directory. Your existing sidebar state carries over to
+  one instance; the others start from a clean slate once and keep their
+  state from then on.

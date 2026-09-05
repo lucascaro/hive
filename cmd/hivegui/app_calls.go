@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"path/filepath"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -286,7 +287,10 @@ func (a *App) LaunchDir() string { return a.launchDir }
 // web storage; truncated because 8 hex chars is plenty to separate the
 // handful of state dirs one machine ever has.
 func (a *App) StateDirID() string {
-	sum := sha256.Sum256([]byte(registry.StateDir()))
+	// Cleaned first: the same directory spelled two ways (trailing
+	// slash, a relative path) would otherwise hash to different buckets
+	// and silently start that instance from a clean slate.
+	sum := sha256.Sum256([]byte(filepath.Clean(registry.StateDir())))
 	return hex.EncodeToString(sum[:])[:8]
 }
 
