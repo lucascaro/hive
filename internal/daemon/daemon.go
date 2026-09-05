@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
 	"github.com/lucascaro/hive/internal/registry"
@@ -405,6 +406,12 @@ func (d *Daemon) Close() error {
 // an unconditional unlink here would delete the live daemon's socket
 // and leave it serving an inode nobody can dial. Same shape as
 // removePidfile in cmd/hived.
+// socketOwnerProbeTimeout bounds the "is somebody else serving this
+// path?" dial in removeOwnSocket. A live local daemon accepts a unix
+// connection immediately; anything slower is not worth blocking
+// teardown for.
+const socketOwnerProbeTimeout = 250 * time.Millisecond
+
 func (d *Daemon) removeOwnSocket() {
 	if d.sockInfo == nil {
 		return
@@ -415,6 +422,18 @@ func (d *Daemon) removeOwnSocket() {
 	}
 	if !os.SameFile(cur, d.sockInfo) {
 		log.Printf("hived: socket %s now belongs to another daemon; leaving it alone", d.sock)
+		return
+	}
+	// SameFile is dev+inode, and inode numbers get reused: a
+	// replacement daemon's brand-new socket at this path can compare
+	// equal to the one we bound (measured on Linux /tmp — same ino,
+	// mtimes a millisecond apart). So ask the socket rather than the
+	// filesystem. Our own listener is closed by the time we get here,
+	// so anything that still accepts a connection is somebody else's
+	// live daemon.
+	if c, err := net.DialTimeout("unix", d.sock, socketOwnerProbeTimeout); err == nil {
+		_ = c.Close()
+		log.Printf("hived: socket %s is being served by another daemon; leaving it alone", d.sock)
 		return
 	}
 	if err := os.Remove(d.sock); err != nil && !errors.Is(err, os.ErrNotExist) {
