@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "PostToolUseFailure",
+  "tool_name": "Bash",
+  "error": "exit status 1"
+}

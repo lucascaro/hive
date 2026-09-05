@@ -339,6 +339,21 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameKillSession, p))
+	case "SetSessionAttention":
+		// Mirrors App.SetSessionAttention: an UPDATE_SESSION carrying only
+		// needs_attention, which the daemon routes to registry.SetAttention.
+		var p struct {
+			SessionID string `json:"session_id"`
+			Want      bool   `json:"want"`
+		}
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUpdateSession, wire.UpdateSessionReq{
+			SessionID:      p.SessionID,
+			NeedsAttention: &p.Want,
+		}))
 	case "RestoreSession":
 		var p wire.RestoreSessionReq
 		if err := parseParams(req.Params, &p); err != nil {

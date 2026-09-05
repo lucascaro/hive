@@ -34,7 +34,6 @@ function withSessions(sessions: SessionInfo[]) {
     projects: [{ id: 'p1', name: 'proj', color: '#888' }],
     sessions: sessions.map((s) => ({ project_id: 'p1', alive: true, ...s })),
     collapsed: new Set(),
-    attention: new Set(),
     activeId: null,
   });
   mountSidebar(Sidebar);

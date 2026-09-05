@@ -13,6 +13,7 @@ Per-decision detail belongs in `docs/design-docs/`. This file is the map. The GU
 - **GUI** (`cmd/hivegui/`, `hivegui/frontend/`) — Wails desktop app. Thin client over the wire protocol; xterm.js renders terminal output, and a React 19 + zustand frontend owns sidebar/layout/agent UX. Terminals stay imperative behind a stable boundary (`src/app/session-term.ts`) — which owns the xterm instance and its host elements but no longer renders their chrome; everything else, the tile header and overlays included, renders from the store. Frontend conventions: [FRONTEND.md](FRONTEND.md).
 - **Worktrees** (`internal/worktree/`) — git worktree lifecycle for agent sessions: create, inventory (`List`/`ListBranches`), safety status (`Inspect`), rename and removal. Tracks uncommitted and unpushed state so the registry can refuse destructive operations.
 - **Agents** (`internal/agent/`) — canonical agent catalog (`claude`, `codex`, `gemini`, …) and human-readable name generation.
+- **Agent state** (`internal/agentstate/`) — the state machine behind `SessionInfo.state`: working / idle / waiting_input / waiting_permission / exited / error, plus which tier reported it. Pure domain code with no clock and no locks — every method takes `now` from its caller — so the registry can drive it from PTY output, agent hooks and agent extensions without those three agreeing on anything. Its single owner is `registry.Entry`, under the registry mutex.
 - **Notifications** (`internal/notify/`) — platform-specific desktop notifications. Bell/audio support (`internal/audio/`) is planned but not yet implemented.
 
 ## Layers
@@ -38,7 +39,7 @@ hived process  ⇄  hivegui process       (Unix socket; daemon survives GUI clos
                             in-process with hivegui)
 ```
 
-- `internal/wire/` imports nothing from Hive; `internal/session/` and `internal/agent/` know nothing about persistence; `internal/registry/` knows nothing about the socket; `internal/daemon/` is the only place that owns the connection state machine.
+- `internal/wire/` imports nothing from Hive; `internal/session/`, `internal/agent/` and `internal/agentstate/` know nothing about persistence; `internal/registry/` knows nothing about the socket; `internal/daemon/` is the only place that owns the connection state machine.
 - The GUI is a *client* of the daemon. It never opens a PTY itself, never reads daemon state files directly — both go through the wire protocol.
 
 ## Cross-cutting concerns

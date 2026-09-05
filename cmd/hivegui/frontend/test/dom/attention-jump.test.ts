@@ -17,8 +17,6 @@ import {
   afterEach,
   type MockedFunction,
 } from 'vitest';
-import * as store from '../../src/store/store.js';
-
 vi.mock('../../src/bridge.js', () => {
   const fn = () => vi.fn(() => Promise.resolve());
   return {
@@ -107,6 +105,15 @@ beforeAll(async () => {
   ({ jumpToAttention, jumpBack } = await import('../../src/app/keyboard.js'));
 });
 
+// needs_attention lives on the session itself — there is no local set
+// left to poke, so "these sessions are flagged" is a session patch.
+function flag(ids: string[]) {
+  state.sessions = state.sessions.map((s) => ({
+    ...s,
+    needs_attention: ids.includes(s.id),
+  }));
+}
+
 // The no-op paths call the real flashStatus, which arms a 2500ms revert
 // timer (FLASH_INFO_MS). Left running, those fire against a torn-down
 // jsdom document — a classic source of cross-file flake.
@@ -128,7 +135,6 @@ beforeEach(() => {
     { id: 'c', project_id: 'p1', order: 2 },
   ];
   state.activeId = 'a';
-  state.attention = new Set();
   state.attentionReturnId = null;
   state.attentionRestored = new Set();
   state.minimized = new Set();
@@ -136,29 +142,29 @@ beforeEach(() => {
 
 describe('jumpToAttention', () => {
   it('switches to the flagged session and anchors where you came from', () => {
-    state.attention = new Set(['c']);
+    flag(['c']);
     jumpToAttention();
     expect(switchTo).toHaveBeenCalledWith('c');
     expect(state.attentionReturnId).toBe('a');
   });
 
   it('keeps the original anchor across a multi-hop round of bells', () => {
-    state.attention = new Set(['b', 'c']);
+    flag(['b', 'c']);
     jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b'; // switchTo is mocked; mirror what it would do
-    store.clearAttentionFor('b');
+    flag(['c']); // 'b' cleared (switchTo is mocked, so this mirrors production)
     jumpToAttention(); // b → c, anchor must STILL be a
     expect(switchTo).toHaveBeenLastCalledWith('c');
     expect(state.attentionReturnId).toBe('a');
   });
 
   it('re-anchors on the next ⌘B after ⇧⌘B released the slot', () => {
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b';
     jumpBack(); // back to a, anchor released
     state.activeId = 'c'; // user goes to work in c
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention(); // c → b, fresh anchor = c
     expect(state.attentionReturnId).toBe('c');
   });
@@ -166,10 +172,10 @@ describe('jumpToAttention', () => {
   it('releases the anchor when the jump lands back on it', () => {
     // The anchored session rings its own bell mid-round: ⌘B takes you
     // home, so ⇧⌘B must not stay armed pointing at where you already are.
-    state.attention = new Set(['b']);
+    flag(['b']);
     jumpToAttention(); // a → b, anchor = a
     state.activeId = 'b';
-    state.attention = new Set(['a']);
+    flag(['a']);
     jumpToAttention(); // b → a, which IS the anchor
     expect(switchTo).toHaveBeenLastCalledWith('a');
     expect(state.attentionReturnId).toBeNull();
@@ -225,7 +231,7 @@ describe('⌘B / ⇧⌘B key dispatch', () => {
     : { ctrlKey: true };
 
   it('⌘B jumps to the flagged session and swallows the event', () => {
-    state.attention = new Set(['c']);
+    flag(['c']);
     const e = press(primary);
     expect(switchTo).toHaveBeenCalledWith('c');
     expect(e.defaultPrevented).toBe(true);
@@ -234,7 +240,7 @@ describe('⌘B / ⇧⌘B key dispatch', () => {
   it('⇧⌘B jumps back rather than forward', () => {
     state.attentionReturnId = 'a';
     state.activeId = 'c';
-    state.attention = new Set(['b']);
+    flag(['b']);
     press({ ...primary, shiftKey: true });
     // Went home to the anchor, NOT on to the flagged 'b'.
     expect(switchTo).toHaveBeenCalledWith('a');
@@ -242,7 +248,7 @@ describe('⌘B / ⇧⌘B key dispatch', () => {
   });
 
   it('bare B is left alone for the terminal', () => {
-    state.attention = new Set(['c']);
+    flag(['c']);
     const e = press({});
     expect(switchTo).not.toHaveBeenCalled();
     expect(e.defaultPrevented).toBe(false);

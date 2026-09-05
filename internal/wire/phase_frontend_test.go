@@ -37,3 +37,32 @@ func TestPhaseConstantsMatchFrontend(t *testing.T) {
 		}
 	}
 }
+
+// TestStateConstantsMatchFrontend guards the same coupling for session
+// states. The GUI re-declares them in TypeScript
+// (cmd/hivegui/frontend/src/lib/session-state.ts DAEMON_STATE), because
+// the wire is JSON and nothing generates the frontend's copy.
+//
+// The failure mode is quieter than the phase one: sessionState() simply
+// falls through to its default and every session renders idle forever.
+// Nothing throws, nothing logs.
+func TestStateConstantsMatchFrontend(t *testing.T) {
+	const rel = "../../cmd/hivegui/frontend/src/lib/session-state.ts"
+	src, err := os.ReadFile(filepath.Clean(rel))
+	if err != nil {
+		t.Skipf("frontend source not available (%v)", err)
+	}
+	ts := string(src)
+
+	// StateIdle and StateSourceHeuristic are the empty string by design
+	// (omitempty on the wire), so they have nothing to match on.
+	for _, state := range []string{
+		StateWorking, StateWaitingInput, StateWaitingPermission,
+		StateExited, StateError,
+	} {
+		if !strings.Contains(ts, "'"+state+"'") {
+			t.Errorf("state %q is not in %s — the GUI silently renders it as idle; update DAEMON_STATE and sessionState() there",
+				state, rel)
+		}
+	}
+}

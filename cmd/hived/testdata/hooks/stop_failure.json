@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "StopFailure",
+  "cwd": "/tmp/proj",
+  "error_type": "overloaded"
+}

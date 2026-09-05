@@ -86,7 +86,7 @@ import {
   shouldScrollViewport,
   type WheelEventLike,
 } from '../lib/wheel-scroll.js';
-import { onSessionBell, clearAttention } from './events.js';
+import { clearAttention, noteUserInput } from './events.js';
 import { updateAppTitle } from './view.js';
 import { setActive, refocusActiveTerm } from './focus.js';
 
@@ -159,7 +159,6 @@ export class SessionTerm {
   ro: ResizeObserver;
   attached: boolean;
   needsReattach: boolean;
-  termTitle: string;
   // Assigned in the constructor body (it closes over `this.info`), so no
   // initializer — unlike the fields below, which are written by helpers
   // the constructor calls and would otherwise trip strictPropertyInitialization.
@@ -259,7 +258,7 @@ export class SessionTerm {
     // Seed the chrome state before the host is registered in
     // store/terms.ts, so the first React pass that sees this id also
     // sees something to render.
-    addTileChrome(info.id, initialTileChrome(info, this.phase));
+    addTileChrome(info.id, initialTileChrome(this.phase));
 
     this.term = new Terminal({
       // Terminal font follows --font-mono, so the bundled JetBrains Mono
@@ -534,13 +533,12 @@ export class SessionTerm {
     // having to switch sessions and back.
     this.needsReattach = false;
 
-    // Track the OSC-set window title from the running TUI (vim, htop,
-    // claude code, etc.) so the app title bar can show it after the
-    // session name when this session is active.
-    this.termTitle = '';
-    this.term.onTitleChange((title) => {
-      this.termTitle = title || '';
-      this._renderTermTitle();
+    // The title itself is read from the session list — the daemon parses
+    // the OSC off the PTY and broadcasts it (SESSION_EVENT(title)), which
+    // is the only copy that is right for an unattached tile. This
+    // listener only nudges the title bar, so the active window repaints
+    // on the local edge instead of waiting for the round trip.
+    this.term.onTitleChange(() => {
       if (appData().activeId === this.info.id) updateAppTitle();
     });
 
@@ -555,6 +553,14 @@ export class SessionTerm {
       WriteStdin(this.info.id, btoa(bin));
     };
     this.term.onData((data) => this._writePty(data));
+    // Typing here answers whatever this session was asking for. onKey,
+    // NOT onData: onData also carries xterm's own replies to the program
+    // — cursor-position reports, device attributes, focus in/out when
+    // the program enabled ?1004h. Fish, pi and Claude all ask, so on
+    // onData the bell was "answered" by the terminal replying to a
+    // query, within a frame of ringing. A paste is also the user.
+    this.term.onKey(() => noteUserInput(this.info.id));
+    this.host.addEventListener('paste', () => noteUserInput(this.info.id));
 
     // Click anywhere on the tile (header or body) selects this session.
     this.host.addEventListener('mousedown', () => {
@@ -574,11 +580,12 @@ export class SessionTerm {
     // (Double-click-to-rename lives on the tile name, which is now a
     // React child — see components/TileChrome.tsx.)
 
-    // BEL on a non-focused session marks it as needing attention and
-    // fires a desktop notification. xterm.js v5 exposes onBell.
-    this.term.onBell(() => {
-      onSessionBell(this.info);
-    });
+    // No onBell handler: the PTY BEL byte no longer decides anything
+    // here. The daemon's own bell scanner sees the same byte and raises
+    // needs_attention through the `attention` session event, which
+    // drives the pulse class and the notification edge in
+    // app/events.ts's syncAttentionClass. See the frozen transition
+    // table, docs/exec-plans/active/336-session-state-model.md.
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum
@@ -942,20 +949,11 @@ export class SessionTerm {
     this.info = info;
     this.host.style.setProperty('--session-color', info.color || '#888');
     this.header.setAttribute('aria-label', `Session ${info.name}`);
-    // Name, worktree marker and state icon all render from this
-    // snapshot — see components/TileChrome.tsx. Publishing `info` rather
-    // than letting the component read the session list keeps the header
-    // rendering from exactly what it used to patch from.
-    patchTileChrome(info.id, { info });
-  }
-
-  _renderTermTitle() {
-    // The "hide it when it echoes the session name" rule lives in
-    // lib/term-title.ts because the sidebar row applies it too — the two
-    // surfaces must not disagree about whether a session has anything
-    // worth reporting. Applied in the component; the raw title is what
-    // travels.
-    patchTileChrome(this.info.id, { termTitle: this.termTitle });
+    // Name, worktree marker and state icon are NOT published here: the
+    // header reads them from the session list (components/TileChrome.tsx),
+    // so a session event repaints the tile and the sidebar alike. This
+    // used to publish a snapshot refreshed only when the layout ran
+    // ensureTerm(), which is how the two surfaces came to disagree.
   }
 
   // Only the CSS custom property now: the project LABEL renders from the

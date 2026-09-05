@@ -81,10 +81,7 @@ test('a bell inside a minimized project lights its chip', async ({ page }) => {
   await expect(chip).toBeVisible();
   await expect(chip).not.toHaveAttribute('data-state', 'attention');
 
-  await page.evaluate(
-    (id) => window.__hive.emit('pty:data', id, btoa('\x07')),
-    sid,
-  );
+  await page.evaluate((id) => window.__hive.ringBell?.(id), sid as string);
   await expect(chip).toHaveAttribute('data-state', 'attention');
 });
 

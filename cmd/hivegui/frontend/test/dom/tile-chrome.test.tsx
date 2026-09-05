@@ -142,7 +142,7 @@ function mount(info: Partial<SessionInfo> = {}, phase = '') {
   store.setProjects([{ id: 'p1', name: 'proj', color: '#4af' }]);
   store.setSessions([session]);
   const { tile, host } = stubTile(session.id);
-  store.addTileChrome(session.id, store.initialTileChrome(session, phase));
+  store.addTileChrome(session.id, store.initialTileChrome(phase));
   setTerm(session.id, tile);
   render(<TileChromeHost />);
   return { session, tile, host };
@@ -188,6 +188,27 @@ describe('tile header', () => {
     ).toBe('running');
   });
 
+  // The regression this replaces: the header rendered from a snapshot
+  // SessionTerm published, refreshed only when the layout ran
+  // ensureTerm(). A SESSION_EVENT(state) repainted the sidebar row and
+  // left the tile showing the previous glyph, so the same session
+  // disagreed with itself depending on where you looked.
+  it('follows the session list, so it cannot disagree with the sidebar', () => {
+    const { session } = mount();
+    const icon = () => header()?.querySelector('.hv-state-icon');
+    expect(icon()?.getAttribute('data-state')).toBe('running');
+
+    act(() => {
+      store.updateSession({ ...session, state: 'working' });
+    });
+    expect(icon()?.getAttribute('data-state')).toBe('working');
+
+    act(() => {
+      store.updateSession({ ...session, name: 'renamed' });
+    });
+    expect(header()?.querySelector('.tile-name')?.textContent).toBe('renamed');
+  });
+
   it('hides the worktree marker without a branch', () => {
     const { session } = mount();
     const marker = () =>
@@ -195,9 +216,7 @@ describe('tile header', () => {
     expect(marker()?.hidden).toBe(true);
 
     act(() => {
-      store.patchTileChrome(session.id, {
-        info: { ...session, worktree_branch: 'feat/x' },
-      });
+      store.updateSession({ ...session, worktree_branch: 'feat/x' });
     });
     expect(marker()?.hidden).toBe(false);
     expect(marker()?.title).toBe(
@@ -214,7 +233,7 @@ describe('tile header', () => {
     expect(span()?.hidden).toBe(true);
 
     act(() => {
-      store.patchTileChrome(session.id, { termTitle: 'vim README.md' });
+      store.updateSession({ ...session, title: 'vim README.md' });
     });
     expect(span()?.hidden).toBe(false);
     expect(span()?.textContent).toBe('vim README.md');
@@ -222,7 +241,7 @@ describe('tile header', () => {
     // lib/term-title.ts's rule: a title that just echoes the session
     // name reports nothing, so the span goes away again.
     act(() => {
-      store.patchTileChrome(session.id, { termTitle: 'alpha' });
+      store.updateSession({ ...session, title: 'alpha' });
     });
     expect(span()?.hidden).toBe(true);
   });
@@ -247,23 +266,26 @@ describe('tile header', () => {
   });
 
   it('repaints one tile on a bell, and reaches no attach path', () => {
-    // GridView.tsx keeps `attention` out of its subscription because a
-    // grid pass calls ensureAttached() on every in-grid tile, which
-    // re-latches follow-bottom. This component may subscribe to it only
-    // because it renders no layout — the stub's ensureAttached throws,
-    // so a regression that routes a bell into one fails here.
+    // needs_attention lives on the session itself, read off the same
+    // `info` selector the rest of the header uses — there is no second
+    // `attention` subscription left to keep narrow. GridView.tsx never
+    // calls a layout pass for it either way — the stub's ensureAttached
+    // throws, so a regression that routes a bell into one fails here.
     const { session } = mount();
     const state = () =>
       header()?.querySelector('.hv-state-icon')?.getAttribute('data-state');
     expect(state()).toBe('running');
 
     act(() => {
-      store.addAttention(session.id);
+      store.updateSession({ ...session, needs_attention: true });
     });
     expect(state()).toBe('attention');
 
     act(() => {
-      store.addAttention('someone-else');
+      // Unknown id: updateSession no-ops rather than touching the
+      // sessions array, so this session's tile has nothing to repaint
+      // from anyway.
+      store.updateSession({ id: 'someone-else', needs_attention: true });
     });
     expect(state()).toBe('attention');
   });

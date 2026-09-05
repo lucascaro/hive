@@ -557,3 +557,8 @@ func defaultShell() string {
 	}
 	return "cmd.exe"
 }
+
+// ScreenDigest hashes what the session's screen currently looks like.
+// See VT.ScreenDigest: it is the signal behind "working" vs "idle",
+// because bytes arriving and work happening are different things.
+func (s *Session) ScreenDigest() uint64 { return s.vt.ScreenDigest() }

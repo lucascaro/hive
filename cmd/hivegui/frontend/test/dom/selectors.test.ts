@@ -2,16 +2,17 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { hiveStateView as state } from '../../src/store/store.js';
 import { nextAttentionId } from '../../src/app/selectors.js';
 
-// Three sessions in one project, display order a → b → c.
+// Three sessions in one project, display order a → b → c. needs_attention
+// lives on the session itself now, so `flagged` just sets the field
+// rather than a separate local set.
 function seed(activeId: string | null, flagged: string[] = []) {
   state.projects = [{ id: 'p1' }];
   state.sessions = [
     { id: 'a', project_id: 'p1', order: 0 },
     { id: 'b', project_id: 'p1', order: 1 },
     { id: 'c', project_id: 'p1', order: 2 },
-  ];
+  ].map((s) => ({ ...s, needs_attention: flagged.includes(s.id) }));
   state.activeId = activeId;
-  state.attention = new Set(flagged);
 }
 
 describe('nextAttentionId', () => {
@@ -25,7 +26,6 @@ describe('nextAttentionId', () => {
   it('returns null for an empty session list', () => {
     seed(null);
     state.sessions = [];
-    state.attention = new Set(['a']); // stale flag, session already gone
     expect(nextAttentionId()).toBeNull();
   });
 
@@ -63,10 +63,9 @@ describe('nextAttentionId', () => {
     state.projects = [{ id: 'p1' }, { id: 'p2' }];
     state.sessions = [
       { id: 'a', project_id: 'p1', order: 0 },
-      { id: 'z', project_id: 'p2', order: 0 },
+      { id: 'z', project_id: 'p2', order: 0, needs_attention: true },
     ];
     state.activeId = 'a';
-    state.attention = new Set(['z']);
     expect(nextAttentionId()).toBe('z');
   });
 });

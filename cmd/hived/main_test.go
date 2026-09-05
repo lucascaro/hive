@@ -9,19 +9,47 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
 )
 
+// pidfileLog captures only the log lines removePidfile itself produces
+// — every one of them names the pidfile. log's output is process-global
+// and other tests in this package run real daemons whose sessions log
+// asynchronously (a PTY read error can land after the test that started
+// it has finished), so a plain buffer both fails these assertions
+// spuriously and is read here while another goroutine writes it. The
+// mutex settles the second problem; the filter settles the first.
+type pidfileLog struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (l *pidfileLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if bytes.Contains(p, []byte("pidfile")) {
+		l.lines = append(l.lines, string(p))
+	}
+	return len(p), nil
+}
+
+func (l *pidfileLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return strings.Join(l.lines, "")
+}
+
 func TestRemovePidfile(t *testing.T) {
-	capture := func(t *testing.T) *bytes.Buffer {
+	capture := func(t *testing.T) *pidfileLog {
 		t.Helper()
-		var buf bytes.Buffer
+		buf := &pidfileLog{}
 		orig := log.Writer()
-		log.SetOutput(&buf)
+		log.SetOutput(buf)
 		t.Cleanup(func() { log.SetOutput(orig) })
-		return &buf
+		return buf
 	}
 
 	t.Run("removes existing file silently", func(t *testing.T) {

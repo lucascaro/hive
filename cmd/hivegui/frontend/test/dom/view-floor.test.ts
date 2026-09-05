@@ -124,7 +124,6 @@ beforeEach(() => {
   state.view = 'single';
   state.gridProjectId = null;
   state.minimized = new Set();
-  state.attention = new Set();
 });
 
 // setView's snap timer would otherwise fire against a torn-down jsdom.

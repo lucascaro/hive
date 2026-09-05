@@ -13,8 +13,6 @@ import {
   setProjects,
   applyProjectList,
   toggleCollapsed,
-  addAttention,
-  clearAttentionFor,
   minimizeProject,
   restoreProject,
   minimizeSession,
@@ -178,27 +176,11 @@ describe('projects', () => {
   });
 });
 
-describe('attention', () => {
-  it('test_markAttention_immutable_set_update', () => {
-    const before = s().attention;
-
-    addAttention('a');
-
-    expect(s().attention).not.toBe(before);
-    expect(before.has('a')).toBe(false); // the old set was NOT mutated
-    expect(s().attention.has('a')).toBe(true);
-
-    // A no-op add keeps the same reference, so it can't wake subscribers.
-    const flagged = s().attention;
-    addAttention('a');
-    expect(s().attention).toBe(flagged);
-
-    // clearAttentionFor mirrors Set.delete's return value.
-    expect(clearAttentionFor('a')).toBe(true);
-    expect(clearAttentionFor('a')).toBe(false);
-    expect(s().attention.has('a')).toBe(false);
-  });
-});
+// needs_attention is not store state any more — it lives on
+// SessionInfo, set by setSessions/updateSession like any other wire
+// field (see session-state.test.ts and the frozen transition table in
+// docs/exec-plans/active/336-session-state-model.md). There is nothing
+// left here to test in isolation.
 
 describe('minimize', () => {
   it('test_minimizeProject_and_restore_roundtrip', () => {
@@ -335,19 +317,19 @@ describe('the subscribe contract', () => {
       hits++;
     });
 
-    addAttention('a');
+    minimizeSession('a');
     expect(hits).toBe(1);
 
     // Same id again: the helper hands back the SAME Set reference, so
     // there is no state change and no notification. This is the store's
     // central design claim.
-    addAttention('a');
+    minimizeSession('a');
     expect(hits).toBe(1);
 
-    clearAttentionFor('a');
+    restoreSession('a');
     expect(hits).toBe(2);
 
-    clearAttentionFor('a'); // already gone — no-op
+    restoreSession('a'); // already gone — no-op
     expect(hits).toBe(2);
 
     unsub();
@@ -386,12 +368,12 @@ describe('the subscribe contract', () => {
     const unsub = appStore.subscribe(() => {
       hits++;
     });
-    addAttention('a');
+    minimizeSession('a');
     expect(hits).toBe(1);
 
     unsub();
 
-    addAttention('b');
+    minimizeSession('b');
     setSessions([{ id: 'z' }]);
     expect(hits).toBe(1);
   });
@@ -409,7 +391,6 @@ describe('window.__hive_state', () => {
       'sessions',
       'collapsed',
       'minimizedProjects',
-      'attention',
       'attentionReturnId',
       'attentionRestored',
       'attentionRestoredProjects',
@@ -437,7 +418,6 @@ describe('window.__hive_state', () => {
     expect(Array.isArray(state.projects)).toBe(true);
     expect(Array.isArray(state.sessions)).toBe(true);
     expect(state.collapsed).toBeInstanceOf(Set);
-    expect(state.attention).toBeInstanceOf(Set);
     expect(state.minimized).toBeInstanceOf(Set);
     expect(state.aliveById).toBeInstanceOf(Map);
     expect(state.phaseById).toBeInstanceOf(Map);

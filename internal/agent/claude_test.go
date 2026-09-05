@@ -1,6 +1,10 @@
 package agent
 
-import "testing"
+import (
+	"encoding/json"
+	"errors"
+	"testing"
+)
 
 func TestEncodeClaudeProjectDir(t *testing.T) {
 	cases := []struct {
@@ -75,4 +79,86 @@ func TestSetClaudeSessionExistsForTestRejectsNil(t *testing.T) {
 		}
 	}()
 	SetClaudeSessionExistsForTest(nil)
+}
+
+func TestClaudeSettingsJSONQuotesPath(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("2.1.260 (Claude Code)"), nil
+	}))
+	args := claudeSpawnArgs(SpawnInfo{HivedPath: "/Applications/Hive.app/Contents/Application Support/hived"})
+	if len(args) != 2 || args[0] != "--settings" {
+		t.Fatalf("args = %v, want [--settings <json>]", args)
+	}
+	var settings claudeSettings
+	if err := json.Unmarshal([]byte(args[1]), &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v", err)
+	}
+	for _, ev := range claudeHookEvents {
+		groups, ok := settings.Hooks[ev]
+		if !ok || len(groups) != 1 || len(groups[0].Hooks) != 1 {
+			t.Fatalf("hooks[%s] = %+v", ev, groups)
+		}
+		cmd := groups[0].Hooks[0].Command
+		want := `'/Applications/Hive.app/Contents/Application Support/hived' hook`
+		if cmd != want {
+			t.Errorf("hooks[%s].command = %q, want %q", ev, cmd, want)
+		}
+		if groups[0].Hooks[0].Type != "command" {
+			t.Errorf("hooks[%s].type = %q, want command", ev, groups[0].Hooks[0].Type)
+		}
+	}
+}
+
+func TestClaudeSpawnArgsNilWithoutHivedPath(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("2.1.260"), nil
+	}))
+	if args := claudeSpawnArgs(SpawnInfo{}); args != nil {
+		t.Errorf("args = %v, want nil", args)
+	}
+}
+
+func TestClaudeVersionGateSkipsBelowMin(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("1.9.0"), nil
+	}))
+	if args := claudeSpawnArgs(SpawnInfo{HivedPath: "/usr/local/bin/hived"}); args != nil {
+		t.Errorf("args = %v, want nil (below minHooksVersion)", args)
+	}
+}
+
+func TestClaudeVersionUnknownSkips(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return nil, errors.New("claude: command not found")
+	}))
+	if args := claudeSpawnArgs(SpawnInfo{HivedPath: "/usr/local/bin/hived"}); args != nil {
+		t.Errorf("args = %v, want nil (unknown version)", args)
+	}
+}
+
+func TestClaudeVersionAtOrAboveMinPasses(t *testing.T) {
+	t.Cleanup(SetClaudeVersionProbeForTest(func() ([]byte, error) {
+		return []byte("2.1.0"), nil
+	}))
+	if args := claudeSpawnArgs(SpawnInfo{HivedPath: "/usr/local/bin/hived"}); args == nil {
+		t.Errorf("args = nil, want non-nil at minHooksVersion")
+	}
+}
+
+func TestSemverLess(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"2.1.0", "2.1.0", false},
+		{"2.1.0", "2.10.0", true},
+		{"2.10.0", "2.1.0", false},
+		{"1.9.0", "2.1.0", true},
+		{"2.1.260", "2.1.0", false},
+	}
+	for _, tc := range cases {
+		if got := semverLess(tc.a, tc.b); got != tc.want {
+			t.Errorf("semverLess(%q,%q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
 }

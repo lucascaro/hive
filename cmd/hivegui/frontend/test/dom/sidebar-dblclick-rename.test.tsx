@@ -60,7 +60,6 @@ beforeEach(() => {
       { id: 'b', name: 'web', project_id: 'p1', order: 1, alive: true },
     ],
     collapsed: new Set(),
-    attention: new Set(),
     activeId: null,
   });
   mountSidebar(Sidebar);

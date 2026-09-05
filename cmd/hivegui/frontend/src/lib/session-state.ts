@@ -1,11 +1,11 @@
-// The one resolution from a SessionInfo to the five state shapes
+// The one resolution from a SessionInfo to the state shapes
 // (docs/design-docs/ui/icons.md > State icons). Sidebar row, minimized
 // chip and grid tile header all call this, so they can never disagree.
 //
 // Pure and structural for the same reason as lib/phase-steps.ts: it
 // must be importable from the node-env unit suite, which app/state.ts
-// (localStorage on import) is not. `hasAttention` is passed in rather
-// than read from state.attention for the same reason.
+// (localStorage on import) is not — hence StateCarrier rather than
+// importing SessionInfo.
 //
 // No exit code exists on the wire (internal/wire has no ExitCode field
 // and SessionInfo has no exit_code). last_error is the only "it ended
@@ -17,33 +17,73 @@ import { phaseOf, isReady } from './phase-steps.js';
 export type SessionState =
   | 'starting'
   | 'attention'
+  | 'waiting-permission'
+  | 'working'
   | 'running'
   | 'exited'
   | 'error';
+
+// The daemon's own state vocabulary (internal/wire/control.go State*).
+// Kept as a local map rather than imported so this module stays
+// importable from the node-env unit suite.
+export const DAEMON_STATE = {
+  idle: '',
+  working: 'working',
+  waitingInput: 'waiting_input',
+  waitingPermission: 'waiting_permission',
+  exited: 'exited',
+  error: 'error',
+} as const;
 
 export interface StateCarrier {
   alive?: boolean;
   phase?: string;
   last_error?: string;
   lastError?: string;
+  // The daemon's session state. Absent = idle, which is both the
+  // omitempty case and what an older daemon sends.
+  state?: string;
+  // The daemon's own "wants the user" flag — derived server-side from
+  // `state` (needs_attention = state ∈ {waiting_input,
+  // waiting_permission}). The daemon and the session list are its only
+  // writers; no client keeps a second copy (see the frozen transition
+  // table in docs/exec-plans/active/336-session-state-model.md).
+  needs_attention?: boolean;
 }
 
 /** Words for the icon's <title>: state is shape + colour + words. */
 export const STATE_WORDS: Record<SessionState, string> = {
   starting: 'Starting',
   attention: 'Waiting for you',
-  running: 'Running',
+  'waiting-permission': 'Waiting for permission',
+  working: 'Working',
+  running: 'Idle',
   exited: 'Exited',
   error: 'Exited with an error',
 };
 
-export function sessionState(
-  s: StateCarrier,
-  hasAttention: boolean,
-): SessionState {
+export function sessionState(s: StateCarrier): SessionState {
   // A session mid-create has no PTY yet; `alive: false` there means
   // "not born", not "died" (same reasoning as sidebar.ts's dead class).
   if (!isReady(phaseOf(s))) return 'starting';
   if (!s.alive) return s.last_error || s.lastError ? 'error' : 'exited';
-  return hasAttention ? 'attention' : 'running';
+
+  // The daemon's state wins over needs_attention where the two could
+  // disagree: "waiting for permission" and "waiting for you" are the
+  // distinction this whole state model exists to draw, and folding the
+  // first into the second throws it away.
+  switch (s.state) {
+    case DAEMON_STATE.waitingPermission:
+      return 'waiting-permission';
+    case DAEMON_STATE.waitingInput:
+      return 'attention';
+    case DAEMON_STATE.error:
+      return 'error';
+  }
+  // A bell the user has not acknowledged still outranks "working": the
+  // heuristic tier reports both, and the one that wants a human is the
+  // one worth showing.
+  if (s.needs_attention) return 'attention';
+  if (s.state === DAEMON_STATE.working) return 'working';
+  return 'running';
 }

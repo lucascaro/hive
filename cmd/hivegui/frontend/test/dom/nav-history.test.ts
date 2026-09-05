@@ -34,6 +34,7 @@ vi.mock('../../src/bridge.js', () => {
     CreateSession: fn(),
     DuplicateSession: fn(),
     KillSession: fn(),
+    SetSessionAttention: fn(),
     RestartSession: fn(),
     UpdateSession: fn(),
     ListAgents: fn(),

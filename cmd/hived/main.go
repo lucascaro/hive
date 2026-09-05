@@ -25,6 +25,16 @@ import (
 )
 
 func main() {
+	// `hived hook` is a first positional subcommand, dispatched before
+	// flag.Parse so it never has to agree with the daemon's flag set
+	// (and so a future daemon flag can't collide with it). Every other
+	// invocation — including plain `hived` with no args — falls through
+	// to the daemon below untouched.
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		runHook(os.Stdin)
+		os.Exit(0)
+	}
+
 	var (
 		sock  = flag.String("socket", "", "Unix socket path (empty = platform default)")
 		shell = flag.String("shell", "", "shell to run (empty = $SHELL or platform default)")

@@ -56,27 +56,17 @@ export function TileChromeHost(): ReactNode {
 }
 
 function TileChrome({ id }: { id: string }): ReactNode {
-  // Two narrow subscriptions rather than one wide one. `attention` is a
-  // Set, so `.has(id)` collapses it to a boolean before zustand's
-  // Object.is comparison — a bell on ANOTHER session re-renders nothing.
-  //
-  // GridView.tsx excludes `attention` from its subscription because a
-  // pass there calls ensureAttached() on every in-grid tile, which
-  // re-latches follow-bottom. That hazard does not apply here: this
-  // component renders no layout and calls no attach path, so a bell
-  // repaints one header and nothing else.
+  // One narrow subscription: needs_attention lives on the session
+  // itself (see TileHeader below, which reads it off `info`), so there
+  // is no second `attention` selector left to keep in sync with it.
   const chrome = useAppStore((s) => s.tileChrome.get(id));
-  const attention = useAppStore((s) => s.attention.has(id));
   const term = getTerm(id);
   // `header` and `overlays` are optional on TermTile because the
   // dom-test stubs render no chrome at all; a real tile always has both.
   if (!chrome || !term?.header) return null;
   return (
     <>
-      {createPortal(
-        <TileHeader id={id} chrome={chrome} attention={attention} />,
-        term.header,
-      )}
+      {createPortal(<TileHeader id={id} chrome={chrome} />, term.header)}
       {term.overlays
         ? createPortal(
             <TileOverlays
@@ -100,25 +90,35 @@ function TileChrome({ id }: { id: string }): ReactNode {
 function TileHeader({
   id,
   chrome,
-  attention,
 }: {
   id: string;
   chrome: TileChromeState;
-  attention: boolean;
 }): ReactNode {
   const nameRef = useRef<HTMLSpanElement>(null);
-  const info = chrome.info;
+  // The session list, not a snapshot of it. The header used to render
+  // from SessionTerm's own copy, refreshed only when the layout ran
+  // ensureTerm() — so a session event that repainted the sidebar left
+  // the tile showing the previous value, and the two surfaces disagreed
+  // about the same session. One source, narrowly subscribed: the
+  // selector returns this session's object, so a change to any other
+  // re-renders nothing.
+  const info = useAppStore((s) => s.sessions.find((x) => x.id === id));
   // `chrome.phase` overrides `info.phase`: setPhase() updates the tile's
-  // own phase and never writes back to info, so resolving from info
-  // alone would repaint the icon from whatever the last session list
-  // said — stale for exactly the transition setPhase exists for.
-  const state = sessionState({ ...info, phase: chrome.phase }, attention);
-  const branch = info.worktreeBranch ?? info.worktree_branch;
-  const title = displayTitle(chrome.termTitle, info.name);
-  const projectId = info.projectId ?? info.project_id ?? '';
+  // own phase and never writes back to the session list, so resolving
+  // from the list alone would repaint the icon from whatever the last
+  // list said — stale for exactly the transition setPhase exists for.
+  const state = sessionState({ ...info, phase: chrome.phase });
+  const branch = info?.worktreeBranch ?? info?.worktree_branch;
+  const title = displayTitle(info?.title, info?.name);
+  const projectId = info?.projectId ?? info?.project_id ?? '';
   const project = useAppStore((s) =>
     s.projects.find((p) => p.id === projectId),
   );
+  // A tile briefly outlives its session row on teardown: `removed`
+  // drops the session before dropTileChrome runs. Render nothing rather
+  // than a header full of blanks. After every hook, so the hook order
+  // is the same on every render.
+  if (!info) return null;
   return (
     <>
       <StateIcon state={state} />

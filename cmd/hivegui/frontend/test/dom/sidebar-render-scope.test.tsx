@@ -44,7 +44,6 @@ beforeEach(() => {
       { id: 'c', name: 'db', project_id: 'p1', order: 2, alive: true },
     ],
     collapsed: new Set(),
-    attention: new Set(),
     activeId: null,
   });
   mountSidebar(Sidebar);
@@ -72,7 +71,10 @@ describe('sidebar re-render scope', () => {
   });
 
   it('re-renders only the ringing row on a bell', () => {
-    update(() => store.addAttention('c'));
+    update(() => {
+      const s = appStore.getState().sessions.find((x) => x.id === 'c');
+      if (s) store.updateSession({ ...s, needs_attention: true });
+    });
     expect(renders).toEqual(['c']);
   });
 

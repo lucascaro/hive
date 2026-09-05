@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/agent"
+	"github.com/lucascaro/hive/internal/agentstate"
 	"github.com/lucascaro/hive/internal/session"
 	"github.com/lucascaro/hive/internal/wire"
 	"github.com/lucascaro/hive/internal/worktree"
@@ -97,15 +98,23 @@ type Entry struct {
 	// is wire.PhaseReady.
 	Phase string
 
-	// NeedsAttention is set when the session rings the terminal bell
-	// and cleared when a client reports that the user has looked (an
-	// UPDATE_SESSION carrying needs_attention:false). In-memory only,
-	// like Phase, so a daemon restart starts every session quiet.
+	// screenDigest is the hash of the visible screen as of the last
+	// tick. The heuristic tier calls a session "working" when this
+	// changes and "idle" when it stops changing — not when bytes
+	// arrive, which is a different question with a different answer: a
+	// measured idle Claude Code session writes an ESC[?6n
+	// cursor-position query every 200ms forever, changing no cell.
+	screenDigest uint64
+
+	// state answers "what is this session doing right now". Created
+	// lazily by machine() and replaced wholesale whenever a new
+	// process is attached, which is what makes "a daemon restart, a
+	// revive or a restart starts the session idle, on the heuristic
+	// tier, with no remembered text" fall out with no clearing code.
 	//
-	// It is deliberately NOT cleared when the session dies: "this
-	// finished and you have not looked at it yet" is the case the flag
-	// is most useful for.
-	NeedsAttention bool
+	// In-memory only, like Phase and NeedsAttention: nothing about it
+	// is persisted, and TestMetaFileUnchangedByState holds that line.
+	state *agentstate.Machine
 
 	// captureCancel cancels the post-spawn AgentSessionID capture
 	// goroutine when the session exits before capture completes.
@@ -135,6 +144,47 @@ func (p *Project) Info() wire.ProjectInfo {
 	}
 }
 
+// machine returns the entry's state machine, creating it on first use.
+// Lazy rather than assigned at every construction site because there
+// are four of those (two disk-load paths, create, and the test
+// helpers) and a nil machine is a panic, not a missing dot: an agent
+// event that races a spawn must land somewhere.
+//
+// Mutating, so callers must hold r.mu — the machine has no lock of its
+// own. Read-only callers use stateSnapshot instead, which is why Info()
+// stays safe at the two sites that render an entry after releasing the
+// lock.
+func (e *Entry) machine() *agentstate.Machine {
+	if e.state == nil {
+		e.state = agentstate.New(time.Now())
+	}
+	return e.state
+}
+
+// stateSnapshot reads the entry's state without creating a machine.
+// The zero Snapshot is idle-on-the-heuristic-tier-with-no-text, which
+// is exactly what a session that has never been observed is, so "no
+// machine yet" needs no special case anywhere.
+func (e *Entry) stateSnapshot() agentstate.Snapshot {
+	if e.state == nil {
+		return agentstate.Snapshot{}
+	}
+	return e.state.Snapshot()
+}
+
+// needsAttention derives the wire's needs_attention flag from the
+// session state. It is NOT a field.
+//
+// "Wants the user" and "what the session is doing" were two independent
+// pieces of daemon state saying overlapping things, and every client
+// then kept a third copy. Three answers to one question is how a
+// session came to sit lit up forever while the GUI thought it had
+// cleared it, and how a bell could look six seconds late: whichever
+// copy you read, another one disagreed. There is now one.
+func needsAttention(state string) bool {
+	return state == wire.StateWaitingInput || state == wire.StateWaitingPermission
+}
+
 // Alive reports whether this entry has a live session attached.
 func (e *Entry) Alive() bool { return e.sess != nil }
 
@@ -143,6 +193,7 @@ func (e *Entry) Session() *session.Session { return e.sess }
 
 // Info renders the entry as a wire.SessionInfo for the protocol.
 func (e *Entry) Info() wire.SessionInfo {
+	st := e.stateSnapshot()
 	return wire.SessionInfo{
 		ID:             e.ID,
 		Name:           e.Name,
@@ -157,7 +208,11 @@ func (e *Entry) Info() wire.SessionInfo {
 		LastError:      e.LastError,
 		Phase:          e.Phase,
 		Title:          e.title(),
-		NeedsAttention: e.NeedsAttention,
+		NeedsAttention: needsAttention(st.State),
+		State:          st.State,
+		StateSource:    st.Source,
+		LastPrompt:     st.LastPrompt,
+		LastSummary:    st.LastSummary,
 	}
 }
 
@@ -195,6 +250,19 @@ type Registry struct {
 	order    []string
 	stateDir string
 
+	// socketPath is the Unix socket this registry's daemon is bound to.
+	// Set once by the daemon right after Open (SetSocketPath) — the
+	// registry has no way to know it otherwise, and it is what create,
+	// Revive and Restart put in a spawned agent's HIVE_SOCKET so its
+	// hooks/extension know where to dial back.
+	socketPath string
+	// hivedPath is the resolved absolute path of the running hived
+	// binary (os.Executable() + filepath.EvalSymlinks, done once at
+	// daemon start). Set by SetHivedPath; "" if it could not be
+	// resolved, in which case agent.SpawnInfo carries it through
+	// unresolved and the Claude adapter skips wiring hooks.
+	hivedPath string
+
 	projects     map[string]*Project
 	projectOrder []string
 
@@ -229,6 +297,11 @@ type Registry struct {
 	// ponytail: one global git lock; key it per repo root if
 	// multi-repo create throughput ever matters.
 	gitMu sync.Mutex
+
+	// tickStop closes when Close runs, stopping the state ticker.
+	tickStop chan struct{}
+	// tickOnce guards tickStop against a double Close.
+	tickOnce sync.Once
 }
 
 // Phase reports the entry's current lifecycle phase (wire.Phase*), or
@@ -263,19 +336,24 @@ func (r *Registry) setPhase(id, phase string) {
 	r.mu.Unlock()
 }
 
-// attachTitleHook wires a freshly-assigned session's window-title
-// reports back to this registry. Called at each site that assigns
-// Entry.sess, so a session created, restarted or revived all report
-// alike.
+// attachSessionHooks wires a freshly-assigned session's reports back to
+// this registry, and gives the entry a fresh state machine to feed.
+// Called at each site that assigns Entry.sess, so a session created,
+// restarted or revived all report alike — and all start idle, which is
+// the whole reason the machine is replaced here rather than cleared
+// field by field at each of those sites.
 //
-// Safe to call while holding r.mu: SetTitleHook takes only the session's
-// own lock, and the hook it installs takes only r.mu (never both at
-// once, since the session releases its lock before invoking it). The
+// Safe to call while holding r.mu: the setters take only the session's
+// own lock, and the hooks they install take only r.mu (never both at
+// once, since the session releases its lock before invoking them). The
 // resulting order is one-way, r.mu → session.mu, matching every other
 // registry→session call.
-func (r *Registry) attachTitleHook(id string, sess *session.Session) {
+func (r *Registry) attachSessionHooks(e *Entry, sess *session.Session) {
+	e.state = agentstate.New(time.Now())
+	id := e.ID
 	sess.SetTitleHook(func(string) { r.noteTitleChange(id) })
 	sess.SetBellHook(func() { r.noteBell(id) })
+	e.screenDigest = sess.ScreenDigest()
 }
 
 // noteBell marks an entry as wanting attention after its session rang
@@ -286,15 +364,113 @@ func (r *Registry) attachTitleHook(id string, sess *session.Session) {
 // the first, instead of a broadcast to every connected client. The
 // session deliberately does not throttle for this reason — "wants
 // attention" does not get truer the second time.
+//
+// The bell also moves the session state to waiting_input: on the
+// heuristic tier it is the only "the program wants you" signal there
+// is. Nothing but the user looking clears it again — see
+// Machine.ClearWaiting — so a program that rings and then carries on
+// redrawing cannot bury its own request for attention.
 func (r *Registry) noteBell(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.entries[id]
-	if !ok || e.NeedsAttention {
+	if !ok {
 		return
 	}
-	e.NeedsAttention = true
-	r.broadcastLocked(wire.SessionEventAttention, e.Info())
+	prev := e.stateSnapshot()
+	if e.machine().Bell(time.Now()) {
+		r.announceStateLocked(e, prev, "bell")
+	}
+}
+
+// ApplyAgentEvent folds one hook/extension-reported observation
+// (wire.AgentEvent, arrived over a ModeEvent connection) into the
+// named session's state machine, and broadcasts if it changed
+// anything. Unknown session id is a silent no-op — the daemon's
+// ModeEvent arm has already resolved that case into "log + close", and
+// a hook racing a session's own teardown is an ordinary occurrence,
+// not something worth a second log line here.
+//
+// The entry's machine is never nil (see Entry.machine), so an event
+// that races a spawn — the entry exists, Phase != Ready — is applied
+// rather than dropped.
+func (r *Registry) ApplyAgentEvent(id string, ev wire.AgentEvent) error {
+	at, err := time.Parse(time.RFC3339Nano, ev.At)
+	if err != nil {
+		at = time.Now()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.entries[id]
+	if !ok {
+		return ErrNotFound
+	}
+	prev := e.stateSnapshot()
+	if e.machine().Apply(agentstate.Event{
+		Kind:   ev.Kind,
+		Source: ev.Source,
+		At:     at,
+		Text:   ev.Text,
+	}) {
+		r.announceStateLocked(e, prev, ev.Kind)
+	}
+	return nil
+}
+
+// debugState is HIVE_DEBUG_STATE=1: log every state transition with
+// what caused it. The one tool that turns "the dot is wrong" into a
+// transcript — read once so the hot path pays a bool.
+var debugState = os.Getenv("HIVE_DEBUG_STATE") == "1"
+
+// logStateLocked prints one transition line when debugState is on.
+// reason names the feeder (bell / output / tick / clear / exit / event
+// kind) so a wrong dot can be traced to the observation that moved it.
+func logStateLocked(e *Entry, prev, cur agentstate.Snapshot, reason string) {
+	if !debugState {
+		return
+	}
+	log.Printf("state: %s %s -> %s src=%s reason=%s",
+		e.ID, stateName(prev.State), stateName(cur.State), sourceName(cur.Source), reason)
+}
+
+func stateName(s string) string {
+	if s == wire.StateIdle {
+		return "idle"
+	}
+	return s
+}
+
+func sourceName(s string) string {
+	if s == wire.StateSourceHeuristic {
+		return "heuristic"
+	}
+	return s
+}
+
+// announceStateLocked broadcasts a state change and raises attention
+// when the new state is one the user has to act on.
+//
+// Attention is only ever raised for a session whose state came from the
+// agent itself. The heuristic tier deliberately does not participate:
+// "no bytes for two seconds" is true of every `ls` in every shell, and
+// turning that into the flag that drives desktop notifications would
+// make the flag worthless within a minute of use. On that tier the bell
+// remains the only thing that asks for the user, exactly as before.
+func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reason string) {
+	cur := e.stateSnapshot()
+	if cur == prev {
+		return
+	}
+	logStateLocked(e, prev, cur, reason)
+	// Both kinds when the derived flag moved, attention first: clients
+	// key notifications off "attention" and glyphs off "state", this is
+	// one moment that genuinely is both, and "attention" is the one
+	// older consumers know. Two notifications of one fact — not two
+	// facts.
+	if needsAttention(cur.State) != needsAttention(prev.State) {
+		r.broadcastLocked(wire.SessionEventAttention, e.Info())
+	}
+	r.broadcastLocked(wire.SessionEventState, e.Info())
 }
 
 // SetAttention records whether a session still wants the user's
@@ -311,11 +487,19 @@ func (r *Registry) SetAttention(id string, want bool) error {
 	if !ok {
 		return ErrNotFound
 	}
-	if e.NeedsAttention == want {
+	// "The user has now looked" — the one thing only a client can
+	// observe. It resolves the wait, and the flag follows from that
+	// rather than being set beside it.
+	//
+	// want=true is accepted for protocol compatibility but does not
+	// invent a wait: nothing in the tree sends it, and a client
+	// asserting "this session wants me" would be a second writer of the
+	// state this consolidation exists to give one owner.
+	prev := e.stateSnapshot()
+	if want || !e.machine().ClearWaiting() {
 		return nil
 	}
-	e.NeedsAttention = want
-	r.broadcastLocked(wire.SessionEventAttention, e.Info())
+	r.announceStateLocked(e, prev, "clear")
 	return nil
 }
 
@@ -387,6 +571,60 @@ func (r *Registry) setPhaseIf(id, from, to string) bool {
 	return true
 }
 
+// SetSocketPath records the Unix socket this registry's daemon is
+// bound to. Called once by the daemon right after Open, before any
+// session can be created.
+func (r *Registry) SetSocketPath(p string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.socketPath = p
+}
+
+// SetHivedPath records the resolved absolute path of the running
+// hived binary. Called once by the daemon at startup; "" (the zero
+// value) means it could not be resolved, which the Claude adapter
+// treats as "skip wiring hooks" rather than an error.
+func (r *Registry) SetHivedPath(p string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hivedPath = p
+}
+
+// hiveEnv returns the HIVE_SESSION_ID / HIVE_SOCKET pair every spawned
+// session's environment carries, so an agent's hook or extension tier
+// (and, per spec 337, anything else that wants to dial the daemon back)
+// knows its own id and where to reach it. Takes r.mu.
+func (r *Registry) hiveEnv(id string) []string {
+	r.mu.Lock()
+	sock := r.socketPath
+	r.mu.Unlock()
+	return []string{"HIVE_SESSION_ID=" + id, "HIVE_SOCKET=" + sock}
+}
+
+// spawnInfo builds the agent.SpawnInfo a Def.SpawnArgs call needs.
+// Takes r.mu.
+func (r *Registry) spawnInfo() agent.SpawnInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return agent.SpawnInfo{HivedPath: r.hivedPath, StateDir: r.stateDir}
+}
+
+// appendSpawnArgs appends the agent's Def.SpawnArgs (if any) to cmd —
+// the hook-tier wiring for Restart and the boot-revive path in Revive.
+// No-op (returns cmd unchanged) for an unknown agent or one with no
+// SpawnArgs.
+func (r *Registry) appendSpawnArgs(cmd []string, agentID string) []string {
+	def, ok := agent.Get(agent.ID(agentID))
+	if !ok || def.SpawnArgs == nil {
+		return cmd
+	}
+	extra := def.SpawnArgs(r.spawnInfo())
+	if len(extra) == 0 {
+		return cmd
+	}
+	return append(append([]string(nil), cmd...), extra...)
+}
+
 // Open creates or loads a Registry rooted at stateDir. Existing
 // metadata on disk is loaded; live sessions are not auto-started.
 func Open(stateDir string) (*Registry, error) {
@@ -399,11 +637,78 @@ func Open(stateDir string) (*Registry, error) {
 		projects:         make(map[string]*Project),
 		listeners:        make(map[Listener]struct{}),
 		projectListeners: make(map[ProjectListener]struct{}),
+		tickStop:         make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
 		return nil, fmt.Errorf("registry: load: %w", err)
 	}
+	go r.tickStates()
 	return r, nil
+}
+
+// stateTickInterval is how often the registry re-checks every live
+// session for a quiet-timeout transition. It has to be well under
+// agentstate.QuietAfter for "idle after two seconds" to mean two
+// seconds and not four, and coarse enough that the work — one
+// comparison per session under one lock — stays invisible.
+const stateTickInterval = 500 * time.Millisecond
+
+// tickStates drives the heuristic tier's only time-based transition:
+// a session that stopped producing output has finished its turn.
+//
+// One goroutine for the whole registry, not one per session: the work
+// is a timestamp comparison, and per-session timers would mean
+// creating and cancelling one on every chunk of PTY output.
+func (r *Registry) tickStates() {
+	t := time.NewTicker(stateTickInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-r.tickStop:
+			return
+		case now := <-t.C:
+			r.mu.Lock()
+			for _, id := range r.order {
+				e := r.entries[id]
+				if e == nil || e.sess == nil {
+					continue
+				}
+				r.sampleStateLocked(e, now)
+			}
+			r.mu.Unlock()
+		}
+	}
+}
+
+// sampleStateLocked folds one observation of a live session into its
+// state: the screen either changed since the last sample (it is
+// working) or it has not changed for long enough to be idle.
+//
+// Sampling the rendered screen rather than counting bytes is the whole
+// point; see Entry.screenDigest for the measurement that forced it.
+func (r *Registry) sampleStateLocked(e *Entry, now time.Time) {
+	// A session can die between any two samples — watchSessionExit nils
+	// e.sess the moment the child exits, and it already recorded the
+	// exit on the machine. The ticker checks this too; the check lives
+	// here as well so the invariant belongs to the function rather than
+	// to one of its callers.
+	if e.sess == nil {
+		return
+	}
+	prev := e.stateSnapshot()
+	reason := ""
+	if d := e.sess.ScreenDigest(); d != e.screenDigest {
+		e.screenDigest = d
+		if e.machine().Output(now) {
+			reason = "output"
+		}
+	}
+	if e.machine().Tick(now) {
+		reason = "tick"
+	}
+	if reason != "" {
+		r.announceStateLocked(e, prev, reason)
+	}
 }
 
 // load reads index.json + every session.json under sessions/, plus
@@ -639,8 +944,10 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 			} else {
 				opts.Cmd = def.Cmd
 			}
+			opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
 		}
 	}
+	opts.Env = append(append([]string(nil), opts.Env...), r.hiveEnv(id)...)
 
 	sess, err := spawn(opts)
 	if err != nil {
@@ -666,7 +973,7 @@ func (r *Registry) Revive(id string, opts session.Options) error {
 		return ErrNotFound
 	}
 	e.sess = sess
-	r.attachTitleHook(id, sess)
+	r.attachSessionHooks(e, sess)
 	e.LastError = ""
 	info := e.Info()
 	r.mu.Unlock()
@@ -754,6 +1061,7 @@ func (r *Registry) Restart(id string) error {
 		default:
 			opts.Cmd = def.Cmd
 		}
+		opts.Cmd = r.appendSpawnArgs(opts.Cmd, agentID)
 	}
 	// Pass the project cwd as the fallback. Revive promotes opts.Cwd to
 	// wtPath when the worktree directory still exists; if the user removed
@@ -783,6 +1091,13 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 		return
 	}
 	e.sess = nil
+	// The process is gone: record it before Info() is rendered below,
+	// so the same broadcast carries both Alive:false and the exited
+	// state. Done inline rather than through a session hook because
+	// this is the one place that already owns the exit path.
+	prev := e.stateSnapshot()
+	e.machine().Exit()
+	logStateLocked(e, prev, e.stateSnapshot(), "exit")
 	// Stop any post-spawn AgentSessionID capture that's still
 	// polling — the session is gone, no point waiting for codex's
 	// rollout file. The capture goroutine will return ctx.Canceled
@@ -1065,6 +1380,11 @@ func (r *Registry) Update(req wire.UpdateSessionReq) (*Entry, error) {
 // Close terminates every live session and clears listeners. The on-disk
 // metadata is preserved.
 func (r *Registry) Close() error {
+	// Nil for a Registry built literally rather than through Open; a
+	// close(nil) would panic where the old Close simply worked.
+	if r.tickStop != nil {
+		r.tickOnce.Do(func() { close(r.tickStop) })
+	}
 	r.mu.Lock()
 	for ch := range r.listeners {
 		close(ch)
@@ -1192,3 +1512,9 @@ func (r *Registry) persistProjectIndexLoggedLocked(op string) {
 		log.Printf("registry: %s: persist project index failed (on-disk order now stale): %v", op, err)
 	}
 }
+
+// NoteBellForTest rings the bell on a session from another package's
+// test. The daemon's control-frame tests need a session that is
+// genuinely asking for the user, and since needs_attention is derived
+// from the state there is no field for them to set.
+func (r *Registry) NoteBellForTest(id string) { r.noteBell(id) }

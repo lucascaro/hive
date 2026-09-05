@@ -127,6 +127,13 @@ const (
 	// for the verb set.
 	FrameClientCommand   FrameType = 0x20 // C → S, JSON, control
 	FrameClientBroadcast FrameType = 0x21 // S → C, JSON, control
+
+	// FrameAgentEvent is the sole frame of a ModeEvent connection: one
+	// observation from an agent's hook or extension tier (`hived hook`,
+	// or the Pi extension), reported as an AgentEvent. The daemon reads
+	// exactly this one frame and closes — see internal/daemon's ModeEvent
+	// arm.
+	FrameAgentEvent FrameType = 0x22 // C → S, JSON, event
 )
 
 func (t FrameType) String() string {
@@ -197,6 +204,8 @@ func (t FrameType) String() string {
 		return "CLIENT_COMMAND"
 	case FrameClientBroadcast:
 		return "CLIENT_BROADCAST"
+	case FrameAgentEvent:
+		return "AGENT_EVENT"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}

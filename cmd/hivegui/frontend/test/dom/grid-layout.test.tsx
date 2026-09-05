@@ -142,7 +142,6 @@ beforeEach(() => {
   state.view = 'grid-project';
   state.gridProjectId = 'p1';
   state.minimized = new Set();
-  state.attention = new Set();
 });
 
 afterEach(() => {
@@ -251,7 +250,9 @@ describe('GridView', () => {
     const passes = attachedWithTemplate.length;
 
     act(() => {
-      state.attention = new Set(['b']);
+      state.sessions = state.sessions.map((s) =>
+        s.id === 'b' ? { ...s, needs_attention: true } : s,
+      );
     });
 
     // A bell never called renderGrid(): events.ts patches the class onto

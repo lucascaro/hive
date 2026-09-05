@@ -16,6 +16,7 @@ import {
   Notify,
 } from '../bridge.js';
 import { closeActiveSession, reopenLastClosedSession } from './undo-close.js';
+import { readNeedsAttention } from './state.js';
 import { appStore } from '../store/store.js';
 import { termsMap } from '../store/terms.js';
 import {
@@ -537,8 +538,9 @@ export function jumpToAttention() {
     // nextAttentionId skips the active session, so without this the row
     // would pulse while ⌘B insists nothing needs attention.
     const staleId = appData().activeId;
-    if (staleId && appData().attention.has(staleId)) {
-      clearAttention(staleId);
+    const staleSession = appData().sessions.find((s) => s.id === staleId);
+    if (staleSession && readNeedsAttention(staleSession)) {
+      clearAttention(staleId as string);
     }
     flashStatus('no sessions need attention');
     return;

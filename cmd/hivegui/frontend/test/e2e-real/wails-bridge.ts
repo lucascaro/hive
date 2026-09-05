@@ -318,8 +318,8 @@ export async function ReloadGUI() {
 export async function RequestReloadAllGUIs() {
   return '';
 }
-export async function SetSessionAttention() {
-  return '';
+export async function SetSessionAttention(id: string, want: boolean) {
+  return call('SetSessionAttention', { session_id: id, want: !!want });
 }
 export async function MenuBarLoginItemStatus() {
   return 'not-registered';

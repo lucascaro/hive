@@ -75,18 +75,27 @@ func TestNoteTitleChangeUsesTheTitleKind(t *testing.T) {
 
 	r.noteTitleChange(e.ID)
 
-	select {
-	case ev := <-listener:
-		if ev.Kind != wire.SessionEventTitle {
-			t.Fatalf("kind = %q, want %q — sharing %q is what made the "+
-				"event stream nondeterministic for other consumers",
-				ev.Kind, wire.SessionEventTitle, wire.SessionEventUpdated)
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-listener:
+			// The live shell keeps producing output, so state events
+			// interleave; this assertion is about the title kind only.
+			if ev.Kind == wire.SessionEventState {
+				continue
+			}
+			if ev.Kind != wire.SessionEventTitle {
+				t.Fatalf("kind = %q, want %q — sharing %q is what made the "+
+					"event stream nondeterministic for other consumers",
+					ev.Kind, wire.SessionEventTitle, wire.SessionEventUpdated)
+			}
+			if ev.Session.ID != e.ID {
+				t.Errorf("session id = %q, want %q", ev.Session.ID, e.ID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("noteTitleChange broadcast nothing")
 		}
-		if ev.Session.ID != e.ID {
-			t.Errorf("session id = %q, want %q", ev.Session.ID, e.ID)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("noteTitleChange broadcast nothing")
 	}
 }
 
@@ -108,10 +117,20 @@ func TestNoteTitleChangeIgnoresADeadEntry(t *testing.T) {
 	r.noteTitleChange(e.ID)
 	r.noteTitleChange("no-such-id")
 
-	select {
-	case ev := <-listener:
-		t.Fatalf("unexpected %s event for %s", ev.Kind, ev.Session.ID)
-	case <-time.After(300 * time.Millisecond):
+	deadline := time.After(300 * time.Millisecond)
+	for {
+		select {
+		case ev := <-listener:
+			// The shell is still running and still writing to its PTY,
+			// so its state keeps moving; only title events are on
+			// trial here.
+			if ev.Kind == wire.SessionEventState {
+				continue
+			}
+			t.Fatalf("unexpected %s event for %s", ev.Kind, ev.Session.ID)
+		case <-deadline:
+			return
+		}
 	}
 }
 

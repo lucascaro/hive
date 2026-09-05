@@ -949,6 +949,30 @@ if (typeof window !== 'undefined') {
     killSession(id: string, force?: boolean) {
       return KillSession(id, force);
     },
+    // A bell. The PTY byte itself no longer decides anything in the
+    // GUI — needs_attention is derived server-side, and this window's
+    // only source for it is the daemon's own broadcast. So the mock
+    // models only that half: the daemon's bell scanner seeing the byte
+    // and raising the flag.
+    ringBell(id: string) {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s || s.needs_attention) return;
+      s.needs_attention = true;
+      s.state = 'waiting_input';
+      emit('session:event', JSON.stringify({ kind: 'attention', session: s }));
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
+    // The daemon broadcasts SESSION_EVENT(state) whenever a session
+    // starts or stops working, or an agent reports what it is blocked
+    // on. Modelled here rather than left to specs to hand-emit, so the
+    // payload shape stays in one place and matches Entry.Info().
+    setSessionState(id: string, next: string, source = '') {
+      const s = state.sessions.find((x) => x.id === id);
+      if (!s) return;
+      s.state = next;
+      s.state_source = source;
+      emit('session:event', JSON.stringify({ kind: 'state', session: s }));
+    },
     listeners,
     stdinLog,
     stdinText(id?: string) {

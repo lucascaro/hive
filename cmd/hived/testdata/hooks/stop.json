@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session",
+  "hook_event_name": "Stop",
+  "cwd": "/tmp/proj",
+  "last_assistant_message": "pong"
+}

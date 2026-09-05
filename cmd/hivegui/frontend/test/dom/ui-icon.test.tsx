@@ -53,6 +53,6 @@ describe('<Icon>', () => {
     for (const name of ICON_NAMES) {
       expect(document.getElementById(`hv-${name}`), name).not.toBeNull();
     }
-    expect(ICON_NAMES).toHaveLength(22);
+    expect(ICON_NAMES).toHaveLength(24);
   });
 });

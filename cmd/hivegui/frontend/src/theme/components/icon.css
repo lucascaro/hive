@@ -23,7 +23,17 @@
 /* State icons - icons.md > State icons. Colour and motion only; the
    shape comes from the symbol. */
 .hv-state-icon[data-state="running"] { color: var(--state-running); }
+/* Working reuses --state-running rather than claiming a token of its
+   own: "healthy" is one colour in all 18 themes, and the shape (three
+   dots vs. a play triangle) plus the motion already carry the
+   difference between busy and idle. A 19th per-theme colour would have
+   to be picked 18 times to say something the shape says once. */
+.hv-state-icon[data-state="working"] {
+  color: var(--state-running);
+  animation: hv-state-pulse-fg var(--motion-pulse) ease-in-out infinite;
+}
 .hv-state-icon[data-state="attention"] { color: var(--state-attention); }
+.hv-state-icon[data-state="waiting-permission"] { color: var(--state-attention); }
 .hv-state-icon[data-state="starting"] {
   color: var(--state-starting);
   animation: hv-state-spin 1s linear infinite;
@@ -31,7 +41,8 @@
 .hv-state-icon[data-state="exited"] { color: var(--state-exited); }
 .hv-state-icon[data-state="error"] { color: var(--state-error); }
 
-.hv-state-icon[data-state="attention"] {
+.hv-state-icon[data-state="attention"],
+.hv-state-icon[data-state="waiting-permission"] {
   border-radius: 50%;
   animation: hv-state-pulse var(--motion-pulse) ease-in-out infinite;
 }
@@ -41,6 +52,13 @@
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--state-attention) 55%, transparent); }
   50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--state-attention) 0%, transparent); }
 }
+/* Working pulses its own opacity rather than a ring: the ring says
+   "act on me", and a session quietly getting on with its job is the
+   opposite of that. */
+@keyframes hv-state-pulse-fg {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .hv-state-icon { animation: none !important; }
+  .hv-state-icon { animation: none !important; opacity: 1 !important; }
 }

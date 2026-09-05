@@ -149,7 +149,6 @@ beforeEach(() => {
   state.activeId = 'b1';
   state.view = 'single';
   state.minimized = new Set();
-  state.attention = new Set();
 });
 
 describe('horizontal arrows in focused mode belong to the terminal', () => {

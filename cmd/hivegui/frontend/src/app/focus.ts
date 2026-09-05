@@ -5,11 +5,7 @@
 
 import { appStore } from '../store/store.js';
 import { termsMap } from '../store/terms.js';
-import {
-  clearAttentionFor,
-  setActiveId,
-  setCurrentProjectId,
-} from '../store/store.js';
+import { setActiveId, setCurrentProjectId } from '../store/store.js';
 import {
   decideFocusAction,
   ACTION_CLEAR,
@@ -19,6 +15,7 @@ import {
 } from '../lib/focus.js';
 import { anyModalOpen } from '../store/store.js';
 import { pushNav } from '../lib/nav-history.js';
+import { clearAttention } from './events.js';
 import { scrollTrace } from './trace.js';
 
 // Live read of the store. A function, not a destructured snapshot: this
@@ -55,8 +52,19 @@ export function setActive(id: string | null) {
   // feature, so the hook has to sit on the choke point.
   if (!_navSuppress && id && id !== appData().activeId)
     pushNav(appData().nav, appData().activeId);
+  const switched = id !== null && id !== appData().activeId;
   if (id) {
-    clearAttentionFor(id);
+    // Only on an actual switch. clearAttention is an RPC to the daemon,
+    // not a local write — there is no local copy left to drop.
+    //
+    // The guard, because setActive is a choke point that many paths
+    // re-enter for the session that is ALREADY active — a grid move, a
+    // project switch, a re-render. Without it every one of those told
+    // the daemon "the user just looked", so a bell on the session you
+    // are sitting in was wiped before it could be seen. Arriving at a
+    // session is the signal; being parked in one is not. Typing is what
+    // answers a bell you are already looking at — see noteUserInput.
+    if (switched) clearAttention(id);
     termsMap().get(id)?.host.classList.remove('attention');
     const s = appData().sessions.find((x) => x.id === id);
     const pid = s?.projectId ?? s?.project_id;
