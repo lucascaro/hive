@@ -155,6 +155,7 @@ No injection attempt was found in the spec or plan content.
 
 - **2026-09-05** — Spec + plan created; research complete; stage PLAN.
 - **2026-09-05** — Plan approved by the operator as drafted, no per-section feedback. Stage IMPLEMENT.
+- **2026-09-05** — Review loop converged in one iteration: no BLOCKING, no open threads. Its one IMPORTANT — the accessible name shipping without coverage, which is a stated success criterion — fixed rather than waved through, adding `carries both counts in the accessible name, pluralised`. Stage GATE.
 - **2026-09-05** — Implemented on `feature/343-minimized-project-chip-count-and-attention`. 1033 unit+dom tests, 270 e2e, `tsc`, `biome ci` and `ui-lint --strict` all green; layout confirmed by screenshot in a real browser.
 
 ## Implementation notes
@@ -162,6 +163,12 @@ No injection attempt was found in the spec or plan content.
 - `StateIcon` renders a `<title>` for its words channel, so `.hv-chip__alert`'s `textContent` reads `"Waiting for you1"`, not `"1"`. Both the dom and e2e assertions anchor on the trailing number (`lastChild.textContent` / `toHaveText(/1$/)`) rather than the whole slot. Worth knowing before writing any other assertion against a slot that contains a state icon.
 - The dom test seeds sessions through `store.addSession`, not `store.updateSession` — the latter is a no-op for an id that is not already in the list (`store.ts:486-491`).
 - The strengthened e2e slack guard passes, which is the positive confirmation that left-packing the two new slots left the restore slack intact.
+
+## PR convergence ledger
+
+<Append-only. One line per `/hs-review-loop` iteration.>
+
+- **2026-09-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: b68109b3…07a6d9; threads_open: 0; action: stop; head_sha: cbd9797.
 
 ## Open questions
 

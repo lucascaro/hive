@@ -5,7 +5,7 @@ title: "Show session count and attention state on minimized project chips"
 type: enhancement
 complexity: S
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Show session count and attention state on minimized project chips
