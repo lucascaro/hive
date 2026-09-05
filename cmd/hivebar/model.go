@@ -33,8 +33,11 @@ type Model struct {
 
 	Projects []ProjectGroup
 
-	Sessions  int
-	Attention int
+	Sessions int
+	// Waiting counts the sessions actually blocked on the user —
+	// state ∈ {waiting_input, waiting_permission} — rather than the
+	// sessions whose bell happens to be unacknowledged.
+	Waiting int
 }
 
 // ProjectGroup is one project and the sessions under it, in the order
@@ -50,11 +53,35 @@ type SessionRow struct {
 	ID    string
 	Name  string
 	Title string
-	// NeedsAttention drives the marker on the row. Rendered rather than
-	// counted-only because "3 need you" without saying which is a
-	// prompt to open the GUI and hunt.
-	NeedsAttention bool
-	Alive          bool
+	// Waiting drives the marker on the row. Rendered rather than
+	// counted-only because "3 waiting on you" without saying which is a
+	// prompt to open the GUI and hunt. It is the same predicate the
+	// count uses, so the marker and the summary can never disagree.
+	Waiting bool
+	Alive   bool
+}
+
+// stateContract is the DaemonContract generation that introduced
+// SessionInfo.state (internal/buildinfo/contract.go, history entry 3).
+//
+// It exists because `state` cannot answer "does this daemon report
+// state at all": StateIdle is the empty string, so an idle session on a
+// current daemon and every session on an old one look identical on the
+// wire. The daemon's own contract number is the only honest
+// discriminator, and Welcome already carries it.
+const stateContract = 3
+
+// waiting reports whether a session is blocked on the user.
+//
+// Below stateContract the daemon sends no state, so needs_attention —
+// the bell-driven flag hivebar read before this — is all there is, and
+// falling back to it keeps an old daemon's menu working rather than
+// showing a permanent zero.
+func waiting(s wire.SessionInfo, daemonContract int) bool {
+	if daemonContract < stateContract {
+		return s.NeedsAttention
+	}
+	return s.State == wire.StateWaitingInput || s.State == wire.StateWaitingPermission
 }
 
 // BuildModel groups a snapshot into what the menu shows.
@@ -94,15 +121,16 @@ func BuildModel(
 		return sortedSessions[i].Order < sortedSessions[j].Order
 	})
 	for _, s := range sortedSessions {
-		if s.NeedsAttention {
-			m.Attention++
+		w := waiting(s, welcome.DaemonContract)
+		if w {
+			m.Waiting++
 		}
 		row := SessionRow{
-			ID:             s.ID,
-			Name:           s.Name,
-			Title:          s.Title,
-			NeedsAttention: s.NeedsAttention,
-			Alive:          s.Alive,
+			ID:      s.ID,
+			Name:    s.Name,
+			Title:   s.Title,
+			Waiting: w,
+			Alive:   s.Alive,
 		}
 		g, ok := byID[s.ProjectID]
 		if !ok {
@@ -173,8 +201,8 @@ func (m Model) SummaryLine() string {
 	}
 	s := fmt.Sprintf("%s across %s",
 		plural(m.Sessions, "session"), plural(len(m.Projects), "project"))
-	if m.Attention > 0 {
-		s += fmt.Sprintf(" · %d need%s you", m.Attention, verbS(m.Attention))
+	if m.Waiting > 0 {
+		s += fmt.Sprintf(" · %d waiting on you", m.Waiting)
 	}
 	return s
 }
@@ -192,7 +220,7 @@ func (m SessionRow) LabelIn(project string) string {
 		name = m.ID
 	}
 	prefix := "  "
-	if m.NeedsAttention {
+	if m.Waiting {
 		// A leading marker rather than a trailing one: menu items are
 		// left-aligned and of wildly differing widths, so a trailing
 		// glyph lands in a different place on every row and stops
@@ -216,11 +244,4 @@ func plural(n int, noun string) string {
 		return fmt.Sprintf("1 %s", noun)
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
-}
-
-func verbS(n int) string {
-	if n == 1 {
-		return "s"
-	}
-	return ""
 }

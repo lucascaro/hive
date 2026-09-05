@@ -48,7 +48,7 @@ Decided in [mocks/sidebar-structure.html](mocks/sidebar-structure.html) (S2 insi
 - `--surface-raised` body, 1px `--border`, `--radius-md`, margin `var(--space-1) var(--space-2) var(--space-2)`.
 - Header 30px: chevron (collapsed state), 8px colour swatch (`--session-color` data), name `--text-md` 500, session count `--font-mono --text-xs --fg-subtle` right-aligned, then hover actions (`plus` new session, `branch` worktrees, `settings` edit project, `minus` minimize project, `x` delete project). The five buttons take an 18px box, not the primitive's 24px — at the 220px sidebar floor the default size squeezes the name to ~3px.
 - The card ROOT gets `data-state="attention"` when any child session has attention (that is what the CSS selects): the header's swatch gains the pulse ring. Nothing else on the header changes.
-- Collapsed: body hidden, header shows "n sessions · k need you" in the count slot.
+- Collapsed: body hidden, header shows "n sessions · k waiting on you" in the count slot — the same wording the menu bar summary uses, off the same predicate.
 
 ## `chip({ label, color?, state?, count?, attention?, onClick, onRestore? })` — `src/components/Chip.tsx`
 

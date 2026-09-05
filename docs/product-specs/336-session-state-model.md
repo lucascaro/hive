@@ -1,6 +1,6 @@
 ---
 issue: null
-pr: 341
+pr: 344
 title: "Session state model: know what every agent is doing"
 type: enhancement
 complexity: L
@@ -76,8 +76,22 @@ settings untouched.
   flows, `idle` after two seconds of silence, `waiting_input` on a bell,
   `exited` on exit — verified by a Go test feeding a fake PTY.
 - A session whose hook stops firing (simulated by killing the event
-  connection path) falls back to heuristic state within the quiet
-  threshold; `state_source` flips to `heuristic`.
+  connection path) falls back to the heuristic tier once its last hook
+  event is older than `agentstate.HookStaleAfter` (30 s), and
+  `state_source` flips to `heuristic` with it. Both routes back are
+  covered: `Output` takes a still-painting session to
+  `working`/`heuristic`, and `Tick` takes a quiet one to
+  `idle`/`heuristic`.
+  The deliberate exception is a wait. `waiting_input` and
+  `waiting_permission` are never ended by elapsed time or by output on
+  any tier — only by something that constitutes an actual answer: the
+  user acting (`ClearWaiting`), the agent reporting the wait resolved
+  (`permission_resolved`, `turn_end`, `session_end`), or the process
+  exiting. No amount of silence is evidence that an unanswered prompt
+  was answered, and a timer that flipped a quiet `waiting_permission`
+  to idle would erase a real request the user has not seen yet. So a
+  session whose hook dies mid-prompt — with no agent left to report a
+  resolution — keeps that prompt until a human resolves it.
 - Sidebar rows and tile headers render the six states; the tooltip
   shows prompt + summary when present. Playwright mock e2e covers the
   glyphs; unit tests cover the store reducers.

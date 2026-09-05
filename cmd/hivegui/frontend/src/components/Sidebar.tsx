@@ -314,7 +314,7 @@ function ProjectItem(o: ProjectItemProps) {
   const nameRef = useRef<HTMLSpanElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   // Same helper the minimized chip uses, so the collapsed card's
-  // "k need you" and the chip's alert count can never disagree.
+  // "k waiting on you" and the chip's alert count can never disagree.
   const attentionCount = attentionSummary(o.sessions).count;
 
   // dragstart bubbles, so a session-row drag fires here too after its own

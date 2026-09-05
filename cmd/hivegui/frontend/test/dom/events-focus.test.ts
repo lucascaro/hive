@@ -278,6 +278,51 @@ describe('the desktop notification edge', () => {
 
     vi.mocked(document.hasFocus).mockRestore();
   });
+
+  // A permission prompt and an open-ended question are different asks.
+  // Blurring them into one word makes the user open the window just to
+  // learn which one it was.
+  it('names the state in the body, and keeps the old wording for a bare bell', () => {
+    const notify = vi.mocked(bridge.Notify);
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+    emit(
+      'session:list',
+      JSON.stringify({ sessions: [{ id: 'sess-7' }, { id: 'sess-8' }] }),
+    );
+
+    notify.mockClear();
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'attention',
+        session: {
+          id: 'sess-7',
+          needs_attention: true,
+          state: 'waiting_permission',
+        },
+      }),
+    );
+    expect(notify.mock.calls[0]?.[2]).toBe(
+      'Waiting for permission — click to switch.',
+    );
+
+    // The heuristic tier reports no state at all; its bell still means
+    // "waiting for input", which is what it always said.
+    notify.mockClear();
+    emit(
+      'session:event',
+      JSON.stringify({
+        kind: 'attention',
+        session: { id: 'sess-8', needs_attention: true },
+      }),
+    );
+    expect(notify.mock.calls[0]?.[2]).toBe(
+      'Waiting for input — click to switch.',
+    );
+
+    vi.mocked(document.hasFocus).mockRestore();
+  });
 });
 
 // Typing into a session is what answers its request. This is the

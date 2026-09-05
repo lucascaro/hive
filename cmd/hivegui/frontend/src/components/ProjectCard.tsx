@@ -48,7 +48,10 @@ function countText(p: ProjectCardProps): string {
   if (!p.collapsed) return String(p.sessionCount);
   const n = `${p.sessionCount} session${p.sessionCount === 1 ? '' : 's'}`;
   if (p.attentionCount === 0) return n;
-  return `${n} · ${p.attentionCount} need${p.attentionCount === 1 ? 's' : ''} you`;
+  // Same words as the menu bar's summary line (cmd/hivebar/model.go):
+  // one predicate, one vocabulary. "waiting on you" needs no plural
+  // form, which is why the conjugation went away with it.
+  return `${n} · ${p.attentionCount} waiting on you`;
 }
 
 export function ProjectCard(p: ProjectCardProps) {

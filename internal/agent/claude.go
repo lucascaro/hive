@@ -107,9 +107,17 @@ var claudeHivedPathWarnOnce sync.Once
 // hived path, or claude's version is outside the verified range).
 //
 // --settings hooks CONCATENATE with hooks from other settings sources
-// rather than replacing them (verified on Claude Code 2.1.260 — see
-// the plan's decision log and scripts/probe-claude.sh), so this never
-// has to read the user's own settings.json first.
+// rather than replacing them, so this never has to read the user's own
+// settings.json first.
+//
+// That was verified BY HAND on Claude Code 2.1.260 (a project
+// .claude/settings.json Stop hook and a --settings Stop hook both fired
+// on one -p turn; see the plan's decision log) and nothing re-checks it
+// automatically: cmd/hived/claude_probe_test.go drives a real claude
+// but installs only Hive's own hooks, so it cannot see the difference
+// between concatenate and replace. If Anthropic ever changes the merge
+// semantics, the symptom is the user's own hooks silently not firing in
+// Hive sessions, and no test in this repo will catch it.
 func claudeSpawnArgs(sp SpawnInfo) []string {
 	if sp.HivedPath == "" {
 		claudeHivedPathWarnOnce.Do(func() {

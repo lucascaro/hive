@@ -79,32 +79,77 @@ func TestBuildModelDropsEmptyProjects(t *testing.T) {
 	}
 }
 
-func TestBuildModelCountsAttention(t *testing.T) {
+func TestBuildModelCountsWaiting(t *testing.T) {
+	m := BuildModel(
+		[]wire.ProjectInfo{{ID: "p1", Name: "p"}},
+		[]wire.SessionInfo{
+			{ID: "a", ProjectID: "p1", Alive: true, State: wire.StateWaitingInput},
+			{ID: "b", ProjectID: "p1", Alive: true, State: wire.StateWorking},
+			{ID: "c", ProjectID: "p1", Alive: true, State: wire.StateWaitingPermission},
+			// Idle is the empty state, and must not be mistaken for
+			// "waiting" by a predicate that only tests for non-empty.
+			{ID: "d", ProjectID: "p1", Alive: true, State: wire.StateIdle},
+		},
+		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
+	)
+	if m.Waiting != 2 {
+		t.Errorf("Waiting = %d, want 2", m.Waiting)
+	}
+	if !strings.Contains(m.SummaryLine(), "2 waiting on you") {
+		t.Errorf("SummaryLine = %q", m.SummaryLine())
+	}
+}
+
+// The bell no longer drives the count on a daemon that reports state:
+// an unacknowledged bell on a session that has since gone back to work
+// is not a session waiting on the user.
+func TestBuildModelIgnoresBellWhenStateIsAvailable(t *testing.T) {
+	m := BuildModel(
+		[]wire.ProjectInfo{{ID: "p1", Name: "p"}},
+		[]wire.SessionInfo{
+			{ID: "a", ProjectID: "p1", Alive: true, NeedsAttention: true, State: wire.StateWorking},
+		},
+		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
+	)
+	if m.Waiting != 0 {
+		t.Errorf("Waiting = %d, want 0", m.Waiting)
+	}
+	if strings.Contains(m.SummaryLine(), "waiting on you") {
+		t.Errorf("SummaryLine = %q, want no waiting clause", m.SummaryLine())
+	}
+}
+
+// Against a daemon too old to send `state`, every session's State is ""
+// — which is also StateIdle. Reading it literally would report a
+// permanent zero, so below stateContract the bell is still the answer.
+func TestBuildModelFallsBackToBellOnOldDaemon(t *testing.T) {
+	old := stateContract - 1
 	m := BuildModel(
 		[]wire.ProjectInfo{{ID: "p1", Name: "p"}},
 		[]wire.SessionInfo{
 			{ID: "a", ProjectID: "p1", Alive: true, NeedsAttention: true},
 			{ID: "b", ProjectID: "p1", Alive: true},
-			{ID: "c", ProjectID: "p1", Alive: true, NeedsAttention: true},
 		},
-		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
+		welcome(old), buildinfo.DaemonContract,
 	)
-	if m.Attention != 2 {
-		t.Errorf("Attention = %d, want 2", m.Attention)
+	if m.Waiting != 1 {
+		t.Errorf("Waiting = %d, want 1", m.Waiting)
 	}
-	if !strings.Contains(m.SummaryLine(), "2 need you") {
-		t.Errorf("SummaryLine = %q", m.SummaryLine())
+	if !m.Projects[0].Sessions[0].Waiting {
+		t.Error("row marker did not follow the fallback count")
 	}
 }
 
 func TestSummaryLinePluralisation(t *testing.T) {
 	one := BuildModel(
 		[]wire.ProjectInfo{{ID: "p1", Name: "p"}},
-		[]wire.SessionInfo{{ID: "a", ProjectID: "p1", Alive: true, NeedsAttention: true}},
+		[]wire.SessionInfo{{ID: "a", ProjectID: "p1", Alive: true, State: wire.StateWaitingInput}},
 		welcome(buildinfo.DaemonContract), buildinfo.DaemonContract,
 	)
 	got := one.SummaryLine()
-	for _, want := range []string{"1 session", "1 project", "1 needs you"} {
+	// "waiting on you" reads correctly at any count, so unlike the
+	// session/project nouns it takes no plural form.
+	for _, want := range []string{"1 session", "1 project", "1 waiting on you"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("SummaryLine = %q, missing %q", got, want)
 		}
@@ -161,7 +206,7 @@ func TestSessionRowLabel(t *testing.T) {
 	}{
 		{"plain", SessionRow{Name: "alpha", Alive: true}, "", "  alpha"},
 		{"project named", SessionRow{Name: "alpha", Alive: true}, "hive", "  hive · alpha"},
-		{"attention marker leads", SessionRow{Name: "alpha", Alive: true, NeedsAttention: true}, "hive", "● hive · alpha"},
+		{"waiting marker leads", SessionRow{Name: "alpha", Alive: true, Waiting: true}, "hive", "● hive · alpha"},
 		{"dead session", SessionRow{Name: "alpha"}, "", "  alpha (stopped)"},
 		{"title appended", SessionRow{Name: "alpha", Title: "npm test", Alive: true}, "", "  alpha — npm test"},
 		// A title identical to the name is noise, not information.

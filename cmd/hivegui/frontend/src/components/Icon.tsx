@@ -34,9 +34,15 @@ export function Icon({ name, size = 14 }: { name: IconName; size?: 12 | 14 }) {
 export function StateIcon({
   state,
   className,
+  detail,
 }: {
   state: SessionState;
   className?: string;
+  // Overrides the <title> words with a fuller tooltip (see
+  // lib/session-state.ts stateTooltip). Optional so a call site with no
+  // session behind it — the phase-step icon in TileOverlays — keeps the
+  // plain state words.
+  detail?: string;
 }) {
   ensureSprite();
   return (
@@ -53,7 +59,7 @@ export function StateIcon({
       focusable="false"
       data-state={state}
     >
-      <title>{STATE_WORDS[state]}</title>
+      <title>{detail ?? STATE_WORDS[state]}</title>
       <use href={`#hv-state-${state}`} />
     </svg>
   );

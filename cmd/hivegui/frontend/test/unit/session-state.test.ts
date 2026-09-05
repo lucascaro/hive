@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { attentionSummary, sessionState } from '../../src/lib/session-state.js';
+import {
+  attentionSummary,
+  sessionState,
+  stateTooltip,
+} from '../../src/lib/session-state.js';
 
 describe('sessionState', () => {
   it('is starting for any non-ready phase, alive or not', () => {
@@ -65,6 +69,61 @@ describe('sessionState', () => {
     expect(sessionState({ alive: false, last_error: 'boom' })).toBe('error');
     expect(sessionState({ alive: false, lastError: 'boom' })).toBe('error');
     expect(sessionState({ alive: false, last_error: '' })).toBe('exited');
+  });
+});
+
+describe('stateTooltip', () => {
+  it('is the state words plus the tier when the agent reported nothing', () => {
+    // The heuristic tier knows neither field, and must still produce
+    // the one-line tooltip the icon had before prompt/summary existed.
+    expect(stateTooltip({ alive: true })).toBe(
+      'Idle\nguessed from terminal output',
+    );
+  });
+  it('stacks prompt then summary then tier', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'waiting_permission',
+        state_source: 'hook',
+        last_prompt: 'refactor the parser',
+        last_summary: 'Needs to run rm -rf build/',
+      }),
+    ).toBe(
+      'Waiting for permission\n“refactor the parser”\nNeeds to run rm -rf build/\nreported by the agent',
+    );
+  });
+  it('drops the lines whose fields are empty', () => {
+    expect(
+      stateTooltip({
+        alive: true,
+        state: 'working',
+        state_source: 'extension',
+        last_prompt: 'ship it',
+      }),
+    ).toBe('Working\n“ship it”\nreported by the agent');
+  });
+  it('honours a caller-resolved state so the icon and its words agree', () => {
+    // TileChrome resolves with an overriding phase; passing the result
+    // back in is what stops the tooltip disagreeing with the glyph.
+    expect(stateTooltip({ alive: true }, 'starting')).toBe('Starting');
+  });
+  it('claims no tier for a state no tier produced', () => {
+    // `starting` is resolved here from phase, and a dead session's
+    // exited/error comes from the process exiting. Appending "guessed
+    // from terminal output" to either invents a provenance.
+    expect(stateTooltip({ alive: false, phase: 'worktree' })).toBe('Starting');
+    expect(stateTooltip({ alive: false })).toBe('Exited');
+    expect(stateTooltip({ alive: false, last_error: 'boom' })).toBe(
+      'Exited with an error',
+    );
+  });
+  it('reads any non-empty tier as reported, not just the two we ship', () => {
+    // Only the heuristic tier is spelled "" on the wire, so a tier a
+    // future daemon adds must not silently read as a guess.
+    expect(stateTooltip({ alive: true, state_source: 'something-new' })).toBe(
+      'Idle\nreported by the agent',
+    );
   });
 });
 

@@ -49,6 +49,13 @@ export interface StateCarrier {
   // writers; no client keeps a second copy (see the frozen transition
   // table in docs/exec-plans/active/336-session-state-model.md).
   needs_attention?: boolean;
+  // Which tier produced `state` (internal/wire/control.go StateSource*).
+  // Absent = heuristic.
+  state_source?: string;
+  // What the agent reported it was asked to do, and what it said as it
+  // finished its last turn. Both absent on the heuristic tier.
+  last_prompt?: string;
+  last_summary?: string;
 }
 
 /** Words for the icon's <title>: state is shape + colour + words. */
@@ -61,6 +68,50 @@ export const STATE_WORDS: Record<SessionState, string> = {
   exited: 'Exited',
   error: 'Exited with an error',
 };
+
+// How the state was arrived at, in words. Rendered because "the agent
+// told us it is waiting for permission" and "no bytes arrived for two
+// seconds" are not the same claim (internal/wire/control.go on
+// StateSource). Every reported tier collapses to one phrase on purpose:
+// which transport the agent used to say it is not the user's business,
+// only that the agent said it rather than us inferring it.
+//
+// A truthiness test rather than a map of the known tiers: only the
+// heuristic tier is spelled "" on the wire, so any tier a future daemon
+// adds reads as reported — which is what it would be. A lookup table
+// would silently relabel it as a guess.
+function sourceWords(source: string | undefined): string {
+  return source ? 'reported by the agent' : 'guessed from terminal output';
+}
+
+/**
+ * The full tooltip for a session's state icon: the state in words, what
+ * the session was asked to do, what the agent last said, and how we
+ * know. Lines are dropped when the underlying field is empty, so a
+ * heuristic-tier session still gets the one-line tooltip it has today.
+ *
+ * One helper for the same reason as sessionState above: the sidebar row
+ * and the tile header must never disagree about what a session is
+ * doing.
+ */
+export function stateTooltip(s: StateCarrier, state?: SessionState): string {
+  const resolved = state ?? sessionState(s);
+  const lines = [STATE_WORDS[resolved]];
+  // Quoted: a prompt is the user's own words being read back, and
+  // without the quotes it runs together with the state line above it.
+  if (s.last_prompt) lines.push(`“${s.last_prompt}”`);
+  if (s.last_summary) lines.push(s.last_summary);
+  // The tier line is a claim about where a state came from, so it is
+  // only honest for the states a tier actually produced. `starting`
+  // is resolved here from `phase`, and a dead session's exited/error
+  // comes from the process exiting — no tier observed either, and
+  // saying "guessed from terminal output" over them would be a
+  // fabricated provenance.
+  if (resolved !== 'starting' && s.alive) {
+    lines.push(sourceWords(s.state_source));
+  }
+  return lines.join('\n');
+}
 
 export function sessionState(s: StateCarrier): SessionState {
   // A session mid-create has no PTY yet; `alive: false` there means
@@ -98,7 +149,7 @@ export interface AttentionSummary {
 
 // attentionSummary is the one aggregation from a project's sessions to the
 // pair of numbers two surfaces show: the collapsed project card's
-// "k need you" and the minimized project chip's alert count. It lives here,
+// "k waiting on you" and the minimized project chip's alert count. It lives
 // beside sessionState(), for the reason given at the top of this file — the
 // card and the chip computed attention separately until now, by two
 // different routes, which is exactly how they come to disagree.
