@@ -1074,6 +1074,18 @@ decision-log entry with the log excerpt BEFORE any code changes.
   spec, in `HookStaleAfter`'s comment, and in `Output`'s, which carried
   the same absolute claim.
 
+- **2026-09-05 (phase 4, CI)** — `TestExitedReachesTheStateThroughTheRealPTY`
+  ends the child with `sess.Close()`, not by writing EOT to the
+  terminal. The first CI run was green on macOS and Windows and failed
+  on Linux with "session never reported the exit" after 10 s: whether a
+  lone `^D` means EOF depends on the line discipline's canonical-mode
+  state, so EOT ends `/bin/cat` on macOS but not dependably under
+  Linux's. The transition under test is "the child process is gone", so
+  the test now ends the process directly instead of asking the terminal
+  to ask it to end. It also fails faster when the wiring breaks (0.03 s
+  rather than a 10 s timeout). Local `-race` cannot catch a
+  line-discipline difference; only the Linux CI leg could, and did.
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:

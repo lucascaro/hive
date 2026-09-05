@@ -448,12 +448,17 @@ func TestExitedReachesTheStateThroughTheRealPTY(t *testing.T) {
 	}
 
 	if got := infoOf(t).State; got == wire.StateExited {
-		t.Fatal("test setup: session was already exited before EOT")
+		t.Fatal("test setup: session was already exited before we ended it")
 	}
 
-	// EOT closes cat's stdin, which ends the process.
-	if _, err := sess.Write([]byte{0x04}); err != nil {
-		t.Fatalf("write EOT: %v", err)
+	// Close kills the child and releases the PTY. Deliberately NOT an
+	// EOT written to the terminal: that ends /bin/cat on macOS but not
+	// reliably on Linux (this test timed out there at 10 s on the first
+	// CI run), because whether a lone ^D means EOF depends on the line
+	// discipline's canonical-mode state. The transition under test is
+	// "the child process is gone", so end it by ending it.
+	if err := sess.Close(); err != nil {
+		t.Fatalf("close session: %v", err)
 	}
 
 	deadline := time.Now().Add(10 * time.Second)
