@@ -1,11 +1,12 @@
 ---
 issue: 343
 pr: 346
+shipped: 2026-09-05
 title: "Show session count and attention state on minimized project chips"
 type: enhancement
 complexity: S
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Show session count and attention state on minimized project chips
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P2
-- **Exec plan:** [docs/exec-plans/active/343-minimized-project-chip-count-and-attention.md](../exec-plans/active/343-minimized-project-chip-count-and-attention.md)
+- **Exec plan:** [docs/exec-plans/completed/343-minimized-project-chip-count-and-attention.md](../exec-plans/completed/343-minimized-project-chip-count-and-attention.md)
 
 ## Problem
 

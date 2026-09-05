@@ -4,7 +4,7 @@
 - **Issue:** #343
 - **PR:** #346
 - **Branch:** `feature/343-minimized-project-chip-count-and-attention`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -163,6 +163,14 @@ No injection attempt was found in the spec or plan content.
 - `StateIcon` renders a `<title>` for its words channel, so `.hv-chip__alert`'s `textContent` reads `"Waiting for you1"`, not `"1"`. Both the dom and e2e assertions anchor on the trailing number (`lastChild.textContent` / `toHaveText(/1$/)`) rather than the whole slot. Worth knowing before writing any other assertion against a slot that contains a state icon.
 - The dom test seeds sessions through `store.addSession`, not `store.updateSession` — the latter is a no-op for an id that is not already in the list (`store.ts:486-491`).
 - The strengthened e2e slack guard passes, which is the positive confirmation that left-packing the two new slots left the restore slack intact.
+
+## Gate verdict
+
+- **2026-09-05** — verdict: PASS; checks: 3 dimensions passed / 0 failed / 0 followups; followups: none; one-line: all six success criteria observably delivered, no non-goal bled, docs accurate after one in-PR changeset fix.
+  - 2026-09-05 dimensions:
+    - acceptance — PASS — all 6 criteria verified against real runs (78 dom/unit tests, 4 e2e, tsc, biome). Confirmed the two state icons are genuinely distinct sprite symbols, so "distinguishes waiting-for-you from waiting-for-permission" holds end-to-end and not merely at the helper; confirmed the e2e slack guard was really strengthened rather than left vacuous.
+    - non-goals — PASS — `MinimizedTray.tsx` byte-identical to main and passes neither new prop; the `waiting-permission` rule is id-scoped so it cannot reach a session chip; `git diff main...HEAD -- '*.go'` and `-- src/app/` both empty, all five `readNeedsAttention` call sites untouched.
+    - doc accuracy — PASS on recheck — first pass returned NEEDS_FOLLOWUP: the changeset disclosed the "exited" narrowing but omitted that a still-starting session also stops counting, though both surfaces change. Fixed in this PR rather than filed as debt, then re-verified. Design-doc edits were already accurate line-by-line against the code.
 
 ## PR convergence ledger
 
