@@ -129,10 +129,35 @@ beforeEach(() => {
     { id: 'p2', name: 'two', color: '#222', order: 1 },
     { id: 'p3', name: 'three', color: '#333', order: 2 },
   ];
+  // alive + an empty phase is PHASE.ready — a session in steady state, the
+  // same seed shape attention-icon.test.tsx uses. It matters: the chip
+  // resolves attention through sessionState(), which reports a session with
+  // no `alive` as exited and therefore wanting nothing.
   state.sessions = [
-    { id: 's1', name: 's1', project_id: 'p1', order: 0 },
-    { id: 's2', name: 's2', project_id: 'p2', order: 1 },
-    { id: 's3', name: 's3', project_id: 'p3', order: 2 },
+    {
+      id: 's1',
+      name: 's1',
+      project_id: 'p1',
+      order: 0,
+      alive: true,
+      phase: '',
+    },
+    {
+      id: 's2',
+      name: 's2',
+      project_id: 'p2',
+      order: 1,
+      alive: true,
+      phase: '',
+    },
+    {
+      id: 's3',
+      name: 's3',
+      project_id: 'p3',
+      order: 2,
+      alive: true,
+      phase: '',
+    },
   ];
   state.collapsed = new Set();
   state.minimized = new Set();
@@ -252,12 +277,86 @@ describe('minimize project', () => {
     minimize('p2');
     expect(chip('p2')?.dataset.state).toBe('attention');
     expect(chip('p1')?.dataset.state).toBeUndefined();
+    // The chip says how many, not just that something is ringing.
+    const alert = chip('p2')?.querySelector('.hv-chip__alert');
+    expect(alert?.lastChild?.textContent).toBe('1');
+    expect(alert?.querySelector('.hv-state-icon')).not.toBeNull();
+    expect(chip('p1')?.querySelector('.hv-chip__alert')).toBeNull();
 
     // Clearing repaints in place, the same path clearAttention takes.
     act(() => {
       setNeedsAttention('s2', false);
     });
     expect(chip('p2')?.dataset.state).toBeUndefined();
+    expect(chip('p2')?.querySelector('.hv-chip__alert')).toBeNull();
+  });
+
+  // The counts are drawn as a bare number next to an icon, which a screen
+  // reader gets nothing from — so the accessible name has to carry them in
+  // words (icons.md › state is shape + colour + words). Both halves
+  // pluralise, so all four branches are exercised here.
+  it('carries both counts in the accessible name, pluralised', () => {
+    const label = (pid: string) =>
+      document
+        .querySelector(
+          `#minimized-projects .hv-chip[data-pid="${pid}"] .hv-chip__open`,
+        )
+        ?.getAttribute('aria-label');
+
+    minimize('p1');
+    expect(label('p1')).toBe('Restore one, 1 session');
+
+    act(() => {
+      const s = state.sessions.find((x) => x.id === 's1') as SessionInfo;
+      store.updateSession({ ...s, needs_attention: true });
+    });
+    expect(label('p1')).toBe('Restore one, 1 session, 1 needs you');
+
+    act(() => {
+      for (const id of ['s4', 's5']) {
+        store.addSession({
+          id,
+          name: id,
+          project_id: 'p1',
+          alive: true,
+          phase: '',
+          needs_attention: true,
+        } as SessionInfo);
+      }
+    });
+    expect(label('p1')).toBe('Restore one, 3 sessions, 3 need you');
+
+    // A project nothing is asking about drops the second clause entirely
+    // rather than saying "0 need you".
+    minimize('p3');
+    expect(label('p3')).toBe('Restore three, 1 session');
+  });
+
+  it('shows the session count and follows it as sessions come and go', () => {
+    const count = (pid: string) =>
+      document.querySelector(
+        `#minimized-projects .hv-chip[data-pid="${pid}"] .hv-chip__count`,
+      )?.textContent;
+
+    minimize('p1');
+    expect(count('p1')).toBe('1');
+
+    act(() => {
+      store.addSession({
+        id: 's4',
+        name: 's4',
+        project_id: 'p1',
+        order: 3,
+        alive: true,
+        phase: '',
+      } as SessionInfo);
+    });
+    expect(count('p1')).toBe('2');
+
+    act(() => {
+      store.removeSession('s4');
+    });
+    expect(count('p1')).toBe('1');
   });
 
   it('marks the chip active when it is the current project', () => {

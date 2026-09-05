@@ -21,3 +21,21 @@
    make the whole chip one restore target. */
 #minimized-projects .hv-chip { max-width: none; }
 #minimized-projects .hv-chip__open { flex: 1; text-align: left; }
+
+/* A project chip reports waiting-permission on the same data-state channel
+   as attention, so the label colour and the dot pulse have to cover both —
+   otherwise routing the more specific state onto the chip would silently
+   LOSE the highlight it has today.
+
+   Scoped to #minimized-projects, not added to chip.css's bare .hv-chip
+   rules, because minimized SESSION chips set data-state from
+   sessionState() too (MinimizedTray.tsx) and can already carry
+   waiting-permission — widening the bare rule would recolour their labels,
+   which is not this change's business. Same id-scoping precedent as the
+   two rules above. */
+#minimized-projects .hv-chip[data-state='waiting-permission'] .hv-chip__label {
+  color: var(--state-attention);
+}
+#minimized-projects .hv-chip[data-state='waiting-permission'] .hv-chip__swatch {
+  animation: hv-chip-pulse var(--motion-pulse) ease-in-out infinite;
+}
