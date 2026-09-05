@@ -116,8 +116,14 @@ function mountSidebar() {
   return render(<Sidebar {...sidebarProps} />, { container });
 }
 
+// The two project-id keys are namespaced by the daemon's state-dir id,
+// and persistence stays off until that id is known (#340).
+const NS = 'domtest1';
+const MIN_KEY = `hive.minimizedProjects.${NS}`;
+
 beforeEach(() => {
   localStorage.clear();
+  store.hydratePersistedProjectSets(NS);
   state.projects = [
     { id: 'p1', name: 'one', color: '#111', order: 0 },
     { id: 'p2', name: 'two', color: '#222', order: 1 },
@@ -196,13 +202,9 @@ describe('minimize project', () => {
 
   it('persists the minimized set', () => {
     minimize('p3');
-    expect(
-      JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
-    ).toEqual(['p3']);
+    expect(JSON.parse(localStorage.getItem(MIN_KEY) ?? '[]')).toEqual(['p3']);
     click('#minimized-projects .hv-chip[data-pid="p3"] .hv-chip__restore');
-    expect(
-      JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
-    ).toEqual([]);
+    expect(JSON.parse(localStorage.getItem(MIN_KEY) ?? '[]')).toEqual([]);
   });
 
   // Switching projects repaints selection without any structural change,
@@ -280,9 +282,7 @@ describe('minimize project', () => {
       state.projects = [];
     });
     expect(state.minimizedProjects.has('p3')).toBe(true);
-    expect(
-      JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
-    ).toEqual(['p3']);
+    expect(JSON.parse(localStorage.getItem(MIN_KEY) ?? '[]')).toEqual(['p3']);
   });
 
   it("hides the project's sessions from grid views", () => {
@@ -420,9 +420,7 @@ describe('project events', () => {
       JSON.stringify({ kind: 'removed', project: { id: 'p3' } }),
     );
     expect(state.minimizedProjects.has('p3')).toBe(false);
-    expect(
-      JSON.parse(localStorage.getItem('hive.minimizedProjects') ?? '[]'),
-    ).toEqual([]);
+    expect(JSON.parse(localStorage.getItem(MIN_KEY) ?? '[]')).toEqual([]);
   });
 
   it('prunes ids missing from an authoritative project list', async () => {

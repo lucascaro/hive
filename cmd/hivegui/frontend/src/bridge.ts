@@ -39,6 +39,7 @@ export {
   RenameWorktree,
   DeleteBranch,
   LaunchDir,
+  StateDirID,
   PickDirectory,
   OpenNewWindow,
   CloseWindow,

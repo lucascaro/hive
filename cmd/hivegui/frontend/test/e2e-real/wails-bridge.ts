@@ -272,6 +272,12 @@ export async function UpdateProject() {
 export async function LaunchDir() {
   return '';
 }
+// Non-empty, or persistence of the collapse/minimize sets stays off
+// (store.ts › hydratePersistedProjectSets). The real suite runs against
+// an isolated HIVE_STATE_DIR, so any stable id will do.
+export async function StateDirID() {
+  return 'e2ereal1';
+}
 export async function PickDirectory() {
   return '';
 }

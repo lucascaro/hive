@@ -67,7 +67,12 @@ export function mountSidebar(
 // React's work queue unflushed and the assertions race the render.
 export function seed(data: Partial<AppData>) {
   act(() => {
-    resetStore(data);
+    // projectSetsHydrated mirrors the post-boot steady state: by the time
+    // a daemon snapshot lands, main.tsx has hydrated the persisted
+    // project sets. Without it every harness test would take
+    // applyProjectList's un-hydrated early return and never exercise the
+    // real prune (#340).
+    resetStore({ projectSetsHydrated: true, ...data });
   });
 }
 
