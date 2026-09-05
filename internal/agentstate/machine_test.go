@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -309,6 +310,38 @@ func TestTextIsCappedAtTheWireLimit(t *testing.T) {
 	if len(got.LastSummary) != wire.MaxSummaryLen {
 		t.Errorf("LastSummary is %d bytes, want it capped at %d",
 			len(got.LastSummary), wire.MaxSummaryLen)
+	}
+}
+
+// Capping cuts on a byte boundary, so it must not leave a partial
+// rune behind — the field is JSON-encoded and rebroadcast, and Title
+// (registry.truncateTitle) has always dropped the tail for this
+// reason. The multi-byte string is sized so the cut lands mid-rune.
+func TestCappedTextStaysValidUTF8(t *testing.T) {
+	m := New(t0)
+	// 3 bytes per rune: MaxSummaryLen is not a multiple of 3, so
+	// slicing at it splits the rune that straddles the boundary.
+	m.Apply(hookEvent(KindPrompt, t0, strings.Repeat("é", wire.MaxSummaryLen)))
+	if got := m.Snapshot().LastPrompt; !utf8.ValidString(got) {
+		t.Errorf("LastPrompt is not valid UTF-8 after capping (%d bytes)", len(got))
+	}
+}
+
+// Exit is terminal on every feeder. Output and Bell already guard it;
+// Apply must too, or a hook process still in flight when the PTY dies
+// revives a dead session — and a revived waiting_input can never be
+// cleared, because ClearWaiting needs a user to type into a gone PTY.
+func TestApplyCannotResurrectAnExitedSession(t *testing.T) {
+	for _, kind := range []string{KindPrompt, KindWaitingInput, KindWaitingPermission, KindTurnEnd} {
+		m := New(t0)
+		m.Apply(hookEvent(KindPrompt, t0, "do the thing"))
+		m.Exit()
+		if m.Apply(hookEvent(kind, t0.Add(time.Second), "late")) {
+			t.Errorf("%s after Exit reported a change", kind)
+		}
+		if got := m.Snapshot().State; got != wire.StateExited {
+			t.Errorf("%s after Exit left state %q, want %q", kind, got, wire.StateExited)
+		}
 	}
 }
 

@@ -58,18 +58,25 @@ test('each state paints a different colour', async ({ page }) => {
   await boot(page);
   const id = await firstSessionId(page);
 
-  const colourFor = async (state: string, source = '') => {
+  const colourFor = async (state: string, rendered: string, source = '') => {
     await page.evaluate(
       ([sid, s, src]) => window.__hive.setSessionState?.(sid, s, src),
       [id, state, source] as const,
     );
-    await page.waitForTimeout(50);
+    // Wait for the glyph to actually re-render, not for a fixed 50ms:
+    // a loaded runner reads the computed style of the PREVIOUS state
+    // and the assertion then passes or fails on the wrong element.
+    await expect(glyph(page, id)).toHaveAttribute('data-state', rendered);
     return glyph(page, id).evaluate((el) => getComputedStyle(el).color);
   };
 
-  const idle = await colourFor('');
-  const working = await colourFor('working');
-  const waiting = await colourFor('waiting_permission', 'hook');
+  const idle = await colourFor('', 'running');
+  const working = await colourFor('working', 'working');
+  const waiting = await colourFor(
+    'waiting_permission',
+    'waiting-permission',
+    'hook',
+  );
 
   for (const [name, value] of Object.entries({ idle, working, waiting })) {
     expect(value, `${name} has no colour of its own`).not.toBe(
@@ -94,11 +101,18 @@ test('waiting animates and working fades, and reduced motion stops both', async 
     (sid) => window.__hive.setSessionState?.(sid, 'working'),
     id,
   );
+  // Retrying attribute wait first: reading animationName straight after
+  // the evaluate races the re-render and asserts the old state's style.
+  await expect(glyph(page, id)).toHaveAttribute('data-state', 'working');
   expect(await animationOf()).toBe('hv-state-pulse-fg');
 
   await page.evaluate(
     (sid) => window.__hive.setSessionState?.(sid, 'waiting_permission', 'hook'),
     id,
+  );
+  await expect(glyph(page, id)).toHaveAttribute(
+    'data-state',
+    'waiting-permission',
   );
   expect(await animationOf()).toBe('hv-state-pulse');
 

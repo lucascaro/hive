@@ -14,6 +14,7 @@
 package agentstate
 
 import (
+	"strings"
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -243,6 +244,18 @@ func (m *Machine) Apply(ev Event) bool {
 	m.hookSeenAt = ev.At
 	text := truncate(ev.Text)
 
+	// Exit is terminal, on every feeder. A hook process still in flight
+	// when the PTY dies lands after it — Claude fires SessionEnd and
+	// the child exits, and the two race — so without this an event
+	// resurrects a dead session to working or, worse, to waiting_input:
+	// needs_attention true for a session ClearWaiting can never clear,
+	// because clearing it needs a user to type into a PTY that is gone.
+	// The tier clock is still refreshed above, so a revived session
+	// starts from a fresh Machine and not from a stale one.
+	if m.state == wire.StateExited {
+		return false
+	}
+
 	switch ev.Kind {
 	case KindPrompt:
 		m.state = wire.StateWorking
@@ -280,12 +293,14 @@ func (m *Machine) Apply(ev Event) bool {
 // truncate caps agent-supplied text at the wire limit. The content is
 // attacker-influenced in the ordinary sense — it is whatever was typed
 // at a prompt or printed by a tool — and it is rebroadcast to every
-// connected client, so it is bounded here rather than trusted. Cutting
-// on a byte boundary can split a rune; that is acceptable for a
-// tooltip and is what MaxTitleLen already does.
+// connected client, so it is bounded here rather than trusted.
+//
+// Byte-slice, then drop any partial rune left at the tail — exactly
+// what registry.truncateTitle does for Title. The two are the same
+// kind of attacker-influenced text and must not sanitize differently.
 func truncate(s string) string {
 	if len(s) <= wire.MaxSummaryLen {
 		return s
 	}
-	return s[:wire.MaxSummaryLen]
+	return strings.ToValidUTF8(s[:wire.MaxSummaryLen], "")
 }

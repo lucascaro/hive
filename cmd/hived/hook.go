@@ -16,6 +16,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
@@ -155,9 +156,17 @@ func mapHookPayload(raw []byte) wire.AgentEvent {
 
 // firstString returns the first key present in p whose value is a
 // non-empty string.
+// The daemon caps Text again on receipt, but capping here is what
+// keeps the frame under wire.MaxPayload: a prompt with a pasted file
+// in it can run to megabytes, and an oversized frame is refused whole,
+// losing the Kind — the part that actually moves the state — not just
+// the text. Cheaper to send 512 bytes than to drop the event.
 func firstString(p hookPayload, keys ...string) string {
 	for _, k := range keys {
 		if s, ok := p[k].(string); ok && s != "" {
+			if len(s) > wire.MaxSummaryLen {
+				s = strings.ToValidUTF8(s[:wire.MaxSummaryLen], "")
+			}
 			return s
 		}
 	}

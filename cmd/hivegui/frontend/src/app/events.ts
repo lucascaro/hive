@@ -467,6 +467,12 @@ export function wireDaemonEvents(injected: EventsDeps) {
     // without a per-session `removed` event.
     pruneToLiveSessions();
     const liveIds = new Set(appData().sessions.map((s) => s.id));
+    // attentionEdge lives here rather than in the store, so
+    // pruneToLiveSessions cannot reach it — prune it alongside. A left
+    // -over id suppresses the next false→true notification for a
+    // recycled id, which is the bug the edge tracking exists to avoid.
+    for (const id of attentionEdge)
+      if (!liveIds.has(id)) attentionEdge.delete(id);
     pruneNav(appData().nav, (id) => liveIds.has(id));
     if (!appData().activeId && appData().sessions.length > 0) {
       deps.switchTo(orderedSessions()[0].id);

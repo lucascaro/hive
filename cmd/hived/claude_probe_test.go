@@ -68,9 +68,15 @@ func TestClaudeProbeWaitingPermission(t *testing.T) {
 	// claude would inherit that session's identity and permission mode
 	// and never prompt. Strip the nesting markers so it behaves like the
 	// claude a user launches from Hive.
+	//
+	// Restored by hand rather than with t.Setenv: the set is discovered
+	// at runtime and t.Setenv cannot unset. Without the restore these
+	// stay stripped for every later test in the binary.
 	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
+		k, v, _ := strings.Cut(kv, "=")
 		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") {
+			k, v := k, v
+			t.Cleanup(func() { _ = os.Setenv(k, v) })
 			_ = os.Unsetenv(k)
 		}
 	}
@@ -194,9 +200,15 @@ func TestClaudeProbePermissionResolved(t *testing.T) {
 	if _, err := exec.LookPath("claude"); err != nil {
 		t.Skip("claude not on PATH")
 	}
+	//
+	// Restored by hand rather than with t.Setenv: the set is discovered
+	// at runtime and t.Setenv cannot unset. Without the restore these
+	// stay stripped for every later test in the binary.
 	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
+		k, v, _ := strings.Cut(kv, "=")
 		if k == "CLAUDECODE" || k == "CLAUDE_PID" || strings.HasPrefix(k, "CLAUDE_CODE_") {
+			k, v := k, v
+			t.Cleanup(func() { _ = os.Setenv(k, v) })
 			_ = os.Unsetenv(k)
 		}
 	}

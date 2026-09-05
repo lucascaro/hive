@@ -27,16 +27,16 @@ Resolution from `SessionInfo`:
 state === waiting_permission   → waiting-permission
 state === waiting_input        → attention
 state === error                → error
-attention.has(id)              → attention
+needs_attention                → attention
 state === working              → working
 else                           → running
 ```
 
 `state` is `SessionInfo.state` (`internal/wire/control.go` `State*`), owned by the daemon. Empty means idle — both the `omitempty` case and what a daemon predating spec 336 sends, so no branch here needs an "unknown".
 
-The daemon derives it by sampling what the session's screen *renders*, not by watching bytes arrive: a measured idle Claude Code session emits an `ESC[?6n` cursor-position query every 200 ms, which changes no cell. Keying off byte arrival pinned every agent to `working` forever and let a redraw bury a bell within one tick. `waiting-permission` is in the table because it is the vocabulary the hook and extension tiers use (spec 336 phases 2–3); nothing produces it yet.
+The daemon derives it by sampling what the session's screen *renders*, not by watching bytes arrive: a measured idle Claude Code session emits an `ESC[?6n` cursor-position query every 200 ms, which changes no cell. Keying off byte arrival pinned every agent to `working` forever and let a redraw bury a bell within one tick. `waiting-permission` is what the hook and extension tiers report (spec 336 phases 2–3); `cmd/hived/hook.go` produces it today from Claude's `PermissionRequest`, and the Pi extension will in phase 3.
 
-Two rules in that order are deliberate. An agent-reported permission prompt outranks the local attention flag, because "blocked on a yes/no" versus "rang the bell" is the distinction the state model exists to draw. An unacknowledged bell outranks `working`, because the one that wants a human is the one worth showing.
+Two rules in that order are deliberate. An agent-reported permission prompt outranks `needs_attention`, because "blocked on a yes/no" versus "rang the bell" is the distinction the state model exists to draw. An unacknowledged bell outranks `working`, because the one that wants a human is the one worth showing.
 
 `state-working` and `state-waiting-permission` reuse `--state-running` and `--state-attention` rather than claiming tokens of their own: those two colours are already picked for all 18 themes, and shape plus motion carries the busy/idle and bell/permission difference without asking anyone to pick 18 more values.
 
