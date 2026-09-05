@@ -496,7 +496,9 @@ HIVE_PROBE_CLAUDE=1 HIVE_DEBUG_STATE=1 go test ./cmd/hived/ -run TestClaudeProbe
 ### Manual smoke checklist
 
 Run against an iso build (`wails build`, never `-s`) with the daemon
-started as `HIVE_DEBUG_STATE=1`. Every row is pass/fail with the log
+started as `HIVE_DEBUG_STATE=1` — or, for every row that is only "look
+at the app", through `wails dev`'s browser dev server, which needs no
+human: [docs/verifying-the-gui-by-hand.md](../../verifying-the-gui-by-hand.md). Every row is pass/fail with the log
 line that proves it; "looks fine" is not a result. Record the Claude
 version and the table in Progress before each push that touches state.
 

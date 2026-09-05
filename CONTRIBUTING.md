@@ -41,7 +41,7 @@ scripts/test.sh go          # just Go
 scripts/test.sh unit dom    # frontend only, no browser
 ```
 
-The frontend layers live in `cmd/hivegui/frontend/test/`. E2E tests run against `vite dev` with `VITE_WAILS_MOCK=1`, which swaps the generated Wails bindings for an in-browser fake (`test/e2e/wails-mock.ts`). No native Wails build is required to run them.
+The frontend layers live in `cmd/hivegui/frontend/test/`. Verifying a change in the *real* app — the manual smoke rows plans carry — does not need a native build or a human watching: see [docs/verifying-the-gui-by-hand.md](docs/verifying-the-gui-by-hand.md). E2E tests run against `vite dev` with `VITE_WAILS_MOCK=1`, which swaps the generated Wails bindings for an in-browser fake (`test/e2e/wails-mock.ts`). No native Wails build is required to run them.
 
 ### Lint / Vet
 
