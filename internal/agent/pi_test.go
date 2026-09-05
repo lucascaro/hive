@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -127,7 +129,9 @@ func nodeForTS(t *testing.T) string {
 	if err := os.WriteFile(probe, []byte("export const n: number = 1;\n"), 0o644); err != nil {
 		t.Fatalf("write ts probe: %v", err)
 	}
-	if err := exec.Command(node, probe).Run(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := exec.CommandContext(ctx, node, probe).Run(); err != nil {
 		return ""
 	}
 	return node
@@ -148,7 +152,9 @@ func TestPiExtensionFramesAreValidWireFrames(t *testing.T) {
 const m = await import("./pi/hive.ts");
 process.stdout.write(m.encodeFrames("sess-42", "turn_end", "done", "2026-09-04T12:00:00.000Z").toString("base64"));
 `
-	cmd := exec.Command(node, "--input-type=module", "-e", script)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, "--input-type=module", "-e", script)
 	cmd.Dir = "." // internal/agent
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -249,8 +255,17 @@ func TestPiExtensionRunsNodeTests(t *testing.T) {
 	if node == "" {
 		t.Skip("no node that can load .ts (needs node >= 23.6, or 22.6 with --experimental-strip-types)")
 	}
-	cmd := exec.Command(node, "--test", filepath.Join("pi", "hive.test.ts"))
+	// Bounded: this drives a real subprocess that opens sockets, and a
+	// node that never exits would otherwise hang the whole package
+	// until the go test deadline — turning one stuck test into a red
+	// suite with no indication of which test was at fault.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, node, "--test", filepath.Join("pi", "hive.test.ts"))
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("node --test pi/hive.test.ts did not exit within 90s\n%s", out)
+	}
 	if err != nil {
 		t.Fatalf("node --test pi/hive.test.ts: %v\n%s", err, out)
 	}

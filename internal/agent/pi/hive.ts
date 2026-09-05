@@ -83,12 +83,18 @@ export default function (pi: ExtensionAPI) {
   // daemon, a socket that vanished with a restarted hived — must look
   // exactly like no extension was loaded, never like a Pi error.
   const post = (kind: string, text = "") => {
+    // Stamped here, not in the connect callback: `at` is when Pi
+    // observed this (wire.AgentEvent's documented contract), and the
+    // daemon orders events by it. Stamping at connect time would make
+    // the stamp track connect order — the same order delivery already
+    // has — which is exactly what the ordering guard exists to correct.
+    const at = new Date().toISOString();
     try {
       const conn = net.createConnection(sock);
       conn.on("error", () => {});
       conn.setTimeout(2000, () => conn.destroy());
       conn.on("connect", () => {
-        conn.end(encodeFrames(sid, kind, text, new Date().toISOString()));
+        conn.end(encodeFrames(sid, kind, text, at));
       });
     } catch {
       // ignore

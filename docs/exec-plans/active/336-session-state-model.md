@@ -850,6 +850,30 @@ decision-log entry with the log excerpt BEFORE any code changes.
   Equal stamps still apply, since nothing distinguishes them.
 
 
+- **2026-09-05 (phase 3, review iter 3)** — `Registry.ApplyAgentEvent`
+  clamps a forward-dated reporter stamp to `time.Now()`. Why: iter 2's
+  ordering guard made an old weakness permanent. `ev.At` arrives from
+  the reporter and was parsed unbounded; `Machine.Apply` now orders by
+  it and `trusted()` already measured staleness from it, so a single
+  future-dated event froze the session for its whole life — every later
+  event sorted older and was dropped, while `now.Sub(hookSeenAt)` stayed
+  negative so the heuristic tier could not reclaim it either. One bad
+  stamp must cost one event, not the session. Clamping (rather than
+  refusing the event) keeps the wire doc's stated promise that a clock
+  the daemon does not control cannot drop an otherwise-valid event.
+  Backward-dated stamps are still honoured as-is: that is the ordering
+  signal the guard exists to read.
+
+- **2026-09-05 (phase 3, review iter 3)** — The Pi extension stamps `at`
+  when it observes the event, not inside the `connect` callback. Why:
+  stamping at connect time makes the stamp track connect order, which is
+  the same order delivery already has — so the daemon's ordering guard
+  would have been close to inert for the tier it was added for, and an
+  inverted connect pair would have made it permanently drop the
+  semantically newer event. It also broke `wire.AgentEvent`'s documented
+  contract ("At is when the reporter observed this").
+
+
 ## Review log
 
 - **2026-09-04** — `/hs-feature-plan-review` (three `hs-reviewer` passes:
@@ -1058,6 +1082,45 @@ decision-log entry with the log excerpt BEFORE any code changes.
   `node --test internal/agent/pi/hive.test.ts` 8/8.
 
 
+- **2026-09-05 (phase 3, review iter 3 fixes)** — Applied on PR #341:
+  the `at`-stamp hoist and the `ApplyAgentEvent` clamp above, plus
+  `README.md`'s toolchain line corrected to Node 24+ (it still said 20+
+  after this PR moved CI's pin, so a contributor following it would
+  silently skip the only cross-language wire-frame check). New test:
+  `TestApplyAgentEventClampsFutureStamp` — a 24-hour-future event
+  followed by a correctly stamped one, asserting the second still
+  applies. Deliberately not taken from iter 3's MINORs:
+  `lastAssistantText` re-walking the branch per settle (a short list
+  walked at human speed; caching it would add invalidation for no
+  measurable gain) and `piExtensionWarnOnce` being a package global
+  (it mirrors `claudeHivedPathWarnOnce` exactly — changing one adapter's
+  shape and not the other's costs more in consistency than it buys in
+  testability).
+
+
+- **2026-09-05 (phase 3, verification note)** — Every node subprocess
+  the tests spawn is now bounded (`exec.CommandContext`, 90 s / 60 s /
+  30 s): the capability probe, the frame-encoder run, and
+  `node --test`. Why: `TestPiExtensionRunsNodeTests` shelled out with
+  `exec.Command(...).CombinedOutput()` and no deadline, so a node that
+  failed to exit would block until the package timeout and surface as
+  "the package hung", naming no test. Found while chasing a local
+  timeout that turned out to be something else entirely — the bound is
+  worth having regardless, since a hang that reports itself as a hang
+  costs one line and saves an investigation.
+  On the local timeout itself, for the next person who hits it: the
+  full suite fails on a loaded machine with every in-flight package
+  killed at exactly 180 s, including packages that finish in under a
+  second. That number is not `scripts/test.sh`'s `-timeout 120s`; it is
+  cmd/go's own kill timer, which fires at timeout + 60 s when a test
+  binary does not die on its own. `go test ./... -p 1` passes the whole
+  suite in ~85 s on the same tree, and CI passes it in parallel, so it
+  is contention on the developer machine (Hive's suite spawns many PTYs
+  and daemons, and a dev box is usually already running real `hived`
+  instances), not a defect. Reach for `-p 1` before believing a
+  wholesale local red.
+
+
 ## Open questions
 
 <Empty — resolved into the Decision log.>
@@ -1068,3 +1131,4 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-04 iter 2** — verdict: COMMENT (strict); mergeable: MERGEABLE; findings_hash: bf94a2f0c66b9cec2198ab14123a12cac7906dff824e342940e56b9bab769543; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: ac893ca.
 - **2026-09-05 iter 1 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 933fe7284759ec8b0b78ddf7426686dd96f3263ed89a5358a9ee055ef1aa3d69; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 73ec301.
 - **2026-09-05 iter 2 (PR #341)** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: aeb45dd6f258cc7b432bc46e97db046988fdfc0417ce97805863f9762d5972c8; threads_open: 0; action: escalated:risky fix needs human decision; head_sha: 52310a7.
+- **2026-09-05 iter 3 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: be5b1f45d0d6110670ca570825b18153cb3812780652253e88c0861f28d5277a; threads_open: 0; action: continue (3 IMPORTANT remain; loop's stop rule met but boil-the-lake says fix them); head_sha: 7c97502.

@@ -269,3 +269,43 @@ func hasEnvVar(env []string, key string) bool {
 	}
 	return false
 }
+
+// TestApplyAgentEventClampsFutureStamp pins the clamp on a reporter's
+// clock. Machine.Apply orders events by At and trusted() measures
+// staleness from it, so an unclamped future stamp would freeze the
+// session for good: every later event sorts older and is dropped, and
+// now.Sub(hookSeenAt) stays negative so the heuristic tier can never
+// reclaim it either. One bad stamp must cost one event, not the
+// session.
+func TestApplyAgentEventClampsFutureStamp(t *testing.T) {
+	skipOnWindows(t)
+	r := freshRegistry(t)
+	e, err := r.Create(context.Background(), wire.CreateSpec{Name: "c", Shell: "/bin/bash"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// A reporter with a badly skewed clock says the turn is over.
+	if err := r.ApplyAgentEvent(e.ID, wire.AgentEvent{
+		SessionID: e.ID, Kind: wire.AgentEventTurnEnd, Source: wire.StateSourceHook,
+		At: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatalf("ApplyAgentEvent (future): %v", err)
+	}
+	if info := r.Get(e.ID).Info(); info.State != wire.StateIdle {
+		t.Fatalf("precondition: state = %q, want idle", info.State)
+	}
+
+	// A correctly stamped event that follows must still be applied.
+	// Without the clamp this is dropped and the session is stuck idle
+	// for the rest of its life.
+	if err := r.ApplyAgentEvent(e.ID, wire.AgentEvent{
+		SessionID: e.ID, Kind: wire.AgentEventPrompt, Source: wire.StateSourceHook,
+		At: time.Now().UTC().Format(time.RFC3339Nano), Text: "next question",
+	}); err != nil {
+		t.Fatalf("ApplyAgentEvent (now): %v", err)
+	}
+	if info := r.Get(e.ID).Info(); info.State != wire.StateWorking {
+		t.Errorf("state = %q, want working — a future stamp froze the session", info.State)
+	}
+}
