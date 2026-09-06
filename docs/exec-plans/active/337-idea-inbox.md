@@ -781,6 +781,12 @@ path instead.
 - **2026-09-05** — Plan reviewed and corrected.
 - **2026-09-05** — Second review pass; both open questions resolved,
   spec amended. Plan has no open questions and is handoff-ready.
+- **2026-09-05** — Gate NEEDS_FOLLOWUP; held at GATE by decision. All three
+  gate dimensions passed for phase-1 scope; the deferred criteria are phases 2
+  and 3 of this same spec. Stage stays `GATE` and this plan stays in `active/`
+  so phases 2-3 keep their phasing, decision log and research; PR #352 merges
+  on its own merits. Re-run `/hs-merge-gate 337` after phase 3, when the full
+  spec is satisfiable, and let that run write DONE.
 - **2026-09-05** — Phase 1 implemented: `internal/registry/ideas.go`
   (+ `IdeasDir`, `IdeaFile`, `IdeaListener`, boot load, the
   `KillProject` cascade and its open-ideas refusal), six wire frames
@@ -802,6 +808,24 @@ path instead.
   `go build ./...`, `go test ./...`, and `go vet` + `staticcheck` for
   darwin/linux/windows are clean. Phases 2 (GUI) and 3
   (`initial_prompt`) not started.
+
+## Gate verdict
+
+Append-only, one entry per `/hs-merge-gate` run.
+
+- **2026-09-05** — verdict: NEEDS_FOLLOWUP; checks: 3 dimensions passed / 0 failed / 4.5 criteria deferred to later phases; followups: none filed (deferred criteria are phases 2-3 of this same spec, already planned); one-line: phase 1 fully satisfies every success criterion it claims, but the spec's criteria span all three phases, so the spec as a whole is not yet met.
+  - 2026-09-05 dimensions:
+    - acceptance — PASS (phase-1 scope) — criterion 1 (atomic registry-only writes, restart survival, all three IDEA_EVENT kinds) MET, verified live over the daemon socket; criterion 3 (`hived idea add` in-session attribution, out-of-session exit 2) MET, verified by running the e2e and the CLI directly; criterion 7's Go half MET. Criteria 2, 4 DEFERRED (phase 2); 5, 6 and criterion 7's Playwright half DEFERRED (phase 3).
+    - non-goals — PASS — all seven respected. `external_ref` persisted but unwired and absent from `wire.IdeaInfo`; no priority/order/tags/index; capture requires `HIVE_SESSION_ID` + `HIVE_SOCKET`; no idea can persist without a resolved project on either the create or the load path; cascade + `project_has_ideas` refusal present; CLI is exactly `add`/`list`. No scope bleed — `cmd/hivegui/`, `internal/agent/` and `registry/create.go` untouched.
+    - doc accuracy — PASS — changeset, README, DESIGN.md and the `DaemonContract` 5 History entry all match the shipped code; every CLI invocation shown works as written; generated files untouched; no doc claims phase 2/3 behavior as shipped.
+
+**Gate scope note.** This gate ran against a spec whose `## Success criteria`
+describe the finished three-phase feature while the PR under test is phase 1.
+The skill's PASS branch would set `stage: DONE` and move this plan to
+`completed/` — wrong here, because phases 2 and 3 are unbuilt and this file is
+the only home of their phasing, decision log and research. Recorded as
+NEEDS_FOLLOWUP so the stage decision stays explicit rather than being a side
+effect of a per-PR gate meeting a per-feature spec.
 
 ## PR convergence ledger
 
