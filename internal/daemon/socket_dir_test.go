@@ -111,6 +111,10 @@ func TestSocketPathDarwinIsPerUserTmp(t *testing.T) {
 		t.Skip("darwin default")
 	}
 	t.Setenv("HIVE_SOCKET", "")
+	// The fallback resolves through registry.StateDir(), so an
+	// inherited HIVE_STATE_DIR (scripts/dev-iso.sh parks one under
+	// /tmp) would otherwise decide this assertion.
+	t.Setenv("HIVE_STATE_DIR", t.TempDir())
 	got := SocketPath()
 	if strings.HasPrefix(got, "/tmp/") || strings.HasPrefix(got, "/private/tmp/") {
 		t.Fatalf("SocketPath() = %q; must not live under shared /tmp", got)
@@ -127,13 +131,18 @@ func TestSocketPathLinuxUsesXDGRuntimeDir(t *testing.T) {
 		t.Skip("linux default")
 	}
 	t.Setenv("HIVE_SOCKET", "")
+	// Pin the fallback: without XDG_RUNTIME_DIR the path comes from
+	// registry.StateDir(), which an inherited HIVE_STATE_DIR would
+	// otherwise redirect (scripts/dev-iso.sh parks one under /tmp).
+	state := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", state)
 	t.Setenv("XDG_RUNTIME_DIR", "/run/user/4242")
 	if got, want := SocketPath(), "/run/user/4242/hive/hived.sock"; got != want {
 		t.Fatalf("SocketPath() = %q, want %q", got, want)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", "")
-	if got := SocketPath(); strings.HasPrefix(got, "/tmp/") {
-		t.Fatalf("SocketPath() without XDG_RUNTIME_DIR = %q; must not fall back to shared /tmp", got)
+	if got, want := SocketPath(), filepath.Join(state, "hived.sock"); got != want {
+		t.Fatalf("SocketPath() without XDG_RUNTIME_DIR = %q, want the state-dir fallback %q", got, want)
 	}
 }
 
@@ -146,10 +155,16 @@ func TestSocketPathRejectsTrailingSlashTmp(t *testing.T) {
 		t.Skip("darwin uses $TMPDIR")
 	}
 	t.Setenv("HIVE_SOCKET", "")
+	// t.TempDir() reads TMPDIR, so take it before the loop rewrites
+	// it. Pinning HIVE_STATE_DIR is what makes the fallback assertion
+	// about SocketPath rather than about the caller's environment.
+	state := t.TempDir()
+	t.Setenv("HIVE_STATE_DIR", state)
+	want := filepath.Join(state, "hived.sock")
 	for _, tmp := range []string{"/tmp/", "/tmp//", "/private/tmp/"} {
 		t.Setenv("TMPDIR", tmp)
-		if got := SocketPath(); strings.HasPrefix(got, "/tmp/") || strings.HasPrefix(got, "/private/tmp/") {
-			t.Errorf("TMPDIR=%q: SocketPath() = %q, want the state-dir fallback", tmp, got)
+		if got := SocketPath(); got != want {
+			t.Errorf("TMPDIR=%q: SocketPath() = %q, want the state-dir fallback %q", tmp, got, want)
 		}
 	}
 }

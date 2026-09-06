@@ -33,11 +33,13 @@ daemon (`hived`) listens on a per-user Unix socket — `$TMPDIR/hive/hived.sock`
 on macOS (launchd's private per-user temp dir),
 `$XDG_RUNTIME_DIR/hive/hived.sock` on Linux (falling back to the state
 directory when it is unset), `%LOCALAPPDATA%\Hive\hived.sock` on Windows
-(`HIVE_SOCKET` overrides all three). Hive creates that directory with mode
-`0o700`, and every component — the daemon before binding, the GUI and the menu
-bar before dialing — refuses a directory that is a symlink, is not owned by the
-current user, or is reachable by group or other. None of the defaults live under
-the world-writable `/tmp`.
+(`HIVE_SOCKET` overrides all three). Both POSIX defaults fall back to the state
+directory rather than to `/tmp`: Linux when `$XDG_RUNTIME_DIR` is unset, macOS
+when `$TMPDIR` resolves to the shared `/tmp`. Hive creates that directory with
+mode `0o700`, and every Go component — the daemon before binding, the GUI, the
+menu bar, `hived idea` and the hook client before dialing — refuses a directory
+that is a symlink, is not owned by the current user, or is reachable by group or
+other. None of the defaults live under the world-writable `/tmp`.
 
 ### Multi-User Systems
 
