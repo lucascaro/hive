@@ -24,13 +24,18 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
-//	6 — Events-only socket. The daemon binds a second listener next to
-//	    the control socket (<sock>.events) that serves HELLO{mode:event}
-//	    alone, answering every other mode with mode_not_allowed, and
-//	    HIVE_SOCKET in a spawned session's environment now names THAT
-//	    socket. A session revived by an older daemon hands its agent the
-//	    control socket, so the security property only holds once the
-//	    daemon is the new one — which is exactly what a bump forces.
+//	6 — Narrowed socket for agent children. The daemon binds a second
+//	    listener next to the control socket (<sock>.events) serving only
+//	    HELLO{mode:event} (one state report) and the new
+//	    HELLO{mode:session} (ADD_IDEA / LIST_IDEAS, and a SESSIONS
+//	    snapshot narrowed to the caller's own session); every other mode
+//	    and verb is answered with mode_not_allowed. HIVE_SOCKET in a
+//	    spawned session's environment now names THAT socket, and
+//	    `hive idea` speaks mode:session rather than mode:control. A
+//	    session revived by an older daemon hands its agent the control
+//	    socket, and an older `hive idea` dialling the events socket in
+//	    mode:control is refused, so the pair has to move together —
+//	    which is exactly what a bump forces.
 //	5 — Ideas: the LIST_IDEAS / IDEAS / ADD_IDEA / UPDATE_IDEA /
 //	    REMOVE_IDEA / IDEA_EVENT frame set, the registry-owned ideas/
 //	    directory behind it, and the project_has_ideas refusal that

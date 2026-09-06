@@ -48,10 +48,13 @@ On shared machines (e.g., a development server with multiple accounts):
   neither connect to the daemon nor plant an impostor socket for Hive to
   connect to.
 - Programs running inside a session inherit `HIVE_SOCKET`, which names a
-  second, events-only socket. It accepts state reports (`HELLO{mode:event}`)
-  and answers every other mode with `mode_not_allowed`, so a subprocess of an
-  agent cannot use the environment it was handed to create, attach to, or kill
-  sessions, or remove worktrees.
+  second, narrowed socket. It serves state reports (`HELLO{mode:event}`) and
+  the idea verbs `hive idea` needs (`HELLO{mode:session}` — `ADD_IDEA` and
+  `LIST_IDEAS`, plus a session snapshot narrowed to the caller's own session),
+  and answers everything else with `mode_not_allowed`. A subprocess of an agent
+  therefore cannot use the environment it was handed to create, attach to or
+  kill sessions, remove worktrees, shut the daemon down, or enumerate your
+  other sessions.
 - Log files (`hived.log`, `hivegui.log`) are created with mode `0o600` and
   are not readable by other users.
 - Agent session output is not exposed outside the daemon process.
