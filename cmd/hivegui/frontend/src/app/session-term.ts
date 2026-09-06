@@ -41,7 +41,12 @@ import {
   isClosing,
   phasePanel,
 } from '../lib/phase-steps.js';
-import { isShiftEnter, macLineEditSeq, NEWLINE_SEQ } from '../lib/keymap.js';
+import {
+  isShiftEnter,
+  macForwardKillSeq,
+  macLineEditSeq,
+  NEWLINE_SEQ,
+} from '../lib/keymap.js';
 import { DEFAULT_FONT_SIZE, clampFont } from '../lib/font.js';
 import {
   shouldRefreshOnVisibility,
@@ -458,6 +463,16 @@ export class SessionTerm {
       if (lineEdit) {
         e.preventDefault();
         this._writePty(lineEdit);
+        return false;
+      }
+      // macOS ⌥⌦ / ⌘⌦ → kill word forward / kill to end of line. xterm
+      // does encode forward delete, but any modifier turns it into
+      // \x1b[3;<mods+1>~, which nothing binds — so these chords are
+      // silent today. A bare ⌦ is left to xterm (\x1b[3~).
+      const forwardKill = macForwardKillSeq(e, isMac);
+      if (forwardKill) {
+        e.preventDefault();
+        this._writePty(forwardKill);
         return false;
       }
       // Shift+Enter → insert a newline in the agent's input instead of

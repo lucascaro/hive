@@ -36,6 +36,7 @@ interface ModOpts {
 const KEYS: Record<string, { mac: string; other: string }> = {
   enter: { mac: '↩', other: 'Enter' },
   backspace: { mac: '⌫', other: 'Backspace' },
+  delete: { mac: '⌦', other: 'Del' },
   up: { mac: '↑', other: 'Up' },
   down: { mac: '↓', other: 'Down' },
   left: { mac: '←', other: 'Left' },
@@ -117,8 +118,14 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         },
         {
           keys: `${isMac ? '⌘' : 'Ctrl+'}${hArrows}`,
-          label:
-            'Grid: move between tiles — in focused mode these reach the terminal (start / end of line)',
+          // The terminal half differs by platform: macLineEditSeq maps ⌘←/→
+          // to \x01/\x05 on mac only, so off mac the chord falls through to
+          // xterm's \x1b[1;5D/C — word movement, which is what the "Inside a
+          // terminal" group lists it as. Saying "start / end of line" on both
+          // would contradict that row.
+          label: `Grid: move between tiles — in focused mode these reach the terminal (${
+            isMac ? 'start / end of line' : 'move by word'
+          })`,
         },
         {
           keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${vArrows}`,
@@ -186,7 +193,25 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
           keys: `⇧${keyLabel('enter', isMac)}`,
           label: 'Insert newline in agent input (instead of submitting)',
         },
-        ...(isMac ? [{ keys: '⌘⌫', label: 'Clear input line' }] : []),
+        {
+          keys: keyLabel('delete', isMac),
+          label: 'Delete the character after the cursor',
+        },
+        // Text editing, split by platform because the chords genuinely
+        // differ. On macOS word-wise movement is ⌥←/→ (⌃←/→ is Mission
+        // Control's space switcher and never reaches the app); off mac
+        // it is Ctrl+←/→. Everything here is either written by the app
+        // (lib/keymap.ts) or encoded by xterm. See AGENTS.md ›
+        // Keybindings Policy.
+        ...(isMac
+          ? [
+              { keys: '⌥⌫', label: 'Delete the word before the cursor' },
+              { keys: '⌥⌦', label: 'Delete the word after the cursor' },
+              { keys: '⌘⌫', label: 'Delete to start of line' },
+              { keys: '⌘⌦', label: 'Delete to end of line' },
+              { keys: `⌥${hArrows}`, label: 'Move by word' },
+            ]
+          : [{ keys: c(hArrows), label: 'Move by word' }]),
       ],
     },
     {

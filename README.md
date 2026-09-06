@@ -239,6 +239,18 @@ build.sh           # macOS universal build
 
 Full list in the app: **⌘/**. (Ctrl replaces ⌘ on Windows and Linux.)
 
+### Text editing inside a session
+
+These reach the shell or agent CLI rather than the app.
+
+| Key | Action |
+|---|---|
+| ⌦ | Delete the character after the cursor |
+| ⌥⌫ / ⌥⌦ | Delete the word before / after the cursor (macOS) |
+| ⌘⌫ / ⌘⌦ | Delete to start / end of line (macOS) |
+| ⌥← / ⌥→ | Move by word (macOS; Ctrl+← / Ctrl+→ on Windows and Linux) |
+| ⇧⏎ | Insert a newline in the agent's input instead of submitting |
+
 ## Contributing
 
 See `AGENTS.md` for repo-wide rules, `DESIGN.md` for the architecture

@@ -40,15 +40,47 @@ describe('shortcutGroups', () => {
     }
   });
 
-  it('mac-only clear-line entry appears only on mac', () => {
+  it('mac-only line-edit entries appear only on mac', () => {
     const labels = (groups: ShortcutGroup[]) =>
       groups.flatMap((g) => g.items.map((i) => i.label));
     expect(labels(shortcutGroups({ isMac: true }))).toContain(
-      'Clear input line',
+      'Delete to start of line',
+    );
+    expect(labels(shortcutGroups({ isMac: true }))).toContain(
+      'Delete to end of line',
     );
     expect(labels(shortcutGroups({ isMac: false }))).not.toContain(
-      'Clear input line',
+      'Delete to start of line',
     );
+    expect(labels(shortcutGroups({ isMac: false }))).not.toContain(
+      'Delete to end of line',
+    );
+  });
+
+  it('labels the forward-delete key per platform, not as the literal "delete"', () => {
+    // KEYS had no `delete` entry until #362, so keyLabel() fell through
+    // its `k ? … : key` default and rendered the raw string.
+    const keysFor = (isMac: boolean) =>
+      shortcutGroups({ isMac })
+        .flatMap((g) => g.items)
+        .filter((i) => i.label === 'Delete the character after the cursor')
+        .map((i) => i.keys);
+    expect(keysFor(true)).toEqual(['⌦']);
+    expect(keysFor(false)).toEqual(['Del']);
+  });
+
+  it('does not contradict itself about what ⌘/Ctrl + ←/→ send to the terminal', () => {
+    // The Sessions row and the "Inside a terminal" row describe the same
+    // chord off mac (Ctrl+←/→). macLineEditSeq is mac-gated, so off mac
+    // the chord falls through to xterm as word movement — the Sessions row
+    // must not claim start/end of line there.
+    const gridRow = (isMac: boolean) =>
+      shortcutGroups({ isMac })
+        .flatMap((g) => g.items)
+        .find((i) => i.label.startsWith('Grid: move between tiles —'))?.label;
+    expect(gridRow(true)).toContain('start / end of line');
+    expect(gridRow(false)).toContain('move by word');
+    expect(gridRow(false)).not.toContain('start / end of line');
   });
 
   it('separates arrow-key word labels off mac', () => {
