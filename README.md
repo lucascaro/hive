@@ -35,8 +35,11 @@ What works:
   hived idea add "the grid loses focus after ⌘G twice"   # kind: idea
   hived idea add -k bug "sidebar drag handle is 1px off"
   hived idea list                                        # this project
-  hived idea list --all                                  # every project
   ```
+
+  `hived idea list --all` spans every project. It is refused inside a
+  session — where a note is scoped to the session's own project — so run
+  it from an ordinary shell.
 
   The project is resolved from the session, so a note lands where the
   work is even after the session is reassigned. An idea outlives the
