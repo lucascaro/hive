@@ -47,6 +47,40 @@ func TestLegacyDaemonAliveIgnoresAStaleSocketFile(t *testing.T) {
 	}
 }
 
+// The legacy path lives in the world-writable /tmp, and on a machine
+// that never ran a pre-move Hive the directory is absent — so another
+// account can create it and listen. Believing that would wedge every
+// consumer of the answer: the daemon refuses to start beside a
+// "running" daemon the user cannot see, hivebar pins to the squatted
+// path on every reconnect, and the GUI's spawn hits the same refusal.
+// An unverifiable directory must read as "no legacy daemon".
+func TestLegacyDaemonIsIgnoredWhenItsDirIsNotOurs(t *testing.T) {
+	skipOnWindows(t)
+	dir := shortTempDir(t)
+	sock := filepath.Join(dir, "hived.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	// Same live socket, only the directory changes.
+	if !legacyAlive(sock) {
+		t.Fatal("a live socket in a 0700 dir was not read as a legacy daemon")
+	}
+	for _, mode := range []os.FileMode{0o755, 0o777, 0o707} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if legacyAlive(sock) {
+			t.Errorf("dir mode %o: a socket in a group/world-reachable dir was read as a legacy daemon", mode)
+		}
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // An explicit socket path that is not the platform default belongs to a
 // test or an isolated dev daemon; neither should refuse to start because
 // the user's real, pre-move Hive is running.

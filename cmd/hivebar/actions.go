@@ -133,12 +133,7 @@ func RestartDaemon(shutdown func()) error {
 // Resolved per call rather than cached: hivebar's client loop
 // reconnects forever, and the very next reconnect after a restart must
 // find the NEW daemon. Delete with daemon.LegacySocketPath.
-func activeSocket() string {
-	if legacy, alive := hdaemon.LegacyDaemonAlive(); alive {
-		return legacy
-	}
-	return hdaemon.SocketPath()
-}
+func activeSocket() string { return hdaemon.ActiveSocketPath() }
 
 // socketDead reports whether nothing answers on sock within budget.
 // Dialling, not signalling: a zombie daemon answers signal(0) forever

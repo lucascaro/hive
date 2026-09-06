@@ -97,7 +97,8 @@ func LegacySocketPath() string {
 
 // LegacyDaemonAlive reports whether a pre-move daemon is still serving
 // the old default path. False whenever there is no legacy path to
-// check, and false for a stale socket file nothing answers.
+// check, false for a stale socket file nothing answers, and false for a
+// directory that is not ours — see legacyAlive.
 func LegacyDaemonAlive() (string, bool) {
 	legacy := LegacySocketPath()
 	if legacy == "" {
@@ -106,11 +107,29 @@ func LegacyDaemonAlive() (string, bool) {
 	return legacy, legacyAlive(legacy)
 }
 
-// legacyAlive reports whether something is actually serving path. Split
+// legacyAlive reports whether OUR pre-move daemon is serving path. Split
 // out of LegacyDaemonAlive because the path there is uid-derived and so
 // cannot be pointed at a fixture.
+//
+// CheckSocketDir first, and this is load-bearing rather than tidy. The
+// legacy path lives in the world-writable /tmp that this whole change
+// exists to leave, and on a machine that never ran a pre-move Hive the
+// directory does not exist — so another local account can create it,
+// bind a socket, and be believed. Nobody would be impersonated (every
+// client checks the directory before handshaking), but every consumer
+// of this answer would wedge: the daemon refuses to start beside a
+// "running" daemon the user cannot see, hivebar pins to the squatted
+// path on every reconnect, and the GUI's spawn hits that same refusal.
+// One guard here rather than three at the call sites: an unverifiable
+// directory is not a legacy daemon, so it reads as absent and every
+// caller falls through to the canonical path. A genuine legacy
+// directory passes — the old daemon created it 0700 with the same
+// EnsureSocketDir this package still has.
 func legacyAlive(path string) bool {
 	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	if err := CheckSocketDir(path); err != nil {
 		return false
 	}
 	c, err := net.DialTimeout("unix", path, legacyProbeTimeout)
@@ -119,6 +138,19 @@ func legacyAlive(path string) bool {
 	}
 	_ = c.Close()
 	return true
+}
+
+// ActiveSocketPath is the socket a running daemon is expected to be on:
+// the pre-move default while one is still serving it, otherwise the
+// canonical SocketPath. Clients that only ever DIAL should resolve
+// through here so they cannot disagree about which daemon they mean;
+// anything that BINDS wants SocketPath directly, since nothing new ever
+// binds the old path. Delete with LegacySocketPath.
+func ActiveSocketPath() string {
+	if legacy, alive := LegacyDaemonAlive(); alive {
+		return legacy
+	}
+	return SocketPath()
 }
 
 // legacyProbeTimeout bounds the legacy-path dial. A local daemon

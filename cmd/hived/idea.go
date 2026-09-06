@@ -189,7 +189,12 @@ func listAllIdeas(stdout io.Writer) error {
 	if os.Getenv("HIVE_SESSION_ID") != "" {
 		return errors.New("`idea list --all` is not available inside a Hive session; run it from an ordinary shell")
 	}
-	sock := daemon.SocketPath()
+	// ActiveSocketPath, not SocketPath: during the socket migration the
+	// daemon holding the ideas may still be the pre-move one, and the
+	// GUI and hivebar both talk to it. Reporting "is hived running?"
+	// while the app shows that daemon's sessions would be the one
+	// answer that is definitely wrong.
+	sock := daemon.ActiveSocketPath()
 	if err := daemon.CheckSocketDir(sock); err != nil {
 		return err
 	}
@@ -209,6 +214,12 @@ func listAllIdeas(stdout io.Writer) error {
 		return err
 	}
 	defer c.Close()
+	// AFTER the handshake: wire.Handshake clears the read deadline on
+	// success, so the one set above covers the handshake only. The
+	// control socket has no server-side idle deadline — unlike a
+	// session connection — so without this a daemon that accepts and
+	// then never answers hangs this command forever.
+	_ = conn.SetDeadline(time.Now().Add(ideaDeadline))
 	if err := c.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{}); err != nil {
 		return err
 	}
@@ -263,6 +274,10 @@ func ideaDial(sock, sessionID string) (*wire.Client, error) {
 		conn.Close()
 		return nil, err
 	}
+	// Re-armed after the handshake, which clears the read deadline on
+	// success. The session socket's own 30s idle deadline would catch a
+	// stalled daemon eventually; this keeps the CLI's own bound.
+	_ = conn.SetDeadline(time.Now().Add(ideaDeadline))
 	return c, nil
 }
 

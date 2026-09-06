@@ -49,9 +49,13 @@ socket, so it dials without the check.
 On shared machines (e.g., a development server with multiple accounts):
 
 - The socket directory is created `0o700` and re-verified (owner, mode, and
-  that it is not a symlink) on every bind and every dial, so other users can
-  neither connect to the daemon nor plant an impostor socket for Hive to
-  connect to.
+  that it is not a symlink) before every bind and before every dial the Go
+  components make — including the probe that looks for a daemon left over from
+  before the socket moved. Another user can therefore neither connect to the
+  daemon nor plant a socket Hive would connect to, or treat as a daemon. The
+  exceptions are the Pi reporter extension, which runs in Pi's JavaScript tier
+  and only sends state observations, and `hived-ws-bridge`, which is a test
+  harness that dials a socket its caller names explicitly.
 - Programs running inside a session inherit `HIVE_SOCKET`, which names a
   second, narrowed socket rather than the control socket. It serves state
   reports (`HELLO{mode:event}`) and the idea verbs `hive idea` needs
