@@ -66,7 +66,7 @@ sends `HELLO{mode:"event"}`, then exactly one `AGENT_EVENT` frame, and
 closes. No `WELCOME` listing, no subscriptions; it is a fire-and-forget
 postcard, cheap enough to open per hook invocation.
 
-Why a wire mode and not a file drop or a second socket:
+Why a wire mode and not a file drop:
 
 - **One channel.** `DESIGN.md` forbids side-channel files; the wire is
   the IPC. A mode keeps `internal/wire/` free of I/O and lets the
@@ -81,6 +81,18 @@ Why a wire mode and not a file drop or a second socket:
   The daemon accepts an `AGENT_EVENT` only for a session id it has
   alive; a stale or forged id is logged and dropped. The socket is
   already user-only; this is the same trust model as the attach mode.
+
+**Since the 2026-09 hardening, `event` is served on its own listener.**
+The daemon binds a second socket beside the control one —
+`SocketPath()+".events"` — and that is what a session's environment
+carries as `HIVE_SOCKET`. It serves `event` and the narrowed `session`
+mode (`ADD_IDEA` / `LIST_IDEAS`, scoped to the caller's own project)
+and refuses everything else with `mode_not_allowed`. The mode is still
+the right shape for the reasons above; what changed is which file a
+session's children can reach, so that inheriting the environment no
+longer inherits session creation. It is defence in depth rather than a
+boundary — the control socket is owned by the same user and a process
+running as them can dial it directly. See `SECURITY.md`.
 
 ## Correlation with the agent's own identity
 

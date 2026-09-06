@@ -29,7 +29,7 @@ func TestControlSubscribesBeforeWelcome(t *testing.T) {
 	defer client.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go d.serveControl(ctx, server)
+	go d.serveControl(ctx, server, wire.Hello{Mode: wire.ModeControl})
 
 	// Let the goroutine reach the WELCOME write and park there — the
 	// pipe is unbuffered and nothing else in serveControl can block, so

@@ -113,7 +113,10 @@ func findSessionByID(d *daemon.Daemon, id string) (wire.SessionInfo, bool) {
 func runHookFixture(t *testing.T, d *daemon.Daemon, sessionID, fixture string) {
 	t.Helper()
 	t.Setenv("HIVE_SESSION_ID", sessionID)
-	t.Setenv("HIVE_SOCKET", d.SocketPath())
+	// The events socket, not the control one: that is what a spawned
+	// session's environment carries, so pointing this at SocketPath
+	// would exercise wiring production no longer uses.
+	t.Setenv("HIVE_SOCKET", d.EventSocketPath())
 	raw := readFixture(t, fixture)
 	runHook(bytesReader(raw))
 }

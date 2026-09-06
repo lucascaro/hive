@@ -1,10 +1,15 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
+
+	"github.com/lucascaro/hive/internal/registry"
 )
 
 // SocketPath returns the canonical hived socket path for the current
@@ -16,6 +21,22 @@ import (
 // Setting HIVE_SOCKET overrides the platform default — useful for
 // running an isolated dev daemon alongside a production one without
 // touching its sessions.
+//
+// The directory must be one only this user can reach. A shared /tmp is
+// not: another account can pre-create /tmp/hive-<uid> and park a fake
+// socket in it, and every client here would connect to it and hand it
+// every keystroke (2026-09 audit, finding 1). So:
+//   - Linux/BSD: $XDG_RUNTIME_DIR/hive (per-user, 0700 by the login
+//     manager); without it, fall back to the state dir.
+//   - macOS: $TMPDIR/hive — launchd gives every user a private 0700
+//     temp dir under /var/folders and os.TempDir returns it. When
+//     $TMPDIR is unset os.TempDir returns /tmp, which is refused here
+//     in favour of the state dir.
+//   - Windows: %LOCALAPPDATA%\Hive (unchanged; per-user profile).
+//
+// AF_UNIX paths are capped at 104 bytes on macOS; the launchd $TMPDIR
+// is ~49, which leaves room for "/hive/hived.sock" and the ".events"
+// suffix EventSocketPath appends.
 func SocketPath() string {
 	if s := os.Getenv("HIVE_SOCKET"); s != "" {
 		return s
@@ -25,11 +46,17 @@ func SocketPath() string {
 		if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
 			return filepath.Join(dir, "hive", "hived.sock")
 		}
-		return fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid())
+		return filepath.Join(registry.StateDir(), "hived.sock")
 	case "darwin":
-		// macOS doesn't ship XDG_RUNTIME_DIR. /tmp is the path of least
-		// resistance and matches what most Mac daemons do.
-		return fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid())
+		// Clean first: os.TempDir returns $TMPDIR verbatim, and
+		// launchd's own value ends in a slash. Comparing the raw string
+		// would let TMPDIR="/tmp/" walk straight past this guard and put
+		// the socket back in the shared /tmp this whole change exists to
+		// leave.
+		if tmp := filepath.Clean(os.TempDir()); tmp != "/tmp" && tmp != "/private/tmp" {
+			return filepath.Join(tmp, "hive", "hived.sock")
+		}
+		return filepath.Join(registry.StateDir(), "hived.sock")
 	case "windows":
 		base := os.Getenv("LOCALAPPDATA")
 		if base == "" {
@@ -41,12 +68,161 @@ func SocketPath() string {
 	}
 }
 
-// EnsureSocketDir makes sure the directory containing the socket
-// exists, with restrictive permissions on POSIX.
+// LegacySocketPath returns the pre-2026-09 default socket path —
+// /tmp/hive-<uid>/hived.sock — or "" when there is nothing to migrate
+// from: HIVE_SOCKET pins the path explicitly, Windows never used it, or
+// it is what SocketPath returns anyway.
+//
+// It exists for one release's worth of upgrade. A daemon built before
+// the move takes no state lock and binds a path the new one does not
+// look at, so an upgrade that leaves the old daemon running — anything
+// but the in-app updater, which shuts it down in-band first — would
+// otherwise end with two daemons reviving the same sessions against one
+// registry. Callers probe this path by DIALING it, never by statting:
+// a leftover socket file is not a running daemon, and spawning onto the
+// old path would be worse than the problem.
+//
+// Delete this, and its callers, once the previous release is far enough
+// back that nobody is upgrading across the move.
+func LegacySocketPath() string {
+	if os.Getenv("HIVE_SOCKET") != "" || runtime.GOOS == "windows" {
+		return ""
+	}
+	legacy := fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid())
+	if legacy == SocketPath() {
+		return ""
+	}
+	return legacy
+}
+
+// LegacyDaemonAlive reports whether a pre-move daemon is still serving
+// the old default path. False whenever there is no legacy path to
+// check, false for a stale socket file nothing answers, and false for a
+// directory that is not ours — see legacyAlive.
+func LegacyDaemonAlive() (string, bool) {
+	legacy := LegacySocketPath()
+	if legacy == "" {
+		return "", false
+	}
+	return legacy, legacyAlive(legacy)
+}
+
+// legacyAlive reports whether OUR pre-move daemon is serving path. Split
+// out of LegacyDaemonAlive because the path there is uid-derived and so
+// cannot be pointed at a fixture.
+//
+// CheckSocketDir first, and this is load-bearing rather than tidy. The
+// legacy path lives in the world-writable /tmp that this whole change
+// exists to leave, and on a machine that never ran a pre-move Hive the
+// directory does not exist — so another local account can create it,
+// bind a socket, and be believed. Nobody would be impersonated (every
+// client checks the directory before handshaking), but every consumer
+// of this answer would wedge: the daemon refuses to start beside a
+// "running" daemon the user cannot see, hivebar pins to the squatted
+// path on every reconnect, and the GUI's spawn hits that same refusal.
+// One guard here rather than three at the call sites: an unverifiable
+// directory is not a legacy daemon, so it reads as absent and every
+// caller falls through to the canonical path. A genuine legacy
+// directory passes — the old daemon created it 0700 with the same
+// EnsureSocketDir this package still has.
+func legacyAlive(path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	if err := CheckSocketDir(path); err != nil {
+		return false
+	}
+	c, err := net.DialTimeout("unix", path, legacyProbeTimeout)
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
+}
+
+// ActiveSocketPath is the socket a running daemon is expected to be on:
+// the pre-move default while one is still serving it, otherwise the
+// canonical SocketPath. Clients that only ever DIAL should resolve
+// through here so they cannot disagree about which daemon they mean;
+// anything that BINDS wants SocketPath directly, since nothing new ever
+// binds the old path. Delete with LegacySocketPath.
+func ActiveSocketPath() string {
+	if legacy, alive := LegacyDaemonAlive(); alive {
+		return legacy
+	}
+	return SocketPath()
+}
+
+// legacyProbeTimeout bounds the legacy-path dial. A local daemon
+// accepts immediately; anything slower is not one worth waiting for on
+// a boot path.
+const legacyProbeTimeout = 250 * time.Millisecond
+
+// EventSocketPath is the narrowed listener that sits next to the
+// control socket. It is what spawned sessions get as HIVE_SOCKET: hooks
+// and extensions report state on it with ModeEvent, and `hive idea`
+// opens a ModeSession connection for ADD_IDEA / LIST_IDEAS plus a
+// SESSIONS snapshot narrowed to its own session. Every other mode is
+// refused with mode_not_allowed, so a subprocess of an agent cannot
+// create, attach to or kill sessions through the environment it
+// inherited.
+func EventSocketPath(controlSock string) string { return controlSock + ".events" }
+
+// EnsureSocketDir creates the socket's directory 0700 when missing and
+// then verifies it with CheckSocketDir. The daemon calls it before
+// binding; the GUI calls it before dialing, since it may be the one to
+// spawn the daemon.
 func EnsureSocketDir(sockPath string) error {
 	dir := filepath.Dir(sockPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	return CheckSocketDir(sockPath)
+}
+
+// CheckSocketDir refuses a socket directory another user could have
+// created or can write to: it must be a real directory (not a
+// symlink), owned by this uid, with no group or other permission bits.
+// Clients call it before dialing so an impostor socket is never
+// trusted; the daemon calls it before binding.
+//
+// No-op on Windows, where the path is under the per-user profile and
+// POSIX mode bits do not describe who can reach it.
+func CheckSocketDir(sockPath string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	dir := filepath.Dir(sockPath)
+	st, err := os.Lstat(dir)
+	if err != nil {
+		// A bare errno reaches a user as "lstat /some/path: no such
+		// file or directory", which says nothing about what was being
+		// checked or why the command stopped.
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("socket dir %s does not exist; is hived running?", dir)
+		}
+		return fmt.Errorf("socket dir %s: %w", dir, err)
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("socket dir %s is a symlink; refusing", dir)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("socket dir %s is not a directory", dir)
+	}
+	if perm := st.Mode().Perm(); perm&0o077 != 0 {
+		return fmt.Errorf("socket dir %s has mode %04o; must be 0700 (chmod 700 %s)", dir, perm, dir)
+	}
+	uid, err := dirOwnerUID(st)
+	if err != nil {
+		return err
+	}
+	if uid != os.Getuid() {
+		return fmt.Errorf("socket dir %s is owned by uid %d, not %d; refusing", dir, uid, os.Getuid())
+	}
 	return nil
 }
+
+// errNoOwner is what dirOwnerUID returns when the platform's FileInfo
+// carries no uid — it should not happen on the POSIX targets, and the
+// safe reading of "cannot tell who owns this" is to refuse.
+var errNoOwner = errors.New("socket dir: cannot read owner")

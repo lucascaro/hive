@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -94,13 +95,28 @@ func TestRestartDaemon_FailurePreservesConns(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
+	// Hold the accepted conns in a slice, not in a discarded local: a
+	// net.Conn that becomes unreachable is closed by its finalizer
+	// whenever the GC next runs, which closed the client end mid-test
+	// and failed the "still writable" assertion below on Windows CI.
+	var mu sync.Mutex
+	var accepted []net.Conn
+	t.Cleanup(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range accepted {
+			_ = c.Close()
+		}
+	})
 	go func() {
 		for {
 			c, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			_ = c // hold it open, read nothing, exit never
+			mu.Lock()
+			accepted = append(accepted, c) // hold it open, read nothing, exit never
+			mu.Unlock()
 		}
 	}()
 	t.Setenv("HIVE_SOCKET", sock)
