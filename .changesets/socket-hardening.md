@@ -11,6 +11,7 @@ bump: minor
   shared machine another account could previously plant a fake socket
   there and read everything you typed.
 - Programs running inside a Hive session can now only report their state
-  back to Hive. They could previously use the same connection to create,
-  attach to or kill sessions and remove worktrees. Requires a daemon
-  restart, which Hive will prompt for after the update.
+  back to Hive and capture ideas (`hive idea`). They could previously use
+  the same connection to create, attach to or kill sessions, remove
+  worktrees, shut the daemon down, or list every session you have open.
+  Requires a daemon restart, which Hive will prompt for after the update.

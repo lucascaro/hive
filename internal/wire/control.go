@@ -22,6 +22,17 @@ const (
 	// applied, then the connection is closed — there is no Welcome and
 	// the connection never streams DATA.
 	ModeEvent Mode = "event"
+	// ModeSession is a narrowed control connection for a program
+	// running INSIDE a Hive session — `hive idea` today. It reaches the
+	// daemon over the events socket (HIVE_SOCKET), and the daemon
+	// serves only the idea verbs on it: ADD_IDEA and LIST_IDEAS, plus
+	// the IDEA_EVENT stream and a SESSIONS snapshot narrowed to the
+	// one session named in Hello.SessionID. Everything else — creating,
+	// attaching to or killing sessions, worktree mutations, shutdown,
+	// and the other sessions' existence — is refused with
+	// mode_not_allowed, because everything downstream of a session
+	// inherits this environment.
+	ModeSession Mode = "session"
 )
 
 // CreateSpec is the payload for ModeCreate's create field, and also

@@ -80,7 +80,7 @@ func ideaAdd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := ideaDial(sock)
+	c, err := ideaDial(sock, sessionID)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func ideaList(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c, err := ideaDial(sock)
+	c, err := ideaDial(sock, sessionID)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func ideaEnv() (sessionID, sock string, err error) {
 	return sessionID, sock, nil
 }
 
-func ideaDial(sock string) (*wire.Client, error) {
+func ideaDial(sock, sessionID string) (*wire.Client, error) {
 	conn, err := net.DialTimeout("unix", sock, ideaDialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach the daemon at %s: %w", sock, err)
@@ -192,7 +192,12 @@ func ideaDial(sock string) (*wire.Client, error) {
 		Version: wire.PROTOCOL_VERSION,
 		Client:  "hived-idea/" + buildinfo.Version(),
 		BuildID: buildinfo.BuildID(),
-		Mode:    wire.ModeControl,
+		// ModeSession, not ModeControl: HIVE_SOCKET names the daemon's
+		// events socket, which serves the idea verbs and nothing else.
+		// The session id narrows the SESSIONS snapshot below to our own
+		// entry, which is all `list` needs to resolve its project.
+		Mode:      wire.ModeSession,
+		SessionID: sessionID,
 	})
 	if err != nil {
 		conn.Close()

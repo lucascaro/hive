@@ -318,7 +318,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 				log.Printf("hived: events accept: %v", err)
 				continue
 			}
-			go d.serveEventsOnly(conn)
+			go d.serveEventsOnly(ctx, conn)
 		}
 	}()
 	for {
@@ -567,8 +567,8 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 	}
 
 	switch hello.Mode {
-	case wire.ModeControl:
-		d.serveControl(ctx, conn)
+	case wire.ModeControl, wire.ModeSession:
+		d.serveControl(ctx, conn, hello)
 	case wire.ModeAttach:
 		d.serveAttach(conn, hello.SessionID)
 	case wire.ModeCreate:
@@ -599,16 +599,17 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 const eventReadDeadline = 2 * time.Second
 
 // serveEventsOnly is serve for the events socket: the HELLO must be
-// ModeEvent, and anything else gets mode_not_allowed and a closed
-// connection. It shares serveEvent with the control socket so the two
-// paths cannot drift apart.
+// ModeEvent (one state report) or ModeSession (the narrowed idea
+// connection `hive idea` opens from inside a session). Anything else
+// gets mode_not_allowed and a closed connection. Both handlers are the
+// ones the control socket uses, so the two sockets cannot drift apart.
 //
-// Deliberately NOT registered in d.clients: that set is what Close
-// hangs up on, and every member of it today is a long-lived control or
-// attach connection. An events connection lives for one frame under
+// A ModeEvent connection is deliberately NOT registered in d.clients:
+// that set is what Close hangs up on, and it lives for one frame under
 // the deadline below, so tracking it would only add contention on d.mu
-// on the hottest short-lived path the daemon has.
-func (d *Daemon) serveEventsOnly(conn net.Conn) {
+// on the hottest short-lived path the daemon has. ModeSession is
+// long-lived and does join it.
+func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	// The HELLO read needs its own deadline: serveEvent only sets one
 	// for the frame after it, so a dialer that connects and then stalls
@@ -635,14 +636,33 @@ func (d *Daemon) serveEventsOnly(conn net.Conn) {
 		})
 		return
 	}
-	if hello.Mode != wire.ModeEvent {
+	switch hello.Mode {
+	case wire.ModeEvent:
+		d.serveEvent(conn)
+	case wire.ModeSession:
+		// Long-lived, unlike ModeEvent: drop the handshake deadline and
+		// join d.clients so Close hangs this one up like any other
+		// control connection.
+		_ = conn.SetReadDeadline(time.Time{})
+		d.mu.Lock()
+		if d.clients == nil {
+			d.mu.Unlock()
+			return
+		}
+		d.clients[conn] = struct{}{}
+		d.mu.Unlock()
+		defer func() {
+			d.mu.Lock()
+			delete(d.clients, conn)
+			d.mu.Unlock()
+		}()
+		d.serveControl(ctx, conn, hello)
+	default:
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    wire.ErrCodeModeNotAllowed,
-			Message: fmt.Sprintf("mode %q is not served on the events socket; want event", hello.Mode),
+			Message: fmt.Sprintf("mode %q is not served on the events socket; want event or session", hello.Mode),
 		})
-		return
 	}
-	d.serveEvent(conn)
 }
 
 // serveEvent handles a ModeEvent connection: read exactly one frame,
@@ -687,7 +707,11 @@ func (d *Daemon) serveEvent(conn net.Conn) {
 }
 
 // serveControl handles a session-management connection.
-func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
+func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hello) {
+	// A ModeSession connection comes from a program running inside a
+	// session, over the events socket. It gets the idea verbs and
+	// nothing else — see wire.ModeSession.
+	restricted := hello.Mode == wire.ModeSession
 	// Subscribe BEFORE the client can learn it is connected. A client
 	// that reads WELCOME and immediately causes an event (the hook
 	// integration test does exactly that; a GUI reload racing a hook
@@ -709,7 +733,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 		BuildID:        buildinfo.BuildID(),
 		Release:        buildinfo.Version(),
 		DaemonContract: buildinfo.DaemonContract,
-		Mode:           wire.ModeControl,
+		Mode:           hello.Mode,
 	}); err != nil {
 		return
 	}
@@ -727,14 +751,24 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	stop := make(chan struct{})
 	go func() {
 		// Initial snapshot — projects first so the client can resolve
-		// session.project_id without a roundtrip.
-		_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
-		_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+		// session.project_id without a roundtrip. A restricted client
+		// gets neither the project list nor anybody else's sessions:
+		// `hive idea list` needs its OWN session's project id and
+		// nothing more, so the snapshot is narrowed to that one entry.
+		if restricted {
+			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: ownSessionOnly(d.reg.List(), hello.SessionID)})
+		} else {
+			_ = writeJSON(wire.FrameProjects, wire.ProjectsResp{Projects: d.reg.ListProjects()})
+			_ = writeJSON(wire.FrameSessions, wire.SessionsResp{Sessions: d.reg.List()})
+		}
 		for {
 			select {
 			case ev, ok := <-listener:
 				if !ok {
 					return
+				}
+				if restricted {
+					continue
 				}
 				if err := writeJSON(wire.FrameSessionEvent, ev); err != nil {
 					return
@@ -742,6 +776,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			case ev, ok := <-pListener:
 				if !ok {
 					return
+				}
+				if restricted {
+					continue
 				}
 				if err := writeJSON(wire.FrameProjectEvent, ev); err != nil {
 					return
@@ -756,6 +793,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 			case cmd, ok := <-cmdListener:
 				if !ok {
 					return
+				}
+				if restricted {
+					continue
 				}
 				if err := writeJSON(wire.FrameClientBroadcast, cmd); err != nil {
 					return
@@ -823,6 +863,7 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 		sendWorktrees(projectID, "list_worktrees_failed")
 	}
 	ops := controlOps{
+		restricted:     restricted,
 		writeJSON:      writeJSON,
 		sendError:      sendError,
 		sendWorktrees:  sendWorktrees,
@@ -842,6 +883,26 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	}
 }
 
+// sessionModeFrames is everything a ModeSession connection may ask
+// for: capture an idea, and read the ideas back. See wire.ModeSession.
+var sessionModeFrames = map[wire.FrameType]bool{
+	wire.FrameAddIdea:   true,
+	wire.FrameListIdeas: true,
+}
+
+// ownSessionOnly narrows a session list to the one entry a restricted
+// client is allowed to see — its own. An id that matches nothing (a
+// stale HIVE_SESSION_ID from a copied environment) yields an empty
+// snapshot, which the client reads as "not in a session".
+func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
+	for _, s := range all {
+		if s.ID == id {
+			return []wire.SessionInfo{s}
+		}
+	}
+	return nil
+}
+
 // controlOps bundles the per-connection reply helpers serveControl
 // builds over the socket's write mutex. Passing them as one value is
 // what lets the frame handlers live outside serveControl, which was
@@ -849,6 +910,9 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 // bottom — untestable without a live socket, and the file's longest
 // function by a factor of two.
 type controlOps struct {
+	// restricted marks a ModeSession connection: handleControlFrame
+	// refuses every verb outside sessionModeFrames on one.
+	restricted     bool
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -914,6 +978,14 @@ func ideaErrorCode(err error, generic string) string {
 // when the connection is finished (the client asked the daemon to shut
 // down), false to keep reading.
 func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire.FrameType, payload []byte) bool {
+	// One gate for the whole verb set rather than a check per case: a
+	// verb added later is refused for a restricted client by default,
+	// which is the direction a mistake here should fail in.
+	if ops.restricted && !sessionModeFrames[ft] {
+		ops.sendError(wire.ErrCodeModeNotAllowed,
+			fmt.Sprintf("%s is not served on a session connection; want ADD_IDEA or LIST_IDEAS", ft))
+		return false
+	}
 	switch ft {
 	case wire.FrameShutdown:
 		// Return afterwards: the listener is about to close and
