@@ -30,6 +30,9 @@ What works:
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)
+- What's new: the gift in the sidebar header opens a list of what has
+  shipped, newest release first, plus what is coming. It carries a dot
+  until you have read the current release
 - **Reload GUI** — picks up a new GUI build without touching `hived`,
   so every running shell and agent survives
 - Menu-bar agent (macOS) — daemon version, session list and attention

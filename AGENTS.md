@@ -235,6 +235,25 @@ applies to `docs/product-specs/index.md`.
 Versioning still happens at release time; nothing here creates a versioned
 section by hand.
 
+### Feature list — `site/features.json`
+
+`site/features.json` is the **single user-facing feature list**. It feeds two
+renderers and must satisfy both: `site/build.mjs` renders it on the website's
+landing page, and `src/lib/whats-new.ts` imports it into the app's What's New
+modal (the sidebar gift).
+
+- A change that ships a **user-visible feature** — the `bump: minor` kind —
+  adds an entry here as well as its changeset. The changeset is the
+  engineering record; this is the one users read.
+- Every `status: shipped` entry needs a semver `since`, the release it shipped
+  in. Without it the feature renders on the website and silently vanishes from
+  the modal's version buckets. Both `site/build.mjs` and
+  `cmd/hivegui/frontend/test/unit/whats-new.test.ts` assert this; only the
+  latter runs on a PR, because CI never builds `site/`.
+- `status: planned` entries take no `since` and render under "Coming next".
+- Keep `blurb` to one user-facing sentence. It is read in a 480px-wide modal,
+  not scanned in a repo.
+
 ### Architecture (`DESIGN.md`)
 
 Update `DESIGN.md` whenever a change is **structural** — any of the following:

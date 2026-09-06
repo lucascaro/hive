@@ -62,6 +62,7 @@ import { Launcher } from './modals/Launcher.js';
 import { ProjectEditor } from './modals/ProjectEditor.js';
 import { Settings } from './modals/Settings.js';
 import { Worktrees } from './modals/Worktrees.js';
+import { WhatsNew } from './modals/WhatsNew.js';
 
 // Built once, at module scope, not per render: SessionItem memoises on
 // this object's identity, so a fresh bag each render would defeat the
@@ -101,6 +102,7 @@ export function App(): ReactNode {
   const helpOverlay = mustEl('help-overlay');
   const choiceDialog = mustEl('choice-dialog');
   const commandPalette = mustEl('command-palette');
+  const whatsNew = mustEl('whats-new');
 
   return (
     <>
@@ -148,6 +150,7 @@ export function App(): ReactNode {
       {createPortal(<HelpOverlay root={helpOverlay} />, helpOverlay)}
       {createPortal(<ChoiceDialog root={choiceDialog} />, choiceDialog)}
       {createPortal(<CommandPalette root={commandPalette} />, commandPalette)}
+      {createPortal(<WhatsNew root={whatsNew} />, whatsNew)}
     </>
   );
 }

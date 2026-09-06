@@ -118,7 +118,8 @@ export type ModalId =
   | 'project-editor'
   | 'command-palette'
   | 'worktrees'
-  | 'help';
+  | 'help'
+  | 'whats-new';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -130,7 +131,8 @@ export type ModalEntry =
   | { id: 'project-editor'; seq: number; editing: ProjectInfo | null }
   | { id: 'command-palette'; seq: number }
   | { id: 'worktrees'; seq: number; projectId: string; projectName: string }
-  | { id: 'help'; seq: number };
+  | { id: 'help'; seq: number }
+  | { id: 'whats-new'; seq: number };
 
 // The open question, plus the generation that lets a second ask remount
 // the body. The spec is the caller's — see app/modals/choice-dialog.ts,

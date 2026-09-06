@@ -57,9 +57,9 @@ Implemented in `src/lib/session-state.ts`; the resolver accepts both the `last_e
 
 ## Action / navigation icons (line)
 
-`plus`, `minus` (minimize), `x` (close/kill), `rotate` (restart), `grid`, `single` (one pane), `branch` (worktree), `chevron-down`, `chevron-right`, `settings`, `search`, `help`, `arrow-left`, `arrow-right` (nav history), `external` (open in OS terminal), `download`, `check`.
+`plus`, `minus` (minimize), `x` (close/kill), `rotate` (restart), `grid`, `single` (one pane), `branch` (worktree), `chevron-down`, `chevron-right`, `settings`, `search`, `help`, `arrow-left`, `arrow-right` (nav history), `external` (open in OS terminal), `download`, `check`, `gift` (What's New).
 
-That's 24 symbols. Adding one: draw it on the 24 grid at 1.75 stroke, add `<symbol id="…">` to the sprite, add a row here, never inline SVG in a feature module.
+That's 25 symbols. Adding one: draw it on the 24 grid at 1.75 stroke, add `<symbol id="…">` to the sprite, add a row here, never inline SVG in a feature module.
 
 `settings` (gear) also doubles as the sidebar's edit-project control (the project card's `data-action="edit"` control) — the 24-icon inventory has no pencil.
 

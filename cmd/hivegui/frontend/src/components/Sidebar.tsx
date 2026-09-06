@@ -20,6 +20,7 @@ import {
   memo,
   useLayoutEffect,
   useRef,
+  useState,
   type DragEvent as ReactDragEvent,
   type MouseEvent,
   type ReactNode,
@@ -37,6 +38,7 @@ import { reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
+import { openWhatsNew, readSeenVersion } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
@@ -48,6 +50,7 @@ import {
 } from '../lib/drag-placeholder.js';
 import { dropTargetIndex } from '../lib/reorder.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
+import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
 import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
 
@@ -540,6 +543,11 @@ export function Sidebar(props: SidebarProps) {
 // header at all (update-banner, restart-hive), and a missing header must
 // render nothing rather than throw.
 export function SidebarHeaderControls(): ReactNode {
+  // Seeded once: the bundled list cannot change under a running app, so the
+  // only thing that clears this is the click below.
+  const [unread, setUnread] = useState(() =>
+    hasUnread(latestVersion(), readSeenVersion()),
+  );
   const newProjectBtn = document.getElementById('new-project-btn');
   const header = newProjectBtn?.parentElement;
   if (!newProjectBtn || !header) return null;
@@ -553,6 +561,26 @@ export function SidebarHeaderControls(): ReactNode {
           label="Check for updates"
           size={22}
           onClick={() => void manualUpdateCheck()}
+        />,
+        header,
+      )}
+      {/* Third and rightmost: What's new. Portal order is DOM order here, so
+          this one has to stay last in the fragment. */}
+      {createPortal(
+        <IconButton
+          id="whats-new-btn"
+          icon="gift"
+          label="What's new"
+          size={22}
+          className={unread ? 'hv-unread' : undefined}
+          onClick={() => {
+            // Clear the dot in the same render pass. `unread` is state rather
+            // than a localStorage read at render because a read at render
+            // never re-renders: the dot would outlive the click and sit there
+            // until a reload.
+            setUnread(false);
+            openWhatsNew();
+          }}
         />,
         header,
       )}
