@@ -9,8 +9,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -428,13 +431,36 @@ func (a *App) IsGitRepo(path string) bool {
 	return worktree.IsGitRepo(path)
 }
 
-// OpenURL hands a URL to the OS default browser. Used by the
-// xterm web-links addon when the user cmd-clicks a URL in a session.
-func (a *App) OpenURL(url string) {
-	if url == "" {
+// OpenURL hands a URL to the OS default browser. Used by the xterm
+// web-links addon and the OSC 8 link handler when the user clicks a
+// URL in a session.
+//
+// Only web and mail schemes are forwarded. Terminal content is
+// attacker-influenced (agent output, a cat'd README), and OSC 8 lets
+// it label a file:// or custom-scheme URI with any visible text;
+// BrowserOpenURL would launch whatever handles that scheme.
+func (a *App) OpenURL(rawURL string) {
+	if !allowedURL(rawURL) {
+		log.Printf("hivegui: refusing to open URL with disallowed scheme: %q", rawURL)
 		return
 	}
-	wruntime.BrowserOpenURL(a.ctx, url)
+	wruntime.BrowserOpenURL(a.ctx, rawURL)
+}
+
+// allowedURL reports whether raw parses as an absolute URL whose
+// scheme is http, https or mailto.
+func allowedURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+		return u.Host != ""
+	case "mailto":
+		return u.Opaque != ""
+	}
+	return false
 }
 
 // UpdateSession patches name/color/order. Empty strings on name/color
