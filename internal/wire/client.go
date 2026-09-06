@@ -127,6 +127,9 @@ var controlEvents = map[FrameType]string{
 
 	FrameClosed:          "closed:list",
 	FrameSessionRestored: "session:restored",
+
+	FrameIdeas:     "idea:list",
+	FrameIdeaEvent: "idea:event",
 }
 
 var attachEvents = map[FrameType]string{

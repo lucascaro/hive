@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	5 — Ideas: the LIST_IDEAS / IDEAS / ADD_IDEA / UPDATE_IDEA /
+//	    REMOVE_IDEA / IDEA_EVENT frame set, the registry-owned ideas/
+//	    directory behind it, and the project_has_ideas refusal that
+//	    KILL_PROJECT now answers with when a delete would destroy open
+//	    ideas. A GUI built after this against an older daemon gets an
+//	    inbox that never resolves; a daemon built after it refuses a
+//	    project delete an older GUI cannot confirm.
 //	4 — ModeEvent + FrameAgentEvent: a new connection mode an agent's
 //	    hook (`hived hook`) or extension dials to report a state
 //	    observation. A GUI never opens this mode itself, but a daemon
@@ -40,7 +47,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 4
+const DaemonContract = 5
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a

@@ -266,6 +266,11 @@ type Registry struct {
 	projects     map[string]*Project
 	projectOrder []string
 
+	// ideas is the whole idea inventory, keyed by id. No order slice:
+	// ideas sort newest-first on read, so there is nothing for an
+	// index file to be the authority over.
+	ideas map[string]*IdeaFile
+
 	// lastProjectColor / lastSessionColor remember the most recent
 	// auto-assigned palette color so consecutive creates pick a
 	// different one. Empty string = no bias.
@@ -279,6 +284,10 @@ type Registry struct {
 	// separate from listeners so a sidebar can subscribe to both
 	// streams without filtering.
 	projectListeners map[ProjectListener]struct{}
+
+	// ideaListeners receive idea events. Separate for the same reason
+	// projectListeners are.
+	ideaListeners map[IdeaListener]struct{}
 
 	// createMu serializes the synchronous prefix of Create (id/color
 	// resolution, name planning, order splicing). The daemon now runs
@@ -650,8 +659,10 @@ func Open(stateDir string) (*Registry, error) {
 		entries:          make(map[string]*Entry),
 		stateDir:         stateDir,
 		projects:         make(map[string]*Project),
+		ideas:            make(map[string]*IdeaFile),
 		listeners:        make(map[Listener]struct{}),
 		projectListeners: make(map[ProjectListener]struct{}),
+		ideaListeners:    make(map[IdeaListener]struct{}),
 		tickStop:         make(chan struct{}),
 	}
 	if err := r.load(); err != nil {
@@ -774,6 +785,13 @@ func (r *Registry) load() error {
 			}
 			r.projectOrder = append(r.projectOrder, meta.ID)
 		}
+	}
+
+	// Ideas after projects (an idea names a project) and before
+	// sessions, so a boot-time failure here is reported before any
+	// session work happens.
+	if err := r.loadIdeas(); err != nil {
+		return err
 	}
 
 	var idx IndexFile
@@ -1407,13 +1425,18 @@ func (r *Registry) Close() error {
 	for ch := range r.projectListeners {
 		close(ch)
 	}
+	for ch := range r.ideaListeners {
+		close(ch)
+	}
 	r.listeners = nil
 	r.projectListeners = nil
+	r.ideaListeners = nil
 	entries := r.entries
 	r.entries = nil
 	r.order = nil
 	r.projects = nil
 	r.projectOrder = nil
+	r.ideas = nil
 	r.mu.Unlock()
 	for _, e := range entries {
 		if e.sess != nil {

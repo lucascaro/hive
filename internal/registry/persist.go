@@ -52,6 +52,30 @@ type ProjectIndexFile struct {
 	Order []string `json:"order"`
 }
 
+// IdeaFile is what we write to ideas/<id>.json. There is no index
+// file: display order is derived from Created (newest first), so
+// nothing has to arbitrate it.
+type IdeaFile struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Kind      string    `json:"kind"` // wire.IdeaKind*
+	Text      string    `json:"text"`
+	Status    string    `json:"status"` // wire.IdeaStatus*
+	Created   time.Time `json:"created"`
+	Updated   time.Time `json:"updated"`
+	// SourceSessionID is the session the idea was filed from, kept as
+	// provenance only — the idea belongs to the project and outlives
+	// that session.
+	SourceSessionID string `json:"source_session_id,omitempty"`
+	// SessionID is the session started from this idea.
+	SessionID string `json:"session_id,omitempty"`
+	// ExternalRef is reserved for the GitHub issue an idea is later
+	// promoted into. Persisted but not on wire.IdeaInfo: nothing
+	// renders it yet, and adding an omitempty field to the wire type
+	// when something does is a zero-cost change.
+	ExternalRef string `json:"external_ref,omitempty"`
+}
+
 func writeAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err

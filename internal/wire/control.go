@@ -516,6 +516,12 @@ type CreateProjectReq struct {
 type KillProjectReq struct {
 	ProjectID    string `json:"project_id"`
 	KillSessions bool   `json:"kill_sessions,omitempty"`
+	// DeleteIdeas is the force flag for the project_has_ideas
+	// refusal. Deleting a project always deletes its ideas — nothing
+	// else can reach them once the project card is gone — so the
+	// daemon refuses first when any are still open and the client
+	// retries with this set after confirming.
+	DeleteIdeas bool `json:"delete_ideas,omitempty"`
 }
 
 // UpdateProjectReq mutates project metadata. Pointer fields opt in.
@@ -539,6 +545,116 @@ const (
 type ProjectEvent struct {
 	Kind    string      `json:"kind"`
 	Project ProjectInfo `json:"project"`
+}
+
+// --- Ideas ---
+
+// MaxIdeaText bounds one idea's text. Generous for a note typed into
+// a one-line sheet, small enough that the flat ideas/ directory stays
+// cheap to load at boot.
+const MaxIdeaText = 4 << 10 // 4 KiB
+
+// Idea kinds. Validated daemon-side; an unknown kind is refused.
+const (
+	IdeaKindIdea     = "idea"
+	IdeaKindBug      = "bug"
+	IdeaKindFeedback = "feedback"
+)
+
+// IdeaKinds is the closed set IdeaKind* enumerates.
+var IdeaKinds = map[string]bool{
+	IdeaKindIdea:     true,
+	IdeaKindBug:      true,
+	IdeaKindFeedback: true,
+}
+
+// Idea statuses. "started" means a session was started from the idea;
+// "done" is the user marking it handled. An idea outlives the session
+// started from it — closing that session does not move it to done.
+const (
+	IdeaStatusOpen    = "open"
+	IdeaStatusStarted = "started"
+	IdeaStatusDone    = "done"
+)
+
+// IdeaStatuses is the closed set IdeaStatus* enumerates.
+var IdeaStatuses = map[string]bool{
+	IdeaStatusOpen:    true,
+	IdeaStatusStarted: true,
+	IdeaStatusDone:    true,
+}
+
+// IdeaInfo is the public-facing description of one idea. It is
+// deliberately not the whole persisted record: registry.IdeaFile also
+// carries external_ref, which nothing renders yet.
+type IdeaInfo struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Kind      string `json:"kind"`
+	Text      string `json:"text"`
+	Status    string `json:"status"`
+	Created   string `json:"created"` // RFC 3339
+	Updated   string `json:"updated"` // RFC 3339
+	// SourceSessionID is the session the idea was filed from, when it
+	// was filed from one. Only a provenance breadcrumb — the idea is
+	// owned by the project and outlives that session.
+	SourceSessionID string `json:"source_session_id,omitempty"`
+	// SessionID is the session started from this idea, set together
+	// with Status=started.
+	SessionID string `json:"session_id,omitempty"`
+}
+
+// ListIdeasReq is the LIST_IDEAS payload. An empty ProjectID asks for
+// every project's ideas.
+type ListIdeasReq struct {
+	ProjectID string `json:"project_id,omitempty"`
+}
+
+// IdeasResp is the IDEAS payload, newest first.
+type IdeasResp struct {
+	Ideas []IdeaInfo `json:"ideas"`
+}
+
+// AddIdeaReq is the ADD_IDEA payload.
+//
+// ProjectID is optional: when empty the daemon resolves it from the
+// live registry entry for SessionID, so an idea filed after a session
+// was reassigned lands in the project the session is in NOW rather
+// than the one it spawned in. Neither field set is an error.
+type AddIdeaReq struct {
+	SessionID string `json:"session_id,omitempty"`
+	ProjectID string `json:"project_id,omitempty"`
+	Kind      string `json:"kind,omitempty"` // empty = IdeaKindIdea
+	Text      string `json:"text"`
+}
+
+// UpdateIdeaReq mutates one idea. Pointer fields opt in, matching
+// UpdateProjectReq. There is no Kind (nothing re-kinds an idea) and
+// SessionID rides along with a Status change to "started".
+type UpdateIdeaReq struct {
+	ID        string  `json:"id"`
+	Text      *string `json:"text,omitempty"`
+	Status    *string `json:"status,omitempty"`
+	SessionID *string `json:"session_id,omitempty"`
+}
+
+// RemoveIdeaReq is the REMOVE_IDEA payload.
+type RemoveIdeaReq struct {
+	ID string `json:"id"`
+}
+
+// IdeaEventKind enumerates the kinds carried by IDEA_EVENT.
+const (
+	IdeaEventAdded   = "added"
+	IdeaEventRemoved = "removed"
+	IdeaEventUpdated = "updated"
+)
+
+// IdeaEvent is the IDEA_EVENT payload, broadcast to every control
+// connection on any idea change.
+type IdeaEvent struct {
+	Kind string   `json:"kind"`
+	Idea IdeaInfo `json:"idea"`
 }
 
 // Resize is sent by the client whenever its terminal widget changes
@@ -573,6 +689,11 @@ type Error struct {
 	// session — used by clients (e.g. dirty-worktree confirm) to
 	// know which session to retry.
 	SessionID string `json:"session_id,omitempty"`
+	// ProjectID is the same affordance one level up: it names the
+	// project a refusal is about, so the single client-side
+	// confirm-and-retry branch can serve both worktree_dirty (session
+	// scoped) and project_has_ideas (project scoped).
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 // Well-known error codes.
@@ -602,6 +723,14 @@ const (
 	// daemon refuses the connection outright, so this is the client's
 	// only signal — Handshake turns it into ErrProtocolMismatch.
 	ErrCodeProtocolVersionMismatch = "protocol_version_mismatch"
+	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
+	// MaxIdeaText. Rejected rather than truncated: a silently
+	// half-saved note is worse than one the user is told to shorten.
+	ErrCodeIdeaTooLong = "idea_too_long"
+	// ErrCodeProjectHasIdeas is returned when deleting a project would
+	// destroy ideas that are still open. Overridable by force
+	// (KillProjectReq.DeleteIdeas) after the user confirms.
+	ErrCodeProjectHasIdeas = "project_has_ideas"
 )
 
 // ErrProtocolMismatch wraps a handshake refused for speaking a

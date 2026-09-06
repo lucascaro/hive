@@ -303,7 +303,15 @@ func (r *Registry) CreateProject(req wire.CreateProjectReq) (*Project, error) {
 // sessions are terminated; otherwise they're reassigned to the
 // default project (which is never the project being killed unless
 // it's the only one — in that case we refuse).
-func (r *Registry) KillProject(id string, killSessions bool) error {
+//
+// The project's ideas are always deleted with it: nothing else can
+// reach them once the card is gone, so leaving them would load
+// unreachable records at every boot forever. Because that destroys
+// captured work, the delete is refused with ErrProjectHasIdeas while
+// any idea is still open, and deleteIdeas is the client's
+// after-confirmation override — the same refuse-then-force contract
+// as ErrWorktreeDirty one level down.
+func (r *Registry) KillProject(id string, killSessions, deleteIdeas bool) error {
 	r.mu.Lock()
 	p, ok := r.projects[id]
 	if !ok {
@@ -313,6 +321,12 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 	if len(r.projectOrder) == 1 {
 		r.mu.Unlock()
 		return errors.New("registry: refusing to remove the only project")
+	}
+	if !deleteIdeas {
+		if n := r.openIdeasLocked(id); n > 0 {
+			r.mu.Unlock()
+			return fmt.Errorf("%w: %d open", ErrProjectHasIdeas, n)
+		}
 	}
 
 	// Pick the target for reassignment: the first project that isn't
@@ -359,9 +373,23 @@ func (r *Registry) KillProject(id string, killSessions bool) error {
 	r.reindexProjectsLocked()
 	r.persistProjectIndexLoggedLocked("delete project")
 
+	// Ideas go with the project. Dropped from memory under the lock,
+	// their files removed and their removals announced below —
+	// broadcastIdea takes r.mu.
+	droppedIdeas := r.removeProjectIdeasLocked(id)
+
 	dir := filepath.Join(ProjectsDir(r.stateDir), id)
 	info := p.Info()
 	r.mu.Unlock()
+
+	// Before RemoveAll of the project dir, so a crash in between
+	// leaves ideas rather than a project without one.
+	for _, ii := range droppedIdeas {
+		if err := os.Remove(ideaPath(r.stateDir, ii.ID)); err != nil && !os.IsNotExist(err) {
+			log.Printf("registry: delete project %s: remove idea %s: %v", id, ii.ID, err)
+		}
+		r.broadcastIdea(wire.IdeaEventRemoved, ii)
+	}
 
 	_ = os.RemoveAll(dir)
 

@@ -264,7 +264,7 @@ func TestRestoreIntoDefaultProjectWhenProjectGone(t *testing.T) {
 	if err := r.Kill(id, true); err != nil {
 		t.Fatalf("Kill: %v", err)
 	}
-	if err := r.KillProject(doomed.ID, true); err != nil {
+	if err := r.KillProject(doomed.ID, true, false); err != nil {
 		t.Fatalf("KillProject: %v", err)
 	}
 

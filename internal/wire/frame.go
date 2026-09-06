@@ -134,6 +134,18 @@ const (
 	// exactly this one frame and closes — see internal/daemon's ModeEvent
 	// arm.
 	FrameAgentEvent FrameType = 0x22 // C → S, JSON, event
+
+	// Ideas. A captured note owned by a project, filed from anywhere
+	// (⌘I in the GUI, `hived idea add` inside a session) and acted on
+	// later. Four C→S requests and two S→C frames, mirroring the
+	// project set: LIST_IDEAS is answered with IDEAS, and every
+	// mutation fans out as IDEA_EVENT on every control connection.
+	FrameListIdeas  FrameType = 0x23 // C → S, JSON, control
+	FrameIdeas      FrameType = 0x24 // S → C, JSON, control
+	FrameAddIdea    FrameType = 0x25 // C → S, JSON, control
+	FrameUpdateIdea FrameType = 0x26 // C → S, JSON, control
+	FrameRemoveIdea FrameType = 0x27 // C → S, JSON, control
+	FrameIdeaEvent  FrameType = 0x28 // S → C, JSON, control
 )
 
 func (t FrameType) String() string {
@@ -206,6 +218,18 @@ func (t FrameType) String() string {
 		return "CLIENT_BROADCAST"
 	case FrameAgentEvent:
 		return "AGENT_EVENT"
+	case FrameListIdeas:
+		return "LIST_IDEAS"
+	case FrameIdeas:
+		return "IDEAS"
+	case FrameAddIdea:
+		return "ADD_IDEA"
+	case FrameUpdateIdea:
+		return "UPDATE_IDEA"
+	case FrameRemoveIdea:
+		return "REMOVE_IDEA"
+	case FrameIdeaEvent:
+		return "IDEA_EVENT"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%02x)", byte(t))
 	}
