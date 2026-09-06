@@ -39,7 +39,10 @@ when `$TMPDIR` resolves to the shared `/tmp`. Hive creates that directory with
 mode `0o700`, and every Go component — the daemon before binding, the GUI, the
 menu bar, `hived idea` and the hook client before dialing — refuses a directory
 that is a symlink, is not owned by the current user, or is reachable by group or
-other. None of the defaults live under the world-writable `/tmp`.
+other. None of the defaults live under the world-writable `/tmp`. The Pi
+reporter extension (`internal/agent/pi/hive.ts`) is the exception: it runs in
+Pi's JavaScript tier and only ever sends state observations on the events
+socket, so it dials without the check.
 
 ### Multi-User Systems
 

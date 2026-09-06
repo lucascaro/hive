@@ -40,6 +40,17 @@ type App struct {
 	// Guarded by mu.
 	daemonContract int
 
+	// activeSocket is the socket this GUI talks to, resolved once on
+	// the first dial and reused by the restart path. Normally it is
+	// daemon.SocketPath(); across the 2026-09 socket move it can be the
+	// OLD path, when a pre-move daemon is still serving it. Connecting
+	// to that daemon rather than starting a second one beside it is what
+	// makes the migration ride the existing stale-daemon banner: it
+	// reports the older contract, the banner offers Restart, and the
+	// restart shuts down the daemon the GUI is actually connected to.
+	// Guarded by mu; see App.socketPath.
+	activeSocket string
+
 	// reloading latches once this process has committed to relaunching
 	// itself. The reload broadcast reaches every window including the
 	// one that asked, and a user can click the menu item twice, so

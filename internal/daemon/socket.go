@@ -3,9 +3,11 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/lucascaro/hive/internal/registry"
 )
@@ -65,6 +67,64 @@ func SocketPath() string {
 		return filepath.Join(os.TempDir(), "hived.sock")
 	}
 }
+
+// LegacySocketPath returns the pre-2026-09 default socket path —
+// /tmp/hive-<uid>/hived.sock — or "" when there is nothing to migrate
+// from: HIVE_SOCKET pins the path explicitly, Windows never used it, or
+// it is what SocketPath returns anyway.
+//
+// It exists for one release's worth of upgrade. A daemon built before
+// the move takes no state lock and binds a path the new one does not
+// look at, so an upgrade that leaves the old daemon running — anything
+// but the in-app updater, which shuts it down in-band first — would
+// otherwise end with two daemons reviving the same sessions against one
+// registry. Callers probe this path by DIALING it, never by statting:
+// a leftover socket file is not a running daemon, and spawning onto the
+// old path would be worse than the problem.
+//
+// Delete this, and its callers, once the previous release is far enough
+// back that nobody is upgrading across the move.
+func LegacySocketPath() string {
+	if os.Getenv("HIVE_SOCKET") != "" || runtime.GOOS == "windows" {
+		return ""
+	}
+	legacy := fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid())
+	if legacy == SocketPath() {
+		return ""
+	}
+	return legacy
+}
+
+// LegacyDaemonAlive reports whether a pre-move daemon is still serving
+// the old default path. False whenever there is no legacy path to
+// check, and false for a stale socket file nothing answers.
+func LegacyDaemonAlive() (string, bool) {
+	legacy := LegacySocketPath()
+	if legacy == "" {
+		return "", false
+	}
+	return legacy, legacyAlive(legacy)
+}
+
+// legacyAlive reports whether something is actually serving path. Split
+// out of LegacyDaemonAlive because the path there is uid-derived and so
+// cannot be pointed at a fixture.
+func legacyAlive(path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		return false
+	}
+	c, err := net.DialTimeout("unix", path, legacyProbeTimeout)
+	if err != nil {
+		return false
+	}
+	_ = c.Close()
+	return true
+}
+
+// legacyProbeTimeout bounds the legacy-path dial. A local daemon
+// accepts immediately; anything slower is not one worth waiting for on
+// a boot path.
+const legacyProbeTimeout = 250 * time.Millisecond
 
 // EventSocketPath is the narrowed listener that sits next to the
 // control socket. It is what spawned sessions get as HIVE_SOCKET: hooks

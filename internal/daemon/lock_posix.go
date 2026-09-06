@@ -17,13 +17,21 @@ import (
 // teardown.
 //
 // The socket file used to be the singleton guard: New dialled it and
-// refused to start if anything answered. That only ever worked while
-// the path was stable, and this change moves it, so across the upgrade
-// an old daemon on /tmp/hive-<uid> and a new one on $TMPDIR/hive cannot
-// see each other and would both revive every persisted session against
-// one registry. The state directory is the thing there can only be one
-// writer of, so lock that instead of the socket — it is what the guard
-// was always reaching for.
+// refused to start if anything answered. That is a proxy for the thing
+// that actually has to be single — there can only be one writer of the
+// state directory — and it only holds while the socket path is stable.
+// This change moves the path, so the proxy stopped being reliable at
+// exactly the moment two daemons became easier to get. Lock the state
+// directory instead; it is what the guard was always reaching for.
+//
+// Note what this does NOT cover: the upgrade itself. A daemon built
+// before this takes no lock at all, so a new one starting beside a
+// still-running old one acquires uncontested and both run. Closing
+// that would mean probing the old default path — migration cruft with
+// a one-release shelf life. What covers it in practice is the contract
+// bump: the GUI shuts the old daemon down in-band before starting the
+// new one. A hand-started hived during the upgrade is the residual
+// gap, and it is a one-time one.
 func acquireStateLock(stateDir string) (*os.File, error) {
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return nil, err

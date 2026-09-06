@@ -89,7 +89,7 @@ func (c *Client) Run() {
 
 // session runs one connection to exhaustion.
 func (c *Client) session() error {
-	sock := hdaemon.SocketPath()
+	sock := activeSocket()
 	// Refuse an impostor before handshaking with it: hivebar never
 	// creates the directory (the daemon or the GUI does), so a check is
 	// all that is wanted here.

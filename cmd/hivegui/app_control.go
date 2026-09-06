@@ -30,7 +30,7 @@ import (
 // wait out a cold daemon, while OpenSession runs behind openMu and
 // pays its budget once per session on a grid launch.
 func (a *App) dialHandshake(hello wire.Hello, budget time.Duration) (*wire.Client, error) {
-	conn, err := dialOrSpawn(hdaemon.SocketPath(), a.launchDir, budget)
+	conn, err := dialOrSpawn(a.socketPath(), hdaemon.SocketPath(), a.launchDir, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -193,8 +193,29 @@ const restartKillBudget = 3 * time.Second
 // If the daemon survives both channels we return an error and stay
 // put. A visible failure in a working window beats quitting into a
 // window that looks restarted and isn't.
+// socketPath is the socket this GUI talks to. Resolved once and
+// remembered: a pre-move daemon still serving the old default path is
+// the one to connect to, not one to start a second daemon beside — and
+// the restart path has to target that same socket, or it would probe a
+// path nothing was ever bound to and report the daemon dead without
+// having stopped it. See App.activeSocket.
+func (a *App) socketPath() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.activeSocket != "" {
+		return a.activeSocket
+	}
+	if legacy, alive := hdaemon.LegacyDaemonAlive(); alive {
+		log.Printf("hivegui: an older hived is serving %s; connecting to it so the stale-daemon banner can offer a restart", legacy)
+		a.activeSocket = legacy
+		return a.activeSocket
+	}
+	a.activeSocket = hdaemon.SocketPath()
+	return a.activeSocket
+}
+
 func (a *App) RestartDaemon() error {
-	sock := hdaemon.SocketPath()
+	sock := a.socketPath()
 
 	a.mu.Lock()
 	control := a.control

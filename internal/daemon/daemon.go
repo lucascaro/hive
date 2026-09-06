@@ -161,6 +161,14 @@ func New(cfg Config) (*Daemon, error) {
 	// probe unlinks what it decides is stale, and a start that goes on
 	// to lose the lock would first have deleted a live daemon's socket
 	// files, leaving it bound to an inode nobody can dial.
+	// A daemon built before the socket moved takes no state lock and
+	// binds a path this one does not look at, so the lock below cannot
+	// see it. The GUI handles this case by connecting to the old daemon
+	// and letting the usual stale-daemon banner drive the restart; this
+	// is the backstop for a hand-started hived, which has no banner.
+	if legacy, alive := legacyDaemonBlocking(cfg.SocketPath); alive {
+		return nil, fmt.Errorf("daemon: an older hived is still running at %s; quit Hive (or kill that process) and start again", legacy)
+	}
 	stateDir := cfg.StateDir
 	if stateDir == "" {
 		stateDir = registry.StateDir()
@@ -300,6 +308,19 @@ func New(cfg Config) (*Daemon, error) {
 	d.runOp(d.reviveAll)
 	d.runOp(d.reclaimWorktrees)
 	return d, nil
+}
+
+// legacyDaemonBlocking reports a pre-move daemon that would collide
+// with the daemon about to start. Only the canonical path is checked:
+// an explicit socket that is NOT the platform default is a test or an
+// isolated dev daemon (scripts/dev-iso.sh), which has its own state
+// dir and no business refusing to start because the user's real Hive
+// is up.
+func legacyDaemonBlocking(cfgSocket string) (string, bool) {
+	if cfgSocket != "" && cfgSocket != SocketPath() {
+		return "", false
+	}
+	return LegacyDaemonAlive()
 }
 
 // resolveHivedPath resolves the absolute path of the running hived

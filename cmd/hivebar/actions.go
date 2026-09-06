@@ -110,7 +110,7 @@ func spawnHived() error {
 // hivebar has none, and the GUI's own reconnect loop picks the new
 // daemon up.
 func RestartDaemon(shutdown func()) error {
-	sock := hdaemon.SocketPath()
+	sock := activeSocket()
 	shutdown()
 	if !socketDead(sock, 5*time.Second) {
 		return fmt.Errorf("hived still answering on %s; not restarting", sock)
@@ -120,6 +120,24 @@ func RestartDaemon(shutdown func()) error {
 	}
 	log.Printf("hivebar: restarted hived")
 	return nil
+}
+
+// activeSocket is the socket hivebar talks to. Across the 2026-09
+// socket move that can be the OLD default, when a pre-move daemon is
+// still serving it: hivebar has no banner to offer a restart with, so
+// the useful thing is to keep showing the sessions of the daemon that
+// actually holds them rather than to report none. Both the reconnect
+// loop and the restart action resolve through here, so they cannot
+// disagree about which daemon is being restarted.
+//
+// Resolved per call rather than cached: hivebar's client loop
+// reconnects forever, and the very next reconnect after a restart must
+// find the NEW daemon. Delete with daemon.LegacySocketPath.
+func activeSocket() string {
+	if legacy, alive := hdaemon.LegacyDaemonAlive(); alive {
+		return legacy
+	}
+	return hdaemon.SocketPath()
 }
 
 // socketDead reports whether nothing answers on sock within budget.

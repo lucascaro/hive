@@ -24,5 +24,13 @@ bump: minor
   was therefore unreachable in every context the moment the in-session case
   was closed.
 - Hive refuses to start a second daemon against one state directory. The
-  old guard was the socket file, which stopped working the moment the
-  socket moved; it is now a lock on the state directory itself.
+  old guard was the socket file, which only worked while the socket path
+  stayed put; it is now a lock on the state directory itself, which is
+  the thing that can only have one writer.
+- Upgrading is handled for you. Because the socket moved, a Hive daemon
+  left running from before the update would otherwise have been invisible
+  to the new one, and you would have ended up with two of them managing
+  the same sessions. The app now finds that older daemon and offers the
+  same "restart to finish updating" banner it shows for any out-of-date
+  daemon; restarting from there shuts the old one down and starts the new
+  one. Nothing to do by hand.
