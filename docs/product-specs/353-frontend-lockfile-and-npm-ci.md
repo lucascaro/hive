@@ -1,8 +1,9 @@
 ---
 issue: 353
 pr: 356
+shipped: 2026-09-06
 title: "Commit frontend package-lock.json and install with npm ci"
-stage: GATE
+stage: DONE
 ---
 
 # Commit frontend package-lock.json and install with npm ci
@@ -11,7 +12,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/353-frontend-lockfile-and-npm-ci.md](../exec-plans/active/353-frontend-lockfile-and-npm-ci.md)
+- **Exec plan:** [docs/exec-plans/completed/353-frontend-lockfile-and-npm-ci.md](../exec-plans/completed/353-frontend-lockfile-and-npm-ci.md)
 
 ## Problem
 
