@@ -118,8 +118,14 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         },
         {
           keys: `${isMac ? '⌘' : 'Ctrl+'}${hArrows}`,
-          label:
-            'Grid: move between tiles — in focused mode these reach the terminal (start / end of line)',
+          // The terminal half differs by platform: macLineEditSeq maps ⌘←/→
+          // to \x01/\x05 on mac only, so off mac the chord falls through to
+          // xterm's \x1b[1;5D/C — word movement, which is what the "Inside a
+          // terminal" group lists it as. Saying "start / end of line" on both
+          // would contradict that row.
+          label: `Grid: move between tiles — in focused mode these reach the terminal (${
+            isMac ? 'start / end of line' : 'move by word'
+          })`,
         },
         {
           keys: `${isMac ? '⇧⌘' : 'Ctrl+Shift+'}${vArrows}`,

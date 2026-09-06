@@ -337,6 +337,19 @@ per the skill's one-retry rule. The reviewer independently confirmed that
   `scripts/test.sh unit dom e2e` = 628 + 278 passed, `ui-lint.sh --strict`,
   `check-changeset.sh`).
 
+## PR convergence ledger
+
+_(append-only, one line per review-loop iteration)_
+
+- **2026-09-06** — Review: `COMMENT`, 0 BLOCKING / 1 IMPORTANT / 0 MINOR, 0
+  unresolved threads. The IMPORTANT: the Sessions group's ⌘/Ctrl+←/→ row claimed
+  "in focused mode these reach the terminal (start / end of line)" on both
+  platforms, which the new "Inside a terminal" row correctly contradicts off mac
+  (`macLineEditSeq` is mac-gated, so Ctrl+←/→ falls through to xterm's
+  `\x1b[1;5D/C` = word movement). Autofixed: label is now platform-conditional,
+  with a unit test pinning both halves. Checks green (unit + dom 628, biome ci,
+  typecheck).
+
 ## Open questions
 
 _(none)_

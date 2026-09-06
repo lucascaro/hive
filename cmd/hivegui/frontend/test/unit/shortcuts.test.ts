@@ -69,6 +69,20 @@ describe('shortcutGroups', () => {
     expect(keysFor(false)).toEqual(['Del']);
   });
 
+  it('does not contradict itself about what ⌘/Ctrl + ←/→ send to the terminal', () => {
+    // The Sessions row and the "Inside a terminal" row describe the same
+    // chord off mac (Ctrl+←/→). macLineEditSeq is mac-gated, so off mac
+    // the chord falls through to xterm as word movement — the Sessions row
+    // must not claim start/end of line there.
+    const gridRow = (isMac: boolean) =>
+      shortcutGroups({ isMac })
+        .flatMap((g) => g.items)
+        .find((i) => i.label.startsWith('Grid: move between tiles —'))?.label;
+    expect(gridRow(true)).toContain('start / end of line');
+    expect(gridRow(false)).toContain('move by word');
+    expect(gridRow(false)).not.toContain('start / end of line');
+  });
+
   it('separates arrow-key word labels off mac', () => {
     const keys = shortcutGroups({ isMac: false })
       .flatMap((g) => g.items.map((i) => i.keys))
