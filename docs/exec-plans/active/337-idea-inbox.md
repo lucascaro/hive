@@ -580,6 +580,17 @@ path instead.
    refactor. No mark-done-on-close work — see the decision log. 336
    phases 1–3 are merged (PRs #338, #341), so the typed path's
    prerequisites exist; Claude/Pi work without it.
+   **Also in phase 3:** `UpdateIdeaReq` gains `Kind *string` and
+   `ProjectID *string`, `Registry.UpdateIdea` validates both (kind
+   against `wire.IdeaKinds`, project against the live registry), and
+   the inbox's Edit becomes a small dialog — the capture sheet's three
+   controls in edit mode — rather than the inline text input. Grouped
+   here because phase 3 is already opening the wire and registry layer;
+   doing it in phase 2 would have meant reopening them for the GUI's
+   sake alone. Note the version-skew shape differs from `LIST_IDEAS`':
+   an old daemon ignores unknown JSON fields, so a new GUI would render
+   a re-kind that never happened — a silent WRONG answer, not a silent
+   empty one. Decide the `DaemonContract` bump when it is built.
 
 ## Decision log
 
@@ -830,6 +841,18 @@ path instead.
   unchanged Enter closed the editor and dropped the text anyway. The
   shared helper is the only place with the state to refuse correctly.
   Its four existing callers pass no `validate` and are unaffected.
+- **2026-09-06** — Phase-1's "there is no `Kind` (nothing re-kinds an
+  idea)" premise is withdrawn. It held right up until the feature was
+  put in front of its user, who reached for exactly that on the first
+  pass over the inbox — and for re-project too, which was never
+  considered at all. The capture sheet pre-fills the project from the
+  focused session, so mis-filing is not user error but the default
+  behaviour being wrong some fraction of the time; an idea that can
+  only be corrected by deleting and retyping it is a note-taking tool
+  that punishes note-taking. Spec amended under Desired behavior with a
+  matching success criterion; the work is assigned to phase 3 above.
+  Recorded rather than fixed in phase 2 because it is a wire and
+  registry change, and phase 2's PR had already gated.
 
 ## Review log
 
@@ -996,6 +1019,12 @@ Append-only, one entry per `/hs-merge-gate` run.
     - acceptance — PASS (phase-2 scope) — criterion 2 (⌘I prefills the focused session's project, Enter files it and returns focus) MET, verified by `quick-idea.test.tsx` 12/12 plus the Playwright capture leg; criterion 4 (sidebar open count, inbox list/edit/done/delete) MET, `idea-inbox.test.tsx` 9/9 plus the Playwright badge/Done/Delete legs. Criteria 1 and 3 MET by phase 1 and still holding (`TestIdeasSurviveReload`, `TestIdeaEventsBroadcast`, `cmd/hived` idea tests all pass unchanged). Criteria 5 and 6 DEFERRED (phase 3 — `initial_prompt`, Start session, the `status=started` write); criterion 7 MET for its capture→count→edit→done→delete legs and its Go half, start→prompt-visible DEFERRED with them.
     - non-goals — PASS — all seven respected. `external_ref` untouched and unexposed; no priority/order/tags/kanban; no capture surface outside Hive; no attachments; every `AddIdea` resolves a project (falling back to the default) so no idea can exist without one; the project-delete cascade confirms before destroying open ideas; `cmd/hived/idea.go` untouched and still exactly `add`/`list`. No scope bleed: `internal/agent/` and `internal/registry/create.go` are not in the diff, and the only non-GUI file touched is `cmd/hived-ws-bridge/main.go` (forwarding the four idea methods so the real-e2e harness can reach them).
     - doc accuracy — PASS — the changeset describes only what phase 2 ships; README's Keybinds table carries ⌘I and ⇧⌘I; every surface AGENTS.md › Keybindings Policy names was updated (handler, both `shortcuts.ts` functions, the palette table, `menu_darwin.go`, README); the help overlay and palette derive from those functions so they follow automatically; modal hints use the `[…]`/`(…)` convention and the platform-aware `mod()` rather than a hardcoded ⌘; no doc claims phase-3 behavior as shipped. `regression_of` is not applicable — the changeset is `type: added`.
+  - 2026-09-06 amendment, after the verdict: the spec gained an eighth
+    success criterion (an idea's kind and project are editable after
+    capture) when the feature was exercised by hand in the isolated
+    build. It is assigned to phase 3, so it is DEFERRED at this gate
+    and the phase-2 PASS above is unchanged — but the criterion count
+    it was measured against was 7, and is now 8.
 
 **Phase gate, not a feature gate.** This entry records that *phase 2*
 gated. The spec stays at `GATE` and the plan stays in `active/`: phases

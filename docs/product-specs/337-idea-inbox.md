@@ -49,7 +49,11 @@ run it from Bash rather than fixing the wrong thing).
 has open ideas. Clicking it (or ⇧⌘I on the focused project) opens the
 project's inbox panel: a list of ideas, newest first, each with kind,
 text, age, and the session it came from when known. Ideas can be
-edited, marked done, or deleted.
+edited, marked done, or deleted. Editing covers all three of the things
+capture asked for — the text, the kind, and which project the idea
+belongs to. The project especially: the capture sheet pre-fills it from
+whatever session happened to be focused, so filing into the wrong one
+is an ordinary mistake, and delete-and-retype is not a correction.
 
 **Start.** Every open idea has a **Start session** action: it opens the
 existing agent launcher with the project fixed and the idea text as
@@ -77,6 +81,8 @@ it.
   error and exits 2.
 - Sidebar shows the open count per project; the inbox panel lists,
   edits, completes, deletes.
+- An idea's kind and project are editable after capture, from the
+  inbox, without losing the note.
 - Start session creates a session through the existing `CREATE_SESSION`
   path with `initial_prompt`; Claude and Pi receive it as their opening
   prompt argument; every other agent receives it typed into the PTY
