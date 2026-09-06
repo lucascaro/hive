@@ -68,7 +68,7 @@ func TestResolveLoginPATHDoesNotWaitForBackgroundedRCJobs(t *testing.T) {
 	loginEnvTimeout = 500 * time.Millisecond
 	t.Cleanup(func() { loginEnvTimeout = prev })
 
-	shell := fakeShell(t, "", "sleep 30 &\nPATH=/rc/bin; export PATH\n")
+	shell := fakeShell(t, "", "sleep 5 &\nPATH=/rc/bin; export PATH\n")
 
 	done := make(chan string, 1)
 	start := time.Now()
@@ -83,7 +83,7 @@ func TestResolveLoginPATHDoesNotWaitForBackgroundedRCJobs(t *testing.T) {
 		if elapsed := time.Since(start); elapsed > 10*time.Second {
 			t.Errorf("resolveLoginPATH took %v, want it bounded by loginEnvTimeout", elapsed)
 		}
-	case <-time.After(20 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("resolveLoginPATH blocked on the backgrounded rc job, want it bounded by loginEnvTimeout")
 	}
 }
@@ -178,5 +178,25 @@ func TestMissingBuildToolsNamesWhatIsAbsent(t *testing.T) {
 	}
 	if got := missingBuildTools(""); strings.Join(got, ",") != "go,npm" {
 		t.Errorf("missingBuildTools(empty PATH) = %v, want both", got)
+	}
+}
+
+// The refusal message points the user at a file to edit, so it must not
+// blame a login shell when none was consulted.
+func TestPathSourceDescriptionNamesTheActualSource(t *testing.T) {
+	t.Setenv("SHELL", "/bin/zsh")
+	stubLoginPATH(t, "/opt/homebrew/bin")
+	if got := pathSourceDescription(); got != "reported by /bin/zsh" {
+		t.Errorf("pathSourceDescription = %q, want the shell named", got)
+	}
+
+	stubLoginPATH(t, "")
+	if got := pathSourceDescription(); !strings.Contains(got, "inherited") {
+		t.Errorf("pathSourceDescription = %q, want it to say the PATH was inherited", got)
+	}
+
+	t.Setenv("SHELL", "")
+	if got := pathSourceDescription(); !strings.Contains(got, "inherited") {
+		t.Errorf("pathSourceDescription with no SHELL = %q, want it to say the PATH was inherited", got)
 	}
 }

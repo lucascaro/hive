@@ -27,7 +27,9 @@ import (
 // what that code learned the hard way.
 
 // loginEnvTimeout bounds the shell probe. An rc file that blocks on
-// input must not hang the build button.
+// input must not hang the build button. Worst case is twice this: the
+// context kills the shell after one interval, and WaitDelay below
+// grants another before giving up on a grandchild holding the pipe.
 var loginEnvTimeout = 10 * time.Second
 
 // resolveEnvSentinel is exported into the probe shell so an rc file can

@@ -13,3 +13,6 @@ bump: patch
   marker-delimited output, per-shell argument forms. When the toolchain
   still cannot be found, the button now names the missing tool instead
   of reporting a bare "build.sh failed".
+- Hive sets `HIVE_RESOLVING_ENVIRONMENT=1` while it asks your shell for
+  its PATH. Guard the expensive parts of your shell rc file with it if
+  an interactive startup does work you would rather Hive skipped.
