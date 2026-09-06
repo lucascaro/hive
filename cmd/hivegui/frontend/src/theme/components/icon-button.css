@@ -20,3 +20,20 @@
 .hv-icon-btn:hover { background: var(--hover); color: var(--fg); }
 .hv-icon-btn:disabled { opacity: 0.5; pointer-events: none; }
 .hv-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Unread marker — the sidebar's What's New gift (components/Sidebar.tsx >
+   SidebarHeaderControls). A dot rather than a count: the modal is a list of
+   releases, not a queue, so there is no number that means anything. Uses the
+   same --state-attention every other "this wants you" surface uses, so the
+   sidebar has one attention colour rather than two. */
+.hv-icon-btn.hv-unread { position: relative; }
+.hv-icon-btn.hv-unread::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state-attention);
+}

@@ -37,6 +37,7 @@ import { reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
+import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
@@ -48,6 +49,7 @@ import {
 } from '../lib/drag-placeholder.js';
 import { dropTargetIndex } from '../lib/reorder.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
+import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
 import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
 
@@ -540,6 +542,11 @@ export function Sidebar(props: SidebarProps) {
 // header at all (update-banner, restart-hive), and a missing header must
 // render nothing rather than throw.
 export function SidebarHeaderControls(): ReactNode {
+  // Derived from the store, not component state: the modal also opens from
+  // the command palette, and a `useState` the palette cannot reach would
+  // record the read while leaving the dot on screen until a reload.
+  const whatsNewSeen = useAppStore((s) => s.whatsNewSeen);
+  const unread = hasUnread(latestVersion(), whatsNewSeen);
   const newProjectBtn = document.getElementById('new-project-btn');
   const header = newProjectBtn?.parentElement;
   if (!newProjectBtn || !header) return null;
@@ -553,6 +560,21 @@ export function SidebarHeaderControls(): ReactNode {
           label="Check for updates"
           size={22}
           onClick={() => void manualUpdateCheck()}
+        />,
+        header,
+      )}
+      {/* Third and rightmost: What's new. Portal order is DOM order here, so
+          this one has to stay last in the fragment. */}
+      {createPortal(
+        <IconButton
+          id="whats-new-btn"
+          icon="gift"
+          // The dot is a CSS ::after, so it says nothing to a screen reader.
+          // The accessible name carries the same bit in words.
+          label={unread ? "What's new — unread" : "What's new"}
+          size={22}
+          className={unread ? 'hv-unread' : undefined}
+          onClick={openWhatsNew}
         />,
         header,
       )}

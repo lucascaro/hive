@@ -1,0 +1,41 @@
+/* What's New modal (sidebar gift). The shell is the dialog primitive; what
+   is left is one scrolling column of releases, newest first. Single column
+   rather than the help overlay's two: these are sentences, not key/label
+   pairs, and two columns would make the reading order ambiguous. */
+/* No scroller of its own: `.hv-dialog__body` (dialog.css) already scrolls and
+   flexes, the way Settings and Worktrees use it. A nested one with a hard
+   60vh cap made this panel stop growing short of what the shell allows. It is
+   focusable instead — the content is pure text with nothing tabbable in it, so
+   without this a keyboard user reaches the close button and can never scroll
+   past the fold. Arrow keys scroll the nearest scrollable ancestor of the
+   focused element, which is the dialog body. */
+#whats-new-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.whats-new-release + .whats-new-release {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.whats-new-release h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+}
+.whats-new-release ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.whats-new-release li {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.whats-new-release li strong { color: var(--fg); font-weight: 600; }
+/* Not shipped yet, so it reads a step quieter than the releases above it. */
+.whats-new-planned li strong { color: var(--fg-muted); font-weight: 500; }

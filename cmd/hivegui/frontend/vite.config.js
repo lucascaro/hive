@@ -39,5 +39,18 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_PORT || 5173),
     strictPort: true,
+    // lib/whats-new.ts imports site/features.json — the single user-facing
+    // feature list, shared with the website build — which lives above this
+    // root. Vite's default fs.allow is the inferred workspace root, and a
+    // miss here is invisible in `vite build` (the JSON is inlined) but 403s
+    // in `vite dev`, which is what every Playwright spec runs against. So
+    // every e2e spec fails, not just the What's New ones.
+    //
+    // `site/` and this root only, NOT the repo root: the dev server would
+    // otherwise serve .git and every dotfile above us to anything that can
+    // reach the port.
+    fs: {
+      allow: [__dirname, path.resolve(__dirname, '../../../site')],
+    },
   },
 });
