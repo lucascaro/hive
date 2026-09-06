@@ -61,6 +61,14 @@ func buildAppMenu(a *App) *menu.Menu {
 		keys.CmdOrCtrl("z"),
 		emit("menu:reopen-closed-session"))
 	file.AddSeparator()
+	// ⌘I files a note about anything, from anywhere; ⇧⌘I opens the
+	// active project's inbox. Both are ⌘ chords the terminal never
+	// receives, so binding them takes nothing from the focused agent.
+	file.AddText("Capture Idea…", keys.CmdOrCtrl("i"), emit("menu:quick-idea"))
+	file.AddText("Idea Inbox…",
+		keys.Combo("i", keys.ShiftKey, keys.CmdOrCtrlKey),
+		emit("menu:idea-inbox"))
+	file.AddSeparator()
 	file.AddText("Delete Project…",
 		keys.Combo("backspace", keys.ShiftKey, keys.CmdOrCtrlKey),
 		emit("menu:delete-project"))

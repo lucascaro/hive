@@ -229,6 +229,8 @@ build.sh           # macOS universal build
 | ⇧⌘B | Jump back to where you were before the first ⌘B |
 | ⌘[ / ⌘] | Previous / next project |
 | ⌘E | Worktrees in the active project (browse, resume, delete) |
+| ⌘I | Capture an idea for later (note, kind, project) |
+| ⇧⌘I | Ideas captured for the active project |
 | ⌘1–9 | Jump to nth session |
 | ⌘= / ⌘- / ⌘0 | Font size up / down / reset |
 | ⌘S | Toggle sidebar |

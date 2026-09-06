@@ -47,6 +47,8 @@ import {
 } from './modals/command-palette.js';
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openWorktrees, closeWorktrees } from './modals/worktrees.js';
+import { openQuickIdea, closeQuickIdea } from './modals/quick-idea.js';
+import { openIdeaInbox, closeIdeaInbox } from './modals/idea-inbox.js';
 import {
   choiceDialogOpen,
   dismissChoiceDialog,
@@ -230,6 +232,45 @@ window.addEventListener(
       }
       return; // the worktree browser owns the keyboard while open
     }
+    if (isModalOpen('quick-idea')) {
+      // Same shape as settings: a form with its own fields, so Tab is
+      // left to walk them. ⌘I toggles it closed, which is what makes
+      // the capture sheet feel like a sheet rather than a dialog.
+      if (
+        e.key === 'Escape' ||
+        (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I'))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeQuickIdea();
+      } else if (trapFocus(pageEl('quick-idea'), e)) {
+        e.stopPropagation();
+      }
+      return; // the capture sheet owns the keyboard while open
+    }
+    if (isModalOpen('idea-inbox')) {
+      // ⇧⌘I toggles closed; plain ⌘I is deliberately NOT trapped here —
+      // it falls through to the binding below so you can file a second
+      // idea straight from the inbox, which is the panel's own footer
+      // hint.
+      if (
+        e.key === 'Escape' ||
+        (cmdOrCtrl(e) && e.shiftKey && (e.key === 'i' || e.key === 'I'))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeIdeaInbox();
+        return;
+      }
+      if (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openQuickIdea();
+        return;
+      }
+      if (trapFocus(pageEl('idea-inbox'), e)) e.stopPropagation();
+      return; // the inbox owns the keyboard while open
+    }
     if (isModalOpen('help')) {
       if (e.key === 'Escape' || isHelpOverlayKey(e)) {
         e.preventDefault();
@@ -364,6 +405,14 @@ window.addEventListener(
     } else if (e.key === 'e' || e.key === 'E') {
       swallow();
       openWorktreesForActiveProject();
+    } else if (e.key === 'i' || e.key === 'I') {
+      swallow();
+      // ⌘I files a note about anything; ⇧⌘I opens the inbox of the
+      // project you are in. With no project at all the inbox is a
+      // no-op (openIdeaInbox says so) — capture still works, because
+      // activeProjectId() falls back to the default project.
+      if (e.shiftKey) openIdeaInboxForActiveProject();
+      else openQuickIdea();
     } else if (e.key === 's' || e.key === 'S') {
       swallow();
       // Route through toggleSidebar so the keyboard path stays in
@@ -728,6 +777,8 @@ const menuActions = {
   'menu:command-palette': () => openCommandPalette(),
   'menu:settings': () => openSettings(),
   'menu:worktrees': () => openWorktreesForActiveProject(),
+  'menu:quick-idea': () => openQuickIdea(),
+  'menu:idea-inbox': () => openIdeaInboxForActiveProject(),
   'menu:close-session': () => closeActiveSession(),
   'menu:reopen-closed-session': () => reopenLastClosedSession(),
   'menu:zoom-in': () => deps.bumpFontSize(+1),
@@ -779,7 +830,11 @@ export async function confirmAndDeleteProject(
     : `Delete project "${proj.name}"?`;
   const ok = await Confirm('Delete project', msg);
   if (!ok) return;
-  KillProject(proj.id, sessions.length > 0).catch(
+  // deleteIdeas=false: the daemon refuses with project_has_ideas when
+  // the project still holds open ideas, and app/events.ts asks that
+  // second question — losing captured notes is a separate consent from
+  // losing the project.
+  KillProject(proj.id, sessions.length > 0, false).catch(
     reportFailure('delete project'),
   );
 }
@@ -795,6 +850,15 @@ export function deleteActiveProject() {
 export function openWorktreesForActiveProject() {
   const pid = activeProjectId();
   openWorktrees(appData().projects.find((p) => p.id === pid) ?? null);
+}
+
+// The inbox is per-project too, so it resolves the project the same
+// way. With no project at all this opens nothing rather than falling
+// back to the first one: ⇧⌘I is a stray-keystroke away from ⌘I, and an
+// unrelated project's inbox is a worse answer than none.
+export function openIdeaInboxForActiveProject() {
+  const pid = activeProjectId();
+  openIdeaInbox(appData().projects.find((p) => p.id === pid) ?? null);
 }
 
 // moveActiveSession walks the (project_order, session_order) list.

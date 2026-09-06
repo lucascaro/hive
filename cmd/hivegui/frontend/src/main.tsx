@@ -72,6 +72,8 @@ import {
   openSettings,
 } from './app/modals/settings.js';
 import { initWorktrees } from './app/modals/worktrees.js';
+import { initQuickIdea, openQuickIdea } from './app/modals/quick-idea.js';
+import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { flushSync } from 'react-dom';
@@ -104,6 +106,7 @@ import {
   focusActiveSession,
   deleteActiveProject,
   openWorktreesForActiveProject,
+  openIdeaInboxForActiveProject,
   navSession,
   reorderActive,
   switchToNthSession,
@@ -159,6 +162,16 @@ const paletteCommands = [
     id: 'worktrees',
     name: 'Worktrees…',
     run: () => openWorktreesForActiveProject(),
+  },
+  {
+    id: 'quick-idea',
+    name: 'Capture Idea…',
+    run: () => openQuickIdea(),
+  },
+  {
+    id: 'idea-inbox',
+    name: 'Ideas…',
+    run: () => openIdeaInboxForActiveProject(),
   },
   {
     id: 'close-session',
@@ -275,6 +288,8 @@ initWorktrees({
     openLauncher(projectId, { worktreePath, continueConversation }),
 });
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
+initQuickIdea({ setFocusedTile, refocusActiveTerm });
+initIdeaInbox({ setFocusedTile, refocusActiveTerm });
 // ---------- boot the app ----------
 
 // The pane starts in focused mode. Set before the first paint rather than
@@ -522,6 +537,10 @@ flushSync(() => createRoot(mustEl('react-root')).render(<App />));
   try {
     await ConnectControl();
     setStatus('connected');
+    // Ideas are not in the daemon's initial snapshot (it pushes
+    // projects and sessions); one request per connection seeds them and
+    // the IDEA_EVENT fan-out keeps them current.
+    refreshIdeas();
     try {
       const dt = (() => {
         try {

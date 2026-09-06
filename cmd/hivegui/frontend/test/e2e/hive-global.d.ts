@@ -17,6 +17,7 @@
 // spec sites read more nicely — the cost is `?.` at the mock-only sites.
 import type {
   MockBranch,
+  MockIdea,
   MockProject,
   MockSession,
   MockWorktree,
@@ -42,6 +43,7 @@ interface HiveTestApi {
     orphanBranches: MockBranch[];
     // Branch names the GUI asked to delete on the remote.
     deletedRemotes: string[];
+    ideas: MockIdea[];
   };
   addSession?(
     name: string,
@@ -53,6 +55,7 @@ interface HiveTestApi {
   ringBell?(id: string): void;
   createSessionWithWorktree?(name: string, branch?: string): Promise<string>;
   seedWorktrees?(worktrees: MockWorktree[], branches?: MockBranch[]): void;
+  seedIdeas?(ideas: MockIdea[]): void;
   replayLog?: { id: string; t: number }[];
   replayCount?(id?: string): number;
   resetReplay?(): void;

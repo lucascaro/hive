@@ -30,6 +30,7 @@
 @import './command-palette.css';
 @import './help-overlay.css';
 @import './worktrees.css';
+@import './ideas.css';
 @import './choice-dialog.css';
 
 /* Last: xterm's own DOM, which we only ever subtract from. */

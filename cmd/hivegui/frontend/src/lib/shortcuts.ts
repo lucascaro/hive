@@ -141,6 +141,8 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         },
         { keys: `${m('[')} / ${m(']')}`, label: 'Previous / next project' },
         { keys: m('E'), label: 'Worktrees in the active project' },
+        { keys: m('I'), label: 'Capture an idea' },
+        { keys: m('I', { shift: true }), label: 'Ideas in the active project' },
       ],
     },
     {
@@ -227,6 +229,8 @@ export function paletteShortcuts({
     'restart-session': '',
     'delete-project': m('backspace', { shift: true }),
     worktrees: m('E'),
+    'quick-idea': m('I'),
+    'idea-inbox': m('I', { shift: true }),
     'close-session': m('W'),
     'new-window': m('N', { shift: true }),
     'open-os-terminal': c('`'),

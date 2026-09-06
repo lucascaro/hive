@@ -3,7 +3,7 @@
 - **Spec:** [docs/product-specs/337-idea-inbox.md](../../product-specs/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `cedar-light` (phase 1)
+- **Branch:** `cedar-light` (phase 1), `feature/337-idea-inbox-gui` (phase 2)
 - **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1)
 - **Status:** active
 
@@ -678,6 +678,52 @@ path instead.
   are cut. Why: no consumer, the session already resolves the project,
   and the GUI covers `done`. `list` survives only so phase 1 is usable
   before the GUI lands.
+- **2026-09-06** — Phase 2 (GUI) ships alone in this PR. `initial_prompt`,
+  the `CreateSession` options-struct refactor and the inbox's "Start
+  session" row action stay in phase 3 as planned, so the inbox's row
+  actions here are Edit / Done / Delete. The `started` breadcrumb still
+  renders — an idea can already reach `status=started` over the wire
+  (phase 1 shipped `UpdateIdeaReq.SessionID`), so the row must be able
+  to show it even though nothing in the GUI sets it yet.
+- **2026-09-06** — `openIdeasOf` takes the idea list, not the store
+  state, and components select the raw `ideas` slice and filter in
+  render. Why: zustand v5 reads the selector through
+  `useSyncExternalStore`, which rejects a selector that builds a new
+  array per snapshot ("the result of getSnapshot should be cached").
+  Same shape the sidebar already uses for per-project session lists.
+- **2026-09-06** — The capture sheet's kind picker is three real
+  `<input type="radio">` inside labels, visually hidden, rather than
+  `<button role="radio">`. Why: the buttons tripped Biome's
+  `a11y/useSemanticElements`, and the native control brings arrow-key
+  navigation and the roving tabindex the button version would have had
+  to re-implement. The e2e clicks the label, since the input itself is
+  off-screen.
+- **2026-09-06** — The inbox's inline edit reuses the imperative
+  `app/inline-rename.ts` rather than a React-owned input, copying
+  Worktrees.tsx verbatim including the `cancelInlineRenameFor` cleanup.
+  Why: `keyboard.ts` asks `inlineRenameActive()` FIRST, so Escape
+  cancels the edit instead of closing the panel — a React input would
+  lose that race against the capture-phase listener.
+- **2026-09-06** — The inbox is trapped for ⇧⌘I and Escape but
+  deliberately lets plain ⌘I through to the capture sheet, so a second
+  idea can be filed from the inbox. The panel's footer hint says so.
+- **2026-09-06** — Phase 2 seeds ideas with one `LIST_IDEAS` per
+  control connection (boot and each reconnect) rather than changing the
+  daemon's initial snapshot. Why: the snapshot is a daemon-side push
+  that every client shares, and adding a third frame to it is a wire
+  change phase 1 deliberately did not make; one request from the client
+  that needs them is the smaller diff and degrades to an empty inbox
+  against an old daemon, which is what the plan already accepted.
+- **2026-09-06** — The badge stays visible while the card header is
+  hovered, unlike `.hv-project-card__count`, which the actions row
+  replaces. Why: the badge IS the mouse path to the inbox; hiding it on
+  hover would leave no way to click it.
+- **2026-09-06** — `docs/product-specs/keyboard-keymap-tables.md` is
+  NOT updated. The plan's file list called it a keymap table; it is
+  actually an unrelated P3 spec proposing a keyboard.ts refactor, and
+  it carries no per-binding table to update. The binding's drift
+  surface here is `keyboard.ts`, `lib/shortcuts.ts` (both functions),
+  `main.tsx`, `menu_darwin.go` and `README.md`.
 
 ## Review log
 
@@ -808,6 +854,26 @@ path instead.
   `go build ./...`, `go test ./...`, and `go vet` + `staticcheck` for
   darwin/linux/windows are clean. Phases 2 (GUI) and 3
   (`initial_prompt`) not started.
+- **2026-09-06** — Phase 2 implemented on `feature/337-idea-inbox-gui`
+  (branched fresh off `main` at 217d8ff, which carries phase 1 as
+  squashed PR #352). Go: four `App` idea bindings in
+  `cmd/hivegui/app_calls.go`, `KillProject` gains `deleteIdeas`, ⌘I /
+  ⇧⌘I menu items in `menu_darwin.go`, and the four idea methods added
+  to `cmd/hived-ws-bridge` so the real-e2e harness can forward them.
+  Frontend: `IdeaInfo` type, the `ideas` store slice with its four
+  reducers and `openIdeasOf`, `idea:list` / `idea:event` sinks and the
+  `project_has_ideas` confirm branch in `events.ts`, the two modal
+  state/component pairs (`quick-idea`, `idea-inbox`), their roots in
+  `index.html` and portals in `App.tsx`, the ⌘I / ⇧⌘I bindings plus
+  both modal-owns-the-keyboard branches, palette commands, help-overlay
+  entries, the project-card badge, and `theme/components/ideas.css`.
+  Tests: `test/unit/ideas.test.ts` (7), `test/dom/quick-idea.test.tsx`
+  (8), `test/dom/idea-inbox.test.tsx` (6), `test/e2e/idea-inbox.spec.ts`
+  (6). Verified: `go build ./...`, `go vet ./...`, `go test ./...`,
+  `npm run typecheck`, `biome ci .`, `npm test` (1072), the full mock
+  e2e suite (279 passed / 31 skipped, first attempt), `ui-lint.sh` and
+  `ui-contrast.mjs` all clean. Phase 3 (`initial_prompt`, Start
+  session, the `CreateSession` options struct) not started.
 
 ## Gate verdict
 

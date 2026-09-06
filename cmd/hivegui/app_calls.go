@@ -238,14 +238,17 @@ func (a *App) CreateProject(name, color, cwd string) error {
 
 // KillProject removes a project. If killSessions is true, every
 // session in the project is also killed; otherwise sessions are
-// reassigned to the default project.
-func (a *App) KillProject(id string, killSessions bool) error {
+// reassigned to the default project. deleteIdeas is the confirmation
+// override for project_has_ideas: the daemon refuses while the project
+// still holds open ideas, and the GUI retries with it set once the user
+// has said yes.
+func (a *App) KillProject(id string, killSessions, deleteIdeas bool) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
 	return cs.WriteJSON(wire.FrameKillProject, wire.KillProjectReq{
-		ProjectID: id, KillSessions: killSessions,
+		ProjectID: id, KillSessions: killSessions, DeleteIdeas: deleteIdeas,
 	})
 }
 
@@ -502,6 +505,69 @@ func (a *App) SetSessionAttention(id string, want bool) error {
 		SessionID:      id,
 		NeedsAttention: &want,
 	})
+}
+
+// ---------- ideas ----------
+//
+// Same shape as the project and session calls above: a request goes
+// out, and the daemon's answer (IDEAS, or an IDEA_EVENT fanned out to
+// every control connection) arrives through the read loop in
+// app_control.go as an "idea:list" / "idea:event" event.
+
+// ListIdeas asks for one project's ideas, or for every project's when
+// projectID is empty. The frontend calls it once at boot; after that
+// the fan-out keeps it current.
+func (a *App) ListIdeas(projectID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
+}
+
+// AddIdea files one idea. sessionID is the session it was captured
+// from and may be empty; projectID may be empty too, in which case the
+// daemon resolves it from sessionID's live registry entry. An empty
+// kind means "idea".
+func (a *App) AddIdea(sessionID, projectID, kind, text string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameAddIdea, wire.AddIdeaReq{
+		SessionID: sessionID, ProjectID: projectID, Kind: kind, Text: text,
+	})
+}
+
+// UpdateIdea patches text and/or status. Empty strings mean "do not
+// change", the same convention as UpdateProject/UpdateSession — an
+// idea's text is never legitimately empty and its status is a closed
+// set that has no empty member.
+func (a *App) UpdateIdea(id, text, status, sessionID string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	req := wire.UpdateIdeaReq{ID: id}
+	if text != "" {
+		req.Text = &text
+	}
+	if status != "" {
+		req.Status = &status
+	}
+	if sessionID != "" {
+		req.SessionID = &sessionID
+	}
+	return cs.WriteJSON(wire.FrameUpdateIdea, req)
+}
+
+// RemoveIdea deletes one idea outright. The GUI confirms first.
+func (a *App) RemoveIdea(id string) error {
+	cs, err := a.requireControl()
+	if err != nil {
+		return err
+	}
+	return cs.WriteJSON(wire.FrameRemoveIdea, wire.RemoveIdeaReq{ID: id})
 }
 
 func (a *App) requireControl() (*wire.Client, error) {

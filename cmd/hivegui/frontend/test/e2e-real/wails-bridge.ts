@@ -175,6 +175,42 @@ export async function CreateSession(
     insert_after_session_id: insertAfter || '',
   });
 }
+// Ideas. Forwarded for real — the daemon owns them, and the fan-out
+// (idea:list / idea:event) already arrives through the generic control
+// event path above.
+export async function ListIdeas(projectID: string) {
+  return call('ListIdeas', { project_id: projectID || '' });
+}
+export async function AddIdea(
+  sessionID: string,
+  projectID: string,
+  kind: string,
+  text: string,
+) {
+  return call('AddIdea', {
+    session_id: sessionID || '',
+    project_id: projectID || '',
+    kind: kind || '',
+    text,
+  });
+}
+export async function UpdateIdea(
+  id: string,
+  text: string,
+  status: string,
+  sessionID: string,
+) {
+  // Empty means "no change", the same convention the Go binding
+  // applies before it fills the pointer fields.
+  const params: Record<string, unknown> = { id };
+  if (text) params.text = text;
+  if (status) params.status = status;
+  if (sessionID) params.session_id = sessionID;
+  return call('UpdateIdea', params);
+}
+export async function RemoveIdea(id: string) {
+  return call('RemoveIdea', { id });
+}
 export async function ListWorktrees(projectID: string) {
   return call('ListWorktrees', { project_id: projectID || '' });
 }

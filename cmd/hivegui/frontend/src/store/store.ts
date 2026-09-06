@@ -39,6 +39,7 @@ import type { PhasePanel } from '../lib/phase-steps.js';
 import type { ModeHint } from '../lib/status.js';
 import type {
   AppState,
+  IdeaInfo,
   ProjectInfo,
   SessionInfo,
   TermTile,
@@ -101,6 +102,12 @@ export interface AppData {
   // fresh inventory, so the browser never patches — it re-renders from
   // whatever landed here.
   worktreesPayload: WorktreesPayload | null;
+  // Every idea the daemon knows about, newest first, across every
+  // project. One flat list rather than a per-project map: the sidebar
+  // needs an open count for each card on every render, and the daemon
+  // fans out single-idea events that a map would have to find the right
+  // bucket for anyway.
+  ideas: IdeaInfo[];
   // The choice dialog is not in `modals`: it is mounted over any of
   // them, and its answer travels back to the caller through a promise
   // rather than through a component. `seq` remounts the body on a
@@ -118,6 +125,8 @@ export type ModalId =
   | 'project-editor'
   | 'command-palette'
   | 'worktrees'
+  | 'quick-idea'
+  | 'idea-inbox'
   | 'help';
 
 // `seq` is the opening's generation, minted by openModal. A component
@@ -130,6 +139,11 @@ export type ModalEntry =
   | { id: 'project-editor'; seq: number; editing: ProjectInfo | null }
   | { id: 'command-palette'; seq: number }
   | { id: 'worktrees'; seq: number; projectId: string; projectName: string }
+  // The capture sheet's project is a draft the user can change, so the
+  // entry carries only what it opens ON: the project the focused
+  // session is in, or the default project when there is none.
+  | { id: 'quick-idea'; seq: number; projectId: string }
+  | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
   | { id: 'help'; seq: number };
 
 // The open question, plus the generation that lets a second ask remount
@@ -407,6 +421,7 @@ function initialData(): AppData {
     },
     modals: [],
     worktreesPayload: null,
+    ideas: [],
     choiceDialog: null,
   };
 }
@@ -991,6 +1006,56 @@ export function anyModalOpen(): boolean {
 
 export function setWorktreesPayload(payload: WorktreesPayload | null): void {
   set({ worktreesPayload: payload });
+}
+
+// ---------- ideas ----------
+//
+// LIST_IDEAS replaces the list; every IDEA_EVENT patches one entry.
+// Both keep it sorted newest-first, which is the order the inbox and
+// the daemon both use.
+
+function byCreatedDesc(list: IdeaInfo[]): IdeaInfo[] {
+  return [...list].sort((a, b) => (a.created < b.created ? 1 : -1));
+}
+
+export function setIdeas(ideas: IdeaInfo[]): void {
+  set({ ideas: byCreatedDesc(ideas || []) });
+}
+
+export function addIdea(idea: IdeaInfo): void {
+  const cur = get().ideas;
+  if (cur.some((i) => i.id === idea.id)) return;
+  set({ ideas: byCreatedDesc([...cur, idea]) });
+}
+
+export function updateIdea(idea: IdeaInfo): void {
+  const cur = get().ideas;
+  // An `updated` for an idea this window never saw is an add: a GUI
+  // that connected after the idea was filed has no other way to learn
+  // of it short of a re-list.
+  if (!cur.some((i) => i.id === idea.id)) {
+    addIdea(idea);
+    return;
+  }
+  set({ ideas: cur.map((i) => (i.id === idea.id ? idea : i)) });
+}
+
+export function removeIdea(id: string): void {
+  const cur = get().ideas;
+  if (!cur.some((i) => i.id === id)) return;
+  set({ ideas: cur.filter((i) => i.id !== id) });
+}
+
+// openIdeasOf is the sidebar badge's count and the inbox's list: an
+// idea that has been marked done is out of the inbox, and one a session
+// was started from is still live work the user has not closed out.
+//
+// Takes the list, not the state, so a component selects the raw `ideas`
+// slice and derives from it. A selector that filtered would build a new
+// array on every snapshot read, which is the shape useSyncExternalStore
+// rejects ("the result of getSnapshot should be cached").
+export function openIdeasOf(ideas: IdeaInfo[], projectId: string): IdeaInfo[] {
+  return ideas.filter((i) => i.project_id === projectId && i.status !== 'done');
 }
 
 // ---------- choice dialog ----------

@@ -368,6 +368,34 @@ func (s *session) dispatch(req rpcReq) {
 			return
 		}
 		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListClosed, p))
+	case "ListIdeas":
+		var p wire.ListIdeasReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameListIdeas, p))
+	case "AddIdea":
+		var p wire.AddIdeaReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameAddIdea, p))
+	case "UpdateIdea":
+		var p wire.UpdateIdeaReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameUpdateIdea, p))
+	case "RemoveIdea":
+		var p wire.RemoveIdeaReq
+		if err := parseParams(req.Params, &p); err != nil {
+			s.respond(req.ID, nil, err)
+			return
+		}
+		s.respond(req.ID, "", s.controlWriteJSON(wire.FrameRemoveIdea, p))
 	case "ListWorktrees":
 		var p wire.ListWorktreesReq
 		if err := parseParams(req.Params, &p); err != nil {
