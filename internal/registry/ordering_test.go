@@ -448,7 +448,7 @@ func TestKillProjectCompactsProjectOrder(t *testing.T) {
 		}
 		made[i] = p
 	}
-	if err := r.KillProject(made[0].ID, false); err != nil {
+	if err := r.KillProject(made[0].ID, false, false); err != nil {
 		t.Fatalf("KillProject: %v", err)
 	}
 

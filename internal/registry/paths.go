@@ -60,3 +60,13 @@ func SessionsDir(stateDir string) string {
 func ProjectsDir(stateDir string) string {
 	return filepath.Join(stateDir, "projects")
 }
+
+// IdeasDir is the directory that holds one file per idea.
+//
+// Flat ideas/<id>.json, not a directory per record like sessions and
+// projects: an idea carries no user-visible order, so there is no
+// index file to be the order authority and nothing else to put beside
+// the record.
+func IdeasDir(stateDir string) string {
+	return filepath.Join(stateDir, "ideas")
+}

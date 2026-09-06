@@ -27,6 +27,21 @@ What works:
   over that socket. Pi sessions get the same precision through a small
   extension Hive ships with the daemon and loads with `pi -e` — nothing
   to install, and inert when you run `pi` outside Hive
+- Idea inbox — notes captured against a project instead of derailing the
+  session you are in. Every session Hive spawns can file one from its
+  own shell:
+
+  ```sh
+  hived idea add "the grid loses focus after ⌘G twice"   # kind: idea
+  hived idea add -k bug "sidebar drag handle is 1px off"
+  hived idea list                                        # this project
+  hived idea list --all                                  # every project
+  ```
+
+  The project is resolved from the session, so a note lands where the
+  work is even after the session is reassigned. An idea outlives the
+  session that filed it; deleting a *project* deletes its ideas, and
+  Hive refuses that delete while any are still open
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

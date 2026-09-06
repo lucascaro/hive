@@ -4,7 +4,7 @@ title: "Idea inbox: capture ideas mid-session, start a session from one later"
 type: enhancement
 complexity: M
 priority: P1
-stage: PLAN
+stage: IMPLEMENT
 ---
 
 # Idea inbox: capture ideas mid-session, start a session from one later
@@ -54,8 +54,11 @@ edited, marked done, or deleted.
 existing agent launcher with the project fixed and the idea text as
 the opening prompt (prefixed with the kind: "Bug report: …"), with the
 worktree checkbox honoured. The new session is linked back to the idea,
-the idea flips to `started`, and the inbox shows the link. Closing that
-session offers "mark idea done" (default off).
+the idea flips to `started`, and the inbox shows the link. Closing the
+session leaves the idea `started`; marking it done is an inbox action.
+Nothing is lost on session close — the idea outlives it. What must not
+happen silently is losing ideas when a **project** is deleted: that is
+guarded, at the same level as a dirty worktree, by a confirm.
 
 Ideas persist across GUI and daemon restarts. They are per project,
 not per session; a session that filed one can be closed without losing
@@ -90,6 +93,10 @@ it.
 - Capturing from outside Hive (browser extension, mobile).
 - Attaching files or screenshots.
 - Ideas without a project (a "default" project exists already; use it).
+- Ideas outliving their project. Deleting a project deletes its
+  ideas, after a confirm when any are still open.
+- A full idea CLI. `hived idea` ships `add` and `list`; editing,
+  completing and deleting are GUI actions.
 
 ## Notes
 

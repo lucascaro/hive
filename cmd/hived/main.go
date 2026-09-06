@@ -34,6 +34,11 @@ func main() {
 		runHook(os.Stdin)
 		os.Exit(0)
 	}
+	// `hived idea` is the same shape, but user-facing: it prints and
+	// its exit code means something.
+	if len(os.Args) > 1 && os.Args[1] == "idea" {
+		os.Exit(runIdea(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	var (
 		sock  = flag.String("socket", "", "Unix socket path (empty = platform default)")

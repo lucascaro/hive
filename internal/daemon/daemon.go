@@ -593,6 +593,8 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 	defer unsub()
 	pListener, pUnsub := d.reg.SubscribeProjects()
 	defer pUnsub()
+	iListener, iUnsub := d.reg.SubscribeIdeas()
+	defer iUnsub()
 	cmdListener, cmdUnsub := d.commands.Subscribe()
 	defer cmdUnsub()
 
@@ -636,6 +638,13 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn) {
 					return
 				}
 				if err := writeJSON(wire.FrameProjectEvent, ev); err != nil {
+					return
+				}
+			case ev, ok := <-iListener:
+				if !ok {
+					return
+				}
+				if err := writeJSON(wire.FrameIdeaEvent, ev); err != nil {
 					return
 				}
 			case cmd, ok := <-cmdListener:
@@ -752,6 +761,49 @@ func decodeReq[T any](payload []byte, sendError func(code, msg string)) (T, bool
 	return v, true
 }
 
+// closeGuardError maps the registry's refuse-then-force sentinels onto
+// the ControlError the client confirms against, and reports false for
+// anything else.
+//
+// One helper, not a branch per code: worktree_dirty and
+// project_has_ideas are the same shape — the daemon refuses work that
+// would silently lose something, the client confirms, and it retries
+// with a force flag — and the second hand-rolled copy is how the third
+// one gets written differently. The id fields are what let a single
+// client-side branch serve both scopes.
+func closeGuardError(err error, sessionID, projectID string) (wire.Error, bool) {
+	switch {
+	case errors.Is(err, registry.ErrWorktreeDirty):
+		return wire.Error{
+			Code:      wire.ErrCodeWorktreeDirty,
+			Message:   "worktree has uncommitted changes",
+			SessionID: sessionID,
+		}, true
+	case errors.Is(err, registry.ErrProjectHasIdeas):
+		return wire.Error{
+			Code:      wire.ErrCodeProjectHasIdeas,
+			Message:   err.Error(),
+			ProjectID: projectID,
+		}, true
+	}
+	return wire.Error{}, false
+}
+
+// ideaErrorCode names the refusals a client can act on (shorten the
+// text, pick a real project) and falls back to the caller's generic
+// code for everything else.
+func ideaErrorCode(err error, generic string) string {
+	switch {
+	case errors.Is(err, registry.ErrIdeaTooLong):
+		return wire.ErrCodeIdeaTooLong
+	case errors.Is(err, registry.ErrIdeaNotFound):
+		return "no_such_idea"
+	case errors.Is(err, registry.ErrProjectNotFound):
+		return "no_such_project"
+	}
+	return generic
+}
+
 // handleControlFrame dispatches one control frame. It reports true
 // when the connection is finished (the client asked the daemon to shut
 // down), false to keep reading.
@@ -791,12 +843,8 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 				kill = d.reg.KillAndRemoveWorktree
 			}
 			if err := kill(req.SessionID, req.Force); err != nil {
-				if errors.Is(err, registry.ErrWorktreeDirty) {
-					_ = ops.writeJSON(wire.FrameError, wire.Error{
-						Code:      wire.ErrCodeWorktreeDirty,
-						Message:   "worktree has uncommitted changes",
-						SessionID: req.SessionID,
-					})
+				if ce, ok := closeGuardError(err, req.SessionID, ""); ok {
+					_ = ops.writeJSON(wire.FrameError, ce)
 				} else {
 					ops.sendError("kill_failed", err.Error())
 				}
@@ -905,8 +953,12 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			return false
 		}
 		d.runOp(func() {
-			if err := d.reg.KillProject(req.ProjectID, req.KillSessions); err != nil {
-				ops.sendError("kill_project_failed", err.Error())
+			if err := d.reg.KillProject(req.ProjectID, req.KillSessions, req.DeleteIdeas); err != nil {
+				if ce, ok := closeGuardError(err, "", req.ProjectID); ok {
+					_ = ops.writeJSON(wire.FrameError, ce)
+				} else {
+					ops.sendError("kill_project_failed", err.Error())
+				}
 			}
 		})
 	case wire.FrameUpdateProject:
@@ -964,6 +1016,43 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 			err := d.reg.RenameWorktree(req.ProjectID, req.Path, req.NewBranch)
 			ops.finishMutation(req.ProjectID, err, "rename_worktree_failed")
 		})
+	case wire.FrameListIdeas:
+		req, ok := decodeReq[wire.ListIdeasReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		_ = ops.writeJSON(wire.FrameIdeas, wire.IdeasResp{Ideas: d.reg.ListIdeas(req.ProjectID)})
+	case wire.FrameAddIdea:
+		req, ok := decodeReq[wire.AddIdeaReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		// Inline, not via runOp: an idea write is one temp+rename with
+		// no git and no subprocess behind it.
+		if _, err := d.reg.AddIdea(registry.IdeaSpec{
+			ProjectID: req.ProjectID,
+			SessionID: req.SessionID,
+			Kind:      req.Kind,
+			Text:      req.Text,
+		}); err != nil {
+			ops.sendError(ideaErrorCode(err, "add_idea_failed"), err.Error())
+		}
+	case wire.FrameUpdateIdea:
+		req, ok := decodeReq[wire.UpdateIdeaReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if _, err := d.reg.UpdateIdea(req); err != nil {
+			ops.sendError(ideaErrorCode(err, "update_idea_failed"), err.Error())
+		}
+	case wire.FrameRemoveIdea:
+		req, ok := decodeReq[wire.RemoveIdeaReq](payload, ops.sendError)
+		if !ok {
+			return false
+		}
+		if err := d.reg.RemoveIdea(req.ID); err != nil {
+			ops.sendError(ideaErrorCode(err, "remove_idea_failed"), err.Error())
+		}
 	case wire.FrameClientCommand:
 		cmd, ok := decodeReq[wire.ClientCommand](payload, ops.sendError)
 		if !ok {

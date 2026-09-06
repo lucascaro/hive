@@ -12,6 +12,9 @@ type Listener chan wire.SessionEvent
 // ProjectListener is a channel that receives ProjectEvent.
 type ProjectListener chan wire.ProjectEvent
 
+// IdeaListener is a channel that receives IdeaEvent.
+type IdeaListener chan wire.IdeaEvent
+
 // Subscribe returns a channel that receives every SessionEvent. The
 // returned cleanup function unsubscribes and closes the channel.
 // Slow consumers are dropped — listeners must drain promptly.

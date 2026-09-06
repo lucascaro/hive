@@ -61,7 +61,7 @@ func TestKillProjectReassign(t *testing.T) {
 	// Two sessions in p.
 	a, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
 	b, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
-	if err := r.KillProject(p.ID, false); err != nil {
+	if err := r.KillProject(p.ID, false, false); err != nil {
 		t.Fatalf("KillProject reassign: %v", err)
 	}
 	for _, e := range []*Entry{r.Get(a.ID), r.Get(b.ID)} {
@@ -80,7 +80,7 @@ func TestKillProjectKillSessions(t *testing.T) {
 	_, _ = r.EnsureDefaultProject("/tmp")
 	p, _ := r.CreateProject(wire.CreateProjectReq{Name: "doomed"})
 	a, _ := r.Create(context.Background(), wire.CreateSpec{ProjectID: p.ID, Shell: "/bin/bash"})
-	if err := r.KillProject(p.ID, true); err != nil {
+	if err := r.KillProject(p.ID, true, false); err != nil {
 		t.Fatalf("KillProject killSessions: %v", err)
 	}
 	if r.Get(a.ID) != nil {

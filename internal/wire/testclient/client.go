@@ -48,6 +48,7 @@ type Client struct {
 	stream   chan frameMsg
 	sessions chan wire.SessionEvent
 	projects chan wire.ProjectEvent
+	ideas    chan wire.IdeaEvent
 	snaps    chan frameMsg
 	errs     chan error
 
@@ -74,6 +75,7 @@ func Dial(ctx context.Context, sockPath string) (*Client, error) {
 		stream:   make(chan frameMsg, 256),
 		sessions: make(chan wire.SessionEvent, 32),
 		projects: make(chan wire.ProjectEvent, 32),
+		ideas:    make(chan wire.IdeaEvent, 32),
 		snaps:    make(chan frameMsg, 8),
 		errs:     make(chan error, 1),
 		closed:   make(chan struct{}),
@@ -168,6 +170,59 @@ func (c *Client) awaitSnapshot(want wire.FrameType, name string, timeout time.Du
 			return err
 		case <-time.After(remaining):
 			return fmt.Errorf("testclient: timeout waiting for %s", name)
+		}
+	}
+}
+
+// --- Ideas ---
+
+// AddIdea sends ADD_IDEA. An empty ProjectID asks the daemon to
+// resolve one from SessionID's live entry.
+func (c *Client) AddIdea(req wire.AddIdeaReq) error {
+	return c.cli.WriteJSON(wire.FrameAddIdea, req)
+}
+
+// UpdateIdea sends UPDATE_IDEA.
+func (c *Client) UpdateIdea(req wire.UpdateIdeaReq) error {
+	return c.cli.WriteJSON(wire.FrameUpdateIdea, req)
+}
+
+// RemoveIdea sends REMOVE_IDEA.
+func (c *Client) RemoveIdea(req wire.RemoveIdeaReq) error {
+	return c.cli.WriteJSON(wire.FrameRemoveIdea, req)
+}
+
+// ListIdeas sends LIST_IDEAS. Use AwaitIdeas to consume the response.
+func (c *Client) ListIdeas(projectID string) error {
+	return c.cli.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID})
+}
+
+// AwaitIdeas consumes the next IDEAS snapshot.
+func (c *Client) AwaitIdeas(timeout time.Duration) (wire.IdeasResp, error) {
+	var resp wire.IdeasResp
+	err := c.awaitSnapshot(wire.FrameIdeas, "IDEAS", timeout, &resp)
+	return resp, err
+}
+
+// AwaitIdeaEvent consumes the next IDEA_EVENT of the wanted kind. An
+// empty kind matches the first event of any kind.
+func (c *Client) AwaitIdeaEvent(kind string, timeout time.Duration) (wire.IdeaEvent, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return wire.IdeaEvent{}, errors.New("testclient: timeout waiting for IDEA_EVENT")
+		}
+		select {
+		case ev := <-c.ideas:
+			if kind != "" && ev.Kind != kind {
+				continue
+			}
+			return ev, nil
+		case err := <-c.errs:
+			return wire.IdeaEvent{}, err
+		case <-time.After(remaining):
+			return wire.IdeaEvent{}, errors.New("testclient: timeout waiting for IDEA_EVENT")
 		}
 	}
 }
@@ -495,6 +550,11 @@ func (c *Client) readLoop() {
 			if err := json.Unmarshal(payload, &ev); err == nil {
 				c.sendProjectEvent(ev)
 			}
+		case wire.FrameIdeaEvent:
+			var ev wire.IdeaEvent
+			if err := json.Unmarshal(payload, &ev); err == nil {
+				c.sendIdeaEvent(ev)
+			}
 		default:
 			c.sendSnapshot(frameMsg{t: ft, payload: payload})
 		}
@@ -517,6 +577,12 @@ func (c *Client) sendSessionEvent(v wire.SessionEvent) {
 func (c *Client) sendProjectEvent(v wire.ProjectEvent) {
 	select {
 	case c.projects <- v:
+	case <-c.closed:
+	}
+}
+func (c *Client) sendIdeaEvent(v wire.IdeaEvent) {
+	select {
+	case c.ideas <- v:
 	case <-c.closed:
 	}
 }
