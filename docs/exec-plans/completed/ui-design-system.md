@@ -34,12 +34,12 @@ Bottom-up, visually no-op first. Phase 1 introduces tokens with a `classic` pres
 
 | # | Deliverable | Detailed plan | Visible change |
 |---|---|---|---|
-| 1 | `src/theme/{tokens,themes}.css`, `theme.ts` (preset apply from localStorage), `style.css` literals → tokens, xterm theme from tokens, `scripts/ui-lint.sh` (warn), CI step, screenshot baseline | [ui-design-system-phase1.md](ui-design-system-phase1.md) | none (`classic` default) |
-| 2 | `src/ui/icons.svg` + `icon()`/`stateIcon()`/`iconButton()`/`kbd()`; replace every Unicode glyph; lint → error | [ui-design-system-phase2.md](ui-design-system-phase2.md) | icons only |
-| 3 | `sessionRow`, `projectCard`, `chip` primitives; sidebar + trays rebuilt on them; sidebar min-width 220 | [ui-design-system-phase3.md](ui-design-system-phase3.md) | sidebar |
+| 1 | `src/theme/{tokens,themes}.css`, `theme.ts` (preset apply from localStorage), `style.css` literals → tokens, xterm theme from tokens, `scripts/ui-lint.sh` (warn), CI step, screenshot baseline | [ui-design-system-phase1.md](../active/ui-design-system-phase1.md) | none (`classic` default) |
+| 2 | `src/ui/icons.svg` + `icon()`/`stateIcon()`/`iconButton()`/`kbd()`; replace every Unicode glyph; lint → error | [ui-design-system-phase2.md](../active/ui-design-system-phase2.md) | icons only |
+| 3 | `sessionRow`, `projectCard`, `chip` primitives; sidebar + trays rebuilt on them; sidebar min-width 220 | [ui-design-system-phase3.md](../active/ui-design-system-phase3.md) | sidebar |
 | 4 | `banner`, `statusBar` skin, grid tile header, toolbar, launcher rows, empty/phase states | [ui-design-system-phase4.md](ui-design-system-phase4.md) | chrome |
 | 5 | `dialog`, form fields; Settings/Worktrees/Project editor/Help on them; **Settings › Appearance** (preset picker + custom tokens) | [ui-design-system-phase5.md](ui-design-system-phase5.md) | dialogs, theming UI |
-| 6 | Default → `hive-dark`; ship `hive-light`, `native-*`, `terminal`; contrast check in lint; per-preset screenshot baselines; `style.css` split into `src/theme/{base,layout}.css` + `components/*.css` | [ui-design-system-phase6.md](ui-design-system-phase6.md) | everything |
+| 6 | Default → `hive-dark`; ship `hive-light`, `native-*`, `terminal`; contrast check in lint; per-preset screenshot baselines; `style.css` split into `src/theme/{base,layout}.css` + `components/*.css` | [ui-design-system-phase6.md](../active/ui-design-system-phase6.md) | everything |
 
 ### Files to change (across phases)
 
