@@ -364,10 +364,11 @@ func stageLatest(info UpdateInfo, progress func(string)) (string, error) {
 // verifyUpstreamRemote refuses a checkout whose tracked branch does not
 // come from this project's own repository.
 //
-// Matching is on the "owner/repo" substring so both SSH
-// (git@github.com:lucascaro/hive.git) and HTTPS spellings pass, and a
-// trailing .git or slash is tolerated. A fork would be rejected — that
-// is the intended trade: this button pulls and *executes*, so "close
+// remoteIsUpstream matches host and path whole, so both SSH
+// (git@github.com:lucascaro/hive.git) and HTTPS spellings pass and a
+// trailing .git or slash is tolerated, while a host that merely
+// contains "github.com" does not. A fork would be rejected — that is
+// the intended trade: this button pulls and *executes*, so "close
 // enough" is not the bar.
 func verifyUpstreamRemote(repo string) error {
 	upstream, err := runGitFn(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
@@ -378,12 +379,12 @@ func verifyUpstreamRemote(repo string) error {
 	if !found || remote == "" {
 		return fmt.Errorf("cannot tell which remote %q tracks", upstream)
 	}
-	url, err := runGitFn(repo, "remote", "get-url", remote)
+	remoteURL, err := runGitFn(repo, "remote", "get-url", remote)
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(url, updateRepo) {
-		return fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, url, updateRepo)
+	if !remoteIsUpstream(remoteURL) {
+		return fmt.Errorf("refusing to build from %s: remote %q is %s, not %s", repo, remote, remoteURL, updateRepo)
 	}
 	return nil
 }
