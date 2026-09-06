@@ -1,10 +1,11 @@
 ---
 issue: null
+pr: 352
 title: "Idea inbox: capture ideas mid-session, start a session from one later"
 type: enhancement
 complexity: M
 priority: P1
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Idea inbox: capture ideas mid-session, start a session from one later

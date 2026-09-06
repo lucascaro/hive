@@ -3,8 +3,8 @@
 - **Spec:** [docs/product-specs/337-idea-inbox.md](../../product-specs/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/337-idea-inbox`
-- **PR:** —
+- **Branch:** `cedar-light` (phase 1)
+- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1)
 - **Status:** active
 
 ## Summary
