@@ -11,7 +11,12 @@
 import { flushSync } from 'react-dom';
 import { AddIdea } from '../../bridge.js';
 import { reportFailure } from '../dom.js';
-import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import {
+  anyModalOpen,
+  closeModal,
+  isModalOpen,
+  openModal,
+} from '../../store/store.js';
 import { pageEl } from '../el.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
 import { activeProjectId } from '../selectors.js';
@@ -50,6 +55,10 @@ export function closeQuickIdea(): void {
   // handler, the sheet's own Escape), and refocusActiveTerm() must not
   // run while the sheet is still on screen.
   flushSync(() => closeModal('quick-idea'));
+  // Only when this was the last modal. The sheet can be opened over
+  // another one, and handing focus to the terminal underneath a still-
+  // open dialog sends the user's next keystrokes to the PTY behind it.
+  if (anyModalOpen()) return;
   deps.refocusActiveTerm();
 }
 

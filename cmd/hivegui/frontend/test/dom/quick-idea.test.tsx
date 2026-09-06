@@ -13,7 +13,12 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
-import { resetStore, setProjects, setActiveId } from '../../src/store/store.js';
+import {
+  openModal,
+  resetStore,
+  setActiveId,
+  setProjects,
+} from '../../src/store/store.js';
 
 const AddIdea = vi.fn(
   (_s: string, _p: string, _k: string, _t: string): Promise<void> =>
@@ -155,6 +160,30 @@ describe('quick idea capture', () => {
     expect(AddIdea).not.toHaveBeenCalled();
     expect(el('quick-idea').classList.contains('hidden')).toBe(true);
     expect(refocusActiveTerm).toHaveBeenCalled();
+  });
+
+  it('closes on Escape without sending anything', async () => {
+    await openOn('p1');
+    fireEvent.change(textField(), { target: { value: 'dropped' } });
+    // ModalShell's own root listener — the fallback for when focus is
+    // already inside the sheet, which it is here.
+    fireEvent.keyDown(el('quick-idea'), { key: 'Escape' });
+    await flush();
+    expect(AddIdea).not.toHaveBeenCalled();
+    expect(el('quick-idea').classList.contains('hidden')).toBe(true);
+    expect(refocusActiveTerm).toHaveBeenCalled();
+  });
+
+  it('does not hand focus to the terminal while another modal is still open', async () => {
+    // ⌘I from the inbox closes the inbox first, so this is the
+    // defensive case: a sheet opened over a modal that stays up must
+    // not send the next keystrokes to the PTY behind it.
+    openModal({ id: 'idea-inbox', projectId: 'p1', projectName: 'hive' });
+    await openOn('p1');
+    fireEvent.click(el('quick-idea-cancel'));
+    await flush();
+    expect(el('quick-idea').classList.contains('hidden')).toBe(true);
+    expect(refocusActiveTerm).not.toHaveBeenCalled();
   });
 
   it('starts clean on a re-open rather than showing the last draft', async () => {

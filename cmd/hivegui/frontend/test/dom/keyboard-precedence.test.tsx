@@ -117,6 +117,28 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
   toggleHelpOverlay: vi.fn(),
 }));
 
+// The two idea modals. Partially mocked, unlike the four above:
+// ideaInboxProjectId is the REAL one, reading the open modal entry off
+// the store, because the ⌘I-from-the-inbox case below is exactly about
+// which project id reaches the capture sheet.
+const closeQuickIdea = vi.fn();
+const openQuickIdea = vi.fn();
+const closeIdeaInbox = vi.fn();
+vi.mock('../../src/app/modals/quick-idea.js', () => ({
+  closeQuickIdea: () => closeQuickIdea(),
+  openQuickIdea: (...a: unknown[]) => openQuickIdea(...a),
+  initQuickIdea: vi.fn(),
+  submitIdea: vi.fn(),
+  IDEA_KINDS: ['idea', 'bug', 'feedback'],
+}));
+vi.mock('../../src/app/modals/idea-inbox.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../src/app/modals/idea-inbox.js')
+  >()),
+  closeIdeaInbox: () => closeIdeaInbox(),
+  openIdeaInbox: vi.fn(),
+}));
+
 type Store = typeof import('../../src/store/store.js');
 let openModal: Store['openModal'];
 let resetStore: Store['resetStore'];
@@ -134,6 +156,8 @@ beforeAll(async () => {
     <div id="settings" class="hv-dialog hidden"></div>
     <div id="worktrees" class="hv-dialog hidden"></div>
     <div id="project-editor" class="hv-dialog hidden"></div>
+    <div id="quick-idea" class="hv-dialog hidden"></div>
+    <div id="idea-inbox" class="hv-dialog hidden"></div>
     <div id="help-overlay" class="hv-dialog hidden"></div>
     <div id="choice-dialog" class="hv-dialog hidden"></div>
     <div id="command-palette" class="hidden"></div>`;
@@ -223,6 +247,17 @@ const LAYERS: {
     ran: () => closeWorktrees.mock.calls.length > 0,
   },
   {
+    name: 'quick idea',
+    open: () => openModal({ id: 'quick-idea', projectId: 'p' }),
+    ran: () => closeQuickIdea.mock.calls.length > 0,
+  },
+  {
+    name: 'idea inbox',
+    open: () =>
+      openModal({ id: 'idea-inbox', projectId: 'p', projectName: '' }),
+    ran: () => closeIdeaInbox.mock.calls.length > 0,
+  },
+  {
     name: 'help overlay',
     open: () => openModal({ id: 'help' }),
     ran: () => closeHelpOverlay.mock.calls.length > 0,
@@ -254,6 +289,9 @@ beforeEach(() => {
     closeWorktrees,
     closeHelpOverlay,
     closeCommandPalette,
+    closeQuickIdea,
+    openQuickIdea,
+    closeIdeaInbox,
     dismissDead,
   ]) {
     m.mockClear();
@@ -329,5 +367,35 @@ describe('the handler is registered capture-phase', () => {
     // The sink outlives this test — every later dispatch on #terms would
     // be swallowed by a listener that has nothing to do with them.
     sink.removeEventListener('keydown', stop);
+  });
+});
+
+// ⌘I from inside the open inbox files another idea for the project the
+// inbox is showing. Three things have to hold at once, and the first
+// implementation got all three wrong: the inbox CLOSES (every
+// .hv-dialog shares z-index 40 and #idea-inbox is later in index.html,
+// so a sheet left over it would paint behind it), the sheet OPENS, and
+// it opens on the INBOX's project rather than the focused session's.
+// cmdOrCtrl() rejects an event carrying BOTH modifiers, so the chord
+// has to be spelled with whichever one this platform treats as primary.
+const primaryMod = (): KeyboardEventInit =>
+  navigator.platform.toLowerCase().includes('mac') ||
+  navigator.userAgent.toLowerCase().includes('mac')
+    ? { metaKey: true }
+    : { ctrlKey: true };
+
+describe('⌘I inside the idea inbox', () => {
+  it('closes the inbox and opens the sheet on the inbox’s project', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    press('i', primaryMod());
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).toHaveBeenCalledWith('p9');
+  });
+
+  it('⇧⌘I still closes the inbox rather than capturing', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    press('i', { ...primaryMod(), shiftKey: true });
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).not.toHaveBeenCalled();
   });
 });

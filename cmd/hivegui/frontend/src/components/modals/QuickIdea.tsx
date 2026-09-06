@@ -83,10 +83,12 @@ function QuickIdeaSheet({
       size="sm"
       title="Capture idea"
       onClose={closeQuickIdea}
+      // patterns.md › Keyboard hints: `[…]` for symbols, `(…)` for
+      // letters, lowercase — same as every other modal.
       hints={[
-        { keys: '[Enter]', label: 'save' },
-        { keys: '[⇧Enter]', label: 'newline' },
-        { keys: '[Esc]', label: 'cancel' },
+        { keys: '[enter]', label: 'save' },
+        { keys: '[⇧enter]', label: 'newline' },
+        { keys: '[esc]', label: 'cancel' },
       ]}
       actions={
         <>

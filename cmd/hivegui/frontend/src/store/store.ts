@@ -1015,7 +1015,15 @@ export function setWorktreesPayload(payload: WorktreesPayload | null): void {
 // the daemon both use.
 
 function byCreatedDesc(list: IdeaInfo[]): IdeaInfo[] {
-  return [...list].sort((a, b) => (a.created < b.created ? 1 : -1));
+  // Ties break on id, not on input order: two ideas filed in the same
+  // second are common (a burst of `hived idea add`), and a comparator
+  // that never returns 0 lets their relative order flip on any
+  // re-sort — a row moving under the cursor between the click and the
+  // mouseup.
+  return [...list].sort((a, b) => {
+    if (a.created !== b.created) return a.created < b.created ? 1 : -1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }
 
 export function setIdeas(ideas: IdeaInfo[]): void {

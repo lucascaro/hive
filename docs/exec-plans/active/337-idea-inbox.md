@@ -725,6 +725,42 @@ path instead.
   it carries no per-binding table to update. The binding's drift
   surface here is `keyboard.ts`, `lib/shortcuts.ts` (both functions),
   `main.tsx`, `menu_darwin.go` and `README.md`.
+- **2026-09-06** — Review finding, fixed: ⌘I from inside the open inbox
+  was broken three ways at once. Every `.hv-dialog` shares `z-index:
+  40` and `#idea-inbox` is later in `index.html`, so the sheet painted
+  BEHIND the panel; `openQuickIdea()` was called with no argument, so
+  it prefilled `activeProjectId()` — the focused session's project, not
+  the inbox's — and filing from project B's inbox landed the note in
+  project A invisibly; and `ideaInboxProjectId()` sat unused, which is
+  what the intended code would have called. Fixed by closing the inbox
+  first and passing its project explicitly. Rejected: raising
+  `#quick-idea`'s z-index above 40 — this app has never stacked two
+  `hv-dialog`s, and each modal owns its own focus trap and Escape
+  branch, so stacking them is a second precedence ladder to maintain
+  for no gain over closing one.
+- **2026-09-06** — Review finding, fixed: `closeQuickIdea` called
+  `refocusActiveTerm()` unconditionally, which sends the next
+  keystrokes to the PTY behind any modal the sheet was opened over. Now
+  guarded on `anyModalOpen()`. Kept even though the ⌘I-from-the-inbox
+  path above no longer leaves a modal up: the guard is what makes the
+  next caller safe, and it costs one line.
+- **2026-09-06** — Review finding, fixed: `byCreatedDesc` never
+  returned 0, so ideas sharing a timestamp (a burst of `hived idea
+  add`) reordered on every re-sort. Ties now break on id.
+- **2026-09-06** — Review finding, fixed: the two branches that can
+  destroy work had no test at any layer. Added
+  `test/dom/idea-events.test.ts` for the `project_has_ideas`
+  confirm-then-force delete (confirm, cancel, and the project that
+  vanished mid-question) and the `idea:list`/`idea:event` sinks
+  including malformed payloads; and Go payload assertions in
+  `app_calls_test.go` for `UpdateIdea`'s empty-string→pointer mapping
+  (a regression there blanks an idea's text with every suite green),
+  `AddIdea`, and `KillProject`'s `deleteIdeas` flag.
+- **2026-09-06** — `test/dom/keyboard-precedence.test.tsx` gains the two
+  new modal layers. The ladder grew from nine layers to eleven in this
+  PR and the table did not follow — exactly the drift that file exists
+  to catch. It also carries the ⌘I-from-the-inbox regression, because
+  that is where the ladder is already exercised.
 
 ## Review log
 
@@ -908,6 +944,11 @@ a regression guard against a future "drop the orphan" change, not
 evidence for the new branch), and an idea loaded when no project exists
 stays project-filter-unreachable until the next boot — documented in the
 code and self-healing.
+
+### Phase 2 (PR #358)
+
+- **2026-09-06 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9e1766c6e41477d97f4407cd26736dc38bdf20c83bbc06c98f2bf2e2b8f161c3; threads_open: 0; action: autofix+push (biome formatting on the two new dom test files — CI was red), then escalated:risky-fix-needs-human-decision (4 items); head_sha: adff33d.
+- **2026-09-06 iter 1b** — the four RISKY items were taken by the operator rather than left standing: the ⌘I-from-the-inbox stacking + wrong-project bug, `closeQuickIdea`'s unconditional refocus, and the two missing test dimensions. See the Decision log entries of the same date.
 
 ## Open questions
 

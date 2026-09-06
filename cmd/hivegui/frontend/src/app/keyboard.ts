@@ -48,7 +48,11 @@ import {
 import { openSettings, closeSettings } from './modals/settings.js';
 import { openWorktrees, closeWorktrees } from './modals/worktrees.js';
 import { openQuickIdea, closeQuickIdea } from './modals/quick-idea.js';
-import { openIdeaInbox, closeIdeaInbox } from './modals/idea-inbox.js';
+import {
+  openIdeaInbox,
+  closeIdeaInbox,
+  ideaInboxProjectId,
+} from './modals/idea-inbox.js';
 import {
   choiceDialogOpen,
   dismissChoiceDialog,
@@ -249,10 +253,7 @@ window.addEventListener(
       return; // the capture sheet owns the keyboard while open
     }
     if (isModalOpen('idea-inbox')) {
-      // ⇧⌘I toggles closed; plain ⌘I is deliberately NOT trapped here —
-      // it falls through to the binding below so you can file a second
-      // idea straight from the inbox, which is the panel's own footer
-      // hint.
+      // ⇧⌘I toggles closed.
       if (
         e.key === 'Escape' ||
         (cmdOrCtrl(e) && e.shiftKey && (e.key === 'i' || e.key === 'I'))
@@ -262,10 +263,21 @@ window.addEventListener(
         closeIdeaInbox();
         return;
       }
+      // ⌘I files another idea for the project whose inbox is open. The
+      // inbox CLOSES first and the project is passed explicitly, which
+      // is two bugs avoided rather than a style choice: every
+      // .hv-dialog shares z-index 40 and #idea-inbox is later in
+      // index.html, so a sheet opened over it would paint BEHIND it;
+      // and openQuickIdea() with no argument prefills
+      // activeProjectId(), which is the focused session's project, not
+      // the inbox's — filing from another project's inbox would land
+      // the note somewhere the user never looked.
       if (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         e.stopPropagation();
-        openQuickIdea();
+        const projectId = ideaInboxProjectId();
+        closeIdeaInbox();
+        openQuickIdea(projectId);
         return;
       }
       if (trapFocus(pageEl('idea-inbox'), e)) e.stopPropagation();

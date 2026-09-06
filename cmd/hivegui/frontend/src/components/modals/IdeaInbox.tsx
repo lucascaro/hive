@@ -87,7 +87,7 @@ function IdeaInboxPanel({
       // patterns.md › Keyboard hints: `[…]` for symbols, `(…)` for letters.
       hints={[
         { keys: '[esc]', label: 'close' },
-        { keys: '[⌘I]', label: 'capture another' },
+        { keys: '[⌘i]', label: 'capture another' },
       ]}
     >
       <div className="idea-list" id="idea-inbox-list">
