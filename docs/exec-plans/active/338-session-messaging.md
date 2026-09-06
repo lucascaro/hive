@@ -17,9 +17,13 @@ the embedded Pi extension. Written so each phase is one agent run.
 
 ## Research
 
-- Spec 336 exec plan — `agentstate.Machine`, `Entry.state`, ticker,
+- Spec 336 **as shipped** (not as planned — it merged as #338/#341/#344/
+  #348/#350 and the names moved; verified against `main` 2026-09-06):
+  `agentstate.Machine` + `Entry.state`, the ticker,
   `internal/agent/pi/hive.ts`, `Def.SpawnArgs`. This plan extends all
-  four.
+  four. Four call-outs where this plan still names things 336 did not
+  ship under those names — see **Plan freshness** below before writing
+  code.
 - `internal/session/session.go` — the PTY input path the attach mode
   uses for `FrameData` C→S (find `Write`/`Input` on `Session`); the
   typed strategy calls it directly from the registry.
@@ -27,7 +31,8 @@ the embedded Pi extension. Written so each phase is one agent run.
   first idle; the "queue until idle" strategy generalises it to a
   small FIFO `pendingInputs []string` drained one per idle transition
   with a 300 ms grace.
-- `internal/wire/control.go:415-450` — `Error` + `ErrCode*` constants;
+- `internal/wire/control.go:~580` — `Error` + `ErrCode*` constants (336’s
+  `SessionInfo` fields pushed the block down from :415);
   add `session_busy`, `session_dead`, `delivery_failed`.
 - `internal/notify/` — desktop notification entry point; the daemon
   already calls it for attention. Ping-when-idle uses the same call.
@@ -97,8 +102,13 @@ Chosen in `registry.SendToSession(id, text, queue)` by `e.Agent`:
   text: replace `\n` with `\r` only for the typed path, documented as a
   ceiling (`ponytail:` comment).
 - Dead session (`!Alive`) ⇒ `ErrCodeSessionDead` before any strategy.
-- **Version gate**: `claudeInbox` is attempted only when 336's
-  `claudeVersion()` is within `[minInboxVersion, maxKnownBadInboxVersion)`;
+- **Version gate**: 336 shipped this as `claudeVersionSupportsHooks()`
+  with `minHooksVersion = "2.1.0"` and `maxKnownBadHooksVersion = ""`
+  (`internal/agent/claude.go:128,167,175`) — there is no
+  `claudeVersion()`, and `minInboxVersion` /
+  `maxKnownBadInboxVersion` do not exist. Copy the shape, add inbox
+  constants of its own: `claudeInbox` is attempted only when the parsed
+  version is within `[minInboxVersion, maxKnownBadInboxVersion)`;
   otherwise `typed` directly, no dial. Both internal surfaces this
   strategy touches (registry JSON shape, message line) are isolated in
   `claude_inbox.go` with the fixture pinned to a Claude version; the
@@ -111,12 +121,27 @@ goroutine (it dials sockets) drained in `Close`, like the git frames.
 
 - `Entry.NotifyWhenIdle bool`. `UpdateSession` with the pointer set
   flips it and broadcasts `SessionEventUpdated`.
-- In the same place the registry reacts to a state change (336's
-  `ApplyAgentEvent`/`Tick`/hook callbacks all funnel through one
-  `onStateChanged(e, prev, next)`), if `e.NotifyWhenIdle && prev == working
-  && next ∈ {idle, exited, error}` ⇒ `notify.Send(title, e.LastSummary)`,
-  clear the flag, broadcast. Notification title:
+- In the same place the registry reacts to a state change. 336 shipped
+  that funnel as `announceStateLocked(e *Entry, prev agentstate.Snapshot,
+  reason string)` (`internal/registry/registry.go:474`) — not
+  `onStateChanged(e, prev, next)`, and it carries a `reason` string
+  rather than the next snapshot (read `e.state.Snapshot()` for that).
+  If `e.NotifyWhenIdle && prev == working && next ∈ {idle, exited,
+  error}` ⇒ notify, clear the flag, broadcast. Notification title:
   `"<session> is <idle|done|failed>"`; body = `LastSummary` or empty.
+- **Open: who fires that notification.** This plan says the registry
+  calls `notify.Send`. Neither half survives contact with `main`: the
+  function is `notify.Notify(title, subtitle, body, tag)`, and
+  `internal/notify` is imported by exactly one file, `cmd/hivegui/app.go`.
+  336 recorded that as a deliberate boundary — the GUI fires
+  notifications on the event it receives, the daemon never imports
+  `internal/notify` — so having the registry notify would invert it, and
+  would also fire nothing at all for a user running `hived` with no GUI
+  attached, which is not obviously wrong but is a different product
+  decision. Resolve before Phase 3: either broadcast a session event and
+  let the GUI notify (consistent with 336, no daemon-side notification
+  when headless), or argue explicitly for the daemon owning it and
+  record the reversal in the decision log.
 
 ### `hived msg` (`cmd/hived/msg.go`)
 
@@ -200,6 +225,35 @@ shell) message any other session with the same semantics the GUI has.
 3. Claude inbox strategy (after open question 1).
 4. Pi inbox strategy.
 
+## Plan freshness
+
+Checked against `main` on 2026-09-06, after all of 336 merged. This plan
+was written before 336 shipped, and four things it names did not ship
+under those names. Each is corrected in place above; collected here so a
+worker sees them before picking a phase.
+
+| Plan said | `main` has | Where |
+|---|---|---|
+| `onStateChanged(e, prev, next)` | `announceStateLocked(e, prev, reason)` | `registry.go:474` |
+| `notify.Send(title, body)` from the registry | `notify.Notify(title, subtitle, body, tag)`, imported only by `cmd/hivegui/app.go` | layering decision, see Approach |
+| `claudeVersion()`, `minInboxVersion`, `maxKnownBadInboxVersion` | `claudeVersionSupportsHooks()`, `minHooksVersion`, `maxKnownBadHooksVersion` | `claude.go:128,167,175` |
+| `control.go:415-450` for `ErrCode*` | the block is at ~`:580` | `control.go` |
+
+Two dependencies to weigh before starting, neither a defect in this plan:
+
+- **Frame ids assume 337 ships first.** This plan takes `0x29`/`0x2a`;
+  337 claims `0x23`–`0x28`. `main` runs to `0x22`. If 338 goes first,
+  either take `0x23`/`0x24` and let 337 renumber, or keep the gap
+  deliberately and say so — an unexplained hole in the id space is the
+  kind of thing a later reader "tidies up".
+- **The `pendingInputs` FIFO generalises 337's `pendingPrompt`**, which
+  does not exist yet (337 is unstarted). Phase ordering has to account
+  for building the thing it generalises, or build the FIFO first and
+  let 337 adopt it.
+
+`DaemonContract` is 4 on `main` (336 took it to 4); this plan's bump
+makes it 5.
+
 ## Decision log
 
 - **2026-09-04** — Claude messages go through Claude's own inbox socket,
@@ -213,6 +267,13 @@ shell) message any other session with the same semantics the GUI has.
   transcript already holds it; a second copy is a sync problem.
 
 ## Progress
+
+- **2026-09-06** — refreshed against `main` after all of 336 merged
+  (#338/#341/#344/#348/#350). No implementation yet. Four stale symbol
+  names corrected in place and collected in **Plan freshness**; the one
+  that needs a decision rather than a rename is who fires the
+  ping-when-idle notification, since 336 deliberately kept
+  `internal/notify` out of the daemon.
 
 - **2026-09-04** — Spec and plan written; stage PLAN.
 
