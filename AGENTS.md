@@ -139,6 +139,12 @@ custom agents at runtime via the GUI Settings screen (persisted to
   `docs/exec-plans/completed/210-real-e2e-tests.md`.
 - Go tests live beside source (`x_test.go` next to `x.go`); frontend tests live
   under `cmd/hivegui/frontend/test/`.
+- **Manual smoke rows, without a human** — see
+  [docs/verifying-the-gui-by-hand.md](docs/verifying-the-gui-by-hand.md). A plan
+  that says "build the app and look at it" does *not* need eyes: `wails dev`
+  publishes the real frontend, driven by the real daemon, at
+  `http://localhost:34115`, and a throwaway Playwright script can read the DOM
+  there. Do that before reporting a checklist row as unrunnable.
 
 ---
 

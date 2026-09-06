@@ -496,7 +496,9 @@ HIVE_PROBE_CLAUDE=1 HIVE_DEBUG_STATE=1 go test ./cmd/hived/ -run TestClaudeProbe
 ### Manual smoke checklist
 
 Run against an iso build (`wails build`, never `-s`) with the daemon
-started as `HIVE_DEBUG_STATE=1`. Every row is pass/fail with the log
+started as `HIVE_DEBUG_STATE=1` — or, for every row that is only "look
+at the app", through `wails dev`'s browser dev server, which needs no
+human: [docs/verifying-the-gui-by-hand.md](../../verifying-the-gui-by-hand.md). Every row is pass/fail with the log
 line that proves it; "looks fine" is not a result. Record the Claude
 version and the table in Progress before each push that touches state.
 
@@ -1470,6 +1472,68 @@ decision-log entry with the log excerpt BEFORE any code changes.
   - Criteria 6 and 7: rows 15–16 now exist for the menu bar and the
     tooltip, but have never been run.
   These need `wails build` (never `-s`) and a human. Stage stays GATE.
+
+- **2026-09-05 (row 14, extension tier — PASSES)** — criterion 3 is
+  now covered by a committed probe rather than a checklist row a human
+  has to remember: `TestPiProbeReportsThroughTheExtension`
+  (`cmd/hived/pi_probe_test.go`), the Pi twin of `TestClaudeProbe*` —
+  opt-in with `HIVE_PROBE_PI=1`, it launches a real `pi` through the
+  daemon with the embedded extension and asserts the extension tier
+  (`session_start` ping), `working` on that tier, the typed prompt in
+  `LastPrompt`, and `idle` + a non-empty `LastSummary` on
+  `agent_settled`. It passes against pi on node v24.16.0.
+
+  Two things the probe found on the way:
+
+  - The tier is promoted by the `session_start` ping, which lands while
+    the heuristic tier already has the session `working` from pi's own
+    startup repaint. A single wait on `working` + `extension` is
+    therefore satisfied *before* the `prompt` event carrying the text
+    arrives, and the prompt assertion fires on an empty field. The
+    probe waits on the two facts separately. Not a product defect —
+    `working -> working src=extension reason=ping` is the machine
+    behaving as designed — but any client that treats "tier promoted"
+    as "text available" has the same race.
+  - The preflight checks `node -v` through the login shell, not
+    `pi --version`: pi wants a TTY and exits non-zero without one, so
+    it cannot answer a preflight. A login shell resolving an old node
+    runs a pi that dies in its own bundle
+    (`SyntaxError: Unexpected token '??='`) about five seconds in,
+    before the extension loads, and without the preflight that reports
+    as a bare timeout on the extension tier. That is what the first run
+    of this probe hit: the agent session's `SHELL` was zsh, whose
+    profile loads nvm and puts v14.15.0 on `PATH`, while the user's
+    real login shell is fish (fnm, node 24) — so Hive in normal use was
+    never affected. The zsh profile has since been given the same fnm
+    init fish has.
+
+- **2026-09-05 (smoke checklist, browser-driven)** — the checklist rows
+  that had been outstanding since phase 2 were run against a REAL
+  daemon and the REAL frontend, not a mock: `wails dev` in the worktree
+  with `HIVE_SOCKET`/`HIVE_STATE_DIR` pointed at the iso dir, driven
+  through its browser dev server (`http://localhost:34115`) with a
+  throwaway Playwright script. Screen recording is not permitted to
+  this agent, so `screencapture` and the native window were both dead
+  ends; the dev server is the way in, and it is strictly better
+  evidence than a photograph — the assertions read
+  `svg.hv-state-icon[data-state]` and its `<title>` directly.
+
+  | Row | Result | Observed |
+  |---|---|---|
+  | 1 | PASS | `ls -R /usr/lib` → `working` during output, `running` (idle) 4 s later, sidebar and tile agree |
+  | 2 | PARTIAL | `printf '\a'` → `attention` on both glyphs (see `bell.png`). The OS notification is fired by the GUI process, which a headless browser has none of — not observed |
+  | 3 | not run | one session in the iso registry, so "switch to that session" has no counterpart |
+  | 4 | PASS | bell + 8 s with no key: still `attention`, no self-clear |
+  | 5 | PASS | keypress clears it. Lands on `working`, not `idle` — the keystroke echoes, and echo is output; it settles to idle on the next quiet tick. The row's "idle" is imprecise, the behaviour is right |
+  | 6 | PASS | `exit` → `exited`, tooltip drops the provenance line (dead session, no tier observed — `stateTooltip`'s `s.alive` guard) |
+  | 13 | PASS | daemon killed and restarted under the running GUI: the session that had been hook-tier with prompt+summary came back `Idle` / `guessed from terminal output` / no text |
+  | 15 | not run | hivebar is an `NSStatusItem`; its menu cannot be opened or read without screen control. Still needs a human |
+  | 16 | PASS (both tiers) | heuristic: `"Idle\nguessed from terminal output"`. Hook tier, fired by the real `hived hook` binary over the real event socket with the repo's own fixtures: `"Idle\n“reply pong”\npong\nreported by the agent"` — state, quoted prompt, summary, provenance, identical on the sidebar row and the tile header |
+
+  Criteria 6 and 7's tooltip half is therefore observed in a real
+  browser against a real daemon. What is still unobserved: the menu bar
+  (row 15), the desktop notification (row 2's second half), and the
+  extension tier (row 14, blocked above).
 
 ## Open questions
 
