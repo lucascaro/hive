@@ -126,6 +126,20 @@ echo "Committing and tagging ${TAG}..."
 git add CHANGELOG.md ${VERSION_FILE:+"$VERSION_FILE"}
 if [[ "$USE_CHANGESETS" == "1" ]]; then
     git add -A .changesets/
+    # Stage every file regen-generated.py may have rewritten above, asking it
+    # for the list rather than repeating one here. A hand-maintained copy is
+    # exactly what went wrong once: site/features.json became a release-time
+    # stamping target, this line still said CHANGELOG.md only, and the stamp
+    # stayed uncommitted — so the released feature never reached the website
+    # and the NEXT release aborted on the clean-tree guard above.
+    # if/fi, not `[[ -e ]] && git add`: under `set -e` a false test as the
+    # last command in the loop body exits the script, so a repo without one
+    # of the optional targets would abort the release.
+    while IFS= read -r generated; do
+        if [[ -e "$generated" ]]; then
+            git add "$generated"
+        fi
+    done < <(scripts/regen-generated.sh --list-targets)
 fi
 git commit -m "release: ${TAG}"
 git tag "$TAG"

@@ -293,7 +293,16 @@ rotting:
    primitive it decorates, not with the one screen that uses it. The
    accessible name also carries the state in words (`"What's new — unread"`),
    which the plan did not call for.
-4. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
+4. **`scripts/release.sh` stages what `regen-generated.py` rewrote.** Adding a
+   release-time stamping target (amendment 2) was only half the job: the
+   release commit staged a hand-written list that did not include
+   `site/features.json`, so the stamp would have stayed uncommitted — dropping
+   every released feature from the website and aborting the next release on
+   its clean-tree guard. `release.sh` now reads `--list-targets` from
+   `regen-generated.py`, so a future target needs no edit there at all, and
+   the self-test asserts it still does. **Files added to the plan's list:**
+   `scripts/release.sh`.
+5. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
    The repo root would have served `.git` and every dotfile over the dev
    server. `vitest.config.js` needed no change at all — verified, not assumed.
 
@@ -375,3 +384,4 @@ fixed; no reviewer objection to the approach itself is outstanding.
 Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2354a4c8; threads_open: 0; action: fixes-applied+push (3 IMPORTANT + 2 MINOR fixed by hand rather than stopping on COMMENT); head_sha: 1048470.
 - **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e56397bd; threads_open: 0; action: fixes-applied+push (5 IMPORTANT + 3 MINOR; 3 were fallout from the iter-1 fixes); head_sha: ba1f45b.
+- **2026-09-06 iter 3** — verdict: REQUEST_CHANGES (1 BLOCKING); mergeable: MERGEABLE; findings_hash: cae42913; threads_open: 0; action: fixes-applied+push (release.sh never staged the stamped features.json); head_sha: 0dc1afe.

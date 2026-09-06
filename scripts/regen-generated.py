@@ -454,11 +454,33 @@ def _write_if_changed(path: Path, new_text: str) -> bool:
 # ---------- main ------------------------------------------------------------
 
 
+# Every file this script may rewrite, repo-relative. `--list-targets` prints
+# it so scripts/release.sh can stage exactly what a release run touched
+# WITHOUT keeping its own copy of the list. That duplication is not
+# hypothetical: site/features.json was added here as a release-time stamping
+# target and release.sh went on staging only CHANGELOG.md, which left the
+# stamp uncommitted, dropped the released feature from the website forever,
+# and tripped the next release's clean-tree guard. Adding a target here is now
+# enough; release.sh needs no edit.
+RELEASE_TARGETS = [
+    "CHANGELOG.md",
+    "site/features.json",
+    "docs/product-specs/index.md",
+    "docs/exec-plans/tech-debt-tracker.md",
+]
+
+
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else "")
     p.add_argument("--check", action="store_true", help="exit non-zero if any aggregate would change (read-only)")
     p.add_argument("--release", metavar="VERSION", help="promote [Unreleased] body to a stamped section")
+    p.add_argument("--list-targets", action="store_true", help="print every file this script may rewrite, one per line")
     args = p.parse_args(argv)
+
+    if args.list_targets:
+        for target in RELEASE_TARGETS:
+            print(target)
+        return 0
 
     if args.check and args.release:
         sys.stderr.write("--check and --release are mutually exclusive\n")

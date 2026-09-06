@@ -88,6 +88,22 @@ def main() -> int:
         features_path.unlink()
         check("missing file is a no-op", regen.stamp_features_release("2.7.0"), False)
 
+    # The stamp is only useful if the release commit carries it. release.sh
+    # must discover the file list from --list-targets rather than repeating
+    # one, because a hand-maintained copy is precisely what let the
+    # features.json stamp go uncommitted the first time.
+    check(
+        "site/features.json is a declared release target",
+        "site/features.json" in regen.RELEASE_TARGETS,
+        True,
+    )
+    release_sh = (HERE / "release.sh").read_text(encoding="utf-8")
+    check(
+        "release.sh stages generated files via --list-targets",
+        "--list-targets" in release_sh,
+        True,
+    )
+
     if failures:
         for f in failures:
             sys.stderr.write(f"regen-features-selftest: FAIL {f}\n")
