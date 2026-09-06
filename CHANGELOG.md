@@ -103,6 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for a file the old daemon never bound. The dying daemon now asks the
   socket instead of the filesystem, and leaves any socket that is still
   being served alone.
+- Clicking a link in a terminal now only opens http, https and mailto
+  URLs. A program could previously print a link labelled with one thing
+  that pointed at a local file or another app's URL scheme, and a click
+  would launch it.
 
 ## [2.6.0] — 2026-09-04
 
