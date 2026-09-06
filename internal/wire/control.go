@@ -737,9 +737,11 @@ const (
 	// ErrCodeModeNotAllowed is returned INSTEAD of serving the HELLO
 	// when the mode is not offered on the socket it arrived at. The
 	// events socket — the one spawned sessions inherit as HIVE_SOCKET
-	// — serves ModeEvent alone, so a process inside a session cannot
-	// use the environment it was handed to create, attach to or kill
-	// sessions.
+	// — serves ModeEvent and the narrowed ModeSession only, so a
+	// process inside a session cannot use the environment it was
+	// handed to create, attach to or kill sessions. It is also the
+	// code a ModeSession connection gets for any verb outside
+	// ADD_IDEA / LIST_IDEAS.
 	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
