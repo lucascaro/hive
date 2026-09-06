@@ -5,7 +5,7 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 363
-stage: REVIEW
+stage: GATE
 ---
 
 # Natural text editing keybindings in the terminal

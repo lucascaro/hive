@@ -349,6 +349,8 @@ _(append-only, one line per review-loop iteration)_
   `\x1b[1;5D/C` = word movement). Autofixed: label is now platform-conditional,
   with a unit test pinning both halves. Checks green (unit + dom 628, biome ci,
   typecheck).
+- **2026-09-06 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 6de65889; threads_open: 0; action: autofix+push; head_sha: db0c550e.
+- **2026-09-06 iter 2** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: db0c550e.
 
 ## Open questions
 
