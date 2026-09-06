@@ -402,6 +402,12 @@ func TestSessionModeReceivesNoForeignEvents(t *testing.T) {
 // every persisted session and fork a second PTY for each.
 func TestNewRefusesASecondDaemonOnOneStateDir(t *testing.T) {
 	skipOnWindows(t)
+	// Shrink the retry budget: this test is about the refusal, and the
+	// production budget would make it sit here for five seconds.
+	orig := stateLockBudget
+	stateLockBudget = 200 * time.Millisecond
+	t.Cleanup(func() { stateLockBudget = orig })
+
 	tmp := shortTempDir(t)
 	state := filepath.Join(tmp, "state")
 	first, err := New(Config{SocketPath: filepath.Join(tmp, "s1"), StateDir: state})
@@ -450,4 +456,106 @@ func sessionConn(t *testing.T, d *Daemon, sessionID string) net.Conn {
 		t.Fatalf("snapshot: %v", err)
 	}
 	return c
+}
+
+// A ModeSession HELLO whose session id resolves to nothing — a stale
+// HIVE_SESSION_ID from a copied environment — gets the idea verbs
+// refused rather than falling through to an unscoped registry call.
+func TestSessionModeUnknownSessionRefusesIdeaVerbs(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	c := sessionConn(t, d, "no-such-session")
+	defer c.Close()
+
+	before := len(d.Registry().ListIdeas(""))
+	for _, f := range []struct {
+		frame wire.FrameType
+		body  any
+	}{
+		{wire.FrameListIdeas, wire.ListIdeasReq{}},
+		{wire.FrameAddIdea, wire.AddIdeaReq{Text: "from nowhere"}},
+	} {
+		if err := wire.WriteJSON(c, f.frame, f.body); err != nil {
+			t.Fatalf("%s: %v", f.frame, err)
+		}
+		if err := awaitModeNotAllowed(t, c); err != nil {
+			t.Fatalf("%s: %v", f.frame, err)
+		}
+	}
+	if got := len(d.Registry().ListIdeas("")); got != before {
+		t.Fatalf("ideas: %d → %d; an unresolvable session must not be able to file one", before, got)
+	}
+}
+
+// A ModeSession connection that goes quiet is hung up on; a control
+// connection, which is idle by design between user actions, is not.
+func TestSessionModeIdleDeadlineHangsUpQuietConnections(t *testing.T) {
+	skipOnWindows(t)
+	orig := sessionModeIdleDeadline
+	sessionModeIdleDeadline = 150 * time.Millisecond
+	t.Cleanup(func() { sessionModeIdleDeadline = orig })
+
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+
+	quiet := sessionConn(t, d, id)
+	defer quiet.Close()
+	_ = quiet.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err := wire.ReadFrame(quiet); err == nil {
+		t.Fatal("idle session connection was not hung up on")
+	}
+
+	// The control socket is exempt: same silence, still connected.
+	ctl := dial(t, d)
+	defer ctl.Close()
+	if err := wire.WriteJSON(ctl, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "test/0", Mode: wire.ModeControl,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var w wire.Welcome
+	if _, err := wire.ReadJSON(ctl, &w); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * sessionModeIdleDeadline)
+	if err := wire.WriteJSON(ctl, wire.FrameListSessions, wire.ListSessionsReq{}); err != nil {
+		t.Fatalf("control connection was hung up on: %v", err)
+	}
+	_ = ctl.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		ft, _, err := wire.ReadFrame(ctl)
+		if err != nil {
+			t.Fatalf("control connection went quiet: %v", err)
+		}
+		if ft == wire.FrameSessions {
+			return
+		}
+	}
+}
+
+// The restart handoff: the outgoing daemon holds the lock until its
+// teardown finishes, and the replacement the GUI spawns into that gap
+// must wait rather than exit.
+func TestStateLockWaitsOutAClosingDaemon(t *testing.T) {
+	skipOnWindows(t)
+	orig := stateLockBudget
+	stateLockBudget = 3 * time.Second
+	t.Cleanup(func() { stateLockBudget = orig })
+
+	tmp := shortTempDir(t)
+	state := filepath.Join(tmp, "state")
+	first, err := New(Config{SocketPath: filepath.Join(tmp, "s1"), StateDir: state})
+	if err != nil {
+		t.Fatalf("first New: %v", err)
+	}
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		_ = first.Close()
+	}()
+
+	second, err := New(Config{SocketPath: filepath.Join(tmp, "s2"), StateDir: state})
+	if err != nil {
+		t.Fatalf("replacement daemon gave up on a lock the outgoing one was about to release: %v", err)
+	}
+	_ = second.Close()
 }
