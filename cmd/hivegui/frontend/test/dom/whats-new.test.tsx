@@ -6,8 +6,8 @@ import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SEEN_KEY,
+  groupByVersion,
   latestVersion,
-  UNRELEASED,
 } from '../../src/lib/whats-new.js';
 import { resetStore } from '../../src/store/store.js';
 
@@ -145,7 +145,7 @@ describe("the What's New modal", () => {
     expect(dialog().classList.contains('hidden')).toBe(false);
   });
 
-  it('lists releases newest first, with each feature and its blurb', async () => {
+  it('lists releases newest first, then what is coming next', async () => {
     await mount();
     await act(async () => {
       giftBtn().click();
@@ -153,18 +153,47 @@ describe("the What's New modal", () => {
     const headings = [
       ...dialog().querySelectorAll('.whats-new-release h4'),
     ].map((h) => h.textContent);
-    // Unreleased leads (this very feature lives there until a release stamps
-    // it), the newest stamped release follows, and "Coming next" is last.
-    expect(headings[0]).toBe(UNRELEASED);
-    expect(headings[1]).toBe(latestVersion());
+
+    // Derived from groupByVersion rather than hardcoded, because the source is
+    // the live features.json: hardcoding "Unreleased" first would fail the
+    // moment `regen-generated.py --release` stamps the last Unreleased entry,
+    // breaking the suite on the release path itself. Ordering is asserted
+    // against fixtures in test/unit/whats-new.test.ts.
+    const expected = groupByVersion().map((g) => g.version);
+    expect(expected.length).toBeGreaterThan(0);
+    expect(headings.slice(0, expected.length)).toEqual(expected);
     expect(headings.at(-1)).toBe('Coming next');
 
-    const items = [...dialog().querySelectorAll('.whats-new-release li')];
-    expect(items.length).toBeGreaterThan(0);
-    const undoClose = items.find((li) =>
-      li.textContent?.startsWith('Undo a close'),
+    // Every bullet carries its feature's title, and its blurb where the list
+    // gives one — asserted structurally, not against one feature's wording,
+    // which is prose someone will reword.
+    const groups = [...dialog().querySelectorAll('.whats-new-release')];
+    const firstRelease = groupByVersion()[0];
+    const rendered = [...groups[0].querySelectorAll('li strong')].map(
+      (el) => el.textContent,
     );
-    expect(undoClose?.textContent).toContain('reopens a closed session');
+    expect(rendered).toEqual(firstRelease.entries.map((e) => e.title));
+    const withBlurb = firstRelease.entries.find((e) => e.blurb);
+    if (withBlurb) {
+      const li = [...groups[0].querySelectorAll('li')].find((el) =>
+        el.textContent?.startsWith(withBlurb.title),
+      );
+      expect(li?.textContent).toContain(withBlurb.blurb);
+    }
+  });
+
+  it('renders exactly one non-empty "Coming next" section', async () => {
+    // The empty-planned branch in WhatsNew.tsx exists so an emptied list can
+    // never render a stray heading over nothing.
+    const { plannedOf } = await import('../../src/lib/whats-new.js');
+    expect(plannedOf([])).toEqual([]);
+    await mount();
+    await act(async () => {
+      giftBtn().click();
+    });
+    const planned = dialog().querySelectorAll('.whats-new-planned');
+    expect(planned).toHaveLength(1);
+    expect(planned[0].querySelectorAll('li').length).toBeGreaterThan(0);
   });
 
   it('closes on Escape', async () => {

@@ -267,6 +267,36 @@ layout has needed re-tuning before.
 - **Header layout at three buttons.** Flagged by `sidebar-header-actions.spec.ts`'s own history.
   Covered by the browser check above rather than assumed away.
 
+## Post-review amendments
+
+Review (`/hs-review-loop` iterations 1-2) changed the shape of the work in
+four places. The Files-to-change list above is the plan as approved; these are
+the deltas, so the two can be read together rather than the list quietly
+rotting:
+
+1. **The read receipt moved into the store.** The plan put `unread` in
+   `SidebarHeaderControls` as `useState`. That was wrong: `main.tsx` registers
+   a second opener — the command palette — which recorded the read while
+   leaving the dot up until a reload. `store.ts` now holds `whatsNewSeen` with
+   `markWhatsNewSeen` as the single writer, and the sidebar derives the dot
+   from it. **Files added:** none; `store/store.ts` gained a field and a setter.
+2. **`site/features.json` gained an `Unreleased` bucket, and
+   `scripts/regen-generated.py` gained `stamp_features_release`.** The plan's
+   `AGENTS.md` rule was unfollowable by the PR that introduces it — `since`
+   must be a released version and a new feature has none. `--release <version>`
+   now stamps `since: "Unreleased"` exactly as it promotes the changelog's
+   `[Unreleased]`. **Files added to the plan's list:**
+   `scripts/regen-generated.py`, `scripts/regen-features-selftest.py` (new),
+   `.github/workflows/changesets.yml`.
+3. **The unread dot's CSS landed in `theme/components/icon-button.css`, not
+   `sidebar.css`,** and hangs off `.hv-icon-btn.hv-unread`. It belongs with the
+   primitive it decorates, not with the one screen that uses it. The
+   accessible name also carries the state in words (`"What's new — unread"`),
+   which the plan did not call for.
+4. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
+   The repo root would have served `.git` and every dotfile over the dev
+   server. `vitest.config.js` needed no change at all — verified, not assumed.
+
 ## Decision log
 
 - **2026-09-05** — Content source: bundle `CHANGELOG.md` at build time rather
@@ -344,3 +374,4 @@ fixed; no reviewer objection to the approach itself is outstanding.
 
 Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2354a4c8; threads_open: 0; action: fixes-applied+push (3 IMPORTANT + 2 MINOR fixed by hand rather than stopping on COMMENT); head_sha: 1048470.
+- **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e56397bd; threads_open: 0; action: fixes-applied+push (5 IMPORTANT + 3 MINOR; 3 were fallout from the iter-1 fixes); head_sha: ba1f45b.

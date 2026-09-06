@@ -28,7 +28,14 @@ const card = (f) =>
     <h3>${esc(f.title)}</h3>
     ${f.blurb ? `<p>${esc(f.blurb)}</p>` : ""}
   </div>`;
-const shipped = features.filter((f) => f.status === "shipped").map(card).join("\n");
+// `since: "Unreleased"` is shipped on main but in no downloadable build yet,
+// and pages.yml redeploys this site on every merge — so including it here
+// would advertise a feature nobody can get. It appears once
+// `regen-generated.py --release` stamps it with a real version.
+const shipped = features
+  .filter((f) => f.status === "shipped" && f.since !== "Unreleased")
+  .map(card)
+  .join("\n");
 const planned = features.filter((f) => f.status === "planned")
   .map((f) => `<li${f.blurb ? ` title="${esc(f.blurb)}"` : ""}>${esc(f.title)}</li>`).join("\n");
 
