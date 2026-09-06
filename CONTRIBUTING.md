@@ -6,10 +6,13 @@ Thank you for your interest in contributing! This document explains how to build
 
 ### Prerequisites
 
-- **Go 1.25.14+** — [install](https://go.dev/dl/). The patch floor is
-  deliberate: `go.mod` pins it because CI's `setup-go` installs the `go`
-  directive verbatim, and the earlier 1.25.0 shipped stdlib advisories that
-  `govulncheck` reports as reachable.
+- **Go 1.27.1+** — [install](https://go.dev/dl/). The patch floor is
+  deliberate: `go.mod` names a full patch release because CI's `setup-go`
+  installs the `go` directive verbatim, so that one line decides the
+  toolchain every gate runs on. An end-of-life or pre-fix patch release
+  leaves stdlib advisories that `govulncheck` reports as reachable — which
+  is why the directive moves to the patched release rather than the step
+  being muted.
 - **Node 24+** and the **Wails CLI** for the desktop GUI:
   run `scripts/ci-bootstrap.sh` (installs the pinned Wails CLI version)
 

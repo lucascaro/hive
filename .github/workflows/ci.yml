@@ -178,7 +178,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/bin
-          key: go-analysis-tools-${{ runner.os }}-staticcheck2025.1.1-govulncheck1.7.0
+          key: go-analysis-tools-${{ runner.os }}-staticcheck2026.2.1-govulncheck1.7.0
 
       - name: Staticcheck (Go)
         if: matrix.biome
@@ -188,7 +188,7 @@ jobs:
         # new release can't turn a green PR red on its own.
         run: |
           BIN="$(go env GOPATH)/bin/staticcheck"
-          [ -x "$BIN" ] || go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+          [ -x "$BIN" ] || go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
           "$BIN" ./...
 
       - name: Vulnerability scan (govulncheck)
@@ -196,11 +196,12 @@ jobs:
         # Symbol-level: only reports vulns the code actually reaches.
         #
         # `go-version-file: go.mod` installs the `go` directive VERBATIM —
-        # 1.25.0 means 1.25.0, not "latest 1.25.x". That is why the directive
-        # names a patch release: on 1.25.0 this step reports three reachable
-        # stdlib advisories fixed in 1.25.13. Verifying locally under a
-        # different toolchain proves nothing about this step; match go.mod
-        # (GOTOOLCHAIN=go1.25.14) when you do.
+        # 1.27.0 means 1.27.0, not "latest 1.27.x". That is why the directive
+        # names a patch release: the 1.25 line this repo sat on went end of
+        # life with four reachable stdlib advisories against it, fixed only
+        # from 1.26.5 on. Verifying locally under a different toolchain
+        # proves nothing about this step; match go.mod
+        # (GOTOOLCHAIN=go1.27.1) when you do.
         #
         # The TOOL is pinned for the same reason staticcheck is — a tool
         # release must not turn a green PR red on its own. The advisory

@@ -57,7 +57,7 @@ notarization, platform installers, in-app updates on Windows/Linux.
 
 ## Build
 
-Requires Go 1.25.14+, Node 24+, and the Wails CLI:
+Requires Go 1.27.1+, Node 24+, and the Wails CLI:
 
 ```sh
 scripts/ci-bootstrap.sh  # installs the pinned Wails CLI + generates bindings
