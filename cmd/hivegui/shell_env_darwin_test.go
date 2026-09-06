@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeShell writes a script that behaves like a shell for probe
@@ -53,6 +54,37 @@ func TestResolveLoginPATHFallsBackWhenInteractiveRejected(t *testing.T) {
 			"PATH=/fallback/bin; export PATH\n")
 	if got := resolveLoginPATH(shell); got != "/fallback/bin" {
 		t.Errorf("resolveLoginPATH = %q, want the second argv form to be tried", got)
+	}
+}
+
+// The bound has to hold against the thing an interactive rc actually
+// does: background a job. That grandchild inherits stdout, and
+// Output() waits on the pipe rather than on the shell — so without
+// WaitDelay this probe returns when the background job ends, not when
+// the timeout expires, and the build button sits on "Updating…" until
+// it does.
+func TestResolveLoginPATHDoesNotWaitForBackgroundedRCJobs(t *testing.T) {
+	prev := loginEnvTimeout
+	loginEnvTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { loginEnvTimeout = prev })
+
+	shell := fakeShell(t, "", "sleep 30 &\nPATH=/rc/bin; export PATH\n")
+
+	done := make(chan string, 1)
+	start := time.Now()
+	go func() { done <- resolveLoginPATH(shell) }()
+	select {
+	case got := <-done:
+		// The shell printed everything before backgrounding anything,
+		// so the PATH must survive the WaitDelay cutoff.
+		if got != "/rc/bin" {
+			t.Errorf("resolveLoginPATH = %q, want /rc/bin — output is complete even when the pipe is held open", got)
+		}
+		if elapsed := time.Since(start); elapsed > 10*time.Second {
+			t.Errorf("resolveLoginPATH took %v, want it bounded by loginEnvTimeout", elapsed)
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("resolveLoginPATH blocked on the backgrounded rc job, want it bounded by loginEnvTimeout")
 	}
 }
 

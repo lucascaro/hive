@@ -93,21 +93,33 @@ func resolveLoginPATH(shell string) string {
 		ctx, cancel := context.WithTimeout(context.Background(), loginEnvTimeout)
 		cmd := exec.CommandContext(ctx, shell, append(argv, command)...)
 		cmd.Env = append(os.Environ(), resolveEnvSentinel+"=1")
+		// Killing the shell is not enough to make Output() return.
+		// Output() waits for the stdout *pipe* to close, and a
+		// grandchild inherits it — an rc file that backgrounds a
+		// version-manager warmup or an update check holds the pipe open
+		// for as long as that job runs, which is exactly the kind of
+		// thing an interactive rc does. Without WaitDelay the context
+		// bound above is decorative: a shell doing `sleep 30 &` returns
+		// after 30 seconds against a 1-second context, with a nil error.
+		cmd.WaitDelay = loginEnvTimeout
 		out, err := cmd.Output()
 		cancel()
+		// Parse before judging err: what the shell printed is complete
+		// and correct even when WaitDelay fired on a lingering
+		// grandchild, and discarding it there would drop a perfectly
+		// good PATH for the users most likely to need one.
+		if block, ok := betweenMarks(out, mark); ok {
+			if path := pathFromEnvBlock(block); path != "" {
+				return path
+			}
+			lastErr = fmt.Errorf("marked env block has no PATH")
+			continue
+		}
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		block, ok := betweenMarks(out, mark)
-		if !ok {
-			lastErr = fmt.Errorf("no marked env block in %d bytes of output", len(out))
-			continue
-		}
-		if path := pathFromEnvBlock(block); path != "" {
-			return path
-		}
-		lastErr = fmt.Errorf("marked env block has no PATH")
+		lastErr = fmt.Errorf("no marked env block in %d bytes of output", len(out))
 	}
 	log.Printf("hivegui: could not read the login PATH from %s: %v", shell, lastErr)
 	return ""
@@ -162,6 +174,18 @@ func envWithLoginPATH(env []string) []string {
 		}
 	}
 	return append(out, "PATH="+path)
+}
+
+// pathSourceDescription names where the PATH the build runs with came
+// from, so a refusal points at the file the user has to edit. Without
+// it the message blames the login shell even when $SHELL was unset and
+// no shell was ever consulted.
+func pathSourceDescription() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" || loginPATHFn() == "" {
+		return "this app inherited (no usable login shell to ask)"
+	}
+	return "reported by " + shell
 }
 
 // buildTools are what ./build.sh cannot run without and what actually

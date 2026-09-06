@@ -454,9 +454,9 @@ func runBuildScript(repo string, progress func(string)) error {
 	// probe exists to prevent, and "build.sh failed" does not tell the
 	// user which tool to install.
 	if missing := missingBuildTools(pathOf(env)); len(missing) > 0 {
-		return fmt.Errorf("build.sh needs %s, which the app cannot find on your "+
-			"login shell's PATH — install it, or run ./build.sh from a terminal",
-			strings.Join(missing, " and "))
+		return fmt.Errorf("build.sh needs %s, which is not on the PATH %s. "+
+			"Install it and restart Hive — the PATH is read once at startup",
+			strings.Join(missing, " and "), pathSourceDescription())
 	}
 	cmd := exec.CommandContext(ctx, "./build.sh")
 	cmd.Dir = repo

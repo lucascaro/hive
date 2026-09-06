@@ -766,6 +766,12 @@ func TestRunBuildScriptNamesMissingTools(t *testing.T) {
 	if !strings.Contains(err.Error(), "definitely-not-installed-xyz") {
 		t.Errorf("error = %q, want it to name the missing tool", err)
 	}
+	// The PATH is probed once per process, so a user who installs the
+	// tool and presses the button again gets the same refusal until
+	// they restart. The message has to say so.
+	if !strings.Contains(err.Error(), "restart") {
+		t.Errorf("error = %q, want it to mention restarting", err)
+	}
 	if ran {
 		t.Error("build.sh ran despite the missing toolchain, want the refusal to come first")
 	}
