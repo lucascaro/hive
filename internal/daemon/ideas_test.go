@@ -41,6 +41,8 @@ func awaitFrame(t *testing.T, conn net.Conn, want ...wire.FrameType) (wire.Frame
 }
 
 func TestListIdeasReply(t *testing.T) {
+	// Unix socket, and startTestDaemon's temp dir is under /tmp.
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	conn := controlConn(t, d)
 
@@ -90,6 +92,8 @@ func TestListIdeasReply(t *testing.T) {
 // A second control connection must hear an idea filed on the first —
 // this is the path the GUI's inbox updates through.
 func TestIdeaEventFanOut(t *testing.T) {
+	// Unix socket, and startTestDaemon's temp dir is under /tmp.
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	filer := controlConn(t, d)
 	watcher := controlConn(t, d)
@@ -128,6 +132,8 @@ func TestIdeaEventFanOut(t *testing.T) {
 }
 
 func TestAddIdeaTooLongRefused(t *testing.T) {
+	// Unix socket, and startTestDaemon's temp dir is under /tmp.
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	conn := controlConn(t, d)
 
@@ -203,6 +209,8 @@ func TestCloseGuardRefusesAndForces(t *testing.T) {
 // ideas are open and goes through once the client retries with the
 // force flag.
 func TestKillProjectRefusesOpenIdeasOverWire(t *testing.T) {
+	// Unix socket, and startTestDaemon's temp dir is under /tmp.
+	skipOnWindows(t)
 	d := startTestDaemon(t)
 	conn := controlConn(t, d)
 
