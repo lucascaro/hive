@@ -4,7 +4,8 @@
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
 - **Branch:** `cedar-light` (phase 1), `feature/337-idea-inbox-gui` (phase 2)
-- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1)
+- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1),
+  [#358](https://github.com/lucascaro/hive/pull/358) (phase 2)
 - **Status:** active
 
 ## Summary
