@@ -239,6 +239,7 @@ func TestDittoExtractRejectsGarbage(t *testing.T) {
 // ----------------------------- runBuildScript -----------------------------
 
 func TestRunBuildScriptStreamsProgress(t *testing.T) {
+	stubBuildTools(t)
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "build.sh"), "#!/bin/sh\necho step one\necho\necho step two\n")
 	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
@@ -260,6 +261,7 @@ func TestRunBuildScriptStreamsProgress(t *testing.T) {
 // A failed build must report the last thing the script said, not a bare
 // "exit status 1" the user cannot act on.
 func TestRunBuildScriptReportsLastLineOnFailure(t *testing.T) {
+	stubBuildTools(t)
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "build.sh"),
 		"#!/bin/sh\necho compiling\necho 'error: wails not found' >&2\nexit 1\n")
@@ -308,6 +310,7 @@ func TestPlainProgressLineStripsTerminalControls(t *testing.T) {
 // The end-to-end guarantee: no escape byte can reach the progress
 // callback or the failure message, whatever build.sh prints.
 func TestRunBuildScriptReportsSanitizedProgress(t *testing.T) {
+	stubBuildTools(t)
 	repo := t.TempDir()
 	writeFile(t, filepath.Join(repo, "build.sh"),
 		"#!/bin/sh\nprintf '\\033[32mcompiling\\033[0m\\n'\nprintf '10%%\\r100%%\\n'\n"+
@@ -331,6 +334,7 @@ func TestRunBuildScriptReportsSanitizedProgress(t *testing.T) {
 }
 
 func TestRunBuildScriptReportsMissingScript(t *testing.T) {
+	stubBuildTools(t)
 	if err := runBuildScript(t.TempDir(), func(string) {}); err == nil {
 		t.Fatal("runBuildScript = nil error with no build.sh, want a failure")
 	}
@@ -704,4 +708,71 @@ func TestPruneStagingDirsClearsEverything(t *testing.T) {
 	}
 	// Idempotent: called on every successful apply, including the first.
 	pruneStagingDirs()
+}
+
+// stubBuildTools waives the toolchain pre-check. The stub build.sh
+// scripts these tests use need none of it, and whether npm happens to
+// be on a CI runner's PATH must not decide whether they pass.
+func stubBuildTools(t *testing.T) {
+	t.Helper()
+	prev := buildTools
+	buildTools = nil
+	t.Cleanup(func() { buildTools = prev })
+}
+
+// The regression the login-shell probe exists for: build.sh must run
+// with the PATH the user's shell has, not the bare system PATH a
+// Finder-launched app inherits. Asserted through runBuildScript,
+// because the helper being correct is worth nothing if the assignment
+// to cmd.Env goes missing.
+func TestRunBuildScriptGivesScriptTheLoginPATH(t *testing.T) {
+	stubBuildTools(t)
+	stubLoginPATH(t, "/sentinel/bin")
+
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "build.sh"), "#!/bin/sh\necho \"$PATH\"\n")
+	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var lines []string
+	if err := runBuildScript(repo, func(s string) { lines = append(lines, s) }); err != nil {
+		t.Fatalf("runBuildScript: %v", err)
+	}
+	if len(lines) != 1 || lines[0] != "/sentinel/bin" {
+		t.Errorf("build.sh saw PATH=%v, want the login shell's /sentinel/bin", lines)
+	}
+}
+
+// When the probe cannot find the toolchain either, say which tool is
+// missing. "build.sh failed" forty lines into npm's output is what sent
+// the last person on this bug hunting through Console.app.
+func TestRunBuildScriptNamesMissingTools(t *testing.T) {
+	prev := buildTools
+	buildTools = []string{"definitely-not-installed-xyz"}
+	t.Cleanup(func() { buildTools = prev })
+
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, "build.sh"), "#!/bin/sh\necho should not run\n")
+	if err := os.Chmod(filepath.Join(repo, "build.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ran := false
+	err := runBuildScript(repo, func(string) { ran = true })
+	if err == nil {
+		t.Fatal("runBuildScript = nil error with the toolchain missing, want a refusal")
+	}
+	if !strings.Contains(err.Error(), "definitely-not-installed-xyz") {
+		t.Errorf("error = %q, want it to name the missing tool", err)
+	}
+	// The PATH is probed once per process, so a user who installs the
+	// tool and presses the button again gets the same refusal until
+	// they restart. The message has to say so.
+	if !strings.Contains(err.Error(), "restart") {
+		t.Errorf("error = %q, want it to mention restarting", err)
+	}
+	if ran {
+		t.Error("build.sh ran despite the missing toolchain, want the refusal to come first")
+	}
 }

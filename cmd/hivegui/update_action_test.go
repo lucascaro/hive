@@ -37,6 +37,10 @@ func TestMain(m *testing.M) {
 	os.Setenv("HIVE_STATE_DIR", filepath.Join(sandbox, "state"))
 	defer os.RemoveAll(sandbox)
 
+	// The macOS login-PATH probe is pinned to the same floor by an
+	// init() in shell_env_darwin_test.go — it cannot be done here,
+	// because the seam it stubs does not exist off darwin.
+
 	stageUpdateFn = func(UpdateInfo, func(string)) (string, error) {
 		return "", fmt.Errorf("stageUpdate must not run in tests")
 	}

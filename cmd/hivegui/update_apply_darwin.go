@@ -448,8 +448,19 @@ func plainProgressLine(s string) string {
 func runBuildScript(repo string, progress func(string)) error {
 	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
 	defer cancel()
+	env := envWithLoginPATH(os.Environ())
+	// Fail here rather than forty lines into npm's output: a PATH that
+	// is still missing the toolchain is the one failure mode this whole
+	// probe exists to prevent, and "build.sh failed" does not tell the
+	// user which tool to install.
+	if missing := missingBuildTools(pathOf(env)); len(missing) > 0 {
+		return fmt.Errorf("build.sh needs %s: not found on the PATH %s. "+
+			"Install and restart Hive — the PATH is read once at startup",
+			strings.Join(missing, " and "), pathSourceDescription())
+	}
 	cmd := exec.CommandContext(ctx, "./build.sh")
 	cmd.Dir = repo
+	cmd.Env = env
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
