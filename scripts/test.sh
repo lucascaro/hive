@@ -27,10 +27,13 @@ run_go() {
 }
 
 run_frontend() {
-  # Lazy-install: only run npm install if node_modules is missing.
-  if [ ! -d cmd/hivegui/frontend/node_modules ]; then
-    echo "==> npm install (frontend)"
-    (cd cmd/hivegui/frontend && npm install --silent)
+  # Lazy-install: reinstall when node_modules is missing, or when the lockfile
+  # is newer than it. The second half matters -- guarding on absence alone
+  # would keep testing a stale tree after any pull that moves a dependency.
+  if [ ! -d cmd/hivegui/frontend/node_modules ] \
+     || [ cmd/hivegui/frontend/package-lock.json -nt cmd/hivegui/frontend/node_modules ]; then
+    echo "==> npm ci (frontend)"
+    (cd cmd/hivegui/frontend && npm ci --silent)
   fi
 }
 

@@ -163,7 +163,7 @@ cd cmd/hivegui/frontend && npm run test:e2e:real
 ```
 
 A fresh worktree needs `./scripts/ci-bootstrap.sh` (the wailsjs bindings) and an
-`npm install` first, or `tsc` reports a few dozen errors in files you never
+`npm ci` first, or `tsc` reports a few dozen errors in files you never
 touched — they are the missing bindings, not your diff.
 Build the app with plain `wails build` — `-s` skips the frontend build and the
 app dies at launch with "no index.html".
