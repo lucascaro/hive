@@ -325,6 +325,25 @@ func (r *Registry) loadIdeas() error {
 		if !wire.IdeaStatuses[f.Status] {
 			f.Status = wire.IdeaStatusOpen
 		}
+		// An idea whose project is gone (KillProject persisted the
+		// project index before unlinking the idea files, then crashed)
+		// would reload forever, unreachable through any project
+		// filter. Reattach it to the default project rather than drop
+		// it — losing the note is the one outcome this feature cannot
+		// afford. With no projects yet there is nothing to reattach
+		// to; keep it as-is and let EnsureDefaultProject's first run
+		// sort it out on the next boot.
+		if _, ok := r.projects[f.ProjectID]; !ok {
+			if def := r.defaultProjectIDLocked(); def != "" {
+				log.Printf("registry: idea %s names unknown project %q; reattaching to %s", f.ID, f.ProjectID, def)
+				f.ProjectID = def
+				if err := writeJSON(path, &f); err != nil {
+					log.Printf("registry: persist reattached idea %s: %v", f.ID, err)
+				}
+			} else {
+				log.Printf("registry: idea %s names unknown project %q and no project exists yet; keeping as-is", f.ID, f.ProjectID)
+			}
+		}
 		r.ideas[f.ID] = &f
 	}
 	return nil

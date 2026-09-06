@@ -161,9 +161,13 @@ func ideaList(args []string, stdout io.Writer) error {
 }
 
 // oneLine keeps a multi-line idea from breaking the list's one-row-per
-// -idea shape. The full text is in the GUI inbox.
+// -idea shape. The full text is in the GUI inbox. It cuts at the first
+// control character, not just \r\n: an idea carrying an ESC/OSC
+// sequence would otherwise be handed to the terminal verbatim.
 func oneLine(s string) string {
-	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+	if i := strings.IndexFunc(s, func(r rune) bool {
+		return r < 0x20 || r == 0x7f
+	}); i >= 0 {
 		return s[:i] + " …"
 	}
 	return s

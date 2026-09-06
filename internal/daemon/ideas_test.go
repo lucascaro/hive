@@ -261,3 +261,43 @@ func TestKillProjectRefusesOpenIdeasOverWire(t *testing.T) {
 		t.Fatalf("event after forced delete = %+v", iev)
 	}
 }
+
+// ideaErrorCode's no_such_idea / no_such_project branches are what a
+// client keys off to tell "gone" from "broken"; only the too-long
+// branch was covered over the wire before.
+func TestIdeaErrorCodesOverWire(t *testing.T) {
+	// Unix socket, and startTestDaemon's temp dir is under /tmp.
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	conn := controlConn(t, d)
+
+	done := wire.IdeaStatusDone
+	cases := []struct {
+		name  string
+		frame wire.FrameType
+		req   any
+		want  string
+	}{
+		{"update unknown idea", wire.FrameUpdateIdea,
+			wire.UpdateIdeaReq{ID: "nope", Status: &done}, "no_such_idea"},
+		{"remove unknown idea", wire.FrameRemoveIdea,
+			wire.RemoveIdeaReq{ID: "nope"}, "no_such_idea"},
+		{"add to unknown project", wire.FrameAddIdea,
+			wire.AddIdeaReq{ProjectID: "nope", Text: "homeless"}, "no_such_project"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := wire.WriteJSON(conn, tc.frame, tc.req); err != nil {
+				t.Fatalf("write %v: %v", tc.frame, err)
+			}
+			_, payload := awaitFrame(t, conn, wire.FrameError)
+			var e wire.Error
+			if err := json.Unmarshal(payload, &e); err != nil {
+				t.Fatalf("decode ERROR: %v", err)
+			}
+			if e.Code != tc.want {
+				t.Fatalf("code = %q, want %q", e.Code, tc.want)
+			}
+		})
+	}
+}

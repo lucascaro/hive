@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lucascaro/hive/internal/wire"
 )
@@ -303,5 +304,99 @@ func TestIdeaEventsBroadcast(t *testing.T) {
 		default:
 			t.Fatalf("missing %s event", want)
 		}
+	}
+}
+
+// An idea whose project no longer exists (KillProject persisted the
+// project index, then crashed before unlinking the idea file) must be
+// reattached, not dropped: it would otherwise reload forever and be
+// unreachable through every project filter.
+func TestOrphanIdeaReattachedOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	p, _ := r.EnsureDefaultProject(t.TempDir())
+	info, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "orphan me"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	_ = r.Close()
+
+	// Rewrite the file naming a project that was never created.
+	var f IdeaFile
+	path := ideaPath(dir, info.ID)
+	if err := readJSON(path, &f); err != nil {
+		t.Fatalf("readJSON: %v", err)
+	}
+	f.ProjectID = "vanished-project"
+	if err := writeJSON(path, &f); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
+
+	r2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer r2.Close()
+	got := r2.ListIdeas(p.ID)
+	if len(got) != 1 || got[0].ID != info.ID {
+		t.Fatalf("orphan not reattached to the default project: %+v", got)
+	}
+	// And the reattachment is persisted, so it does not repeat.
+	var after IdeaFile
+	if err := readJSON(path, &after); err != nil {
+		t.Fatalf("readJSON after reload: %v", err)
+	}
+	if after.ProjectID != p.ID {
+		t.Errorf("on disk project = %q, want %q", after.ProjectID, p.ID)
+	}
+}
+
+// The same guard with no projects at all: the note is kept, not lost,
+// and loading does not fail.
+func TestOrphanIdeaKeptWhenNoProjects(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(IdeasDir(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f := IdeaFile{
+		ID: "solo", ProjectID: "vanished", Kind: wire.IdeaKindIdea,
+		Text: "no projects here", Status: wire.IdeaStatusOpen,
+		Created: time.Now().UTC(), Updated: time.Now().UTC(),
+	}
+	if err := writeJSON(ideaPath(dir, f.ID), &f); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open with no projects: %v", err)
+	}
+	defer r.Close()
+	if got := r.ListIdeas(""); len(got) != 1 || got[0].ID != "solo" {
+		t.Fatalf("idea discarded when no project exists: %+v", got)
+	}
+}
+
+// UpdateIdea's length check is a separate path from AddIdea's, and a
+// refusal must leave the stored idea untouched.
+func TestUpdateIdeaRejectsOversizeText(t *testing.T) {
+	r, p := ideaRegistry(t)
+	info, err := r.AddIdea(IdeaSpec{ProjectID: p.ID, Text: "short and fine"})
+	if err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+	long := strings.Repeat("x", wire.MaxIdeaText+1)
+	if _, err := r.UpdateIdea(wire.UpdateIdeaReq{ID: info.ID, Text: &long}); !errors.Is(err, ErrIdeaTooLong) {
+		t.Fatalf("err = %v, want ErrIdeaTooLong", err)
+	}
+	got := r.ListIdeas(p.ID)
+	if len(got) != 1 || got[0].Text != "short and fine" {
+		t.Fatalf("refused update still changed the text: %+v", got)
+	}
+	if got[0].Updated != info.Updated {
+		t.Errorf("Updated moved on a refused update: %q -> %q", info.Updated, got[0].Updated)
 	}
 }

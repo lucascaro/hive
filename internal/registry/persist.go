@@ -58,7 +58,7 @@ type ProjectIndexFile struct {
 type IdeaFile struct {
 	ID        string    `json:"id"`
 	ProjectID string    `json:"project_id"`
-	Kind      string    `json:"kind"`   // wire.IdeaKind*
+	Kind      string    `json:"kind"` // wire.IdeaKind*
 	Text      string    `json:"text"`
 	Status    string    `json:"status"` // wire.IdeaStatus*
 	Created   time.Time `json:"created"`

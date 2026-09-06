@@ -102,4 +102,7 @@ func TestOneLine(t *testing.T) {
 	if got := oneLine("single"); got != "single" {
 		t.Errorf("oneLine = %q", got)
 	}
+	if got := oneLine("clear\x1b[2Jscreen"); got != "clear …" {
+		t.Errorf("oneLine kept an escape sequence: %q", got)
+	}
 }
