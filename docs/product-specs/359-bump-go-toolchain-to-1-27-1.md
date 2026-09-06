@@ -1,7 +1,8 @@
 ---
 issue: 359
+pr: 360
 title: "Bump the Go toolchain to 1.27.1 (1.25 is end of life)"
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Bump the Go toolchain to 1.27.1 (1.25 is end of life)

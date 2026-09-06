@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/359-bump-go-toolchain-to-1-27-1.md](../../product-specs/359-bump-go-toolchain-to-1-27-1.md)
 - **Issue:** #359
+- **PR:** #360
+- **Branch:** `sec/go-1-27`
 - **Status:** active
 
 ## Summary
