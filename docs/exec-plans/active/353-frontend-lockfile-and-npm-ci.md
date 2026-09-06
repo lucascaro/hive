@@ -151,3 +151,11 @@ Per the skill, the loop presents after one revise cycle rather than looping. The
 ## Open questions
 
 None.
+
+## Gate verdict
+
+- **2026-09-05** — verdict: FAIL; checks: 2 passed / 1 failed / 0 followups; followups: none; one-line: spec success criterion named `scripts/ci-bootstrap.sh` as an install site converted to `npm ci`, but that file contains no npm install at all.
+  - 2026-09-05 dimensions:
+    - acceptance — (see next entry; dimension still running at the time of the FAIL)
+    - non-goals — PASS — production deps showed zero version movement (caret dropped, same version); the three dev-only moves (jsdom 25.0.1, vite 8.2.2, vitest 4.1.11) are each the highest version satisfying the prior `^` range, i.e. forced by resolution rather than a deliberate upgrade. No go.mod/Go source/Actions-pinning/dependabot bleed.
+    - doc accuracy — FAIL — spec:29 asserted `scripts/ci-bootstrap.sh` "uses `npm ci`"; grep shows the file has zero npm references. Changeset policy (`no-changeset` label) verified authorized by `AGENTS.md:228` and enforced by `changesets.yml:113-129`. Developer docs sweep clean; remaining `npm install` hits are a dated analysis snapshot and a completed exec plan, correctly preserved as historical record. Rewritten comments in `build.sh`, `scripts/test.sh` and the `ci.yml` Playwright cache-key block are factually accurate.

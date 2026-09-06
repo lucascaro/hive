@@ -15,7 +15,7 @@ stage: GATE
 
 ## Problem
 
-`cmd/hivegui/frontend/` has no `package-lock.json`, and every install site — `build.sh`, `.github/workflows/ci.yml`, `scripts/test.sh`, `scripts/ci-bootstrap.sh` — runs `npm install` against `^` version ranges. Each build resolves the dependency tree afresh, so two builds of the same commit can ship different transitive dependencies, and a compromised or newly-published upstream version lands in a release with no review.
+`cmd/hivegui/frontend/` has no `package-lock.json`, and every install site — `build.sh`, `.github/workflows/ci.yml`, `scripts/test.sh`, `cmd/hivegui/wails.json` — runs `npm install` against `^` version ranges. Each build resolves the dependency tree afresh, so two builds of the same commit can ship different transitive dependencies, and a compromised or newly-published upstream version lands in a release with no review.
 
 This is finding #3 (HIGH) of the 2026-09-05 security audit and Task 2 of `.plans/2026-09-05-security-hardening.md`.
 
@@ -26,7 +26,7 @@ The frontend dependency tree is pinned in a committed lockfile, every install si
 ## Success criteria
 
 - `cmd/hivegui/frontend/package-lock.json` is committed and not git-ignored.
-- No `npm install` remains in `build.sh`, `.github/workflows/ci.yml`, `scripts/test.sh` or `scripts/ci-bootstrap.sh`; each uses `npm ci`.
+- No executable `npm install` against this package remains anywhere in the repo: `build.sh`, `.github/workflows/ci.yml`, `scripts/test.sh` and `cmd/hivegui/wails.json` each use `npm ci`. (`scripts/ci-bootstrap.sh` needs no change — it contains no npm install; the original task spec named it speculatively.)
 - CI runs `npm audit --omit=dev --audit-level=high` on the Linux leg and fails on a high or critical production advisory.
 - `rm -rf node_modules && npm ci && npm run build && npx biome ci .` succeeds from a clean tree, and `./build.sh` produces `cmd/hivegui/build/bin/hivegui.app`.
 
