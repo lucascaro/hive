@@ -55,9 +55,9 @@ let openIdeaInbox: InboxModule['openIdeaInbox'];
 let initIdeaInbox: InboxModule['initIdeaInbox'];
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
-let IdeaInbox: (typeof import('../../src/components/modals/IdeaInbox.js'))['IdeaInbox'];
-let ChoiceDialog: (typeof import('../../src/components/modals/ChoiceDialog.js'))['ChoiceDialog'];
-let inlineRenameActive: (typeof import('../../src/app/inline-rename.js'))['inlineRenameActive'];
+let IdeaInbox: typeof import('../../src/components/modals/IdeaInbox.js')['IdeaInbox'];
+let ChoiceDialog: typeof import('../../src/components/modals/ChoiceDialog.js')['ChoiceDialog'];
+let inlineRenameActive: typeof import('../../src/app/inline-rename.js')['inlineRenameActive'];
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;

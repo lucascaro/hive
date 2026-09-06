@@ -44,7 +44,7 @@ let closeQuickIdea: QuickIdeaModule['closeQuickIdea'];
 let initQuickIdea: QuickIdeaModule['initQuickIdea'];
 let refocusActiveTerm: Mock<() => void>;
 let setFocusedTile: Mock<(id: string | null) => void>;
-let QuickIdea: (typeof import('../../src/components/modals/QuickIdea.js'))['QuickIdea'];
+let QuickIdea: typeof import('../../src/components/modals/QuickIdea.js')['QuickIdea'];
 
 beforeAll(async () => {
   document.body.innerHTML = MARKUP;
@@ -111,9 +111,10 @@ describe('quick idea capture', () => {
   it('sends the kind the user picked', async () => {
     await openOn('p1');
     fireEvent.change(textField(), { target: { value: 'it crashes' } });
-    const bug = el('quick-idea-kind').querySelector<HTMLInputElement>(
-      'input[value="bug"]',
-    );
+    const bug =
+      el('quick-idea-kind').querySelector<HTMLInputElement>(
+        'input[value="bug"]',
+      );
     fireEvent.click(bug as HTMLInputElement);
     fireEvent.click(el('quick-idea-save'));
     await flush();
