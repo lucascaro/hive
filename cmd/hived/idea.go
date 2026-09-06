@@ -111,9 +111,20 @@ func ideaAdd(args []string, stdout io.Writer) error {
 func ideaList(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("idea list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	all := fs.Bool("all", false, "list every project's ideas (refused from inside a session)")
+	all := fs.Bool("all", false, "list every project's ideas (run outside a session)")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// --all is the one thing here that is NOT about the caller's own
+	// session, and the daemon refuses it on a session connection —
+	// everything a session's children inherit is scoped to that
+	// session's project. So it takes the other road: the control
+	// socket, dialled from an ordinary shell the way hivebar does.
+	// Inside a session both paths exist, and the session one wins, so
+	// the refusal the user gets names the reason.
+	if *all {
+		return listAllIdeas(stdout)
 	}
 
 	sessionID, sock, err := ideaEnv()
@@ -133,20 +144,18 @@ func ideaList(args []string, stdout io.Writer) error {
 	// whatever had arrived by then: the snapshot and the reply are
 	// written by different goroutines in the daemon and can interleave.
 	projectID := ""
-	if !*all {
-		sessions, err := awaitSessions(c)
-		if err != nil {
-			return err
+	sessions, err := awaitSessions(c)
+	if err != nil {
+		return err
+	}
+	for _, s := range sessions {
+		if s.ID == sessionID {
+			projectID = s.ProjectID
+			break
 		}
-		for _, s := range sessions {
-			if s.ID == sessionID {
-				projectID = s.ProjectID
-				break
-			}
-		}
-		if projectID == "" {
-			return errNotInSession
-		}
+	}
+	if projectID == "" {
+		return errNotInSession
 	}
 	if err := c.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: projectID}); err != nil {
 		return err
@@ -155,9 +164,7 @@ func ideaList(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	for _, i := range ideas {
-		fmt.Fprintf(stdout, "%s  %-8s %-7s %s\n", i.ID, i.Kind, i.Status, oneLine(i.Text))
-	}
+	printIdeas(stdout, ideas)
 	return nil
 }
 
@@ -172,6 +179,52 @@ func oneLine(s string) string {
 		return s[:i] + " …"
 	}
 	return s
+}
+
+// listAllIdeas lists every project's ideas over the control socket.
+// Deliberately not reachable from a session connection: HIVE_SOCKET
+// there names the events socket, which scopes every idea verb to the
+// caller's own project.
+func listAllIdeas(stdout io.Writer) error {
+	if os.Getenv("HIVE_SESSION_ID") != "" {
+		return errors.New("`idea list --all` is not available inside a Hive session; run it from an ordinary shell")
+	}
+	sock := daemon.SocketPath()
+	if err := daemon.CheckSocketDir(sock); err != nil {
+		return err
+	}
+	conn, err := net.DialTimeout("unix", sock, ideaDialTimeout)
+	if err != nil {
+		return fmt.Errorf("cannot reach the daemon at %s: %w", sock, err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(ideaDeadline))
+	c, err := wire.Handshake(conn, wire.Hello{
+		Version: wire.PROTOCOL_VERSION,
+		Client:  "hived-idea/" + buildinfo.Version(),
+		BuildID: buildinfo.BuildID(),
+		Mode:    wire.ModeControl,
+	})
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	defer c.Close()
+	if err := c.WriteJSON(wire.FrameListIdeas, wire.ListIdeasReq{}); err != nil {
+		return err
+	}
+	ideas, err := awaitIdeas(c)
+	if err != nil {
+		return err
+	}
+	printIdeas(stdout, ideas)
+	return nil
+}
+
+// printIdeas renders the one-row-per-idea listing both list paths share.
+func printIdeas(stdout io.Writer, ideas []wire.IdeaInfo) {
+	for _, i := range ideas {
+		fmt.Fprintf(stdout, "%s  %-8s %-7s %s\n", i.ID, i.Kind, i.Status, oneLine(i.Text))
+	}
 }
 
 func ideaEnv() (sessionID, sock string, err error) {

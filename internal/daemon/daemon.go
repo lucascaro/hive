@@ -157,20 +157,10 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, fmt.Errorf("daemon: socket dir: %w", err)
 	}
 	evsock := EventSocketPath(sock)
-	if _, err := os.Stat(sock); err == nil {
-		if c, derr := net.Dial("unix", sock); derr == nil {
-			_ = c.Close()
-			return nil, fmt.Errorf("daemon: another hived appears to be running at %s", sock)
-		}
-		_ = os.Remove(sock)
-	}
-	// The events socket has no independent liveness meaning — the
-	// control socket above is the one every client probes — so a
-	// leftover here is always stale by the time we get past that check.
-	_ = os.Remove(evsock)
-	// Before the registry opens: two daemons sharing one state
-	// directory both revive every persisted session, forking a second
-	// PTY for each. See acquireStateLock.
+	// The lock comes before the socket probe below, not after: that
+	// probe unlinks what it decides is stale, and a start that goes on
+	// to lose the lock would first have deleted a live daemon's socket
+	// files, leaving it bound to an inode nobody can dial.
 	stateDir := cfg.StateDir
 	if stateDir == "" {
 		stateDir = registry.StateDir()
@@ -179,6 +169,18 @@ func New(cfg Config) (*Daemon, error) {
 	if err != nil {
 		return nil, fmt.Errorf("daemon: %w", err)
 	}
+	if _, err := os.Stat(sock); err == nil {
+		if c, derr := net.Dial("unix", sock); derr == nil {
+			_ = c.Close()
+			closeStateLock(lock)
+			return nil, fmt.Errorf("daemon: another hived appears to be running at %s", sock)
+		}
+		_ = os.Remove(sock)
+	}
+	// The events socket has no independent liveness meaning — the
+	// control socket above is the one every client probes — so a
+	// leftover here is always stale by the time we get past that check.
+	_ = os.Remove(evsock)
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
 		closeStateLock(lock)
@@ -639,7 +641,8 @@ const eventReadDeadline = 2 * time.Second
 // steadily is never cut off; one that goes quiet is. Generous enough to
 // cover a slow `hive idea` round-trip and short enough that a session
 // child cannot park a goroutine for the daemon's lifetime.
-const sessionModeIdleDeadline = 30 * time.Second
+// Var, not const, so the tests can shrink it.
+var sessionModeIdleDeadline = 30 * time.Second
 
 // serveEventsOnly is serve for the events socket: the HELLO must be
 // ModeEvent (one state report) or ModeSession (the narrowed idea

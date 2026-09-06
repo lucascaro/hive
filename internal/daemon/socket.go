@@ -103,7 +103,13 @@ func CheckSocketDir(sockPath string) error {
 	dir := filepath.Dir(sockPath)
 	st, err := os.Lstat(dir)
 	if err != nil {
-		return err
+		// A bare errno reaches a user as "lstat /some/path: no such
+		// file or directory", which says nothing about what was being
+		// checked or why the command stopped.
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("socket dir %s does not exist; is hived running?", dir)
+		}
+		return fmt.Errorf("socket dir %s: %w", dir, err)
 	}
 	if st.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("socket dir %s is a symlink; refusing", dir)

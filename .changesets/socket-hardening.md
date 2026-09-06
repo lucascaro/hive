@@ -18,9 +18,11 @@ bump: minor
   agent runs as you and Hive does not sandbox it — so `SECURITY.md` now says
   so plainly. Requires a daemon restart, which Hive will prompt for after
   the update.
-- `hive idea list --all` is refused from inside a session, where it now
-  lists only that session's project. Run it from an ordinary shell for the
-  cross-project view.
+- `hive idea list --all` is refused from inside a session, where `hive idea
+  list` now shows that session's project. `--all` works from an ordinary
+  shell, which it did not before — it needed a session's environment and
+  was therefore unreachable in every context the moment the in-session case
+  was closed.
 - Hive refuses to start a second daemon against one state directory. The
   old guard was the socket file, which stopped working the moment the
   socket moved; it is now a lock on the state directory itself.
