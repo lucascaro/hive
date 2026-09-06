@@ -6,6 +6,7 @@
 - **Branch:** `cedar-light` (phase 1), `feature/337-idea-inbox-gui` (phase 2)
 - **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1),
   [#358](https://github.com/lucascaro/hive/pull/358) (phase 2)
+- **Phase:** 2 of 3 (see `### Phasing`)
 - **Status:** active
 
 ## Summary
@@ -989,6 +990,19 @@ Append-only, one entry per `/hs-merge-gate` run.
     - acceptance — PASS (phase-1 scope) — criterion 1 (atomic registry-only writes, restart survival, all three IDEA_EVENT kinds) MET, verified live over the daemon socket; criterion 3 (`hived idea add` in-session attribution, out-of-session exit 2) MET, verified by running the e2e and the CLI directly; criterion 7's Go half MET. Criteria 2, 4 DEFERRED (phase 2); 5, 6 and criterion 7's Playwright half DEFERRED (phase 3).
     - non-goals — PASS — all seven respected. `external_ref` persisted but unwired and absent from `wire.IdeaInfo`; no priority/order/tags/index; capture requires `HIVE_SESSION_ID` + `HIVE_SOCKET`; no idea can persist without a resolved project on either the create or the load path; cascade + `project_has_ideas` refusal present; CLI is exactly `add`/`list`. No scope bleed — `cmd/hivegui/`, `internal/agent/` and `registry/create.go` untouched.
     - doc accuracy — PASS — changeset, README, DESIGN.md and the `DaemonContract` 5 History entry all match the shipped code; every CLI invocation shown works as written; generated files untouched; no doc claims phase 2/3 behavior as shipped.
+
+- **2026-09-06** — verdict: PASS; phase: 2/3; checks: 3 dimensions passed / 0 failed, 5 criteria met / 0 failed / 2.5 deferred to phase 3; followups: none filed (deferred criteria are phase 3 of this same spec, already planned); one-line: the GUI half ships complete — capture, badge, inbox, and the project-delete confirm — with every criterion it claims met and every non-goal respected.
+  - 2026-09-06 dimensions:
+    - acceptance — PASS (phase-2 scope) — criterion 2 (⌘I prefills the focused session's project, Enter files it and returns focus) MET, verified by `quick-idea.test.tsx` 12/12 plus the Playwright capture leg; criterion 4 (sidebar open count, inbox list/edit/done/delete) MET, `idea-inbox.test.tsx` 9/9 plus the Playwright badge/Done/Delete legs. Criteria 1 and 3 MET by phase 1 and still holding (`TestIdeasSurviveReload`, `TestIdeaEventsBroadcast`, `cmd/hived` idea tests all pass unchanged). Criteria 5 and 6 DEFERRED (phase 3 — `initial_prompt`, Start session, the `status=started` write); criterion 7 MET for its capture→count→edit→done→delete legs and its Go half, start→prompt-visible DEFERRED with them.
+    - non-goals — PASS — all seven respected. `external_ref` untouched and unexposed; no priority/order/tags/kanban; no capture surface outside Hive; no attachments; every `AddIdea` resolves a project (falling back to the default) so no idea can exist without one; the project-delete cascade confirms before destroying open ideas; `cmd/hived/idea.go` untouched and still exactly `add`/`list`. No scope bleed: `internal/agent/` and `internal/registry/create.go` are not in the diff, and the only non-GUI file touched is `cmd/hived-ws-bridge/main.go` (forwarding the four idea methods so the real-e2e harness can reach them).
+    - doc accuracy — PASS — the changeset describes only what phase 2 ships; README's Keybinds table carries ⌘I and ⇧⌘I; every surface AGENTS.md › Keybindings Policy names was updated (handler, both `shortcuts.ts` functions, the palette table, `menu_darwin.go`, README); the help overlay and palette derive from those functions so they follow automatically; modal hints use the `[…]`/`(…)` convention and the platform-aware `mod()` rather than a hardcoded ⌘; no doc claims phase-3 behavior as shipped. `regression_of` is not applicable — the changeset is `type: added`.
+
+**Phase gate, not a feature gate.** This entry records that *phase 2*
+gated. The spec stays at `GATE` and the plan stays in `active/`: phases
+are declared in the header (`Phase: 2 of 3`) precisely so a PASS on one
+slice cannot write `DONE` over a feature whose phase 3 is unbuilt, and
+whose research and phasing live only in this file. Phase 1's gate had
+to say the same thing by hand, below, before the header field existed.
 
 **Gate scope note.** This gate ran against a spec whose `## Success criteria`
 describe the finished three-phase feature while the PR under test is phase 1.
