@@ -84,8 +84,19 @@ jobs:
         # dist tree must exist before any `go build` / `go vet` / `go test`.
         working-directory: cmd/hivegui/frontend
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
+
+      - name: npm audit (frontend, prod deps)
+        if: matrix.biome
+        # Platform-independent, so it rides the same single-leg flag as Biome
+        # and the typecheck. --omit=dev scopes the gate to what actually ships
+        # in the app bundle; a vitest or playwright advisory should not wedge
+        # every PR. Blocking on purpose. Like govulncheck below, it reads a
+        # live advisory DB, so it can redden an untouched main -- the same
+        # tradeoff this repo already accepts there.
+        working-directory: cmd/hivegui/frontend
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Typecheck (frontend — tsc)
         if: matrix.biome
@@ -240,16 +251,17 @@ jobs:
         # The single biggest cost in CI: this download was 219s of Windows's
         # 6m48s (vs 25s Linux, 13s macOS — Windows unzip is the outlier).
         #
-        # Keyed on package.json, which works ONLY because @playwright/test is
-        # pinned exactly there. A caret range would make this key constant
-        # across every version bump, and the failure is silent and total: the
-        # stale hit restores browser revision X, `playwright install`
-        # re-downloads Y, and actions/cache skips the save because the key
-        # already exists — so the 219s comes back forever behind a green
-        # check. package-lock.json is gitignored here, so it cannot be the
-        # key; the exact pin is what makes the version observable at all.
-        # restore-keys warms a partial dir on the bump itself, where the
-        # primary key correctly misses and a fresh entry does get saved.
+        # Keyed on package-lock.json: it is the file that determines the
+        # browser-driving @playwright/test actually installed, including on a
+        # transitive-only change that leaves package.json byte-identical. The
+        # failure mode this key guards against is silent and total: a stale
+        # hit restores browser revision X, `playwright install` re-downloads
+        # Y, and actions/cache skips the save because the key already exists —
+        # so the 219s comes back forever behind a green check. The lockfile
+        # churns more often than package.json, which costs some hit rate on
+        # the most expensive cached leg; that is the accepted trade for a key
+        # that cannot go stale. restore-keys warms a partial dir on a miss,
+        # where the primary key correctly misses and a fresh entry gets saved.
         #
         # The install step below still runs on a hit — it is a fast no-op
         # when the browsers are present, and skipping it on cache-hit would
@@ -258,7 +270,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.playwright-browsers
-          key: playwright-${{ runner.os }}-${{ hashFiles('cmd/hivegui/frontend/package.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('cmd/hivegui/frontend/package-lock.json') }}
           restore-keys: |
             playwright-${{ runner.os }}-
 

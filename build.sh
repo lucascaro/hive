@@ -78,14 +78,15 @@ if [[ -n "$expected_wails" && "$actual_wails" != "$expected_wails" ]]; then
   exit 1
 fi
 
-# Frontend deps. Wails skips `npm install` when frontend/package.json
-# matches a cached MD5, which can leave node_modules stale after a
-# pull that adds a dep. Force a clean install when package.json is
-# newer than node_modules.
+# Frontend deps. Wails skips its own install step when frontend/package.json
+# matches a cached MD5, which can leave node_modules stale after a pull that
+# moves a dep. Install here instead, keyed on package-lock.json: the lockfile
+# is what determines the installed tree, and it moves on transitive-only
+# changes that leave package.json byte-identical.
 echo "==> Installing frontend dependencies"
 if [[ ! -d cmd/hivegui/frontend/node_modules ]] \
-   || [[ cmd/hivegui/frontend/package.json -nt cmd/hivegui/frontend/node_modules ]]; then
-  ( cd cmd/hivegui/frontend && npm install --no-audit --no-fund )
+   || [[ cmd/hivegui/frontend/package-lock.json -nt cmd/hivegui/frontend/node_modules ]]; then
+  ( cd cmd/hivegui/frontend && npm ci --no-audit --no-fund )
 else
   echo "  (up to date)"
 fi
