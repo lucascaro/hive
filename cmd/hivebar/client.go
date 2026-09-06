@@ -89,7 +89,14 @@ func (c *Client) Run() {
 
 // session runs one connection to exhaustion.
 func (c *Client) session() error {
-	conn, err := net.DialTimeout("unix", hdaemon.SocketPath(), 2*time.Second)
+	sock := hdaemon.SocketPath()
+	// Refuse an impostor before handshaking with it: hivebar never
+	// creates the directory (the daemon or the GUI does), so a check is
+	// all that is wanted here.
+	if err := hdaemon.CheckSocketDir(sock); err != nil {
+		return err
+	}
+	conn, err := net.DialTimeout("unix", sock, 2*time.Second)
 	if err != nil {
 		return err
 	}

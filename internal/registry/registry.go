@@ -250,11 +250,14 @@ type Registry struct {
 	order    []string
 	stateDir string
 
-	// socketPath is the Unix socket this registry's daemon is bound to.
-	// Set once by the daemon right after Open (SetSocketPath) — the
-	// registry has no way to know it otherwise, and it is what create,
-	// Revive and Restart put in a spawned agent's HIVE_SOCKET so its
-	// hooks/extension know where to dial back.
+	// socketPath is the daemon's EVENTS socket — not its control
+	// socket. Set once by the daemon right after Open (SetSocketPath);
+	// the registry has no way to know it otherwise, and it is what
+	// create, Revive and Restart put in a spawned agent's HIVE_SOCKET
+	// so its hooks/extension know where to dial back. Events-only on
+	// purpose: everything downstream of a session inherits this
+	// environment, and reporting state is the whole of what it should
+	// be able to do (2026-09 audit, finding 2).
 	socketPath string
 	// hivedPath is the resolved absolute path of the running hived
 	// binary (os.Executable() + filepath.EvalSymlinks, done once at
@@ -595,9 +598,10 @@ func (r *Registry) setPhaseIf(id, from, to string) bool {
 	return true
 }
 
-// SetSocketPath records the Unix socket this registry's daemon is
-// bound to. Called once by the daemon right after Open, before any
-// session can be created.
+// SetSocketPath records the daemon's events socket — the one spawned
+// sessions get as HIVE_SOCKET. Called once by the daemon right after
+// Open, before any session can be created. Passing the control socket
+// here would hand every agent child session-creation rights.
 func (r *Registry) SetSocketPath(p string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -617,13 +621,18 @@ func (r *Registry) SetHivedPath(p string) {
 // hiveEnv returns the HIVE_SESSION_ID / HIVE_SOCKET pair every spawned
 // session's environment carries, so an agent's hook or extension tier
 // (and, per spec 337, anything else that wants to dial the daemon back)
-// knows its own id and where to reach it. Takes r.mu.
+// knows its own id and where to reach it. HIVE_SOCKET is the daemon's
+// events socket; see socketPath. Takes r.mu.
 func (r *Registry) hiveEnv(id string) []string {
 	r.mu.Lock()
 	sock := r.socketPath
 	r.mu.Unlock()
 	return []string{"HIVE_SESSION_ID=" + id, "HIVE_SOCKET=" + sock}
 }
+
+// HiveEnvForTest exposes hiveEnv to other packages' tests, so the
+// daemon can assert on the environment it actually hands a session.
+func (r *Registry) HiveEnvForTest(id string) []string { return r.hiveEnv(id) }
 
 // spawnInfo builds the agent.SpawnInfo a Def.SpawnArgs call needs.
 // Takes r.mu.

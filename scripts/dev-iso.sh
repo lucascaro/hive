@@ -123,6 +123,10 @@ if [[ $do_reset -eq 1 ]]; then
   rm -rf "$abs_iso_dir"
 fi
 mkdir -p "$iso_dir/state"
+# hived and the GUI both refuse a socket directory reachable by group or
+# other (see internal/daemon.CheckSocketDir), and mkdir here obeys the
+# umask, which is commonly 022.
+chmod 700 "$iso_dir"
 
 if [[ $do_build -eq 1 ]]; then
   ./build.sh

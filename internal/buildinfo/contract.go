@@ -24,6 +24,13 @@ package buildinfo
 // History (newest first), so a bump is a decision with a record and
 // not just a number going up:
 //
+//	6 — Events-only socket. The daemon binds a second listener next to
+//	    the control socket (<sock>.events) that serves HELLO{mode:event}
+//	    alone, answering every other mode with mode_not_allowed, and
+//	    HIVE_SOCKET in a spawned session's environment now names THAT
+//	    socket. A session revived by an older daemon hands its agent the
+//	    control socket, so the security property only holds once the
+//	    daemon is the new one — which is exactly what a bump forces.
 //	5 — Ideas: the LIST_IDEAS / IDEAS / ADD_IDEA / UPDATE_IDEA /
 //	    REMOVE_IDEA / IDEA_EVENT frame set, the registry-owned ideas/
 //	    directory behind it, and the project_has_ideas refusal that
@@ -47,7 +54,7 @@ package buildinfo
 //	    before this cannot see or clear the flag.
 //	1 — first contract; everything up to and including the
 //	    CLIENT_COMMAND relay.
-const DaemonContract = 5
+const DaemonContract = 6
 
 // Identity is this binary's full build identity. `hived --version
 // --json` prints it, and Welcome carries the same three values, so a
