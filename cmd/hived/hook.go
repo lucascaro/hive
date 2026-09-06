@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -177,6 +178,12 @@ func firstString(p hookPayload, keys ...string) string {
 // closes without waiting for a reply — the daemon sends none in
 // ModeEvent.
 func sendHookEvent(sock string, ev wire.AgentEvent) error {
+	// The hook reports what the user is doing. Check the socket
+	// directory before handing that to whatever is listening: the path
+	// arrives in an inherited environment variable.
+	if err := daemon.CheckSocketDir(sock); err != nil {
+		return err
+	}
 	conn, err := net.DialTimeout("unix", sock, hookDialTimeout)
 	if err != nil {
 		return err

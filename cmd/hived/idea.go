@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/lucascaro/hive/internal/buildinfo"
+	"github.com/lucascaro/hive/internal/daemon"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -110,7 +111,7 @@ func ideaAdd(args []string, stdout io.Writer) error {
 func ideaList(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("idea list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	all := fs.Bool("all", false, "list every project's ideas, not just this session's")
+	all := fs.Bool("all", false, "list every project's ideas (refused from inside a session)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -183,6 +184,12 @@ func ideaEnv() (sessionID, sock string, err error) {
 }
 
 func ideaDial(sock, sessionID string) (*wire.Client, error) {
+	// HIVE_SOCKET is inherited, and a socket that answers is not
+	// automatically ours — check the directory before handshaking, the
+	// same as every other client does.
+	if err := daemon.CheckSocketDir(sock); err != nil {
+		return nil, err
+	}
 	conn, err := net.DialTimeout("unix", sock, ideaDialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach the daemon at %s: %w", sock, err)

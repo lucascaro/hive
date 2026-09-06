@@ -46,7 +46,12 @@ func SocketPath() string {
 		}
 		return filepath.Join(registry.StateDir(), "hived.sock")
 	case "darwin":
-		if tmp := os.TempDir(); tmp != "/tmp" && tmp != "/private/tmp" {
+		// Clean first: os.TempDir returns $TMPDIR verbatim, and
+		// launchd's own value ends in a slash. Comparing the raw string
+		// would let TMPDIR="/tmp/" walk straight past this guard and put
+		// the socket back in the shared /tmp this whole change exists to
+		// leave.
+		if tmp := filepath.Clean(os.TempDir()); tmp != "/tmp" && tmp != "/private/tmp" {
 			return filepath.Join(tmp, "hive", "hived.sock")
 		}
 		return filepath.Join(registry.StateDir(), "hived.sock")

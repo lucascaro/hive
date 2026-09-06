@@ -60,6 +60,11 @@ type Daemon struct {
 	evsock   string
 	lnEvents net.Listener
 
+	// lock is the flock on the state directory that makes this daemon
+	// the only writer of it. Held open for the process's lifetime;
+	// closing it releases the lock. nil on Windows.
+	lock *os.File
+
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
 
@@ -163,8 +168,20 @@ func New(cfg Config) (*Daemon, error) {
 	// control socket above is the one every client probes — so a
 	// leftover here is always stale by the time we get past that check.
 	_ = os.Remove(evsock)
+	// Before the registry opens: two daemons sharing one state
+	// directory both revive every persisted session, forking a second
+	// PTY for each. See acquireStateLock.
+	stateDir := cfg.StateDir
+	if stateDir == "" {
+		stateDir = registry.StateDir()
+	}
+	lock, err := acquireStateLock(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("daemon: %w", err)
+	}
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
+		closeStateLock(lock)
 		return nil, err
 	}
 	// Children report on the events socket, never the control one.
@@ -218,6 +235,7 @@ func New(cfg Config) (*Daemon, error) {
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		_ = reg.Close()
+		closeStateLock(lock)
 		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
 	}
 	lnEvents, err := net.Listen("unix", evsock)
@@ -225,6 +243,7 @@ func New(cfg Config) (*Daemon, error) {
 		_ = ln.Close()
 		_ = os.Remove(sock)
 		_ = reg.Close()
+		closeStateLock(lock)
 		return nil, fmt.Errorf("daemon: listen %s: %w", evsock, err)
 	}
 
@@ -260,6 +279,7 @@ func New(cfg Config) (*Daemon, error) {
 		reg:      reg,
 		ln:       ln,
 		lnEvents: lnEvents,
+		lock:     lock,
 		sockInfo: sockInfo,
 
 		orphanCandidates: orphanCandidates,
@@ -473,7 +493,20 @@ func (d *Daemon) Close() error {
 		_ = d.reg.Close()
 	}
 	d.removeOwnSocket()
+	// Last: while this is held, a replacement daemon cannot open the
+	// registry, and the GUI's Restart spawns one the moment the socket
+	// goes quiet.
+	closeStateLock(d.lock)
 	return nil
+}
+
+// closeStateLock releases the state-directory lock. nil-safe, because
+// acquireStateLock is a no-op on Windows and because Close runs on
+// paths where New never got that far.
+func closeStateLock(f *os.File) {
+	if f != nil {
+		_ = f.Close()
+	}
 }
 
 // removeOwnSocket unlinks the socket only while it is still the file
@@ -601,6 +634,13 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 // goroutine forever.
 const eventReadDeadline = 2 * time.Second
 
+// sessionModeIdleDeadline bounds each read on a ModeSession connection.
+// It is refreshed per frame in serveControl, so a client working
+// steadily is never cut off; one that goes quiet is. Generous enough to
+// cover a slow `hive idea` round-trip and short enough that a session
+// child cannot park a goroutine for the daemon's lifetime.
+const sessionModeIdleDeadline = 30 * time.Second
+
 // serveEventsOnly is serve for the events socket: the HELLO must be
 // ModeEvent (one state report) or ModeSession (the narrowed idea
 // connection `hive idea` opens from inside a session). Anything else
@@ -643,10 +683,12 @@ func (d *Daemon) serveEventsOnly(ctx context.Context, conn net.Conn) {
 	case wire.ModeEvent:
 		d.serveEvent(conn)
 	case wire.ModeSession:
-		// Long-lived, unlike ModeEvent: drop the handshake deadline and
-		// join d.clients so Close hangs this one up like any other
-		// control connection.
-		_ = conn.SetReadDeadline(time.Time{})
+		// Long-lived relative to ModeEvent, but not unbounded: this is
+		// the one connection kind a subprocess of an agent can open, so
+		// it gets an idle deadline rather than the control socket's
+		// none. `hive idea` writes its verb immediately and exits;
+		// anything that connects and sits there is not doing that.
+		_ = conn.SetReadDeadline(time.Now().Add(sessionModeIdleDeadline))
 		d.mu.Lock()
 		if d.clients == nil {
 			d.mu.Unlock()
@@ -714,7 +756,19 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	// A ModeSession connection comes from a program running inside a
 	// session, over the events socket. It gets the idea verbs and
 	// nothing else — see wire.ModeSession.
+	//
+	// Resolve the caller's project ONCE, here, from the session id it
+	// named in HELLO. Every idea verb below is bound to it: allowlisting
+	// the verbs without also scoping the data would leave a session
+	// child able to read and write every project's ideas, which is the
+	// same capability in a different shape. An id the registry does not
+	// know (a stale HIVE_SESSION_ID from a copied environment) resolves
+	// to "", and every idea verb is then refused.
 	restricted := hello.Mode == wire.ModeSession
+	ownProjectID := ""
+	if restricted {
+		ownProjectID = projectOfSession(d.reg.List(), hello.SessionID)
+	}
 	// Subscribe BEFORE the client can learn it is connected. A client
 	// that reads WELCOME and immediately causes an event (the hook
 	// integration test does exactly that; a GUI reload racing a hook
@@ -789,6 +843,13 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 			case ev, ok := <-iListener:
 				if !ok {
 					return
+				}
+				// A restricted client sees only its own project's
+				// ideas. Without this it could sit on the connection
+				// and passively harvest every idea filed anywhere,
+				// which is the read it is refused when it asks.
+				if restricted && ev.Idea.ProjectID != ownProjectID {
+					continue
 				}
 				if err := writeJSON(wire.FrameIdeaEvent, ev); err != nil {
 					return
@@ -867,12 +928,21 @@ func (d *Daemon) serveControl(ctx context.Context, conn net.Conn, hello wire.Hel
 	}
 	ops := controlOps{
 		restricted:     restricted,
+		ownSessionID:   hello.SessionID,
+		ownProjectID:   ownProjectID,
 		writeJSON:      writeJSON,
 		sendError:      sendError,
 		sendWorktrees:  sendWorktrees,
 		finishMutation: finishMutation,
 	}
 	for {
+		if restricted {
+			// Refreshed per frame, so a client that keeps working is
+			// never cut off and one that goes quiet is. Only restricted
+			// connections are bounded: a GUI control connection is idle
+			// by design between user actions.
+			_ = conn.SetReadDeadline(time.Now().Add(sessionModeIdleDeadline))
+		}
 		ft, payload, err := wire.ReadFrame(conn)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
@@ -893,6 +963,17 @@ var sessionModeFrames = map[wire.FrameType]bool{
 	wire.FrameListIdeas: true,
 }
 
+// projectOfSession resolves the project a session belongs to, or "" if
+// the id names no live session.
+func projectOfSession(all []wire.SessionInfo, id string) string {
+	for _, s := range all {
+		if s.ID == id {
+			return s.ProjectID
+		}
+	}
+	return ""
+}
+
 // ownSessionOnly narrows a session list to the one entry a restricted
 // client is allowed to see — its own. An id that matches nothing (a
 // stale HIVE_SESSION_ID from a copied environment) yields an empty
@@ -900,7 +981,12 @@ var sessionModeFrames = map[wire.FrameType]bool{
 func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
 	for _, s := range all {
 		if s.ID == id {
-			return []wire.SessionInfo{s}
+			// Id and project only. `hive idea list` needs the project
+			// to scope its listing and nothing else, and the rest of
+			// SessionInfo — worktree path and branch, window title,
+			// last prompt — is not something to hand a subprocess
+			// merely because it runs in the session.
+			return []wire.SessionInfo{{ID: s.ID, ProjectID: s.ProjectID}}
 		}
 	}
 	return nil
@@ -914,8 +1000,15 @@ func ownSessionOnly(all []wire.SessionInfo, id string) []wire.SessionInfo {
 // function by a factor of two.
 type controlOps struct {
 	// restricted marks a ModeSession connection: handleControlFrame
-	// refuses every verb outside sessionModeFrames on one.
-	restricted     bool
+	// refuses every verb outside sessionModeFrames on one, and binds
+	// the ones it does serve to ownSessionID / ownProjectID.
+	restricted bool
+	// ownSessionID / ownProjectID are the caller's session and the
+	// project it belongs to, resolved once at handshake. Meaningful
+	// only when restricted. An empty ownProjectID means the session id
+	// resolved to nothing, and every idea verb is refused.
+	ownSessionID   string
+	ownProjectID   string
 	writeJSON      func(wire.FrameType, any) error
 	sendError      func(code, msg string)
 	sendWorktrees  func(projectID, failCode string)
@@ -1202,20 +1295,45 @@ func (d *Daemon) handleControlFrame(ctx context.Context, ops controlOps, ft wire
 		if !ok {
 			return false
 		}
+		if ops.restricted {
+			// An empty ProjectID means "every project" to the registry,
+			// which is what `hive idea list --all` sends — refused from
+			// inside a session rather than silently narrowed, so the
+			// user sees why the answer is not the one they asked for.
+			if ops.ownProjectID == "" || req.ProjectID != ops.ownProjectID {
+				ops.sendError(wire.ErrCodeModeNotAllowed,
+					"a session connection can only list its own project's ideas")
+				return false
+			}
+		}
 		_ = ops.writeJSON(wire.FrameIdeas, wire.IdeasResp{Ideas: d.reg.ListIdeas(req.ProjectID)})
 	case wire.FrameAddIdea:
 		req, ok := decodeReq[wire.AddIdeaReq](payload, ops.sendError)
 		if !ok {
 			return false
 		}
-		// Inline, not via runOp: an idea write is one temp+rename with
-		// no git and no subprocess behind it.
-		if _, err := d.reg.AddIdea(registry.IdeaSpec{
+		spec := registry.IdeaSpec{
 			ProjectID: req.ProjectID,
 			SessionID: req.SessionID,
 			Kind:      req.Kind,
 			Text:      req.Text,
-		}); err != nil {
+		}
+		if ops.restricted {
+			if ops.ownProjectID == "" {
+				ops.sendError(wire.ErrCodeModeNotAllowed,
+					"a session connection can only file ideas against its own session")
+				return false
+			}
+			// Taken from the handshake, not from the payload: the
+			// client is inside the session it is filing for, and a
+			// forged session id would both file into another project
+			// and misattribute the idea's source.
+			spec.SessionID = ops.ownSessionID
+			spec.ProjectID = ops.ownProjectID
+		}
+		// Inline, not via runOp: an idea write is one temp+rename with
+		// no git and no subprocess behind it.
+		if _, err := d.reg.AddIdea(spec); err != nil {
 			ops.sendError(ideaErrorCode(err, "add_idea_failed"), err.Error())
 		}
 	case wire.FrameUpdateIdea:
