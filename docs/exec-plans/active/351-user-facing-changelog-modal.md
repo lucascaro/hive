@@ -312,7 +312,14 @@ rotting:
    the gate removed. **Files added to the plan's list:**
    `src/app/keyboard.ts`, `test/dom/keyboard-precedence.test.tsx`,
    `test/dom/whats-new-empty.test.tsx` (new).
-6. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
+6. **The focus stop is a named `<section>`, not a `div` with `role="group"`.**
+   `biome ci` rejects both `role="group"` on a non-`<fieldset>`
+   (`useSemanticElements`) and `tabIndex` on a non-interactive element
+   (`noNoninteractiveTabindex`). A `<section>` with an accessible name carries
+   the same landmark semantics without the explicit role; the deliberate
+   `tabIndex` carries a `biome-ignore`, as intentional a11y exceptions do
+   elsewhere here.
+7. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
    The repo root would have served `.git` and every dotfile over the dev
    server. `vitest.config.js` needed no change at all — verified, not assumed.
 
@@ -396,3 +403,4 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e56397bd; threads_open: 0; action: fixes-applied+push (5 IMPORTANT + 3 MINOR; 3 were fallout from the iter-1 fixes); head_sha: ba1f45b.
 - **2026-09-06 iter 3** — verdict: REQUEST_CHANGES (1 BLOCKING); mergeable: MERGEABLE; findings_hash: cae42913; threads_open: 0; action: fixes-applied+push (release.sh never staged the stamped features.json); head_sha: 0dc1afe.
 - **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d884c426; threads_open: 0; action: fixes-applied+push (4 IMPORTANT + 2 MINOR; keyboard ladder gap was an original miss, not fallout); head_sha: 1dc1cfd.
+- **2026-09-06 iter 5** — verdict: APPROVE (after autofix cleared 1 BLOCKING: biome ci a11y errors failing the Linux leg); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b43d400.

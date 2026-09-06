@@ -5,7 +5,7 @@ title: "Show a user-facing changelog behind a gift icon in the sidebar"
 type: enhancement
 complexity: M
 priority: P2
-stage: REVIEW
+stage: GATE
 ---
 
 # Show a user-facing changelog behind a gift icon in the sidebar
