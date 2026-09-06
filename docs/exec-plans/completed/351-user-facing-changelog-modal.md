@@ -4,7 +4,7 @@
 - **Issue:** #351
 - **PR:** #357
 - **Branch:** `feature/351-user-facing-changelog-modal`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -404,3 +404,12 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-06 iter 3** — verdict: REQUEST_CHANGES (1 BLOCKING); mergeable: MERGEABLE; findings_hash: cae42913; threads_open: 0; action: fixes-applied+push (release.sh never staged the stamped features.json); head_sha: 0dc1afe.
 - **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d884c426; threads_open: 0; action: fixes-applied+push (4 IMPORTANT + 2 MINOR; keyboard ladder gap was an original miss, not fallout); head_sha: 1dc1cfd.
 - **2026-09-06 iter 5** — verdict: APPROVE (after autofix cleared 1 BLOCKING: biome ci a11y errors failing the Linux leg); mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: b43d400.
+
+## Gate verdict
+
+- **2026-09-06** — verdict: PASS; checks: 9 acceptance / 6 non-goals / 8 doc-accuracy, 0 failed, 1 followup noted; followups: none filed; one-line: every success criterion demonstrated by a run, not by reading; the two mid-flight non-goal rewrites judged truthful and load-bearing.
+  - 2026-09-06 dimensions:
+    - acceptance — PASS — all 9 criteria exercised. Ordering asserted against rendered DOM (not just the comparator); unread persistence demonstrated across a real `page.reload()`; the website's shipped-needs-`since` failure path reproduced by corrupting a scratch copy, never the real file.
+    - non-goals — PASS — `CHANGELOG.md` untouched, changeset schema and rollup unchanged, no daemon/wire/persistence change beyond the one `localStorage` key, nothing fetched over the network, no per-release CI gate added. Scope creep into `scripts/regen-generated.py` and `scripts/release.sh` confirmed real, disclosed, and load-bearing — the `release.sh` gap was iteration 3's BLOCKING finding, not gratuitous.
+    - doc accuracy — PASS — changeset valid (`type: added`, so `regression_of` N/A); `CHANGELOG.md` not hand-edited; README accurate; the AGENTS.md `since: "Unreleased"` rule verified followable end to end and followed by this PR; 25 icon symbols confirmed by counting `icons.svg`, `ICON_NAMES` and `icons.md` independently; no stale `features.yml` references; 3 of 7 plan amendment claims spot-checked against the diff.
+  - **Noted, not blocking:** `.github/workflows/changesets.yml` and `AGENTS.md` are touched but named nowhere in the spec's `## Non-goals`. The non-goals text is incomplete about the full touched-file set rather than wrong about it.

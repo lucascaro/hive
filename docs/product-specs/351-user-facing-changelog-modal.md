@@ -1,11 +1,12 @@
 ---
 issue: 351
 pr: 357
+shipped: 2026-09-06
 title: "Show a user-facing changelog behind a gift icon in the sidebar"
 type: enhancement
 complexity: M
 priority: P2
-stage: GATE
+stage: DONE
 ---
 
 # Show a user-facing changelog behind a gift icon in the sidebar
@@ -14,6 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** M
 - **Priority:** P2
+- **Exec plan:** [docs/exec-plans/completed/351-user-facing-changelog-modal.md](../exec-plans/completed/351-user-facing-changelog-modal.md)
 
 ## Problem
 
