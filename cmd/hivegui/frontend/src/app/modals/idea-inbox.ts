@@ -12,6 +12,7 @@
 import { flushSync } from 'react-dom';
 import { ListIdeas, RemoveIdea, UpdateIdea } from '../../bridge.js';
 import { flashStatus, reportFailure } from '../dom.js';
+import { ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 import { openChoiceDialog, dismissChoiceDialog } from './choice-dialog.js';
 import {
   anyModalOpen,
@@ -80,12 +81,25 @@ export function closeIdeaInbox(): void {
   deps.refocusActiveTerm();
 }
 
-export function editIdeaText(id: string, text: string): void {
+// editIdeaText commits an inline edit. Returns false when it refused,
+// so the caller can keep the editor up with the text still in it —
+// there is nowhere else the text survives.
+export function editIdeaText(id: string, text: string): boolean {
   const trimmed = text.trim();
   // Empty is not a delete: Delete is its own row action, behind a
   // confirm, and a blur on an emptied field must not destroy the note.
-  if (!trimmed) return;
+  if (!trimmed) return false;
+  // The same 4 KiB cap the capture sheet enforces. The daemon applies
+  // it to the update path too (registry/ideas.go), rejecting rather
+  // than truncating, and this does not await the answer — so without
+  // the check the editor tears down, the row reverts to the stale
+  // text, and the edit is gone.
+  if (ideaTextTooLong(trimmed)) {
+    flashStatus(`idea is too long (max ${MAX_IDEA_TEXT / 1024} KiB)`, true);
+    return false;
+  }
   UpdateIdea(id, trimmed, '', '').catch(reportFailure('edit idea'));
+  return true;
 }
 
 export function markIdeaDone(idea: IdeaInfo): void {

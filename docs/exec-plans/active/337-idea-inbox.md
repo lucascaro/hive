@@ -812,6 +812,18 @@ path instead.
   that nothing renders, so the store accumulates them for the life of
   the window. Neither is a defect in what ships; both are recorded
   here rather than fixed under a feature PR.
+- **2026-09-06** — Review finding, fixed: the 4 KiB guard stopped at
+  `submitIdea` and missed its sibling, `editIdeaText`. The daemon
+  applies the same cap to the update path (`registry/ideas.go`), and
+  the inline editor tears its input down before the answer arrives, so
+  an over-long edit reverted the row to the stale text and was gone —
+  the same loss the capture fix had just closed, one caller over. The
+  cap now lives in `editIdeaText` too, which returns `false` when it
+  refuses; the row remounts the editor seeded with the text the user
+  typed, because there is nowhere else it survives. Rejected: giving
+  `beginInlineRename`'s `onCommit` a rejecting contract — that is four
+  other call sites and an editor that can refuse to close on blur, for
+  a case only this caller has.
 
 ## Review log
 
@@ -1005,6 +1017,7 @@ code and self-healing.
 - **2026-09-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b79eeba37673095a96a91b05bb885abaff1fe1d95255293e78ff43b11e26cb1; threads_open: 0; action: stop (COMMENT, strict off, no unresolved threads — 0 BLOCKING; iteration 2's fixes re-verified correct); head_sha: a07cccb.
 - **2026-09-06 iter 3b** — the loop's stop condition was met, but both IMPORTANT findings were fixed anyway rather than shipped: ⇧⌘I inert off macOS, and a >4 KiB note silently lost. See the Decision log entries of the same date. Two MINORs left standing, also recorded there.
 - **2026-09-06 merge** — `origin/main` moved under the PR (#356 npm ci, #357 the What's New modal) and the branch went CONFLICTING. Merged: three additive conflicts (a modal root in `index.html`, an `init*` call in `main.tsx`, the `ModalId`/`ModalEntry` unions in `store.ts`) — both sides kept. One semantic conflict git could not see: `ideaKeysBlocked()` enumerates the modals ⌘I must refuse under, and `whats-new` did not exist when it was written, so the macOS menu path would have opened a capture sheet over it. Added, with the matching case in the precedence table.
+- **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3903976cf8aab00c2269cf66eb9d8b815d23a3782a7965df0ec7f6ad652a15b8; threads_open: 0; action: stop (confirmation pass: the merge of `origin/main` verified clean against both parents, iteration 3's fixes verified correct; one new IMPORTANT — the byte cap missing from `editIdeaText` — fixed rather than shipped); head_sha: 37c9f41.
 
 ## Open questions
 

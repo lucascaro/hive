@@ -199,6 +199,37 @@ describe('idea inbox', () => {
     expect(UpdateIdea).toHaveBeenCalledWith('i1', 'kept', '', '');
   });
 
+  it('refuses an edit past the 4 KiB cap and keeps what was typed', async () => {
+    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
+    await openWith([idea()]);
+    fireEvent.click(button(rows()[0], 'Edit'));
+    await flush();
+    const input = rows()[0].querySelector('input') as HTMLInputElement;
+    const long = 'x'.repeat(MAX_IDEA_TEXT + 1);
+    fireEvent.input(input, { target: { value: long } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+    // Not sent — the daemon rejects rather than truncates and nothing
+    // here awaits the answer.
+    expect(UpdateIdea).not.toHaveBeenCalled();
+    expect(flashStatus).toHaveBeenCalledWith(
+      expect.stringContaining('too long'),
+      true,
+    );
+    // Still editable, still holding the text: there is nowhere else it
+    // survives.
+    const reopened = rows()[0].querySelector('input') as HTMLInputElement;
+    expect(reopened).not.toBeNull();
+    expect(reopened.value).toBe(long);
+
+    // Shortening it commits normally.
+    fireEvent.input(reopened, { target: { value: 'short enough' } });
+    fireEvent.keyDown(reopened, { key: 'Enter' });
+    await flush();
+    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'short enough', '', '');
+    expect(rows()[0].querySelector('input')).toBeNull();
+  });
+
   it('does not destroy the note when the edit is emptied', async () => {
     await openWith([idea()]);
     fireEvent.click(button(rows()[0], 'Edit'));
