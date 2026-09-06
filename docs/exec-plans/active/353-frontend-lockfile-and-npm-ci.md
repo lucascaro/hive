@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/353-frontend-lockfile-and-npm-ci.md](../../product-specs/353-frontend-lockfile-and-npm-ci.md)
 - **Issue:** #353
+- **PR:** #356
+- **Branch:** `sec/frontend-lockfile`
 - **Status:** active
 
 ## Summary
@@ -138,6 +140,10 @@ Two rounds, `general-purpose` reviewer, per `/hs-feature-loop` Phase 4.
 - *"Check 2's grep omits `ci-bootstrap.sh`, which the spec names verbatim; the `git status` line proves nothing."* Both applied.
 
 Per the skill, the loop presents after one revise cycle rather than looping. The operator approved with the two decisions above.
+
+## PR convergence ledger
+
+<!-- one line per /hs-review-loop iteration -->
 
 ## Open questions
 

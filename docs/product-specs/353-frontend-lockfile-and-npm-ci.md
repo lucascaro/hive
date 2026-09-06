@@ -1,7 +1,8 @@
 ---
 issue: 353
+pr: 356
 title: "Commit frontend package-lock.json and install with npm ci"
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Commit frontend package-lock.json and install with npm ci
