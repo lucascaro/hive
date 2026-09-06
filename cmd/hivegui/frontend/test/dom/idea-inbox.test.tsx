@@ -186,6 +186,19 @@ describe('idea inbox', () => {
     expect(UpdateIdea).toHaveBeenCalledWith('i1', 'sharper wording', '', '');
   });
 
+  it('refuses a blank edit at the module boundary too', async () => {
+    // The inline editor trims and drops a whitespace-only commit before
+    // it ever reaches editIdeaText, so the row-level test above passes
+    // whether or not this guard exists. Call it directly: it is what
+    // stands between a stray commit and a blanked note.
+    const { editIdeaText } = await import('../../src/app/modals/idea-inbox.js');
+    editIdeaText('i1', '   ');
+    editIdeaText('i1', '');
+    expect(UpdateIdea).not.toHaveBeenCalled();
+    editIdeaText('i1', '  kept  ');
+    expect(UpdateIdea).toHaveBeenCalledWith('i1', 'kept', '', '');
+  });
+
   it('does not destroy the note when the edit is emptied', async () => {
     await openWith([idea()]);
     fireEvent.click(button(rows()[0], 'Edit'));

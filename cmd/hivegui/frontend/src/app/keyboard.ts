@@ -252,6 +252,10 @@ window.addEventListener(
       }
       return; // the capture sheet owns the keyboard while open
     }
+    // NOTE: the idea-inbox gate below and the ⌘I / ⇧⌘I bindings further
+    // down both route through captureIdea() / toggleIdeaInbox(). Those
+    // two functions are ALSO the menu handlers, and on macOS they are
+    // the only path that runs — see their doc comments.
     if (isModalOpen('idea-inbox')) {
       // ⇧⌘I toggles closed.
       if (
@@ -263,21 +267,10 @@ window.addEventListener(
         closeIdeaInbox();
         return;
       }
-      // ⌘I files another idea for the project whose inbox is open. The
-      // inbox CLOSES first and the project is passed explicitly, which
-      // is two bugs avoided rather than a style choice: every
-      // .hv-dialog shares z-index 40 and #idea-inbox is later in
-      // index.html, so a sheet opened over it would paint BEHIND it;
-      // and openQuickIdea() with no argument prefills
-      // activeProjectId(), which is the focused session's project, not
-      // the inbox's — filing from another project's inbox would land
-      // the note somewhere the user never looked.
       if (cmdOrCtrl(e) && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         e.stopPropagation();
-        const projectId = ideaInboxProjectId();
-        closeIdeaInbox();
-        openQuickIdea(projectId);
+        captureIdea();
         return;
       }
       if (trapFocus(pageEl('idea-inbox'), e)) e.stopPropagation();
@@ -419,12 +412,8 @@ window.addEventListener(
       openWorktreesForActiveProject();
     } else if (e.key === 'i' || e.key === 'I') {
       swallow();
-      // ⌘I files a note about anything; ⇧⌘I opens the inbox of the
-      // project you are in. With no project at all the inbox is a
-      // no-op (openIdeaInbox says so) — capture still works, because
-      // activeProjectId() falls back to the default project.
-      if (e.shiftKey) openIdeaInboxForActiveProject();
-      else openQuickIdea();
+      if (e.shiftKey) toggleIdeaInbox();
+      else captureIdea();
     } else if (e.key === 's' || e.key === 'S') {
       swallow();
       // Route through toggleSidebar so the keyboard path stays in
@@ -789,8 +778,16 @@ const menuActions = {
   'menu:command-palette': () => openCommandPalette(),
   'menu:settings': () => openSettings(),
   'menu:worktrees': () => openWorktreesForActiveProject(),
-  'menu:quick-idea': () => openQuickIdea(),
-  'menu:idea-inbox': () => openIdeaInboxForActiveProject(),
+  // Toggles, and modal-aware, for the same reason
+  // 'menu:keyboard-shortcuts' is: the native ⌘I / ⇧⌘I accelerators
+  // (menu_darwin.go) intercept the chord before the webview on macOS,
+  // so on that platform these ARE the handlers — the window listener's
+  // ⌘I branches never run. A bare open() here would reopen the sheet
+  // over itself (discarding the typed note), open it behind the inbox,
+  // and prefill the wrong project, which is the whole class of bug the
+  // keydown branches exist to avoid.
+  'menu:quick-idea': () => captureIdea(),
+  'menu:idea-inbox': () => toggleIdeaInbox(),
   'menu:close-session': () => closeActiveSession(),
   'menu:reopen-closed-session': () => reopenLastClosedSession(),
   'menu:zoom-in': () => deps.bumpFontSize(+1),
@@ -871,6 +868,70 @@ export function openWorktreesForActiveProject() {
 export function openIdeaInboxForActiveProject() {
   const pid = activeProjectId();
   openIdeaInbox(appData().projects.find((p) => p.id === pid) ?? null);
+}
+
+// ---------- ⌘I / ⇧⌘I ----------
+//
+// One implementation each, called from BOTH the window keydown handler
+// and the native menu. On macOS the menu accelerator swallows the chord
+// before the webview (see menuActions, and the same note on
+// 'menu:keyboard-shortcuts'), so these functions are the only path that
+// runs there; on Windows and Linux there is no menu at all and only the
+// keydown path runs. Keeping the decision in one place is what stops
+// the two platforms from behaving differently — the first version of
+// this feature put it in the keydown branch alone and was inert on mac.
+
+// ideaKeysBlocked mirrors the window handler's modal ladder for the
+// menu path. Every gate above the ⌘I binding returns before reaching
+// it, so a menu item that punched through them would give macOS a
+// behaviour no other platform has — a capture sheet over the settings
+// dialog, or over a question about deleting a worktree.
+function ideaKeysBlocked(): boolean {
+  if (choiceDialogOpen() || inlineRenameActive()) return true;
+  return (
+    isModalOpen('launcher') ||
+    isModalOpen('project-editor') ||
+    isModalOpen('command-palette') ||
+    isModalOpen('settings') ||
+    isModalOpen('worktrees') ||
+    isModalOpen('help')
+  );
+}
+
+// captureIdea is ⌘I: open the capture sheet, close it if it is already
+// up, and — from the inbox — close the inbox first and carry ITS
+// project into the sheet. That last part is two bugs avoided rather
+// than a nicety: every .hv-dialog shares z-index 40 and #idea-inbox is
+// later in index.html, so a sheet left over it paints BEHIND it; and
+// openQuickIdea() with no argument prefills activeProjectId(), the
+// focused session's project, so filing from another project's inbox
+// would land the note somewhere the user never looked.
+export function captureIdea() {
+  if (ideaKeysBlocked()) return;
+  if (isModalOpen('quick-idea')) {
+    closeQuickIdea();
+    return;
+  }
+  if (isModalOpen('idea-inbox')) {
+    const projectId = ideaInboxProjectId();
+    closeIdeaInbox();
+    openQuickIdea(projectId);
+    return;
+  }
+  openQuickIdea();
+}
+
+// toggleIdeaInbox is ⇧⌘I. The capture sheet closes first: it is the
+// smaller thing and it is what the user just came from, and leaving it
+// up would put it behind the panel.
+export function toggleIdeaInbox() {
+  if (ideaKeysBlocked()) return;
+  if (isModalOpen('idea-inbox')) {
+    closeIdeaInbox();
+    return;
+  }
+  if (isModalOpen('quick-idea')) closeQuickIdea();
+  openIdeaInboxForActiveProject();
 }
 
 // moveActiveSession walks the (project_order, session_order) list.

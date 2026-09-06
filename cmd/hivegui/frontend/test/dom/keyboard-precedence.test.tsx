@@ -54,11 +54,18 @@ vi.mock('../../src/bridge.js', () => {
     RestartDaemon: fn(),
     CheckForUpdate: fn(),
     SetClipboardText: fn(),
-    EventsOn: vi.fn(),
+    EventsOn: (name: string, handler: (...a: unknown[]) => void) => {
+      menuHandlers.set(name, handler);
+    },
     WindowSetTitle: vi.fn(),
     ClipboardGetText: fn(),
   };
 });
+
+// The menu handlers keyboard.ts registers through EventsOn. On macOS
+// the native accelerator swallows ⌘I before the webview, so THESE are
+// the handlers that run there — the keydown branches never do.
+const menuHandlers = new Map<string, (...a: unknown[]) => void>();
 
 vi.mock('../../src/app/view.js', () => ({
   switchTo: vi.fn(),
@@ -124,6 +131,7 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
 const closeQuickIdea = vi.fn();
 const openQuickIdea = vi.fn();
 const closeIdeaInbox = vi.fn();
+const openIdeaInbox = vi.fn();
 vi.mock('../../src/app/modals/quick-idea.js', () => ({
   closeQuickIdea: () => closeQuickIdea(),
   openQuickIdea: (...a: unknown[]) => openQuickIdea(...a),
@@ -136,7 +144,7 @@ vi.mock('../../src/app/modals/idea-inbox.js', async (importOriginal) => ({
     typeof import('../../src/app/modals/idea-inbox.js')
   >()),
   closeIdeaInbox: () => closeIdeaInbox(),
-  openIdeaInbox: vi.fn(),
+  openIdeaInbox: (...a: unknown[]) => openIdeaInbox(...a),
 }));
 
 type Store = typeof import('../../src/store/store.js');
@@ -292,6 +300,7 @@ beforeEach(() => {
     closeQuickIdea,
     openQuickIdea,
     closeIdeaInbox,
+    openIdeaInbox,
     dismissDead,
   ]) {
     m.mockClear();
@@ -397,5 +406,68 @@ describe('⌘I inside the idea inbox', () => {
     press('i', { ...primaryMod(), shiftKey: true });
     expect(closeIdeaInbox).toHaveBeenCalled();
     expect(openQuickIdea).not.toHaveBeenCalled();
+  });
+});
+
+// The macOS menu path. buildAppMenu binds ⌘I / ⇧⌘I as native
+// accelerators, and AppKit consumes the chord before the webview sees a
+// keydown — the same reason 'menu:keyboard-shortcuts' has to toggle
+// rather than open. So on macOS these handlers, not the branches above,
+// ARE the feature; a bare open() here would reopen the sheet over
+// itself and discard the typed note.
+describe('the ⌘I menu path behaves like the keydown path', () => {
+  const menu = (name: string) => {
+    const h = menuHandlers.get(name);
+    if (!h) throw new Error(`no menu handler registered for ${name}`);
+    h();
+  };
+
+  it('menu:quick-idea toggles the sheet closed when it is already open', () => {
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    menu('menu:quick-idea');
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openQuickIdea).not.toHaveBeenCalled();
+  });
+
+  it('menu:quick-idea from the inbox closes it and carries its project', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    menu('menu:quick-idea');
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).toHaveBeenCalledWith('p9');
+  });
+
+  it('menu:idea-inbox toggles the inbox closed', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    menu('menu:idea-inbox');
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openIdeaInbox).not.toHaveBeenCalled();
+  });
+
+  it('menu:idea-inbox closes the capture sheet before opening', () => {
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    menu('menu:idea-inbox');
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openIdeaInbox).toHaveBeenCalled();
+  });
+
+  // The window handler's ladder returns above the ⌘I binding for every
+  // layer below, so the menu — which punches through all of them on
+  // macOS — must refuse for the same set, or mac gets a capture sheet
+  // over a question about deleting a worktree and no other platform
+  // does.
+  it.each([
+    ['a choice dialog', () => (choiceOpen.value = true)],
+    ['an inline rename', () => (inlineRenameOpen.value = true)],
+    ['the settings modal', () => openModal({ id: 'settings' })],
+    [
+      'the worktree browser',
+      () => openModal({ id: 'worktrees', projectId: 'p', projectName: '' }),
+    ],
+    ['the help overlay', () => openModal({ id: 'help' })],
+  ])('menu:quick-idea is a no-op under %s', (_name, open) => {
+    open();
+    menu('menu:quick-idea');
+    expect(openQuickIdea).not.toHaveBeenCalled();
+    expect(closeQuickIdea).not.toHaveBeenCalled();
   });
 });

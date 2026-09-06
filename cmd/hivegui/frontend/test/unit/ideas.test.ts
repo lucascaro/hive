@@ -61,6 +61,29 @@ describe('idea store', () => {
     ]);
   });
 
+  it('orders same-second ideas by id rather than unstably', () => {
+    // A burst of `hived idea add` lands several ideas in the same
+    // second; a comparator that never returns 0 lets them swap places
+    // on every re-sort, moving a row under the cursor.
+    resetStore();
+    const same = ago(1000);
+    setIdeas([
+      idea({ id: 'c', created: same }),
+      idea({ id: 'a', created: same }),
+      idea({ id: 'b', created: same }),
+    ]);
+    const first = appStore.getState().ideas.map((i) => i.id);
+    expect(first).toEqual(['a', 'b', 'c']);
+    // Re-sorting through another entry point must not reshuffle them.
+    addIdea(idea({ id: 'd', created: ago(10) }));
+    expect(appStore.getState().ideas.map((i) => i.id)).toEqual([
+      'd',
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
   it('treats an update for an unknown idea as an add', () => {
     resetStore();
     updateIdea(idea({ id: 'unseen' }));

@@ -16,6 +16,8 @@ import type {
   ReactNode,
   Ref,
 } from 'react';
+import { isMac } from '../lib/platform.js';
+import { mod } from '../lib/shortcuts.js';
 import { Icon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import type { ProjectInfo } from '../app/state.js';
@@ -136,7 +138,7 @@ export function ProjectCard(p: ProjectCardProps) {
             type="button"
             className="hv-project-card__ideas"
             data-action="ideas"
-            title={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name} (⇧⌘I)`}
+            title={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name} (${mod(isMac, 'I', { shift: true })})`}
             aria-label={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name}`}
             onClick={(e) => {
               e.stopPropagation();
@@ -157,10 +159,12 @@ export function ProjectCard(p: ProjectCardProps) {
             }}
           />
           {/* The binding is shown inline, per AGENTS.md › Key
-              Discoverability. */}
+              Discoverability — through mod(), because ⌘ is Ctrl on
+              Windows and Linux and a hardcoded glyph names a key those
+              users do not have. */}
           <IconButton
             icon="branch"
-            label={`Worktrees in ${name} (⌘E)`}
+            label={`Worktrees in ${name} (${mod(isMac, 'E')})`}
             action="worktrees"
             onClick={(e) => {
               e.stopPropagation();

@@ -23,6 +23,8 @@ import {
 import { switchTo } from '../../app/view.js';
 import type { IdeaInfo } from '../../app/state.js';
 import { relativeAge } from '../../lib/ideas.js';
+import { isMac } from '../../lib/platform.js';
+import { mod } from '../../lib/shortcuts.js';
 import { openIdeasOf, useAppStore } from '../../store/store.js';
 import { ModalShell } from './ModalShell.js';
 
@@ -87,13 +89,13 @@ function IdeaInboxPanel({
       // patterns.md › Keyboard hints: `[…]` for symbols, `(…)` for letters.
       hints={[
         { keys: '[esc]', label: 'close' },
-        { keys: '[⌘i]', label: 'capture another' },
+        { keys: `[${mod(isMac, 'i')}]`, label: 'capture another' },
       ]}
     >
       <div className="idea-list" id="idea-inbox-list">
         {ideas.length === 0 ? (
           <p className="idea-empty" id="idea-inbox-empty">
-            Nothing captured yet. Press ⌘I — or run{' '}
+            Nothing captured yet. Press {mod(isMac, 'I')} — or run{' '}
             <code>hived idea add …</code> inside a session — to file one.
           </p>
         ) : (

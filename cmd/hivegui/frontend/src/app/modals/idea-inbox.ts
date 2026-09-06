@@ -14,6 +14,7 @@ import { ListIdeas, RemoveIdea, UpdateIdea } from '../../bridge.js';
 import { flashStatus, reportFailure } from '../dom.js';
 import { openChoiceDialog, dismissChoiceDialog } from './choice-dialog.js';
 import {
+  anyModalOpen,
   closeModal,
   isModalOpen,
   modalEntry,
@@ -71,6 +72,11 @@ export function closeIdeaInbox(): void {
   dismissChoiceDialog();
   releaseFocus(pageEl('idea-inbox'));
   flushSync(() => closeModal('idea-inbox'));
+  // Only when this was the last modal — ⇧⌘I from the capture sheet
+  // closes the sheet and opens this, and ⌘I from here closes this and
+  // opens the sheet. Handing focus to the terminal under a dialog that
+  // is still up sends the next keystrokes to the PTY behind it.
+  if (anyModalOpen()) return;
   deps.refocusActiveTerm();
 }
 

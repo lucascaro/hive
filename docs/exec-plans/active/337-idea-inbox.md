@@ -761,6 +761,33 @@ path instead.
   PR and the table did not follow — exactly the drift that file exists
   to catch. It also carries the ⌘I-from-the-inbox regression, because
   that is where the ladder is already exercised.
+- **2026-09-06** — Review finding (BLOCKING), fixed: the ⌘I logic was
+  live only in the webview keydown branch, and `menu_darwin.go` binds
+  ⌘I / ⇧⌘I as native accelerators — which AppKit consumes before the
+  webview sees a keydown. On macOS the modal-aware branches, including
+  the previous fix, never ran; the bare `menu:quick-idea` handler did,
+  so ⌘I over an open sheet remounted it and discarded the typed note.
+  This repo already documented the hazard on `menu:keyboard-shortcuts`
+  (`keyboard.ts`) and in spec 327's non-goals; the feature reintroduced
+  it. Both chords now route through one `captureIdea()` /
+  `toggleIdeaInbox()` pair called from BOTH the keydown handler and the
+  menu, so the two platforms cannot diverge again.
+- **2026-09-06** — Those two functions refuse while any other modal, an
+  inline rename or the choice dialog owns the keyboard
+  (`ideaKeysBlocked`). The window handler's ladder returns above the ⌘I
+  binding for every one of those layers, and the native menu punches
+  through all of them — without this, macOS alone would let ⌘I open a
+  capture sheet over a question about deleting a worktree.
+- **2026-09-06** — Review finding, fixed: `mod()` is now exported from
+  `lib/shortcuts.ts` so components can render a binding inline without
+  hardcoding ⌘. The pre-existing `(⌘E)` on `ProjectCard`'s worktrees
+  button is fixed in the same pass rather than left: it is the same
+  one-line change and the same wrong answer for a Windows or Linux
+  user, who is told to press a key their keyboard does not have.
+- **2026-09-06** — Review finding, fixed: `closeIdeaInbox` gained the
+  same `anyModalOpen()` guard `closeQuickIdea` has. ⇧⌘I from the sheet
+  and ⌘I from the inbox each close one modal and open the other, so
+  either close can now run with a dialog still up.
 
 ## Review log
 
@@ -949,11 +976,24 @@ code and self-healing.
 
 - **2026-09-06 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9e1766c6e41477d97f4407cd26736dc38bdf20c83bbc06c98f2bf2e2b8f161c3; threads_open: 0; action: autofix+push (biome formatting on the two new dom test files — CI was red), then escalated:risky-fix-needs-human-decision (4 items); head_sha: adff33d.
 - **2026-09-06 iter 1b** — the four RISKY items were taken by the operator rather than left standing: the ⌘I-from-the-inbox stacking + wrong-project bug, `closeQuickIdea`'s unconditional refocus, and the two missing test dimensions. See the Decision log entries of the same date.
+- **2026-09-06 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 75e442fbb7de9bed52a4b7333bc4b95306ab462300c7dc3de9e276d1ae7e6075; threads_open: 0; action: escalated:risky-fix-needs-human-decision (1 BLOCKING, 1 IMPORTANT, 5 MINOR; autofix applied nothing); head_sha: c6e8157.
+- **2026-09-06 iter 2b** — the BLOCKING (macOS menu accelerators preempting the ⌘I keydown branches), the IMPORTANT (hardcoded ⌘ labels) and four of the five MINORs were taken by the operator; the fifth — Ctrl+I colliding with the terminal's Tab byte off macOS — was put to the user, who chose to ship as is and revisit on report. It is filed under Open questions.
 
 ## Open questions
 
-None. Both prior questions were resolved on 2026-09-05 and moved to the
-decision log (the mark-done affordance; `App.CreateSession`'s signature).
+- **Ctrl+I collides with the terminal's Tab byte on Windows and Linux.**
+  ⌘I maps to Ctrl+I off macOS, and the capture-phase window handler
+  swallows it before xterm — so Ctrl+I no longer reaches the shell as
+  Tab (0x09) there. Plain Tab is unaffected, so only a user who types
+  Ctrl+I for completion loses anything. Decided 2026-09-06 to ship as
+  is and revisit if anyone reports it; the fix, if it is ever wanted,
+  is the carve-out `navHistoryKey` already makes for Ctrl+- (zoom):
+  Ctrl+Alt+I on those platforms.
+
+
+The one above. Both prior questions were resolved on 2026-09-05 and
+moved to the decision log (the mark-done affordance; `App.CreateSession`'s
+signature).
 
 **Known risk (not a question):** the spec's claim that Claude and Pi
 accept a positional prompt in interactive mode is unverified in this

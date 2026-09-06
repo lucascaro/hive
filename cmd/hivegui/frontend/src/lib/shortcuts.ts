@@ -48,7 +48,12 @@ function keyLabel(key: string, isMac: boolean): string {
 }
 
 // cmd ("⌘" / "Ctrl+"), optionally with shift ("⇧⌘" / "Ctrl+Shift+").
-function mod(
+//
+// Exported because components render bindings inline too — a button's
+// title, a modal's key hint (AGENTS.md › Key Discoverability). A
+// hardcoded "⌘E" in a component tells a Windows or Linux user to press
+// a key their keyboard does not have.
+export function mod(
   isMac: boolean,
   key: string,
   { shift = false }: ModOpts = {},
