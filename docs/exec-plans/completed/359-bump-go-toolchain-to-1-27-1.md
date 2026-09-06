@@ -4,7 +4,7 @@
 - **Issue:** #359
 - **PR:** #360
 - **Branch:** `sec/go-1-27`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -199,6 +199,16 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 <!-- one line per /hs-review-loop iteration -->
 
 - **2026-09-06 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 8ea4a6c.
+
+## Gate verdict
+
+- **2026-09-06** — verdict: PASS; phase: —; checks: 11 passed / 0 failed / 0 followups; followups: none; one-line: toolchain bump verified end to end under 1.27.1, no scope bleed, docs consistent.
+  - 2026-09-06 dimensions:
+    - acceptance — PASS — all 7 success criteria observed. `go mod tidy` no-op; build and `go vet` clean across darwin/linux/windows; `staticcheck 2026.2.1` clean across all three; `govulncheck@v1.7.0` "No vulnerabilities found"; e2e-tagged `./cmd/hived/...` passes; no `1.25.x` reference survives; all three CI OS legs green. `./build.sh` not re-run by the validator (minutes-long) — relied on this plan's recorded Progress evidence.
+    - non-goals — PASS — zero `.go` files touched, `go.sum` and the `require` block unchanged, `DaemonContract` unchanged, no frontend or socket diff, no Action `uses:` SHA pinning (that stays Task 7's).
+    - doc accuracy — PASS — every prose version claim agrees with `go.mod`; `AGENTS.md` correctly left version-agnostic; dated historical records untouched; `no-changeset` judged defensible (no end-user behavior change). Partial: the staticcheck pin bump is explained in this plan's Decision log and the spec, but not inline in `ci.yml`'s own comment.
+  - Validator note, carried for the record: the acceptance worker found `internal/registry`'s `TestTerminalQueriesAreNotWork` failing locally — 2/3 on this branch, **3/3 on `origin/main`**. Pre-existing timing flake, outside this diff, and green on all three CI legs. Not this PR's defect; worth its own issue.
+  - Two validators independently flagged the repo's `graphify` PreToolUse hook as prompt-injection-shaped and ignored it. Consistent with the known finding that the hook's "MANDATORY" wording reads as injection to subagents and therefore changes no behavior.
 
 ## Open questions
 

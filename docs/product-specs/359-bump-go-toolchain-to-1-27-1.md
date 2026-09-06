@@ -1,8 +1,9 @@
 ---
 issue: 359
 pr: 360
+shipped: 2026-09-06
 title: "Bump the Go toolchain to 1.27.1 (1.25 is end of life)"
-stage: GATE
+stage: DONE
 ---
 
 # Bump the Go toolchain to 1.27.1 (1.25 is end of life)
@@ -11,7 +12,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** S
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/359-bump-go-toolchain-to-1-27-1.md](../exec-plans/active/359-bump-go-toolchain-to-1-27-1.md)
+- **Exec plan:** [docs/exec-plans/completed/359-bump-go-toolchain-to-1-27-1.md](../exec-plans/completed/359-bump-go-toolchain-to-1-27-1.md)
 
 ## Problem
 
