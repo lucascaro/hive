@@ -61,11 +61,14 @@ func SocketPath() string {
 	}
 }
 
-// EventSocketPath is the events-only listener that sits next to the
+// EventSocketPath is the narrowed listener that sits next to the
 // control socket. It is what spawned sessions get as HIVE_SOCKET: hooks
-// and extensions can report state on it, but a HELLO in any other mode
-// is refused, so a subprocess of an agent cannot create, attach to or
-// kill sessions through the environment it inherited.
+// and extensions report state on it with ModeEvent, and `hive idea`
+// opens a ModeSession connection for ADD_IDEA / LIST_IDEAS plus a
+// SESSIONS snapshot narrowed to its own session. Every other mode is
+// refused with mode_not_allowed, so a subprocess of an agent cannot
+// create, attach to or kill sessions through the environment it
+// inherited.
 func EventSocketPath(controlSock string) string { return controlSock + ".events" }
 
 // EnsureSocketDir creates the socket's directory 0700 when missing and

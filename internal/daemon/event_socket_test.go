@@ -98,6 +98,12 @@ func TestEventSocketSessionModeServesIdeas(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Bound the wait: without a deadline a regression that stops
+	// IDEA_EVENT reaching a restricted connection blocks here forever
+	// and the whole package dies on go test's timeout instead of
+	// failing this one test by name.
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	defer func() { _ = c.SetReadDeadline(time.Time{}) }()
 	for {
 		ft, payload, err := wire.ReadFrame(c)
 		if err != nil {

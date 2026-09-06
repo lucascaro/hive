@@ -25,6 +25,10 @@ or state dir — the same isolation rule as every other layer:
 ```bash
 ISO=/tmp/hive-iso-$(basename "$PWD")
 mkdir -p "$ISO/state"
+# hived and the GUI both refuse a socket directory reachable by group or
+# other (see internal/daemon.CheckSocketDir), and mkdir here obeys the
+# umask, which is commonly 022.
+chmod 700 "$ISO"
 cd cmd/hivegui && HIVE_SOCKET="$ISO/hived.sock" HIVE_STATE_DIR="$ISO/state" \
   HIVE_DEBUG_STATE=1 wails dev
 ```

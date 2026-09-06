@@ -7,12 +7,15 @@
 //   - attach:  attach to an existing session by ID
 //   - create:  create a new session, then attach to it
 //   - event:   report one agent state observation, then close
+//   - session: a control connection narrowed to the idea verbs, for a
+//     program running INSIDE a session (see wire.ModeSession)
 //
-// There are two listeners. The control socket serves all four modes and
+// There are two listeners. The control socket serves all five modes and
 // is reachable only by this user (see CheckSocketDir). The events socket
-// next to it (SocketPath()+".events") serves `event` alone, and is what
-// spawned sessions inherit as HIVE_SOCKET — so an agent's subprocess can
-// report state but cannot create, attach to or kill anything.
+// next to it (SocketPath()+".events") serves `event` and `session`
+// alone, and is what spawned sessions inherit as HIVE_SOCKET — so an
+// agent's subprocess can report state and capture ideas, but cannot
+// create, attach to or kill anything.
 package daemon
 
 import (
@@ -587,7 +590,7 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 	default:
 		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
 			Code:    "unknown_mode",
-			Message: fmt.Sprintf("mode %q; want control|attach|create|event", hello.Mode),
+			Message: fmt.Sprintf("mode %q; want control|attach|create|event|session", hello.Mode),
 		})
 	}
 }
