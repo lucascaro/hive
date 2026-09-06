@@ -6,6 +6,13 @@
 //   - control: session-management (LIST/CREATE/KILL/UPDATE), no DATA
 //   - attach:  attach to an existing session by ID
 //   - create:  create a new session, then attach to it
+//   - event:   report one agent state observation, then close
+//
+// There are two listeners. The control socket serves all four modes and
+// is reachable only by this user (see CheckSocketDir). The events socket
+// next to it (SocketPath()+".events") serves `event` alone, and is what
+// spawned sessions inherit as HIVE_SOCKET — so an agent's subprocess can
+// report state but cannot create, attach to or kill anything.
 package daemon
 
 import (
@@ -41,6 +48,14 @@ type Daemon struct {
 	sock string
 	reg  *registry.Registry
 	ln   net.Listener
+
+	// evsock/lnEvents are the events-only listener handed to spawned
+	// sessions as HIVE_SOCKET. Separate socket rather than a flag on
+	// the control one: the capability an agent child inherits has to
+	// be narrowed by the file it can reach, not by a check the child
+	// could be talking past.
+	evsock   string
+	lnEvents net.Listener
 
 	mu      sync.Mutex
 	clients map[net.Conn]struct{}
@@ -133,6 +148,7 @@ func New(cfg Config) (*Daemon, error) {
 	if err := EnsureSocketDir(sock); err != nil {
 		return nil, fmt.Errorf("daemon: socket dir: %w", err)
 	}
+	evsock := EventSocketPath(sock)
 	if _, err := os.Stat(sock); err == nil {
 		if c, derr := net.Dial("unix", sock); derr == nil {
 			_ = c.Close()
@@ -140,11 +156,16 @@ func New(cfg Config) (*Daemon, error) {
 		}
 		_ = os.Remove(sock)
 	}
+	// The events socket has no independent liveness meaning — the
+	// control socket above is the one every client probes — so a
+	// leftover here is always stale by the time we get past that check.
+	_ = os.Remove(evsock)
 	reg, err := registry.Open(cfg.StateDir)
 	if err != nil {
 		return nil, err
 	}
-	reg.SetSocketPath(sock)
+	// Children report on the events socket, never the control one.
+	reg.SetSocketPath(evsock)
 	reg.SetHivedPath(resolveHivedPath())
 
 	// Ensure a default project exists, then migrate any orphan
@@ -196,6 +217,13 @@ func New(cfg Config) (*Daemon, error) {
 		_ = reg.Close()
 		return nil, fmt.Errorf("daemon: listen %s: %w", sock, err)
 	}
+	lnEvents, err := net.Listen("unix", evsock)
+	if err != nil {
+		_ = ln.Close()
+		_ = os.Remove(sock)
+		_ = reg.Close()
+		return nil, fmt.Errorf("daemon: listen %s: %w", evsock, err)
+	}
 
 	// Collect the orphan-worktree candidates HERE, on the boot path,
 	// while no client can have created anything: the sweep itself is
@@ -225,8 +253,10 @@ func New(cfg Config) (*Daemon, error) {
 	d := &Daemon{
 		cfg:      cfg,
 		sock:     sock,
+		evsock:   evsock,
 		reg:      reg,
 		ln:       ln,
+		lnEvents: lnEvents,
 		sockInfo: sockInfo,
 
 		orphanCandidates: orphanCandidates,
@@ -276,6 +306,20 @@ func (d *Daemon) Run(ctx context.Context) error {
 		case <-d.shutdown:
 		}
 		_ = d.ln.Close()
+		_ = d.lnEvents.Close()
+	}()
+	go func() {
+		for {
+			conn, err := d.lnEvents.Accept()
+			if err != nil {
+				if errors.Is(err, net.ErrClosed) || ctx.Err() != nil {
+					return
+				}
+				log.Printf("hived: events accept: %v", err)
+				continue
+			}
+			go d.serveEventsOnly(conn)
+		}
 	}()
 	for {
 		conn, err := d.ln.Accept()
@@ -387,8 +431,12 @@ func (d *Daemon) Shutdown() {
 	})
 }
 
-// SocketPath returns the path the daemon is bound to.
+// SocketPath returns the control-socket path the daemon is bound to.
 func (d *Daemon) SocketPath() string { return d.sock }
+
+// EventSocketPath returns the events-only socket path — the one
+// spawned sessions get as HIVE_SOCKET.
+func (d *Daemon) EventSocketPath() string { return d.evsock }
 
 // Registry exposes the registry for tests; production code should
 // not bypass the wire protocol.
@@ -414,6 +462,9 @@ func (d *Daemon) Close() error {
 	}
 	if d.ln != nil {
 		_ = d.ln.Close()
+	}
+	if d.lnEvents != nil {
+		_ = d.lnEvents.Close()
 	}
 	if d.reg != nil {
 		_ = d.reg.Close()
@@ -461,6 +512,14 @@ func (d *Daemon) removeOwnSocket() {
 	}
 	if err := os.Remove(d.sock); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("hived: remove socket %s: %v", d.sock, err)
+	}
+	// The events socket rides on the control socket's verdict: the two
+	// are bound and unbound together, so if that one was still ours,
+	// this one is too.
+	if d.evsock != "" {
+		if err := os.Remove(d.evsock); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("hived: remove events socket %s: %v", d.evsock, err)
+		}
 	}
 }
 
@@ -538,6 +597,53 @@ func (d *Daemon) serve(ctx context.Context, conn net.Conn) {
 // and then stalls (or never sends the frame at all) must not pin a
 // goroutine forever.
 const eventReadDeadline = 2 * time.Second
+
+// serveEventsOnly is serve for the events socket: the HELLO must be
+// ModeEvent, and anything else gets mode_not_allowed and a closed
+// connection. It shares serveEvent with the control socket so the two
+// paths cannot drift apart.
+//
+// Deliberately NOT registered in d.clients: that set is what Close
+// hangs up on, and every member of it today is a long-lived control or
+// attach connection. An events connection lives for one frame under
+// the deadline below, so tracking it would only add contention on d.mu
+// on the hottest short-lived path the daemon has.
+func (d *Daemon) serveEventsOnly(conn net.Conn) {
+	defer conn.Close()
+	// The HELLO read needs its own deadline: serveEvent only sets one
+	// for the frame after it, so a dialer that connects and then stalls
+	// would otherwise pin this goroutine forever.
+	_ = conn.SetReadDeadline(time.Now().Add(eventReadDeadline))
+	var hello wire.Hello
+	ft, err := wire.ReadJSON(conn, &hello)
+	if err != nil {
+		// Same reasoning as serve: a connect-then-hang-up is a liveness
+		// probe, not an error worth logging.
+		if !errors.Is(err, io.EOF) {
+			log.Printf("hived: events: read hello: %v", err)
+		}
+		return
+	}
+	if ft != wire.FrameHello {
+		log.Printf("hived: events: expected HELLO, got %s", ft)
+		return
+	}
+	if hello.Version != wire.PROTOCOL_VERSION {
+		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			Code:    wire.ErrCodeProtocolVersionMismatch,
+			Message: fmt.Sprintf("server speaks v%d; client speaks v%d", wire.PROTOCOL_VERSION, hello.Version),
+		})
+		return
+	}
+	if hello.Mode != wire.ModeEvent {
+		_ = wire.WriteJSON(conn, wire.FrameError, wire.Error{
+			Code:    wire.ErrCodeModeNotAllowed,
+			Message: fmt.Sprintf("mode %q is not served on the events socket; want event", hello.Mode),
+		})
+		return
+	}
+	d.serveEvent(conn)
+}
 
 // serveEvent handles a ModeEvent connection: read exactly one frame,
 // which must be FrameAgentEvent, validate it, apply it to the

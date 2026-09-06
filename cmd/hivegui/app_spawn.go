@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	hdaemon "github.com/lucascaro/hive/internal/daemon"
 )
 
 // ----------------------------- daemon spawn ------------------------------
@@ -41,6 +43,12 @@ var spawnedHived atomic.Bool
 // exist until it is ready to handshake, so a dial that connects is a
 // daemon that answers.
 func dialOrSpawn(sock, cwd string, budget time.Duration) (net.Conn, error) {
+	// Verify (creating it if this GUI is first) before trusting
+	// anything that answers here: an accepting socket in a directory
+	// someone else owns is an impostor that would see every keystroke.
+	if err := hdaemon.EnsureSocketDir(sock); err != nil {
+		return nil, fmt.Errorf("socket dir: %w", err)
+	}
 	if c, err := net.Dial("unix", sock); err == nil {
 		return c, nil
 	}

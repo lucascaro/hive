@@ -272,9 +272,11 @@ func TestPackageIsIsolatedFromRealHiveState(t *testing.T) {
 	if sock == "" || state == "" {
 		t.Fatal("socket or state dir resolved empty")
 	}
-	// The real ones: /tmp/hive-<uid>/hived.sock and the platform state
-	// dir under the user's home.
-	if sock == fmt.Sprintf("/tmp/hive-%d/hived.sock", os.Getuid()) {
+	// Compare against whatever the platform default resolves to today
+	// rather than a hard-coded path, so this keeps meaning something
+	// when the default moves.
+	t.Setenv("HIVE_SOCKET", "")
+	if real := hdaemon.SocketPath(); sock == real {
 		t.Errorf("SocketPath() = %q — the real daemon socket; tests can kill a live hived", sock)
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(state, home) {

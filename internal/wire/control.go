@@ -723,6 +723,13 @@ const (
 	// daemon refuses the connection outright, so this is the client's
 	// only signal — Handshake turns it into ErrProtocolMismatch.
 	ErrCodeProtocolVersionMismatch = "protocol_version_mismatch"
+	// ErrCodeModeNotAllowed is returned INSTEAD of serving the HELLO
+	// when the mode is not offered on the socket it arrived at. The
+	// events socket — the one spawned sessions inherit as HIVE_SOCKET
+	// — serves ModeEvent alone, so a process inside a session cannot
+	// use the environment it was handed to create, attach to or kill
+	// sessions.
+	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.
