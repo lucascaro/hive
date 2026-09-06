@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+// The login-PATH probe runs `$SHELL -i -l -c`, which sources the
+// developer's own rc file. Nothing in a test run has any business doing
+// that, so the seam is pinned before any test runs rather than relying
+// on each one to remember — the same floor TestMain gives the update
+// seams, which cannot pin this one because it does not exist off
+// darwin. stubLoginPATH overrides it where a test needs a real answer.
+func init() {
+	loginPATHFn = func() string { return "/usr/bin:/bin" }
+}
+
 // fakeShell writes a script that behaves like a shell for probe
 // purposes: it runs the last argument it was handed. Everything before
 // body is printed first, standing in for the greetings, instant

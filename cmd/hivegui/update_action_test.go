@@ -37,12 +37,9 @@ func TestMain(m *testing.M) {
 	os.Setenv("HIVE_STATE_DIR", filepath.Join(sandbox, "state"))
 	defer os.RemoveAll(sandbox)
 
-	// The login-PATH probe runs `$SHELL -i -l -c` and sources the
-	// developer's own rc file. Nothing in a test run has any business
-	// doing that, so the seam gets a fixed answer here rather than
-	// relying on each test to remember. stubLoginPATH overrides it
-	// where a test needs a particular PATH.
-	loginPATHFn = func() string { return "/usr/bin:/bin" }
+	// The macOS login-PATH probe is pinned to the same floor by an
+	// init() in shell_env_darwin_test.go — it cannot be done here,
+	// because the seam it stubs does not exist off darwin.
 
 	stageUpdateFn = func(UpdateInfo, func(string)) (string, error) {
 		return "", fmt.Errorf("stageUpdate must not run in tests")
