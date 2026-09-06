@@ -1,12 +1,14 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/lucascaro/hive/internal/registry"
 	"github.com/lucascaro/hive/internal/wire"
 )
 
@@ -277,4 +279,175 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition not met in time")
+}
+
+// The idea verbs on a session connection are bound to the caller's own
+// session and project. Allowlisting the verbs is not enough on its own:
+// the registry reads an empty ProjectID as "every project".
+func TestSessionModeIdeasAreScopedToOwnProject(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	own := projectOfSession(d.Registry().List(), id)
+	if own == "" {
+		t.Fatal("bootstrap session has no project")
+	}
+	other, err := d.Registry().CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatalf("create second project: %v", err)
+	}
+	if _, err := d.Registry().AddIdea(registry.IdeaSpec{
+		ProjectID: other.ID, Text: "a secret from another project",
+	}); err != nil {
+		t.Fatalf("seed foreign idea: %v", err)
+	}
+
+	c := sessionConn(t, d, id)
+	defer c.Close()
+
+	// LIST_IDEAS across every project — what `hive idea list --all`
+	// sends — is refused, not silently narrowed.
+	if err := wire.WriteJSON(c, wire.FrameListIdeas, wire.ListIdeasReq{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitModeNotAllowed(t, c); err != nil {
+		t.Fatalf("LIST_IDEAS{}: %v", err)
+	}
+	// And so is another project's id by name.
+	if err := wire.WriteJSON(c, wire.FrameListIdeas, wire.ListIdeasReq{ProjectID: other.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := awaitModeNotAllowed(t, c); err != nil {
+		t.Fatalf("LIST_IDEAS{other}: %v", err)
+	}
+
+	// A write naming another project lands in the caller's own instead
+	// of the one it asked for, and carries the caller's session id
+	// rather than the forged one.
+	if err := wire.WriteJSON(c, wire.FrameAddIdea, wire.AddIdeaReq{
+		ProjectID: other.ID, SessionID: "forged", Text: "planted",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 2*time.Second, func() bool {
+		for _, i := range d.Registry().ListIdeas("") {
+			if i.Text == "planted" {
+				return i.ProjectID == own && i.SourceSessionID == id
+			}
+		}
+		return false
+	})
+	for _, i := range d.Registry().ListIdeas(other.ID) {
+		if i.Text == "planted" {
+			t.Fatal("ADD_IDEA wrote into another project")
+		}
+	}
+}
+
+// A restricted connection is not fed the session, project or broadcast
+// streams, and sees only its own project's idea events.
+func TestSessionModeReceivesNoForeignEvents(t *testing.T) {
+	skipOnWindows(t)
+	d := startTestDaemon(t)
+	id := bootstrapSessionID(t, d)
+	other, err := d.Registry().CreateProject(wire.CreateProjectReq{Name: "other", Cwd: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := sessionConn(t, d, id)
+	defer c.Close()
+
+	// Cause traffic on every stream a control connection would see.
+	if _, err := d.Registry().AddIdea(registry.IdeaSpec{
+		ProjectID: other.ID, Text: "foreign idea",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	renamed := "renamed"
+	if _, err := d.Registry().Update(wire.UpdateSessionReq{SessionID: id, Name: &renamed}); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	// Then something we ARE entitled to, as a sync point: if it
+	// arrives and nothing before it did, the suppression holds.
+	if err := wire.WriteJSON(c, wire.FrameAddIdea, wire.AddIdeaReq{Text: "mine"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for {
+		ft, payload, err := wire.ReadFrame(c)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		switch ft {
+		case wire.FrameSessionEvent, wire.FrameProjectEvent, wire.FrameClientBroadcast:
+			t.Fatalf("restricted connection received %s", ft)
+		case wire.FrameIdeaEvent:
+			var ev wire.IdeaEvent
+			if err := jsonUnmarshal(payload, &ev); err != nil {
+				t.Fatal(err)
+			}
+			if ev.Idea.Text == "foreign idea" {
+				t.Fatal("restricted connection received another project's IDEA_EVENT")
+			}
+			if ev.Idea.Text == "mine" {
+				return
+			}
+		}
+	}
+}
+
+// Two daemons must not share one state directory: both would revive
+// every persisted session and fork a second PTY for each.
+func TestNewRefusesASecondDaemonOnOneStateDir(t *testing.T) {
+	skipOnWindows(t)
+	tmp := shortTempDir(t)
+	state := filepath.Join(tmp, "state")
+	first, err := New(Config{SocketPath: filepath.Join(tmp, "s1"), StateDir: state})
+	if err != nil {
+		t.Fatalf("first New: %v", err)
+	}
+	defer first.Close()
+
+	// A different socket path, deliberately: this is the upgrade
+	// window the socket-file guard cannot see.
+	second, err := New(Config{SocketPath: filepath.Join(tmp, "s2"), StateDir: state})
+	if err == nil {
+		_ = second.Close()
+		t.Fatal("New accepted a second daemon on a state dir already in use")
+	}
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("New error = %v, want ErrAlreadyRunning", err)
+	}
+
+	// And the lock is released on teardown, so a replacement can start.
+	_ = first.Close()
+	third, err := New(Config{SocketPath: filepath.Join(tmp, "s3"), StateDir: state})
+	if err != nil {
+		t.Fatalf("New after the first daemon closed: %v", err)
+	}
+	_ = third.Close()
+}
+
+// sessionConn opens a ModeSession connection on the events socket and
+// reads past the handshake and the narrowed snapshot.
+func sessionConn(t *testing.T, d *Daemon, sessionID string) net.Conn {
+	t.Helper()
+	c := dialEvents(t, d)
+	if err := wire.WriteJSON(c, wire.FrameHello, wire.Hello{
+		Version: wire.PROTOCOL_VERSION, Client: "test/0",
+		Mode: wire.ModeSession, SessionID: sessionID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var w wire.Welcome
+	if ft, err := wire.ReadJSON(c, &w); err != nil || ft != wire.FrameWelcome {
+		t.Fatalf("handshake: %s %v", ft, err)
+	}
+	var snap wire.SessionsResp
+	if _, err := wire.ReadJSON(c, &snap); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	return c
 }

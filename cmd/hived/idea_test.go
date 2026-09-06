@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,7 +83,15 @@ func TestIdeaHelpExitsZero(t *testing.T) {
 // A multi-word idea is one idea, not one per word.
 func TestIdeaAddJoinsArgs(t *testing.T) {
 	t.Setenv("HIVE_SESSION_ID", "s1")
-	t.Setenv("HIVE_SOCKET", "/nonexistent/hived.sock")
+	// A real 0700 directory with no socket in it: the socket-directory
+	// check now runs before the dial, and neither a missing directory
+	// nor a loose one would reach the dial this test is aiming for.
+	// t.TempDir() itself is 0777&^umask — usually 0755 — so chmod it.
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HIVE_SOCKET", filepath.Join(dir, "hived.sock"))
 
 	var stdout, stderr bytes.Buffer
 	// The dial fails, but only after the text has been assembled and

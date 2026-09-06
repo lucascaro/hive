@@ -48,13 +48,25 @@ On shared machines (e.g., a development server with multiple accounts):
   neither connect to the daemon nor plant an impostor socket for Hive to
   connect to.
 - Programs running inside a session inherit `HIVE_SOCKET`, which names a
-  second, narrowed socket. It serves state reports (`HELLO{mode:event}`) and
-  the idea verbs `hive idea` needs (`HELLO{mode:session}` — `ADD_IDEA` and
-  `LIST_IDEAS`, plus a session snapshot narrowed to the caller's own session),
-  and answers everything else with `mode_not_allowed`. A subprocess of an agent
-  therefore cannot use the environment it was handed to create, attach to or
-  kill sessions, remove worktrees, shut the daemon down, or enumerate your
-  other sessions.
+  second, narrowed socket rather than the control socket. It serves state
+  reports (`HELLO{mode:event}`) and the idea verbs `hive idea` needs
+  (`HELLO{mode:session}` — `ADD_IDEA` and `LIST_IDEAS`, both bound to the
+  caller's own session and project, plus a session snapshot narrowed to that
+  session's id and project). Everything else is answered with
+  `mode_not_allowed`, so what a session's child processes inherit does not
+  let them create, attach to or kill sessions, remove worktrees, shut the
+  daemon down, or read another project's ideas.
+
+  **This is defence in depth, not a security boundary.** The control socket
+  sits next to the events one, and both are owned by you: a process running as
+  your user can find it and connect to it, whatever `HIVE_SOCKET` says. POSIX
+  permissions cannot separate two processes running as the same user, and Hive
+  does not sandbox the agents it launches (see *Agent Processes* below). What
+  the narrowed socket buys is that the obvious path — the environment variable
+  a tool was handed — no longer leads to session creation, and that an
+  integration written against `HIVE_SOCKET` cannot reach those verbs by
+  accident. Treat an agent you run under Hive as having your privileges,
+  because it does.
 - Log files (`hived.log`, `hivegui.log`) are created with mode `0o600` and
   are not readable by other users.
 - Agent session output is not exposed outside the daemon process.

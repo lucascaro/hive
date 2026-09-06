@@ -136,3 +136,20 @@ func TestSocketPathLinuxUsesXDGRuntimeDir(t *testing.T) {
 		t.Fatalf("SocketPath() without XDG_RUNTIME_DIR = %q; must not fall back to shared /tmp", got)
 	}
 }
+
+// os.TempDir returns $TMPDIR verbatim, slash and all, so the /tmp guard
+// has to compare a cleaned path. Without that, TMPDIR="/tmp/" puts the
+// socket straight back into the shared directory this change exists to
+// leave.
+func TestSocketPathRejectsTrailingSlashTmp(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("darwin uses $TMPDIR")
+	}
+	t.Setenv("HIVE_SOCKET", "")
+	for _, tmp := range []string{"/tmp/", "/tmp//", "/private/tmp/"} {
+		t.Setenv("TMPDIR", tmp)
+		if got := SocketPath(); strings.HasPrefix(got, "/tmp/") || strings.HasPrefix(got, "/private/tmp/") {
+			t.Errorf("TMPDIR=%q: SocketPath() = %q, want the state-dir fallback", tmp, got)
+		}
+	}
+}
