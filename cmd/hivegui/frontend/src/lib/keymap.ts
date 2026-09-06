@@ -71,6 +71,50 @@ export function macLineEditSeq(e: KeyEventLike, isMac: boolean): string | null {
   return null;
 }
 
+// Bytes for the two forward-delete kills, both readline (emacs-mode)
+// bindings that bash, zsh, fish and the agent CLIs honour with no
+// per-terminal configuration — the same standard LINE_START_SEQ /
+// LINE_END_SEQ above are picked from.
+//
+//   \x1bd  meta-d, kill-word forward
+//   \x0b   Ctrl+K, kill-line to end
+export const KILL_WORD_FORWARD_SEQ = '\x1bd';
+export const KILL_LINE_FORWARD_SEQ = '\x0b';
+
+// macForwardKillSeq maps ⌥⌦ / ⌘⌦ to those bytes, or null when the event
+// isn't ours.
+//
+// Why this has to exist: xterm.js DOES encode the forward-delete key,
+// but its `case 46` branch emits `\x1b[3;<mods+1>~` whenever any
+// modifier is held — `\x1b[3;3~` for ⌥⌦ and `\x1b[3;9~` for ⌘⌦. No
+// shell, readline default or agent CLI binds either one, so the chords
+// currently do nothing at all. An unmodified ⌦ is left alone: xterm
+// sends `\x1b[3~` for it, which everything binds as delete-char.
+//
+// The key is 'Delete', NOT 'Backspace'. On a Mac laptop forward delete
+// is fn+⌫, which the browser reports as key 'Delete'; plain ⌫ stays
+// 'Backspace' and must keep reaching xterm (which sends \x7f, and
+// \x1b\x7f under ⌥) and hive's own ⌘⌫ → \x15 binding.
+//
+// Mac-only, for the same reason macLineEditSeq is: on Windows/Linux the
+// equivalent chord is Ctrl+⌦, which xterm already encodes as
+// `\x1b[3;5~` and which readline binds as kill-word.
+//
+// Shift is allowed through, exactly as in macLineEditSeq: ⇧⌘⌦ is
+// select-to-end-of-line in a text field, a PTY has no selection to
+// extend, and the kill is the closest honest thing. Ctrl is not — ⌃⌦
+// belongs to the shell. ⌥ and ⌘ held together is ambiguous between the
+// two kills, so it returns null rather than guessing.
+export function macForwardKillSeq(
+  e: KeyEventLike,
+  isMac: boolean,
+): string | null {
+  if (!isMac || e.ctrlKey || e.key !== 'Delete') return null;
+  if (e.metaKey && !e.altKey) return KILL_LINE_FORWARD_SEQ;
+  if (e.altKey && !e.metaKey) return KILL_WORD_FORWARD_SEQ;
+  return null;
+}
+
 export function isShiftEnter(e: KeyEventLike): boolean {
   return (
     e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Enter'
