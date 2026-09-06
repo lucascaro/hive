@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,6 +38,53 @@ func TestIdeaListOutsideHiveExits2(t *testing.T) {
 	if !strings.Contains(stderr.String(), "not running inside a Hive session") {
 		t.Errorf("stderr = %q", stderr.String())
 	}
+}
+
+// `list --all` is the one subcommand that is NOT about the caller's own
+// session: inside one it is refused outright, and outside one it takes
+// the control socket rather than the HIVE_SOCKET the session exports.
+// Both halves are the behaviour change, so both are pinned here.
+func TestIdeaListAll(t *testing.T) {
+	// A real 0700 directory with no socket in it, so the dial fails
+	// after the routing decision this test is actually about — the
+	// socket-directory check runs before the dial and a missing or
+	// loose directory would fail earlier, for the wrong reason.
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sock := filepath.Join(dir, "hived.sock")
+
+	t.Run("refused inside a session", func(t *testing.T) {
+		t.Setenv("HIVE_SESSION_ID", "s1")
+		t.Setenv("HIVE_SOCKET", sock)
+
+		var stdout, stderr bytes.Buffer
+		if code := runIdea([]string{"list", "--all"}, &stdout, &stderr); code != 2 {
+			t.Fatalf("exit code = %d, want 2", code)
+		}
+		if !strings.Contains(stderr.String(), "not available inside a Hive session") {
+			t.Errorf("stderr = %q, want the in-session refusal", stderr.String())
+		}
+	})
+
+	// Outside a session it reaches the dial. Before this change it
+	// needed HIVE_SESSION_ID and failed with "not running inside a Hive
+	// session", so a dial failure here is the proof it now takes the
+	// control-socket road. HIVE_SOCKET is set (never left to the
+	// platform default) so the test cannot reach a real daemon.
+	t.Run("dials the control socket outside a session", func(t *testing.T) {
+		t.Setenv("HIVE_SESSION_ID", "")
+		t.Setenv("HIVE_SOCKET", sock)
+
+		var stdout, stderr bytes.Buffer
+		if code := runIdea([]string{"list", "--all"}, &stdout, &stderr); code != 2 {
+			t.Fatalf("exit code = %d, want 2", code)
+		}
+		if !strings.Contains(stderr.String(), "cannot reach the daemon") {
+			t.Errorf("stderr = %q, want a dial failure", stderr.String())
+		}
+	})
 }
 
 // Argument handling is checked before anything dials, so these fail
@@ -81,7 +130,15 @@ func TestIdeaHelpExitsZero(t *testing.T) {
 // A multi-word idea is one idea, not one per word.
 func TestIdeaAddJoinsArgs(t *testing.T) {
 	t.Setenv("HIVE_SESSION_ID", "s1")
-	t.Setenv("HIVE_SOCKET", "/nonexistent/hived.sock")
+	// A real 0700 directory with no socket in it: the socket-directory
+	// check now runs before the dial, and neither a missing directory
+	// nor a loose one would reach the dial this test is aiming for.
+	// t.TempDir() itself is 0777&^umask — usually 0755 — so chmod it.
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HIVE_SOCKET", filepath.Join(dir, "hived.sock"))
 
 	var stdout, stderr bytes.Buffer
 	// The dial fails, but only after the text has been assembled and

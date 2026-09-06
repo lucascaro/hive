@@ -22,6 +22,17 @@ const (
 	// applied, then the connection is closed — there is no Welcome and
 	// the connection never streams DATA.
 	ModeEvent Mode = "event"
+	// ModeSession is a narrowed control connection for a program
+	// running INSIDE a Hive session — `hive idea` today. It reaches the
+	// daemon over the events socket (HIVE_SOCKET), and the daemon
+	// serves only the idea verbs on it: ADD_IDEA and LIST_IDEAS, plus
+	// the IDEA_EVENT stream and a SESSIONS snapshot narrowed to the
+	// one session named in Hello.SessionID. Everything else — creating,
+	// attaching to or killing sessions, worktree mutations, shutdown,
+	// and the other sessions' existence — is refused with
+	// mode_not_allowed, because everything downstream of a session
+	// inherits this environment.
+	ModeSession Mode = "session"
 )
 
 // CreateSpec is the payload for ModeCreate's create field, and also
@@ -723,6 +734,15 @@ const (
 	// daemon refuses the connection outright, so this is the client's
 	// only signal — Handshake turns it into ErrProtocolMismatch.
 	ErrCodeProtocolVersionMismatch = "protocol_version_mismatch"
+	// ErrCodeModeNotAllowed is returned INSTEAD of serving the HELLO
+	// when the mode is not offered on the socket it arrived at. The
+	// events socket — the one spawned sessions inherit as HIVE_SOCKET
+	// — serves ModeEvent and the narrowed ModeSession only, so a
+	// process inside a session cannot use the environment it was
+	// handed to create, attach to or kill sessions. It is also the
+	// code a ModeSession connection gets for any verb outside
+	// ADD_IDEA / LIST_IDEAS.
+	ErrCodeModeNotAllowed = "mode_not_allowed"
 	// ErrCodeIdeaTooLong is returned when an idea's text exceeds
 	// MaxIdeaText. Rejected rather than truncated: a silently
 	// half-saved note is worse than one the user is told to shorten.

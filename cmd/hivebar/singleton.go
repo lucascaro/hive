@@ -29,7 +29,7 @@ import (
 // exit — the kernel does it — but a test needs to hand the lock back.
 func claimSingleton() (release func(), ok bool) {
 	path := filepath.Join(registry.StateDir(), "hivebar.lock")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		// No state dir means no daemon either. Refuse rather than
 		// running unlocked: an unlocked hivebar is how you get two.
 		return nil, false
