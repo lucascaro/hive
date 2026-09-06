@@ -47,7 +47,7 @@ export interface StateCarrier {
   // `state` (needs_attention = state ∈ {waiting_input,
   // waiting_permission}). The daemon and the session list are its only
   // writers; no client keeps a second copy (see the frozen transition
-  // table in docs/exec-plans/active/336-session-state-model.md).
+  // table in docs/exec-plans/completed/336-session-state-model.md).
   needs_attention?: boolean;
   // Which tier produced `state` (internal/wire/control.go StateSource*).
   // Absent = heuristic.

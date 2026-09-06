@@ -282,7 +282,7 @@ func TestFixtureRecordsAreWellFormed(t *testing.T) {
 // is exactly the kind of guesswork this whole fixture suite exists to
 // replace with ground truth. That gap is filled by the hook tier
 // (agentstate.KindWaitingPermission), not the heuristic one; see
-// docs/exec-plans/active/336-session-state-model.md's frozen transition
+// docs/exec-plans/completed/336-session-state-model.md's frozen transition
 // table.
 func TestFixturePermissionSkipped(t *testing.T) {
 	t.Skip("no permission prompt appeared for `ls` via the Bash tool " +

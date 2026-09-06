@@ -186,7 +186,7 @@ describe('projects', () => {
 // needs_attention is not store state any more — it lives on
 // SessionInfo, set by setSessions/updateSession like any other wire
 // field (see session-state.test.ts and the frozen transition table in
-// docs/exec-plans/active/336-session-state-model.md). There is nothing
+// docs/exec-plans/completed/336-session-state-model.md). There is nothing
 // left here to test in isolation.
 
 describe('minimize', () => {

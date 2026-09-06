@@ -3,11 +3,14 @@
 - **Spec:** [docs/product-specs/336-session-state-model.md](../../product-specs/336-session-state-model.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/336-phase4-hivebar-tooltip` (phases 1–2 shipped
-  from `feature/336-session-state-model`, phase 3 from
-  `feature/336-phase3-pi-extension`; both merged and dead)
-- **PR:** #338 (phases 1–2, merged) · #341 (phase 3, merged) · #344 (phase 4)
-- **Status:** active
+- **Branch:** one per phase, all merged and dead —
+  `feature/336-session-state-model` (phases 1–2),
+  `feature/336-phase3-pi-extension`, `feature/336-phase4-hivebar-tooltip`,
+  `feature/336-pi-probe`, `feature/336-close-out`
+- **Stage:** DONE
+- **PR:** #338 (phases 1–2) · #341 (phase 3) · #344 (phase 4) · #348
+  (pi probe + smoke checklist) — all merged
+- **Status:** completed
 
 ## Summary
 
@@ -1531,9 +1534,37 @@ decision-log entry with the log excerpt BEFORE any code changes.
   | 16 | PASS (both tiers) | heuristic: `"Idle\nguessed from terminal output"`. Hook tier, fired by the real `hived hook` binary over the real event socket with the repo's own fixtures: `"Idle\n“reply pong”\npong\nreported by the agent"` — state, quoted prompt, summary, provenance, identical on the sidebar row and the tile header |
 
   Criteria 6 and 7's tooltip half is therefore observed in a real
-  browser against a real daemon. What is still unobserved: the menu bar
-  (row 15), the desktop notification (row 2's second half), and the
-  extension tier (row 14, blocked above).
+  browser against a real daemon.
+
+- **2026-09-06 (rows 2 and 15 — the last two)** — both closed, so every
+  row of the checklist has now either passed or been superseded by a
+  probe.
+
+  - **Row 15 (hivebar):** PASS, confirmed by the user against a reloaded
+    hivebar built from the phase-4 tree. The menu bar is an
+    `NSStatusItem` and cannot be opened without screen control, so this
+    row stays a human row — noted in
+    `docs/verifying-the-gui-by-hand.md`.
+  - **Row 2 (desktop notification):** PASS. The notification is not
+    reachable from a headless browser *as a notification*, but the path
+    that fires it is: `events.ts:245` calls the Go binding `App.Notify`
+    (WKWebView has no HTML5 Notification API), and that binding is live
+    under `wails dev`. Wrapping it — calling through, so a real OS
+    notification still fired — recorded, for a bell:
+    `["main", "default", "Waiting for input — click to switch.", "<session id>"]`
+    and, after a `PermissionRequest` hook through the real `hived hook`
+    binary: `["main", "default", "Waiting for permission — click to switch.", "<session id>"]`.
+    Title, project subtitle, the two distinct bodies, and the session id
+    as the dedupe tag — all four fields, both wordings, one real
+    daemon.
+
+    One thing was faked and is worth naming: headless Chromium always
+    reports `document.hasFocus() === true`, so the row's precondition
+    ("the window is NOT focused") was stubbed. Everything downstream of
+    that branch is real. The unfaked half is covered too: with focus
+    reported true and the session active, no notification fired — which
+    is `syncAttentionClass`'s "a session you are already watching gets
+    no desktop notification" behaving correctly.
 
 ## Open questions
 
@@ -1550,6 +1581,19 @@ decision-log entry with the log excerpt BEFORE any code changes.
 - **2026-09-05 iter 5 (PR #341)** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 012bd1b0cb5b268652d7f421b16e0ddc5b99a330710aa60401cc653899411c66; threads_open: 0; action: converged (2 IMPORTANT fixed: boundary test + comment scope; reviewer re-derived iter 4's riskiest changes independently and found them correct); head_sha: d27c756.
 
 ## Gate verdict
+
+- **2026-09-06 (final)** — verdict: PASS; checks: 8 passed / 0 failed /
+  0 followups; one-line: every success criterion is now backed by
+  executed evidence, including the three that had never run against a
+  real binary or a running app. Criterion 2 (claude) by the recorded
+  manual transcript plus `TestClaudeProbe*`; criterion 3 (pi) by
+  `TestPiProbeReportsThroughTheExtension`, green against a real `pi` on
+  node v24.16.0; criteria 6 and 7 by the browser-driven checklist run
+  (glyphs, both tooltip tiers, both notification wordings) and the
+  user's own pass on the hivebar menu. Non-goals and doc accuracy were
+  PASS in the previous gate and nothing in #348 touched them — it adds
+  one opt-in test file and docs.
+
 
 - **2026-09-05 (re-gate after fixes)** — verdict: NEEDS_FOLLOWUP; checks: 6 passed / 0 failed / 2 followups; followups: none filed (manual verification only); one-line: every criterion is implemented, evidenced and now race-clean, and the prose defects are swept; what remains is that four criteria have never been exercised against a real binary or a running app.
   - 2026-09-05 dimensions (after `fc020de`):

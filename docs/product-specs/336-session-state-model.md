@@ -5,7 +5,8 @@ title: "Session state model: know what every agent is doing"
 type: enhancement
 complexity: L
 priority: P1
-stage: GATE
+stage: DONE
+shipped: 2026-09-05
 ---
 
 # Session state model: know what every agent is doing
@@ -14,7 +15,7 @@ stage: GATE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
-- **Exec plan:** [docs/exec-plans/active/336-session-state-model.md](../exec-plans/active/336-session-state-model.md)
+- **Exec plan:** [docs/exec-plans/completed/336-session-state-model.md](../exec-plans/completed/336-session-state-model.md)
 - **Design:** [docs/design-docs/control-plane.md](../design-docs/control-plane.md)
 
 ## Problem

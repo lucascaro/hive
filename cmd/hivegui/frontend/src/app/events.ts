@@ -183,7 +183,7 @@ export async function reconnectControl(
 // answer: every reader of that question (sidebar, tile, ⌘B, the pulse
 // class) reads session.needs_attention straight off the session list.
 // See the frozen transition table,
-// docs/exec-plans/active/336-session-state-model.md.
+// docs/exec-plans/completed/336-session-state-model.md.
 const attentionEdge = new Set<string>();
 let sawFirstSessionList = false;
 
