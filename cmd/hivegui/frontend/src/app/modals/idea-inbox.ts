@@ -81,9 +81,10 @@ export function closeIdeaInbox(): void {
   deps.refocusActiveTerm();
 }
 
-// editIdeaText commits an inline edit. Returns false when it refused,
-// so the caller can keep the editor up with the text still in it —
-// there is nowhere else the text survives.
+// editIdeaText commits an inline edit. The editor is kept open on a
+// refused value by `validate` (see IdeaInbox.tsx), not by this return —
+// what stays here is the module-boundary guard, for callers that reach
+// it without one. The boolean reports whether anything was sent.
 export function editIdeaText(id: string, text: string): boolean {
   const trimmed = text.trim();
   // Empty is not a delete: Delete is its own row action, behind a

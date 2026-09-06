@@ -1023,6 +1023,12 @@ code and self-healing.
 - **2026-09-06 iter 3b** — the loop's stop condition was met, but both IMPORTANT findings were fixed anyway rather than shipped: ⇧⌘I inert off macOS, and a >4 KiB note silently lost. See the Decision log entries of the same date. Two MINORs left standing, also recorded there.
 - **2026-09-06 merge** — `origin/main` moved under the PR (#356 npm ci, #357 the What's New modal) and the branch went CONFLICTING. Merged: three additive conflicts (a modal root in `index.html`, an `init*` call in `main.tsx`, the `ModalId`/`ModalEntry` unions in `store.ts`) — both sides kept. One semantic conflict git could not see: `ideaKeysBlocked()` enumerates the modals ⌘I must refuse under, and `whats-new` did not exist when it was written, so the macOS menu path would have opened a capture sheet over it. Added, with the matching case in the precedence table.
 - **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3903976cf8aab00c2269cf66eb9d8b815d23a3782a7965df0ec7f6ad652a15b8; threads_open: 0; action: stop (confirmation pass: the merge of `origin/main` verified clean against both parents, iteration 3's fixes verified correct; one new IMPORTANT — the byte cap missing from `editIdeaText` — fixed rather than shipped); head_sha: 37c9f41.
+- **2026-09-06 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: (empty — 0 BLOCKING, 0 IMPORTANT); threads_open: 0; action: stop; head_sha: f5ef9b0. The `beginInlineRename` `validate` contract was checked against all five callers and the four refusal paths (Enter, blur, Escape, a second row starting an edit); the four pre-existing callers pass no `validate` and are unaffected. One MINOR — a stale doc comment on `editIdeaText` — fixed before the gate.
+
+Converged after 5 iterations. Nothing left standing above MINOR. The
+two MINORs kept by decision (`RowButton` duplication, `LIST_IDEAS`
+returning done ideas) are in the Decision log; the Ctrl+I / Tab
+collision is under Open questions.
 
 ## Open questions
 
