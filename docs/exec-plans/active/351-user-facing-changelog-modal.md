@@ -302,7 +302,17 @@ rotting:
    `regen-generated.py`, so a future target needs no edit there at all, and
    the self-test asserts it still does. **Files added to the plan's list:**
    `scripts/release.sh`.
-5. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
+5. **`whats-new` joined the global key ladder in `src/app/keyboard.ts`.** The
+   plan listed the four edits a new modal needs (`index.html`, the `ModalId`
+   union, `App.tsx`, the component) and missed the fifth. Without it ⌘T / ⌘, /
+   ⌘E stacked a second dialog over an open one, Tab escaped an `aria-modal`
+   dialog, and the dead-session overlay's capture-phase Escape handler could
+   leave it unclosable by keyboard. A `whats-new` row joined the `LAYERS`
+   table in `test/dom/keyboard-precedence.test.tsx`, confirmed to fail with
+   the gate removed. **Files added to the plan's list:**
+   `src/app/keyboard.ts`, `test/dom/keyboard-precedence.test.tsx`,
+   `test/dom/whats-new-empty.test.tsx` (new).
+6. **`server.fs.allow` is the frontend root plus `site/`, not the repo root.**
    The repo root would have served `.git` and every dotfile over the dev
    server. `vitest.config.js` needed no change at all — verified, not assumed.
 
@@ -385,3 +395,4 @@ Append-only. One line per `/hs-review-loop` iteration.
 - **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2354a4c8; threads_open: 0; action: fixes-applied+push (3 IMPORTANT + 2 MINOR fixed by hand rather than stopping on COMMENT); head_sha: 1048470.
 - **2026-09-06 iter 2** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: e56397bd; threads_open: 0; action: fixes-applied+push (5 IMPORTANT + 3 MINOR; 3 were fallout from the iter-1 fixes); head_sha: ba1f45b.
 - **2026-09-06 iter 3** — verdict: REQUEST_CHANGES (1 BLOCKING); mergeable: MERGEABLE; findings_hash: cae42913; threads_open: 0; action: fixes-applied+push (release.sh never staged the stamped features.json); head_sha: 0dc1afe.
+- **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: d884c426; threads_open: 0; action: fixes-applied+push (4 IMPORTANT + 2 MINOR; keyboard ladder gap was an original miss, not fallout); head_sha: 1dc1cfd.

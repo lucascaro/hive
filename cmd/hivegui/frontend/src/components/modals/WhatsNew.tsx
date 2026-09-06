@@ -46,7 +46,15 @@ function WhatsNewBody({ root }: { root: HTMLElement }): ReactNode {
       onClose={closeWhatsNew}
       hints={[{ keys: '[esc]', label: 'close' }]}
     >
-      <div id="whats-new-body">
+      {/* tabIndex/role: the list is pure text with nothing focusable in it,
+          so without a focus stop a keyboard user is pinned to the close
+          button and cannot scroll past the fold. */}
+      <div
+        id="whats-new-body"
+        tabIndex={0}
+        role="group"
+        aria-label="What shipped, newest release first"
+      >
         {releases.map((release) => (
           <section key={release.version} className="whats-new-release">
             <h4>{release.version}</h4>

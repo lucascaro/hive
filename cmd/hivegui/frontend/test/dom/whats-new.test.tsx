@@ -182,11 +182,10 @@ describe("the What's New modal", () => {
     }
   });
 
-  it('renders exactly one non-empty "Coming next" section', async () => {
-    // The empty-planned branch in WhatsNew.tsx exists so an emptied list can
-    // never render a stray heading over nothing.
-    const { plannedOf } = await import('../../src/lib/whats-new.js');
-    expect(plannedOf([])).toEqual([]);
+  it('renders one non-empty "Coming next" section for the real list', async () => {
+    // The EMPTY-list branch is covered in whats-new-empty.test.tsx, which
+    // mocks the lib: WhatsNewBody calls plannedOf() with no argument, so from
+    // here it can only ever render the live features.json.
     await mount();
     await act(async () => {
       giftBtn().click();

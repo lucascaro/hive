@@ -50,7 +50,11 @@ export const UNRELEASED = 'Unreleased';
 // both the semver rule and the order that reads right in the modal.
 export function compareVersions(a: string, b: string): number {
   const split = (v: string) => {
-    const [core, pre] = v.split('-', 2);
+    // indexOf, not split('-', 2): the latter drops everything after a second
+    // hyphen, so 2.0.0-rc-1 and 2.0.0-rc-2 would compare equal.
+    const dash = v.indexOf('-');
+    const core = dash < 0 ? v : v.slice(0, dash);
+    const pre = dash < 0 ? undefined : v.slice(dash + 1);
     return {
       nums: core.split('.').map((n) => Number.parseInt(n, 10) || 0),
       pre,

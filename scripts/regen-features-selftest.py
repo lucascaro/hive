@@ -92,17 +92,50 @@ def main() -> int:
     # must discover the file list from --list-targets rather than repeating
     # one, because a hand-maintained copy is precisely what let the
     # features.json stamp go uncommitted the first time.
-    check(
-        "site/features.json is a declared release target",
-        "site/features.json" in regen.RELEASE_TARGETS,
-        True,
-    )
     release_sh = (HERE / "release.sh").read_text(encoding="utf-8")
     check(
         "release.sh stages generated files via --list-targets",
         "--list-targets" in release_sh,
         True,
     )
+
+    # Drive the CLI, not the constant. Asserting `"site/features.json" in
+    # RELEASE_TARGETS` would pass even if main()'s targets table stopped
+    # calling stamp_features_release — RELEASE_TARGETS and that table are two
+    # hand-maintained lists, and this file exists to catch exactly that class
+    # of drift, not to re-introduce it one layer up.
+    import contextlib
+    import io
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = regen.main(["--list-targets"])
+    check("--list-targets exits 0", rc, 0)
+    check(
+        "--list-targets prints RELEASE_TARGETS verbatim",
+        buf.getvalue().split(),
+        regen.RELEASE_TARGETS,
+    )
+
+    # End to end: a real `--release` run must actually stamp the file. This is
+    # the assertion that fails if the targets table stops wiring the stamp in.
+    with tempfile.TemporaryDirectory() as tmp:
+        features_path = Path(tmp) / "features.json"
+        features_path.write_text(
+            json.dumps([{"title": "new", "status": "shipped", "since": "Unreleased"}])
+            + "\n",
+            encoding="utf-8",
+        )
+        regen.FEATURES = features_path
+        # Neutralise the sibling aggregates: this run is about the feature
+        # list, and CHANGELOG promotion needs a real tree.
+        regen.regen_changelog = lambda *_a, **_k: False
+        regen.regen_specs_index = lambda: False
+        regen.regen_tech_debt = lambda: False
+        rc = regen.main(["--release", "2.7.0"])
+        check("--release exits 0", rc, 0)
+        stamped = json.loads(features_path.read_text(encoding="utf-8"))
+        check("--release stamps the feature list", stamped[0]["since"], "2.7.0")
 
     if failures:
         for f in failures:

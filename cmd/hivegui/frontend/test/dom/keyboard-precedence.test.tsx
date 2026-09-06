@@ -96,6 +96,7 @@ vi.mock('../../src/app/modals/choice-dialog.js', () => ({
 const closeSettings = vi.fn();
 const closeWorktrees = vi.fn();
 const closeHelpOverlay = vi.fn();
+const closeWhatsNew = vi.fn();
 const closeCommandPalette = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
@@ -116,6 +117,11 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
   openHelpOverlay: vi.fn(),
   toggleHelpOverlay: vi.fn(),
 }));
+vi.mock('../../src/app/modals/whats-new.js', () => ({
+  closeWhatsNew: () => closeWhatsNew(),
+  openWhatsNew: vi.fn(),
+  initWhatsNew: vi.fn(),
+}));
 
 type Store = typeof import('../../src/store/store.js');
 let openModal: Store['openModal'];
@@ -135,6 +141,7 @@ beforeAll(async () => {
     <div id="worktrees" class="hv-dialog hidden"></div>
     <div id="project-editor" class="hv-dialog hidden"></div>
     <div id="help-overlay" class="hv-dialog hidden"></div>
+    <div id="whats-new" class="hv-dialog hidden"></div>
     <div id="choice-dialog" class="hv-dialog hidden"></div>
     <div id="command-palette" class="hidden"></div>`;
   ({ openModal, resetStore } = await import('../../src/store/store.js'));
@@ -228,6 +235,11 @@ const LAYERS: {
     ran: () => closeHelpOverlay.mock.calls.length > 0,
   },
   {
+    name: "what's new",
+    open: () => openModal({ id: 'whats-new' }),
+    ran: () => closeWhatsNew.mock.calls.length > 0,
+  },
+  {
     name: 'dead-session overlay',
     open: () => {
       state.activeId = 'a';
@@ -253,6 +265,7 @@ beforeEach(() => {
     closeSettings,
     closeWorktrees,
     closeHelpOverlay,
+    closeWhatsNew,
     closeCommandPalette,
     dismissDead,
   ]) {

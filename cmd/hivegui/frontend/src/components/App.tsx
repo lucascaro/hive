@@ -110,7 +110,7 @@ export function App(): ReactNode {
         <Sidebar {...sidebarCallbacks} trayEl={mustEl('minimized-projects')} />,
         projects,
       )}
-      {/* The sidebar header's two icon controls. Portals of its own
+      {/* The sidebar header's three icon controls. Portals of its own
           rather than props of the tree above: they land in index.html's
           <header>, a sibling of #projects. Renders null when there is no
           header, which is how the dom-test scaffolds get away with

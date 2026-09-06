@@ -30,6 +30,11 @@ describe('compareVersions', () => {
     expect(compareVersions('2.0.0-alpha.1', '2.0.0-alpha.2')).toBeLessThan(0);
   });
 
+  it('keeps every pre-release identifier, hyphens included', () => {
+    // split('-', 2) drops the tail, making these two compare equal.
+    expect(compareVersions('2.0.0-rc-2', '2.0.0-rc-1')).toBeGreaterThan(0);
+  });
+
   it('compares numeric pre-release identifiers as numbers', () => {
     // A whole-string compare puts alpha.10 before alpha.9.
     expect(compareVersions('2.0.0-alpha.10', '2.0.0-alpha.9')).toBeGreaterThan(
