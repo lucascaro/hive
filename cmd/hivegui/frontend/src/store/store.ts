@@ -662,7 +662,7 @@ export function forgetSession(id: string): void {
 // needs_attention is derived server-side and lives on SessionInfo
 // itself (session.needs_attention) — there is no local Set here. See
 // the frozen transition table in
-// docs/exec-plans/active/336-session-state-model.md. What stays is the
+// docs/exec-plans/completed/336-session-state-model.md. What stays is the
 // ⌘B/⇧⌘B round-tripping bookkeeping below, which is genuinely local UI
 // state (which sessions/projects a bell round pulled out of the tray).
 

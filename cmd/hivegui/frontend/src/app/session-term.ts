@@ -585,7 +585,7 @@ export class SessionTerm {
     // needs_attention through the `attention` session event, which
     // drives the pulse class and the notification edge in
     // app/events.ts's syncAttentionClass. See the frozen transition
-    // table, docs/exec-plans/active/336-session-state-model.md.
+    // table, docs/exec-plans/completed/336-session-state-model.md.
 
     // Take over wheel handling. xterm's default wheel→lines math
     // honors raw deltaY, which on macOS trackpads with momentum

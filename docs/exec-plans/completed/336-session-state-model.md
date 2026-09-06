@@ -3,9 +3,10 @@
 - **Spec:** [docs/product-specs/336-session-state-model.md](../../product-specs/336-session-state-model.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `feature/336-phase4-hivebar-tooltip` (phases 1–2 shipped
-  from `feature/336-session-state-model`, phase 3 from
-  `feature/336-phase3-pi-extension`; both merged and dead)
+- **Branch:** one per phase, all merged and dead —
+  `feature/336-session-state-model` (phases 1–2),
+  `feature/336-phase3-pi-extension`, `feature/336-phase4-hivebar-tooltip`,
+  `feature/336-pi-probe`, `feature/336-close-out`
 - **Stage:** DONE
 - **PR:** #338 (phases 1–2) · #341 (phase 3) · #344 (phase 4) · #348
   (pi probe + smoke checklist) — all merged

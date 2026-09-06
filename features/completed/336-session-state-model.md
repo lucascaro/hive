@@ -1,12 +1,12 @@
 # Feature: Session state model: know what every agent is doing
 
 - **GitHub Issue:** —
-- **Stage:** IMPLEMENT
+- **Stage:** DONE
 - **Type:** enhancement
 - **Complexity:** L
 - **Priority:** P1
-- **Branch:** —
-- **PR:** —
+- **Branch:** `feature/336-session-state-model` → `feature/336-phase3-pi-extension` → `feature/336-phase4-hivebar-tooltip` → `feature/336-pi-probe` → `feature/336-close-out`
+- **PR:** #338 · #341 · #344 · #348 · #350 (all merged)
 
 ## Description
 
@@ -20,7 +20,7 @@ Design: `docs/design-docs/control-plane.md`.
 ## Research
 
 See the exec plan's Research section:
-`docs/exec-plans/active/336-session-state-model.md`.
+`docs/exec-plans/completed/336-session-state-model.md`.
 
 ### Relevant Code
 - `internal/registry/registry.go` — `Entry`, `noteBell`, `SetAttention`, `broadcastLocked`

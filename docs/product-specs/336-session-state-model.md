@@ -5,7 +5,8 @@ title: "Session state model: know what every agent is doing"
 type: enhancement
 complexity: L
 priority: P1
-stage: GATE
+stage: DONE
+shipped: 2026-09-05
 ---
 
 # Session state model: know what every agent is doing
