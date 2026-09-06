@@ -1,10 +1,11 @@
 ---
 issue: 351
+pr: 357
 title: "Show a user-facing changelog behind a gift icon in the sidebar"
 type: enhancement
 complexity: M
 priority: P2
-stage: IMPLEMENT
+stage: REVIEW
 ---
 
 # Show a user-facing changelog behind a gift icon in the sidebar

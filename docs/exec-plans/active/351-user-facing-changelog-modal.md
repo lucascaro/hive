@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/351-user-facing-changelog-modal.md](../../product-specs/351-user-facing-changelog-modal.md)
 - **Issue:** #351
+- **PR:** #357
+- **Branch:** `feature/351-user-facing-changelog-modal`
 - **Status:** active
 
 ## Summary
