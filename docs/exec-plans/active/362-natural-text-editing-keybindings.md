@@ -2,6 +2,8 @@
 
 - **Spec:** [docs/product-specs/362-natural-text-editing-keybindings.md](../../product-specs/362-natural-text-editing-keybindings.md)
 - **Issue:** #362
+- **PR:** #363
+- **Branch:** `feature/362-natural-text-editing-keybindings`
 - **Status:** active
 
 ## Summary
@@ -330,6 +332,7 @@ per the skill's one-retry rule. The reviewer independently confirmed that
 
 - **2026-09-06** — Spec filed as #362, triaged S / P2.
 - **2026-09-06** — Plan approved by the operator after two reviewer rounds.
+- **2026-09-06** — PR #363 opened.
 - **2026-09-06** — Implemented; all checks green (typecheck, `biome ci`,
   `scripts/test.sh unit dom e2e` = 628 + 278 passed, `ui-lint.sh --strict`,
   `check-changeset.sh`).

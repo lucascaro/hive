@@ -4,7 +4,8 @@ title: "Natural text editing keybindings in the terminal"
 type: enhancement
 complexity: S
 priority: P2
-stage: IMPLEMENT
+pr: 363
+stage: REVIEW
 ---
 
 # Natural text editing keybindings in the terminal
