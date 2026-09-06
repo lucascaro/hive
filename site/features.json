@@ -1,5 +1,11 @@
 [
   {
+    "title": "What's new",
+    "blurb": "The gift in the sidebar header lists what shipped, newest release first, and carries a dot until you have read it.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "Sessions outlive the GUI",
     "blurb": "A small daemon owns the terminals. Quit, crash, update — your agents keep working.",
     "status": "shipped",

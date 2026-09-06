@@ -4,8 +4,19 @@
 import { act, render, cleanup } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SEEN_KEY, latestVersion } from '../../src/lib/whats-new.js';
+import {
+  SEEN_KEY,
+  latestVersion,
+  UNRELEASED,
+} from '../../src/lib/whats-new.js';
 import { resetStore } from '../../src/store/store.js';
+
+// The store hydrates the seen version in initialData(), so a test that wants
+// a pre-existing receipt has to write it BEFORE resetting, not before mount.
+function seedSeen(version: string) {
+  localStorage.setItem(SEEN_KEY, version);
+  resetStore();
+}
 
 // The sidebar header the controls portal into, plus the dialog root
 // index.html owns. app/dom.ts resolves #terms/#status at import time, so the
@@ -62,11 +73,19 @@ describe('the sidebar gift', () => {
     ]);
   });
 
-  it('carries an accessible name and a title', async () => {
+  it('says "unread" in its accessible name, not only in the dot', async () => {
+    // The dot is a CSS ::after and says nothing to a screen reader, so the
+    // one bit it carries has to be in the name too.
+    await mount();
+    expect(giftBtn().getAttribute('aria-label')).toBe("What's new — unread");
+    expect(giftBtn().getAttribute('title')).toBe("What's new — unread");
+    expect(giftBtn().dataset.size).toBe('22');
+  });
+
+  it('drops "unread" from the name once read', async () => {
+    seedSeen(latestVersion() ?? '');
     await mount();
     expect(giftBtn().getAttribute('aria-label')).toBe("What's new");
-    expect(giftBtn().getAttribute('title')).toBe("What's new");
-    expect(giftBtn().dataset.size).toBe('22');
   });
 
   it('shows the unread dot when nothing has been read', async () => {
@@ -75,7 +94,7 @@ describe('the sidebar gift', () => {
   });
 
   it('shows no dot once the latest version has been read', async () => {
-    localStorage.setItem(SEEN_KEY, latestVersion() ?? '');
+    seedSeen(latestVersion() ?? '');
     await mount();
     expect(giftBtn().classList.contains('hv-unread')).toBe(false);
   });
@@ -88,6 +107,21 @@ describe('the sidebar gift', () => {
     // Same render pass: a localStorage read at render would leave the dot up
     // until a reload.
     expect(giftBtn().classList.contains('hv-unread')).toBe(false);
+    expect(localStorage.getItem(SEEN_KEY)).toBe(latestVersion());
+  });
+
+  it('clears the dot when opened from the command palette, not the gift', async () => {
+    // The palette calls openWhatsNew() directly. Component-local state the
+    // palette cannot reach would record the read and leave the dot up until
+    // a reload — the whole reason the seen version lives in the store.
+    await mount();
+    expect(giftBtn().classList.contains('hv-unread')).toBe(true);
+    const { openWhatsNew } = await import('../../src/app/modals/whats-new.js');
+    await act(async () => {
+      openWhatsNew();
+    });
+    expect(giftBtn().classList.contains('hv-unread')).toBe(false);
+    expect(giftBtn().getAttribute('aria-label')).toBe("What's new");
     expect(localStorage.getItem(SEEN_KEY)).toBe(latestVersion());
   });
 
@@ -119,8 +153,10 @@ describe("the What's New modal", () => {
     const headings = [
       ...dialog().querySelectorAll('.whats-new-release h4'),
     ].map((h) => h.textContent);
-    // Newest release first; "Coming next" is last, after every version.
-    expect(headings[0]).toBe(latestVersion());
+    // Unreleased leads (this very feature lives there until a release stamps
+    // it), the newest stamped release follows, and "Coming next" is last.
+    expect(headings[0]).toBe(UNRELEASED);
+    expect(headings[1]).toBe(latestVersion());
     expect(headings.at(-1)).toBe('Coming next');
 
     const items = [...dialog().querySelectorAll('.whats-new-release li')];

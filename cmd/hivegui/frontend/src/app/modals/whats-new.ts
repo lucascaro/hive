@@ -9,9 +9,14 @@
 // a quit-while-open look like it never happened.
 
 import { flushSync } from 'react-dom';
-import { closeModal, isModalOpen, openModal } from '../../store/store.js';
+import {
+  closeModal,
+  isModalOpen,
+  markWhatsNewSeen,
+  openModal,
+} from '../../store/store.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
-import { latestVersion, SEEN_KEY } from '../../lib/whats-new.js';
+import { latestVersion } from '../../lib/whats-new.js';
 import { pageEl } from '../el.js';
 
 export interface WhatsNewDeps {
@@ -24,26 +29,9 @@ let deps: WhatsNewDeps = {
   focusActiveTerm: () => {},
 };
 
-/** The version the user has read up to, or null if they never have. */
-export function readSeenVersion(): string | null {
-  try {
-    return localStorage.getItem(SEEN_KEY);
-  } catch {
-    // Private-mode / disabled storage: treat as never-read rather than
-    // throwing on a sidebar render.
-    return null;
-  }
-}
-
 function markSeen(): void {
   const latest = latestVersion();
-  if (!latest) return;
-  try {
-    localStorage.setItem(SEEN_KEY, latest);
-  } catch {
-    // Nothing to do — the dot comes back next launch, which is a better
-    // failure than a crash on click.
-  }
+  if (latest) markWhatsNewSeen(latest);
 }
 
 export function openWhatsNew() {

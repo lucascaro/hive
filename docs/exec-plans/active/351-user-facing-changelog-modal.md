@@ -339,3 +339,8 @@ Two rounds with a `general-purpose` reviewer, both against the plan on disk.
 Disposition: the pipeline allows one revise cycle, so the plan comes to the operator here. The
 round-2 items were plan-text contradictions rather than design objections, and both are now
 fixed; no reviewer objection to the approach itself is outstanding.
+
+## PR convergence ledger
+
+Append-only. One line per `/hs-review-loop` iteration.
+- **2026-09-06 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2354a4c8; threads_open: 0; action: fixes-applied+push (3 IMPORTANT + 2 MINOR fixed by hand rather than stopping on COMMENT); head_sha: 1048470.

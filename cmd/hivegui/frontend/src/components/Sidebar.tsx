@@ -20,7 +20,6 @@ import {
   memo,
   useLayoutEffect,
   useRef,
-  useState,
   type DragEvent as ReactDragEvent,
   type MouseEvent,
   type ReactNode,
@@ -38,7 +37,7 @@ import { reportFailure } from '../app/dom.js';
 import { beginInlineRename } from '../app/inline-rename.js';
 import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
-import { openWhatsNew, readSeenVersion } from '../app/modals/whats-new.js';
+import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
@@ -543,11 +542,11 @@ export function Sidebar(props: SidebarProps) {
 // header at all (update-banner, restart-hive), and a missing header must
 // render nothing rather than throw.
 export function SidebarHeaderControls(): ReactNode {
-  // Seeded once: the bundled list cannot change under a running app, so the
-  // only thing that clears this is the click below.
-  const [unread, setUnread] = useState(() =>
-    hasUnread(latestVersion(), readSeenVersion()),
-  );
+  // Derived from the store, not component state: the modal also opens from
+  // the command palette, and a `useState` the palette cannot reach would
+  // record the read while leaving the dot on screen until a reload.
+  const whatsNewSeen = useAppStore((s) => s.whatsNewSeen);
+  const unread = hasUnread(latestVersion(), whatsNewSeen);
   const newProjectBtn = document.getElementById('new-project-btn');
   const header = newProjectBtn?.parentElement;
   if (!newProjectBtn || !header) return null;
@@ -570,17 +569,12 @@ export function SidebarHeaderControls(): ReactNode {
         <IconButton
           id="whats-new-btn"
           icon="gift"
-          label="What's new"
+          // The dot is a CSS ::after, so it says nothing to a screen reader.
+          // The accessible name carries the same bit in words.
+          label={unread ? "What's new — unread" : "What's new"}
           size={22}
           className={unread ? 'hv-unread' : undefined}
-          onClick={() => {
-            // Clear the dot in the same render pass. `unread` is state rather
-            // than a localStorage read at render because a read at render
-            // never re-renders: the dot would outlive the click and sit there
-            // until a reload.
-            setUnread(false);
-            openWhatsNew();
-          }}
+          onClick={openWhatsNew}
         />,
         header,
       )}

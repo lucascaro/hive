@@ -245,9 +245,13 @@ modal (the sidebar gift).
 - A change that ships a **user-visible feature** — the `bump: minor` kind —
   adds an entry here as well as its changeset. The changeset is the
   engineering record; this is the one users read.
-- Every `status: shipped` entry needs a semver `since`, the release it shipped
-  in. Without it the feature renders on the website and silently vanishes from
-  the modal's version buckets. Both `site/build.mjs` and
+- Every `status: shipped` entry needs a `since`. **A PR adds its entry with
+  `since: "Unreleased"`** — it cannot know the version it will go out in, the
+  same reason a changeset carries no version. `scripts/regen-generated.py
+  --release <version>` stamps those to the real version at release time,
+  exactly as it promotes `## [Unreleased]` in `CHANGELOG.md`. Everything else
+  needs a semver `since`; without one the feature renders on the website and
+  silently vanishes from the modal's version buckets. Both `site/build.mjs` and
   `cmd/hivegui/frontend/test/unit/whats-new.test.ts` assert this; only the
   latter runs on a PR, because CI never builds `site/`.
 - `status: planned` entries take no `since` and render under "Coming next".

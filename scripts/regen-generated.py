@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import re
 import sys
 from pathlib import Path
@@ -32,8 +33,11 @@ CHANGESET_DIR = REPO_ROOT / ".changesets"
 SPECS_DIR = REPO_ROOT / "docs" / "product-specs"
 TECH_DEBT_DIR = REPO_ROOT / ".tech-debt"
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
+FEATURES = REPO_ROOT / "site" / "features.json"
 SPECS_INDEX = SPECS_DIR / "index.md"
 TECH_DEBT_TRACKER = REPO_ROOT / "docs" / "exec-plans" / "tech-debt-tracker.md"
+
+UNRELEASED = "Unreleased"
 
 CHANGESET_TYPES = ["added", "changed", "fixed", "removed", "deprecated", "security"]
 # GATE is the current name for the pre-merge validation stage. QA is its
@@ -349,6 +353,33 @@ def render_index(specs: list[tuple[Path, dict[str, Any], str]]) -> str:
     return "\n".join(lines)
 
 
+def stamp_features_release(version: str) -> bool:
+    """Stamp `since: "Unreleased"` entries in site/features.json with `version`.
+
+    The feature list has the same unreleased problem the changelog has: a PR
+    that ships a feature cannot know the version it will go out in. Changesets
+    solve it by carrying no version until `--release` stamps one; this is the
+    same move for the one user-facing list the website and the app's What's New
+    modal both read. Without it the AGENTS.md rule ("a user-visible feature adds
+    an entry here") is unfollowable for the PR that adds the feature.
+
+    Returns True if the file changed on disk.
+    """
+    if not FEATURES.exists():
+        return False
+    text = FEATURES.read_text(encoding="utf-8")
+    features = json.loads(text)
+    changed = False
+    for feature in features:
+        if feature.get("since") == UNRELEASED:
+            feature["since"] = version
+            changed = True
+    if not changed:
+        return False
+    new_text = json.dumps(features, indent=2, ensure_ascii=False) + "\n"
+    return _write_if_changed(FEATURES, new_text)
+
+
 def regen_specs_index() -> bool:
     specs = load_all(SPECS_DIR, exclude={"index.md", "_template.md"})
     # Drop any spec that has no frontmatter at all (during migration; CI will eventually require it).
@@ -435,6 +466,9 @@ def main(argv: list[str]) -> int:
 
     targets = [
         ("CHANGELOG.md", lambda: regen_changelog(args.release)),
+        # Only does anything under --release; a no-op otherwise, so --check
+        # never reports drift for it.
+        ("site/features.json", lambda: stamp_features_release(args.release) if args.release else False),
         ("docs/product-specs/index.md", regen_specs_index),
         ("docs/exec-plans/tech-debt-tracker.md", regen_tech_debt),
     ]

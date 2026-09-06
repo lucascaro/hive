@@ -33,9 +33,10 @@ test('all three header buttons sit together on the right of the brand', async ({
     'aria-label',
     'Check for updates',
   );
+  // Unread on a fresh browser profile, so the name carries that too.
   await expect(page.locator('#whats-new-btn')).toHaveAttribute(
     'aria-label',
-    "What's new",
+    /^What's new/,
   );
 
   // Adjacent, in order, and not flung apart: each gap is the header's 6px,
@@ -99,8 +100,9 @@ test("the gift opens What's New, and Escape closes it", async ({ page }) => {
   // Newest release first, and at least one feature under it.
   await expect(dialog.locator('.whats-new-release').first()).toBeVisible();
   await expect(dialog.locator('.whats-new-release li').first()).toBeVisible();
-  // Reading it clears the dot.
+  // Reading it clears the dot — and says so in words, not only in CSS.
   await expect(gift).not.toHaveClass(/hv-unread/);
+  await expect(gift).toHaveAttribute('aria-label', "What's new");
 
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();

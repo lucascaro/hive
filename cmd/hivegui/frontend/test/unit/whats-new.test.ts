@@ -8,6 +8,7 @@ import {
   hasUnread,
   latestVersion,
   plannedOf,
+  UNRELEASED,
 } from '../../src/lib/whats-new.js';
 
 const f = (title: string, status: string, since?: string): Feature => ({
@@ -27,6 +28,15 @@ describe('compareVersions', () => {
   it('sorts a pre-release before its release', () => {
     expect(compareVersions('2.0.0', '2.0.0-alpha.2')).toBeGreaterThan(0);
     expect(compareVersions('2.0.0-alpha.1', '2.0.0-alpha.2')).toBeLessThan(0);
+  });
+
+  it('compares numeric pre-release identifiers as numbers', () => {
+    // A whole-string compare puts alpha.10 before alpha.9.
+    expect(compareVersions('2.0.0-alpha.10', '2.0.0-alpha.9')).toBeGreaterThan(
+      0,
+    );
+    // A shorter identifier list is the lower precedence one.
+    expect(compareVersions('2.0.0-alpha', '2.0.0-alpha.1')).toBeLessThan(0);
   });
 
   it('is zero for equal versions', () => {
@@ -57,6 +67,16 @@ describe('groupByVersion', () => {
       g.entries.map((e) => e.title),
     );
     expect(titles.sort()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('sorts Unreleased above every stamped release', () => {
+    const withUnreleased = [...list, f('new', 'shipped', UNRELEASED)];
+    expect(groupByVersion(withUnreleased).map((g) => g.version)).toEqual([
+      UNRELEASED,
+      '2.10.0',
+      '2.9.0',
+      '2.0.0',
+    ]);
   });
 
   it('excludes planned entries', () => {
@@ -108,6 +128,23 @@ describe('hasUnread', () => {
   });
 });
 
+describe('latestVersion', () => {
+  it('ignores the Unreleased bucket', () => {
+    // Otherwise every dev build shows the dot forever: opening writes a real
+    // release, which can never catch up to an Unreleased frontier.
+    const list = [
+      f('new', 'shipped', UNRELEASED),
+      f('old', 'shipped', '2.6.0'),
+    ];
+    expect(latestVersion(list)).toBe('2.6.0');
+    expect(hasUnread(latestVersion(list), '2.6.0')).toBe(false);
+  });
+
+  it('is null when everything shipped is unreleased', () => {
+    expect(latestVersion([f('new', 'shipped', UNRELEASED)])).toBeNull();
+  });
+});
+
 describe('the bundled site/features.json', () => {
   // site/build.mjs asserts this too, but nothing in .github/workflows/ci.yml
   // builds site/ — only pages.yml does, and only on main. So this copy is
@@ -115,7 +152,10 @@ describe('the bundled site/features.json', () => {
   // website and silently vanishes from the modal.
   it('gives every shipped feature a semver since', () => {
     const bad = FEATURES.filter(
-      (x) => x.status === 'shipped' && !/^\d+\.\d+\.\d+/.test(x.since ?? ''),
+      (x) =>
+        x.status === 'shipped' &&
+        x.since !== UNRELEASED &&
+        !/^\d+\.\d+\.\d+/.test(x.since ?? ''),
     );
     expect(bad.map((x) => x.title)).toEqual([]);
   });

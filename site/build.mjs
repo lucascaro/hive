@@ -19,7 +19,7 @@ const features = JSON.parse(readFileSync(join(here, "features.json"), "utf8"));
 // fine here. Fail the build instead. (cmd/hivegui/frontend/test/unit/whats-new.test.ts
 // asserts the same thing, because CI never builds site/ on a PR.)
 for (const f of features) {
-  if (f.status === "shipped" && !/^\d+\.\d+\.\d+/.test(f.since ?? "")) {
+  if (f.status === "shipped" && f.since !== "Unreleased" && !/^\d+\.\d+\.\d+/.test(f.since ?? "")) {
     throw new Error(`features.json: shipped feature ${JSON.stringify(f.title)} needs a semver \`since\``);
   }
 }
