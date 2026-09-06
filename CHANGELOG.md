@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first, plus what is coming next — and carries a dot until you have read the
   current release. It reads the same curated feature list the website shows, is
   bundled with the build, and needs no network.
+- macOS text editing in a session now covers the full set: ⌥⌦ deletes the
+  word after the cursor and ⌘⌦ deletes to the end of the line, mirroring the
+  ⌥⌫ and ⌘⌫ that already worked. Both chords previously did nothing at all —
+  xterm encoded them as `\x1b[3;3~` / `\x1b[3;9~`, which no shell binds.
+  The keyboard-shortcuts overlay (⌘/) and the README now list every
+  terminal-level editing key, not just some of them.
 
 ### Changed
 - The menu bar's summary now reads "2 waiting on you" instead of
