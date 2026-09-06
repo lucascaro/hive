@@ -108,7 +108,9 @@ for os in darwin linux windows; do GOOS=$os go vet ./... || exit 1; done
 
 # 3. Staticcheck at CI's pin, per GOOS (ci.yml:191; staticcheck analyses
 #    one platform at a time, per AGENTS.md).
-go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+# 2025.1.1 (CI's pin at drafting time) cannot read Go 1.27 export data —
+# see the Decision log. The pin below is the one this change moves CI to.
+go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
 for os in darwin linux windows; do GOOS=$os "$(go env GOPATH)/bin/staticcheck" ./... || exit 1; done
 
 # 4. Unit suite, then the e2e-tagged Go leg — untagged `go test ./...`
@@ -191,6 +193,12 @@ go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
   (`ubuntu-latest`/`windows-latest` are native amd64, `macos-latest` native
   arm64), so the local suite above was run with `-p 2`. The fix is a native
   arm64 Go install, which the operator owns.
+
+## PR convergence ledger
+
+<!-- one line per /hs-review-loop iteration -->
+
+- **2026-09-06 iter 1** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: empty; threads_open: 0; action: stop; head_sha: 8ea4a6c.
 
 ## Open questions
 

@@ -196,7 +196,7 @@ jobs:
         # Symbol-level: only reports vulns the code actually reaches.
         #
         # `go-version-file: go.mod` installs the `go` directive VERBATIM —
-        # 1.27.0 means 1.27.0, not "latest 1.27.x". That is why the directive
+        # 1.27.1 means 1.27.1, not "latest 1.27.x". That is why the directive
         # names a patch release: the 1.25 line this repo sat on went end of
         # life with four reachable stdlib advisories against it, fixed only
         # from 1.26.5 on. Verifying locally under a different toolchain
