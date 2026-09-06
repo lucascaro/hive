@@ -46,13 +46,15 @@ function WhatsNewBody({ root }: { root: HTMLElement }): ReactNode {
       onClose={closeWhatsNew}
       hints={[{ keys: '[esc]', label: 'close' }]}
     >
-      {/* tabIndex/role: the list is pure text with nothing focusable in it,
-          so without a focus stop a keyboard user is pinned to the close
-          button and cannot scroll past the fold. */}
-      <div
+      {/* <section> with a name, not a div with role="group": it carries the
+          same landmark semantics without the explicit role biome rejects.
+          tabIndex: the list is pure text with nothing focusable in it, so
+          without a focus stop a keyboard user is pinned to the close button
+          and cannot scroll past the fold. */}
+      <section
         id="whats-new-body"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: see above
         tabIndex={0}
-        role="group"
         aria-label="What shipped, newest release first"
       >
         {releases.map((release) => (
@@ -81,7 +83,7 @@ function WhatsNewBody({ root }: { root: HTMLElement }): ReactNode {
             </ul>
           </section>
         ) : null}
-      </div>
+      </section>
     </ModalShell>
   );
 }
