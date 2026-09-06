@@ -910,6 +910,14 @@ export function wireDaemonEvents(injected: EventsDeps) {
       );
       return;
     }
+    // The capture sheet refuses an oversize note before sending, so
+    // this is the case that outruns it — another client, or a note
+    // that grew past the cap between the check and the write. Named,
+    // because the generic fallback below prints the raw code.
+    if (e.code === 'idea_too_long') {
+      flashStatus('idea is too long — shorten it and try again', true);
+      return;
+    }
     // Worktree-browser refusals. worktree_in_use is not overridable,
     // so there is nothing to confirm — say what to do instead.
     if (e.code === 'worktree_in_use') {

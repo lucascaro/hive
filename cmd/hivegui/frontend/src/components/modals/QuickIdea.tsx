@@ -18,6 +18,11 @@ import {
   submitIdea,
   type IdeaKind,
 } from '../../app/modals/quick-idea.js';
+import {
+  ideaTextBytes,
+  ideaTextTooLong,
+  MAX_IDEA_TEXT,
+} from '../../lib/ideas.js';
 import { useAppStore } from '../../store/store.js';
 import { Button } from '../Button.js';
 import { ModalShell } from './ModalShell.js';
@@ -50,6 +55,12 @@ function QuickIdeaSheet({
   const [kind, setKind] = useState<IdeaKind>('idea');
   const [projectId, setProjectId] = useState(initialProjectId);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  // Measured in UTF-8 bytes, which is what the daemon bounds. Shown
+  // only once the note is close to the limit — a byte counter on a
+  // one-line note is noise.
+  const bytes = ideaTextBytes(text.trim());
+  const tooLong = ideaTextTooLong(text);
+  const nearLimit = bytes > MAX_IDEA_TEXT * 0.9;
 
   // Focus in a passive effect: the root's `hidden` class comes off in
   // the parent's layout effect, and layout effects run child-first, so
@@ -101,7 +112,7 @@ function QuickIdeaSheet({
             id="quick-idea-save"
             label="Save"
             kind="primary"
-            disabled={text.trim() === ''}
+            disabled={text.trim() === '' || tooLong}
             onClick={save}
           />
         </>
@@ -122,6 +133,19 @@ function QuickIdeaSheet({
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
           />
+          {nearLimit ? (
+            // The daemon rejects rather than truncates, and this sheet
+            // does not wait for the answer, so the limit has to be
+            // visible BEFORE Save — not reported after the text is
+            // gone.
+            <span
+              className="hv-idea-count"
+              id="quick-idea-count"
+              data-over={tooLong ? '' : undefined}
+            >
+              {bytes} / {MAX_IDEA_TEXT} bytes
+            </span>
+          ) : null}
         </label>
         <div className="hv-field">
           <span className="hv-field__label">Kind</span>

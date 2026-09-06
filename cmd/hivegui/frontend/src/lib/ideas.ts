@@ -23,3 +23,23 @@ export function relativeAge(iso: string, now: number = Date.now()): string {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
+
+// MAX_IDEA_TEXT mirrors wire.MaxIdeaText (internal/wire/control.go).
+// The daemon REJECTS an oversize note rather than truncating it, and
+// the capture sheet does not wait for the answer before closing — so
+// without a check here the text is simply gone. Keep the two in sync.
+export const MAX_IDEA_TEXT = 4 << 10; // 4 KiB
+
+// ideaTextBytes measures what the daemon measures: UTF-8 bytes, not
+// characters. A `maxLength` on the textarea would count UTF-16 code
+// units instead, which lets a note of non-ASCII text sail past a
+// 4096-unit limit and get rejected anyway.
+export function ideaTextBytes(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+// ideaTextTooLong is the submit guard, applied to the same trimmed
+// string that goes on the wire.
+export function ideaTextTooLong(text: string): boolean {
+  return ideaTextBytes(text.trim()) > MAX_IDEA_TEXT;
+}

@@ -247,6 +247,20 @@ window.addEventListener(
         e.preventDefault();
         e.stopPropagation();
         closeQuickIdea();
+      } else if (
+        cmdOrCtrl(e) &&
+        e.shiftKey &&
+        (e.key === 'i' || e.key === 'I')
+      ) {
+        // ⇧⌘I from the sheet goes to the inbox, which closes the sheet
+        // on the way. Without this arm the gate returns and trapFocus
+        // swallows the chord — but only off macOS, where the keydown
+        // path is the only path: on mac the native accelerator reaches
+        // toggleIdeaInbox() regardless. Same chord, two behaviours, and
+        // the platform split this pair exists to prevent.
+        e.preventDefault();
+        e.stopPropagation();
+        toggleIdeaInbox();
       } else if (trapFocus(pageEl('quick-idea'), e)) {
         e.stopPropagation();
       }

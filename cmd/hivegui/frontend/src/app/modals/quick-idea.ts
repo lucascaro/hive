@@ -10,7 +10,7 @@
 
 import { flushSync } from 'react-dom';
 import { AddIdea } from '../../bridge.js';
-import { reportFailure } from '../dom.js';
+import { flashStatus, reportFailure } from '../dom.js';
 import {
   anyModalOpen,
   closeModal,
@@ -20,6 +20,7 @@ import {
 import { pageEl } from '../el.js';
 import { releaseFocus } from '../../lib/focus-trap.js';
 import { activeProjectId } from '../selectors.js';
+import { ideaTextTooLong, MAX_IDEA_TEXT } from '../../lib/ideas.js';
 
 // Narrow on purpose, matching project-editor.ts.
 export interface QuickIdeaDeps {
@@ -74,6 +75,14 @@ export function submitIdea(
 ): void {
   const trimmed = text.trim();
   if (!trimmed) return;
+  // The daemon rejects an oversize note (idea_too_long) rather than
+  // truncating it, and this does not wait for the answer before
+  // closing — so filing one anyway would lose what the user typed.
+  // Refuse here instead and leave the sheet up with the text in it.
+  if (ideaTextTooLong(trimmed)) {
+    flashStatus(`idea is too long (max ${MAX_IDEA_TEXT / 1024} KiB)`, true);
+    return;
+  }
   AddIdea(sessionId, projectId, kind, trimmed).catch(reportFailure('add idea'));
   closeQuickIdea();
 }

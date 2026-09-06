@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { relativeAge } from '../../src/lib/ideas.js';
+import {
+  ideaTextBytes,
+  ideaTextTooLong,
+  MAX_IDEA_TEXT,
+  relativeAge,
+} from '../../src/lib/ideas.js';
 import {
   addIdea,
   appStore,
@@ -45,6 +50,26 @@ function idea(over: Partial<IdeaInfo> = {}): IdeaInfo {
     ...over,
   };
 }
+
+describe('idea text limit', () => {
+  it('measures UTF-8 bytes, not UTF-16 code units', () => {
+    // The daemon bounds bytes (wire.MaxIdeaText). A maxLength on the
+    // textarea would count code units and let this through.
+    expect(ideaTextBytes('é')).toBe(2);
+    expect(ideaTextBytes('🐝')).toBe(4);
+    expect(ideaTextBytes('abc')).toBe(3);
+  });
+
+  it('rejects only past the cap, and measures the trimmed text', () => {
+    expect(ideaTextTooLong('a'.repeat(MAX_IDEA_TEXT))).toBe(false);
+    expect(ideaTextTooLong('a'.repeat(MAX_IDEA_TEXT + 1))).toBe(true);
+    // Trailing whitespace is trimmed before the wire, so it must not
+    // be what tips a note over.
+    expect(ideaTextTooLong('a'.repeat(MAX_IDEA_TEXT) + '   ')).toBe(false);
+    // A note of 2-byte characters is over at half the character count.
+    expect(ideaTextTooLong('é'.repeat(MAX_IDEA_TEXT / 2 + 1))).toBe(true);
+  });
+});
 
 describe('idea store', () => {
   it('keeps the list newest-first however entries arrive', () => {

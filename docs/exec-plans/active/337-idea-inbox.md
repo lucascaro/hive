@@ -788,6 +788,30 @@ path instead.
   same `anyModalOpen()` guard `closeQuickIdea` has. ⇧⌘I from the sheet
   and ⌘I from the inbox each close one modal and open the other, so
   either close can now run with a dialog still up.
+- **2026-09-06** — Review finding, fixed: ⇧⌘I from the open capture
+  sheet was inert on Windows and Linux. The `quick-idea` gate matched
+  ⌘I without shift and then returned unconditionally, so `trapFocus`
+  swallowed the chord — while on macOS the native accelerator reached
+  `toggleIdeaInbox()` anyway. The residual case of exactly the platform
+  split `captureIdea()` / `toggleIdeaInbox()` were introduced to
+  remove; the gate now has a shift arm calling the same pair.
+- **2026-09-06** — Review finding, fixed: a note over `MaxIdeaText`
+  (4 KiB) was lost outright. The daemon REJECTS rather than truncates,
+  and the sheet closes without awaiting the answer, so the text went
+  nowhere and `idea_too_long` fell through to the generic error toast
+  on a sheet that was already gone. The cap is now checked before the
+  send, in `lib/ideas.ts`, in **UTF-8 bytes** — a `maxLength` on the
+  textarea counts UTF-16 code units and would let a note of non-ASCII
+  text past a 4096-unit limit and into the same rejection. Save is
+  disabled and a byte counter appears past 90% of the cap; a named
+  handler for `idea_too_long` covers the race a client cannot see.
+- **2026-09-06** — Left standing from iteration 3, deliberately:
+  `IdeaInbox`'s `RowButton` duplicates `Worktrees.tsx`'s (~15 lines) —
+  extracting a shared row-button primitive is a refactor across two
+  modals that wants its own change; and `LIST_IDEAS` returns done ideas
+  that nothing renders, so the store accumulates them for the life of
+  the window. Neither is a defect in what ships; both are recorded
+  here rather than fixed under a feature PR.
 
 ## Review log
 
@@ -978,6 +1002,8 @@ code and self-healing.
 - **2026-09-06 iter 1b** — the four RISKY items were taken by the operator rather than left standing: the ⌘I-from-the-inbox stacking + wrong-project bug, `closeQuickIdea`'s unconditional refocus, and the two missing test dimensions. See the Decision log entries of the same date.
 - **2026-09-06 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 75e442fbb7de9bed52a4b7333bc4b95306ab462300c7dc3de9e276d1ae7e6075; threads_open: 0; action: escalated:risky-fix-needs-human-decision (1 BLOCKING, 1 IMPORTANT, 5 MINOR; autofix applied nothing); head_sha: c6e8157.
 - **2026-09-06 iter 2b** — the BLOCKING (macOS menu accelerators preempting the ⌘I keydown branches), the IMPORTANT (hardcoded ⌘ labels) and four of the five MINORs were taken by the operator; the fifth — Ctrl+I colliding with the terminal's Tab byte off macOS — was put to the user, who chose to ship as is and revisit on report. It is filed under Open questions.
+- **2026-09-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b79eeba37673095a96a91b05bb885abaff1fe1d95255293e78ff43b11e26cb1; threads_open: 0; action: stop (COMMENT, strict off, no unresolved threads — 0 BLOCKING; iteration 2's fixes re-verified correct); head_sha: a07cccb.
+- **2026-09-06 iter 3b** — the loop's stop condition was met, but both IMPORTANT findings were fixed anyway rather than shipped: ⇧⌘I inert off macOS, and a >4 KiB note silently lost. See the Decision log entries of the same date. Two MINORs left standing, also recorded there.
 
 ## Open questions
 

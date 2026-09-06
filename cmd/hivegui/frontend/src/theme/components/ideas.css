@@ -179,3 +179,14 @@
 /* tokens.md gives --state-error the destructive-action role; colour
    only, so the label keeps a ground the contrast gate can check. */
 .idea-actions button.danger { color: var(--state-error); }
+
+/* Byte counter on the capture sheet. Appears only near the limit, and
+   turns destructive-coloured past it — the daemon rejects rather than
+   truncates, so this is a stop sign, not a progress bar. */
+.hv-idea-count {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hv-idea-count[data-over] { color: var(--state-error); }

@@ -618,7 +618,7 @@ export async function SaveCustomAgents(list: CustomAgent[] | null) {
 }
 // Project mutations are positional too, matching the real bindings
 // (cmd/hivegui/app.go): CreateProject(name, color, cwd),
-// KillProject(id, killSessions), UpdateProject(id, name, color, cwd,
+// KillProject(id, killSessions, deleteIdeas), UpdateProject(id, name, color, cwd,
 // order). The old object-shaped/no-op forms silently no-op'd every
 // project create/save/delete driven through the UI — the same defect
 // UpdateSession had.

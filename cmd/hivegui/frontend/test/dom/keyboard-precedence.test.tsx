@@ -401,6 +401,18 @@ describe('⌘I inside the idea inbox', () => {
     expect(openQuickIdea).toHaveBeenCalledWith('p9');
   });
 
+  it('⇧⌘I from the capture sheet goes to the inbox on every platform', () => {
+    // The gate returns unconditionally, so without its shift arm this
+    // chord is swallowed by trapFocus — but only off macOS, where the
+    // keydown path is the only path. On mac the native accelerator
+    // reaches toggleIdeaInbox() regardless, and the two platforms
+    // disagree about what ⇧⌘I does.
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    press('i', { ...primaryMod(), shiftKey: true });
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openIdeaInbox).toHaveBeenCalled();
+  });
+
   it('⇧⌘I still closes the inbox rather than capturing', () => {
     openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
     press('i', { ...primaryMod(), shiftKey: true });

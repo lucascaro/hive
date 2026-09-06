@@ -186,6 +186,34 @@ describe('quick idea capture', () => {
     expect(refocusActiveTerm).not.toHaveBeenCalled();
   });
 
+  it('refuses a note past the daemon’s 4 KiB cap instead of losing it', async () => {
+    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
+    await openOn('p1');
+    fireEvent.change(textField(), {
+      target: { value: 'x'.repeat(MAX_IDEA_TEXT + 1) },
+    });
+    // Visible before Save, because the daemon rejects rather than
+    // truncates and the sheet does not wait for the answer.
+    expect(el('quick-idea-count').dataset.over).toBe('');
+    expect(el<HTMLButtonElement>('quick-idea-save').disabled).toBe(true);
+    fireEvent.keyDown(textField(), { key: 'Enter' });
+    await flush();
+    expect(AddIdea).not.toHaveBeenCalled();
+    // Still up, with the text still in it — that is the whole point.
+    expect(el('quick-idea').classList.contains('hidden')).toBe(false);
+    expect(textField().value.length).toBe(MAX_IDEA_TEXT + 1);
+  });
+
+  it('files a note that is exactly at the cap', async () => {
+    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
+    await openOn('p1');
+    const text = 'x'.repeat(MAX_IDEA_TEXT);
+    fireEvent.change(textField(), { target: { value: text } });
+    fireEvent.keyDown(textField(), { key: 'Enter' });
+    await flush();
+    expect(AddIdea).toHaveBeenCalledWith('', 'p1', 'idea', text);
+  });
+
   it('starts clean on a re-open rather than showing the last draft', async () => {
     await openOn('p1');
     fireEvent.change(textField(), { target: { value: 'abandoned' } });
