@@ -5,14 +5,15 @@ type: enhancement
 complexity: S
 priority: P2
 pr: 363
-stage: GATE
+shipped: 2026-09-06
+stage: DONE
 ---
 
 # Natural text editing keybindings in the terminal
 
 - **Issue:** #362
 - **Type:** enhancement
-- **Exec plan:** [docs/exec-plans/active/362-natural-text-editing-keybindings.md](../exec-plans/active/362-natural-text-editing-keybindings.md)
+- **Exec plan:** [docs/exec-plans/completed/362-natural-text-editing-keybindings.md](../exec-plans/completed/362-natural-text-editing-keybindings.md)
 - **Complexity:** S
 - **Priority:** P2
 

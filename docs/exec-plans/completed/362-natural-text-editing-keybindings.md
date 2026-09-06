@@ -4,7 +4,7 @@
 - **Issue:** #362
 - **PR:** #363
 - **Branch:** `feature/362-natural-text-editing-keybindings`
-- **Status:** active
+- **Status:** completed
 
 ## Summary
 
@@ -336,6 +336,14 @@ per the skill's one-retry rule. The reviewer independently confirmed that
 - **2026-09-06** — Implemented; all checks green (typecheck, `biome ci`,
   `scripts/test.sh unit dom e2e` = 628 + 278 passed, `ui-lint.sh --strict`,
   `check-changeset.sh`).
+
+## Gate verdict
+
+- **2026-09-06** — verdict: PASS; phase: —; checks: 3 passed / 0 failed / 0 followups; followups: none; one-line: all six success criteria observable in code and demonstrated by green tests, no non-goal bled in, every doc surface AGENTS.md requires is updated and accurate.
+  - 2026-09-06 dimensions:
+    - acceptance — PASS — each criterion verified against code and real output: `macForwardKillSeq` (`keymap.ts:108-115`) returns `\x1bd` / `\x0b` and null for off-mac, bare ⌦, Backspace and ctrl-held; the dispatch at `session-term.ts:472-477` is reachable (no earlier branch matches a `Delete` keydown); `vitest` 42/42 and the mac e2e spec 3/3 actually executed on this macOS machine rather than skipping.
+    - non-goals — PASS — `macOptionIsMeta` appears nowhere in the tree; no `\x04` literal added; both PTY-writing helpers gate on `isMac`; no rebinding surface or keymap UI; nothing xterm already handles was re-implemented. No scope bleed against `origin/main`.
+    - doc accuracy — PASS — all four AGENTS.md surfaces updated (keymap, overlay, README, changeset); README's mac markers match the `isMac` gate; the iteration-1 contradiction fix at `shortcuts.ts:121-127` holds and no new contradictory pair exists; `check-changeset.sh` exit 0; `CHANGELOG.md` untouched. `regression_of` N/A (`type: added`).
 
 ## PR convergence ledger
 
