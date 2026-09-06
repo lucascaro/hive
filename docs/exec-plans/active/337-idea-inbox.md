@@ -803,6 +803,21 @@ path instead.
   darwin/linux/windows are clean. Phases 2 (GUI) and 3
   (`initial_prompt`) not started.
 
+## PR convergence ledger
+
+Append-only, one line per `/hs-review-loop` iteration.
+
+- **2026-09-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 9520632130d82da0bf58561b2900795dfbec302e78380c5da9c2b97f69cdae41; threads_open: 0; action: autofix+push (3 IMPORTANT remain, so COMMENT is not a stop); head_sha: 7b0b7ea.
+- **2026-09-05 iter 2** — verdict: REQUEST_CHANGES (coerced); mergeable: MERGEABLE; findings_hash: (worker died before re-review); threads_open: 0; action: autofix+push, then worker terminated on an API rate limit before the re-review leg; all four findings fixed in f26c5d9 and CI green; head_sha: f26c5d9.
+- **2026-09-05 iter 3** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: 1999a0c0a3966e66 (2 MINOR only); threads_open: 0; action: stop (re-review leg iteration 2 never reached; all four iteration-1 findings confirmed closed); head_sha: f26c5d9.
+
+Converged after 3 iterations. Two MINORs left standing deliberately:
+`TestOrphanIdeaKeptWhenNoProjects` passes with or without the fix (it is
+a regression guard against a future "drop the orphan" change, not
+evidence for the new branch), and an idea loaded when no project exists
+stays project-filter-unreachable until the next boot — documented in the
+code and self-healing.
+
 ## Open questions
 
 None. Both prior questions were resolved on 2026-09-05 and moved to the
