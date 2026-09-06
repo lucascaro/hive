@@ -34,6 +34,7 @@ import {
   MINIMIZED_PROJECTS_STORAGE_KEY,
   namespacedKey,
 } from '../lib/collapsed.js';
+import { SEEN_KEY } from '../lib/whats-new.js';
 import { createNavHistory, type NavHistory } from '../lib/nav-history.js';
 import type { PhasePanel } from '../lib/phase-steps.js';
 import type { ModeHint } from '../lib/status.js';
@@ -62,6 +63,12 @@ export interface AppData {
   sessions: SessionInfo[];
   collapsed: Set<string>;
   minimizedProjects: Set<string>;
+  // Newest release the user has opened the What's New modal on, or null
+  // if they never have. Lives in the store rather than in the sidebar
+  // button's own state because the modal has TWO entry points — the gift
+  // and the command palette — and component state only one of them can
+  // reach leaves the dot up after the palette already recorded the read.
+  whatsNewSeen: string | null;
   // False until hydratePersistedProjectSets has run. applyProjectList
   // refuses to prune while it is false: pruning an un-hydrated (empty)
   // set persists [] and wipes the user's tray — bug #340 exactly.
@@ -127,7 +134,8 @@ export type ModalId =
   | 'worktrees'
   | 'quick-idea'
   | 'idea-inbox'
-  | 'help';
+  | 'help'
+  | 'whats-new';
 
 // `seq` is the opening's generation, minted by openModal. A component
 // keys its per-open state off it (`key={entry.seq}`), which is what makes
@@ -144,7 +152,8 @@ export type ModalEntry =
   // session is in, or the default project when there is none.
   | { id: 'quick-idea'; seq: number; projectId: string }
   | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
-  | { id: 'help'; seq: number };
+  | { id: 'help'; seq: number }
+  | { id: 'whats-new'; seq: number };
 
 // The open question, plus the generation that lets a second ask remount
 // the body. The spec is the caller's — see app/modals/choice-dialog.ts,
@@ -372,6 +381,11 @@ function initialData(): AppData {
     //   NOT loaded here: the storage key is suffixed with the daemon's
     //   state-dir id, which only an async binding can tell us. main.tsx
     //   calls hydratePersistedProjectSets before connecting.
+    whatsNewSeen: readStorage(SEEN_KEY), // NOT namespaced per daemon like
+    //   the two sets below: "what have I read" is a fact about the person,
+    //   not about which registry this window is attached to. Read eagerly
+    //   because the sidebar needs it on its first paint, before any
+    //   hydration step has run.
     minimizedProjects: new Set(), // project ids pulled out of the sidebar
     //   list into the tray at its bottom; their sessions are hidden from
     //   grid views too. Persisted and hydrated exactly like `collapsed`.
@@ -713,6 +727,18 @@ export function clearDismissedDead(id: string): void {
 }
 
 // ---------- sidebar collapse / minimize ----------
+
+/**
+ * Record that the user has read up to `version`.
+ *
+ * The single writer for the read receipt — both `openWhatsNew` entry points
+ * funnel through here, so the persisted value and the dot can never disagree.
+ */
+export function markWhatsNewSeen(version: string): void {
+  if (get().whatsNewSeen === version) return;
+  writeStorage(SEEN_KEY, version);
+  set({ whatsNewSeen: version });
+}
 
 export function toggleCollapsed(pid: string): void {
   const cur = get().collapsed;

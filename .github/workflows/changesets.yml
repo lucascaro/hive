@@ -86,6 +86,10 @@ jobs:
         # and a silent incompatible reload, so it proves it still fires
         # before it is trusted to judge this PR.
         run: scripts/check-daemon-contract-selftest.sh
+      - name: Self-test the feature-list release stamp
+        # stamp_features_release() only runs on the release path, where a
+        # mistake reaches users instead of CI. Same reasoning as above.
+        run: scripts/regen-features-selftest.py
       - name: Require a contract bump for daemon-side changes
         env:
           PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}

@@ -28,6 +28,10 @@
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
+    // site/features.json — the single user-facing feature list — is imported
+    // by lib/whats-new.ts. `module: ESNext` defaults this to false, which
+    // rejects that import outright.
+    "resolveJsonModule": true,
     "strict": true,
     // The generated wailsjs/** and @xterm/* types are not ours to fix.
     "skipLibCheck": true,

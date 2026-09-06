@@ -1004,6 +1004,7 @@ code and self-healing.
 - **2026-09-06 iter 2b** — the BLOCKING (macOS menu accelerators preempting the ⌘I keydown branches), the IMPORTANT (hardcoded ⌘ labels) and four of the five MINORs were taken by the operator; the fifth — Ctrl+I colliding with the terminal's Tab byte off macOS — was put to the user, who chose to ship as is and revisit on report. It is filed under Open questions.
 - **2026-09-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b79eeba37673095a96a91b05bb885abaff1fe1d95255293e78ff43b11e26cb1; threads_open: 0; action: stop (COMMENT, strict off, no unresolved threads — 0 BLOCKING; iteration 2's fixes re-verified correct); head_sha: a07cccb.
 - **2026-09-06 iter 3b** — the loop's stop condition was met, but both IMPORTANT findings were fixed anyway rather than shipped: ⇧⌘I inert off macOS, and a >4 KiB note silently lost. See the Decision log entries of the same date. Two MINORs left standing, also recorded there.
+- **2026-09-06 merge** — `origin/main` moved under the PR (#356 npm ci, #357 the What's New modal) and the branch went CONFLICTING. Merged: three additive conflicts (a modal root in `index.html`, an `init*` call in `main.tsx`, the `ModalId`/`ModalEntry` unions in `store.ts`) — both sides kept. One semantic conflict git could not see: `ideaKeysBlocked()` enumerates the modals ⌘I must refuse under, and `whats-new` did not exist when it was written, so the macOS menu path would have opened a capture sheet over it. Added, with the matching case in the precedence table.
 
 ## Open questions
 

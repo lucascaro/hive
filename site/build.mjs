@@ -1,10 +1,10 @@
 // Renders site/src/*.html templates into site/dist/.
-// Data: features.yml (living feature list) + ../CHANGELOG.md (generated).
+// Data: features.json (living feature list, also rendered by the app's
+// What's New modal) + ../CHANGELOG.md (generated).
 import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
-import YAML from "yaml";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, "src");
@@ -13,13 +13,29 @@ const dist = join(here, "dist");
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 // --- features ---
-const features = YAML.parse(readFileSync(join(here, "features.yml"), "utf8"));
+const features = JSON.parse(readFileSync(join(here, "features.json"), "utf8"));
+// `since` is what the app's What's New modal groups by, so a shipped entry
+// without one silently vanishes from a version bucket there while looking
+// fine here. Fail the build instead. (cmd/hivegui/frontend/test/unit/whats-new.test.ts
+// asserts the same thing, because CI never builds site/ on a PR.)
+for (const f of features) {
+  if (f.status === "shipped" && f.since !== "Unreleased" && !/^\d+\.\d+\.\d+/.test(f.since ?? "")) {
+    throw new Error(`features.json: shipped feature ${JSON.stringify(f.title)} needs a semver \`since\``);
+  }
+}
 const card = (f) =>
   `<div class="feature${f.highlight ? " feature-hi" : ""}${f.status === "planned" ? " feature-planned" : ""}">
     <h3>${esc(f.title)}</h3>
     ${f.blurb ? `<p>${esc(f.blurb)}</p>` : ""}
   </div>`;
-const shipped = features.filter((f) => f.status === "shipped").map(card).join("\n");
+// `since: "Unreleased"` is shipped on main but in no downloadable build yet,
+// and pages.yml redeploys this site on every merge — so including it here
+// would advertise a feature nobody can get. It appears once
+// `regen-generated.py --release` stamps it with a real version.
+const shipped = features
+  .filter((f) => f.status === "shipped" && f.since !== "Unreleased")
+  .map(card)
+  .join("\n");
 const planned = features.filter((f) => f.status === "planned")
   .map((f) => `<li${f.blurb ? ` title="${esc(f.blurb)}"` : ""}>${esc(f.title)}</li>`).join("\n");
 

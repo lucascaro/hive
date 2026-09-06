@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuses that delete while any of them are still open rather than
   discarding captured work silently. The ⌘I capture sheet and the
   in-app inbox follow.
+- Hive can now tell you what changed. The gift in the sidebar header opens a
+  What's New list — everything that has shipped, grouped by release and newest
+  first, plus what is coming next — and carries a dot until you have read the
+  current release. It reads the same curated feature list the website shows, is
+  bundled with the build, and needs no network.
 
 ### Changed
 - The menu bar's summary now reads "2 waiting on you" instead of

@@ -32,6 +32,7 @@
 @import './worktrees.css';
 @import './ideas.css';
 @import './choice-dialog.css';
+@import './whats-new.css';
 
 /* Last: xterm's own DOM, which we only ever subtract from. */
 @import './xterm-overrides.css';

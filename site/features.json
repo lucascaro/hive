@@ -1,0 +1,81 @@
+[
+  {
+    "title": "What's new",
+    "blurb": "The gift in the sidebar header lists what shipped, newest release first, and carries a dot until you have read it.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
+    "title": "Sessions outlive the GUI",
+    "blurb": "A small daemon owns the terminals. Quit, crash, update — your agents keep working.",
+    "status": "shipped",
+    "since": "2.0.0",
+    "highlight": true
+  },
+  {
+    "title": "Every agent",
+    "blurb": "Claude, Codex, Gemini, Copilot, Aider, Pi, OpenCode, or a plain shell. One launcher (⌘T).",
+    "status": "shipped",
+    "since": "2.0.0"
+  },
+  {
+    "title": "Grid view",
+    "blurb": "⌘G shows a project, ⇧⌘G shows everything. Arrow keys move between tiles spatially.",
+    "status": "shipped",
+    "since": "2.0.0"
+  },
+  {
+    "title": "Git worktrees",
+    "blurb": "⇧⌘T spawns an agent in its own worktree. Hive refuses to delete one with unpushed work.",
+    "status": "shipped",
+    "since": "2.0.0"
+  },
+  {
+    "title": "Know who needs you",
+    "blurb": "A bell becomes a pulse and a desktop notification. ⌘B jumps to the agent waiting on you.",
+    "status": "shipped",
+    "since": "2.0.0"
+  },
+  {
+    "title": "Undo a close",
+    "blurb": "⌘Z reopens a closed session — name, project, worktree and, where the agent supports it, the conversation.",
+    "status": "shipped",
+    "since": "2.5.0"
+  },
+  {
+    "title": "Multi-window",
+    "blurb": "⇧⌘N opens another window on the same daemon.",
+    "status": "shipped",
+    "since": "2.0.0"
+  },
+  {
+    "title": "17 themes",
+    "blurb": "Hive dark and light, native, terminal, plus Dracula, Nord, Gruvbox, Tokyo Night, Catppuccin, Solarized and more. ANSI palette included.",
+    "status": "shipped",
+    "since": "2.6.0"
+  },
+  {
+    "title": "In-app updates",
+    "blurb": "Release or latest-commit channel. Nothing downloads until you press Update. macOS only for now.",
+    "status": "shipped",
+    "since": "2.1.0"
+  },
+  {
+    "title": "Scrollback across daemon restart",
+    "blurb": "Today scrollback lives with the daemon process.",
+    "status": "planned"
+  },
+  {
+    "title": "Splits inside grid cells",
+    "status": "planned"
+  },
+  {
+    "title": "Signed and notarized builds",
+    "blurb": "Release zips are SHA-256 verified but not yet signed.",
+    "status": "planned"
+  },
+  {
+    "title": "Windows and Linux in-app updates",
+    "status": "planned"
+  }
+]

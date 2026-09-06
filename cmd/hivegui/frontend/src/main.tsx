@@ -75,6 +75,7 @@ import { initWorktrees } from './app/modals/worktrees.js';
 import { initQuickIdea, openQuickIdea } from './app/modals/quick-idea.js';
 import { initIdeaInbox, refreshIdeas } from './app/modals/idea-inbox.js';
 import { openHelpOverlay, initHelpOverlay } from './app/modals/help-overlay.js';
+import { openWhatsNew, initWhatsNew } from './app/modals/whats-new.js';
 import { wireDaemonEvents, reconnectControl } from './app/events.js';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -163,6 +164,7 @@ const paletteCommands = [
     name: 'Worktrees…',
     run: () => openWorktreesForActiveProject(),
   },
+  { id: 'whats-new', name: "What's New…", run: () => openWhatsNew() },
   {
     id: 'quick-idea',
     name: 'Capture Idea…',
@@ -290,6 +292,7 @@ initWorktrees({
 initHelpOverlay({ setFocusedTile, focusActiveTerm });
 initQuickIdea({ setFocusedTile, refocusActiveTerm });
 initIdeaInbox({ setFocusedTile, refocusActiveTerm });
+initWhatsNew({ setFocusedTile, focusActiveTerm });
 // ---------- boot the app ----------
 
 // The pane starts in focused mode. Set before the first paint rather than

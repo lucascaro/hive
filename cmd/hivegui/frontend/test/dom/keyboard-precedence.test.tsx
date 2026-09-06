@@ -103,6 +103,7 @@ vi.mock('../../src/app/modals/choice-dialog.js', () => ({
 const closeSettings = vi.fn();
 const closeWorktrees = vi.fn();
 const closeHelpOverlay = vi.fn();
+const closeWhatsNew = vi.fn();
 const closeCommandPalette = vi.fn();
 vi.mock('../../src/app/modals/settings.js', () => ({
   closeSettings: () => closeSettings(),
@@ -122,6 +123,11 @@ vi.mock('../../src/app/modals/help-overlay.js', () => ({
   closeHelpOverlay: () => closeHelpOverlay(),
   openHelpOverlay: vi.fn(),
   toggleHelpOverlay: vi.fn(),
+}));
+vi.mock('../../src/app/modals/whats-new.js', () => ({
+  closeWhatsNew: () => closeWhatsNew(),
+  openWhatsNew: vi.fn(),
+  initWhatsNew: vi.fn(),
 }));
 
 // The two idea modals. Partially mocked, unlike the four above:
@@ -167,6 +173,7 @@ beforeAll(async () => {
     <div id="quick-idea" class="hv-dialog hidden"></div>
     <div id="idea-inbox" class="hv-dialog hidden"></div>
     <div id="help-overlay" class="hv-dialog hidden"></div>
+    <div id="whats-new" class="hv-dialog hidden"></div>
     <div id="choice-dialog" class="hv-dialog hidden"></div>
     <div id="command-palette" class="hidden"></div>`;
   ({ openModal, resetStore } = await import('../../src/store/store.js'));
@@ -271,6 +278,11 @@ const LAYERS: {
     ran: () => closeHelpOverlay.mock.calls.length > 0,
   },
   {
+    name: "what's new",
+    open: () => openModal({ id: 'whats-new' }),
+    ran: () => closeWhatsNew.mock.calls.length > 0,
+  },
+  {
     name: 'dead-session overlay',
     open: () => {
       state.activeId = 'a';
@@ -296,6 +308,7 @@ beforeEach(() => {
     closeSettings,
     closeWorktrees,
     closeHelpOverlay,
+    closeWhatsNew,
     closeCommandPalette,
     closeQuickIdea,
     openQuickIdea,
@@ -476,6 +489,7 @@ describe('the ⌘I menu path behaves like the keydown path', () => {
       () => openModal({ id: 'worktrees', projectId: 'p', projectName: '' }),
     ],
     ['the help overlay', () => openModal({ id: 'help' })],
+    ['the What’s New modal', () => openModal({ id: 'whats-new' })],
   ])('menu:quick-idea is a no-op under %s', (_name, open) => {
     open();
     menu('menu:quick-idea');

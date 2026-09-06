@@ -64,6 +64,7 @@ import {
   closeHelpOverlay,
   toggleHelpOverlay,
 } from './modals/help-overlay.js';
+import { closeWhatsNew } from './modals/whats-new.js';
 import { isHelpOverlayKey, navHistoryKey } from '../lib/keymap.js';
 import {
   switchTo,
@@ -302,6 +303,21 @@ window.addEventListener(
         e.stopPropagation();
       }
       return; // overlay owns the keyboard while open
+    }
+    if (isModalOpen('whats-new')) {
+      // Same gate every other modal gets. Without it ⌘T / ⌘, / ⌘E stack a
+      // second dialog on top of this one, Tab walks out of something that
+      // declares aria-modal, and — worst — the dead-session overlay's
+      // capture-phase Escape handler below eats the key before ModalShell
+      // sees it, leaving the dialog unclosable from the keyboard.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeWhatsNew();
+      } else if (trapFocus(pageEl('whats-new'), e)) {
+        e.stopPropagation();
+      }
+      return; // the What's New modal owns the keyboard while open
     }
 
     // Dead-session overlay: route Enter/Escape to the active session's
@@ -908,7 +924,8 @@ function ideaKeysBlocked(): boolean {
     isModalOpen('command-palette') ||
     isModalOpen('settings') ||
     isModalOpen('worktrees') ||
-    isModalOpen('help')
+    isModalOpen('help') ||
+    isModalOpen('whats-new')
   );
 }
 
