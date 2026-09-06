@@ -25,6 +25,7 @@ The *what* and *why* of work this project plans to do. Each spec describes user 
 |-------|-------|----|---------|------|
 | #351 | Show a user-facing changelog behind a gift icon in the sidebar | #357 | 2026-09-06 | [351-user-facing-changelog-modal](351-user-facing-changelog-modal.md) |
 | #353 | Commit frontend package-lock.json and install with npm ci | #356 | 2026-09-06 | [353-frontend-lockfile-and-npm-ci](353-frontend-lockfile-and-npm-ci.md) |
+| #359 | Bump the Go toolchain to 1.27.1 (1.25 is end of life) | #360 | 2026-09-06 | [359-bump-go-toolchain-to-1-27-1](359-bump-go-toolchain-to-1-27-1.md) |
 | — | Session state model: know what every agent is doing | #344 | 2026-09-05 | [336-session-state-model](336-session-state-model.md) |
 | #340 | Persist minimized projects across restarts | #342 | 2026-09-05 | [340-persist-minimized-projects-across-restarts](340-persist-minimized-projects-across-restarts.md) |
 | #343 | Show session count and attention state on minimized project chips | #346 | 2026-09-05 | [343-minimized-project-chip-count-and-attention](343-minimized-project-chip-count-and-attention.md) |
