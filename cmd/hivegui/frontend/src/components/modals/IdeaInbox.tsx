@@ -21,12 +21,25 @@ import {
   markIdeaDone,
 } from '../../app/modals/idea-inbox.js';
 import { switchTo } from '../../app/view.js';
+import { flashStatus } from '../../app/dom.js';
 import type { IdeaInfo } from '../../app/state.js';
-import { relativeAge } from '../../lib/ideas.js';
+import {
+  ideaTextTooLong,
+  MAX_IDEA_TEXT,
+  relativeAge,
+} from '../../lib/ideas.js';
 import { isMac } from '../../lib/platform.js';
 import { mod } from '../../lib/shortcuts.js';
 import { openIdeasOf, useAppStore } from '../../store/store.js';
 import { ModalShell } from './ModalShell.js';
+
+// The validate predicate for an inline edit. Says why from here: the
+// rename helper refuses the commit but has no status line of its own.
+function tooLongForAnIdea(next: string): boolean {
+  if (!ideaTextTooLong(next)) return false;
+  flashStatus(`idea is too long (max ${MAX_IDEA_TEXT / 1024} KiB)`, true);
+  return true;
+}
 
 export function IdeaInbox({ root }: { root: HTMLElement | null }): ReactNode {
   const entry = useAppStore((s) => s.modals.find((m) => m.id === 'idea-inbox'));
@@ -126,17 +139,6 @@ function IdeaRow({
   onEndEdit: () => void;
 }): ReactNode {
   const mainRef = useRef<HTMLDivElement | null>(null);
-  // A rejected edit's text, and the counter that remounts the editor on
-  // it. editIdeaText refuses an over-long note rather than sending it
-  // (the daemon rejects rather than truncates, and nothing here awaits
-  // the answer), and the inline helper has already torn the input down
-  // by then — so the only way not to lose what the user typed is to put
-  // it straight back in a fresh editor.
-  const [attempt, setAttempt] = useState(0);
-  // A ref, not state: the inline helper's callbacks are installed once
-  // per mount and read this at commit time, after any re-render.
-  const rejectedRef = useRef(false);
-  const rejectedText = useRef<string | null>(null);
   // The session this idea was filed from, if it is still around. A
   // breadcrumb only — the idea belongs to the project either way, so a
   // closed session leaves the row otherwise unchanged.
@@ -163,43 +165,29 @@ function IdeaRow({
     const main = mainRef.current;
     if (!main) return;
     const { idea: row, onEndEdit: done } = opts.current;
-    // Consume the rejected text: this mount owns it, and a later
-    // Escape must not resurrect it.
-    const seed = rejectedText.current;
-    rejectedRef.current = false;
     const input = beginInlineRename({
-      value: seed ?? row.text,
+      value: row.text,
       className: 'idea-edit',
       mount: (input) => {
         input.setAttribute('aria-label', 'Idea text');
         main.appendChild(input);
       },
       unmount: (input) => input.remove(),
-      onCommit: (next) => {
-        if (editIdeaText(row.id, next)) return;
-        // Refused. Keep the text and reopen on it; the status line
-        // already says why.
-        rejectedRef.current = true;
-        rejectedText.current = next;
-        setAttempt((n) => n + 1);
-      },
-      onDone: () => {
-        // A refused commit is not a finished edit — leave `editing` set
-        // so the effect can remount on the bumped attempt.
-        if (rejectedRef.current) return;
-        rejectedText.current = null;
-        done();
-      },
+      // The daemon applies the same 4 KiB cap to the update path and
+      // REJECTS rather than truncates, and nothing here awaits the
+      // answer — so an over-long edit that was allowed to commit would
+      // tear the editor down, revert the row to the stale text and be
+      // gone. Refusing keeps the editor open on it instead.
+      validate: (next) => !tooLongForAnIdea(next),
+      onCommit: (next) => editIdeaText(row.id, next),
+      onDone: done,
     });
     // A row that unmounts mid-edit would otherwise leave
     // inlineRenameActive() true forever — see Worktrees.tsx.
     return () => {
       cancelInlineRenameFor(input);
     };
-    // `attempt` too: a refused commit remounts the editor seeded with
-    // the text the user typed, and only a dependency change re-runs
-    // this.
-  }, [editing, attempt]);
+  }, [editing]);
 
   return (
     <div className="idea-row" data-kind={idea.kind} data-id={idea.id}>

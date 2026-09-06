@@ -19,6 +19,8 @@
 //                      non-empty, changed value)
 //   onDone()        — called after every finish, commit or cancel
 //   beforeFocus()   — optional, run after mount but before focus/select
+//   validate(next)  — optional; false REFUSES the commit and keeps the
+//                      editor open on what the user typed
 export interface InlineRenameOpts {
   mount: (input: HTMLInputElement) => void;
   unmount: (input: HTMLInputElement) => void;
@@ -27,6 +29,13 @@ export interface InlineRenameOpts {
   onCommit: (next: string) => void;
   onDone?: () => void;
   beforeFocus?: () => void;
+  // Gate on the committed value. Returning false leaves the input
+  // mounted, focused and holding `next` — the only way a caller whose
+  // commit can be REJECTED (rather than merely fail) does not lose what
+  // the user typed, since finish() unmounts before onCommit ever runs.
+  // Say why from inside the predicate; this module has no status line.
+  // Escape is never validated: backing out is always allowed.
+  validate?: (next: string) => boolean;
 }
 
 // The rename currently on screen, if any. An inline editor owns the
@@ -69,6 +78,7 @@ export function beginInlineRename({
   onCommit,
   onDone,
   beforeFocus,
+  validate,
 }: InlineRenameOpts): HTMLInputElement {
   // Whatever had focus when the edit began — usually the button or row
   // the user activated. An edit is a detour: finishing it should put
@@ -87,9 +97,16 @@ export function beginInlineRename({
   let done = false;
   const finish = (commit: boolean) => {
     if (done) return;
+    const next = input.value.trim();
+    // Refused: stay open on what the user typed rather than tearing the
+    // editor down and dropping it. Focus is restored explicitly because
+    // this path is reached from blur too.
+    if (commit && next && next !== value && validate && !validate(next)) {
+      input.focus();
+      return;
+    }
     done = true;
     if (active?.input === input) active = null;
-    const next = input.value.trim();
     unmount(input);
     // Restore before onCommit/onDone, never after: callers that want
     // focus somewhere specific say so there (the sidebar sends it back

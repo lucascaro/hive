@@ -818,12 +818,17 @@ path instead.
   the inline editor tears its input down before the answer arrives, so
   an over-long edit reverted the row to the stale text and was gone —
   the same loss the capture fix had just closed, one caller over. The
-  cap now lives in `editIdeaText` too, which returns `false` when it
-  refuses; the row remounts the editor seeded with the text the user
-  typed, because there is nowhere else it survives. Rejected: giving
-  `beginInlineRename`'s `onCommit` a rejecting contract — that is four
-  other call sites and an editor that can refuse to close on blur, for
-  a case only this caller has.
+  cap now lives in `editIdeaText` too, and `beginInlineRename` gained an
+  optional `validate` predicate: returning false refuses the commit and
+  leaves the input mounted, focused and holding what the user typed.
+  Escape is never validated, so an over-long edit is not a trap.
+  Rejected first, then adopted: the alternative — remounting the editor
+  from a rejected-text ref on a bumped `attempt` counter — needed a
+  dependency the effect never reads (`useExhaustiveDependencies`
+  rejected it, and it was right), and left a hole where a second
+  unchanged Enter closed the editor and dropped the text anyway. The
+  shared helper is the only place with the state to refuse correctly.
+  Its four existing callers pass no `validate` and are unaffected.
 
 ## Review log
 

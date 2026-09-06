@@ -216,17 +216,40 @@ describe('idea inbox', () => {
       expect.stringContaining('too long'),
       true,
     );
-    // Still editable, still holding the text: there is nowhere else it
-    // survives.
-    const reopened = rows()[0].querySelector('input') as HTMLInputElement;
-    expect(reopened).not.toBeNull();
-    expect(reopened.value).toBe(long);
+    // The editor stays open on what was typed — there is nowhere else
+    // it survives — and keeps the keyboard.
+    expect(rows()[0].querySelector('input')).toBe(input);
+    expect(input.value).toBe(long);
+    expect(document.activeElement).toBe(input);
+
+    // A blur does not sneak it through either.
+    fireEvent.blur(input);
+    await flush();
+    expect(UpdateIdea).not.toHaveBeenCalled();
+    expect(rows()[0].querySelector('input')).toBe(input);
 
     // Shortening it commits normally.
-    fireEvent.input(reopened, { target: { value: 'short enough' } });
-    fireEvent.keyDown(reopened, { key: 'Enter' });
+    fireEvent.input(input, { target: { value: 'short enough' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     await flush();
     expect(UpdateIdea).toHaveBeenCalledWith('i1', 'short enough', '', '');
+    expect(rows()[0].querySelector('input')).toBeNull();
+  });
+
+  it('lets Escape out of an edit the validator refuses', async () => {
+    const { MAX_IDEA_TEXT } = await import('../../src/lib/ideas.js');
+    await openWith([idea()]);
+    fireEvent.click(button(rows()[0], 'Edit'));
+    await flush();
+    const input = rows()[0].querySelector('input') as HTMLInputElement;
+    fireEvent.input(input, {
+      target: { value: 'x'.repeat(MAX_IDEA_TEXT + 1) },
+    });
+    // Backing out is never validated, or an over-long edit would be a
+    // trap with no way to leave it.
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await flush();
+    expect(UpdateIdea).not.toHaveBeenCalled();
     expect(rows()[0].querySelector('input')).toBeNull();
   });
 
