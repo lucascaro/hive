@@ -705,3 +705,35 @@ func TestPruneStagingDirsClearsEverything(t *testing.T) {
 	// Idempotent: called on every successful apply, including the first.
 	pruneStagingDirs()
 }
+
+// The regression this exists for: an app launched from Finder has only
+// the system PATH, so build.sh cannot find node/npm (Homebrew arm64 and
+// fnm both live outside /etc/paths). runBuildScript must hand the script
+// a login shell's PATH.
+func TestEnvWithLoginPATHUsesLoginShell(t *testing.T) {
+	dir := t.TempDir()
+	shell := filepath.Join(dir, "fakeshell")
+	// Ignores its args like a login shell would not, but prints an
+	// env block with a greeting in front of it — what fish does.
+	writeFile(t, shell, "#!/bin/sh\necho 'Welcome to fish'\necho 'PATH=/opt/homebrew/bin:/usr/bin'\necho 'HOME=/nope'\n")
+	if err := os.Chmod(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
+
+	got := envWithLoginPATH([]string{"PATH=/usr/bin:/bin", "FOO=bar"})
+	want := []string{"FOO=bar", "PATH=/opt/homebrew/bin:/usr/bin"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("envWithLoginPATH = %v, want %v", got, want)
+	}
+}
+
+// A shell that cannot be run (or none set) must leave PATH alone rather
+// than blanking it — a build with the inherited PATH beats no PATH.
+func TestEnvWithLoginPATHKeepsPATHWhenShellFails(t *testing.T) {
+	t.Setenv("SHELL", filepath.Join(t.TempDir(), "does-not-exist"))
+	got := envWithLoginPATH([]string{"PATH=/usr/bin:/bin"})
+	if strings.Join(got, "|") != "PATH=/usr/bin:/bin" {
+		t.Errorf("envWithLoginPATH = %v, want the original PATH kept", got)
+	}
+}

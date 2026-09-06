@@ -37,6 +37,10 @@ var maxDownloadBytes int64 = 512 << 20
 // downloadTimeout bounds a whole staging download.
 var downloadTimeout = 15 * time.Minute
 
+// loginPATHTimeout bounds the login-shell probe in loginPATH. A shell
+// rc file that hangs must not hang the build button.
+var loginPATHTimeout = 10 * time.Second
+
 // buildTimeout bounds a latest-channel `./build.sh`. A cold universal
 // Wails build is minutes, not seconds.
 var buildTimeout = 30 * time.Minute
@@ -442,6 +446,53 @@ func plainProgressLine(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
+// envWithLoginPATH replaces PATH in env with the one a login shell
+// would have. An app launched from Finder inherits only the system
+// PATH from /etc/paths, which has no Homebrew arm64 prefix
+// (/opt/homebrew/bin) and no version-manager shim (fnm, nvm, asdf),
+// whose directories are minted per shell and cannot be hardcoded.
+// build.sh needs go, node and npm, so without this the build dies with
+// `exec: "npm": executable file not found in $PATH`.
+//
+// The login shell is asked to run /usr/bin/env rather than to echo
+// $PATH: fish stores PATH as a list and would print it space-separated.
+// Any greeting the shell prints is skipped by looking for the PATH line.
+func envWithLoginPATH(env []string) []string {
+	path := loginPATH()
+	if path == "" {
+		return env
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "PATH=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "PATH="+path)
+}
+
+// loginPATH returns the PATH of a login shell, or "" if it cannot be
+// determined — in which case the caller keeps the PATH it has.
+func loginPATH() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), loginPATHTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, shell, "-l", "-c", "/usr/bin/env").Output()
+	if err != nil {
+		log.Printf("hivegui: could not read login PATH from %s: %v", shell, err)
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if v, ok := strings.CutPrefix(line, "PATH="); ok {
+			return strings.TrimRight(v, "\r")
+		}
+	}
+	return ""
+}
+
 // runBuildScript runs ./build.sh and streams its output into progress.
 // Only the most recent line is reported — build.sh is chatty and the
 // button has one line to show it in.
@@ -450,6 +501,7 @@ func runBuildScript(repo string, progress func(string)) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "./build.sh")
 	cmd.Dir = repo
+	cmd.Env = envWithLoginPATH(os.Environ())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
