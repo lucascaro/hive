@@ -1,6 +1,6 @@
 ---
 issue: null
-pr: null
+pr: 361
 type: fixed
 bump: minor
 ---
