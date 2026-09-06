@@ -125,3 +125,28 @@
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* The idea-inbox badge. Sits where the session count does and stays
+   visible on hover, unlike the count: it is the mouse path to the
+   inbox (⇧⌘I is the keyboard one), so hiding it under the actions row
+   would leave no way to click it. Two digits wide at most — the header
+   has room for it next to the shrunk action buttons. */
+.hv-project-card__ideas {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--btn-border);
+  /* Hairline rounding on a small chip, matching .worktree-badge. Not a
+     scale step. */
+  border-radius: 3px; /* ui-lint: allow */
+  padding: 0 4px;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.hv-project-card__ideas:hover { color: var(--fg); }
+.hv-project-card__ideas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

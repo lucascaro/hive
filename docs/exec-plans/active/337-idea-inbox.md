@@ -3,8 +3,10 @@
 - **Spec:** [docs/product-specs/337-idea-inbox.md](../../product-specs/337-idea-inbox.md)
 - **Design:** [docs/design-docs/control-plane.md](../../design-docs/control-plane.md)
 - **Issue:** —
-- **Branch:** `cedar-light` (phase 1)
-- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1)
+- **Branch:** `cedar-light` (phase 1), `feature/337-idea-inbox-gui` (phase 2)
+- **PR:** [#352](https://github.com/lucascaro/hive/pull/352) (phase 1),
+  [#358](https://github.com/lucascaro/hive/pull/358) (phase 2)
+- **Phase:** 2 of 3 (see `### Phasing`)
 - **Status:** active
 
 ## Summary
@@ -578,6 +580,17 @@ path instead.
    refactor. No mark-done-on-close work — see the decision log. 336
    phases 1–3 are merged (PRs #338, #341), so the typed path's
    prerequisites exist; Claude/Pi work without it.
+   **Also in phase 3:** `UpdateIdeaReq` gains `Kind *string` and
+   `ProjectID *string`, `Registry.UpdateIdea` validates both (kind
+   against `wire.IdeaKinds`, project against the live registry), and
+   the inbox's Edit becomes a small dialog — the capture sheet's three
+   controls in edit mode — rather than the inline text input. Grouped
+   here because phase 3 is already opening the wire and registry layer;
+   doing it in phase 2 would have meant reopening them for the GUI's
+   sake alone. Note the version-skew shape differs from `LIST_IDEAS`':
+   an old daemon ignores unknown JSON fields, so a new GUI would render
+   a re-kind that never happened — a silent WRONG answer, not a silent
+   empty one. Decide the `DaemonContract` bump when it is built.
 
 ## Decision log
 
@@ -678,6 +691,168 @@ path instead.
   are cut. Why: no consumer, the session already resolves the project,
   and the GUI covers `done`. `list` survives only so phase 1 is usable
   before the GUI lands.
+- **2026-09-06** — Phase 2 (GUI) ships alone in this PR. `initial_prompt`,
+  the `CreateSession` options-struct refactor and the inbox's "Start
+  session" row action stay in phase 3 as planned, so the inbox's row
+  actions here are Edit / Done / Delete. The `started` breadcrumb still
+  renders — an idea can already reach `status=started` over the wire
+  (phase 1 shipped `UpdateIdeaReq.SessionID`), so the row must be able
+  to show it even though nothing in the GUI sets it yet.
+- **2026-09-06** — `openIdeasOf` takes the idea list, not the store
+  state, and components select the raw `ideas` slice and filter in
+  render. Why: zustand v5 reads the selector through
+  `useSyncExternalStore`, which rejects a selector that builds a new
+  array per snapshot ("the result of getSnapshot should be cached").
+  Same shape the sidebar already uses for per-project session lists.
+- **2026-09-06** — The capture sheet's kind picker is three real
+  `<input type="radio">` inside labels, visually hidden, rather than
+  `<button role="radio">`. Why: the buttons tripped Biome's
+  `a11y/useSemanticElements`, and the native control brings arrow-key
+  navigation and the roving tabindex the button version would have had
+  to re-implement. The e2e clicks the label, since the input itself is
+  off-screen.
+- **2026-09-06** — The inbox's inline edit reuses the imperative
+  `app/inline-rename.ts` rather than a React-owned input, copying
+  Worktrees.tsx verbatim including the `cancelInlineRenameFor` cleanup.
+  Why: `keyboard.ts` asks `inlineRenameActive()` FIRST, so Escape
+  cancels the edit instead of closing the panel — a React input would
+  lose that race against the capture-phase listener.
+- **2026-09-06** — The inbox is trapped for ⇧⌘I and Escape but
+  deliberately lets plain ⌘I through to the capture sheet, so a second
+  idea can be filed from the inbox. The panel's footer hint says so.
+- **2026-09-06** — Phase 2 seeds ideas with one `LIST_IDEAS` per
+  control connection (boot and each reconnect) rather than changing the
+  daemon's initial snapshot. Why: the snapshot is a daemon-side push
+  that every client shares, and adding a third frame to it is a wire
+  change phase 1 deliberately did not make; one request from the client
+  that needs them is the smaller diff and degrades to an empty inbox
+  against an old daemon, which is what the plan already accepted.
+- **2026-09-06** — The badge stays visible while the card header is
+  hovered, unlike `.hv-project-card__count`, which the actions row
+  replaces. Why: the badge IS the mouse path to the inbox; hiding it on
+  hover would leave no way to click it.
+- **2026-09-06** — `docs/product-specs/keyboard-keymap-tables.md` is
+  NOT updated. The plan's file list called it a keymap table; it is
+  actually an unrelated P3 spec proposing a keyboard.ts refactor, and
+  it carries no per-binding table to update. The binding's drift
+  surface here is `keyboard.ts`, `lib/shortcuts.ts` (both functions),
+  `main.tsx`, `menu_darwin.go` and `README.md`.
+- **2026-09-06** — Review finding, fixed: ⌘I from inside the open inbox
+  was broken three ways at once. Every `.hv-dialog` shares `z-index:
+  40` and `#idea-inbox` is later in `index.html`, so the sheet painted
+  BEHIND the panel; `openQuickIdea()` was called with no argument, so
+  it prefilled `activeProjectId()` — the focused session's project, not
+  the inbox's — and filing from project B's inbox landed the note in
+  project A invisibly; and `ideaInboxProjectId()` sat unused, which is
+  what the intended code would have called. Fixed by closing the inbox
+  first and passing its project explicitly. Rejected: raising
+  `#quick-idea`'s z-index above 40 — this app has never stacked two
+  `hv-dialog`s, and each modal owns its own focus trap and Escape
+  branch, so stacking them is a second precedence ladder to maintain
+  for no gain over closing one.
+- **2026-09-06** — Review finding, fixed: `closeQuickIdea` called
+  `refocusActiveTerm()` unconditionally, which sends the next
+  keystrokes to the PTY behind any modal the sheet was opened over. Now
+  guarded on `anyModalOpen()`. Kept even though the ⌘I-from-the-inbox
+  path above no longer leaves a modal up: the guard is what makes the
+  next caller safe, and it costs one line.
+- **2026-09-06** — Review finding, fixed: `byCreatedDesc` never
+  returned 0, so ideas sharing a timestamp (a burst of `hived idea
+  add`) reordered on every re-sort. Ties now break on id.
+- **2026-09-06** — Review finding, fixed: the two branches that can
+  destroy work had no test at any layer. Added
+  `test/dom/idea-events.test.ts` for the `project_has_ideas`
+  confirm-then-force delete (confirm, cancel, and the project that
+  vanished mid-question) and the `idea:list`/`idea:event` sinks
+  including malformed payloads; and Go payload assertions in
+  `app_calls_test.go` for `UpdateIdea`'s empty-string→pointer mapping
+  (a regression there blanks an idea's text with every suite green),
+  `AddIdea`, and `KillProject`'s `deleteIdeas` flag.
+- **2026-09-06** — `test/dom/keyboard-precedence.test.tsx` gains the two
+  new modal layers. The ladder grew from nine layers to eleven in this
+  PR and the table did not follow — exactly the drift that file exists
+  to catch. It also carries the ⌘I-from-the-inbox regression, because
+  that is where the ladder is already exercised.
+- **2026-09-06** — Review finding (BLOCKING), fixed: the ⌘I logic was
+  live only in the webview keydown branch, and `menu_darwin.go` binds
+  ⌘I / ⇧⌘I as native accelerators — which AppKit consumes before the
+  webview sees a keydown. On macOS the modal-aware branches, including
+  the previous fix, never ran; the bare `menu:quick-idea` handler did,
+  so ⌘I over an open sheet remounted it and discarded the typed note.
+  This repo already documented the hazard on `menu:keyboard-shortcuts`
+  (`keyboard.ts`) and in spec 327's non-goals; the feature reintroduced
+  it. Both chords now route through one `captureIdea()` /
+  `toggleIdeaInbox()` pair called from BOTH the keydown handler and the
+  menu, so the two platforms cannot diverge again.
+- **2026-09-06** — Those two functions refuse while any other modal, an
+  inline rename or the choice dialog owns the keyboard
+  (`ideaKeysBlocked`). The window handler's ladder returns above the ⌘I
+  binding for every one of those layers, and the native menu punches
+  through all of them — without this, macOS alone would let ⌘I open a
+  capture sheet over a question about deleting a worktree.
+- **2026-09-06** — Review finding, fixed: `mod()` is now exported from
+  `lib/shortcuts.ts` so components can render a binding inline without
+  hardcoding ⌘. The pre-existing `(⌘E)` on `ProjectCard`'s worktrees
+  button is fixed in the same pass rather than left: it is the same
+  one-line change and the same wrong answer for a Windows or Linux
+  user, who is told to press a key their keyboard does not have.
+- **2026-09-06** — Review finding, fixed: `closeIdeaInbox` gained the
+  same `anyModalOpen()` guard `closeQuickIdea` has. ⇧⌘I from the sheet
+  and ⌘I from the inbox each close one modal and open the other, so
+  either close can now run with a dialog still up.
+- **2026-09-06** — Review finding, fixed: ⇧⌘I from the open capture
+  sheet was inert on Windows and Linux. The `quick-idea` gate matched
+  ⌘I without shift and then returned unconditionally, so `trapFocus`
+  swallowed the chord — while on macOS the native accelerator reached
+  `toggleIdeaInbox()` anyway. The residual case of exactly the platform
+  split `captureIdea()` / `toggleIdeaInbox()` were introduced to
+  remove; the gate now has a shift arm calling the same pair.
+- **2026-09-06** — Review finding, fixed: a note over `MaxIdeaText`
+  (4 KiB) was lost outright. The daemon REJECTS rather than truncates,
+  and the sheet closes without awaiting the answer, so the text went
+  nowhere and `idea_too_long` fell through to the generic error toast
+  on a sheet that was already gone. The cap is now checked before the
+  send, in `lib/ideas.ts`, in **UTF-8 bytes** — a `maxLength` on the
+  textarea counts UTF-16 code units and would let a note of non-ASCII
+  text past a 4096-unit limit and into the same rejection. Save is
+  disabled and a byte counter appears past 90% of the cap; a named
+  handler for `idea_too_long` covers the race a client cannot see.
+- **2026-09-06** — Left standing from iteration 3, deliberately:
+  `IdeaInbox`'s `RowButton` duplicates `Worktrees.tsx`'s (~15 lines) —
+  extracting a shared row-button primitive is a refactor across two
+  modals that wants its own change; and `LIST_IDEAS` returns done ideas
+  that nothing renders, so the store accumulates them for the life of
+  the window. Neither is a defect in what ships; both are recorded
+  here rather than fixed under a feature PR.
+- **2026-09-06** — Review finding, fixed: the 4 KiB guard stopped at
+  `submitIdea` and missed its sibling, `editIdeaText`. The daemon
+  applies the same cap to the update path (`registry/ideas.go`), and
+  the inline editor tears its input down before the answer arrives, so
+  an over-long edit reverted the row to the stale text and was gone —
+  the same loss the capture fix had just closed, one caller over. The
+  cap now lives in `editIdeaText` too, and `beginInlineRename` gained an
+  optional `validate` predicate: returning false refuses the commit and
+  leaves the input mounted, focused and holding what the user typed.
+  Escape is never validated, so an over-long edit is not a trap.
+  Rejected first, then adopted: the alternative — remounting the editor
+  from a rejected-text ref on a bumped `attempt` counter — needed a
+  dependency the effect never reads (`useExhaustiveDependencies`
+  rejected it, and it was right), and left a hole where a second
+  unchanged Enter closed the editor and dropped the text anyway. The
+  shared helper is the only place with the state to refuse correctly.
+  Its four existing callers pass no `validate` and are unaffected.
+- **2026-09-06** — Phase-1's "there is no `Kind` (nothing re-kinds an
+  idea)" premise is withdrawn. It held right up until the feature was
+  put in front of its user, who reached for exactly that on the first
+  pass over the inbox — and for re-project too, which was never
+  considered at all. The capture sheet pre-fills the project from the
+  focused session, so mis-filing is not user error but the default
+  behaviour being wrong some fraction of the time; an idea that can
+  only be corrected by deleting and retyping it is a note-taking tool
+  that punishes note-taking. Spec amended under Desired behavior with a
+  matching success criterion; the work is assigned to phase 3 above.
+  Recorded rather than fixed in phase 2 because it is a wire and
+  registry change, and phase 2's PR had already gated.
 
 ## Review log
 
@@ -808,6 +983,26 @@ path instead.
   `go build ./...`, `go test ./...`, and `go vet` + `staticcheck` for
   darwin/linux/windows are clean. Phases 2 (GUI) and 3
   (`initial_prompt`) not started.
+- **2026-09-06** — Phase 2 implemented on `feature/337-idea-inbox-gui`
+  (branched fresh off `main` at 217d8ff, which carries phase 1 as
+  squashed PR #352). Go: four `App` idea bindings in
+  `cmd/hivegui/app_calls.go`, `KillProject` gains `deleteIdeas`, ⌘I /
+  ⇧⌘I menu items in `menu_darwin.go`, and the four idea methods added
+  to `cmd/hived-ws-bridge` so the real-e2e harness can forward them.
+  Frontend: `IdeaInfo` type, the `ideas` store slice with its four
+  reducers and `openIdeasOf`, `idea:list` / `idea:event` sinks and the
+  `project_has_ideas` confirm branch in `events.ts`, the two modal
+  state/component pairs (`quick-idea`, `idea-inbox`), their roots in
+  `index.html` and portals in `App.tsx`, the ⌘I / ⇧⌘I bindings plus
+  both modal-owns-the-keyboard branches, palette commands, help-overlay
+  entries, the project-card badge, and `theme/components/ideas.css`.
+  Tests: `test/unit/ideas.test.ts` (7), `test/dom/quick-idea.test.tsx`
+  (8), `test/dom/idea-inbox.test.tsx` (6), `test/e2e/idea-inbox.spec.ts`
+  (6). Verified: `go build ./...`, `go vet ./...`, `go test ./...`,
+  `npm run typecheck`, `biome ci .`, `npm test` (1072), the full mock
+  e2e suite (279 passed / 31 skipped, first attempt), `ui-lint.sh` and
+  `ui-contrast.mjs` all clean. Phase 3 (`initial_prompt`, Start
+  session, the `CreateSession` options struct) not started.
 
 ## Gate verdict
 
@@ -818,6 +1013,25 @@ Append-only, one entry per `/hs-merge-gate` run.
     - acceptance — PASS (phase-1 scope) — criterion 1 (atomic registry-only writes, restart survival, all three IDEA_EVENT kinds) MET, verified live over the daemon socket; criterion 3 (`hived idea add` in-session attribution, out-of-session exit 2) MET, verified by running the e2e and the CLI directly; criterion 7's Go half MET. Criteria 2, 4 DEFERRED (phase 2); 5, 6 and criterion 7's Playwright half DEFERRED (phase 3).
     - non-goals — PASS — all seven respected. `external_ref` persisted but unwired and absent from `wire.IdeaInfo`; no priority/order/tags/index; capture requires `HIVE_SESSION_ID` + `HIVE_SOCKET`; no idea can persist without a resolved project on either the create or the load path; cascade + `project_has_ideas` refusal present; CLI is exactly `add`/`list`. No scope bleed — `cmd/hivegui/`, `internal/agent/` and `registry/create.go` untouched.
     - doc accuracy — PASS — changeset, README, DESIGN.md and the `DaemonContract` 5 History entry all match the shipped code; every CLI invocation shown works as written; generated files untouched; no doc claims phase 2/3 behavior as shipped.
+
+- **2026-09-06** — verdict: PASS; phase: 2/3; checks: 3 dimensions passed / 0 failed, 5 criteria met / 0 failed / 2.5 deferred to phase 3; followups: none filed (deferred criteria are phase 3 of this same spec, already planned); one-line: the GUI half ships complete — capture, badge, inbox, and the project-delete confirm — with every criterion it claims met and every non-goal respected.
+  - 2026-09-06 dimensions:
+    - acceptance — PASS (phase-2 scope) — criterion 2 (⌘I prefills the focused session's project, Enter files it and returns focus) MET, verified by `quick-idea.test.tsx` 12/12 plus the Playwright capture leg; criterion 4 (sidebar open count, inbox list/edit/done/delete) MET, `idea-inbox.test.tsx` 9/9 plus the Playwright badge/Done/Delete legs. Criteria 1 and 3 MET by phase 1 and still holding (`TestIdeasSurviveReload`, `TestIdeaEventsBroadcast`, `cmd/hived` idea tests all pass unchanged). Criteria 5 and 6 DEFERRED (phase 3 — `initial_prompt`, Start session, the `status=started` write); criterion 7 MET for its capture→count→edit→done→delete legs and its Go half, start→prompt-visible DEFERRED with them.
+    - non-goals — PASS — all seven respected. `external_ref` untouched and unexposed; no priority/order/tags/kanban; no capture surface outside Hive; no attachments; every `AddIdea` resolves a project (falling back to the default) so no idea can exist without one; the project-delete cascade confirms before destroying open ideas; `cmd/hived/idea.go` untouched and still exactly `add`/`list`. No scope bleed: `internal/agent/` and `internal/registry/create.go` are not in the diff, and the only non-GUI file touched is `cmd/hived-ws-bridge/main.go` (forwarding the four idea methods so the real-e2e harness can reach them).
+    - doc accuracy — PASS — the changeset describes only what phase 2 ships; README's Keybinds table carries ⌘I and ⇧⌘I; every surface AGENTS.md › Keybindings Policy names was updated (handler, both `shortcuts.ts` functions, the palette table, `menu_darwin.go`, README); the help overlay and palette derive from those functions so they follow automatically; modal hints use the `[…]`/`(…)` convention and the platform-aware `mod()` rather than a hardcoded ⌘; no doc claims phase-3 behavior as shipped. `regression_of` is not applicable — the changeset is `type: added`.
+  - 2026-09-06 amendment, after the verdict: the spec gained an eighth
+    success criterion (an idea's kind and project are editable after
+    capture) when the feature was exercised by hand in the isolated
+    build. It is assigned to phase 3, so it is DEFERRED at this gate
+    and the phase-2 PASS above is unchanged — but the criterion count
+    it was measured against was 7, and is now 8.
+
+**Phase gate, not a feature gate.** This entry records that *phase 2*
+gated. The spec stays at `GATE` and the plan stays in `active/`: phases
+are declared in the header (`Phase: 2 of 3`) precisely so a PASS on one
+slice cannot write `DONE` over a feature whose phase 3 is unbuilt, and
+whose research and phasing live only in this file. Phase 1's gate had
+to say the same thing by hand, below, before the header field existed.
 
 **Gate scope note.** This gate ran against a spec whose `## Success criteria`
 describe the finished three-phase feature while the PR under test is phase 1.
@@ -842,10 +1056,38 @@ evidence for the new branch), and an idea loaded when no project exists
 stays project-filter-unreachable until the next boot — documented in the
 code and self-healing.
 
+### Phase 2 (PR #358)
+
+- **2026-09-06 iter 1** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 9e1766c6e41477d97f4407cd26736dc38bdf20c83bbc06c98f2bf2e2b8f161c3; threads_open: 0; action: autofix+push (biome formatting on the two new dom test files — CI was red), then escalated:risky-fix-needs-human-decision (4 items); head_sha: adff33d.
+- **2026-09-06 iter 1b** — the four RISKY items were taken by the operator rather than left standing: the ⌘I-from-the-inbox stacking + wrong-project bug, `closeQuickIdea`'s unconditional refocus, and the two missing test dimensions. See the Decision log entries of the same date.
+- **2026-09-06 iter 2** — verdict: REQUEST_CHANGES; mergeable: MERGEABLE; findings_hash: 75e442fbb7de9bed52a4b7333bc4b95306ab462300c7dc3de9e276d1ae7e6075; threads_open: 0; action: escalated:risky-fix-needs-human-decision (1 BLOCKING, 1 IMPORTANT, 5 MINOR; autofix applied nothing); head_sha: c6e8157.
+- **2026-09-06 iter 2b** — the BLOCKING (macOS menu accelerators preempting the ⌘I keydown branches), the IMPORTANT (hardcoded ⌘ labels) and four of the five MINORs were taken by the operator; the fifth — Ctrl+I colliding with the terminal's Tab byte off macOS — was put to the user, who chose to ship as is and revisit on report. It is filed under Open questions.
+- **2026-09-06 iter 3** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 2b79eeba37673095a96a91b05bb885abaff1fe1d95255293e78ff43b11e26cb1; threads_open: 0; action: stop (COMMENT, strict off, no unresolved threads — 0 BLOCKING; iteration 2's fixes re-verified correct); head_sha: a07cccb.
+- **2026-09-06 iter 3b** — the loop's stop condition was met, but both IMPORTANT findings were fixed anyway rather than shipped: ⇧⌘I inert off macOS, and a >4 KiB note silently lost. See the Decision log entries of the same date. Two MINORs left standing, also recorded there.
+- **2026-09-06 merge** — `origin/main` moved under the PR (#356 npm ci, #357 the What's New modal) and the branch went CONFLICTING. Merged: three additive conflicts (a modal root in `index.html`, an `init*` call in `main.tsx`, the `ModalId`/`ModalEntry` unions in `store.ts`) — both sides kept. One semantic conflict git could not see: `ideaKeysBlocked()` enumerates the modals ⌘I must refuse under, and `whats-new` did not exist when it was written, so the macOS menu path would have opened a capture sheet over it. Added, with the matching case in the precedence table.
+- **2026-09-06 iter 4** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 3903976cf8aab00c2269cf66eb9d8b815d23a3782a7965df0ec7f6ad652a15b8; threads_open: 0; action: stop (confirmation pass: the merge of `origin/main` verified clean against both parents, iteration 3's fixes verified correct; one new IMPORTANT — the byte cap missing from `editIdeaText` — fixed rather than shipped); head_sha: 37c9f41.
+- **2026-09-06 iter 5** — verdict: APPROVE; mergeable: MERGEABLE; findings_hash: (empty — 0 BLOCKING, 0 IMPORTANT); threads_open: 0; action: stop; head_sha: f5ef9b0. The `beginInlineRename` `validate` contract was checked against all five callers and the four refusal paths (Enter, blur, Escape, a second row starting an edit); the four pre-existing callers pass no `validate` and are unaffected. One MINOR — a stale doc comment on `editIdeaText` — fixed before the gate.
+
+Converged after 5 iterations. Nothing left standing above MINOR. The
+two MINORs kept by decision (`RowButton` duplication, `LIST_IDEAS`
+returning done ideas) are in the Decision log; the Ctrl+I / Tab
+collision is under Open questions.
+
 ## Open questions
 
-None. Both prior questions were resolved on 2026-09-05 and moved to the
-decision log (the mark-done affordance; `App.CreateSession`'s signature).
+- **Ctrl+I collides with the terminal's Tab byte on Windows and Linux.**
+  ⌘I maps to Ctrl+I off macOS, and the capture-phase window handler
+  swallows it before xterm — so Ctrl+I no longer reaches the shell as
+  Tab (0x09) there. Plain Tab is unaffected, so only a user who types
+  Ctrl+I for completion loses anything. Decided 2026-09-06 to ship as
+  is and revisit if anyone reports it; the fix, if it is ever wanted,
+  is the carve-out `navHistoryKey` already makes for Ctrl+- (zoom):
+  Ctrl+Alt+I on those platforms.
+
+
+The one above. Both prior questions were resolved on 2026-09-05 and
+moved to the decision log (the mark-done affordance; `App.CreateSession`'s
+signature).
 
 **Known risk (not a question):** the spec's claim that Claude and Pi
 accept a positional prompt in interactive mode is unverified in this

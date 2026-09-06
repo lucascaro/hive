@@ -1,0 +1,192 @@
+/* ---------- idea capture (⌘I) and inbox (⇧⌘I) ---------- */
+
+/* The capture sheet's note field. A textarea rather than an input
+   because ⇧Enter inserts a newline; three rows is what fits a sentence
+   without the sheet reading as a form. */
+.hv-idea-text {
+  resize: vertical;
+  min-height: 3.4em;
+  font: inherit;
+  line-height: 1.45;
+}
+
+/* Kind picker: three mutually exclusive buttons, styled as one control
+   so it reads as a choice rather than three actions. */
+.hv-idea-kinds {
+  display: flex;
+  gap: 4px;
+}
+.hv-idea-kind {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sel);
+  border: 1px solid var(--btn-border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+  text-transform: capitalize;
+  cursor: pointer;
+}
+.hv-idea-kind:hover { background: var(--hover); }
+.hv-idea-kind:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.hv-idea-kind[data-selected] {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+/* The radio itself is off-screen, not display:none — a hidden input is
+   not focusable, and the arrow-key navigation is the whole reason this
+   is a radio group rather than three buttons. Focus shows on the label
+   through :focus-within. */
+.hv-idea-kind input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.hv-idea-kind:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- the inbox list ---------- */
+
+#idea-inbox-panel .hv-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.idea-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  /* Flex items refuse to shrink below their content unless this is
+     said explicitly. */
+  min-height: 0;
+}
+.idea-empty {
+  color: var(--fg-muted);
+  line-height: 1.5;
+  max-width: 46ch;
+}
+
+/* Same row shape as .worktree-row — it is the same job, a list of
+   things with a couple of actions each. */
+.idea-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  background: var(--surface-raised);
+}
+.idea-row .idea-main { flex: 1; min-width: 0; }
+.idea-text {
+  color: var(--fg);
+  line-height: 1.4;
+  /* Two lines, then ellipsis: the inbox is a triage list, and a
+     ten-line note would push every other row off the panel. The full
+     text is one Edit away. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.idea-meta {
+  display: flex;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.idea-started {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--state-info);
+  cursor: pointer;
+}
+.idea-started:hover { text-decoration: underline; }
+.idea-started:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* The kind chip. Colour carries the kind so a bug is spottable without
+   reading — the same trick .worktree-badge.merged uses, and for the
+   same reason there is no fill: a tinted ground is a color-mix() the
+   contrast gate cannot resolve. */
+.idea-kind {
+  flex-shrink: 0;
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  border: 1px solid var(--btn-border);
+  border-radius: 3px; /* ui-lint: allow */
+  padding: 1px 4px;
+}
+.idea-kind[data-kind='bug'] {
+  color: var(--state-error);
+  border-color: color-mix(in srgb, var(--state-error) 40%, var(--border));
+}
+.idea-kind[data-kind='feedback'] {
+  color: var(--state-info);
+  border-color: color-mix(in srgb, var(--state-info) 40%, var(--border));
+}
+/* The inline edit input, mounted by app/inline-rename.ts into an
+   otherwise-empty .idea-main. */
+.idea-edit {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  padding: 3px 6px;
+  font: inherit;
+}
+.idea-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.idea-actions button {
+  background: var(--sel);
+  border: 1px solid var(--btn-border);
+  color: var(--fg);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.idea-actions button:hover:not(:disabled) { background: var(--hover); }
+.idea-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.idea-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* tokens.md gives --state-error the destructive-action role; colour
+   only, so the label keeps a ground the contrast gate can check. */
+.idea-actions button.danger { color: var(--state-error); }
+
+/* Byte counter on the capture sheet. Appears only near the limit, and
+   turns destructive-coloured past it — the daemon rejects rather than
+   truncates, so this is a stop sign, not a progress bar. */
+.hv-idea-count {
+  align-self: flex-end;
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hv-idea-count[data-over] { color: var(--state-error); }

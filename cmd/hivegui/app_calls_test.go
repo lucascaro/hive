@@ -121,7 +121,11 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"RestartSession":         func() error { return a.RestartSession("s") },
 		"UpdateSession":          func() error { return a.UpdateSession("s", "n", "#fff", 0) },
 		"CreateProject":          func() error { return a.CreateProject("n", "#fff", "/tmp") },
-		"KillProject":            func() error { return a.KillProject("p", false) },
+		"KillProject":            func() error { return a.KillProject("p", false, false) },
+		"ListIdeas":              func() error { return a.ListIdeas("p") },
+		"AddIdea":                func() error { return a.AddIdea("s", "p", "idea", "t") },
+		"UpdateIdea":             func() error { return a.UpdateIdea("i", "t", "done", "") },
+		"RemoveIdea":             func() error { return a.RemoveIdea("i") },
 		"UpdateProject":          func() error { return a.UpdateProject("p", "n", "#fff", "/tmp", 0) },
 		"ListWorktrees":          func() error { return a.ListWorktrees("p") },
 		"CreateWorktree":         func() error { return a.CreateWorktree("p", "b") },
@@ -212,5 +216,125 @@ func TestStateDirID(t *testing.T) {
 	t.Setenv("HIVE_STATE_DIR", "/tmp/hive-state-two")
 	if other := a.StateDirID(); other == first {
 		t.Errorf("StateDirID() = %q for both state dirs; must differ", other)
+	}
+}
+
+// TestUpdateIdeaOmitsUnsetFields pins the empty-string-means-no-change
+// mapping in UpdateIdea. It is the one idea binding that decides
+// anything on the way to the wire: wire.UpdateIdeaReq's fields are
+// pointers, and a mapping that filled Text with "" would blank the
+// note on every "mark done" — with every existing test still green,
+// because none of them reads the payload.
+func TestUpdateIdeaOmitsUnsetFields(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		text, status, sessionID     string
+		wantText, wantStatus, wantS *string
+	}{
+		{name: "mark done sends status only", status: "done", wantStatus: strptr("done")},
+		{name: "edit sends text only", text: "sharper", wantText: strptr("sharper")},
+		{
+			name: "start carries the session with the status",
+			// The phase-3 shape: status and session_id together.
+			status: "started", sessionID: "s7",
+			wantStatus: strptr("started"), wantS: strptr("s7"),
+		},
+		{name: "nothing set sends nothing"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, next := appWithControl(t)
+			done := make(chan error, 1)
+			go func() { done <- a.UpdateIdea("i1", tc.text, tc.status, tc.sessionID) }()
+
+			ft, payload := next(t)
+			if ft != wire.FrameUpdateIdea {
+				t.Fatalf("frame = %#x, want FrameUpdateIdea", byte(ft))
+			}
+			var req wire.UpdateIdeaReq
+			if err := json.Unmarshal(payload, &req); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if req.ID != "i1" {
+				t.Errorf("ID = %q, want %q", req.ID, "i1")
+			}
+			checkStrPtr(t, "Text", req.Text, tc.wantText)
+			checkStrPtr(t, "Status", req.Status, tc.wantStatus)
+			checkStrPtr(t, "SessionID", req.SessionID, tc.wantS)
+			if err := <-done; err != nil {
+				t.Fatalf("UpdateIdea: %v", err)
+			}
+		})
+	}
+}
+
+// TestAddIdeaCall: the daemon resolves an empty ProjectID from the
+// filing session, so both fields have to reach it verbatim — a binding
+// that defaulted either one would silently file against the wrong
+// project.
+func TestAddIdeaCall(t *testing.T) {
+	a, next := appWithControl(t)
+	done := make(chan error, 1)
+	go func() { done <- a.AddIdea("s1", "", "bug", "it crashes") }()
+
+	ft, payload := next(t)
+	if ft != wire.FrameAddIdea {
+		t.Fatalf("frame = %#x, want FrameAddIdea", byte(ft))
+	}
+	var req wire.AddIdeaReq
+	if err := json.Unmarshal(payload, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.SessionID != "s1" || req.ProjectID != "" ||
+		req.Kind != "bug" || req.Text != "it crashes" {
+		t.Errorf("req = %+v, want {SessionID:s1 ProjectID: Kind:bug Text:it crashes}", req)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("AddIdea: %v", err)
+	}
+}
+
+// TestKillProjectDeleteIdeas: deleteIdeas is the after-confirmation
+// override for the daemon's project_has_ideas refusal. Sending it when
+// the user has not confirmed destroys captured work, so the flag must
+// travel exactly as passed — never defaulted, never inferred from
+// killSessions.
+func TestKillProjectDeleteIdeas(t *testing.T) {
+	for _, tc := range []struct{ kill, ideas bool }{
+		{false, false}, {true, false}, {false, true}, {true, true},
+	} {
+		t.Run("", func(t *testing.T) {
+			a, next := appWithControl(t)
+			done := make(chan error, 1)
+			go func() { done <- a.KillProject("p1", tc.kill, tc.ideas) }()
+
+			ft, payload := next(t)
+			if ft != wire.FrameKillProject {
+				t.Fatalf("frame = %#x, want FrameKillProject", byte(ft))
+			}
+			var req wire.KillProjectReq
+			if err := json.Unmarshal(payload, &req); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if req.ProjectID != "p1" || req.KillSessions != tc.kill || req.DeleteIdeas != tc.ideas {
+				t.Errorf("req = %+v, want {p1 %v %v}", req, tc.kill, tc.ideas)
+			}
+			if err := <-done; err != nil {
+				t.Fatalf("KillProject: %v", err)
+			}
+		})
+	}
+}
+
+func strptr(s string) *string { return &s }
+
+func checkStrPtr(t *testing.T, name string, got, want *string) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("%s = %q, want unset", name, *got)
+	case want != nil && got == nil:
+		t.Errorf("%s unset, want %q", name, *want)
+	case want != nil && got != nil && *got != *want:
+		t.Errorf("%s = %q, want %q", name, *got, *want)
 	}
 }

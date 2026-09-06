@@ -48,7 +48,12 @@ function keyLabel(key: string, isMac: boolean): string {
 }
 
 // cmd ("⌘" / "Ctrl+"), optionally with shift ("⇧⌘" / "Ctrl+Shift+").
-function mod(
+//
+// Exported because components render bindings inline too — a button's
+// title, a modal's key hint (AGENTS.md › Key Discoverability). A
+// hardcoded "⌘E" in a component tells a Windows or Linux user to press
+// a key their keyboard does not have.
+export function mod(
   isMac: boolean,
   key: string,
   { shift = false }: ModOpts = {},
@@ -141,6 +146,8 @@ export function shortcutGroups({ isMac }: { isMac: boolean }): ShortcutGroup[] {
         },
         { keys: `${m('[')} / ${m(']')}`, label: 'Previous / next project' },
         { keys: m('E'), label: 'Worktrees in the active project' },
+        { keys: m('I'), label: 'Capture an idea' },
+        { keys: m('I', { shift: true }), label: 'Ideas in the active project' },
       ],
     },
     {
@@ -227,6 +234,8 @@ export function paletteShortcuts({
     'restart-session': '',
     'delete-project': m('backspace', { shift: true }),
     worktrees: m('E'),
+    'quick-idea': m('I'),
+    'idea-inbox': m('I', { shift: true }),
     'close-session': m('W'),
     'new-window': m('N', { shift: true }),
     'open-os-terminal': c('`'),

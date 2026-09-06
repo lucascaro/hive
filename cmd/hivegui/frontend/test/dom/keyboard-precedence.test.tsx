@@ -54,11 +54,18 @@ vi.mock('../../src/bridge.js', () => {
     RestartDaemon: fn(),
     CheckForUpdate: fn(),
     SetClipboardText: fn(),
-    EventsOn: vi.fn(),
+    EventsOn: (name: string, handler: (...a: unknown[]) => void) => {
+      menuHandlers.set(name, handler);
+    },
     WindowSetTitle: vi.fn(),
     ClipboardGetText: fn(),
   };
 });
+
+// The menu handlers keyboard.ts registers through EventsOn. On macOS
+// the native accelerator swallows ⌘I before the webview, so THESE are
+// the handlers that run there — the keydown branches never do.
+const menuHandlers = new Map<string, (...a: unknown[]) => void>();
 
 vi.mock('../../src/app/view.js', () => ({
   switchTo: vi.fn(),
@@ -123,6 +130,29 @@ vi.mock('../../src/app/modals/whats-new.js', () => ({
   initWhatsNew: vi.fn(),
 }));
 
+// The two idea modals. Partially mocked, unlike the four above:
+// ideaInboxProjectId is the REAL one, reading the open modal entry off
+// the store, because the ⌘I-from-the-inbox case below is exactly about
+// which project id reaches the capture sheet.
+const closeQuickIdea = vi.fn();
+const openQuickIdea = vi.fn();
+const closeIdeaInbox = vi.fn();
+const openIdeaInbox = vi.fn();
+vi.mock('../../src/app/modals/quick-idea.js', () => ({
+  closeQuickIdea: () => closeQuickIdea(),
+  openQuickIdea: (...a: unknown[]) => openQuickIdea(...a),
+  initQuickIdea: vi.fn(),
+  submitIdea: vi.fn(),
+  IDEA_KINDS: ['idea', 'bug', 'feedback'],
+}));
+vi.mock('../../src/app/modals/idea-inbox.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../src/app/modals/idea-inbox.js')
+  >()),
+  closeIdeaInbox: () => closeIdeaInbox(),
+  openIdeaInbox: (...a: unknown[]) => openIdeaInbox(...a),
+}));
+
 type Store = typeof import('../../src/store/store.js');
 let openModal: Store['openModal'];
 let resetStore: Store['resetStore'];
@@ -140,6 +170,8 @@ beforeAll(async () => {
     <div id="settings" class="hv-dialog hidden"></div>
     <div id="worktrees" class="hv-dialog hidden"></div>
     <div id="project-editor" class="hv-dialog hidden"></div>
+    <div id="quick-idea" class="hv-dialog hidden"></div>
+    <div id="idea-inbox" class="hv-dialog hidden"></div>
     <div id="help-overlay" class="hv-dialog hidden"></div>
     <div id="whats-new" class="hv-dialog hidden"></div>
     <div id="choice-dialog" class="hv-dialog hidden"></div>
@@ -230,6 +262,17 @@ const LAYERS: {
     ran: () => closeWorktrees.mock.calls.length > 0,
   },
   {
+    name: 'quick idea',
+    open: () => openModal({ id: 'quick-idea', projectId: 'p' }),
+    ran: () => closeQuickIdea.mock.calls.length > 0,
+  },
+  {
+    name: 'idea inbox',
+    open: () =>
+      openModal({ id: 'idea-inbox', projectId: 'p', projectName: '' }),
+    ran: () => closeIdeaInbox.mock.calls.length > 0,
+  },
+  {
     name: 'help overlay',
     open: () => openModal({ id: 'help' }),
     ran: () => closeHelpOverlay.mock.calls.length > 0,
@@ -267,6 +310,10 @@ beforeEach(() => {
     closeHelpOverlay,
     closeWhatsNew,
     closeCommandPalette,
+    closeQuickIdea,
+    openQuickIdea,
+    closeIdeaInbox,
+    openIdeaInbox,
     dismissDead,
   ]) {
     m.mockClear();
@@ -342,5 +389,111 @@ describe('the handler is registered capture-phase', () => {
     // The sink outlives this test — every later dispatch on #terms would
     // be swallowed by a listener that has nothing to do with them.
     sink.removeEventListener('keydown', stop);
+  });
+});
+
+// ⌘I from inside the open inbox files another idea for the project the
+// inbox is showing. Three things have to hold at once, and the first
+// implementation got all three wrong: the inbox CLOSES (every
+// .hv-dialog shares z-index 40 and #idea-inbox is later in index.html,
+// so a sheet left over it would paint behind it), the sheet OPENS, and
+// it opens on the INBOX's project rather than the focused session's.
+// cmdOrCtrl() rejects an event carrying BOTH modifiers, so the chord
+// has to be spelled with whichever one this platform treats as primary.
+const primaryMod = (): KeyboardEventInit =>
+  navigator.platform.toLowerCase().includes('mac') ||
+  navigator.userAgent.toLowerCase().includes('mac')
+    ? { metaKey: true }
+    : { ctrlKey: true };
+
+describe('⌘I inside the idea inbox', () => {
+  it('closes the inbox and opens the sheet on the inbox’s project', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    press('i', primaryMod());
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).toHaveBeenCalledWith('p9');
+  });
+
+  it('⇧⌘I from the capture sheet goes to the inbox on every platform', () => {
+    // The gate returns unconditionally, so without its shift arm this
+    // chord is swallowed by trapFocus — but only off macOS, where the
+    // keydown path is the only path. On mac the native accelerator
+    // reaches toggleIdeaInbox() regardless, and the two platforms
+    // disagree about what ⇧⌘I does.
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    press('i', { ...primaryMod(), shiftKey: true });
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openIdeaInbox).toHaveBeenCalled();
+  });
+
+  it('⇧⌘I still closes the inbox rather than capturing', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    press('i', { ...primaryMod(), shiftKey: true });
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).not.toHaveBeenCalled();
+  });
+});
+
+// The macOS menu path. buildAppMenu binds ⌘I / ⇧⌘I as native
+// accelerators, and AppKit consumes the chord before the webview sees a
+// keydown — the same reason 'menu:keyboard-shortcuts' has to toggle
+// rather than open. So on macOS these handlers, not the branches above,
+// ARE the feature; a bare open() here would reopen the sheet over
+// itself and discard the typed note.
+describe('the ⌘I menu path behaves like the keydown path', () => {
+  const menu = (name: string) => {
+    const h = menuHandlers.get(name);
+    if (!h) throw new Error(`no menu handler registered for ${name}`);
+    h();
+  };
+
+  it('menu:quick-idea toggles the sheet closed when it is already open', () => {
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    menu('menu:quick-idea');
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openQuickIdea).not.toHaveBeenCalled();
+  });
+
+  it('menu:quick-idea from the inbox closes it and carries its project', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    menu('menu:quick-idea');
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openQuickIdea).toHaveBeenCalledWith('p9');
+  });
+
+  it('menu:idea-inbox toggles the inbox closed', () => {
+    openModal({ id: 'idea-inbox', projectId: 'p9', projectName: 'other' });
+    menu('menu:idea-inbox');
+    expect(closeIdeaInbox).toHaveBeenCalled();
+    expect(openIdeaInbox).not.toHaveBeenCalled();
+  });
+
+  it('menu:idea-inbox closes the capture sheet before opening', () => {
+    openModal({ id: 'quick-idea', projectId: 'p1' });
+    menu('menu:idea-inbox');
+    expect(closeQuickIdea).toHaveBeenCalled();
+    expect(openIdeaInbox).toHaveBeenCalled();
+  });
+
+  // The window handler's ladder returns above the ⌘I binding for every
+  // layer below, so the menu — which punches through all of them on
+  // macOS — must refuse for the same set, or mac gets a capture sheet
+  // over a question about deleting a worktree and no other platform
+  // does.
+  it.each([
+    ['a choice dialog', () => (choiceOpen.value = true)],
+    ['an inline rename', () => (inlineRenameOpen.value = true)],
+    ['the settings modal', () => openModal({ id: 'settings' })],
+    [
+      'the worktree browser',
+      () => openModal({ id: 'worktrees', projectId: 'p', projectName: '' }),
+    ],
+    ['the help overlay', () => openModal({ id: 'help' })],
+    ['the What’s New modal', () => openModal({ id: 'whats-new' })],
+  ])('menu:quick-idea is a no-op under %s', (_name, open) => {
+    open();
+    menu('menu:quick-idea');
+    expect(openQuickIdea).not.toHaveBeenCalled();
+    expect(closeQuickIdea).not.toHaveBeenCalled();
   });
 });

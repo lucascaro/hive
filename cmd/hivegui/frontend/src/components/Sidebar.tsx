@@ -39,6 +39,7 @@ import { openLauncher } from '../app/modals/launcher.js';
 import { openProjectEditor } from '../app/modals/project-editor.js';
 import { openWhatsNew } from '../app/modals/whats-new.js';
 import { openWorktrees } from '../app/modals/worktrees.js';
+import { openIdeaInbox } from '../app/modals/idea-inbox.js';
 import { activeProjectId, orderedSessions } from '../app/selectors.js';
 import type { ProjectInfo, SessionInfo } from '../app/state.js';
 import { noteLocalClose } from '../app/undo-close.js';
@@ -51,7 +52,12 @@ import { dropTargetIndex } from '../lib/reorder.js';
 import { attentionSummary, sessionState } from '../lib/session-state.js';
 import { hasUnread, latestVersion } from '../lib/whats-new.js';
 import { readProjectId } from '../lib/wire.js';
-import { appStore, toggleCollapsed, useAppStore } from '../store/store.js';
+import {
+  appStore,
+  openIdeasOf,
+  toggleCollapsed,
+  useAppStore,
+} from '../store/store.js';
 
 // Live read of the store, for the event handlers' non-reactive lookups.
 const appData = () => appStore.getState();
@@ -309,6 +315,8 @@ interface ProjectItemProps {
   hints: Map<string, number>;
   minimizedSessions: ReadonlySet<string>;
   activeId: string | null;
+  /** Open ideas for this project — the header badge's count. */
+  ideaCount: number;
 }
 
 function ProjectItem(o: ProjectItemProps) {
@@ -347,6 +355,7 @@ function ProjectItem(o: ProjectItemProps) {
       attention={attentionCount > 0}
       sessionCount={o.sessions.length}
       attentionCount={attentionCount}
+      ideaCount={o.ideaCount}
       headerRef={headerRef}
       nameRef={nameRef}
       onSelect={() => o.props.switchToProject(p.id)}
@@ -354,6 +363,7 @@ function ProjectItem(o: ProjectItemProps) {
       onNewSession={() => openLauncher(p.id)}
       onMinimize={() => o.props.minimizeProject(p.id)}
       onWorktrees={() => openWorktrees(p)}
+      onIdeas={() => openIdeaInbox(p)}
       onEdit={() => openProjectEditor(p)}
       onDelete={() => o.props.confirmAndDeleteProject(p)}
       onHeaderDoubleClick={(e: MouseEvent<HTMLDivElement>) => {
@@ -440,6 +450,9 @@ export function Sidebar(props: SidebarProps) {
   const collapsed = useAppStore((s) => s.collapsed);
   const minimizedProjects = useAppStore((s) => s.minimizedProjects);
   const minimized = useAppStore((s) => s.minimized);
+  // The raw slice; each card filters its own out of it (openIdeasOf's
+  // note explains why the filtering is not in the selector).
+  const ideas = useAppStore((s) => s.ideas);
   // activeProjectId() reads currentProjectId / view / gridProjectId /
   // activeId off the store rather than taking them as arguments,
   // so it is subscribed as a derived string: the selector re-runs on
@@ -479,6 +492,7 @@ export function Sidebar(props: SidebarProps) {
           hints={hints}
           minimizedSessions={minimized}
           activeId={activeId}
+          ideaCount={openIdeasOf(ideas, p.id).length}
         />
       ))}
       {tray

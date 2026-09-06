@@ -16,6 +16,8 @@ import type {
   ReactNode,
   Ref,
 } from 'react';
+import { isMac } from '../lib/platform.js';
+import { mod } from '../lib/shortcuts.js';
 import { Icon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import type { ProjectInfo } from '../app/state.js';
@@ -27,11 +29,14 @@ export interface ProjectCardProps {
   attention: boolean;
   sessionCount: number;
   attentionCount: number;
+  /** Open ideas captured for this project. The badge hides at zero. */
+  ideaCount: number;
   onSelect: () => void;
   onToggleCollapse: () => void;
   onNewSession: () => void;
   onMinimize: () => void;
   onWorktrees: () => void;
+  onIdeas: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onHeaderDoubleClick: (e: MouseEvent<HTMLDivElement>) => void;
@@ -124,6 +129,25 @@ export function ProjectCard(p: ProjectCardProps) {
           {proj.name ?? ''}
         </span>
         <span className="hv-project-card__count">{countText(p)}</span>
+        {/* The inbox badge. Hidden at zero rather than rendered as "0":
+            an empty inbox is not a thing to look at, and the card's
+            header is already dense. A button, not a count with a click
+            handler — it is the mouse path to ⇧⌘I. */}
+        {p.ideaCount > 0 ? (
+          <button
+            type="button"
+            className="hv-project-card__ideas"
+            data-action="ideas"
+            title={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name} (${mod(isMac, 'I', { shift: true })})`}
+            aria-label={`${p.ideaCount} idea${p.ideaCount === 1 ? '' : 's'} in ${name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              p.onIdeas();
+            }}
+          >
+            {p.ideaCount}
+          </button>
+        ) : null}
         <span className="hv-project-card__actions">
           <IconButton
             icon="plus"
@@ -135,10 +159,12 @@ export function ProjectCard(p: ProjectCardProps) {
             }}
           />
           {/* The binding is shown inline, per AGENTS.md › Key
-              Discoverability. */}
+              Discoverability — through mod(), because ⌘ is Ctrl on
+              Windows and Linux and a hardcoded glyph names a key those
+              users do not have. */}
           <IconButton
             icon="branch"
-            label={`Worktrees in ${name} (⌘E)`}
+            label={`Worktrees in ${name} (${mod(isMac, 'E')})`}
             action="worktrees"
             onClick={(e) => {
               e.stopPropagation();
