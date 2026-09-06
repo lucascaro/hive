@@ -868,7 +868,7 @@ Font rasterisation differs per OS, so a macOS-generated PNG is not a valid Linux
 ```bash
 docker run --rm -it -v "$PWD":/w -w /w/cmd/hivegui/frontend \
   mcr.microsoft.com/playwright:v1.62.1-noble \
-  bash -c 'npm install --no-audit --no-fund && npx playwright test test/e2e/theme.spec.ts --update-snapshots'
+  bash -c 'npm ci --no-audit --no-fund && npx playwright test test/e2e/theme.spec.ts --update-snapshots'
 ```
 
 Open all 12 PNGs before committing. Look for: light presets with a dark panel (a missing token), `terminal` with rounded corners (`--radius-*` not zeroed), any preset where the attention row is indistinguishable from the selected row.

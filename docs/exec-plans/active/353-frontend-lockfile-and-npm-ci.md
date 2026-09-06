@@ -122,6 +122,7 @@ Check 3 is the real gate, and `npm ci`'s own exit code is the sync assertion —
 - **2026-09-05** — Second opinion round 1 returned `revise`; four must-fix items applied. Round 2 returned `revise`; two items applied, one resolved by operator decision.
 - **2026-09-05** — Operator approved the plan at the Phase 4 stop.
 - **2026-09-05** — Implemented on `sec/frontend-lockfile`. Lockfile resolve moved `jsdom` 25.0.0→25.0.1, `vite` 8.0.10→8.2.2, `vitest` 4.1.8→4.1.11; the four `@xterm/*` packages resolved to their range floors, so they did not move. `npm audit --omit=dev` reports 0 vulnerabilities, so no dependency bump was needed.
+- **2026-09-05** — Review loop converged on iteration 1: COMMENT, no BLOCKING, 0 unresolved threads. One IMPORTANT finding applied by hand rather than deferred — `docs/exec-plans/active/ui-design-system-phase6.md:871` regenerated Playwright baselines with `npm install` inside a bind-mounted container, which would both install an unvalidated tree and rewrite the committed lockfile from inside the container. Now `npm ci`. Three MINOR findings declined: two are stale premises in a completed plan and a dated analysis snapshot (historical record), and `cache: 'npm'` on `setup-node` is a real follow-up but outside this spec's scope.
 - **2026-09-05** — All verification checks pass: `npm ci` clean-tree install, audit, build, typecheck, `biome ci` (0 errors), vitest 1051/1051, Playwright e2e 273 passed / 31 skipped, `go test ./...`, `./build.sh` producing a universal `hivegui.app`.
 
 ## Second opinion
@@ -144,6 +145,8 @@ Per the skill, the loop presents after one revise cycle rather than looping. The
 ## PR convergence ledger
 
 <!-- one line per /hs-review-loop iteration -->
+
+- **2026-09-05 iter 1** — verdict: COMMENT; mergeable: MERGEABLE; findings_hash: 5b4ed5d90a69090684fa32ecbc96ae68b628607d34b13dee0487a0ff6317ab70; threads_open: 0; action: stop; head_sha: 4b4af3e.
 
 ## Open questions
 

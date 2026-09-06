@@ -2,7 +2,7 @@
 issue: 353
 pr: 356
 title: "Commit frontend package-lock.json and install with npm ci"
-stage: REVIEW
+stage: GATE
 ---
 
 # Commit frontend package-lock.json and install with npm ci
