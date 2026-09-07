@@ -61,8 +61,11 @@ func TestCreateSessionResumeSuppressesWorktree(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- a.CreateSession("claude", "proj-1", "n", "#fff", 80, 24,
-			true /* useWorktree */, "", "feature/x", "/tmp/existing-wt", true)
+		done <- a.CreateSession(CreateSessionOpts{
+			Agent: "claude", Project: "proj-1", Name: "n", Color: "#fff",
+			Cols: 80, Rows: 24, UseWorktree: true, Branch: "feature/x",
+			WorktreePath: "/tmp/existing-wt", ContinueConversation: true,
+		})
 	}()
 
 	ft, payload := next(t)
@@ -93,7 +96,10 @@ func TestCreateSessionResumeSuppressesWorktree(t *testing.T) {
 func TestCreateSessionWithoutWorktreePathKeepsTheRequest(t *testing.T) {
 	a, next := appWithControl(t)
 	go func() {
-		_ = a.CreateSession("claude", "proj-1", "n", "#fff", 80, 24, true, "", "", "", false)
+		_ = a.CreateSession(CreateSessionOpts{
+			Agent: "claude", Project: "proj-1", Name: "n", Color: "#fff",
+			Cols: 80, Rows: 24, UseWorktree: true,
+		})
 	}()
 	_, payload := next(t)
 	var spec wire.CreateSpec
@@ -113,7 +119,10 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 	a := &App{} // no control connection
 	calls := map[string]func() error{
 		"CreateSession": func() error {
-			return a.CreateSession("claude", "p", "n", "#fff", 80, 24, false, "", "", "", false)
+			return a.CreateSession(CreateSessionOpts{
+				Agent: "claude", Project: "p", Name: "n", Color: "#fff",
+				Cols: 80, Rows: 24,
+			})
 		},
 		"DuplicateSession":       func() error { return a.DuplicateSession("claude", "p", "/tmp", "") },
 		"KillSession":            func() error { return a.KillSession("s", false) },
@@ -124,7 +133,7 @@ func TestRPCsRequireAControlConnection(t *testing.T) {
 		"KillProject":            func() error { return a.KillProject("p", false, false) },
 		"ListIdeas":              func() error { return a.ListIdeas("p") },
 		"AddIdea":                func() error { return a.AddIdea("s", "p", "idea", "t") },
-		"UpdateIdea":             func() error { return a.UpdateIdea("i", "t", "done", "") },
+		"UpdateIdea":             func() error { return a.UpdateIdea("i", "t", "done", "", "", "") },
 		"RemoveIdea":             func() error { return a.RemoveIdea("i") },
 		"UpdateProject":          func() error { return a.UpdateProject("p", "n", "#fff", "/tmp", 0) },
 		"ListWorktrees":          func() error { return a.ListWorktrees("p") },
@@ -227,9 +236,10 @@ func TestStateDirID(t *testing.T) {
 // because none of them reads the payload.
 func TestUpdateIdeaOmitsUnsetFields(t *testing.T) {
 	for _, tc := range []struct {
-		name                        string
-		text, status, sessionID     string
-		wantText, wantStatus, wantS *string
+		name                                   string
+		text, status, sessionID, kind, project string
+		wantText, wantStatus, wantS            *string
+		wantKind, wantProject                  *string
 	}{
 		{name: "mark done sends status only", status: "done", wantStatus: strptr("done")},
 		{name: "edit sends text only", text: "sharper", wantText: strptr("sharper")},
@@ -239,12 +249,22 @@ func TestUpdateIdeaOmitsUnsetFields(t *testing.T) {
 			status: "started", sessionID: "s7",
 			wantStatus: strptr("started"), wantS: strptr("s7"),
 		},
+		{
+			name: "re-kind sends kind only",
+			kind: "bug", wantKind: strptr("bug"),
+		},
+		{
+			name:    "re-project sends project only",
+			project: "p2", wantProject: strptr("p2"),
+		},
 		{name: "nothing set sends nothing"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, next := appWithControl(t)
 			done := make(chan error, 1)
-			go func() { done <- a.UpdateIdea("i1", tc.text, tc.status, tc.sessionID) }()
+			go func() {
+				done <- a.UpdateIdea("i1", tc.text, tc.status, tc.sessionID, tc.kind, tc.project)
+			}()
 
 			ft, payload := next(t)
 			if ft != wire.FrameUpdateIdea {
@@ -260,6 +280,8 @@ func TestUpdateIdeaOmitsUnsetFields(t *testing.T) {
 			checkStrPtr(t, "Text", req.Text, tc.wantText)
 			checkStrPtr(t, "Status", req.Status, tc.wantStatus)
 			checkStrPtr(t, "SessionID", req.SessionID, tc.wantS)
+			checkStrPtr(t, "Kind", req.Kind, tc.wantKind)
+			checkStrPtr(t, "ProjectID", req.ProjectID, tc.wantProject)
 			if err := <-done; err != nil {
 				t.Fatalf("UpdateIdea: %v", err)
 			}

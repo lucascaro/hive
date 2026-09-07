@@ -286,21 +286,27 @@ function LauncherBody({
         anchor,
       ).catch(reportFailure('duplicate session'));
     } else {
-      CreateSession(
-        agentId,
-        req.projectId || activeProjectId(),
-        '',
-        '',
-        0,
-        0,
-        !!useWorktree,
-        anchor,
+      CreateSession({
+        agent: agentId,
+        // An idea belongs to a project, so a locked opening must not
+        // fall back to whatever is focused.
+        project: req.lockProject
+          ? req.projectId || ''
+          : req.projectId || activeProjectId(),
+        name: '',
+        color: '',
+        cols: 0,
+        rows: 0,
+        useWorktree: !!useWorktree,
+        insertAfter: anchor,
         // Trimmed here rather than on every keystroke so the box stays
         // typable; a blank name means "let the daemon generate one".
-        branch.trim(),
-        req.worktreePath,
-        req.continueConversation,
-      ).catch(reportFailure('new session'));
+        branch: branch.trim(),
+        worktreePath: req.worktreePath,
+        continueConversation: req.continueConversation,
+        initialPrompt: req.initialPrompt,
+        ideaId: req.ideaId,
+      }).catch(reportFailure('new session'));
     }
     closeLauncher();
   }
@@ -411,6 +417,17 @@ function LauncherBody({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
+      {/* What the session will open with, when it was started from an
+          idea. Read-only: the note is edited in the inbox, and a second
+          editable copy of it here would be a second thing to keep in
+          agreement with the record. Above the worktree row because it
+          is context for the choice below it, not another control. */}
+      {req.initialPrompt ? (
+        <div className="launcher-prompt" id="launcher-prompt">
+          <span className="launcher-prompt__label">Opening prompt</span>
+          <span className="launcher-prompt__text">{req.initialPrompt}</span>
+        </div>
+      ) : null}
       {/* Between the filter box and the list, and only once the agent
           list has landed — the same order and timing the imperative
           version inserted it with. */}

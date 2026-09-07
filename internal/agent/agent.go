@@ -63,6 +63,18 @@ type Def struct {
 	// non-empty; an empty field means "unavailable, skip your surface"
 	// rather than an error.
 	SpawnArgs func(sp SpawnInfo) []string
+	// PositionalPrompt reports that the agent takes an opening prompt
+	// as a bare argv positional and still starts INTERACTIVELY (rather
+	// than dropping into one-shot print mode). Measured under a real
+	// PTY for both users: `claude --session-id <uuid> "text"` and
+	// `pi --session-id <id> "text"` each enter the alt screen, render
+	// the text as the first turn and dispatch it. Agents without it
+	// get the prompt typed into the PTY once the session goes idle
+	// (see Registry.deliverPendingPromptLocked).
+	//
+	// A bool, not a func: both implementations are []string{prompt}.
+	// Widen it when an agent needs a flag rather than a positional.
+	PositionalPrompt bool
 }
 
 // SpawnInfo is what an adapter may need at spawn time to build
@@ -106,6 +118,8 @@ var (
 			SessionIDFlag: "--session-id",
 			ResumeArgs:    claudeResumeArgs,
 			SpawnArgs:     claudeSpawnArgs,
+			// Verified interactive under a PTY; see PositionalPrompt.
+			PositionalPrompt: true,
 		},
 		IDCodex: {
 			ID:         IDCodex,
@@ -172,6 +186,8 @@ var (
 				return []string{"pi", "--session-id", id}
 			},
 			SpawnArgs: piSpawnArgs,
+			// Verified interactive under a PTY; see PositionalPrompt.
+			PositionalPrompt: true,
 		},
 	}
 

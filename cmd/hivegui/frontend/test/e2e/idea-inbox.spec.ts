@@ -115,3 +115,65 @@ test('ideas the daemon already had show up at boot', async ({ page }) => {
   );
   await expect(badge(page)).toHaveText('1');
 });
+
+// The spec's headline flow, end to end in a browser: capture → count →
+// start → the prompt actually in the session's output. jsdom can show
+// the calls; only this can show the launcher opening under the right
+// card and the daemon's answer painting into a terminal.
+test('Start session seeds the new session with the note', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'sidebar drag handle is 1px off', 'bug');
+  await badge(page).click();
+  await rows(page)
+    .first()
+    .getByRole('button', { name: 'Start session' })
+    .click();
+
+  // The launcher takes over, showing what the session will open with —
+  // read-only, and shaped as an instruction so the agent knows what to
+  // DO with the note rather than just what was noticed.
+  await expect(inbox(page)).toBeHidden();
+  const launcher = page.locator('#launcher');
+  await expect(launcher).toBeVisible();
+  await expect(page.locator('#launcher-prompt')).toContainText(
+    'find the root cause',
+  );
+  await expect(page.locator('#launcher-prompt')).toContainText(
+    'sidebar drag handle is 1px off',
+  );
+
+  await page.keyboard.press('Enter');
+  await expect(launcher).toBeHidden();
+
+  // The prompt reaches the PTY — the mock plays the daemon's half —
+  // and only then does the idea flip, which is what puts the glyph on
+  // the new session's row and takes it off the badge.
+  const term = page.locator('.hv-session-row__idea').first();
+  await expect(term).toHaveCount(1);
+  await expect(term).toHaveAttribute('title', /sidebar drag handle is 1px off/);
+  // Started is not done: the idea outlives the session by design, and
+  // taking it out of the inbox stays an explicit action.
+  await expect(badge(page)).toHaveText('1');
+});
+
+test('Edit corrects the note, its kind and its project', async ({ page }) => {
+  await boot(page);
+  await capture(page, 'misfiled note');
+  await badge(page).click();
+  await rows(page).first().getByRole('button', { name: 'Edit' }).click();
+
+  // The same three controls capture offered, pre-filled — the fields
+  // capture asked for are exactly the fields that can be wrong. The
+  // inbox gives way to it: this app never stacks two dialogs.
+  await expect(inbox(page)).toBeHidden();
+  await expect(sheet(page)).toBeVisible();
+  await expect(page.locator('#quick-idea-text')).toHaveValue('misfiled note');
+  await page.locator('#quick-idea-text').fill('sharper wording');
+  await page.locator('#quick-idea-kind [data-kind="bug"]').click();
+  await page.locator('#quick-idea-save').click();
+  await expect(sheet(page)).toBeHidden();
+
+  await badge(page).click();
+  await expect(rows(page).first()).toContainText('sharper wording');
+  await expect(rows(page).first().locator('.idea-kind')).toHaveText('bug');
+});

@@ -94,43 +94,79 @@ func (a *App) SaveCustomAgents(list []CustomAgent) error {
 	return agent.SaveCustom(in)
 }
 
-// CreateSession asks the daemon to create a new session. agentID is
-// the canonical ID from ListAgents (e.g. "claude") or "" for a
-// generic shell. projectID is the owning project ("" = default).
-// useWorktree, when true and the project's cwd is a git repo, makes
-// the daemon spawn the session inside a fresh git worktree under
-// <gitRoot>/.worktrees/. The daemon broadcasts a SESSION_EVENT(added)
-// over the control connection; the frontend updates the sidebar from
-// that.
-// insertAfter names the session the new one should sit directly beneath
-// in the display order (usually the active session); "" appends.
-// branch names the worktree's branch when useWorktree is set ("" lets
-// the daemon generate one). worktreePath runs the session in an
-// EXISTING worktree instead of creating one — the worktree browser's
-// "open a session here" action — and takes precedence over
-// useWorktree.
-func (a *App) CreateSession(agentID, projectID, name, color string, cols, rows int, useWorktree bool, insertAfter, branch, worktreePath string, continueConversation bool) error {
+// CreateSessionOpts is the request CreateSession takes. A struct, not
+// a parameter list: the positional form had reached twelve arguments,
+// which is well past the point where the next reader can call it
+// correctly, and Wails names each field in the generated TS binding.
+//
+// Zero values mean "unset" throughout, so the frontend passes only the
+// fields an opening actually decides.
+type CreateSessionOpts struct {
+	// Agent is the canonical ID from ListAgents (e.g. "claude"), or ""
+	// for a generic shell.
+	Agent string `json:"agent"`
+	// Project is the owning project; "" means the default project.
+	Project string `json:"project"`
+	Name    string `json:"name"`
+	Color   string `json:"color"`
+	Cols    int    `json:"cols"`
+	Rows    int    `json:"rows"`
+	// UseWorktree, when true and the project's cwd is a git repo, makes
+	// the daemon spawn the session inside a fresh git worktree under
+	// <gitRoot>/.worktrees/.
+	UseWorktree bool `json:"useWorktree"`
+	// InsertAfter names the session the new one should sit directly
+	// beneath in the display order (usually the active session); ""
+	// appends.
+	InsertAfter string `json:"insertAfter"`
+	// Branch names the worktree's branch when UseWorktree is set; ""
+	// lets the daemon generate one.
+	Branch string `json:"branch"`
+	// WorktreePath runs the session in an EXISTING worktree instead of
+	// creating one — the worktree browser's "open a session here"
+	// action — and takes precedence over UseWorktree.
+	WorktreePath string `json:"worktreePath"`
+	// ContinueConversation asks the agent to pick up its most recent
+	// conversation in that worktree rather than starting a fresh one.
+	ContinueConversation bool `json:"continueConversation"`
+	// InitialPrompt is the opening turn to seed the agent with — the
+	// inbox's "Start session" action. Claude and Pi take it as an argv
+	// positional; every other agent has it typed into the PTY once the
+	// session first goes idle.
+	InitialPrompt string `json:"initialPrompt"`
+	// IdeaID is the idea the session is being started from. The daemon
+	// flips it to `started` once the prompt is delivered.
+	IdeaID string `json:"ideaId"`
+}
+
+// CreateSession asks the daemon to create a new session. The daemon
+// broadcasts a SESSION_EVENT(added) over the control connection; the
+// frontend updates the sidebar from that, so there is no session id to
+// return here.
+func (a *App) CreateSession(opts CreateSessionOpts) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
 	}
-	if worktreePath != "" {
+	if opts.WorktreePath != "" {
 		// Resuming existing work never creates a worktree; asking for
 		// both would stack a nested one inside it.
-		useWorktree = false
+		opts.UseWorktree = false
 	}
 	return cs.WriteJSON(wire.FrameCreateSession, wire.CreateSpec{
-		Agent:                agentID,
-		ProjectID:            projectID,
-		Name:                 name,
-		Color:                color,
-		Cols:                 cols,
-		Rows:                 rows,
-		UseWorktree:          useWorktree,
-		Branch:               branch,
-		WorktreePath:         worktreePath,
-		ContinueConversation: continueConversation,
-		InsertAfterSessionID: insertAfter,
+		Agent:                opts.Agent,
+		ProjectID:            opts.Project,
+		Name:                 opts.Name,
+		Color:                opts.Color,
+		Cols:                 opts.Cols,
+		Rows:                 opts.Rows,
+		UseWorktree:          opts.UseWorktree,
+		Branch:               opts.Branch,
+		WorktreePath:         opts.WorktreePath,
+		ContinueConversation: opts.ContinueConversation,
+		InsertAfterSessionID: opts.InsertAfter,
+		InitialPrompt:        opts.InitialPrompt,
+		IdeaID:               opts.IdeaID,
 	})
 }
 
@@ -539,11 +575,15 @@ func (a *App) AddIdea(sessionID, projectID, kind, text string) error {
 	})
 }
 
-// UpdateIdea patches text and/or status. Empty strings mean "do not
-// change", the same convention as UpdateProject/UpdateSession — an
-// idea's text is never legitimately empty and its status is a closed
-// set that has no empty member.
-func (a *App) UpdateIdea(id, text, status, sessionID string) error {
+// UpdateIdea patches an idea. Empty strings mean "do not change", the
+// same convention as UpdateProject/UpdateSession — none of these
+// fields has a legitimate empty value: the text is never empty, and
+// status, kind and project id are closed sets with no empty member.
+//
+// kind and projectID are the inbox's correction path: the capture
+// sheet pre-fills the project from whatever session was focused, so a
+// mis-filed note is an ordinary mistake rather than user error.
+func (a *App) UpdateIdea(id, text, status, sessionID, kind, projectID string) error {
 	cs, err := a.requireControl()
 	if err != nil {
 		return err
@@ -557,6 +597,12 @@ func (a *App) UpdateIdea(id, text, status, sessionID string) error {
 	}
 	if sessionID != "" {
 		req.SessionID = &sessionID
+	}
+	if kind != "" {
+		req.Kind = &kind
+	}
+	if projectID != "" {
+		req.ProjectID = &projectID
 	}
 	return cs.WriteJSON(wire.FrameUpdateIdea, req)
 }

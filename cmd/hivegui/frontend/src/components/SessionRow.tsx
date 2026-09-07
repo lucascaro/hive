@@ -19,7 +19,7 @@ import {
   type DragEvent,
   type Ref,
 } from 'react';
-import { StateIcon } from './Icon.js';
+import { Icon, StateIcon } from './Icon.js';
 import { IconButton } from './IconButton.js';
 import { Kbd } from './Kbd.js';
 import { isClosing, phaseOf } from '../lib/phase-steps.js';
@@ -46,6 +46,8 @@ export interface SessionRowProps {
   onDragEnd: (e: DragEvent<HTMLLIElement>) => void;
   onDragOver: (e: DragEvent<HTMLLIElement>) => void;
   onDrop: (e: DragEvent<HTMLLIElement>) => void;
+  /** The idea this session was started from, when it came from one. */
+  ideaText: string;
 }
 
 // Line 2 when the program has published no window title. One channel per
@@ -154,6 +156,22 @@ export function SessionRow(p: SessionRowProps) {
           clicked, and tabbing to it would display:none the focused
           element out from under the browser. It is both an indicator and
           a control, so it gets its own always-on slot outside the swap. */}
+      {/* Where the session came from. An indicator, not a control —
+          the inbox is reached from the project card's badge, and a
+          second route to it from every row would put the same action
+          in two places. Beside the worktree slot rather than in `meta`
+          for the same reason that one is: `meta` is display:none the
+          moment the pointer enters the row. */}
+      {p.ideaText ? (
+        <span
+          className="hv-session-row__idea"
+          role="img"
+          title={`Started from an idea: ${p.ideaText}`}
+          aria-label={`Started from an idea: ${p.ideaText}`}
+        >
+          <Icon name="idea" size={12} />
+        </span>
+      ) : null}
       {wtBranch ? (
         <IconButton
           icon="branch"

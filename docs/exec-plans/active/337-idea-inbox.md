@@ -359,7 +359,9 @@ it). Add each when something actually needs it.
   Delete (confirm). No open/all filter — one predicate; add the toggle
   when someone asks to review completed ideas.
 - **Start session:** opens the launcher modal with project locked and a
-  read-only "Opening prompt" preview (`"<Kind>: <text>"`); the modal's
+  read-only "Opening prompt" preview (an instruction built from the
+  kind, with the note as its subject — see the decision log entry of
+  2026-09-07 and `lib/ideas.ts` › `ideaPrompt`); the modal's
   create call passes `initial_prompt`. On success the GUI sends
   `UPDATE_IDEA{status:started, session_id}`. Worktree checkbox honoured;
   the branch field keeps the launcher's existing default (no slugging —
@@ -889,6 +891,98 @@ path instead.
   and it will be read as Hive having done something wrong. Worth a line
   in phase 3's notes rather than a fix here.
 
+- **2026-09-07** — **`CreateSpec.IdeaID` is added after all, reversing
+  the 2026-09-05 decision that rejected it.** That decision assumed the
+  GUI could send `UPDATE_IDEA{status:started, session_id}` itself after
+  the create returned — but the GUI never learns the new session's id.
+  `CREATE_SESSION` is fire-and-forget over the control connection, the
+  daemon mints the uuid, and nothing correlates the
+  `SESSION_EVENT(added)` that follows with the request that caused it.
+  The rejected alternative was not "a smaller crash window at the cost
+  of a second create path" — it was the only path there is. One
+  `omitempty` string on `CreateSpec` plus an in-memory `Entry.ideaID`
+  is the whole cost, and it makes the constraint below implementable
+  rather than aspirational.
+- **2026-09-07** — With `IdeaID` on the wire, the plan's two
+  contradictory statements about WHEN the idea flips to `started`
+  resolve in favour of the stricter one: **after delivery**, not at
+  create time (`### Initial prompt delivery`, constraint 3), because
+  `pendingPrompt` is in-memory and a daemon restart between create and
+  the first idle edge loses it. On the argv path that is immediately
+  after the spawn succeeds; on the typed path it is after the PTY write
+  returns. The spec's "on creation" and the `### GUI` section's "the
+  GUI sends `UPDATE_IDEA` on success" both describe the observable
+  behaviour correctly — the flip is one round trip after the click
+  either way — they just named the wrong actor.
+- **2026-09-07** — The prompt is delivered from `announceStateLocked`
+  rather than a new listener. `agentstate.Machine` still has no
+  `Subscribe`, and `announceStateLocked` is the single funnel all four
+  transition sites already pass through, so the hook costs one call and
+  no new plumbing. The PTY write goes to a goroutine: every caller
+  holds `r.mu`, and a write can block on the child's read.
+- **2026-09-07** — The edit sheet REPLACES the inbox rather than
+  layering over it. Measured in a real browser: the panel is above the
+  sheet in the stack, so every control on the sheet was unclickable —
+  Playwright reported `.idea-meta` intercepting the pointer, while the
+  jsdom test had been perfectly green because jsdom has no layout. It
+  is also what the app already does (⌘I from the open inbox closes it
+  and opens the sheet). The cost is losing your place in the list;
+  reopening the inbox after a save is a follow-up, not this PR.
+- **2026-09-07** — The inbox's Edit reuses the ⌘I capture sheet in an
+  edit mode rather than getting a modal of its own. The three things
+  that can be wrong (text, kind, project) are exactly the three the
+  capture sheet already renders, and a second copy of them is a second
+  thing to keep in agreement. `openQuickIdea(projectId, idea?)` is the
+  whole switch.
+- **2026-09-07** — The "Start session" row button carries
+  `data-opens-launcher`. Found in the browser: the launcher closes on
+  any document click outside itself, and the click that opens it is
+  still travelling when it mounts, so the launcher opened and shut in
+  the same tick. `Launcher.tsx` already defines that opt-out for the
+  worktree browser's opener; this is its second user.
+- **2026-09-07** — No daemon-level `TestCreateSessionWithInitialPrompt`.
+  The `CREATE_SESSION` arm decodes `wire.CreateSpec` and hands it to
+  `registry.Create` untouched — there is no daemon-side behaviour left
+  to assert that `json.Unmarshal`, the wire round-trip tests and the
+  registry's own delivery tests do not already cover. Likewise the
+  plan's `TestRestartDoesNotResendPrompt` is realized as
+  `TestPositionalPromptIsAppendedOnlyForItsAgents` (the prompt joins
+  argv in `resolveAgentCmd`, which restart never calls) plus
+  `TestPendingPromptDeliveredOnlyOnce` (the typed path clears itself as
+  it hands over).
+- **2026-09-07** — `DaemonContract` 6 → 7. Both new directions are
+  silently WRONG rather than silently empty against an older daemon: it
+  drops the unknown `initial_prompt` / `idea_id` / `kind` /
+  `project_id` JSON fields, so a newer GUI would show a session that
+  never got its prompt and a re-kind that never happened. That is the
+  version-skew shape `### Phasing` flagged when it deferred this
+  decision.
+- **2026-09-07** — The session row's idea marker is a real sprite icon
+  (`hv-idea`, a 26th symbol) rather than a text glyph, per
+  `docs/design-docs/ui/icons.md`'s rule, and reaches the row as a
+  STRING prop (`ideaText`), not an `IdeaInfo`. `SessionItem` is
+  memoized on primitives; a fresh object would re-render every row on
+  every unrelated idea event.
+- **2026-09-07** — The opening prompt is an INSTRUCTION, not the
+  `"<Kind>: <text>"` label `### GUI` specified. Raised by the user on
+  first read of the implementation: an agent handed `Idea: the grid
+  loses focus` knows what was noticed and nothing about what to do with
+  it, so it guesses — usually by editing code off a one-line note that
+  was never a specification. `ideaPrompt` now picks a verb from the
+  kind (bug: reproduce, root-cause, report back before changing code;
+  idea: explore, ask, propose a plan; feedback: assess and recommend)
+  and passes the note through verbatim at the end, where it reads as
+  the subject rather than as orders. One line per kind, because the
+  typed-delivery path appends a carriage return and TUIs disagree about
+  whether an embedded newline submits early. Spec and `### GUI` amended
+  to match.
+- **2026-09-07** — The `pi` "No project session found with id" warning
+  found while probing on 2026-09-06 is left alone. It is pi's own
+  pre-alt-screen line for a fresh `--session-id`, it is not made worse
+  by an opening prompt, and suppressing another program's stderr is a
+  bigger decision than this PR should make. Worth its own spec if the
+  scrollback noise bothers anyone.
+
 ## Review log
 
 - **2026-09-05** — `/hs-feature-plan-review`. Grounding, gaps and YAGNI
@@ -1049,6 +1143,50 @@ path instead.
   (`Def.PositionalPrompt`) rests on an assertion nothing in this tree
   proves, and if either agent drops to one-shot print mode the design
   changes rather than the implementation.
+
+- **2026-09-07** — Phase 3 implemented on
+  `feature/337-idea-inbox-initial-prompt` (branched fresh off `main` at
+  867d1ab2). Go: `CreateSpec.InitialPrompt` + `CreateSpec.IdeaID`,
+  `UpdateIdeaReq.Kind` + `.ProjectID` with registry validation against
+  `wire.IdeaKinds` and the live project map, `agent.Def.PositionalPrompt`
+  (Claude and Pi), the positional append in `resolveAgentCmd` plus the
+  `takesPositionalPrompt` predicate, `Entry.pendingPrompt` /
+  `Entry.ideaID` with `deliverPendingPromptLocked` hanging off
+  `announceStateLocked` (idle edge after working, PTY write off-lock)
+  and the drop-on-exit in `watchSessionExit`, `linkIdeaToSession`, and
+  the `DaemonContract` 6 → 7 bump with its History entry.
+  `App.CreateSession` is now one `CreateSessionOpts` struct (was 11
+  positionals) and `App.UpdateIdea` takes kind + project. Frontend:
+  `LauncherRequest.initialPrompt/ideaId/lockProject` with the read-only
+  opening-prompt row, `startSessionFromIdea`, `saveIdeaEdit`, `editIdea`
+  reusing the ⌘I sheet in edit mode, the inbox's Start session row
+  action, `ideaPrompt`, `ideaForSession`, the `hv-idea` sprite icon and
+  the session-row glyph (grid grew to six columns), plus the mock and
+  `e2e-real` harness updates for the new call shapes and the daemon's
+  half of prompt delivery. Tests: registry (argv-vs-typed selection,
+  the t=0 non-fire, delivery once, drop on exit, link timing on both
+  paths, re-kind/re-project accept and refuse), wire (round trips and
+  omitempty for all four fields), `app_calls` (options struct, the
+  widened UpdateIdea table), frontend unit (`ideaPrompt`,
+  `ideaForSession`), dom (`quick-idea` edit mode ×5, inbox Edit/Start
+  ×5, session-row glyph ×2, `launcher` rewritten onto the options
+  struct + 3 new), and two Playwright mock e2e (capture → count →
+  start → prompt in the fake PTY; Edit corrects kind and text).
+  Verified: `go build ./...`, `go vet ./...` for darwin/linux/windows,
+  `staticcheck` for all three, `go test ./...`, the isolated
+  `-tags=e2e ./cmd/hived/...`, `npm run typecheck`, `biome ci .`,
+  `vitest run` (1168), the full mock e2e suite (286 passed / 31
+  skipped), `check-changeset.sh`, `ui-lint.sh --strict` and
+  `--contrast`. Two failures are pre-existing on `origin/main` and
+  untouched by this diff, confirmed by running them in a throwaway
+  worktree at `867d1ab2`: `TestTerminalQueriesAreNotWork`
+  (deterministic locally) and `GOOS=windows staticcheck`'s
+  `internal/daemon/lock.go:28 stateLockPoll is unused`.
+- **2026-09-07** — The hive-brain lookup this stage asks for could not
+  run: `~/.hivesmith/bin/brain-read` was refused by the harness's
+  permission classifier, twice. Per the skill it does not block the
+  implementation, but this run had no prior-lesson pass over the files
+  it touched.
 
 ## Gate verdict
 

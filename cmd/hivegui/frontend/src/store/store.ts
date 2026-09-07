@@ -150,7 +150,11 @@ export type ModalEntry =
   // The capture sheet's project is a draft the user can change, so the
   // entry carries only what it opens ON: the project the focused
   // session is in, or the default project when there is none.
-  | { id: 'quick-idea'; seq: number; projectId: string }
+  // `idea` is set when the sheet is opened to CORRECT one rather than
+  // to file a new one — the inbox's Edit. Same three controls either
+  // way, which is the whole reason it is one component: the fields the
+  // capture asked for are exactly the fields that can be wrong.
+  | { id: 'quick-idea'; seq: number; projectId: string; idea?: IdeaInfo | null }
   | { id: 'idea-inbox'; seq: number; projectId: string; projectName: string }
   | { id: 'help'; seq: number }
   | { id: 'whats-new'; seq: number };
@@ -170,6 +174,18 @@ export interface LauncherRequest {
   duplicateCwd: string;
   worktreePath: string;
   continueConversation: boolean;
+  // Set when the launcher was opened from the inbox's Start session.
+  // The prompt is shown read-only above the agent list and sent as
+  // CreateSpec.initial_prompt; ideaId rides along so the DAEMON can
+  // flip the idea to `started` once the prompt is actually delivered.
+  // The GUI cannot do that itself: CREATE_SESSION is fire-and-forget
+  // and nothing correlates the SESSION_EVENT(added) that follows with
+  // the request that caused it.
+  initialPrompt: string;
+  ideaId: string;
+  // Locks the project picker to `projectId`. An idea belongs to a
+  // project; starting it somewhere else is not a thing to offer.
+  lockProject: boolean;
 }
 
 export interface StatusView {
@@ -1090,6 +1106,23 @@ export function removeIdea(id: string): void {
 // rejects ("the result of getSnapshot should be cached").
 export function openIdeasOf(ideas: IdeaInfo[], projectId: string): IdeaInfo[] {
   return ideas.filter((i) => i.project_id === projectId && i.status !== 'done');
+}
+
+// ideaForSession is the session row's glyph: the idea a session was
+// started from, if any. A scan of the idea list rather than a field on
+// SessionInfo — there are tens of ideas, not thousands, and the
+// alternative is a new wire field that every producer has to keep in
+// agreement with this one.
+//
+// Takes the list for the same reason openIdeasOf does: a component
+// selects the raw `ideas` slice and filters in render, so the selector
+// returns a stable reference.
+export function ideaForSession(
+  ideas: IdeaInfo[],
+  sessionId: string,
+): IdeaInfo | undefined {
+  if (!sessionId) return undefined;
+  return ideas.find((i) => i.session_id === sessionId);
 }
 
 // ---------- choice dialog ----------

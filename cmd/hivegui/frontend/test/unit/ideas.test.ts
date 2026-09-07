@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ideaPrompt,
   ideaTextBytes,
   ideaTextTooLong,
   MAX_IDEA_TEXT,
@@ -8,6 +9,7 @@ import {
 import {
   addIdea,
   appStore,
+  ideaForSession,
   openIdeasOf,
   removeIdea,
   resetStore,
@@ -132,5 +134,63 @@ describe('idea store', () => {
       idea({ id: 'd', project_id: 'p2', status: 'open' }),
     ];
     expect(openIdeasOf(list, 'p1').map((i) => i.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('ideaPrompt', () => {
+  it('tells the agent what to do, not just what was noticed', () => {
+    // A bare "Idea: the grid loses focus" is a label. The agent gets a
+    // one-line note and no task, so it guesses — usually by editing
+    // code off something that was never a specification.
+    const p = ideaPrompt({ kind: 'idea', text: 'the grid loses focus' });
+    expect(p).toContain('propose a plan before changing any code');
+    // The note survives verbatim, at the end, as the subject.
+    expect(p.endsWith('the grid loses focus')).toBe(true);
+  });
+
+  it('picks the verb from the kind', () => {
+    expect(ideaPrompt({ kind: 'bug', text: 'x' })).toContain(
+      'find the root cause',
+    );
+    expect(ideaPrompt({ kind: 'feedback', text: 'x' })).toContain(
+      'whether it is worth doing',
+    );
+  });
+
+  it('stays on one line, whatever the kind', () => {
+    // The typed-delivery path sends this followed by a carriage
+    // return; TUIs disagree about whether an embedded newline submits
+    // early.
+    for (const kind of ['idea', 'bug', 'feedback', 'epic']) {
+      expect(ideaPrompt({ kind, text: 'x' })).not.toContain('\n');
+    }
+  });
+
+  it('falls back to the idea verb for a kind it does not recognise', () => {
+    expect(ideaPrompt({ kind: 'epic', text: 'x' })).toContain(
+      'An idea was captured',
+    );
+  });
+});
+
+describe('ideaForSession', () => {
+  const list = [
+    idea({ id: 'a', session_id: 's1' }),
+    idea({ id: 'b', session_id: 's2' }),
+    idea({ id: 'c' }),
+  ];
+
+  it('finds the idea a session was started from', () => {
+    expect(ideaForSession(list, 's2')?.id).toBe('b');
+  });
+
+  it('has no answer for a session that came from nowhere', () => {
+    expect(ideaForSession(list, 's9')).toBeUndefined();
+  });
+
+  it('never matches the ideas that have no session', () => {
+    // '' is what a row passes for "no session id at all"; matching it
+    // against the unstarted ideas would put the glyph on every row.
+    expect(ideaForSession(list, '')).toBeUndefined();
   });
 });

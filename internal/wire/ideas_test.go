@@ -103,6 +103,12 @@ func TestUpdateIdeaReqPointerSemantics(t *testing.T) {
 	if req.SessionID != nil {
 		t.Errorf("omitted session_id decoded to %v, want nil", *req.SessionID)
 	}
+	if req.Kind != nil {
+		t.Errorf("omitted kind decoded to %v, want nil", *req.Kind)
+	}
+	if req.ProjectID != nil {
+		t.Errorf("omitted project_id decoded to %v, want nil", *req.ProjectID)
+	}
 	if req.Status == nil || *req.Status != IdeaStatusDone {
 		t.Errorf("status = %v, want done", req.Status)
 	}
@@ -111,8 +117,60 @@ func TestUpdateIdeaReqPointerSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), "text") || strings.Contains(string(b), "status") {
+	if strings.Contains(string(b), "text") || strings.Contains(string(b), "status") ||
+		strings.Contains(string(b), "kind") || strings.Contains(string(b), "project_id") {
 		t.Errorf("empty patch encoded as %s", b)
+	}
+}
+
+// The re-file patch: kind and project_id are the fields the inbox
+// corrects a mis-filed note with, and their wire spelling is
+// snake_case like every other id on this protocol.
+func TestUpdateIdeaReqCarriesKindAndProject(t *testing.T) {
+	kind, project := IdeaKindBug, "p7"
+	b, err := json.Marshal(UpdateIdeaReq{ID: "i", Kind: &kind, ProjectID: &project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"kind":"bug"`) ||
+		!strings.Contains(string(b), `"project_id":"p7"`) {
+		t.Fatalf("encoded as %s", b)
+	}
+	var back UpdateIdeaReq
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Kind == nil || *back.Kind != IdeaKindBug ||
+		back.ProjectID == nil || *back.ProjectID != "p7" {
+		t.Errorf("round trip lost the patch: %+v", back)
+	}
+}
+
+// CreateSpec's two new fields are what turn an idea into a session.
+// Both are omitempty, so every ordinary create is byte-identical to
+// what an older daemon already accepts.
+func TestCreateSpecPromptAndIdeaAreOmitempty(t *testing.T) {
+	b, err := json.Marshal(CreateSpec{Name: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "initial_prompt") || strings.Contains(string(b), "idea_id") {
+		t.Errorf("plain create encoded as %s", b)
+	}
+	b, err = json.Marshal(CreateSpec{Name: "s", InitialPrompt: "Bug report: x", IdeaID: "i1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"initial_prompt":"Bug report: x"`) ||
+		!strings.Contains(string(b), `"idea_id":"i1"`) {
+		t.Fatalf("encoded as %s", b)
+	}
+	var back CreateSpec
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.InitialPrompt != "Bug report: x" || back.IdeaID != "i1" {
+		t.Errorf("round trip = %+v", back)
 	}
 }
 

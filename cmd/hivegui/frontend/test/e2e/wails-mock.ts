@@ -311,23 +311,36 @@ function emitUpdatedExcept(skipId: string) {
     emit('session:event', JSON.stringify({ kind: 'updated', session: other }));
   }
 }
-// Positional args matching the real Wails binding:
-// CreateSession(agentID, projectID, name, color, cols, rows, useWorktree,
-// insertAfter, branch, worktreePath, continueConversation).
-export async function CreateSession(
-  agentID: string,
-  projectID: string,
-  name: string,
-  color: string,
-  _cols: number,
-  _rows: number,
-  _useWorktree: boolean,
-  insertAfter?: string,
-  branch?: string,
-  worktreePath?: string,
-  continueConversation?: boolean,
-) {
+// One options struct, matching the real Wails binding
+// (main.CreateSessionOpts). Every field optional here: the mock is
+// called from this file's own helpers too, and spelling out thirteen
+// fields at each of them would bury what each one is actually testing.
+export interface MockCreateSessionOpts {
+  agent: string;
+  project: string;
+  name: string;
+  color: string;
+  cols: number;
+  rows: number;
+  useWorktree: boolean;
+  insertAfter: string;
+  branch: string;
+  worktreePath: string;
+  continueConversation: boolean;
+  initialPrompt: string;
+  ideaId: string;
+}
+export async function CreateSession(o: Partial<MockCreateSessionOpts> = {}) {
   maybeFail('CreateSession');
+  const agentID = o.agent ?? '';
+  const projectID = o.project ?? '';
+  const name = o.name ?? '';
+  const color = o.color ?? '';
+  const insertAfter = o.insertAfter;
+  const branch = o.branch;
+  const worktreePath = o.worktreePath;
+  const continueConversation = o.continueConversation;
+  const _useWorktree = o.useWorktree;
   // Monotonic, NOT derived from the current length: after a kill the
   // length rewinds and a length-based id collides with a session that
   // is still alive, which silently drops the new row from the sidebar.
@@ -392,9 +405,30 @@ export async function CreateSession(
       s.phase = '';
       s.alive = true;
       emit('session:event', JSON.stringify({ kind: 'updated', session: s }));
+      deliverInitialPrompt(id, o.initialPrompt ?? '', o.ideaId ?? '');
     });
   });
   return id;
+}
+
+// The daemon's half of "start a session from an idea", modelled at the
+// one point it is observable from the GUI: the prompt appears in the
+// session's output, and only THEN does the idea flip to `started`. The
+// GUI never does this itself — CREATE_SESSION is fire-and-forget and
+// nothing correlates the SESSION_EVENT(added) with the request.
+function deliverInitialPrompt(
+  sessionID: string,
+  prompt: string,
+  ideaID: string,
+) {
+  if (!prompt) return;
+  emit('pty:data', sessionID, btoa(unescape(encodeURIComponent(prompt))));
+  const idea = state.ideas.find((i) => i.id === ideaID);
+  if (!idea) return;
+  idea.status = 'started';
+  idea.session_id = sessionID;
+  idea.updated = new Date().toISOString();
+  emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
 }
 // Positional: DuplicateSession(agentID, projectID, cwd, insertAfter).
 export async function DuplicateSession(
@@ -404,7 +438,12 @@ export async function DuplicateSession(
   insertAfter?: string,
 ) {
   maybeFail('DuplicateSession');
-  return CreateSession(agentID, projectID, 'dup', '', 0, 0, false, insertAfter);
+  return CreateSession({
+    agent: agentID,
+    project: projectID,
+    name: 'dup',
+    insertAfter,
+  });
 }
 export async function KillSessionAndWorktree(id: string) {
   maybeFail('KillSessionAndWorktree');
@@ -767,6 +806,8 @@ export async function UpdateIdea(
   text: string,
   status: string,
   sessionID: string,
+  kind?: string,
+  projectID?: string,
 ) {
   maybeFail('UpdateIdea');
   const idea = state.ideas.find((i) => i.id === id);
@@ -774,6 +815,8 @@ export async function UpdateIdea(
   if (text) idea.text = text;
   if (status) idea.status = status;
   if (sessionID) idea.session_id = sessionID;
+  if (kind) idea.kind = kind;
+  if (projectID) idea.project_id = projectID;
   idea.updated = new Date().toISOString();
   emit('idea:event', JSON.stringify({ kind: 'updated', idea }));
   return '';
@@ -1064,19 +1107,19 @@ if (typeof window !== 'undefined') {
     // r.order that interleaves projects, which is where display position
     // and .order diverge.
     addSession(name: string, insertAfter?: string, projectId?: string) {
-      return CreateSession(
-        '',
-        projectId || 'p1',
+      return CreateSession({
+        project: projectId || 'p1',
         name,
-        '',
-        0,
-        0,
-        false,
         insertAfter,
-      );
+      });
     },
     createSessionWithWorktree(name: string, branch?: string) {
-      return CreateSession('', 'p1', name, '', 0, 0, true, undefined, branch);
+      return CreateSession({
+        project: 'p1',
+        name,
+        useWorktree: true,
+        branch,
+      });
     },
     // Ideas the daemon already knew about when this window connected —
     // the boot LIST_IDEAS is what delivers them, so seed before it.

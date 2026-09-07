@@ -80,6 +80,21 @@ type CreateSpec struct {
 	// Ignored (append) when empty, unknown, or owned by a different
 	// project.
 	InsertAfterSessionID string `json:"insert_after_session_id,omitempty"`
+
+	// InitialPrompt is the opening turn for the agent. Agents whose
+	// Def.PositionalPrompt is set (Claude, Pi) receive it as a bare
+	// argv positional at spawn; every other agent has it typed into
+	// the PTY, followed by Enter, on the first idle edge after the
+	// session has been seen working.
+	InitialPrompt string `json:"initial_prompt,omitempty"`
+
+	// IdeaID names the idea this session is being started from. The
+	// daemon flips that idea to status=started with session_id set
+	// once the prompt has actually been delivered — the GUI cannot do
+	// it itself, because CREATE_SESSION is fire-and-forget and nothing
+	// correlates the SESSION_EVENT(added) that follows with the
+	// request that caused it. Empty for every ordinary create.
+	IdeaID string `json:"idea_id,omitempty"`
 }
 
 // Hello is the first frame the client sends after connecting.
@@ -640,13 +655,22 @@ type AddIdeaReq struct {
 }
 
 // UpdateIdeaReq mutates one idea. Pointer fields opt in, matching
-// UpdateProjectReq. There is no Kind (nothing re-kinds an idea) and
-// SessionID rides along with a Status change to "started".
+// UpdateProjectReq. SessionID rides along with a Status change to
+// "started".
+//
+// Kind and ProjectID are here because the capture sheet pre-fills the
+// project from whatever session was focused, so filing into the wrong
+// one is the default behaviour being wrong rather than user error —
+// and an idea that can only be corrected by deleting and retyping it
+// punishes the note-taking this feature exists to encourage. Both are
+// validated by the registry against the same closed sets AddIdea uses.
 type UpdateIdeaReq struct {
 	ID        string  `json:"id"`
 	Text      *string `json:"text,omitempty"`
 	Status    *string `json:"status,omitempty"`
 	SessionID *string `json:"session_id,omitempty"`
+	Kind      *string `json:"kind,omitempty"`
+	ProjectID *string `json:"project_id,omitempty"`
 }
 
 // RemoveIdeaReq is the REMOVE_IDEA payload.

@@ -144,35 +144,42 @@ export async function ResizeSession(id: string, cols: number, rows: number) {
 export async function RequestScrollbackReplay(id: string) {
   return call('RequestScrollbackReplay', { id });
 }
-export async function CreateSession(
-  agentID: string,
-  projectID: string,
-  name: string,
-  color: string,
-  cols: number,
-  rows: number,
-  useWorktree: boolean,
-  insertAfter?: string,
-  branch?: string,
-  worktreePath?: string,
-  continueConversation?: boolean,
-) {
-  // The Wails signature uses positional args; map to the bridge's
-  // CreateSpec shape.
+// Mirrors main.CreateSessionOpts, minus the fields this harness has no
+// use for. Optional throughout: the helpers below build partial ones.
+export interface CreateSessionOpts {
+  agent: string;
+  project: string;
+  name: string;
+  color: string;
+  cols: number;
+  rows: number;
+  useWorktree: boolean;
+  insertAfter: string;
+  branch: string;
+  worktreePath: string;
+  continueConversation: boolean;
+  initialPrompt: string;
+  ideaId: string;
+}
+export async function CreateSession(o: Partial<CreateSessionOpts> = {}) {
+  // camelCase in, snake_case out: the bridge speaks the wire's
+  // CreateSpec shape, not the Wails binding's.
   return call('CreateSession', {
-    agent: agentID || '',
-    project_id: projectID || '',
-    name: name || '',
-    color: color || '',
-    cols: cols || 80,
-    rows: rows || 24,
+    agent: o.agent || '',
+    project_id: o.project || '',
+    name: o.name || '',
+    color: o.color || '',
+    cols: o.cols || 80,
+    rows: o.rows || 24,
     // Resuming an existing worktree never creates one — the same
     // precedence the Go binding applies.
-    use_worktree: worktreePath ? false : !!useWorktree,
-    branch: branch || '',
-    worktree_path: worktreePath || '',
-    continue_conversation: !!continueConversation,
-    insert_after_session_id: insertAfter || '',
+    use_worktree: o.worktreePath ? false : !!o.useWorktree,
+    branch: o.branch || '',
+    worktree_path: o.worktreePath || '',
+    continue_conversation: !!o.continueConversation,
+    insert_after_session_id: o.insertAfter || '',
+    initial_prompt: o.initialPrompt || '',
+    idea_id: o.ideaId || '',
   });
 }
 // Ideas. Forwarded for real — the daemon owns them, and the fan-out
@@ -199,6 +206,8 @@ export async function UpdateIdea(
   text: string,
   status: string,
   sessionID: string,
+  kind?: string,
+  projectID?: string,
 ) {
   // Empty means "no change", the same convention the Go binding
   // applies before it fills the pointer fields.
@@ -206,6 +215,8 @@ export async function UpdateIdea(
   if (text) params.text = text;
   if (status) params.status = status;
   if (sessionID) params.session_id = sessionID;
+  if (kind) params.kind = kind;
+  if (projectID) params.project_id = projectID;
   return call('UpdateIdea', params);
 }
 export async function RemoveIdea(id: string) {
@@ -258,7 +269,7 @@ export async function DuplicateSession(
   _cwd?: string,
   insertAfter?: string,
 ) {
-  return CreateSession('', '', 'dup', '', 80, 24, false, insertAfter);
+  return CreateSession({ name: 'dup', insertAfter });
 }
 export async function KillSession(id: string, force: boolean) {
   return call('KillSession', { session_id: id, force: !!force });

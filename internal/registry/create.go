@@ -86,6 +86,13 @@ func (r *Registry) beginCreate(spec wire.CreateSpec) (*Entry, createPlan, error)
 	}
 	r.mu.Lock()
 	e.Phase = wire.PhaseStarting
+	// Both in-memory only (see Entry): a daemon restart between here
+	// and delivery loses the prompt, which is exactly why the idea is
+	// not flipped to `started` until the prompt has actually landed.
+	e.ideaID = spec.IdeaID
+	if spec.InitialPrompt != "" && !takesPositionalPrompt(spec) {
+		e.pendingPrompt = spec.InitialPrompt
+	}
 	info := e.Info()
 	r.broadcastLocked(wire.SessionEventAdded, info)
 	r.mu.Unlock()
@@ -159,8 +166,34 @@ func (r *Registry) finishCreate(ctx context.Context, e *Entry, spec wire.CreateS
 		return ErrNotFound
 	}
 	r.broadcast(wire.SessionEventUpdated, info)
+	// The argv path is delivered the moment the process exists, so the
+	// idea can be linked now. The typed path links from
+	// deliverPendingPromptLocked instead, once the text has actually
+	// reached the PTY — a session that dies before its first idle edge
+	// leaves the idea open rather than claiming work that never
+	// started.
+	if spec.InitialPrompt == "" || takesPositionalPrompt(spec) {
+		r.linkIdeaToSession(spec.IdeaID, p.id)
+	}
 	go r.watchSessionExit(p.id, sess)
 	return nil
+}
+
+// linkIdeaToSession flips the idea a session was started from to
+// `started` and records which session serves it. No-op without an
+// idea. Must NOT be called with r.mu held — UpdateIdea takes it.
+func (r *Registry) linkIdeaToSession(ideaID, sessionID string) {
+	if ideaID == "" {
+		return
+	}
+	started := wire.IdeaStatusStarted
+	if _, err := r.UpdateIdea(wire.UpdateIdeaReq{
+		ID: ideaID, Status: &started, SessionID: &sessionID,
+	}); err != nil {
+		// Not fatal to the session: the user has a session with the
+		// right prompt in it, and an idea still sitting in the inbox.
+		log.Printf("registry: linking idea %s to session %s: %v", ideaID, sessionID, err)
+	}
 }
 
 // discardWorktree removes a worktree that finishCreate materialized
@@ -428,7 +461,32 @@ func (r *Registry) resolveAgentCmd(spec wire.CreateSpec, id string) []string {
 			cmd = append(append([]string(nil), cmd...), extra...)
 		}
 	}
+	// The opening prompt, last, as a bare positional. Quoted nothing:
+	// this is argv, not a shell string. Deliberately here and NOT in
+	// appendSpawnArgs — a restart or revive rebuilds argv from the same
+	// helper, and re-sending the opening prompt would replay the first
+	// turn every time the user restarted the session.
+	if spec.InitialPrompt != "" && def.PositionalPrompt {
+		cmd = append(append([]string(nil), cmd...), spec.InitialPrompt)
+	}
 	return cmd
+}
+
+// takesPositionalPrompt reports whether the agent this spec resolves to
+// will receive InitialPrompt through argv. The complement is the typed
+// path (Entry.pendingPrompt), and beginCreate needs the answer before
+// resolveAgentCmd has run — hence a predicate rather than a return
+// value threaded out of it.
+//
+// An explicit spec.Cmd is the "raw argv from a client that doesn't
+// speak agent IDs" case: we don't append to user-supplied argv here
+// any more than resolveAgentCmd injects SessionIDFlag into it.
+func takesPositionalPrompt(spec wire.CreateSpec) bool {
+	if len(spec.Cmd) > 0 || spec.Agent == "" {
+		return false
+	}
+	def, ok := agent.Get(agent.ID(spec.Agent))
+	return ok && len(def.Cmd) > 0 && def.PositionalPrompt
 }
 
 // materializeWorktree runs the heavy `git worktree add` and promotes

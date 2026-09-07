@@ -43,3 +43,32 @@ export function ideaTextBytes(text: string): number {
 export function ideaTextTooLong(text: string): boolean {
   return ideaTextBytes(text.trim()) > MAX_IDEA_TEXT;
 }
+
+// ideaPrompt is the agent's opening turn when a session is started
+// from an idea.
+//
+// An instruction, not a label. A bare "Idea: the grid loses focus"
+// tells the agent what was noticed and nothing about what to do with
+// it, so it guesses — usually by starting to edit code off a one-line
+// note that was never a specification. The kind is the only thing that
+// distinguishes a bug report from a half-formed thought, so it picks
+// the verb; the note itself is passed through verbatim at the end,
+// where the agent reads it as the subject rather than as orders.
+//
+// One line, deliberately: the typed-delivery path (agents without
+// Def.PositionalPrompt) sends this followed by a carriage return, and
+// TUIs disagree about whether an embedded newline submits early.
+//
+// The idea verb for anything unrecognised: kind is a closed set the
+// daemon validates, and a note that reaches here with a strange one is
+// still a note worth starting.
+export function ideaPrompt(idea: { kind: string; text: string }): string {
+  switch (idea.kind) {
+    case 'bug':
+      return `A bug was reported in this project. Reproduce it first, find the root cause, and tell me what you found before changing any code. The report: ${idea.text}`;
+    case 'feedback':
+      return `Feedback was captured about this project. Work out what it would take to address, whether it is worth doing, and tell me what you recommend before changing any code. The feedback: ${idea.text}`;
+    default:
+      return `An idea was captured for this project. Explore what it would involve, ask me about anything ambiguous, and propose a plan before changing any code. The idea: ${idea.text}`;
+  }
+}

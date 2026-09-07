@@ -1,5 +1,11 @@
 [
   {
+    "title": "Idea inbox",
+    "blurb": "Press ⌘I anywhere to capture a note against a project, then start a session from it later — the launcher opens with the note as the agent's opening prompt.",
+    "status": "shipped",
+    "since": "Unreleased"
+  },
+  {
     "title": "What's new",
     "blurb": "The gift in the sidebar header lists what shipped, newest release first, and carries a dot until you have read it.",
     "status": "shipped",

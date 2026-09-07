@@ -44,7 +44,18 @@ What works:
   The project is resolved from the session, so a note lands where the
   work is even after the session is reassigned. An idea outlives the
   session that filed it; deleting a *project* deletes its ideas, and
-  Hive refuses that delete while any are still open
+  Hive refuses that delete while any are still open.
+
+  From the inbox (⇧⌘I, or the badge on a project card), a note can be
+  corrected — its text, its kind and the project it is filed under —
+  or turned into work: **Start session** opens the agent launcher with
+  the project pinned and an opening prompt built from the note — an
+  instruction shaped by its kind ("reproduce it first, find the root
+  cause…" for a bug), with the note itself as the subject, so the agent
+  knows what to do with it rather than only what was noticed. Claude and Pi get it as their opening argument; every other
+  agent has it typed into the terminal once the session settles. The
+  idea then links back to the session it started, and that session's
+  sidebar row carries a small idea glyph
 
 - In-app updates (macOS): pick a release or latest-commit channel in
   Settings, then Update → Reload (or Restart, when the daemon changed)

@@ -61,21 +61,16 @@ const listAgents = vi.fn((): Promise<main.AgentInfo[]> => freshAgentsPromise());
 const isGitRepo = vi.fn(
   (_cwd: string): Promise<boolean> => Promise.resolve(true),
 );
+// One options struct, not twelve positionals — the shape the launcher
+// actually calls. Asserting fields by NAME is the point of the
+// refactor: the old `calls[0][8]` assertions could not tell a shifted
+// argument from a wrong value.
 const createSession = vi.fn(
-  (
-    _agent: string,
-    _project: string,
-    _name: string,
-    _cwd: string,
-    _cols: number,
-    _rows: number,
-    _worktree: boolean,
-    _insertAfter?: string,
-    _branch?: string,
-    _worktreePath?: string,
-    _continue?: boolean,
-  ): Promise<string> => Promise.resolve('s1'),
+  (_opts: main.CreateSessionOpts): Promise<string> => Promise.resolve('s1'),
 );
+// The launcher fills every field, so a lookup never has to guess
+// between "unset" and "absent".
+const sent = (i = 0) => createSession.mock.calls[i][0];
 const duplicateSession = vi.fn(
   (_agent: string, _project: string, _cwd: string): Promise<string> =>
     Promise.resolve('s2'),
@@ -191,8 +186,14 @@ async function settleAgents(list: main.AgentInfo[] = AGENTS) {
   });
 }
 
-async function open() {
-  await openWith(() => openLauncher('p1'));
+// opts mirrors openLauncher's own second argument, minus the project
+// (which every opening here pins) — so a test can open the launcher the
+// way the inbox's Start session does.
+async function open(
+  opts?: Parameters<typeof openLauncher>[1] & { projectId?: string },
+) {
+  const { projectId, ...rest } = opts ?? {};
+  await openWith(() => openLauncher(projectId ?? 'p1', rest));
   await settleAgents();
 }
 
@@ -314,7 +315,7 @@ describe('launcher keyboard', () => {
     await open();
     press('2');
     expect(createSession).toHaveBeenCalledTimes(1);
-    expect(createSession.mock.calls[0][0]).toBe('claude');
+    expect(sent().agent).toBe('claude');
   });
 
   it('types the digit into the query once the query is non-empty', async () => {
@@ -360,7 +361,7 @@ describe('launcher keyboard', () => {
     type('codex');
     press('Enter');
     expect(createSession).toHaveBeenCalledTimes(1);
-    expect(createSession.mock.calls[0][0]).toBe('codex');
+    expect(sent().agent).toBe('codex');
   });
 
   it('wraps arrow-key selection within the filtered set only', async () => {
@@ -508,7 +509,7 @@ describe('launcher branch name', () => {
       );
     });
     expect(createSession).toHaveBeenCalled();
-    expect(createSession.mock.calls[0][8]).toBe('typed-here');
+    expect(sent().branch).toBe('typed-here');
   });
 
   it('closes on Escape from inside the branch box', async () => {
@@ -536,19 +537,50 @@ describe('launcher branch name', () => {
     await open();
     typeBranch('my-feature');
     press('Enter');
-    expect(createSession).toHaveBeenCalledWith(
-      expect.any(String),
-      'p1',
-      '',
-      '',
-      0,
-      0,
-      true,
-      expect.any(String),
-      'my-feature',
-      '',
-      false,
+    // The whole request, field by field: this is the assertion the
+    // options-struct refactor exists for.
+    expect(createSession).toHaveBeenCalledWith({
+      agent: expect.any(String),
+      project: 'p1',
+      name: '',
+      color: '',
+      cols: 0,
+      rows: 0,
+      useWorktree: true,
+      insertAfter: expect.any(String),
+      branch: 'my-feature',
+      worktreePath: '',
+      continueConversation: false,
+      initialPrompt: '',
+      ideaId: '',
+    });
+  });
+
+  it('carries an opening prompt and its idea to the daemon', async () => {
+    // Started from the inbox: the prompt is shown read-only above the
+    // agent list, and idea_id rides along so the DAEMON can link the
+    // idea once the prompt has actually been delivered.
+    await open({ initialPrompt: 'Bug report: 1px off', ideaId: 'i7' });
+    expect(document.getElementById('launcher-prompt')?.textContent).toContain(
+      'Bug report: 1px off',
     );
+    press('Enter');
+    expect(sent().initialPrompt).toBe('Bug report: 1px off');
+    expect(sent().ideaId).toBe('i7');
+  });
+
+  it('shows no prompt row for an ordinary opening', async () => {
+    await open();
+    expect(document.getElementById('launcher-prompt')).toBeNull();
+  });
+
+  it('keeps a locked project even when another one is active', async () => {
+    // An idea belongs to a project. Without the lock, openLauncher's
+    // `|| activeProjectId()` fallback would start it in whichever
+    // project happened to be focused.
+    await open({ projectId: 'p2', lockProject: true });
+    press('Enter');
+    expect(sent().project).toBe('p2');
   });
 
   it('trims whitespace and sends empty for a blank name', async () => {
@@ -556,7 +588,7 @@ describe('launcher branch name', () => {
     await open();
     typeBranch('   ');
     press('Enter');
-    expect(createSession.mock.calls[0][8]).toBe('');
+    expect(sent().branch).toBe('');
   });
 
   // A branch typed for one session must not silently become the next
@@ -569,7 +601,7 @@ describe('launcher branch name', () => {
     await open();
     expect(branchBox().value).toBe('');
     press('Enter');
-    expect(createSession.mock.calls[0][8]).toBe('');
+    expect(sent().branch).toBe('');
   });
 
   it('is cleared when the worktree toggle goes off', async () => {
@@ -578,8 +610,8 @@ describe('launcher branch name', () => {
     typeBranch('discard-me');
     toggleWorktree(false);
     press('Enter');
-    expect(createSession.mock.calls[0][6]).toBe(false);
-    expect(createSession.mock.calls[0][8]).toBe('');
+    expect(sent().useWorktree).toBe(false);
+    expect(sent().branch).toBe('');
   });
 
   // The IsGitRepo probe only runs for a project with a cwd, so this
@@ -620,8 +652,8 @@ describe('launcher resume-in-worktree mode', () => {
     );
     await settleAgents();
     press('Enter');
-    expect(createSession.mock.calls[0][6]).toBe(false);
-    expect(createSession.mock.calls[0][9]).toBe('/repo/.worktrees/resume');
+    expect(sent().useWorktree).toBe(false);
+    expect(sent().worktreePath).toBe('/repo/.worktrees/resume');
   });
 
   it('does not leak the path into the next regular opening', async () => {
@@ -632,7 +664,7 @@ describe('launcher resume-in-worktree mode', () => {
     act(() => closeLauncher());
     await open();
     press('Enter');
-    expect(createSession.mock.calls[0][9]).toBe('');
+    expect(sent().worktreePath).toBe('');
   });
 });
 

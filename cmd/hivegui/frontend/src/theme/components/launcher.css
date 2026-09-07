@@ -78,6 +78,36 @@
   outline-offset: 1px;
 }
 
+/* What the session will open with, when it was started from an idea.
+   Read-only context for the choice below it, not another control — so
+   it takes the muted label/value pairing the other passive metadata in
+   this app uses rather than an input's chrome. */
+.launcher-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 var(--space-2);
+  padding: 4px 6px;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+.launcher-prompt__label {
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.launcher-prompt__text {
+  /* Clamped, not scrolled: an idea can be 4 KiB and the launcher is a
+     popup anchored under a card. The full note is one panel away. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
+
 /* Inline rename inside a worktree row. */
 .worktree-rename {
   width: 100%;

@@ -120,6 +120,21 @@ type Entry struct {
 	// goroutine when the session exits before capture completes.
 	// nil when no capture is in flight.
 	captureCancel context.CancelFunc
+
+	// pendingPrompt is CreateSpec.InitialPrompt awaiting delivery on
+	// the typed path — agents that do not take a positional prompt.
+	// Cleared the moment it is handed to the PTY, and dropped if the
+	// session exits first.
+	//
+	// In-memory only, like Phase and state: it is not in MetaFile, and
+	// Revive rebuilds argv without it. A daemon restart between create
+	// and the first idle edge therefore loses the prompt — which is
+	// why ideaID below is not resolved until delivery happens.
+	pendingPrompt string
+	// ideaID is CreateSpec.IdeaID: the idea this session was started
+	// from, flipped to `started` once the prompt is delivered. Also
+	// in-memory only, and for the same reason.
+	ideaID string
 }
 
 // Project is the registry-side representation of a project.
@@ -498,6 +513,42 @@ func (r *Registry) announceStateLocked(e *Entry, prev agentstate.Snapshot, reaso
 		r.broadcastLocked(wire.SessionEventAttention, e.Info())
 	}
 	r.broadcastLocked(wire.SessionEventState, e.Info())
+	r.deliverPendingPromptLocked(e, prev, cur)
+}
+
+// deliverPendingPromptLocked types a session's opening prompt into its
+// PTY, for the agents that do not take one as an argv positional. It
+// hangs off announceStateLocked because agentstate.Machine has no
+// Subscribe — this is the one funnel every transition passes through.
+//
+// The edge is "idle, having been working", NOT "the first time it is
+// idle": wire.StateIdle is the empty string and attachSessionHooks
+// gives every session a fresh machine, so the naive predicate matches
+// at t=0 — before the agent's TUI has drawn an input box to type into.
+//
+// Must be called with r.mu held (every caller does). The PTY write is
+// handed to a goroutine so the registry mutex is never held across it.
+func (r *Registry) deliverPendingPromptLocked(e *Entry, prev, cur agentstate.Snapshot) {
+	if e.pendingPrompt == "" || e.sess == nil {
+		return
+	}
+	if cur.State != wire.StateIdle || prev.State != wire.StateWorking {
+		return
+	}
+	prompt, sess, id, ideaID := e.pendingPrompt, e.sess, e.ID, e.ideaID
+	e.pendingPrompt = ""
+	go func() {
+		// ponytail: one trailing \r submits one line. A multi-line
+		// prompt is typed verbatim and TUIs disagree about whether an
+		// embedded \r submits early; switch to bracketed paste
+		// (ESC[200~ … ESC[201~) if multi-line opening prompts ever
+		// matter. Codex and Gemini both accept a single line.
+		if _, err := sess.Write([]byte(prompt + "\r")); err != nil {
+			log.Printf("registry: opening prompt for %s not delivered: %v", id, err)
+			return
+		}
+		r.linkIdeaToSession(ideaID, id)
+	}()
 }
 
 // SetAttention records whether a session still wants the user's
@@ -1147,6 +1198,14 @@ func (r *Registry) watchSessionExit(id string, sess *session.Session) {
 	if e.captureCancel != nil {
 		e.captureCancel()
 		e.captureCancel = nil
+	}
+	// An opening prompt that never got its idle edge dies with the
+	// session. Loud, because the user asked for a session seeded with
+	// that text and did not get one — and the idea stays `open`, so
+	// the note itself is not lost.
+	if e.pendingPrompt != "" {
+		log.Printf("registry: session %s exited before its opening prompt could be typed; dropping it", id)
+		e.pendingPrompt = ""
 	}
 	info := e.Info()
 	r.mu.Unlock()

@@ -52,6 +52,18 @@ export interface LauncherOpts {
   // continueConversation asks the agent to resume its most recent
   // conversation in that worktree instead of starting a new one.
   continueConversation?: boolean;
+  // initialPrompt seeds the new session's first turn — the inbox's
+  // Start session. Shown read-only above the agent list so the user
+  // can see what the session will open with before picking an agent.
+  initialPrompt?: string;
+  // ideaId is the idea being started. It travels to the daemon, which
+  // flips the idea to `started` once the prompt has been delivered.
+  ideaId?: string;
+  // lockProject hides nothing today (the launcher has no project
+  // picker) but pins req.projectId against the `|| activeProjectId()`
+  // fallback below: an idea belongs to a project, and the fallback
+  // would silently start it in whichever one happens to be focused.
+  lockProject?: boolean;
 }
 
 let deps: LauncherDeps = {
@@ -97,7 +109,9 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
   openModal({
     id: 'launcher',
     req: {
-      projectId: projectId || activeProjectId(),
+      projectId: opts?.lockProject
+        ? projectId || ''
+        : projectId || activeProjectId(),
       // In duplicate mode the launcher is forking an existing session
       // into the same cwd, and in resume mode the worktree already
       // exists — never a new worktree in either.
@@ -109,6 +123,9 @@ export function openLauncher(projectId?: string | null, opts?: LauncherOpts) {
       duplicateCwd: opts?.duplicateCwd || '',
       worktreePath,
       continueConversation: !!opts?.continueConversation,
+      initialPrompt: opts?.initialPrompt || '',
+      ideaId: opts?.ideaId || '',
+      lockProject: !!opts?.lockProject,
     },
   });
 }

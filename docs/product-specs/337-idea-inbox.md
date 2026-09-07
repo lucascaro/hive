@@ -56,9 +56,13 @@ whatever session happened to be focused, so filing into the wrong one
 is an ordinary mistake, and delete-and-retype is not a correction.
 
 **Start.** Every open idea has a **Start session** action: it opens the
-existing agent launcher with the project fixed and the idea text as
-the opening prompt (prefixed with the kind: "Bug report: …"), with the
-worktree checkbox honoured. The new session is linked back to the idea,
+existing agent launcher with the project fixed and an opening prompt
+built from the idea, with the worktree checkbox honoured. The prompt is
+an instruction rather than a label: the kind picks the verb (a bug asks
+the agent to reproduce it and find the root cause before touching code;
+an idea asks it to propose a plan first) and the note itself is the
+subject. A bare "Idea: …" tells the agent what was noticed and nothing
+about what to do with it. The new session is linked back to the idea,
 the idea flips to `started`, and the inbox shows the link. Closing the
 session leaves the idea `started`; marking it done is an inbox action.
 Nothing is lost on session close — the idea outlives it. What must not
